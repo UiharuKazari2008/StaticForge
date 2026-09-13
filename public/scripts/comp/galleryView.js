@@ -3659,6 +3659,12 @@ function buildGalleryItemContextMenuConfig(image, item) {
                         hideOnBreakpoint: "small-mobile"
                     },
                     {
+                        icon: 'fas fa-gem',
+                        text: 'Compare in Prism',
+                        action: 'open-in-prism',
+                        hideOnBreakpoint: "small-mobile"
+                    },
+                    {
                         icon: 'fas fa-compass-drafting',
                         text: 'Edit in DreamStudio',
                         action: 'modify',
@@ -7845,6 +7851,15 @@ function handleGalleryContextMenuAction(event) {
                 viewer.element.dataset.imageData = JSON.stringify(image);
             }
             break;
+
+        case 'open-in-prism': {
+            const names = getSelectedFilenames().slice();
+            const clicked = image.filename || image.original || image.upscaled || filename;
+            if (clicked && names.indexOf(clicked) === -1) names.unshift(clicked);
+            // openPrismApplet: public/scripts/comp/featureLoader.js
+            void openPrismApplet({ filenames: names });
+            break;
+        }
 
         case 'move':
             // Select the image and show move modal

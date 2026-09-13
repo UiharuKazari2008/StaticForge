@@ -62,6 +62,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['config', 'settings editor', 'settings', 'runes'], launchIds: ['config-editor'] },
     { aliases: ['log', 'logs', 'console', 'server log', 'log viewer', 'event viewer', 'events', 'periscope'], launchIds: ['event-viewer'] },
     { aliases: ['explorer', 'files', 'file explorer', 'cartograph', 'vfs'], launchIds: ['explorer'] },
+    { aliases: ['prism', 'compare', 'creative compare', 'side by side', 'loupe compare'], launchIds: ['prism'] },
     { aliases: ['request', 'body', 'replacements', 'stages', 'pipeline'], launchIds: ['request-body-replacements'] },
     { aliases: ['wallpaper', 'desktop', 'background'], launchIds: ['desktop-settings'] },
     { aliases: ['websocket', 'ws', 'network monitor', 'requests'], launchIds: ['websocket-requests'] },

@@ -16,7 +16,7 @@ Custom Android/Linux clients may omit these or reimplement selectively.
 | Keyboard shortcuts | `public/scripts/comp/keyboardShortcuts.js`, `modalKeyboardRegistry.js` | Local binding |
 | Connection dial / pre-startup auth UI | `public/scripts/websocket.js` | Desktop Melaton startup modal |
 | Glass toasts / banners | `public/scripts/comp/toastManager.js`, `websocket.js` BannerManager | WS status UX |
-| Lightbox / compare view | `public/scripts/comp/lightbox.js`, `compareViewManager.js` | Uses `/images/` REST for bytes |
+| Lightbox / compare view | `public/scripts/comp/lightbox.js`, `compareViewManager.js`, `prismApplet.js` | Uses `/images/` REST for bytes. Prism is the creative compare applet (adjacent Source | Current | Ladder, Studio overlay/slide/loupe tools, Grid). |
 | Context menus | `public/scripts/comp/contextMenu.js` | Invokes WS APIs from menu actions |
 | Custom dropdowns | `public/scripts/comp/dropdown.js` | Pure UI — see `.cursor/rules/dropdown-setup.mdc` |
 
