@@ -283,32 +283,7 @@ async function openMcpViewer(data) {
     if (target === 'glancewell' || target === 'lightbox') {
         return openGlancewellForFilenames(filenames);
     }
-    if (target === 'prism' || target === 'compare') {
-        return openPrismForFilenames(data);
-    }
     return openLumenForFilenames(filenames);
-}
-
-async function openPrismForFilenames(data) {
-    const filenames = [];
-    const push = (value) => {
-        const name = typeof value === 'string' ? value : (value && value.filename);
-        if (name && filenames.indexOf(name) === -1) filenames.push(name);
-    };
-    const raw = (data && (data.filenames || data.filename)) || [];
-    (Array.isArray(raw) ? raw : [raw]).forEach(push);
-    push(data && data.filenameA);
-    push(data && data.filenameB);
-    push(data && data.a);
-    push(data && data.b);
-    if (filenames.length < 1) return { ok: false, error: 'filename or filenames is required' };
-    // openPrismApplet: public/scripts/comp/featureLoader.js
-    return openPrismApplet({
-        filenames,
-        filenameA: data && data.filenameA,
-        filenameB: data && data.filenameB,
-        mode: data && data.mode
-    });
 }
 
 async function openMcpActivityInPeriscope() {

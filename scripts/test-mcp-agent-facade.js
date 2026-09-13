@@ -587,6 +587,7 @@ assert.ok(coreNames.includes('scrap_images'));
 assert.ok(coreNames.includes('toggle_favorite'));
 assert.ok(coreNames.includes('open_in_lumen'));
 assert.ok(coreNames.includes('open_in_glancewell'));
+assert.ok(!coreNames.includes('open_in_prism'));
 assert.ok(coreNames.includes('compare_images'));
 assert.ok(coreNames.includes('evaluate_workspace_themes'));
 assert.ok(coreNames.includes('vfs_list'));

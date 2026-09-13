@@ -5503,7 +5503,6 @@ const startMenuLaunchables = [
     { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
-    { launchId: 'prism', icon: 'fas fa-gem', text: 'Prism', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openPrismApplet(); } },
 ];
 
 /** Root start menu shell rows (folders + run). */

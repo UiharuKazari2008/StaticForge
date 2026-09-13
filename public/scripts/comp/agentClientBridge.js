@@ -155,9 +155,7 @@
         if (id === 'tagWikiSearchModal') return 'grimoire';
         if (id === 'photoSwipeWindow') return 'glancewell';
         if (id.indexOf('imageViewer_') === 0) return 'lumen';
-        if (id === 'prismModal') return 'prism';
         const ident = modal && modal.dataset ? String(modal.dataset.windowIdentifier || '') : '';
-        if (ident === 'prism') return 'prism';
         if (ident.indexOf('imageViewer:') === 0) return 'lumen';
         if (ident === 'grimoire') return 'grimoire';
         if (/^dsap:\/\//i.test(ident) || id.indexOf('dsap') === 0) return 'dsap';
@@ -220,18 +218,12 @@
         };
     }
 
-    function collectPrismWindowData() {
-        // prismApplet.snapshot: public/scripts/comp/prismApplet.js
-        return prismApplet.snapshot();
-    }
-
     function collectWindowData(kind, modal) {
         if (kind === 'gallery') return collectGalleryWindowData();
         if (kind === 'studio') return collectStudioWindowData();
         if (kind === 'grimoire') return collectGrimoireWindowData();
         if (kind === 'glancewell') return collectGlancewellWindowData() || {};
         if (kind === 'lumen') return collectLumenWindowData(modal);
-        if (kind === 'prism') return collectPrismWindowData();
         return {};
     }
 
