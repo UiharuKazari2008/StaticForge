@@ -101,6 +101,7 @@ const TOOL_RATE_GROUPS = {
     toggle_favorite: 'write',
     open_in_lumen: 'free',
     open_in_glancewell: 'free',
+    open_in_prism: 'free',
     compare_images: 'gallery',
     evaluate_workspace_themes: 'search',
     vfs_list: 'free',

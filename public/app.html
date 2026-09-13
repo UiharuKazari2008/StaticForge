@@ -7934,6 +7934,139 @@ Examples:
         </div>
     </div>
 
+    <div id="prismModal" class="modal hidden resizeable-window" data-window-identifier="prism"
+        data-window-min-width="860" data-window-min-height="560" data-window-max-width="1800"
+        data-window-max-height="1200" data-window-default-width="1200" data-window-default-height="740"
+        data-prism-mode="side" data-prism-picker="0">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <span class="prism-title-gem" aria-hidden="true"></span>
+                <span>Prism</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-secondary btn-small modal-work-area-maximize" title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" id="closePrismBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content prism-modal-content dark">
+            <div class="prism-toolbar prism-toolbar-compare">
+                <div class="button-group">
+                    <button type="button" id="prismUseAsSourceBtn" class="btn-secondary btn-small indicator"
+                        data-prism-action="use-source" data-state="off" title="Enable Comparison">
+                        Use as source
+                    </button>
+                    <button type="button" id="prismOverlayBtn" class="btn-secondary btn-small indicator"
+                        data-prism-action="overlay" data-state="off" title="Overlay">
+                        Overlay off
+                    </button>
+                    <button type="button" id="prismOpacityBtn" class="btn-secondary btn-small" title="Visibility" disabled>
+                        Opacity 50%
+                    </button>
+                    <button type="button" id="prismSlideBtn" class="btn-secondary btn-small indicator"
+                        data-prism-action="slide" data-state="off" title="Slide">
+                        Slide/split
+                    </button>
+                    <button type="button" id="prismLoupeRevealBtn" class="btn-secondary btn-small indicator"
+                        data-prism-action="loupe-reveal" data-state="off" title="Loupe reveal">
+                        Loupe reveal
+                    </button>
+                    <button type="button" id="prismBlendBtn" class="btn-secondary btn-small" title="Blending" disabled>
+                        Blend normal
+                    </button>
+                    <button type="button" id="prismSourceColorBtn" class="btn-secondary btn-small" title="Source color" disabled>
+                        Source color
+                    </button>
+                    <button type="button" id="prismResultColorBtn" class="btn-secondary btn-small" title="Result color" disabled>
+                        Result color
+                    </button>
+                    <button type="button" id="prismSyncBtn" class="btn-secondary btn-small indicator"
+                        data-prism-action="sync" data-state="on" title="Sync pan/zoom">
+                        Sync pan/zoom
+                    </button>
+                </div>
+            </div>
+            <div class="prism-toolbar prism-toolbar-session">
+                <div class="button-group">
+                    <button type="button" class="btn-secondary btn-small" data-prism-action="add" title="Add images">
+                        <i class="fas fa-plus"></i> Add images
+                    </button>
+                    <button type="button" class="btn-secondary btn-small" data-prism-action="clear" title="Clear">
+                        Clear
+                    </button>
+                    <button type="button" class="btn-secondary btn-small" data-prism-action="studio" title="Open in Studio">
+                        Open in Studio
+                    </button>
+                </div>
+                <div class="prism-toolbar-right">
+                    <span id="prismMeta" class="prism-meta"></span>
+                </div>
+            </div>
+            <div class="prism-mode-tabs button-group">
+                <button type="button" class="btn-secondary btn-small is-active" data-prism-mode="side">Side-by-side</button>
+                <button type="button" class="btn-secondary btn-small" data-prism-mode="loupe">Loupe</button>
+                <button type="button" class="btn-secondary btn-small" data-prism-mode="grid">Grid</button>
+            </div>
+            <div class="prism-stage">
+                <div class="prism-empty" id="prismEmpty">
+                    <i class="fas fa-gem"></i>
+                    <p>Add two or more gallery images to compare in one window.</p>
+                </div>
+                <div id="prismPairLine" class="prism-pair-line hidden">Side-by-side · Source | Current · separate panels</div>
+                <div class="prism-panes hidden">
+                    <div class="prism-pane prism-source-pane">
+                        <div class="prism-pane-caption">
+                            <span id="prismSourceCaption">Source</span>
+                            <span id="prismSourceLetter"></span>
+                        </div>
+                        <div class="prism-pane-frame">
+                            <img id="prismSourcePaneImage" alt="" class="hidden">
+                        </div>
+                        <div class="prism-pane-foot" id="prismSourceFoot"></div>
+                    </div>
+                    <div class="prism-pane prism-result-pane">
+                        <div class="prism-pane-caption">
+                            <span id="prismResultCaption">Current</span>
+                            <span id="prismResultLetter"></span>
+                        </div>
+                        <div id="prismPreviewContent" class="manual-preview-content prism-preview-content image-loupe-hover-scope">
+                            <div class="manual-preview-image-container prism-loupe-host">
+                                <div id="prismPreviewHit" class="manual-preview-image-container-inner">
+                                    <img id="prismResultImage" src="" alt="" class="hidden">
+                                    <img id="prismSourceOverlay" src="" alt="" class="manual-preview-compare-source hidden">
+                                    <div class="manual-preview-compare-labels" aria-hidden="true">
+                                        <span class="manual-preview-compare-label compare-label-source">Source</span>
+                                        <span class="manual-preview-compare-label compare-label-result">Result</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="prism-pane-foot" id="prismResultFoot"></div>
+                    </div>
+                    <div id="prismLadderHost" class="prism-ladder-host hidden"></div>
+                </div>
+                <div id="prismFilmstrip" class="prism-filmstrip"></div>
+                <div id="prismGrid" class="prism-grid"></div>
+                <div id="prismPicker" class="prism-picker hidden">
+                    <div class="prism-toolbar">
+                        <input type="text" id="prismPickerSearch" class="form-control" placeholder="Search gallery filenames">
+                        <button type="button" class="btn-secondary btn-small" data-prism-action="add-selected">Add selected</button>
+                        <button type="button" class="btn-secondary btn-small" data-prism-action="picker-close">Close</button>
+                    </div>
+                    <div id="prismPickerGrid" class="prism-picker-grid"></div>
+                </div>
+            </div>
+            <div class="prism-footer">Agents can open a compare set with open_in_prism — one window, not N Lumen broadcasts.</div>
+        </div>
+    </div>
+
     <!-- Runes: edit value (tool window) -->
     <div id="configEditorValueModal" class="modal hidden resizeable-window tool-window on-top"
         data-parent-modal-id="configEditorModal" data-window-position-mode="cascade-parent"

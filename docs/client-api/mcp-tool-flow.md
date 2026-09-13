@@ -29,9 +29,9 @@ If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). W
 `generate_image` also supports `batch_characters: true` to coordinate one generation per character box sequentially. It is incompatible with `n>1`.
 If `mustAct` is present, bake `dynamicGeneration.resolved` and retry with `integrated=true`. `mustAct` is **not** set after a failed compile or after `integrated=true` — do not re-integrate a failed compiler. `dynamicGeneration.resolved` is the live time/weather/season/location capture (Director API is nooped — you compile). Pre-resolve with `get_client_physics` (works unbound; optional tod/weather/season/location; missing location warns and defaults to client IP, no 500) or use the resolved object already on get-state. Passing `dynamicGeneration.enabled: false` (or omitting the key) to `generate_image` does **not** compile and does **not** 500. Passing unintegrated dynagen toggles to `generate_image` / `generate_preset` / `apply_studio_changes` `autoGenerate` returns `needsIntegration` and does **not** enqueue — bake `resolved` into prompt/uc/characters, then retry with `dynamicGeneration.integrated=true`. Paid Anlas/Opus (upscale, expand, large/xlarge/wallpaper) requires `userApprovedPaidRequest` (alias `allow_paid`) or MCP bounces before FIFO. Honor an attached director prompt. LinkXi: `get_linkxi_persona` / `save_linkxi_persona`. Image chaining is out of scope. Grim setup page: `dsap://mcp.dreamscape.jp/`.
 
-What they are looking at: `get_open_windows` (Lumen/Glancewell current file + optional webp, Grimoire `data.text`, gallery `data.selected`). Then `get_generated_image` for metadata or gallery tools on the selected names.
+What they are looking at: `get_open_windows` (Lumen/Glancewell current file + optional webp, Grimoire `data.text`, gallery `data.selected`, Prism `data.filenames`). Then `get_generated_image` for metadata or gallery tools on the selected names.
 
-Gallery actions: `delete_images`, `scrap_images` (`remove: true` to unscrap), `toggle_favorite`, `open_in_lumen`, `open_in_glancewell` (pass `filenames` for a group). `compare_images` needs two files (same seed preferred). `evaluate_workspace_themes` samples a workspace and lists overused characters/tags. VFS: `vfs_list` / `vfs_read` (`path: "@desktop"` for the desktop).
+Gallery actions: `delete_images`, `scrap_images` (`remove: true` to unscrap), `toggle_favorite`, `open_in_lumen`, `open_in_glancewell` (pass `filenames` for a group), `open_in_prism` (2+ files in one Prism window — adjacent Source | Current | Ladder + Studio overlay/slide/loupe tools + Grid; do not open N Lumen windows). `compare_images` is the server pixel-diff (same seed preferred), not the Prism UI. `evaluate_workspace_themes` samples a workspace and lists overused characters/tags. VFS: `vfs_list` / `vfs_read` (`path: "@desktop"` for the desktop).
 
 Each `tools/call` also pushes `mcp_activity` (tool, summarized args/result, optional `generating`, `actorName` from the application token). The Remote Access tray icon stays for 2 minutes and quotes the token name (e.g. Your session was accessed by "Grok"); click it to open Periscope source `client:mcp-activity` (Event Viewer). `generate_image` / `expand_image` / `upscale_image` must pass `workspace` (named folder, or the source job's folder). Omitting it is unsafe: the server may fall back to the bound / only connected tab or `default`. Gallery `append_top` is sent to clients whose active workspace matches that save workspace.
 
@@ -50,7 +50,7 @@ User: *look at this image / this wiki page / my selected gallery files*
 1. `get_open_windows` — binds like `get_studio_state`
 2. Active Lumen / Glancewell: webp is on the result (`includeImage` default true). Metadata: `get_generated_image` `{ "filename" }`
 3. Grimoire: `windows[].data.url` + `data.text` — implement or quote from that text
-4. Gallery: `windows[].data.selected` — then `delete_images` / `scrap_images` / `toggle_favorite` / `open_in_lumen`
+4. Gallery: `windows[].data.selected` — then `delete_images` / `scrap_images` / `toggle_favorite` / `open_in_lumen` / `open_in_prism`
 
 ## Recipe: image in a specific workspace
 
