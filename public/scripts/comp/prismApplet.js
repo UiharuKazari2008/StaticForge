@@ -6,7 +6,7 @@
  * public/scripts/comp/modalUtils.js (openModal, closeModal)
  * public/scripts/comp/assetUrlResolver.js (localGalleryImageUrl, resolveGalleryPreviewUrl, resolveGalleryFullImageUrl)
  * public/scripts/comp/galleryView.js (findImageByFilename, getSelectedFilenames)
- * public/scripts/comp/contextMenu.js (contextMenu.attachToElement)
+ * public/scripts/comp/contextMenu.js (attachToElement, attachClickMenuToElement)
  * public/scripts/comp/manualModalManager.js (openManualModalWithContent)
  */
 
@@ -99,6 +99,7 @@ class PrismApplet {
 
         this.wireCompareMenus();
         this.wireKeyboard();
+        this.ensureDistinctPair();
         this.render();
     }
 
@@ -127,40 +128,39 @@ class PrismApplet {
     }
 
     wireCompareMenus() {
-        // contextMenu: public/scripts/comp/contextMenu.js
+        // contextMenu.attachToElement / attachClickMenuToElement: public/scripts/comp/contextMenu.js
         if (!contextMenu) return;
         const sourceBtn = document.getElementById('prismUseAsSourceBtn');
         if (sourceBtn) {
             contextMenu.attachToElement(sourceBtn, this.buildSourceMenu());
         }
-        const opacityBtn = document.getElementById('prismOpacityBtn');
-        if (opacityBtn) {
-            contextMenu.attachToElement(opacityBtn, {
-                sections: [{ type: 'list', items: this.opacityMenuItems() }],
-                onAction: (action, _t, item) => this.onCompareMenu(action, item)
-            });
-        }
-        const blendBtn = document.getElementById('prismBlendBtn');
-        if (blendBtn) {
-            contextMenu.attachToElement(blendBtn, {
-                sections: [{ type: 'list', items: this.blendMenuItems() }],
-                onAction: (action, _t, item) => this.onCompareMenu(action, item)
-            });
-        }
-        const sourceColorBtn = document.getElementById('prismSourceColorBtn');
-        if (sourceColorBtn) {
-            contextMenu.attachToElement(sourceColorBtn, {
-                sections: [{ type: 'grid', title: 'Source', items: this.colorMenuSections()[0].items }],
-                onAction: (action, _t, item) => this.onCompareMenu(action, item)
-            });
-        }
-        const resultColorBtn = document.getElementById('prismResultColorBtn');
-        if (resultColorBtn) {
-            contextMenu.attachToElement(resultColorBtn, {
-                sections: [{ type: 'grid', title: 'Result', items: this.colorMenuSections()[1].items }],
-                onAction: (action, _t, item) => this.onCompareMenu(action, item)
-            });
-        }
+        const attachToolbarMenu = (id, config) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            contextMenu.attachClickMenuToElement(el, config);
+            contextMenu.attachToElement(el, config);
+        };
+        attachToolbarMenu('prismOpacityBtn', {
+            position: 'anchor',
+            sections: [{ type: 'list', items: this.opacityMenuItems() }],
+            onAction: (action, _t, item) => this.onCompareMenu(action, item)
+        });
+        attachToolbarMenu('prismBlendBtn', {
+            position: 'anchor',
+            sections: [{ type: 'list', items: this.blendMenuItems() }],
+            onAction: (action, _t, item) => this.onCompareMenu(action, item)
+        });
+        const colorSections = this.colorMenuSections();
+        attachToolbarMenu('prismSourceColorBtn', {
+            position: 'anchor',
+            sections: [{ type: 'grid', title: 'Source', items: colorSections[0].items }],
+            onAction: (action, _t, item) => this.onCompareMenu(action, item)
+        });
+        attachToolbarMenu('prismResultColorBtn', {
+            position: 'anchor',
+            sections: [{ type: 'grid', title: 'Result', items: colorSections[1].items }],
+            onAction: (action, _t, item) => this.onCompareMenu(action, item)
+        });
     }
 
     opacityMenuItems() {
@@ -293,6 +293,7 @@ class PrismApplet {
             if (selected.length) this.setFilenames(selected, options);
         }
         if (options && options.mode) this.setMode(options.mode);
+        this.ensureDistinctPair();
         this.render();
         return { ok: true, target: 'prism', filenames: this.itemFilenames() };
     }
@@ -330,15 +331,52 @@ class PrismApplet {
         (filenames || []).forEach((name) => this.addFilename(name, { silent: true }));
         this.sourceIndex = 0;
         this.resultIndex = this.items.length > 1 ? 1 : 0;
-        if (options && options.sourceFilename) {
-            const i = this.indexOfFilename(options.sourceFilename);
+        const sourceName = options && (options.sourceFilename || options.filenameA || options.a);
+        const resultName = options && (options.resultFilename || options.filenameB || options.b);
+        if (sourceName) {
+            const i = this.indexOfFilename(sourceName);
             if (i >= 0) this.sourceIndex = i;
         }
-        if (options && options.resultFilename) {
-            const i = this.indexOfFilename(options.resultFilename);
+        if (resultName) {
+            const i = this.indexOfFilename(resultName);
             if (i >= 0) this.resultIndex = i;
         }
+        this.ensureDistinctPair();
         this.render();
+    }
+
+    prismPaneUrl(image, filename) {
+        const file = (image && (image.upscaled || image.original || image.filename)) || filename;
+        if (!file) return '';
+        // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        const resolved = resolveGalleryFullImageUrl(image);
+        if (resolved && resolved.indexOf('/previews/') < 0 && resolved.indexOf('/cache/preview/') < 0) {
+            return resolved;
+        }
+        return localGalleryImageUrl(file);
+    }
+
+    paneSrc(item) {
+        if (!item) return '';
+        return this.prismPaneUrl(item.image, item.filename) || item.url || '';
+    }
+
+    ensureDistinctPair(keep) {
+        const n = this.items.length;
+        if (n < 2) {
+            this.sourceIndex = 0;
+            this.resultIndex = 0;
+            return;
+        }
+        if (this.sourceIndex < 0 || this.sourceIndex >= n) this.sourceIndex = 0;
+        if (this.resultIndex < 0 || this.resultIndex >= n) {
+            this.resultIndex = this.sourceIndex === 0 ? 1 : 0;
+        }
+        if (this.sourceIndex === this.resultIndex) {
+            const next = this.sourceIndex === 0 ? 1 : 0;
+            if (keep === 'result') this.sourceIndex = next;
+            else this.resultIndex = next;
+        }
     }
 
     addFilename(filename, opts) {
@@ -350,16 +388,14 @@ class PrismApplet {
         this.items.push({
             filename: file,
             image,
-            url: resolveGalleryFullImageUrl(image) || localGalleryImageUrl(file),
+            url: this.prismPaneUrl(image, file),
             previewUrl: resolveGalleryPreviewUrl(image) || localGalleryImageUrl(file),
             width: image.width || 0,
             height: image.height || 0,
             seed: image.metadata && image.metadata.seed,
             model: image.metadata && (image.metadata.model || image.metadata.request_type)
         });
-        if (this.items.length === 2 && this.resultIndex === this.sourceIndex) {
-            this.resultIndex = 1;
-        }
+        this.ensureDistinctPair();
         if (!opts || !opts.silent) this.render();
         return true;
     }
@@ -372,10 +408,8 @@ class PrismApplet {
         this.items.splice(i, 1);
         this.sourceIndex = Math.max(0, this.indexOfFilename(sourceName));
         const resultAt = this.indexOfFilename(resultName);
-        this.resultIndex = resultAt >= 0 ? resultAt : (this.items.length > 1 && this.sourceIndex === 0 ? 1 : 0);
-        if (this.items.length > 1 && this.resultIndex === this.sourceIndex) {
-            this.resultIndex = this.sourceIndex === 0 ? 1 : 0;
-        }
+        this.resultIndex = resultAt >= 0 ? resultAt : 0;
+        this.ensureDistinctPair();
         if (!opts || !opts.silent) this.render();
         return true;
     }
@@ -387,8 +421,16 @@ class PrismApplet {
         return allImages;
     }
 
+    itemMatchesFilename(item, filename) {
+        if (!item || !filename) return false;
+        if (item.filename === filename) return true;
+        const image = item.image;
+        if (!image) return false;
+        return image.filename === filename || image.original === filename || image.upscaled === filename;
+    }
+
     indexOfFilename(filename) {
-        return this.items.findIndex((item) => item.filename === filename);
+        return this.items.findIndex((item) => this.itemMatchesFilename(item, filename));
     }
 
     itemFilenames() {
@@ -400,7 +442,12 @@ class PrismApplet {
     }
 
     resultItem() {
-        return this.items[this.resultIndex] || this.items[0] || null;
+        if (this.items[this.resultIndex]) return this.items[this.resultIndex];
+        if (this.items.length > 1) {
+            const alt = this.sourceIndex === 0 ? 1 : 0;
+            return this.items[alt] || null;
+        }
+        return this.items[0] || null;
     }
 
     letterAt(index) {
@@ -442,6 +489,10 @@ class PrismApplet {
             this.onCompareMenu('compareToggleLoupeReveal');
             return;
         }
+        if (action === 'opacity' || action === 'blend' || action === 'source-color' || action === 'result-color') {
+            // attachClickMenuToElement opens these on mousedown
+            return;
+        }
         if (action === 'picker-close') {
             this.pickerOpen = false;
             this.render();
@@ -449,6 +500,7 @@ class PrismApplet {
         }
         if (action === 'add-selected') {
             this.selectedGalleryNames().forEach((name) => this.addFilename(name, { silent: true }));
+            this.ensureDistinctPair();
             this.pickerOpen = false;
             this.render();
         }
@@ -468,9 +520,7 @@ class PrismApplet {
             return;
         }
         this.sourceIndex = this.resultIndex;
-        if (this.items.length > 1) {
-            this.resultIndex = this.sourceIndex === 0 ? 1 : 0;
-        }
+        this.ensureDistinctPair();
         this.overlayEnabled = false;
         this.slideEnabled = false;
         this.loupeRevealEnabled = false;
@@ -589,16 +639,10 @@ class PrismApplet {
         if (index < 0 || index >= this.items.length) return;
         if (asSource) {
             this.sourceIndex = index;
-            if (this.resultIndex === index && this.items.length > 1) {
-                this.resultIndex = index === 0 ? 1 : 0;
-            }
-        } else if (this.resultIndex === index) {
-            this.sourceIndex = index;
+            this.ensureDistinctPair('source');
         } else {
             this.resultIndex = index;
-            if (this.sourceIndex === index && this.items.length > 1) {
-                this.sourceIndex = index === 0 ? 1 : 0;
-            }
+            this.ensureDistinctPair('result');
         }
         if (this.mode === 'grid') this.mode = 'side';
         this.render();
@@ -781,12 +825,9 @@ class PrismApplet {
             const el = document.getElementById(id);
             if (el) el.disabled = overlayOff;
         });
-        const overlayBtn = document.getElementById('prismOverlayBtn');
-        if (overlayBtn) overlayBtn.textContent = this.overlayEnabled ? 'Overlay on' : 'Overlay off';
-        const opacityBtn = document.getElementById('prismOpacityBtn');
-        if (opacityBtn) opacityBtn.textContent = `Opacity ${this.runtime.overlayOpacity}%`;
-        const blendBtn = document.getElementById('prismBlendBtn');
-        if (blendBtn) blendBtn.textContent = `Blend ${this.runtime.blendMode}`;
+        this.setBtnLabel('prismOverlayBtn', this.overlayEnabled ? 'Overlay on' : 'Overlay off');
+        this.setBtnLabel('prismOpacityBtn', `Opacity ${this.runtime.overlayOpacity}%`);
+        this.setBtnLabel('prismBlendBtn', `Blend ${this.runtime.blendMode}`);
         const slideBtn = document.getElementById('prismSlideBtn');
         if (slideBtn) slideBtn.disabled = this.loupeRevealEnabled;
         const loupeBtn = document.getElementById('prismLoupeRevealBtn');
@@ -801,6 +842,13 @@ class PrismApplet {
         }
     }
 
+    setBtnLabel(id, text) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const label = el.querySelector('span');
+        if (label) label.textContent = text;
+    }
+
     toggleIndicator(id, on) {
         const el = document.getElementById(id);
         if (!el) return;
@@ -811,11 +859,9 @@ class PrismApplet {
     renderPanes() {
         const empty = document.getElementById('prismEmpty');
         const panes = this.modal.querySelector('.prism-panes');
-        const pairLine = document.getElementById('prismPairLine');
         const hasPair = this.items.length > 0;
         if (empty) empty.classList.toggle('hidden', hasPair || this.pickerOpen);
         if (panes) panes.classList.toggle('hidden', !hasPair || this.mode === 'grid');
-        if (pairLine) pairLine.classList.toggle('hidden', !hasPair || this.mode === 'grid');
         const source = this.sourceItem();
         const result = this.resultItem();
         const sourceImg = document.getElementById('prismSourcePaneImage');
@@ -825,7 +871,7 @@ class PrismApplet {
         const resultLetter = document.getElementById('prismResultLetter');
         if (sourceImg) {
             if (source) {
-                sourceImg.src = source.url;
+                sourceImg.src = this.paneSrc(source);
                 sourceImg.classList.remove('hidden');
             } else {
                 sourceImg.removeAttribute('src');
@@ -839,11 +885,6 @@ class PrismApplet {
         this.setPaneFoot('prismSourceFoot', source);
         this.setPaneFoot('prismResultFoot', result);
         this.renderLadderPanes();
-        if (pairLine) {
-            const extras = this.ladderIndexes().map((i) => this.letterAt(i));
-            const extraBit = extras.length ? ` | ${extras.join(' ')}` : '';
-            pairLine.textContent = `Side-by-side · Source | Current${extraBit} · separate panels`;
-        }
     }
 
     ladderIndexes() {
@@ -876,7 +917,7 @@ class PrismApplet {
             const item = this.items[index];
             const pane = document.createElement('div');
             pane.className = 'prism-pane prism-ladder-pane';
-            pane.innerHTML = `<div class="prism-pane-caption"><span>Ladder ${this.letterAt(index)}</span><span>${this.letterAt(index)}</span></div><div class="prism-pane-frame"><img alt="" src="${item.url}"></div><div class="prism-pane-foot"></div>`;
+            pane.innerHTML = `<div class="prism-pane-caption"><span>Ladder ${this.letterAt(index)}</span><span>${this.letterAt(index)}</span></div><div class="prism-pane-frame"><img alt="" src="${this.paneSrc(item)}"></div><div class="prism-pane-foot"></div>`;
             pane.querySelector('.prism-pane-foot').textContent = item.filename;
             pane.addEventListener('click', (e) => this.focusCell(index, e.shiftKey));
             host.appendChild(pane);
@@ -892,14 +933,14 @@ class PrismApplet {
         if (!content || !resultImage || !sourceImage) return;
 
         if (result) {
-            resultImage.src = result.url;
+            resultImage.src = this.paneSrc(result);
             resultImage.classList.remove('hidden');
         } else {
             resultImage.removeAttribute('src');
             resultImage.classList.add('hidden');
         }
         if (source && result && source.filename !== result.filename) {
-            sourceImage.src = source.url;
+            sourceImage.src = this.paneSrc(source);
             sourceImage.classList.remove('hidden');
         } else {
             sourceImage.removeAttribute('src');
