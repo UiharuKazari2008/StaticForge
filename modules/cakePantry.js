@@ -913,7 +913,8 @@ async function syncShipCake(accountId, params) {
     let fetchError = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-            const res = await fetch(`${GITEA_BASE}/issues?state=closed&limit=50`);
+            const res = await fetch(`${GITEA_BASE}/issues?state=closed&limit=50`, { headers: { 'User-Agent': 'Node.js' } });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             issues = await res.json();
             fetchError = null;
             break;
@@ -955,7 +956,8 @@ async function syncShipCake(accountId, params) {
             let fetchError = null;
             for (let attempt = 1; attempt <= 2; attempt++) {
                 try {
-                    const prRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}`);
+                    const prRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}`, { headers: { 'User-Agent': 'Node.js' } });
+                    if (!prRes.ok) throw new Error(`HTTP ${prRes.status}`);
                     pr = await prRes.json();
                     fetchError = null;
                     break;
