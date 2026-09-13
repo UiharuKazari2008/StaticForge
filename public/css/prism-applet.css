@@ -256,6 +256,11 @@ body.desktop-mode #prismModal.modal:not(.minimised):not(.maximised) {
     border: 1px solid var(--glass-border-3);
 }
 
+#prismModal #prismPickerSearch {
+    flex: 1 1 auto;
+    min-width: 10em;
+}
+
 #prismModal .prism-picker-grid {
     flex: 1;
     min-height: 0;
@@ -263,6 +268,10 @@ body.desktop-mode #prismModal.modal:not(.minimised):not(.maximised) {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
     gap: 6px;
+}
+
+#prismModal .prism-picker-grid > .prism-empty {
+    grid-column: 1 / -1;
 }
 
 #prismModal .prism-picker-item {
@@ -285,13 +294,21 @@ body.desktop-mode #prismModal.modal:not(.minimised):not(.maximised) {
     outline: 2px solid var(--text-accent, #ff4500);
 }
 
+#prismModal .modal-window-title-main span {
+    flex: 0 0 auto;
+    min-width: auto;
+    overflow: visible;
+}
+
 #prismModal .prism-title-gem {
+    display: inline-block;
     width: 14px;
     height: 14px;
     border-radius: 50%;
     background: conic-gradient(from 210deg, #7ec8ff, #ffb86b, #ff6b9d, #8b7bff, #7ec8ff);
     box-shadow: 0 0 0 1px var(--glass-border-3);
     flex-shrink: 0;
+    font-style: normal;
 }
 
 #prismModal[data-prism-mode="side"] .prism-grid,
@@ -315,6 +332,11 @@ body.desktop-mode #prismModal.modal:not(.minimised):not(.maximised) {
 #prismModal[data-prism-picker="1"] .prism-panes,
 #prismModal[data-prism-picker="1"] .prism-grid,
 #prismModal[data-prism-picker="1"] .prism-filmstrip,
-#prismModal[data-prism-picker="1"] .prism-pair-line {
+#prismModal[data-prism-picker="1"] .prism-pair-line,
+#prismModal[data-prism-picker="1"] .prism-empty {
     visibility: hidden;
+}
+
+#prismModal[data-prism-picker="1"] .prism-picker .prism-empty {
+    visibility: visible;
 }
