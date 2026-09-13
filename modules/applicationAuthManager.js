@@ -429,6 +429,10 @@ class ApplicationAuthManager {
     }
 
     canAccessWsPacket(scopes, packetType, userType) {
+        // JULES: Restrict admin management WS packets to admin userType
+        if (ADMIN_MANAGEMENT_WS_PACKETS.has(packetType)) {
+            return userType === 'admin' || userType === 'dev_admin';
+        }
         if (this.isApplicationAuthPacket(packetType)) {
             return true;
         }
