@@ -848,7 +848,8 @@ function showCacheMoveToWorkspaceModal(cacheImage) {
 
         // Close modal handlers
 
-        document.getElementById('closeCacheMoveToWorkspaceBtn').addEventListener('click', () => {
+        // JULES: Safe navigation guard for modal close button
+        document.getElementById('closeCacheMoveToWorkspaceBtn')?.addEventListener('click', () => {
             closeModal(modal);
         });
     }
