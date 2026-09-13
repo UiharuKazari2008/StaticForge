@@ -7961,50 +7961,54 @@ Examples:
                 <div class="button-group">
                     <button type="button" id="prismUseAsSourceBtn" class="btn-secondary btn-small indicator"
                         data-prism-action="use-source" data-state="off" title="Enable Comparison">
-                        Use as source
+                        <i class="fas fa-eye-dropper"></i><span>Use as source</span>
                     </button>
                     <button type="button" id="prismOverlayBtn" class="btn-secondary btn-small indicator"
                         data-prism-action="overlay" data-state="off" title="Overlay">
-                        Overlay off
+                        <i class="fas fa-layer-group"></i><span>Overlay off</span>
                     </button>
-                    <button type="button" id="prismOpacityBtn" class="btn-secondary btn-small" title="Visibility" disabled>
-                        Opacity 50%
+                    <button type="button" id="prismOpacityBtn" class="btn-secondary btn-small"
+                        data-prism-action="opacity" title="Visibility" disabled>
+                        <i class="fas fa-eye"></i><span>Opacity 50%</span>
                     </button>
                     <button type="button" id="prismSlideBtn" class="btn-secondary btn-small indicator"
                         data-prism-action="slide" data-state="off" title="Slide">
-                        Slide/split
+                        <i class="fas fa-columns"></i><span>Slide/split</span>
                     </button>
                     <button type="button" id="prismLoupeRevealBtn" class="btn-secondary btn-small indicator"
                         data-prism-action="loupe-reveal" data-state="off" title="Loupe reveal">
-                        Loupe reveal
+                        <i class="fas fa-magnifying-glass"></i><span>Loupe reveal</span>
                     </button>
                 </div>
                 <div class="button-group">
-                    <button type="button" id="prismBlendBtn" class="btn-secondary btn-small" title="Blending" disabled>
-                        Blend normal
+                    <button type="button" id="prismBlendBtn" class="btn-secondary btn-small"
+                        data-prism-action="blend" title="Blending" disabled>
+                        <i class="fas fa-fill-drip"></i><span>Blend normal</span>
                     </button>
-                    <button type="button" id="prismSourceColorBtn" class="btn-secondary btn-small" title="Source color" disabled>
-                        Source color
+                    <button type="button" id="prismSourceColorBtn" class="btn-secondary btn-small"
+                        data-prism-action="source-color" title="Source color" disabled>
+                        <i class="fas fa-palette"></i><span>Source color</span>
                     </button>
-                    <button type="button" id="prismResultColorBtn" class="btn-secondary btn-small" title="Result color" disabled>
-                        Result color
+                    <button type="button" id="prismResultColorBtn" class="btn-secondary btn-small"
+                        data-prism-action="result-color" title="Result color" disabled>
+                        <i class="fas fa-palette"></i><span>Result color</span>
                     </button>
                     <button type="button" id="prismSyncBtn" class="btn-secondary btn-small indicator"
                         data-prism-action="sync" data-state="on" title="Sync pan/zoom">
-                        Sync pan/zoom
+                        <i class="fas fa-arrows-up-down-left-right"></i><span>Sync pan/zoom</span>
                     </button>
                 </div>
             </div>
             <div class="prism-toolbar prism-toolbar-session">
                 <div class="button-group">
                     <button type="button" class="btn-secondary btn-small" data-prism-action="add" title="Add images">
-                        <i class="fas fa-plus"></i> Add images
+                        <i class="fas fa-plus"></i><span>Add images</span>
                     </button>
                     <button type="button" class="btn-secondary btn-small" data-prism-action="clear" title="Clear">
-                        Clear
+                        <i class="fas fa-xmark"></i><span>Clear</span>
                     </button>
                     <button type="button" class="btn-secondary btn-small" data-prism-action="studio" title="Open in Studio">
-                        Open in Studio
+                        <i class="fas fa-sliders"></i><span>Open in Studio</span>
                     </button>
                 </div>
                 <div class="prism-toolbar-right">
@@ -8012,16 +8016,21 @@ Examples:
                 </div>
             </div>
             <div class="prism-mode-tabs button-group">
-                <button type="button" class="btn-secondary btn-small is-active" data-prism-mode="side">Side-by-side</button>
-                <button type="button" class="btn-secondary btn-small" data-prism-mode="loupe">Loupe</button>
-                <button type="button" class="btn-secondary btn-small" data-prism-mode="grid">Grid</button>
+                <button type="button" class="btn-secondary btn-small is-active" data-prism-mode="side">
+                    <i class="fas fa-columns"></i><span>Side-by-side</span>
+                </button>
+                <button type="button" class="btn-secondary btn-small" data-prism-mode="loupe">
+                    <i class="fas fa-magnifying-glass"></i><span>Loupe</span>
+                </button>
+                <button type="button" class="btn-secondary btn-small" data-prism-mode="grid">
+                    <i class="fas fa-grid-2"></i><span>Grid</span>
+                </button>
             </div>
             <div class="prism-stage">
                 <div class="prism-empty" id="prismEmpty">
                     <i class="fas fa-gem"></i>
                     <p>Add two or more gallery images to compare in one window.</p>
                 </div>
-                <div id="prismPairLine" class="prism-pair-line hidden">Side-by-side · Source | Current · separate panels</div>
                 <div class="prism-panes hidden">
                     <div class="prism-pane prism-source-pane">
                         <div class="prism-pane-caption">
@@ -8059,13 +8068,16 @@ Examples:
                 <div id="prismPicker" class="prism-picker hidden">
                     <div class="prism-toolbar">
                         <input type="text" id="prismPickerSearch" class="form-control" placeholder="Search gallery filenames">
-                        <button type="button" class="btn-secondary btn-small" data-prism-action="add-selected">Add selected</button>
-                        <button type="button" class="btn-secondary btn-small" data-prism-action="picker-close">Close</button>
+                        <button type="button" class="btn-secondary btn-small" data-prism-action="add-selected">
+                            <i class="fas fa-plus"></i><span>Add selected</span>
+                        </button>
+                        <button type="button" class="btn-secondary btn-small" data-prism-action="picker-close">
+                            <i class="fas fa-xmark"></i><span>Close</span>
+                        </button>
                     </div>
                     <div id="prismPickerGrid" class="prism-picker-grid"></div>
                 </div>
             </div>
-            <div class="prism-footer">Agents can open a compare set with open_in_prism — one window, not N Lumen broadcasts.</div>
         </div>
     </div>
 
