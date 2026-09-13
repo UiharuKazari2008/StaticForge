@@ -6,6 +6,11 @@ const ADMIN_DESTRUCTIVE = { destructive: true };
 
 async function handleGetRateLimitingStats(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
         if (handlersCtx.globalResources.initializationProgress.searchService && typeof handlersCtx.globalResources.getSearchService().getRateLimitingStats === 'function') {
             const stats = handlersCtx.globalResources.getSearchService().getRateLimitingStats();
             handlersCtx.sendToClient(ws, {
@@ -25,6 +30,11 @@ async function handleGetRateLimitingStats(handlersCtx, ws, message, clientInfo, 
 
 async function handleCancelPendingRequests(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
         if (handlersCtx.globalResources.initializationProgress.searchService && typeof handlersCtx.globalResources.getSearchService().cancelAllPendingRequests === 'function') {
             const cancelledCount = handlersCtx.globalResources.getSearchService().cancelAllPendingRequests();
             handlersCtx.sendToClient(ws, {
@@ -44,6 +54,11 @@ async function handleCancelPendingRequests(handlersCtx, ws, message, clientInfo,
 
 async function handleGetSessionRateLimitingStats(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
         const { model } = message;
         if (!model) {
             handlersCtx.sendError(ws, 'Missing model parameter', 'get_session_rate_limiting_stats');
@@ -69,6 +84,11 @@ async function handleGetSessionRateLimitingStats(handlersCtx, ws, message, clien
 
 async function handleCancelSessionPendingRequests(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
         const { model } = message;
         if (!model) {
             handlersCtx.sendError(ws, 'Missing model parameter', 'cancel_session_pending_requests');
