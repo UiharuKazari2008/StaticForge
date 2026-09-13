@@ -260,6 +260,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `upscale_image` | `upscale_image` (`filename`, optional `workspace`). Paid Opus — requires `userApprovedPaidRequest` / `allow_paid`. | `generation` | no |
 | `expand_image` | `expand_image` (`filename`, `resolution`, `imageBias` 0–4). Paid Anlas — requires `userApprovedPaidRequest` / `allow_paid`. Top-level `prompt` / `uc` override the expand inpaint (compiled-prompt path; no Grok AI mode). | `generation` | no |
 | `omegasearch` | `omegasearch_query` (`query` / `terms` coerced to `blocks`; optional `workspace`) | `search` | no |
+| `resolve_lookback` | Resolve a pasted Copy Lookback markdown link (`[label](dsap://lookback/…)`) or raw `dsap://lookback/…` to that item’s metadata. Gallery images also return a Grok-sized webp. Do not mint lookback URIs. Distinct from Copy linkback (`dsref:file:…`). | `search` / core | no |
 | `list_notes` / `get_note` / `save_note_content` | `notes_get_all_metadata` / `notes_get` / `notes_save_content` | `notes` | no |
 | `delete_images` | `delete_images_bulk` | `gallery` | no |
 | `scrap_images` | `workspace_bulk_add_scrap` / `workspace_remove_scrap` | `workspace` | no |

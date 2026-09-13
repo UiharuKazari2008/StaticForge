@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-12T11:09:46.097903+00:00",
+  "updated_at": "2026-09-13T11:14:08.679760+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "2026-09-12 7am: snapshot Apocrypha current.json (Hoshino overnight sheet) + client-api docs for PR #104 soft tips, #106 PIN realtime, NAX v5 constrained galleries. NEW ships for Rook 11am (not banked at Sep11 8:30 #103 note): PR #104 soft tips +29 (Jules 10959750974151706742); PR #105 tag-lookup perf +6/-4 (Jules 10278635411460994147); PR #106 PIN pad realtime +52/-32 (Jules 14471064346466589181); ManualDropdownManager stub class delete -56 on main (297a83f; PR #100 still HOLD/closed); NAX v5 artist/character +171 and +9/-4 (5b717cb/71f0050). Overnight Jules already open for grill at 8:30: PR #108/#110 (#170 taskbar), #109 (#171 V5 curated), #111 (#172 cartograph), #112 defect dead-code. Stay off greg/#5. No cake here.",
+  "cake_note": "2026-09-13 7am: tree clean (no safety snapshot). Pushed 20 host commits that were ahead of origin/Public. Docs pass: Copy Lookback + Copy linkback (#188), Menma cake-log thumbs (#190), mcp resolve_lookback row. Prism applet landed then scraped (#189 / PR131). Host CI deploy labels/runners on main (f233f94 / #191 cursor-agent review). NEW ships for Rook 11am (not banked at Sep12 7am note): Cartograph toolbar/workspace fixes (#176, Cursor PRs ~116-120); MCP run_client_js + inspect_elements (#173 / PR124) Jules 2388918486913237676; Copy linkback (#188 / PR125) +292/-1 Cursor; DSAP cake-log before/after thumbs (#190 / PR126) +225/-45 Cursor; Prism creative compare then scrap (#189 / PR127-131) Cursor \u2014 scrap is the net; Host CI deploy labeled merge (f233f94). Jules overnight: PR129 security CLOSED unmerged; PR132 workspace optional-chaining OPEN draft +2/-1 (session 8287631912831465138). Open pile empty. Stay off greg/#5. No cake here.",
   "eaten": [
     {
       "id": "sf-22",

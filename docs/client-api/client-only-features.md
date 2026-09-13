@@ -78,7 +78,7 @@ Only relevant when embedding the PWA in DreamScape Android WebView.
 | `dsapRegistry.js` | Pseudo-URL routing (`edtx://`, `en.grimoire.jp`, …) |
 | `grimoireCoreDomains.js` | Built-in wiki/search/home routes |
 | `*DsapApplet.js` | Lazy-loaded mini-apps |
-| Menma progress | Windowed DSAP at `menma.dyna.dreamscape.jp` (`menmaDsapApplet.js`). Open from Control Panel (`dsap://dreamscape.jp/`), not the Start menu. Loads via WS `get_menma_state`; Open in Studio on breakfast thumbs. |
+| Menma progress | Windowed DSAP at `menma.dyna.dreamscape.jp` (`menmaDsapApplet.js`). Open from Control Panel (`dsap://dreamscape.jp/`), not the Start menu. Loads via WS `get_menma_state`; cake log `before`/`after` gallery filenames render as thumbs (Yozora #190); Open in Studio on those thumbs. |
 | Wiki Manager DSAP (`fandomWikiManagerDsapApplet.js`, `dsap://wiki.dyna.dreamscape.jp`) | Lists cached Fandom / NovelAI / MediaWiki / static wikis; import, pull/update, delete. Talks WS `get_fandom_wiki_manager`, `import_fandom_wiki_page` (Fandom + generic MediaWiki `/api.php`), `import_static_wiki`, `update_wiki_import`, `delete_fandom_wiki_import`. Open uses `rdf://wiki.fandom.jp/…`, `docs.novelai.jp`, or `edtx://en.grimoire.jp/docs/<siteId>`. |
 | Zanzou DSAP (`similarImageDsapApplet.js`, `dsap://zanzou.dyna.dreamscape.jp`, aliases `similar` / `review`) | Control Panel only (`startMenu: false`). Afterimage / near-dupe review. Keep parks a group in localStorage `similarImageReviewedGroups` (no delete); Scrap selected / scrap-all-but-one calls WS `scrap_similar_images`. Open in Studio uses `openManualModalWithContent`. |
 
@@ -108,6 +108,8 @@ Server-backed pieces use WS (`search_tag_wiki`, `resolve_grimoire_url`, etc.) bu
 | Incremental `gallery_updated` handling | `ws/handlers/20-galleryInbound.js` |
 | Bulk selection UI | `bulkOperationsManager.js`, `galleryActions.js` |
 | Toolbar download | `galleryToolbar.js` — `fetch(/images/...)` |
+| Copy Lookback | `copyLookback.js` — clipboard markdown `dsap://lookback/…` pointers (gallery/Lumen/note/wiki/page/selection). MCP resolves via `resolve_lookback`. Distinct from Copy linkback. |
+| Copy linkback | `copyLinkback.js` — one-line agent-readable gen pointer `dsref:file:<filename> seed:<n> model:<id> ws:<workspaceId> res:<WxH>` on gallery, Lumen, Explorer, and Studio image menus (Yozora #188 / PR #125). Not a lookback URI. |
 
 Server sends data via `request_gallery`; client decides render strategy.
 
