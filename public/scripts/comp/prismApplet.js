@@ -364,6 +364,29 @@ class PrismApplet {
         return true;
     }
 
+    removeFilename(filename, opts) {
+        const i = this.indexOfFilename(filename);
+        if (i < 0) return false;
+        const sourceName = this.sourceItem() && this.sourceItem().filename;
+        const resultName = this.resultItem() && this.resultItem().filename;
+        this.items.splice(i, 1);
+        this.sourceIndex = Math.max(0, this.indexOfFilename(sourceName));
+        const resultAt = this.indexOfFilename(resultName);
+        this.resultIndex = resultAt >= 0 ? resultAt : (this.items.length > 1 && this.sourceIndex === 0 ? 1 : 0);
+        if (this.items.length > 1 && this.resultIndex === this.sourceIndex) {
+            this.resultIndex = this.sourceIndex === 0 ? 1 : 0;
+        }
+        if (!opts || !opts.silent) this.render();
+        return true;
+    }
+
+    galleryImagePool() {
+        // window.originalAllImages / allImages: public/scripts/comp/galleryView.js
+        const original = window.originalAllImages;
+        if (original && original.length) return original;
+        return allImages;
+    }
+
     indexOfFilename(filename) {
         return this.items.findIndex((item) => item.filename === filename);
     }
@@ -790,7 +813,7 @@ class PrismApplet {
         const panes = this.modal.querySelector('.prism-panes');
         const pairLine = document.getElementById('prismPairLine');
         const hasPair = this.items.length > 0;
-        if (empty) empty.classList.toggle('hidden', hasPair);
+        if (empty) empty.classList.toggle('hidden', hasPair || this.pickerOpen);
         if (panes) panes.classList.toggle('hidden', !hasPair || this.mode === 'grid');
         if (pairLine) pairLine.classList.toggle('hidden', !hasPair || this.mode === 'grid');
         const source = this.sourceItem();
@@ -1008,11 +1031,11 @@ class PrismApplet {
         const qEl = document.getElementById('prismPickerSearch');
         if (!grid) return;
         const q = qEl ? String(qEl.value || '').toLowerCase() : '';
-        const pool = (originalAllImages && originalAllImages.length) ? originalAllImages : allImages;
+        const pool = this.galleryImagePool() || [];
         const inSet = new Set(this.itemFilenames());
         grid.innerHTML = '';
         let shown = 0;
-        (pool || []).some((image) => {
+        pool.some((image) => {
             if (shown >= 80) return true;
             const name = image.upscaled || image.original || image.filename;
             if (!name) return false;
@@ -1026,13 +1049,19 @@ class PrismApplet {
             img.src = resolveGalleryPreviewUrl(image) || localGalleryImageUrl(name);
             btn.appendChild(img);
             btn.addEventListener('click', () => {
-                this.addFilename(name);
-                this.renderPicker();
+                if (inSet.has(name)) this.removeFilename(name);
+                else this.addFilename(name);
             });
             grid.appendChild(btn);
             shown += 1;
             return false;
         });
+        if (!shown) {
+            const empty = document.createElement('p');
+            empty.className = 'prism-empty';
+            empty.textContent = pool.length ? 'No filenames match.' : 'No gallery images loaded.';
+            grid.appendChild(empty);
+        }
     }
 
     syncLoupe() {
