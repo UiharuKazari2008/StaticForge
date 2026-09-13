@@ -1,0 +1,14 @@
+{
+  "input": {
+    "labels": ["deploy:push-clients"],
+    "body": "Toast: Clients need new assets\n",
+    "title": "unused"
+  },
+  "expect": {
+    "restartServer": false,
+    "pushClients": true,
+    "restartClients": false,
+    "reason": "Clients need new assets",
+    "reasonSource": "body"
+  }
+}

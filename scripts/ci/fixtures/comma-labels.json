@@ -1,0 +1,14 @@
+{
+  "input": {
+    "labels": "deploy:restart-server,deploy:restart-clients",
+    "body": "Reason: All three paths\n",
+    "title": "t"
+  },
+  "expect": {
+    "restartServer": true,
+    "pushClients": false,
+    "restartClients": true,
+    "reason": "All three paths",
+    "reasonSource": "body"
+  }
+}

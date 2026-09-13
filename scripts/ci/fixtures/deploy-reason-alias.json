@@ -1,0 +1,14 @@
+{
+  "input": {
+    "labels": ["deploy:restart-server"],
+    "body": "Deploy reason: Full PM2 bounce\n",
+    "title": "x"
+  },
+  "expect": {
+    "restartServer": true,
+    "pushClients": false,
+    "restartClients": false,
+    "reason": "Full PM2 bounce",
+    "reasonSource": "body"
+  }
+}

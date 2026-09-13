@@ -86,3 +86,92 @@ Do **not** treat `docker compose up` on the production Dreamscape host as a migr
 | Upsert workstation edits | `pnpm sync:push` |
 | Run in Docker locally | `sudo bash scripts/setup.sh --mode docker` |
 | Bare metal locally | `sudo bash scripts/setup.sh --mode baremetal` then `node web_server.js` |
+| Host CI deploy (labels) | See [CI deploy](#ci-deploy-github--yozora) |
+
+## CI deploy (GitHub + Yozora)
+
+Self-hosted runners on the Dreamscape host merge a landed PR into the live tree, mirror the SHA to the other forge, then apply **opt-in** labels.
+
+### Remotes
+
+Live checkout remotes:
+
+- `Public` → `https://github.com/UiharuKazari2008/StaticForge.git`
+- `origin` → Yozora `UiharuKazari2008/StaticForge`
+
+| Trigger | Pull into live `main` | Then push |
+|---------|----------------------|-----------|
+| GitHub PR merged to `main` | `Public/main` | `origin` (`main`) |
+| Yozora PR merged to `main` | `origin/main` | `Public` (`main`) |
+
+Workflows listen to `pull_request` closed+merged and `workflow_dispatch` only — **not** `push`, so mirroring does not recurse.
+
+### Labels and Reason
+
+Add labels on the PR (create on both forges if missing):
+
+| Label | Effect |
+|-------|--------|
+| `deploy:restart-server` | PM2 restart Dreamscape. Merge alone never restarts. |
+| `deploy:push-clients` | Recompile runtime assets + SW `service_worker_cache_update` |
+| `deploy:restart-clients` | Loopback `POST /agent/broadcast` with `restart: true` |
+
+**Reason** (client toast / restart dialog text): first PR-body line matching `Reason:`, `Toast:`, or `Deploy reason:`. Fallback: PR title. Plain text only (no `<` / `>`).
+
+PR templates: [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md), [`.gitea/PULL_REQUEST_TEMPLATE.md`](../.gitea/PULL_REQUEST_TEMPLATE.md).
+
+### Host script
+
+```bash
+# Dry-run (prints remotes/SHAs/flags; hands off on dirty/lock/ahead without merging)
+TRIGGER_REMOTE=Public bash scripts/host-deploy.sh --dry-run
+
+# Live (CI does this after a merged PR)
+TRIGGER_REMOTE=Public \
+  DEPLOY_LABELS='["deploy:restart-server","deploy:push-clients"]' \
+  DEPLOY_PR_BODY='Reason: Ship SW cache fix' \
+  bash scripts/host-deploy.sh
+```
+
+Always runs against `STATICFORGE_LIVE_ROOT` (default `/home/kanmi/staticforge`). Does **not** use Actions `checkout` into the live tree.
+
+Broadcast auth: copy [`scripts/ci/staticforge-deploy.env.example`](../scripts/ci/staticforge-deploy.env.example) to `~/.secrets/staticforge-deploy.env` and set `STATICFORGE_APP_KEY` or `DEPLOY_DEV_LOGIN_KEY`.
+
+Flag parser self-test:
+
+```bash
+node scripts/ci/parse-deploy-flags.js --self-test
+```
+
+### Blocked deploy → Cursor worker
+
+If the job cannot proceed, it does **not** merge, restart, or push. It comments on the PR, files a Yozora issue (`type:infra`, `cursor-agent`, `status:ready`), and starts `agent persist` using `~/.secrets/cursor-agent.env`.
+
+| Kind | Cause |
+|------|--------|
+| `dirty_tree` | Live `git status` not clean |
+| `agent_lock` | A `.agent-*` other than `.agent-host-deploy` exists |
+| `remote_ahead` / `local_ahead` / `merge_failed` | Remotes or live HEAD cannot cleanly take the trigger SHA |
+
+Rules for the worker: no stash, no force-push to `main`, do not delete another agent's lock. After the tree is clear, re-run `scripts/host-deploy.sh` or leave a Done comment.
+
+`flock` on `/tmp/staticforge-host-deploy.lock` serializes overlapping jobs.
+
+### Install runners (one-time)
+
+Tokens stay in `~/.secrets/` — never commit them.
+
+```bash
+# GitHub: paste registration token into ~/.secrets/github-runner.token
+bash scripts/ci/install-github-runner.sh
+# → ~/ci-runners/github + systemd --user github-actions-runner.service
+# labels: linux,dreamscape
+
+# Yozora: enable Actions on the repo, paste token into ~/.secrets/yozora-runner.token
+bash scripts/ci/install-gitea-runner.sh
+# → ~/ci-runners/gitea + systemd --user gitea-act-runner.service
+```
+
+Workflows: [`.github/workflows/host-deploy.yml`](../.github/workflows/host-deploy.yml), [`.gitea/workflows/host-deploy.yml`](../.gitea/workflows/host-deploy.yml) (`runs-on: [self-hosted, linux, dreamscape]`).
+
+Do **not** register runners or merge a live deploy until registration tokens are minted and a dry-run SHA is confirmed.

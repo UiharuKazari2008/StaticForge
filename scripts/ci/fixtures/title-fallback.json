@@ -1,0 +1,14 @@
+{
+  "input": {
+    "labels": ["deploy:restart-clients"],
+    "body": "No reason line here.",
+    "title": "Restart clients after SW bump"
+  },
+  "expect": {
+    "restartServer": false,
+    "pushClients": false,
+    "restartClients": true,
+    "reason": "Restart clients after SW bump",
+    "reasonSource": "title"
+  }
+}

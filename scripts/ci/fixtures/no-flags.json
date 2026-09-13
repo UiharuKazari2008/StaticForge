@@ -1,0 +1,14 @@
+{
+  "input": {
+    "labels": [],
+    "body": "",
+    "title": ""
+  },
+  "expect": {
+    "restartServer": false,
+    "pushClients": false,
+    "restartClients": false,
+    "reason": "",
+    "reasonSource": "empty"
+  }
+}

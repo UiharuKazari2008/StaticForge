@@ -1,0 +1,14 @@
+{
+  "input": {
+    "labels": ["deploy:restart-server", "deploy:push-clients"],
+    "body": "Reason: Ship cache fix to clients\n\nMore notes.",
+    "title": "fix cache"
+  },
+  "expect": {
+    "restartServer": true,
+    "pushClients": true,
+    "restartClients": false,
+    "reason": "Ship cache fix to clients",
+    "reasonSource": "body"
+  }
+}

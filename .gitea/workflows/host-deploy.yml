@@ -1,0 +1,102 @@
+# Host deploy (self-hosted Dreamscape runner on Yozora / Gitea Actions)
+#
+# Same job as GitHub: pull origin → push Public. Trigger remote is origin.
+
+name: Host deploy
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      restart_server:
+        description: 'deploy:restart-server'
+        type: boolean
+        default: false
+      push_clients:
+        description: 'deploy:push-clients'
+        type: boolean
+        default: false
+      restart_clients:
+        description: 'deploy:restart-clients'
+        type: boolean
+        default: false
+      reason:
+        description: 'Toast / restart reason'
+        type: string
+        default: ''
+      dry_run:
+        description: 'Dry-run only'
+        type: boolean
+        default: false
+
+jobs:
+  host-deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: [self-hosted, linux, dreamscape]
+    defaults:
+      run:
+        working-directory: /home/kanmi/staticforge
+    steps:
+      - name: Collect deploy flags
+        id: flags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          INPUT_RESTART_SERVER: ${{ inputs.restart_server }}
+          INPUT_PUSH_CLIENTS: ${{ inputs.push_clients }}
+          INPUT_RESTART_CLIENTS: ${{ inputs.restart_clients }}
+          INPUT_REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            LABELS=()
+            [[ "${INPUT_RESTART_SERVER}" == "true" ]] && LABELS+=("deploy:restart-server")
+            [[ "${INPUT_PUSH_CLIENTS}" == "true" ]] && LABELS+=("deploy:push-clients")
+            [[ "${INPUT_RESTART_CLIENTS}" == "true" ]] && LABELS+=("deploy:restart-clients")
+            LABELS_JSON=$(printf '%s\n' "${LABELS[@]:-}" | node -e "const d=require('fs').readFileSync(0,'utf8').trim().split(/\n/).filter(Boolean); process.stdout.write(JSON.stringify(d))")
+            BODY=""
+            TITLE=""
+            REASON="${INPUT_REASON}"
+          else
+            LABELS_JSON="${PR_LABELS_JSON:-[]}"
+            BODY="${PR_BODY:-}"
+            TITLE="${PR_TITLE:-}"
+            REASON=""
+          fi
+          {
+            echo "labels<<EOF"
+            echo "$LABELS_JSON"
+            echo "EOF"
+            echo "body<<EOF"
+            echo "$BODY"
+            echo "EOF"
+            echo "title<<EOF"
+            echo "$TITLE"
+            echo "EOF"
+            echo "reason<<EOF"
+            echo "$REASON"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run host-deploy
+        env:
+          TRIGGER_REMOTE: origin
+          DEPLOY_SOURCE: yozora
+          DEPLOY_PR_NUMBER: ${{ github.event.pull_request.number }}
+          DEPLOY_PR_URL: ${{ github.event.pull_request.html_url }}
+          DEPLOY_LABELS: ${{ steps.flags.outputs.labels }}
+          DEPLOY_PR_BODY: ${{ steps.flags.outputs.body }}
+          DEPLOY_PR_TITLE: ${{ steps.flags.outputs.title }}
+          DEPLOY_REASON: ${{ steps.flags.outputs.reason }}
+          DRY_FLAG: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          EXTRA=()
+          if [[ "${DRY_FLAG:-false}" == "true" ]]; then
+            EXTRA+=(--dry-run)
+          fi
+          bash /home/kanmi/staticforge/scripts/host-deploy.sh "${EXTRA[@]}"

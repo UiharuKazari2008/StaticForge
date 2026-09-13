@@ -1,0 +1,15 @@
+{
+  "input": {
+    "labels": ["deploy:push-clients"],
+    "body": "Reason: bad <script> toast\n",
+    "title": "safe title"
+  },
+  "expect": {
+    "restartServer": false,
+    "pushClients": true,
+    "restartClients": false,
+    "reason": "",
+    "reasonSource": "empty",
+    "error": "reason must be plain text (no < or >)"
+  }
+}
