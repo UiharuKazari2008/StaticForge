@@ -24,7 +24,7 @@ Domain WS packets live under [client-api/ws/](./client-api/ws/). MCP tools: [cli
 | [design/emphasis-weight-management-todo.md](./design/emphasis-weight-management-todo.md) | Weight management TODO |
 | [design/prompt-naturalizer-research.md](./design/prompt-naturalizer-research.md) | Prompt naturalizer research |
 | [DESKTOP_POSITIONING_SYSTEM.md](./DESKTOP_POSITIONING_SYSTEM.md) | Desktop icon positioning |
-| [SEGMENT_INDEX_SYSTEM.md](./SEGMENT_INDEX_SYSTEM.md) | Segment index |
+| [SEGMENT_INDEX_SYSTEM.md](./SEGMENT_INDEX_SYSTEM.md) | Dynamic generation segment index + Tendai hydration |
 | [WORD_SEQUENCE_INDEX.md](./WORD_SEQUENCE_INDEX.md) | Word sequence index |
 | [PERIOD_RANGES.md](./PERIOD_RANGES.md) | Period ranges |
 | [LOCAL_PROMPT_OPTIMIZER.md](./LOCAL_PROMPT_OPTIMIZER.md) | Local prompt optimizer |
