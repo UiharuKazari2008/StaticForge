@@ -243,6 +243,10 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `get_client_physics` | Pre-resolve dynagen context (`resolved` + flat location / tod / date / weather / season). Works unbound; optional tod/weather/season/location. Missing location warns and defaults to client IP, does not 500. Bound tab still lights `#mcpPhysicsIndicator` and the Remote Access tray. | `generation` | yes |
 | `list_clients` / `bind_session` | List tabs (this key's `bound` flag) / bind this key to a `clientId` | `generation` | bind |
 | `apply_studio_changes` | `POST /agent/session/studio`. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director (same keys as Studio). Silent apply skips the autofill popup. | `generation` | yes |
+| `run_client_js` | Bound `run_client_js`. Awaits a returned Promise. JSON-serializable `{ result }` or `{ error }`. | `generation` | yes |
+| `inspect_elements` | Bound `inspect_elements`. tag/id/class/text/visible plus optional html/style/box/attrs. | `generation` | yes |
+| `update_client` | Silent SW check/download on the bound tab. Waits until `readyForRestart` or `alreadyCurrent`. No 15s dialog. After client-asset edits run `scripts/notify-service-worker-update.sh` first. | `generation` | yes |
+| `restart_client` | Restart the bound tab and wait until that session reconnects, this key rebinds, and `get_state` answers. Then inspect/js. | `generation` | yes |
 | `get_linkxi_persona` | `get_persona_settings` without the photo blob (`hasPhoto` only). | `generation` | no |
 | `save_linkxi_persona` | `save_persona_settings` (`user_name`, `backstory`, `default_verbosity` 1–5). Preserves an existing photo unless one is sent. | `generation` | no |
 | `search_autofill` | `test_autofill_ranking` once per term (max 8 terms, 10 close hits each). Pass Studio `model` (`v5` / `v4_5`; omit is `v5`). Default `exactOnly`: exact or same name with `(qualifier)`. Hits are `{tag, count, confidence, exact, model}`. Empty + `untrained: true` means this model ranking missed it — pass `v4_5` if Studio is on V4.5, not “drop”. Accepts `terms: string[]` and/or `query` | `autofill` | no |
@@ -282,7 +286,6 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `list_references` / `get_references_by_ids` / `list_workspace_references` / `upload_reference` | reference packets | `references` |
 | `list_notes_by_workspace` / `create_note` / `update_note` | extra notepad CRUD | `notes` |
 | `vfs_stat` / `vfs_write` / `vfs_delete` / `list_desktop_items` | VFS mutate + desktop shortcuts | `vfs` |
-| `run_client_js` / `inspect_elements` | Connected-tab JS eval / CSS inspect (`agent_session_command`). Same auto-attach / `needsClientChoice` rules as `apply_studio_changes`. | `generation` |
 
 ### Module Sets (sfapp_ scopes)
 

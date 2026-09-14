@@ -88,10 +88,63 @@
         return styles;
     }
 
-    function runClientJsFromCommand(script) {
+    function elementIsVisible(el) {
+        if (!el) return false;
+        const style = getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+            return false;
+        }
+        return el.getClientRects().length > 0;
+    }
+
+    function inspectElementInfo(el, opts) {
+        const info = {
+            tag: el.tagName ? el.tagName.toLowerCase() : '',
+            id: el.id || '',
+            className: typeof el.className === 'string' ? el.className : ''
+        };
+        if (opts.text) info.text = capText(el.textContent || '');
+        if (opts.html) info.html = capText(el.outerHTML);
+        if (opts.style) info.style = inspectComputedStyle(el, opts.styleAllowlist);
+        if (opts.visible) info.visible = elementIsVisible(el);
+        if (opts.box) {
+            const rect = el.getBoundingClientRect();
+            info.box = {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height
+            };
+        }
+        if (opts.attrs && typeof el.getAttributeNames === 'function') {
+            const names = el.getAttributeNames();
+            const attrs = {};
+            const cap = Math.min(names.length, 40);
+            for (let i = 0; i < cap; i++) {
+                attrs[names[i]] = el.getAttribute(names[i]);
+            }
+            info.attrs = attrs;
+        }
+        return info;
+    }
+
+    async function runClientJsFromCommand(script) {
+        const source = script == null ? '' : String(script);
+        if (!source.trim()) {
+            return { error: 'script is empty' };
+        }
         try {
-            const raw = (0, eval)(script == null ? '' : String(script));
-            return { result: jsonClone(raw) };
+            const raw = (0, eval)(source);
+            let value = raw;
+            if (raw && typeof raw.then === 'function') {
+                value = await Promise.race([
+                    raw,
+                    new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('script timed out')), 12000);
+                    })
+                ]);
+            }
+            return { result: jsonClone(value) };
         } catch (err) {
             return { error: (err && err.message) || String(err) };
         }
@@ -100,9 +153,15 @@
     function inspectElementsFromCommand(data) {
         try {
             const selectors = Array.isArray(data.selectors) ? data.selectors : [];
-            const returnHtml = data.html !== false;
-            const returnStyle = data.style !== false;
-            const styleAllowlist = Array.isArray(data.styleAllowlist) ? data.styleAllowlist : null;
+            const opts = {
+                html: data.html !== false,
+                style: data.style !== false,
+                text: data.text !== false,
+                visible: data.visible !== false,
+                box: data.box === true,
+                attrs: data.attrs === true,
+                styleAllowlist: Array.isArray(data.styleAllowlist) ? data.styleAllowlist : null
+            };
             const maxMatches = 50;
             let remaining = maxMatches;
             const result = [];
@@ -119,11 +178,7 @@
                 }
                 const take = Math.min(els.length, remaining);
                 for (let i = 0; i < take; i++) {
-                    const el = els[i];
-                    const info = {};
-                    if (returnHtml) info.html = capText(el.outerHTML);
-                    if (returnStyle) info.style = inspectComputedStyle(el, styleAllowlist);
-                    entry.matches.push(info);
+                    entry.matches.push(inspectElementInfo(els[i], opts));
                 }
                 entry.count = els.length;
                 if (els.length > take) entry.truncated = true;
@@ -135,6 +190,110 @@
         } catch (err) {
             return { error: (err && err.message) || String(err) };
         }
+    }
+
+    function clientUpdateStatusSnapshot() {
+        const sw = window.serviceWorkerManager;
+        if (!sw) {
+            return { readyForRestart: true, alreadyCurrent: true, reason: 'no-sw' };
+        }
+        if (sw.agentSession) {
+            return { readyForRestart: true, alreadyCurrent: true, reason: 'agent-mode-no-sw' };
+        }
+        const pending = typeof sw.hasPendingUpdates === 'function' && sw.hasPendingUpdates();
+        return {
+            readyForRestart: !!pending,
+            alreadyCurrent: !pending,
+            isUpdating: !!sw.isUpdating,
+            progress: sw.updateProgress || 0,
+            pendingUpdateKind: sw.pendingUpdateKind || null,
+            files: sw.pendingUpdateFilesTotal || 0
+        };
+    }
+
+    async function prepareClientUpdateFromCommand() {
+        const sw = window.serviceWorkerManager;
+        const baseline = clientUpdateStatusSnapshot();
+        if (!sw || sw.agentSession) {
+            return { ok: true, ...baseline };
+        }
+        if (baseline.readyForRestart) {
+            return { ok: true, ...baseline, alreadyCurrent: false };
+        }
+        if (sw.isUpdating && typeof sw.attachToDownloadProgress === 'function') {
+            const dl = await sw.attachToDownloadProgress({ allowSkip: false });
+            const after = clientUpdateStatusSnapshot();
+            return {
+                ok: true,
+                readyForRestart: after.readyForRestart || !!(dl && dl.success && dl.filesDownloaded),
+                alreadyCurrent: after.alreadyCurrent && !(dl && dl.filesDownloaded),
+                filesDownloaded: dl && (dl.filesDownloaded != null ? dl.filesDownloaded : dl.completed),
+                total: dl && dl.total,
+                stalled: !!(dl && dl.stalled),
+                pendingUpdateKind: after.pendingUpdateKind
+            };
+        }
+        try {
+            const response = await fetch('/', {
+                method: 'OPTIONS',
+                headers: {
+                    'X-Service-Worker-Version': '2.0',
+                    'X-Requested-With': 'ServiceWorker'
+                }
+            });
+            if (!response.ok) {
+                return { ok: false, error: 'manifest fetch failed', status: response.status };
+            }
+            const files = await response.json();
+            let filesToUpdate = [];
+            if (typeof sw.getFilesNeedingUpdate === 'function') {
+                filesToUpdate = await sw.getFilesNeedingUpdate(files);
+            }
+            if (!filesToUpdate.length) {
+                return { ok: true, ...clientUpdateStatusSnapshot() };
+            }
+            let dl = null;
+            if (typeof sw.attachToDownloadProgress === 'function') {
+                dl = await sw.attachToDownloadProgress({
+                    files: filesToUpdate,
+                    allowSkip: false
+                });
+            } else if (typeof sw.updateStaticCache === 'function') {
+                await sw.updateStaticCache(files, true);
+            }
+            const after = clientUpdateStatusSnapshot();
+            const downloaded = dl && (dl.filesDownloaded != null ? dl.filesDownloaded : dl.completed);
+            return {
+                ok: true,
+                readyForRestart: after.readyForRestart || !!(downloaded > 0),
+                alreadyCurrent: false,
+                filesDownloaded: downloaded != null ? downloaded : filesToUpdate.length,
+                total: (dl && dl.total) || filesToUpdate.length,
+                stalled: !!(dl && dl.stalled),
+                pendingUpdateKind: after.pendingUpdateKind || sw.pendingUpdateKind || 'restart'
+            };
+        } catch (err) {
+            return { ok: false, error: (err && err.message) || String(err) };
+        }
+    }
+
+    function restartClientFromCommand() {
+        const sw = window.serviceWorkerManager;
+        if (sw && typeof sw.forceRestart === 'function') {
+            sw.forceRestart();
+            return { ok: true, restarting: true };
+        }
+        if (typeof bypassConfirmation !== 'undefined') {
+            bypassConfirmation = true;
+        }
+        setTimeout(() => {
+            try {
+                window.location.reload();
+            } catch (_err) {
+                window.location.href = window.location.href;
+            }
+        }, 100);
+        return { ok: true, restarting: true };
     }
 
     function capFilenames(list) {
@@ -588,11 +747,20 @@
                 return;
             }
             if (command === 'run_client_js') {
-                replyAgentSessionResult(requestId, runClientJsFromCommand(data.script));
+                replyAgentSessionResult(requestId, await runClientJsFromCommand(data.script));
                 return;
             }
             if (command === 'inspect_elements') {
                 replyAgentSessionResult(requestId, inspectElementsFromCommand(data));
+                return;
+            }
+            if (command === 'client_prepare_update') {
+                replyAgentSessionResult(requestId, await prepareClientUpdateFromCommand());
+                return;
+            }
+            if (command === 'client_restart') {
+                replyAgentSessionResult(requestId, { ok: true, restarting: true });
+                restartClientFromCommand();
                 return;
             }
             if (command === 'client_update') {

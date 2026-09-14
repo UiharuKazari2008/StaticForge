@@ -16,11 +16,14 @@ const SHARE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SHARE_TTL_MS = 5 * 60 * 1000;
 const COMMAND_TIMEOUT_MS = 12000;
 const UPDATE_COMMAND_TIMEOUT_MS = 20000;
+const PREPARE_UPDATE_TIMEOUT_MS = 120000;
+const REATTACH_TIMEOUT_MS = 120000;
 const BIND_IDLE_MS = 15 * 60 * 1000;
 
 const shareCodes = new Map(); // code -> { clientId, expiresAt }
 const pendingResults = new Map(); // requestId -> { resolve, reject, timer, clientId }
 const bindSessions = new Map(); // bindKey -> { clientId, lastInteractionAt, boundAt, actorName }
+const pendingReattach = new Map(); // bindKey -> { sessionId, actorName, previousClientId, startedAt }
 const mcpStudioCheckpoints = new Map(); // bindKey -> { id, focusedFilename }
 let lastBindResources = null;
 
@@ -912,6 +915,148 @@ function sendBoundCommand(globalResources, command, payload, timeoutMs, bindKey)
     });
 }
 
+function sleepMs(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function markPendingReattach(bindKey, rec) {
+    const key = String(bindKey || '').trim();
+    if (!key) return null;
+    const row = {
+        sessionId: rec && rec.sessionId ? rec.sessionId : null,
+        actorName: rec && rec.actorName ? rec.actorName : null,
+        previousClientId: rec && rec.previousClientId ? rec.previousClientId : null,
+        startedAt: Date.now()
+    };
+    pendingReattach.set(key, row);
+    return row;
+}
+
+function clearPendingReattach(bindKey) {
+    if (bindKey) pendingReattach.delete(bindKey);
+}
+
+function findClientsBySessionId(wsServer, sessionId) {
+    const out = [];
+    if (!wsServer || !wsServer.clients || !sessionId) return out;
+    for (const [ws, info] of wsServer.clients) {
+        if (ws.readyState !== WebSocket.OPEN) continue;
+        if (info && info.sessionId === sessionId) {
+            out.push({ ws, info, clientId: ensureClientId(info) });
+        }
+    }
+    out.sort((a, b) => {
+        const aMs = a.info && a.info.connectedAt ? new Date(a.info.connectedAt).getTime() : 0;
+        const bMs = b.info && b.info.connectedAt ? new Date(b.info.connectedAt).getTime() : 0;
+        return bMs - aMs;
+    });
+    return out;
+}
+
+function pickReattachTarget(globalResources, hint) {
+    const wsServer = getWsServer(globalResources);
+    const sessionId = hint && hint.sessionId;
+    const previousClientId = hint && hint.previousClientId;
+    if (sessionId) {
+        const matches = findClientsBySessionId(wsServer, sessionId)
+            .filter((row) => row.clientId !== previousClientId);
+        if (matches.length) return matches[0];
+    }
+    const live = [];
+    if (wsServer && wsServer.clients) {
+        for (const [ws, info] of wsServer.clients) {
+            if (ws.readyState !== WebSocket.OPEN) continue;
+            const clientId = ensureClientId(info);
+            if (clientId === previousClientId) continue;
+            if (!info || !info.authenticated) continue;
+            live.push({ ws, info, clientId });
+        }
+    }
+    live.sort((a, b) => {
+        const aMs = a.info && a.info.connectedAt ? new Date(a.info.connectedAt).getTime() : 0;
+        const bMs = b.info && b.info.connectedAt ? new Date(b.info.connectedAt).getTime() : 0;
+        return bMs - aMs;
+    });
+    if (live.length === 1) return live[0];
+    return null;
+}
+
+async function awaitClientReattach(globalResources, bindKey, opts) {
+    const key = requireBindKey(bindKey);
+    const timeoutMs = opts && opts.timeoutMs != null ? Number(opts.timeoutMs) : REATTACH_TIMEOUT_MS;
+    const hint = Object.assign({}, pendingReattach.get(key) || {}, opts || {});
+    const deadline = Date.now() + (Number.isFinite(timeoutMs) ? timeoutMs : REATTACH_TIMEOUT_MS);
+    while (Date.now() < deadline) {
+        const found = pickReattachTarget(globalResources, hint);
+        if (found) {
+            bindClient(globalResources, {
+                clientId: found.clientId,
+                bindKey: key,
+                actorName: hint.actorName || null
+            });
+            try {
+                const state = await sendBoundCommand(globalResources, 'get_state', {}, 8000, key);
+                if (state && state.error == null && state.ok !== false) {
+                    clearPendingReattach(key);
+                    return {
+                        ok: true,
+                        reattached: true,
+                        clientId: found.clientId,
+                        workspaceId: state.workspaceId || null
+                    };
+                }
+            } catch (_err) {
+                // Tab is connected but not answering yet — keep waiting.
+            }
+        }
+        await sleepMs(400);
+    }
+    const err = new Error('Bound client did not reattach');
+    err.status = 504;
+    throw err;
+}
+
+async function prepareBoundClientUpdate(globalResources, bindKey) {
+    const key = requireBindKey(bindKey);
+    const data = await sendBoundCommand(
+        globalResources,
+        'client_prepare_update',
+        {},
+        PREPARE_UPDATE_TIMEOUT_MS,
+        key
+    );
+    return data || {};
+}
+
+async function restartBoundClient(globalResources, bindKey) {
+    const key = requireBindKey(bindKey);
+    const bound = getBoundRecord(globalResources, key);
+    if (!bound) {
+        const err = new Error('No Studio client is bound');
+        err.status = 404;
+        throw err;
+    }
+    markPendingReattach(key, {
+        sessionId: bound.info && bound.info.sessionId ? bound.info.sessionId : null,
+        actorName: boundActorName(key),
+        previousClientId: getBoundClientId(key)
+    });
+    let restartAck = null;
+    try {
+        restartAck = await sendBoundCommand(globalResources, 'client_restart', {}, 8000, key);
+    } catch (err) {
+        if (!err || (err.status !== 504 && err.status !== 404)) throw err;
+        restartAck = { ok: true, restarting: true, ackLost: true };
+    }
+    const reattach = await awaitClientReattach(globalResources, key, { timeoutMs: REATTACH_TIMEOUT_MS });
+    return {
+        ok: true,
+        restarted: true,
+        ...(restartAck || {}),
+        ...reattach
+    };
+}
+
 function dynamicConfigFromSnapshot(dyn) {
     const config = { tod: true, weather: true, season: true, location: 'CLIENT' };
     if (!dyn || typeof dyn !== 'object' || Array.isArray(dyn)) return config;
@@ -1357,6 +1502,63 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
         }
     });
 
+    app.post('/agent/session/prepare-update', devAuthMiddleware, async (req, res) => {
+        try {
+            const data = await prepareBoundClientUpdate(globalResources, resolveBindKey(req));
+            return res.json({ success: true, ...data });
+        } catch (error) {
+            return handleRouteError(res, error, 'Failed to prepare bound client update');
+        }
+    });
+
+    app.post('/agent/session/restart', devAuthMiddleware, async (req, res) => {
+        try {
+            const data = await restartBoundClient(globalResources, resolveBindKey(req));
+            return res.json({ success: true, ...data });
+        } catch (error) {
+            return handleRouteError(res, error, 'Failed to restart bound client');
+        }
+    });
+
+    app.post('/agent/session/js', devAuthMiddleware, async (req, res) => {
+        try {
+            const script = req.body && req.body.script;
+            if (typeof script !== 'string') {
+                return res.status(400).json({ success: false, error: 'script must be a string' });
+            }
+            const bindKey = resolveBindKey(req);
+            const data = await sendBoundCommand(globalResources, 'run_client_js', { script }, COMMAND_TIMEOUT_MS, bindKey);
+            const failed = !!(data && (data.error || data.ok === false));
+            return res.status(failed ? 400 : 200).json({ success: !failed, ...data });
+        } catch (error) {
+            return handleRouteError(res, error, 'Failed to run JS on bound client');
+        }
+    });
+
+    app.post('/agent/session/inspect', devAuthMiddleware, async (req, res) => {
+        try {
+            const body = req.body || {};
+            if (!Array.isArray(body.selectors)) {
+                return res.status(400).json({ success: false, error: 'selectors must be a string array' });
+            }
+            const bindKey = resolveBindKey(req);
+            const data = await sendBoundCommand(globalResources, 'inspect_elements', {
+                selectors: body.selectors,
+                html: body.html,
+                style: body.style,
+                text: body.text,
+                visible: body.visible,
+                box: body.box,
+                attrs: body.attrs,
+                styleAllowlist: body.styleAllowlist
+            }, COMMAND_TIMEOUT_MS, bindKey);
+            const failed = !!(data && (data.error || data.ok === false));
+            return res.status(failed ? 400 : 200).json({ success: !failed, ...data });
+        } catch (error) {
+            return handleRouteError(res, error, 'Failed to inspect elements on bound client');
+        }
+    });
+
     app.get('/agent/session/physics', devAuthMiddleware, async (req, res) => {
         try {
             const data = await getClientPhysics(
@@ -1460,6 +1662,12 @@ module.exports = {
     DYNAGEN_INTEGRATION_NEXT,
     dispatchAgentPacket,
     sendBoundCommand,
+    prepareBoundClientUpdate,
+    restartBoundClient,
+    awaitClientReattach,
+    markPendingReattach,
+    clearPendingReattach,
+    pickReattachTarget,
     getMcpStudioCheckpoint,
     setMcpStudioCheckpoint,
     clearMcpStudioCheckpoint,
@@ -1517,7 +1725,14 @@ module.exports = {
         SHARE_TTL_MS,
         SHARE_ALPHABET,
         UPDATE_COMMAND_TIMEOUT_MS,
+        PREPARE_UPDATE_TIMEOUT_MS,
+        REATTACH_TIMEOUT_MS,
         BIND_IDLE_MS,
+        pendingReattach,
+        markPendingReattach,
+        clearPendingReattach,
+        findClientsBySessionId,
+        pickReattachTarget,
         bindSessions,
         mcpStudioCheckpoints,
         getMcpStudioCheckpoint,

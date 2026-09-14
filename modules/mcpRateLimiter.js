@@ -87,6 +87,8 @@ const TOOL_RATE_GROUPS = {
     apply_studio_changes: 'studio',
     run_client_js: 'studio',
     inspect_elements: 'studio',
+    update_client: 'studio',
+    restart_client: 'studio',
     apply_preset_to_studio: 'studio',
     get_linkxi_persona: 'free',
     save_linkxi_persona: 'write',

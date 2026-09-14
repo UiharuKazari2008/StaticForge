@@ -22,7 +22,7 @@ If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). W
 | `search` | 240 | autofill, NAX (`search_nax`), wiki pages, OmegaSearch, `evaluate_workspace_themes` |
 | `gallery` | 90 | `get_generated_image`, `compare_images`, `vfs_read` (and hidden `get_images` / `get_latest_image`) |
 | `write` | 60 | save note/preset, `save_memory`, upload reference, `delete_images`, `scrap_images`, `toggle_favorite`, `save_linkxi_persona` |
-| `studio` | 60 | `get_studio_state`, `get_open_windows`, `get_client_physics`, `apply_studio_changes`, `apply_preset_to_studio`, `run_client_js`, `inspect_elements` |
+| `studio` | 60 | `get_studio_state`, `get_open_windows`, `get_client_physics`, `apply_studio_changes`, `apply_preset_to_studio`, `run_client_js`, `inspect_elements`, `update_client`, `restart_client` |
 | `generate` | 20 | `generate_image`, `generate_preset`, `upscale_image`, `expand_image` |
 
 `generate_image` waits on the shared generation FIFO (Studio uses the same stack). Omit `async` to stall until the webp is ready. `async: true` returns `jobId` — then `await_generation_job` or `get_generation_job`. `generate_image` and `apply_studio_changes` accept the **full Studio settings set** (`docs/studio-change-json.md` `params`, plus characters / expanders / vibes / pipeline / `dynamicGeneration` / `director` / `dataset_config`). Send them as top-level keys or inside `params`. `generate_image` also maps `characters` to `allCharacterPrompts`, `dynamicGeneration` to `dynamic_generation`, and `director` session/message ids onto the generate body. `n` (1–8) is print copies on `generate_image` / `generate_preset` (`filenames[]` when `n` > 1) and the Studio prints input on `apply_studio_changes` / autoGenerate. **Quality / UC / NSFW / transparency:** set `append_quality` / `append_uc` / `append_transparency` / `dataset_config.nsfw` (or `params.nsfw` / top-level `nsfw` on `apply_studio_changes`) and do **not** paste those live strings into prompt/uc — the server prepends them. Auto-apply sets the matching Studio dropdowns and toggles (`dataset_config.include` replaces the selected dataset list; `dataset_config.settings` writes sub-toggles). **If you need to change a tag inside a preset, turn that preset off and put the edited string in prompt/uc.** Never leave the preset on and also paste a variant. In-image text: keep quality on and set `dataset_config.settings.__quality__.no_text.enabled` false (that sub-toggle is default on). `tools/list` and `get_studio_state.settings` list each preset id, name, and true value from `prompt.config`. MCP server-side generate writes `forge_data.mcp_generated` (Properties badge **MCP**), pushes `gallery_updated` `append_top` **only to clients whose active workspace matches the generate workspace**, and lights the generation tray while it runs. `expand_image` takes the same sampler overrides as `overrideParams` or top-level (`steps`, `guidance`, `rescale`, `sampler`, `noiseScheduler`, `noise`, `seed`, `model`).
@@ -215,6 +215,16 @@ User: *look at `1782…_generated_….png` in the default workspace*
 2. Build Change-JSON from `get_studio_state` plus what you are trying (guide notes are a start, not a statute)
 3. `apply_studio_changes` `{ "change": {…}, "autoApply": true, "autoGenerate": true }`
 4. `autoGenerate` clicks the bound tab's Generate button. It does **not** return pixels. Then `get_generated_image` (that filename or latest) with `dest_path`, `curl` `url` into `/home/workdir/artifacts` if needed, `render_file`. Do not also call `generate_image` unless they asked for a **server-side** run (different session). Do not Imagine-reprint.
+
+## Recipe: test the bound client after asset edits
+
+Cursor ingest / QA on the **running Dreamscape tab** (port 9220). Do **not** use the Cursor IDE browser.
+
+1. After `public/` JS/CSS/HTML edits: `bash scripts/notify-service-worker-update.sh`
+2. `update_client` — waits until `readyForRestart` (SW `pendingUpdateFuse`) or `alreadyCurrent`
+3. `restart_client` — reloads that tab and waits until `reattached` (same session, rebound, `get_state` answers)
+4. Then `inspect_elements` (`selectors`, optional `html` / `style` / `text` / `box` / `attrs`) and/or `run_client_js` (`script`; Promises are awaited)
+5. Do not reuse a pre-restart Studio snapshot. `POST /agent/session/update` is the 15s human Cancel dialog — not this path.
 
 ## search_indexes_ready / omegasearch wait
 

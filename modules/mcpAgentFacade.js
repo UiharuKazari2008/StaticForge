@@ -15,6 +15,8 @@ const { scopesAllowPacket } = require('./applicationAuthManager');
 const {
     dispatchAgentPacket,
     sendBoundCommand,
+    prepareBoundClientUpdate,
+    restartBoundClient,
     listClients,
     bindClient,
     getBoundClientId,
@@ -587,20 +589,22 @@ const TOOL_DEFS = [
     },
     {
         name: 'run_client_js',
-        description: 'Execute raw JavaScript in the connected Dreamscape tab. Returns JSON-serializable { result } or { error } if the script throws. Same auto-attach / needsClientChoice rules as apply_studio_changes.',
+        core: true,
+        description: 'Execute JavaScript in the bound Dreamscape tab (not the Cursor IDE browser). Awaits a returned Promise. Result must be JSON-serializable. Same auto-attach / needsClientChoice rules as apply_studio_changes. After client-asset edits: update_client, then restart_client, then this.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             required: ['script'],
             properties: {
-                script: { type: 'string', description: 'Raw JS expression or script to run in the bound tab' }
+                script: { type: 'string', description: 'JS expression or script. Returned Promises are awaited (12s).' }
             }
         }
     },
     {
         name: 'inspect_elements',
-        description: 'Match CSS selectors in the connected Dreamscape tab and return html and/or computed style per selector. Same auto-attach / needsClientChoice rules as apply_studio_changes.',
+        core: true,
+        description: 'Match CSS selectors in the bound Dreamscape tab and return tag/id/class/text/visible plus optional html, computed style, box, and attrs. Same auto-attach / needsClientChoice rules as apply_studio_changes. After client-asset edits: update_client → restart_client → then inspect.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -609,10 +613,28 @@ const TOOL_DEFS = [
             properties: {
                 selectors: { type: 'array', items: { type: 'string' }, description: 'CSS selectors to match' },
                 html: { type: 'boolean', description: 'Include outerHTML per match (default true)' },
-                style: { type: 'boolean', description: 'Include getComputedStyle per match (default true)' },
+                style: { type: 'boolean', description: 'Include getComputedStyle per match (default true). Pass styleAllowlist to keep this small.' },
+                text: { type: 'boolean', description: 'Include textContent per match (default true)' },
+                visible: { type: 'boolean', description: 'Include visibility per match (default true)' },
+                box: { type: 'boolean', description: 'Include getBoundingClientRect (default false)' },
+                attrs: { type: 'boolean', description: 'Include element attributes (default false)' },
                 styleAllowlist: { type: 'array', items: { type: 'string' }, description: 'Optional CSS property names to include from computed style' }
             }
         }
+    },
+    {
+        name: 'update_client',
+        core: true,
+        description: 'Silent bound-tab SW update: check/download client assets and wait until readyForRestart (pendingUpdateFuse) or alreadyCurrent. No 15s dialog. Run scripts/notify-service-worker-update.sh first after client-asset edits. Then call restart_client before JS/HTML tests. Distinct from POST /agent/session/update (human Cancel dialog).',
+        scope: 'generation',
+        inputSchema: { type: 'object', additionalProperties: false, properties: {} }
+    },
+    {
+        name: 'restart_client',
+        core: true,
+        description: 'Restart the bound Dreamscape tab and wait until that session reconnects, this key rebinds, and get_state answers. No 15s dialog. Call after update_client returns readyForRestart (or after notify when the fuse is already blown). Then run inspect_elements / run_client_js.',
+        scope: 'generation',
+        inputSchema: { type: 'object', additionalProperties: false, properties: {} }
     },
     {
         name: 'get_linkxi_persona',
@@ -3333,7 +3355,8 @@ const ADVANCED_CORE_HINTS = [
     { test: (q) => /character card|get_character_card|appearance wiki/i.test(q), names: ['get_character_card'] },
     { test: (q) => /lookback|dsap:\/\/lookback/i.test(q), names: ['resolve_lookback'] },
     { test: (q) => /prompt guide|docubase|nai-prompt/i.test(q), names: ['get_prompt_guide'] },
-    { test: (q) => /session_state|session snapshot|what.?s on (screen|studio)/i.test(q), names: ['get_session_state'] }
+    { test: (q) => /session_state|session snapshot|what.?s on (screen|studio)/i.test(q), names: ['get_session_state'] },
+    { test: (q) => /run_client_js|inspect_elements|update_client|restart_client|client browser|client js|html inspect|reattach/i.test(q), names: ['run_client_js', 'inspect_elements', 'update_client', 'restart_client'] }
 ];
 
 function guessModelFromQuery(query) {
@@ -4398,6 +4421,10 @@ async function callTool(globalResources, req, name, args) {
                 selectors: input.selectors,
                 html: input.html,
                 style: input.style,
+                text: input.text,
+                visible: input.visible,
+                box: input.box,
+                attrs: input.attrs,
                 styleAllowlist: input.styleAllowlist
             };
         const data = await sendBoundCommand(globalResources, name, payload, 15000, bind.bindKey);
@@ -4405,6 +4432,40 @@ async function callTool(globalResources, req, name, args) {
         return mcpTextResult({
             success: !failed,
             autoBound: !!bind.auto,
+            ...data
+        }, failed);
+    }
+
+    if (name === 'update_client') {
+        const bind = autoBindIfNeeded(globalResources, req);
+        if (!getBoundRecord(globalResources, bind.bindKey)) {
+            return mcpBindChoiceResult(bind);
+        }
+        const data = await prepareBoundClientUpdate(globalResources, bind.bindKey);
+        const failed = !!(data && (data.ok === false || data.error));
+        return mcpTextResult({
+            success: !failed,
+            autoBound: !!bind.auto,
+            next: failed
+                ? null
+                : (data.readyForRestart
+                    ? 'Call restart_client and wait for reattached, then inspect_elements / run_client_js.'
+                    : 'alreadyCurrent — restart_client only if you still need a reload; otherwise inspect/js now.'),
+            ...data
+        }, failed);
+    }
+
+    if (name === 'restart_client') {
+        const bind = autoBindIfNeeded(globalResources, req);
+        if (!getBoundRecord(globalResources, bind.bindKey)) {
+            return mcpBindChoiceResult(bind);
+        }
+        const data = await restartBoundClient(globalResources, bind.bindKey);
+        const failed = !!(data && (data.ok === false || data.reattached === false));
+        return mcpTextResult({
+            success: !failed,
+            autoBound: !!bind.auto,
+            next: failed ? null : 'Client reattached. Call inspect_elements / run_client_js. Do not reuse a pre-restart snapshot.',
             ...data
         }, failed);
     }

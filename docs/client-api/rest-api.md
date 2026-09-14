@@ -382,6 +382,36 @@ The HTTP response waits until Cancel or countdown 0 (about 20s). Apply+restart s
 
 **Follow-up:** None. Consume from loopback with the existing app key.
 
+Ingest / Cursor testing uses the silent pair instead of this dialog:
+
+- `POST /agent/session/prepare-update` (MCP `update_client`) — download, wait `readyForRestart` / `alreadyCurrent`
+- `POST /agent/session/restart` (MCP `restart_client`) — reload, wait reattach
+- `POST /agent/session/js` / `POST /agent/session/inspect` — then test
+
+### `POST /agent/session/prepare-update`
+
+**Auth:** Same as `GET /agent`. Requires a live bind.
+
+Silent SW check/download on the bound tab. No 15s dialog. HTTP waits until the tab replies (`readyForRestart` or `alreadyCurrent`), up to 120s.
+
+**Success:** `200` `{ "success": true, "ok": true, "readyForRestart": true, "alreadyCurrent": false, "filesDownloaded": N }`
+
+### `POST /agent/session/restart`
+
+**Auth:** Same as `GET /agent`. Requires a live bind.
+
+Restarts **that client** and waits until the same login session reconnects, this key rebinds, and `get_state` answers (up to 120s).
+
+**Success:** `200` `{ "success": true, "ok": true, "restarted": true, "reattached": true, "clientId": "…" }`
+
+### `POST /agent/session/js`
+
+**Auth:** Same as `GET /agent`. Requires a live bind. Body `{ "script": "…" }`. Awaits a returned Promise.
+
+### `POST /agent/session/inspect`
+
+**Auth:** Same as `GET /agent`. Requires a live bind. Body `{ "selectors": ["…"] }` plus optional `html` / `style` / `text` / `visible` / `box` / `attrs` / `styleAllowlist`.
+
 ### `GET /agent/session/state`
 
 **Auth:** Same as `GET /agent`. Requires a live bind.

@@ -311,7 +311,54 @@ _test.shareCodes.delete('LIVEONE');
 
 
 assert.strictEqual(_test.UPDATE_COMMAND_TIMEOUT_MS, 20000);
+assert.strictEqual(_test.PREPARE_UPDATE_TIMEOUT_MS, 120000);
+assert.strictEqual(_test.REATTACH_TIMEOUT_MS, 120000);
 assert.strictEqual(_test.BIND_IDLE_MS, 15 * 60 * 1000);
+
+const reattachOld = { readyState: 1 };
+const reattachNew = { readyState: 1 };
+const reattachExtra = { readyState: 1 };
+const reattachClients = new Map([
+    [reattachOld, {
+        sessionId: 'sess-a',
+        clientId: 'aaa111aaa111',
+        authenticated: true,
+        connectedAt: new Date(Date.now() - 5000)
+    }],
+    [reattachNew, {
+        sessionId: 'sess-a',
+        clientId: 'bbb222bbb222',
+        authenticated: true,
+        connectedAt: new Date()
+    }],
+    [reattachExtra, {
+        sessionId: 'sess-b',
+        clientId: 'ccc333ccc333',
+        authenticated: true,
+        connectedAt: new Date()
+    }]
+]);
+const reattachRes = { getWebSocketServer: () => ({ clients: reattachClients, sendToClient() {} }) };
+const picked = _test.pickReattachTarget(reattachRes, {
+    sessionId: 'sess-a',
+    previousClientId: 'aaa111aaa111'
+});
+assert.strictEqual(picked.clientId, 'bbb222bbb222');
+assert.strictEqual(_test.findClientsBySessionId(reattachRes.getWebSocketServer(), 'sess-a').length, 2);
+const onlyLive = new Map([
+    [{ readyState: 1 }, {
+        sessionId: 'sess-z',
+        clientId: 'ddd444ddd444',
+        authenticated: true,
+        connectedAt: new Date()
+    }]
+]);
+const onlyRes = { getWebSocketServer: () => ({ clients: onlyLive, sendToClient() {} }) };
+assert.strictEqual(_test.pickReattachTarget(onlyRes, { previousClientId: 'gone' }).clientId, 'ddd444ddd444');
+_test.markPendingReattach('appkey:test', { sessionId: 'sess-a', previousClientId: 'old' });
+assert.strictEqual(_test.pendingReattach.get('appkey:test').sessionId, 'sess-a');
+_test.clearPendingReattach('appkey:test');
+assert.strictEqual(_test.pendingReattach.has('appkey:test'), false);
 assert.strictEqual(_test.resolveBindKey({
     applicationAuth: { applicationKeyId: 'key-a' },
     authMethod: 'application_key'

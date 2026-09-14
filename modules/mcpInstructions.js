@@ -29,7 +29,8 @@ const MCP_INSTRUCTIONS = [
     'If you cannot do the job with the listed tools, call advanced_tools with a query, then name + arguments.',
     'Use tools/list for core tools. Call advanced_tools { query: "..." } to search hidden tools.',
     'search_explore / get_explore_post for NovelAI Explore (Agora) top votes and posts.',
-    'If a tool is rate limited, wait retryAfter seconds for that group (free/search/gallery/write/studio/generate).'
+    'If a tool is rate limited, wait retryAfter seconds for that group (free/search/gallery/write/studio/generate).',
+    'Client-browser testing (bound Dreamscape tab, not the Cursor IDE browser): after public/ client-asset edits run scripts/notify-service-worker-update.sh, then update_client (wait readyForRestart or alreadyCurrent), then restart_client (wait reattached), then inspect_elements / run_client_js. Do not test on a stale tab. POST /agent/session/update is the 15s human Cancel dialog — do not use it for ingest tests. run_client_js awaits Promises. inspect_elements returns tag/id/text/visible plus optional html/style/box/attrs.'
 ].join(' ');
 
 const ENSHUTSUKA_GROK_PROJECT_PREAMBLE = [
