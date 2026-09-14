@@ -22,7 +22,7 @@ const MODULE_DEFS = {
         label: 'Core Generation',
         description: 'Image generation, Studio control, presets',
         tools: [
-            'generate_image', 'get_generation_job', 'await_generation_job',
+            'generate_image', 'get_generation_job', 'await_generation_job', 'ensure_artifact',
             'get_session_state', 'get_studio_state', 'get_open_windows', 'get_client_physics',
             'list_clients', 'bind_session', 'apply_studio_changes', 'run_client_js', 'inspect_elements',
             'update_client', 'restart_client',
@@ -85,7 +85,7 @@ const MODULE_DEFS = {
         scope: 'references',
         label: 'Core References',
         description: 'Reference images and vibes',
-        tools: ['list_references', 'get_references_by_ids', 'list_workspace_references', 'upload_reference']
+        tools: ['list_references', 'get_references_by_ids', 'list_workspace_references', 'upload_reference', 'resolve_lookback']
     },
     core_notes: {
         id: 'core_notes',

@@ -3723,11 +3723,6 @@ function buildGalleryItemContextMenuConfig(image, item) {
                         action: 'copy-lookback'
                     },
                     {
-                        icon: 'fas fa-code',
-                        text: 'Copy linkback',
-                        action: 'copy-linkback'
-                    },
-                    {
                         icon: 'fas fa-globe',
                         text: 'Publish to Explorer',
                         action: 'publish-to-explorer'
@@ -7882,11 +7877,6 @@ function handleGalleryContextMenuAction(event) {
         case 'copy-lookback':
             // copyLookbackImage: public/scripts/comp/copyLookback.js
             copyLookbackImage(filename);
-            break;
-
-        case 'copy-linkback':
-            // copyLinkbackImage: public/scripts/comp/copyLinkback.js
-            copyLinkbackImage(image);
             break;
 
         case 'publish-to-explorer':

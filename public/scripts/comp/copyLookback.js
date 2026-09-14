@@ -1,7 +1,8 @@
 /**
  * Copy Lookback — compact markdown-link refs for MCP resolve_lookback.
  * Shape: [label](dsap://lookback/<type>/<id>)
- * #82. Loaded from public/app.html before gallery / Lumen / note / wiki menus.
+ * Types include img / note / wiki / swiki / wimg / page / sel / ref (Reference Manager hash).
+ * #82 / #199. Loaded from public/app.html before gallery / Lumen / note / wiki / reference menus.
  */
 
 const LOOKBACK_HREF_PREFIX = 'dsap://lookback/';
@@ -48,6 +49,21 @@ function copyLookbackImage(filename) {
         return;
     }
     copyLookbackRef('img', encodeLookbackSeg(name), 'img');
+}
+
+function copyLookbackReference(hashOrImage) {
+    let id = '';
+    if (hashOrImage && typeof hashOrImage === 'object') {
+        const vibeId = hashOrImage.vibes && hashOrImage.vibes[0] && hashOrImage.vibes[0].id;
+        id = String(hashOrImage.hash || vibeId || '').trim();
+    } else {
+        id = String(hashOrImage || '').trim();
+    }
+    if (!id) {
+        showGlassToast('info', null, 'No lookback target', false, 2000, '<i class="fas fa-info-circle"></i>');
+        return;
+    }
+    copyLookbackRef('ref', encodeLookbackSeg(id), 'ref');
 }
 
 function copyLookbackNote(noteId, selectedText) {

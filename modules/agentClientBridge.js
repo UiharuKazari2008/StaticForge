@@ -27,7 +27,7 @@ const bindSessions = new Map(); // bindKey -> { clientId, lastInteractionAt, bou
 const pendingReattach = new Map(); // bindKey -> { sessionId, actorName, previousClientId, startedAt }
 const testingOfferState = new Map(); // bindKey -> { offered: Set, declined: Set }
 let preferredTestingClientId = null;
-const mcpStudioCheckpoints = new Map(); // bindKey -> { id, focusedFilename }
+const mcpStudioCheckpoints = new Map(); // bindKey -> { id, focusedFilename, qualitySettings }
 let lastBindResources = null;
 
 function getMcpStudioCheckpoint(bindKey) {
@@ -43,7 +43,9 @@ function setMcpStudioCheckpoint(bindKey, rec) {
     }
     mcpStudioCheckpoints.set(bindKey, {
         id: String(rec.id),
-        focusedFilename: rec.focusedFilename || rec.filename || null
+        focusedFilename: rec.focusedFilename || rec.filename || null,
+        qualitySettings: rec.qualitySettings || null,
+        lastGeneratedFilename: rec.lastGeneratedFilename || rec.lastGeneratedImageName || null
     });
 }
 
@@ -51,11 +53,23 @@ function clearMcpStudioCheckpoint(bindKey) {
     if (bindKey) mcpStudioCheckpoints.delete(bindKey);
 }
 
+function pickQualitySettingsFromState(data) {
+    const change = data && data.change && typeof data.change === 'object' ? data.change : data;
+    const dc = (change && change.dataset_config)
+        || (change && change.params && change.params.dataset_config)
+        || (data && data.dataset_config)
+        || null;
+    const quality = dc && dc.settings && dc.settings.__quality__;
+    return quality && typeof quality === 'object' && !Array.isArray(quality) ? quality : null;
+}
+
 function rememberStudioCheckpointFromState(bindKey, data, focusedFilename) {
     if (!bindKey || !data || !data.checkpointId) return;
     setMcpStudioCheckpoint(bindKey, {
         id: data.checkpointId,
-        focusedFilename: focusedFilename || data.filename || null
+        focusedFilename: focusedFilename || data.filename || null,
+        qualitySettings: pickQualitySettingsFromState(data),
+        lastGeneratedFilename: data.lastGeneratedImageName || data.lastGenerated || null
     });
 }
 

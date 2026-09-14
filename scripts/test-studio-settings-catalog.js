@@ -50,7 +50,7 @@ assert.ok(catalog.samplers.some((row) => row.value === 'k_euler_ancestral'));
 assert.ok(catalog.resolutions.some((row) => row.value === 'normal_portrait' && row.width === 832));
 assert.ok(catalog.nsfw.levels.some((row) => row.id === 3));
 
-const listed = applyCatalogToListedTool({
+const listedSlim = applyCatalogToListedTool({
     name: 'generate_image',
     description: 'Generate',
     inputSchema: {
@@ -64,6 +64,25 @@ const listed = applyCatalogToListedTool({
         }
     }
 }, catalog);
+assert.ok(listedSlim.description.includes('verboseSchema'));
+assert.ok(!listedSlim.inputSchema.properties.append_quality.description.includes('very aesthetic, masterpiece, no text'));
+assert.ok(!listedSlim.inputSchema.properties.append_uc.description.includes('lowres, heavy tags'));
+assert.ok(listedSlim.inputSchema.properties.sampler.enum.includes('k_euler_ancestral'));
+
+const listed = applyCatalogToListedTool({
+    name: 'generate_image',
+    description: 'Generate',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            sampler: { type: 'string' },
+            append_quality: { type: 'boolean' },
+            append_uc: { type: 'number' },
+            dataset_config: { type: 'object' },
+            params: { type: 'object', properties: { append_uc: { type: 'number' } } }
+        }
+    }
+}, catalog, { verboseSchema: true });
 assert.ok(listed.description.includes(PRESET_RULE));
 assert.ok(listed.inputSchema.properties.sampler.enum.includes('k_euler_ancestral'));
 assert.ok(listed.inputSchema.properties.append_quality.description.includes('very aesthetic, masterpiece, no text'));
@@ -85,7 +104,7 @@ const listedApply = applyCatalogToListedTool({
             params: { type: 'object', properties: { nsfw: { type: 'number' } } }
         }
     }
-}, catalog);
+}, catalog, { verboseSchema: true });
 assert.ok(listedApply.inputSchema.properties.nsfw.description.includes('Nude'));
 assert.ok(listedApply.inputSchema.properties.params.properties.nsfw.description.includes('Nude'));
 assert.ok(listedApply.inputSchema.properties.dataset_config.properties.nsfw.description.includes('Nude'));
@@ -95,7 +114,7 @@ const listedN = applyCatalogToListedTool({
     description: 'Apply',
     inputSchema: { type: 'object', properties: { n: { type: 'number' } } }
 }, catalog);
-assert.ok(listedN.inputSchema.properties.n.description.includes('Studio prints'));
+assert.ok(listedN.inputSchema.properties.n.description.includes('Print count'));
 
 const empty = buildStudioSettingsCatalog(null);
 assert.ok(Array.isArray(empty.samplers));

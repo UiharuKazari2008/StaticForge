@@ -66,6 +66,7 @@ const TOOL_RATE_GROUPS = {
     get_images: 'gallery',
     get_generated_image: 'gallery',
     get_latest_image: 'gallery',
+    ensure_artifact: 'gallery',
     create_note: 'write',
     update_note: 'write',
     save_note_content: 'write',

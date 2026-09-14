@@ -65,8 +65,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Sequenzia export | — | `send_to_sequenzia_bulk` | — | — |
 | Update image preset tag | — | `update_image_preset_bulk` | — | — |
 | Publish workspace image to NovelAI Explore | — | `check_novelai_explore_upload`, `upload_novelai_explore_image` | — | Gallery / Explorer context menu → Publish to Explorer |
-| Copy Lookback | — | MCP `resolve_lookback` | — | Client menu writes `dsap://lookback/…` (`copyLookback.js`); agents resolve, never mint |
-| Copy linkback | — | — | — | Client menu writes `dsref:file:… seed:… model:… ws:… res:…` (`copyLinkback.js`; Yozora #188) |
+| Copy Lookback | — | MCP `resolve_lookback` | — | Client menu writes `dsap://lookback/…` (`copyLookback.js`); agents resolve, never mint. Includes Reference Manager `ref/<hash>` |
 | Agora (NovelAI Explore) browse | — | `get_novelai_explore_gallery`, `get_novelai_explore_post`, `get_novelai_explore_user`, `ensure_novelai_explore_image`, `set_novelai_explore_post_like`, `downvote_novelai_explore_post`, `block_novelai_explore_creator`, `list_novelai_explore_blocked_creators`, `clear_novelai_explore_gallery_cache` | — | Agora DSAP; MCP `search_explore` / `get_explore_post` |
 
 ---

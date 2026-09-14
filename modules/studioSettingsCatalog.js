@@ -369,20 +369,70 @@ function patchParamSchema(props, catalog) {
     }
 }
 
-function applyCatalogToListedTool(tool, catalog) {
+function patchParamSchemaSlim(props) {
+    if (!props || typeof props !== 'object') return;
+    if (props.sampler) {
+        props.sampler.enum = SAMPLERS.map((row) => row.value);
+        props.sampler.description = 'Sampler id. Full labels: get_studio_state.settings or verboseSchema.';
+    }
+    if (props.noiseScheduler) {
+        props.noiseScheduler.enum = NOISE_SCHEDULERS.map((row) => row.value);
+        props.noiseScheduler.description = 'Noise schedule id.';
+    }
+    if (props.resolution) {
+        props.resolution.enum = RESOLUTIONS.map((row) => row.value).concat(['custom']);
+        props.resolution.description = 'Named size or custom plus width/height. Ids only.';
+    }
+    if (props.append_quality) {
+        props.append_quality.description = 'If true, server prepends the live quality string. Do not paste quality tags. Full strings: get_studio_state.settings or verboseSchema.';
+    }
+    if (props.append_uc) {
+        props.append_uc.description = '0 = off. 1–N enable that UC preset. Do not paste UC preset text. Full strings: get_studio_state.settings or verboseSchema.';
+    }
+    if (props.append_transparency) {
+        props.append_transparency.description = 'If true, server prepends the live transparency tag.';
+    }
+    if (props.nsfw) {
+        props.nsfw.enum = [3, 2, 1, 0, -1, -2];
+        props.nsfw.description = '3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Ids only — do not paste add/remove strings.';
+    }
+    if (props.n) {
+        props.n.description = 'Print count 1–8. Default 1. n>1 opens Prints review and can block the next autoGenerate.';
+    }
+    if (props.dataset_config) {
+        if (!props.dataset_config.properties) props.dataset_config.properties = {};
+        props.dataset_config.description = 'nsfw level + settings.__quality__ sub-toggles (high_complexity, no_text). Full add/remove strings: get_studio_state.settings or verboseSchema.';
+        if (props.dataset_config.properties.nsfw) {
+            props.dataset_config.properties.nsfw.enum = [3, 2, 1, 0, -1, -2];
+            props.dataset_config.properties.nsfw.description = 'NSFW level id. Do not paste that level\'s tags.';
+        }
+    }
+    if (props.params && props.params.properties) patchParamSchemaSlim(props.params.properties);
+    if (props.overrideParams && props.overrideParams.properties) patchParamSchemaSlim(props.overrideParams.properties);
+}
+
+function applyCatalogToListedTool(tool, catalog, options) {
     if (!tool || !tool.inputSchema) return tool;
     if (tool.name !== 'generate_image' && tool.name !== 'apply_studio_changes' && tool.name !== 'generate_preset' && tool.name !== 'expand_image') {
         return tool;
     }
+    const verbose = !!(options && (options.verboseSchema === true || options.verbose === true));
     const listed = {
         name: tool.name,
         description: tool.description,
         inputSchema: cloneJson(tool.inputSchema)
     };
     if (tool.scope) listed.scope = tool.scope;
-    patchParamSchema(listed.inputSchema.properties, catalog);
-    if (tool.name === 'generate_image' || tool.name === 'apply_studio_changes') {
-        listed.description = `${tool.description} ${PRESET_RULE} Live quality/UC strings are on this schema (append_quality / append_uc) and on get_studio_state.settings.`;
+    if (verbose) {
+        patchParamSchema(listed.inputSchema.properties, catalog);
+        if (tool.name === 'generate_image' || tool.name === 'apply_studio_changes') {
+            listed.description = `${tool.description} ${PRESET_RULE} Live quality/UC strings are on this schema (append_quality / append_uc) and on get_studio_state.settings.`;
+        }
+    } else {
+        patchParamSchemaSlim(listed.inputSchema.properties);
+        if (tool.name === 'generate_image' || tool.name === 'apply_studio_changes') {
+            listed.description = `${tool.description} Use append_quality / append_uc / nsfw ids. Full quality/UC/NSFW strings: get_studio_state.settings or advanced_tools verboseSchema.`;
+        }
     }
     return listed;
 }
@@ -397,6 +447,7 @@ module.exports = {
     buildStudioSettingsCatalog,
     slimStudioSettingsCatalog,
     applyCatalogToListedTool,
+    patchParamSchemaSlim,
     formatQualityDescription,
     formatUcDescription,
     formatNsfwDescription

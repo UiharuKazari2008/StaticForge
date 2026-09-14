@@ -537,9 +537,9 @@ function createManualPreviewImageContextMenuConfig() {
                         action: 'start-chat'
                     },
                     {
-                        icon: 'fas fa-code',
-                        text: 'Copy linkback',
-                        action: 'copy-linkback'
+                        icon: 'fas fa-link',
+                        text: 'Copy Lookback',
+                        action: 'copy-lookback'
                     },
                     {
                         separator: true,
@@ -786,9 +786,9 @@ async function handleManualPreviewImageContextMenuAction(event) {
             }
             break;
 
-        case 'copy-linkback':
-            // copyLinkbackImage: public/scripts/comp/copyLinkback.js
-            copyLinkbackImage(image);
+        case 'copy-lookback':
+            // copyLookbackImage: public/scripts/comp/copyLookback.js
+            copyLookbackImage(filename);
             break;
 
         case 'start-chat':

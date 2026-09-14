@@ -190,16 +190,23 @@ assert.deepStrictEqual(_test.parseLookbackRef('dsap://lookback/swiki/docubase/pr
     siteId: 'docubase',
     pageId: 'prompt-optimiser-grok'
 });
+assert.deepStrictEqual(_test.parseLookbackRef('[ref](dsap://lookback/ref/abc123)'), {
+    type: 'ref',
+    href: 'dsap://lookback/ref/abc123',
+    id: 'abc123'
+});
 assert.strictEqual(_test.parseLookbackRef('not a lookback'), null);
 assert.strictEqual(_test.galleryFilenameFromLookbackSrc('/images/foo.png'), 'foo.png');
 assert.ok(_test.MCP_INSTRUCTIONS.includes('resolve_lookback'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('Copy Lookback is a compact markdown ref'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('img/<filename>'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('ref/<hash>'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('Do not invent lookback URIs'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('returns that item'));
 assert.ok(_test.listToolsForScopes(['gallery']).some((t) => t.name === 'resolve_lookback'));
 assert.ok(_test.listToolsForScopes(['notes']).some((t) => t.name === 'resolve_lookback'));
 assert.ok(_test.listToolsForScopes(['wiki']).some((t) => t.name === 'resolve_lookback'));
+assert.ok(_test.listToolsForScopes(['references']).some((t) => t.name === 'resolve_lookback'));
 assert.ok(!_test.listToolsForScopes(['generation']).some((t) => t.name === 'resolve_lookback'));
 
 const emptyCard = _test.assembleCharacterCard({
@@ -229,9 +236,21 @@ const filledCard = _test.assembleCharacterCard({
     expander: { prefix: 'alice_base', value: 'long shared appearance, hair, body' }
 });
 assert.strictEqual(filledCard.wiki.empty, false);
+assert.strictEqual(filledCard.wikiEmpty, false);
 assert.strictEqual(filledCard.wiki.text, 'Alice is a Nikke.');
 assert.strictEqual(filledCard.expander.value, 'long shared appearance, hair, body');
-assert.ok(!filledCard.next);
+assert.ok(!String(filledCard.next || '').includes('Wiki body is empty'));
+const seeAlsoCard = _test.assembleCharacterCard({
+    name: 'asuna',
+    franchise: 'sword art online',
+    wiki: { tagName: 'asuna (sao)', text: 'See also: asuna yuuki', markdown: 'See also: asuna yuuki' },
+    expander: null,
+    naxChara: { tag: 'asuna (sao)', prompt: 'asuna (sao)', score: 9 }
+});
+assert.strictEqual(seeAlsoCard.tag, 'asuna (sao)');
+assert.strictEqual(seeAlsoCard.wiki.empty, false);
+assert.deepStrictEqual(seeAlsoCard.appearanceLines, []);
+assert.ok(!String(seeAlsoCard.next || '').toLowerCase().includes('wiki body is empty'));
 
 assert.deepStrictEqual(_test.matchRequestExpander([
     { prefix: 'alice_base', value: 'long shared appearance, hair, body' }
@@ -367,7 +386,9 @@ assert.ok(generationTools.some((t) => t.name === 'get_client_physics'));
 assert.ok(!generationTools.some((t) => t.name === 'generate_preset'));
 
 const refsOnly = _test.listToolsForScopes(['references']);
-assert.deepStrictEqual(refsOnly.map((t) => t.name), ['advanced_tools']);
+assert.ok(refsOnly.some((t) => t.name === 'resolve_lookback'));
+assert.ok(refsOnly.some((t) => t.name === 'advanced_tools'));
+assert.deepStrictEqual(refsOnly.filter((t) => t.name !== 'resolve_lookback').map((t) => t.name), ['advanced_tools']);
 
 const searchOnly = _test.listToolsForScopes(['search']);
 
@@ -612,6 +633,7 @@ assert.ok(coreNames.includes('get_linkxi_persona'));
 assert.ok(coreNames.includes('save_linkxi_persona'));
 assert.ok(coreNames.includes('get_generation_job'));
 assert.ok(coreNames.includes('await_generation_job'));
+assert.ok(coreNames.includes('ensure_artifact'));
 assert.ok(coreNames.includes('get_open_windows'));
 assert.ok(coreNames.includes('search_nax'));
 assert.ok(coreNames.includes('get_character_card'));
@@ -632,7 +654,7 @@ assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
 assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
 assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
-assert.strictEqual(coreNames.length, 67);
+assert.strictEqual(coreNames.length, 68);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -705,10 +727,11 @@ const listedGen = _test.listToolsForScopes(['generation'], {
         nsfw_presets: { 3: { add: { base: 'nsfw, nude' } } }
     })
 }).find((t) => t.name === 'generate_image');
-assert.ok(listedGen.inputSchema.properties.append_quality.description.includes('very aesthetic, masterpiece, no text'));
-assert.ok(listedGen.inputSchema.properties.append_uc.description.includes('heavy-uc'));
+assert.ok(!listedGen.inputSchema.properties.append_quality.description.includes('very aesthetic, masterpiece, no text'));
+assert.ok(!listedGen.inputSchema.properties.append_uc.description.includes('heavy-uc'));
+assert.ok(listedGen.inputSchema.properties.append_quality.description.includes('verboseSchema'));
 assert.ok(listedGen.inputSchema.properties.sampler.enum.includes('k_euler_ancestral'));
-assert.ok(listedGen.inputSchema.properties.dataset_config.properties.nsfw.description.includes('Nude'));
+assert.ok(listedGen.inputSchema.properties.dataset_config.properties.nsfw.description.includes('NSFW level id'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('settings'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('nooped'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_session_state').description.includes('resolved'));
@@ -789,6 +812,15 @@ const aliceExact = _test.trimAutofillBatch('alice', true, {
 });
 assert.strictEqual(aliceExact.results.length, 1);
 assert.strictEqual(aliceExact.results[0].tag, 'alice (nikke)');
+assert.strictEqual(aliceExact.spellCheck, undefined);
+const asunaQualifier = _test.trimAutofillBatch('asuna', true, {
+    results: [
+        { name: 'asuna (furry)', type: 'character', matchScore: 10, model: 'furry-local' },
+        { name: 'asuna (sao)', type: 'character', matchScore: 80, model: 'nai-diffusion-5-full' }
+    ]
+});
+assert.strictEqual(asunaQualifier.trained, true);
+assert.strictEqual(asunaQualifier.results[0].tag, 'asuna (sao)');
 const aliceFuzzy = _test.trimAutofillBatch('alice', true, {
     results: [
         { name: 'alice (nikke)', type: 'character', matchScore: 90 },
@@ -914,6 +946,37 @@ async function runMcpAuth(options) {
 }
 
 async function main() {
+    const missingRef = await _test.resolveLookback({
+        getReferenceMetadataDatabase() {
+            return {
+                getFileCache() { return null; },
+                getVibeMetadata() { return null; }
+            };
+        }
+    }, {}, { lookback: 'dsap://lookback/ref/missing' });
+    const missingRefBody = JSON.parse(missingRef.content[0].text);
+    assert.strictEqual(missingRef.isError, true);
+    assert.strictEqual(missingRefBody.success, false);
+
+    const foundRef = await _test.resolveLookback({
+        getReferenceMetadataDatabase() {
+            return {
+                getFileCache(id) {
+                    return { hash: id, size: 12, blurhash: null, metadata: { displayName: 'ref-a' } };
+                },
+                getReferenceWorkspaces() { return ['atelier']; }
+            };
+        },
+        getPath() { return '/tmp/no-preview-here'; }
+    }, {}, { lookback: '[ref](dsap://lookback/ref/deadbeef)' });
+    const foundRefBody = JSON.parse(foundRef.content[0].text);
+    assert.strictEqual(foundRef.isError, false);
+    assert.strictEqual(foundRefBody.success, true);
+    assert.strictEqual(foundRefBody.lookbackType, 'ref');
+    assert.strictEqual(foundRefBody.referenceKind, 'cache');
+    assert.strictEqual(foundRefBody.reference.hash, 'deadbeef');
+    assert.strictEqual(foundRefBody.reference.workspaceId, 'atelier');
+
     const wikiMd = await wikiHandler.formatWikiBody(
         {},
         { convertWikiMarkupToMarkdown: async (text) => `# ${text}` },
@@ -1408,6 +1471,7 @@ async function main() {
     assert.strictEqual(attached.dest_path, 'artifacts/shot.webp');
     assert.strictEqual(attached.mime, 'image/webp');
     assert.strictEqual(attached.bytes, resized.bytes.length);
+    assert.strictEqual(typeof attached.wrote, 'boolean');
     assert.ok(attached.url.includes('/test-uuid-1234/artifacts/'));
     assert.ok(!JSON.stringify(attached).includes(resized.bytes.toString('base64').slice(0, 32)));
     tickets.resetArtifactTickets();
@@ -1420,6 +1484,23 @@ async function main() {
     assert.strictEqual(flatGen.dest_path, undefined);
     assert.strictEqual(flatGen.destPath, undefined);
     assert.strictEqual(flatGen.prompt, 'a');
+
+    const reliability = require('../modules/mcpReliability');
+    assert.strictEqual(reliability.qualifyCharacterQuery('asuna', 'sword art online'), 'asuna (sao)');
+    assert.strictEqual(reliability.qualifyCharacterQuery('asuna (sao)', 'blue archive'), 'asuna (sao)');
+    assert.strictEqual(reliability.naxTagMatchesFranchise('asuna (blue archive)', 'sword art online'), false);
+    assert.strictEqual(reliability.naxTagMatchesFranchise('asuna (sao)', 'sword art online'), true);
+    assert.deepStrictEqual(reliability.wikiAppearanceLines('See also: asuna yuuki'), []);
+    assert.strictEqual(reliability.classicPromptText('1.4::pregnant, big belly::'), '1.4::pregnant, big belly::');
+    const zw = require('../modules/emphasisGroupIdSyntax');
+    const managed = zw.buildManagedEmphasisGroupText(3, 'pregnant, big belly', { mode: 'visible', weight: 1.4 });
+    const cleaned = reliability.classicPromptText(managed);
+    assert.ok(cleaned.includes('1.4::') || cleaned.includes('1.4:'));
+    assert.ok(!/[\u2060\u2063\u2064]/.test(cleaned));
+    const applyJob = reliability.rememberApplyGenerateJob({ bindKey: 'k', filenameBefore: 'old.png' });
+    assert.ok(applyJob.jobId.startsWith('apply-'));
+    assert.strictEqual(reliability.findPendingApplyGenerate('k').filenameBefore, 'old.png');
+    reliability.resetApplyGenerateJobs();
 
     const naiPromptGuideSync = require('../modules/naiPromptGuideSync');
     assert.strictEqual(naiPromptGuideSync.SITE_ID, 'docubase');

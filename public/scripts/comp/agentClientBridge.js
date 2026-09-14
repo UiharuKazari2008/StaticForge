@@ -546,16 +546,59 @@
         return defaultValue;
     }
 
-    function fireBoundTabGenerate() {
+    function isPrintsReviewOpen() {
+        const el = document.getElementById('stageResultsReview');
+        return !!(el && !el.classList.contains('hidden'));
+    }
+
+    function dismissPrintsReview() {
+        const el = document.getElementById('stageResultsReview');
+        if (!el) return;
+        if (typeof closeModal === 'function') {
+            closeModal(el);
+            return;
+        }
+        el.classList.add('hidden');
+    }
+
+    function fireBoundTabGenerate(options) {
+        const opts = options && typeof options === 'object' ? options : {};
+        const nWasSet = opts.n != null && opts.n !== '';
+        const prints = nWasSet ? parseInt(opts.n, 10) : 1;
+        if (typeof setManualPrintsCount === 'function' && Number.isFinite(prints)) {
+            setManualPrintsCount(Math.max(1, Math.min(8, prints)));
+        }
+        if (isPrintsReviewOpen()) {
+            dismissPrintsReview();
+        }
         const btn = document.getElementById('manualGenerateBtn');
+        const filenameBefore = window.lastGeneratedImageName || null;
+        const studioFilename = typeof readOpenFilename === 'function' ? readOpenFilename() : null;
         if (!btn) {
-            return { generateStarted: false, generateError: 'Generate button is not available' };
+            return {
+                generateStarted: false,
+                generateError: 'Generate button is not available',
+                filenameBefore,
+                filenameExpected: studioFilename
+            };
         }
         if (btn.disabled) {
-            return { generateStarted: false, generateError: 'Generate button is disabled' };
+            return {
+                generateStarted: false,
+                blockedBy: isPrintsReviewOpen() ? 'printsReview' : 'generateDisabled',
+                generateError: isPrintsReviewOpen()
+                    ? 'Prints review is still open'
+                    : 'Generate button is disabled',
+                filenameBefore,
+                filenameExpected: studioFilename
+            };
         }
         btn.click();
-        return { generateStarted: true };
+        return {
+            generateStarted: true,
+            filenameBefore,
+            filenameExpected: studioFilename
+        };
     }
 
     async function applyStudioFromCommand(data) {
@@ -620,8 +663,17 @@
         if (!autoGenerate) {
             return { ...baseResult, autoGenerate: false };
         }
-        const gen = fireBoundTabGenerate();
-        return { ...baseResult, autoGenerate: true, ...gen };
+        const nHint = payload && payload.params && payload.params.n != null
+            ? payload.params.n
+            : (data && data.n);
+        const gen = fireBoundTabGenerate({ n: nHint });
+        return {
+            ...baseResult,
+            autoGenerate: true,
+            lastGeneratedImageName: window.lastGeneratedImageName || null,
+            filename: typeof readOpenFilename === 'function' ? readOpenFilename() : null,
+            ...gen
+        };
     }
 
     async function openImageFromCommand(filename, commandData) {

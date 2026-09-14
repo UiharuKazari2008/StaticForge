@@ -42,6 +42,16 @@ function createReferenceManagerContextMenuConfig() {
                         }
                     },
                     {
+                        icon: 'fas fa-link',
+                        text: 'Copy Lookback',
+                        action: 'reference-manager-copy-lookback',
+                        loadfn: (menuItem, target) => {
+                            const cacheImage = getCacheManagerImageFromElement(target);
+                            const vibeId = cacheImage && cacheImage.vibes && cacheImage.vibes[0] && cacheImage.vibes[0].id;
+                            menuItem.disabled = !cacheImage || !(cacheImage.hash || vibeId);
+                        }
+                    },
+                    {
                         icon: "nai-vibe-transfer",
                         text: "New Encoding",
                         action: 'reference-manager-vibe-encode',
@@ -289,6 +299,16 @@ function createReferenceBrowserContextMenuConfig() {
             {
                 type: 'list',
                 items: [
+                    {
+                        icon: 'fas fa-link',
+                        text: 'Copy Lookback',
+                        action: 'reference-browser-copy-lookback',
+                        loadfn: (menuItem, target) => {
+                            const cacheImage = getReferenceBrowserImageFromElement(target);
+                            const vibeId = cacheImage && cacheImage.vibes && cacheImage.vibes[0] && cacheImage.vibes[0].id;
+                            menuItem.disabled = !cacheImage || !(cacheImage.hash || vibeId);
+                        }
+                    },
                     {
                         icon: "mdi mdi-data-matrix-scan",
                         text: "New Encoding",
@@ -837,6 +857,7 @@ function handleReferenceManagerContextMenuAction(event) {
     // Only handle actions that are specific to reference manager gallery items
     const referenceManagerActions = [
         'reference-manager-comment',
+        'reference-manager-copy-lookback',
         'reference-manager-vibe-encode',
         'reference-manager-director',
         'reference-manager-open-in-window',
@@ -892,6 +913,10 @@ function handleReferenceManagerContextMenuAction(event) {
             }
             break;
         }
+        case 'reference-manager-copy-lookback':
+            // copyLookbackReference: public/scripts/comp/copyLookback.js
+            copyLookbackReference(cacheImage);
+            break;
         case 'reference-manager-manage':
             showManageReferenceModal(cacheImage);
             break;
@@ -928,6 +953,7 @@ function handleReferenceBrowserContextMenuAction(event) {
     const referenceBrowserActions = [
         'reference-browser-add-base',
         'reference-browser-add-vibe',
+        'reference-browser-copy-lookback',
         'reference-browser-add-character',
         'reference-browser-vibe-encode',
         'reference-browser-director',
@@ -963,6 +989,10 @@ function handleReferenceBrowserContextMenuAction(event) {
     switch (action) {
         case 'reference-browser-add-base':
             addAsBaseImage(cacheImage);
+            break;
+        case 'reference-browser-copy-lookback':
+            // copyLookbackReference: public/scripts/comp/copyLookback.js
+            copyLookbackReference(cacheImage);
             break;
         case 'reference-browser-add-vibe':
             addAsVibeReference(cacheImage);

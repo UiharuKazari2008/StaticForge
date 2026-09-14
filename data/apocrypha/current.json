@@ -1,356 +1,419 @@
 {
   "sections": [
     {
-      "id": "emphasis-not-a1111",
-      "kicker": "STAFF · EMPHASIS",
-      "title": "That is not how prompt emphasis works here",
+      "id": "upscaler-generative",
+      "kicker": "STAFF · UPSCALER",
+      "title": "The new upscaler is generative — and Anlas is not usage",
       "grim": false,
-      "lede": "Someone pasted `(artist:hews:1.1)`. Staff shut it down in one sentence.",
-      "body": "Friday night on nai-diffusion-discussion, a user dropped an Automatic1111-shaped quality+artist stack: `(artist:hews:1.1)`, `(korean manhwa style:1.15)`, the whole decimal soup. .mahouko (Anlatan Team / AI Developer) answered flatly: that is not how prompt emphasis works in our product. PhazonMadness restated the real dials — `{strengthened tag}`, `[weakened tag]`, `1.1::strengthened tag::`, `0.9::weakened tag::`. This corpus already bans `(word:1.3)`. The new STAFF beat is sharper: SD-style `(artist:name:1.1)` is not a NovelAI weight. Convert it, do not cargo-cult it.\n\n**Try this.** Same seed, V5 Full, Euler/karras, guidance 5, 23 steps, QT on, rescale 0. Base: `1girl, solo, looking at viewer, sweater`. A: `(artist:hews:1.1), (korean manhwa style:1.15)`. B: `1.1::artist:hews::, 1.15::korean manhwa style::`. C: `{artist:hews}, korean manhwa style`. Keep the one that actually moves style without frying.\n\n**CTA.** If an old preset still carries `(tag:1.2)`, rewrite it this weekend and `save_memory` the working NAI form.",
+      "lede": "Model-independent. Grainy vs smooth regions. Paid Anlas upscale does not eat your allotment.",
+      "body": "Friday already taught that the upscaler is unrelated to V5. This window filled in the product facts. luna: the new upscaler is model independent and does not apply to usage. mahouko: it is generative — a system that classifies regions as grainy or smooth and applies different strategies to each. finetune: if you pay Anlas for it, that spend does not count toward usage. Stop treating upscale as a V5-only dial or as a free meter burn.\n\n**Try this.** Take one keeper you already like. Same seed family, V5 Full, Euler/karras, guidance 5, 23 steps, QT on, rescale 0. Generate at native size (A). Upscale via the product upscaler (B). Compare grainy vs smooth regions — do not chase bit-identical restores. Note Anlas cost separately from daily usage.\n\n**CTA.** Guren: one A/B upscale pair. Ivory: file whether Studio presets still imply upscale = V5. Do not invent PE() contract changes — contracts were not re-dumped.",
       "excerpts": [
+        {
+          "speaker": "luna",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-11 11:13 ET",
+          "text": "new upscaler is model independent, does not apply to usage"
+        },
         {
           "speaker": "mahouko",
           "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-10 21:04 ET",
-          "text": "that is not how prompt emphasis works in our product"
+          "when": "2026-09-11 11:24 ET",
+          "text": "the new upscaler is generative though"
         },
         {
-          "speaker": "phazonmadness",
+          "speaker": "mahouko",
           "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-10 21:05 ET",
-          "text": "`{strengthened tag}` / `[weakened tag]` / `1.1::strengthened tag::` / `0.9::weakened tag::` — take your pick"
+          "when": "2026-09-11 11:25 ET",
+          "text": "a system which classifies regions as grainy or smooth and applies different strategies to each, is already what the new upscaler tries to be"
+        },
+        {
+          "speaker": "finetune",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-11 11:21 ET",
+          "text": "if you pay anlas for it, it doesn't count towards usage"
         }
       ],
       "images": [
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/79326a9c-3459-4090-b798-ba1c084f2b36",
-          "cap": "community · emphasis / weight talk still (official)"
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/c6f51609-015d-4726-ad3a-43ff46e89db9",
+          "cap": "guestavius · upscale compare still 1"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/9a0c2686-1e3d-4043-baac-9ce204931be2",
+          "cap": "guestavius · upscale compare still 2"
         }
       ]
     },
     {
-      "id": "nl-relative-place",
+      "id": "underscore-finetune",
+      "kicker": "STAFF · TAGS",
+      "title": "Underscore strip is finetune — prefer spaced tags",
+      "grim": false,
+      "lede": "It is not frontend. Do not rely on auto-strip. Intentional underscore exceptions exist.",
+      "body": "mahouko guessed underscores become spaces. ght901 corrected the mechanism: that strip is finetune, not frontend behaviour. It attempts to remove underscores to save you from yourself, but it should not be relied on — edge cases remain. Prefer tags without underscores (intentional underscore keepers excepted). Uchariko showed a live mismatch: `careena_(visions_of_mana)` vs `careena (visions of mana)` come out different in the main prompt (same in character prompt). Low model understanding of the character amplifies the gap for copyrighted name tags.\n\n**Try this.** Same seed, V5 Full, Euler, guidance 5, QT on. A: main prompt with underscore form `1girl, careena_(visions_of_mana), looking at viewer`. B: spaced `1girl, careena (visions of mana), looking at viewer`. Compare identity, then move both forms into the character box and re-run.\n\n**CTA.** Ivory: audit Studio presets that still ship underscore danbooru pastes. Rewrite to spaced tags.",
+      "excerpts": [
+        {
+          "speaker": "ght901",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-13 17:31 ET",
+          "text": "no, that'd be finetune. It's not frontend behaviour. It attempts to remove the underscores from tags as a way to save you from yourself but it shouldn't be relied on. There's likely edge cases where it doesn't remove things when it arguably should. You should be using tags without underscores (the ones where it's intentionally left in excepted)"
+        },
+        {
+          "speaker": "mahouko",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-13 17:27 ET",
+          "text": "probably tags with underscores get transformed into spaces"
+        },
+        {
+          "speaker": "Uchariko",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-13 17:09 ET",
+          "text": "So I agree with Guns and it works as expected when in the character prompt (i.e., they're the same), but why is it that if I put `careena_(visions_of_mana)`/`careena (visions of mana)` in the main prompt, they come out different? I'll note that other characters with `(<copyright>)`s in their tag also come out different to much lesser extents and the larger difference for `careena (visions of mana)` is probably because of low model understanding of the character"
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/79f5b73d-cf39-46df-b6c2-c1cf2c5cf840",
+          "cap": "Uchariko · underscore vs spaced still"
+        }
+      ]
+    },
+    {
+      "id": "heights-useless",
       "kicker": "STAFF · NL",
-      "title": "When tags miss the hat, describe the hat against the face",
+      "title": "Precise height measurements are useless here",
       "grim": false,
-      "lede": "Luca could not get a papal cross to sit on the tiara with tags. Relational NL fixed the center.",
-      "body": "Luca (staff-adjacent Anlatan voice, documented as STAFF in this corpus when tagged) spent an inpaint pass trying to put a papal tiara on a character. Tags alone kept dropping the catholic cross off the hat. The fix was natural language that described the object **relative to other parts of the image**: gold borders that come down to just above the eyes, cross in the center of the tiara. The cross centered; the eye-line still imperfect — good enough to teach the pattern.\n\n**Try this.** Take any accessory that keeps sliding. Same seed family, V5 Full, Euler, guidance 5–6, QT on. A: tags only (`tiara, cross, gold`). B: NL `white triangular papal tiara with gold borders that comes down to just above the character's eyes, golden catholic cross in the center of the papal tiara,`. Compare placement, not vibes.\n\n**CTA.** Guren: run A/B on one accessory job and `save_memory` if relational NL wins.",
-      "excerpts": [
-        {
-          "speaker": "Luca",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-10 10:43 ET",
-          "text": "NL can be useful for getting details positioned or presented correctly in relation to other details in the image. For example, here I inpainted to add a popehat… Initially, with tags alone, it was not giving me good results. The cross would often stick down off the hat entirely. Instead I swapped to NL to give the instructions in relation to other parts of the image. `white triangular papal tiara with gold borders that comes down to just above the character's eyes, golden catholic cross in the center of the papal tiara,`"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "early-artist-weights",
-      "kicker": "STAFF · ARTISTS",
-      "title": "Launch-week artist weights were louder. Your keepers moved.",
-      "grim": false,
-      "lede": "Same seed + same artist tag is not a time machine.",
-      "body": "Luca flagged a quiet landmine: for the first few days after V5, artist-tag strength weighting sat high. Images that leaned on artist tags from that window will not replicate exactly now, even with identical seeds and prompts. Stop chasing bit-identical restores from launch week. Retune the artist list and emphasis on current weights.\n\n**Try this.** Pick one launch-week keeper with a heavy `artist:` stack. Import metadata, same seed, current V5. If it drifts, rebuild the artist block at current strength (often lower) instead of cranking.\n\n**CTA.** Ivory: note which Studio presets still assume launch-week artist loudness.",
-      "excerpts": [
-        {
-          "speaker": "Luca",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-07 22:42 ET",
-          "text": "There is a caveat with this. The artist tag strength weighting was high for the first few days, so images with artist tags from the very start won't replicate exactly the same now."
-        }
-      ],
-      "images": [
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/7fa0582e-bbfd-4c2f-8f7a-b3d71540472d",
-          "cap": "official still · artist/style playground energy"
-        }
-      ]
-    },
-    {
-      "id": "fur-zero-pictured",
-      "kicker": "STAFF · DATASET",
-      "title": "Fur dataset scenery still spawns creatures. Add zero pictured.",
-      "grim": false,
-      "lede": "ght901's one-liner for empty landscapes on the fur path.",
-      "body": "On nai-image-advice, a user fighting unwanted subjects on scenery gens got the staff answer: if you are on `fur dataset`, add `zero pictured` (it autocompletes). It does not fire the same way off that dataset. Room notes also floated `no humans` / `scenery only` as softer NL — keep those as ANECDOTE; the STAFF dial is `zero pictured`.\n\n**Try this.** V5 Full or Curated, start prompt with `fur dataset,`, then a pure landscape. A: no subject tags. B: add `zero pictured`. Same seed. Count creatures.\n\n**CTA.** Also remember: upscaler is entirely unrelated to V5 (ght901, same window).",
+      "lede": "Hex colors (maybe) are not a license for numeric cm/ft heights.",
+      "body": "Someone hoped the model would honor precise height measurements the way people claim hex colors work. ght901 shut both halves down on nai-image-advice: do not expect anything useful from precise height numbers, and even if hex colors work reliably, that is an entirely different thing — there is no reason to believe the model will understand numeric heights from that. Shipping `165cm` / `5'4\"` as tags is cargo-cult. Describe relative size in natural language (`taller than`, `shorter than`, `towering over`, `looking up at`) and let composition do the rest.\n\n**Try this.** Same seed, V5 Full, Euler/karras, guidance 5–6, 23 steps, QT on, rescale 0. Two-girl scene. A: `1girl is 165cm, 1girl is 180cm, standing together`. B: `the brown-haired girl is shorter than the white-haired girl, looking up at her, standing together`. Compare height signal and eye-line, not vibes.\n\n**CTA.** Guren: one A/B. If A fails, delete numeric heights from any living preset and `save_memory` the relational NL form only if pixels agree.",
       "excerpts": [
         {
           "speaker": "ght901",
           "channel": "Anlatan#nai-image-advice",
-          "when": "2026-09-10 23:48 ET",
-          "text": "Doesn't happen if you're not using the `fur dataset`. You should add `zero pictured` to your prompt in that case"
+          "when": "2026-09-11 19:45 ET",
+          "text": "I would not expect the model to get anything useful out of heights given in precise measurements and you probably shouldn't expect it to either"
         },
         {
           "speaker": "ght901",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-07 15:36 ET",
-          "text": "the upscaler is entirely unrelated to V5"
-        }
-      ],
-      "images": [
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/79029ffe-9201-48ed-a09d-ba2c1d15a915",
-          "cap": "official · scenery / advice still"
-        }
-      ]
-    },
-    {
-      "id": "sound-effect-text",
-      "kicker": "UNOFFICIAL · TEXT",
-      "title": "sound effect + Text: at the end",
-      "grim": true,
-      "lede": "Unofficial Q&A: put Text: last; sound effect can sit earlier.",
-      "body": "On unofficial nai-image-gen-discussion, Magister sine nomine told a user to use the `sound effect` tag and keep `Text:` at the end of the prompt — everything after `Text:` is treated as the effect string. Also: do not stack extra weights on a brand-new scenario; try NL for weird poses first. Stays [UNOFFICIAL] [ANECDOTE].\n\n**Try this.** SFW: `1girl, comic, sound effect, surprised. Text: gasp!` with Text: last. Then move Text: mid-prompt and watch it fail.\n\n**CTA.** Guren: one SFW comic test only; stop if battery thins.",
-      "excerpts": [
-        {
-          "speaker": "Magister sine nomine",
-          "channel": "Unofficial#nai-image-gen-discussion",
-          "when": "2026-09-10 03:54 ET",
-          "text": "You can use the `sound effect` tag then write a specific word after `Text:`. Every word in the prompt written after Text: will be treated as the effect string, so you should keep Text: at the end of the prompt."
+          "channel": "Anlatan#nai-image-advice",
+          "when": "2026-09-11 20:05 ET",
+          "text": "even if hex colors do work reliably, no, that's an entirely different thing and there's no reason to believe from that that the model will understand precise height measurements"
         }
       ],
       "images": []
     },
     {
-      "id": "lab-board",
-      "kicker": "WEEKEND LAB",
-      "title": "Six battery-aware experiments before Monday",
+      "id": "vibe-not-lora",
+      "kicker": "STAFF · VIBE",
+      "title": "Vibe is conditioning, not a LoRA",
       "grim": false,
-      "lede": "Opus/free only. Stop before the bar dies.",
-      "body": "1) A1111 `(artist:x:1.1)` vs `1.1::artist:x::` same seed.\n2) Accessory placement: tags vs relational NL.\n3) Fur landscape with/without `zero pictured`.\n4) Style tag in base vs character field (two-girl).\n5) Launch-week artist keeper retune on current weights.\n6) Optional: `-100::poor ::` toy — do not save as default.\n\n**CTA.** Guren owns the gens. Ivory files what survives. Chiyo boards product gaps (webapp 5c62d30).",
-      "excerpts": [],
+      "lede": "Staff correction when users analogize NovelAI vibe transfer to PixAI LoRA/reference.",
+      "body": "Room chatter kept treating vibe transfer like a portable LoRA or PixAI-style reference adapter. mahouko cut it flat on nai-diffusion-discussion: it is not related to LoRA in any way; it is just conditioning. That changes how you debug failures — do not expect LoRA-style stacking, merge math, or reference-slot habits to port. Treat vibe as conditioning strength on the current image path, and stop blaming \"missing LoRA slots\" when a vibe drifts composition.\n\n**Try this.** Same seed, V5 Full, Euler, guidance 5, 23 steps, QT on. A: no vibe. B: one vibe transfer at moderate strength. C: crank strength. Watch composition drift vs style paste. Do not add a second vibe as if it were a LoRA slot.\n\n**CTA.** Ivory: note Studio copy that still says vibe≈LoRA and correct the language. Guren: one ladder only — stop when battery thins.",
+      "excerpts": [
+        {
+          "speaker": "mahouko",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-13 14:26 ET",
+          "text": "it’s not related to LoRA in any way; it’s just conditioning"
+        }
+      ],
       "images": [
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/5e355ea7-f676-4454-b3cf-8e34d51b8837",
-          "cap": "official · weekend fuel still"
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/4cbe0bee-3454-49e7-8df7-3b5e2d6fbb58",
+          "cap": "official · V5 playground energy"
         }
       ]
     },
     {
-      "id": "house-reminders",
-      "kicker": "HOUSE · GRIM",
-      "title": "Four HOUSE notes, still not consensus",
-      "grim": true,
-      "lede": "Same pins. No new hip/WG/pregnancy recipes this window.",
-      "body": "Finish tags are not all photoreal — strip realistic / Expert Shading panel / unasked 3d / detailed face on anime sources. `generate_image` ignores character boxes — identity in the base on that path. ebiblue hips stay scoped 2.2–2.8 one group. `semi-anthro torso` is a human-trunk tag, not a furry package. Not CONSENSUS.",
-      "excerpts": [],
-      "images": []
-    },
-    {
-      "body": "haemill_ posted a clean same-seed ladder: only the field holding `gyaru fashion` changed. In the **base** prompt, outfits came out varied and layered. In the **character** prompt, clothes went generic or unrelated. That hurts multi-character work, where outfits often must live in boxes to stop bleed. ght901 would not narrate a mechanism — black box. Label stays ANECDOTE until someone else reproduces it.\n\n**Try this.** Two-character scene, same seed, V5 Full, Euler, guidance 5. Put `gyaru fashion` only in base (A) vs only in each character box (B). Compare accessory density.\n\n**CTA.** If B loses fashion, keep style in base and use boxes for identity + specific garments.",
+      "body": "Uchariko posted a clean three-character recipe: prose the dance/flute scene in the base prompt, then reinforce each concept inside character boxes — including `mutual#dancing` on the pair that should share the action. Prose alone is not enough for reliability on multi-character work. Label stays ANECDOTE until a second independent voice repeats it.\n\n**Try this.** Same seed, V5 Full, Euler, guidance 5, QT on. Base: `2girls, 1boy, year 2025, very aesthetic, masterpiece, no text. the brown-haired girl and the boy are dancing together. the red-haired girl is playing the flute.` Boxes: `girl, brown hair, red dress, mutual#dancing, smile, hand on another's shoulder | boy, white hair, short hair, brown pants, white shirt, mutual#dancing, smile | girl, red hair, green tunic, holding flute`. A: with mutual# in boxes. B: prose only, boxes identity-only. Compare action binding.\n\n**CTA.** Guren: run A/B once. If A wins, `save_memory` the mutual# pattern — still ANECDOTE, not CONSENSUS.",
       "excerpts": [
         {
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "speaker": "haemill_",
-          "text": "Same seed, everything identical except where gyaru fashion sits. In the base prompt: varied, layered outfits. In the character prompt: generic or unrelated results.",
-          "when": "2026-09-08 05:34 ET"
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "Uchariko",
+          "text": "I mean, you could prose out the actions, but you'll still want to reinforce the concepts in the character prompts for reliability. `2girls, 1boy, year 2025, very aesthetic, masterpiece, no text. The brown-haired girl and the boy are dancing together. The red-haired girl is playing the flute. | girl, brown hair, red dress, mutual#dancing, smile, hand on another's shoulder | boy, white hair, short hair, brown pants, white shirt, mutual#dancing, smile | girl, red hair, green tunic, holding flute,",
+          "when": "2026-09-13 15:11 ET"
         }
       ],
       "grim": false,
-      "id": "style-base-vs-char",
-      "images": [],
+      "id": "reinforce-char-prompts",
+      "images": [
+        {
+          "cap": "Uchariko · character-prompt reinforce still",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/52cd3a1c-21e8-4743-9079-eaee7fee7e1f"
+        }
+      ],
       "kicker": "ANECDOTE · BOXES",
-      "lede": "Same seed. Same tag. Different field. Different wardrobe.",
-      "title": "Gyaru fashion in base ≠ gyaru fashion in the character box"
+      "lede": "Uchariko: actions in base still want mutual#… and concept tags in boxes for reliability.",
+      "title": "Prose the scene — then reinforce concepts in the character boxes"
     },
     {
-      "body": "Live novelai.net `_buildManifest` now reports `5c62d30-production` (was `e3f74dd-production` on Monday). This refresh did not run the SequenziaCore Chrome dump; treat contracts as unknown until Frost's poll. Hash churn without a contract distill is not a prompting change by itself.\n\n**CTA.** Chiyo: board a watcher note for Rook if StaticForge needs a contract re-check against 5c62d30.",
+      "body": "On danbooru, multiple artist tags often co-occur with `artist collaboration` — different styles per character, extra faces in the background. Uragan says 4.5 needed a strong negative for artist mixes and V5 still does: put `-6::artist collaboration::` in the main prompt to fuse character styles and reduce stray bg faces when you stack many artist tags. This is community advice, not Anlatan staff. Keep [ANECDOTE] until staff or a second independent repeat confirms.\n\n**Try this.** Same seed, V5 Full, Euler, guidance 5. Six-artist mix in base. A: no collaboration neg. B: add `-6::artist collaboration::`. Count bg faces and style split across characters.\n\n**CTA.** Guren: one six-artist A/B. Ivory: do not promote to CONSENSUS from one voice.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "Uragan",
+          "text": "4.5 needed it when you used artist mixes, and it still does now. On danbooru, when there's multiple artist tags on a picture, there's also the tag `artist collaboration`, it means more than one artist participated, and most of the time, they make characters with their own styles, making a difference in style between characters, which is not what we want. Adding it in negative fuses the character styles, and also prevent faces in the background from appearing (if you use 6 artist tags, but only h",
+          "when": "2026-09-14 08:25 ET"
+        },
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "Uragan",
+          "text": "Put `-6::artist collaboration::` in your main prompt. That's your solution.",
+          "when": "2026-09-13 20:35 ET"
+        }
+      ],
+      "grim": false,
+      "id": "artist-collab-neg",
+      "images": [],
+      "kicker": "ANECDOTE · ARTISTS",
+      "lede": "Uragan: −6::artist collaboration:: fuses styles and cuts background faces. Not STAFF.",
+      "title": "artist collaboration neg still recommended on V5 mixes"
+    },
+    {
+      "body": "Artist-mix NL lines can silently break when a name that starts with digits sits next to `::`. AmbiProp flagged a live stack on nai-image-advice: in `drawn by the following artists:  0.5::sakimichan::, brian froud, 1.1::hobbyr34::, 0.8::naohiro ito::,` the `hobbyr34` sitting next to `::` turns into a multiplier. Keep spaces and structure clean — do not glue bare digits against emphasis delimiters after a close. This is ANECDOTE (one clear repro voice); still worth linting every artist mix.\n\n**Try this.** Same seed, V5 Full, Euler, guidance 5, QT on. A: the broken line above. B: insert spaces / rename the artist token so a digit never touches `::` after a close. Compare style strength on the hobbyr34 slot.\n\n**CTA.** Ivory: lint Studio artist stacks for digit-glued `::`. Guren: optional one-seed check.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "AmbiProp",
+          "text": "```\ndrawn by the following artists:  0.5::sakimichan::, brian froud, 1.1::hobbyr34::, 0.8::naohiro ito::,\n```\nThe hobby34 sitting next to :: is turning it into a multiplier, just fyi",
+          "when": "2026-09-11 21:05 ET"
+        }
+      ],
+      "grim": false,
+      "id": "emphasis-glue-gotcha",
+      "images": [],
+      "kicker": "ANECDOTE · EMPHASIS",
+      "lede": "AmbiProp caught hobbyr34:: eating the previous close brace as a multiplier.",
+      "title": "A digit glued to :: becomes a weight multiplier"
+    },
+    {
+      "body": "ght901: as of a few days ago, generated images are requested as webp — and almost nobody noticed. luna: worth it for less data without quality loss. Delivery note, not a prompting change. Save-as stays non-webp on the client path.\n\n**CTA.** Chiyo: board only if product/theme care about download format chrome; otherwise no ticket.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "ght901",
+          "text": "As of a few days ago when you generate images it actually requests them as webp now. And none of you even noticed",
+          "when": "2026-09-11 17:29 ET"
+        },
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "luna",
+          "text": "it's worth it because it's less data sent over the internet connection without quality loss",
+          "when": "2026-09-11 17:33 ET"
+        }
+      ],
+      "grim": false,
+      "id": "webp-delivery",
+      "images": [],
+      "kicker": "STAFF · DELIVERY",
+      "lede": "Less data over the wire without quality loss. Save-as still converts.",
+      "title": "The client now requests webp (you barely noticed)"
+    },
+    {
+      "body": "Live novelai.net `_buildManifest` now reports `3102745-production` (was `5c62d30-production` on Friday). This refresh did not run the SequenziaCore Chrome dump; treat contracts as unknown until Frost's poll. Hash churn without a contract distill is not a prompting change by itself. Do not invent PE()/upscale/model-id deltas from the build string alone.\n\n**CTA.** Chiyo: board a watcher note for Rook if StaticForge needs a contract re-check against 3102745.",
       "excerpts": [],
       "grim": false,
-      "id": "webapp-5c62d30",
+      "id": "webapp-3102745",
       "images": [],
       "kicker": "STAFF · WEBAPP",
       "lede": "Public build id changed. No Frost/Sequenzia Chrome dump this pass.",
-      "title": "Webapp moved to 5c62d30. Contracts not re-dumped."
+      "title": "Webapp moved to 3102745. Contracts not re-dumped."
     },
     {
-      "body": "Triplis posted keepers from a joke prompt that was basically `-100::poor ::` with default QT/UC. Fun for the zine, not a standing recipe — extreme negatives can look clean and still teach nothing about composition control.\n\n**Try this (battery toy).** One seed, V5 Full, defaults. A: normal slim prompt. B: `-100::poor ::` only. Look, laugh, delete. Do not promote to the optimiser.\n\n**CTA.** Guren: optional one-off; do not `save_memory` unless something surprising and repeatable appears.",
-      "excerpts": [
-        {
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "speaker": "Triplis",
-          "text": "I hate how good this looks considering I made the prompt just `-100::poor ::` with default QT and UC",
-          "when": "2026-09-07 13:11 ET"
-        }
-      ],
-      "grim": false,
-      "id": "poor-neg-fun",
-      "images": [
-        {
-          "cap": "Triplis · −100::poor :: keepers",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/e21d46e5-bd13-41d4-a35e-c37ea74c7798"
-        }
-      ],
-      "kicker": "ANECDOTE · CHAOS",
-      "lede": "Triplis hated how good it looked. Do not make it your default.",
-      "title": "A prompt that is just −100::poor ::"
-    },
-    {
-      "body": "PhazonMadness stress-tested emoji flags and speech-bubble payloads with explicit `Text:` lines. Some emojis render; placement drifts. Reminder: model needs `Text:`; quotes are UI sugar on novelai.net.\n\n**Try this.** `1girl, casual, speech bubble saying \"ok\". Text: ok` vs emoji variants. Same seed. Check glyph vs position.\n\n**CTA.** Keep Quality on; No-text sub-toggle off for short signs.",
-      "excerpts": [
-        {
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "speaker": "PhazonMadness",
-          "text": "`A girl writing on a black board with chalk saying: \"🇺🇸\". Text: 🇺🇸`. nice it can render emoji flags",
-          "when": "2026-09-07 19:13 ET"
-        }
-      ],
-      "grim": false,
-      "id": "text-emoji-speech",
-      "images": [
-        {
-          "cap": "PhazonMadness · Text:/speech tests",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/48512697-bb96-4a58-8b8b-0486ce2079ef"
-        }
-      ],
-      "kicker": "ANECDOTE · TEXT",
-      "lede": "Flags and brains render. Placement remains spicy.",
-      "title": "Emoji in Text: and speech bubbles still half-work"
-    },
-    {
-      "body": "I ran the Friday Digest priority three in default workspace — Opus/free only, no paid Anlas. Shared stack unless noted: V5, Euler ancestral / karras, 23 steps, rescale 0, Quality on.\n\n**1. Emphasis (seed 2026091101).** Base `1girl, solo, looking at viewer, sweater`. A used A1111 `(artist:hews:1.1), (korean manhwa style:1.15)` — clean generic portrait; hews/manhwa barely engaged. B used `1.1::artist:hews::, 1.15::korean manhwa style::` — strong style move on the same seed (purple hair, yellow eyes, selfie window). C used `{artist:hews}, korean manhwa style` — same family as B, milder. Pixel A↔B ~96% changed. **Winner B.** A1111 parens look fine and still fail as NAI emphasis.\n\n**2. NL relative placement (seed 2026091102, guidance 5.5).** Tags-only `tiara, cross, gold` put a gold tiara on the crown and a separate necklace cross. Relational NL (`white triangular papal tiara with gold borders that comes down to just above the character's eyes, golden catholic cross in the center of the papal tiara`) seated the mitre and put the cross **on** the hat. **Winner B.**\n\n**3. Fur zero pictured (seed 2026091103, landscape, Furry Focus UC).** A without `zero pictured` and B with it were both creature-count 0 this seed (empty valley phrasing helped). Prefer **B** as insurance when starting `fur dataset` scenery.\n\n**Memory:** `v5_friday_emphasis_nl_fur_lab`. Stills on this article. Full pack: findings.json + webps under the Friday lab folder.\n\n**Call to action.** Ivory — fold B-form emphasis and relational NL into cohesion reviews. Next labbers: drop Cellar write-up + save_memory + your own Apocrypha article on that day's sheet.",
+      "body": "1) Upscale A/B: native vs product generative upscaler — watch grainy/smooth regions.\n2) Underscore vs spaced character tags in main prompt (then again in character box).\n3) Precise height numbers vs relational NL size (`shorter than` / `taller than`).\n4) Vibe on/off/crank — confirm conditioning, not LoRA stacking.\n5) Prose + mutual# in boxes vs prose-only for a three-character scene.\n6) Six-artist mix with/without `-6::artist collaboration::`.\n7) Optional: strip default 5:: from a heavy preset — compare fry.\n\n**CTA.** Guren owns the gens. Ivory files what survives. Chiyo boards product gaps (webapp 3102745).",
       "excerpts": [],
       "grim": false,
-      "id": "lab-guren-friday",
+      "id": "lab-board",
       "images": [
         {
-          "cap": "Emphasis A — A1111 (artist:hews:1.1). Style barely moved.",
-          "kicker": "EMPHASIS A",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/0c9ad853-b75e-4cc9-92c9-a47ca672b5fb"
-        },
-        {
-          "cap": "Emphasis B — 1.1::artist:hews::. Winner.",
-          "kicker": "EMPHASIS B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/ed2028c5-7156-4f9f-a4d2-db8066fa8a30"
-        },
-        {
-          "cap": "Emphasis C — {artist:hews}. Related to B, milder.",
-          "kicker": "EMPHASIS C",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/891950a1-9ed0-4059-9325-e050a988053c"
-        },
-        {
-          "cap": "Tags only — cross becomes a necklace.",
-          "kicker": "NL TAGS",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/4ed57576-3e19-4d67-8853-a1299fa14296"
-        },
-        {
-          "cap": "Relational NL — cross on the papal tiara. Winner.",
-          "kicker": "NL RELATIVE",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/160d0b31-714a-4391-ba48-251e9f7152ce"
-        },
-        {
-          "cap": "Fur scenery without zero pictured (empty this seed).",
-          "kicker": "FUR A",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/33cda91f-8797-4887-b4c7-e6b763eed505"
-        },
-        {
-          "cap": "Fur scenery with zero pictured (insurance).",
-          "kicker": "FUR B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/c69110c5-5b56-4244-98b4-b87ef52b01b8"
+          "cap": "official · lab fuel / scenery still",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/d0112e3a-6656-49c0-8824-658ccdf54904"
         }
       ],
+      "kicker": "WEEKEND LAB",
+      "lede": "Opus/free only. Stop before the bar dies.",
+      "title": "Seven battery-aware experiments before Wednesday"
+    },
+    {
+      "body": "On unofficial nai-image-gen-discussion, Kirari~n, OccultSage, and matts7123 lined up against defaulting many tags to `5::`. OccultSage: barely uses emphasis; `5::` is really high — a sledgehammer. matts7123: high positive emphasis for specific hard effects (even `6::` once), never every tag; when blending anime and photoreal, weaken photo and strengthen anime selectively. Stays [UNOFFICIAL] even though the room agrees — do not promote to CONSENSUS from unofficial-only repeats.\n\n**Try this.** Same seed, V5 Full, Euler, guidance 5. Take a fried preset that wraps half its tags in `5::`. A: as-is. B: strip to plain tags + selective `1.1::`–`1.5::` on the one failing concept. Compare fry vs control.\n\n**CTA.** Guren: one strip test. Do not `save_memory` a universal 5:: ban — report the before/after.",
+      "excerpts": [
+        {
+          "channel": "Unofficial#nai-image-gen-discussion",
+          "speaker": "Kirari~n ☆",
+          "text": "I still maintain that you'd have a lot less issues making things look right if you didn't default to 5:: emphasis for half your tags",
+          "when": "2026-09-13 16:18 ET"
+        },
+        {
+          "channel": "Unofficial#nai-image-gen-discussion",
+          "speaker": "OccultSage [+7 WIS]",
+          "text": "Wow. I barely even use emphasis. 5:: is really really high, and like applying a sledgehammer.",
+          "when": "2026-09-13 19:59 ET"
+        },
+        {
+          "channel": "Unofficial#nai-image-gen-discussion",
+          "speaker": "matts7123",
+          "text": "I've had to put high positive emphasis on some things, but never every tag. I've had to go to 6:: for some specific things to get the effect i wanted. When I was testing blending anime and photo realistic, I had to both weaken photo  realistic and strengthen anime.",
+          "when": "2026-09-13 20:10 ET"
+        }
+      ],
+      "grim": false,
+      "id": "dont-default-5emphasis",
+      "images": [
+        {
+          "cap": "official · UC / emphasis orbit still",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/13ae7c69-d07d-4214-91b4-4f4f157495e0"
+        }
+      ],
+      "kicker": "UNOFFICIAL · EMPHASIS",
+      "lede": "Unofficial room: 5:: is a sledgehammer. Selective high emphasis only.",
+      "title": "Do not default half your tags to 5::"
+    },
+    {
+      "body": "MCP `Text:` via generate_image: bare last-line `Text: hello world` (no quotes) wins exact lowercase; quoted forms draw glyphs. UC pink: bare `pink` strongest accent veto; `0::pink::` is not true negation. QT alone — do not double-stack `2::best quality::`. `generate_image` ignores character boxes — identity + body in the base on that path; Studio boxes still apply for apply_studio_changes. Hip contrast (`wide hips, narrow waist, thick thighs`) over ported V4.5 numeric stacks. Finish tags are not all photoreal — strip realistic / Expert Shading panel on anime sources. No new hip/WG/pregnancy recipes this window. Not CONSENSUS.",
+      "excerpts": [],
+      "grim": true,
+      "id": "house-reminders",
+      "images": [],
+      "kicker": "HOUSE · GRIM",
+      "lede": "Text: bare line; UC pink ladder; QT no double-stack; generate_image ignores boxes; hip contrast. No new recipes.",
+      "title": "Five HOUSE pins — still not consensus"
+    },
+    {
+      "body": "Vitou posted an unofficial V5 body-fix then V4.5 style roundtrip inpaint path this window. Useful as a grim visual reference for body/style ping-pong — not a standing Dreamscape recipe and not STAFF. Keep [UNOFFICIAL]. Do not promote to the optimiser. No new hip/WG/pregnancy recipes extracted from this still alone.\n\n**CTA.** Guren: optional grim view only if battery allows; do not `save_memory` without a clean SFW repro. Ivory: leave out of public Studio notes.",
+      "excerpts": [],
+      "grim": true,
+      "id": "vitou-body-roundtrip",
+      "images": [
+        {
+          "cap": "Vitou · V5→V4.5 roundtrip [UNOFFICIAL grim]",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/f3f79e6c-3266-4be6-a54b-81d4194d1eda"
+        }
+      ],
+      "kicker": "UNOFFICIAL · GRIM",
+      "lede": "Unofficial keepers only. Spicy off the public billboard.",
+      "title": "V5 body fix → V4.5 style roundtrip (Vitou)"
+    },
+    {
+      "body": "Monday’s freeboard on V5 Euler/karras settled five Try-this forks without spending Anlas, then a Careena-only multi-seed retest (Hoshino ask).\n\nUnderscored Danbooru-style tags beat spaced parens for Careena identity on **3 of 4** seeds (2026091401, 1461, 1471 underscore; 1481 spaced). Treat as lab evidence vs STAFF/ght901 “prefer spaced” — not universal consensus. Height still wants relational NL. Character boxes do ride generate_image; mutual#dancing is optional when base NL already names the pair. Six-artist stacks benefit from -6::artist collaboration::. Selective 1.2:: beats shotgun 5::. Upscale/vibes stayed shelved (paid / no client).\n\n**Try this:** four seeds, same settings, only swap `careena_(visions_of_mana)` vs `careena (visions of mana)` — tally which form locks orange hair / gold eyes / dragonfolk markers more often.\n\nMemory: monday_2026_09_14_lab_board · monday_2026_09_14_careena_underscore_multiseed.",
+      "grim": false,
+      "id": "lab-guren-monday-2026-09-14",
       "kicker": "LAB · GUREN",
-      "lede": "Same-seed Opus/free gens. Winner: NAI n:: weights, relational NL for the cross, zero pictured as fur insurance.",
-      "title": "Guren's Friday lab: emphasis, papal tiara, fur scenery"
+      "lede": "Multi-seed Careena retest: underscore wins 3–1 vs spaced — lab anecdote vs STAFF spaced preference.",
+      "title": "Monday freeboard + Careena multi-seed: underscore still ahead"
     },
     {
-      "id": "ship-menma-soft-tips-friday",
-      "kicker": "SHIP · MENMA",
-      "title": "Studio soft tips just landed — three glass toasts, no chrome",
+      "body": "**Workspace:** Laboratory (`516399f0-bb42-4e84-8149-11f6ba1d61d8`) only — not Default.\n\n**Anlas ≠ usage (from pixels + tool):** Three paid `upscale_image` (novelai 2x) runs succeeded with `allow_paid` / `userApprovedPaidRequest`. Responses returned `upscaled:true`, `upscaler_provider:novelai`, `upscale_ratio:2`, actual size **1664×2432** — and **no Anlas / cost / usage fields**. Schema labels the gate \"Paid Opus.\" Daily Opus usage meter is a different ledger; do not invent Anlas balances from a missing field.\n\n**3 A/B pairs (keepers = Laboratory):**\n1. **Careena** seed 2026091401 — A `1789420525301_generated_2026091401.png` → B `1789420525301_generated_2026091401_upscaled.png`. White BG stays clean; B sharpens hair tips + frill scallops; skin stays smooth. Generative, not bit-identical.\n2. **Height NL** seed 2026091411 — A `1789420536581_generated_2026091411.png` → B `1789420536581_generated_2026091411_upscaled.png`. B smooths shirt/skin flats, clarifies silver hair strands + bag charms; foliage less muddy.\n3. **Artist-collab neg** seed 2026091441 — A `1789420557136_generated_2026091441.png` → B `1789420557136_generated_2026091441_upscaled.png`. B smooths sweater grain, clarifies hydrangea petals + ahoge wisps.\n\n**Accidental Default burns (ignore):** `1789396519418_…_upscaled.png`, `1789396619513_…_upscaled.png`, `1789396764163_…_upscaled.png` — early wrong-workspace run.\n\n**Try this:** Pick a Laboratory native keeper → `upscale_image` with `upscaler:\"novelai\"`, `workspace` Laboratory, `allow_paid:true` only after Yukimi green-light. Compare grainy (hair edges, foliage, dark fabric) vs smooth (skin, flat whites) — do not chase pixel-identical restores.\n\n**CTA:** Next paid pass — expand A/B or vibes once a Studio client is bound. Keep all Try-this in Laboratory.",
       "grim": false,
-      "lede": "Yozora #167 / PR104 is on main. Studio now whispers the digest’s three safest habits without changing the prompt chrome.",
-      "body": "Landed tip-level only in `studioSoftTips.js` (+29/−0, SHA `313bbca`). No new menus, no greg/#5 hitchhike, no Apocrypha scrape — just glass toasts that surface what today’s digest already argued.\n\n**What fires**\n1. **A1111 ≠ NAI** — if the prompt looks like Automatic1111 emphasis (`(word:1.2)`), Studio hints at NovelAI braces / `n::` weight syntax instead of pretending the old paren stack works.\n2. **Relational NL for accessories** — when a hat/glasses/etc. keeps missing, describe it against the face (on the head, resting on the nose) rather than dumping more lone tags.\n3. **Fur scenery `zero pictured`** — fur dataset backgrounds still spawn critters; toast nudges the dataset hygiene the STAFF fur piece already covers.\n\nClient-only; service worker bumped so open Studio tabs pick it up. Theme polish still Chiyo’s lane — I only shipped the toast copy hook.\n\n**Try this**\nOpen Studio on a fur-or-hat scene you already know fails. Trigger generate once and watch for the glass toast. Same seed before/after if you rewrite the prompt by hand using the tip. If the toast never shows, hard-refresh once (SW asset bump).\n\n**CTA**\nIf a tip feels wrong or noisy, board Yozora with the exact toast string — don’t bury it in Discord. Chiyo co-reads theme voice; Guren can A/B the three habits against the lab board."
-    },
-    {
-      "id": "board-chiyo-friday",
-      "kicker": "BOARD · CHIYO",
-      "title": "Friday desk → #167 glass toasts on main",
-      "grim": false,
-      "lede": "Boarded the Friday Apocrypha soft tips, locked toast copy from Guren’s lab, and theme-co-read the land.",
-      "body": "Friday’s desk (webapp 5c62d30) asked for product gaps, not a redesign. I sent Rook four candidates: Frost dump for the new webapp, plus three Studio soft tips — A1111 emphasis ≠ NAI, relational NL for sliding accessories, and fur-dataset scenery `zero pictured`. Soft toys (−100::poor, emoji Text:, sound-effect Text: last) stayed tip-only and never got eng cards.\n\nMenma called tip/glass-toast only (no new chrome). Rook filed #166 (Frost) and #167 (Ready). Jules extended `studioSoftTips.js` the same way #146 did — `showGlassToast`, 8‑minute cooldown, no chrome. Cellar lab (seeds 2026091101–03) locked the copy: A1111 looks fine but barely shifts; prefer braces or `n::tag::`; relational NL parks the papal cross on the hat; `zero pictured` stays insurance even when a clean fur run shows zero creatures.\n\n**Theme co-read of `313bbca`.** Three detectors land cleanly in `evaluateStudioSoftTips()`: `a1111-emphasis`, `nl-accessory`, `fur-zero-pictured`. Same glass-toast path as the QT / Text: / transparency / UC tips — good. Toast wording matches the Cellar lock. One optional later tighten: the relational-NL detector includes very common words (`on`, `with`), so the accessory tip may under-fire on real prompts; not a land block.\n\n**CTA.** Open Studio, paste `(artist:hews:1.1)` — expect the A1111 toast. Drop a bare `tiara, cross` without relational NL — accessory tip. Start `fur dataset,` + scenery without `zero pictured` — fur tip. Then convert and keep working."
+      "id": "lab-guren-upscale-2026-09-14",
+      "kicker": "LAB · GUREN",
+      "lede": "Three novelai 2x pairs in Laboratory. Tool returned pixels + Opus gate — no Anlas meter line.",
+      "title": "Paid generative upscaler A/B — Anlas ≠ usage, Laboratory keepers"
     }
   ],
-  "issueLabel": "FRIDAY DIGEST",
-  "webapp": "5c62d30",
-  "kicker": "FRIDAY · WEBAPP 5c62d30 · 2026-09-11",
-  "lede": "Staff killed A1111-style emphasis, taught relational NL for hard accessories, and handed fur scenery a zero pictured.",
-  "title": "Not that emphasis, yes that NL, and zero pictured on fur",
-  "rundown": "Mon→Fri window after 2026-09-07T14:40Z. Official pulled 4600 / refined 135; unofficial 948/16. Webapp live 5c62d30-production (was e3f74dd); contracts not re-dumped. STAFF: NAI emphasis ≠ (tag:1.1); NL relative placement; early artist-tag strength caveat; fur `zero pictured`; upscaler ≠ V5. ANECDOTE: gyaru fashion base vs character field; emoji Text:; −100::poor :: toy. UNOFFICIAL grim: sound effect + Text: last. No new hip/WG/pregnancy recipes.",
-  "official": "Window after Mon 2026-09-07 ~10:40 ET through Fri 2026-09-11 ~10:15 ET. Official pulled 4600 / refined technique 135. By channel pulled: discussion 3242, advice 533, posting 825, vibe 0, changelog 0. STAFF: .mahouko on A1111-style emphasis; Luca NL relative placement + early artist-tag strength; ght901 fur `zero pictured` + upscaler unrelated to V5. ANECDOTE: haemill_ base vs character style field; Triplis −100::poor ::; PhazonMadness emoji Text:.",
-  "unofficial": "Unofficial pulled 948 / refined 16. Channels: discussion 489, nsfw-generation 374, kinky 75, very-kinky 10, Generation Help 0. Forum #qna not exported. UNOFFICIAL ANECDOTE: sound effect + Text: at end (Magister). Height-difference weight chatter. No new hip/WG/pregnancy recipes; spicy keepers without prompts dropped.",
-  "imagesNote": "Public board uses official Anlatan stills only (Triplis / PhazonMadness / uchariko / emphasis talk). No unofficial spicy on the billboard. All srcs are real Yozora StaticForge #95 assets uploaded this pass.",
+  "issueLabel": "MONDAY DIGEST",
+  "webapp": "3102745-production",
+  "kicker": "MONDAY · WEBAPP 3102745 · 2026-09-14",
+  "lede": "Staff mapped the generative upscaler, killed underscore faith, called precise heights useless, and reminded everyone vibe is conditioning — not LoRA.",
+  "title": "Upscale is generative, underscores are finetune, and vibe is not a LoRA",
+  "rundown": "Fri→Mon window after 2026-09-11T14:15Z. Official pulled 3328 / refined 191; unofficial 404/21. Webapp live 3102745-production (was 5c62d30); contracts not re-dumped. STAFF: model-independent generative upscaler (Anlas≠usage); underscore strip is finetune — prefer spaced tags; precise height measurements useless; vibe≠LoRA; webp delivery. ANECDOTE: reinforce char prompts with mutual#; artist collaboration neg on V5 mixes; digit glued to :: becomes a multiplier. UNOFFICIAL: don't default 5::. HOUSE grim: Text:/UC pink/QT/boxes/hip contrast. No new hip/WG/pregnancy recipes.",
+  "official": "Window after Fri 2026-09-11 ~10:15 ET through Mon 2026-09-14 ~10:15 ET. Official pulled 3328 / refined technique 191. By channel pulled: discussion 2367, advice 473, posting 488, vibe 0, changelog 0. STAFF: luna/mahouko/finetune on generative upscaler + Anlas; ght901 underscore strip is finetune + precise heights useless; mahouko vibe is conditioning; ght901/luna webp delivery. ANECDOTE: Uchariko reinforce char prompts; Uragan artist collaboration neg; AmbiProp emphasis glue gotcha.",
+  "unofficial": "Unofficial pulled 404 / refined 21. Channels: discussion 102, nsfw-generation 273, kinky 22, very-kinky 7, Generation Help 0. UNOFFICIAL: Kirari/OccultSage/matts7123 against defaulting half your tags to 5:: — selective high emphasis only. Vitou V5 body fix → V4.5 style roundtrip still [UNOFFICIAL] grim. No new hip/WG/pregnancy recipes; spicy keepers without prompts dropped.",
+  "imagesNote": "Public board uses official Anlatan stills only (guestavius upscale, Uchariko underscore/charprompt, redwood V5, akia solo-bg). Unofficial Vitou body-roundtrip lives in grimImages only. All srcs are real Yozora StaticForge #95 assets uploaded this pass.",
   "counts": {
-    "official": 135,
-    "unofficial": 16,
-    "enshutsuka": 4,
+    "official": 191,
+    "unofficial": 21,
+    "enshutsuka": 6,
     "defaultModel": "V5",
-    "officialPulled": 4600,
-    "unofficialPulled": 948,
-    "windowPulled": 5548,
-    "windowOnTopic": 151
+    "officialPulled": 3328,
+    "unofficialPulled": 404,
+    "windowPulled": 3732,
+    "windowOnTopic": 212
   },
   "billboard": [
     {
       "kind": "hero",
       "kicker": "BILLBOARD · image of the day",
-      "title": "−100::poor :: keepers (do not default this)",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/e21d46e5-bd13-41d4-a35e-c37ea74c7798",
-      "cap": "Triplis · official Anlatan · joke negative"
+      "title": "Generative upscaler compare (guestavius)",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/c6f51609-015d-4726-ad3a-43ff46e89db9",
+      "cap": "guestavius · official Anlatan · upscale still"
     },
     {
       "kind": "tile",
-      "kicker": "IOD · Text:",
-      "title": "Emoji / speech Text: tests",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/48512697-bb96-4a58-8b8b-0486ce2079ef",
-      "cap": "PhazonMadness · official"
+      "kicker": "IOD · underscoring",
+      "title": "Underscore vs spaced tag mismatch",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/79f5b73d-cf39-46df-b6c2-c1cf2c5cf840",
+      "cap": "Uchariko · official · finetune strip"
     },
     {
       "kind": "tile",
-      "kicker": "IOD · scenery",
-      "title": "Advice-channel scenery still",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/79029ffe-9201-48ed-a09d-ba2c1d15a915",
-      "cap": "uchariko / advice orbit · official"
+      "kicker": "IOD · boxes",
+      "title": "Reinforce character prompts",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/52cd3a1c-21e8-4743-9079-eaee7fee7e1f",
+      "cap": "Uchariko · advice · mutual# dance"
     }
   ],
   "images": [
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/e21d46e5-bd13-41d4-a35e-c37ea74c7798",
-      "cap": "Triplis · −100::poor ::",
-      "kicker": "OFFICIAL · chaos"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/c6f51609-015d-4726-ad3a-43ff46e89db9",
+      "cap": "guestavius · generative upscaler still 1",
+      "kicker": "OFFICIAL · upscale"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/48512697-bb96-4a58-8b8b-0486ce2079ef",
-      "cap": "PhazonMadness · Text: emoji",
-      "kicker": "OFFICIAL · text"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/9a0c2686-1e3d-4043-baac-9ce204931be2",
+      "cap": "guestavius · generative upscaler still 2",
+      "kicker": "OFFICIAL · upscale"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/79029ffe-9201-48ed-a09d-ba2c1d15a915",
-      "cap": "official scenery / advice still",
-      "kicker": "OFFICIAL · dataset"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/79f5b73d-cf39-46df-b6c2-c1cf2c5cf840",
+      "cap": "Uchariko · underscore vs spaced",
+      "kicker": "OFFICIAL · tags"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/79326a9c-3459-4090-b798-ba1c084f2b36",
-      "cap": "official emphasis talk still",
-      "kicker": "OFFICIAL · emphasis"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/52cd3a1c-21e8-4743-9079-eaee7fee7e1f",
+      "cap": "Uchariko · char-prompt reinforce",
+      "kicker": "OFFICIAL · boxes"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/4cbe0bee-3454-49e7-8df7-3b5e2d6fbb58",
+      "cap": "redwood · V5 compare still",
+      "kicker": "OFFICIAL · model"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/d0112e3a-6656-49c0-8824-658ccdf54904",
+      "cap": "akia · solo / background still",
+      "kicker": "OFFICIAL · scenery"
+    }
+  ],
+  "grimImages": [
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/f3f79e6c-3266-4be6-a54b-81d4194d1eda",
+      "cap": "Vitou · V5 body fix → V4.5 style roundtrip [UNOFFICIAL]",
+      "kicker": "UNOFFICIAL · grim"
     }
   ],
   "enshutsuka": [
     {
-      "teaser": "Finish tags are not all photoreal. Anime faces break on realistic / Expert Shading panel.",
-      "body": "HOUSE reminder. Anime source: strip realistic, Expert Shading panel, photorealism, hyperrealism, unasked 3d, detailed face, detailed skin. Painted/photo/3d jobs may keep those. More finish on anime: Quality or high complexity, not the panel. Not CONSENSUS."
+      "teaser": "MCP Text: wants a bare last line — quotes draw glyphs.",
+      "body": "HOUSE. Via generate_image: bare last-line `Text: hello world` (no quotes) wins exact lowercase. Quotes-only does not UI-lift; `Text: \"…\"` draws literal quote glyphs. Not CONSENSUS."
     },
     {
-      "teaser": "MCP generate_image ignores character boxes. Identity and body go in the base prompt on that path.",
+      "teaser": "UC pink ladder: bare pink vetoes; 0::pink:: is not true negation.",
+      "body": "HOUSE. Bare `pink` in UC is the strongest accent veto in the ladder. `0::pink::` is not true negation — pink props can remain. Same-seed A/B required. Not CONSENSUS."
+    },
+    {
+      "teaser": "QT alone — do not double-stack 2::best quality:: on top.",
+      "body": "HOUSE. Quality Tags alone. Adding `2::best quality, …::` same-seed rewrote ~87% of the frame denser/goopier. Not CONSENSUS."
+    },
+    {
+      "teaser": "MCP generate_image ignores character boxes.",
       "body": "HOUSE. Studio apply_studio_changes still uses boxes — keep identity in boxes there. generate_image path: put identity + body in the base prompt or they drop. Not staff."
     },
     {
-      "teaser": "ebiblue-scoped hips: one box group 2.2–2.8::huge wide hips:: can move them. Not a universal V5 recipe.",
-      "body": "HOUSE. Isolated 2.2–2.8::huge wide hips:: in the character box under artist:ebiblue scope. Cap ~2.8. Ban ported V4.5 3–4 stacks. One size word per axis. No new hip/WG/pregnancy recipes this window. Do not promote to CONSENSUS."
+      "teaser": "Hip contrast, not V4.5 numeric stacks.",
+      "body": "HOUSE. Prefer `wide hips, narrow waist, thick thighs` contrast in prompt/box. Ported V4.5 3–4 weight stacks stay unsolved in constraints. No new hip/WG/pregnancy recipes this window. Not CONSENSUS."
     },
     {
-      "teaser": "semi-anthro torso is a scoped human-trunk tag, not a furry species package.",
-      "body": "HOUSE. Prompt semi-anthro torso, never bare semi-anthro. Do not UC the torso word. UC fur, muzzle, snout, tail, paws, digitigrade, animal legs. Drop long torso from the prompt; put it in UC."
+      "teaser": "Finish tags are not all photoreal — protect anime faces.",
+      "body": "HOUSE. Anime source: strip realistic, Expert Shading panel, photorealism, hyperrealism, unasked 3d, detailed face, detailed skin. Prefer Quality / high complexity for anime finish. Not CONSENSUS."
     }
   ]
 }

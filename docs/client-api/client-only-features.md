@@ -108,8 +108,7 @@ Server-backed pieces use WS (`search_tag_wiki`, `resolve_grimoire_url`, etc.) bu
 | Incremental `gallery_updated` handling | `ws/handlers/20-galleryInbound.js` |
 | Bulk selection UI | `bulkOperationsManager.js`, `galleryActions.js` |
 | Toolbar download | `galleryToolbar.js` — `fetch(/images/...)` |
-| Copy Lookback | `copyLookback.js` — clipboard markdown `dsap://lookback/…` pointers (gallery/Lumen/note/wiki/page/selection). MCP resolves via `resolve_lookback`. Distinct from Copy linkback. |
-| Copy linkback | `copyLinkback.js` — one-line agent-readable gen pointer `dsref:file:<filename> seed:<n> model:<id> ws:<workspaceId> res:<WxH>` on gallery, Lumen, Explorer, and Studio image menus (Yozora #188 / PR #125). Not a lookback URI. |
+| Copy Lookback | `copyLookback.js` — clipboard markdown `dsap://lookback/…` pointers (gallery/Lumen/note/wiki/page/selection/Reference Manager `ref/<hash>`). MCP resolves via `resolve_lookback`. |
 
 Server sends data via `request_gallery`; client decides render strategy.
 

@@ -57,8 +57,27 @@ const {
     pickDestPathInput,
     attachDestPathMeta,
     getArtifactTicket,
-    destPathNext
+    findArtifactTicketByDestPath,
+    findArtifactTicketByUrl,
+    destPathNext,
+    tryWriteSandboxDest,
+    normalizeDestPath,
+    buildArtifactUrl
 } = require('./mcpArtifactTickets');
+const {
+    rememberApplyGenerateJob,
+    getApplyGenerateJob,
+    findPendingApplyGenerate,
+    completeApplyGenerateJob,
+    qualifyCharacterQuery,
+    naxTagMatchesFranchise,
+    wikiAppearanceLines,
+    classicPromptText,
+    studioFieldText,
+    slimParamScalars,
+    slimLiveWindows,
+    slimMemoryHit
+} = require('./mcpReliability');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 const {
     publishApocrypha,
@@ -123,6 +142,7 @@ const {
 } = require('./mcpRateLimiter');
 // modules/mcpRateLimiter.js — #66 owns TOOL_RATE_GROUPS this wave
 if (!TOOL_RATE_GROUPS.get_character_card) TOOL_RATE_GROUPS.get_character_card = 'search';
+if (!TOOL_RATE_GROUPS.ensure_artifact) TOOL_RATE_GROUPS.ensure_artifact = 'gallery';
 if (!TOOL_RATE_GROUPS.resolve_lookback) TOOL_RATE_GROUPS.resolve_lookback = 'search';
 if (!TOOL_RATE_GROUPS.search_explore) TOOL_RATE_GROUPS.search_explore = 'search';
 if (!TOOL_RATE_GROUPS.get_explore_post) TOOL_RATE_GROUPS.get_explore_post = 'search';
@@ -367,7 +387,7 @@ const TOOL_DEFS = [
     {
         name: 'get_generated_image',
         core: true,
-        description: 'Get one gallery image as NovelAI metadata plus a Grok-sized webp (tool channel) and dest_path / bytes / mime / url. Pass dest_path then render_file that sandbox path. Filename, seed, or omit filename for the latest image. workspace default is "default". Do not page get_images.',
+        description: 'Get one gallery image as NovelAI metadata plus a Grok-sized webp (tool channel) and dest_path / bytes / mime / url / wrote. Pass dest_path then render_file. Filename, seed, or omit filename for the latest image in this workspace that is not the pre-apply print. After apply autoGenerate, pass afterCheckpointId or since=apply (or the jobId) so latest is not the previous file. workspace default is "default". Do not page get_images.',
         scope: 'gallery',
         packet: 'request_image_metadata',
         inputSchema: {
@@ -379,14 +399,30 @@ const TOOL_DEFS = [
                 workspace: { type: 'string', description: 'Workspace id or "default". Use the same folder as the job / source gens, not the focused Studio tab.' },
                 workspaceId: { type: 'string' },
                 full: { type: 'boolean', description: 'Original PNG only if under the size cap. Default false. dest_path then uses that original under the cap.' },
-                dest_path: DEST_PATH_SCHEMA
+                dest_path: DEST_PATH_SCHEMA,
+                afterCheckpointId: { type: 'string', description: 'Ignore gallery files from before this apply checkpoint. Prefer this after autoGenerate.' },
+                since: { type: 'string', description: 'apply = same as after the latest apply autoGenerate on this bind.' }
+            }
+        }
+    },
+    {
+        name: 'ensure_artifact',
+        core: true,
+        description: 'Write a minted Grok webp to dest_path when /home/workdir/artifacts exists. Pass dest_path and/or url from generate_image / get_generated_image. Returns wrote + bytes. One call — do not wrap curl in if/then.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                dest_path: DEST_PATH_SCHEMA,
+                url: { type: 'string', description: 'Short-lived artifact url from the last generate / get_generated_image.' }
             }
         }
     },
     {
         name: 'resolve_lookback',
         core: true,
-        description: 'Resolve a pasted Copy Lookback markdown link ([label](dsap://lookback/…)) to that item’s metadata. Gallery images also return a Grok-sized webp. Pass lookback (the markdown or raw dsap://lookback/ URI).',
+        description: 'Resolve a pasted Copy Lookback markdown link ([label](dsap://lookback/…)) to that item’s metadata. Gallery images and Reference Manager refs also return a Grok-sized webp. Pass lookback (the markdown or raw dsap://lookback/ URI).',
         scope: 'gallery',
         inputSchema: {
             type: 'object',
@@ -492,7 +528,7 @@ const TOOL_DEFS = [
     {
         name: 'get_session_state',
         core: true,
-        description: 'Session snapshot. Default view=live (clients, windows, Studio) — small enough to call often. Always includes remoteAccess (desktop Remote Access Settings). After apply/get the bound tab stores a checkpoint; later live checks return only the Studio delta (studio.diff). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. view=catalog is slim settings (current-model quality/UC ids, no per-model string dump). view=full is live plus slim catalog plus promptGuide/NAX/memory pointers. Full per-model quality/UC strings live on get_studio_state.settings and tools/list — do not pull those on every chat. studio.dynamicGeneration includes toggles plus resolved time/weather/season/location. hasClients false or studioReachable false → generate_image. includeImage default false on catalog/full, true on live — skipped when the focused file did not change.',
+        description: 'Session snapshot. Default view=live (clients, windows, Studio) — small enough to call often. Always includes remoteAccess (desktop Remote Access Settings). After apply/get the bound tab stores a checkpoint; later live checks return only the Studio delta (studio.diff). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. view=catalog is slim settings (current-model quality/UC ids, no per-model string dump). view=full is live plus slim catalog plus promptGuide/NAX/memory pointers. Full per-model quality/UC strings live on get_studio_state.settings — do not pull those on every chat. studio.dynamicGeneration includes toggles plus resolved time/weather/season/location. hasClients false or studioReachable false → generate_image. includeImage default false (never attach a Lumen file that is not Studio filename).',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -505,7 +541,7 @@ const TOOL_DEFS = [
                 },
                 includeImage: {
                     type: 'boolean',
-                    description: 'Attach a Grok webp for the focused open file. Default false on full, true on live. Skipped when the focused file matches the last checkpoint.'
+                    description: 'Attach a Grok webp for the Studio open filename only. Default false. Never attaches a focused Lumen/Glancewell file that is not Studio filename.'
                 },
                 full: { type: 'boolean', description: 'Force a full Studio snapshot. Default false.' }
             }
@@ -583,7 +619,8 @@ const TOOL_DEFS = [
                     }
                 },
                 autoApply: { type: 'boolean', description: 'Default true. Silent apply on the bound tab.' },
-                autoGenerate: { type: 'boolean', description: 'Omitted uses Remote Access Settings autoGenerate (default off). After apply, click bound-tab Generate. Blocked with needsIntegration if dynamicGeneration is present and not integrated.' },
+                autoGenerate: { type: 'boolean', description: 'Omitted uses Remote Access Settings autoGenerate (default off). After apply, click bound-tab Generate. Returns jobId + filenameBefore. Default n=1. Prints review is dismissed or blockedBy printsReview. Blocked with needsIntegration if dynamicGeneration is present and not integrated.' },
+                dest_path: DEST_PATH_SCHEMA,
                 ...STUDIO_PARAM_SCHEMA
             }
         }
@@ -678,7 +715,8 @@ const TOOL_DEFS = [
                 },
                 query: { type: 'string', description: 'Single term; merged with terms if both sent' },
                 model: { type: 'string', description: 'Studio model for suggest-tags (v5, v4_5, …). Default v5. Pass v4_5 when Studio is on V4.5.' },
-                exactOnly: { type: 'boolean', description: 'Default true. false allows any prefix (alice → alice margatroid).' }
+                exactOnly: { type: 'boolean', description: 'Default true. false allows any prefix (alice → alice margatroid).' },
+                spellCheck: { type: 'boolean', description: 'Default false. Omit spellcheck noise (sauna/Jasun). Set true only if you asked for it.' }
             }
         }
     },
@@ -813,7 +851,7 @@ const TOOL_DEFS = [
     {
         name: 'search_memories',
         core: true,
-        description: 'MCP search of Dreamscape knowledge memories (alias searchKnowledgeMemories). Chat recall is not the store — you MUST call this before inventing a technique. Matches name, description, entities, observations. High relevance returns the full graph. Treat low confidence as a hypothesis; experiment, then save_memory to refine. A hit is prior art, not a ban.',
+        description: 'MCP search of Dreamscape knowledge memories (alias searchKnowledgeMemories). Default limit 5 and minRelevance 40. Returns {name, confidence, relevance, oneObservation} — not full graphs. Call get_memory for one hit ≥0.6. Chat recall is not the store.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -823,6 +861,8 @@ const TOOL_DEFS = [
                 query: { type: 'string' },
                 category: { type: 'string' },
                 model: { type: 'string', description: 'Filter by Studio model (v5, v4_5, …).' },
+                limit: { type: 'number', description: 'Default 5, max 20. Full graphs are get_memory only.' },
+                minRelevance: { type: 'number', description: 'Ignore hits below this score. Default 40.' },
                 reason: { type: 'string', description: 'Optional. Old API required this; ignored except for logging.' }
             }
         }
@@ -904,7 +944,7 @@ const TOOL_DEFS = [
     {
         name: 'get_character_card',
         core: true,
-        description: 'One character card: name / franchise / aliases, wiki markdown (empty:true if none — do not invent appearance), matching request expander full body, last Studio character-box snapshot (action replace + index), and best NAX CHARA item.prompt. Pass name (required). Optional franchise / model. Reuses get_wiki_page, request expanders, get_studio_state characters, and search_nax kind=CHARA.',
+        description: 'One character card. franchise filters NAX + wiki (asuna + sword art online → asuna (sao), never a different franchise). Returns tag, trainedOn, naxScore, wikiEmpty, appearanceLines. next says empty only when wikiEmpty is true.',
         scope: 'wiki',
         inputSchema: {
             type: 'object',
@@ -1891,7 +1931,8 @@ const ADVANCED_TOOL_DEF = {
         properties: {
             query: { type: 'string', description: 'Find hidden tools by job or name (e.g. bind tab, static wiki, references, new note)' },
             name: { type: 'string', description: 'Hidden tool to run, from a previous advanced_tools query' },
-            arguments: { type: 'object', description: 'Arguments for that hidden tool' }
+            arguments: { type: 'object', description: 'Arguments for that hidden tool' },
+            verboseSchema: { type: 'boolean', description: 'Default false. true includes full quality/UC/NSFW enum strings. Do not set this on chat start.' }
         }
     }
 };
@@ -2108,7 +2149,7 @@ function searchNaxTags(nax, input) {
     };
 }
 
-const LOOKBACK_TYPES = new Set(['img', 'note', 'wiki', 'swiki', 'wimg', 'sel', 'page']);
+const LOOKBACK_TYPES = new Set(['img', 'note', 'wiki', 'swiki', 'wimg', 'sel', 'page', 'ref']);
 
 function decodeLookbackSeg(value) {
     try {
@@ -2146,7 +2187,7 @@ function parseLookbackRef(raw) {
     const type = String(segs[0] || '').toLowerCase();
     if (!LOOKBACK_TYPES.has(type)) return null;
     const parsed = { type, href };
-    if (type === 'img' || type === 'note' || type === 'wiki' || type === 'page' || type === 'wimg') {
+    if (type === 'img' || type === 'note' || type === 'wiki' || type === 'page' || type === 'wimg' || type === 'ref') {
         const joined = segs.slice(1).join('/');
         parsed.id = type === 'wimg' ? decodeLookbackB64(joined) : decodeLookbackSeg(joined);
         return parsed.id ? parsed : null;
@@ -2184,6 +2225,87 @@ function galleryFilenameFromLookbackSrc(src) {
     if (pathName) return sanitizeGalleryFilename(decodeLookbackSeg(pathName[1]));
     if (!/[/:?#]/.test(s)) return sanitizeGalleryFilename(s);
     return null;
+}
+
+function sanitizeLookbackRefId(value) {
+    const raw = String(value || '').trim();
+    if (!raw || raw.includes('/') || raw.includes('..') || raw.length > 160) return '';
+    return raw;
+}
+
+async function resolveReferenceLookback(globalResources, parsed) {
+    const id = sanitizeLookbackRefId(parsed.id);
+    if (!id) {
+        return mcpTextResult({
+            success: false,
+            error: 'Reference lookback needs a hash or vibe id.',
+            lookback: parsed.href
+        }, true);
+    }
+    const refDb = globalResources.getReferenceMetadataDatabase && globalResources.getReferenceMetadataDatabase();
+    if (!refDb) {
+        return mcpTextResult({
+            success: false,
+            error: 'Reference database unavailable.',
+            lookback: parsed.href
+        }, true);
+    }
+    let kind = 'cache';
+    let previewName = id;
+    let reference;
+    const cache = refDb.getFileCache(id, true);
+    if (cache) {
+        const workspaces = refDb.getReferenceWorkspaces(id) || [];
+        reference = {
+            hash: cache.hash,
+            size: cache.size,
+            blurhash: cache.blurhash || null,
+            metadata: cache.metadata || null,
+            workspaceId: workspaces[0] || 'default'
+        };
+    } else {
+        const vibe = refDb.getVibeMetadata(id);
+        if (!vibe) {
+            return mcpTextResult({
+                success: false,
+                error: 'Reference not found',
+                lookback: parsed.href,
+                lookbackType: 'ref'
+            }, true);
+        }
+        kind = 'vibe';
+        previewName = sanitizeLookbackRefId(vibe.previewHash) || id;
+        reference = {
+            id: vibe.id,
+            type: vibe.type,
+            comment: vibe.comment || null,
+            metadata: vibe.metadata || null,
+            previewHash: vibe.previewHash || null
+        };
+    }
+    const extra = {
+        success: true,
+        lookback: parsed.href,
+        lookbackType: 'ref',
+        referenceKind: kind,
+        reference,
+        next: reference.metadata
+            ? 'Reference Manager item. Show the webp when present.'
+            : 'promptUnknown: true. Do not invent a source prompt. Vision-from-scratch if you need the look.'
+    };
+    if (!reference.metadata) extra.promptUnknown = true;
+    try {
+        const previewDir = path.resolve(globalResources.getPath('previewCache'));
+        const previewPath = path.resolve(previewDir, previewName + '.webp');
+        if (previewPath.startsWith(previewDir + path.sep) && fs.existsSync(previewPath)) {
+            const image = await resizeImageForGrok(previewPath);
+            if (image) {
+                extra.imageKind = 'grok';
+                return decorateLookbackResult(mcpImageResult(extra, image), parsed);
+            }
+        }
+    } catch (_) { /* metadata-only */ }
+    return decorateLookbackResult(mcpTextResult(extra), parsed);
 }
 
 function decorateLookbackResult(result, parsed) {
@@ -2224,6 +2346,9 @@ async function resolveLookback(globalResources, req, input) {
             success: false,
             error: 'Pass a Copy Lookback markdown link or dsap://lookback/ URI.'
         }, true);
+    }
+    if (parsed.type === 'ref') {
+        return resolveReferenceLookback(globalResources, parsed);
     }
     if (parsed.type === 'img' || (parsed.type === 'sel' && parsed.src === 'img')) {
         return decorateLookbackResult(
@@ -2565,17 +2690,27 @@ function assembleCharacterCard(parts) {
         franchise = parseCharacterFranchise(naxChara.tag) || '';
     }
     const aliases = uniqueCharacterAliases(name, src.aliases);
+    const tag = (wiki.tagName && String(wiki.tagName).trim())
+        || (naxChara && naxChara.tag && String(naxChara.tag).replace(/_/g, ' '))
+        || name;
+    const appearanceLines = wikiAppearanceLines(wikiText);
     const out = {
         success: true,
         name,
+        tag,
         franchise: franchise || null,
+        trainedOn: src.trainedOn || (src.model ? [src.model] : []),
+        naxScore: naxChara && naxChara.score != null ? naxChara.score : null,
+        wikiEmpty: wiki.empty,
+        appearanceLines,
         aliases,
         wiki,
         expander,
         studioBox,
         naxChara
     };
-    if (wiki.empty || !expander) out.next = WIKI_EMPTY_NEXT;
+    if (wiki.empty) out.next = WIKI_EMPTY_NEXT;
+    else if (!expander) out.next = 'Wiki has text. No request expander matched. Use appearanceLines / naxChara — do not retry wiki as empty.';
     return out;
 }
 
@@ -2638,21 +2773,23 @@ async function readWikiAliasTitles(globalResources, req, query) {
     }
 }
 
-function readNaxCharaHit(globalResources, name, model) {
+function readNaxCharaHit(globalResources, name, model, franchise) {
     // modules/mcpAgentFacade.js — searchNaxTags / resolveNaxModule
     const result = searchNaxTags(resolveNaxModule(globalResources), {
         query: name,
         kind: 'CHARA',
         model,
-        limit: 5
+        limit: 8
     });
-    const item = result && Array.isArray(result.items) ? result.items[0] : null;
-    if (!item || !item.prompt) return null;
+    const items = result && Array.isArray(result.items) ? result.items : [];
+    const matched = items.find((item) => item && item.prompt && naxTagMatchesFranchise(item.tag || item.prompt, franchise))
+        || (franchise ? null : items.find((item) => item && item.prompt));
+    if (!matched || !matched.prompt) return null;
     return {
-        tag: item.tag,
-        prompt: item.prompt,
-        score: item.score,
-        gallerySlug: item.gallerySlug
+        tag: matched.tag,
+        prompt: matched.prompt,
+        score: matched.score,
+        gallerySlug: matched.gallerySlug
     };
 }
 
@@ -2662,16 +2799,18 @@ async function collectCharacterCard(globalResources, req, input) {
     const franchise = src.franchise ? String(src.franchise).trim() : '';
     const model = src.model ? String(src.model).trim() : undefined;
     if (!name) return assembleCharacterCard({ name: '' });
-    const wikiQuery = franchise && !/\(/.test(name) ? `${name} (${franchise})` : name;
+    const wikiQuery = qualifyCharacterQuery(name, franchise);
     const [wiki, aliasTitles, studio] = await Promise.all([
         readWikiCardPage(globalResources, req, wikiQuery),
         readWikiAliasTitles(globalResources, req, wikiQuery),
         readStudioCardSlices(globalResources, req)
     ]);
     const saved = readSavedExpanders(globalResources);
-    const expander = matchRequestExpander(studio.expanders, name) || matchRequestExpander(saved, name);
-    const studioBox = pickStudioCharacterBox(studio.characters, name);
-    const naxChara = readNaxCharaHit(globalResources, name, model);
+    const expander = matchRequestExpander(studio.expanders, wikiQuery) || matchRequestExpander(saved, wikiQuery)
+        || matchRequestExpander(studio.expanders, name) || matchRequestExpander(saved, name);
+    const studioBox = pickStudioCharacterBox(studio.characters, wikiQuery)
+        || pickStudioCharacterBox(studio.characters, name);
+    const naxChara = readNaxCharaHit(globalResources, wikiQuery, model, franchise);
     const aliases = uniqueCharacterAliases(name, [
         wiki && wiki.tagName,
         naxChara && naxChara.tag && String(naxChara.tag).replace(/_/g, ' '),
@@ -2684,7 +2823,8 @@ async function collectCharacterCard(globalResources, req, input) {
         aliases,
         expander,
         studioBox,
-        naxChara
+        naxChara,
+        model
     });
 }
 
@@ -2835,40 +2975,32 @@ async function maybeOpenGeneratedInLumen(globalResources, req, filenames) {
     return { opened: !result.isError, clientCount: clients.length, target: viewer, ...payload };
 }
 
-async function attachFocusedWindowImage(globalResources, body, windows, includeImage, lastGeneratedFilename) {
-    const focusedFilename = pickFocusedWindowFilename(windows);
-    const next = { ...body, focusedFilename };
+async function attachFocusedWindowImage(globalResources, body, windows, includeImage, lastGeneratedFilename, studioFilename) {
+    const focusedWindowFile = pickFocusedWindowFilename(windows);
+    const attachName = includeImage
+        ? sanitizeGalleryFilename(studioFilename || null)
+        : null;
+    const next = { ...body, focusedFilename: focusedWindowFile };
     if (lastGeneratedFilename) {
         next.lastGenerated = lastGeneratedFilename;
     }
+    if (includeImage && focusedWindowFile && attachName && focusedWindowFile !== attachName) {
+        next.imageSkipped = 'focused-file-is-not-studio';
+    }
 
-    if (!includeImage && !lastGeneratedFilename) return mcpTextResult(next);
+    if (!attachName) return mcpTextResult(next);
 
     let images = [];
 
-    if (includeImage && focusedFilename) {
+    if (attachName) {
         try {
-            const resolved = resolveGalleryImagePath(globalResources, focusedFilename);
+            const resolved = resolveGalleryImagePath(globalResources, attachName);
             const image = await resizeImageForGrok(resolved.filePath);
             if (image) {
-                image.filename = focusedFilename;
+                image.filename = attachName;
                 images.push(image);
                 next.imageKind = 'grok';
-            }
-        } catch (_) { /* metadata-only */ }
-    }
-
-    if (lastGeneratedFilename && lastGeneratedFilename !== focusedFilename) {
-        try {
-            const resolved = resolveGalleryImagePath(globalResources, lastGeneratedFilename);
-            const image = await resizeImageForGrok(resolved.filePath);
-            if (image) {
-                image.filename = lastGeneratedFilename;
-                images.push(image);
-                if (images.length === 1) {
-                   next.filename = lastGeneratedFilename;
-                   next.imageKind = 'grok';
-                }
+                next.filename = attachName;
             }
         } catch (_) { /* metadata-only */ }
     }
@@ -2942,7 +3074,7 @@ async function collectSessionState(globalResources, req, input) {
         : listClients(globalResources, bind.bindKey);
     const hasClients = clients.length > 0;
     const includeImage = src.includeImage == null
-        ? view === 'live'
+        ? false
         : src.includeImage !== false && src.includeImage !== 'false';
     const out = attachRemoteAccess(globalResources, {
         success: true,
@@ -3008,8 +3140,9 @@ async function collectSessionState(globalResources, req, input) {
             sendBoundCommand(globalResources, 'get_state', studioGetStatePayload(bind.bindKey, src), 15000, bind.bindKey),
             sendBoundCommand(globalResources, 'get_windows', {}, 15000, bind.bindKey)
         ]);
-        const windows = slimSessionWindows(Array.isArray(windowData && windowData.windows) ? windowData.windows : []);
-        const focusedFilename = pickFocusedWindowFilename(windows);
+        const rawWindows = Array.isArray(windowData && windowData.windows) ? windowData.windows : [];
+        const windows = view === 'live' ? slimLiveWindows(rawWindows) : slimSessionWindows(rawWindows);
+        const focusedFilename = pickFocusedWindowFilename(view === 'live' ? rawWindows : windows);
         rememberStudioCheckpointFromState(bind.bindKey, stateData, focusedFilename);
         const isDiff = !!(stateData && stateData.diff);
         const shouldEnrich = !isDiff
@@ -3025,6 +3158,25 @@ async function collectSessionState(globalResources, req, input) {
             ? ((stateData && stateData.director) || (stateData && stateData.change && stateData.change.director) || null)
             : undefined;
         out.studio = pickStudioFieldsFromBoundReply(stateData, bind, dynamicGeneration, director);
+        if (view === 'live' && out.studio) {
+            const change = out.studio.change;
+            const fields = change && Array.isArray(change.fields) ? change.fields : [];
+            out.studio.prompt = classicPromptText(
+                studioFieldText(fields, 'prompt')
+                || (change && typeof change.prompt === 'string' ? change.prompt : null)
+            );
+            out.studio.uc = classicPromptText(
+                studioFieldText(fields, 'uc')
+                || (change && typeof change.uc === 'string' ? change.uc : null)
+            );
+            out.studio.params = slimParamScalars(change && change.params) || slimParamScalars(stateData && stateData.params);
+            delete out.studio.change;
+        } else if (out.studio && out.studio.change) {
+            const fields = Array.isArray(out.studio.change.fields) ? out.studio.change.fields : [];
+            fields.forEach((field) => {
+                if (field && typeof field.text === 'string') field.text = classicPromptText(field.text);
+            });
+        }
         out.windows = windows;
         out.activeWindowId = windowData && windowData.activeWindowId || null;
         out.workspaceId = (stateData && Object.prototype.hasOwnProperty.call(stateData, 'workspaceId')
@@ -3047,7 +3199,15 @@ async function collectSessionState(globalResources, req, input) {
         }
         const focusedUnchanged = !!(prevCheckpoint && prevCheckpoint.focusedFilename && prevCheckpoint.focusedFilename === focusedFilename);
         const lastGeneratedFilename = (stateData && stateData.lastGeneratedImageName) || null;
-        return attachFocusedWindowImage(globalResources, out, out.windows, includeImage && !focusedUnchanged, lastGeneratedFilename);
+        const studioFilename = (out.studio && out.studio.filename) || (stateData && stateData.filename) || null;
+        return attachFocusedWindowImage(
+            globalResources,
+            out,
+            rawWindows,
+            includeImage && !focusedUnchanged,
+            lastGeneratedFilename,
+            studioFilename
+        );
     } catch (error) {
         if (error.status === 504) {
             out.partial = true;
@@ -3094,7 +3254,20 @@ function runMemoryTool(globalResources, name, input) {
     if (name === 'search_memories') {
         const query = String(input.query || '').trim();
         if (!query) return { success: false, error: 'query is required' };
-        return { success: true, results: db.searchKnowledgeMemories(query, input.category || null, input.model || null) };
+        const raw = db.searchKnowledgeMemories(query, input.category || null, input.model || null);
+        const limit = Math.min(20, Math.max(1, Number(input.limit) || 5));
+        const minRelevance = input.minRelevance != null ? Number(input.minRelevance) : 40;
+        const hits = (Array.isArray(raw) ? raw : [])
+            .filter((row) => (Number(row && (row.relevance_score != null ? row.relevance_score : row.relevance)) || 0) >= minRelevance)
+            .slice(0, limit)
+            .map(slimMemoryHit);
+        return {
+            success: true,
+            results: hits,
+            limit,
+            minRelevance,
+            next: 'Slim rows only. Call get_memory {name} for the full graph if you need it.'
+        };
     }
     if (name === 'get_memory') {
         const memoryNames = collectMemoryNames(input);
@@ -3283,7 +3456,8 @@ function toolAllowedForScopes(scopes, tool) {
         return agentHasNamedScope(scopes, 'gallery')
             || agentHasNamedScope(scopes, 'notes')
             || agentHasNamedScope(scopes, 'wiki')
-            || agentHasNamedScope(scopes, 'autofill');
+            || agentHasNamedScope(scopes, 'autofill')
+            || agentHasNamedScope(scopes, 'references');
     }
     if (agentHasNamedScope(scopes, tool.scope)) return true;
     // modules/applicationAuthManager.js — autofill already includes wiki packets
@@ -3296,13 +3470,13 @@ function toolAllowedForScopes(scopes, tool) {
     return false;
 }
 
-function serializeListedTool(tool, catalog) {
+function serializeListedTool(tool, catalog, options) {
     const listed = applyCatalogToListedTool({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
         scope: tool.scope
-    }, catalog);
+    }, catalog, options);
     if (listed.scope && !tool.core) return listed;
     return {
         name: listed.name,
@@ -3311,7 +3485,7 @@ function serializeListedTool(tool, catalog) {
     };
 }
 
-function listAdvancedToolDefs(scopes, query, globalResources) {
+function listAdvancedToolDefs(scopes, query, globalResources, options) {
     const catalog = buildStudioSettingsCatalog(globalResources);
     const q = String(query || '').trim().toLowerCase();
     const words = q ? q.split(/\s+/).filter(Boolean) : [];
@@ -3322,7 +3496,7 @@ function listAdvancedToolDefs(scopes, query, globalResources) {
         const hay = `${tool.name} ${tool.description} ${tool.scope}`.toLowerCase();
         return hay.includes(q) || words.every((word) => hay.includes(word));
     }).map((tool) => {
-        const listed = applyCatalogToListedTool(tool, catalog);
+        const listed = applyCatalogToListedTool(tool, catalog, options);
         return {
             name: listed.name,
             description: listed.description,
@@ -3351,7 +3525,7 @@ function guessModelFromQuery(query) {
     return match ? match[0].replace(/\./g, '_') : '';
 }
 
-function listCoreToolHits(scopes, query, globalResources) {
+function listCoreToolHits(scopes, query, globalResources, options) {
     const q = String(query || '').trim();
     if (!q) return [];
     const wanted = new Set();
@@ -3361,14 +3535,17 @@ function listCoreToolHits(scopes, query, globalResources) {
     if (!wanted.size) return [];
     const catalog = buildStudioSettingsCatalog(globalResources);
     return TOOL_DEFS.filter((tool) => tool.core && wanted.has(tool.name) && toolAllowedForScopes(scopes, tool))
-        .map((tool) => serializeListedTool(tool, catalog));
+        .map((tool) => serializeListedTool(tool, catalog, options));
 }
 
 function slimToolList(tools) {
-    return (tools || []).map((tool) => ({
-        name: tool.name,
-        description: tool.description
-    }));
+    return (tools || []).map((tool) => {
+        const required = tool.inputSchema && Array.isArray(tool.inputSchema.required)
+            ? tool.inputSchema.required
+            : [];
+        const description = String(tool.description || '').split(/\s+/).filter(Boolean).slice(0, 20).join(' ');
+        return { name: tool.name, required, description };
+    });
 }
 
 function listToolsForScopes(scopes, globalResources) {
@@ -3430,10 +3607,19 @@ async function applyStudioChanges(globalResources, body) {
         err.status = 400;
         throw err;
     }
+    if (autoGenerate) {
+        const hasN = (body && body.n != null)
+            || (body && body.params && body.params.n != null)
+            || (assembled.params && assembled.params.n != null);
+        if (!hasN) {
+            assembled.params = { ...(assembled.params || {}), n: 1 };
+        }
+    }
     return sendBoundCommand(globalResources, 'apply_studio', {
         change: assembled,
         prompt: body.prompt,
         uc: body.uc,
+        n: assembled.params && assembled.params.n,
         autoApply,
         autoGenerate
     }, undefined, body.bindKey);
@@ -3544,8 +3730,9 @@ async function handleAdvancedTools(globalResources, req, input) {
             : (input.args && typeof input.args === 'object' && !Array.isArray(input.args) ? input.args : {});
         return callTool(globalResources, req, runName, runArgs);
     }
-    const tools = listAdvancedToolDefs(scopes, input.query, globalResources);
-    const coreHits = listCoreToolHits(scopes, input.query, globalResources);
+    const schemaOpts = { verboseSchema: input.verboseSchema === true || input.verbose === true };
+    const tools = listAdvancedToolDefs(scopes, input.query, globalResources, schemaOpts);
+    const coreHits = listCoreToolHits(scopes, input.query, globalResources, schemaOpts);
     if (tools.length || coreHits.length) {
         const model = guessModelFromQuery(input.query);
         const memoryHit = coreHits.some((tool) => tool.name === 'list_memories' || tool.name === 'save_memory');
@@ -3942,12 +4129,68 @@ async function callTool(globalResources, req, name, args) {
         input.path = '/';
     }
 
+    if (name === 'ensure_artifact') {
+        const destHint = pickDestPathInput(input);
+        const ticket = findArtifactTicketByUrl(input.url)
+            || findArtifactTicketByDestPath(destHint)
+            || (destHint ? findArtifactTicketByDestPath(normalizeDestPath(destHint)) : null);
+        if (!ticket) {
+            return mcpTextResult({
+                success: false,
+                wrote: false,
+                error: 'No minted artifact ticket. Call generate_image / get_generated_image first, then ensure_artifact with that dest_path or url.',
+                dest_path: destHint || null
+            }, true);
+        }
+        const destPath = normalizeDestPath(destHint || ticket.destPath, ticket.filename);
+        const written = tryWriteSandboxDest(destPath, ticket.bytes);
+        return mcpTextResult({
+            success: written.wrote === true,
+            wrote: written.wrote === true,
+            bytes: ticket.bytes.length,
+            dest_path: destPath,
+            wroteReason: written.reason || undefined,
+            curl: written.wrote ? undefined : `curl -fsSL ${buildArtifactUrl(globalResources, ticket.id)} -o /home/workdir/${destPath}`,
+            next: destPathNext(destPath, written.wrote)
+        }, written.wrote !== true);
+    }
+
     if (name === 'get_generation_job' || name === 'await_generation_job') {
         const jobId = String(input.jobId || input.id || '').trim();
         if (!jobId) {
             const err = new Error('jobId is required');
             err.status = 400;
             throw err;
+        }
+        const applyJob = getApplyGenerateJob(jobId);
+        if (applyJob) {
+            if (name === 'await_generation_job' && applyJob.status === 'running') {
+                const deadline = Date.now() + 90000;
+                while (Date.now() < deadline && applyJob.status === 'running') {
+                    const latest = await latestGalleryFilename(globalResources, req, applyJob.workspaceId);
+                    if (latest && latest !== applyJob.filenameBefore) {
+                        completeApplyGenerateJob(jobId, latest);
+                        break;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 800));
+                }
+            }
+            const ready = getApplyGenerateJob(jobId) || applyJob;
+            if (ready.status === 'completed' && ready.filename) {
+                return callTool(globalResources, req, 'get_generated_image', {
+                    filename: ready.filename,
+                    workspace: ready.workspaceId,
+                    dest_path: pickDestPathInput(input) || ready.destPath
+                });
+            }
+            return mcpTextResult({
+                success: false,
+                pending: true,
+                jobId,
+                status: ready.status,
+                filenameBefore: ready.filenameBefore,
+                next: 'Studio generate has not produced a new filename yet. Retry await_generation_job or get_generated_image since=apply.'
+            }, true);
         }
         const queue = globalResources.getGenerationJobQueue();
         const job = queue.get(jobId);
@@ -3994,6 +4237,30 @@ async function callTool(globalResources, req, name, args) {
         }
         payload.workspace = resolveGenerateWorkspaceId(globalResources, req, payload);
         payload.mcp_generated = true;
+        let qualityDropped = null;
+        let qualityInherited = null;
+        if (name === 'generate_image' || name === 'generate_preset') {
+            const hasQuality = payload.dataset_config
+                && payload.dataset_config.settings
+                && payload.dataset_config.settings.__quality__
+                && typeof payload.dataset_config.settings.__quality__ === 'object';
+            if (!hasQuality) {
+                const prev = getMcpStudioCheckpoint(resolveBindKey(req));
+                const liveQuality = prev && prev.qualitySettings;
+                if (liveQuality) {
+                    payload.dataset_config = {
+                        ...(payload.dataset_config || {}),
+                        settings: {
+                            ...((payload.dataset_config && payload.dataset_config.settings) || {}),
+                            __quality__: liveQuality
+                        }
+                    };
+                    qualityInherited = Object.keys(liveQuality);
+                } else {
+                    qualityDropped = ['high_complexity', 'no_text'];
+                }
+            }
+        }
         if (wouldSpendPaidCredits(name, payload) && !pickPaidApproval(payload)) {
             return mcpTextResult(paidApprovalBlock(), true);
         }
@@ -4110,6 +4377,8 @@ async function callTool(globalResources, req, name, args) {
                 }
             }
         }
+        if (qualityDropped) flat.qualityDropped = qualityDropped;
+        if (qualityInherited) flat.qualityInherited = qualityInherited;
         return mcpResultFromGenerateFlat(globalResources, flat, packet.success, destPathHint);
     }
 
@@ -4179,7 +4448,28 @@ async function callTool(globalResources, req, name, args) {
         const lookedUp = await resolveGalleryFilename(globalResources, req, name === 'get_latest_image'
             ? { workspace: input.workspace, workspaceId: input.workspaceId }
             : input);
-        const filename = lookedUp.filename;
+        let filename = lookedUp.filename;
+        const bindKey = resolveBindKey(req);
+        const pendingApply = findPendingApplyGenerate(bindKey, lookedUp.workspaceId);
+        const sinceApply = String(input.since || '').toLowerCase() === 'apply'
+            || !!(input.afterCheckpointId)
+            || !!(input.jobId && getApplyGenerateJob(input.jobId));
+        if (filename && pendingApply && pendingApply.filenameBefore && filename === pendingApply.filenameBefore) {
+            if (sinceApply || !input.filename) {
+                return mcpTextResult({
+                    success: false,
+                    pending: true,
+                    generateStarted: true,
+                    filenameBefore: pendingApply.filenameBefore,
+                    jobId: pendingApply.jobId,
+                    workspaceId: lookedUp.workspaceId,
+                    next: 'Latest is still the pre-apply print. await_generation_job with this jobId, or retry get_generated_image since=apply after a few seconds.'
+                }, true);
+            }
+        }
+        if (filename && pendingApply && pendingApply.filenameBefore && filename !== pendingApply.filenameBefore) {
+            completeApplyGenerateJob(pendingApply.jobId, filename);
+        }
         if (!filename) {
             return mcpTextResult({
                 success: false,
@@ -4378,15 +4668,31 @@ async function callTool(globalResources, req, name, args) {
         const data = await applyStudioChanges(globalResources, { ...input, bindKey: bind.bindKey });
         rememberStudioCheckpointFromState(bind.bindKey, data);
         let responseNext;
+        let applyJob = null;
         if (data && data.vSliderRejected > 0) {
             responseNext = 'vSlider catalog did not hydrate. Each widget needs kind (slider/xypad/star/dropdown), axes with stops[{at,text}] (2+ per axis), and target expander prefix. Do not substitute static expanders — retry apply_studio_changes with a corrected vSlider array.';
+        } else if (data && data.blockedBy === 'printsReview') {
+            responseNext = 'autoGenerate blocked by Prints review. Close that window or retry with n:1.';
         } else if (data && data.generateStarted) {
-            responseNext = 'apply does not return pixels. Call get_generated_image (that filename or latest) with dest_path, then render_file /home/workdir/artifacts/… after curling url if missing. Do not reprint with Grok Imagine.';
+            applyJob = rememberApplyGenerateJob({
+                bindKey: bind.bindKey,
+                workspaceId: data.workspaceId || resolveWorkspaceId(input.workspace || input.workspaceId),
+                filenameBefore: data.filenameBefore || data.lastGeneratedImageName || data.filename || null,
+                checkpointId: data.checkpointId || null,
+                destPath: pickDestPathInput(input) || null,
+                prompt: input.prompt || null
+            });
+            responseNext = 'apply does not return pixels. await_generation_job with this jobId, or get_generated_image since=apply. Do not treat filenameBefore as the new print.';
         }
         return mcpTextResult({
             success: true,
             autoBound: !!bind.auto,
             ...data,
+            ...(applyJob ? {
+                jobId: applyJob.jobId,
+                filenameBefore: applyJob.filenameBefore,
+                filenameExpected: data.filenameExpected || null
+            } : {}),
             ...(responseNext ? { next: responseNext } : {})
         });
     }
@@ -4836,6 +5142,23 @@ function trimAutofillBatch(term, success, data, input, model) {
         if (ra !== rb) return ra - rb;
         return (Number(b.matchScore || b.score || b.confidence) || 0) - (Number(a.matchScore || a.score || a.confidence) || 0);
     });
+    if (close.length === 0) {
+        const qualifierHits = raw.filter((row) => {
+            const n = normalizeAutofillTagKey(autofillHitName(row));
+            const q = normalizeAutofillTagKey(needle);
+            return q && n.startsWith(`${q} (`);
+        });
+        qualifierHits.sort((a, b) => {
+            const family = (row) => {
+                const m = String((row && (row.model || row.searchModel || row.serviceName)) || '').toLowerCase();
+                if (/furry|local/.test(m)) return 2;
+                if (/nai-diffusion-5|full|v5/.test(m)) return 0;
+                return 1;
+            };
+            return family(a) - family(b);
+        });
+        qualifierHits.forEach((row) => close.push(row));
+    }
     const miss = close.length === 0;
     const trimmed = close.slice(0, AUTOFILL_RESULT_MAX).map((row) => slimAutofillHit(row, needle));
     const neighbors = miss
@@ -4861,7 +5184,9 @@ function trimAutofillBatch(term, success, data, input, model) {
         scanned: raw.length,
         results: trimmed,
         neighbors,
-        spellCheck: (data && data.spellCheck) || null,
+        spellCheck: (input && (input.spellCheck === true || input.spell_check === true))
+            ? ((data && data.spellCheck) || null)
+            : undefined,
         next
     };
 }
