@@ -104,6 +104,8 @@ async function handleConfigEditorSearch(handlersCtx, ws, message, clientInfo, ws
 }
 
 async function handleConfigEditorSave(handlersCtx, ws, message, clientInfo, wsServer) {
+    // JULES: Security check - require admin permissions for config modifications
+    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     const { patches, createCheckpoint, partialScope } = message;
     if (!patches || typeof patches !== 'object') {
         handlersCtx.sendError(ws, 'Missing patches', 'config_editor_save', message.requestId);
