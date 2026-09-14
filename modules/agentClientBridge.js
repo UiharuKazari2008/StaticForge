@@ -1239,6 +1239,8 @@ function pickReattachTarget(globalResources, hint) {
         const matches = findClientsBySessionId(wsServer, sessionId)
             .filter((row) => row.clientId !== previousClientId);
         if (matches.length) return matches[0];
+        // JULES: Fix reattach race — if we are looking for a specific session, do not fall through to unrelated tabs.
+        return null;
     }
     const live = [];
     if (wsServer && wsServer.clients) {
