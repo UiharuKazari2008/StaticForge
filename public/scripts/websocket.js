@@ -651,6 +651,11 @@ class WebSocketClient {
         /** Connection dial UI — single source of truth for connect/reconnect/failure dialog. */
         this.connectionPhase = 'idle'; // idle | dialing | failed | connected | auth
         this.connectionDialView = 'transient'; // transient | status
+        /**
+         * Post-init reconnect (bfcache / focus regain) — update modem tray + WS indicator only.
+         * Do not open the connection manager dial or glass toast dial UI.
+         */
+        this._trayOnlyReconnect = false;
         this.preStartupHandoffCompleted = false;
         this.preStartupAuthBusy = false;
         this.preStartupAuthHandlersSetup = false;
@@ -779,6 +784,68 @@ class WebSocketClient {
         if (patch.maxAttempts !== undefined) this.connectionUi.maxAttempts = patch.maxAttempts;
         this._renderConnectionDial();
         this._updateModemTrayIcon();
+        // Clear after render so a transient "connected" beat cannot pop the dial mid-quiet reconnect
+        if (phase === 'idle') {
+            this._clearTrayOnlyReconnect();
+        }
+    }
+
+    /**
+     * Arm quiet post-init reconnect: tray/indicator only (no connection manager window).
+     * @param {string} [source]
+     */
+    _beginTrayOnlyReconnect(source) {
+        if (!this.initializationCompleted) {
+            return;
+        }
+        if (this.connectionDialView === 'status') {
+            return;
+        }
+        this._trayOnlyReconnect = true;
+        if (source) {
+            console.log(`📡 Tray-only reconnect armed (${source})`);
+        }
+    }
+
+    _clearTrayOnlyReconnect() {
+        this._trayOnlyReconnect = false;
+    }
+
+    /**
+     * True when reconnect UI should stay in the modem tray (bfcache / focus regain).
+     * Auth still uses full UI. User-opened status view still uses the dial.
+     */
+    _shouldSuppressConnectionDialUi() {
+        if (!this._trayOnlyReconnect) return false;
+        if (this.connectionDialView === 'status') return false;
+        if (this.connectionPhase === 'auth') return false;
+        if (!this.initializationCompleted) return false;
+        return true;
+    }
+
+    /**
+     * Tray + WS status only while `_trayOnlyReconnect` is armed.
+     */
+    _renderTrayOnlyReconnectStatus() {
+        this._hideConnectionDialModal();
+        this.bannerManager.hideWebSocketToast();
+        this.bannerManager.hideWebSocketTicker();
+
+        const phase = this.connectionPhase;
+        if (phase === 'failed') {
+            this.updateWebSocketStatus('disconnected');
+        } else if (phase === 'idle' && this.isConnected()) {
+            this.updateWebSocketStatus('connected');
+        } else if (phase === 'connected') {
+            this.updateWebSocketStatus('connected');
+        } else if (phase === 'dialing' || this.isConnecting) {
+            this.updateWebSocketStatus('connecting');
+        } else if (!this.isConnected()) {
+            this.updateWebSocketStatus('disconnected');
+        }
+
+        this._updateModemTrayIcon();
+        this._updateServiceWorkerTrayIcon();
     }
 
     _setConnectionBeat(beat, patch = {}) {
@@ -941,6 +1008,7 @@ class WebSocketClient {
 
     openConnectionDialStatus() {
         this.connectionDialView = 'status';
+        this._clearTrayOnlyReconnect();
         if (this.connectionPhase === 'failed') {
             this._renderConnectionDial();
         } else if (this.isConnected()) {
@@ -1000,6 +1068,11 @@ class WebSocketClient {
             this._setConnectionBeat('connected');
             this._updateConnectionDialDetails();
             this._updateServiceWorkerTrayIcon();
+            return;
+        }
+        if (this._shouldSuppressConnectionDialUi() || this._trayOnlyReconnect) {
+            this.updateWebSocketStatus('connected');
+            this._setConnectionPhase('idle');
             return;
         }
         if (window.isDesktop && this.preStartupHandoffCompleted && !this.initializationCompleted) {
@@ -1145,10 +1218,11 @@ class WebSocketClient {
                 ? `Melaton Network: Connected (${this.formatConnectionUptime(uptimeMs)})`
                 : 'Melaton Network: Connected';
         } else {
-            glyph.className = 'fas fa-phone-slash';
             if (this.connectionPhase === 'failed') {
+                glyph.className = 'fas fa-phone-slash';
                 title = 'Melaton Network: NO CARRIER';
             } else if (this.connectionPhase === 'dialing' || this.isConnecting) {
+                glyph.className = 'fas fa-sync-alt fa-spin';
                 const bootStatus = this.lastServerStartupStatus;
                 if (bootStatus && !this.serverStartupReady && bootStatus.stageMessage) {
                     title = `Melaton Network: ${bootStatus.stageMessage}`;
@@ -1156,6 +1230,7 @@ class WebSocketClient {
                     title = `Melaton Network: ${this.connectionUi.message || 'Dialing…'}`;
                 }
             } else {
+                glyph.className = 'fas fa-phone-slash';
                 title = 'Melaton Network: Not connected';
             }
         }
@@ -1801,6 +1876,12 @@ class WebSocketClient {
         if (phase !== 'failed' && typeof dismissDreamscapeConnectivityError === 'function') {
             // dismissDreamscapeConnectivityError: public/scripts/comp/fatalErrorBootstrap.js
             dismissDreamscapeConnectivityError();
+        }
+
+        // bfcache / focus regain: keep reconnect in the modem tray — no dial window
+        if (this._shouldSuppressConnectionDialUi()) {
+            this._renderTrayOnlyReconnectStatus();
+            return;
         }
 
         if (this._shouldUsePreStartupDialog()) {
@@ -3042,11 +3123,23 @@ class WebSocketClient {
             }
         });
 
-        // Intentionally do nothing on beforeunload or pagehide.
+        // Intentionally do not disconnect on beforeunload/pagehide for normal tab blur.
         // Disconnecting on pagehide or blur caused premature disconnection when switching tabs or losing focus.
         // The browser/OS automatically tears down the WebSocket/TCP session upon true window or tab closure.
+        // bfcache: Chrome closes the socket when the page is frozen — arm tray-only reconnect so
+        // onclose/reconnect and pageshow restore stay in the modem tray (no connection dial).
         window.addEventListener('beforeunload', () => {});
-        window.addEventListener('pagehide', () => {});
+        window.addEventListener('pagehide', (event) => {
+            if (event.persisted) {
+                this._beginTrayOnlyReconnect('pagehide-bfcache');
+            }
+        });
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted) {
+                this._beginTrayOnlyReconnect('pageshow-bfcache');
+                this._reconnectOnFocusRegain('pageshow-bfcache');
+            }
+        });
 
         // Handle window focus (covers alt-tab, clicking back into the window)
         window.addEventListener('focus', () => {
@@ -3662,6 +3755,7 @@ class WebSocketClient {
             this.circuitBreaker = false;
             this.reconnectAttempts = 0;
             this.lastConnectionAttempt = 0;
+            this._beginTrayOnlyReconnect(source);
             this.connect();
             return;
         }
@@ -3689,6 +3783,8 @@ class WebSocketClient {
             this.lastConnectionAttempt = 0;
         }
 
+        // Post-init focus/bfcache restore: tray only — do not pop the connection manager
+        this._beginTrayOnlyReconnect(source);
         this.connect();
     }
 
