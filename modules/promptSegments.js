@@ -69,36 +69,15 @@ function parsePromptSegments(text) {
 
     /**
      * Detect if a weight group starts at the given index.
-     * Weight format: [-]number[.number]:: where number can have unlimited precision.
-     * Returns weight info or null.
+     * Delegates to shared detectWeightGroupStartGeneric helper.
      */
     const detectWeightGroupStart = (idx) => {
-        let j = idx;
-        if (text[j] === '-') {
-            j++;
-        }
-        let sawDigit = false;
-        while (j < length && /\d/.test(text[j])) {
-            j++;
-            sawDigit = true;
-        }
-        if (j < length && text[j] === '.') {
-            j++;
-            while (j < length && /\d/.test(text[j])) {
-                j++;
-                sawDigit = true;
-            }
-        }
-        if (!sawDigit) return null;
-        if (text[j] === ':' && text[j + 1] === ':') {
-            const weightText = text.slice(idx, j);
-            const weight = parseFloat(weightText);
-            return {
-                weight: Number.isNaN(weight) ? null : weight,
-                advance: (j + 2) - idx
-            };
-        }
-        return null;
+        const info = detectWeightGroupStartGeneric(text, idx);
+        if (!info) return null;
+        return {
+            weight: info.weight,
+            advance: info.prefixLength
+        };
     };
 
     /**
@@ -904,7 +883,7 @@ function resolveMultiSegmentIndex(segmentIdxArray, segments, originalText, conte
 
     // Verify combined text matches actual slice from originalText
     const firstValid = validSelections.find(sel => sel.start >= 0);
-    const lastValid = [...validSelections].reverse().find(sel => sel.end >= 0);
+    const lastValid = validSelections.findLast ? validSelections.findLast(sel => sel.end >= 0) : [...validSelections].reverse().find(sel => sel.end >= 0);
     if (firstValid && lastValid && firstValid.start <= lastValid.end) {
         result.start = firstValid.start;
         result.end = lastValid.end;
