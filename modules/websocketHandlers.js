@@ -17,6 +17,7 @@ const { REPLICATION_WS_REQUESTS, isReplicationDestructivePacket } = require('./r
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const workspaceCssService = require('./workspaceCssService');
 
 /*
  * WebSocket Response Format Standards for Workspace Operations:
@@ -719,7 +720,8 @@ class WebSocketMessageHandlers {
                     wallpaperPosition: wallpaperPosition,
                     color: color,
                     backgroundColor: backgroundColor,
-                    shortcuts: shortcuts
+                    shortcuts: shortcuts,
+                    workspaceCssHash: workspaceCssService.getClientCssHash()
                 },
                 timestamp: new Date().toISOString()
             });
@@ -735,7 +737,8 @@ class WebSocketMessageHandlers {
                     wallpaperPosition: null,
                     color: '#102040',
                     backgroundColor: null,
-                    shortcuts: []
+                    shortcuts: [],
+                    workspaceCssHash: workspaceCssService.getClientCssHash()
                 },
                 timestamp: new Date().toISOString()
             });

@@ -76,6 +76,14 @@ function buildSkippedCompileResult(compiledPath, sourceHash) {
     };
 }
 
+function getClientCssHash(root) {
+    try {
+        return resolveSourceHash(root) || null;
+    } catch (_) {
+        return null;
+    }
+}
+
 function resolveSourceHash(root) {
     const targetRoot = root || projectRoot;
     if (!targetRoot) {
@@ -250,6 +258,7 @@ module.exports = {
     isWorkspaceCssPath,
     getManifestEntry,
     resolveSourceHash,
+    getClientCssHash,
     getCompiledPath,
     getSourceCachePath
 };

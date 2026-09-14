@@ -1,5 +1,6 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { WS_DISPATCH_FIFO_CONNECTION } = require('../wsMessageDispatcher');
+const workspaceCssService = require('../../workspaceCssService');
 
 const WORKSPACE_DESTRUCTIVE = { destructive: true, ...WS_DISPATCH_FIFO_CONNECTION };
 
@@ -60,7 +61,8 @@ class WorkspaceWebSocketHandlers {
                 requestId: message.requestId,
                 data: {
                     workspaces: workspaceList,
-                    activeWorkspace: activeWorkspaceId
+                    activeWorkspace: activeWorkspaceId,
+                    workspaceCssHash: workspaceCssService.getClientCssHash()
                 },
                 timestamp: new Date().toISOString()
             });

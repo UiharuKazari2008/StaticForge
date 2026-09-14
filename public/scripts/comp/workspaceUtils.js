@@ -43,7 +43,7 @@ function normalizeWallpaperPath(wallpaper) {
     }
     
     // Check if it's already in the correct format (type:id or url:...)
-    const correctFormatPattern = /^(file|cache|cache-preview|vibe|url):.+$/;
+    const correctFormatPattern = /^(file|cache|cache-preview|vibe|wallpaper|url):.+$/;
     if (correctFormatPattern.test(wallpaper)) {
         return wallpaper;
     }
@@ -178,10 +178,11 @@ function workspaceCssLinkMatchesHash(link, hash) {
     }
 }
 
-async function applyWorkspaceCssFromServer(hash, webPath) {
+async function applyWorkspaceCssFromServer(hash, webPath, options) {
+    const skipTheme = options && options.skipTheme === true;
     if (isWorkspaceCssDevMode()) {
         generateAllWorkspaceStyles();
-        if (typeof switchWorkspaceTheme === 'function') {
+        if (!skipTheme && typeof switchWorkspaceTheme === 'function') {
             switchWorkspaceTheme(activeWorkspace);
         }
         return;
@@ -204,9 +205,75 @@ async function applyWorkspaceCssFromServer(hash, webPath) {
         await swm.cacheStaticFilesSilent([{ url: fileUrl, hash: fileHash }]);
     }
     await refreshWorkspaceStylesheet(fileHash);
-    if (typeof switchWorkspaceTheme === 'function') {
+    if (!skipTheme && typeof switchWorkspaceTheme === 'function') {
         switchWorkspaceTheme(activeWorkspace);
     }
+}
+
+function applyDesktopWallpaperInline(wallpaperPath, wallpaperPosition) {
+    // resolveWorkspaceWallpaperUrl: public/scripts/comp/modalUtils.js
+    const wallpaperUrl = resolveWorkspaceWallpaperUrl(wallpaperPath);
+    if (!wallpaperUrl) {
+        return false;
+    }
+    const position = wallpaperPosition || 'center';
+    const wallpaperCss = formatCssUrl(wallpaperUrl);
+    document.documentElement.style.setProperty('--desktop-wallpaper', wallpaperCss);
+    document.documentElement.style.setProperty('--desktop-wallpaper-position', position);
+    document.body.style.setProperty('--desktop-wallpaper', wallpaperCss);
+    document.body.style.setProperty('--desktop-wallpaper-position', position);
+    const img = new Image();
+    img.src = wallpaperUrl;
+    return true;
+}
+
+function applyEarlyWorkspaceThemeInline(settings) {
+    if (!settings) {
+        return;
+    }
+    if (settings.workspaceId) {
+        document.body.setAttribute('data-workspace', settings.workspaceId);
+    }
+    if (settings.color) {
+        document.documentElement.style.setProperty('--workspace-color', settings.color);
+    }
+    const bgColor = settings.backgroundColor || settings.color;
+    if (bgColor) {
+        document.documentElement.style.setProperty('--workspace-background-color', bgColor);
+    }
+    if (window.isDesktop) {
+        if (settings.wallpaper) {
+            applyDesktopWallpaperInline(settings.wallpaper, settings.wallpaperPosition);
+        } else {
+            document.documentElement.style.removeProperty('--desktop-wallpaper');
+            document.documentElement.style.removeProperty('--desktop-wallpaper-position');
+            document.body.style.removeProperty('--desktop-wallpaper');
+            document.body.style.removeProperty('--desktop-wallpaper-position');
+        }
+    }
+}
+
+function compiledWorkspaceThemeIsReady(hash) {
+    if (isWorkspaceCssDevMode()) {
+        return true;
+    }
+    if (!hash) {
+        return false;
+    }
+    return workspaceCssLinkMatchesHash(getWorkspaceStylesLink(), hash);
+}
+
+function bodyHasInlineWallpaper() {
+    return !!document.body.style.getPropertyValue('--desktop-wallpaper');
+}
+
+function clearEarlyWorkspaceThemeInline() {
+    document.documentElement.style.removeProperty('--workspace-color');
+    document.documentElement.style.removeProperty('--workspace-background-color');
+    document.documentElement.style.removeProperty('--desktop-wallpaper');
+    document.documentElement.style.removeProperty('--desktop-wallpaper-position');
+    document.body.style.removeProperty('--desktop-wallpaper');
+    document.body.style.removeProperty('--desktop-wallpaper-position');
 }
 
 // Generate all workspace styles in a single style element
@@ -746,6 +813,18 @@ async function switchWorkspaceTheme(workspaceId, skipAnimation = false) {
         document.body.classList.add('workspace-transitioning');
     }
     document.body.setAttribute('data-workspace', workspaceId);
+
+    // Inline boot wallpaper wins over [data-workspace] CSS. Keep it aligned
+    // with the workspace we just switched to if it is still present.
+    if (bodyHasInlineWallpaper() && workspaces[workspaceId]) {
+        applyEarlyWorkspaceThemeInline({
+            workspaceId: workspaceId,
+            wallpaper: workspaces[workspaceId].wallpaper,
+            wallpaperPosition: workspaces[workspaceId].wallpaperPosition,
+            color: workspaces[workspaceId].color,
+            backgroundColor: workspaces[workspaceId].backgroundColor
+        });
+    }
     
     // Notify desktop shortcuts of workspace change and wait for it to complete
     if (desktopShortcuts && desktopShortcuts.handleWorkspaceChange) {
@@ -906,10 +985,12 @@ async function moveCacheToWorkspace(cacheImage, workspaceId) {
 async function loadWorkspaces() {
     try {
         let isFirstLoad = false;
+        let workspaceCssHash = null;
         
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
             const data = await window.wsClient.getWorkspaces();
+            workspaceCssHash = data.workspaceCssHash || null;
             
             // Check if workspaces have actually changed
             const newWorkspaces = {};
@@ -927,6 +1008,13 @@ async function loadWorkspaces() {
             // Update workspaces
             workspaces = newWorkspaces;
             activeWorkspace = data.activeWorkspace;
+
+            // Point the stylesheet at the live compiled hash before dropping inline boot
+            // wallpaper. app.html's baked ?sha= is from the last full compile and can
+            // still be the previous wallpaper (SW CacheFirst keeps that old URL).
+            if (workspaceCssHash && !isWorkspaceCssDevMode()) {
+                await applyWorkspaceCssFromServer(workspaceCssHash, '/css/workspaces.css', { skipTheme: true });
+            }
             
             // Only generate styles if this is the first load or if workspaces actually changed
             if (isFirstLoad || workspacesChanged) {
@@ -954,13 +1042,20 @@ async function loadWorkspaces() {
             loadBlurPreference();
         }
         
-        // Remove hard-set CSS variables after workspace theme is loaded (CSS will take over)
-        document.documentElement.style.removeProperty('--workspace-color');
-        document.documentElement.style.removeProperty('--workspace-background-color');
-        document.documentElement.style.removeProperty('--desktop-wallpaper');
-        document.documentElement.style.removeProperty('--desktop-wallpaper-position');
-        document.body.style.removeProperty('--desktop-wallpaper');
-        document.body.style.removeProperty('--desktop-wallpaper-position');
+        // Drop inline boot theme only when compiled CSS is the current wallpaper.
+        // Otherwise keep/re-apply inline so a stale workspaces.css cannot win.
+        if (compiledWorkspaceThemeIsReady(workspaceCssHash)) {
+            clearEarlyWorkspaceThemeInline();
+        } else if (workspaces[activeWorkspace]) {
+            const active = workspaces[activeWorkspace];
+            applyEarlyWorkspaceThemeInline({
+                workspaceId: activeWorkspace,
+                wallpaper: active.wallpaper,
+                wallpaperPosition: active.wallpaperPosition,
+                color: active.color,
+                backgroundColor: active.backgroundColor
+            });
+        }
         // Re-enable wallpaper transitions now that the correct theme is painted
         document.body.classList.remove('wallpaper-boot');
 

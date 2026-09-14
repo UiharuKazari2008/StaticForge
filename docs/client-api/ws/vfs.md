@@ -158,7 +158,7 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 |-------|-------|
 | `requestId` | Optional |
 
-**Success response:** `desktop_get_settings_response`
+**Success response:** `desktop_get_settings_response` — `workspaceId`, `wallpaper`, `wallpaperPosition`, `color`, `backgroundColor`, `shortcuts`, `workspaceCssHash` (current `/css/workspaces.css` source hash so boot can swap off a stale `app.html` `?sha=`).
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

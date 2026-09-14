@@ -572,7 +572,7 @@ Additional response/push types from handler:
 |-------|-------|
 | `requestId` | Optional |
 
-**Success response:** `workspace_list_response`
+**Success response:** `workspace_list_response` — `workspaces`, `activeWorkspace`, `workspaceCssHash` (current compiled theme hash; client applies it before dropping inline boot wallpaper).
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

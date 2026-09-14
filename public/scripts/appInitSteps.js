@@ -179,70 +179,17 @@ if (window.wsClient) {
                     const settings = await window.wsClient.getDesktopSettings();
 
                     if (settings) {
-                        const { wallpaper, wallpaperPosition, color, backgroundColor, workspaceId } = settings;
-
                         // Suppress wallpaper image transition until loadWorkspaces finishes
                         document.body.classList.add('wallpaper-boot');
 
-                        // Set data-workspace before workspace list loads so [data-workspace=…]
-                        // CSS matches the early wallpaper (avoids default wallpaper flash)
-                        if (workspaceId) {
-                            document.body.setAttribute('data-workspace', workspaceId);
-                        }
+                        // applyEarlyWorkspaceThemeInline: public/scripts/comp/workspaceUtils.js
+                        applyEarlyWorkspaceThemeInline(settings);
 
-                        // Apply colors
-                        if (color) {
-                            document.documentElement.style.setProperty('--workspace-color', color);
-                        }
-
-                        // Set background color to workspace color if no background is set
-                        const bgColor = backgroundColor || color;
-                        if (bgColor) {
-                            document.documentElement.style.setProperty('--workspace-background-color', bgColor);
-                        }
-
-                        // Apply wallpaper if present
-                        if (wallpaper && window.isDesktop) {
-                            let wallpaperUrl = null;
-                            const [type, ...idParts] = wallpaper.split(':');
-                            const id = idParts.join(':');
-
-                            switch (type) {
-                                case 'file':
-                                    wallpaperUrl = localGalleryImageUrl(id);
-                                    break;
-                                case 'cache':
-                                    wallpaperUrl = localCacheUploadUrl(id);
-                                    break;
-                                case 'cache-preview':
-                                    wallpaperUrl = localCachePreviewUrl(id);
-                                    break;
-                                case 'vibe':
-                                    wallpaperUrl = `/cache/vibe/${id}`;
-                                    break;
-                                case 'wallpaper':
-                                    wallpaperUrl = localCacheWallpaperUrl(id);
-                                    break;
-                                case 'url':
-                                    wallpaperUrl = id;
-                                    break;
-                            }
-
-                            if (wallpaperUrl) {
-                                const position = wallpaperPosition || 'center';
-                                // formatCssUrl: public/scripts/comp/workspaceUtils.js
-                                const wallpaperCss = formatCssUrl(wallpaperUrl);
-                                // Set on body (not only html) so inherited vars beat a mismatched
-                                // [data-workspace] rule if theme attribute is still wrong briefly
-                                document.documentElement.style.setProperty('--desktop-wallpaper', wallpaperCss);
-                                document.documentElement.style.setProperty('--desktop-wallpaper-position', position);
-                                document.body.style.setProperty('--desktop-wallpaper', wallpaperCss);
-                                document.body.style.setProperty('--desktop-wallpaper-position', position);
-
-                                // Preload the wallpaper image
-                                const img = new Image();
-                                img.src = wallpaperUrl;
-                            }
+                        // applyWorkspaceCssFromServer: public/scripts/comp/workspaceUtils.js
+                        // Swap workspaces.css to the live hash before later boot strips
+                        // inline vars. Baked app.html ?sha= can still be the old wallpaper.
+                        if (settings.workspaceCssHash) {
+                            await applyWorkspaceCssFromServer(settings.workspaceCssHash, '/css/workspaces.css', { skipTheme: true });
                         }
                     }
                 }

@@ -399,11 +399,11 @@ function resolveWorkspaceWallpaper(wallpaper) {
     const [type, ...idParts] = wallpaper.split(':');
     const id = idParts.join(':');
     switch (type) {
-        case 'file': return `/images/${id}`;
-        case 'cache': return `/cache/upload/${id}`;
-        case 'cache-preview': return `/cache/preview/${id}`;
+        case 'file': return `/images/${encodeURIComponent(id)}`;
+        case 'cache': return `/cache/upload/${encodeURIComponent(id)}`;
+        case 'cache-preview': return `/cache/preview/${encodeURIComponent(id)}`;
         case 'vibe': return `/cache/vibe/${id}`;
-        case 'wallpaper': return `/cache/wallpapers/${id}.png`;
+        case 'wallpaper': return `/cache/wallpapers/${encodeURIComponent(`${id}.png`)}`;
         case 'url': return id;
         default: return null;
     }
