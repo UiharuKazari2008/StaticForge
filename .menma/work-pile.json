@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-13T11:14:08.679760+00:00",
+  "updated_at": "2026-09-14T11:07:52.945105+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "2026-09-13 7am: tree clean (no safety snapshot). Pushed 20 host commits that were ahead of origin/Public. Docs pass: Copy Lookback + Copy linkback (#188), Menma cake-log thumbs (#190), mcp resolve_lookback row. Prism applet landed then scraped (#189 / PR131). Host CI deploy labels/runners on main (f233f94 / #191 cursor-agent review). NEW ships for Rook 11am (not banked at Sep12 7am note): Cartograph toolbar/workspace fixes (#176, Cursor PRs ~116-120); MCP run_client_js + inspect_elements (#173 / PR124) Jules 2388918486913237676; Copy linkback (#188 / PR125) +292/-1 Cursor; DSAP cake-log before/after thumbs (#190 / PR126) +225/-45 Cursor; Prism creative compare then scrap (#189 / PR127-131) Cursor \u2014 scrap is the net; Host CI deploy labeled merge (f233f94). Jules overnight: PR129 security CLOSED unmerged; PR132 workspace optional-chaining OPEN draft +2/-1 (session 8287631912831465138). Open pile empty. Stay off greg/#5. No cake here.",
+  "cake_note": "Sep14 7am dry ship (Rook 11am NEW \u2014 Cursor ingest / co-authored; Menma did not implement):\n- d031a31 fix(ws): reconnect quietly via tray after bfcache restore (+99/-3 public/scripts/websocket.js)\n- 34c76f0 Add Melaton package store and install WS contract (+934/-2)\n- 58cf59c Add Melaton package UI review mockups (+420)\n- 99ebb35 Add bound-client MCP update/reattach waits and core JS/HTML test tools (+587/-30)\n- 286c768 Auto-bind the nearest client and let others claim development testing (+453/-32)\nDo NOT re-list Sep13 ships. CAKE calc/eat is Rook 11am/7pm \u2014 Menma dry only.",
   "eaten": [
     {
       "id": "sf-22",
