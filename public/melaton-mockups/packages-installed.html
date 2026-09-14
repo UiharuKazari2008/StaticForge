@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Packages — Installed</title>
+    <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/css/dsap-smf.css">
+</head>
+<body>
+<div data-dsap="packages" class="dsap-root dsap-smf">
+    <table class="dsap-smf-header" cellspacing="0" cellpadding="6" width="100%" border="0">
+        <tr>
+            <td class="dsap-smf-header-branch">
+                <img src="/static_images/logo_icon.png" alt="Dreamscape" class="dsap-smf-header-logo">
+                <span class="dsap-smf-header-branch-title">Packages</span>
+            </td>
+            <td class="dsap-smf-header-tool" align="right">Installed</td>
+        </tr>
+    </table>
+    <table class="dsap-smf-tabbar" cellspacing="0" cellpadding="3" border="1" width="100%">
+        <tr>
+            <td align="center" class="dsap-smf-tab dsap-smf-tab-active active"><a href="/melaton-mockups/packages-installed.html">Installed</a></td>
+            <td align="center" class="dsap-smf-tab"><a href="/melaton-mockups/packages-run.html">Run</a></td>
+            <td align="center" class="dsap-smf-tab"><a href="/melaton-mockups/packages-sources.html">Sources</a></td>
+        </tr>
+    </table>
+    <div class="dsap-smf-contextbar">Admin only. Disable of server packets needs a bounce.</div>
+    <div class="dsap-smf-toolbar">
+        <button type="button" class="dsap-smf-btn dsap-smf-btn-small">Refresh</button>
+        <button type="button" class="dsap-smf-btn dsap-smf-btn-small dsap-smf-btn-primary">Install from VFS</button>
+    </div>
+    <div class="dsap-smf-section-hdr">Installed packages</div>
+    <div class="dsap-smf-statusbox dsap-smf-status-ok">
+        <span class="dsap-smf-status-message">2 packages. CSS policy locked. Type is required on every archive.</span>
+    </div>
+    <table class="dsap-smf-stats" cellspacing="0" cellpadding="3" width="100%" border="1">
+        <tr>
+            <td align="center" width="33%"><span class="dsap-smf-stat-label">Installed</span><br><span class="dsap-smf-stat-value">2</span></td>
+            <td align="center" width="33%"><span class="dsap-smf-stat-label">Enabled</span><br><span class="dsap-smf-stat-value">1</span></td>
+            <td align="center" width="33%"><span class="dsap-smf-stat-label">Type</span><br><span class="dsap-smf-stat-value">dsap / native</span></td>
+        </tr>
+    </table>
+    <table cellspacing="0" cellpadding="4" width="100%" border="1">
+        <tr>
+            <td><strong>Title</strong></td>
+            <td><strong>type</strong></td>
+            <td><strong>format</strong></td>
+            <td><strong>launchId</strong></td>
+            <td><strong>On</strong></td>
+            <td><strong>Actions</strong></td>
+        </tr>
+        <tr>
+            <td>UI Lab</td>
+            <td>native</td>
+            <td>msaz</td>
+            <td>ui-lab</td>
+            <td>yes</td>
+            <td>
+                <button type="button" class="dsap-smf-btn dsap-smf-btn-small">Disable</button>
+                <button type="button" class="dsap-smf-btn dsap-smf-btn-small dsap-smf-btn-danger">Uninstall</button>
+            </td>
+        </tr>
+        <tr>
+            <td>Example Panel</td>
+            <td>dsap</td>
+            <td>mapz</td>
+            <td>example-tool</td>
+            <td>no</td>
+            <td>
+                <button type="button" class="dsap-smf-btn dsap-smf-btn-small dsap-smf-btn-primary">Enable</button>
+                <button type="button" class="dsap-smf-btn dsap-smf-btn-small dsap-smf-btn-danger">Uninstall</button>
+            </td>
+        </tr>
+    </table>
+    <p><a href="/melaton-mockups/" class="dsap-smf-home-link">Back to mockup index</a></p>
+</div>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Packages — Sources</title>
+    <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/css/dsap-smf.css">
+</head>
+<body>
+<div data-dsap="packages" class="dsap-root dsap-smf">
+    <table class="dsap-smf-header" cellspacing="0" cellpadding="6" width="100%" border="0">
+        <tr>
+            <td class="dsap-smf-header-branch">
+                <img src="/static_images/logo_icon.png" alt="Dreamscape" class="dsap-smf-header-logo">
+                <span class="dsap-smf-header-branch-title">Packages</span>
+            </td>
+            <td class="dsap-smf-header-tool" align="right">Sources</td>
+        </tr>
+    </table>
+    <table class="dsap-smf-tabbar" cellspacing="0" cellpadding="3" border="1" width="100%">
+        <tr>
+            <td align="center" class="dsap-smf-tab"><a href="/melaton-mockups/packages-installed.html">Installed</a></td>
+            <td align="center" class="dsap-smf-tab"><a href="/melaton-mockups/packages-run.html">Run</a></td>
+            <td align="center" class="dsap-smf-tab dsap-smf-tab-active active"><a href="/melaton-mockups/packages-sources.html">Sources</a></td>
+        </tr>
+    </table>
+    <div class="dsap-smf-contextbar">Install from a VFS file id. Filename .mapz / .msaz must match manifest.format.</div>
+    <div class="dsap-smf-section-hdr">Install</div>
+    <div class="dsap-smf-statusbox dsap-smf-status-error">
+        <span class="dsap-smf-status-message">Example reject: launchId studio is reserved. Missing type is rejected.</span>
+    </div>
+    <div class="dsap-smf-toolbar">
+        <label>VFS file id
+            <input type="text" class="dsap-smf-input" value="vfs_file_example_01">
+        </label>
+        <button type="button" class="dsap-smf-btn dsap-smf-btn-small dsap-smf-btn-primary">Install</button>
+    </div>
+    <div class="dsap-smf-section-hdr">Last result</div>
+    <div class="dsap-smf-statusbox">
+        <span class="dsap-smf-status-message">PACKAGE_LAUNCH_RESERVED — launchId is reserved: studio</span>
+    </div>
+    <p><a href="/melaton-mockups/" class="dsap-smf-home-link">Back to mockup index</a></p>
+</div>
+</body>
+</html>
