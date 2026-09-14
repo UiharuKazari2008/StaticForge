@@ -167,7 +167,9 @@ const characterCardTool = _test.TOOL_DEFS.find((t) => t.name === 'get_character_
 assert.ok(characterCardTool);
 assert.ok(characterCardTool.core);
 assert.strictEqual(characterCardTool.scope, 'wiki');
-assert.deepStrictEqual(characterCardTool.inputSchema.required, ['name']);
+assert.ok(characterCardTool.inputSchema.properties.name);
+assert.ok(characterCardTool.inputSchema.properties.query);
+assert.strictEqual(characterCardTool.inputSchema.additionalProperties, true);
 assert.strictEqual(_test.rateGroupForTool('get_character_card'), 'search');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.get_character_card, 'search');
 
@@ -228,7 +230,11 @@ assert.ok(emptyCard.aliases.includes('velvet (nikke)'));
 assert.strictEqual(emptyCard.studioBox.action, 'replace');
 assert.strictEqual(emptyCard.studioBox.index, 0);
 assert.strictEqual(emptyCard.naxChara.prompt, 'velvet (sensual rabbit) (nikke)');
-assert.strictEqual(emptyCard.next, _test.WIKI_EMPTY_NEXT);
+assert.strictEqual(emptyCard.next, _test.NAX_WIKI_EMPTY_NEXT);
+assert.strictEqual(_test.assembleCharacterCard({
+    name: 'unknown',
+    wiki: { text: '', markdown: '', empty: true }
+}).next, _test.WIKI_EMPTY_NEXT);
 
 const filledCard = _test.assembleCharacterCard({
     name: 'alice (nikke)',
@@ -1235,7 +1241,40 @@ async function main() {
     assert.strictEqual(cardPayload.expander.prefix, 'alice_base');
     assert.strictEqual(cardPayload.expander.value, 'long shared appearance, hair, body');
     assert.strictEqual(cardPayload.naxChara.prompt, 'alice (nikke)');
-    assert.strictEqual(cardPayload.next, _test.WIKI_EMPTY_NEXT);
+    assert.strictEqual(cardPayload.next, _test.NAX_WIKI_EMPTY_NEXT);
+
+    const underscoreNax = {
+        getGalleries: () => [{ slug: 'danbooru-character-tags-v4.5', title: 'Characters 4.5', version: 'v4.5', tag_count: 1 }],
+        getNaxExpanderPreset: (id) => (id === 'CHARA' ? {
+            id: 'CHARA',
+            resolveSlugs: () => ['danbooru-character-tags-v4.5']
+        } : null),
+        formatTagForPrompt: (tag) => String(tag).replace(/_/g, ' '),
+        queryTags: ({ query }) => {
+            const all = [{
+                tag: 'asuna_(sao)',
+                gallerySlug: 'danbooru-character-tags-v4.5',
+                score: 9,
+                upvotes: 9,
+                downvotes: 0,
+                favorite: false,
+                tryMark: false
+            }];
+            const needle = String(query || '').toLowerCase();
+            const items = needle ? all.filter((row) => row.tag.toLowerCase().includes(needle)) : all;
+            return { items, total: items.length, hasMore: false };
+        }
+    };
+    const asunaCard = await _test.callTool(
+        { getNaxTagsDatabase: () => underscoreNax, getPromptConfig: () => ({}) },
+        { applicationAuth: { applicationScopes: ['wiki'] } },
+        'get_character_card',
+        { query: 'asuna', franchise: 'sword art online' }
+    );
+    const asunaPayload = JSON.parse(asunaCard.content[0].text);
+    assert.strictEqual(asunaPayload.success, true);
+    assert.strictEqual(asunaPayload.naxChara.prompt, 'asuna (sao)');
+    assert.strictEqual(asunaPayload.wiki.empty, true);
 
     const advancedListed = await _test.handleJsonRpc(
         {},
@@ -1490,6 +1529,14 @@ async function main() {
     assert.strictEqual(reliability.qualifyCharacterQuery('asuna (sao)', 'blue archive'), 'asuna (sao)');
     assert.strictEqual(reliability.naxTagMatchesFranchise('asuna (blue archive)', 'sword art online'), false);
     assert.strictEqual(reliability.naxTagMatchesFranchise('asuna (sao)', 'sword art online'), true);
+    const asunaQueries = reliability.characterLookupQueries('asuna', 'sword art online');
+    assert.ok(asunaQueries.includes('asuna (sao)'));
+    assert.ok(asunaQueries.includes('asuna (sword art online)'));
+    assert.ok(asunaQueries.includes('asuna_(sword_art_online)'));
+    const wikiTitles = reliability.pickWikiPageTitles(asunaQueries, ['asuna (sword art online)', 'asuna (blue archive)'], 'sword art online');
+    assert.strictEqual(wikiTitles[0], 'asuna (sword art online)');
+    const timed = await reliability.promiseWithTimeout(new Promise(() => {}), 40, { timedOut: true });
+    assert.strictEqual(timed.timedOut, true);
     assert.deepStrictEqual(reliability.wikiAppearanceLines('See also: asuna yuuki'), []);
     assert.strictEqual(reliability.classicPromptText('1.4::pregnant, big belly::'), '1.4::pregnant, big belly::');
     const zw = require('../modules/emphasisGroupIdSyntax');

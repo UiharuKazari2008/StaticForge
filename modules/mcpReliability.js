@@ -21,6 +21,18 @@ const FRANCHISE_ALIASES = {
     'goddess of victory nikke': 'nikke'
 };
 
+const FRANCHISE_WIKI_TITLES = {
+    sao: 'sword art online',
+    'blue archive': 'blue archive',
+    nikke: 'nikke',
+    'genshin impact': 'genshin impact'
+};
+
+const CARD_WIKI_TIMEOUT_MS = 6000;
+const CARD_ALIAS_TIMEOUT_MS = 4000;
+const CARD_STUDIO_TIMEOUT_MS = 2500;
+const CARD_WIKI_TITLE_TRIES = 2;
+
 function pruneApplyGenerateJobs(nowMs) {
     const now = nowMs != null ? Number(nowMs) : Date.now();
     applyGenerateJobs.forEach((row, id) => {
@@ -91,6 +103,83 @@ function qualifyCharacterQuery(name, franchise) {
     const fr = canonicalizeFranchise(franchise);
     if (!fr) return n;
     return `${n} (${fr})`;
+}
+
+function franchiseWikiQualifier(franchise) {
+    const c = canonicalizeFranchise(franchise);
+    if (!c) return '';
+    return FRANCHISE_WIKI_TITLES[c] || String(franchise || '').trim().replace(/_/g, ' ');
+}
+
+function characterBareName(name) {
+    const raw = String(name || '').trim();
+    if (!raw) return '';
+    return raw.replace(/\s*\([^)]*\)\s*$/, '').trim() || raw;
+}
+
+function characterLookupQueries(name, franchise) {
+    const raw = String(name || '').trim();
+    const bare = characterBareName(raw);
+    const qualified = qualifyCharacterQuery(raw, franchise);
+    const longFr = franchiseWikiQualifier(franchise);
+    const out = [];
+    const seen = new Set();
+    const add = (value) => {
+        const t = String(value || '').trim();
+        if (!t) return;
+        const variants = [t];
+        const swapped = t.includes('_') ? t.replace(/_/g, ' ') : t.replace(/ /g, '_');
+        if (swapped !== t) variants.push(swapped);
+        variants.forEach((item) => {
+            if (!item || seen.has(item)) return;
+            seen.add(item);
+            out.push(item);
+        });
+    };
+    add(qualified);
+    if (longFr && bare) add(`${bare} (${longFr})`);
+    add(raw);
+    add(bare);
+    return out;
+}
+
+function pickWikiPageTitles(queries, aliasTitles, franchise) {
+    const scored = [];
+    const add = (title, score) => {
+        const t = String(title || '').trim();
+        if (!t) return;
+        scored.push({ t, score: Number(score) || 0 });
+    };
+    (Array.isArray(aliasTitles) ? aliasTitles : []).forEach((title) => {
+        add(title, naxTagMatchesFranchise(title, franchise) ? 6 : 1);
+    });
+    (Array.isArray(queries) ? queries : []).forEach((query, index) => {
+        add(query, 4 - Math.min(index, 3));
+    });
+    scored.sort((a, b) => b.score - a.score);
+    const seen = new Set();
+    const out = [];
+    scored.forEach((row) => {
+        const key = row.t.toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ');
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(row.t);
+    });
+    return out;
+}
+
+function promiseWithTimeout(promise, ms, fallback) {
+    const wait = Number(ms);
+    if (!Number.isFinite(wait) || wait <= 0) return Promise.resolve(promise);
+    let timer = null;
+    return Promise.race([
+        Promise.resolve(promise).finally(() => {
+            if (timer) clearTimeout(timer);
+        }),
+        new Promise((resolve) => {
+            timer = setTimeout(() => resolve(fallback), wait);
+        })
+    ]);
 }
 
 function naxTagMatchesFranchise(tag, franchise) {
@@ -192,6 +281,11 @@ function slimMemoryHit(row) {
 module.exports = {
     APPLY_GENERATE_TTL_MS,
     FRANCHISE_ALIASES,
+    FRANCHISE_WIKI_TITLES,
+    CARD_WIKI_TIMEOUT_MS,
+    CARD_ALIAS_TIMEOUT_MS,
+    CARD_STUDIO_TIMEOUT_MS,
+    CARD_WIKI_TITLE_TRIES,
     rememberApplyGenerateJob,
     getApplyGenerateJob,
     findPendingApplyGenerate,
@@ -199,6 +293,11 @@ module.exports = {
     resetApplyGenerateJobs,
     canonicalizeFranchise,
     qualifyCharacterQuery,
+    franchiseWikiQualifier,
+    characterBareName,
+    characterLookupQueries,
+    pickWikiPageTitles,
+    promiseWithTimeout,
     naxTagMatchesFranchise,
     wikiAppearanceLines,
     classicPromptText,

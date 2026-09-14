@@ -70,8 +70,17 @@ const {
     findPendingApplyGenerate,
     completeApplyGenerateJob,
     qualifyCharacterQuery,
+    franchiseWikiQualifier,
+    characterBareName,
+    characterLookupQueries,
+    pickWikiPageTitles,
+    promiseWithTimeout,
     naxTagMatchesFranchise,
     wikiAppearanceLines,
+    CARD_WIKI_TIMEOUT_MS,
+    CARD_ALIAS_TIMEOUT_MS,
+    CARD_STUDIO_TIMEOUT_MS,
+    CARD_WIKI_TITLE_TRIES,
     classicPromptText,
     studioFieldText,
     slimParamScalars,
@@ -944,15 +953,18 @@ const TOOL_DEFS = [
     {
         name: 'get_character_card',
         core: true,
-        description: 'One character card. franchise filters NAX + wiki (asuna + sword art online → asuna (sao), never a different franchise). Returns tag, trainedOn, naxScore, wikiEmpty, appearanceLines. next says empty only when wikiEmpty is true.',
+        description: 'One character card. franchise filters NAX + wiki (asuna + sword art online → NAX asuna (sao), wiki asuna (sword art online)). Returns tag, naxChara.prompt, appearanceLines. Wiki miss/timeout still returns NAX. next says empty only when wikiEmpty and no naxChara.',
         scope: 'wiki',
         inputSchema: {
             type: 'object',
-            additionalProperties: false,
-            required: ['name'],
+            additionalProperties: true,
             properties: {
-                name: { type: 'string', description: 'Character tag or display name (e.g. alice, rapi (nikke))' },
-                franchise: { type: 'string', description: 'Optional qualifier (nikke, genshin impact, …)' },
+                name: { type: 'string', description: 'Character tag or display name (e.g. alice, rapi (nikke)). Aliases: tag, tagName, query, title.' },
+                tagName: { type: 'string' },
+                tag: { type: 'string' },
+                query: { type: 'string' },
+                title: { type: 'string' },
+                franchise: { type: 'string', description: 'Optional qualifier (nikke, sword art online, …)' },
                 model: { type: 'string', description: 'Studio model for NAX CHARA (v5, v4_5, …)' }
             }
         }
@@ -2551,6 +2563,7 @@ function reshapeWikiPageForMcp(flat) {
 }
 
 const WIKI_EMPTY_NEXT = 'Wiki body is empty. Try search_wiki aliases, the last Studio character box, or generate and write what the pixels did. A missing wiki is not a ban.';
+const NAX_WIKI_EMPTY_NEXT = 'Wiki empty. Use naxChara.prompt (and expander if present). Do not invent a different appearance. A missing wiki is not a ban.';
 
 function normalizeCharacterKey(value) {
     return String(value || '').trim().toLowerCase().replace(/^!/, '').replace(/_/g, ' ').replace(/\s+/g, ' ');
@@ -2709,7 +2722,8 @@ function assembleCharacterCard(parts) {
         studioBox,
         naxChara
     };
-    if (wiki.empty) out.next = WIKI_EMPTY_NEXT;
+    if (wiki.empty && naxChara) out.next = NAX_WIKI_EMPTY_NEXT;
+    else if (wiki.empty) out.next = WIKI_EMPTY_NEXT;
     else if (!expander) out.next = 'Wiki has text. No request expander matched. Use appearanceLines / naxChara — do not retry wiki as empty.';
     return out;
 }
@@ -2723,13 +2737,14 @@ function readSavedExpanders(globalResources) {
     }
 }
 
-async function readStudioCardSlices(globalResources, req) {
+async function readStudioCardSlices(globalResources, req, timeoutMs) {
     const bind = autoBindIfNeeded(globalResources, req);
     // modules/agentClientBridge.js — getBoundRecord / sendBoundCommand
     const bound = getBoundRecord(globalResources, bind.bindKey);
     if (!bound) return { characters: [], expanders: [] };
+    const wait = timeoutMs != null ? Number(timeoutMs) : CARD_STUDIO_TIMEOUT_MS;
     try {
-        const data = await sendBoundCommand(globalResources, 'get_state', {}, 15000, bind.bindKey);
+        const data = await sendBoundCommand(globalResources, 'get_state', {}, wait, bind.bindKey);
         const change = data && data.change && typeof data.change === 'object' && !Array.isArray(data.change)
             ? data.change
             : {};
@@ -2773,52 +2788,100 @@ async function readWikiAliasTitles(globalResources, req, query) {
     }
 }
 
+function emptyWikiCard(tagName) {
+    return { success: true, tagName: tagName || null, text: '', markdown: '', empty: true };
+}
+
+function wikiCardHasText(wiki) {
+    return !!(wiki && coerceWikiText((wiki.text || wiki.markdown)));
+}
+
 function readNaxCharaHit(globalResources, name, model, franchise) {
-    // modules/mcpAgentFacade.js — searchNaxTags / resolveNaxModule
-    const result = searchNaxTags(resolveNaxModule(globalResources), {
-        query: name,
-        kind: 'CHARA',
-        model,
-        limit: 8
-    });
-    const items = result && Array.isArray(result.items) ? result.items : [];
-    const matched = items.find((item) => item && item.prompt && naxTagMatchesFranchise(item.tag || item.prompt, franchise))
-        || (franchise ? null : items.find((item) => item && item.prompt));
-    if (!matched || !matched.prompt) return null;
-    return {
-        tag: matched.tag,
-        prompt: matched.prompt,
-        score: matched.score,
-        gallerySlug: matched.gallerySlug
-    };
+    try {
+        // modules/mcpAgentFacade.js — searchNaxTags / resolveNaxModule
+        const nax = resolveNaxModule(globalResources);
+        const queries = characterLookupQueries(name, franchise);
+        for (let i = 0; i < queries.length; i++) {
+            const result = searchNaxTags(nax, {
+                query: queries[i],
+                kind: 'CHARA',
+                model,
+                limit: 12
+            });
+            const items = result && Array.isArray(result.items) ? result.items : [];
+            const matched = items.find((item) => item && item.prompt && naxTagMatchesFranchise(item.tag || item.prompt, franchise))
+                || (franchise ? null : items.find((item) => item && item.prompt));
+            if (matched && matched.prompt) {
+                return {
+                    tag: matched.tag,
+                    prompt: matched.prompt,
+                    score: matched.score,
+                    gallerySlug: matched.gallerySlug
+                };
+            }
+        }
+        return null;
+    } catch (_err) {
+        return null;
+    }
+}
+
+function matchCardExpander(lists, queries) {
+    const pools = Array.isArray(lists) ? lists : [];
+    const needles = Array.isArray(queries) ? queries : [];
+    for (let i = 0; i < needles.length; i++) {
+        for (let j = 0; j < pools.length; j++) {
+            const hit = matchRequestExpander(pools[j], needles[i]);
+            if (hit) return hit;
+        }
+    }
+    return null;
 }
 
 async function collectCharacterCard(globalResources, req, input) {
     const src = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
-    const name = String(src.name || src.tagName || src.tag || src.title || '').trim();
+    const name = String(src.name || src.tagName || src.tag || src.query || src.title || '').trim();
     const franchise = src.franchise ? String(src.franchise).trim() : '';
     const model = src.model ? String(src.model).trim() : undefined;
     if (!name) return assembleCharacterCard({ name: '' });
-    const wikiQuery = qualifyCharacterQuery(name, franchise);
-    const [wiki, aliasTitles, studio] = await Promise.all([
-        readWikiCardPage(globalResources, req, wikiQuery),
-        readWikiAliasTitles(globalResources, req, wikiQuery),
-        readStudioCardSlices(globalResources, req)
-    ]);
+    const queries = characterLookupQueries(name, franchise);
+    const wikiQuery = queries[0] || qualifyCharacterQuery(name, franchise);
+    const bare = characterBareName(name) || name;
+    const naxChara = readNaxCharaHit(globalResources, name, model, franchise);
     const saved = readSavedExpanders(globalResources);
-    const expander = matchRequestExpander(studio.expanders, wikiQuery) || matchRequestExpander(saved, wikiQuery)
-        || matchRequestExpander(studio.expanders, name) || matchRequestExpander(saved, name);
+    const [aliasTitles, studio] = await Promise.all([
+        promiseWithTimeout(readWikiAliasTitles(globalResources, req, bare), CARD_ALIAS_TIMEOUT_MS, []),
+        promiseWithTimeout(readStudioCardSlices(globalResources, req, CARD_STUDIO_TIMEOUT_MS), CARD_STUDIO_TIMEOUT_MS, {
+            characters: [],
+            expanders: []
+        })
+    ]);
+    const titles = pickWikiPageTitles(queries, aliasTitles, franchise);
+    let wiki = emptyWikiCard(titles[0] || wikiQuery);
+    for (let i = 0; i < titles.length && i < CARD_WIKI_TITLE_TRIES; i++) {
+        wiki = await promiseWithTimeout(
+            readWikiCardPage(globalResources, req, titles[i]),
+            CARD_WIKI_TIMEOUT_MS,
+            emptyWikiCard(titles[i])
+        );
+        if (wikiCardHasText(wiki)) break;
+    }
+    const expander = matchCardExpander([studio.expanders, saved], queries)
+        || matchRequestExpander(studio.expanders, name)
+        || matchRequestExpander(saved, name);
     const studioBox = pickStudioCharacterBox(studio.characters, wikiQuery)
-        || pickStudioCharacterBox(studio.characters, name);
-    const naxChara = readNaxCharaHit(globalResources, wikiQuery, model, franchise);
+        || pickStudioCharacterBox(studio.characters, name)
+        || pickStudioCharacterBox(studio.characters, bare);
     const aliases = uniqueCharacterAliases(name, [
         wiki && wiki.tagName,
         naxChara && naxChara.tag && String(naxChara.tag).replace(/_/g, ' '),
+        ...queries,
+        ...titles,
         ...aliasTitles
     ]);
     return assembleCharacterCard({
         name,
-        franchise: franchise || parseCharacterFranchise(wikiQuery),
+        franchise: franchise || parseCharacterFranchise(wikiQuery) || franchiseWikiQualifier(franchise),
         wiki,
         aliases,
         expander,
@@ -3789,7 +3852,7 @@ async function callTool(globalResources, req, name, args) {
         input.format = 'markdown';
     }
     if (name === 'get_character_card' && !input.name) {
-        input.name = input.tagName || input.tag || input.title;
+        input.name = input.tagName || input.tag || input.query || input.title;
     }
     if (name === 'list_static_wiki_pages' || name === 'get_static_wiki_page' || name === 'search_static_wiki') {
         input.siteId = input.siteId || input.site;
@@ -4396,8 +4459,16 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'get_character_card') {
-        const card = await collectCharacterCard(globalResources, req, input);
-        return mcpTextResult(card, !card.success);
+        try {
+            const card = await collectCharacterCard(globalResources, req, input);
+            return mcpTextResult(card || { success: false, error: 'character card was empty' }, !card || !card.success);
+        } catch (err) {
+            return mcpTextResult({
+                success: false,
+                error: (err && err.message) || 'character card failed',
+                name: input.name || null
+            }, true);
+        }
     }
 
     if (def.packet && name !== 'get_generated_image' && name !== 'get_linkxi_persona' && name !== 'save_linkxi_persona') {
@@ -5509,6 +5580,11 @@ module.exports = {
         reshapeWikiPageForMcp,
         coerceWikiText,
         WIKI_EMPTY_NEXT,
+        NAX_WIKI_EMPTY_NEXT,
+        characterLookupQueries,
+        pickWikiPageTitles,
+        promiseWithTimeout,
+        readNaxCharaHit,
         normalizeCharacterKey,
         parseCharacterFranchise,
         uniqueCharacterAliases,

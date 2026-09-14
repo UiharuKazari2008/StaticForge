@@ -234,9 +234,9 @@ Cursor ingest / QA on the **running Dreamscape tab** (port 9220). Do **not** use
 
 User: *who is Rapi* / *appearance for alice (nikke)* / *don't invent this character*
 
-1. `get_character_card` `{ "name": "rapi (nikke)" }` — optional `franchise` / `model`.
-2. Read `wiki.text` / `wiki.markdown`. If `wiki.empty` is true, **do not invent appearance**. Use `aliases`, `expander.value` (full request-expander body), `studioBox` (`action: replace` + `index` snapshot), and `naxChara.prompt` (best `search_nax` `kind=CHARA` hit).
-3. `next` is the same empty-wiki guidance as `get_wiki_page` when wiki or expander is empty. A missing wiki is not a ban.
+1. `get_character_card` `{ "name": "rapi (nikke)" }` — optional `franchise` / `model`. Aliases: `tag`, `tagName`, `query`, `title`.
+2. Read `wiki.text` / `wiki.markdown`. If `wiki.empty` is true, **do not invent appearance**. Use `naxChara.prompt` first (NAX is collected even when wiki times out), then `aliases`, `expander.value`, `studioBox` (`action: replace` + `index`).
+3. `next` says use `naxChara.prompt` when wiki is empty but NAX hit; otherwise the same empty-wiki guidance as `get_wiki_page`. A missing wiki is not a ban. Wiki titles retry the long franchise form (`asuna (sword art online)`), not only the NAX short tag (`asuna (sao)`).
 4. No new Studio chrome. Characters stay `action: replace` + `index` (`docs/studio-change-json.md`).
 
 ## Recipe: Copy Lookback (`resolve_lookback`)
