@@ -201,6 +201,18 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 
 ---
 
+## Melaton packages
+
+| Feature | REST | WS | Push | Client-only |
+|---------|------|-----|------|-------------|
+| Installed package list | — | `package_list` | `packages_updated` | Start / Control Panel registration is later slices (#184–#186) |
+| Install `.mapz` / `.msaz` | — | `package_install` (admin; `base64` / `bytes` / `vfsFileId`) | `packages_updated` | — |
+| Uninstall / enable | — | `package_uninstall`, `package_set_enabled` (admin) | `packages_updated` | Disable of `server.entry` needs process bounce (#187) |
+
+Contract: [melaton-packages.md](./melaton-packages.md). Packets: [ws/melatonPackages.md](./ws/melatonPackages.md).
+
+---
+
 ## Android / notifications
 
 | Feature | REST | WS | Push | Client-only |
@@ -215,7 +227,7 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 | Category | Count |
 |----------|-------|
 | Documented REST route groups | ~25 explicit + static + replication gallery/maintenance |
-| WS request types (client → server) | **~332** unique (~334 domain-index rows; `get_app_options` / `retry_account_data` appear in both account + quips) |
+| WS request types (client → server) | **~336** unique (~338 domain-index rows; `get_app_options` / `retry_account_data` appear in both account + quips) |
 | WS server push types (common) | **~50** |
 | Auth flows | **3** (PIN session, Bearer loginKey, loopback `devLoginKey` on `/agent`) |
 
@@ -233,3 +245,4 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 | VFS | `modules/vfsWebSocketHandlers.js` |
 | All packets | `modules/ws/handlers/*.js` + registry |
 | Replication | `modules/replication/routes/*.js`, `200-replicationHandler.js` |
+| Melaton packages | `modules/ws/handlers/240-melatonPackageHandler.js`, `modules/melatonPackageStore.js` |

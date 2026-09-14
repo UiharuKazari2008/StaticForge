@@ -492,6 +492,9 @@ class WebSocketMessageHandlers {
             'delete_fandom_wiki_import',
             'runpod_pod_start',
             'runpod_pod_stop',
+            'package_install',
+            'package_uninstall',
+            'package_set_enabled',
         ];
         return destructiveOperations.includes(messageType) || isReplicationDestructivePacket(messageType);
     }

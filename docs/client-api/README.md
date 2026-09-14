@@ -58,11 +58,12 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | [rest-api.md](./rest-api.md) | Every HTTP route: methods, auth, inputs, responses, errors |
 | [client-only-features.md](./client-only-features.md) | Web-only UI, localStorage, service worker, Android bridges |
 | [feature-map.md](./feature-map.md) | UI feature → REST/WS matrix |
+| [melaton-packages.md](./melaton-packages.md) | `.mapz` / `.msaz` manifest + `.cache/packages` store |
 | [agent-session.md](./agent-session.md) | Localhost `/agent` bind + drive one Studio tab, plus named-scope `GET /agent/scopes` and `POST /agent/packet` (Ivory/Menma; loopback + Bearer, not PIN pad) |
 | [mcp-connector.md](./mcp-connector.md) | Public MCP / Grok connector on `/{mcpPathUuid}` — Streamable HTTP wrap of `/agent` + WS; Bearer `sfapp_`; unknown UA bypass + capture |
 | [README-CHILD.md](../README-CHILD.md) | Child/ephemeral replication deployment (master pairing, bootstrap, daily ops) |
 
-### WebSocket domains (~332 unique request types)
+### WebSocket domains (~336 unique request types)
 
 | Domain | File | Packets |
 |--------|------|---------|
@@ -97,6 +98,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | VFS & desktop | [ws/vfs.md](./ws/vfs.md) | 34 |
 | References & vibes | [ws/references.md](./ws/references.md) | 22 |
 | Replication | [ws/replication.md](./ws/replication.md) | 12 |
+| Melaton packages | [ws/melatonPackages.md](./ws/melatonPackages.md) | 4 |
 
 ## Related legacy docs
 

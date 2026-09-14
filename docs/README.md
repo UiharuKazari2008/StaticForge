@@ -8,6 +8,7 @@
 | [studio-change-json.md](./studio-change-json.md) | Studio Change JSON (agent / MCP / clipboard) |
 | [local-host.md](./local-host.md) | Localhost / host wiring notes |
 | [dreamscape-app-names.md](./dreamscape-app-names.md) | Dreamscape app / DSAP naming |
+| [client-api/melaton-packages.md](./client-api/melaton-packages.md) | Melaton `.mapz` / `.msaz` store + manifest |
 | [ANDROID_BRIDGE.md](./ANDROID_BRIDGE.md) | WebView native bridges (not server API) |
 | [LOGGING_SYSTEM.md](./LOGGING_SYSTEM.md) | Server logging |
 | [../README-CHILD.md](../README-CHILD.md) | Child / ephemeral replication ops |
