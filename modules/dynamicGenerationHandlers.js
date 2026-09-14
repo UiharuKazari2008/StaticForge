@@ -10624,7 +10624,7 @@ async function processDynamicGenerationCore(globalResources, dynamicConfig, cont
                 })() : []),
                 ...(appliedPresetControls?.prompt?.length > 0 ? [
                     '',
-                    '**🔒 PRESET CONTROLLED (Do NOT select unless you must override):**', // TODO: Convert indications in the actual text tegments 
+                    '**🔒 PRESET CONTROLLED (Do NOT select unless you must override):**',
                     ...appliedPresetControls.prompt.map(c => {
                         if (c.action === 'dataset_prepend') return `- Dataset prepend: \`${c.text}\``;
                         if (c.action === 'dataset_preset_append') return `- Dataset preset: \`${c.text}\``;
@@ -10659,7 +10659,7 @@ async function processDynamicGenerationCore(globalResources, dynamicConfig, cont
                 })() : []),
                 ...(appliedPresetControls?.uc?.length > 0 ? [
                     '',
-                    '**🔒 PRESET CONTROLLED (Do NOT select unless you must override):**', // TODO: Convert indications in the actual text tegments 
+                    '**🔒 PRESET CONTROLLED (Do NOT select unless you must override):**',
                     ...appliedPresetControls.uc.map(c => {
                         if (c.action === 'uc_preset') return `- UC preset: \`${c.text}\``;
                         if (c.action === 'vibe_text_injection') return `- Vibe transfer: \`${c.text}\``;
