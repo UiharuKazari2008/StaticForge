@@ -1542,14 +1542,15 @@ class WorkspaceManager {
             return 0;
         }
 
+        const validItemsSet = new Set(validItems);
         let removedCount = 0;
         const actuallyRemoved = [];
 
         switch (type) {
             case 'files': {
                 const memFiles = workspaces[targetId].files || [];
-                const memRemoved = memFiles.filter(item => validItems.includes(item));
-                workspaces[targetId].files = memFiles.filter(item => !validItems.includes(item));
+                const memRemoved = memFiles.filter(item => validItemsSet.has(item));
+                workspaces[targetId].files = memFiles.filter(item => !validItemsSet.has(item));
                 // After strip, memory arrays are empty — still queue SQL removals for requested items
                 actuallyRemoved.push(...(memRemoved.length > 0 ? memRemoved : validItems));
                 removedCount = actuallyRemoved.length;
@@ -1563,8 +1564,8 @@ class WorkspaceManager {
                 }
                 {
                     const scrapsBefore = workspaces[targetId].scraps;
-                    const memRemoved = scrapsBefore.filter(item => validItems.includes(item));
-                    workspaces[targetId].scraps = scrapsBefore.filter(item => !validItems.includes(item));
+                    const memRemoved = scrapsBefore.filter(item => validItemsSet.has(item));
+                    workspaces[targetId].scraps = scrapsBefore.filter(item => !validItemsSet.has(item));
                     const removedFromScraps = memRemoved.length > 0 ? memRemoved : validItems.slice();
                     actuallyRemoved.push(...removedFromScraps);
                     removedCount = removedFromScraps.length;
@@ -1580,21 +1581,21 @@ class WorkspaceManager {
 
                     // Also remove from default workspace scraps if not the default workspace (scraps are shared)
                     if (targetId !== 'default' && workspaces.default && workspaces.default.scraps) {
-                        workspaces.default.scraps = workspaces.default.scraps.filter(item => !validItems.includes(item));
+                        workspaces.default.scraps = workspaces.default.scraps.filter(item => !validItemsSet.has(item));
                     }
                 }
                 break;
 
             case 'presets':
                 const originalPresetsLength = workspaces[targetId].presets.length;
-                workspaces[targetId].presets = workspaces[targetId].presets.filter(item => !validItems.includes(item));
+                workspaces[targetId].presets = workspaces[targetId].presets.filter(item => !validItemsSet.has(item));
                 removedCount = originalPresetsLength - workspaces[targetId].presets.length;
                 break;
 
             case 'pinned': {
                 const memPinned = workspaces[targetId].pinned || [];
-                const memRemoved = memPinned.filter(item => validItems.includes(item));
-                workspaces[targetId].pinned = memPinned.filter(item => !validItems.includes(item));
+                const memRemoved = memPinned.filter(item => validItemsSet.has(item));
+                workspaces[targetId].pinned = memPinned.filter(item => !validItemsSet.has(item));
                 actuallyRemoved.push(...(memRemoved.length > 0 ? memRemoved : validItems));
                 removedCount = actuallyRemoved.length;
                 break;
@@ -2168,6 +2169,7 @@ class WorkspaceManager {
             return { success: true, removedCount: 0 };
         }
 
+        const validItemsSet = new Set(validItems);
         let removedCount = 0;
         const actuallyRemoved = [];
         const workspace = workspaces[targetWorkspaceId];
@@ -2175,8 +2177,8 @@ class WorkspaceManager {
         switch (type) {
             case 'pinned':
                 if (workspace.pinned) {
-                    const memRemoved = workspace.pinned.filter(item => validItems.includes(item));
-                    workspace.pinned = workspace.pinned.filter(item => !validItems.includes(item));
+                    const memRemoved = workspace.pinned.filter(item => validItemsSet.has(item));
+                    workspace.pinned = workspace.pinned.filter(item => !validItemsSet.has(item));
                     actuallyRemoved.push(...(memRemoved.length > 0 ? memRemoved : validItems));
                     removedCount = actuallyRemoved.length;
                 } else {
@@ -2186,8 +2188,8 @@ class WorkspaceManager {
                 break;
             case 'scraps':
                 if (workspace.scraps) {
-                    const memRemoved = workspace.scraps.filter(item => validItems.includes(item));
-                    workspace.scraps = workspace.scraps.filter(item => !validItems.includes(item));
+                    const memRemoved = workspace.scraps.filter(item => validItemsSet.has(item));
+                    workspace.scraps = workspace.scraps.filter(item => !validItemsSet.has(item));
                     actuallyRemoved.push(...(memRemoved.length > 0 ? memRemoved : validItems));
                     removedCount = actuallyRemoved.length;
                 } else {
