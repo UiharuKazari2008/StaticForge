@@ -277,6 +277,57 @@
         }
     }
 
+    function clickTestingOfferNo() {
+        const dialog = document.getElementById('confirmationDialog');
+        if (!dialog || dialog.classList.contains('hidden') || dialog.dataset.agentTestingOffer !== '1') {
+            return false;
+        }
+        const buttons = dialog.querySelectorAll('.confirmation-controls button');
+        const noBtn = buttons.length ? buttons[buttons.length - 1] : null;
+        if (noBtn) {
+            noBtn.click();
+            return true;
+        }
+        // hideConfirmationDialog: public/scripts/comp/confirmationDialog.js
+        hideConfirmationDialog();
+        return true;
+    }
+
+    function showTestingOfferDialog(data) {
+        const timeoutMs = Number(data && data.timeoutMs) || 15000;
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (accepted) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                const dialog = document.getElementById('confirmationDialog');
+                if (dialog && dialog.dataset.agentTestingOffer === '1') {
+                    delete dialog.dataset.agentTestingOffer;
+                }
+                resolve({ ok: true, accepted: accepted === true });
+            };
+            const timer = setTimeout(() => {
+                clickTestingOfferNo();
+                finish(false);
+            }, timeoutMs);
+            // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+            showConfirmationDialog(
+                'Do you want to use this client for development testing?\n\nIf you do nothing, the nearest client stays selected.',
+                [
+                    { text: 'Yes', value: true, className: 'btn-standard primary' },
+                    { text: 'No', value: false, className: 'btn-standard' }
+                ],
+                null,
+                { title: 'Development testing', icon: 'fas fa-display' }
+            ).then((value) => {
+                finish(value === true);
+            });
+            const dialog = document.getElementById('confirmationDialog');
+            if (dialog) dialog.dataset.agentTestingOffer = '1';
+        });
+    }
+
     function restartClientFromCommand() {
         const sw = window.serviceWorkerManager;
         if (sw && typeof sw.forceRestart === 'function') {
@@ -761,6 +812,15 @@
             if (command === 'client_restart') {
                 replyAgentSessionResult(requestId, { ok: true, restarting: true });
                 restartClientFromCommand();
+                return;
+            }
+            if (command === 'client_offer_testing') {
+                replyAgentSessionResult(requestId, await showTestingOfferDialog(data));
+                return;
+            }
+            if (command === 'client_dismiss_testing_offer') {
+                clickTestingOfferNo();
+                replyAgentSessionResult(requestId, { ok: true, dismissed: true, accepted: false });
                 return;
             }
             if (command === 'client_update') {

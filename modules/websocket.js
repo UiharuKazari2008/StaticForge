@@ -235,6 +235,15 @@ class WebSocketServer {
             }
             this.sendToClient(ws, connectionPayload);
 
+            if (clientInfo.authenticated && clientInfo.clientId) {
+                try {
+                    const { onAgentClientConnected } = require('./agentClientBridge');
+                    onAgentClientConnected(this.globalResources, clientInfo.clientId);
+                } catch (_err) {
+                    // Agent bind offers are optional at connect
+                }
+            }
+
             // Push boot-time compile failures stored in runtimeAssetService (no clients were connected at compile time)
             this.sendStoredRuntimeCompileErrorsToClient(ws);
 
@@ -270,6 +279,12 @@ class WebSocketServer {
                     this.clearRuntimeCompileProgressThrottleForClient(ws);
                     this.clearRuntimeCompileLogsThrottleForClient(ws);
                     this.clients.delete(ws);
+                    try {
+                        const { onAgentClientDisconnected } = require('./agentClientBridge');
+                        onAgentClientDisconnected(this.globalResources, clientInfo.clientId);
+                    } catch (_err) {
+                        // preferred-testing cleanup is optional
+                    }
                 }
             });
 

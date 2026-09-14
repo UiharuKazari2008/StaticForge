@@ -18,12 +18,15 @@ const COMMAND_TIMEOUT_MS = 12000;
 const UPDATE_COMMAND_TIMEOUT_MS = 20000;
 const PREPARE_UPDATE_TIMEOUT_MS = 120000;
 const REATTACH_TIMEOUT_MS = 120000;
+const TESTING_OFFER_TIMEOUT_MS = 15000;
 const BIND_IDLE_MS = 15 * 60 * 1000;
 
 const shareCodes = new Map(); // code -> { clientId, expiresAt }
 const pendingResults = new Map(); // requestId -> { resolve, reject, timer, clientId }
 const bindSessions = new Map(); // bindKey -> { clientId, lastInteractionAt, boundAt, actorName }
 const pendingReattach = new Map(); // bindKey -> { sessionId, actorName, previousClientId, startedAt }
+const testingOfferState = new Map(); // bindKey -> { offered: Set, declined: Set }
+let preferredTestingClientId = null;
 const mcpStudioCheckpoints = new Map(); // bindKey -> { id, focusedFilename }
 let lastBindResources = null;
 
@@ -83,6 +86,26 @@ function snippetUserAgent(raw) {
 }
 
 // Same header order as web_server.js getRealIP and modules/websocket.js handshake clientIP
+function normalizeClientIP(ip) {
+    if (!ip) return '';
+    return String(ip).replace(/^::ffff:/i, '').toLowerCase();
+}
+
+function isLoopbackClientIP(ip) {
+    const s = normalizeClientIP(ip);
+    return s === '127.0.0.1' || s === '::1' || s === 'localhost';
+}
+
+function scoreClientNearness(info, requestIP) {
+    let score = 0;
+    const cli = normalizeClientIP(info && info.clientIP);
+    const req = normalizeClientIP(requestIP);
+    if (req && cli && req === cli) score += 2e12;
+    if (isLoopbackClientIP(info && info.clientIP)) score += 1e12;
+    score += clientLastActivityMs(info);
+    return score;
+}
+
 function requestClientIP(req) {
     if (!req) return null;
     const headers = req.headers || {};
@@ -915,6 +938,261 @@ function sendBoundCommand(globalResources, command, payload, timeoutMs, bindKey)
     });
 }
 
+function pickNearestClient(globalResources, requestIP, exceptClientId) {
+    const wsServer = getWsServer(globalResources);
+    if (!wsServer || !wsServer.clients) return null;
+    const skipId = exceptClientId ? String(exceptClientId) : '';
+    let best = null;
+    let bestScore = -1;
+    for (const [ws, info] of wsServer.clients) {
+        if (ws.readyState !== WebSocket.OPEN) continue;
+        if (!info || !info.authenticated) continue;
+        const clientId = ensureClientId(info);
+        if (skipId && clientId === skipId) continue;
+        const score = scoreClientNearness(info, requestIP);
+        if (!best || score > bestScore) {
+            best = { ws, info, clientId };
+            bestScore = score;
+        }
+    }
+    return best;
+}
+
+function sendClientCommand(globalResources, clientId, command, payload, timeoutMs) {
+    if (timeoutMs == null) timeoutMs = TESTING_OFFER_TIMEOUT_MS;
+    const wsServer = getWsServer(globalResources);
+    const found = findClientById(wsServer, clientId);
+    if (!found) {
+        const err = new Error('Client is not connected');
+        err.status = 404;
+        throw err;
+    }
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            pendingResults.delete(requestId);
+            const err = new Error('Client did not reply');
+            err.status = 504;
+            reject(err);
+        }, timeoutMs);
+        pendingResults.set(requestId, {
+            resolve,
+            reject,
+            timer,
+            clientId
+        });
+        wsServer.sendToClient(found.ws, {
+            type: 'agent_session_command',
+            requestId,
+            data: {
+                command,
+                ...(payload || {})
+            },
+            timestamp: new Date().toISOString()
+        });
+    });
+}
+
+function dismissTestingOffer(globalResources, clientId) {
+    const wsServer = getWsServer(globalResources);
+    const found = findClientById(wsServer, clientId);
+    if (!found) return;
+    wsServer.sendToClient(found.ws, {
+        type: 'agent_session_command',
+        requestId: crypto.randomUUID(),
+        data: { command: 'client_dismiss_testing_offer' },
+        timestamp: new Date().toISOString()
+    });
+}
+
+function getTestingOfferState(bindKey) {
+    const key = String(bindKey || '').trim() || 'preferred:testing';
+    let state = testingOfferState.get(key);
+    if (!state) {
+        state = { offered: new Set(), declined: new Set() };
+        testingOfferState.set(key, state);
+    }
+    return state;
+}
+
+function claimTestingClient(globalResources, clientId, actorName) {
+    preferredTestingClientId = clientId;
+    for (const [bindKey, session] of [...bindSessions]) {
+        bindClient(globalResources, {
+            clientId,
+            bindKey,
+            actorName: actorName || (session && session.actorName) || null
+        });
+    }
+    for (const bindKey of [...testingOfferState.keys()]) {
+        dismissOtherTestingOffers(globalResources, bindKey, clientId);
+    }
+    return { ok: true, clientId, primary: true };
+}
+
+function dismissOtherTestingOffers(globalResources, bindKey, exceptClientId) {
+    const state = getTestingOfferState(bindKey);
+    const wsServer = getWsServer(globalResources);
+    if (!wsServer || !wsServer.clients) return;
+    for (const [ws, info] of wsServer.clients) {
+        if (ws.readyState !== WebSocket.OPEN) continue;
+        const id = ensureClientId(info);
+        if (id === exceptClientId) continue;
+        if (!state.offered.has(id)) continue;
+        dismissTestingOffer(globalResources, id);
+        state.declined.add(id);
+    }
+}
+
+async function watchTestingOffer(globalResources, { bindKey, clientId, actorName }) {
+    const state = getTestingOfferState(bindKey);
+    try {
+        const data = await sendClientCommand(
+            globalResources,
+            clientId,
+            'client_offer_testing',
+            {
+                actorName: actorName || null,
+                timeoutMs: TESTING_OFFER_TIMEOUT_MS
+            },
+            TESTING_OFFER_TIMEOUT_MS + 2000
+        );
+        if (data && data.accepted === true) {
+            claimTestingClient(globalResources, clientId, actorName);
+            return;
+        }
+        state.declined.add(clientId);
+    } catch (_err) {
+        state.declined.add(clientId);
+        dismissTestingOffer(globalResources, clientId);
+    }
+}
+
+function maybeOfferTestingClients(globalResources, opts) {
+    const bindKey = (opts && opts.bindKey) || 'preferred:testing';
+    const primaryClientId = opts && opts.primaryClientId;
+    const actorName = opts && opts.actorName;
+    const onlyClientId = opts && opts.onlyClientId;
+    if (!primaryClientId) return;
+    const wsServer = getWsServer(globalResources);
+    if (!wsServer || !wsServer.clients) return;
+    const state = getTestingOfferState(bindKey);
+    for (const [ws, info] of wsServer.clients) {
+        if (ws.readyState !== WebSocket.OPEN) continue;
+        if (!info || !info.authenticated) continue;
+        const clientId = ensureClientId(info);
+        if (clientId === primaryClientId) continue;
+        if (onlyClientId && clientId !== onlyClientId) continue;
+        if (state.offered.has(clientId) || state.declined.has(clientId)) continue;
+        state.offered.add(clientId);
+        void watchTestingOffer(globalResources, {
+            bindKey,
+            clientId,
+            actorName
+        });
+    }
+}
+
+function autoBindNearest(globalResources, bindKey, actorName, requestIP) {
+    lastBindResources = globalResources;
+    const key = bindKey ? String(bindKey).trim() : '';
+    const clients = listClients(globalResources, key || null);
+    if (key && getBoundRecord(globalResources, key)) {
+        const clientId = getBoundClientId(key);
+        void maybeOfferTestingClients(globalResources, {
+            bindKey: key,
+            primaryClientId: clientId,
+            actorName: actorName || boundActorName(key)
+        });
+        return { bound: true, auto: false, clientId, bindKey: key, clients };
+    }
+    if (!clients.length) {
+        return {
+            bound: false,
+            auto: false,
+            bindKey: key || null,
+            needsClientChoice: false,
+            clients
+        };
+    }
+    let targetId = null;
+    if (preferredTestingClientId && findClientById(getWsServer(globalResources), preferredTestingClientId)) {
+        targetId = preferredTestingClientId;
+    } else if (clients.length === 1) {
+        targetId = clients[0].clientId;
+    } else {
+        const nearest = pickNearestClient(globalResources, requestIP);
+        targetId = nearest && nearest.clientId;
+    }
+    if (!targetId) {
+        return {
+            bound: false,
+            auto: false,
+            bindKey: key || null,
+            needsClientChoice: clients.length > 1,
+            clients
+        };
+    }
+    if (key) {
+        bindClient(globalResources, {
+            clientId: targetId,
+            bindKey: key,
+            actorName
+        });
+    }
+    preferredTestingClientId = targetId;
+    void maybeOfferTestingClients(globalResources, {
+        bindKey: key || 'preferred:testing',
+        primaryClientId: targetId,
+        actorName
+    });
+    return {
+        bound: !!key,
+        auto: true,
+        nearest: clients.length > 1,
+        clientId: targetId,
+        bindKey: key || null,
+        clients
+    };
+}
+
+function onAgentClientConnected(globalResources, clientId) {
+    lastBindResources = globalResources;
+    const id = clientId ? String(clientId).trim() : '';
+    if (!id) return;
+    let offered = false;
+    for (const [bindKey, session] of bindSessions) {
+        if (!session || session.clientId === id) continue;
+        void maybeOfferTestingClients(globalResources, {
+            bindKey,
+            primaryClientId: session.clientId,
+            actorName: session.actorName,
+            onlyClientId: id
+        });
+        offered = true;
+    }
+    if (offered) return;
+    const live = listClients(globalResources, null);
+    if (live.length < 2) return;
+    const incumbent = pickNearestClient(globalResources, null, id);
+    if (!incumbent) return;
+    if (!preferredTestingClientId || preferredTestingClientId === id) {
+        preferredTestingClientId = incumbent.clientId;
+    }
+    void maybeOfferTestingClients(globalResources, {
+        bindKey: 'preferred:testing',
+        primaryClientId: preferredTestingClientId,
+        onlyClientId: id
+    });
+}
+
+function onAgentClientDisconnected(globalResources, clientId) {
+    const id = clientId ? String(clientId).trim() : '';
+    if (id && preferredTestingClientId === id) {
+        preferredTestingClientId = null;
+    }
+}
+
 function sleepMs(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1458,7 +1736,13 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             if (!filename) {
                 return res.status(400).json({ success: false, error: 'filename is required' });
             }
-            const bindKey = resolveBindKey(req);
+            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorName(req), requestClientIP(req));
+            if (!bind.bound) {
+                const err = new Error('No Studio client is bound');
+                err.status = 404;
+                throw err;
+            }
+            const bindKey = bind.bindKey;
             const data = await sendBoundCommand(globalResources, 'open_image', { filename }, COMMAND_TIMEOUT_MS, bindKey);
             return res.json({ success: true, ...data });
         } catch (error) {
@@ -1504,7 +1788,13 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
 
     app.post('/agent/session/prepare-update', devAuthMiddleware, async (req, res) => {
         try {
-            const data = await prepareBoundClientUpdate(globalResources, resolveBindKey(req));
+            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorName(req), requestClientIP(req));
+            if (!bind.bound) {
+                const err = new Error('No Studio client is bound');
+                err.status = 404;
+                throw err;
+            }
+            const data = await prepareBoundClientUpdate(globalResources, bind.bindKey);
             return res.json({ success: true, ...data });
         } catch (error) {
             return handleRouteError(res, error, 'Failed to prepare bound client update');
@@ -1513,7 +1803,13 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
 
     app.post('/agent/session/restart', devAuthMiddleware, async (req, res) => {
         try {
-            const data = await restartBoundClient(globalResources, resolveBindKey(req));
+            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorName(req), requestClientIP(req));
+            if (!bind.bound) {
+                const err = new Error('No Studio client is bound');
+                err.status = 404;
+                throw err;
+            }
+            const data = await restartBoundClient(globalResources, bind.bindKey);
             return res.json({ success: true, ...data });
         } catch (error) {
             return handleRouteError(res, error, 'Failed to restart bound client');
@@ -1526,8 +1822,13 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             if (typeof script !== 'string') {
                 return res.status(400).json({ success: false, error: 'script must be a string' });
             }
-            const bindKey = resolveBindKey(req);
-            const data = await sendBoundCommand(globalResources, 'run_client_js', { script }, COMMAND_TIMEOUT_MS, bindKey);
+            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorName(req), requestClientIP(req));
+            if (!bind.bound) {
+                const err = new Error('No Studio client is bound');
+                err.status = 404;
+                throw err;
+            }
+            const data = await sendBoundCommand(globalResources, 'run_client_js', { script }, COMMAND_TIMEOUT_MS, bind.bindKey);
             const failed = !!(data && (data.error || data.ok === false));
             return res.status(failed ? 400 : 200).json({ success: !failed, ...data });
         } catch (error) {
@@ -1541,7 +1842,12 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             if (!Array.isArray(body.selectors)) {
                 return res.status(400).json({ success: false, error: 'selectors must be a string array' });
             }
-            const bindKey = resolveBindKey(req);
+            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorName(req), requestClientIP(req));
+            if (!bind.bound) {
+                const err = new Error('No Studio client is bound');
+                err.status = 404;
+                throw err;
+            }
             const data = await sendBoundCommand(globalResources, 'inspect_elements', {
                 selectors: body.selectors,
                 html: body.html,
@@ -1551,7 +1857,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                 box: body.box,
                 attrs: body.attrs,
                 styleAllowlist: body.styleAllowlist
-            }, COMMAND_TIMEOUT_MS, bindKey);
+            }, COMMAND_TIMEOUT_MS, bind.bindKey);
             const failed = !!(data && (data.error || data.ok === false));
             return res.status(failed ? 400 : 200).json({ success: !failed, ...data });
         } catch (error) {
@@ -1662,6 +1968,13 @@ module.exports = {
     DYNAGEN_INTEGRATION_NEXT,
     dispatchAgentPacket,
     sendBoundCommand,
+    sendClientCommand,
+    autoBindNearest,
+    onAgentClientConnected,
+    onAgentClientDisconnected,
+    pickNearestClient,
+    maybeOfferTestingClients,
+    claimTestingClient,
     prepareBoundClientUpdate,
     restartBoundClient,
     awaitClientReattach,
@@ -1727,6 +2040,12 @@ module.exports = {
         UPDATE_COMMAND_TIMEOUT_MS,
         PREPARE_UPDATE_TIMEOUT_MS,
         REATTACH_TIMEOUT_MS,
+        TESTING_OFFER_TIMEOUT_MS,
+        normalizeClientIP,
+        isLoopbackClientIP,
+        scoreClientNearness,
+        pickNearestClient,
+        autoBindNearest,
         BIND_IDLE_MS,
         pendingReattach,
         markPendingReattach,

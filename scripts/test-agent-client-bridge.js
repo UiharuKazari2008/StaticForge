@@ -313,6 +313,44 @@ _test.shareCodes.delete('LIVEONE');
 assert.strictEqual(_test.UPDATE_COMMAND_TIMEOUT_MS, 20000);
 assert.strictEqual(_test.PREPARE_UPDATE_TIMEOUT_MS, 120000);
 assert.strictEqual(_test.REATTACH_TIMEOUT_MS, 120000);
+assert.strictEqual(_test.TESTING_OFFER_TIMEOUT_MS, 15000);
+assert.strictEqual(_test.normalizeClientIP('::ffff:127.0.0.1'), '127.0.0.1');
+assert.strictEqual(_test.isLoopbackClientIP('127.0.0.1'), true);
+assert.strictEqual(_test.isLoopbackClientIP('::1'), true);
+assert.strictEqual(_test.isLoopbackClientIP('192.168.1.9'), false);
+const nearLocal = _test.scoreClientNearness({
+    clientIP: '127.0.0.1',
+    lastActivity: new Date(1000)
+}, '127.0.0.1');
+const nearRemote = _test.scoreClientNearness({
+    clientIP: '10.0.0.2',
+    lastActivity: new Date(999999)
+}, '127.0.0.1');
+assert.ok(nearLocal > nearRemote);
+
+const nearestOld = { readyState: 1 };
+const nearestNew = { readyState: 1 };
+const nearestMap = new Map([
+    [nearestOld, {
+        sessionId: 's-old',
+        clientId: 'oldoldoldold',
+        authenticated: true,
+        clientIP: '10.0.0.8',
+        lastActivity: new Date(Date.now() - 8000),
+        connectedAt: new Date(Date.now() - 8000)
+    }],
+    [nearestNew, {
+        sessionId: 's-new',
+        clientId: 'newnewnewnew',
+        authenticated: true,
+        clientIP: '127.0.0.1',
+        lastActivity: new Date(),
+        connectedAt: new Date()
+    }]
+]);
+const nearestRes = { getWebSocketServer: () => ({ clients: nearestMap, sendToClient() {} }) };
+assert.strictEqual(_test.pickNearestClient(nearestRes, '127.0.0.1').clientId, 'newnewnewnew');
+assert.strictEqual(_test.pickNearestClient(nearestRes, '127.0.0.1', 'newnewnewnew').clientId, 'oldoldoldold');
 assert.strictEqual(_test.BIND_IDLE_MS, 15 * 60 * 1000);
 
 const reattachOld = { readyState: 1 };

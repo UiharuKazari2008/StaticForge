@@ -19,7 +19,7 @@ See also [rest-api.md](./rest-api.md) (Agent section), [ws/agentSession.md](./ws
 Bind is **per application key** (the `sfapp_` / OAuth-bound key that authenticated), not server-wide. Two keys can drive two different tabs at once.
 
 1. `GET /agent/clients` — list connected websocket clients (`clientId`, `userType`, `workspaceId`, `connectedAt`, `lastActivity`, `userAgent` snippet, `bound` for **this key**). Most recently used first.
-2. `POST /agent/bind` `{ "clientId": "…" }` — bind **this key** to one tab.
+2. `POST /agent/bind` `{ "clientId": "…" }` — bind **this key** to one tab. MCP / session drive with several tabs auto-binds the **nearest** client (same IP / loopback, then most recently used). Other tabs get the existing confirmation dialog: "Do you want to use this client for development testing?" No response (15s) keeps the primary and dismisses the others. Yes rebinds to that tab.
 3. Or mint a short code from the tab (no UI): `await window.agentSessionShareStart()` or `wsClient.sendMessage('session_share_start', {})`. Response type is `session_share_code_response` (`code`, `clientId`, `expiresInSec` ~300). Then `POST /agent/bind` `{ "code": "ABC234" }` claims it. Codes expire in ~5 minutes and are single-use.
 4. `POST /agent/unbind` — release this key's bind. The bound tab can also send `agent_session_unbind` (Remote Access tray Disconnect) to release every key bound to that tab.
 

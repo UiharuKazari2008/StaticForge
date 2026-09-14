@@ -17,6 +17,7 @@ const {
     sendBoundCommand,
     prepareBoundClientUpdate,
     restartBoundClient,
+    autoBindNearest,
     listClients,
     bindClient,
     getBoundClientId,
@@ -2729,26 +2730,12 @@ function galleryFileExists(globalResources, filename) {
 }
 
 function autoBindIfNeeded(globalResources, req) {
-    const bindKey = resolveBindKey(req);
-    if (getBoundRecord(globalResources, bindKey)) {
-        return { bound: true, auto: false, clientId: getBoundClientId(bindKey), bindKey };
-    }
-    const clients = listClients(globalResources, bindKey);
-    if (clients.length === 1 && clients[0].clientId) {
-        bindClient(globalResources, {
-            clientId: clients[0].clientId,
-            bindKey,
-            actorName: resolveActorName(req)
-        });
-        return { bound: true, auto: true, clientId: clients[0].clientId, bindKey };
-    }
-    return {
-        bound: false,
-        auto: false,
-        bindKey,
-        needsClientChoice: clients.length > 1,
-        clients
-    };
+    return autoBindNearest(
+        globalResources,
+        resolveBindKey(req),
+        resolveActorName(req),
+        requestClientIP(req)
+    );
 }
 
 function mcpBindChoiceResult(bind) {
