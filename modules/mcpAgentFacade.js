@@ -2458,6 +2458,10 @@ function liveBroadcast(globalResources, payload) {
     return true;
 }
 
+function boundViewerOpenShouldBroadcast(err) {
+    return !!(err && err.status === 404);
+}
+
 async function openViewerFromMcp(globalResources, input, target, req) {
     const filenames = collectFilenames(input);
     if (!filenames.length) {
@@ -2469,7 +2473,18 @@ async function openViewerFromMcp(globalResources, input, target, req) {
         try {
             const data = await sendBoundCommand(globalResources, 'open_viewer', payload, 8000, bindKey);
             return mcpTextResult({ success: true, bound: true, target, filenames, ...data });
-        } catch (_err) { /* fall through to broadcast */ }
+        } catch (err) {
+            if (!boundViewerOpenShouldBroadcast(err)) {
+                return mcpTextResult({
+                    success: true,
+                    bound: true,
+                    target,
+                    filenames,
+                    replyMissing: true,
+                    error: (err && err.message) || 'Bound client did not reply'
+                });
+            }
+        }
     }
     const sent = liveBroadcast(globalResources, {
         type: 'mcp_open_viewer',
@@ -5616,6 +5631,8 @@ module.exports = {
         mapNaxSearchItem,
         collectSessionState,
         maybeOpenGeneratedInLumen,
+        boundViewerOpenShouldBroadcast,
+        openViewerFromMcp,
         readRemoteAccessSettings,
         resolveMcpStudioAutoFlags,
         pickStudioFieldsFromBoundReply,

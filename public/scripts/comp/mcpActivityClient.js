@@ -241,6 +241,14 @@ function resolveViewerImage(filename) {
 function openLumenForFilenames(filenames) {
     const name = filenames[0];
     if (!name) return { ok: false, error: 'filename is required' };
+    // imageViewerManager.findViewerByFilename: public/scripts/comp/imageViewer.js
+    const existing = imageViewerManager.findViewerByFilename(name);
+    if (existing && existing.element) {
+        if (existing.isMinimized) existing.toggleMinimize();
+        // openModal: public/scripts/comp/modalUtils.js
+        openModal(existing.element);
+        return { ok: true, target: 'lumen', filename: name, reused: true };
+    }
     const image = resolveViewerImage(name);
     // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
     openGalleryImageInViewer(image);

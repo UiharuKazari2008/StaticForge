@@ -1408,6 +1408,23 @@ async function main() {
     assert.strictEqual(lumenDisabled.opened, false);
     assert.strictEqual(lumenDisabled.reason, 'disabled');
 
+    assert.strictEqual(_test.boundViewerOpenShouldBroadcast({ status: 404 }), true);
+    assert.strictEqual(_test.boundViewerOpenShouldBroadcast({ status: 504 }), false);
+    assert.strictEqual(_test.boundViewerOpenShouldBroadcast({ message: 'Bound client did not reply' }), false);
+    assert.strictEqual(_test.boundViewerOpenShouldBroadcast(null), false);
+    const unboundBroadcasts = [];
+    const unboundOpen = await _test.openViewerFromMcp({
+        getWebSocketServer: () => ({
+            broadcast(payload) { unboundBroadcasts.push(payload); }
+        })
+    }, { filename: 'shot.png' }, 'lumen', { applicationAuth: { applicationScopes: ['gallery'] } });
+    const unboundPayload = JSON.parse(unboundOpen.content[0].text);
+    assert.strictEqual(unboundPayload.success, true);
+    assert.strictEqual(unboundPayload.broadcast, true);
+    assert.strictEqual(unboundBroadcasts.length, 1);
+    assert.strictEqual(unboundBroadcasts[0].type, 'mcp_open_viewer');
+    assert.deepStrictEqual(unboundBroadcasts[0].data.filenames, ['shot.png']);
+
     const { normalizeRemoteAccessSettings } = require('../modules/remoteAccessSettings');
     assert.deepStrictEqual(normalizeRemoteAccessSettings({
         defaultGenerationMethod: 'Detached Request',

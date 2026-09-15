@@ -171,6 +171,22 @@ class ImageViewerManager {
     getViewer(viewerId) {
         return this.viewers.get(viewerId);
     }
+
+    findViewerByFilename(filename) {
+        const name = String(filename || '').trim();
+        if (!name) return null;
+        const ident = `imageViewer:${name}`;
+        for (const viewer of this.viewers.values()) {
+            const meta = viewer.metadata || {};
+            if (meta.filename === name || meta.original === name || meta.upscaled === name) {
+                return viewer;
+            }
+            if (viewer.element && viewer.element.dataset.windowIdentifier === ident) {
+                return viewer;
+            }
+        }
+        return null;
+    }
 }
 
 class ImageViewer {
