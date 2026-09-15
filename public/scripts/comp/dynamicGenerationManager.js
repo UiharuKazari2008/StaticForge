@@ -1303,7 +1303,7 @@ function wireDynamicGenerationButtons() {
     
         // Rentan button click handlers
         // Buttons that affect carousel: todBtn, weatherBtn, seasonBtn, creativeBtn
-        [todBtn, weatherBtn, seasonBtn, creativeBtn].forEach(btn => {
+        [todBtn, weatherBtn, seasonBtn, creativeBtn].filter(Boolean).forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const state = btn.dataset.state === 'on' ? 'off' : 'on';

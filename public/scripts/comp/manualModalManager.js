@@ -5864,9 +5864,6 @@ function hideDynamicGenerationProgressOverlay() {
 // MODAL MANAGEMENT FUNCTIONS
 // ============================================================================
 
-// These functions will remain global to avoid breaking existing code
-// TODO: Move implementations from app.js here when ready
-
 if (dynamicGenerationProgressCancelBtn) {
     dynamicGenerationProgressCancelBtn.addEventListener('click', () => cancelManualDynamicGenerationFromUser());
 }
