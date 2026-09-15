@@ -323,13 +323,24 @@ if (window.wsClient) {
                     applyDesktopWindowPositionsAfterLoad();
                 }
             }
+            // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
+            if (bootUiDebug) {
+                await bootUiDebug.gate('gallery', { detail: 'Loading Gallery' });
+            }
             await loadGallery(false, null, {
                 showProgress: true,
                 startupBoot: true
             });
             await updateGalleryGrid(true, true);
+            if (bootUiDebug) {
+                bootUiDebug.markGalleryReady();
+            }
         })().catch((err) => {
             console.error('Startup gallery load failed:', err);
+            // bootUiDebug.markGalleryReady: public/scripts/comp/bootUiDebug.js
+            if (bootUiDebug) {
+                bootUiDebug.markGalleryReady();
+            }
         });
     }
 

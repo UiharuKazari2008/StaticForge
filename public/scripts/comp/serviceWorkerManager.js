@@ -511,6 +511,11 @@ class ServiceWorkerManager {
 
     _updateInitUpdateModal(message, progress) {
         if (!this.initUpdateModalActive || !window.wsClient) return;
+        // bootUiDebug.holdsUi: public/scripts/comp/bootUiDebug.js
+        if (window.bootUiDebug && window.bootUiDebug.holdsUi()) {
+            window.bootUiDebug.holdUpdate({ kind: 'update-modal', message, progress });
+            return;
+        }
         window.wsClient.updateWindowsUpdateModal(message, progress);
     }
 
@@ -546,6 +551,11 @@ class ServiceWorkerManager {
 
     _setPreStartupUpdateStageMessage(message) {
         if (!this._isPreStartupUpdatePhase() || !window.wsClient) return;
+        // bootUiDebug.holdsUi: public/scripts/comp/bootUiDebug.js
+        if (window.bootUiDebug && window.bootUiDebug.holdsUi()) {
+            window.bootUiDebug.holdUpdate({ kind: 'pre-startup', message });
+            return;
+        }
         const ws = window.wsClient;
         ws._setConnectionBeat(ws.connectionUi.beat || 'negotiation', { message });
     }
@@ -3902,6 +3912,10 @@ class ServiceWorkerManager {
             await this.waitForServiceWorkerReady();
             this.bootPhase = 'checking';
             this._setPreStartupUpdateStageMessage('Checking for updates…');
+            // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
+            if (window.bootUiDebug) {
+                await window.bootUiDebug.gate('system-update', { detail: 'Checking for updates…' });
+            }
 
             let verifyPass = 0;
             const MAX_VERIFY_PASSES = 5;
@@ -3932,6 +3946,10 @@ class ServiceWorkerManager {
                     installWizardUsed = true;
                     this.installWizardUsed = true;
                     this.bootPhase = 'wizard';
+                    // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
+                    if (window.bootUiDebug) {
+                        await window.bootUiDebug.gate('install-wizard', { detail: 'Install wizard' });
+                    }
                     await this._runInstallWizard(filesToUpdate);
                     this.bootPhase = 'verify';
                     this._writeInstallWizardSession({ phase: 'verify', pendingCount: filesToUpdate.length });

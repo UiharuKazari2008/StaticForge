@@ -237,28 +237,37 @@ body.windows-classic-theme .windows-startup-status {
     font-size: 10px;
 }
 
-/* Classic theme overrides for new [role=progressbar] structure */
+/* Classic theme overrides for new [role=progressbar] structure.
+   Inset 2px well + matching padding so the fill meets the inner face
+   (outset shadow left a 1px MenuBar sliver above the Hilight). */
 body.windows-classic-theme [role=progressbar] {
     width: 100%;
     height: 20px;
+    padding: 2px;
     background: var(--MenuBar);
     border: none;
     overflow: hidden;
     box-sizing: border-box;
     border-radius: 0px;
-    box-shadow: -1px -1px 0px 1px var(--ButtonDkShadow), 0px 0px 0px 1px var(--ButtonLight), -1px -1px 0px 2px var(--ButtonShadow), 0px 0px 0px 2px var(--ButtonHilight);
+    box-shadow: inset -1px -1px 0 var(--ButtonHilight), inset 1px 1px 0 var(--ButtonShadow), inset -2px -2px 0 var(--ButtonLight), inset 2px 2px 0 var(--ButtonDkShadow);
     margin: 0 3px;
     max-width: calc(100% - 6px);
 }
 
 body.windows-classic-theme [role=progressbar]>div {
+    display: block;
     height: 100%;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
     background: var(--Hilight);
     width: 0%;
     transition: width 0.3s ease;
     box-shadow: none;
     border-radius: 0px;
     background-image: none;
+    box-sizing: border-box;
 }
 
 body.windows-classic-theme [role=progressbar]>div::before,
@@ -373,7 +382,11 @@ body.dreamscape-install-wizard {
 }
 
 /* Hide all other modals (including .on-top boot dialogs) while the install wizard is active */
-body.dreamscape-install-wizard .modal:not(#dreamscapeOsInstallWizardModal) {
+body.dreamscape-install-wizard .modal:not(#dreamscapeOsInstallWizardModal):not(#bootUiDebugWindow) {
     display: none !important;
     pointer-events: none !important;
+}
+
+#bootUiDebugWindow {
+    z-index: var(--z-modal-top) !important;
 }

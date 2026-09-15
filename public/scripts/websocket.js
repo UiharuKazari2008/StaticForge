@@ -1756,6 +1756,12 @@ class WebSocketClient {
     async _completePreStartupHandoff() {
         if (!this._canCompletePreStartupHandoff()) return;
 
+        // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
+        if (window.bootUiDebug) {
+            await window.bootUiDebug.gate('pre-startup', { detail: this.connectionUi.message });
+        }
+        if (!this._canCompletePreStartupHandoff()) return;
+
         this.connectionUi.message = 'Preparing Melaton...';
         this._setConnectionPhase('connected', {
             beat: 'connected',
@@ -2520,6 +2526,10 @@ class WebSocketClient {
         }
         document.body.classList.remove('initializing');
         this.initStartupUiDismissed = true;
+        // bootUiDebug.markSplashDismissed: public/scripts/comp/bootUiDebug.js
+        if (window.bootUiDebug) {
+            window.bootUiDebug.markSplashDismissed();
+        }
 
         // Activate all deferred resize listeners after initialization is hidden
         if (typeof activateAllResizeListeners === 'function') {
@@ -2973,6 +2983,10 @@ class WebSocketClient {
         this.initStartupUiDismissed = false;
 
         try {
+            // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
+            if (window.bootUiDebug && window.bootUiDebug.active && window.isDesktop) {
+                await window.bootUiDebug.gate('startup-splash', { detail: 'Initializing...' });
+            }
             for (const step of this.initSteps) {
                 if (this.connectionPhase === 'auth' || !this.isConnected()) {
                     console.log('⚠️ Initialization paused/aborted: auth required or disconnected');
@@ -2993,8 +3007,14 @@ class WebSocketClient {
                     continue;
                 }
 
-                // Step-by-step mode: wait for user to advance
-                if (this.stepByStepMode && window.isDesktop) {
+                // Step-by-step / boot UI debug: wait for user to advance
+                // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
+                if (window.bootUiDebug && window.bootUiDebug.active && window.isDesktop) {
+                    await window.bootUiDebug.gate(
+                        window.bootUiDebug.majorStageForInitStep(step),
+                        { detail: step.message }
+                    );
+                } else if (this.stepByStepMode && window.isDesktop) {
                     this.stepByStepPaused = true;
                     this.updateStepByStepButton();
                     // Wait for user to click the advance button

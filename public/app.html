@@ -217,7 +217,7 @@
     <link rel="stylesheet"
         href="/css/desktop-settings.css?sha=46fce5f4e033fa35f82de1dc9144314506c8b844e5c9d6da101f44f015947e9f">
     <link rel="stylesheet"
-        href="/css/modal-dimensions.css?sha=3ba2c78d08aedf43ae3bea3878e4367297237a3b4dc72422e9538c7c6d3962de">
+        href="/css/modal-dimensions.css?sha=69588d02afdf72430ff5614985113e0642aa866f891d5ca3528623540e078cee">
     <link rel="stylesheet"
         href="/css/modal-theme-glass.css?sha=48da9ed40daa093366c6c56b9f88ecba638febebfe70b9c472cc78a8549420a0">
     <link rel="stylesheet"
@@ -290,7 +290,7 @@
     <link rel="stylesheet"
         href="/css/about-melaton.css?sha=ec91fe61da672f1e723a25d8dc68aadd22464f87866f4abbc555fdab4d113909">
     <link rel="stylesheet"
-        href="/css/desktop-boot.css?sha=2195457d00de5e315a0de2c2591b16afc4a7908bf80fdfb5dd875e5ed66ad44d">
+        href="/css/desktop-boot.css?sha=27f8a5b20b62720871525e731fa390fdadaffed8242f5905ed45f01a61e7be8b">
     <link rel="stylesheet"
         href="/css/connection-dial.css?sha=d78b021b710e9ba005f3a4141a0477a50f73b2ea9ad85b01f9bd38404aaa1b44">
     <link rel="stylesheet"
@@ -702,6 +702,36 @@
                         Later
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Boot UI debug (desktop / key during startup) — public/scripts/comp/bootUiDebug.js -->
+    <div id="bootUiDebugWindow" class="modal toolbar-visible hidden tool-window on-top"
+        data-window-identifier="boot-ui-debug" data-window-min-width="360" data-window-min-height="140"
+        data-window-default-width="420" data-window-default-height="180" data-window-position-mode="manual-only">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-forward icon-fa"></i>
+                <span>Boot UI Debug</span>
+            </div>
+            <div class="modal-window-title-toolbar">
+                <div class="button-group">
+                    <button type="button" id="bootUiDebugStepBtn" class="btn-secondary">Step</button>
+                    <button type="button" id="bootUiDebugStepOverBtn" class="btn-secondary">Step Over</button>
+                    <button type="button" id="bootUiDebugPauseBtn" class="btn-secondary">Resume</button>
+                    <button type="button" id="bootUiDebugExitBtn" class="btn-secondary">Exit</button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-danger close-btn btn-small" title="Close" id="bootUiDebugCloseBtn">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content modal-padding">
+            <div class="modal-body">
+                <div id="bootUiDebugStatus" class="windows-startup-status">Waiting for interrupt…</div>
             </div>
         </div>
     </div>
@@ -8212,6 +8242,7 @@ Examples:
     <script src="scripts/comp/modalUtils.js"></script>
     <script src="scripts/comp/modalListenerScope.js"></script>
     <script src="scripts/comp/modalKeyboardRegistry.js"></script>
+    <script src="scripts/comp/bootUiDebug.js"></script>
     <script src="scripts/ws/wsInboundRegistry.js"></script>
     <script src="scripts/ws/inboundHandlerManifest.js"></script>
     <script src="scripts/comp/generationProgress.js"></script>

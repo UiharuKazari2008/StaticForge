@@ -41,6 +41,10 @@
     width: 475px;
 }
 
+#bootUiDebugWindow {
+    width: 420px;
+}
+
 #dreamscapeOsInstallWizardModal {
     width: 550px;
 }
