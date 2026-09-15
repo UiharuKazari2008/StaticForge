@@ -15,11 +15,12 @@ function handleVfsExplorerRefreshMessage(message) {
         'desktop_positions_updated'
     ]);
 
+    // explorerApplet: public/scripts/comp/explorerApplet.js (lazy via featureLoader)
     if (typeof explorerApplet !== 'undefined' && explorerApplet) {
         if (desktopBroadcastTypes.has(message.type)) {
             explorerApplet.handleDesktopBroadcast(message);
-        } else if (explorerApplet.modal && !explorerApplet.modal.classList.contains('hidden')) {
-            explorerApplet.softRefresh();
+        } else {
+            explorerApplet.refreshIfOpen(message.data && message.data.path);
         }
     }
 

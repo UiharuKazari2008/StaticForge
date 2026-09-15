@@ -266,22 +266,20 @@ class DesktopShortcutsManager {
 
         document.addEventListener('wsMessage', (event) => {
             const { type, data } = event.detail;
+
+            // Remote adds must merge even while a local save is pending.
+            // Ignoring them here lets the next client flush hide the new icon.
+            if (type === 'desktop_shortcut_added') {
+                this.applyRemoteShortcutAdded(data && data.workspaceId, data && data.shortcut);
+                return;
+            }
             
-            // Ignore broadcasts from our own pending local changes
+            // Ignore other broadcasts from our own pending local changes
             if (this.pendingChanges) {
                 return;
             }
             
             switch (type) {
-                case 'desktop_shortcut_added':
-                    if (data.workspaceId === this.currentWorkspace) {
-                        // Check if we don't already have this shortcut locally
-                        if (!this.shortcuts.find(s => s.id === data.shortcut.id && !s._isDeleted)) {
-                            this.shortcuts.push(data.shortcut);
-                            this.renderShortcuts();
-                        }
-                    }
-                    break;
                     
                 case 'desktop_shortcut_updated':
                     if (data.workspaceId === this.currentWorkspace) {
@@ -3416,14 +3414,44 @@ class DesktopShortcutsManager {
     
     // Get next available position for a shortcut (defaults to grid)
     getNextAvailablePosition() {
-        // Find next available grid position
-        const gridShortcuts = this.shortcuts.filter(s => s.position && s.position.index === 0);
-        const maxPos = gridShortcuts.length > 0 ? Math.max(...gridShortcuts.map(s => s.position.pos || 0)) : -1;
-        
-        return {
-            index: 0,
-            pos: maxPos + 1
-        };
+        const used = new Set();
+        this.shortcuts.forEach((shortcut) => {
+            if (shortcut._isDeleted || !shortcut.position || shortcut.position.index !== 0) return;
+            used.add(Number(shortcut.position.pos) || 0);
+        });
+        let pos = 0;
+        while (used.has(pos)) pos++;
+        return { index: 0, pos };
+    }
+
+    gridPositionTaken(position, exceptId) {
+        if (!position || position.index !== 0) return false;
+        const pos = Number(position.pos) || 0;
+        return this.shortcuts.some((shortcut) => {
+            if (shortcut._isDeleted || shortcut.id === exceptId) return false;
+            return shortcut.position && shortcut.position.index === 0 && (Number(shortcut.position.pos) || 0) === pos;
+        });
+    }
+
+    applyRemoteShortcutAdded(workspaceId, shortcut) {
+        if (!shortcut || !shortcut.id) return;
+        if (workspaceId && this.currentWorkspace && workspaceId !== this.currentWorkspace) return;
+        const existing = this.shortcuts.find((item) => item.id === shortcut.id);
+        if (existing) {
+            if (!existing._isDeleted) this.renderShortcuts();
+            return;
+        }
+        const incoming = { ...shortcut, data: shortcut.data ? { ...shortcut.data } : {} };
+        if (!incoming.position || incoming.position.index == null) {
+            incoming.position = this.getNextAvailablePosition();
+            incoming._isModified = true;
+        } else if (incoming.position.index === 0 && this.gridPositionTaken(incoming.position, incoming.id)) {
+            incoming.position = this.getNextAvailablePosition();
+            incoming._isModified = true;
+        }
+        this.shortcuts.push(incoming);
+        this.renderShortcuts();
+        if (incoming._isModified) this.debouncedSave();
     }
     
     // Convert pixel position to position data based on drop location

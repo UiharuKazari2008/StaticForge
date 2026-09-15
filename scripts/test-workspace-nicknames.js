@@ -2,7 +2,8 @@ const assert = require('assert');
 const {
     normalizeWorkspaceAlias,
     normalizeWorkspaceNicknames,
-    resolveWorkspaceRef
+    resolveWorkspaceRef,
+    nextDesktopGridPosition
 } = require('../modules/workspace');
 
 assert.strictEqual(normalizeWorkspaceAlias('The Lab'), 'lab');
@@ -31,5 +32,15 @@ assert.strictEqual(resolveWorkspaceRef(workspaces, 'the dumpster'), 'lab-id');
 assert.strictEqual(resolveWorkspaceRef(workspaces, 'prego'), 'mat-id');
 assert.strictEqual(resolveWorkspaceRef(workspaces, 'pregnant'), 'mat-id');
 assert.strictEqual(resolveWorkspaceRef(workspaces, 'unknown-id'), 'unknown-id');
+
+assert.deepStrictEqual(nextDesktopGridPosition([]), { index: 0, pos: 0 });
+assert.deepStrictEqual(nextDesktopGridPosition([
+    { position: { index: 0, pos: 0 } },
+    { position: { index: 0, pos: 1 } }
+]), { index: 0, pos: 2 });
+assert.deepStrictEqual(nextDesktopGridPosition([
+    { position: { index: 0, pos: 0 } },
+    { position: { index: 0, pos: 2 } }
+]), { index: 0, pos: 1 });
 
 console.log('test-workspace-nicknames: ok');

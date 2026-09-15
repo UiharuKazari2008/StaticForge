@@ -38,6 +38,19 @@ function normalizeWorkspaceNicknames(raw) {
     return out.slice(0, 24);
 }
 
+function nextDesktopGridPosition(shortcuts) {
+    const used = new Set();
+    (Array.isArray(shortcuts) ? shortcuts : []).forEach((shortcut) => {
+        if (!shortcut || shortcut._isDeleted) return;
+        if (shortcut.position && shortcut.position.index === 0) {
+            used.add(Number(shortcut.position.pos) || 0);
+        }
+    });
+    let pos = 0;
+    while (used.has(pos)) pos++;
+    return { index: 0, pos };
+}
+
 function resolveWorkspaceRef(workspaces, value) {
     const raw = String(value == null ? '' : value).trim();
     if (!raw || raw.toLowerCase() === 'default') return 'default';
@@ -2335,6 +2348,10 @@ class WorkspaceManager {
             // Generate unique ID for shortcut
             shortcut.id = this.generateUUID();
             shortcut.createdAt = new Date().toISOString();
+            if (!shortcut.position || typeof shortcut.position !== 'object') {
+                const { shortcuts } = this.getDesktopShortcuts(workspaceId);
+                shortcut.position = nextDesktopGridPosition(shortcuts);
+            }
 
             // Use fluent API to append to shortcuts array
             this.globalResources.modifyConfig('workspaceDesktop').append([workspaceId, 'shortcuts'], shortcut);
@@ -2421,3 +2438,4 @@ module.exports = WorkspaceManager;
 module.exports.normalizeWorkspaceAlias = normalizeWorkspaceAlias;
 module.exports.normalizeWorkspaceNicknames = normalizeWorkspaceNicknames;
 module.exports.resolveWorkspaceRef = resolveWorkspaceRef;
+module.exports.nextDesktopGridPosition = nextDesktopGridPosition;

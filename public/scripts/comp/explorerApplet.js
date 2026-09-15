@@ -3081,6 +3081,12 @@ class ExplorerApplet {
         return (path || '/').replace(/\/+$/, '') || '/';
     }
 
+    refreshIfOpen(_pathHint) {
+        if (!this.modal || this.modal.classList.contains('hidden')) return;
+        if (this._loading || !wsClient?.isConnected()) return;
+        void this.softRefresh();
+    }
+
     _isReadOnlyUser() {
         return localStorage.getItem('userType') === 'readonly';
     }
