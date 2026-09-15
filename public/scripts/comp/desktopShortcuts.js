@@ -2258,7 +2258,20 @@ class DesktopShortcutsManager {
         };
     }
 
-    createStudioChangeIcon() {
+    createStudioChangeIcon(shortcut) {
+        const data = shortcut && shortcut.data ? shortcut.data : {};
+        const filename = data.iconFilename || data.icon || data.filename;
+        if (filename) {
+            const frame = this.createImageIcon({
+                data: {
+                    filename,
+                    preview: data.preview
+                }
+            });
+            const mark = frame.querySelector('.desktop-shortcut-image-icon');
+            if (mark) mark.className = 'fas fa-brackets-curly desktop-shortcut-image-icon';
+            return frame;
+        }
         const icon = document.createElement('div');
         icon.className = 'desktop-shortcut-icon desktop-shortcut-icon-studio-change';
         const mark = document.createElement('i');

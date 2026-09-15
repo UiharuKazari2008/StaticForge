@@ -47,6 +47,7 @@ class WorkspaceWebSocketHandlers {
                 textareaFont: typeof workspace.textareaFont !== 'undefined' ? workspace.textareaFont : null,
                 wallpaper: workspace.wallpaper || null,
                 wallpaperPosition: workspace.wallpaperPosition || null,
+                nicknames: Array.isArray(workspace.nicknames) ? workspace.nicknames : [],
                 sort: workspace.sort || 0, // Include sort field
                 fileCount,
                 presetCount: Array.isArray(workspace.presets) ? workspace.presets.length : 0,
@@ -108,6 +109,7 @@ class WorkspaceWebSocketHandlers {
                     backgroundColor: workspace.backgroundColor,
                     primaryFont: typeof workspace.primaryFont !== 'undefined' ? workspace.primaryFont : null,
                     textareaFont: typeof workspace.textareaFont !== 'undefined' ? workspace.textareaFont : null,
+                    nicknames: Array.isArray(workspace.nicknames) ? workspace.nicknames : [],
                     sort: workspace.sort || 0, // Include sort field
                     fileCount,
                     presetCount: Array.isArray(workspace.presets) ? workspace.presets.length : 0,
@@ -1137,6 +1139,14 @@ class WorkspaceWebSocketHandlers {
                     this.handlers.sendError(ws, 'Invalid vertical position. Use "top", "center", "bottom", or a percentage (0%-100%)', 'workspace_update_settings', message.requestId);
                     return;
                 }
+            }
+
+            if (settings.nicknames !== undefined) {
+                if (settings.nicknames != null && !Array.isArray(settings.nicknames) && typeof settings.nicknames !== 'string') {
+                    this.handlers.sendError(ws, 'Nicknames must be an array of strings', 'workspace_update_settings', message.requestId);
+                    return;
+                }
+                settings.nicknames = this.globalResources.getWorkspaceManager().normalizeWorkspaceNicknames(settings.nicknames);
             }
 
             this.globalResources.getWorkspaceManager().updateWorkspaceSettings(id, settings);

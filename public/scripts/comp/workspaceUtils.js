@@ -2195,6 +2195,11 @@ function renderWorkspaceManagementList(targetList, options) {
         item.className = 'workspace-manage-item';
         item.dataset.workspaceId = workspace.id;
 
+        const nicknames = Array.isArray(workspace.nicknames) ? workspace.nicknames.filter(Boolean) : [];
+        // escapeHtml: public/scripts/comp/utilities.js
+        const nickLine = nicknames.length
+            ? `<div class="workspace-manage-counts">${escapeHtml(nicknames.join(', '))}</div>`
+            : '';
         item.innerHTML = `
             <div class="workspace-drag-handle" title="Drag to reorder">
                 <i class="fas fa-grip-vertical"></i>
@@ -2204,6 +2209,7 @@ function renderWorkspaceManagementList(targetList, options) {
                     <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#102040'}"></div>
                     <h5>${workspace.name} ${workspace.id === activeWorkspace ? '<span class="badge-active"><i class="fas fa-check"></i></span>' : ''}</h5>
                 </div>
+                ${nickLine}
                 <div class="workspace-manage-counts"><div class="workspace-manage-counts-files"><span>${workspace.fileCount}</span><i class="fas fa-image"></i></div><div class="workspace-manage-counts-references"><span>${workspace.cacheFileCount}</span><i class="fas fa-swatchbook"></i></div></div>
             </div>
             <div class="workspace-manage-actions button-group">
@@ -2273,6 +2279,49 @@ async function hideWorkspaceManagementModal() {
     switchWorkspaceTheme(activeWorkspace);
 }
 
+let workspaceNicknameDraft = [];
+
+function normalizeWorkspaceNicknameDraft(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function setWorkspaceNicknameDraft(list) {
+    workspaceNicknameDraft = Array.isArray(list)
+        ? list.map(normalizeWorkspaceNicknameDraft).filter(Boolean)
+        : [];
+    renderWorkspaceNicknamesList();
+}
+
+function renderWorkspaceNicknamesList() {
+    const list = document.getElementById('workspaceNicknamesList');
+    if (!list) return;
+    list.innerHTML = '';
+    workspaceNicknameDraft.forEach((nick, index) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn-secondary btn-small';
+        btn.title = 'Remove nickname';
+        // escapeHtml: public/scripts/comp/utilities.js
+        btn.innerHTML = `${escapeHtml(nick)} <i class="fas fa-xmark"></i>`;
+        btn.addEventListener('click', () => {
+            workspaceNicknameDraft.splice(index, 1);
+            renderWorkspaceNicknamesList();
+        });
+        list.appendChild(btn);
+    });
+}
+
+function addWorkspaceNicknameFromInput() {
+    const input = document.getElementById('workspaceNicknamesInput');
+    if (!input) return;
+    const nick = normalizeWorkspaceNicknameDraft(input.value);
+    if (!nick) return;
+    const exists = workspaceNicknameDraft.some((item) => item.toLowerCase() === nick.toLowerCase());
+    if (!exists) workspaceNicknameDraft.push(nick);
+    input.value = '';
+    renderWorkspaceNicknamesList();
+}
+
 function showAddWorkspaceModal() {
     currentWorkspaceOperation = { type: 'add' };
     document.getElementById('workspaceNameInput').classList.remove('hidden');
@@ -2281,6 +2330,9 @@ function showAddWorkspaceModal() {
     document.getElementById('workspaceNameInput').value = '';
     document.getElementById('workspaceColorInput').value = '#102040';
     document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
+    setWorkspaceNicknameDraft([]);
+    const nickInput = document.getElementById('workspaceNicknamesInput');
+    if (nickInput) nickInput.value = '';
     const modal = document.getElementById('workspaceEditModal');
     openModal(modal);
 }
@@ -2292,6 +2344,9 @@ function showRenameWorkspaceModal(id) {
     document.getElementById('workspaceColorInput').classList.add('hidden');
     document.getElementById('workspaceBackgroundColorInput').classList.add('hidden');
     document.getElementById('workspaceNameInput').value = workspace?.name || '';
+    setWorkspaceNicknameDraft(workspace?.nicknames);
+    const nickInput = document.getElementById('workspaceNicknamesInput');
+    if (nickInput) nickInput.value = '';
     const modal = document.getElementById('workspaceEditModal');
     openModal(modal);
 }
@@ -2324,6 +2379,9 @@ async function editWorkspaceSettings(id) {
         const textareaFontSelected = document.getElementById('workspaceTextareaFontSelected');
         if (primaryFontSelected) primaryFontSelected.textContent = workspace.primaryFont || 'Default';
         if (textareaFontSelected) textareaFontSelected.textContent = workspace.textareaFont || 'Default';
+        setWorkspaceNicknameDraft(workspace.nicknames);
+        const nickInput = document.getElementById('workspaceNicknamesInput');
+        if (nickInput) nickInput.value = '';
 
         // Ensure color pickers reflect the loaded values visually
         try {
@@ -2357,6 +2415,9 @@ async function hideWorkspaceEditModal() {
     document.getElementById('workspaceNameInput').value = '';
     document.getElementById('workspaceColorInput').value = '#102040';
     document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
+    setWorkspaceNicknameDraft([]);
+    const nickInput = document.getElementById('workspaceNicknamesInput');
+    if (nickInput) nickInput.value = '';
 
     currentWorkspaceOperation = null;
 }
@@ -2519,6 +2580,13 @@ function initializeWorkspaceSystem() {
     });
 
     // Save workspace
+    document.getElementById('workspaceNicknamesInput')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addWorkspaceNicknameFromInput();
+        }
+    });
+
     document.getElementById('workspaceSaveBtn')?.addEventListener('click', async (e) => {
         e.preventDefault();
         if (currentWorkspaceOperation) {
@@ -2536,6 +2604,7 @@ function initializeWorkspaceSystem() {
                 // Create workspace then push all settings at once
                 const createResponse = await createWorkspace(name);
                 if (createResponse && createResponse.success && createResponse.id) {
+                    addWorkspaceNicknameFromInput();
                     await window.wsClient.updateWorkspaceSettings(createResponse.id, {
                         name,
                         color,
@@ -2543,7 +2612,8 @@ function initializeWorkspaceSystem() {
                         primaryFont,
                         textareaFont,
                         wallpaper: null,
-                        wallpaperPosition: null
+                        wallpaperPosition: null,
+                        nicknames: workspaceNicknameDraft.slice()
                     });
                     await loadWorkspaces();
                 } else {
@@ -2571,6 +2641,7 @@ function initializeWorkspaceSystem() {
                 }
 
                 // Push all changed settings at once
+                addWorkspaceNicknameFromInput();
                 await window.wsClient.updateWorkspaceSettings(currentWorkspaceOperation.id, {
                     name,
                     color,
@@ -2578,7 +2649,8 @@ function initializeWorkspaceSystem() {
                     primaryFont,
                     textareaFont,
                     wallpaper,
-                    wallpaperPosition
+                    wallpaperPosition,
+                    nicknames: workspaceNicknameDraft.slice()
                 });
                 await loadWorkspaces();
 
@@ -3145,6 +3217,11 @@ function initializeWebSocketWorkspaceEvents() {
                     if (data.settings.wallpaperPosition !== undefined) {
                         workspace.wallpaperPosition = data.settings.wallpaperPosition;
                         styleUpdateNeeded = true;
+                    }
+                    if (data.settings.nicknames !== undefined) {
+                        workspace.nicknames = Array.isArray(data.settings.nicknames)
+                            ? data.settings.nicknames
+                            : [];
                     }
                 }
                 

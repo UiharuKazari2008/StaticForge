@@ -21,6 +21,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `vfs_convert_reference_to_file` | `vfs_convert_reference_to_file_response` | admin/destructive | Handler: (inline) |
 | `vfs_copy_items` | `vfs_copy_items_response` | admin/destructive | Handler: (inline) |
 | `vfs_create_folder` | `vfs_create_folder_response` | admin/destructive | Handler: (inline) |
+| `vfs_create_shortcut` | `vfs_create_shortcut_response` | admin/destructive | Handler: handleVfsCreateShortcut |
 | `vfs_delete_entry` | `vfs_delete_entry_response` | admin/destructive | Handler: (inline) |
 | `vfs_delete_file` | `vfs_delete_file_response` | admin/destructive | Handler: (inline) |
 | `vfs_delete_folder` | `vfs_delete_folder_response` | admin/destructive | Handler: (inline) |
@@ -303,6 +304,27 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `requestId` | Optional |
 
 **Success response:** `vfs_create_folder_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `vfs_create_shortcut`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/vfsWebSocketHandlers.js → `handleVfsCreateShortcut`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `workspaceId` | Optional; falls back to the session active workspace |
+| `path` / `dest` | `@desktop` (default) or a VFS folder path |
+| `shortcut` | `{ name, type, data }` — or pass `name` / `type` / `data` on the message |
+
+Desktop dest broadcasts `desktop_shortcut_added`. Other dests broadcast `vfs_updated`.
+
+**Success response:** `vfs_create_shortcut_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

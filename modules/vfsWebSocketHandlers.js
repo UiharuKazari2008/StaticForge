@@ -391,6 +391,36 @@ class VfsWebSocketHandlers {
         });
     }
 
+    async handleVfsCreateShortcut(ws, message, clientInfo, wsServer) {
+        const payload = this.getPayload(message);
+        const workspaceId = payload.workspaceId ||
+            this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+        const dest = payload.path || payload.dest || '@desktop';
+        const shortcut = payload.shortcut && typeof payload.shortcut === 'object'
+            ? payload.shortcut
+            : {
+                name: payload.name,
+                type: payload.type,
+                data: payload.data
+            };
+        const result = await this.getVfs().createShortcutAtPath(dest, shortcut, workspaceId);
+        if (result.dest === 'desktop' && result.shortcut) {
+            wsServer.broadcast({
+                type: 'desktop_shortcut_added',
+                data: { workspaceId: result.workspaceId, shortcut: result.shortcut },
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            this.broadcastVfsUpdated(wsServer, result.path || dest);
+        }
+        this.handlers.sendToClient(ws, {
+            type: 'vfs_create_shortcut_response',
+            requestId: message.requestId,
+            data: result,
+            timestamp: new Date().toISOString()
+        });
+    }
+
     async handleDesktopCreateEmptyFolder(ws, message, clientInfo, wsServer) {
         const payload = this.getPayload(message);
         const workspaceId = payload.workspaceId ||
@@ -653,6 +683,7 @@ function registerVfsPackets(handlersCtx) {
     reg('vfs_resolve_path', (ctx) => vfs.handleVfsResolvePath(ctx.ws, ctx.message));
     reg('vfs_folder_has_user_files', (ctx) => vfs.handleVfsFolderHasUserFiles(ctx.ws, ctx.message));
     reg('vfs_create_folder', (ctx) => vfs.handleVfsCreateFolder(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_create_shortcut', (ctx) => vfs.handleVfsCreateShortcut(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
     reg('vfs_rename_folder', (ctx) => vfs.handleVfsRenameFolder(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
     reg('vfs_rename_file', (ctx) => vfs.handleVfsRenameFile(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
     reg('vfs_delete_folder', (ctx) => vfs.handleVfsDeleteFolder(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);

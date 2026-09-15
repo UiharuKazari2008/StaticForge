@@ -287,6 +287,40 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('html as {}'));
 assert.strictEqual(_test.resolveWorkspaceId(''), 'default');
 assert.strictEqual(_test.resolveWorkspaceId('default'), 'default');
 assert.strictEqual(_test.resolveWorkspaceId('other'), 'other');
+{
+    const workspaces = {
+        default: { name: 'Default', nicknames: [] },
+        'lab-id': { name: 'Laboratory', nicknames: ['lab', 'the dumpster'] },
+        'mat-id': { name: 'Maternity Ward', nicknames: ['pregnant', 'prego'] }
+    };
+    const fakeResources = {
+        getWorkspaceManager() {
+            return { resolveWorkspaceRef(value) { return require('../modules/workspace').resolveWorkspaceRef(workspaces, value); } };
+        }
+    };
+    assert.strictEqual(_test.resolveWorkspaceId('the lab', fakeResources), 'lab-id');
+    assert.strictEqual(_test.resolveWorkspaceId('dumpster', fakeResources), 'lab-id');
+    assert.strictEqual(_test.resolveWorkspaceId('prego', fakeResources), 'mat-id');
+    assert.strictEqual(_test.resolveWorkspaceId('Maternity Ward', fakeResources), 'mat-id');
+    const imageSc = _test.buildDesktopShortcutFromMcpInput({ type: 'image', filename: 'shot.png', name: 'Shot' });
+    assert.strictEqual(imageSc.type, 'image');
+    assert.strictEqual(imageSc.data.filename, 'shot.png');
+    const studioSc = _test.buildDesktopShortcutFromMcpInput({
+        type: 'studio-change',
+        name: 'Look',
+        filename: 'icon.png',
+        payload: { dreamscape: 'change', title: 'Look' }
+    });
+    assert.strictEqual(studioSc.data.iconFilename, 'icon.png');
+    assert.strictEqual(studioSc.data.payload.title, 'Look');
+    assert.ok(_test.DESKTOP_SHORTCUT_TYPES.has('wiki-page'));
+    assert.strictEqual(_test.isDesktopShortcutDest(''), true);
+    assert.strictEqual(_test.isDesktopShortcutDest('@desktop'), true);
+    assert.strictEqual(_test.isDesktopShortcutDest('/Workspaces/lab/Notes'), false);
+    assert.ok(listedNameSet.has('create_shortcut'), 'create_shortcut must appear in tools/list');
+    const createDef = _test.TOOL_DEFS.find((t) => t.name === 'create_shortcut');
+    assert.ok(createDef && createDef.core === true);
+}
 assert.strictEqual(_test.flattenPacket({
     success: true,
     type: 'image_generation_response',
@@ -636,6 +670,7 @@ assert.ok(coreNames.includes('compare_images'));
 assert.ok(coreNames.includes('evaluate_workspace_themes'));
 assert.ok(coreNames.includes('vfs_list'));
 assert.ok(coreNames.includes('vfs_read'));
+assert.ok(coreNames.includes('create_shortcut'));
 assert.ok(coreNames.includes('bind_session'));
 assert.ok(coreNames.includes('list_clients'));
 assert.ok(coreNames.includes('get_client_physics'));
@@ -664,7 +699,7 @@ assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
 assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
 assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
-assert.strictEqual(coreNames.length, 68);
+assert.strictEqual(coreNames.length, 69);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -768,6 +803,7 @@ assert.ok(galleryOnlyTools.some((t) => t.name === 'open_in_glancewell'));
 const vfsOnly = _test.listToolsForScopes(['vfs']);
 assert.ok(vfsOnly.some((t) => t.name === 'vfs_list'));
 assert.ok(vfsOnly.some((t) => t.name === 'vfs_read'));
+assert.ok(vfsOnly.some((t) => t.name === 'create_shortcut'));
 assert.ok(!vfsOnly.some((t) => t.name === 'vfs_write'));
 
 assert.deepStrictEqual(_test.collectOmegasearchBlocks({ query: '1girl sunset' }), ['1girl sunset']);

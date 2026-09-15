@@ -572,7 +572,7 @@ Additional response/push types from handler:
 |-------|-------|
 | `requestId` | Optional |
 
-**Success response:** `workspace_list_response` — `workspaces`, `activeWorkspace`, `workspaceCssHash` (current compiled theme hash; client applies it before dropping inline boot wallpaper).
+**Success response:** `workspace_list_response` — `workspaces` (each row includes `nicknames[]` spoken aliases), `activeWorkspace`, `workspaceCssHash` (current compiled theme hash; client applies it before dropping inline boot wallpaper).
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
@@ -828,10 +828,11 @@ Additional response/push types from handler:
 |-------|-------|
 | `requestId` | Optional |
 | `id` | Required |
-| `settings` | Required |
+| `settings` | Required. Optional `nicknames` (string[] or comma-separated string) — spoken aliases such as `lab`, `the dumpster`, `prego`. |
 
 **Validation errors:**
 - Workspace ID and settings object are required
+- Nicknames must be an array of strings (or a string the server splits)
 
 **Success response:** `workspace_update_settings_response`
 

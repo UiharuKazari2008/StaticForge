@@ -273,6 +273,7 @@ class BannerManager {
             'vfs_get_path_stats': 'Path Stats',
             'vfs_resolve_path': 'Resolve Path',
             'vfs_create_folder': 'Create Folder',
+            'vfs_create_shortcut': 'Create Shortcut',
             'vfs_rename_folder': 'Rename Folder',
             'vfs_rename_file': 'Rename File',
             'vfs_rename_entry': 'Rename File',

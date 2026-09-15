@@ -56,8 +56,8 @@ User: *look at this image / this wiki page / my selected gallery files*
 
 User: *find the latest / this file in Character Studies*
 
-1. `get_workspaces` — match the display name to an id
-2. Known file: `get_generated_image` `{ "filename": "…png", "workspace": "<id>" }`
+1. `get_workspaces` — match the display name or a nickname (`the lab`, `prego`) to an id
+2. Known file: `get_generated_image` `{ "filename": "…png", "workspace": "<id or nickname>" }`
 3. Latest in that folder: `get_generated_image` `{ "workspace": "<id>" }` (omit filename)
 4. Hunt by prompt: `omegasearch` `{ "query": "…", "workspace": "<id>" }` then `get_generated_image`
 

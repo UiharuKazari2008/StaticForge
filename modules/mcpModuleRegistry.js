@@ -99,7 +99,7 @@ const MODULE_DEFS = {
         scope: 'vfs',
         label: 'Core VFS',
         description: 'Virtual file system',
-        tools: ['vfs_list', 'vfs_read', 'vfs_stat', 'vfs_write', 'vfs_delete', 'list_desktop_items']
+        tools: ['vfs_list', 'vfs_read', 'vfs_stat', 'vfs_write', 'vfs_delete', 'list_desktop_items', 'create_shortcut']
     },
 
     // Specialized modules

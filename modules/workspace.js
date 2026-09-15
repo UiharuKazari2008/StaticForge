@@ -13,6 +13,49 @@ async function recordReplicationWorkspaceFilenameJournal(filename, workspaceId, 
     } catch (_err) {}
 }
 
+function normalizeWorkspaceAlias(value) {
+    return String(value == null ? '' : value)
+        .trim()
+        .toLowerCase()
+        .replace(/^the\s+/, '')
+        .replace(/\s+/g, ' ');
+}
+
+function normalizeWorkspaceNicknames(raw) {
+    const list = Array.isArray(raw)
+        ? raw
+        : (typeof raw === 'string' ? raw.split(/[,;\n]/) : []);
+    const seen = new Set();
+    const out = [];
+    list.forEach((item) => {
+        const nick = String(item == null ? '' : item).trim().replace(/\s+/g, ' ');
+        if (!nick || nick.length > 40) return;
+        const key = normalizeWorkspaceAlias(nick);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        out.push(nick);
+    });
+    return out.slice(0, 24);
+}
+
+function resolveWorkspaceRef(workspaces, value) {
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw || raw.toLowerCase() === 'default') return 'default';
+    const all = workspaces && typeof workspaces === 'object' ? workspaces : {};
+    if (all[raw]) return raw;
+    const needle = normalizeWorkspaceAlias(raw);
+    if (!needle) return raw;
+    const entries = Object.entries(all);
+    for (const [id, workspace] of entries) {
+        if (normalizeWorkspaceAlias(workspace && workspace.name) === needle) return id;
+    }
+    for (const [id, workspace] of entries) {
+        const nicks = Array.isArray(workspace && workspace.nicknames) ? workspace.nicknames : [];
+        if (nicks.some((nick) => normalizeWorkspaceAlias(nick) === needle)) return id;
+    }
+    return raw;
+}
+
 class WorkspaceManager {
     constructor(globalResources) {
         if (!globalResources) {
@@ -53,6 +96,14 @@ class WorkspaceManager {
     // Get a random color from the default palette
     getRandomWorkspaceColor() {
         return this.DEFAULT_WORKSPACE_COLORS[Math.floor(Math.random() * this.DEFAULT_WORKSPACE_COLORS.length)];
+    }
+
+    normalizeWorkspaceNicknames(raw) {
+        return normalizeWorkspaceNicknames(raw);
+    }
+
+    resolveWorkspaceRef(value) {
+        return resolveWorkspaceRef(this.getWorkspaces(), value);
     }
 
     // Normalize wallpaper path to 2-part format (type:id) or url:
@@ -324,6 +375,7 @@ class WorkspaceManager {
             backgroundColor: backgroundColor, // Can be null for auto-generation
             primaryFont: null,
             textareaFont: null,
+            nicknames: [],
             sort: maxSort + 1, // Add to the end of the list
             presets: [],
             files: [],
@@ -412,6 +464,9 @@ class WorkspaceManager {
         }
         if (typeof settings.wallpaperPosition !== 'undefined') {
             updates.wallpaperPosition = settings.wallpaperPosition || null;
+        }
+        if (typeof settings.nicknames !== 'undefined') {
+            updates.nicknames = this.normalizeWorkspaceNicknames(settings.nicknames);
         }
 
         // Merge all updates at once (fluent API - use array notation for workspace ID)
@@ -2363,3 +2418,6 @@ class WorkspaceManager {
 }
 
 module.exports = WorkspaceManager;
+module.exports.normalizeWorkspaceAlias = normalizeWorkspaceAlias;
+module.exports.normalizeWorkspaceNicknames = normalizeWorkspaceNicknames;
+module.exports.resolveWorkspaceRef = resolveWorkspaceRef;

@@ -1679,11 +1679,10 @@ class VfsManager {
 
     _resolveWorkspaceId(segment, workspaces) {
         if (!segment) return null;
-        if (workspaces[segment]) return segment;
-        const match = Object.entries(workspaces).find(([, ws]) =>
-            (ws.name || '').toLowerCase() === segment.toLowerCase()
-        );
-        return match ? match[0] : null;
+        const { resolveWorkspaceRef } = require('./workspace');
+        const resolved = resolveWorkspaceRef(workspaces, segment);
+        if (workspaces && workspaces[resolved]) return resolved;
+        return null;
     }
 
     async _findWorkspaceFolderByName(workspaceId, parentId, name, options = {}) {
@@ -2111,6 +2110,42 @@ class VfsManager {
 
         this._pathStatsCache.set(normalized, { stats, at: Date.now() });
         return stats;
+    }
+
+    async createShortcutAtPath(targetPath, shortcut, workspaceId = null) {
+        const name = String(shortcut && shortcut.name || '').trim();
+        const type = String(shortcut && shortcut.type || '').trim();
+        if (!name) throw new Error('Shortcut must have name');
+        if (!type) throw new Error('Shortcut must have type');
+        const dest = String(targetPath || '').trim();
+        const resolved = dest && dest !== '@desktop' && dest.toLowerCase() !== 'desktop'
+            ? await this.resolvePathInput(dest)
+            : null;
+        const parsed = resolved ? this.parsePath(resolved) : null;
+        const location = resolved ? this.resolveLocationFromPath(resolved) : {};
+        const wsId = workspaceId || (location && location.workspaceId) || (parsed && parsed.workspaceId);
+        if (!wsId) throw new Error('Workspace required for shortcut');
+        const payload = {
+            name,
+            type,
+            data: shortcut.data && typeof shortcut.data === 'object' && !Array.isArray(shortcut.data)
+                ? shortcut.data
+                : {}
+        };
+
+        const desktopDest = !resolved || this._isDesktopTargetPath(parsed);
+        if (desktopDest) {
+            const isDesktopRoot = !parsed || (parsed.type === 'system-folder' && parsed.systemName === 'Desktop');
+            const result = this.globalResources.getWorkspaceManager().addDesktopShortcut(wsId, {
+                ...payload,
+                folderId: isDesktopRoot ? null : ((location && location.folderId) || null)
+            });
+            return { success: true, dest: 'desktop', workspaceId: wsId, shortcut: result.shortcut };
+        }
+
+        const folderId = await this._resolveEntryFolderId(resolved);
+        const entry = await this._createShortcutEntryFromPayload(payload, folderId, wsId);
+        return { success: true, dest: 'vfs', workspaceId: wsId, path: resolved, entry };
     }
 
     async createFolderAtPath(vfsPath, name) {

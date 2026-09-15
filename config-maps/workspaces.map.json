@@ -27,6 +27,13 @@
       "label": "Cache Files (Legacy)",
       "description": "Legacy JSON list — reference cache ownership is in SQLite; may be stripped on save"
     },
+    {
+      "path": ["*", "nicknames"],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Nicknames",
+      "description": "Spoken aliases (lab, dumpster, prego) resolved by MCP workspace args"
+    },
     { "path": ["*", "sort"], "type": "number", "label": "Sort Order", "required": true },
     { "path": ["*", "files"], "type": "array", "itemsType": "string", "label": "Gallery Files", "required": true },
     { "path": ["*", "scraps"], "type": "array", "itemsType": "string", "label": "Scraps", "required": true },

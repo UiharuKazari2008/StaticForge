@@ -592,11 +592,24 @@ function inferBoundWorkspaceId(globalResources, req) {
     return null;
 }
 
+function resolveWorkspaceRef(globalResources, value) {
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw || raw.toLowerCase() === 'default') return 'default';
+    try {
+        const manager = globalResources && globalResources.getWorkspaceManager && globalResources.getWorkspaceManager();
+        if (manager && typeof manager.resolveWorkspaceRef === 'function') {
+            return manager.resolveWorkspaceRef(raw);
+        }
+    } catch (_err) {
+        // workspace manager may be unavailable in isolated tests
+    }
+    return raw;
+}
+
 function resolveGenerateWorkspaceId(globalResources, req, input) {
     const raw = input && (input.workspace || input.workspaceId);
     if (raw != null && String(raw).trim()) {
-        const trimmed = String(raw).trim();
-        return trimmed.toLowerCase() === 'default' ? 'default' : trimmed;
+        return resolveWorkspaceRef(globalResources, raw);
     }
     return inferBoundWorkspaceId(globalResources, req) || 'default';
 }
@@ -2006,6 +2019,7 @@ module.exports = {
     coerceStudioChangeObject,
     assembleStudioChangeFromToolArgs,
     flattenGenerateToolArgs,
+    resolveWorkspaceRef,
     resolveGenerateWorkspaceId,
     inferBoundWorkspaceId,
     mergeExpansionOverrideParams,
@@ -2031,6 +2045,7 @@ module.exports = {
         coerceStudioChangeObject,
         assembleStudioChangeFromToolArgs,
         flattenGenerateToolArgs,
+        resolveWorkspaceRef,
         resolveGenerateWorkspaceId,
         inferBoundWorkspaceId,
         mergeExpansionOverrideParams,

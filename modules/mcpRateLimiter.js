@@ -112,6 +112,7 @@ const TOOL_RATE_GROUPS = {
     vfs_write: 'write',
     vfs_delete: 'write',
     list_desktop_items: 'free',
+    create_shortcut: 'write',
     publish_apocrypha: 'write',
     revoke_apocrypha: 'write',
     get_apocrypha: 'free',

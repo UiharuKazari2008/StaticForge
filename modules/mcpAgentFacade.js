@@ -39,6 +39,7 @@ const {
     resolveStudioAutoFlags,
     assembleStudioChangeFromToolArgs,
     flattenGenerateToolArgs,
+    resolveWorkspaceRef,
     resolveGenerateWorkspaceId,
     mergeExpansionOverrideParams,
     resolveAgentPacketMessage,
@@ -480,7 +481,7 @@ const TOOL_DEFS = [
     {
         name: 'get_workspaces',
         core: true,
-        description: 'List workspaces. The default workspace id is "default". Use the id as workspace on get_generated_image or omegasearch.',
+        description: 'List workspaces (id, name, nicknames). The default workspace id is "default". Pass id, display name, or a nickname ("the lab", "prego") as workspace on generate / get / omegasearch.',
         scope: 'workspace',
         packet: 'workspace_list',
         inputSchema: { type: 'object', properties: {} }
@@ -1546,6 +1547,40 @@ const TOOL_DEFS = [
             }
         }
     },
+    {
+        name: 'create_shortcut',
+        core: true,
+        description: 'Create a desktop or VFS shortcut the same way the user can. Types: image, preset, studio-change, note, wiki-page, static-wiki-page, nax-tag, reference, applet, dsap, request, bracket-generation, folder, system-folder. dest omitted / @desktop is the workspace desktop; any other dest is a VFS folder path. studio-change accepts Change-JSON payload/change, or fromStudio to snapshot the bound Studio tab, plus filename/icon for a gallery-image icon.',
+        scope: 'vfs',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                workspace: { type: 'string' },
+                workspaceId: { type: 'string' },
+                dest: { type: 'string', description: '@desktop (default) or a VFS folder path' },
+                path: { type: 'string' },
+                type: { type: 'string' },
+                name: { type: 'string' },
+                title: { type: 'string' },
+                filename: { type: 'string' },
+                icon: { type: 'string' },
+                iconFilename: { type: 'string' },
+                preview: { type: 'string' },
+                uuid: { type: 'string' },
+                presetUuid: { type: 'string' },
+                noteId: { type: 'string' },
+                tagName: { type: 'string' },
+                tag: { type: 'string' },
+                siteId: { type: 'string' },
+                pageId: { type: 'string' },
+                fromStudio: { type: 'boolean' },
+                payload: { type: 'object' },
+                change: { type: 'object' },
+                data: { type: 'object' }
+            }
+        }
+    },
     // Apocrypha Publish tools
     {
         name: 'publish_apocrypha',
@@ -2497,10 +2532,163 @@ async function openViewerFromMcp(globalResources, input, target, req) {
     return mcpTextResult({ success: true, broadcast: true, target, filenames });
 }
 
-function resolveWorkspaceId(value) {
-    const raw = String(value == null ? '' : value).trim();
-    if (!raw || raw.toLowerCase() === 'default') return 'default';
-    return raw;
+function resolveWorkspaceId(value, globalResources) {
+    return resolveWorkspaceRef(globalResources, value);
+}
+
+const DESKTOP_SHORTCUT_TYPES = new Set([
+    'image', 'note', 'reference', 'applet', 'dsap', 'request', 'preset',
+    'studio-change', 'wiki-page', 'static-wiki-page', 'nax-tag',
+    'bracket-generation', 'folder', 'system-folder'
+]);
+
+function pickShortcutString(input, keys) {
+    for (const key of keys) {
+        if (input && input[key] != null && String(input[key]).trim()) {
+            return String(input[key]).trim();
+        }
+    }
+    return '';
+}
+
+function isDesktopShortcutDest(dest) {
+    const raw = String(dest == null ? '' : dest).trim().toLowerCase();
+    return !raw || raw === 'desktop' || raw === '@desktop' || raw === '/desktop';
+}
+
+function buildDesktopShortcutFromMcpInput(input) {
+    const src = input && typeof input === 'object' ? input : {};
+    const type = String(src.type || src.shortcutType || '').trim();
+    if (!DESKTOP_SHORTCUT_TYPES.has(type)) {
+        const err = new Error(type
+            ? `Unsupported shortcut type: ${type}`
+            : 'type is required (image, preset, studio-change, note, wiki-page, …)');
+        err.status = 400;
+        throw err;
+    }
+    const data = src.data && typeof src.data === 'object' && !Array.isArray(src.data)
+        ? { ...src.data }
+        : {};
+    const merge = (key, value) => {
+        if (value != null && value !== '' && data[key] == null) data[key] = value;
+    };
+
+    if (type === 'image') {
+        merge('filename', pickShortcutString(src, ['filename', 'image']));
+        merge('preview', pickShortcutString(src, ['preview']));
+        if (!data.filename) {
+            const err = new Error('image shortcut requires filename');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'note') {
+        merge('noteId', pickShortcutString(src, ['noteId', 'id']));
+        if (!data.noteId) {
+            const err = new Error('note shortcut requires noteId');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'preset') {
+        merge('uuid', pickShortcutString(src, ['uuid', 'presetUuid']));
+        if (!data.uuid) {
+            const err = new Error('preset shortcut requires uuid / presetUuid');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'studio-change') {
+        const payload = src.payload && typeof src.payload === 'object'
+            ? src.payload
+            : (src.change && typeof src.change === 'object' ? src.change : data.payload);
+        if (payload && typeof payload === 'object') data.payload = payload;
+        const icon = pickShortcutString(src, ['iconFilename', 'icon', 'filename']);
+        if (icon) {
+            data.iconFilename = icon;
+            if (!data.filename) data.filename = icon;
+        }
+        merge('preview', pickShortcutString(src, ['preview']));
+    } else if (type === 'wiki-page') {
+        merge('tagName', pickShortcutString(src, ['tagName', 'tag', 'title']));
+        if (!data.tagName) {
+            const err = new Error('wiki-page shortcut requires tagName');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'static-wiki-page') {
+        merge('siteId', pickShortcutString(src, ['siteId', 'site']));
+        merge('pageId', pickShortcutString(src, ['pageId', 'page']));
+        merge('title', pickShortcutString(src, ['title', 'name']));
+        if (!data.siteId || !data.pageId) {
+            const err = new Error('static-wiki-page shortcut requires siteId and pageId');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'nax-tag') {
+        merge('tag', pickShortcutString(src, ['tag', 'tagName']));
+        merge('gallerySlug', pickShortcutString(src, ['gallerySlug']));
+        merge('filename', pickShortcutString(src, ['filename']));
+        if (!data.tag || !data.gallerySlug || !data.filename) {
+            const err = new Error('nax-tag shortcut requires tag, gallerySlug, and filename');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'reference') {
+        merge('hash', pickShortcutString(src, ['hash']));
+        merge('filename', pickShortcutString(src, ['filename']));
+        merge('preview', pickShortcutString(src, ['preview']));
+        merge('refType', pickShortcutString(src, ['refType']) || 'base');
+        if (!data.hash) {
+            const err = new Error('reference shortcut requires hash');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'applet') {
+        merge('launchId', pickShortcutString(src, ['launchId']));
+        merge('icon', pickShortcutString(src, ['icon']));
+        if (!data.launchId) {
+            const err = new Error('applet shortcut requires launchId');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'dsap') {
+        merge('url', pickShortcutString(src, ['url']));
+        merge('title', pickShortcutString(src, ['title', 'name']));
+        merge('icon', pickShortcutString(src, ['icon']));
+        merge('imageIcon', pickShortcutString(src, ['imageIcon']));
+        if (!data.url) {
+            const err = new Error('dsap shortcut requires url');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'request') {
+        if (src.requestBody && typeof src.requestBody === 'object') data.requestBody = src.requestBody;
+        merge('preview', pickShortcutString(src, ['preview']));
+        if (!data.requestBody) {
+            const err = new Error('request shortcut requires requestBody');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'bracket-generation') {
+        if (src.state && typeof src.state === 'object') data.state = src.state;
+        merge('label', pickShortcutString(src, ['label', 'name']));
+        if (!data.state) {
+            const err = new Error('bracket-generation shortcut requires state');
+            err.status = 400;
+            throw err;
+        }
+    } else if (type === 'folder') {
+        merge('vfsFolderId', pickShortcutString(src, ['vfsFolderId', 'folderId']));
+    } else if (type === 'system-folder') {
+        merge('systemName', pickShortcutString(src, ['systemName']));
+    }
+
+    const name = pickShortcutString(src, ['name', 'title'])
+        || data.tagName || data.tag || data.title || data.filename || data.label || type;
+    if (!name) {
+        const err = new Error('name is required');
+        err.status = 400;
+        throw err;
+    }
+    return { name, type, data };
 }
 
 function flattenPacket(packet) {
@@ -3439,7 +3627,7 @@ async function latestGalleryFilename(globalResources, req, workspaceId) {
 }
 
 async function resolveGalleryFilename(globalResources, req, input) {
-    const workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace);
+    const workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace, globalResources);
     const seed = input.seed != null ? String(input.seed).trim() : '';
     let name = sanitizeGalleryFilename(input.filename || input.image || '');
     if (name) {
@@ -3990,7 +4178,7 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'omegasearch') {
-        input.workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace);
+        input.workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace, globalResources);
         input.blocks = collectOmegasearchBlocks(input);
         if (!input.blocks.length && input.filename) {
             input.blocks = [String(input.filename).trim()];
@@ -4066,7 +4254,7 @@ async function callTool(globalResources, req, name, args) {
         if (!filenames.length) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
         }
-        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId);
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
         if (input.remove === true) {
             const results = [];
             for (const filename of filenames) {
@@ -4088,7 +4276,7 @@ async function callTool(globalResources, req, name, args) {
         if (!filenames.length) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
         }
-        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId);
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
         const record = workspaceRecord(globalResources, workspaceId) || {};
         const pinned = Array.isArray(record.pinned) ? record.pinned : [];
         const results = [];
@@ -4121,7 +4309,7 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'compare_images') {
-        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId);
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
         const lookedA = await resolveGalleryFilename(globalResources, req, {
             filename: input.filenameA || input.a || input.filename,
             workspace: workspaceId
@@ -4170,7 +4358,7 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'evaluate_workspace_themes') {
-        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId);
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
         const metadataDb = globalResources.getMetadataDatabase && globalResources.getMetadataDatabase();
         if (!metadataDb || typeof metadataDb.listWorkspaceGalleryImageRows !== 'function') {
             return mcpTextResult({ success: false, error: 'Metadata database is not ready' }, true);
@@ -4199,8 +4387,60 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'list_desktop_items') {
-        input.workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId);
+        input.workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
         input.id = input.workspaceId;
+    }
+
+    if (name === 'create_shortcut') {
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
+        const dest = pickShortcutString(input, ['dest', 'path']) || '@desktop';
+        const wantStudio = input.fromStudio === true || input.fromStudio === 'true'
+            || (String(input.type || '') === 'studio-change' && !input.payload && !input.change
+                && !(input.data && input.data.payload));
+        if (wantStudio && String(input.type || input.shortcutType || '') === 'studio-change') {
+            const bind = autoBindIfNeeded(globalResources, req);
+            if (!getBoundRecord(globalResources, bind.bindKey)) {
+                return mcpBindChoiceResult(bind);
+            }
+            try {
+                const state = await sendBoundCommand(globalResources, 'get_state', { full: true }, 8000, bind.bindKey);
+                const change = state && (state.change || state.payload);
+                if (change && typeof change === 'object') {
+                    input.payload = change;
+                    if (!input.name && change.title) input.name = change.title;
+                }
+            } catch (err) {
+                return mcpTextResult({
+                    success: false,
+                    error: (err && err.message) || 'Could not snapshot bound Studio state'
+                }, true);
+            }
+            if (!input.payload) {
+                return mcpTextResult({
+                    success: false,
+                    error: 'Bound Studio did not return a change payload. Pass payload/change or apply a look first.'
+                }, true);
+            }
+        }
+        const shortcut = buildDesktopShortcutFromMcpInput(input);
+        if (shortcut.type === 'studio-change' && !shortcut.data.payload) {
+            return mcpTextResult({
+                success: false,
+                error: 'studio-change requires payload/change or fromStudio: true'
+            }, true);
+        }
+        const packet = await dispatchPacketTool(globalResources, req, 'vfs_create_shortcut', {
+            workspaceId,
+            path: isDesktopShortcutDest(dest) ? '@desktop' : dest,
+            shortcut
+        });
+        return mcpTextResult({
+            ...flattenPacket(packet),
+            workspaceId,
+            dest: isDesktopShortcutDest(dest) ? '@desktop' : dest,
+            type: shortcut.type,
+            name: shortcut.name
+        }, !packet.success);
     }
 
     if (name === 'vfs_list' && !input.path) {
@@ -4488,7 +4728,7 @@ async function callTool(globalResources, req, name, args) {
 
     if (def.packet && name !== 'get_generated_image' && name !== 'get_linkxi_persona' && name !== 'save_linkxi_persona') {
         if (input.workspaceId || input.workspace) {
-            input.workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace);
+            input.workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace, globalResources);
             input.workspace = input.workspaceId;
         }
         const packet = await dispatchPacketTool(globalResources, req, def.packet, input);
@@ -4762,7 +5002,7 @@ async function callTool(globalResources, req, name, args) {
         } else if (data && data.generateStarted) {
             applyJob = rememberApplyGenerateJob({
                 bindKey: bind.bindKey,
-                workspaceId: data.workspaceId || resolveWorkspaceId(input.workspace || input.workspaceId),
+                workspaceId: data.workspaceId || resolveWorkspaceId(input.workspace || input.workspaceId, globalResources),
                 filenameBefore: data.filenameBefore || data.lastGeneratedImageName || data.filename || null,
                 checkpointId: data.checkpointId || null,
                 destPath: pickDestPathInput(input) || null,
@@ -5593,6 +5833,9 @@ module.exports = {
         collectEnshutsukaMustAct,
         sanitizeLinkXiPersona,
         resolveWorkspaceId,
+        buildDesktopShortcutFromMcpInput,
+        DESKTOP_SHORTCUT_TYPES,
+        isDesktopShortcutDest,
         flattenPacket,
         reshapeWikiPageForMcp,
         coerceWikiText,

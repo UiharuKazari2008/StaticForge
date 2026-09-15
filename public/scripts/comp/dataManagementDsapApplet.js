@@ -921,6 +921,10 @@ function dataMgmtDsapRenderWorkspaceList(root) {
                     <i class="fas fa-trash"></i>
                 </button>` : '';
 
+        const nicknames = Array.isArray(workspace.nicknames) ? workspace.nicknames.filter(Boolean) : [];
+        const nickLine = nicknames.length
+            ? `<div class="data-mgmt-muted">${dataMgmtDsapEscapeHtml(nicknames.join(', '))}</div>`
+            : '';
         row.innerHTML = `
                 <td align="center" class="data-mgmt-ws-drag-cell">
                     <span class="data-mgmt-ws-drag-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
@@ -928,6 +932,7 @@ function dataMgmtDsapRenderWorkspaceList(root) {
                 <td class="data-mgmt-ws-name-cell">
                     <span class="data-mgmt-ws-color" style="background-color: ${color}"></span>
                     <span class="data-mgmt-ws-name">${safeName}</span>${activeBadge}
+                    ${nickLine}
                 </td>
                 <td align="center" class="data-mgmt-ws-count">${dataMgmtDsapFormatNumber(workspace.fileCount || 0)}</td>
                 <td align="center" class="data-mgmt-ws-count">${dataMgmtDsapFormatNumber(workspace.cacheFileCount || 0)}</td>
