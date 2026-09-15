@@ -1006,6 +1006,28 @@ html:not(.disable-blur) {
     --glass-blur-5: blur(15px);
 }
 
+html.disable-blur {
+    --glass-blur-circle-0: none;
+    --glass-blur-circle-1: none;
+    --glass-blur-circle-2: none;
+    --glass-blur-circle-3: none;
+    --glass-blur-circle-4: none;
+    --glass-blur-circle-5: none;
+    --glass-blur-0: none;
+    --glass-blur-1: none;
+    --glass-blur-2: none;
+    --glass-blur-3: none;
+    --glass-blur-4: none;
+    --glass-blur-5: none;
+}
+
+/* Hardcoded blur(10px) / brightness() fallbacks ignore the vars above. */
+html.disable-blur,
+html.disable-blur * {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
 /* Compositor hints: pair -webkit-backdrop-filter with backdrop-filter on glass surfaces */
 html:not(.disable-blur) #focus-overlay,
 html:not(.disable-blur) .websocket-ticker {

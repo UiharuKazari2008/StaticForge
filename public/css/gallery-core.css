@@ -698,6 +698,17 @@
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 200px;
+}
+
+.gallery.is-scrolling .gallery-item,
+.gallery.is-scrolling .gallery-placeholder {
+    transition: none;
+}
+
+.gallery.is-scrolling {
+    contain: layout paint;
 }
 
 #galleryWindow.windowed .gallery-item {

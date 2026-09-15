@@ -384,17 +384,19 @@ The HTTP response waits until Cancel or countdown 0 (about 20s). Apply+restart s
 
 Ingest / Cursor testing uses the silent pair instead of this dialog:
 
-- `POST /agent/session/prepare-update` (MCP `update_client`) — download, wait `readyForRestart` / `alreadyCurrent`
-- `POST /agent/session/restart` (MCP `restart_client`) — reload, wait reattach
+- `POST /agent/session/prepare-update` (MCP `update_client`) — desktop Update path; `appliedWithoutRestart` / `readyForRestart` / `alreadyCurrent`
+- `POST /agent/session/restart` (MCP `restart_client`) — reload + reattach **only** when `readyForRestart`
 - `POST /agent/session/js` / `POST /agent/session/inspect` — then test
 
 ### `POST /agent/session/prepare-update`
 
 **Auth:** Same as `GET /agent`. Requires a live bind.
 
-Silent SW check/download on the bound tab. No 15s dialog. HTTP waits until the tab replies (`readyForRestart` or `alreadyCurrent`), up to 120s.
+Silent SW update on the bound tab (same as desktop context-menu **Update** / `refresh-cache`): `refreshServerCache` then download. No 15s dialog. HTTP waits until the tab replies (`appliedWithoutRestart`, `readyForRestart`, or `alreadyCurrent`), up to 120s.
 
-**Success:** `200` `{ "success": true, "ok": true, "readyForRestart": true, "alreadyCurrent": false, "filesDownloaded": N }`
+**Success:** `200` `{ "success": true, "ok": true, "appliedWithoutRestart": true, "readyForRestart": false, "alreadyCurrent": true, "pendingUpdateKind": "css-only", "filesDownloaded": N }`
+
+CSS/apply-safe swaps stylesheets in place (`appliedWithoutRestart`). Do **not** restart after that — a reload can keep stale HTML hashes. JS/HTML sets `readyForRestart` for `POST /agent/session/restart`.
 
 ### `POST /agent/session/restart`
 

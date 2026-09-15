@@ -221,10 +221,13 @@ User: *look at `1782…_generated_….png` in the default workspace*
 Cursor ingest / QA on the **running Dreamscape tab** (port 9220). Do **not** use the Cursor IDE browser.
 
 1. After `public/` JS/CSS/HTML edits: `bash scripts/notify-service-worker-update.sh`
-2. `update_client` — waits until `readyForRestart` (SW `pendingUpdateFuse`) or `alreadyCurrent`
-3. `restart_client` — reloads that tab and waits until `reattached` (same session, rebound, `get_state` answers)
+2. `update_client` — same as desktop context-menu **Update** (`refresh-cache`): `refreshServerCache` then SW download
+3. Branch on the result:
+   - `appliedWithoutRestart` — CSS/assets are live (stylesheet swap). **Do not** `restart_client` (a reload can keep stale HTML hashes).
+   - `readyForRestart` — JS/HTML. Then `restart_client` (wait `reattached`)
+   - `alreadyCurrent` — nothing to apply; inspect/js now
 4. Then `inspect_elements` (`selectors`, optional `html` / `style` / `text` / `box` / `attrs`) and/or `run_client_js` (`script`; Promises are awaited)
-5. Do not reuse a pre-restart Studio snapshot. `POST /agent/session/update` is the 15s human Cancel dialog — not this path.
+5. Do not reuse a pre-restart Studio snapshot after a JS/HTML restart. `POST /agent/session/update` is the 15s human Cancel dialog — not this path.
 
 ## search_indexes_ready / omegasearch wait
 

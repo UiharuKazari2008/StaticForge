@@ -4115,31 +4115,25 @@ function calculatePlaceholderBufferSize(scrollVelocity = 0, rows = galleryRows, 
     const isMobile = window.innerWidth <= infiniteScrollConfig.smallScreenThreshold;
     // Velocity spikes (logs: ~100+) can explode buffer and trigger tail overfill/reflow; clamp for stable buffer math.
     const absScrollVelocity = Math.min(12, Math.abs(scrollVelocity || 0));
-    let placeholderMultiplier = isJumpOperation ? 2.0 : 1.5; // Higher default for jump operations
+    let placeholderMultiplier = isJumpOperation ? 1.25 : 1.0;
 
     if (absScrollVelocity > 0) {
-        // Scale multiplier based on scroll velocity
         if (absScrollVelocity >= 6) {
-            // Very fast scrolling: scale from 3x to 6x based on velocity
-            placeholderMultiplier = 3 + ((absScrollVelocity - 6) / 10) * 3; // 3x to 6x
+            placeholderMultiplier = 1.5;
         } else if (absScrollVelocity >= 3) {
-            // Rapid scrolling: scale from 2x to 3x based on velocity
-            placeholderMultiplier = 2 + ((absScrollVelocity - 3) / 3) * 1; // 2x to 3x
+            placeholderMultiplier = 1.25;
         } else {
-            // Normal scrolling: scale from 1.5x to 2x based on velocity
-            placeholderMultiplier = (isJumpOperation ? 2 : 1.5) + (absScrollVelocity / 3) * 0.5;
+            placeholderMultiplier = 1.0 + (absScrollVelocity / 3) * 0.25;
         }
     }
 
     const placeholderBufferRows = Math.round(rows * placeholderMultiplier);
     let bufferSize = Math.floor(placeholderBufferRows * realGalleryColumns);
 
-    // Ensure minimum 2 pages worth during fast scrolling (2 * rows * realGalleryColumns)
-    const minTwoPagesBuffer = 2 * rows * realGalleryColumns;
-    bufferSize = Math.max(bufferSize, minTwoPagesBuffer);
-    // Hard cap prevents reflow spikes from giant buffers (e.g. buf 477 in logs).
-    const maxRowsCap = isMobile ? 30 : 24;
-    const maxBufferSize = Math.max(minTwoPagesBuffer, maxRowsCap * realGalleryColumns);
+    const minPageBuffer = rows * realGalleryColumns;
+    bufferSize = Math.max(bufferSize, minPageBuffer);
+    const maxRowsCap = isMobile ? 12 : 8;
+    const maxBufferSize = Math.max(minPageBuffer, maxRowsCap * realGalleryColumns);
     bufferSize = Math.min(bufferSize, maxBufferSize);
 
     // Mobile-specific buffer size adjustment
@@ -4423,11 +4417,9 @@ function addPlaceholdersBelow() {
 function handleInfiniteScroll() {
     if (isLoadingMore) return;
 
-    // Don't handle infinite scroll if manual modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
-
-    // Don't handle infinite scroll if gallery is hidden in desktop mode
-    if (isGalleryWindowHidden()) return;
+    // Don't handle infinite scroll if gallery is not the foreground window
+    // isGalleryForeground: public/scripts/comp/modalUtils.js
+    if (!isGalleryForeground()) return;
 
     // Post-restore stabilization: virtual scroll / load-more must not mutate the DOM window
     // until explicit user input lifts suppression (otherwise saved position hints drift).
@@ -4490,7 +4482,7 @@ function handleInfiniteScroll() {
     const scrollBottom = scrollTop + windowHeight;
     const bottomThreshold = documentHeight - (windowHeight * infiniteScrollConfig.bottomTriggerPercent);
 
-    if (scrollBottom >= bottomThreshold && !isLoadingMore) {
+    if (!isFastScrolling && scrollBottom >= bottomThreshold && !isLoadingMore) {
         // Check if there are actually more images to load before proceeding
         const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
         let lastRealIndex = -1;
@@ -4536,8 +4528,8 @@ function handleInfiniteScroll() {
         }
     }
 
-    // Virtual scrolling: remove items that are too far from viewport
-    if (virtualScrollEnabled) {
+    // Virtual scrolling: skip DOM rewrite while flinging; catch up on scroll end
+    if (virtualScrollEnabled && !isFastScrolling) {
         updateVirtualScroll();
     }
 }
@@ -5373,6 +5365,8 @@ function initIntersectionObserver() {
     }
 
     intersectionObserver = new IntersectionObserver((entries) => {
+        // isGalleryForeground: public/scripts/comp/modalUtils.js
+        if (!isGalleryForeground()) return;
         // Only trigger virtual scroll updates when items become visible/hidden
         let needsUpdate = false;
         entries.forEach(entry => {
@@ -5398,7 +5392,7 @@ function initIntersectionObserver() {
         }
     }, {
         root: isContainerScroll ? galleryContainer : null, // Use container as root for scrolling
-        rootMargin: '300px', // Increased from 100px to 200px to observe items earlier
+        rootMargin: '64px',
         threshold: 0.01 // Lower threshold to detect items earlier
     });
 }
@@ -5415,11 +5409,9 @@ function updateVirtualScroll() {
     // Same as post-restore hint suppression: keep virtual DOM stable until user input.
     if (suppressGalleryPositionHintUntilInteraction) return;
 
-    // Don't update virtual scroll if manual modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
-
-    // Don't update virtual scroll if gallery is hidden in desktop mode
-    if (isGalleryWindowHidden()) return;
+    // isGalleryForeground: public/scripts/comp/modalUtils.js
+    // Skip while another window is in front (windowed Studio used to keep this running).
+    if (!isGalleryForeground()) return;
 
     // Coalesce to one rAF (same pattern as vfsVirtualGrid._scheduleScrollUpdate)
     if (virtualScrollThrottle) return;
@@ -5503,7 +5495,7 @@ function updateVirtualScrollInternal() {
 
     // Adjust buffer based on scroll velocity - use larger buffer to prevent flickering
     // Increased buffer: 2-4 rows instead of 0.5-1 rows
-    const bufferMultiplier = isRapidScrolling ? 2 : 6;
+    const bufferMultiplier = isRapidScrolling ? 1 : 2;
     const indexPad = Math.floor(realGalleryColumns * bufferMultiplier);
     const minKeep = Math.max(0, minVisibleGallery - indexPad);
     const maxKeep = Math.min(Math.max(0, effectiveMaxGalleryIndex), maxVisibleGallery + indexPad);
@@ -6478,12 +6470,14 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
     function throttledInfiniteScroll() {
         // Mark as scrolling and clear any existing timeout
         isScrolling = true;
+        if (gallery) gallery.classList.add('is-scrolling');
         if (scrollEndTimeout) clearTimeout(scrollEndTimeout);
 
         // Set a timeout to detect when scrolling stops
         const scrollEndDelay = isIOS ? 150 : 50; // Longer delay to ensure scrolling has truly stopped
         scrollEndTimeout = setTimeout(() => {
             isScrolling = false;
+            if (gallery) gallery.classList.remove('is-scrolling');
             // Process any queued placeholder cleanup when scrolling stops
             // Only if scroll velocity is low (scrolling has actually stopped)
             if (placeholderCleanupQueue.size > 0 && Math.abs(scrollVelocity) < 0.5) {
@@ -6492,6 +6486,9 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
             // Start processing placeholders immediately when scrolling stops
             if (placeholderResolutionQueue.length > 0) {
                 processNextPlaceholders();
+            }
+            if (virtualScrollEnabled) {
+                updateVirtualScroll();
             }
             sendGalleryPositionHint();
         }, scrollEndDelay);

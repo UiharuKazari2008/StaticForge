@@ -637,7 +637,7 @@ const TOOL_DEFS = [
     {
         name: 'run_client_js',
         core: true,
-        description: 'Execute JavaScript in the bound Dreamscape tab (not the Cursor IDE browser). Awaits a returned Promise. Result must be JSON-serializable. Same auto-attach / needsClientChoice rules as apply_studio_changes. After client-asset edits: update_client, then restart_client, then this.',
+        description: 'Execute JavaScript in the bound Dreamscape tab (not the Cursor IDE browser). Awaits a returned Promise. Result must be JSON-serializable. Same auto-attach / needsClientChoice rules as apply_studio_changes. After client-asset edits: update_client; if appliedWithoutRestart skip restart_client; else restart_client; then this.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -651,7 +651,7 @@ const TOOL_DEFS = [
     {
         name: 'inspect_elements',
         core: true,
-        description: 'Match CSS selectors in the bound Dreamscape tab and return tag/id/class/text/visible plus optional html, computed style, box, and attrs. Same auto-attach / needsClientChoice rules as apply_studio_changes. After client-asset edits: update_client → restart_client → then inspect.',
+        description: 'Match CSS selectors in the bound Dreamscape tab and return tag/id/class/text/visible plus optional html, computed style, box, and attrs. Same auto-attach / needsClientChoice rules as apply_studio_changes. After client-asset edits: update_client; if appliedWithoutRestart skip restart_client; else restart_client; then inspect.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -672,14 +672,14 @@ const TOOL_DEFS = [
     {
         name: 'update_client',
         core: true,
-        description: 'Silent bound-tab SW update: check/download client assets and wait until readyForRestart (pendingUpdateFuse) or alreadyCurrent. No 15s dialog. Run scripts/notify-service-worker-update.sh first after client-asset edits. Then call restart_client before JS/HTML tests. Distinct from POST /agent/session/update (human Cancel dialog).',
+        description: 'Silent bound-tab SW update, same as desktop context-menu Update (refresh-cache): refreshServerCache then download. CSS/apply-safe swaps stylesheets in place and returns appliedWithoutRestart (do not restart_client — a reload can keep stale HTML hashes). JS/HTML returns readyForRestart for restart_client. alreadyCurrent means nothing to apply. No 15s dialog. Run scripts/notify-service-worker-update.sh first after client-asset edits. Distinct from POST /agent/session/update (human Cancel dialog).',
         scope: 'generation',
         inputSchema: { type: 'object', additionalProperties: false, properties: {} }
     },
     {
         name: 'restart_client',
         core: true,
-        description: 'Restart the bound Dreamscape tab and wait until that session reconnects, this key rebinds, and get_state answers. No 15s dialog. Call after update_client returns readyForRestart (or after notify when the fuse is already blown). Then run inspect_elements / run_client_js.',
+        description: 'Restart the bound Dreamscape tab and wait until that session reconnects, this key rebinds, and get_state answers. No 15s dialog. Call only after update_client returns readyForRestart (JS/HTML). Skip when appliedWithoutRestart or alreadyCurrent. Then run inspect_elements / run_client_js.',
         scope: 'generation',
         inputSchema: { type: 'object', additionalProperties: false, properties: {} }
     },
@@ -4812,9 +4812,11 @@ async function callTool(globalResources, req, name, args) {
             autoBound: !!bind.auto,
             next: failed
                 ? null
-                : (data.readyForRestart
-                    ? 'Call restart_client and wait for reattached, then inspect_elements / run_client_js.'
-                    : 'alreadyCurrent — restart_client only if you still need a reload; otherwise inspect/js now.'),
+                : (data.appliedWithoutRestart
+                    ? 'appliedWithoutRestart — CSS/assets are live. Do not restart_client. inspect_elements / run_client_js now.'
+                    : (data.readyForRestart
+                        ? 'Call restart_client and wait for reattached, then inspect_elements / run_client_js.'
+                        : 'alreadyCurrent — inspect/js now. Do not restart_client.')),
             ...data
         }, failed);
     }

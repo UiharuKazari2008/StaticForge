@@ -211,29 +211,72 @@
         };
     }
 
+    function downloadCountsFromClientUpdate(dl, filesToUpdate) {
+        const downloaded = dl && (dl.filesDownloaded != null ? dl.filesDownloaded : dl.completed);
+        const listed = filesToUpdate && filesToUpdate.length ? filesToUpdate.length : 0;
+        return {
+            filesDownloaded: downloaded != null ? downloaded : listed,
+            total: (dl && dl.total) || listed,
+            stalled: !!(dl && dl.stalled)
+        };
+    }
+
+    async function settlePreparedClientUpdate(sw, filesToUpdate, dl) {
+        const list = (filesToUpdate && filesToUpdate.length) ? filesToUpdate : (sw.pendingApplyFiles || []);
+        const counts = downloadCountsFromClientUpdate(dl, list);
+        if (!list.length) {
+            return {
+                ok: true,
+                appliedWithoutRestart: false,
+                ...clientUpdateStatusSnapshot(),
+                ...counts
+            };
+        }
+        // classifyStaticCacheUpdate / applyStaticCacheUpdate: public/scripts/comp/serviceWorkerManager.js
+        const kind = sw.classifyStaticCacheUpdate(list);
+        if (kind === 'css-only' || kind === 'apply-safe') {
+            await sw.applyStaticCacheUpdate(list, { silent: true });
+            return {
+                ok: true,
+                appliedWithoutRestart: true,
+                alreadyCurrent: true,
+                readyForRestart: false,
+                pendingUpdateKind: kind,
+                ...counts
+            };
+        }
+        const after = clientUpdateStatusSnapshot();
+        return {
+            ok: true,
+            appliedWithoutRestart: false,
+            readyForRestart: true,
+            alreadyCurrent: false,
+            pendingUpdateKind: kind || after.pendingUpdateKind || 'restart',
+            ...counts
+        };
+    }
+
     async function prepareClientUpdateFromCommand() {
         const sw = window.serviceWorkerManager;
         const baseline = clientUpdateStatusSnapshot();
         if (!sw || sw.agentSession) {
             return { ok: true, ...baseline };
         }
-        if (baseline.readyForRestart) {
-            return { ok: true, ...baseline, alreadyCurrent: false };
-        }
-        if (sw.isUpdating && typeof sw.attachToDownloadProgress === 'function') {
-            const dl = await sw.attachToDownloadProgress({ allowSkip: false });
-            const after = clientUpdateStatusSnapshot();
-            return {
-                ok: true,
-                readyForRestart: after.readyForRestart || !!(dl && dl.success && dl.filesDownloaded),
-                alreadyCurrent: after.alreadyCurrent && !(dl && dl.filesDownloaded),
-                filesDownloaded: dl && (dl.filesDownloaded != null ? dl.filesDownloaded : dl.completed),
-                total: dl && dl.total,
-                stalled: !!(dl && dl.stalled),
-                pendingUpdateKind: after.pendingUpdateKind
-            };
+        if (baseline.readyForRestart && (baseline.pendingUpdateKind === 'css-only' || baseline.pendingUpdateKind === 'apply-safe')) {
+            return settlePreparedClientUpdate(sw, sw.pendingApplyFiles, null);
         }
         try {
+            // Same as desktop context-menu Update (refresh-cache):
+            // refreshServerCache: public/scripts/websocket.js
+            // refreshServerCacheAndCheck: public/scripts/comp/serviceWorkerManager.js
+            if (wsClient.isConnected()) {
+                await wsClient.refreshServerCache();
+            }
+            if (sw.isUpdating) {
+                // attachToDownloadProgress: public/scripts/comp/serviceWorkerManager.js
+                const dl = await sw.attachToDownloadProgress({ allowSkip: false });
+                return settlePreparedClientUpdate(sw, sw.pendingApplyFiles, dl);
+            }
             const response = await fetch('/', {
                 method: 'OPTIONS',
                 headers: {
@@ -245,33 +288,16 @@
                 return { ok: false, error: 'manifest fetch failed', status: response.status };
             }
             const files = await response.json();
-            let filesToUpdate = [];
-            if (typeof sw.getFilesNeedingUpdate === 'function') {
-                filesToUpdate = await sw.getFilesNeedingUpdate(files);
-            }
+            // getFilesNeedingUpdate: public/scripts/comp/serviceWorkerManager.js
+            const filesToUpdate = await sw.getFilesNeedingUpdate(files);
             if (!filesToUpdate.length) {
                 return { ok: true, ...clientUpdateStatusSnapshot() };
             }
-            let dl = null;
-            if (typeof sw.attachToDownloadProgress === 'function') {
-                dl = await sw.attachToDownloadProgress({
-                    files: filesToUpdate,
-                    allowSkip: false
-                });
-            } else if (typeof sw.updateStaticCache === 'function') {
-                await sw.updateStaticCache(files, true);
-            }
-            const after = clientUpdateStatusSnapshot();
-            const downloaded = dl && (dl.filesDownloaded != null ? dl.filesDownloaded : dl.completed);
-            return {
-                ok: true,
-                readyForRestart: after.readyForRestart || !!(downloaded > 0),
-                alreadyCurrent: false,
-                filesDownloaded: downloaded != null ? downloaded : filesToUpdate.length,
-                total: (dl && dl.total) || filesToUpdate.length,
-                stalled: !!(dl && dl.stalled),
-                pendingUpdateKind: after.pendingUpdateKind || sw.pendingUpdateKind || 'restart'
-            };
+            const dl = await sw.attachToDownloadProgress({
+                files: filesToUpdate,
+                allowSkip: false
+            });
+            return settlePreparedClientUpdate(sw, filesToUpdate, dl);
         } catch (err) {
             return { ok: false, error: (err && err.message) || String(err) };
         }

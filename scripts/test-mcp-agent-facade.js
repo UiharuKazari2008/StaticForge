@@ -603,10 +603,14 @@ assert.strictEqual(_test.rateGroupForCall('advanced_tools', { name: 'run_client_
 assert.strictEqual(_test.TOOL_DEFS.find((t) => t.name === 'run_client_js').core, true);
 assert.strictEqual(_test.TOOL_DEFS.find((t) => t.name === 'inspect_elements').core, true);
 assert.strictEqual(_test.TOOL_DEFS.find((t) => t.name === 'update_client').core, true);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'update_client').description.includes('appliedWithoutRestart'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'update_client').description.includes('refreshServerCache'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'restart_client').description.includes('appliedWithoutRestart'));
 assert.strictEqual(_test.TOOL_DEFS.find((t) => t.name === 'restart_client').core, true);
 assert.strictEqual(_test.TOOL_DEFS.find((t) => t.name === 'inspect_elements').inputSchema.required[0], 'selectors');
 assert.ok(_test.MCP_INSTRUCTIONS.includes('update_client'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('restart_client'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('appliedWithoutRestart'));
 assert.strictEqual(_test.rateGroupForTool('get_client_physics'), 'studio');
 assert.ok(_test.MCP_INSTRUCTIONS.includes('needsClientChoice'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('nearest'));

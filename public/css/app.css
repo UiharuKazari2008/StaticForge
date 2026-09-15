@@ -976,6 +976,11 @@ body.editor-open #titlebar-grab-area-container {
     border-width: 1px;
 }
 
+.websocket-ticker:not(.expanded) {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
 .websocket-ticker-content {
     display: flex;
     align-items: center;
@@ -1148,6 +1153,9 @@ body.editor-open #titlebar-grab-area-container {
 
 #focus-overlay:not(.active) {
     will-change: auto;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    transform: none;
 }
 
 #focus-overlay .focus-logo {
@@ -2889,8 +2897,6 @@ button {
     box-shadow: var(--glass-shadow-2);
     z-index: var(--z-layer-2);
     letter-spacing: 0.3px;
-    transform: translateZ(0);
-    will-change: backdrop-filter;
     line-height: 1;
 }
 
@@ -3416,8 +3422,9 @@ body.desktop-mode .modal-backdrop {
     margin: auto;
     padding: 27px 0 0;
     background-color: var(--glass-windows-bg, var(--glass-layer-dark-5));
-    -webkit-backdrop-filter: saturate(3.0) contrast(1.5) brightness(1.2) var(--glass-blur-3);
-    backdrop-filter: saturate(3.0) contrast(1.5) brightness(1.2) var(--glass-blur-3);
+    /* Blur first (#211), then the contrast recipe — dropping these color ops flattens glass. */
+    -webkit-backdrop-filter: var(--glass-blur-3) saturate(3.0) contrast(1.5) brightness(1.2);
+    backdrop-filter: var(--glass-blur-3) saturate(3.0) contrast(1.5) brightness(1.2);
     border: 1px solid var(--glass-border-5);
     width: auto;
     height: auto;
@@ -3662,6 +3669,33 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
 
 .modal[data-resizing="true"] {
     will-change: width, height, left, top;
+}
+
+/*
+ * Windowed shells inherit `.modal` glass (blur + saturate/contrast/brightness).
+ * Nested chrome must not add a second backdrop-filter on the same large rect.
+ */
+.modal.windowed .main-menu-bar-outer,
+.modal.windowed .blur,
+#galleryWindow.windowed .main-menu-bar-outer {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+/* Drag/resize already hides interiors; drop glass for the moving frame too. */
+.modal[data-dragging="true"],
+.modal[data-resizing="true"] {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+/* Skip painting window interiors while dragging so the chrome can track the cursor. */
+body.is-window-dragging .modal[data-dragging="true"] #gallery,
+body.is-window-dragging .modal[data-dragging="true"] .manual-modal-content,
+body.is-window-dragging #galleryWindow:not([data-dragging="true"]):not([data-resizing="true"]) #gallery,
+body.is-window-dragging .modal:not([data-dragging="true"]):not([data-resizing="true"]):not(.on-top) .manual-modal-content {
+    content-visibility: hidden;
+    visibility: hidden;
 }
 
 /*

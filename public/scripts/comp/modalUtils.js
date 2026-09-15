@@ -1250,6 +1250,14 @@ function detachModalInteractionMoveListeners() {
     modalInteractionMoveListenersAttached = false;
 }
 
+function setWindowInteractionPaintLock(on) {
+    document.body.classList.toggle('is-window-dragging', !!on);
+    if (!on) {
+        // updateVirtualScroll: public/scripts/comp/galleryView.js
+        updateVirtualScroll();
+    }
+}
+
 function endModalInteractionSession() {
     const session = activeModalInteraction;
     flushModalInteractionVisual();
@@ -1257,6 +1265,7 @@ function endModalInteractionSession() {
         clearModalDragTransform(session.modal);
     }
     activeModalInteraction = null;
+    setWindowInteractionPaintLock(false);
     detachModalInteractionMoveListeners();
 }
 
@@ -2118,6 +2127,7 @@ function handleModalDragStart(e) {
 
     // Keep attributes for non-hot-path readers (backdrop, layout refresh, virtual keyboard)
     modal.setAttribute('data-dragging', 'true');
+    setWindowInteractionPaintLock(true);
     modal.setAttribute('data-drag-start-x', clientX);
     modal.setAttribute('data-drag-start-y', clientY);
 
@@ -2270,6 +2280,7 @@ function handleModalDragEnd(e, draggedModal) {
     setModalOffsetPx(draggedModal, offsetX, offsetY, { snap: false, settle: false });
     clearModalDragTransform(draggedModal);
     draggedModal.removeAttribute('data-dragging');
+    setWindowInteractionPaintLock(false);
     draggedModal.removeAttribute('data-drag-start-x');
     draggedModal.removeAttribute('data-drag-start-y');
     draggedModal.removeAttribute('data-modal-start-offset-x');
@@ -2316,6 +2327,7 @@ function handleModalResizeStart(e) {
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
     modal.setAttribute('data-resizing', 'true');
+    setWindowInteractionPaintLock(true);
     modal.setAttribute('data-resize-start-x', clientX);
     modal.setAttribute('data-resize-start-y', clientY);
 
@@ -2566,6 +2578,7 @@ function handleModalResizeEnd(e, resizedModal) {
     updateBackdropVisibility();
 
     resizedModal.removeAttribute('data-resizing');
+    setWindowInteractionPaintLock(false);
     resizedModal.removeAttribute('data-resize-start-x');
     resizedModal.removeAttribute('data-resize-start-y');
     resizedModal.removeAttribute('data-resize-start-width');
@@ -3626,6 +3639,16 @@ function showGalleryWindow() {
 // Similar to how they check for manual modal open state
 function isGalleryWindowHidden() {
     return galleryWindow && galleryWindow.classList.contains('hidden') && galleryWindow.classList.contains('windowed');
+}
+
+function isGalleryForeground() {
+    if (isGalleryWindowHidden()) return false;
+    if (document.body.classList.contains('is-window-dragging')) return false;
+    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return false;
+    if (document.body.classList.contains('desktop-mode') && galleryWindow && !galleryWindow.classList.contains('active-window')) {
+        return false;
+    }
+    return true;
 }
 
 /**
