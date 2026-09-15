@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-15T11:13:44.274432+00:00",
+  "updated_at": "2026-09-15T19:24:26.445587+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Sep15 7am dry ship (Rook 11am NEW \u2014 do not re-list Sep14 banked d031a31/34c76f0/58cf59c/99ebb35/286c768):\n- 87ec32d fix(mcp): CSS apply-safe client update without restart + gallery polish (+223/-99)\n- a42511c Keep the new workspace wallpaper after boot instead of snapping back to the stale compiled CSS\n- 4cf4015 Return NAX on get_character_card even when wiki misses or hangs\n- dcd95dc Stop MCP apply from returning a stale print and slim the Grok tool dumps\n- 1084eb7 Merge pull request #143 from UiharuKazari2008/jules-5640808799423170891-266a58f8\n- 4d8f6a5 perf(workspace): optimize workspace array removal filtering to O(N) using Set\n- 1f07c41 Merge pull request #141 from UiharuKazari2008/menma/perf-prompt-segments-135\n- 97e003e Merge pull request #140 from UiharuKazari2008/menma/config-editor-save-require-admin\n- 4476a50 Merge pull request #138 from UiharuKazari2008/fix-mcp-reattach-race-9211113090338039850\n- 26a7b13 Merge pull request #139 from UiharuKazari2008/menma/vibe-close-btn-ids\n- e4f0036 fix(auth): require admin for config_editor_save\n- 6d3f87e fix(frontend): bind vibe manager close buttons to correct DOM IDs\n- 652fd38 Fix pickReattachTarget race returning unrelated tab during client restart\nCAKE calc/eat is Rook 11am/7pm \u2014 Menma dry only.",
+  "cake_note": "Sep15 3pm dry ship (push origin only; Public already had these). Merged ~8:14am ET \u2014 may already be in Rook 11am; do not double-count if plated:\n- 33dcc57 Merge PR #147 menma/restore-pr144-config-read-admin\n- c523822 Merge PR #146 menma/restore-pr145-null-guard\n- 96180c1 Require admin access for read-only config editor WS packets\n- 4c5b793 fix(frontend): null-filter Rentan button listeners (restore PR145)\nCAKE calc/eat is Rook 11am/7pm \u2014 Menma dry only. Pile open=[].",
   "eaten": [
     {
       "id": "sf-22",
@@ -16,5 +16,6 @@
       "multiplier": 1.25,
       "note": "Eaten 2026-08-30. Do not re-eat at 7am."
     }
-  ]
+  ],
+  "cake_note_7am_sep15": "87ec32d, a42511c, 4cf4015, dcd95dc, 1084eb7, 4d8f6a5, 1f07c41, 97e003e, 4476a50, 26a7b13, e4f0036, 6d3f87e, 652fd38 \u2014 already dry-listed Sep15 7am"
 }
