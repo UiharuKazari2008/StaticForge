@@ -15,6 +15,7 @@ function getCheckpointService(handlersCtx) {
 }
 
 async function handleConfigEditorList(handlersCtx, ws, message, clientInfo, wsServer) {
+    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     try {
         const configs = handlersCtx.globalResources.getConfigEditorService().listConfigs();
         handlersCtx.sendToClient(ws, {
@@ -30,6 +31,7 @@ async function handleConfigEditorList(handlersCtx, ws, message, clientInfo, wsSe
 }
 
 async function handleConfigEditorGetNode(handlersCtx, ws, message, clientInfo, wsServer) {
+    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     const { configId, path } = message;
     if (!configId) {
         handlersCtx.sendError(ws, 'Missing configId', 'config_editor_get_node', message.requestId);
@@ -75,6 +77,7 @@ async function handleConfigEditorRevealSecret(handlersCtx, ws, message, clientIn
 }
 
 async function handleConfigEditorSearch(handlersCtx, ws, message, clientInfo, wsServer) {
+    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     const { configId, query, maxResults } = message;
     const q = typeof query === 'string' ? query.trim() : '';
     if (!q) {
@@ -128,6 +131,7 @@ async function handleConfigEditorSave(handlersCtx, ws, message, clientInfo, wsSe
 }
 
 async function handleConfigEditorCheckpointsList(handlersCtx, ws, message, clientInfo, wsServer) {
+    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     try {
         const { configId } = message;
         const data = getCheckpointService(handlersCtx).listCheckpoints(configId || null);
@@ -144,6 +148,7 @@ async function handleConfigEditorCheckpointsList(handlersCtx, ws, message, clien
 }
 
 async function handleConfigEditorCheckpointsGet(handlersCtx, ws, message, clientInfo, wsServer) {
+    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     const { checkpointId } = message;
     if (!checkpointId) {
         handlersCtx.sendError(ws, 'Missing checkpointId', 'config_editor_checkpoints_get', message.requestId);
