@@ -374,10 +374,14 @@ class ReferenceMetadataDatabase {
                 results.push(...tagResults);
             }
             
+            // JULES: perf sweep - O(N^2) to O(N) deduplication
             // Remove duplicates and parse tags
-            const uniqueResults = results.filter((result, index, self) => 
-                index === self.findIndex(r => r.hash === result.hash)
-            );
+            const seenHashes = new Set();
+            const uniqueResults = results.filter(result => {
+                if (seenHashes.has(result.hash)) return false;
+                seenHashes.add(result.hash);
+                return true;
+            });
             
             return uniqueResults.map(result => ({
                 ...result,
