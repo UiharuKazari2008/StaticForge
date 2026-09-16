@@ -12,7 +12,7 @@ const DSAP_SMF_BRANCH_IMAGE_GEN = 'Image Generation';
 const DSAP_SMF_BRANCH_DREAMSCAPE = 'Dreamscape';
 const DSAP_SMF_BRANCH_AUTOFILL = 'Autofill Ranking';
 const DSAP_SMF_BRANCH_WIKI = 'Wiki Manager';
-const DSAP_SMF_BRANCH_MENMA = 'Menma';
+const DSAP_SMF_BRANCH_MENMA = 'Pantry';
 const DSAP_SMF_BRANCH_SIMILAR = 'Zanzou';
 const DSAP_SMF_BRANCH_MCP = 'MCP Connector';
 
@@ -172,7 +172,7 @@ function dsapSmfBuildDreamscapeHomeHtml() {
         { url: 'dsap://memories.dyna.dreamscape.jp/', label: 'Enshutsuka', icon: 'fas fa-lightbulb-on', desc: 'Director knowledge memories, static rules, and LinkXi persona' },
         { url: 'dsap://quips.dyna.dreamscape.jp/', label: 'Generation Quips', icon: 'fas fa-comment-heart', desc: 'Generation quips dashboard, phrase book, and workspace settings' },
         { url: 'dsap://wiki.dyna.dreamscape.jp/', label: 'Wiki Manager', icon: 'fas fa-books', desc: 'Import and browse Fandom, NovelAI, and MediaWiki caches' },
-        { url: 'dsap://menma.dyna.dreamscape.jp/status', label: 'Menma', icon: 'fas fa-cake-candles', desc: 'Cake ledger, work pile, and breakfast before/after' },
+        { url: 'dsap://menma.dyna.dreamscape.jp/status', label: 'Pantry', icon: 'fas fa-cake-candles', desc: 'Cake ledger, work pile, and breakfast before/after' },
         { url: 'dsap://zanzou.dyna.dreamscape.jp/', label: 'Zanzou', icon: 'fas fa-clone', desc: 'Afterimages. Keep the shot, scrap the ghosts.' },
         { url: 'dsap://mcp.dreamscape.jp/', label: 'MCP Connector', icon: 'fas fa-plug', desc: 'Grok custom connector URLs, OAuth, and Enshutsuka project instructions' },
     ];
