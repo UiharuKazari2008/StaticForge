@@ -284,19 +284,23 @@ function registerDsapManifests() {
         url: MENMA_DSAP_MANIFEST_URL,
         aliases: [
             `dsap://${MENMA_DSAP_MANIFEST_URL}`,
+            'pantry.dyna.dreamscape.jp',
+            'dsap://pantry.dyna.dreamscape.jp',
             'en.grimoire.jp/applets/menma',
-            'applet.grimoire.jp/menma'
+            'applet.grimoire.jp/menma',
+            'en.grimoire.jp/applets/pantry',
+            'applet.grimoire.jp/pantry'
         ],
         type: 'dsap',
-        title: 'Menma',
+        title: 'Pantry',
         assets: {
             scripts: ['scripts/comp/menmaDsapApplet.js']
         },
         menuEntry: {
             launchId: 'menma',
             icon: 'fas fa-cake-candles',
-            text: 'Menma',
-            fullName: 'Menma Progress',
+            text: 'Pantry',
+            fullName: 'Pantry Progress',
             desktopOnly: true,
             appMenu: false,
             startMenu: false,

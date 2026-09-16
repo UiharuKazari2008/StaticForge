@@ -40,7 +40,7 @@ const RESERVED_DSAP_HOSTS = new Set([
     'security.dreamscape.jp', 'security.dyna.dreamscape.jp',
     'data.dreamscape.jp', 'autofill.dreamscape.jp',
     'ispy.dreamscape.jp', 'omegasearch.dyna.dreamscape.jp',
-    'explore.novelai.net', 'menma.dyna.dreamscape.jp',
+    'explore.novelai.net', 'menma.dyna.dreamscape.jp', 'pantry.dyna.dreamscape.jp',
     'wiki.dyna.dreamscape.jp', 'mcp.dreamscape.jp',
     'zanzou.dyna.dreamscape.jp', 'similar.dyna.dreamscape.jp',
     'review.dyna.dreamscape.jp', 'vibes.novelai.net',

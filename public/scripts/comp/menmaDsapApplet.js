@@ -1,6 +1,6 @@
 /**
- * Menma progress DSAP — cake ledger, day's work, breakfast images.
- * Domain: menma.dyna.dreamscape.jp
+ * Pantry DSAP — cake ledger, day's work, breakfast images (multi-eater).
+ * Domain: menma.dyna.dreamscape.jp (alias pantry.dyna.dreamscape.jp)
  * Depends on: dsapRegistry.js, dsapSmfMarkup.js, assetUrlResolver.js, manualModalManager.js
  * Server: WS get_menma_state (session)
  */
