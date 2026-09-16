@@ -11,6 +11,16 @@ function rangesOverlap(aStart, aEnd, bStart, bEnd) {
     return aStart < bEnd && bStart < aEnd;
 }
 
+function hasRangeOverlap(segments, start, end) {
+    for (let i = 0; i < segments.length; i++) {
+        const s = segments[i];
+        if (rangesOverlap(s.resolvedStart, s.resolvedEnd, start, end)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function findAllPositions(text, searchText) {
     if (!text || !searchText) return [];
     const positions = [];
@@ -39,10 +49,7 @@ function buildExpanderSegments(resolvedText, seeds, sourceFilter) {
         if (!pattern) continue;
 
         for (const pos of findAllPositions(resolvedText, value)) {
-            const overlaps = segments.some(s =>
-                rangesOverlap(s.resolvedStart, s.resolvedEnd, pos.start, pos.end)
-            );
-            if (!overlaps) {
+            if (!hasRangeOverlap(segments, pos.start, pos.end)) {
                 segments.push({
                     pattern,
                     key: seed.key,
@@ -68,10 +75,7 @@ function buildPresetSegments(resolvedText, presetControls) {
         const text = control.text;
         if (!text || typeof text !== 'string' || !text.trim()) continue;
         for (const pos of findAllPositions(resolvedText, text)) {
-            const overlaps = segments.some(s =>
-                rangesOverlap(s.resolvedStart, s.resolvedEnd, pos.start, pos.end)
-            );
-            if (!overlaps) {
+            if (!hasRangeOverlap(segments, pos.start, pos.end)) {
                 segments.push({
                     type: control.action || 'preset',
                     text,
