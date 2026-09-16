@@ -847,8 +847,11 @@ class VfsManager {
         }
     }
 
-    _findImageOwnerWorkspaceId(filename) {
+    _findImageOwnerWorkspaceId(filename, ctx) {
         if (!filename) return null;
+        if (ctx?.imageOwnerMap) {
+            return ctx.imageOwnerMap.get(filename) || null;
+        }
         const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces();
         for (const [id, ws] of Object.entries(workspaces)) {
             if (ws.files?.includes(filename) || ws.scraps?.includes(filename) || ws.pinned?.includes(filename)) {
@@ -865,7 +868,7 @@ class VfsManager {
             switch (item.shortcutType) {
                 case 'image': {
                     const fn = item.previewImageFilename || item.targetId || item.shortcutData?.filename;
-                    return this._findImageOwnerWorkspaceId(fn) || fallback;
+                    return this._findImageOwnerWorkspaceId(fn, ctx) || fallback;
                 }
                 case 'reference':
                     return item.shortcutData?.workspaceId || fallback;
@@ -883,7 +886,7 @@ class VfsManager {
             case 'image':
             case 'scrap': {
                 const fn = item.previewImageFilename || item.targetId;
-                return this._findImageOwnerWorkspaceId(fn) || fallback;
+                return this._findImageOwnerWorkspaceId(fn, ctx) || fallback;
             }
             case 'reference':
             case 'vibe':
@@ -1078,9 +1081,22 @@ class VfsManager {
             targetLocationMap: new Map(),
             workspaceStatsById: new Map(),
             folderLabelMap: new Map(),
+            imageOwnerMap: new Map(),
             workspaceId: parsed.workspaceId || null,
             ws: null
         };
+
+        {
+            const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces();
+            for (const [id, ws] of Object.entries(workspaces)) {
+                for (const list of [ws.files, ws.scraps, ws.pinned]) {
+                    if (!list) continue;
+                    for (const key of list) {
+                        if (key && !ctx.imageOwnerMap.has(key)) ctx.imageOwnerMap.set(key, id);
+                    }
+                }
+            }
+        }
 
         if (parsed.type === 'workspaces-list') {
             const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces();
