@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-15T19:24:26.445587+00:00",
+  "updated_at": "2026-09-16T11:12:10.787224+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Sep15 3pm dry ship (push origin only; Public already had these). Merged ~8:14am ET \u2014 may already be in Rook 11am; do not double-count if plated:\n- 33dcc57 Merge PR #147 menma/restore-pr144-config-read-admin\n- c523822 Merge PR #146 menma/restore-pr145-null-guard\n- 96180c1 Require admin access for read-only config editor WS packets\n- 4c5b793 fix(frontend): null-filter Rentan button listeners (restore PR145)\nCAKE calc/eat is Rook 11am/7pm \u2014 Menma dry only. Pile open=[].",
+  "cake_note": "Sep16 7am dry ship (pushed origin+Public \u2192 8373bac). NEW since Sep15 3pm note f1e9dcd \u2014 do not double-count if already plated:\n- 98776d7 perf: searchByTags Set dedupe O(N) (restore Jules PR148) \u2014 grok.menma, +7/-3, credit Jules/Menma\n- bad89c2 Merge PR #149 menma/restore-pr148-searchByTags-set\n- 912f570 Fix classic progress bar 1px gap + / boot UI stepper (Yukimi) \u2014 ~+490/-7; Yozora #216 cursor-agent review\n- 1002c3b Stop MCP second Lumen same image (Yukimi) \u2014 ~+62/-4; #217\n- 77c3fec MCP create_shortcut + workspace nicknames (Yukimi) \u2014 ~+635/-35; #218\n- 8373bac Keep MCP desktop shortcuts visible / free grid slot (Yukimi) \u2014 ~+86/-22; #219\nCAKE calc/eat is Rook 11am/7pm \u2014 Menma dry only. Pile open=[]. Teammate done_since_breakfast=[].",
   "eaten": [
     {
       "id": "sf-22",
