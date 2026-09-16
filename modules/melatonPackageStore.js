@@ -28,7 +28,7 @@ const RESERVED_LAUNCH_IDS = new Set([
     'run', 'import', 'presets', 'expanders', 'memories', 'config-editor',
     'character-db', 'event-viewer', 'explore-gallery', 'dynamic-quips',
     'novels', 'security-center', 'data-management', 'autofill-ranking',
-    'ispy', 'menma', 'wiki-manager', 'zanzou', 'control-panel', 'keychain',
+    'ispy', 'menma', 'pantry', 'wiki-manager', 'zanzou', 'control-panel', 'keychain',
     'nax-vibes', 'favorites', 'desktop-settings'
 ]);
 
@@ -40,7 +40,8 @@ const RESERVED_DSAP_HOSTS = new Set([
     'security.dreamscape.jp', 'security.dyna.dreamscape.jp',
     'data.dreamscape.jp', 'autofill.dreamscape.jp',
     'ispy.dreamscape.jp', 'omegasearch.dyna.dreamscape.jp',
-    'explore.novelai.net', 'menma.dyna.dreamscape.jp', 'pantry.dyna.dreamscape.jp',
+    'explore.novelai.net', 'pantry.dyna.dreamscape.jp', 'menma.dyna.dreamscape.jp',
+    'pantry.nyti.ne.jp',
     'wiki.dyna.dreamscape.jp', 'mcp.dreamscape.jp',
     'zanzou.dyna.dreamscape.jp', 'similar.dyna.dreamscape.jp',
     'review.dyna.dreamscape.jp', 'vibes.novelai.net',

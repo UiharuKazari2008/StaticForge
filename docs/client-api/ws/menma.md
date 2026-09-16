@@ -1,4 +1,4 @@
-# WebSocket: Menma progress (Cake Pantry)
+# WebSocket: Pantry (Cake Pantry / `get_menma_state`)
 
 Server handler: `modules/ws/handlers/165-menmaHandler.js`
 
@@ -8,7 +8,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 
 Cake pantry state from SQLite (`tag_wiki.db` via `menmaStatus.js`). Supports accounts: `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`, `guren`. One-shot import per account from `.{account}/` files into SQLite; after import all reads and writes use SQLite only (fail-closed). Does **not** expose `secure.config`, PIN, or keys. Breakfast images remain `GET /images/:filename` (existing gallery auth). If the tag database is unavailable, returns `available: false` instead of 500.
 
-The web applet (`public/scripts/comp/menmaDsapApplet.js`) calls `window.wsClient.sendMessage('get_menma_state', {})`. Response includes:
+The web applet (`public/scripts/comp/menmaDsapApplet.js`, `dsap://pantry.dyna.dreamscape.jp/status`, legacy `menma.dyna.dreamscape.jp`) calls `window.wsClient.sendMessage('get_menma_state', {})`. Response includes:
 - Root-level Menma fields (backward compat)
 - `accounts` object with status for all six accounts (menma, hoshino, ivory, pyra, chiyo, guren)
 

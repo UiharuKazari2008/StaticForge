@@ -121,7 +121,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | System cache binary download | `GET /{vfsPathUuid}/system/:encodedKey` | `vfs_download_system_file` | — | Explorer / System folder |
 | VFS CRUD | — | `vfs_*`, `desktop_*` | `vfs_updated`, `workspace_desktop_persisted` | Desktop shortcuts |
 | Studio change JSON | `POST /agent/session/studio`, MCP `apply_studio_changes` | — (clipboard / desktop shortcut payload; applied in bound tab) | — | Client apply/export (`studioChangeJson.js`); not chrome — see [studio-change-json.md](../studio-change-json.md) |
-| Pantry | — | `get_menma_state` | — | Pantry DSAP (`menma.dyna.dreamscape.jp`, alias `pantry.dyna.dreamscape.jp`) windowed applet; Open in Studio uses `openManualModalWithContent` |
+| Pantry | — | `get_menma_state` | — | Pantry DSAP (`pantry.dyna.dreamscape.jp`, corp `pantry.nyti.ne.jp`, legacy `menma.dyna.dreamscape.jp`) windowed applet; Open in Studio uses `openManualModalWithContent` |
 
 ---
 

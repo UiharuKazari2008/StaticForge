@@ -279,17 +279,20 @@ function registerDsapManifests() {
     });
 
 
-    const MENMA_DSAP_MANIFEST_URL = 'menma.dyna.dreamscape.jp';
+    const PANTRY_DSAP_MANIFEST_URL = 'pantry.dyna.dreamscape.jp';
+    const PANTRY_DSAP_MANIFEST_URL_LEGACY = 'menma.dyna.dreamscape.jp';
     registerDsap({
-        url: MENMA_DSAP_MANIFEST_URL,
+        url: PANTRY_DSAP_MANIFEST_URL,
         aliases: [
-            `dsap://${MENMA_DSAP_MANIFEST_URL}`,
-            'pantry.dyna.dreamscape.jp',
-            'dsap://pantry.dyna.dreamscape.jp',
-            'en.grimoire.jp/applets/menma',
-            'applet.grimoire.jp/menma',
+            `dsap://${PANTRY_DSAP_MANIFEST_URL}`,
+            'pantry.nyti.ne.jp',
+            'dsap://pantry.nyti.ne.jp',
+            PANTRY_DSAP_MANIFEST_URL_LEGACY,
+            `dsap://${PANTRY_DSAP_MANIFEST_URL_LEGACY}`,
             'en.grimoire.jp/applets/pantry',
-            'applet.grimoire.jp/pantry'
+            'applet.grimoire.jp/pantry',
+            'en.grimoire.jp/applets/menma',
+            'applet.grimoire.jp/menma'
         ],
         type: 'dsap',
         title: 'Pantry',
@@ -297,7 +300,7 @@ function registerDsapManifests() {
             scripts: ['scripts/comp/menmaDsapApplet.js']
         },
         menuEntry: {
-            launchId: 'menma',
+            launchId: 'pantry',
             icon: 'fas fa-cake-candles',
             text: 'Pantry',
             fullName: 'Pantry Progress',
@@ -306,7 +309,7 @@ function registerDsapManifests() {
             startMenu: false,
             launch() {
                 // openDsapInStandaloneWindow: public/scripts/comp/dsapRegistry.js
-                openDsapInStandaloneWindow(`dsap://${MENMA_DSAP_MANIFEST_URL}/status`);
+                openDsapInStandaloneWindow(`dsap://${PANTRY_DSAP_MANIFEST_URL}/status`);
             }
         }
     });
