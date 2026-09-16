@@ -11,6 +11,7 @@ const {
     stripNoTextTag
 } = require('./promptTextBoundary');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
+const { resolveNekoEnumValue } = require('./nekoEnumResolve');
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
 
@@ -3517,6 +3518,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         const modelFeaturesMap = __runtimeGr.getModelFeaturesMap();
         const apiModelSlug = resolveApiModelSlug(forgeModelKey, { inpaint: wantsInpaint }, modelFeaturesMap);
         const ModelEnum = __runtimeGr.getNekoAiService('Model');
+        const SamplerEnum = __runtimeGr.getNekoAiService('Sampler');
+        const NoiseEnum = __runtimeGr.getNekoAiService('Noise');
         let resolvedApiModel = apiModelSlug
             || ModelEnum[forgeModelKey.toUpperCase() + (wantsInpaint ? '_INP' : '')]
             || ModelEnum[forgeModelKey.toUpperCase()];
@@ -3541,8 +3544,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             scale: parseFloat(guidanceValue.toString()),
             cfg_rescale: parseFloat(rescaleValue.toString()),
             skip_cfg_above_sigma: (varietyValue && forgeCaps?.varietyPlus !== false) ? 59.04722600415217 : undefined,
-            sampler: body.sampler ? __runtimeGr.getNekoAiService('Sampler')[body.sampler.toUpperCase()] : (preset?.sampler ? __runtimeGr.getNekoAiService('Sampler')[preset.sampler.toUpperCase()] : __runtimeGr.getNekoAiService('Sampler').EULER_ANC),
-            noise_schedule: body.noiseScheduler ? __runtimeGr.getNekoAiService('Noise')[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? __runtimeGr.getNekoAiService('Noise')[preset.noiseScheduler.toUpperCase()] : __runtimeGr.getNekoAiService('Noise').KARRAS),
+            // resolveNekoEnumValue: modules/nekoEnumResolve.js
+            sampler: resolveNekoEnumValue(SamplerEnum, body.sampler || preset?.sampler, SamplerEnum.EULER_ANC, 'sampler'),
+            noise_schedule: resolveNekoEnumValue(NoiseEnum, body.noiseScheduler || preset?.noiseScheduler, NoiseEnum.KARRAS, 'noise_schedule'),
             no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
             qualityToggle: false,
             ucPreset: 4,
