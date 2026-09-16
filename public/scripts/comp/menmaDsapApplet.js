@@ -1,12 +1,12 @@
 /**
  * Pantry DSAP — cake ledger, day's work, breakfast images (multi-eater).
- * Domain: menma.dyna.dreamscape.jp (alias pantry.dyna.dreamscape.jp)
+ * Domain: pantry.dyna.dreamscape.jp (corp pantry.nyti.ne.jp; legacy menma.dyna.dreamscape.jp)
  * Depends on: dsapRegistry.js, dsapSmfMarkup.js, assetUrlResolver.js, manualModalManager.js
  * Server: WS get_menma_state (session)
  */
 
-const MENMA_DSAP_URL = 'menma.dyna.dreamscape.jp';
-const MENMA_DSAP_ID = 'menma';
+const PANTRY_DSAP_URL = 'pantry.dyna.dreamscape.jp';
+const PANTRY_DSAP_ID = 'pantry';
 const MENMA_POLL_MS = 60000;
 const MENMA_TZ = 'America/New_York';
 
@@ -19,27 +19,27 @@ const MENMA_TAB_LABELS = {
 const MENMA_ACCOUNT_IDS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'];
 
 const menmaDsapScopedCss = `
-[data-dsap="menma"] .menma-view { padding: 8px 10px 16px; }
-[data-dsap="menma"] .menma-pair { display: flex; gap: 10px; flex-wrap: wrap; }
-[data-dsap="menma"] .menma-shot { width: 240px; max-width: 100%; background: #fff; border: 1px solid #8aa; }
-[data-dsap="menma"] .menma-shot img { width: 100%; height: 180px; object-fit: cover; display: block; cursor: pointer; background: #dde; }
-[data-dsap="menma"] .menma-shot-cap { padding: 4px 6px; font-size: 11px; display: flex; justify-content: space-between; gap: 6px; align-items: center; }
-[data-dsap="menma"] .menma-shot-cap button { flex-shrink: 0; }
-[data-dsap="menma"] .menma-work-item, [data-dsap="menma"] .menma-log-item {
+[data-dsap="pantry"] .menma-view { padding: 8px 10px 16px; }
+[data-dsap="pantry"] .menma-pair { display: flex; gap: 10px; flex-wrap: wrap; }
+[data-dsap="pantry"] .menma-shot { width: 240px; max-width: 100%; background: #fff; border: 1px solid #8aa; }
+[data-dsap="pantry"] .menma-shot img { width: 100%; height: 180px; object-fit: cover; display: block; cursor: pointer; background: #dde; }
+[data-dsap="pantry"] .menma-shot-cap { padding: 4px 6px; font-size: 11px; display: flex; justify-content: space-between; gap: 6px; align-items: center; }
+[data-dsap="pantry"] .menma-shot-cap button { flex-shrink: 0; }
+[data-dsap="pantry"] .menma-work-item, [data-dsap="pantry"] .menma-log-item {
     border: 1px solid #9ab; background: #f7f7f4; margin: 0 0 8px; padding: 6px 8px;
 }
-[data-dsap="menma"] .menma-work-item strong, [data-dsap="menma"] .menma-log-item strong { display: block; }
-[data-dsap="menma"] .menma-muted { color: #556; font-size: 11px; }
-[data-dsap="menma"] .menma-empty { padding: 10px 4px; color: #556; }
-[data-dsap="menma"] .menma-named { margin: 4px 0 0; padding-left: 16px; }
-[data-dsap="menma"] .menma-accounts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
-[data-dsap="menma"] .menma-account-card { border: 1px solid #9ab; background: #f7f7f4; padding: 8px 10px; cursor: pointer; }
-[data-dsap="menma"] .menma-account-card:hover { background: #eef; }
-[data-dsap="menma"] .menma-account-card.menma-account-active { border-color: #68a; background: #e8f0f8; }
-[data-dsap="menma"] .menma-account-card-name { font-weight: 600; margin-bottom: 4px; }
-[data-dsap="menma"] .menma-account-card-stats { font-size: 11px; color: #445; }
-[data-dsap="menma"] .menma-account-card-meal { font-size: 10px; color: #667; margin-top: 4px; }
-[data-dsap="menma"] .menma-account-unavail { color: #888; font-style: italic; }
+[data-dsap="pantry"] .menma-work-item strong, [data-dsap="pantry"] .menma-log-item strong { display: block; }
+[data-dsap="pantry"] .menma-muted { color: #556; font-size: 11px; }
+[data-dsap="pantry"] .menma-empty { padding: 10px 4px; color: #556; }
+[data-dsap="pantry"] .menma-named { margin: 4px 0 0; padding-left: 16px; }
+[data-dsap="pantry"] .menma-accounts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
+[data-dsap="pantry"] .menma-account-card { border: 1px solid #9ab; background: #f7f7f4; padding: 8px 10px; cursor: pointer; }
+[data-dsap="pantry"] .menma-account-card:hover { background: #eef; }
+[data-dsap="pantry"] .menma-account-card.menma-account-active { border-color: #68a; background: #e8f0f8; }
+[data-dsap="pantry"] .menma-account-card-name { font-weight: 600; margin-bottom: 4px; }
+[data-dsap="pantry"] .menma-account-card-stats { font-size: 11px; color: #445; }
+[data-dsap="pantry"] .menma-account-card-meal { font-size: 10px; color: #667; margin-top: 4px; }
+[data-dsap="pantry"] .menma-account-unavail { color: #888; font-style: italic; }
 `;
 
 function menmaDsapEscape(text) {
@@ -61,6 +61,7 @@ function menmaDsapFormatWhen(iso) {
 
 function menmaDsapImageUrl(filename) {
     if (!filename) return '';
+    // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js — Dreamscape gallery, not corp CDN
     if (typeof localGalleryImageUrl === 'function') return localGalleryImageUrl(filename);
     return `/images/${encodeURIComponent(filename)}`;
 }
@@ -99,7 +100,7 @@ function menmaDsapTabUrl(tabId, accountId) {
     const acct = accountId && MENMA_ACCOUNT_IDS.indexOf(accountId) !== -1 && accountId !== 'menma'
         ? `/${accountId}`
         : '';
-    return `dsap://${MENMA_DSAP_URL}/${tab}${acct}`;
+    return `dsap://${PANTRY_DSAP_URL}/${tab}${acct}`;
 }
 
 function menmaDsapEntryShot(entry, side) {
@@ -315,9 +316,9 @@ function menmaDsapShellHtml(tabId) {
         { id: 'work', label: 'Work', icon: 'fas fa-list-check' },
         { id: 'log', label: 'Log', icon: 'fas fa-cake-candles' }
     ];
-    return `${dsapSmfBuildRootOpen(MENMA_DSAP_ID)}
+    return `${dsapSmfBuildRootOpen(PANTRY_DSAP_ID)}
 ${dsapSmfBuildHeader({
-    branchTitle: DSAP_SMF_BRANCH_MENMA,
+    branchTitle: DSAP_SMF_BRANCH_PANTRY,
     toolTitle: MENMA_TAB_LABELS[tabId] || 'Status'
 })}
 ${dsapSmfBuildTabBar(tabs, tabId, { tabBarId: 'menmaDsapTabBar', dataAttr: 'data-menma-tab' })}
@@ -343,7 +344,7 @@ const menmaDsapDriver = {
             _timer: null
         };
         root.innerHTML = menmaDsapShellHtml(tabId);
-        const dsapRoot = root.querySelector('[data-dsap="menma"]') || root;
+        const dsapRoot = root.querySelector('[data-dsap="pantry"]') || root;
         dsapSmfWireTabBar(dsapRoot, '#menmaDsapTabBar', 'data-menma-tab', (nextTab) => {
             return menmaDsapTabUrl(nextTab, this._state && this._state.activeAccountId);
         }, host);
@@ -366,7 +367,7 @@ const menmaDsapDriver = {
                 state._timer = null;
             }
             const root = host && host.getRoot ? host.getRoot() : null;
-            const dsapRoot = root && root.querySelector ? root.querySelector('[data-dsap="menma"]') : null;
+            const dsapRoot = root && root.querySelector ? root.querySelector('[data-dsap="pantry"]') : null;
             if (dsapRoot && state._onClick) {
                 dsapRoot.removeEventListener('click', state._onClick);
             }
@@ -489,7 +490,7 @@ const menmaDsapDriver = {
 function registerMenmaDsapApplet() {
     if (typeof registerDsap !== 'function') return;
     registerDsap({
-        url: MENMA_DSAP_URL,
+        url: PANTRY_DSAP_URL,
         getContent() {
             return {
                 html: '<div class="menma-dsap-root"></div>',
@@ -501,8 +502,8 @@ function registerMenmaDsapApplet() {
     });
 }
 
-function openMenmaProgressDsap() {
-    const target = `dsap://${MENMA_DSAP_URL}/status`;
+function openPantryDsap() {
+    const target = `dsap://${PANTRY_DSAP_URL}/status`;
     if (typeof openDsapInStandaloneWindow === 'function') {
         openDsapInStandaloneWindow(target);
         return;
@@ -512,7 +513,12 @@ function openMenmaProgressDsap() {
     }
 }
 
+function openMenmaProgressDsap() {
+    openPantryDsap();
+}
+
 registerMenmaDsapApplet();
 if (typeof window !== 'undefined') {
+    window.openPantryDsap = openPantryDsap;
     window.openMenmaProgressDsap = openMenmaProgressDsap;
 }
