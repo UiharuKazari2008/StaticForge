@@ -33,6 +33,10 @@ async function handleRunpodPodsStatus(handlers, ws, message, clientInfo, wsServe
 }
 
 async function handleRunpodPodStart(handlers, ws, message, clientInfo, wsServer) {
+    if (clientInfo.userType !== 'admin') {
+        handlers.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
     const { podId } = message;
     if (!podId) {
         handlers.sendError(ws, 'podId is required', 'runpod_pod_start', message.requestId);
@@ -48,6 +52,10 @@ async function handleRunpodPodStart(handlers, ws, message, clientInfo, wsServer)
 }
 
 async function handleRunpodPodStop(handlers, ws, message, clientInfo, wsServer) {
+    if (clientInfo.userType !== 'admin') {
+        handlers.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
     const { podId } = message;
     if (!podId) {
         handlers.sendError(ws, 'podId is required', 'runpod_pod_stop', message.requestId);
