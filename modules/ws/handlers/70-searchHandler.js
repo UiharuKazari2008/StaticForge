@@ -51,9 +51,12 @@ function pruneOmegasearchSessionsForClient(clientSessionId) {
 
 async function enrichOmegasearchPageResults(metadataDb, pageResults, viewType) {
     const enriched = [];
+    const filenames = pageResults.map(r => r.filename);
+    const metadataBatch = await metadataDb.getMultipleMetadata(filenames);
+
     for (const result of pageResults) {
         const row = { filename: result.filename, matchScore: result.matchScore || 0 };
-        const metadata = await metadataDb.getCachedMetadata(result.filename);
+        const metadata = metadataBatch[result.filename];
         if (metadata) {
             if (viewType === 'upscaled' && !metadata.upscaled) {
                 continue;
@@ -79,8 +82,10 @@ async function filterOmegasearchResultsForView(metadataDb, searchResults, viewTy
         }));
     }
     const upscaled = [];
+    const filenames = searchResults.map(r => r.filename);
+    const metadataBatch = await metadataDb.getMultipleMetadata(filenames);
     for (const result of searchResults) {
-        const metadata = await metadataDb.getCachedMetadata(result.filename);
+        const metadata = metadataBatch[result.filename];
         if (metadata && metadata.upscaled) {
             upscaled.push({ filename: result.filename, matchScore: result.matchScore || 0 });
         }
@@ -1109,8 +1114,10 @@ async function searchFilesByTags(handlers, query, viewType, sessionId) {
             if (viewType === 'upscaled') {
                 // Get metadata for results to check upscaled status
                 const resultsWithMetadata = [];
+                const filenames = searchResults.map(r => r.filename);
+                const metadataBatch = await metadataDb.getMultipleMetadata(filenames);
                 for (const result of searchResults) {
-                    const metadata = await metadataDb.getCachedMetadata(result.filename);
+                    const metadata = metadataBatch[result.filename];
                     if (metadata && metadata.upscaled) {
                         result.metadata = {
                             width: metadata.width,
@@ -1125,8 +1132,10 @@ async function searchFilesByTags(handlers, query, viewType, sessionId) {
                 filteredResults = resultsWithMetadata;
             } else {
                 // Get metadata for all results
+                const filenames = filteredResults.map(r => r.filename);
+                const metadataBatch = await metadataDb.getMultipleMetadata(filenames);
                 for (const result of filteredResults) {
-                    const metadata = await metadataDb.getCachedMetadata(result.filename);
+                    const metadata = metadataBatch[result.filename];
                     if (metadata) {
                         result.metadata = {
                             width: metadata.width,
