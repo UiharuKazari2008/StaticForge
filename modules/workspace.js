@@ -1406,6 +1406,24 @@ class WorkspaceManager {
             });
         }
 
+        // JULES: perf optimization — index memoryFiles by baseName once O(M) to avoid O(N * M) repeated linear scans
+        const memoryFilesByBaseName = new Map();
+        if (memoryFiles.size > 0) {
+            const pngMetadata = this.globalResources.getPngMetadata();
+            for (const file of memoryFiles) {
+                if (!file || typeof file !== 'string') continue;
+                const bName = pngMetadata.getBaseName(file);
+                if (bName) {
+                    let list = memoryFilesByBaseName.get(bName);
+                    if (!list) {
+                        list = [];
+                        memoryFilesByBaseName.set(bName, list);
+                    }
+                    list.push(file);
+                }
+            }
+        }
+
         for (const filename of Array.from(allFilesToMove)) {
             const baseName = this.globalResources.getPngMetadata().getBaseName(filename);
             const extMatch = filename.match(/\.(png|jpg|jpeg)$/i);
@@ -1425,9 +1443,12 @@ class WorkspaceManager {
                 }
             }
 
-            this.findRelatedFiles(filename, Array.from(memoryFiles)).forEach((file) => {
-                allFilesToMove.add(file);
-            });
+            const related = memoryFilesByBaseName.get(baseName);
+            if (related) {
+                for (const file of related) {
+                    allFilesToMove.add(file);
+                }
+            }
         }
 
         return Array.from(allFilesToMove);
