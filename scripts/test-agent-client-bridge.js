@@ -419,6 +419,89 @@ assert.strictEqual(_test.bindSessions.get('appkey:key-a').clientId, 'tab-a');
 assert.strictEqual(_test.bindSessions.get('appkey:key-b').clientId, 'tab-b');
 _test.bindSessions.clear();
 
+assert.strictEqual(_test.TESTING_OFFER_SETTLE_MS, 800);
+
+function testingOfferResources(rows) {
+    const clients = new Map();
+    rows.forEach((row) => {
+        clients.set({ readyState: 1 }, {
+            sessionId: row.sessionId || 'sess',
+            clientId: row.clientId,
+            authenticated: true,
+            clientIP: row.clientIP || '127.0.0.1',
+            connectedAt: row.connectedAt || new Date(Date.now() - 5000),
+            lastActivity: row.lastActivity || new Date()
+        });
+    });
+    return {
+        getWebSocketServer: () => ({
+            clients,
+            sendToClient() {}
+        })
+    };
+}
+
+function resetTestingOfferState() {
+    _test.bindSessions.clear();
+    _test.testingOfferState.clear();
+    _test.preferredTestingClientId = null;
+}
+
+resetTestingOfferState();
+const reconnectOldGone = testingOfferResources([
+    { clientId: 'tab-new-aaaa', connectedAt: new Date() }
+]);
+_test.bindSessions.set('appkey:cursor', {
+    clientId: 'tab-old-bbbb',
+    lastInteractionAt: Date.now(),
+    boundAt: Date.now(),
+    actorName: 'Grok'
+});
+_test.preferredTestingClientId = 'tab-old-bbbb';
+_test.sweepTestingOffersAfterSettle(reconnectOldGone);
+assert.strictEqual(_test.bindSessions.get('appkey:cursor').clientId, 'tab-new-aaaa');
+assert.strictEqual(_test.preferredTestingClientId, 'tab-new-aaaa');
+assert.strictEqual(
+    (_test.testingOfferState.get('appkey:cursor') && _test.testingOfferState.get('appkey:cursor').offered.has('tab-new-aaaa')) || false,
+    false
+);
+
+resetTestingOfferState();
+const twoLiveTabs = testingOfferResources([
+    { clientId: 'primary-aaaa', connectedAt: new Date(Date.now() - 20000) },
+    { clientId: 'second-bbbb', connectedAt: new Date(Date.now() - 15000) }
+]);
+_test.bindSessions.set('appkey:cursor', {
+    clientId: 'primary-aaaa',
+    lastInteractionAt: Date.now(),
+    boundAt: Date.now()
+});
+_test.preferredTestingClientId = 'primary-aaaa';
+_test.sweepTestingOffersAfterSettle(twoLiveTabs);
+assert.strictEqual(_test.bindSessions.get('appkey:cursor').clientId, 'primary-aaaa');
+assert.ok(_test.testingOfferState.get('appkey:cursor').offered.has('second-bbbb'));
+
+resetTestingOfferState();
+const freshSecond = testingOfferResources([
+    { clientId: 'primary-cccc', connectedAt: new Date(Date.now() - 20000) },
+    { clientId: 'fresh-ddddd', connectedAt: new Date() }
+]);
+_test.bindSessions.set('appkey:cursor', {
+    clientId: 'primary-cccc',
+    lastInteractionAt: Date.now(),
+    boundAt: Date.now()
+});
+_test.maybeOfferTestingClients(freshSecond, {
+    bindKey: 'appkey:cursor',
+    primaryClientId: 'primary-cccc'
+});
+assert.strictEqual(
+    (_test.testingOfferState.get('appkey:cursor') && _test.testingOfferState.get('appkey:cursor').offered.has('fresh-ddddd')) || false,
+    false
+);
+
+resetTestingOfferState();
+
 const packet = _test.resolveAgentPacketMessage({
     type: 'get_autofill_ranking',
     data: { extra: 1 }

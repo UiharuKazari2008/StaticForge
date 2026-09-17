@@ -39,7 +39,7 @@ Each `tools/call` also pushes `mcp_activity` (tool, summarized args/result, opti
 
 The bind is stored on **this application key**, not the whole server. `get_studio_state` (and apply / physics) auto-bind when exactly one Studio tab is connected. That bind stays until the user Disconnects from the Remote Access tray or 15 minutes pass with no studio commands.
 
-Several tabs: nearest (same IP / loopback, then most recently used) auto-binds as primary. Other tabs get "Do you want to use this client for development testing?" — no response (15s) keeps the primary and dismisses the others; Yes makes that tab the new primary. `needsClientChoice` / `bind_session` only if nearest cannot be picked. `list_clients` is also a core tool. Server-side `generate_image` does not need a bind.
+Several tabs: nearest (same IP / loopback, then most recently used) auto-binds as primary. Other tabs get "Do you want to use this client for development testing?" — no response (15s) keeps the primary and dismisses the others; Yes makes that tab the new primary. Same-tab WebSocket reconnect does not re-show that dialog. `needsClientChoice` / `bind_session` only if nearest cannot be picked. `list_clients` is also a core tool. Server-side `generate_image` does not need a bind.
 
 `get_client_physics` pre-resolves dynagen context (same `resolved` object as get-state, plus flat `location` / `tod` / `time` / `date` / `weather` / `season`). It works without a bind. Optional `tod` / `weather` / `season` / `location` or `dynamicGeneration` override the snapshot. A bound tab still lights the location-arrow physics icon and the Remote Access tray (Your location was accessed by "Grok").
 
@@ -165,7 +165,7 @@ User opens a chat / *what is on screen* / *change Studio*
 
 1. `get_session_state` — default `view=live` (clients, windows, Studio, `remoteAccess`). Do not pass `view=full` on chat start. Do not also dump memories + NAX + autofill + prompt guide in the same turn.
 2. `hasClients` false → `generate_image` with `dest_path`. `render_file` that path. Stop. Do not apply Studio changes.
-3. Several clients → nearest auto-binds. Other tabs get the testing-claim dialog. `needsClientChoice` / `bind_session` only if nearest cannot be picked.
+3. Several clients → nearest auto-binds. Other tabs get the testing-claim dialog. A same-tab WebSocket reconnect is not a second client. `needsClientChoice` / `bind_session` only if nearest cannot be picked.
 4. Need preset ids: `view=catalog` (slim) or `get_studio_state.settings` / `tools/list` (full per-model strings).
 5. Before any later edit: `get_session_state` `{ "view": "live" }` again. If `studio.diff` / `unchanged`, keep the last snapshot. Apply only this turn's delta.
 6. Trained tags: `search_autofill` with **1–3 terms** (max 8). Pass **`model` from live Studio**; omit is `v5`. Default `exactOnly` (qualifier in parens only). Hits are `{tag, count, confidence, exact, model}`. `untrained: true` / empty means **this model** ranking does not know it — pass `model=v4_5` if Studio is on V4.5, do not treat that as “drop, it is untrained”. Then `get_wiki_page` for that one tag — `text` / `markdown` strings, never `html: {}`. Empty wiki: use aliases or the last Studio character box; do not invent appearance.

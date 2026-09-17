@@ -19,6 +19,7 @@ const UPDATE_COMMAND_TIMEOUT_MS = 20000;
 const PREPARE_UPDATE_TIMEOUT_MS = 120000;
 const REATTACH_TIMEOUT_MS = 120000;
 const TESTING_OFFER_TIMEOUT_MS = 15000;
+const TESTING_OFFER_SETTLE_MS = 800;
 const BIND_IDLE_MS = 15 * 60 * 1000;
 
 const shareCodes = new Map(); // code -> { clientId, expiresAt }
@@ -27,6 +28,7 @@ const bindSessions = new Map(); // bindKey -> { clientId, lastInteractionAt, bou
 const pendingReattach = new Map(); // bindKey -> { sessionId, actorName, previousClientId, startedAt }
 const testingOfferState = new Map(); // bindKey -> { offered: Set, declined: Set }
 let preferredTestingClientId = null;
+let testingOfferSweepTimer = null;
 const mcpStudioCheckpoints = new Map(); // bindKey -> { id, focusedFilename, qualitySettings }
 let lastBindResources = null;
 
@@ -729,6 +731,7 @@ function listClients(globalResources, bindKey) {
 }
 
 function getBoundRecord(globalResources, bindKey) {
+    adoptDeadPrimary(globalResources);
     const boundId = getBoundClientId(bindKey);
     if (!boundId) return null;
     const found = findClientById(getWsServer(globalResources), boundId);
@@ -1002,6 +1005,7 @@ function sendClientCommand(globalResources, clientId, command, payload, timeoutM
             err.status = 504;
             reject(err);
         }, timeoutMs);
+        if (typeof timer.unref === 'function') timer.unref();
         pendingResults.set(requestId, {
             resolve,
             reject,
@@ -1095,14 +1099,97 @@ async function watchTestingOffer(globalResources, { bindKey, clientId, actorName
     }
 }
 
+function transferTestingOfferIds(fromId, toId) {
+    if (!fromId || !toId || fromId === toId) return;
+    for (const state of testingOfferState.values()) {
+        if (state.offered.has(fromId)) {
+            state.offered.delete(fromId);
+            state.offered.add(toId);
+        }
+        if (state.declined.has(fromId)) {
+            state.declined.delete(fromId);
+            state.declined.add(toId);
+        }
+    }
+}
+
+function pickSuccessorForDeadClient(globalResources, deadId) {
+    const wsServer = getWsServer(globalResources);
+    if (!wsServer || !wsServer.clients || !deadId) return null;
+    if (findClientById(wsServer, deadId)) return null;
+    let best = null;
+    let bestAt = -1;
+    for (const [ws, info] of wsServer.clients) {
+        if (ws.readyState !== WebSocket.OPEN) continue;
+        if (!info || !info.authenticated) continue;
+        const clientId = ensureClientId(info);
+        if (clientId === deadId) continue;
+        const at = info.connectedAt ? new Date(info.connectedAt).getTime() : 0;
+        if (!best || at > bestAt) {
+            best = clientId;
+            bestAt = at;
+        }
+    }
+    return best;
+}
+
+function collectDeadPrimaryIds(globalResources) {
+    const wsServer = getWsServer(globalResources);
+    const dead = new Set();
+    if (preferredTestingClientId && !findClientById(wsServer, preferredTestingClientId)) {
+        dead.add(preferredTestingClientId);
+    }
+    for (const session of bindSessions.values()) {
+        if (session && session.clientId && !findClientById(wsServer, session.clientId)) {
+            dead.add(session.clientId);
+        }
+    }
+    return dead;
+}
+
+function adoptDeadPrimary(globalResources) {
+    const wsServer = getWsServer(globalResources);
+    if (!wsServer) return;
+    for (const deadId of collectDeadPrimaryIds(globalResources)) {
+        const successorId = pickSuccessorForDeadClient(globalResources, deadId);
+        if (!successorId) continue;
+        transferTestingOfferIds(deadId, successorId);
+        if (preferredTestingClientId === deadId) {
+            preferredTestingClientId = successorId;
+        }
+        for (const [bindKey, session] of bindSessions) {
+            if (!session || session.clientId !== deadId) continue;
+            bindSessions.set(bindKey, {
+                clientId: successorId,
+                lastInteractionAt: session.lastInteractionAt,
+                boundAt: session.boundAt,
+                actorName: session.actorName
+            });
+        }
+    }
+}
+
+function clientConnectedIsFresh(info) {
+    const connectedAt = info && info.connectedAt ? new Date(info.connectedAt).getTime() : 0;
+    if (!connectedAt) return false;
+    return (Date.now() - connectedAt) < TESTING_OFFER_SETTLE_MS;
+}
+
 function maybeOfferTestingClients(globalResources, opts) {
+    adoptDeadPrimary(globalResources);
     const bindKey = (opts && opts.bindKey) || 'preferred:testing';
-    const primaryClientId = opts && opts.primaryClientId;
     const actorName = opts && opts.actorName;
     const onlyClientId = opts && opts.onlyClientId;
+    let primaryClientId = opts && opts.primaryClientId;
+    if (bindKey && bindSessions.has(bindKey)) {
+        primaryClientId = bindSessions.get(bindKey).clientId;
+    } else if (preferredTestingClientId) {
+        primaryClientId = preferredTestingClientId;
+    }
     if (!primaryClientId) return;
     const wsServer = getWsServer(globalResources);
     if (!wsServer || !wsServer.clients) return;
+    if (!findClientById(wsServer, primaryClientId)) return;
     const state = getTestingOfferState(bindKey);
     for (const [ws, info] of wsServer.clients) {
         if (ws.readyState !== WebSocket.OPEN) continue;
@@ -1110,6 +1197,7 @@ function maybeOfferTestingClients(globalResources, opts) {
         const clientId = ensureClientId(info);
         if (clientId === primaryClientId) continue;
         if (onlyClientId && clientId !== onlyClientId) continue;
+        if (clientConnectedIsFresh(info)) continue;
         if (state.offered.has(clientId) || state.declined.has(clientId)) continue;
         state.offered.add(clientId);
         void watchTestingOffer(globalResources, {
@@ -1122,6 +1210,7 @@ function maybeOfferTestingClients(globalResources, opts) {
 
 function autoBindNearest(globalResources, bindKey, actorName, requestIP) {
     lastBindResources = globalResources;
+    adoptDeadPrimary(globalResources);
     const key = bindKey ? String(bindKey).trim() : '';
     const clients = listClients(globalResources, key || null);
     if (key && getBoundRecord(globalResources, key)) {
@@ -1183,41 +1272,73 @@ function autoBindNearest(globalResources, bindKey, actorName, requestIP) {
     };
 }
 
+function sweepTestingOffersAfterSettle(globalResources) {
+    lastBindResources = globalResources;
+    adoptDeadPrimary(globalResources);
+    const wsServer = getWsServer(globalResources);
+    if (!wsServer || !wsServer.clients) return;
+
+    let offeredViaBind = false;
+    for (const [bindKey, session] of bindSessions) {
+        if (!session || !findClientById(wsServer, session.clientId)) continue;
+        void maybeOfferTestingClients(globalResources, {
+            bindKey,
+            primaryClientId: session.clientId,
+            actorName: session.actorName
+        });
+        offeredViaBind = true;
+    }
+    if (offeredViaBind) return;
+
+    const live = [];
+    for (const [ws, info] of wsServer.clients) {
+        if (ws.readyState !== WebSocket.OPEN) continue;
+        if (!info || !info.authenticated) continue;
+        live.push(ensureClientId(info));
+    }
+    if (live.length < 2) return;
+
+    let incumbentId = preferredTestingClientId && findClientById(wsServer, preferredTestingClientId)
+        ? preferredTestingClientId
+        : null;
+    if (!incumbentId) {
+        const incumbent = pickNearestClient(globalResources, null);
+        incumbentId = incumbent && incumbent.clientId;
+    }
+    if (!incumbentId) return;
+    preferredTestingClientId = incumbentId;
+    void maybeOfferTestingClients(globalResources, {
+        bindKey: 'preferred:testing',
+        primaryClientId: incumbentId
+    });
+}
+
+function scheduleTestingOfferSweep(globalResources) {
+    lastBindResources = globalResources;
+    if (testingOfferSweepTimer) {
+        clearTimeout(testingOfferSweepTimer);
+    }
+    testingOfferSweepTimer = setTimeout(() => {
+        testingOfferSweepTimer = null;
+        sweepTestingOffersAfterSettle(globalResources);
+    }, TESTING_OFFER_SETTLE_MS);
+    if (testingOfferSweepTimer && typeof testingOfferSweepTimer.unref === 'function') {
+        testingOfferSweepTimer.unref();
+    }
+}
+
 function onAgentClientConnected(globalResources, clientId) {
     lastBindResources = globalResources;
     const id = clientId ? String(clientId).trim() : '';
     if (!id) return;
-    let offered = false;
-    for (const [bindKey, session] of bindSessions) {
-        if (!session || session.clientId === id) continue;
-        void maybeOfferTestingClients(globalResources, {
-            bindKey,
-            primaryClientId: session.clientId,
-            actorName: session.actorName,
-            onlyClientId: id
-        });
-        offered = true;
-    }
-    if (offered) return;
-    const live = listClients(globalResources, null);
-    if (live.length < 2) return;
-    const incumbent = pickNearestClient(globalResources, null, id);
-    if (!incumbent) return;
-    if (!preferredTestingClientId || preferredTestingClientId === id) {
-        preferredTestingClientId = incumbent.clientId;
-    }
-    void maybeOfferTestingClients(globalResources, {
-        bindKey: 'preferred:testing',
-        primaryClientId: preferredTestingClientId,
-        onlyClientId: id
-    });
+    scheduleTestingOfferSweep(globalResources);
 }
 
 function onAgentClientDisconnected(globalResources, clientId) {
-    const id = clientId ? String(clientId).trim() : '';
-    if (id && preferredTestingClientId === id) {
-        preferredTestingClientId = null;
-    }
+    lastBindResources = globalResources;
+    // Keep preferredTestingClientId so a reconnecting tab inherits the bind
+    // instead of looking like a new claimant.
+    scheduleTestingOfferSweep(globalResources);
 }
 
 function sleepMs(ms) {
@@ -2072,6 +2193,19 @@ module.exports = {
         PREPARE_UPDATE_TIMEOUT_MS,
         REATTACH_TIMEOUT_MS,
         TESTING_OFFER_TIMEOUT_MS,
+        TESTING_OFFER_SETTLE_MS,
+        testingOfferState,
+        adoptDeadPrimary,
+        sweepTestingOffersAfterSettle,
+        maybeOfferTestingClients,
+        onAgentClientConnected,
+        onAgentClientDisconnected,
+        get preferredTestingClientId() {
+            return preferredTestingClientId;
+        },
+        set preferredTestingClientId(value) {
+            preferredTestingClientId = value || null;
+        },
         normalizeClientIP,
         isLoopbackClientIP,
         scoreClientNearness,
