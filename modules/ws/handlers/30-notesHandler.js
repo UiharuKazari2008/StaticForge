@@ -6,7 +6,7 @@ const NOTES_DESTRUCTIVE = { destructive: true };
 async function recordReplicationNoteJournal(noteId, { operation = 'INSERT', payload = null } = {}) {
     if (!noteId) return;
     try {
-        const replicationJournal = require('../replicationJournal');
+        const replicationJournal = require('../../replicationJournal');
         await replicationJournal.recordNote(noteId, { operation, payload });
     } catch (_err) {}
 }
