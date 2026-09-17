@@ -2,6 +2,8 @@ const path = require('path');
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { getApocryphaInterior, loadArchivedIssue } = require('../../apocryphaSite');
 
+const WIKI_DESTRUCTIVE = { destructive: true };
+
 async function handleSearchTagWiki(handler, ws, message, clientInfo, wsServer) {
     const { query, category, searchType = 'name', source = 'both', includeNonTag = false, limit = 50 } = message;
     const includeOnline = message.includeOnline === true || message.includeOnline === 'true';
@@ -882,10 +884,10 @@ function registerPackets(handlersCtx) {
     regFn('get_static_wiki_page', handleGetStaticWikiPage);
     regFn('get_fandom_wiki_index', handleGetFandomWikiIndex);
     regFn('get_fandom_wiki_manager', handleGetFandomWikiManager);
-    regFn('import_fandom_wiki_page', handleImportFandomWikiPage);
-    regFn('import_static_wiki', handleImportStaticWiki);
-    regFn('update_wiki_import', handleUpdateWikiImport);
-    regFn('delete_fandom_wiki_import', handleDeleteFandomWikiImport);
+    regFn('import_fandom_wiki_page', handleImportFandomWikiPage, WIKI_DESTRUCTIVE);
+    regFn('import_static_wiki', handleImportStaticWiki, WIKI_DESTRUCTIVE);
+    regFn('update_wiki_import', handleUpdateWikiImport, WIKI_DESTRUCTIVE);
+    regFn('delete_fandom_wiki_import', handleDeleteFandomWikiImport, WIKI_DESTRUCTIVE);
     regFn('resolve_grimoire_url', handleResolveGrimoireUrl);
     regFn('get_apocrypha_zine', handleGetApocryphaZine);
 }

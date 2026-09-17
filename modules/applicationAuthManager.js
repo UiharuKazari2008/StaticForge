@@ -63,7 +63,9 @@ const SCOPE_WS_PACKETS = {
     wiki: [
         'search_tag_wiki', 'get_tag_wiki_page', 'refresh_tag_wiki_page',
         'get_static_wiki_site_index', 'get_static_wiki_page', 'get_wiki_home',
-        'resolve_grimoire_url'
+        'resolve_grimoire_url',
+        'import_fandom_wiki_page', 'import_static_wiki', 'update_wiki_import',
+        'delete_fandom_wiki_import'
     ],
     autofill: [
         'get_autofill_ranking', 'test_autofill_ranking', 'update_autofill_ranking',
