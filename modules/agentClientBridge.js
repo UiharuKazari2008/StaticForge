@@ -88,6 +88,36 @@ function generateClientId() {
     return crypto.randomBytes(6).toString('hex');
 }
 
+function isAgentClientId(value) {
+    return /^[0-9a-f]{12}$/.test(String(value || '').trim());
+}
+
+function parseAgentClientIdQuery(req) {
+    try {
+        const raw = req && req.url ? String(req.url) : '';
+        const q = raw.indexOf('?');
+        if (q < 0) return null;
+        const id = new URLSearchParams(raw.slice(q + 1)).get('agentClientId');
+        return isAgentClientId(id) ? String(id).trim().toLowerCase() : null;
+    } catch (_err) {
+        return null;
+    }
+}
+
+function resumeAgentClientId(wsServer, requestedId, incomingInfo) {
+    const id = isAgentClientId(requestedId) ? String(requestedId).trim().toLowerCase() : '';
+    if (!id || !incomingInfo) return incomingInfo && incomingInfo.clientId;
+    if (wsServer && wsServer.clients) {
+        for (const [_ws, info] of wsServer.clients) {
+            if (info && info !== incomingInfo && info.clientId === id) {
+                info.clientId = generateClientId();
+            }
+        }
+    }
+    incomingInfo.clientId = id;
+    return id;
+}
+
 function generateShareCode() {
     const bytes = crypto.randomBytes(6);
     let out = '';
@@ -913,23 +943,13 @@ function handleAgentSessionResult(handlersCtx, ws, message) {
     const requestId = message && message.requestId;
     const entry = pendingResults.get(requestId);
     if (!entry) return;
-    const wsServer = handlersCtx && handlersCtx.globalResources
-        ? getWsServer(handlersCtx.globalResources)
-        : null;
-    const info = wsServer && wsServer.clients ? wsServer.clients.get(ws) : null;
-    const clientId = info ? ensureClientId(info) : null;
-    if (clientId !== entry.clientId) return;
+    // requestId is enough — a reconnect may reply on a new clientId.
     clearTimeout(entry.timer);
     pendingResults.delete(requestId);
     entry.resolve(message.data || {});
 }
 
-function sendBoundCommand(globalResources, command, payload, timeoutMs, bindKey) {
-    if (timeoutMs && typeof timeoutMs === 'object') {
-        bindKey = timeoutMs.bindKey;
-        timeoutMs = timeoutMs.timeoutMs;
-    }
-    if (timeoutMs == null) timeoutMs = COMMAND_TIMEOUT_MS;
+function sendBoundCommandOnce(globalResources, command, payload, timeoutMs, bindKey) {
     const key = requireBindKey(bindKey);
     const bound = getBoundRecord(globalResources, key);
     if (!bound) {
@@ -948,6 +968,7 @@ function sendBoundCommand(globalResources, command, payload, timeoutMs, bindKey)
             err.status = 504;
             reject(err);
         }, timeoutMs);
+        if (typeof timer.unref === 'function') timer.unref();
         pendingResults.set(requestId, {
             resolve,
             reject,
@@ -965,6 +986,21 @@ function sendBoundCommand(globalResources, command, payload, timeoutMs, bindKey)
             },
             timestamp: new Date().toISOString()
         });
+    });
+}
+
+function sendBoundCommand(globalResources, command, payload, timeoutMs, bindKey) {
+    if (timeoutMs && typeof timeoutMs === 'object') {
+        bindKey = timeoutMs.bindKey;
+        timeoutMs = timeoutMs.timeoutMs;
+    }
+    if (timeoutMs == null) timeoutMs = COMMAND_TIMEOUT_MS;
+    const key = requireBindKey(bindKey);
+    return sendBoundCommandOnce(globalResources, command, payload, timeoutMs, key).catch((err) => {
+        if (!err || (err.status !== 504 && err.status !== 404)) throw err;
+        adoptDeadPrimary(globalResources);
+        if (!getBoundRecord(globalResources, key)) throw err;
+        return sendBoundCommandOnce(globalResources, command, payload, timeoutMs, key);
     });
 }
 
@@ -2122,6 +2158,9 @@ module.exports = {
     autoBindNearest,
     onAgentClientConnected,
     onAgentClientDisconnected,
+    parseAgentClientIdQuery,
+    resumeAgentClientId,
+    isAgentClientId,
     pickNearestClient,
     maybeOfferTestingClients,
     claimTestingClient,
@@ -2194,6 +2233,9 @@ module.exports = {
         REATTACH_TIMEOUT_MS,
         TESTING_OFFER_TIMEOUT_MS,
         TESTING_OFFER_SETTLE_MS,
+        isAgentClientId,
+        parseAgentClientIdQuery,
+        resumeAgentClientId,
         testingOfferState,
         adoptDeadPrimary,
         sweepTestingOffersAfterSettle,

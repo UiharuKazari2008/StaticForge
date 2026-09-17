@@ -12,8 +12,8 @@ WebSocket shares the HTTP server port (9220). No separate path.
 ## Connection lifecycle
 
 1. Complete HTTP login (session cookie) — see [authentication.md](./authentication.md)
-2. Open WebSocket with cookie on handshake
-3. Server sends **`connection`** (server push)
+2. Open WebSocket with cookie on handshake. Same tab reconnects send `?agentClientId=` (12 hex chars from sessionStorage) so the agent bind survives a socket drop.
+3. Server sends **`connection`** (server push, includes `clientId` when assigned)
 4. If authenticated: may receive `workspace_restored`, `workspace_data`, `gallery_scroll_state`, `search_indexing_status`
 5. Client sends `{ type, requestId, … }` messages
 6. Server replies with typed responses or `error` / `auth_error`

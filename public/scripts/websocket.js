@@ -518,6 +518,26 @@ class WebSocketClient {
 
     static ATTEMPTS_MAX_RECONNECT = 5; // Maximum reconnect attempts
     static ATTEMPTS_MAX_PING = 3; // Maximum ping attempts
+    static AGENT_CLIENT_ID_KEY = 'dreamscape.agentClientId';
+    static AGENT_CLIENT_ID_RE = /^[0-9a-f]{12}$/;
+
+    static readStoredAgentClientId() {
+        try {
+            const id = sessionStorage.getItem(WebSocketClient.AGENT_CLIENT_ID_KEY);
+            return WebSocketClient.AGENT_CLIENT_ID_RE.test(id || '') ? id : null;
+        } catch (_err) {
+            return null;
+        }
+    }
+
+    static storeAgentClientId(id) {
+        if (!WebSocketClient.AGENT_CLIENT_ID_RE.test(String(id || ''))) return;
+        try {
+            sessionStorage.setItem(WebSocketClient.AGENT_CLIENT_ID_KEY, id);
+        } catch (_err) {
+            // private mode / blocked storage
+        }
+    }
 
     /** Outbound types excluded from ticker badge/cycle (like ping). */
     static SILENT_TICKER_REQUEST_TYPES = new Set([
@@ -3279,7 +3299,9 @@ class WebSocketClient {
 
             // Step 3: Now attempt WebSocket connection
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}`;
+            const resumeId = WebSocketClient.readStoredAgentClientId();
+            const resumeQuery = resumeId ? `?agentClientId=${encodeURIComponent(resumeId)}` : '';
+            const wsUrl = `${protocol}//${window.location.host}${resumeQuery}`;
 
             this.ws = new WebSocket(wsUrl);
 
@@ -3953,6 +3975,7 @@ class WebSocketClient {
         this.logGenerationQuipsWs('in', message);
 
         if (message.type === 'connection') {
+            if (message.clientId) WebSocketClient.storeAgentClientId(message.clientId);
             // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
             syncAuthLocalStorageFromServer(message);
             this._resolveConnectionWelcome(message.authenticated === true);

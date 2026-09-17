@@ -2503,21 +2503,21 @@ async function openViewerFromMcp(globalResources, input, target, req) {
         return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
     }
     const payload = { target, filenames, mode: input && input.mode };
-    const bindKey = resolveBindKey(req);
-    if (getBoundRecord(globalResources, bindKey)) {
+    const bind = autoBindIfNeeded(globalResources, req);
+    const bindKey = bind && bind.bindKey;
+    if (bindKey && getBoundRecord(globalResources, bindKey)) {
         try {
             const data = await sendBoundCommand(globalResources, 'open_viewer', payload, 8000, bindKey);
             return mcpTextResult({ success: true, bound: true, target, filenames, ...data });
         } catch (err) {
             if (!boundViewerOpenShouldBroadcast(err)) {
                 return mcpTextResult({
-                    success: true,
+                    success: false,
                     bound: true,
                     target,
                     filenames,
-                    replyMissing: true,
                     error: (err && err.message) || 'Bound client did not reply'
-                });
+                }, true);
             }
         }
     }

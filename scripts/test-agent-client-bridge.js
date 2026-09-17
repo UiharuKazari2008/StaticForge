@@ -502,6 +502,21 @@ assert.strictEqual(
 
 resetTestingOfferState();
 
+assert.strictEqual(_test.isAgentClientId('aabbccddeeff'), true);
+assert.strictEqual(_test.isAgentClientId('nope'), false);
+assert.strictEqual(_test.parseAgentClientIdQuery({ url: '/?agentClientId=aabbccddeeff' }), 'aabbccddeeff');
+assert.strictEqual(_test.parseAgentClientIdQuery({ url: '/' }), null);
+const zombieInfo = { clientId: 'aabbccddeeff' };
+const incomingInfo = { clientId: '112233445566' };
+const resumeMap = new Map([
+    [{ readyState: 1 }, zombieInfo],
+    [{ readyState: 1 }, incomingInfo]
+]);
+assert.strictEqual(_test.resumeAgentClientId({ clients: resumeMap }, 'aabbccddeeff', incomingInfo), 'aabbccddeeff');
+assert.strictEqual(incomingInfo.clientId, 'aabbccddeeff');
+assert.notStrictEqual(zombieInfo.clientId, 'aabbccddeeff');
+assert.ok(_test.isAgentClientId(zombieInfo.clientId));
+
 const packet = _test.resolveAgentPacketMessage({
     type: 'get_autofill_ranking',
     data: { extra: 1 }

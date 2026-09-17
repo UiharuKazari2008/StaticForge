@@ -194,6 +194,12 @@ class WebSocketServer {
             };
 
             this.clients.set(ws, clientInfo);
+            try {
+                const { parseAgentClientIdQuery, resumeAgentClientId } = require('./agentClientBridge');
+                resumeAgentClientId(this, parseAgentClientIdQuery(req), clientInfo);
+            } catch (_err) {
+                // Resume is optional — a new clientId is already assigned
+            }
 
             if (clientInfo.authenticated) {
                 console.log(`✅ WebSocket connected (authenticated): Session ${clientInfo.sessionId}`);
@@ -226,6 +232,9 @@ class WebSocketServer {
             };
             if (clientInfo.authenticated) {
                 connectionPayload.userType = clientInfo.userType || 'admin';
+            }
+            if (clientInfo.clientId) {
+                connectionPayload.clientId = clientInfo.clientId;
             }
             if (clientInfo.authenticated && clientInfo.userType === 'admin') {
                 connectionPayload.logViewerPathUuid = this.globalResources.getLogViewerPathUuid();
