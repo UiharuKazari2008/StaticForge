@@ -247,6 +247,10 @@ function registerWsPackets(globalResources) {
     wsPacketRegistry.registerWsPacket('replication_sync_apply', async (ctx) => {
         const handlers = ctx.handlers;
         const message = ctx.message;
+        if (ctx.clientInfo.userType !== 'admin') {
+            handlers.sendError(ctx.ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
         try {
             const data = message.data || message;
             const config = require('../../replicationService').getReplicationConfig();
