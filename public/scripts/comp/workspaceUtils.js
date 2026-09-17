@@ -926,8 +926,8 @@ function showCacheMoveToWorkspaceModal(cacheImage) {
         document.body.appendChild(modal);
 
         // Close modal handlers
-
-        document.getElementById('closeCacheMoveToWorkspaceBtn').addEventListener('click', () => {
+        // JULES:#workspaceUtils safely bind close button for cache move modal
+        document.getElementById('closeCacheMoveToWorkspaceBtn')?.addEventListener('click', () => {
             closeModal(modal);
         });
     }
