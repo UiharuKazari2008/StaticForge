@@ -7,7 +7,7 @@ async function handleAddFavorite(handlers, ws, message, clientInfo, wsServer) {
         const { favoriteType, item, customName } = message;
 
         if (!favoriteType || !item) {
-            handlers.sendError(ws, 'Missing required parameters: favoriteType and item');
+            handlers.sendError(ws, 'Missing required parameters: favoriteType and item', null, message.requestId);
             return;
         }
 
@@ -35,7 +35,7 @@ async function handleRemoveFavorite(handlers, ws, message, clientInfo, wsServer)
         const { favoriteType, itemId } = message;
 
         if (!favoriteType || !itemId) {
-            handlers.sendError(ws, 'Missing required parameters: favoriteType and itemId');
+            handlers.sendError(ws, 'Missing required parameters: favoriteType and itemId', null, message.requestId);
             return;
         }
 
