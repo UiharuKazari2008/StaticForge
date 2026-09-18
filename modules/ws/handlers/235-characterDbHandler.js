@@ -61,7 +61,11 @@ async function handleGetCharacterDb(handlers, ws, message) {
     }
 }
 
-async function handleCharacterDbUpsert(handlers, ws, message) {
+async function handleCharacterDbUpsert(handlers, ws, message, clientInfo) {
+    if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: character db admin check
+        handlers.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
     try {
         const err = validateCharacterPayload(message.character);
         if (err) {
@@ -83,7 +87,11 @@ async function handleCharacterDbUpsert(handlers, ws, message) {
     }
 }
 
-async function handleCharacterDbDelete(handlers, ws, message) {
+async function handleCharacterDbDelete(handlers, ws, message, clientInfo) {
+    if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: character db admin check
+        handlers.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
     try {
         const name = typeof message.name === 'string' ? message.name.trim() : '';
         if (!name) {
@@ -108,7 +116,11 @@ async function handleCharacterDbDelete(handlers, ws, message) {
     }
 }
 
-async function handleCharacterDbRenameCopyright(handlers, ws, message) {
+async function handleCharacterDbRenameCopyright(handlers, ws, message, clientInfo) {
+    if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: character db admin check
+        handlers.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
     try {
         const oldCopyright = typeof message.oldCopyright === 'string' ? message.oldCopyright.trim() : '';
         const newCopyright = typeof message.newCopyright === 'string' ? message.newCopyright.trim() : '';
@@ -130,7 +142,11 @@ async function handleCharacterDbRenameCopyright(handlers, ws, message) {
     }
 }
 
-async function handleCharacterDbDeleteCopyright(handlers, ws, message) {
+async function handleCharacterDbDeleteCopyright(handlers, ws, message, clientInfo) {
+    if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: character db admin check
+        handlers.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
     try {
         const copyright = typeof message.copyright === 'string' ? message.copyright.trim() : '';
         if (!copyright) {
