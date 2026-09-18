@@ -6509,12 +6509,15 @@ async function getBlockPromptUsages(blocks, filenamesFilter = null, options = {}
         .slice(0, limit);
 
     const metadataCache = new Map();
+    const sampleFilenamesToFetch = [...new Set(sorted.map(u => u.sampleFilename).filter(Boolean))];
+    const batchMeta = await getMultipleMetadata(sampleFilenamesToFetch);
+
     for (const usage of sorted) {
         const sampleFilename = usage.sampleFilename;
         if (!sampleFilename) continue;
         let cached = metadataCache.get(sampleFilename);
         if (!cached) {
-            cached = await getCachedMetadata(sampleFilename);
+            cached = batchMeta[sampleFilename];
             metadataCache.set(sampleFilename, cached);
         }
         if (cached) {
@@ -6895,11 +6898,13 @@ async function syncSearchIndexes(progressCallback = null) {
                 break;
             }
 
+            const batchMeta = await getMultipleMetadata(batch.map(b => b.filename));
+
             for (let i = 0; i < batch.length; i++) {
                 const { filename } = batch[i];
                 processedCount += 1;
                 try {
-                    const metadata = await getCachedMetadata(filename);
+                    const metadata = batchMeta[filename];
                     if (metadata) {
                         await updateSearchIndexes(filename, metadata);
                         updatedCount += 1;
@@ -6993,33 +6998,39 @@ async function rebuildSearchIndexes(imagesDir, progressCallback = null) {
 
         let updatedCount = 0;
         let errorCount = 0;
+        const BATCH_SIZE = 500;
 
-        for (let i = 0; i < images.length; i++) {
-            const { filename } = images[i];
-            try {
-                // Get metadata for this file
-                const metadata = await getCachedMetadata(filename);
-                if (metadata) {
-                    await updateSearchIndexes(filename, metadata);
-                    updatedCount++;
-                } else {
+        for (let batchStart = 0; batchStart < images.length; batchStart += BATCH_SIZE) {
+            const batch = images.slice(batchStart, batchStart + BATCH_SIZE);
+            const batchMeta = await getMultipleMetadata(batch.map(b => b.filename));
+
+            for (let i = 0; i < batch.length; i++) {
+                const { filename } = batch[i];
+                try {
+                    // Get metadata for this file
+                    const metadata = batchMeta[filename];
+                    if (metadata) {
+                        await updateSearchIndexes(filename, metadata);
+                        updatedCount++;
+                    } else {
+                        errorCount++;
+                    }
+
+                    // Send progress update if callback provided
+                    if (progressCallback) {
+                        progressCallback({
+                            current: batchStart + i + 1,
+                            total: totalFiles,
+                            filename: filename,
+                            updatedCount,
+                            errorCount,
+                            status: 'indexing'
+                        });
+                    }
+                } catch (error) {
+                    logger.error(`Error updating search indexes for ${filename}:`, error);
                     errorCount++;
                 }
-
-                // Send progress update if callback provided
-                if (progressCallback) {
-                    progressCallback({
-                        current: i + 1,
-                        total: totalFiles,
-                        filename: filename,
-                        updatedCount,
-                        errorCount,
-                        status: 'indexing'
-                    });
-                }
-            } catch (error) {
-                logger.error(`Error updating search indexes for ${filename}:`, error);
-                errorCount++;
             }
         }
 
