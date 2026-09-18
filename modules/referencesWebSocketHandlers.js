@@ -226,6 +226,22 @@ class ReferencesWebSocketHandlers {
                 return;
             }
 
+            const refDb = this.globalResources.getReferenceMetadataDatabase();
+            const vibeIds = [];
+            const cacheHashes = [];
+
+            for (const ref of references) {
+                if (!ref || !ref.type || !ref.id) continue;
+                if (ref.type === 'vibe') vibeIds.push(ref.id);
+                else if (ref.type === 'cache') cacheHashes.push(ref.id);
+            }
+
+            // Batch fetch database records (O(N) queries to O(1) batch queries)
+            const vibeMetadataMap = vibeIds.length > 0 ? refDb.getVibeMetadataForVibes(vibeIds) : {};
+            const vibeWorkspacesMap = vibeIds.length > 0 ? refDb.getVibeWorkspacesBatch(vibeIds) : {};
+            const fileCacheMap = cacheHashes.length > 0 ? refDb.getFileCacheForReferences(cacheHashes) : {};
+            const cacheWorkspacesMap = cacheHashes.length > 0 ? refDb.getReferenceWorkspacesBatch(cacheHashes) : {};
+
             const results = [];
 
             for (const ref of references) {
@@ -238,27 +254,77 @@ class ReferencesWebSocketHandlers {
 
                 try {
                     if (type === 'vibe') {
-                        // Get vibe image data
-                        const vibeData = await this.getVibeImageData(id);
-                        if (vibeData) {
+                        const vibe = vibeMetadataMap[id];
+                        if (vibe) {
+                            const vibeWorkspaces = vibeWorkspacesMap[id] || [];
+                            const workspaceId = vibeWorkspaces[0] || 'default';
+
+                            const encodingsMetadata = [];
+                            if (vibe.encodings && typeof vibe.encodings === 'object') {
+                                for (const [model, modelEncodings] of Object.entries(vibe.encodings)) {
+                                    if (modelEncodings && typeof modelEncodings === 'object') {
+                                        for (const [extractionValue, encoding] of Object.entries(modelEncodings)) {
+                                            if (!encoding || (typeof encoding === 'string' && encoding.trim() === '')) {
+                                                continue;
+                                            }
+                                            const ieValue = parseFloat(extractionValue);
+                                            if (isNaN(ieValue)) {
+                                                continue;
+                                            }
+                                            encodingsMetadata.push({
+                                                model,
+                                                informationExtraction: ieValue
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+
+                            const hasPreview = !!vibe.previewHash;
+
                             results.push({
                                 type: 'vibe',
                                 id: id,
-                                data: vibeData
+                                data: {
+                                    filename: `${id}.json`,
+                                    id: vibe.id,
+                                    preview: hasPreview ? `${vibe.previewHash}.webp` : null,
+                                    mtime: vibe.mtime,
+                                    size: 0,
+                                    encodings: encodingsMetadata,
+                                    type: vibe.type === 'base64' ? 'base64' : 'cache',
+                                    source: vibe.imageSource,
+                                    workspaceId: workspaceId,
+                                    comment: vibe.comment || null,
+                                    importedFrom: vibe.importedFrom === 1 ? 'novelai' : null,
+                                    locked: vibe.locked,
+                                    metadata: vibe.metadata || null
+                                }
                             });
                         }
                     } else if (type === 'cache') {
-                        // Get cache image data
-                        const cacheData = await this.getCacheImageData(id);
-                        if (cacheData) {
+                        const fileCache = fileCacheMap[id];
+                        if (fileCache) {
+                            const workspaces = cacheWorkspacesMap[id] || [];
+                            const workspaceId = workspaces[0] || 'default';
+
                             results.push({
                                 type: 'cache',
                                 id: id,
-                                data: cacheData
+                                data: {
+                                    hash: id,
+                                    filename: id,
+                                    mtime: fileCache.cachedAt * 1000,
+                                    size: fileCache.size,
+                                    hasPreview: true,
+                                    workspaceId: workspaceId,
+                                    metadata: fileCache.metadata || null
+                                }
                             });
+                        } else {
+                            console.warn(`⚠️ Cache file not found in database: ${id} (should be added during sync)`);
                         }
                     } else if (type === 'file') {
-                        // Get file image data
                         const fileData = await this.getFileImageData(id);
                         if (fileData) {
                             results.push({
