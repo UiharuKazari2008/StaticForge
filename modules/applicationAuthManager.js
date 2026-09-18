@@ -78,6 +78,11 @@ const SCOPE_WS_PACKETS = {
         'notes_create', 'notes_get', 'notes_get_by_workspace', 'notes_get_all',
         'notes_get_all_metadata', 'notes_update', 'notes_save_content', 'notes_delete'
     ],
+    knowledge: [
+        'list_knowledge_memories', 'get_knowledge_memory', 'delete_knowledge_memory',
+        'delete_knowledge_memories_bulk', 'count_knowledge_memories_by_filter',
+        'delete_knowledge_memories_by_filter', 'update_knowledge_memory'
+    ],
     infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check']
 };
 
@@ -94,6 +99,7 @@ const AVAILABLE_SCOPES = [
     { id: 'wiki', label: 'Wiki / Grimoire', description: 'Tag wiki and documentation' },
     { id: 'autofill', label: 'Autofill / Grimoire', description: 'Autofill ranking and tag wiki / Grimoire (not search)' },
     { id: 'notes', label: 'Notes', description: 'Notepad create, read, and update' },
+    { id: 'knowledge', label: 'Knowledge', description: 'Knowledge memory read and update' },
     { id: 'infrastructure', label: 'Infrastructure', description: 'Ping, status, version checks' },
     // Module-based scopes (sfapp_ prefix)
     { id: 'sfapp_cake_pantry', label: 'Cake Pantry', description: 'Account-based cake tracking (deliver, feed, inspect, consume)' },
