@@ -2751,11 +2751,12 @@ class TagLookup {
         return cleaned;
     };
     
-    sections.forEach(section => {
+    sections.forEach((section, index) => {
         if (!section || !section.title) return;
+        // JULES: avoid O(n^2) sections.indexOf lookup inside forEach
         // Use section_index (0-based) + 1 for display (1-based)
         // If section.index is not available, use array index + 1
-        const sectionNum = (typeof section.index === 'number' ? section.index : sections.indexOf(section)) + 1;
+        const sectionNum = (typeof section.index === 'number' ? section.index : index) + 1;
         const cleanedTitle = cleanSectionTitle(section.title);
         const effectiveLevel = (section.level || baseLevel) - baseLevel;
         const indent = '  '.repeat(Math.max(0, effectiveLevel));
@@ -3929,8 +3930,9 @@ class TagLookup {
     if (!isNaN(numericIndex) && numericIndex > 0) {
         // Convert 1-based user input to 0-based index
         const zeroBasedIndex = numericIndex - 1;
-        const match = sections.find(section => {
-            const sectionIndex = typeof section.index === 'number' ? section.index : sections.indexOf(section);
+        const match = sections.find((section, index) => {
+            // JULES: avoid O(n^2) sections.indexOf lookup inside find
+            const sectionIndex = typeof section.index === 'number' ? section.index : index;
             return sectionIndex === zeroBasedIndex;
         });
         if (match) return match;
