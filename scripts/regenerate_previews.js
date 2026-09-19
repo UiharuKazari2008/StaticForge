@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const ParallelPreviewGenerator = require('./modules/parallelPreviewGenerator');
+const ParallelPreviewGenerator = require('../modules/parallelPreviewGenerator');
 const os = require('os');
 
 // Parse command line arguments
