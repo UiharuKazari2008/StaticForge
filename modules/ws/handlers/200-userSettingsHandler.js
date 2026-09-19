@@ -20,6 +20,11 @@ async function handleGetUserGlobalSettings(handlers, ws, message, clientInfo, ws
 
 async function handleUpdateUserGlobalSettings(handlers, ws, message, clientInfo, wsServer) {
     try {
+        if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: admin authorization guard for user global settings mutation
+            handlers.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
         const patch = message.settings;
         if (!patch || typeof patch !== 'object') {
             handlers.sendError(ws, 'Missing settings object', 'update_user_global_settings', message.requestId);
