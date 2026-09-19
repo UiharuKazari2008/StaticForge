@@ -20,10 +20,10 @@ const {
     migrateFromJSON, 
     getDatabaseStats,
     closeDatabase 
-} = require('./modules/metadataDatabase');
+} = require('../modules/metadataDatabase');
 
 // Import the old JSON system for comparison
-const { loadMetadataCache, getAllMetadata } = require('./modules/metadataCache');
+const { loadMetadataCache, getAllMetadata } = require('../modules/metadataCache');
 
 async function runMigration() {
     console.log('🚀 Starting metadata migration from JSON to SQLite...\n');
