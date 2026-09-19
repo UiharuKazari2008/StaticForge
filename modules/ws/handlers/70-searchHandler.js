@@ -171,7 +171,8 @@ async function handleCharacterSearch(handlers, ws, message, clientInfo, wsServer
         const { query, model, requestId, autofillSessionId, spellCheckText, isContinuation, autofillSettings, modelMode } = message;
 
         if (!query) {
-            handlers.sendError(ws, 'Missing query parameter', 'search_characters');
+            // JULES: Pass requestId so client requests resolve/reject properly
+            handlers.sendError(ws, 'Missing query parameter', 'search_characters', requestId);
             return;
         }
 
@@ -206,7 +207,8 @@ async function handleCharacterSearch(handlers, ws, message, clientInfo, wsServer
             // Only log errors that aren't cancellation
             if (error.name !== 'AbortError' && !error.message.includes('superseded')) {
                 console.error('Character search error:', error);
-                handlers.sendError(ws, 'Search failed', error.message);
+                // JULES: Pass requestId so client requests resolve/reject properly
+                handlers.sendError(ws, 'Search failed', error.message, requestId);
             }
         }
     }
@@ -236,7 +238,8 @@ async function handleDatasetTagSearch(handlers, ws, message, clientInfo, wsServe
         const { query, path = [] } = message;
 
         if (!query) {
-            handlers.sendError(ws, 'Missing query parameter', 'search_dataset_tags');
+            // JULES: Pass requestId so client requests resolve/reject properly
+            handlers.sendError(ws, 'Missing query parameter', 'search_dataset_tags', message.requestId);
             return;
         }
 
@@ -276,7 +279,8 @@ async function handleSearchTags(handlers, ws, message, clientInfo, wsServer) {
         const { query, single_match = false } = message;
 
         if (!query) {
-            handlers.sendError(ws, 'Missing query parameter', 'search_tags');
+            // JULES: Pass requestId so client requests resolve/reject properly
+            handlers.sendError(ws, 'Missing query parameter', 'search_tags', message.requestId);
             return;
         }
 
@@ -298,7 +302,8 @@ async function handleAddWordToDictionary(handlers, ws, message, clientInfo, wsSe
         const { word } = message;
 
         if (!word) {
-            handlers.sendError(ws, 'Missing word parameter', 'spellcheck_add_word');
+            // JULES: Pass requestId so client requests resolve/reject properly
+            handlers.sendError(ws, 'Missing word parameter', 'spellcheck_add_word', message.requestId);
             return;
         }
 
@@ -398,7 +403,8 @@ async function handleFileSearch(handlers, ws, message, clientInfo, wsServer) {
             }
 
             if (!query || query.trim() === '') {
-                handlers.sendError(ws, 'Missing query parameter', 'search_files');
+                // JULES: Pass requestId so client requests resolve/reject properly
+                handlers.sendError(ws, 'Missing query parameter', 'search_files', message.requestId);
                 return;
             }
 
