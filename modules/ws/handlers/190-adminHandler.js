@@ -20,7 +20,7 @@ async function handleGetRateLimitingStats(handlersCtx, ws, message, clientInfo, 
                 timestamp: new Date().toISOString()
             });
         } else {
-            handlersCtx.sendError(ws, 'Rate limiting stats not available', 'get_rate_limiting_stats');
+            handlersCtx.sendError(ws, 'Rate limiting stats not available', 'get_rate_limiting_stats', message.requestId);
         }
     } catch (error) {
         console.error('Rate limiting stats error:', error);
@@ -44,7 +44,7 @@ async function handleCancelPendingRequests(handlersCtx, ws, message, clientInfo,
                 timestamp: new Date().toISOString()
             });
         } else {
-            handlersCtx.sendError(ws, 'Cancel pending requests not available', 'cancel_pending_requests');
+            handlersCtx.sendError(ws, 'Cancel pending requests not available', 'cancel_pending_requests', message.requestId);
         }
     } catch (error) {
         console.error('Cancel pending requests error:', error);
@@ -61,7 +61,7 @@ async function handleGetSessionRateLimitingStats(handlersCtx, ws, message, clien
 
         const { model } = message;
         if (!model) {
-            handlersCtx.sendError(ws, 'Missing model parameter', 'get_session_rate_limiting_stats');
+            handlersCtx.sendError(ws, 'Missing model parameter', 'get_session_rate_limiting_stats', message.requestId);
             return;
         }
 
@@ -74,7 +74,7 @@ async function handleGetSessionRateLimitingStats(handlersCtx, ws, message, clien
                 timestamp: new Date().toISOString()
             });
         } else {
-            handlersCtx.sendError(ws, 'Session rate limiting stats not available', 'get_session_rate_limiting_stats');
+            handlersCtx.sendError(ws, 'Session rate limiting stats not available', 'get_session_rate_limiting_stats', message.requestId);
         }
     } catch (error) {
         console.error('Session rate limiting stats error:', error);
@@ -91,7 +91,7 @@ async function handleCancelSessionPendingRequests(handlersCtx, ws, message, clie
 
         const { model } = message;
         if (!model) {
-            handlersCtx.sendError(ws, 'Missing model parameter', 'cancel_session_pending_requests');
+            handlersCtx.sendError(ws, 'Missing model parameter', 'cancel_session_pending_requests', message.requestId);
             return;
         }
 
@@ -104,7 +104,7 @@ async function handleCancelSessionPendingRequests(handlersCtx, ws, message, clie
                 timestamp: new Date().toISOString()
             });
         } else {
-            handlersCtx.sendError(ws, 'Cancel session pending requests not available', 'cancel_session_pending_requests');
+            handlersCtx.sendError(ws, 'Cancel session pending requests not available', 'cancel_session_pending_requests', message.requestId);
         }
     } catch (error) {
         console.error('Cancel session pending requests error:', error);
@@ -174,7 +174,7 @@ async function handleGetTelemetry(handlersCtx, ws, message, clientInfo, wsServer
         const { page = 1, limit = 15, search = '', eventType = '' } = message;
         const telemetryDb = handlersCtx.globalResources.getTelemetryDatabase?.();
         if (!telemetryDb?.listTelemetryEvents) {
-            handlersCtx.sendError(ws, 'Telemetry database not available', 'get_telemetry');
+            handlersCtx.sendError(ws, 'Telemetry database not available', 'get_telemetry', message.requestId);
             return;
         }
 
