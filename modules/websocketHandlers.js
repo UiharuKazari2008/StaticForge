@@ -399,6 +399,8 @@ class WebSocketMessageHandlers {
             'spellcheck_add_word',
             'generate_image',
             'upscale_image',
+            'enhance_image',
+            'max_enhance_image',
             'reroll_image',
             'expand_image',
             'preview_expand_image_prompt',
