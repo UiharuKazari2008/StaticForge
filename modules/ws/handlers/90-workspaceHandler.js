@@ -883,7 +883,7 @@ class WorkspaceWebSocketHandlers {
             const { id, groupId, filenames } = message;
 
             if (!Array.isArray(filenames) || filenames.length === 0) {
-                this.handlers.sendError(ws, 'Filenames array is required', 'workspace_remove_images_from_group', message.requestId);
+                this.handlers.sendError(ws, 'Filenames array is required', null, message.requestId);
                 return;
             }
 
