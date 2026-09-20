@@ -85,7 +85,7 @@ class WorkspaceWebSocketHandlers {
 
             // Get cache file count from database
             const refDb = this.globalResources.getReferenceMetadataDatabase();
-            const cacheFileCount = refDb.getWorkspaceReferences(activeId).length;
+            const cacheFileCount = refDb.getWorkspaceReferenceCounts([activeId])[activeId] || 0;
             const metadataDb = this.globalResources.metadataDatabase;
             let fileCount = Array.isArray(workspace.files) ? workspace.files.length : 0;
             if (metadataDb) {
