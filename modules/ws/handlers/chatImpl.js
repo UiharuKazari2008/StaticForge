@@ -6,6 +6,57 @@ function chatStreamingEnabled(handler) {
     return !!handler.globalResources.getConfig()?.chat_streaming_enabled;
 }
 
+// JULES: Optimize repeated array filtering in chat responses by grouping events by type in a single pass O(N)
+function extractEventsByType(events) {
+    const grouped = {
+        actions: [],
+        sfx: [],
+        speechdirect: [],
+        speech: [],
+        reply: [],
+        innerspeech: [],
+        emotion: [],
+        environment: [],
+        memory: [],
+        currplan: [],
+        futureplans: [],
+        trustlevel: [],
+        inventory: [],
+        sensory: [],
+        offlinemessage: [],
+        timeofday: [],
+        location: [],
+        myname: []
+    };
+
+    if (Array.isArray(events)) {
+        for (let i = 0; i < events.length; i++) {
+            const e = events[i];
+            if (!e || typeof e !== 'object') continue;
+            const content = e.content;
+            if (e.type === 'speechdirect') {
+                grouped.speechdirect.push(content);
+                grouped.reply.push(content);
+            } else if (e.type === 'reply') {
+                grouped.reply.push(content);
+            } else if (grouped[e.type]) {
+                grouped[e.type].push(content);
+            }
+        }
+    }
+
+    const sceneData = (grouped.environment.length > 0)
+        ? grouped.environment.join(' ')
+        : (grouped.location.length > 0 ? grouped.location.join(' ') : 'A cozy, intimate setting');
+
+    return {
+        ...grouped,
+        appendMemory: [],
+        scene: sceneData,
+        appendMind: []
+    };
+}
+
 async function handleCreateChatSession(handler, ws, message, clientInfo, wsServer) {
     try {
         // Handle both message.data and direct message properties
@@ -312,41 +363,7 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
                     throw new Error('Invalid response structure: expected array of events');
                 }
 
-                // Convert events to old format for compatibility
-                const environmentEvents = events.filter(e => e.type === 'environment').map(e => e.content);
-                const locationEvents = events.filter(e => e.type === 'location').map(e => e.content);
-
-                // Extract scene data from environment and location events
-                let sceneData = 'A cozy, intimate setting'; // Default fallback
-                if (environmentEvents.length > 0) {
-                    sceneData = environmentEvents.join(' ');
-                } else if (locationEvents.length > 0) {
-                    sceneData = locationEvents.join(' ');
-                }
-
-                parsedResponse = {
-                    actions: events.filter(e => e.type === 'actions').map(e => e.content),
-                    sfx: events.filter(e => e.type === 'sfx').map(e => e.content),
-                    speechdirect: events.filter(e => e.type === 'speechdirect').map(e => e.content),
-                    speech: events.filter(e => e.type === 'speech').map(e => e.content),
-                    reply: events.filter(e => e.type === 'speechdirect' || e.type === 'reply').map(e => e.content),
-                    innerspeech: events.filter(e => e.type === 'innerspeech').map(e => e.content),
-                    emotion: events.filter(e => e.type === 'emotion').map(e => e.content),
-                    environment: environmentEvents,
-                    memory: events.filter(e => e.type === 'memory').map(e => e.content),
-                    currplan: events.filter(e => e.type === 'currplan').map(e => e.content),
-                    futureplans: events.filter(e => e.type === 'futureplans').map(e => e.content),
-                    trustlevel: events.filter(e => e.type === 'trustlevel').map(e => e.content),
-                    inventory: events.filter(e => e.type === 'inventory').map(e => e.content),
-                    sensory: events.filter(e => e.type === 'sensory').map(e => e.content),
-                    offlinemessage: events.filter(e => e.type === 'offlinemessage').map(e => e.content),
-                    timeofday: events.filter(e => e.type === 'timeofday').map(e => e.content),
-                    location: locationEvents,
-                    myname: events.filter(e => e.type === 'myname').map(e => e.content),
-                    appendMemory: [],
-                    scene: sceneData,
-                    appendMind: []
-                };
+                parsedResponse = extractEventsByType(events);
 
             } catch (parseError) {
                 console.warn('⚠️ Failed to parse AI response as JSON, using fallback:', parseError.message);
@@ -700,41 +717,7 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
                     // Convert to array if it's a single object
                     const events = Array.isArray(parsed) ? parsed : [parsed];
 
-                    // Extract environment and location events
-                    const environmentEvents = events.filter(e => e.type === 'environment').map(e => e.content);
-                    const locationEvents = events.filter(e => e.type === 'location').map(e => e.content);
-
-                    // Extract scene data
-                    let sceneData = 'A cozy, intimate setting';
-                    if (environmentEvents.length > 0) {
-                        sceneData = environmentEvents.join(' ');
-                    } else if (locationEvents.length > 0) {
-                        sceneData = locationEvents.join(' ');
-                    }
-
-                    parsedResponse = {
-                        actions: events.filter(e => e.type === 'actions').map(e => e.content),
-                        sfx: events.filter(e => e.type === 'sfx').map(e => e.content),
-                        speechdirect: events.filter(e => e.type === 'speechdirect').map(e => e.content),
-                        speech: events.filter(e => e.type === 'speech').map(e => e.content),
-                        reply: events.filter(e => e.type === 'speechdirect' || e.type === 'reply').map(e => e.content),
-                        innerspeech: events.filter(e => e.type === 'innerspeech').map(e => e.content),
-                        emotion: events.filter(e => e.type === 'emotion').map(e => e.content),
-                        environment: environmentEvents,
-                        memory: events.filter(e => e.type === 'memory').map(e => e.content),
-                        currplan: events.filter(e => e.type === 'currplan').map(e => e.content),
-                        futureplans: events.filter(e => e.type === 'futureplans').map(e => e.content),
-                        trustlevel: events.filter(e => e.type === 'trustlevel').map(e => e.content),
-                        inventory: events.filter(e => e.type === 'inventory').map(e => e.content),
-                        sensory: events.filter(e => e.type === 'sensory').map(e => e.content),
-                        offlinemessage: events.filter(e => e.type === 'offlinemessage').map(e => e.content),
-                        timeofday: events.filter(e => e.type === 'timeofday').map(e => e.content),
-                        location: locationEvents,
-                        myname: events.filter(e => e.type === 'myname').map(e => e.content),
-                        appendMemory: [],
-                        scene: sceneData,
-                        appendMind: []
-                    };
+                    parsedResponse = extractEventsByType(events);
 
                 } catch (parseError) {
                     console.warn('⚠️ Failed to parse AI response as JSON, using fallback:', parseError.message);
