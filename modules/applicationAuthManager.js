@@ -15,6 +15,7 @@ const SCOPE_WS_PACKETS = {
     ],
     generation: [
         'generate_image', 'generate_preset', 'cancel_generation', 'upscale_image',
+        'enhance_image', 'max_enhance_image',
         'expand_image', 'preview_expand_image_prompt', 'reroll_expanded_image',
         'reroll_image', 'resolve_dynamic_context', 'compile_dynamic_generation',
         'apply_tendai_preview', 'resolve_text_replacements',
