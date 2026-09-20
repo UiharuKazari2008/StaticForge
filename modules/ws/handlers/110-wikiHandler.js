@@ -555,6 +555,10 @@ async function handleGetFandomWikiManager(handler, ws, message, clientInfo, wsSe
 }
 
 async function handleImportFandomWikiPage(handler, ws, message, clientInfo, wsServer) {
+    if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: wiki import admin check
+        handler.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
     const { url, followLinks = false, maxPages, group } = message;
     if (!url) {
         handler.sendError(ws, 'Missing url parameter', 'import_fandom_wiki_page', message.requestId);
@@ -607,6 +611,10 @@ function getWikiCacheRoot(handler) {
 }
 
 async function handleImportStaticWiki(handler, ws, message, clientInfo, wsServer) {
+    if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: wiki import admin check
+        handler.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
     const { url, followLinks = false, maxPages, group, site, lang } = message;
     if (!url) {
         handler.sendError(ws, 'Missing url parameter', 'import_static_wiki', message.requestId);
@@ -641,6 +649,10 @@ async function handleImportStaticWiki(handler, ws, message, clientInfo, wsServer
 }
 
 async function handleUpdateWikiImport(handler, ws, message, clientInfo, wsServer) {
+    if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: wiki import admin check
+        handler.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
     const importId = Number(message.importId) || 0;
     const siteId = message.siteId ? String(message.siteId) : '';
     if (!importId && !siteId) {
@@ -711,6 +723,10 @@ async function handleUpdateWikiImport(handler, ws, message, clientInfo, wsServer
 }
 
 async function handleDeleteFandomWikiImport(handler, ws, message, clientInfo, wsServer) {
+    if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: wiki import admin check
+        handler.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
     const importId = Number(message.importId);
     if (!importId) {
         handler.sendError(ws, 'Missing importId parameter', 'delete_fandom_wiki_import', message.requestId);
