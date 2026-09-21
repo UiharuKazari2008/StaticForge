@@ -2875,11 +2875,8 @@ function checkAndSanitizeCustomDimensions() {
     
         // Only sanitize if both inputs have values
         if (rawW && rawH) {
-            // Enforce step 64 explicitly
-            const result = correctDimensions(rawW, rawH, {
-                step: 64,
-                maxArea: currentMaxArea
-            });
+            // nearestLegalCustomResolution: public/scripts/comp/utilities.js
+            const result = nearestLegalCustomResolution(rawW, rawH, currentMaxArea);
     
             // Update the input values with sanitized values
             manualWidth.value = result.width;
@@ -2887,22 +2884,7 @@ function checkAndSanitizeCustomDimensions() {
     
             // Show feedback if a dimension was adjusted
             if (result.changed) {
-                let message = '';
-    
-                if (result.reason === 'max_area') {
-                    message = `${result.changed.toLocaleUpperCase()} was reduced to ${result.changed === 'width' ? result.width : result.height} (Maximum Area Limit)`;
-                } else if (result.reason === 'min_limit') {
-                    message = `${result.changed.toLocaleUpperCase()} was increased to ${result.changed === 'width' ? result.width : result.height} (Minimum Value)`;
-                } else if (result.reason === 'max_limit') {
-                    message = `${result.changed.toLocaleUpperCase()} was reduced to ${result.changed === 'width' ? result.width : result.height} (Maximum Value)`;
-                } else if (result.reason === 'step_snap') {
-                    message = `${result.changed.toLocaleUpperCase()} was snapped to ${result.changed === 'width' ? result.width : result.height} (64px Step)`;
-                } else if (result.reason === 'clamped_and_snapped') {
-                    message = `${result.changed.toLocaleUpperCase()} was clamped to ${result.changed === 'width' ? result.width : result.height} (Limits and 64px Step)`;
-                } else {
-                    message = `${result.changed.toLocaleUpperCase()} was clamped to ${result.changed === 'width' ? result.width : result.height}`;
-                }
-                showGlassToast('warning', null, message);
+                showGlassToast('warning', null, `Dimensions snapped to nearest legal ${result.width}x${result.height}`);
             }
     
             // Directly update hidden resolution value to avoid double sanitization
@@ -2987,7 +2969,7 @@ async function updateCustomResolutionValue() {
  * Toggle resolution area limit cycling through Normal (1MP), Large (2MP), and Max (3MP)
  * @function
  * @name toggleResolutionAreaLimit
- * @description Cycles between 1,048,576 (Normal), 2,166,784 (Large), and 3,047,424 (Max) area limits and recalculates dimensions proportionally
+ * @description Cycles Normal → Large → Max area budgets and snaps HxW to the nearest legal pair in that tier's array
  * @example
  * toggleResolutionAreaLimit(); // Cycles through area limits: Normal → Large → Max → Normal
  */
@@ -3000,30 +2982,13 @@ function toggleResolutionAreaLimit() {
         const currentWidth = parseInt(manualWidth.value) || 1024;
         const currentHeight = parseInt(manualHeight.value) || 1024;
         
-        let newMaxArea;
-        let newAreaName;
-        
-        // Toggle between Normal (1MP) → Large (2MP) → Max (3MP)
-        if (currentMaxArea === 1048576) {
-            newMaxArea = 2166784; // Large (2MP)
-            newAreaName = 'Large';
-        } else if (currentMaxArea === 2166784) {
-            newMaxArea = 3047424; // Max (3MP)
-            newAreaName = 'Max';
-        } else {
-            newMaxArea = 1048576; // Normal (1MP)
-            newAreaName = 'Normal';
-        }
-        
-        const snapped = dimensionsMaxUnderArea(currentWidth, currentHeight, newMaxArea, 64, UTILS_CONFIG.MIN_DIMENSION, UTILS_CONFIG.MIN_DIMENSION);
-        const result = correctDimensions(snapped.width, snapped.height, {
-            step: 64,
-            maxArea: newMaxArea
-        });
+        // nextCustomResolutionAreaLimit / nearestLegalCustomResolution: public/scripts/comp/utilities.js
+        const nextArea = nextCustomResolutionAreaLimit(currentMaxArea);
+        const result = nearestLegalCustomResolution(currentWidth, currentHeight, nextArea.maxArea);
         
         // Update the max area AFTER calculation but BEFORE updating inputs
-        currentMaxArea = newMaxArea;
-        toggleBtn.textContent = newAreaName;
+        currentMaxArea = nextArea.maxArea;
+        toggleBtn.textContent = nextArea.name;
         
         // Update inputs without triggering input events
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
@@ -3044,22 +3009,15 @@ function toggleResolutionAreaLimit() {
         }
         
         // Show feedback about the change
-        showGlassToast('info', null, `Resolution scaled to ${result.width}x${result.height} (${newAreaName} area limit)`);
+        showGlassToast('info', null, `Resolution scaled to ${result.width}x${result.height} (${nextArea.name} area limit)`);
 
         // Update pipeline stages to reflect new custom dimensions
         updatePipelineStages();
     } else {
-        // No custom resolution selected, just toggle the limit
-        if (currentMaxArea === 1048576) {
-            currentMaxArea = 2166784; // Large (2MP)
-            toggleBtn.textContent = 'Large';
-        } else if (currentMaxArea === 2166784) {
-            currentMaxArea = 3047424; // Max (3MP)
-            toggleBtn.textContent = 'Max';
-        } else {
-            currentMaxArea = 1048576; // Normal (1MP)
-            toggleBtn.textContent = 'Normal';
-        }
+        // nextCustomResolutionAreaLimit: public/scripts/comp/utilities.js
+        const nextArea = nextCustomResolutionAreaLimit(currentMaxArea);
+        currentMaxArea = nextArea.maxArea;
+        toggleBtn.textContent = nextArea.name;
     }
 }
 
@@ -3125,42 +3083,18 @@ function validateManualDimensionsWithTimeout() {
 
         const originalWidth = parseInt(manualWidth.value) || 1024;
         const originalHeight = parseInt(manualHeight.value) || 1024;
-        let width = originalWidth;
-        let height = originalHeight;
-        let currentArea = width * height;
-
-        const widthRemainder = width % 64;
-        const heightRemainder = height % 64;
-        let widthChanged = false;
-        let heightChanged = false;
-
-        if (widthRemainder !== 0) {
-            width = widthRemainder >= 32 ? width + (64 - widthRemainder) : width - widthRemainder;
-            width = Math.max(64, width);
-            widthChanged = true;
-        }
-        if (heightRemainder !== 0) {
-            height = heightRemainder >= 32 ? height + (64 - heightRemainder) : height - heightRemainder;
-            height = Math.max(64, height);
-            heightChanged = true;
-        }
-
-        currentArea = width * height;
-        const neededAreaCap = currentArea > currentMaxArea;
-
-        if (neededAreaCap) {
-            const capped = capDimensionsToMaxArea(width, height, currentMaxArea, 64, 64, 64);
-            width = capped.width;
-            height = capped.height;
-            widthChanged = true;
-            heightChanged = true;
-        }
+        // nearestLegalCustomResolution: public/scripts/comp/utilities.js
+        const result = nearestLegalCustomResolution(originalWidth, originalHeight, currentMaxArea);
+        const width = result.width;
+        const height = result.height;
+        const widthChanged = width !== originalWidth;
+        const heightChanged = height !== originalHeight;
 
         if (widthChanged || heightChanged) {
-            if (width !== originalWidth) {
+            if (widthChanged) {
                 Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, width);
             }
-            if (height !== originalHeight) {
+            if (heightChanged) {
                 Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, height);
             }
 
@@ -3173,11 +3107,7 @@ function validateManualDimensionsWithTimeout() {
             updateManualUpscaleToggleState();
             debouncedCropImageToResolution();
 
-            if (neededAreaCap) {
-                showGlassToast('warning', null, `Dimensions scaled down to fit maximum area limit (${width}x${height})`);
-            } else if (widthChanged || heightChanged) {
-                showGlassToast('info', null, `Dimensions adjusted to 64px steps (${width}x${height})`);
-            }
+            showGlassToast('warning', null, `Dimensions snapped to nearest legal ${width}x${height}`);
         }
     }, 100);
 }
@@ -3204,16 +3134,10 @@ function wireManualDimensionInput(el, siblingEl) {
 
         const currentWidth = parseInt(manualWidth.value) || 1024;
         const currentHeight = parseInt(manualHeight.value) || 1024;
-        const currentArea = currentWidth * currentHeight;
-        const delta = e.deltaY > 0 ? -64 : 64;
-        const isWidth = el === manualWidth;
-        const adjusted = isWidth ? currentWidth + delta : currentHeight + delta;
-        const other = isWidth
-            ? Math.round(currentArea / adjusted)
-            : Math.round(currentArea / adjusted);
-        const newWidth = isWidth ? adjusted : other;
-        const newHeight = isWidth ? other : adjusted;
-        const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: currentMaxArea });
+        const grow = e.deltaY > 0 ? -1 : 1;
+        const ratioDir = el === manualWidth ? grow : -grow;
+        // stepLegalCustomResolution: public/scripts/comp/utilities.js
+        const result = stepLegalCustomResolution(currentWidth, currentHeight, currentMaxArea, ratioDir);
 
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
@@ -3236,16 +3160,10 @@ function wireManualDimensionInput(el, siblingEl) {
 
         const currentWidth = parseInt(manualWidth.value) || 1024;
         const currentHeight = parseInt(manualHeight.value) || 1024;
-        const currentArea = currentWidth * currentHeight;
-        const delta = e.key === 'ArrowUp' ? 64 : -64;
-        const isWidth = el === manualWidth;
-        const adjusted = isWidth ? currentWidth + delta : currentHeight + delta;
-        const other = isWidth
-            ? Math.round(currentArea / adjusted)
-            : Math.round(currentArea / adjusted);
-        const newWidth = isWidth ? adjusted : other;
-        const newHeight = isWidth ? other : adjusted;
-        const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: currentMaxArea });
+        const grow = e.key === 'ArrowUp' ? 1 : -1;
+        const ratioDir = el === manualWidth ? grow : -grow;
+        // stepLegalCustomResolution: public/scripts/comp/utilities.js
+        const result = stepLegalCustomResolution(currentWidth, currentHeight, currentMaxArea, ratioDir);
 
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
