@@ -439,7 +439,7 @@ function getImageBiasOrientation() {
     const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
     let targetAR = 1;
     
-    if (currentResolution === 'custom' && manualWidth && manualHeight) {
+    if (isCustomResolutionMode(currentResolution) && manualWidth && manualHeight) {
         const width = parseInt(manualWidth.value);
         const height = parseInt(manualHeight.value);
         targetAR = width / height;
@@ -541,7 +541,7 @@ function isCroppingNeeded() {
         const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
         let targetWidth, targetHeight;
         
-        if (currentResolution === 'custom' && manualWidth && manualHeight) {
+        if (isCustomResolutionMode(currentResolution) && manualWidth && manualHeight) {
             targetWidth = parseInt(manualWidth.value);
             targetHeight = parseInt(manualHeight.value);
         } else {

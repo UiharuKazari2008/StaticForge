@@ -2589,6 +2589,7 @@
                                         class="btn-secondary toggle-btn" data-state="off" title="Custom Resolution">
                                         <i class="fas fa-ruler-combined"></i>
                                     </button>
+                                    <span id="manualCustomDimsGuts" class="custom-resolution-dims">
                                     <input type="number" id="manualWidth"
                                         class="colored form-control hover-show width-value" placeholder="Width" min="64"
                                         step="64" data-manual-touch-jog="manual-width">
@@ -2598,6 +2599,15 @@
                                     <input type="number" id="manualHeight"
                                         class="colored form-control hover-show height-value" placeholder="Height"
                                         min="64" step="64" data-manual-touch-jog="manual-height">
+                                    </span>
+                                    <span id="manualCustomRatioGuts" class="custom-ratio-guts">
+                                        <input type="text" id="manualRatio"
+                                            class="colored form-control hover-show right ratio-value" placeholder="W:H"
+                                            spellcheck="false" autocomplete="off">
+                                        <span id="manualRatioPreview" class="ratio-preview" aria-hidden="true">
+                                            <span class="ratio-preview-frame"></span>
+                                        </span>
+                                    </span>
                                 </div>
                                 <!-- Save Stage 0 Button -->
                                 <button type="button" id="saveStage0Btn" class="btn-secondary toggle-btn hidden"

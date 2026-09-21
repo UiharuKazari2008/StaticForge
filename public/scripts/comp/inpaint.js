@@ -1412,7 +1412,7 @@ function openMaskEditor() {
 
     let canvasWidth, canvasHeight;
 
-    if (resolutionValue === 'custom') {
+    if (isCustomResolutionMode(resolutionValue)) {
         // Use custom resolution values
         canvasWidth = parseInt(document.getElementById('manualWidth').value) || 512;
         canvasHeight = parseInt(document.getElementById('manualHeight').value) || 512;

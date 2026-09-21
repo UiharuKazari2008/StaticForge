@@ -341,6 +341,7 @@ const RESOLUTION_GROUPS = [
     {
         group: 'Custom',
         options: [
+            { value: 'custom_ratio', name: 'Custom Ratio' },
             { value: 'custom', name: 'Custom Resolution' },
         ]
     }
@@ -965,15 +966,9 @@ function updateV3ModelVisibility() {
 function getDimensionsFromResolution(resolution) {
     if (!resolution) return null;
 
-    // Handle custom resolution format: custom_1024x768
-    if (resolution.startsWith('custom_')) {
-        const dimensions = resolution.replace('custom_', '');
-        const [width, height] = dimensions.split('x').map(Number);
-        if (width && height && width > 0 && height > 0) {
-            return { width, height };
-        }
-        return null;
-    }
+    // custom_1024x768 only — not custom_ratio
+    const customDims = parseCustomResolutionDims(resolution);
+    if (customDims) return customDims;
 
     // Use optimized cache lookup for predefined resolutions (O(1) vs O(n))
     const normalizedRes = resolution.toLowerCase();
@@ -1181,6 +1176,131 @@ function nextCustomResolutionAreaLimit(currentMaxArea) {
         return { maxArea: CUSTOM_RESOLUTION_AREA.max, name: 'Max' };
     }
     return { maxArea: CUSTOM_RESOLUTION_AREA.normal, name: 'Normal' };
+}
+
+function isCustomResolutionMode(value) {
+    const v = String(value || '').toLowerCase();
+    return v === 'custom' || v === 'custom_ratio' || /^custom_\d+x\d+$/.test(v);
+}
+
+function isCustomRatioMode(value) {
+    return String(value || '').toLowerCase() === 'custom_ratio';
+}
+
+function parseCustomResolutionDims(value) {
+    const m = /^custom_(\d+)x(\d+)$/i.exec(String(value || ''));
+    if (!m) return null;
+    const width = Number(m[1]);
+    const height = Number(m[2]);
+    if (width > 0 && height > 0) return { width, height };
+    return null;
+}
+
+function gcdPositiveInt(a, b) {
+    let x = Math.abs(Math.round(Number(a) || 0));
+    let y = Math.abs(Math.round(Number(b) || 0));
+    while (y) {
+        const t = y;
+        y = x % y;
+        x = t;
+    }
+    return x || 1;
+}
+
+function formatAspectRatio(width, height) {
+    const w = Math.round(Number(width) || 0);
+    const h = Math.round(Number(height) || 0);
+    if (w < 1 || h < 1) return '';
+    const g = gcdPositiveInt(w, h);
+    return (w / g) + ':' + (h / g);
+}
+
+function updateRatioPreviewEl(preview, width, height) {
+    if (!preview) return;
+    const frame = preview.firstElementChild;
+    if (!frame) return;
+    const w = Math.max(1, Number(width) || 1);
+    const h = Math.max(1, Number(height) || 1);
+    const max = Math.max(w, h);
+    frame.style.width = ((w / max) * 72) + '%';
+    frame.style.height = ((h / max) * 72) + '%';
+}
+
+function parseRatioText(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return null;
+    const pair = raw.match(/^(\d+(?:\.\d+)?)\s*[:xX×/]\s*(\d+(?:\.\d+)?)$/);
+    if (pair) {
+        const width = Number(pair[1]);
+        const height = Number(pair[2]);
+        if (width > 0 && height > 0) return { width, height };
+        return null;
+    }
+    if (/^\d+(?:\.\d+)?$/.test(raw)) {
+        const width = Number(raw);
+        if (width > 0) return { width, height: 1 };
+    }
+    return null;
+}
+
+function nearestLegalCustomResolutionFromRatio(ratioWidth, ratioHeight, maxArea) {
+    const parsed = (ratioWidth > 0 && ratioHeight > 0)
+        ? { width: ratioWidth, height: ratioHeight }
+        : parseRatioText(ratioWidth);
+    if (!parsed) {
+        return nearestLegalCustomResolution(1, 1, maxArea);
+    }
+    return nearestLegalCustomResolution(parsed.width, parsed.height, maxArea);
+}
+
+function customResolutionAreaFromPixels(width, height) {
+    const area = Number(width) * Number(height);
+    if (area > CUSTOM_RESOLUTION_AREA.large) {
+        return { maxArea: CUSTOM_RESOLUTION_AREA.max, name: 'Max', key: 'max' };
+    }
+    if (area > CUSTOM_RESOLUTION_AREA.normal) {
+        return { maxArea: CUSTOM_RESOLUTION_AREA.large, name: 'Large', key: 'large' };
+    }
+    return { maxArea: CUSTOM_RESOLUTION_AREA.normal, name: 'Normal', key: 'normal' };
+}
+
+function nearestPresetResolution(width, height, preferredAreaKey) {
+    const w = Math.max(1, Number(width) || 1);
+    const h = Math.max(1, Number(height) || 1);
+    const target = w / h;
+    const familyPrefix = preferredAreaKey === 'max' ? 'xlarge'
+        : preferredAreaKey === 'large' ? 'large'
+        : preferredAreaKey === 'normal' ? 'normal'
+        : '';
+
+    function scoreList(list) {
+        let best = null;
+        let bestDist = Infinity;
+        let bestPixel = Infinity;
+        for (let i = 0; i < list.length; i++) {
+            const r = list[i];
+            if (!r || !r.width || !r.height) continue;
+            const dist = Math.abs(Math.log((r.width / r.height) / target));
+            const pixel = Math.abs(r.width - w) + Math.abs(r.height - h);
+            if (dist < bestDist || (dist === bestDist && pixel < bestPixel)) {
+                best = r;
+                bestDist = dist;
+                bestPixel = pixel;
+            }
+        }
+        return best;
+    }
+
+    if (familyPrefix) {
+        const family = [];
+        const re = new RegExp('^' + familyPrefix + '_(portrait|square|landscape)$');
+        for (let i = 0; i < RESOLUTIONS.length; i++) {
+            if (re.test(String(RESOLUTIONS[i].value))) family.push(RESOLUTIONS[i]);
+        }
+        const hit = scoreList(family);
+        if (hit) return hit;
+    }
+    return scoreList(RESOLUTIONS);
 }
 
 function nearestLegalCustomResolution(width, height, maxArea) {
@@ -1704,7 +1824,7 @@ function updateManualPriceDisplay(bypass = false) {
             let height = 1024; // Default area
             let width = 1024; // Default area
             const selectedRes = manualSelectedResolution;
-            if (selectedRes === 'custom') {
+            if (isCustomResolutionMode(selectedRes)) {
                 const manualWidth = document.getElementById('manualWidth');
                 const manualHeight = document.getElementById('manualHeight');
                 width = manualWidth ? parseInt(manualWidth.value) || 1024 : 1024;
@@ -1873,7 +1993,7 @@ function updateManualUpscaleToggleState() {
     let height = 1024;
     const selectedRes = manualSelectedResolution;
     
-    if (selectedRes === 'custom') {
+    if (isCustomResolutionMode(selectedRes)) {
         const manualWidth = document.getElementById('manualWidth');
         const manualHeight = document.getElementById('manualHeight');
         width = manualWidth ? parseInt(manualWidth.value) || 1024 : 1024;

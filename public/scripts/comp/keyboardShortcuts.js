@@ -34,7 +34,7 @@ let shortcutActionToastHideTimer = null;
 let shortcutActionToastFadeTimer = null;
 
 function resolutionShortcutLabel(value) {
-    if (!value || value === 'custom') return null;
+    if (!value || isCustomResolutionMode(value)) return null;
     const r = typeof RESOLUTION_CACHE !== 'undefined' && RESOLUTION_CACHE.get(value);
     return r ? r.display : value;
 }
@@ -137,7 +137,7 @@ const RESOLUTION_SIZE_TIER_CYCLE = [
 /** @returns {string|null} Display label for the new resolution, or null if unchanged */
 function cycleManualResolutionAspectPreset() {
     const resVal = manualResolutionHidden && manualResolutionHidden.value;
-    if (!resVal || resVal === 'custom') return null;
+    if (!resVal || isCustomResolutionMode(resVal)) return null;
     const tierMatch = resVal.match(/^(normal|large|xlarge|small|wallpaper)_(.+)$/);
     if (!tierMatch) return null;
     const prefix = tierMatch[1];

@@ -1812,7 +1812,7 @@ function ensureExpansionDifferentAspectSelected() {
     for (const group of RESOLUTION_GROUPS) {
         if (!group || !Array.isArray(group.options)) continue;
         for (const opt of group.options) {
-            if (!opt || opt.value === 'custom' || String(opt.value).startsWith('small_')) continue;
+            if (!opt || isCustomResolutionMode(opt.value) || String(opt.value).startsWith('small_')) continue;
             if (!opt.width || !opt.height) continue;
             if (!isDifferentAspect(opt.width, opt.height)) continue;
             candidates.push({ opt, group: group.group, inset: isInsetEligible(opt.width, opt.height) });
@@ -1880,7 +1880,7 @@ async function populateExpansionResolutionDropdown() {
     const filteredGroups = RESOLUTION_GROUPS.map(group => {
         const filteredOptions = group.options.filter(opt => {
             // Keep Custom so big sources can pick inset-eligible WxH
-            if (opt.value === 'custom') return true;
+            if (isCustomResolutionMode(opt.value)) return true;
 
             if (opt.value.startsWith('small_')) {
                 return false;
@@ -2251,7 +2251,7 @@ function updateExpansionCanvasPreview() {
 
 // Select expansion resolution
 function selectExpansionResolution(value, group) {
-    if (value === 'custom') {
+    if (isCustomResolutionMode(value)) {
         enterExpansionCustomResolution(true);
         const upscaleToggleEarly = document.getElementById('expansionUpscaleToggle');
         if (upscaleToggleEarly && typeof calculateUpscaleInfo === 'function') {
