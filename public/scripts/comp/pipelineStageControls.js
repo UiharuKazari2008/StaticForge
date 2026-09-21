@@ -436,7 +436,7 @@ function setupExpandCanvasStageEvents(stageId) {
             const availableResolutions = [];
             RESOLUTION_GROUPS.forEach(group => {
                 group.options.forEach(opt => {
-                    if (opt.value === 'custom') return;
+                    if (isCustomResolutionMode(opt.value)) return;
                     if (!isVariationWheel && opt.value.startsWith('small_')) return;
                     if (!isVariationWheel && samePixelAspectRatio(baseWidth, baseHeight, opt.width, opt.height)) return;
                     availableResolutions.push({ value: opt.value, name: opt.name, group: group.group });
@@ -584,17 +584,16 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
             const currentHeight = parseInt(heightInput.value) || 1024;
 
             // Look for an exact match in RESOLUTIONS
-            const matchingResolution = RESOLUTIONS.find(r => r.width === currentWidth && r.height === currentHeight);
+            const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
+            const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea, 10) : 1048576;
+            const matchingResolution = RESOLUTIONS.find(r => r.width === currentWidth && r.height === currentHeight)
+                || nearestPresetResolution(currentWidth, currentHeight, resolveCustomResolutionAreaKey(maxArea));
 
             if (matchingResolution) {
-                // Found a matching preset, select it
                 const matchingGroup = RESOLUTION_GROUPS.find(g =>
                     g.options.some(opt => opt.value === matchingResolution.value)
                 );
                 selectStageResolution(stageId, matchingResolution.value, matchingGroup?.group || 'Normal');
-            } else {
-                // No match found, default to normal square
-                selectStageResolution(stageId, 'normal_square', 'Normal');
             }
         }
     });
@@ -602,7 +601,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
     // Dimension input change handlers
     let blurTimeout;
     const validateDimensionsWithTimeout = () => {
-        if (resolutionInput.value !== 'custom') return;
+        if (!isCustomResolutionMode(resolutionInput.value)) return;
 
         // Clear any existing timeout
         if (blurTimeout) clearTimeout(blurTimeout);
@@ -636,6 +635,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
                 if (height !== originalHeight) {
                     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, height);
                 }
+                syncStageRatioChrome(stageId, width, height);
 
                 // Update bias orientation and cascade
                 updateStageBiasOrientation(stageId, 'custom');
@@ -646,7 +646,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
     };
 
     const handleDimensionInput = () => {
-        if (resolutionInput.value === 'custom') {
+        if (isCustomResolutionMode(resolutionInput.value)) {
             updateStageBiasOrientation(stageId, 'custom');
         }
         updateExpandCanvasStageInsetToggle(stageId);
@@ -668,7 +668,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
     let isWheelUpdating = false;
 
     const updateWidthDimension = (delta) => {
-        if (resolutionInput.value !== 'custom' || isWheelUpdating) return;
+        if (!isCustomResolutionMode(resolutionInput.value) || isWheelUpdating) return;
 
         isWheelUpdating = true;
 
@@ -685,6 +685,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
         // Update inputs without triggering input events (set directly)
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
+        syncStageRatioChrome(stageId, result.width, result.height);
 
         // Update bias orientation
         updateStageBiasOrientation(stageId, 'custom');
@@ -712,7 +713,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
 
     // Mouse wheel and keyboard support for height — step along the active tier ratio list
     const updateHeightDimension = (delta) => {
-        if (resolutionInput.value !== 'custom' || isWheelUpdating) return;
+        if (!isCustomResolutionMode(resolutionInput.value) || isWheelUpdating) return;
 
         isWheelUpdating = true;
 
@@ -729,6 +730,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
         // Update inputs without triggering input events (set directly)
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
+        syncStageRatioChrome(stageId, result.width, result.height);
 
         // Update bias orientation
         updateStageBiasOrientation(stageId, 'custom');
@@ -753,6 +755,33 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
             updateHeightDimension(delta);
         }
     });
+
+    const ratioInput = document.getElementById(`${stageId}_ratio`);
+    if (ratioInput && ratioInput.dataset.wired !== 'true') {
+        ratioInput.dataset.wired = 'true';
+        const commitStageRatio = () => {
+            if (!isCustomRatioMode(resolutionInput.value)) return;
+            const parsed = parseRatioText(ratioInput.value);
+            const width = parsed ? parsed.width : (parseInt(widthInput.value, 10) || 1024);
+            const height = parsed ? parsed.height : (parseInt(heightInput.value, 10) || 1024);
+            const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
+            const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea, 10) : 1048576;
+            const result = nearestLegalCustomResolutionFromRatio(width, height, maxArea);
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
+            syncStageRatioChrome(stageId, result.width, result.height);
+            updateStageBiasOrientation(stageId, 'custom');
+            updatePipelineStages(stageId);
+            updateExpandCanvasStageInsetToggle(stageId);
+        };
+        ratioInput.addEventListener('blur', commitStageRatio);
+        ratioInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                commitStageRatio();
+            }
+        });
+    }
 }
 
 function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
@@ -1032,7 +1061,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             const availableResolutions = [];
             RESOLUTION_GROUPS.forEach(group => {
                 group.options.forEach(opt => {
-                    if (opt.value === 'custom') return; // Skip custom
+                    if (isCustomResolutionMode(opt.value)) return;
                     if (opt.value.startsWith('small_')) return; // Skip small
 
                     const optIsPortrait = opt.value.includes('_portrait');
@@ -1113,7 +1142,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
         const heightInput = document.getElementById(`${stageId}_height`);
         if (!resInput) return 'normal';
         const val = (resInput.value || '').toLowerCase();
-        if (val === 'custom' && widthInput && heightInput && widthInput.value && heightInput.value) {
+        if (isCustomResolutionMode(val) && widthInput && heightInput && widthInput.value && heightInput.value) {
             const w = parseInt(widthInput.value) || 1024;
             const h = parseInt(heightInput.value) || 1024;
             const area = w * h;
@@ -1180,7 +1209,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
         if (hasCustom) {
             // Has custom value - process it (might be area name from enhance mode, convert to full preset)
             const currentValue = resolutionInput.value;
-            if (['normal', 'large', 'xlarge'].includes(currentValue) && !currentValue.includes('_') && currentValue !== 'custom') {
+            if (['normal', 'large', 'xlarge'].includes(currentValue) && !currentValue.includes('_') && !isCustomResolutionMode(currentValue)) {
                 // Area name from enhance mode - convert to full preset with orientation
                 const orientation = computeInheritedOrientation();
                 target = `${currentValue}_${orientation}`;
@@ -1193,7 +1222,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
         } else {
             // No custom value - use inherited
             const inheritedValues = getStageInheritedValues(stageId);
-            if (inheritedValues.resolution && !inheritedValues.resolution.includes('_') && inheritedValues.resolution !== 'custom') {
+            if (inheritedValues.resolution && !inheritedValues.resolution.includes('_') && !isCustomResolutionMode(inheritedValues.resolution)) {
                 const orientation = computeInheritedOrientation();
                 target = `${inheritedValues.resolution}_${orientation}`;
             } else {

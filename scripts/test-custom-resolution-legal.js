@@ -118,6 +118,83 @@ const stuck = stepLegalCustomResolution(last.width, last.height, CUSTOM_RESOLUTI
 assert.strictEqual(stuck.width, last.width);
 assert.strictEqual(stuck.height, last.height);
 
+const parseRatioText = vm.runInContext('parseRatioText', ctx);
+const formatAspectRatio = vm.runInContext('formatAspectRatio', ctx);
+const nearestLegalCustomResolutionFromRatio = vm.runInContext('nearestLegalCustomResolutionFromRatio', ctx);
+const nearestPresetResolution = vm.runInContext('nearestPresetResolution', ctx);
+const parseCustomResolutionDims = vm.runInContext('parseCustomResolutionDims', ctx);
+const isCustomResolutionMode = vm.runInContext('isCustomResolutionMode', ctx);
+const isCustomRatioMode = vm.runInContext('isCustomRatioMode', ctx);
+const RESOLUTION_GROUPS = vm.runInContext('RESOLUTION_GROUPS', ctx);
+
+const customGroup = RESOLUTION_GROUPS.find((g) => g.group === 'Custom');
+assert.ok(customGroup, 'Custom group stays');
+assert.strictEqual(customGroup.options[0].value, 'custom_ratio');
+assert.strictEqual(customGroup.options[0].name, 'Custom Ratio');
+assert.strictEqual(customGroup.options[1].value, 'custom');
+assert.strictEqual(customGroup.options[1].name, 'Custom Resolution');
+
+function assertPair(actual, width, height, label) {
+    assert.ok(actual, label);
+    assert.strictEqual(actual.width, width, label + ' width');
+    assert.strictEqual(actual.height, height, label + ' height');
+}
+
+assertPair(parseRatioText('4:3'), 4, 3, '4:3');
+assertPair(parseRatioText('2:3'), 2, 3, '2:3');
+assertPair(parseRatioText('16/9'), 16, 9, '16/9');
+assertPair(parseRatioText('1.5x1'), 1.5, 1, '1.5x1');
+assert.strictEqual(parseRatioText('nope'), null);
+assert.strictEqual(formatAspectRatio(1152, 864), '4:3');
+assert.strictEqual(formatAspectRatio(1024, 1024), '1:1');
+
+assert.ok(isCustomResolutionMode('custom'));
+assert.ok(isCustomResolutionMode('custom_ratio'));
+assert.ok(isCustomResolutionMode('custom_1216x832'));
+assert.ok(isCustomRatioMode('custom_ratio'));
+assert.ok(!isCustomRatioMode('custom'));
+assert.strictEqual(parseCustomResolutionDims('custom_ratio'), null);
+assertPair(parseCustomResolutionDims('custom_1216x832'), 1216, 832, 'custom_1216x832');
+
+const fourThree = nearestLegalCustomResolutionFromRatio(4, 3, CUSTOM_RESOLUTION_AREA.normal);
+assert.ok(fourThree.width % 64 === 0 && fourThree.height % 64 === 0);
+assert.ok(fourThree.width * fourThree.height <= CUSTOM_RESOLUTION_AREA.normal);
+assert.ok(Math.abs(Math.log(fourThree.ratio / (4 / 3))) < 0.08);
+
+const twoThree = nearestLegalCustomResolutionFromRatio(2, 3, CUSTOM_RESOLUTION_AREA.normal);
+assert.ok(twoThree.width * twoThree.height <= CUSTOM_RESOLUTION_AREA.normal);
+assert.ok(twoThree.height > twoThree.width);
+
+const odd = nearestLegalCustomResolutionFromRatio(7, 1, CUSTOM_RESOLUTION_AREA.normal);
+assert.ok(odd.width * odd.height <= CUSTOM_RESOLUTION_AREA.normal);
+
+const portraitPreset = { width: 832, height: 1216 };
+const legalFromPreset = nearestLegalCustomResolution(portraitPreset.width, portraitPreset.height, CUSTOM_RESOLUTION_AREA.normal);
+assert.strictEqual(legalFromPreset.width, 832);
+assert.strictEqual(legalFromPreset.height, 1216);
+const ratioHop = nearestLegalCustomResolutionFromRatio(legalFromPreset.width, legalFromPreset.height, CUSTOM_RESOLUTION_AREA.normal);
+assert.strictEqual(ratioHop.width, legalFromPreset.width);
+assert.strictEqual(ratioHop.height, legalFromPreset.height);
+const backToPreset = nearestPresetResolution(ratioHop.width, ratioHop.height, 'normal');
+assert.ok(backToPreset);
+assert.strictEqual(backToPreset.width, 832);
+assert.strictEqual(backToPreset.height, 1216);
+
+const customPair = nearestLegalCustomResolution(1152, 896, CUSTOM_RESOLUTION_AREA.normal);
+const hopRes = nearestLegalCustomResolution(customPair.width, customPair.height, CUSTOM_RESOLUTION_AREA.normal);
+assert.strictEqual(hopRes.width, customPair.width);
+assert.strictEqual(hopRes.height, customPair.height);
+const hopRatio = nearestLegalCustomResolutionFromRatio(customPair.width, customPair.height, CUSTOM_RESOLUTION_AREA.normal);
+assert.strictEqual(hopRatio.width, customPair.width);
+assert.strictEqual(hopRatio.height, customPair.height);
+const hopPreset = nearestPresetResolution(customPair.width, customPair.height, 'normal');
+assert.ok(hopPreset);
+assert.ok(hopPreset.value.indexOf('normal_') === 0);
+assert.ok(!(hopPreset.width === 832 && hopPreset.height === 1216 && customPair.width !== 832), 'custom pair must not orphan to default portrait');
+
+const overRatio = nearestLegalCustomResolutionFromRatio(20, 1, CUSTOM_RESOLUTION_AREA.normal);
+assert.ok(overRatio.width * overRatio.height <= CUSTOM_RESOLUTION_AREA.normal);
+
 console.log('test-custom-resolution-legal: ok', {
     normal: LEGAL_CUSTOM_RESOLUTIONS.normal.length,
     large: LEGAL_CUSTOM_RESOLUTIONS.large.length,

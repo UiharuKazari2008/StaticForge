@@ -251,7 +251,7 @@ function resolveStudioChangeResolutionPreset(value) {
     const raw = String(value).trim();
     if (!raw) return null;
     const lower = raw.toLowerCase();
-    if (lower === 'custom') return null;
+    if (isCustomResolutionMode(lower)) return null;
     // RESOLUTION_CACHE / RESOLUTIONS: public/scripts/comp/utilities.js
     const byValue = RESOLUTION_CACHE.get(lower) || RESOLUTION_CACHE.get(lower.replace(/[\s-]+/g, '_'));
     if (byValue) return byValue;

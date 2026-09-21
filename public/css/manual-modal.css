@@ -2999,7 +2999,8 @@ i#carouselCacheIcon {
     flex: auto;
 }
 
-.custom-resolution-inputs input[type="number"] {
+.custom-resolution-inputs input[type="number"],
+.custom-resolution-inputs .ratio-value {
     text-align: center;
     padding: 0.25em 0.6em;
     font-size: 1em;
@@ -3022,6 +3023,50 @@ i#carouselCacheIcon {
 .custom-resolution-inputs .x-seperator {
     color: var(--text-accent-tinted);
     font-size: 0.85em;
+}
+
+.custom-resolution-dims,
+.custom-ratio-guts {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+    flex: auto;
+    min-width: 0;
+}
+
+.custom-resolution-inputs.ratio-mode {
+    max-width: 250px;
+}
+
+.custom-resolution-inputs.ratio-mode .custom-resolution-dims,
+.custom-resolution-inputs:not(.ratio-mode) .custom-ratio-guts {
+    display: none;
+}
+
+.custom-resolution-inputs .ratio-value {
+    text-align: right;
+    min-width: 56px;
+}
+
+.custom-resolution-inputs .ratio-value:not(:hover) {
+    padding: 0.25em 0 0.25em 1.2em;
+}
+
+.custom-resolution-inputs .ratio-preview {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    box-sizing: border-box;
+    border: 1px solid var(--glass-border-3);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.custom-resolution-inputs .ratio-preview-frame {
+    background: var(--text-accent-tinted);
+    border-radius: 1px;
 }
 
 .custom-resolution-inputs input[type="number"]::-webkit-outer-spin-button,

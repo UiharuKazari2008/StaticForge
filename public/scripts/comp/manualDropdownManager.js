@@ -36,6 +36,8 @@ const manualCustomResolutionBtn = document.getElementById('manualCustomResolutio
 const resolutionAreaToggle = document.getElementById('resolutionAreaToggle');
 const manualWidth = document.getElementById('manualWidth');
 const manualHeight = document.getElementById('manualHeight');
+const manualRatio = document.getElementById('manualRatio');
+const manualRatioPreview = document.getElementById('manualRatioPreview');
 const manualResolutionGroup = document.getElementById('manualResolutionGroup');
 const manualSamplerDropdown = document.getElementById('manualSamplerDropdown');
 const manualSamplerDropdownBtn = document.getElementById('manualSamplerDropdownBtn');
@@ -161,11 +163,53 @@ function renderManualResolutionDropdown(selectedVal) {
  * @example
  * selectManualResolution('normal_portrait', 'Normal'); // Selects normal portrait resolution
  */
+function syncManualRatioChrome(width, height) {
+    // formatAspectRatio: public/scripts/comp/utilities.js
+    if (manualRatio && document.activeElement !== manualRatio) {
+        manualRatio.value = formatAspectRatio(width, height);
+    }
+    updateRatioPreviewEl(manualRatioPreview, width, height);
+}
+
+function applyManualCustomDimensions(width, height, silent) {
+    if (manualWidth) {
+        if (silent) Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, width);
+        else manualWidth.value = width;
+    }
+    if (manualHeight) {
+        if (silent) Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, height);
+        else manualHeight.value = height;
+    }
+    syncManualRatioChrome(width, height);
+    if (manualResolutionHidden) {
+        manualResolutionHidden.value = `custom_${width}x${height}`;
+    }
+}
+
+function setManualCustomResolutionMode(ratioMode) {
+    if (!manualCustomResolution) return;
+    if (ratioMode) manualCustomResolution.classList.add('ratio-mode');
+    else manualCustomResolution.classList.remove('ratio-mode');
+}
+
+function readManualCustomDimensions() {
+    const width = parseInt(manualWidth && manualWidth.value, 10) || 0;
+    const height = parseInt(manualHeight && manualHeight.value, 10) || 0;
+    if (width > 0 && height > 0) return { width, height };
+    return null;
+}
+
+function syncManualCustomAreaToggle(maxArea) {
+    currentMaxArea = maxArea;
+    if (!resolutionAreaToggle) return;
+    if (maxArea === CUSTOM_RESOLUTION_AREA.max) resolutionAreaToggle.textContent = 'Max';
+    else if (maxArea === CUSTOM_RESOLUTION_AREA.large) resolutionAreaToggle.textContent = 'Large';
+    else resolutionAreaToggle.textContent = 'Normal';
+}
+
 async function selectManualResolution(value, group, skipPostProcess = false) {
-    // Capture the previous resolution BEFORE updating manualSelectedResolution
-    const previousResolution = manualSelectedResolution && manualSelectedResolution !== 'custom' 
-        ? manualSelectedResolution 
-        : 'normal_square'; // Default to normal square if no previous selection
+    const previousResolution = manualSelectedResolution || 'normal_square';
+    const previousWasCustom = isCustomResolutionMode(previousResolution);
     
     manualSelectedResolution = value.toLowerCase();
     
@@ -179,31 +223,29 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
         }
     }
 
-    if (value === 'custom') {
+    if (isCustomResolutionMode(value)) {
         manualResolutionDropdown.classList.add('hidden');
         manualCustomResolution.classList.remove('hidden');
         resolutionAreaToggle.classList.remove('hidden');
         manualCustomResolutionBtn.setAttribute('data-state', 'on');
         manualResolutionGroup.classList.add('expanded');
-        
-        // Only convert from previous resolution if width/height are not already set
-        // This preserves loaded values when loading from presets/metadata
-        const hasExistingValues = manualWidth.value && manualHeight.value;
-        
-        if (!hasExistingValues) {
-            // Convert current resolution to custom values
-            const dimensions = getDimensionsFromResolution(previousResolution);
-            if (dimensions) {
-                manualWidth.value = dimensions.width;
-                manualHeight.value = dimensions.height;
-            } else {
-                // Fallback to 1024x1024 if unable to get dimensions
-                manualWidth.value = '1024';
-                manualHeight.value = '1024';
+        setManualCustomResolutionMode(isCustomRatioMode(value));
+
+        let source = readManualCustomDimensions();
+        if (!previousWasCustom) {
+            const presetDims = getDimensionsFromResolution(previousResolution);
+            if (presetDims) source = presetDims;
+            if (source) {
+                // customResolutionAreaFromPixels: public/scripts/comp/utilities.js
+                const area = customResolutionAreaFromPixels(source.width, source.height);
+                syncManualCustomAreaToggle(area.maxArea);
             }
         }
-        
-        // Sanitize the values
+        if (!source) source = { width: 1024, height: 1024 };
+
+        // nearestLegalCustomResolution: public/scripts/comp/utilities.js
+        const snapped = nearestLegalCustomResolution(source.width, source.height, currentMaxArea);
+        applyManualCustomDimensions(snapped.width, snapped.height, true);
         sanitizeCustomDimensions();
     } else {
         manualResolutionDropdown.classList.remove('hidden');
@@ -211,6 +253,7 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
         resolutionAreaToggle.classList.add('hidden');
         manualCustomResolutionBtn.setAttribute('data-state', 'off');
         manualResolutionGroup.classList.remove('expanded');
+        setManualCustomResolutionMode(false);
     }
 
     // Update button display
@@ -222,8 +265,10 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
     } else {
         manualResolutionSelected.textContent = 'Select resolution...';
     }
-    // Sync with hidden input for compatibility
-    if (manualResolutionHidden) manualResolutionHidden.value = value.toLowerCase();
+    // Named presets only — custom modes already wrote custom_WxH
+    if (manualResolutionHidden && !isCustomResolutionMode(value)) {
+        manualResolutionHidden.value = value.toLowerCase();
+    }
 
     if (!skipPostProcess) {
         updateManualPriceDisplay();
@@ -2848,10 +2893,9 @@ function closeNsfwDropdown() {
  */
 function processResolutionValue(resolutionValue) {
     // Check if this is a custom resolution
-    if (resolutionValue && resolutionValue.startsWith('custom_')) {
-        const dimensions = resolutionValue.replace('custom_', '');
-        const [width, height] = dimensions.split('x').map(Number);
-        return { width, height, isCustom: true };
+    const customDims = parseCustomResolutionDims(resolutionValue);
+    if (customDims) {
+        return { width: customDims.width, height: customDims.height, isCustom: true };
     }
     return { resolution: resolutionValue, isCustom: false };
 }
@@ -2870,7 +2914,7 @@ function checkAndSanitizeCustomDimensions() {
         return;
     }
     
-    if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
+    if (isCustomResolutionMode(manualSelectedResolution) && manualWidth && manualHeight) {
         const rawW = manualWidth.value;
         const rawH = manualHeight.value;
     
@@ -2879,19 +2923,11 @@ function checkAndSanitizeCustomDimensions() {
             // nearestLegalCustomResolution: public/scripts/comp/utilities.js
             const result = nearestLegalCustomResolution(rawW, rawH, currentMaxArea);
     
-            // Update the input values with sanitized values
-            manualWidth.value = result.width;
-            manualHeight.value = result.height;
+            applyManualCustomDimensions(result.width, result.height, false);
     
             // Show feedback if a dimension was adjusted
             if (result.changed) {
                 showGlassToast('warning', null, `Dimensions snapped to nearest legal ${result.width}x${result.height}`);
-            }
-    
-            // Directly update hidden resolution value to avoid double sanitization
-            const manualResolutionHidden = document.getElementById('manualResolution');
-            if (manualResolutionHidden) {
-                manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
             }
             
             // Use debounced cropping for custom dimension changes to prevent excessive CPU usage
@@ -2933,7 +2969,7 @@ function sanitizeCustomDimensions() {
  * await updateCustomResolutionValue(); // Updates hidden field with current custom dimensions
  */
 async function updateCustomResolutionValue() {
-    if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
+    if (isCustomResolutionMode(manualSelectedResolution) && manualWidth && manualHeight) {
         const rawW = manualWidth.value;
         const rawH = manualHeight.value;
 
@@ -2945,6 +2981,7 @@ async function updateCustomResolutionValue() {
             // Store dimensions in the hidden field WITHOUT sanitization
             // Sanitization only happens on blur via checkAndSanitizeCustomDimensions
             manualResolutionHidden.value = `custom_${width}x${height}`;
+            syncManualRatioChrome(width, height);
 
             // Refresh preview image if in bias mode
             if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
@@ -2979,7 +3016,7 @@ function toggleResolutionAreaLimit() {
     if (!toggleBtn) return;
     
     // Only recalculate if custom resolution is selected and has valid dimensions
-    if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
+    if (isCustomResolutionMode(manualSelectedResolution) && manualWidth && manualHeight) {
         const currentWidth = parseInt(manualWidth.value) || 1024;
         const currentHeight = parseInt(manualHeight.value) || 1024;
         
@@ -2991,15 +3028,7 @@ function toggleResolutionAreaLimit() {
         currentMaxArea = nextArea.maxArea;
         toggleBtn.textContent = nextArea.name;
         
-        // Update inputs without triggering input events
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
-        
-        // Directly update hidden resolution value
-        const manualResolutionHidden = document.getElementById('manualResolution');
-        if (manualResolutionHidden) {
-            manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
-        }
+        applyManualCustomDimensions(result.width, result.height, true);
         
         // Update price display
         updateManualPriceDisplay();
@@ -3073,7 +3102,7 @@ function openReferenceBrowserWithFilter(filterMode) {
 let manualBlurTimeout;
 
 function validateManualDimensionsWithTimeout() {
-    if (manualSelectedResolution !== 'custom') return;
+    if (!isCustomResolutionMode(manualSelectedResolution)) return;
 
     if (manualBlurTimeout) clearTimeout(manualBlurTimeout);
 
@@ -3092,17 +3121,7 @@ function validateManualDimensionsWithTimeout() {
         const heightChanged = height !== originalHeight;
 
         if (widthChanged || heightChanged) {
-            if (widthChanged) {
-                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, width);
-            }
-            if (heightChanged) {
-                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, height);
-            }
-
-            const manualResolutionHidden = document.getElementById('manualResolution');
-            if (manualResolutionHidden) {
-                manualResolutionHidden.value = `custom_${width}x${height}`;
-            }
+            applyManualCustomDimensions(width, height, true);
 
             updateManualPriceDisplay();
             updateManualUpscaleToggleState();
@@ -3129,7 +3148,7 @@ function wireManualDimensionInput(el, siblingEl) {
     let isWheelUpdating = false;
 
     el.addEventListener('wheel', function (e) {
-        if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
+        if (!isCustomResolutionMode(manualSelectedResolution) || isWheelUpdating) return;
         e.preventDefault();
         isWheelUpdating = true;
 
@@ -3140,13 +3159,7 @@ function wireManualDimensionInput(el, siblingEl) {
         // stepLegalCustomResolution: public/scripts/comp/utilities.js
         const result = stepLegalCustomResolution(currentWidth, currentHeight, currentMaxArea, ratioDir);
 
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
-
-        const manualResolutionHidden = document.getElementById('manualResolution');
-        if (manualResolutionHidden) {
-            manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
-        }
+        applyManualCustomDimensions(result.width, result.height, true);
 
         updateManualPriceDisplay();
         debouncedCropImageToResolution();
@@ -3156,7 +3169,7 @@ function wireManualDimensionInput(el, siblingEl) {
     el.addEventListener('keydown', function (e) {
         if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
         e.preventDefault();
-        if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
+        if (!isCustomResolutionMode(manualSelectedResolution) || isWheelUpdating) return;
         isWheelUpdating = true;
 
         const currentWidth = parseInt(manualWidth.value) || 1024;
@@ -3166,13 +3179,7 @@ function wireManualDimensionInput(el, siblingEl) {
         // stepLegalCustomResolution: public/scripts/comp/utilities.js
         const result = stepLegalCustomResolution(currentWidth, currentHeight, currentMaxArea, ratioDir);
 
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
-
-        const manualResolutionHidden = document.getElementById('manualResolution');
-        if (manualResolutionHidden) {
-            manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
-        }
+        applyManualCustomDimensions(result.width, result.height, true);
 
         updateManualPriceDisplay();
         debouncedCropImageToResolution();
@@ -3196,17 +3203,16 @@ function wireManualResolutionDimensionListeners() {
         manualCustomResolutionBtn.dataset.wired = 'true';
         manualCustomResolutionBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            if (manualSelectedResolution === 'custom') {
+            if (isCustomResolutionMode(manualSelectedResolution)) {
                 const currentWidth = parseInt(manualWidth.value) || 1024;
                 const currentHeight = parseInt(manualHeight.value) || 1024;
-                const matchingResolution = RESOLUTIONS.find(r => r.width === currentWidth && r.height === currentHeight);
+                const matchingResolution = RESOLUTIONS.find(r => r.width === currentWidth && r.height === currentHeight)
+                    || nearestPresetResolution(currentWidth, currentHeight, resolveCustomResolutionAreaKey(currentMaxArea));
                 if (matchingResolution) {
                     const matchingGroup = RESOLUTION_GROUPS.find(g =>
                         g.options.some(opt => opt.value === matchingResolution.value)
                     );
                     selectManualResolution(matchingResolution.value, matchingGroup?.group || 'Normal');
-                } else {
-                    selectManualResolution('normal_portrait', 'Normal');
                 }
             }
         });
@@ -3214,6 +3220,53 @@ function wireManualResolutionDimensionListeners() {
 
     wireManualDimensionInput(manualWidth, manualHeight);
     wireManualDimensionInput(manualHeight, manualWidth);
+    wireManualRatioInput();
+}
+
+function commitManualRatioInput() {
+    if (!isCustomRatioMode(manualSelectedResolution) || !manualRatio) return;
+    const parsed = parseRatioText(manualRatio.value);
+    const source = parsed || readManualCustomDimensions() || { width: 1024, height: 1024 };
+    // nearestLegalCustomResolutionFromRatio: public/scripts/comp/utilities.js
+    const result = nearestLegalCustomResolutionFromRatio(source.width, source.height, currentMaxArea);
+    applyManualCustomDimensions(result.width, result.height, true);
+    updateManualPriceDisplay();
+    updateManualUpscaleToggleState();
+    if (typeof debouncedCropImageToResolution === 'function') {
+        debouncedCropImageToResolution();
+    }
+    updatePipelineStages();
+    if (result.changed) {
+        showGlassToast('warning', null, `Ratio snapped to ${formatAspectRatio(result.width, result.height)} (${result.width}x${result.height})`);
+    }
+}
+
+function wireManualRatioInput() {
+    if (!manualRatio || manualRatio.dataset.wired === 'true') return;
+    manualRatio.dataset.wired = 'true';
+
+    manualRatio.addEventListener('blur', () => {
+        commitManualRatioInput();
+    });
+
+    manualRatio.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            commitManualRatioInput();
+            return;
+        }
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        if (!isCustomRatioMode(manualSelectedResolution)) return;
+        e.preventDefault();
+        const current = readManualCustomDimensions() || { width: 1024, height: 1024 };
+        const ratioDir = e.key === 'ArrowUp' ? 1 : -1;
+        const result = stepLegalCustomResolution(current.width, current.height, currentMaxArea, ratioDir);
+        applyManualCustomDimensions(result.width, result.height, true);
+        updateManualPriceDisplay();
+        if (typeof debouncedCropImageToResolution === 'function') {
+            debouncedCropImageToResolution();
+        }
+    });
 }
 
 function wireManualModalListenerScope() {
