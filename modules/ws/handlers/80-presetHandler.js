@@ -198,6 +198,9 @@ async function handleUpdatePreset(handlers, ws, message, clientInfo, wsServer) {
             return;
         }
 
+        // JULES: Fix ReferenceError - ensure uuid is defined for logging and response payload
+        const uuid = existingPreset.uuid || handlers.generateUUID();
+
         const activeWorkspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
         const updates = {};
 
