@@ -977,15 +977,15 @@ class WorkspaceManager {
             }
 
             // Always include default workspace cache files from database
-            const defaultRefs = refDb.getWorkspaceReferences('default');
-            defaultRefs.forEach(hash => files.add(hash));
-
-            // Get cache files from the active workspace for this session from database
             const currentActiveWorkspace = this.getActiveWorkspace(sessionId);
+
+            const workspaceIds = ['default'];
             if (currentActiveWorkspace && currentActiveWorkspace !== 'default') {
-                const activeRefs = refDb.getWorkspaceReferences(currentActiveWorkspace);
-                activeRefs.forEach(hash => files.add(hash));
+                workspaceIds.push(currentActiveWorkspace);
             }
+
+            const activeRefs = refDb.getMultipleWorkspaceReferences(workspaceIds);
+            activeRefs.forEach(hash => files.add(hash));
         }
 
         return Array.from(files);
