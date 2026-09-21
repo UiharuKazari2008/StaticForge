@@ -9,7 +9,7 @@ async function handlePresetSearch(handlers, ws, message, clientInfo, wsServer) {
     const { query } = message;
 
     if (!query) {
-        handlers.sendError(ws, 'Missing query parameter', 'search_presets');
+        handlers.sendError(ws, 'Missing query parameter', 'search_presets', message.requestId);
         return;
     }
 
@@ -32,7 +32,7 @@ async function handleLoadPreset(handlers, ws, message, clientInfo, wsServer) {
     const { presetName, presetUuid } = message;
 
     if (!presetName && !presetUuid) {
-        handlers.sendError(ws, 'Missing presetName or presetUuid parameter', 'load_preset');
+        handlers.sendError(ws, 'Missing presetName or presetUuid parameter', 'load_preset', message.requestId);
         return;
     }
 
@@ -260,7 +260,7 @@ async function handleRegeneratePresetUuid(handlers, ws, message, clientInfo, wsS
     const { presetName } = message;
 
     if (!presetName) {
-        handlers.sendError(ws, 'Missing presetName parameter', 'regenerate_preset_uuid');
+        handlers.sendError(ws, 'Missing presetName parameter', 'regenerate_preset_uuid', message.requestId);
         return;
     }
 
@@ -380,7 +380,7 @@ async function handleDeletePresetGroup(handlers, ws, message, clientInfo, wsServ
     const { groupName } = message;
 
     if (!groupName) {
-        handlers.sendError(ws, 'Missing groupName parameter', 'delete_preset_group');
+        handlers.sendError(ws, 'Missing groupName parameter', 'delete_preset_group', message.requestId);
         return;
     }
 
@@ -456,7 +456,7 @@ async function handleDeletePreset(handlers, ws, message, clientInfo, wsServer) {
     const { presetName } = message;
 
     if (!presetName) {
-        handlers.sendError(ws, 'Missing presetName parameter', 'delete_preset');
+        handlers.sendError(ws, 'Missing presetName parameter', 'delete_preset', message.requestId);
         return;
     }
 
@@ -506,7 +506,7 @@ async function handleGeneratePresetWork(handlers, ws, message, clientInfo, wsSer
     const requestId = message.requestId || 'unknown';
 
     if (!presetName) {
-        handlers.sendError(ws, 'Missing presetName parameter', 'generate_preset');
+        handlers.sendError(ws, 'Missing presetName parameter', 'generate_preset', message.requestId);
         return;
     }
 

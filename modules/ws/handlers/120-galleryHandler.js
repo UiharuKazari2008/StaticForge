@@ -648,7 +648,7 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
     const { filename } = message;
 
     if (!filename) {
-        handlers.sendError(ws, 'Missing filename parameter', 'request_image_metadata');
+        handlers.sendError(ws, 'Missing filename parameter', 'request_image_metadata', message.requestId);
         return;
     }
 
@@ -790,7 +790,7 @@ async function handleImageByIndexRequest(handlers, ws, message, clientInfo, wsSe
     const { index, viewType = 'images' } = message;
 
     if (index === undefined || index === null) {
-        handlers.sendError(ws, 'Missing index parameter', 'request_image_by_index');
+        handlers.sendError(ws, 'Missing index parameter', 'request_image_by_index', message.requestId);
         return;
     }
 
@@ -879,7 +879,7 @@ async function handleFindImageIndexRequest(handlers, ws, message, clientInfo, ws
     const { filename, viewType = 'images' } = message;
 
     if (!filename) {
-        handlers.sendError(ws, 'Missing filename parameter', 'find_image_index');
+        handlers.sendError(ws, 'Missing filename parameter', 'find_image_index', message.requestId);
         return;
     }
 
@@ -1536,7 +1536,7 @@ async function handleUrlUploadMetadataRequest(handlers, ws, message, clientInfo,
     const { filename } = message;
 
     if (!filename) {
-        handlers.sendError(ws, 'Missing filename parameter', 'request_url_upload_metadata');
+        handlers.sendError(ws, 'Missing filename parameter', 'request_url_upload_metadata', message.requestId);
         return;
     }
 
