@@ -12,6 +12,8 @@
  * - May change cascade if identical literals were intentionally distinct (rare).
  */
 
+// JULES: Optimization for CSS deduplication hot path - memoize color keys/RGB parsing and batch replacement pass.
+
 const COLOR_PATTERNS = [
     /#[0-9a-fA-F]{3,8}\b/g,
     /\brgba?\([^)]+\)/gi,
@@ -49,17 +51,25 @@ function parseSimpleRgb(str) {
     return { r: +m[1], g: +m[2], b: +m[3] };
 }
 
-function colorKey(value) {
-    const v = value.trim();
+function parseColorInfo(raw) {
+    const v = raw.trim();
     if (v.startsWith('#')) {
         const rgb = hexToRgb(v);
-        return rgb ? `hex:${normalizeHex(v)}` : null;
+        if (rgb) {
+            return { raw, key: `hex:${normalizeHex(v)}`, rgb };
+        }
+    } else {
+        const rgb = parseSimpleRgb(v);
+        if (rgb) {
+            return { raw, key: `rgb:${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)}`, rgb };
+        }
     }
-    const rgb = parseSimpleRgb(v);
-    if (rgb) {
-        return `rgb:${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)}`;
-    }
-    return `raw:${v.toLowerCase()}`;
+    return { raw, key: `raw:${v.toLowerCase()}`, rgb: null };
+}
+
+function colorKey(value) {
+    const info = parseColorInfo(value);
+    return info.key;
 }
 
 function rgbDistance(a, b) {
@@ -69,15 +79,17 @@ function rgbDistance(a, b) {
     return Math.sqrt(dr * dr + dg * dg + db * db) / 441.67295593;
 }
 
+function colorInfosSimilar(infoA, infoB, tolerance) {
+    if (!infoA.key || !infoB.key) return false;
+    if (infoA.key === infoB.key) return true;
+    if (!infoA.rgb || !infoB.rgb) return false;
+    return rgbDistance(infoA.rgb, infoB.rgb) <= tolerance;
+}
+
 function colorsSimilar(a, b, tolerance) {
-    const ka = colorKey(a);
-    const kb = colorKey(b);
-    if (!ka || !kb) return false;
-    if (ka === kb) return true;
-    const ra = a.startsWith('#') ? hexToRgb(a) : parseSimpleRgb(a);
-    const rb = b.startsWith('#') ? hexToRgb(b) : parseSimpleRgb(b);
-    if (!ra || !rb) return false;
-    return rgbDistance(ra, rb) <= tolerance;
+    const infoA = parseColorInfo(a);
+    const infoB = parseColorInfo(b);
+    return colorInfosSimilar(infoA, infoB, tolerance);
 }
 
 function collectLiterals(source, pattern, normalizeFn) {
@@ -103,7 +115,6 @@ function clusterColors(source, tolerance) {
         `${COLOR_PATTERNS.map((p) => p.source).join('|')}`,
         'gi'
     );
-    const seen = new Map();
     const literals = [];
     let match;
     while ((match = re.exec(source)) !== null) {
@@ -113,22 +124,37 @@ function clusterColors(source, tolerance) {
     }
 
     const clusters = [];
+    const keyToCluster = new Map();
+
     for (const literal of literals) {
+        const info = parseColorInfo(literal);
+        let cluster = keyToCluster.get(info.key);
+        if (cluster) {
+            cluster.count++;
+            cluster.variants.add(literal);
+            continue;
+        }
+
         let placed = false;
-        for (const cluster of clusters) {
-            if (colorsSimilar(literal, cluster.canonical, tolerance)) {
-                cluster.count++;
-                cluster.variants.add(literal);
+        for (const existing of clusters) {
+            if (colorInfosSimilar(info, existing.canonicalInfo, tolerance)) {
+                existing.count++;
+                existing.variants.add(literal);
+                keyToCluster.set(info.key, existing);
                 placed = true;
                 break;
             }
         }
+
         if (!placed) {
-            clusters.push({
+            const newCluster = {
                 canonical: literal,
+                canonicalInfo: info,
                 count: 1,
                 variants: new Set([literal])
-            });
+            };
+            clusters.push(newCluster);
+            keyToCluster.set(info.key, newCluster);
         }
     }
     return clusters.filter((c) => c.count >= 3);
@@ -144,9 +170,17 @@ function escapeRegExp(str) {
 }
 
 /** Replace literals only inside `{...}` rule bodies — never in @media preludes or selectors. */
-function replaceLiteralsInStyleBlocks(source, variant, varName) {
-    const replacement = `var(${varName})`;
-    const variantRe = new RegExp(escapeRegExp(variant), 'g');
+function replaceAllLiteralsInStyleBlocks(source, replacementsMap) {
+    if (replacementsMap.size === 0) return source;
+
+    const rules = [];
+    for (const [variant, varName] of replacementsMap.entries()) {
+        rules.push({
+            re: new RegExp(escapeRegExp(variant), 'g'),
+            replacement: `var(${varName})`
+        });
+    }
+
     let result = '';
     let i = 0;
 
@@ -168,9 +202,11 @@ function replaceLiteralsInStyleBlocks(source, variant, varName) {
             }
             j++;
         }
-        const body = source.slice(open + 1, j - 1);
-        result += body.replace(variantRe, replacement);
-        result += '}';
+        let body = source.slice(open + 1, j - 1);
+        for (const rule of rules) {
+            body = body.replace(rule.re, rule.replacement);
+        }
+        result += body + '}';
         i = j;
     }
     return result;
@@ -182,20 +218,22 @@ function applyDedupClusters(source, clusters, prefix) {
     }
 
     const variables = [];
-    let output = source;
+    const replacementsMap = new Map();
     let index = 0;
 
     for (const cluster of clusters) {
         const varName = `--${prefix}-${index++}`;
         variables.push(`${varName}: ${cluster.canonical};`);
         for (const variant of cluster.variants) {
-            output = replaceLiteralsInStyleBlocks(output, variant, varName);
+            replacementsMap.set(variant, varName);
         }
     }
 
     if (!variables.length) {
         return { css: source, variables: [] };
     }
+
+    const output = replaceAllLiteralsInStyleBlocks(source, replacementsMap);
 
     const block = `:root {\n  ${variables.join('\n  ')}\n}\n\n`;
     return { css: block + output, variables };
