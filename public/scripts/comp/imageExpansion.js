@@ -1073,8 +1073,10 @@ function wireEnhanceMagnitudeInput() {
     input.addEventListener('input', () => {
         applyEnhanceMagnitudeOverlays(input.value);
     });
+    // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+    const allowEnhanceMagnitudeTick = createWheelTickGate(400);
     input.addEventListener('wheel', (e) => {
-        e.preventDefault();
+        if (!guardWheelTick(e, allowEnhanceMagnitudeTick)) return;
         const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.5 : 0.1) : (e.shiftKey ? 0.5 : 0.1);
         const parsed = parseFloat(input.value);
         const currentVal = input.value !== '' && Number.isFinite(parsed) ? parsed : 3.0;
@@ -3251,8 +3253,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const rescaleInput = document.getElementById('expansionRescaleInput');
     const rescaleOverlay = document.getElementById('expansionRescaleOverlay');
     if (rescaleInput && rescaleOverlay) {
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowExpansionRescaleTick = createWheelTickGate(400);
         rescaleInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowExpansionRescaleTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.05) : (e.shiftKey ? 0.1 : 0.05);
             const currentValue = parseFloat(this.value) || 0;
             const newValue = Math.max(0, Math.min(1, currentValue + delta));
@@ -3268,8 +3272,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const noiseInput = document.getElementById('expansionNoiseInput');
     const noiseOverlay = document.getElementById('expansionNoiseOverlay');
     if (noiseInput && noiseOverlay) {
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowExpansionNoiseTick = createWheelTickGate(400);
         noiseInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowExpansionNoiseTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0;
             const newValue = Math.max(0, Math.min(0.99, currentValue + delta));
@@ -3285,8 +3291,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup wheel events for other numeric inputs
     const stepsInput = document.getElementById('expansionStepsInput');
     if (stepsInput) {
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowExpansionStepsTick = createWheelTickGate(400);
         stepsInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowExpansionStepsTick)) return;
             const delta = e.deltaY > 0 ? -1 : 1;
             const currentValue = parseInt(this.value) || 28;
             const newValue = Math.max(1, Math.min(50, currentValue + delta));
@@ -3302,8 +3310,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 showGlassToast('info', 'Guidance', '0 CFG remaps to 5.5 on the server. For near-zero CFG, enter 0.001.', false, 5000);
             }
         });
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowExpansionGuidanceTick = createWheelTickGate(400);
         guidanceInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowExpansionGuidanceTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 5.0;
             const newValue = Math.max(0, Math.min(10, currentValue + delta));

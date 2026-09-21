@@ -1786,12 +1786,15 @@ function setupImageBiasAdjustmentListeners() {
         const input = document.getElementById(id);
         if (input) {
             input.addEventListener('input', handleBiasControlChange);
+            // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+            const allowBiasTick = createWheelTickGate(400);
             input.addEventListener('wheel', (e) => {
+                if (!guardWheelTick(e, allowBiasTick)) return;
                 const delta = e.deltaY > 0 ? -1 : 1;
                 const step = parseFloat(input.step) || 1;
                 input.value = parseFloat(input.value || 0) + (delta * step);
                 handleBiasControlChange();
-            }, { passive: true });
+            }, { passive: false });
         }
     });
 

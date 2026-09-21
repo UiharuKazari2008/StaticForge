@@ -423,8 +423,10 @@ function setupExpandCanvasStageEvents(stageId) {
         );
 
         // Add scroll wheel support for resolution cycling (skip custom)
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowResolutionTick = createWheelTickGate(400);
         resolutionBtn.addEventListener('wheel', (e) => {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowResolutionTick)) return;
 
             const useBaseWheel = document.getElementById(`${stageId}_useBaseImageToggle`);
             const isVariationWheel = useBaseWheel && useBaseWheel.dataset.state === 'off';
@@ -511,8 +513,10 @@ function setupExpandCanvasStageEvents(stageId) {
         );
 
         // Add scroll wheel support for bias/position cycling
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowBiasTick = createWheelTickGate(400);
         biasBtn.addEventListener('wheel', (e) => {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowBiasTick)) return;
 
             // Bias has 5 positions: 0, 1, 2, 3, 4
             const currentValue = biasInput.value !== '' ? parseInt(biasInput.value) : 2;
@@ -697,8 +701,10 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
         isWheelUpdating = false;
     };
 
+    // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+    const allowWidthTick = createWheelTickGate(400);
     widthInput.addEventListener('wheel', function (e) {
-        e.preventDefault();
+        if (!guardWheelTick(e, allowWidthTick)) return;
         const delta = e.deltaY > 0 ? -64 : 64;
         updateWidthDimension(delta);
     });
@@ -742,8 +748,10 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
         isWheelUpdating = false;
     };
 
+    // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+    const allowHeightTick = createWheelTickGate(400);
     heightInput.addEventListener('wheel', function (e) {
-        e.preventDefault();
+        if (!guardWheelTick(e, allowHeightTick)) return;
         const delta = e.deltaY > 0 ? -64 : 64;
         updateHeightDimension(delta);
     });
@@ -790,10 +798,11 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
             updatePipelineStages(stageId);
             updateExpandCanvasStageInsetToggle(stageId);
         };
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowStageRatioTick = createWheelTickGate(400);
         const onStageRatioWheel = (e) => {
             if (!isCustomRatioMode(resolutionInput.value)) return;
-            e.preventDefault();
-            e.stopPropagation();
+            if (!guardWheelTick(e, allowStageRatioTick, { stop: true })) return;
             stepStageRatio(e.deltaY > 0 ? -1 : 1);
         };
         ratioInput.addEventListener('blur', commitStageRatio);
@@ -892,8 +901,10 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             }
         });
 
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowMagnitudeTick = createWheelTickGate(400);
         magnitudeInput.addEventListener('wheel', (e) => {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowMagnitudeTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.5 : 0.1) : (e.shiftKey ? 0.5 : 0.1);
             const currentVal = magnitudeInput.value !== '' ? parseFloat(magnitudeInput.value) : 3.0;
             const newValue = Math.max(1.0, Math.min(5.5, currentVal + delta));
@@ -930,8 +941,10 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             }
         });
 
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowStrengthTick = createWheelTickGate(400);
         strengthInput.addEventListener('wheel', (e) => {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowStrengthTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             // Use custom value if set (including 0), otherwise parse from overlay or use default
             let currentVal;
@@ -988,8 +1001,10 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             }
         });
 
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowNoiseTick = createWheelTickGate(400);
         noiseInput.addEventListener('wheel', (e) => {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowNoiseTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             // Use custom value if set (including 0), otherwise parse from overlay or use default
             let currentVal;
@@ -1052,8 +1067,10 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
         );
 
         // Add scroll wheel support for resolution cycling (skip custom)
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowEnhanceResolutionTick = createWheelTickGate(400);
         resolutionBtn.addEventListener('wheel', (e) => {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowEnhanceResolutionTick)) return;
 
             const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
             const isEnhanceMode = useBaseToggle?.dataset.state === 'on';
@@ -1347,8 +1364,10 @@ function setupStageAdvancedControls(stageId) {
             updateStageResetButtonVisibility(stageId);
             updateDownstreamStagesInheritedValues(stageId);
         });
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowRescaleTick = createWheelTickGate(400);
         rescaleInput.addEventListener('wheel', (e) => {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowRescaleTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             // Use custom value if set (including 0), otherwise use inherited
             const currentVal = rescaleInput.value !== '' ? parseFloat(rescaleInput.value) : inheritedValues.rescale;
@@ -1390,6 +1409,25 @@ function setupStageAdvancedControls(stageId) {
             { preventFocusTransfer: true }
         );
 
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowSamplerTick = createWheelTickGate(400);
+        samplerBtn.addEventListener('wheel', (e) => {
+            if (!guardWheelTick(e, allowSamplerTick)) return;
+            const samplerInput = document.getElementById(`${stageId}_sampler`);
+            let current = samplerInput?.value || '';
+            if (!current) {
+                const inheritedValues = getStageInheritedValues(stageId);
+                current = inheritedValues.sampler || 'k_euler_ancestral';
+            }
+            const idx = SAMPLER_MAP.findIndex((s) => s.meta === current);
+            const i = idx < 0 ? 0 : idx;
+            const dir = e.deltaY > 0 ? 1 : -1;
+            let next = i + dir;
+            if (next < 0) next = SAMPLER_MAP.length - 1;
+            if (next >= SAMPLER_MAP.length) next = 0;
+            selectStageSampler(stageId, SAMPLER_MAP[next].meta);
+        }, { passive: false });
+
         // Initialize with inherited state
         updateStageDropdownInheritedState(stageId);
 
@@ -1414,8 +1452,10 @@ function setupStageAdvancedControls(stageId) {
             updateStageResetButtonVisibility(stageId);
             updateDownstreamStagesInheritedValues(stageId);
         });
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowStepsTick = createWheelTickGate(400);
         stepsInput.addEventListener('wheel', (e) => {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowStepsTick)) return;
             // Use inherited value if no custom value set
             const currentValue = stepsInput.value ? parseInt(stepsInput.value) : parseInt(stepsInput.placeholder || 25);
             const delta = e.deltaY > 0 ? -1 : 1;
@@ -1471,8 +1511,10 @@ function setupStageAdvancedControls(stageId) {
             updateStageResetButtonVisibility(stageId);
             updateDownstreamStagesInheritedValues(stageId);
         });
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowGuidanceTick = createWheelTickGate(400);
         guidanceInput.addEventListener('wheel', (e) => {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowGuidanceTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.01 : 0.1) : (e.shiftKey ? 0.01 : 0.1);
             // Use inherited value if no custom value set (handle 0 properly)
             const currentVal = guidanceInput.value !== '' ? parseFloat(guidanceInput.value) : parseFloat(guidanceInput.placeholder || 5.0);

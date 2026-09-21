@@ -1310,9 +1310,10 @@ function renderDatasetDropdown() {
                     });
 
                     // Add wheel event for quality bias value span
+                    // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+                    const allowQualityBiasTick = createWheelTickGate(400);
                     qualityBiasValue.addEventListener('wheel', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
+                        if (!guardWheelTick(e, allowQualityBiasTick, { stop: true })) return;
                         const delta = e.deltaY > 0 ? -0.1 : 0.1;
                         adjustDatasetPresetBias(isTransparency, delta);
 
@@ -1393,9 +1394,10 @@ function renderDatasetDropdown() {
                 });
 
                 // Add wheel event for bias value span
+                // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+                const allowDatasetBiasTick = createWheelTickGate(400);
                 biasValueSpan.addEventListener('wheel', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                    if (!guardWheelTick(e, allowDatasetBiasTick, { stop: true })) return;
                     const delta = e.deltaY > 0 ? -0.1 : 0.1;
                     adjustDatasetBias(dataset.value, delta, dataset);
                     
@@ -1661,9 +1663,10 @@ function renderSubTogglesDropdown() {
             });
 
             // Add wheel event for bias value span
+            // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+            const allowSubToggleBiasTick = createWheelTickGate(400);
             biasValueSpan.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+                if (!guardWheelTick(e, allowSubToggleBiasTick, { stop: true })) return;
                 const delta = e.deltaY > 0 ? -0.1 : 0.1;
                 adjustSubToggleBias(dataset.value, subToggle.id, delta, subToggle);
                 
@@ -2749,9 +2752,10 @@ function renderNsfwDropdown() {
             });
 
             // Add wheel event for bias value span
+            // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+            const allowNsfwBiasTick = createWheelTickGate(400);
             biasValueSpan.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+                if (!guardWheelTick(e, allowNsfwBiasTick, { stop: true })) return;
                 const delta = e.deltaY > 0 ? -0.1 : 0.1;
                 adjustNsfwBias(delta);
 
@@ -3147,10 +3151,12 @@ function wireManualDimensionInput(el, siblingEl) {
     });
 
     let isWheelUpdating = false;
+    // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+    const allowDimensionTick = createWheelTickGate(400);
 
     el.addEventListener('wheel', function (e) {
         if (!isCustomResolutionMode(manualSelectedResolution) || isWheelUpdating) return;
-        e.preventDefault();
+        if (!guardWheelTick(e, allowDimensionTick)) return;
         isWheelUpdating = true;
 
         const currentWidth = parseInt(manualWidth.value) || 1024;
@@ -3251,11 +3257,26 @@ function stepManualRatioFromCurrent(ratioDir) {
     }
 }
 
+// createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+const allowManualRatioTick = createWheelTickGate(400);
+const allowManualSamplerTick = createWheelTickGate(400);
+
 function onManualRatioWheel(e) {
     if (!isCustomRatioMode(manualSelectedResolution)) return;
-    e.preventDefault();
-    e.stopPropagation();
+    if (!guardWheelTick(e, allowManualRatioTick, { stop: true })) return;
     stepManualRatioFromCurrent(e.deltaY > 0 ? -1 : 1);
+}
+
+function onManualSamplerWheel(e) {
+    if (!guardWheelTick(e, allowManualSamplerTick)) return;
+    const current = manualSelectedSampler || 'k_euler_ancestral';
+    const idx = SAMPLER_MAP.findIndex((s) => s.meta === current);
+    const i = idx < 0 ? 0 : idx;
+    const dir = e.deltaY > 0 ? 1 : -1;
+    let next = i + dir;
+    if (next < 0) next = SAMPLER_MAP.length - 1;
+    if (next >= SAMPLER_MAP.length) next = 0;
+    selectManualSampler(SAMPLER_MAP[next].meta);
 }
 
 function wireManualRatioInput() {
@@ -3317,6 +3338,10 @@ function wireManualDropdownSetup() {
     );
 
     setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler, { preventFocusTransfer: true });
+    if (manualSamplerDropdownBtn && manualSamplerDropdownBtn.dataset.samplerWheelWired !== 'true') {
+        manualSamplerDropdownBtn.dataset.samplerWheelWired = 'true';
+        manualSamplerDropdownBtn.addEventListener('wheel', onManualSamplerWheel, { passive: false });
+    }
 
     setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel, { preventFocusTransfer: true });
 

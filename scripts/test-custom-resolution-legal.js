@@ -118,6 +118,20 @@ const stuck = stepLegalCustomResolution(last.width, last.height, CUSTOM_RESOLUTI
 assert.strictEqual(stuck.width, last.width);
 assert.strictEqual(stuck.height, last.height);
 
+// Rapid wheel still clamps at legal endpoints (rate-limit is createWheelTickGate, not step size).
+let rapid = { width: last.width, height: last.height };
+for (let i = 0; i < 20; i++) {
+    rapid = stepLegalCustomResolution(rapid.width, rapid.height, CUSTOM_RESOLUTION_AREA.normal, 1);
+}
+assert.strictEqual(rapid.width, last.width);
+assert.strictEqual(rapid.height, last.height);
+rapid = { width: first.width, height: first.height };
+for (let i = 0; i < 20; i++) {
+    rapid = stepLegalCustomResolution(rapid.width, rapid.height, CUSTOM_RESOLUTION_AREA.normal, -1);
+}
+assert.strictEqual(rapid.width, first.width);
+assert.strictEqual(rapid.height, first.height);
+
 function assertTierEndpoints(tier, maxArea) {
     const list = LEGAL_CUSTOM_RESOLUTIONS[tier];
     assert.ok(list.length > 1, `${tier} legal list`);

@@ -1080,8 +1080,10 @@ function buildPreciseReferencePercentageInput(initialValue, sideClass, peerLabel
         }
     };
 
+    // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+    const allowRefOverlayTick = createWheelTickGate(400);
     input.addEventListener('wheel', (e) => {
-        e.preventDefault();
+        if (!guardWheelTick(e, allowRefOverlayTick)) return;
         const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.05) : (e.shiftKey ? 0.1 : 0.05);
         const newValue = Math.max(0, Math.min(1, (parseFloat(input.value) || 0) + delta));
         input.value = newValue.toFixed(2);
@@ -1911,8 +1913,10 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     ratioOverlay.textContent = `${(currentValue * 100).toFixed(0)}%`;
 
     // Add wheel event for scrolling
+    // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+    const allowVibeRatioTick = createWheelTickGate(400);
     ratioInput.addEventListener('wheel', function(e) {
-        e.preventDefault();
+        if (!guardWheelTick(e, allowVibeRatioTick)) return;
         const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
         const newValue = Math.max(-1, Math.min(1, parseFloat(this.value) + delta));
         this.value = newValue.toFixed(2);
@@ -6300,8 +6304,10 @@ function wireDirectorReferenceListeners() {
 
     if (directorReferenceFidelityInput && directorReferenceFidelityInput.dataset.wired !== 'true') {
         directorReferenceFidelityInput.dataset.wired = 'true';
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowFidelityTick = createWheelTickGate(400);
         directorReferenceFidelityInput.addEventListener('wheel', function (e) {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowFidelityTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.05) : (e.shiftKey ? 0.1 : 0.05);
             const currentValue = parseFloat(this.value) || 1.0;
             const newValue = Math.max(0.0, Math.min(1.0, currentValue + delta));
@@ -6641,8 +6647,10 @@ function initializeCacheManager() {
 
     // Add scroll wheel functionality for IE input
     if (unifiedUploadIeInput) {
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowUnifiedIeTick = createWheelTickGate(400);
         unifiedUploadIeInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowUnifiedIeTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.35;
             const newValue = Math.max(0, Math.min(1, currentValue + delta));
@@ -6666,8 +6674,10 @@ function initializeCacheManager() {
 
     // Add scroll wheel functionality for IE input
     if (vibeEncodingIeInput) {
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowVibeIeTick = createWheelTickGate(400);
         vibeEncodingIeInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowVibeIeTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.35;
             const newValue = Math.max(0, Math.min(1, currentValue + delta));

@@ -771,6 +771,8 @@ class EmphasisGroupsToolInstance {
         if (this._gridDelegatedEventsWired) return;
         this._gridDelegatedEventsWired = true;
 
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        this._allowCardWeightTick = createWheelTickGate(400);
         this.element.addEventListener('wheel', (e) => {
             const weightEl = e.target.closest('.emphasis-groups-card-weight.emphasis-groups-card-weight-wheelable');
             if (!weightEl || weightEl.classList.contains('hidden') || this._isReadOnly()) return;
@@ -782,8 +784,7 @@ class EmphasisGroupsToolInstance {
             const target = this.targets[index];
             if (!target) return;
 
-            e.preventDefault();
-            e.stopPropagation();
+            if (!guardWheelTick(e, this._allowCardWeightTick, { stop: true })) return;
 
             const step = this._getCardWheelStep(e, target);
             const delta = e.deltaY > 0 ? -step : step;
@@ -1061,11 +1062,12 @@ class EmphasisGroupsToolInstance {
     _wireRangeWheelControls() {
         const wire = (input) => {
             if (!input) return;
+            // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+            const allowRangeTick = createWheelTickGate(400);
             input.addEventListener('wheel', (e) => {
                 if (this.normalizeEnabled && this.autoBandEnabled) return;
                 if (e.target !== input) return;
-                e.preventDefault();
-                e.stopPropagation();
+                if (!guardWheelTick(e, allowRangeTick, { stop: true })) return;
                 const step = e.shiftKey ? 0.01 : EMPHASIS_NORMALIZE_RANGE_STEP;
                 const delta = e.deltaY > 0 ? -step : step;
                 const raw = parseFloat(input.value);
@@ -2237,9 +2239,10 @@ class EmphasisGroupsToolInstance {
 
         if (down) down.addEventListener('click', () => nudge(-EMPHASIS_NORMALIZE_RANGE_STEP));
         if (up) up.addEventListener('click', () => nudge(EMPHASIS_NORMALIZE_RANGE_STEP));
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowDirectRangeTick = createWheelTickGate(400);
         input.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+            if (!guardWheelTick(e, allowDirectRangeTick, { stop: true })) return;
             const step = e.shiftKey ? 0.01 : EMPHASIS_NORMALIZE_RANGE_STEP;
             nudge(e.deltaY > 0 ? -step : step);
         }, { passive: false });
