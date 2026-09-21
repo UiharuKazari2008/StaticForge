@@ -2,7 +2,7 @@
 name: novelai-webapp-review
 description: >
   Monitor NovelAI public web-app assets with a cheap daily hash poll and Chrome dump
-  when contracts change. Prefer Chrome for Testing + DUMP_HEADLESS=1. Use for
+  when contracts change. Always crawl /image (+ /imagetools). Prefer Chrome for Testing + DUMP_HEADLESS=1. Use for
   batch2-webapp-watch, /loop 1d ticks, comparing dumps to Dreamscape/NekoAI-JS
   contracts, and post-deploy API drift review. Never auth generate or commit
   JWT/recaptcha/tmp captures.
@@ -17,6 +17,7 @@ Track official NovelAI **public** frontend/API contract drift without recaptcha,
 **In scope (public, unauthenticated):**
 
 - `https://novelai.net/` chunk path list + HTML
+- **Image app (required on every dump):** `https://novelai.net/image`, `https://novelai.net/imagetools` (+ related generate-UI chunks from `_buildManifest`)
 - `https://novelai.net/updateReload.json`
 - `https://novelai.net/tokenizer/compressed/qwen35_tokenizer.def?v=2&static=true` (ETag)
 - [V5 journal announcement](https://journal.novelai.net/image-generation-novelai-diffusion-v5-is-here-c2df7c6b8d2d/)
@@ -49,9 +50,14 @@ node scripts/nai-webapp-watch/poll-hashes.js --json
 DUMP_HEADLESS=1 DUMP_CHROME_NO_SANDBOX=1 ./scripts/nai-webapp-watch/dump-novelai-webapp.sh
 ```
 
+Default crawl is `/` → `/image` → `/imagetools` so image page chunks land in the zip. Do not use `--url-only` for embassy dumps.
+
 xvfb headed (omit `DUMP_HEADLESS`) is the fallback if CFT is missing. Branded `google-chrome-stable` 151 ignores `--load-extension`.
 
-3. **Diff contracts** in the new zip under `tmp/nai-webapp-dumps/` (gitignored).
+3. **Diff + why-shipped** in the new zip under `tmp/nai-webapp-dumps/` (gitignored):
+   - Confirm `pages/image-*.js` / imagetools / generate-UI chunks are present (not landing/`_app` only).
+   - Write a short **why they shipped** vs previous dump (UI/logic/features/example prompts). Honest “no user-facing delta” is fine.
+   - Also run the API contract checklist below.
 
 4. **Update baseline** after intentional upstream sync:
 
@@ -74,9 +80,22 @@ Run `daily-tick.sh` immediately after arming. Stop by killing the loop shell.
 
 Cloud agents: use subscription timer `loop-nai-webapp-watch`, `delaySeconds: 86400`, same prompt.
 
-## Contract diff checklist (API only)
+## Why-shipped + contract diff checklist
 
 Search the dump JS bundles — do **not** copy NovelAI UI into Dreamscape.
+
+### Why they shipped (required every dump)
+
+Compare image-app chunks (`pages/image*`, `/imagetools`, large generate-UI chunks such as `5285-*`) and `_app` against the previous dump. Report user-visible deltas in:
+
+- UI chrome / labels / tips / tutorials
+- Generation logic & params surfaces
+- Features (new toggles, panels, workflows)
+- Example / sample prompts
+
+If the build id rolled but product surfaces are unchanged, say **no user-facing delta** explicitly. Do not stop at PE / upscale / model-id critical watch alone.
+
+### Contract diff (API)
 
 | Signal | Where to look | Dreamscape touchpoints |
 |--------|---------------|------------------------|
@@ -110,10 +129,13 @@ Reference captures (local only, **do not commit**): `tmp/v5Gen.txt`, `tmp/v5Sear
 ## Agent rules
 
 1. Run `poll-hashes.js` before expensive dump work.
-2. Never paste JWT/recaptcha from user captures into repo files.
-3. Exclude `tmp/` from commits; dumps stay local.
-4. Match **API contracts** only — Dreamscape UI stays ours.
-5. After contract changes land in StaticForge/NekoAI-JS, refresh `state.json` with `--write`.
+2. Dumps must crawl the **image app** (`/image`, `/imagetools`) — never landing/`_app` only.
+3. Every dump review includes a short **why they shipped** section (or explicit no user-facing delta).
+4. Never paste JWT/recaptcha from user captures into repo files.
+5. Exclude `tmp/` from commits; dumps stay local.
+6. Match **API contracts** for Dreamscape porting — Dreamscape UI stays ours; still *report* NovelAI UI/feature deltas in the embassy brief.
+7. After contract changes land in StaticForge/NekoAI-JS, refresh `state.json` with `--write`.
+8. Never `/ai/generate`. Stay off greg.
 
 ## Related docs
 

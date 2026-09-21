@@ -2,6 +2,13 @@
 
 Cheap daily monitoring of **public** NovelAI surfaces plus an optional Chrome dump when hashes change.
 
+## Standing rules (Frost / Yukimi embassy)
+
+1. **Always crawl the image app** — default dump navigates `https://novelai.net/` → `/image` → `/imagetools` so ResourcesSaver/CDP captures image page shells and generate-UI chunks. Do **not** stop at shared `_app` / landing. Escape hatch only: `--url-only`.
+2. **Every dump report must include “why they shipped”** — UI/logic/features/example prompts (and honest “no user-facing delta” when that is the truth), not only PE / upscale / model-id critical watch.
+
+Never navigate authenticated generate endpoints (`/ai/generate`, etc.). Stay off greg.
+
 ## What this watches (no auth)
 
 | Source | Signal |
@@ -61,6 +68,8 @@ DUMP_HEADLESS=1 DUMP_CHROME_NO_SANDBOX=1 ./scripts/nai-webapp-watch/dump-novelai
 ```bash
 DUMP_HEADLESS=1 DUMP_CHROME_NO_SANDBOX=1 ./scripts/nai-webapp-watch/dump-novelai-webapp.sh
 # optional: CHROME_BIN=/path/to/chrome-for-testing/chrome
+# default crawl: / -> /image -> /imagetools (image app required)
+# escape hatch (not for embassy dumps): --url-only --url https://novelai.net/
 ```
 
 ### Fallback: xvfb headed
@@ -100,11 +109,13 @@ Stop: kill the background shell loop PID.
 
 If running as a Cloud Agent with subscription timers, subscribe `loop-nai-webapp-watch` with `delaySeconds: 86400` and the same prompt. Unsubscribe to stop.
 
-## After a dump — contract diff checklist
+## After a dump — review checklist
 
 See [`.cursor/skills/novelai-webapp-review/SKILL.md`](../../.cursor/skills/novelai-webapp-review/SKILL.md).
 
-Focus on API contracts only (`PE(` caps, model slugs, `params_version`, UC/`Nb()` map, tokenizer `?v=`, `fur dataset` / `background dataset`, Max Enhance, usage math). Do not port NovelAI UI.
+1. Confirm the zip includes **image app** assets (`pages/image-*.js`, `/image` HTML, imagetools / generate-UI chunks) — not landing/`_app` only.
+2. Write a short **why they shipped** section vs the previous dump (UI/logic/features/example prompts). If there is no user-facing delta, say so explicitly.
+3. Also check API contracts (`PE(` caps, model slugs, `params_version`, UC/`Nb()` map, tokenizer `?v=`, `fur dataset` / `background dataset`, Max Enhance, usage math). Do not port NovelAI UI.
 
 ## Files
 
