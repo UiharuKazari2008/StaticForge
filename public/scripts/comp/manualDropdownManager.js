@@ -217,7 +217,8 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
     const groupObj = RESOLUTION_GROUPS.find(g => g.group === group);
     const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
     if (optObj) {
-        manualResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge' + (groupObj.free ? ' free-badge' : '') + '">' + groupObj.badge + '</span>' : ''}`;
+        // public/scripts/comp/utilities.js
+        manualResolutionSelected.innerHTML = formatResolutionSelectedHtml(optObj, groupObj);
     } else {
         manualResolutionSelected.textContent = 'Select resolution...';
     }

@@ -2500,8 +2500,8 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
         const groupObj = RESOLUTION_GROUPS.find(g => g.group === group);
         const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
         if (optObj) {
-            const badge = groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
-            resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${optObj.name}</span>${badge}`;
+            // public/scripts/comp/utilities.js
+            resolutionSelected.innerHTML = formatResolutionSelectedHtml(optObj, groupObj, true);
         } else {
             resolutionSelected.textContent = '---';
         }
@@ -2601,8 +2601,8 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
         resolutionInput.value = value.toLowerCase();
 
         if (optObj) {
-            const badge = groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
-            resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${optObj.name}</span>${badge}`;
+            // public/scripts/comp/utilities.js
+            resolutionSelected.innerHTML = formatResolutionSelectedHtml(optObj, groupObj, true);
         } else {
             resolutionSelected.textContent = '---';
         }
@@ -2902,7 +2902,8 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
 
                 const opt = displayGroup?.options.find(o => o.value === newValue);
                 if (opt && displayGroup) {
-                    resolutionSelected.innerHTML = `${opt.name}${displayGroup.badge ? '<span class="custom-dropdown-badge' + (displayGroup.free ? ' free-badge' : '') + '">' + displayGroup.badge + '</span>' : ''}`;
+                    // public/scripts/comp/utilities.js
+                    resolutionSelected.innerHTML = formatResolutionSelectedHtml(opt, displayGroup);
                 }
 
                 // Update bias orientation
@@ -2955,8 +2956,8 @@ function refreshStageResolutionDisplay(stageId) {
 
         const opt = displayGroup?.options.find(o => o.value === currentValue);
         if (opt && displayGroup) {
-            const badge = displayGroup.badge ? `<span class="custom-dropdown-badge${displayGroup.free ? ' free-badge' : ''}">${displayGroup.badge}</span>` : '';
-            resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${opt.name}</span>${badge}`;
+            // public/scripts/comp/utilities.js
+            resolutionSelected.innerHTML = formatResolutionSelectedHtml(opt, displayGroup, true);
         }
     }
 }

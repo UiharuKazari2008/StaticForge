@@ -854,21 +854,18 @@ async function loadPresetIntoUpdateModal(presetName) {
     const resolutionSelected = document.getElementById('updatePresetResolutionSelected');
     if (resolutionSelected) {
         if (resolutionId && resolutionName !== 'Unchanged') {
-            // Find the group to get badge information
-            let groupBadge = '';
+            let selectedHtml = resolutionName;
             if (RESOLUTION_GROUPS) {
                 for (const group of RESOLUTION_GROUPS) {
                     const found = group.options.find(opt => opt.value.toLowerCase() === resolutionId.toLowerCase());
                     if (found) {
-                        if (group.badge) {
-                            groupBadge = `<span class="custom-dropdown-badge${group.free ? ' free-badge' : ''}">${group.badge}</span>`;
-                        }
+                        // public/scripts/comp/utilities.js
+                        selectedHtml = formatResolutionSelectedHtml(found, group);
                         break;
                     }
                 }
             }
-            
-            resolutionSelected.innerHTML = `${resolutionName}${groupBadge}`;
+            resolutionSelected.innerHTML = selectedHtml;
         } else {
             resolutionSelected.innerHTML = 'Select resolution...';
         }
@@ -1081,8 +1078,8 @@ function renderUpdatePresetResolutionDropdown(selectedValue) {
                 const groupObj = RESOLUTION_GROUPS.find(g => g.group === group);
                 const optObj = groupObj ? groupObj.options.find(o => o.value === value) : null;
                 if (optObj) {
-                    // Format resolution display with badge and group badge like manual resolution dropdown
-                    resolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge' + (groupObj.free ? ' free-badge' : '') + '">' + groupObj.badge + '</span>' : ''}`;
+                    // public/scripts/comp/utilities.js
+                    resolutionSelected.innerHTML = formatResolutionSelectedHtml(optObj, groupObj);
                     resolutionSelected.dataset.value = value;
                 }
                 closeDropdown(resolutionMenu, document.getElementById('updatePresetResolutionDropdownBtn'));

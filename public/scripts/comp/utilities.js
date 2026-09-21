@@ -346,6 +346,28 @@ const RESOLUTION_GROUPS = [
     }
 ];
 
+/**
+ * Closed-control resolution chip HTML (dropdown items keep opt.name).
+ * Free wallpaper (`normal_wallpaper_*`) uses short orientation + light-green WP.
+ * @param {object} opt - RESOLUTION_GROUPS option
+ * @param {object} [group] - RESOLUTION_GROUPS group (badge / free)
+ * @param {boolean} [wrapText] - wrap label in .custom-dropdown-text (pipeline chips)
+ * @returns {string}
+ */
+function formatResolutionSelectedHtml(opt, group, wrapText) {
+    if (!opt) return '';
+    const value = opt.value || '';
+    const isFreeWallpaper = value.startsWith('normal_wallpaper_');
+    const name = isFreeWallpaper
+        ? (value.endsWith('_portrait') ? 'Portrait' : 'Landscape')
+        : opt.name;
+    const badge = isFreeWallpaper ? 'WP' : (group && group.badge);
+    const free = isFreeWallpaper || !!(group && group.free);
+    const text = wrapText ? `<span class="custom-dropdown-text">${name}</span>` : name;
+    if (!badge) return text;
+    return `${text}<span class="custom-dropdown-badge${free ? ' free-badge' : ''}">${badge}</span>`;
+}
+
 /** Exact same aspect ratio as width×height pairs (integer cross-multiply, no floats). */
 function samePixelAspectRatio(w1, h1, w2, h2) {
     return w1 > 0 && h1 > 0 && w2 > 0 && h2 > 0 && w1 * h2 === h1 * w2;
