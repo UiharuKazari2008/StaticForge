@@ -1088,6 +1088,172 @@ function capDimensionsToMaxArea(width, height, maxArea, step = 64, minW = 64, mi
 }
 
 /**
+ * Custom resolution is a ratio entry presented as height × width.
+ * Each size tier is the 64-step area frontier: max legal height per width
+ * under that tier's max area, clamped to min/max per side. Sorted by ratio
+ * so stepping can reach 1:1 and reverse from an extreme without skipping it.
+ */
+const CUSTOM_RESOLUTION_STEP = 64;
+const CUSTOM_RESOLUTION_AREA = {
+    normal: 1048576,
+    large: 2166784,
+    max: 3047424
+};
+
+function customResolutionMaxSide() {
+    let maxSide = UTILS_CONFIG.MAX_DIMENSION;
+    for (let i = 0; i < RESOLUTIONS.length; i++) {
+        const r = RESOLUTIONS[i];
+        if (r.width > maxSide) maxSide = r.width;
+        if (r.height > maxSide) maxSide = r.height;
+    }
+    return maxSide;
+}
+
+function buildLegalCustomResolutions(maxArea, step, minDim, maxDim) {
+    const stepSize = step > 1 ? step : CUSTOM_RESOLUTION_STEP;
+    const minSide = minDim == null ? UTILS_CONFIG.MIN_DIMENSION : minDim;
+    const maxSide = maxDim == null ? customResolutionMaxSide() : maxDim;
+    const items = [];
+    for (let width = minSide; width <= maxSide; width += stepSize) {
+        let height = Math.floor(maxArea / width / stepSize) * stepSize;
+        if (height > maxSide) height = maxSide;
+        while (height >= minSide && width * height > maxArea) height -= stepSize;
+        if (height < minSide) continue;
+        items.push({
+            width,
+            height,
+            ratio: width / height,
+            area: width * height
+        });
+    }
+    return items;
+}
+
+const LEGAL_CUSTOM_RESOLUTIONS = {
+    normal: buildLegalCustomResolutions(CUSTOM_RESOLUTION_AREA.normal),
+    large: buildLegalCustomResolutions(CUSTOM_RESOLUTION_AREA.large),
+    max: buildLegalCustomResolutions(CUSTOM_RESOLUTION_AREA.max)
+};
+
+function resolveCustomResolutionAreaKey(maxArea) {
+    const area = Number(maxArea);
+    if (area === CUSTOM_RESOLUTION_AREA.large) return 'large';
+    if (area === CUSTOM_RESOLUTION_AREA.max) return 'max';
+    if (area === CUSTOM_RESOLUTION_AREA.normal) return 'normal';
+    if (area > CUSTOM_RESOLUTION_AREA.large) return 'max';
+    if (area > CUSTOM_RESOLUTION_AREA.normal) return 'large';
+    return 'normal';
+}
+
+function getLegalCustomResolutions(maxArea) {
+    return LEGAL_CUSTOM_RESOLUTIONS[resolveCustomResolutionAreaKey(maxArea)];
+}
+
+function nextCustomResolutionAreaLimit(currentMaxArea) {
+    const area = Number(currentMaxArea);
+    if (area === CUSTOM_RESOLUTION_AREA.normal) {
+        return { maxArea: CUSTOM_RESOLUTION_AREA.large, name: 'Large' };
+    }
+    if (area === CUSTOM_RESOLUTION_AREA.large) {
+        return { maxArea: CUSTOM_RESOLUTION_AREA.max, name: 'Max' };
+    }
+    return { maxArea: CUSTOM_RESOLUTION_AREA.normal, name: 'Normal' };
+}
+
+function nearestLegalCustomResolution(width, height, maxArea) {
+    const list = getLegalCustomResolutions(maxArea);
+    const w = Math.max(1, Number(width) || 1);
+    const h = Math.max(1, Number(height) || 1);
+    if (!list.length) {
+        return { width: w, height: h, changed: null, reason: null, index: -1 };
+    }
+    const target = w / h;
+    let lo = 0;
+    let hi = list.length - 1;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (list[mid].ratio < target) lo = mid + 1;
+        else hi = mid;
+    }
+    let best = lo;
+    if (lo > 0) {
+        const distLo = Math.abs(Math.log(list[lo].ratio / target));
+        const distPrev = Math.abs(Math.log(list[lo - 1].ratio / target));
+        const pixelLo = Math.abs(list[lo].width - w) + Math.abs(list[lo].height - h);
+        const pixelPrev = Math.abs(list[lo - 1].width - w) + Math.abs(list[lo - 1].height - h);
+        if (distPrev < distLo || (distPrev === distLo && pixelPrev < pixelLo)) {
+            best = lo - 1;
+        }
+    }
+    const hit = list[best];
+    const widthChanged = hit.width !== Math.round(w);
+    const heightChanged = hit.height !== Math.round(h);
+    let changed = null;
+    if (widthChanged && heightChanged) changed = 'both';
+    else if (widthChanged) changed = 'width';
+    else if (heightChanged) changed = 'height';
+    return {
+        width: hit.width,
+        height: hit.height,
+        changed,
+        reason: changed ? 'legal_snap' : null,
+        index: best,
+        area: hit.area,
+        ratio: hit.ratio
+    };
+}
+
+function stepLegalCustomResolution(width, height, maxArea, ratioDir) {
+    const list = getLegalCustomResolutions(maxArea);
+    const w = Number(width) || UTILS_CONFIG.DEFAULT_DIMENSION;
+    const h = Number(height) || UTILS_CONFIG.DEFAULT_DIMENSION;
+    if (!list.length) {
+        return { width: w, height: h, index: -1 };
+    }
+    let idx = -1;
+    for (let i = 0; i < list.length; i++) {
+        if (list[i].width === w && list[i].height === h) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx >= 0) {
+        idx += ratioDir > 0 ? 1 : -1;
+    } else {
+        const target = w / h;
+        if (ratioDir > 0) {
+            idx = -1;
+            for (let i = 0; i < list.length; i++) {
+                if (list[i].ratio > target) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx < 0) idx = list.length - 1;
+        } else {
+            idx = 0;
+            for (let i = list.length - 1; i >= 0; i--) {
+                if (list[i].ratio < target) {
+                    idx = i;
+                    break;
+                }
+            }
+        }
+    }
+    if (idx < 0) idx = 0;
+    if (idx > list.length - 1) idx = list.length - 1;
+    const hit = list[idx];
+    return {
+        width: hit.width,
+        height: hit.height,
+        index: idx,
+        area: hit.area,
+        ratio: hit.ratio
+    };
+}
+
+/**
  * Sanitizes, clamps, enforces max-area constraints, and reports dimension adjustments
  * @param {string|number} rawW - Raw width value (string or number)
  * @param {string|number} rawH - Raw height value (string or number)

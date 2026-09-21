@@ -616,42 +616,16 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
             // Get current values
             const originalWidth = parseInt(widthInput.value) || 1024;
             const originalHeight = parseInt(heightInput.value) || 1024;
-            let width = originalWidth;
-            let height = originalHeight;
-            let currentArea = width * height;
 
             // Get max area for validation
             const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
             const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
-
-            // First, ensure both dimensions are multiples of 64
-            const widthRemainder = width % 64;
-            const heightRemainder = height % 64;
-            let widthChanged = false;
-            let heightChanged = false;
-
-            if (widthRemainder !== 0) {
-                width = widthRemainder >= 32 ? width + (64 - widthRemainder) : width - widthRemainder;
-                width = Math.max(64, width);
-                widthChanged = true;
-            }
-            if (heightRemainder !== 0) {
-                height = heightRemainder >= 32 ? height + (64 - heightRemainder) : height - heightRemainder;
-                height = Math.max(64, height);
-                heightChanged = true;
-            }
-
-            // Recalculate area after stepping
-            currentArea = width * height;
-
-            // If area exceeds max, gcd + 64-grid shrink (same as correctDimensions / server pipeline)
-            if (currentArea > maxArea) {
-                const capped = capDimensionsToMaxArea(width, height, maxArea, 64, 64, 64);
-                width = capped.width;
-                height = capped.height;
-                widthChanged = true;
-                heightChanged = true;
-            }
+            // nearestLegalCustomResolution: public/scripts/comp/utilities.js
+            const result = nearestLegalCustomResolution(originalWidth, originalHeight, maxArea);
+            const width = result.width;
+            const height = result.height;
+            const widthChanged = width !== originalWidth;
+            const heightChanged = height !== originalHeight;
 
             // Update inputs only if values changed
             if (widthChanged || heightChanged) {
@@ -689,7 +663,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
         validateDimensionsWithTimeout();
     });
 
-    // Mouse wheel and keyboard support for width - maintains area while adjusting ratio
+    // Mouse wheel and keyboard support for width — step along the active tier ratio list
     let isWheelUpdating = false;
 
     const updateWidthDimension = (delta) => {
@@ -699,20 +673,13 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
 
         const currentWidth = parseInt(widthInput.value) || 1024;
         const currentHeight = parseInt(heightInput.value) || 1024;
-        const currentArea = currentWidth * currentHeight;
-
-        // Adjust width by 64 pixels (step size) based on scroll direction
-        const newWidth = currentWidth + delta;
-
-        // Calculate new height to maintain area
-        const newHeight = Math.round(currentArea / newWidth);
+        const ratioDir = delta > 0 ? 1 : -1;
 
         // Get max area for validation
         const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
         const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
-
-        // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
-        const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: maxArea });
+        // stepLegalCustomResolution: public/scripts/comp/utilities.js
+        const result = stepLegalCustomResolution(currentWidth, currentHeight, maxArea, ratioDir);
 
         // Update inputs without triggering input events (set directly)
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
@@ -742,7 +709,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
         }
     });
 
-    // Mouse wheel and keyboard support for height - maintains area while adjusting ratio
+    // Mouse wheel and keyboard support for height — step along the active tier ratio list
     const updateHeightDimension = (delta) => {
         if (resolutionInput.value !== 'custom' || isWheelUpdating) return;
 
@@ -750,20 +717,13 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
 
         const currentWidth = parseInt(widthInput.value) || 1024;
         const currentHeight = parseInt(heightInput.value) || 1024;
-        const currentArea = currentWidth * currentHeight;
-
-        // Adjust height by 64 pixels (step size) based on scroll direction
-        const newHeight = currentHeight + delta;
-
-        // Calculate new width to maintain area
-        const newWidth = Math.round(currentArea / newHeight);
+        const ratioDir = delta > 0 ? -1 : 1;
 
         // Get max area for validation
         const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
         const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
-
-        // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
-        const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: maxArea });
+        // stepLegalCustomResolution: public/scripts/comp/utilities.js
+        const result = stepLegalCustomResolution(currentWidth, currentHeight, maxArea, ratioDir);
 
         // Update inputs without triggering input events (set directly)
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);

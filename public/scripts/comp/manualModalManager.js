@@ -3597,6 +3597,27 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             // Fall back to existing resolution field if no dimensions
             resolutionToSet = data.resolution.toLowerCase();
         }
+
+        // Set the active legal set before sanitize so Large/Max custom HxW is not crushed to Normal
+        if (data.width && data.height) {
+            const imageArea = data.width * data.height;
+            const resolutionAreaToggle = document.getElementById('resolutionAreaToggle');
+
+            if (resolutionAreaToggle) {
+                // CUSTOM_RESOLUTION_AREA: public/scripts/comp/utilities.js
+                if (imageArea > CUSTOM_RESOLUTION_AREA.large) {
+                    currentMaxArea = CUSTOM_RESOLUTION_AREA.max;
+                    resolutionAreaToggle.textContent = 'Max';
+                } else if (imageArea > CUSTOM_RESOLUTION_AREA.normal) {
+                    currentMaxArea = CUSTOM_RESOLUTION_AREA.large;
+                    resolutionAreaToggle.textContent = 'Large';
+                } else {
+                    currentMaxArea = CUSTOM_RESOLUTION_AREA.normal;
+                    resolutionAreaToggle.textContent = 'Normal';
+                }
+            }
+        }
+
         await selectManualResolution(resolutionToSet, resolutionGroup);
 
         // Handle custom dimensions after resolution is set
@@ -3609,26 +3630,6 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             }
             // Sanitize dimensions after setting
             sanitizeCustomDimensions();
-        }
-
-        // Update resolution area toggle based on image area
-        if (data.width && data.height) {
-            const imageArea = data.width * data.height;
-            const resolutionAreaToggle = document.getElementById('resolutionAreaToggle');
-
-            if (resolutionAreaToggle) {
-                // Set area limit based on image size
-                if (imageArea > 2166784) {
-                    currentMaxArea = 3047424; // Max (3MP)
-                    resolutionAreaToggle.textContent = 'Max';
-                } else if (imageArea > 1048576) {
-                    currentMaxArea = 2166784; // Large (2MP)
-                    resolutionAreaToggle.textContent = 'Large';
-                } else {
-                    currentMaxArea = 1048576; // Normal (1MP)
-                    resolutionAreaToggle.textContent = 'Normal';
-                }
-            }
         }
 
         if (manualSteps) manualSteps.value = data.steps || 25;

@@ -2640,30 +2640,13 @@ function toggleStageResolutionAreaLimit(stageId) {
         const currentWidth = parseInt(widthInput.value) || 1024;
         const currentHeight = parseInt(heightInput.value) || 1024;
 
-        let newMaxArea;
-        let newAreaName;
-
-        // Toggle between Normal (1MP) → Large (2MP) → Max (3MP)
-        if (currentMaxArea === 1048576) {
-            newMaxArea = 2166784; // Large (2MP)
-            newAreaName = 'Large';
-        } else if (currentMaxArea === 2166784) {
-            newMaxArea = 3047424; // Max (3MP)
-            newAreaName = 'Max';
-        } else {
-            newMaxArea = 1048576; // Normal (1MP)
-            newAreaName = 'Normal';
-        }
-
-        const snapped = dimensionsMaxUnderArea(currentWidth, currentHeight, newMaxArea, 64, UTILS_CONFIG.MIN_DIMENSION, UTILS_CONFIG.MIN_DIMENSION);
-        const result = correctDimensions(snapped.width, snapped.height, {
-            step: 64,
-            maxArea: newMaxArea
-        });
+        // nextCustomResolutionAreaLimit / nearestLegalCustomResolution: public/scripts/comp/utilities.js
+        const nextArea = nextCustomResolutionAreaLimit(currentMaxArea);
+        const result = nearestLegalCustomResolution(currentWidth, currentHeight, nextArea.maxArea);
 
         // Update the max area in dataset AFTER calculation but BEFORE updating inputs
-        areaToggle.dataset.maxArea = newMaxArea.toString();
-        areaToggle.textContent = newAreaName;
+        areaToggle.dataset.maxArea = nextArea.maxArea.toString();
+        areaToggle.textContent = nextArea.name;
 
         // Update inputs without triggering input events
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
@@ -2677,19 +2660,12 @@ function toggleStageResolutionAreaLimit(stageId) {
         updateExpandCanvasStageInsetToggle(stageId);
 
         // Show feedback about the change
-        showGlassToast('info', null, `Resolution scaled to ${result.width}x${result.height} (${newAreaName} area limit)`);
+        showGlassToast('info', null, `Resolution scaled to ${result.width}x${result.height} (${nextArea.name} area limit)`);
     } else {
-        // No custom resolution selected, just toggle the limit
-        if (currentMaxArea === 1048576) {
-            areaToggle.dataset.maxArea = '2166784'; // Large (2MP)
-            areaToggle.textContent = 'Large';
-        } else if (currentMaxArea === 2166784) {
-            areaToggle.dataset.maxArea = '3047424'; // Max (3MP)
-            areaToggle.textContent = 'Max';
-        } else {
-            areaToggle.dataset.maxArea = '1048576'; // Normal (1MP)
-            areaToggle.textContent = 'Normal';
-        }
+        // nextCustomResolutionAreaLimit: public/scripts/comp/utilities.js
+        const nextArea = nextCustomResolutionAreaLimit(currentMaxArea);
+        areaToggle.dataset.maxArea = nextArea.maxArea.toString();
+        areaToggle.textContent = nextArea.name;
     }
 }
 
