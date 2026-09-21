@@ -1244,41 +1244,21 @@ function wireTimeDateWheelInputs() {
         const timeDateDay = document.getElementById('timeDateDay');
         const timeDateMonth = document.getElementById('timeDateMonth');
     
-        if (timeDateHour) {
-            timeDateHour.addEventListener('wheel', function (e) {
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const bindTimeDateWheel = (el, min, max, fallback) => {
+            if (!el) return;
+            const allowTick = createWheelTickGate(400);
+            el.addEventListener('wheel', function (e) {
+                if (!guardWheelTick(e, allowTick)) return;
                 const delta = e.deltaY > 0 ? -1 : 1;
-                const currentValue = parseInt(this.value) || 12;
-                const newValue = Math.max(0, Math.min(23, currentValue + delta));
-                this.value = newValue;
-            }, { passive: true });
-        }
-    
-        if (timeDateMinute) {
-            timeDateMinute.addEventListener('wheel', function (e) {
-                const delta = e.deltaY > 0 ? -1 : 1;
-                const currentValue = parseInt(this.value) || 0;
-                const newValue = Math.max(0, Math.min(59, currentValue + delta));
-                this.value = newValue;
-            }, { passive: true });
-        }
-    
-        if (timeDateDay) {
-            timeDateDay.addEventListener('wheel', function (e) {
-                const delta = e.deltaY > 0 ? -1 : 1;
-                const currentValue = parseInt(this.value) || 15;
-                const newValue = Math.max(1, Math.min(31, currentValue + delta));
-                this.value = newValue;
-            }, { passive: true });
-        }
-    
-        if (timeDateMonth) {
-            timeDateMonth.addEventListener('wheel', function (e) {
-                const delta = e.deltaY > 0 ? -1 : 1;
-                const currentValue = parseInt(this.value) || 6;
-                const newValue = Math.max(1, Math.min(12, currentValue + delta));
-                this.value = newValue;
-            }, { passive: true });
-        }
+                const currentValue = parseInt(this.value) || fallback;
+                this.value = Math.max(min, Math.min(max, currentValue + delta));
+            }, { passive: false });
+        };
+        bindTimeDateWheel(timeDateHour, 0, 23, 12);
+        bindTimeDateWheel(timeDateMinute, 0, 59, 0);
+        bindTimeDateWheel(timeDateDay, 1, 31, 15);
+        bindTimeDateWheel(timeDateMonth, 1, 12, 6);
 }
 
 let dynamicGenerationButtonsWired = false;

@@ -43,8 +43,10 @@ function attachManualGenerationParamsListeners(signal) {
 
     if (manualStrengthValue) {
         manualStrengthValue.addEventListener('input', updateManualPriceDisplay, { signal });
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowStrengthTick = createWheelTickGate(400);
         manualStrengthValue.addEventListener('wheel', function (e) {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowStrengthTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.00;
             const newValue = Math.max(0, Math.min(1, currentValue + delta));
@@ -63,8 +65,10 @@ function attachManualGenerationParamsListeners(signal) {
 
     if (manualNoiseValue) {
         manualNoiseValue.addEventListener('input', updateManualPriceDisplay, { signal });
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowNoiseTick = createWheelTickGate(400);
         manualNoiseValue.addEventListener('wheel', function (e) {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowNoiseTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.00;
             const newValue = Math.max(0, Math.min(1, currentValue + delta));
@@ -83,7 +87,10 @@ function attachManualGenerationParamsListeners(signal) {
 
     let manualStepsWheelTimeout = false;
     if (manualSteps) {
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowStepsTick = createWheelTickGate(400);
         manualSteps.addEventListener('wheel', function (e) {
+            if (!guardWheelTick(e, allowStepsTick)) return;
             const currentValue = parseInt(this.value) || 25;
             const delta = e.deltaY > 0 ? -1 : 1;
 
@@ -116,7 +123,7 @@ function attachManualGenerationParamsListeners(signal) {
             }
             updateManualPriceDisplay();
             updateAllStagesInheritedValues();
-        }, { passive: true, signal });
+        }, { passive: false, signal });
     }
 
     if (manualGuidance) {
@@ -126,20 +133,26 @@ function attachManualGenerationParamsListeners(signal) {
                 showGlassToast('info', 'Guidance', '0 CFG remaps to 5.5 on the server. For near-zero CFG, enter 0.001.', false, 5000);
             }
         }, { signal });
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowGuidanceTick = createWheelTickGate(400);
         manualGuidance.addEventListener('wheel', function (e) {
+            if (!guardWheelTick(e, allowGuidanceTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.01 : 0.1) : (e.shiftKey ? 0.01 : 0.1);
             const currentValue = parseFloat(this.value) || 5.0;
             const newValue = Math.max(0.0, Math.min(10.0, currentValue + delta));
             this.value = newValue.toFixed(2);
             updateAllStagesInheritedValues();
-        }, { passive: true, signal });
+        }, { passive: false, signal });
         manualGuidance.addEventListener('input', () => {
             updateAllStagesInheritedValues();
         }, { signal });
     }
 
     if (manualRescale) {
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowRescaleTick = createWheelTickGate(400);
         manualRescale.addEventListener('wheel', function (e) {
+            if (!guardWheelTick(e, allowRescaleTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.0;
             const newValue = Math.max(0.0, Math.min(1.0, currentValue + delta));
@@ -148,7 +161,7 @@ function attachManualGenerationParamsListeners(signal) {
                 updatePercentageOverlay(manualRescale, manualRescaleOverlay);
             }
             updateAllStagesInheritedValues();
-        }, { passive: true, signal });
+        }, { passive: false, signal });
         if (manualRescaleOverlay) {
             manualRescale.addEventListener('input', () => {
                 updatePercentageOverlay(manualRescale, manualRescaleOverlay);

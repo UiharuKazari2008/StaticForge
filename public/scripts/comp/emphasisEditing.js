@@ -598,8 +598,11 @@ function updateEmphasisEditingFromSlider(value) {
     }
 }
 
+// createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+const allowEmphasisEditingTick = createWheelTickGate(400);
+
 function adjustEmphasisEditingFromWheel(event) {
-    event.preventDefault();
+    if (!guardWheelTick(event, allowEmphasisEditingTick)) return;
     const step = getEmphasisAdjustStep(event.shiftKey);
     const delta = event.deltaY > 0 ? -step : step;
     adjustEmphasisEditing(delta);

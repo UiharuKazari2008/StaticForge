@@ -1764,7 +1764,33 @@ class PromptTextareaToolbar {
         chip.classList.add('toggle-btn');
         if (!chip.hasAttribute('data-state')) chip.setAttribute('data-state', 'off');
         this.wireEmphasisGroupChipContextMenu(chip, toolbar);
+        this.wireEmphasisGroupChipWheel(chip, toolbar);
         return chip;
+    }
+
+    wireEmphasisGroupChipWheel(chip, toolbar) {
+        if (!chip || chip.dataset.emphasisChipWheelWired === '1') return;
+        chip.dataset.emphasisChipWheelWired = '1';
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowChipTick = createWheelTickGate(400);
+        chip.addEventListener('wheel', (e) => {
+            if (!guardWheelTick(e, allowChipTick, { stop: true })) return;
+            const textarea = this.getTextareaFromToolbar(chip);
+            const tb = toolbar || this.getToolbarFromTextarea(textarea);
+            if (!textarea || !tb || this.isStandardTextPromptTextarea(textarea)) return;
+            const step = getEmphasisAdjustStep(e.shiftKey);
+            const delta = e.deltaY > 0 ? -step : step;
+            if (tb.classList.contains('emphasis-mode')) {
+                this.adjustEmphasis(delta, tb);
+                return;
+            }
+            // startEmphasisEditing / adjustEmphasisEditing / applyEmphasisEditing:
+            //   public/scripts/comp/emphasisEditing.js
+            if (!startEmphasisEditing(textarea)) return;
+            adjustEmphasisEditing(delta);
+            applyEmphasisEditing();
+            this.updateEmphasisGroupChip(textarea, tb);
+        }, { passive: false });
     }
 
     wireEmphasisGroupChipContextMenu(chip, toolbar) {
@@ -2414,15 +2440,15 @@ class PromptTextareaToolbar {
 
         const valueEl = emphasisElements.querySelector('.emphasis-value');
         if (valueEl && !valueEl.hasAttribute('data-wheel-attached')) {
+            // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+            const allowEmphasisValueTick = createWheelTickGate(400);
             valueEl.addEventListener('wheel', (e) => {
                 if (!toolbar.classList.contains('emphasis-mode')) return;
-                e.preventDefault();
+                if (!guardWheelTick(e, allowEmphasisValueTick)) return;
                 const step = getEmphasisAdjustStep(e.shiftKey);
                 const delta = e.deltaY > 0 ? -step : step;
-                if (window.adjustEmphasisEditing) {
-                    window.adjustEmphasisEditing(delta);
-                    this.updateEmphasisDisplay(toolbar);
-                }
+                // adjustEmphasisEditing: public/scripts/comp/emphasisEditing.js
+                this.adjustEmphasis(delta, toolbar);
             }, { passive: false });
             valueEl.setAttribute('data-wheel-attached', 'true');
         }

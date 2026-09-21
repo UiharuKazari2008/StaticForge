@@ -272,8 +272,10 @@ function initializeMaskEditor() {
         });
 
         // Mouse wheel handler for scrolling
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowBrushSizeTick = createWheelTickGate(400);
         brushSizeInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
+            if (!guardWheelTick(e, allowBrushSizeTick)) return;
             const delta = e.deltaY > 0 ? -1 : 1;
             const currentValue = parseInt(this.value) || 3;
             const newValue = Math.max(1, Math.min(10, currentValue + delta));
@@ -456,14 +458,17 @@ function invertMask() {
     setTool(currentTool === 'eraser' ? 'brush' : 'eraser');
 }
 
+// createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+const allowCanvasBrushTick = createWheelTickGate(400);
+
 // Handle canvas wheel for brush size adjustment
 function handleCanvasWheel(e) {
     // Only handle wheel events when the editor is actually open and canvas is ready
     if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
         return; // Silently ignore if editor isn't ready
     }
-    
-    e.preventDefault();
+
+    if (!guardWheelTick(e, allowCanvasBrushTick)) return;
     const delta = e.deltaY > 0 ? 1 : -1;
     const currentValue = brushSize;
     const newValue = Math.max(1, Math.min(10, currentValue + delta));
