@@ -1176,12 +1176,16 @@ function wireEnhanceDialog(dialog, scaleOptions) {
             selected.textContent = noise ? noise.display : (value || 'Inherited');
         }
     };
-    wireEnhanceDialogClickMenu(
-        document.getElementById('enhanceNoiseSchedulerBtn'),
-        [{ value: '', name: 'Inherited' }, ...NOISE_MAP.map((entry) => ({ value: entry.meta, name: entry.display }))],
-        selectNoiseScheduler,
-        () => document.getElementById('enhanceNoiseSchedulerHidden')?.value || ''
-    );
+    // getForgeModelFeatures / updateV3ModelVisibility: public/scripts/comp/utilities.js
+    if (getForgeModelFeatures()?.noiseScheduleUi !== false) {
+        wireEnhanceDialogClickMenu(
+            document.getElementById('enhanceNoiseSchedulerBtn'),
+            [{ value: '', name: 'Inherited' }, ...NOISE_MAP.map((entry) => ({ value: entry.meta, name: entry.display }))],
+            selectNoiseScheduler,
+            () => document.getElementById('enhanceNoiseSchedulerHidden')?.value || ''
+        );
+    }
+    updateV3ModelVisibility();
 
     wireEnhancePercentInput('enhanceStrengthInput', 'enhanceStrengthOverlay');
     wireEnhancePercentInput('enhanceNoiseInput', 'enhanceNoiseOverlay');
@@ -1309,7 +1313,7 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
                     </button>
                     <input type="hidden" id="enhanceSamplerHidden" value="">
                 </div>
-                <div class="form-group">
+                <div id="enhanceNoiseSchedulerGroup" class="form-group">
                     <label>Noise Scheduler</label>
                     <button type="button" id="enhanceNoiseSchedulerBtn" class="custom-dropdown-btn hover-show colored">
                         <span id="enhanceNoiseSchedulerSelected">Inherited</span>

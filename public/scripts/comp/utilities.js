@@ -897,6 +897,29 @@ function updateV3ModelVisibility() {
         varietyEnabled = false;
     }
 
+    // V5 forces karras on the wire (noiseScheduleUi: false). Hide schedule chrome like Variety+.
+    const noiseOn = !(caps && caps.noiseScheduleUi === false);
+    document.querySelectorAll('#expansionNoiseSchedulerGroup, #enhanceNoiseSchedulerGroup').forEach((group) => {
+        if (noiseOn) {
+            group.classList.remove('hidden');
+        } else {
+            group.classList.add('hidden');
+        }
+    });
+    document.querySelectorAll('[data-noise-schedule-ui]').forEach((el) => {
+        if (noiseOn) {
+            el.classList.remove('hidden');
+        } else {
+            el.classList.add('hidden');
+        }
+    });
+    // selectManualNoiseScheduler / updateSamplerDisplay: public/scripts/comp/manualDropdownManager.js
+    if (!noiseOn && manualSelectedNoiseScheduler && manualSelectedNoiseScheduler !== 'karras') {
+        selectManualNoiseScheduler('karras');
+    } else {
+        updateSamplerDisplay();
+    }
+
     // Store the V3 state for later use (use window reference if available)
     if (window.isV3ModelSelected !== undefined) {
         window.isV3ModelSelected = isV3Selected;
