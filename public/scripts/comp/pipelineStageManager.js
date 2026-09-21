@@ -537,6 +537,10 @@ function addPipelineStage(type, options = {}) {
     wirePipelineStageControls(stageId, options);
 
     wirePipelineStageDisplayNameInput(stageId);
+
+    // Newly created variety+ / noise-schedule chrome must match the current model caps.
+    // updateV3ModelVisibility: public/scripts/comp/utilities.js
+    updateV3ModelVisibility();
 }
 
 function getManagedStageElements() {
@@ -1657,6 +1661,10 @@ function loadPipelineStages(stagesArray, stageSeeds = null) {
     // Update button states after loading all stages
     updateStageButtonStates();
     enforceManagedStageSandwichRules();
+
+    // Recreated stage chrome (variety+, noise schedule) must re-apply model caps.
+    // updateV3ModelVisibility: public/scripts/comp/utilities.js
+    updateV3ModelVisibility();
 }
 
 // Update existing stages with seeds from stage_seeds array
@@ -3260,9 +3268,16 @@ function renderStageSamplerDropdown(stageId, selectedValue) {
         menu.appendChild(option);
     });
 
+    // V5 / curated: omit schedule picks when the studio model cap says so.
+    // getForgeModelFeatures: public/scripts/comp/utilities.js
+    if (getForgeModelFeatures()?.noiseScheduleUi === false) {
+        return;
+    }
+
     // Add noise scheduler section header
     const noiseHeader = document.createElement('div');
     noiseHeader.className = 'custom-dropdown-group';
+    noiseHeader.dataset.noiseScheduleUi = 'true';
     noiseHeader.textContent = 'Noise Scheduler';
     menu.appendChild(noiseHeader);
 
@@ -3273,6 +3288,7 @@ function renderStageSamplerDropdown(stageId, selectedValue) {
         option.tabIndex = 0;
         option.dataset.value = noise.meta;
         option.dataset.group = 'noise';
+        option.dataset.noiseScheduleUi = 'true';
         option.innerHTML = `<span>${noise.display}</span>`;
 
         option.addEventListener('click', () => {
@@ -3343,8 +3359,10 @@ function updateStageSamplerDisplay(stageId) {
 
         // Determine if noise scheduler badge should be shown (exact same as manual modal)
         // Show badge if: (sampler is dpmpp_2m AND noise is NOT exponential) OR (sampler is NOT dpmpp_2m AND noise is NOT karras)
-        const showNoiseBadge = (samplerValue === 'k_dpmpp_2m' && noiseValue !== 'exponential') ||
-            (samplerValue !== 'k_dpmpp_2m' && noiseValue !== 'karras');
+        // getForgeModelFeatures: public/scripts/comp/utilities.js
+        const noiseOn = !(getForgeModelFeatures()?.noiseScheduleUi === false);
+        const showNoiseBadge = noiseOn && ((samplerValue === 'k_dpmpp_2m' && noiseValue !== 'exponential') ||
+            (samplerValue !== 'k_dpmpp_2m' && noiseValue !== 'karras'));
 
         const is2xSampler = samplerValue === 'k_dpmpp_sde' || samplerValue === 'k_dpmpp_2m_sde' || samplerValue === 'k_dpmpp_2s_ancestral';
         const costHint = document.getElementById(`${stageId}_samplerCostHint`);

@@ -375,9 +375,16 @@ function renderManualSamplerDropdown(selectedVal) {
         manualSamplerDropdownMenu.appendChild(option);
     });
 
+    // V5 / curated: noiseScheduleUi false — omit schedule picks (same gate as Variety+).
+    // getForgeModelFeatures: public/scripts/comp/utilities.js
+    if (getForgeModelFeatures()?.noiseScheduleUi === false) {
+        return;
+    }
+
     // Add noise scheduler section header
     const noiseHeader = document.createElement('div');
     noiseHeader.className = 'custom-dropdown-group';
+    noiseHeader.dataset.noiseScheduleUi = 'true';
     noiseHeader.textContent = 'Noise Scheduler';
     manualSamplerDropdownMenu.appendChild(noiseHeader);
     
@@ -388,6 +395,7 @@ function renderManualSamplerDropdown(selectedVal) {
         option.tabIndex = 0;
         option.dataset.value = noise.meta;
         option.dataset.noiseOption = 'true';
+        option.dataset.noiseScheduleUi = 'true';
         option.innerHTML = `<span>${noise.display}</span>`;
 
         const action = () => {
@@ -461,8 +469,10 @@ function updateSamplerDisplay() {
 
         // Determine if noise scheduler badge should be shown
         // Show badge if: (sampler is dpmpp_2m AND noise is NOT exponential) OR (sampler is NOT dpmpp_2m AND noise is NOT karras)
-        const showNoiseBadge = (manualSelectedSampler === 'k_dpmpp_2m' && manualSelectedNoiseScheduler !== 'exponential') ||
-                              (manualSelectedSampler !== 'k_dpmpp_2m' && manualSelectedNoiseScheduler !== 'karras');
+        // getForgeModelFeatures: public/scripts/comp/utilities.js
+        const noiseOn = !(getForgeModelFeatures()?.noiseScheduleUi === false);
+        const showNoiseBadge = noiseOn && ((manualSelectedSampler === 'k_dpmpp_2m' && manualSelectedNoiseScheduler !== 'exponential') ||
+                              (manualSelectedSampler !== 'k_dpmpp_2m' && manualSelectedNoiseScheduler !== 'karras'));
 
         const is2xSampler = manualSelectedSampler === 'k_dpmpp_sde' || manualSelectedSampler === 'k_dpmpp_2m_sde' || manualSelectedSampler === 'k_dpmpp_2s_ancestral';
         const costHint = document.getElementById('manualSamplerCostHint');
@@ -683,13 +693,16 @@ function selectManualModel(value, group, preventPropagation = false) {
         updatePromptStatusIcons();
     }
 
+    // Always apply model feature caps to chrome (variety+, noise schedule, vibe).
+    // preventPropagation skips the heavier model-change side effects below, but
+    // clear / init / MCP restore still need the same gates as the dropdown handler.
+    // updateV3ModelVisibility: public/scripts/comp/utilities.js
+    updateV3ModelVisibility();
+
     if (preventPropagation) return;
 
     // Migrate params when switching into/out of V5 (clear unsupported vibe / precise ref)
     migrateManualParamsForModelChange(previousModel, manualSelectedModel);
-
-    // Update UI visibility based on model selection
-    updateV3ModelVisibility();
     renderDatasetDropdown();
     updateSubTogglesButtonState();
     renderUcPresetsDropdown();

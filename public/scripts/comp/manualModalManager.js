@@ -2143,6 +2143,10 @@ function clearManualForm() {
     updateCreativeDirectiveVisibility();
 
     updatePresetLoadSaveState();
+
+    // selectManualModel(..., true) used to skip chrome caps; re-apply after reset.
+    // updateV3ModelVisibility: public/scripts/comp/utilities.js
+    updateV3ModelVisibility();
 }
 
 /**
@@ -3104,6 +3108,7 @@ async function openManualModalWithContent(content = null, event = null) {
                     presetData.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
                 }
 
+                presetData = applyForgeEditorInputToMetadata(presetData);
                 if (typeof convertMetadataEmphasisToManaged === 'function') {
                     presetData = convertMetadataEmphasisToManaged(presetData);
                 }
@@ -3114,6 +3119,7 @@ async function openManualModalWithContent(content = null, event = null) {
             }
         } else if (loadMetadata) {
             updateSplashScreenStatus('Loading metadata...');
+            loadMetadata = applyForgeEditorInputToMetadata(loadMetadata);
             if (typeof convertMetadataEmphasisToManaged === 'function') {
                 loadMetadata = convertMetadataEmphasisToManaged(loadMetadata);
             }
@@ -3458,6 +3464,33 @@ async function restoreGalleryState() {
     }
 }
 
+/**
+ * Prefer editor input (forge_data.input_prompt + datasets + allCharacters)
+ * over the compiled/flattened fields stored on generation metadata.
+ * Same remap as modules/pngMetadata.js extractRelevantFields (gallery load).
+ */
+function applyForgeEditorInputToMetadata(data) {
+    if (!data || typeof data !== 'object') return data;
+    const forgeData = data.forge_data || {};
+    const next = Object.assign({}, data);
+    if (forgeData.input_prompt !== undefined) {
+        next.prompt = forgeData.input_prompt;
+        next.uc = forgeData.input_uc || '';
+    }
+    if ((next.input_prompt_negative == null || next.input_prompt_negative === '')
+        && forgeData.input_prompt_negative !== undefined) {
+        next.input_prompt_negative = forgeData.input_prompt_negative;
+    }
+    if (!next.dataset_config && forgeData.dataset_config) {
+        next.dataset_config = forgeData.dataset_config;
+    }
+    if ((!next.allCharacterPrompts || !next.allCharacterPrompts.length)
+        && Array.isArray(forgeData.allCharacters) && forgeData.allCharacters.length) {
+        next.allCharacterPrompts = forgeData.allCharacters;
+    }
+    return next;
+}
+
 async function loadIntoManualForm(type = 'metadata', source, image = null) {
     try {
         updateSplashScreenStatus('Loading File...');
@@ -3508,6 +3541,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
         // Common form population
         updateSplashScreenStatus('Configuring Parameters...');
+        data = applyForgeEditorInputToMetadata(data);
         if (manualPrompt) {
             manualPrompt.value = data.prompt || '';
         }
@@ -4507,6 +4541,10 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             await requestDynamicContextResolution();
         }
         updateSplashScreenStatus('');
+
+        // Pipeline restore recreates variety+ / noise-schedule chrome after model select.
+        // updateV3ModelVisibility: public/scripts/comp/utilities.js
+        updateV3ModelVisibility();
     } catch (error) {
         console.error('Error loading into form:', error);
         showError('Failed to load data');
