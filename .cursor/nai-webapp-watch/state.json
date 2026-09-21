@@ -1,23 +1,23 @@
 {
   "version": 1,
-  "capturedAt": "2026-08-30T08:41:33.906Z",
+  "capturedAt": "2026-09-21T15:08:50.539Z",
   "policy": "Public endpoints only. No JWT, recaptcha, cookies, or generate APIs.",
   "sources": {
     "home": {
       "url": "https://novelai.net/",
       "status": 200,
-      "bytes": 196159,
+      "bytes": 152766,
       "chunkCount": 10,
-      "chunkPathsSha256": "733cdfacd9f47f6b3b865fd8b68f723593b616fa13d3475f4f9db97823b65f7b",
+      "chunkPathsSha256": "31b73a17b29b786c040cfec076368e4495dc4e4d67ea3ebe8a67d4fe67154289",
       "chunkPathsSample": [
-        "/_next/static/chunks/473-fb905fc5ea13ac66.js",
+        "/_next/static/chunks/133-b47bc6fc8cb2d637.js",
+        "/_next/static/chunks/1458-731ab0e50e5410f1.js",
+        "/_next/static/chunks/4870-2c40351ed4c49087.js",
         "/_next/static/chunks/7311-5eb2760447762c74.js",
-        "/_next/static/chunks/9349-fac95c97052448b0.js",
-        "/_next/static/chunks/9730-9747e71f09eace79.js",
         "/_next/static/chunks/framework-7e74bf61ca06990a.js",
-        "/_next/static/chunks/main-c61b782a85a9763f.js",
-        "/_next/static/chunks/pages/_app-d4b965a7fb59e75a.js",
-        "/_next/static/chunks/pages/lp/legacy-edbd69d341705cc2.js"
+        "/_next/static/chunks/main-1d6d1adb59bd2fdf.js",
+        "/_next/static/chunks/pages/_app-82fe03e3291d150d.js",
+        "/_next/static/chunks/pages/index-f7fb0e87465d6f82.js"
       ]
     },
     "updateReload": {
@@ -38,10 +38,10 @@
     "journalV5": {
       "url": "https://journal.novelai.net/image-generation-novelai-diffusion-v5-is-here-c2df7c6b8d2d/",
       "status": 200,
-      "bytes": 36711,
+      "bytes": 44804,
       "etag": null,
       "lastModified": null,
-      "sha256": "e672b8f71510a5cd5a4c76b5281504ed4206462732c7c2e9a5669bd587a3b528"
+      "sha256": "e556330ef5d2ecf4e307a31ab9a3220e12e736e67db4434710a82e8e3a85a585"
     },
     "blogUsage": {
       "url": "https://blog.novelai.net/subscription-updates-usage-limits-2025-88a208d5d9c5",
