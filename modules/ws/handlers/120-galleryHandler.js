@@ -124,7 +124,7 @@ async function buildGalleryHint(handlers, workspaceId) {
     };
 }
 
-async function buildGalleryRowForFilename(handlers, clientInfo, viewType, filename, workspaceIdHint) {
+async function buildGalleryRowForFilename(handlers, clientInfo, viewType, filename, workspaceIdHint, prefetchedLightMap = null) {
     if (!filename) {
         return null;
     }
@@ -143,7 +143,7 @@ async function buildGalleryRowForFilename(handlers, clientInfo, viewType, filena
             // Prefer hot/lightweight dims so PhotoSwipe does not fall back to 1024×1024.
             if (!row.width || !row.height) {
                 try {
-                    const lightMap = await metadataDb.getLightweightMetadata([filename]);
+                    const lightMap = prefetchedLightMap || await metadataDb.getLightweightMetadata([filename]);
                     const meta = lightMap?.[filename];
                     if (meta?.width && meta?.height) {
                         row.width = meta.width;
@@ -159,7 +159,7 @@ async function buildGalleryRowForFilename(handlers, clientInfo, viewType, filena
     // Materialized index can lag hot ownership writes — synthesize from lightweight metadata
     // instead of returning an unrelated head item.
     try {
-        const lightMap = await metadataDb.getLightweightMetadata([filename]);
+        const lightMap = prefetchedLightMap || await metadataDb.getLightweightMetadata([filename]);
         const meta = lightMap?.[filename];
         if (!meta) {
             return null;
@@ -222,8 +222,12 @@ async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options 
 
     if (action === 'append_top' && appendFilenames.length > 0) {
         const newItems = [];
+        // Pre-fetch lightweight metadata for the entire batch to eliminate N+1 DB roundtrips.
+        // buildGalleryRowForFilename normally fetches this per-item on fallback paths.
+        const batchedLightMap = await metadataDb.getLightweightMetadata(appendFilenames);
+
         for (const filename of appendFilenames) {
-            const newItem = await buildGalleryRowForFilename(handlers, clientInfo, viewType, filename, workspaceId);
+            const newItem = await buildGalleryRowForFilename(handlers, clientInfo, viewType, filename, workspaceId, batchedLightMap);
             if (newItem) {
                 newItems.push(newItem);
             }
