@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Chrome + CDP dump of novelai.net public assets (ResourcesSaverExt overlay).
 #
+# Standing rule: default crawl is / -> /image -> /imagetools so the image app
+# page shells and generate-UI chunks are captured (not landing/_app only).
+#
 # Prefer Chrome for Testing: DUMP_HEADLESS=1 + --headless=new works when Chrome
 # honors --load-extension (CFT 152.x). Branded google-chrome-stable 151.x
 # ignores --load-extension (Hangouts background_page; dump times out).

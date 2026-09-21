@@ -19,6 +19,9 @@
  *   DUMP_HEADLESS=1 DUMP_CHROME_NO_SANDBOX=1 ./scripts/nai-webapp-watch/dump-novelai-webapp.sh
  *   node scripts/nai-webapp-watch/dump-novelai-webapp.js --out tmp/nai-webapp-dumps
  *   node scripts/nai-webapp-watch/dump-novelai-webapp.js --dry-check
+ *
+ * Default crawl: novelai.net/ -> /image -> /imagetools (image app required for embassy dumps).
+ * Escape hatch: --url-only --url URL
  */
 
 const fs = require('fs');
@@ -35,12 +38,20 @@ const EXT_PATH = process.env.RESOURCES_SAVER_EXT_PATH
     : DEFAULT_EXT;
 const DEFAULT_OUT = path.join(ROOT, 'tmp', 'nai-webapp-dumps');
 const TARGET_URL = 'https://novelai.net/';
+// Standing rule (Frost / Yukimi embassy): always crawl the image app, not just landing/_app.
+const DEFAULT_CRAWL_URLS = [
+    'https://novelai.net/',
+    'https://novelai.net/image',
+    'https://novelai.net/imagetools'
+];
 
 function parseArgs(argv) {
     const opts = {
         out: DEFAULT_OUT,
         url: TARGET_URL,
-        timeoutMs: 120000,
+        urls: null, // filled after parse; default DEFAULT_CRAWL_URLS unless --url-only
+        urlOnly: false,
+        timeoutMs: 180000,
         dryCheck: false,
         headless: process.env.DUMP_HEADLESS === '1' || process.env.DUMP_HEADLESS === 'true',
         port: Number(process.env.DUMP_CDP_PORT || 0) || 0,
@@ -50,6 +61,9 @@ function parseArgs(argv) {
         const arg = argv[i];
         if (arg === '--out' && argv[i + 1]) opts.out = path.resolve(argv[++i]);
         else if (arg === '--url' && argv[i + 1]) opts.url = argv[++i];
+        else if (arg === '--urls' && argv[i + 1]) {
+            opts.urls = argv[++i].split(',').map((u) => u.trim()).filter(Boolean);
+        } else if (arg === '--url-only') opts.urlOnly = true;
         else if (arg === '--timeout' && argv[i + 1]) opts.timeoutMs = Number(argv[++i]);
         else if (arg === '--port' && argv[i + 1]) opts.port = Number(argv[++i]);
         else if (arg === '--dry-check') opts.dryCheck = true;
@@ -57,6 +71,20 @@ function parseArgs(argv) {
         else if (arg === '--headed') opts.headless = false;
         else if (arg === '--help' || arg === '-h') opts.help = true;
     }
+    if (!opts.urls) {
+        if (opts.urlOnly) {
+            opts.urls = [opts.url];
+        } else if (opts.url !== TARGET_URL) {
+            // Explicit --url: crawl that URL plus image app routes (de-duped).
+            opts.urls = [...new Set([opts.url].concat(
+                DEFAULT_CRAWL_URLS.filter((d) => d !== TARGET_URL)
+            ))];
+        } else {
+            opts.urls = DEFAULT_CRAWL_URLS.slice();
+        }
+    }
+    // Primary url for reports = last crawl target (image app) when multi-crawl
+    opts.url = opts.urls[opts.urls.length - 1] || opts.url;
     return opts;
 }
 
@@ -439,6 +467,13 @@ class CdpSession {
         this.eventHandlers.get(method).push(handler);
     }
 
+    off(method, handler) {
+        const handlers = this.eventHandlers.get(method);
+        if (!handlers) return;
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+    }
+
     send(method, params = {}, timeoutMs = 120000) {
         const id = this.nextId++;
         const payload = JSON.stringify({ id, method, params });
@@ -676,14 +711,27 @@ async function runDump(opts) {
             downloadFile = params.suggestedFilename || downloadFile;
         });
 
-        const nav = await session.send('Page.navigate', { url: opts.url });
-        if (nav && nav.errorText) throw new Error('navigate failed: ' + nav.errorText);
-
-        await Promise.race([
-            new Promise((resolve) => { session.on('Page.loadEventFired', resolve); }),
-            sleep(Math.min(opts.timeoutMs, 60000))
-        ]);
-        await sleep(3000);
+        const crawlUrls = opts.urls && opts.urls.length ? opts.urls : [opts.url];
+        console.error('[nai-webapp-dump] crawl order:', crawlUrls.join(' -> '));
+        for (let i = 0; i < crawlUrls.length; i++) {
+            const crawlUrl = crawlUrls[i];
+            console.error('[nai-webapp-dump] navigate', (i + 1) + '/' + crawlUrls.length, crawlUrl);
+            const nav = await session.send('Page.navigate', { url: crawlUrl });
+            if (nav && nav.errorText) throw new Error('navigate failed (' + crawlUrl + '): ' + nav.errorText);
+            await Promise.race([
+                new Promise((resolve) => {
+                    const onLoad = () => {
+                        session.off('Page.loadEventFired', onLoad);
+                        resolve();
+                    };
+                    session.on('Page.loadEventFired', onLoad);
+                }),
+                sleep(Math.min(opts.timeoutMs, 60000))
+            ]);
+            // Let lazy image-app chunks settle (ResourcesSaver captures loaded resources).
+            await sleep(i === crawlUrls.length - 1 ? 4000 : 2500);
+        }
+        opts.url = crawlUrls[crawlUrls.length - 1];
 
         const requestId = 'save-' + Date.now();
         const MSG_SAVE = "RESOURCES_SAVER_AUTOMATION_SAVE";
@@ -747,7 +795,8 @@ async function runDump(opts) {
             chromeBin,
             chromeSource: resolved.source,
             chromeForTesting: !!(resolved.identity && resolved.identity.forTesting) || resolved.source === 'chrome-for-testing',
-            note: 'Dump stays under tmp/ (gitignored). Never commit JWT/recaptcha captures. Prefer CFT + DUMP_HEADLESS=1; xvfb headed is the fallback if CFT is missing. Containers: DUMP_CHROME_NO_SANDBOX=1.'
+            crawlUrls: crawlUrls,
+            note: 'Dump stays under tmp/ (gitignored). Always crawls /image (+ /imagetools) so image page chunks are captured — not landing/_app only. Post-dump: include a short why-shipped section (UI/logic/features/example prompts), not only PE/upscale/model-id. Never commit JWT/recaptcha. Prefer CFT + DUMP_HEADLESS=1; xvfb headed fallback. Containers: DUMP_CHROME_NO_SANDBOX=1.'
         };
         console.log('[nai-webapp-dump]', JSON.stringify(report));
         if (!report.ok) process.exitCode = 2;
@@ -770,12 +819,16 @@ async function main() {
         console.log('Usage: node scripts/nai-webapp-watch/dump-novelai-webapp.js [options]\n');
         console.log('Options:');
         console.log('  --out DIR       Output directory (default: tmp/nai-webapp-dumps)');
-        console.log('  --url URL       Target URL (default: https://novelai.net/)');
-        console.log('  --timeout MS    Overall timeout (default: 120000)');
+        console.log('  --url URL       Extra/override start URL (default crawl still includes /image)');
+        console.log('  --urls A,B,C    Explicit crawl list (comma-separated; skips default list)');
+        console.log('  --url-only      Crawl only --url (escape hatch; NOT recommended for embassy dumps)');
+        console.log('  --timeout MS    Overall timeout (default: 180000; multi-page crawl)');
         console.log('  --port N        CDP port (default: ephemeral)');
         console.log('  --dry-check     Launch browser+extension+CDP only; do not navigate/save');
         console.log('  --headless      Use --headless=new (works with Chrome for Testing)');
         console.log('  --headed        Force headed mode (xvfb fallback; dump-novelai-webapp.sh)');
+        console.log('\nDefault crawl: https://novelai.net/ -> /image -> /imagetools');
+        console.log('Standing rule: capture image app chunks, not landing/_app only.');
         console.log('\nEnv:');
         console.log('  CHROME_BIN                 Chrome for Testing binary (preferred over branded)');
         console.log('  DUMP_HEADLESS=1            --headless=new (works when Chrome honors --load-extension)');
