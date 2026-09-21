@@ -480,8 +480,9 @@ function setupExpandCanvasStageEvents(stageId) {
             const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
             if (resolutionSelected) {
                 const groupObj = RESOLUTION_GROUPS.find(g => g.group === newResolution.group);
-                const badge = groupObj && groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
-                resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${newResolution.name}</span>${badge}`;
+                const optObj = groupObj && groupObj.options.find(o => o.value === newResolution.value);
+                // public/scripts/comp/utilities.js
+                resolutionSelected.innerHTML = formatResolutionSelectedHtml(optObj || newResolution, groupObj, true);
             }
 
             // Update bias orientation and cascade downstream
@@ -1084,8 +1085,9 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
             if (resolutionSelected) {
                 const groupObj = RESOLUTION_GROUPS.find(g => g.group === newResolution.group);
-                const badge = groupObj && groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
-                resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${newResolution.name}</span>${badge}`;
+                const optObj = groupObj && groupObj.options.find(o => o.value === newResolution.value);
+                // public/scripts/comp/utilities.js
+                resolutionSelected.innerHTML = formatResolutionSelectedHtml(optObj || newResolution, groupObj, true);
             }
 
             // Update bias orientation and cascade downstream
