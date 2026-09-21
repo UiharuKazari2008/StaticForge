@@ -195,6 +195,17 @@ assert.ok(!(hopPreset.width === 832 && hopPreset.height === 1216 && customPair.w
 const overRatio = nearestLegalCustomResolutionFromRatio(20, 1, CUSTOM_RESOLUTION_AREA.normal);
 assert.ok(overRatio.width * overRatio.height <= CUSTOM_RESOLUTION_AREA.normal);
 
+const appHtml = fs.readFileSync(path.join(__dirname, '../public/app.html'), 'utf8');
+assert.ok(appHtml.includes('id="manualCustomResolutionBtn"'), 'exit btn stays');
+assert.ok(appHtml.includes('id="manualRatio"'), 'ratio input in custom bank');
+assert.ok(appHtml.includes('id="manualRatioPreview"'), 'ratio preview in custom bank');
+assert.ok(appHtml.indexOf('manualCustomResolutionBtn') < appHtml.indexOf('manualRatio'));
+assert.ok(!/SCROLL/i.test(appHtml.slice(appHtml.indexOf('manualCustomResolution'), appHtml.indexOf('saveStage0Btn'))));
+
+const stageSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/pipelineStageManager.js'), 'utf8');
+assert.ok(stageSrc.includes('${stageId}_ratio'));
+assert.ok(stageSrc.includes('${stageId}_ratioPreview'));
+
 console.log('test-custom-resolution-legal: ok', {
     normal: LEGAL_CUSTOM_RESOLUTIONS.normal.length,
     large: LEGAL_CUSTOM_RESOLUTIONS.large.length,
