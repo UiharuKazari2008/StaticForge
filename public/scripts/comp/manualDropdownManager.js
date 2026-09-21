@@ -2925,8 +2925,7 @@ function checkAndSanitizeCustomDimensions() {
     
             applyManualCustomDimensions(result.width, result.height, false);
     
-            // Show feedback if a dimension was adjusted
-            if (result.changed) {
+            if (result.changed && !isCustomRatioMode(manualSelectedResolution)) {
                 showGlassToast('warning', null, `Dimensions snapped to nearest legal ${result.width}x${result.height}`);
             }
             
@@ -3127,7 +3126,9 @@ function validateManualDimensionsWithTimeout() {
             updateManualUpscaleToggleState();
             debouncedCropImageToResolution();
 
-            showGlassToast('warning', null, `Dimensions snapped to nearest legal ${width}x${height}`);
+            if (!isCustomRatioMode(manualSelectedResolution)) {
+                showGlassToast('warning', null, `Dimensions snapped to nearest legal ${width}x${height}`);
+            }
         }
     }, 100);
 }
@@ -3236,9 +3237,25 @@ function commitManualRatioInput() {
         debouncedCropImageToResolution();
     }
     updatePipelineStages();
-    if (result.changed) {
-        showGlassToast('warning', null, `Ratio snapped to ${formatAspectRatio(result.width, result.height)} (${result.width}x${result.height})`);
+}
+
+function stepManualRatioFromCurrent(ratioDir) {
+    if (!isCustomRatioMode(manualSelectedResolution)) return;
+    const current = readManualCustomDimensions() || { width: 1024, height: 1024 };
+    // stepLegalCustomResolution: public/scripts/comp/utilities.js
+    const result = stepLegalCustomResolution(current.width, current.height, currentMaxArea, ratioDir);
+    applyManualCustomDimensions(result.width, result.height, true);
+    updateManualPriceDisplay();
+    if (typeof debouncedCropImageToResolution === 'function') {
+        debouncedCropImageToResolution();
     }
+}
+
+function onManualRatioWheel(e) {
+    if (!isCustomRatioMode(manualSelectedResolution)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    stepManualRatioFromCurrent(e.deltaY > 0 ? -1 : 1);
 }
 
 function wireManualRatioInput() {
@@ -3258,15 +3275,15 @@ function wireManualRatioInput() {
         if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
         if (!isCustomRatioMode(manualSelectedResolution)) return;
         e.preventDefault();
-        const current = readManualCustomDimensions() || { width: 1024, height: 1024 };
-        const ratioDir = e.key === 'ArrowUp' ? 1 : -1;
-        const result = stepLegalCustomResolution(current.width, current.height, currentMaxArea, ratioDir);
-        applyManualCustomDimensions(result.width, result.height, true);
-        updateManualPriceDisplay();
-        if (typeof debouncedCropImageToResolution === 'function') {
-            debouncedCropImageToResolution();
-        }
+        stepManualRatioFromCurrent(e.key === 'ArrowUp' ? 1 : -1);
     });
+
+    const guts = document.getElementById('manualCustomRatioGuts') || (manualRatio && manualRatio.parentElement);
+    const wheelTarget = guts || manualRatio;
+    if (wheelTarget && wheelTarget.dataset.ratioWheelWired !== 'true') {
+        wheelTarget.dataset.ratioWheelWired = 'true';
+        wheelTarget.addEventListener('wheel', onManualRatioWheel, { passive: false });
+    }
 }
 
 function wireManualModalListenerScope() {

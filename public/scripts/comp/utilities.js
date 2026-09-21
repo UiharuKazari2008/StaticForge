@@ -1109,6 +1109,8 @@ function capDimensionsToMaxArea(width, height, maxArea, step = 64, minW = 64, mi
  * Each size tier is the 64-step area frontier: max legal height per width
  * under that tier's max area, clamped to min/max per side. Sorted by ratio
  * so stepping can reach 1:1 and reverse from an extreme without skipping it.
+ * The skinny/wide tails where one side is stuck at max and the other keeps
+ * shrinking are dropped so the endpoints stay legal (Normal ≈ 448×2112).
  */
 const CUSTOM_RESOLUTION_STEP = 64;
 const CUSTOM_RESOLUTION_AREA = {
@@ -1125,6 +1127,16 @@ function customResolutionMaxSide() {
         if (r.height > maxSide) maxSide = r.height;
     }
     return maxSide;
+}
+
+function trimLegalCustomResolutionPlateau(items) {
+    if (!items || items.length < 2) return items || [];
+    let start = 0;
+    let end = items.length - 1;
+    while (start < end && items[start].height === items[start + 1].height) start++;
+    while (end > start && items[end].width === items[end - 1].width) end--;
+    if (start === 0 && end === items.length - 1) return items;
+    return items.slice(start, end + 1);
 }
 
 function buildLegalCustomResolutions(maxArea, step, minDim, maxDim) {
@@ -1144,7 +1156,7 @@ function buildLegalCustomResolutions(maxArea, step, minDim, maxDim) {
             area: width * height
         });
     }
-    return items;
+    return trimLegalCustomResolutionPlateau(items);
 }
 
 const LEGAL_CUSTOM_RESOLUTIONS = {

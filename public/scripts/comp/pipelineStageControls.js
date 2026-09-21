@@ -757,6 +757,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
     });
 
     const ratioInput = document.getElementById(`${stageId}_ratio`);
+    const ratioGuts = document.getElementById(`${stageId}_customRatioGuts`);
     if (ratioInput && ratioInput.dataset.wired !== 'true') {
         ratioInput.dataset.wired = 'true';
         const commitStageRatio = () => {
@@ -774,13 +775,44 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
             updatePipelineStages(stageId);
             updateExpandCanvasStageInsetToggle(stageId);
         };
+        const stepStageRatio = (ratioDir) => {
+            if (!isCustomRatioMode(resolutionInput.value)) return;
+            const currentWidth = parseInt(widthInput.value, 10) || 1024;
+            const currentHeight = parseInt(heightInput.value, 10) || 1024;
+            const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
+            const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea, 10) : 1048576;
+            // stepLegalCustomResolution: public/scripts/comp/utilities.js
+            const result = stepLegalCustomResolution(currentWidth, currentHeight, maxArea, ratioDir);
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
+            syncStageRatioChrome(stageId, result.width, result.height);
+            updateStageBiasOrientation(stageId, 'custom');
+            updatePipelineStages(stageId);
+            updateExpandCanvasStageInsetToggle(stageId);
+        };
+        const onStageRatioWheel = (e) => {
+            if (!isCustomRatioMode(resolutionInput.value)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            stepStageRatio(e.deltaY > 0 ? -1 : 1);
+        };
         ratioInput.addEventListener('blur', commitStageRatio);
         ratioInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 commitStageRatio();
+                return;
             }
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+            if (!isCustomRatioMode(resolutionInput.value)) return;
+            e.preventDefault();
+            stepStageRatio(e.key === 'ArrowUp' ? 1 : -1);
         });
+        const wheelTarget = ratioGuts || ratioInput;
+        if (wheelTarget.dataset.ratioWheelWired !== 'true') {
+            wheelTarget.dataset.ratioWheelWired = 'true';
+            wheelTarget.addEventListener('wheel', onStageRatioWheel, { passive: false });
+        }
     }
 }
 

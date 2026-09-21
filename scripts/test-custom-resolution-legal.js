@@ -118,6 +118,48 @@ const stuck = stepLegalCustomResolution(last.width, last.height, CUSTOM_RESOLUTI
 assert.strictEqual(stuck.width, last.width);
 assert.strictEqual(stuck.height, last.height);
 
+function assertTierEndpoints(tier, maxArea) {
+    const list = LEGAL_CUSTOM_RESOLUTIONS[tier];
+    assert.ok(list.length > 1, `${tier} legal list`);
+    const first = list[0];
+    const lastItem = list[list.length - 1];
+    const minSide = Math.min(first.width, lastItem.height);
+    assert.ok(minSide >= 448, `${tier} per-side min stays at/above 448, got ${minSide}`);
+    assert.ok(first.height > first.width, `${tier} first entry is portrait`);
+    assert.ok(lastItem.width > lastItem.height, `${tier} last entry is landscape`);
+    for (let i = 0; i < list.length; i++) {
+        assert.ok(list[i].width >= minSide, `${tier} width ${list[i].width} below min ${minSide}`);
+        assert.ok(list[i].height >= minSide, `${tier} height ${list[i].height} below min ${minSide}`);
+    }
+    if (list.length > 1) {
+        assert.notStrictEqual(first.height, list[1].height, `${tier} must not keep a frozen-height skinny tail`);
+    }
+    const pastMin = stepLegalCustomResolution(first.width, first.height, maxArea, -1);
+    assert.strictEqual(pastMin.width, first.width, `${tier} step past min width`);
+    assert.strictEqual(pastMin.height, first.height, `${tier} step past min height`);
+    assert.ok(pastMin.width >= minSide && pastMin.height >= minSide, `${tier} step past min stays legal`);
+    const pastMax = stepLegalCustomResolution(lastItem.width, lastItem.height, maxArea, 1);
+    assert.strictEqual(pastMax.width, lastItem.width, `${tier} step past max width`);
+    assert.strictEqual(pastMax.height, lastItem.height, `${tier} step past max height`);
+    const fromSubMin = nearestLegalCustomResolution(minSide - 64, first.height, maxArea);
+    assert.ok(fromSubMin.width >= minSide, `${tier} snap from sub-min width`);
+    assert.ok(fromSubMin.height >= minSide, `${tier} snap from sub-min height`);
+    const stepFromSubMin = stepLegalCustomResolution(minSide - 64, first.height, maxArea, -1);
+    assert.ok(stepFromSubMin.width >= minSide, `${tier} step from sub-min width`);
+    assert.ok(stepFromSubMin.height >= minSide, `${tier} step from sub-min height`);
+}
+
+assertTierEndpoints('normal', CUSTOM_RESOLUTION_AREA.normal);
+assertTierEndpoints('large', CUSTOM_RESOLUTION_AREA.large);
+assertTierEndpoints('max', CUSTOM_RESOLUTION_AREA.max);
+
+const normalFirst = LEGAL_CUSTOM_RESOLUTIONS.normal[0];
+assert.strictEqual(normalFirst.width, 448);
+assert.strictEqual(normalFirst.height, 2112);
+const normalLast = LEGAL_CUSTOM_RESOLUTIONS.normal[LEGAL_CUSTOM_RESOLUTIONS.normal.length - 1];
+assert.strictEqual(normalLast.width, 2112);
+assert.strictEqual(normalLast.height, 448);
+
 const parseRatioText = vm.runInContext('parseRatioText', ctx);
 const formatAspectRatio = vm.runInContext('formatAspectRatio', ctx);
 const nearestLegalCustomResolutionFromRatio = vm.runInContext('nearestLegalCustomResolutionFromRatio', ctx);
@@ -205,6 +247,16 @@ assert.ok(!/SCROLL/i.test(appHtml.slice(appHtml.indexOf('manualCustomResolution'
 const stageSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/pipelineStageManager.js'), 'utf8');
 assert.ok(stageSrc.includes('${stageId}_ratio'));
 assert.ok(stageSrc.includes('${stageId}_ratioPreview'));
+
+const dropdownSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/manualDropdownManager.js'), 'utf8');
+assert.ok(!/Ratio snapped/i.test(dropdownSrc), 'ratio snap toast stays silent');
+assert.ok(dropdownSrc.includes('onManualRatioWheel'), 'studio ratio wheel handler');
+assert.ok(dropdownSrc.includes("addEventListener('wheel', onManualRatioWheel"), 'studio ratio wheel is bound');
+
+const stageControlsSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/pipelineStageControls.js'), 'utf8');
+assert.ok(stageControlsSrc.includes('onStageRatioWheel'), 'pipeline ratio wheel handler');
+assert.ok(stageControlsSrc.includes("addEventListener('wheel', onStageRatioWheel"), 'pipeline ratio wheel is bound');
+assert.ok(!/Ratio snapped/i.test(stageControlsSrc), 'pipeline ratio snap stays silent');
 
 console.log('test-custom-resolution-legal: ok', {
     normal: LEGAL_CUSTOM_RESOLUTIONS.normal.length,
