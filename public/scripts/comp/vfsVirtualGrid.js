@@ -183,6 +183,9 @@ class VfsVirtualGrid {
             marqueeEl.style.width = `${width}px`;
             marqueeEl.style.height = `${height}px`;
             if (width < 4 && height < 4) return;
+            // CURSOR: macOS down≠focus / up=focus — marquee is not a focus-change click
+            // noteDesktopPointerSelection: public/scripts/comp/modalUtils.js
+            noteDesktopPointerSelection();
             const rect = { left, top, right: left + width, bottom: top + height };
             this._applyMarqueeSelection(rect, baseSelection, addToSelection);
         };
@@ -305,6 +308,16 @@ class VfsVirtualGrid {
         const startY = event.clientY;
         let dragging = false;
 
+        // CURSOR: macOS down≠focus — down starts item select; window focus waits for up
+        if (document.body.classList.contains('desktop-mode')
+            && !this.selectedIds.has(item.id)
+            && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+            this.selectedIds.clear();
+            this.selectedIds.add(item.id);
+            this._updateSelectionClasses();
+            this.onSelectionChange(this.getSelectedItems());
+        }
+
         const onMove = (e) => {
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
@@ -313,6 +326,9 @@ class VfsVirtualGrid {
                 dragging = true;
                 this._suppressNextClick = true;
                 this.container.classList.add('explorer-item-drag-active');
+                // CURSOR: macOS down≠focus / up=focus — item drag is not a focus-change click
+                // noteDesktopPointerContentDrag: public/scripts/comp/modalUtils.js
+                noteDesktopPointerContentDrag();
             }
             e.preventDefault();
             this._updateDropHighlight(e.clientX, e.clientY);

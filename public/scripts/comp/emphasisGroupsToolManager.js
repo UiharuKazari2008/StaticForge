@@ -851,7 +851,9 @@ class EmphasisGroupsToolInstance {
 
         this.element.addEventListener('pointerdown', (e) => {
             if (e.target.closest('.modal-window-controls')) return;
+            // CURSOR: macOS down≠focus — desktop mode waits for pointer up
             // handleModalClick: public/scripts/comp/modalUtils.js
+            if (window.isDesktop || document.body.classList.contains('desktop-mode')) return;
             handleModalClick(this.element);
         }, true);
     }
