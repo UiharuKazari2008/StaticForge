@@ -338,9 +338,9 @@ function registerPackets(handlersCtx) {
     regFn('get_nax_tags', handleGetNaxTags);
     regFn('get_nax_marked_tags', handleGetNaxMarkedTags);
     regFn('get_nax_expander_presets', handleGetNaxExpanderPresets);
-    regFn('set_nax_favorite', handleSetNaxFavorite);
-    regFn('set_nax_try', handleSetNaxTry);
-    regFn('set_nax_hidden', handleSetNaxHidden);
+    regFn('set_nax_favorite', handleSetNaxFavorite, NAX_DESTRUCTIVE);
+    regFn('set_nax_try', handleSetNaxTry, NAX_DESTRUCTIVE);
+    regFn('set_nax_hidden', handleSetNaxHidden, NAX_DESTRUCTIVE);
     regFn('generate_nax_custom_tag', handleGenerateNaxCustomTag, NAX_DESTRUCTIVE);
     regFn('delete_nax_custom_tag', handleDeleteNaxCustomTag, NAX_DESTRUCTIVE);
     regFn('get_nax_vibes_gallery', handleGetNaxVibesGallery);
