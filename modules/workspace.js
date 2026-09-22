@@ -2095,7 +2095,9 @@ class WorkspaceManager {
         }
 
         // Add new images (avoid duplicates)
-        const newImages = imageFilenames.filter(filename => !group.images.includes(filename));
+        // JULES: perf optimization — Set lookup O(1) instead of Array.includes O(N) inside filter loop
+        const existingSet = new Set(group.images);
+        const newImages = imageFilenames.filter(filename => !existingSet.has(filename));
         group.images.push(...newImages);
         group.updatedAt = Date.now();
 
@@ -2114,7 +2116,9 @@ class WorkspaceManager {
         }
 
         const originalCount = group.images.length;
-        const updatedImages = group.images.filter(filename => !imageFilenames.includes(filename));
+        // JULES: perf optimization — Set lookup O(1) instead of Array.includes O(N) inside filter loop
+        const removeSet = new Set(imageFilenames);
+        const updatedImages = group.images.filter(filename => !removeSet.has(filename));
 
         this.globalResources.modifyConfig('workspaces').merge([workspaceId, 'groups', groupId], {
             images: updatedImages,
