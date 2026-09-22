@@ -46,6 +46,7 @@ class WebSocketRequestsModal {
             return {
                 activeList: this.renderTarget.activeList,
                 previousList: this.renderTarget.previousList,
+                activeCount: this.renderTarget.activeCount || null,
                 previousCount: this.renderTarget.previousCount || null,
                 activeEmpty: this.renderTarget.activeEmpty || null,
                 previousEmpty: this.renderTarget.previousEmpty || null
@@ -54,6 +55,7 @@ class WebSocketRequestsModal {
         return {
             activeList: this.activeRequestsList,
             previousList: this.previousRequestsList,
+            activeCount: this.activeRequestsCount,
             previousCount: this.previousRequestsCount,
             activeEmpty: this.activeRequestsEmptyState,
             previousEmpty: this.previousRequestsEmptyState
@@ -321,6 +323,10 @@ class WebSocketRequestsModal {
         const lists = this._getLists();
         const activeRequestsList = lists.activeList;
         if (!activeRequestsList) return;
+
+        if (lists.activeCount) {
+            lists.activeCount.textContent = String(requests.length);
+        }
 
         const fifoQueueIndex = typeof buildFifoQueueIndex === 'function'
             ? buildFifoQueueIndex(requests)

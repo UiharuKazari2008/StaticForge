@@ -1135,6 +1135,7 @@ class LogViewerApplet {
         websocketRequestsModal.setRenderTarget({
             activeList: document.getElementById('logViewerActiveRequestsList'),
             previousList: document.getElementById('logViewerPreviousRequestsList'),
+            activeCount: document.getElementById('logViewerActiveRequestsCount'),
             previousCount: document.getElementById('logViewerPreviousRequestsCount'),
             activeEmpty: document.getElementById('logViewerActiveRequestsEmpty'),
             previousEmpty: document.getElementById('logViewerPreviousRequestsEmpty')

@@ -7150,10 +7150,17 @@ Examples:
         <div class="modal-content dark">
             <div class="websocket-requests-content">
                 <!-- Active Requests Section -->
-                <div class="websocket-requests-list active-requests scrollbar-padding" data-custom-scrollbar
-                    data-scrollable-wrapper-class="websocket-requests-list-wrapper">
-                    <div id="activeRequestsList" class="websocket-requests-list-content">
-                        <div class="empty-state" id="activeRequestsEmptyState">No active requests</div>
+                <div class="form-section active-requests-section">
+                    <h3 class="section-header">
+                        <i class="fas fa-spinner"></i>
+                        <span>Active Requests</span>
+                        <span class="tag-wiki-result-category" id="activeRequestsCount">0</span>
+                    </h3>
+                    <div class="websocket-requests-list active-requests scrollbar-padding" data-custom-scrollbar
+                        data-scrollable-wrapper-class="websocket-requests-list-wrapper">
+                        <div id="activeRequestsList" class="websocket-requests-list-content">
+                            <div class="empty-state" id="activeRequestsEmptyState">No active requests</div>
+                        </div>
                     </div>
                 </div>
 
@@ -7242,6 +7249,7 @@ Examples:
                 <aside id="logViewerTasksSidebar" class="log-viewer-tasks-sidebar hidden">
                     <div class="log-viewer-tasks-section">
                         <h3 class="section-header"><i class="fas fa-spinner"></i><span>Active</span><span
+                                class="tag-wiki-result-category" id="logViewerActiveRequestsCount">0</span><span
                                 class="request-dispatch-legend"
                                 title="Ordered list icon — server FIFO dispatch per session"><i
                                     class="fas fa-list-ol"></i><span>FIFO</span></span></h3>
