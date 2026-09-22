@@ -476,6 +476,7 @@ class DesktopShortcutsManager {
         this.desktopContainer.dataset.selectionWired = 'true';
 
         this.desktopContainer.addEventListener('mousedown', (e) => this.handleDesktopMarqueeStart(e));
+        this.desktopContainer.addEventListener('touchstart', (e) => this.handleDesktopMarqueeStart(e), { passive: false });
         this.freeformContainer?.addEventListener('contextmenu', (e) => {
             this._lastDesktopContextCoords = { x: e.clientX, y: e.clientY };
         });
@@ -705,7 +706,7 @@ class DesktopShortcutsManager {
 
     handleDesktopMarqueeStart(event) {
         if (!document.body.classList.contains('desktop-mode')) return;
-        if (event.button !== 0) return;
+        if (event.type === 'mousedown' && event.button !== 0) return;
         if (event.target.closest('.desktop-shortcut, .modal, #desktopTaskbar, #startMenu')) return;
 
         const isDesktopSurface =
@@ -715,12 +716,13 @@ class DesktopShortcutsManager {
         if (!isDesktopSurface) return;
 
         const addToSelection = event.ctrlKey || event.metaKey;
+        // CURSOR: macOS down≠focus — empty desktop down starts rubber-band, does not steal focus
         if (!addToSelection) {
             this.clearSelection();
         }
 
-        const startX = event.clientX;
-        const startY = event.clientY;
+        const startX = event.type === 'touchstart' ? event.touches[0].clientX : event.clientX;
+        const startY = event.type === 'touchstart' ? event.touches[0].clientY : event.clientY;
         const marqueeEl = this.ensureSelectionMarqueeEl();
         const baseSelection = addToSelection ? new Set(this.selectedShortcutIds) : new Set();
 
@@ -738,17 +740,23 @@ class DesktopShortcutsManager {
 
         document.addEventListener('mousemove', moveHandler);
         document.addEventListener('mouseup', endHandler);
-        event.preventDefault();
+        document.addEventListener('touchmove', moveHandler, { passive: false });
+        document.addEventListener('touchend', endHandler);
+        document.addEventListener('touchcancel', endHandler);
+        if (event.cancelable) event.preventDefault();
     }
 
     handleDesktopMarqueeMove(event, moveHandler, endHandler) {
         if (!this.marqueeState) return;
 
         const { startX, startY, addToSelection, baseSelection } = this.marqueeState;
-        const left = Math.min(startX, event.clientX);
-        const top = Math.min(startY, event.clientY);
-        const width = Math.abs(event.clientX - startX);
-        const height = Math.abs(event.clientY - startY);
+        const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+        const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+        if (clientX == null || clientY == null) return;
+        const left = Math.min(startX, clientX);
+        const top = Math.min(startY, clientY);
+        const width = Math.abs(clientX - startX);
+        const height = Math.abs(clientY - startY);
 
         const marqueeEl = this.selectionMarqueeEl;
         if (marqueeEl) {
@@ -759,6 +767,10 @@ class DesktopShortcutsManager {
         }
 
         if (width < 4 && height < 4) return;
+
+        // CURSOR: macOS down≠focus / up=focus — marquee is not a focus-change click
+        // noteDesktopPointerSelection: public/scripts/comp/modalUtils.js
+        noteDesktopPointerSelection();
 
         const rect = { left, top, right: left + width, bottom: top + height };
         const boxIds = this.getShortcutIdsInRect(rect);
@@ -775,6 +787,9 @@ class DesktopShortcutsManager {
     handleDesktopMarqueeEnd(event, moveHandler, endHandler) {
         document.removeEventListener('mousemove', moveHandler);
         document.removeEventListener('mouseup', endHandler);
+        document.removeEventListener('touchmove', moveHandler);
+        document.removeEventListener('touchend', endHandler);
+        document.removeEventListener('touchcancel', endHandler);
         document.body.classList.remove('desktop-marquee-active');
 
         if (this.selectionMarqueeEl) {
@@ -2737,6 +2752,7 @@ class DesktopShortcutsManager {
             return;
         }
 
+        // CURSOR: macOS down≠focus — down starts item select; window focus waits for up
         if (!this.isShortcutSelected(shortcut.id)) {
             this.selectShortcut(shortcut.id);
         }
@@ -2798,6 +2814,9 @@ class DesktopShortcutsManager {
             
             // Beyond threshold, enter drag mode
             this.isDragging = true;
+            // CURSOR: macOS down≠focus / up=focus — item drag is not a focus-change click
+            // noteDesktopPointerContentDrag: public/scripts/comp/modalUtils.js
+            noteDesktopPointerContentDrag();
             event.preventDefault();
 
             this.prepareDragGroup(this.draggedShortcut.element, this.draggedShortcut.shortcut);

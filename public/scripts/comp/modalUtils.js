@@ -75,6 +75,14 @@ let cachedWindowFrameEl = null;
 /** True while document move/end listeners are bound for an active drag/resize */
 let modalInteractionMoveListenersAttached = false;
 
+/** Desktop-mode pointer gesture: down ≠ focus; up decides focus. Match desktopShortcuts.dragThreshold. */
+const DESKTOP_POINTER_CLICK_SLOP_PX = 10;
+const DESKTOP_POINTER_TOUCH_MOUSE_GUARD_MS = 700;
+let desktopPointerGesture = null;
+let desktopPointerFocusBlocked = false;
+let desktopPointerGestureListenersAttached = false;
+let desktopPointerTouchGuardUntil = 0;
+
 // Listen to window focus events to track when browser window regains focus
 window.addEventListener('focus', () => {
     windowFocusRegainedTime = Date.now();
@@ -1250,6 +1258,127 @@ function detachModalInteractionMoveListeners() {
     modalInteractionMoveListenersAttached = false;
 }
 
+function isDesktopPointerMode() {
+    return !!(window.isDesktop || document.body.classList.contains('desktop-mode'));
+}
+
+function getDesktopPointerClientPoint(e) {
+    if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+}
+
+function getDesktopPointerClickSlopPx() {
+    if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts && desktopShortcuts.dragThreshold) {
+        return desktopShortcuts.dragThreshold;
+    }
+    return DESKTOP_POINTER_CLICK_SLOP_PX;
+}
+
+function noteDesktopPointerSelection() {
+    if (!desktopPointerGesture) return;
+    desktopPointerGesture.selection = true;
+}
+
+function noteDesktopPointerContentDrag() {
+    if (!desktopPointerGesture) return;
+    desktopPointerGesture.contentDrag = true;
+}
+
+function wasDesktopPointerFocusBlocked() {
+    return desktopPointerFocusBlocked;
+}
+
+function attachDesktopPointerGestureListeners() {
+    if (desktopPointerGestureListenersAttached) return;
+    document.addEventListener('mousemove', updateDesktopPointerGesture);
+    document.addEventListener('touchmove', updateDesktopPointerGesture, { passive: true });
+    document.addEventListener('mouseup', finishDesktopPointerGesture);
+    document.addEventListener('touchend', finishDesktopPointerGesture);
+    document.addEventListener('touchcancel', finishDesktopPointerGesture);
+    desktopPointerGestureListenersAttached = true;
+}
+
+function detachDesktopPointerGestureListeners() {
+    if (!desktopPointerGestureListenersAttached) return;
+    document.removeEventListener('mousemove', updateDesktopPointerGesture);
+    document.removeEventListener('touchmove', updateDesktopPointerGesture);
+    document.removeEventListener('mouseup', finishDesktopPointerGesture);
+    document.removeEventListener('touchend', finishDesktopPointerGesture);
+    document.removeEventListener('touchcancel', finishDesktopPointerGesture);
+    desktopPointerGestureListenersAttached = false;
+}
+
+function beginDesktopPointerGesture(e) {
+    // CURSOR: macOS down≠focus — record only; activation waits for up
+    if (e.type === 'mousedown') {
+        if (e.button !== 0) return;
+        if (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
+        if (Date.now() < desktopPointerTouchGuardUntil) return;
+    }
+    const pt = getDesktopPointerClientPoint(e);
+    const modal = e.target?.closest?.('.modal');
+    desktopPointerFocusBlocked = false;
+    desktopPointerGesture = {
+        startX: pt.x,
+        startY: pt.y,
+        maxDist: 0,
+        modal: modal && !e.target.closest('.resize-handle') ? modal : null,
+        selection: false,
+        contentDrag: false
+    };
+    attachDesktopPointerGestureListeners();
+}
+
+function updateDesktopPointerGesture(e) {
+    if (!desktopPointerGesture) return;
+    const pt = getDesktopPointerClientPoint(e);
+    if (pt.x == null || pt.y == null) return;
+    const dist = Math.hypot(pt.x - desktopPointerGesture.startX, pt.y - desktopPointerGesture.startY);
+    if (dist > desktopPointerGesture.maxDist) desktopPointerGesture.maxDist = dist;
+    if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts?.isDragging) {
+        desktopPointerGesture.contentDrag = true;
+    }
+    if (document.querySelector('.explorer-item-drag-active')) {
+        desktopPointerGesture.contentDrag = true;
+    }
+}
+
+function finishDesktopPointerGesture(e) {
+    if (!desktopPointerGesture) return;
+    if (e.type === 'touchend' || e.type === 'touchcancel') {
+        desktopPointerTouchGuardUntil = Date.now() + DESKTOP_POINTER_TOUCH_MOUSE_GUARD_MS;
+    }
+    if (e.type === 'touchcancel') {
+        desktopPointerFocusBlocked = true;
+        desktopPointerGesture = null;
+        detachDesktopPointerGestureListeners();
+        return;
+    }
+    updateDesktopPointerGesture(e);
+    const moved = desktopPointerGesture.maxDist >= getDesktopPointerClickSlopPx();
+    const selection = !!desktopPointerGesture.selection;
+    const contentDrag = !!desktopPointerGesture.contentDrag
+        || !!(typeof desktopShortcuts !== 'undefined' && desktopShortcuts?.isDragging);
+    // CURSOR: macOS down≠focus / up=focus — activate only for a no-move / no-selection / no-content-drag click
+    desktopPointerFocusBlocked = moved || selection || contentDrag;
+    const modal = desktopPointerGesture.modal;
+    desktopPointerGesture = null;
+    detachDesktopPointerGestureListeners();
+    if (desktopPointerFocusBlocked) return;
+    if (!modal || !modal.isConnected || modal.classList.contains('hidden')) return;
+    if (!modal.contains(e.target)) return;
+    handleModalClick(modal);
+}
+
+function handleModalActivatePointer(e, modal) {
+    if (!modal.contains(e.target)) return;
+    if (e.target.closest('.resize-handle')) return;
+    // CURSOR: macOS down≠focus — desktop mode activates on pointer up via finishDesktopPointerGesture
+    if (isDesktopPointerMode()) return;
+    handleModalClick(modal);
+}
+
 function setWindowInteractionPaintLock(on) {
     document.body.classList.toggle('is-window-dragging', !!on);
     if (!on) {
@@ -1958,7 +2087,7 @@ function getTopOpenModal() {
 function initializeModalDragging() {
     // Tier A permanent globals (modal-listener-refactor-plan.md) — keep on document/window; gate in handlers:
     // focus, visibilitychange — focus grace period (top of modalUtils.js)
-    // mousedown/touchstart — drag/resize start (below); move/end attach only while interacting
+    // mousedown/touchstart — drag/resize start (below); desktop-mode gesture (down≠focus)
     // click — minimize button, desktop empty-space clear-active (below)
     // contextMenuAction — taskbar context menu (initializeDesktopTaskbar)
     // DOMContentLoaded — bootstrap dragging, taskbar, start menu (bottom of modalUtils.js)
@@ -1966,6 +2095,7 @@ function initializeModalDragging() {
     // Start menu outside-click — AbortController in openStartMenu/closeStartMenu
 
     // Start only — move/end listeners attach for the active drag/resize session
+    // Desktop-mode pointer: down starts the shared gesture (no focus); up may activate
     document.addEventListener('mousedown', handleModalInteraction);
     document.addEventListener('touchstart', handleModalInteraction, { passive: false });
 
@@ -2047,6 +2177,9 @@ function initializeModalDragging() {
                 return; // User is just trying to regain browser window focus
             }
 
+            // CURSOR: macOS down≠focus / up=focus — skip empty-desktop defocus after select/drag/move
+            if (wasDesktopPointerFocusBlocked()) return;
+
             // Clear active window (make no window active)
             setActiveWindow(null);
         }
@@ -2055,6 +2188,10 @@ function initializeModalDragging() {
 
 function handleModalInteraction(e) {
     if (e.type === 'mousedown' || e.type === 'touchstart') {
+        // CURSOR: macOS down≠focus — begin gesture only; do not setActiveWindow here
+        if (isDesktopPointerMode()) {
+            beginDesktopPointerGesture(e);
+        }
         if (handleModalDragStart(e) || handleModalResizeStart(e)) {
             attachModalInteractionMoveListeners();
         }
@@ -2718,15 +2855,7 @@ function openModal(modal) {
 
     // Add click handler to bring modal to front when clicking anywhere inside it
     const clickHandler = (e) => {
-        // Verify the click is actually inside this modal (prevent activation when clicking in other windows)
-        if (!modal.contains(e.target)) {
-            return;
-        }
-        // Only skip if clicking on resize handles (title bar dragging is handled separately)
-        // Allow clicks on all other elements (buttons, inputs, etc.) to activate the window
-        if (!e.target.closest('.resize-handle')) {
-            handleModalClick(modal);
-        }
+        handleModalActivatePointer(e, modal);
     };
     const clickHandlerOptions = modalListenerSignal ? { signal: modalListenerSignal } : undefined;
     modal.addEventListener('mousedown', clickHandler, clickHandlerOptions);
@@ -3148,6 +3277,7 @@ function updateModalStackZIndexes(options) {
 }
 
 function handleModalClick(modal) {
+    // CURSOR: macOS down≠focus / up=focus — callers in desktop mode must go through finishDesktopPointerGesture
     // Don't activate if document doesn't have focus (user is clicking in another window)
     if (!document.hasFocus()) {
         return;
@@ -3375,16 +3505,7 @@ function updateGalleryWindowMode() {
         // Add click handler to bring gallery to front when clicking anywhere inside it
         if (!galleryWindow._modalClickHandler) {
             const clickHandler = (e) => {
-                // Verify the click is actually inside the gallery window (prevent activation when clicking in other windows)
-                if (!galleryWindow.contains(e.target)) {
-                    return;
-                }
-                // Only skip if clicking on resize handles (title bar dragging is handled separately)
-                // Allow clicks on all other elements (buttons, inputs, etc.) to activate the window
-                if (!e.target.closest('.resize-handle')) {
-                    // Use handleModalClick for consistency with other modals
-                    handleModalClick(galleryWindow);
-                }
+                handleModalActivatePointer(e, galleryWindow);
             };
             galleryWindow.addEventListener('mousedown', clickHandler);
             galleryWindow._modalClickHandler = clickHandler;
