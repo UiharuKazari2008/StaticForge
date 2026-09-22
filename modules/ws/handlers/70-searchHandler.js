@@ -97,13 +97,13 @@ async function handleCityLookup(handlers, ws, message, clientInfo, wsServer) {
         const { cityName, requestId } = message;
 
         if (!cityName || typeof cityName !== 'string') {
-            handlers.sendError(ws, 'Missing or invalid cityName parameter', 'lookup_city', requestId);
+            handlers.sendError(ws, 'Missing or invalid cityName parameter', 'lookup_city', message.requestId);
             return;
         }
 
         const trimmedCityName = cityName.trim();
         if (!trimmedCityName) {
-            handlers.sendError(ws, 'City name cannot be empty', 'lookup_city', requestId);
+            handlers.sendError(ws, 'City name cannot be empty', 'lookup_city', message.requestId);
             return;
         }
 
@@ -159,11 +159,11 @@ async function handleCityLookup(handlers, ws, message, clientInfo, wsServer) {
                 });
             } else {
                 // City not found
-                handlers.sendError(ws, 'City not found', 'lookup_city', requestId);
+                handlers.sendError(ws, 'City not found', 'lookup_city', message.requestId);
             }
         } catch (error) {
             console.error('City lookup error:', error);
-            handlers.sendError(ws, 'Failed to lookup city: ' + error.message, 'lookup_city', requestId);
+            handlers.sendError(ws, 'Failed to lookup city: ' + error.message, 'lookup_city', message.requestId);
         }
     }
 
@@ -172,7 +172,7 @@ async function handleCharacterSearch(handlers, ws, message, clientInfo, wsServer
 
         if (!query) {
             // JULES: Pass requestId so client requests resolve/reject properly
-            handlers.sendError(ws, 'Missing query parameter', 'search_characters', requestId);
+            handlers.sendError(ws, 'Missing query parameter', 'search_characters', message.requestId);
             return;
         }
 
@@ -208,7 +208,7 @@ async function handleCharacterSearch(handlers, ws, message, clientInfo, wsServer
             if (error.name !== 'AbortError' && !error.message.includes('superseded')) {
                 console.error('Character search error:', error);
                 // JULES: Pass requestId so client requests resolve/reject properly
-                handlers.sendError(ws, 'Search failed', error.message, requestId);
+                handlers.sendError(ws, 'Search failed', error.message, message.requestId);
             }
         }
     }
