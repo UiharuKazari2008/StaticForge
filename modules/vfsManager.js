@@ -1385,11 +1385,9 @@ class VfsManager {
             }
             case 'References': {
                 const refDb = this.globalResources.getReferenceMetadataDatabase();
-                const refHashes = refDb.getWorkspaceReferences(workspaceId);
-                const cacheFilesMap = refDb.getFileCacheForReferences(refHashes);
-                const vibeRows = refDb.getWorkspaceVibesListLight(workspaceId);
+                const { cacheFiles: cacheFilesMap, vibes: vibeRowsMap } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId);
                 const items = [];
-                for (const hash of refHashes) {
+                for (const hash in cacheFilesMap) {
                     if (trashedTargets.has(`reference:${hash}`)) continue;
                     const r = cacheFilesMap[hash];
                     const displayName = r?.metadata?.displayName || hash;
@@ -1411,12 +1409,12 @@ class VfsManager {
                         workspaceId
                     });
                 }
-                for (const row of vibeRows) {
-                    const vibeId = row.vibe_id;
+                for (const vibeId in vibeRowsMap) {
                     if (trashedTargets.has(`vibe:${vibeId}`)) continue;
+                    const row = vibeRowsMap[vibeId];
                     items.push({
                         id: `vibe-${vibeId}`,
-                        name: row.display_name || vibeId,
+                        name: row.metadata?.displayName || vibeId,
                         kind: 'file',
                         targetKind: 'vibe',
                         targetId: vibeId,
@@ -1427,8 +1425,8 @@ class VfsManager {
                         protected: false,
                         importable: false,
                         size: 0,
-                        modifiedAt: row.updated_at || row.created_at || null,
-                        previewHash: row.preview_hash || vibeId,
+                        modifiedAt: row.updatedAt || row.createdAt || null,
+                        previewHash: row.previewHash || vibeId,
                         workspaceId
                     });
                 }
@@ -2028,15 +2026,15 @@ class VfsManager {
             }
             case 'References': {
                 const refDb = this.globalResources.getReferenceMetadataDatabase();
-                const refHashes = refDb.getWorkspaceReferences(workspaceId);
-                const vibeRows = refDb.getWorkspaceVibesListLight(workspaceId);
-                const cacheFilesMap = refDb.getFileCacheForReferences(refHashes);
+                const { cacheFiles: cacheFilesMap, vibes: vibeRowsMap } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId);
                 let totalSizeBytes = 0;
-                for (const hash of refHashes) {
+                let refCount = 0;
+                for (const hash in cacheFilesMap) {
                     totalSizeBytes += cacheFilesMap[hash]?.size || 0;
+                    refCount++;
                 }
                 return {
-                    itemCount: refHashes.length + vibeRows.length,
+                    itemCount: refCount + Object.keys(vibeRowsMap).length,
                     totalSizeBytes
                 };
             }

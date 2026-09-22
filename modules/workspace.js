@@ -968,8 +968,10 @@ class WorkspaceManager {
 
         if (workspaceId) {
             // Get cache files for specific workspace from database
-            const workspaceRefs = refDb.getWorkspaceReferences(workspaceId);
-            workspaceRefs.forEach(hash => files.add(hash));
+            const { cacheFiles } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId);
+            for (const hash in cacheFiles) {
+                files.add(hash);
+            }
         } else {
             // No specific workspace ID provided, use session ID to get active workspace
             if (!sessionId) {

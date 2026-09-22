@@ -1016,8 +1016,9 @@ class ReferencesWebSocketHandlers {
             }
 
             // Check if the reference exists
-            const cacheFiles = this.globalResources.getReferenceMetadataDatabase().getWorkspaceReferences(workspaceId);
-            if (!cacheFiles.includes(hash)) {
+            const refDb = this.globalResources.getReferenceMetadataDatabase();
+            const { cacheFiles } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId);
+            if (!cacheFiles[hash]) {
                 this.handlers.sendError(ws, 'Reference not found', `Reference with hash '${hash}' not found in workspace`, message.requestId);
                 return;
             }
