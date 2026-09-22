@@ -379,7 +379,7 @@ function registerPackets(handlersCtx) {
     regCache('refresh_server_cache', handleRefreshServerCache, CACHE_DESTRUCTIVE);
     regCache('rebuild_metadata_cache', handleRebuildMetadataCache, CACHE_DESTRUCTIVE);
     regCache('clear_search_cache', handleClearSearchCache, CACHE_DESTRUCTIVE);
-    regCache('broadcast_resource_update', handleBroadcastResourceUpdate);
+    regCache('broadcast_resource_update', handleBroadcastResourceUpdate, CACHE_DESTRUCTIVE); // JULES: Fix privilege leak for read-only clients on resource update broadcast
     regSystem('recompile_runtime_assets', handleRecompileRuntimeAssets, SYSTEM_DESTRUCTIVE);
     regSystem('set_runtime_assets_auto_recompile', handleSetRuntimeAssetsAutoRecompile, SYSTEM_DESTRUCTIVE);
 }
