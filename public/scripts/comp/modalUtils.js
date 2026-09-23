@@ -7980,6 +7980,8 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
     updateDesktopSettingsExitDesktopOnWorkspaceMaximiseToggleUI(desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise);
     desktopSettingsGlobalState.virtualKeyboardEnabled = readDesktopSettingsVirtualKeyboardPreference();
     updateDesktopSettingsVirtualKeyboardToggleUI(desktopSettingsGlobalState.virtualKeyboardEnabled);
+    // syncImageGenerationSettingsUI: public/scripts/comp/imageGenerationSettings.js
+    syncImageGenerationSettingsUI();
     if (typeof isAndroidNotificationBridgeDetected === 'function' && isAndroidNotificationBridgeDetected()) {
         desktopSettingsGlobalState.notificationBridgeEnabled = readDesktopSettingsNotificationBridgeEnabledPreference();
         desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode =
@@ -8655,7 +8657,9 @@ function buildUserGlobalSettingsSnapshotFromClient() {
         naxt: {
             elevatePins
         },
-        remoteAccess: { ...remoteAccessSettingsState }
+        remoteAccess: { ...remoteAccessSettingsState },
+        // getImageGenerationSettings: public/scripts/comp/imageGenerationSettings.js
+        imageGeneration: { ...getImageGenerationSettings() }
     };
 }
 
@@ -8747,6 +8751,11 @@ function applyUserGlobalSettingsToClient(settings) {
         applyRemoteAccessSettingsToState(settings.remoteAccess);
         syncRemoteAccessSettingsUI();
     }
+
+    if (settings.imageGeneration && typeof settings.imageGeneration === 'object') {
+        // applyImageGenerationSettingsToClient: public/scripts/comp/imageGenerationSettings.js
+        applyImageGenerationSettingsToClient(settings.imageGeneration);
+    }
 }
 
 async function loadUserGlobalSettingsFromServer() {
@@ -8780,6 +8789,9 @@ async function persistUserGlobalSettingsPatch(patch) {
     }
     if (patch.remoteAccess && typeof patch.remoteAccess === 'object') {
         snap.remoteAccess = { ...snap.remoteAccess, ...patch.remoteAccess };
+    }
+    if (patch.imageGeneration && typeof patch.imageGeneration === 'object') {
+        snap.imageGeneration = { ...snap.imageGeneration, ...patch.imageGeneration };
     }
     applyUserGlobalSettingsToClient(snap);
 
