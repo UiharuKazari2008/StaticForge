@@ -6941,7 +6941,7 @@ function initializeDesktopWallpaper() {
 }
 
 // Save wallpaper to workspace (server will broadcast update)
-async function setDesktopWallpaper(wallpaperPath, wallpaperPosition = 'center') {
+async function setDesktopWallpaper(wallpaperPath, wallpaperPosition = 'center center') {
     const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';
 
     if (!workspaces || !workspaces[currentWorkspace]) {
@@ -6952,7 +6952,7 @@ async function setDesktopWallpaper(wallpaperPath, wallpaperPosition = 'center') 
     // Update local workspace object first
     if (wallpaperPath) {
         workspaces[currentWorkspace].wallpaper = wallpaperPath;
-        workspaces[currentWorkspace].wallpaperPosition = wallpaperPosition || 'center';
+        workspaces[currentWorkspace].wallpaperPosition = wallpaperPosition || 'center center';
     } else {
         delete workspaces[currentWorkspace].wallpaper;
         delete workspaces[currentWorkspace].wallpaperPosition;
@@ -6965,7 +6965,7 @@ async function setDesktopWallpaper(wallpaperPath, wallpaperPosition = 'center') 
     if (wsClient && wsClient.isConnected()) {
         const settings = {
             wallpaper: wallpaperPath,
-            wallpaperPosition: wallpaperPath ? (wallpaperPosition || 'center') : null
+            wallpaperPosition: wallpaperPath ? (wallpaperPosition || 'center center') : null
         };
         await wsClient.updateWorkspaceSettings(currentWorkspace, settings);
     }

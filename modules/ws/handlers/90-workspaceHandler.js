@@ -1114,14 +1114,22 @@ class WorkspaceWebSocketHandlers {
                 // Keywords: center, top, bottom, left, right
                 // Percentages: 0% to 100%
                 // Examples: "center center", "50% 75%", "left 25%", "80% top"
+                // One CSS token (center, left, 50%, ...) means the other axis is center
                 const parts = settings.wallpaperPosition.trim().split(/\s+/);
+                if (parts.length === 1) {
+                    const token = parts[0];
+                    if (token === 'top' || token === 'bottom') {
+                        parts.unshift('center');
+                    } else {
+                        parts.push('center');
+                    }
+                }
                 if (parts.length !== 2) {
                     this.handlers.sendError(ws, 'Invalid wallpaper position format. Use "horizontal vertical" (e.g., "center center", "50% 75%", "left 25%")', 'workspace_update_settings', message.requestId);
                     return;
                 }
                 
                 const [horizontal, vertical] = parts;
-                const keywordPattern = /^(center|top|bottom|left|right)$/;
                 const percentagePattern = /^(100|[1-9]?\d)%$/;
                 
                 // Validate horizontal (can be left, center, right, or percentage)
@@ -1139,6 +1147,8 @@ class WorkspaceWebSocketHandlers {
                     this.handlers.sendError(ws, 'Invalid vertical position. Use "top", "center", "bottom", or a percentage (0%-100%)', 'workspace_update_settings', message.requestId);
                     return;
                 }
+
+                settings.wallpaperPosition = `${horizontal} ${vertical}`;
             }
 
             if (settings.nicknames !== undefined) {
