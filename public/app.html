@@ -233,7 +233,7 @@
     <link rel="stylesheet"
         href="/css/lightbox.css?sha=35afc17c4275c4de0d30c90cbe8f1f55bf72a97dd08b32a83bc47b35109b58d8">
     <link rel="stylesheet"
-        href="/css/manual-modal.css?sha=b6437503e326239cd11ec76f9cc4786a50751f13ef13b653859acc5d584fad00">
+        href="/css/manual-modal.css?sha=744655e0b66c7ef3311353e25b9b68d426bbefd6165336db7231a1d36fb4b62c">
     <link rel="stylesheet"
         href="/css/manual-modal-prompt-form.css?sha=758bb7ddda36416b5bab6930d5bad4a24eec42250682ef3deb8edefc5e7ef0c5">
     <link rel="stylesheet"
@@ -2311,8 +2311,20 @@
                                 <img id="manualPreviewOriginalImage" src="" alt="Original Image"
                                     class="manual-preview-original-image hidden">
                                 <div id="manualPreviewPlaceholder" class="manual-preview-placeholder">
-                                    <i class="mdi mdi-draw-pen"></i>
-                                    <p>Generate an image to see preview</p>
+                                    <div id="manualQuickstartFallback" class="manual-quickstart-fallback">
+                                        <i class="mdi mdi-draw-pen"></i>
+                                        <p>Generate an image to see preview</p>
+                                    </div>
+                                    <div id="manualQuickstartGallery" class="manual-quickstart-gallery hidden">
+                                        <div class="manual-quickstart-header">
+                                            <span class="manual-quickstart-title">Quickstart</span>
+                                            <button type="button" id="manualQuickstartHideBtn"
+                                                class="btn-secondary btn-small" title="Hide Quickstart Gallery">
+                                                Hide
+                                            </button>
+                                        </div>
+                                        <div id="manualQuickstartGrid" class="manual-quickstart-grid"></div>
+                                    </div>
                                 </div>
                                 <!-- Dialog overlay container -->
                                 <div id="manualPreviewDialogs" class="manual-preview-dialogs hidden"></div>
@@ -7639,6 +7651,26 @@ Examples:
                         </div>
                     </div>
 
+                    <!-- Global: Image Generation -->
+                    <div class="settings-section hidden" data-desktop-settings-scope="global">
+                        <h3 class="section-header"><i class="fas fa-image"></i> Image Generation</h3>
+                        <div class="desktop-settings-options-grid">
+                            <div class="desktop-settings-option">
+                                <button type="button" id="desktopSettingsHideQuickstartGalleryBtn"
+                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
+                                    data-state="off"
+                                    title="When on, Studio's empty preview stays a simple placeholder">
+                                    <i class="fa-regular fa-images"></i>
+                                </button>
+                                <div class="desktop-settings-option-body">
+                                    <span class="desktop-settings-option-label">Hide Quickstart Gallery</span>
+                                    <p class="desktop-settings-hint">When off, Studio's empty preview shows your presets
+                                        so you can start from one. Applies immediately.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Global: Input -->
                     <div class="settings-section hidden" data-desktop-settings-scope="global">
                         <h3 class="section-header"><i class="fas fa-keyboard"></i> Input</h3>
@@ -8300,6 +8332,7 @@ Examples:
     <script src="scripts/comp/autocompleteUtils.js"></script>
     <script src="scripts/comp/characterAutofillToolManager.js"></script>
     <script src="scripts/comp/autofillSettings.js"></script>
+    <script src="scripts/comp/imageGenerationSettings.js"></script>
     <script src="scripts/utils/referenceUtils.js"></script>
     <script src="scripts/comp/imageBias.js"></script>
     <script src="scripts/comp/imageExpansion.js"></script>

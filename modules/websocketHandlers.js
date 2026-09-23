@@ -8,6 +8,10 @@ const {
     normalizeRemoteAccessSettings,
     mergeRemoteAccessSettingsPatch
 } = require('./remoteAccessSettings');
+const {
+    normalizeImageGenerationSettings,
+    mergeImageGenerationSettingsPatch
+} = require('./imageGenerationSettings');
 const grimoireDomainRegistry = require('./grimoireDomainRegistry');
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
 const wsMessageDispatcher = require('./ws/wsMessageDispatcher');
@@ -558,7 +562,8 @@ class WebSocketMessageHandlers {
                 elevatePins: this.normalizeNaxtElevatePinsSetting(naxt)
             },
             autofillSearch: normalizeAutofillSearchSettings(base.autofillSearch),
-            remoteAccess: normalizeRemoteAccessSettings(base.remoteAccess)
+            remoteAccess: normalizeRemoteAccessSettings(base.remoteAccess),
+            imageGeneration: normalizeImageGenerationSettings(base.imageGeneration)
         };
     }
 
@@ -610,6 +615,9 @@ class WebSocketMessageHandlers {
         }
         if (patch.remoteAccess && typeof patch.remoteAccess === 'object') {
             out.remoteAccess = mergeRemoteAccessSettingsPatch(out.remoteAccess, patch.remoteAccess);
+        }
+        if (patch.imageGeneration && typeof patch.imageGeneration === 'object') {
+            out.imageGeneration = mergeImageGenerationSettingsPatch(out.imageGeneration, patch.imageGeneration);
         }
         return out;
     }

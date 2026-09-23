@@ -574,6 +574,20 @@ class ConfigManager {
                             defaultGenerationMethod: 'studio',
                             autoGenerate: false,
                             openGeneratedImages: 'lumen'
+                        },
+                        imageGeneration: {
+                            streamImageGeneration: true,
+                            showStreamedImagesUnprocessed: true,
+                            simpleOutputViewer: false,
+                            lockOutputViewerCamera: false,
+                            reducedMotion: false,
+                            transparencyBackground: 'checker-dark',
+                            transparencyCustomColor: '#808080',
+                            hideQuickstartGallery: false,
+                            persistHistory: true,
+                            imageFormat: 'png',
+                            automaticDownload: false,
+                            alphaMode: 'straight'
                         }
                     },
                     generationQuips: {

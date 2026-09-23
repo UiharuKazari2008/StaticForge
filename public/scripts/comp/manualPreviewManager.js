@@ -144,15 +144,16 @@ async function loadTempImagePreview(previewUrl, imageData) {
             console.error(`Failed to load image from: ${previewUrl}`);
             previewImage.classList.add('hidden');
 
-            // Show placeholder instead
+            // Show placeholder instead — keep Quickstart markup intact
             if (previewPlaceholder) {
                 previewPlaceholder.classList.remove('hidden');
-                previewPlaceholder.innerHTML = `
-                    <div class="manual-preview-placeholder">
-                        <i class="mdi mdi-1-5 mdi-image-broken"></i>
-                        <p>Failed to load image preview</p>
-                    </div>
-                `;
+                const fallback = document.getElementById('manualQuickstartFallback');
+                const fallbackText = fallback && fallback.querySelector('p');
+                if (fallbackText) {
+                    fallbackText.textContent = 'Failed to load image preview';
+                }
+                // refreshManualQuickstartGallery: public/scripts/comp/imageGenerationSettings.js
+                refreshManualQuickstartGallery();
             }
         };
 
@@ -733,6 +734,8 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 if (!hasVisiblePreview) {
                     previewImage.classList.add('hidden');
                     previewPlaceholder.classList.remove('hidden');
+                    // refreshManualQuickstartGallery: public/scripts/comp/imageGenerationSettings.js
+                    refreshManualQuickstartGallery();
                 }
             }
 
@@ -1156,6 +1159,8 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                 // Keep the placeholder visible until the image finishes loading in the background.
                 previewImage.classList.add('hidden');
                 previewPlaceholder.classList.remove('hidden');
+                // refreshManualQuickstartGallery: public/scripts/comp/imageGenerationSettings.js
+                refreshManualQuickstartGallery();
             }
 
             previewImage.dataset.blobUrl = imageUrl;
@@ -1531,6 +1536,9 @@ function resetManualPreview() {
         refreshManualPreviewImageLoupe();
 
         clearManualRentanContextOverlay();
+
+        // refreshManualQuickstartGallery: public/scripts/comp/imageGenerationSettings.js
+        refreshManualQuickstartGallery();
 
         // Force preview animation back to default state
         if (generationAnimationActive) {
