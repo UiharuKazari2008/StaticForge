@@ -35,6 +35,7 @@ let imageGenerationSettingsState = { ...DEFAULT_IMAGE_GENERATION_SETTINGS_CLIENT
 let imageGenerationSettingsWired = false;
 let quickstartGalleryLoadPromise = null;
 let quickstartGalleryItems = null;
+let studioPreviewRestoreInFlight = false;
 
 function normalizeImageGenerationBooleanClient(value, fallback) {
     if (typeof value === 'boolean') return value;
@@ -125,16 +126,56 @@ function applyImageGenerationPreviewChrome() {
     } else {
         root.style.removeProperty('--studio-transparency-custom');
     }
+    if (settings.lockOutputViewerCamera) {
+        // destroyManualPreviewImageLoupe: public/scripts/comp/manualModalManager.js
+        destroyManualPreviewImageLoupe();
+    } else {
+        // refreshManualPreviewImageLoupe: public/scripts/comp/manualModalManager.js
+        refreshManualPreviewImageLoupe();
+    }
+}
+
+function syncDesktopSettingsToggle(id, on) {
+    const btn = document.getElementById(id);
+    if (btn) btn.dataset.state = on ? 'on' : 'off';
+}
+
+function syncDesktopSettingsPairToggle(id, active, attr) {
+    const toggle = document.getElementById(id);
+    if (!toggle) return;
+    toggle.setAttribute('data-active', active);
+    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset[attr] === active);
+    });
 }
 
 function syncImageGenerationSettingsUI() {
-    const hideBtn = document.getElementById('desktopSettingsHideQuickstartGalleryBtn');
-    if (hideBtn) {
-        hideBtn.dataset.state = imageGenerationSettingsState.hideQuickstartGallery ? 'on' : 'off';
-    }
+    const s = imageGenerationSettingsState;
+    syncDesktopSettingsToggle('desktopSettingsStreamImageGenerationBtn', s.streamImageGeneration);
+    syncDesktopSettingsToggle('desktopSettingsShowStreamedUnprocessedBtn', s.showStreamedImagesUnprocessed);
+    syncDesktopSettingsToggle('desktopSettingsSimpleOutputViewerBtn', s.simpleOutputViewer);
+    syncDesktopSettingsToggle('desktopSettingsLockOutputViewerCameraBtn', s.lockOutputViewerCamera);
+    syncDesktopSettingsToggle('desktopSettingsReducedPreviewBtn', s.reducedMotion);
+    syncDesktopSettingsToggle('desktopSettingsHideQuickstartGalleryBtn', s.hideQuickstartGallery);
+    syncDesktopSettingsToggle('desktopSettingsPersistHistoryBtn', s.persistHistory);
+    syncDesktopSettingsToggle('desktopSettingsAutomaticDownloadBtn', s.automaticDownload);
     const hideGalleryBtn = document.getElementById('manualQuickstartHideBtn');
     if (hideGalleryBtn) {
-        hideGalleryBtn.dataset.state = imageGenerationSettingsState.hideQuickstartGallery ? 'on' : 'off';
+        hideGalleryBtn.dataset.state = s.hideQuickstartGallery ? 'on' : 'off';
+    }
+    syncDesktopSettingsPairToggle('desktopSettingsImageFormatToggle', s.imageFormat, 'format');
+    syncDesktopSettingsPairToggle('desktopSettingsAlphaModeToggle', s.alphaMode, 'alpha');
+    const swatches = document.getElementById('desktopSettingsTransparencySwatches');
+    if (swatches) {
+        swatches.querySelectorAll('[data-bg]').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.bg === s.transparencyBackground);
+        });
+    }
+    const custom = document.getElementById('desktopSettingsTransparencyCustomColor');
+    if (custom) custom.value = s.transparencyCustomColor;
+    const customWrap = custom && custom.closest('.studio-transparency-custom');
+    if (customWrap) {
+        customWrap.classList.toggle('active', s.transparencyBackground === 'custom');
     }
 }
 
@@ -280,23 +321,214 @@ function invalidateManualQuickstartGallery() {
     quickstartGalleryItems = null;
 }
 
+const STUDIO_LAST_PREVIEW_LS = 'studioLastPreviewFilename';
+
+function rememberLastStudioPreview(filename) {
+    if (!filename || !imageGenerationSettingsState.persistHistory) return;
+    try {
+        localStorage.setItem(STUDIO_LAST_PREVIEW_LS, String(filename));
+    } catch (_err) { /* */ }
+}
+
+function readLastStudioPreviewFilename() {
+    try {
+        return localStorage.getItem(STUDIO_LAST_PREVIEW_LS) || '';
+    } catch (_err) {
+        return '';
+    }
+}
+
+function isStudioStreamEnabled() {
+    return imageGenerationSettingsState.streamImageGeneration !== false;
+}
+
+function isStudioStreamUnprocessed() {
+    return imageGenerationSettingsState.showStreamedImagesUnprocessed === true
+        || imageGenerationSettingsState.reducedMotion === true;
+}
+
+function isStudioViewerCameraLocked() {
+    return imageGenerationSettingsState.lockOutputViewerCamera === true;
+}
+
+function isStudioReducedPreview() {
+    return imageGenerationSettingsState.reducedMotion === true;
+}
+
+function studioPreviewDownloadName(filename, format) {
+    const base = String(filename || `generated-image-${Date.now()}`).replace(/\.(png|webp|jpe?g)$/i, '');
+    return `${base}.${format === 'webp' ? 'webp' : 'png'}`;
+}
+
+function triggerBlobDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => {
+        try { URL.revokeObjectURL(url); } catch (_err) { /* */ }
+    }, 1000);
+}
+
+function premultiplyImageData(imageData) {
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+        const a = d[i + 3] / 255;
+        d[i] = Math.round(d[i] * a);
+        d[i + 1] = Math.round(d[i + 1] * a);
+        d[i + 2] = Math.round(d[i + 2] * a);
+    }
+    return imageData;
+}
+
+async function convertStudioDownloadBlob(blob, settings) {
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d', { alpha: true });
+    ctx.drawImage(bitmap, 0, 0);
+    if (settings.alphaMode === 'premultiplied') {
+        ctx.putImageData(premultiplyImageData(ctx.getImageData(0, 0, canvas.width, canvas.height)), 0, 0);
+    }
+    const mime = settings.imageFormat === 'webp' ? 'image/webp' : 'image/png';
+    const quality = settings.imageFormat === 'webp' ? 1 : undefined;
+    const out = await new Promise((resolve) => canvas.toBlob(resolve, mime, quality));
+    return out || blob;
+}
+
+async function downloadStudioPreviewWithPrefs(imageLike) {
+    const settings = imageGenerationSettingsState;
+    const previewImage = document.getElementById('manualPreviewImage');
+    let filename = '';
+    let url = '';
+    if (imageLike && typeof imageLike === 'object') {
+        filename = imageLike.filename || imageLike.upscaled || imageLike.original || '';
+        url = imageLike.url || '';
+    } else if (typeof imageLike === 'string') {
+        filename = imageLike;
+    }
+    if (!url && previewImage && previewImage.dataset.blobUrl) {
+        url = previewImage.dataset.blobUrl;
+        if (!filename) filename = studioPreviewDownloadName('generated-image', settings.imageFormat);
+    }
+    if (!url && filename) {
+        // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        url = `${localGalleryImageUrl(filename)}?download=true`;
+    }
+    if (!url) return false;
+    const response = await fetch(url);
+    if (!response.ok) return false;
+    let blob = await response.blob();
+    const needsConvert = settings.imageFormat === 'webp' || settings.alphaMode === 'premultiplied';
+    if (needsConvert) {
+        blob = await convertStudioDownloadBlob(blob, settings);
+    }
+    triggerBlobDownload(blob, studioPreviewDownloadName(filename || 'generated-image', settings.imageFormat));
+    return true;
+}
+
+async function maybeAutoDownloadStudioPreview(imageLike) {
+    if (!imageGenerationSettingsState.automaticDownload) return;
+    try {
+        await downloadStudioPreviewWithPrefs(imageLike);
+    } catch (error) {
+        console.warn('Automatic Studio download failed', error);
+    }
+}
+
+async function maybeRestoreLastStudioPreview() {
+    if (studioPreviewRestoreInFlight) return false;
+    if (!imageGenerationSettingsState.persistHistory) return false;
+    if (isManualPreviewImageLoaded()) return false;
+    const filename = readLastStudioPreviewFilename();
+    if (!filename) return false;
+    const images = allImages || [];
+    const image = images.find((img) =>
+        img.filename === filename || img.original === filename || img.upscaled === filename
+    ) || { filename, original: filename };
+    studioPreviewRestoreInFlight = true;
+    try {
+        // openManualModalWithContent: public/scripts/comp/manualModalManager.js
+        await openManualModalWithContent({ type: 'image', image });
+        return true;
+    } finally {
+        studioPreviewRestoreInFlight = false;
+    }
+}
+
+function wireImageGenerationBooleanToggle(id, key) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+        void persistImageGenerationSettingsPatch({ [key]: btn.dataset.state !== 'on' });
+    });
+}
+
 function wireImageGenerationSettingsControls() {
     if (imageGenerationSettingsWired) return;
     imageGenerationSettingsWired = true;
 
-    const hideBtn = document.getElementById('desktopSettingsHideQuickstartGalleryBtn');
-    if (hideBtn) {
-        hideBtn.addEventListener('click', () => {
-            void persistImageGenerationSettingsPatch({
-                hideQuickstartGallery: hideBtn.dataset.state !== 'on'
-            });
-        });
-    }
+    wireImageGenerationBooleanToggle('desktopSettingsStreamImageGenerationBtn', 'streamImageGeneration');
+    wireImageGenerationBooleanToggle('desktopSettingsShowStreamedUnprocessedBtn', 'showStreamedImagesUnprocessed');
+    wireImageGenerationBooleanToggle('desktopSettingsSimpleOutputViewerBtn', 'simpleOutputViewer');
+    wireImageGenerationBooleanToggle('desktopSettingsLockOutputViewerCameraBtn', 'lockOutputViewerCamera');
+    wireImageGenerationBooleanToggle('desktopSettingsReducedPreviewBtn', 'reducedMotion');
+    wireImageGenerationBooleanToggle('desktopSettingsHideQuickstartGalleryBtn', 'hideQuickstartGallery');
+    wireImageGenerationBooleanToggle('desktopSettingsPersistHistoryBtn', 'persistHistory');
+    wireImageGenerationBooleanToggle('desktopSettingsAutomaticDownloadBtn', 'automaticDownload');
 
     const hideGalleryBtn = document.getElementById('manualQuickstartHideBtn');
     if (hideGalleryBtn) {
         hideGalleryBtn.addEventListener('click', () => {
             void persistImageGenerationSettingsPatch({ hideQuickstartGallery: true });
+        });
+    }
+
+    const formatToggle = document.getElementById('desktopSettingsImageFormatToggle');
+    if (formatToggle) {
+        formatToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                void persistImageGenerationSettingsPatch({
+                    imageFormat: normalizeImageGenerationFormatClient(btn.dataset.format)
+                });
+            });
+        });
+    }
+
+    const alphaToggle = document.getElementById('desktopSettingsAlphaModeToggle');
+    if (alphaToggle) {
+        alphaToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                void persistImageGenerationSettingsPatch({
+                    alphaMode: normalizeImageGenerationAlphaModeClient(btn.dataset.alpha)
+                });
+            });
+        });
+    }
+
+    const swatches = document.getElementById('desktopSettingsTransparencySwatches');
+    if (swatches) {
+        swatches.querySelectorAll('[data-bg]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                void persistImageGenerationSettingsPatch({
+                    transparencyBackground: normalizeImageGenerationTransparencyBackgroundClient(btn.dataset.bg)
+                });
+            });
+        });
+    }
+    const custom = document.getElementById('desktopSettingsTransparencyCustomColor');
+    if (custom) {
+        custom.addEventListener('input', () => {
+            void persistImageGenerationSettingsPatch({
+                transparencyBackground: 'custom',
+                transparencyCustomColor: normalizeImageGenerationCustomColorClient(custom.value)
+            });
         });
     }
 }

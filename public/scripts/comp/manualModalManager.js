@@ -981,6 +981,11 @@ function sizeManualPreviewContainer(imageWidth, imageHeight) {
 let manualPreviewImageLoupeHandle = null;
 
 function initManualPreviewImageLoupe() {
+    // isStudioViewerCameraLocked: public/scripts/comp/imageGenerationSettings.js
+    if (isStudioViewerCameraLocked()) {
+        destroyManualPreviewImageLoupe();
+        return;
+    }
     // attachImageLoupe: public/scripts/comp/imageLoupe.js
     if (manualPreviewImageLoupeHandle) {
         manualPreviewImageLoupeHandle.refresh();
@@ -1258,6 +1263,8 @@ function createSakuraPetals() {
 }
 
 function createConfetti() {
+    // isStudioReducedPreview: public/scripts/comp/imageGenerationSettings.js
+    if (isStudioReducedPreview()) return;
     if (generationCelebrationEffect === 'sakura') {
         createSakuraPetals();
     } else {
@@ -2932,6 +2939,19 @@ function updateDynamicGenerationOverlay(context) {
 async function openManualModalWithContent(content = null, event = null) {
     // wireStudioVfsDrop: public/scripts/comp/explorerApplet.js (deferred; desktop loads explorer at init 18)
     if (typeof wireStudioVfsDrop === 'function') wireStudioVfsDrop();
+
+    // readLastStudioPreviewFilename: public/scripts/comp/imageGenerationSettings.js
+    if ((!content || content.type === 'none') && !studioPreviewRestoreInFlight) {
+        const persistOn = getImageGenerationSettings().persistHistory;
+        const lastName = persistOn ? readLastStudioPreviewFilename() : '';
+        const gallery = allImages || [];
+        const known = lastName && gallery.find((img) =>
+            img.filename === lastName || img.original === lastName || img.upscaled === lastName
+        );
+        if (known) {
+            content = { type: 'image', image: known };
+        }
+    }
 
     // Check if modal is already open
     const isRunning = manualModal && !manualModal.classList.contains('hidden');
@@ -4845,7 +4865,8 @@ async function handleManualGeneration(e, options = {}) {
             resetProgressOverlay();
         }
 
-        const result = await window.wsClient.generateImage(generationParams, null, true); // Enable streaming
+        // isStudioStreamEnabled: public/scripts/comp/imageGenerationSettings.js
+        const result = await window.wsClient.generateImage(generationParams, null, isStudioStreamEnabled());
 
         // lockGenerationQuips: public/scripts/comp/generationQuips.js — server done, client still finalizing
         lockGenerationQuips();
@@ -5146,6 +5167,11 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
         }
         applyGenerationMetadataUi(metadata);
         createConfetti();
+        if (genFilename) {
+            // rememberLastStudioPreview / maybeAutoDownloadStudioPreview: public/scripts/comp/imageGenerationSettings.js
+            rememberLastStudioPreview(genFilename);
+            void maybeAutoDownloadStudioPreview(window.currentManualPreviewImage || { filename: genFilename });
+        }
         return;
     }
 
@@ -5928,15 +5954,12 @@ function handleManualPreviewCloseClick(e) {
 function handleManualPreviewDownloadClick(e) {
     e.preventDefault();
     const previewImage = document.getElementById('manualPreviewImage');
-    if (previewImage && previewImage.dataset.blobUrl) {
-        const blobUrl = previewImage.dataset.blobUrl;
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = `generated-image-${Date.now()}.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    }
+    const imageLike = window.currentManualPreviewImage || (previewImage && previewImage.dataset.blobUrl
+        ? { url: previewImage.dataset.blobUrl, filename: `generated-image-${Date.now()}.png` }
+        : null);
+    if (!imageLike) return;
+    // downloadStudioPreviewWithPrefs: public/scripts/comp/imageGenerationSettings.js
+    void downloadStudioPreviewWithPrefs(imageLike);
 }
 
 async function handleManualPreviewCopyClick(e) {

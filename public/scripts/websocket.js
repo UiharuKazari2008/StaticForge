@@ -4891,7 +4891,8 @@ class WebSocketClient {
                     if (showManualPreview) {
                         showManualPreview(true);
                     }
-                    if (imageContainer) {
+                    // isStudioStreamUnprocessed: public/scripts/comp/imageGenerationSettings.js
+                    if (imageContainer && !isStudioStreamUnprocessed()) {
                         await this._crossfadeStreamingStepImage(
                             modalType,
                             manualPreviewImage,
