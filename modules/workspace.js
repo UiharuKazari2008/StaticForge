@@ -2331,8 +2331,9 @@ class WorkspaceManager {
             const workspaces = this.globalResources.getWorkspacesConfig({ clone: true });
 
             // Check if all workspace IDs exist
-            const existingWorkspaceIds = Object.keys(workspaces);
-            const invalidIds = workspaceOrder.filter(id => !existingWorkspaceIds.includes(id));
+            // JULES: perf optimization — Set lookup O(1) instead of Array.includes O(N) inside filter loop
+            const existingWorkspaceSet = new Set(Object.keys(workspaces));
+            const invalidIds = workspaceOrder.filter(id => !existingWorkspaceSet.has(id));
             if (invalidIds.length > 0) {
                 throw new Error(`Invalid workspace IDs: ${invalidIds.join(', ')}`);
             }
