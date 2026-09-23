@@ -942,64 +942,6 @@ function resolveSelectTextFromSegments(segmentIdx, segments, originalText, conte
 }
 
 /**
- * Merge appends that select the same value by combining their replace_text values
- * @param {Array} replacements - Array of replacements to process
- */
-function mergeOverlappingAppends(replacements) {
-    if (!Array.isArray(replacements)) return;
-    
-    // Group appends by select_text
-    const appendGroups = new Map(); // Map<select_text, Array<{rep, index}>>
-    const indicesToRemove = new Set();
-    
-    // First pass: identify appends with the same select_text
-    replacements.forEach((rep, index) => {
-        if (!rep) return;
-        const action = (rep.action || 'replace').toLowerCase();
-        if (action === 'append' && rep.select_text) {
-            const trimmedSelect = rep.select_text.trim();
-            if (trimmedSelect) {
-                if (!appendGroups.has(trimmedSelect)) {
-                    appendGroups.set(trimmedSelect, []);
-                }
-                appendGroups.get(trimmedSelect).push({ rep, index });
-            }
-        }
-    });
-    
-    // Second pass: merge appends with the same select_text
-    for (const [selectText, appendList] of appendGroups.entries()) {
-        if (appendList.length > 1) {
-            // Multiple appends selecting the same value - merge them
-            const mergedReplaceTexts = appendList
-                .map(item => item.rep.replace_text || '')
-                .filter(t => t.trim());
-            
-            if (mergedReplaceTexts.length > 0) {
-                const mergedReplaceText = mergedReplaceTexts.join(', ');
-                
-                // Use the first append as the base and merge replace_text
-                const firstAppend = appendList[0];
-                firstAppend.rep.replace_text = mergedReplaceText;
-                
-                // Mark other appends for removal
-                for (let i = 1; i < appendList.length; i++) {
-                    indicesToRemove.add(appendList[i].index);
-                }
-                
-                console.log(`🔗 Merged ${appendList.length} appends selecting "${selectText}" into single append`);
-            }
-        }
-    }
-    
-    // Remove merged appends (in reverse order to maintain indices)
-    const sortedIndices = Array.from(indicesToRemove).sort((a, b) => b - a);
-    for (const index of sortedIndices) {
-        replacements.splice(index, 1);
-    }
-}
-
-/**
  * Track a mitigation action that was applied during hydration
  * @param {Object} rep - Replacement object
  * @param {string} type - Type of mitigation (e.g., 'converted_to_append', 'deconflicted', 'merged', etc.)
@@ -1713,7 +1655,6 @@ module.exports = {
     parsePromptSegments,
     hydrateTextReplacements,
     extractSeparatorFormat,
-    mergeOverlappingAppends,
     resolveSelectTextFromSegments
 };
 
