@@ -99,3 +99,24 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
+
+### `userGlobalSettings.imageGeneration`
+
+NAI Image Generation prefs parity (Desktop Settings + Studio). Persisted under `config.userGlobalSettings.imageGeneration`. Normalized by `modules/imageGenerationSettings.js` on `get_user_global_settings` / `update_user_global_settings` (and any path that goes through `normalizeUserGlobalSettings`).
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `streamImageGeneration` | boolean | `true` | Stream generation progress |
+| `showStreamedImagesUnprocessed` | boolean | `true` | Show raw streamed frames |
+| `simpleOutputViewer` | boolean | `false` | Simplified output viewer |
+| `lockOutputViewerCamera` | boolean | `false` | Lock output viewer camera |
+| `reducedMotion` | boolean | `false` | Reduce motion in generation UI |
+| `transparencyBackground` | string | `checker-dark` | `checker-dark`, `checker-light`, `white`, `black`, `gray`, `red`, `green`, `blue`, `custom` |
+| `transparencyCustomColor` | string | `#808080` | Hex `#rgb` / `#rrggbb` when background is `custom` |
+| `hideQuickstartGallery` | boolean | `false` | Hide Quickstart Gallery empty-state preview (PR #210) |
+| `persistHistory` | boolean | `true` | Persist generation history |
+| `imageFormat` | string | `png` | `png` or `webp` |
+| `automaticDownload` | boolean | `false` | Auto-download finished images |
+| `alphaMode` | string | `straight` | `straight` or `premultiplied` |
+
+Patch via `update_user_global_settings` with `settings.imageGeneration` (partial object OK — merge uses `mergeImageGenerationSettingsPatch`). Desktop Settings UI wires these prefs (PR #211).

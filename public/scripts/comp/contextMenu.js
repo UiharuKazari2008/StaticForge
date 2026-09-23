@@ -62,6 +62,31 @@ class ContextMenuController {
         this._pendingClickMenuTouchTarget = null;
         /** After touch-open, ignore ghost click on trigger and overlay dismiss. */
         this._suppressClickMenuClickUntil = 0;
+        /**
+         * Finger is still down after a touch long-press opened the menu.
+         * Mobile fires contextmenu and our 500ms timer for the same hold; the second
+         * open used to toggle the menu shut. Ghost click / scroll / resize follow the lift.
+         */
+        this._touchOpenShield = false;
+        /** Epoch ms — keep ignoring that gesture's ghost dismiss until this time. */
+        this._touchDismissShieldUntil = 0;
+        /** Treat a following contextmenu as touch-generated (iOS often emits it on release). */
+        this._recentTouchContextUntil = 0;
+        /** Opening finger position, so the ghost click at that point is not an item activate. */
+        this._openingTouchX = null;
+        this._openingTouchY = null;
+        /** This touch started on a context-menu target. */
+        this._openingTouchActive = false;
+        /** preventDefault the lift of the gesture that opened the menu (suppresses the ghost click). */
+        this._preventOpeningTouchEndClick = false;
+        this._ghostClickPending = false;
+        this._ghostClickTimer = null;
+        this._shieldTouchMoveHandler = null;
+        /** Menu opened from a touch long-press; height-only resize and 1px scroll must not dismiss it. */
+        this._touchOpenedMenu = false;
+        this._shieldViewportWidth = 0;
+        this._shieldScrollX = 0;
+        this._shieldScrollY = 0;
 
         /** Touch long-press confirmed for text inputs — blocks spurious contextmenu on short taps. */
         this._textInputLongPressConfirmed = false;
@@ -135,6 +160,115 @@ class ContextMenuController {
         this.touchStartY = null;
         this._touchScrollSnapshot = null;
         this.hasScrolled = false;
+    }
+
+    _pointFromEvent(event) {
+        if (!event) return null;
+        const touch = (event.touches && event.touches[0])
+            || (event.changedTouches && event.changedTouches[0]);
+        if (touch) {
+            return { x: touch.clientX, y: touch.clientY };
+        }
+        if (typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+            return { x: event.clientX, y: event.clientY };
+        }
+        return null;
+    }
+
+    _isRealMouseEvent(event) {
+        if (!event || event.pointerType !== 'mouse') return false;
+        if (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents) return false;
+        return true;
+    }
+
+    _isTouchGeneratedContextMenu(event) {
+        if (!event || event._isProxyEvent) return false;
+        if (this._isRealMouseEvent(event)) return false;
+        if (event.pointerType === 'touch' || event.pointerType === 'pen') return true;
+        if (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents) return true;
+        if (this.touchStartX != null) return true;
+        return Date.now() < this._recentTouchContextUntil;
+    }
+
+    _isTouchDismissShielded() {
+        return this._touchOpenShield || Date.now() < this._touchDismissShieldUntil;
+    }
+
+    _armTouchOpenShield(event) {
+        const point = this._pointFromEvent(event);
+        if (point) {
+            this._openingTouchX = point.x;
+            this._openingTouchY = point.y;
+        } else if (this._openingTouchX == null && this.touchStartX != null) {
+            this._openingTouchX = this.touchStartX;
+            this._openingTouchY = this.touchStartY;
+        }
+        if (this._ghostClickTimer) {
+            clearTimeout(this._ghostClickTimer);
+            this._ghostClickTimer = null;
+        }
+        this._ghostClickPending = false;
+        this._preventOpeningTouchEndClick = true;
+        this._touchOpenedMenu = true;
+        this._shieldViewportWidth = window.innerWidth;
+        this._shieldScrollX = window.scrollX || 0;
+        this._shieldScrollY = window.scrollY || 0;
+        const hold = Date.now() + 10000;
+        this._suppressDocumentContextMenuUntil = hold;
+        this._suppressClickMenuClickUntil = hold;
+        if (this._touchOpenShield) return;
+        this._touchOpenShield = true;
+        this._touchDismissShieldUntil = 0;
+        this._bindShieldTouchMove();
+    }
+
+    _releaseTouchOpenShield() {
+        if (!this._touchOpenShield) return;
+        this._touchOpenShield = false;
+        this._unbindShieldTouchMove();
+        const until = Date.now() + 500;
+        this._touchDismissShieldUntil = until;
+        this._suppressDocumentContextMenuUntil = until;
+        this._suppressClickMenuClickUntil = until;
+        this._ghostClickPending = true;
+        if (this._ghostClickTimer) clearTimeout(this._ghostClickTimer);
+        this._ghostClickTimer = setTimeout(() => {
+            this._ghostClickTimer = null;
+            this._ghostClickPending = false;
+            this._openingTouchX = null;
+            this._openingTouchY = null;
+        }, 500);
+    }
+
+    _bindShieldTouchMove() {
+        if (this._shieldTouchMoveHandler) return;
+        this._shieldTouchMoveHandler = (e) => {
+            if (!this._touchOpenShield || !this.isOpen) return;
+            if (e.cancelable) e.preventDefault();
+        };
+        document.addEventListener('touchmove', this._shieldTouchMoveHandler, { capture: true, passive: false });
+    }
+
+    _unbindShieldTouchMove() {
+        if (!this._shieldTouchMoveHandler) return;
+        document.removeEventListener('touchmove', this._shieldTouchMoveHandler, { capture: true });
+        this._shieldTouchMoveHandler = null;
+    }
+
+    /**
+     * Ghost mouse events from the long-press must not activate an item or hit the overlay.
+     * While the finger is down, every synthesized mouse event is part of that gesture.
+     * After lift, only the click at the press point is swallowed so a tap elsewhere still works.
+     */
+    _shouldSwallowOpeningGhost(event) {
+        if (!this.isOpen || !event || this._isRealMouseEvent(event)) return false;
+        if (this._touchOpenShield) return true;
+        if (!this._ghostClickPending) return false;
+        const point = this._pointFromEvent(event);
+        if (!point || this._openingTouchX == null) return false;
+        const slop = Math.max(this.touchThreshold * 2, 24);
+        return Math.abs(point.x - this._openingTouchX) <= slop
+            && Math.abs(point.y - this._openingTouchY) <= slop;
     }
 
     isSmallMobile() {
@@ -470,8 +604,8 @@ class ContextMenuController {
             // Prevent event bubbling to avoid conflicts
             e.stopPropagation();
 
-            // Touch tap opens menu on touchend; browser then fires a synthetic click on the overlay
-            if (Date.now() < this._suppressClickMenuClickUntil) return;
+            // Touch long-press opens while the finger is still down; the lift's click hits this overlay.
+            if (Date.now() < this._suppressClickMenuClickUntil || this._isTouchDismissShielded()) return;
 
             // On mobile, keep submenus open - only close entire menu when clicking overlay
             // On desktop, close submenu first if it exists (unless root opts into closing the whole tree)
@@ -490,6 +624,8 @@ class ContextMenuController {
         this.overlay.addEventListener('contextmenu', (e) => {
             // Prevent browser context menu from appearing
             e.preventDefault();
+            // Long-press hit-tests the overlay that just opened. Closing here flashes the menu shut.
+            if (this._isTouchDismissShielded()) return;
             // Hide current menu immediately
             this.hideMenu();
             // Use a delay to ensure the overlay is hidden, then trigger the event on the element below
@@ -530,7 +666,7 @@ class ContextMenuController {
 
             // On mobile, disable proxy tap functionality - just close the menu
             if (this.isMobile()) {
-                if (Date.now() < this._suppressClickMenuClickUntil) return;
+                if (Date.now() < this._suppressClickMenuClickUntil || this._isTouchDismissShielded()) return;
                 this.hideMenu();
                 return;
             }
@@ -628,6 +764,16 @@ class ContextMenuController {
     }
 
     bindEvents() {
+        const swallowOpeningGhost = (e) => {
+            if (!this._shouldSwallowOpeningGhost(e)) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        };
+        document.addEventListener('mousedown', swallowOpeningGhost, true);
+        document.addEventListener('mouseup', swallowOpeningGhost, true);
+        document.addEventListener('click', swallowOpeningGhost, true);
+        document.addEventListener('contextmenu', swallowOpeningGhost, true);
+
         // Click/tap menus open on mousedown (capture) so title-toolbar buttons still work when
         // preventDefault blocks the follow-up click; ghost clicks are suppressed via _suppressClickMenuClickUntil.
         document.addEventListener('mousedown', (e) => {
@@ -659,10 +805,19 @@ class ContextMenuController {
             if (!target) return;
             if (!this._shouldAllowContextMenuOpen(e, target)) return;
             e.preventDefault();
-            if (!e._isProxyEvent && Date.now() < this._suppressDocumentContextMenuUntil) {
+            const fromTouch = this._isTouchGeneratedContextMenu(e);
+            // Same hold also runs the long-press timer. Cancel it so the second open cannot toggle-close.
+            if (fromTouch && this.touchTimer) {
+                clearTimeout(this.touchTimer);
+                this.touchTimer = null;
+            }
+            if (!e._isProxyEvent && !this._isRealMouseEvent(e) && Date.now() < this._suppressDocumentContextMenuUntil) {
                 return;
             }
-            this.showMenu(e, target, false, e._isProxyEvent);
+            if (!e._isProxyEvent && fromTouch && this._isTouchDismissShielded() && this.isOpen && this.currentTarget === target) {
+                return;
+            }
+            this.showMenu(e, target, fromTouch, e._isProxyEvent);
         });
 
         // Touch events for long-press (context) and tap (click menu)
@@ -686,16 +841,18 @@ class ContextMenuController {
             }
 
             if (contextTarget) {
+                this._openingTouchActive = true;
+                this._recentTouchContextUntil = Date.now() + 1500;
                 if (this._isTextInputContextMenuTarget(contextTarget)) {
                     this._clearTextInputLongPressState();
                     this._textInputLongPressTarget = contextTarget;
                 }
                 this.touchTimer = setTimeout(() => {
+                    this.touchTimer = null;
                     if (!this.hasScrolled && this.touchStartX != null && this.touchStartY != null) {
                         if (this._isTextInputContextMenuTarget(contextTarget)) {
                             this._textInputLongPressConfirmed = true;
                         }
-                        this._suppressDocumentContextMenuUntil = Date.now() + 600;
                         this._pendingClickMenuTouchTarget = null;
                         const x = this.touchStartX;
                         const y = this.touchStartY;
@@ -733,6 +890,16 @@ class ContextMenuController {
             const clickTarget = this._pendingClickMenuTouchTarget;
             const touchDuration = Date.now() - this.touchStartTime;
             const wasShortTap = touchDuration < this.longPressDelay;
+            // Lift of the long-press that opened the menu. preventDefault drops the ghost click.
+            if (this._openingTouchActive && this._preventOpeningTouchEndClick && e.cancelable) {
+                e.preventDefault();
+            }
+            this._openingTouchActive = false;
+            this._preventOpeningTouchEndClick = false;
+            if (this._touchOpenShield) {
+                this._recentTouchContextUntil = Date.now() + 700;
+                this._releaseTouchOpenShield();
+            }
 
             if (this.touchTimer) {
                 clearTimeout(this.touchTimer);
@@ -765,9 +932,14 @@ class ContextMenuController {
             this.touchStartY = null;
             this._touchScrollSnapshot = null;
             this.hasScrolled = false;
-        }, { passive: true });
+        }, { passive: false });
 
         document.addEventListener('touchcancel', () => {
+            this._openingTouchActive = false;
+            this._preventOpeningTouchEndClick = false;
+            if (this._touchOpenShield) {
+                this._releaseTouchOpenShield();
+            }
             if (this.touchTimer) {
                 clearTimeout(this.touchTimer);
                 this.touchTimer = null;
@@ -790,35 +962,40 @@ class ContextMenuController {
                 this.hideMenu();
                 return;
             }
+            // Mobile long-press can emit a stray key while the callout is suppressed.
+            if (this._isTouchDismissShielded()) return;
             if (this.isFocusInsideOpenMenu()) return;
             this.hideMenu();
         });
 
-        // Handle window resize
+        // Handle window resize. Phones fire this when the URL bar jiggles during a long-press.
         window.addEventListener('resize', () => {
-            if (this.isOpen) {
-                this.hideMenu();
-            }
+            if (!this.isOpen) return;
+            if (this._isTouchDismissShielded()) return;
+            if (this._touchOpenedMenu && Math.abs(window.innerWidth - this._shieldViewportWidth) < 30) return;
+            this.hideMenu();
         });
 
+        const dismissOnScroll = () => {
+            if (!this.isOpen) return;
+            if (this._isTouchDismissShielded()) return;
+            if (this._touchOpenedMenu) {
+                const dx = Math.abs((window.scrollX || 0) - this._shieldScrollX);
+                const dy = Math.abs((window.scrollY || 0) - this._shieldScrollY);
+                if (dx < 12 && dy < 12) return;
+            }
+            this.hideMenu();
+        };
+
         // Close menu on scroll (both document and window)
-        document.addEventListener('scroll', () => {
-            if (this.isOpen) {
-                this.hideMenu();
-            }
-        }, { passive: true });
+        document.addEventListener('scroll', dismissOnScroll, { passive: true });
+        window.addEventListener('scroll', dismissOnScroll, { passive: true });
 
-        window.addEventListener('scroll', () => {
-            if (this.isOpen) {
-                this.hideMenu();
-            }
-        }, { passive: true });
-
-        // Close menu when window loses focus
+        // Close menu when window loses focus. Touch long-press blurs the window when the native callout is cancelled.
         window.addEventListener('blur', () => {
-            if (this.isOpen && !window?.develeoperMode) {
-                this.hideMenu();
-            }
+            if (!this.isOpen || window?.develeoperMode) return;
+            if (this._isTouchDismissShielded() || this._touchOpenedMenu) return;
+            this.hideMenu();
         });
 
         // Close menu when page becomes hidden (tab switch, minimize, etc.)
@@ -866,6 +1043,11 @@ class ContextMenuController {
 
         if (this.isOpen && !isProxyEvent && !isNestedItemContext) {
             if (this.currentTarget === target && this.activeMenuTrigger === trigger) {
+                // Duplicate open from the same long-press (timer + browser contextmenu).
+                if (trigger === 'context' && isTouch && this._isTouchDismissShielded()) {
+                    this._armTouchOpenShield(event);
+                    return;
+                }
                 this.hideMenu();
                 return;
             }
@@ -896,6 +1078,11 @@ class ContextMenuController {
         this.activeMenuTrigger = trigger;
         this.menu.classList.toggle('context-menu-click-triggered', trigger === 'click');
 
+        // Arm before render. Layout from the open can scroll or resize, which used to dismiss immediately.
+        if (isTouch && trigger === 'context') {
+            this._armTouchOpenShield(event);
+        }
+
         // Apply maxHeight setting if specified
         this.applyMaxHeight(config);
 
@@ -924,7 +1111,7 @@ class ContextMenuController {
 
         this.isOpen = true;
 
-        if (isTouch) {
+        if (isTouch && trigger !== 'context') {
             this._suppressClickMenuClickUntil = Date.now() + 400;
         }
 
@@ -949,7 +1136,7 @@ class ContextMenuController {
     addPositionClass(target, event, isTouch) {
         // Get click/touch coordinates
         let clickX, clickY;
-        if (isTouch) {
+        if (isTouch && event.touches && event.touches[0]) {
             clickX = event.touches[0].clientX;
             clickY = event.touches[0].clientY;
         } else {
@@ -1839,6 +2026,7 @@ class ContextMenuController {
 
         this._cancelPendingHide();
         this.isOpen = false;
+        this._touchOpenedMenu = false;
         this._clearContextOpenTargetClasses(this.currentTarget);
         this.hideSubmenu();
 
@@ -2556,6 +2744,11 @@ class ContextMenuController {
         const overlay = this.overlay;
 
         this.isOpen = false;
+        this._touchOpenedMenu = false;
+
+        if (this._touchOpenShield) {
+            this._releaseTouchOpenShield();
+        }
 
         this._clearContextOpenTargetClasses(this.currentTarget);
 
@@ -3294,6 +3487,11 @@ class ContextMenuController {
     }
 
     destroy() {
+        if (this._ghostClickTimer) {
+            clearTimeout(this._ghostClickTimer);
+            this._ghostClickTimer = null;
+        }
+        this._unbindShieldTouchMove();
         if (this.menu && this.menu.parentNode) {
             this.menu.parentNode.removeChild(this.menu);
         }

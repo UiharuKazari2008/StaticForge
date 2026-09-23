@@ -259,3 +259,14 @@ The context menu uses CSS custom properties and follows the existing design syst
 </body>
 </html>
 ```
+
+
+## Touch long-press shield (mobile)
+
+Mobile long-press can fire both the native `contextmenu` event and the 500ms timer for the same hold. A second open used to toggle the menu shut; ghost click / URL-bar resize / 1px scroll after lift also dismissed it.
+
+`ContextMenuController` arms a short-lived touch open shield (`_armTouchOpenShield` / `_releaseTouchOpenShield`) so:
+- the same-hold second open does not toggle-close
+- ghost mouse events at the press point are swallowed
+- height-only resize and tiny scroll while the finger-down shield is active do not dismiss
+
