@@ -1953,9 +1953,15 @@ class WorkspaceManager {
             workspace.files.forEach(file => allFiles.add(file));
         });
 
+        // JULES: perf sweep - O(N^2) to O(N) deduplication - pre-calculate Set for all workspaces
+        const workspaceFilesSets = {};
+        Object.entries(workspaces).forEach(([id, ws]) => {
+            workspaceFilesSets[id] = new Set(ws.files);
+        });
+
         // Check each workspace for pinned/scrapped files that don't exist in that workspace's files
         Object.entries(workspaces).forEach(([workspaceId, workspace]) => {
-            const workspaceFiles = new Set(workspace.files);
+            const workspaceFiles = workspaceFilesSets[workspaceId];
 
             // Check pinned files
             if (workspace.pinned) {
@@ -1967,7 +1973,7 @@ class WorkspaceManager {
                     invalidPinned.forEach(file => {
                         const fileInWorkspaces = [];
                         Object.entries(workspaces).forEach(([wsId, ws]) => {
-                            if (ws.files.includes(file)) {
+                            if (workspaceFilesSets[wsId].has(file)) {
                                 fileInWorkspaces.push(wsId);
                             }
                         });
