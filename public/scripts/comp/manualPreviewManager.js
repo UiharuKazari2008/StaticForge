@@ -1902,6 +1902,8 @@ let isOpeningLightbox = false;
 
 function handleManualPreviewClick(e) {
     e.preventDefault();
+    // isStudioViewerCameraLocked: public/scripts/comp/imageGenerationSettings.js
+    if (isStudioViewerCameraLocked()) return;
 
     // If this click follows a compare drag gesture, suppress lightbox open.
     if (suppressNextPreviewClick || compareDragMoved) {
@@ -2007,6 +2009,8 @@ let lastOpenLightboxScrollTime = 0;
 const SCROLL_THROTTLE_MS = 500; // 500ms throttle
 
 function handleManualPreviewScroll(e) {
+    // isStudioViewerCameraLocked: public/scripts/comp/imageGenerationSettings.js
+    if (isStudioViewerCameraLocked()) return;
     // Only trigger on scroll up (negative deltaY)
     if (e.deltaY < 0) {
         e.preventDefault();

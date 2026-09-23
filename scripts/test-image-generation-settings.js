@@ -30,4 +30,15 @@ assert.strictEqual(merged.persistHistory, true);
 const ignored = mergeImageGenerationSettingsPatch(DEFAULT_IMAGE_GENERATION_SETTINGS, { hideQuickstartGallery: 'nope' });
 assert.strictEqual(ignored.hideQuickstartGallery, false);
 
+const historyOff = mergeImageGenerationSettingsPatch(DEFAULT_IMAGE_GENERATION_SETTINGS, {
+    persistHistory: false,
+    automaticDownload: true,
+    alphaMode: 'premultiplied',
+    streamImageGeneration: false
+});
+assert.strictEqual(historyOff.persistHistory, false);
+assert.strictEqual(historyOff.automaticDownload, true);
+assert.strictEqual(historyOff.alphaMode, 'premultiplied');
+assert.strictEqual(historyOff.streamImageGeneration, false);
+
 console.log('test-image-generation-settings: ok');
