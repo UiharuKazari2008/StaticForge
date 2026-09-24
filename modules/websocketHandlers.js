@@ -673,7 +673,7 @@ class WebSocketMessageHandlers {
             return;
         }
 
-        this.sendError(ws, 'Unknown message type', message.type);
+        this.sendError(ws, 'Unknown message type', message.type, message.requestId);
     }
 
     async handleDesktopGetSettings(ws, message, clientInfo, wsServer) {
