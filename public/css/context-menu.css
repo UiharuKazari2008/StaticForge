@@ -725,6 +725,18 @@ span.context-menu-item-state {
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
+.context-menu-grid-btn.imggen-transparency-checker-dark .context-menu-grid-swatch {
+    background-image: repeating-conic-gradient(#3a3a3a 0% 25%, #1c1c1c 0% 50%);
+    background-size: 10px 10px;
+    background-position: 50%;
+}
+
+.context-menu-grid-btn.imggen-transparency-checker-light .context-menu-grid-swatch {
+    background-image: repeating-conic-gradient(#f0f0f0 0% 25%, #c8c8c8 0% 50%);
+    background-size: 10px 10px;
+    background-position: 50%;
+}
+
 .context-menu-grid-btn.has-toggle-indicator .context-menu-item-indicator {
     position: absolute;
     right: 1px;

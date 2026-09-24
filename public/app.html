@@ -2024,6 +2024,12 @@
                                         title="Force Paid Request">
                                         <i class="fas fa-dollar-sign"></i>
                                     </button>
+                                    <button type="button" id="studioImageGenSettingsBtn"
+                                        class="btn-secondary" title="Image Generation Settings">
+                                        <i class="fa-regular fa-sliders"></i>
+                                    </button>
+                                    <input type="color" id="studioTransparencyCustomColor" class="hidden" value="#808080"
+                                        tabindex="-1" aria-hidden="true">
                                     <div id="manualTokenFreeDisplay"
                                         class="inset-badge gen-count-display token-free-display hidden"
                                         style="height: 32px;" title="Prompt tokens free">
@@ -7357,7 +7363,7 @@ Examples:
         </div>
         <div class="modal-content dark">
             <div class="desktop-settings-layout">
-                <div class="desktop-settings-controls">
+                <div class="desktop-settings-controls scrollbar-padding" data-custom-scrollbar>
                     <!-- Workspace Settings Section -->
                     <div class="settings-section" data-desktop-settings-scope="workspace">
                         <h3 class="section-header"><i class="fas fa-planet-ringed"></i> Workspace</h3>
@@ -7648,167 +7654,6 @@ Examples:
                                         instead of the bridge. Taskbar popovers and tray popups are unchanged.</p>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-
-                    <!-- Global: Image Generation -->
-                    <div class="settings-section hidden" data-desktop-settings-scope="global">
-                        <h3 class="section-header"><i class="fas fa-image"></i> Image Generation</h3>
-                        <div class="desktop-settings-options-grid">
-                            <div class="desktop-settings-option">
-                                <button type="button" id="desktopSettingsStreamImageGenerationBtn"
-                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
-                                    data-state="on" title="Stream step previews while Studio generates">
-                                    <i class="fa-regular fa-wave-pulse"></i>
-                                </button>
-                                <div class="desktop-settings-option-body">
-                                    <span class="desktop-settings-option-label">Stream Image Generation</span>
-                                    <p class="desktop-settings-hint">Show intermediate steps in the preview while a
-                                        generate is running.</p>
-                                </div>
-                            </div>
-                            <div class="desktop-settings-option">
-                                <button type="button" id="desktopSettingsShowStreamedUnprocessedBtn"
-                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
-                                    data-state="on" title="Show raw streamed frames without the preview fade">
-                                    <i class="fa-regular fa-layer-group"></i>
-                                </button>
-                                <div class="desktop-settings-option-body">
-                                    <span class="desktop-settings-option-label">Show Streamed Images
-                                        Unprocessed</span>
-                                    <p class="desktop-settings-hint">Skip the preview crossfade and show raw step
-                                        frames as they arrive.</p>
-                                </div>
-                            </div>
-                            <div class="desktop-settings-option">
-                                <button type="button" id="desktopSettingsSimpleOutputViewerBtn"
-                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
-                                    data-state="off" title="Hide preview decorations">
-                                    <i class="fa-regular fa-image"></i>
-                                </button>
-                                <div class="desktop-settings-option-body">
-                                    <span class="desktop-settings-option-label">Simple Output Viewer</span>
-                                    <p class="desktop-settings-hint">Hide the blurred backdrop and name plate on the
-                                        preview.</p>
-                                </div>
-                            </div>
-                            <div class="desktop-settings-option">
-                                <button type="button" id="desktopSettingsLockOutputViewerCameraBtn"
-                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
-                                    data-state="off" title="Lock the preview — no loupe, click, or wheel lightbox">
-                                    <i class="fa-regular fa-lock"></i>
-                                </button>
-                                <div class="desktop-settings-option-body">
-                                    <span class="desktop-settings-option-label">Lock Output Viewer Camera</span>
-                                    <p class="desktop-settings-hint">Keep the preview still. Loupe, click, and wheel
-                                        open stay off.</p>
-                                </div>
-                            </div>
-                            <div class="desktop-settings-option">
-                                <button type="button" id="desktopSettingsReducedPreviewBtn"
-                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
-                                    data-state="off" title="Reduce preview animation">
-                                    <i class="fa-regular fa-ban"></i>
-                                </button>
-                                <div class="desktop-settings-option-body">
-                                    <span class="desktop-settings-option-label">Reduced Preview Animation</span>
-                                    <p class="desktop-settings-hint">Skip preview fades, step crossfades, and
-                                        generate celebration.</p>
-                                </div>
-                            </div>
-                            <div class="desktop-settings-option">
-                                <button type="button" id="desktopSettingsHideQuickstartGalleryBtn"
-                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
-                                    data-state="off"
-                                    title="When on, Studio's empty preview stays a simple placeholder">
-                                    <i class="fa-regular fa-images"></i>
-                                </button>
-                                <div class="desktop-settings-option-body">
-                                    <span class="desktop-settings-option-label">Hide Quickstart Gallery</span>
-                                    <p class="desktop-settings-hint">When off, Studio's empty preview shows your
-                                        presets so you can start from one.</p>
-                                </div>
-                            </div>
-                            <div class="desktop-settings-option">
-                                <button type="button" id="desktopSettingsPersistHistoryBtn"
-                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
-                                    data-state="on" title="Restore the last Studio preview when you reopen empty">
-                                    <i class="fa-regular fa-clock-rotate-left"></i>
-                                </button>
-                                <div class="desktop-settings-option-body">
-                                    <span class="desktop-settings-option-label">Persist Image Generation
-                                        History</span>
-                                    <p class="desktop-settings-hint">Workspace gallery already keeps gens. When on,
-                                        Studio also restores the last preview if you reopen empty.</p>
-                                </div>
-                            </div>
-                            <div class="desktop-settings-option">
-                                <button type="button" id="desktopSettingsAutomaticDownloadBtn"
-                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
-                                    data-state="off" title="Download the file after a Studio generate finishes">
-                                    <i class="fa-regular fa-download"></i>
-                                </button>
-                                <div class="desktop-settings-option-body">
-                                    <span class="desktop-settings-option-label">Automatic Download</span>
-                                    <p class="desktop-settings-hint">After a Studio generate, save the file using the
-                                        format and alpha mode below.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Transparency Background</label>
-                            <div id="desktopSettingsTransparencySwatches" class="studio-transparency-swatches">
-                                <button type="button" class="studio-transparency-swatch" data-bg="checker-dark"
-                                    title="Dark checker"></button>
-                                <button type="button" class="studio-transparency-swatch" data-bg="checker-light"
-                                    title="Light checker"></button>
-                                <button type="button" class="studio-transparency-swatch" data-bg="white"
-                                    title="White"></button>
-                                <button type="button" class="studio-transparency-swatch" data-bg="gray"
-                                    title="Gray"></button>
-                                <button type="button" class="studio-transparency-swatch" data-bg="black"
-                                    title="Black"></button>
-                                <button type="button" class="studio-transparency-swatch" data-bg="red"
-                                    title="Red"></button>
-                                <button type="button" class="studio-transparency-swatch" data-bg="green"
-                                    title="Green"></button>
-                                <button type="button" class="studio-transparency-swatch" data-bg="blue"
-                                    title="Blue"></button>
-                                <label class="studio-transparency-swatch studio-transparency-custom" title="Custom color">
-                                    <input type="color" id="desktopSettingsTransparencyCustomColor" value="#808080">
-                                </label>
-                            </div>
-                            <p class="desktop-settings-hint">Shown behind transparent gens in the Studio preview.</p>
-                        </div>
-                        <div class="form-group">
-                            <label>Image Format</label>
-                            <div id="desktopSettingsImageFormatToggle"
-                                class="gallery-toggle-group desktop-settings-scope-toggle" data-active="png">
-                                <button type="button" class="gallery-toggle-btn active" data-format="png">
-                                    <span class="tab-text">PNG</span>
-                                </button>
-                                <button type="button" class="gallery-toggle-btn" data-format="webp">
-                                    <span class="tab-text">WebP</span>
-                                </button>
-                                <div class="gallery-toggle-slider"></div>
-                            </div>
-                            <p class="desktop-settings-hint">Used for Studio download and automatic download. Gallery
-                                files stay PNG from the pipeline.</p>
-                        </div>
-                        <div class="form-group">
-                            <label>Alpha Mode</label>
-                            <div id="desktopSettingsAlphaModeToggle"
-                                class="gallery-toggle-group desktop-settings-scope-toggle" data-active="straight">
-                                <button type="button" class="gallery-toggle-btn active" data-alpha="straight">
-                                    <span class="tab-text">Straight</span>
-                                </button>
-                                <button type="button" class="gallery-toggle-btn" data-alpha="premultiplied">
-                                    <span class="tab-text">Premultiplied</span>
-                                </button>
-                                <div class="gallery-toggle-slider"></div>
-                            </div>
-                            <p class="desktop-settings-hint">Applied when Studio downloads a file. Straight matches
-                                the stored PNG.</p>
                         </div>
                     </div>
 

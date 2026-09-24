@@ -119,4 +119,4 @@ NAI Image Generation prefs parity (Desktop Settings + Studio). Persisted under `
 | `automaticDownload` | boolean | `false` | Auto-download finished images |
 | `alphaMode` | string | `straight` | `straight` or `premultiplied` |
 
-Patch via `update_user_global_settings` with `settings.imageGeneration` (partial object OK — merge uses `mergeImageGenerationSettingsPatch`). Desktop Settings UI wires these prefs (PR #211).
+Patch via `update_user_global_settings` with `settings.imageGeneration` (partial object OK — merge uses `mergeImageGenerationSettingsPatch`). Studio menus wire these prefs (settings button left of token usage, preview Transparent Background submenu, Generate Image Format / Automatic Download).

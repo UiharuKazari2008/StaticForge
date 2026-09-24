@@ -135,48 +135,14 @@ function applyImageGenerationPreviewChrome() {
     }
 }
 
-function syncDesktopSettingsToggle(id, on) {
-    const btn = document.getElementById(id);
-    if (btn) btn.dataset.state = on ? 'on' : 'off';
-}
-
-function syncDesktopSettingsPairToggle(id, active, attr) {
-    const toggle = document.getElementById(id);
-    if (!toggle) return;
-    toggle.setAttribute('data-active', active);
-    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset[attr] === active);
-    });
-}
-
 function syncImageGenerationSettingsUI() {
     const s = imageGenerationSettingsState;
-    syncDesktopSettingsToggle('desktopSettingsStreamImageGenerationBtn', s.streamImageGeneration);
-    syncDesktopSettingsToggle('desktopSettingsShowStreamedUnprocessedBtn', s.showStreamedImagesUnprocessed);
-    syncDesktopSettingsToggle('desktopSettingsSimpleOutputViewerBtn', s.simpleOutputViewer);
-    syncDesktopSettingsToggle('desktopSettingsLockOutputViewerCameraBtn', s.lockOutputViewerCamera);
-    syncDesktopSettingsToggle('desktopSettingsReducedPreviewBtn', s.reducedMotion);
-    syncDesktopSettingsToggle('desktopSettingsHideQuickstartGalleryBtn', s.hideQuickstartGallery);
-    syncDesktopSettingsToggle('desktopSettingsPersistHistoryBtn', s.persistHistory);
-    syncDesktopSettingsToggle('desktopSettingsAutomaticDownloadBtn', s.automaticDownload);
     const hideGalleryBtn = document.getElementById('manualQuickstartHideBtn');
     if (hideGalleryBtn) {
         hideGalleryBtn.dataset.state = s.hideQuickstartGallery ? 'on' : 'off';
     }
-    syncDesktopSettingsPairToggle('desktopSettingsImageFormatToggle', s.imageFormat, 'format');
-    syncDesktopSettingsPairToggle('desktopSettingsAlphaModeToggle', s.alphaMode, 'alpha');
-    const swatches = document.getElementById('desktopSettingsTransparencySwatches');
-    if (swatches) {
-        swatches.querySelectorAll('[data-bg]').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.bg === s.transparencyBackground);
-        });
-    }
-    const custom = document.getElementById('desktopSettingsTransparencyCustomColor');
+    const custom = document.getElementById('studioTransparencyCustomColor');
     if (custom) custom.value = s.transparencyCustomColor;
-    const customWrap = custom && custom.closest('.studio-transparency-custom');
-    if (customWrap) {
-        customWrap.classList.toggle('active', s.transparencyBackground === 'custom');
-    }
 }
 
 function applyImageGenerationSettingsToClient(settings) {
@@ -460,26 +426,201 @@ async function maybeRestoreLastStudioPreview() {
     }
 }
 
-function wireImageGenerationBooleanToggle(id, key) {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.addEventListener('click', () => {
-        void persistImageGenerationSettingsPatch({ [key]: btn.dataset.state !== 'on' });
-    });
+const IMAGE_GENERATION_BOOLEAN_MENU_ITEMS = [
+    { key: 'streamImageGeneration', text: 'Stream Image Generation', icon: 'fa-regular fa-wave-pulse' },
+    { key: 'showStreamedImagesUnprocessed', text: 'Show Streamed Images Unprocessed', icon: 'fa-regular fa-layer-group' },
+    { key: 'simpleOutputViewer', text: 'Simple Output Viewer', icon: 'fa-regular fa-image' },
+    { key: 'lockOutputViewerCamera', text: 'Lock Output Viewer Camera', icon: 'fa-regular fa-lock' },
+    { key: 'reducedMotion', text: 'Reduced Preview Animation', icon: 'fa-regular fa-ban' },
+    { key: 'hideQuickstartGallery', text: 'Hide Quickstart Gallery', icon: 'fa-regular fa-images' },
+    { key: 'persistHistory', text: 'Persist Image Generation History', icon: 'fa-regular fa-clock-rotate-left' }
+];
+
+const IMAGE_GENERATION_TRANSPARENCY_SWATCHES = [
+    { value: 'checker-dark', tooltip: 'Dark checker', swatchColor: '#1c1c1c', className: 'imggen-transparency-checker-dark' },
+    { value: 'checker-light', tooltip: 'Light checker', swatchColor: '#c8c8c8', className: 'imggen-transparency-checker-light' },
+    { value: 'white', tooltip: 'White', swatchColor: '#ffffff' },
+    { value: 'gray', tooltip: 'Gray', swatchColor: '#808080' },
+    { value: 'black', tooltip: 'Black', swatchColor: '#111111' },
+    { value: 'red', tooltip: 'Red', swatchColor: '#c62828' },
+    { value: 'green', tooltip: 'Green', swatchColor: '#2e7d32' },
+    { value: 'blue', tooltip: 'Blue', swatchColor: '#1565c0' },
+    { value: 'custom', tooltip: 'Custom color', swatchColor: null }
+];
+
+function buildImageGenerationBooleanMenuItem(spec) {
+    return {
+        icon: spec.icon,
+        text: spec.text,
+        action: 'imggen-toggle',
+        key: spec.key,
+        keepMenuOpen: true,
+        showIndicator: true,
+        loadfn: function (item) {
+            item.checked = getImageGenerationSettings()[spec.key] === true;
+        }
+    };
+}
+
+function getImageGenerationTransparencySubmenu() {
+    return [{
+        type: 'grid',
+        items: IMAGE_GENERATION_TRANSPARENCY_SWATCHES.map((spec) => ({
+            action: 'imggen-transparency',
+            value: spec.value,
+            swatchColor: spec.value === 'custom'
+                ? imageGenerationSettingsState.transparencyCustomColor
+                : spec.swatchColor,
+            className: spec.className,
+            tooltip: spec.tooltip,
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: function (item) {
+                const s = getImageGenerationSettings();
+                item.checked = s.transparencyBackground === spec.value;
+                if (spec.value === 'custom') item.swatchColor = s.transparencyCustomColor;
+            }
+        }))
+    }];
+}
+
+function getImageGenerationFormatMenuItems() {
+    return [
+        { text: 'PNG', value: 'png' },
+        { text: 'WebP', value: 'webp' }
+    ].map((spec) => ({
+        icon: 'fa-regular fa-file-image',
+        text: spec.text,
+        action: 'imggen-format',
+        value: spec.value,
+        keepMenuOpen: true,
+        showIndicator: true,
+        loadfn: function (item) {
+            item.checked = getImageGenerationSettings().imageFormat === spec.value;
+        }
+    }));
+}
+
+function getImageGenerationAlphaMenuItems() {
+    return [
+        { text: 'Straight', value: 'straight' },
+        { text: 'Premultiplied', value: 'premultiplied' }
+    ].map((spec) => ({
+        text: spec.text,
+        action: 'imggen-alpha',
+        value: spec.value,
+        keepMenuOpen: true,
+        showIndicator: true,
+        loadfn: function (item) {
+            item.checked = getImageGenerationSettings().alphaMode === spec.value;
+        }
+    }));
+}
+
+function getImageGenerationAutomaticDownloadMenuItem() {
+    return {
+        icon: 'fa-regular fa-download',
+        text: 'Automatic Download',
+        action: 'imggen-toggle',
+        key: 'automaticDownload',
+        keepMenuOpen: true,
+        showIndicator: true,
+        loadfn: function (item) {
+            item.checked = getImageGenerationSettings().automaticDownload === true;
+        }
+    };
+}
+
+function getImageGenerationGenerateMenuSections() {
+    return [{
+        type: 'list',
+        title: 'Image Format',
+        items: [
+            ...getImageGenerationFormatMenuItems(),
+            getImageGenerationAutomaticDownloadMenuItem()
+        ]
+    }];
+}
+
+function getStudioImageGenerationSettingsMenuConfig() {
+    return {
+        sections: [{
+            type: 'list',
+            items: [
+                ...IMAGE_GENERATION_BOOLEAN_MENU_ITEMS.map(buildImageGenerationBooleanMenuItem),
+                { separator: true },
+                {
+                    icon: 'fa-regular fa-chess-board',
+                    text: 'Transparent Background',
+                    optionsfn: getImageGenerationTransparencySubmenu
+                },
+                {
+                    icon: 'fa-regular fa-circle-half-stroke',
+                    text: 'Alpha Mode',
+                    optionsfn: getImageGenerationAlphaMenuItems
+                },
+                { separator: true, text: 'Image Format' },
+                ...getImageGenerationFormatMenuItems(),
+                getImageGenerationAutomaticDownloadMenuItem()
+            ]
+        }],
+        onAction: handleImageGenerationSettingsMenuAction
+    };
+}
+
+function openStudioTransparencyCustomColorPicker() {
+    const input = document.getElementById('studioTransparencyCustomColor');
+    if (!input) return;
+    input.value = imageGenerationSettingsState.transparencyCustomColor;
+    if (input.showPicker) {
+        try {
+            input.showPicker();
+            return;
+        } catch (_err) { /* native picker unavailable */ }
+    }
+    input.click();
+}
+
+function handleImageGenerationSettingsMenuAction(action, target, item) {
+    const row = item || target;
+    if (action === 'imggen-toggle' && row && row.key) {
+        const next = getImageGenerationSettings()[row.key] !== true;
+        void persistImageGenerationSettingsPatch({ [row.key]: next });
+        return true;
+    }
+    if (action === 'imggen-format' && row && row.value != null) {
+        void persistImageGenerationSettingsPatch({
+            imageFormat: normalizeImageGenerationFormatClient(row.value)
+        });
+        return true;
+    }
+    if (action === 'imggen-alpha' && row && row.value != null) {
+        void persistImageGenerationSettingsPatch({
+            alphaMode: normalizeImageGenerationAlphaModeClient(row.value)
+        });
+        return true;
+    }
+    if (action === 'imggen-transparency' && row && row.value != null) {
+        const bg = normalizeImageGenerationTransparencyBackgroundClient(row.value);
+        void persistImageGenerationSettingsPatch({ transparencyBackground: bg });
+        if (bg === 'custom') openStudioTransparencyCustomColorPicker();
+        return true;
+    }
+    return false;
+}
+
+function wireStudioImageGenerationSettingsMenu() {
+    const btn = document.getElementById('studioImageGenSettingsBtn');
+    if (!btn || !contextMenu) return;
+    if (btn.dataset.imggenSettingsMenuWired === 'true') return;
+    btn.dataset.imggenSettingsMenuWired = 'true';
+    // attachClickMenuToElement: public/scripts/comp/contextMenu.js
+    contextMenu.attachClickMenuToElement(btn, getStudioImageGenerationSettingsMenuConfig());
 }
 
 function wireImageGenerationSettingsControls() {
     if (imageGenerationSettingsWired) return;
     imageGenerationSettingsWired = true;
-
-    wireImageGenerationBooleanToggle('desktopSettingsStreamImageGenerationBtn', 'streamImageGeneration');
-    wireImageGenerationBooleanToggle('desktopSettingsShowStreamedUnprocessedBtn', 'showStreamedImagesUnprocessed');
-    wireImageGenerationBooleanToggle('desktopSettingsSimpleOutputViewerBtn', 'simpleOutputViewer');
-    wireImageGenerationBooleanToggle('desktopSettingsLockOutputViewerCameraBtn', 'lockOutputViewerCamera');
-    wireImageGenerationBooleanToggle('desktopSettingsReducedPreviewBtn', 'reducedMotion');
-    wireImageGenerationBooleanToggle('desktopSettingsHideQuickstartGalleryBtn', 'hideQuickstartGallery');
-    wireImageGenerationBooleanToggle('desktopSettingsPersistHistoryBtn', 'persistHistory');
-    wireImageGenerationBooleanToggle('desktopSettingsAutomaticDownloadBtn', 'automaticDownload');
 
     const hideGalleryBtn = document.getElementById('manualQuickstartHideBtn');
     if (hideGalleryBtn) {
@@ -488,41 +629,7 @@ function wireImageGenerationSettingsControls() {
         });
     }
 
-    const formatToggle = document.getElementById('desktopSettingsImageFormatToggle');
-    if (formatToggle) {
-        formatToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                void persistImageGenerationSettingsPatch({
-                    imageFormat: normalizeImageGenerationFormatClient(btn.dataset.format)
-                });
-            });
-        });
-    }
-
-    const alphaToggle = document.getElementById('desktopSettingsAlphaModeToggle');
-    if (alphaToggle) {
-        alphaToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                void persistImageGenerationSettingsPatch({
-                    alphaMode: normalizeImageGenerationAlphaModeClient(btn.dataset.alpha)
-                });
-            });
-        });
-    }
-
-    const swatches = document.getElementById('desktopSettingsTransparencySwatches');
-    if (swatches) {
-        swatches.querySelectorAll('[data-bg]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                void persistImageGenerationSettingsPatch({
-                    transparencyBackground: normalizeImageGenerationTransparencyBackgroundClient(btn.dataset.bg)
-                });
-            });
-        });
-    }
-    const custom = document.getElementById('desktopSettingsTransparencyCustomColor');
+    const custom = document.getElementById('studioTransparencyCustomColor');
     if (custom) {
         custom.addEventListener('input', () => {
             void persistImageGenerationSettingsPatch({
@@ -531,6 +638,8 @@ function wireImageGenerationSettingsControls() {
             });
         });
     }
+
+    wireStudioImageGenerationSettingsMenu();
 }
 
 function initImageGenerationSettings() {
