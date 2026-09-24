@@ -5,6 +5,30 @@
     max-height: 90vh;
 }
 
+#desktopSettingsModal {
+    overflow: hidden;
+}
+
+#desktopSettingsModal .modal-content {
+    overflow: hidden;
+    min-height: 0;
+    flex: 1 1 auto;
+}
+
+#desktopSettingsModal .desktop-settings-layout {
+    min-height: 0;
+    overflow: hidden;
+}
+
+#desktopSettingsModal .desktop-settings-controls {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#desktopSettingsModal .desktop-settings-controls:not(.has-custom-scrollbar) {
+    overflow-y: auto;
+}
+
 #desktopSettingsModal:has([data-desktop-settings-scope="global"]:not(.hidden)) {
     width: 680px;
 }
@@ -122,8 +146,6 @@
 }
 
 #desktopSettingsModal .desktop-settings-scope-toggle[data-active="global"] .gallery-toggle-slider,
-#desktopSettingsModal .desktop-settings-scope-toggle[data-active="webp"] .gallery-toggle-slider,
-#desktopSettingsModal .desktop-settings-scope-toggle[data-active="premultiplied"] .gallery-toggle-slider,
 #remoteAccessSettingsModal .desktop-settings-scope-toggle[data-active="studio"] .gallery-toggle-slider {
     transform: translateX(calc(100% + 1px));
 }
@@ -430,61 +452,4 @@
     border: 2px solid var(--glass-border-2);
     border-top: none;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-}
-
-.studio-transparency-swatches {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--spacing-xs);
-}
-
-.studio-transparency-swatch {
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border-radius: 50%;
-    border: 1px solid var(--glass-border-3);
-    background: var(--glass-layer-2);
-    cursor: pointer;
-}
-
-.studio-transparency-swatch.active {
-    outline: 2px solid var(--primary-color);
-    outline-offset: 1px;
-}
-
-.studio-transparency-swatch[data-bg="checker-dark"] {
-    background:
-        repeating-conic-gradient(#3a3a3a 0% 25%, #1c1c1c 0% 50%)
-        50% / 10px 10px;
-}
-
-.studio-transparency-swatch[data-bg="checker-light"] {
-    background:
-        repeating-conic-gradient(#f0f0f0 0% 25%, #c8c8c8 0% 50%)
-        50% / 10px 10px;
-}
-
-.studio-transparency-swatch[data-bg="white"] { background: #ffffff; }
-.studio-transparency-swatch[data-bg="gray"] { background: #808080; }
-.studio-transparency-swatch[data-bg="black"] { background: #111111; }
-.studio-transparency-swatch[data-bg="red"] { background: #c62828; }
-.studio-transparency-swatch[data-bg="green"] { background: #2e7d32; }
-.studio-transparency-swatch[data-bg="blue"] { background: #1565c0; }
-
-.studio-transparency-custom {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
-
-.studio-transparency-custom input[type="color"] {
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    cursor: pointer;
 }

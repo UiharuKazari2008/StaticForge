@@ -137,13 +137,22 @@ function wirePrintsCountInputs() {
     const onChange = (event) => {
         setManualPrintsCount(event.target.value);
     };
+    // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+    const allowPrintsTick = createWheelTickGate(400);
+    const onPrintsWheel = (e) => {
+        if (!guardWheelTick(e, allowPrintsTick)) return;
+        const dir = e.deltaY > 0 ? -1 : 1;
+        setManualPrintsCount(getManualPrintsCount() + dir);
+    };
     if (primary) {
         primary.addEventListener('input', syncPair);
         primary.addEventListener('change', onChange);
+        primary.addEventListener('wheel', onPrintsWheel, { passive: false });
     }
     if (alt) {
         alt.addEventListener('input', syncPair);
         alt.addEventListener('change', onChange);
+        alt.addEventListener('wheel', onPrintsWheel, { passive: false });
     }
 }
 
@@ -364,13 +373,17 @@ function getGenerateButtonContextMenuConfig() {
                     }
                     section.items = items;
                 }
-            }
+            },
+            // getImageGenerationGenerateMenuSections: public/scripts/comp/imageGenerationSettings.js
+            ...getImageGenerationGenerateMenuSections()
         ],
         onAction: handleGenerateButtonContextMenuAction
     };
 }
 
-function handleGenerateButtonContextMenuAction(action) {
+function handleGenerateButtonContextMenuAction(action, target, item) {
+    // handleImageGenerationSettingsMenuAction: public/scripts/comp/imageGenerationSettings.js
+    if (handleImageGenerationSettingsMenuAction(action, target, item)) return;
     if (!action.startsWith('generate-stage-')) return;
     const stageIndex = parseInt(action.replace('generate-stage-', ''), 10);
     if (isNaN(stageIndex)) return;
@@ -514,6 +527,12 @@ function createManualPreviewImageContextMenuConfig() {
                             return !(img && (img.filename || img.original || img.upscaled || img.metadata));
                         }
                     },
+                    {
+                        icon: 'fa-regular fa-chess-board',
+                        text: 'Transparent Background',
+                        // getImageGenerationTransparencySubmenu: public/scripts/comp/imageGenerationSettings.js
+                        optionsfn: getImageGenerationTransparencySubmenu
+                    },
                     { separator: true },
                     {
                         icon: 'mdi mdi-1-25 mdi-relative-scale',
@@ -592,11 +611,21 @@ function createManualPreviewImageContextMenuConfig() {
 /**
  * Handles context menu actions for manual preview image
  */
+function isManualPreviewContextTarget(target) {
+    if (!target) return false;
+    if (target.id === 'manualPreviewImage') return true;
+    return !!(target.classList && target.classList.contains('manual-preview-image-container'));
+}
+
 async function handleManualPreviewImageContextMenuAction(event) {
     const { action, target, item } = event.detail;
 
-    // Only handle actions for manualPreviewImage
-    if (!target || target.id !== 'manualPreviewImage') {
+    // handleImageGenerationSettingsMenuAction: public/scripts/comp/imageGenerationSettings.js
+    if (handleImageGenerationSettingsMenuAction(action, target, item)) {
+        return;
+    }
+
+    if (!isManualPreviewContextTarget(target)) {
         return;
     }
 
@@ -869,16 +898,18 @@ async function handleManualPreviewImageContextMenuAction(event) {
  * Initialize context menu for manual preview image
  */
 function initializeManualPreviewImageContextMenu() {
-    if (!contextMenu || !manualPreviewImage) {
-        console.warn('Context menu system or manualPreviewImage element not available');
+    const previewSurface = document.querySelector('.manual-preview-image-container');
+    if (!contextMenu || !previewSurface) {
+        console.warn('Context menu system or preview surface not available');
         return;
     }
 
     // Create and store the context menu configuration
     const contextMenuConfig = createManualPreviewImageContextMenuConfig();
 
-    // Attach context menu to manualPreviewImage
-    contextMenu.attachToElement(manualPreviewImage, contextMenuConfig);
+    // Attach to the preview surface so empty background/misses open the same menu.
+    // Children with their own data-context-menu still win via closest().
+    contextMenu.attachToElement(previewSurface, contextMenuConfig);
 }
 
 // Add context menu event listener for manual preview image
