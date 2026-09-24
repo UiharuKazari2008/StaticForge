@@ -1989,7 +1989,9 @@ function updateManualGenCountDisplay() {
         container.classList.remove('hidden');
     }
     // usageToolManager: public/scripts/comp/usageToolManager.js
-    usageToolManager.sync();
+    if (typeof usageToolManager !== 'undefined') {
+        usageToolManager.sync();
+    }
 }
 
 /**
