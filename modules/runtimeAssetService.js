@@ -40,12 +40,34 @@ function hashServedFile(absPath) {
     return crypto.createHash(SERVED_HASH_ALGO).update(fileBuffer).digest('hex');
 }
 
+function isHtmlShaLinkWebPath(webPath) {
+    const name = String(webPath || '').replace(/^\//, '');
+    return HTML_SHA_LINK_FILES.includes(name);
+}
+
+function resolveServedHtmlPath(root, name) {
+    const targetRoot = root || projectRoot;
+    if (!targetRoot || !name) {
+        return null;
+    }
+    const cachePath = path.join(runtimeAssetCompiler.getOutputRoot(targetRoot), name);
+    if (fs.existsSync(cachePath)) {
+        return cachePath;
+    }
+    const publicPath = path.join(runtimeAssetCompiler.getPublicRoot(targetRoot), name);
+    if (fs.existsSync(publicPath)) {
+        return publicPath;
+    }
+    return null;
+}
+
 function updateHtmlStylesheetShaLinks(root) {
     const targetRoot = root || projectRoot;
     if (!targetRoot) {
         return;
     }
     const publicRoot = runtimeAssetCompiler.getPublicRoot(targetRoot);
+    const outputRoot = runtimeAssetCompiler.getOutputRoot(targetRoot);
 
     for (const name of HTML_SHA_LINK_FILES) {
         const htmlPath = path.join(publicRoot, name);
@@ -90,10 +112,22 @@ function updateHtmlStylesheetShaLinks(root) {
             }
         );
 
-        if (changed && updated !== content) {
-            runtimeAssetCompiler.atomicWrite(htmlPath, updated);
+        // Cache only — never write runtime ?sha= into git-tracked public/*.html
+        const cachePath = path.join(outputRoot, name);
+        if (!fs.existsSync(cachePath) || fs.readFileSync(cachePath, 'utf8') !== updated) {
+            runtimeAssetCompiler.atomicWrite(cachePath, updated);
         }
     }
+}
+
+function resolveServedPath(root, webPath, debugMode) {
+    const targetRoot = root || projectRoot;
+    if (targetRoot && isHtmlShaLinkWebPath(webPath)) {
+        const name = String(webPath).replace(/^\//, '');
+        return resolveServedHtmlPath(targetRoot, name)
+            || path.join(runtimeAssetCompiler.getPublicRoot(targetRoot), name);
+    }
+    return runtimeAssetCompiler.resolveServedPath(targetRoot, webPath, debugMode);
 }
 
 function resolveServedAssetPath(root, webPath) {
@@ -101,7 +135,7 @@ function resolveServedAssetPath(root, webPath) {
     if (!targetRoot) {
         return null;
     }
-    return runtimeAssetCompiler.resolveServedPath(targetRoot, webPath, false);
+    return resolveServedPath(targetRoot, webPath, false);
 }
 
 async function runCompile(targetRoot, options = {}) {
@@ -142,11 +176,11 @@ async function postCompileActions(result, options = {}) {
         return compileResult;
     }
 
+    updateHtmlStylesheetShaLinks(options.projectRoot || projectRoot);
+
     if (options.refreshCache !== false && typeof refreshCacheCallback === 'function') {
         await refreshCacheCallback();
     }
-
-    updateHtmlStylesheetShaLinks(options.projectRoot || projectRoot);
 
     const errors = Array.isArray(compileResult.errors) ? compileResult.errors : [];
     if (errors.length > 0 && typeof broadcastErrorsCallback === 'function') {
@@ -257,9 +291,11 @@ function getPublicStatus() {
 module.exports = {
     init,
     SERVED_HASH_ALGO,
+    HTML_SHA_LINK_FILES,
     hashServedFile,
     updateHtmlStylesheetShaLinks,
-    resolveServedAssetPath,
+    isHtmlShaLinkWebPath,
+    resolveServedHtmlPath,
     compileOnBoot,
     recompileAndRefresh,
     refreshHashCacheAndBroadcast,
@@ -267,5 +303,7 @@ module.exports = {
     getStatus,
     getPublicStatus,
     isAutoRecompileEnabled,
-    ...runtimeAssetCompiler
+    ...runtimeAssetCompiler,
+    resolveServedPath,
+    resolveServedAssetPath
 };

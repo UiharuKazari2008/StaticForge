@@ -940,7 +940,9 @@ async function generateCacheData(directory) {
 
                 // SHA-256 of bytes actually served to clients (optimised copy for managed css/scripts)
                 let hashPath = filePath;
-                if (runtimeAssetService.isRuntimeManagedWebPath(webPath)) {
+                if (runtimeAssetService.isRuntimeManagedWebPath(webPath)
+                    || (runtimeAssetService.isHtmlShaLinkWebPath
+                        && runtimeAssetService.isHtmlShaLinkWebPath(webPath))) {
                     const servedPath = runtimeAssetService.resolveServedAssetPath(__dirname, webPath);
                     if (servedPath && fs.existsSync(servedPath)) {
                         hashPath = servedPath;
@@ -2206,7 +2208,7 @@ app.get('/app', (req, res) => {
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
     }
-    res.sendFile(path.join(__dirname, 'public', 'app.html'));
+    res.sendFile(runtimeAssetService.resolveServedPath(__dirname, '/app.html', false));
 });
 
 // Android WebView: JSON probe for AndroidBackgroundRefresh manifest (session cookies, same as WebView)
@@ -2492,7 +2494,7 @@ app.use('/traces/files', authMiddleware, (req, res, next) => {
     next();
 }, express.static(globalResources.getTracing().tracesDir));
 app.get('/launch', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'launch.html'));
+    res.sendFile(runtimeAssetService.resolveServedPath(__dirname, '/launch.html', false));
 });
 app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (req, res) => {
     try {
@@ -3510,7 +3512,9 @@ async function handleAdminUnixSocketMessage(message, socket) {
                     return next();
                 }
                 const webPath = req.path;
-                if (!runtimeAssetService.isRuntimeManagedWebPath(webPath)) {
+                if (!runtimeAssetService.isRuntimeManagedWebPath(webPath)
+                    && !(runtimeAssetService.isHtmlShaLinkWebPath
+                        && runtimeAssetService.isHtmlShaLinkWebPath(webPath))) {
                     return next();
                 }
                 const debugMode = runtimeAssetService.isDebugRequest(req);
