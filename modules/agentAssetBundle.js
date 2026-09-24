@@ -114,13 +114,29 @@ function collectAppShellBootUrls(html) {
     return urls;
 }
 
+function resolveNamedPublicFile(root, name) {
+    const clean = String(name || '').replace(/^\/+/, '');
+    if (runtimeAssetService.isHtmlShaLinkWebPath
+        && runtimeAssetService.isHtmlShaLinkWebPath(clean)) {
+        const served = runtimeAssetService.resolveServedAssetPath(root, `/${clean}`);
+        if (served && fs.existsSync(served)) {
+            return served;
+        }
+    }
+    const named = path.join(root, 'public', clean);
+    if (fs.existsSync(named)) {
+        return named;
+    }
+    return null;
+}
+
 function readAppHtml() {
     const root = projectRoot;
     if (!root) {
         return '';
     }
-    const appPath = path.join(root, 'public', 'app.html');
-    if (!fs.existsSync(appPath)) {
+    const appPath = resolveNamedPublicFile(root, 'app.html');
+    if (!appPath) {
         return '';
     }
     return fs.readFileSync(appPath, 'utf8');
@@ -150,8 +166,8 @@ function resolveFilePath(file) {
         return file.filePath;
     }
     if (file.name) {
-        const named = path.join(root, 'public', String(file.name).replace(/^\/+/, ''));
-        if (fs.existsSync(named)) {
+        const named = resolveNamedPublicFile(root, file.name);
+        if (named) {
             return named;
         }
     }
@@ -161,8 +177,8 @@ function resolveFilePath(file) {
     }
     const routeName = ROUTE_HTML[webPath];
     if (routeName) {
-        const routePath = path.join(root, 'public', routeName);
-        if (fs.existsSync(routePath)) {
+        const routePath = resolveNamedPublicFile(root, routeName);
+        if (routePath) {
             return routePath;
         }
     }
