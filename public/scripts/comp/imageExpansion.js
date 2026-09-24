@@ -943,6 +943,8 @@ function nearestEnhanceMagnitudePreset(magnitudeValue) {
     return MAGNITUDE_PRESETS[nearest];
 }
 
+let lastEnhanceScale = null;
+
 function getEnhanceScaleOptions(image) {
     const options = [
         { value: '1', name: '1×' },
@@ -954,6 +956,32 @@ function getEnhanceScaleOptions(image) {
         options.push({ value: 'max', name: 'Max' });
     }
     return options;
+}
+
+function resolveEnhanceScaleValue(scaleOptions, preferred, lastPicked) {
+    const values = [];
+    if (Array.isArray(scaleOptions)) {
+        for (let i = 0; i < scaleOptions.length; i++) {
+            const value = scaleOptions[i] && scaleOptions[i].value;
+            if (value != null && value !== '') values.push(String(value));
+        }
+    }
+    const preferredText = preferred != null && preferred !== '' ? String(preferred) : '';
+    if (preferredText && values.indexOf(preferredText) !== -1) return preferredText;
+    const lastText = lastPicked != null && lastPicked !== '' ? String(lastPicked) : '';
+    if (lastText && values.indexOf(lastText) !== -1) return lastText;
+    if (values.indexOf('max') !== -1) return 'max';
+    if (values.indexOf('2') !== -1) return '2';
+    if (values.indexOf('1.5') !== -1) return '1.5';
+    if (values.indexOf('1') !== -1) return '1';
+    return values[0] || 'max';
+}
+
+function enhanceScaleOptionName(scaleOptions, value) {
+    const match = Array.isArray(scaleOptions)
+        ? scaleOptions.find((option) => String(option.value) === String(value))
+        : null;
+    return match?.name || (value === 'max' ? 'Max' : `${value}×`);
 }
 
 function resolveEnhanceStrengthNoise(magnitudeValue, strengthRaw, noiseRaw) {
@@ -972,7 +1000,10 @@ function resolveEnhanceStrengthNoise(magnitudeValue, strengthRaw, noiseRaw) {
 
 function collectEnhanceDialogValues(dialog) {
     if (!dialog) return null;
-    const scale = dialog.querySelector('#enhanceScaleHidden')?.value || '2';
+    const rawScale = dialog.querySelector('#enhanceScaleHidden')?.value;
+    const scale = (rawScale != null && rawScale !== '')
+        ? rawScale
+        : resolveEnhanceScaleValue(null, null, lastEnhanceScale);
     const magnitude = dialog.querySelector('#enhanceMagnitudeInput')?.value || '3.0';
     const strengthRaw = dialog.querySelector('#enhanceStrengthInput')?.value ?? '';
     const noiseRaw = dialog.querySelector('#enhanceNoiseInput')?.value ?? '';
@@ -999,12 +1030,16 @@ function collectEnhanceDialogValues(dialog) {
     return values;
 }
 
+function enhanceScaleHintText(scaleValue) {
+    return scaleValue === 'max'
+        ? 'Max preserves the source width and height and creates a new gallery image.'
+        : 'Enhance reprocesses the image with its prompt and saves a new gallery image.';
+}
+
 function updateEnhanceScaleHint(scaleValue) {
     const hint = document.getElementById('enhanceScaleHint');
     if (!hint) return;
-    hint.textContent = scaleValue === 'max'
-        ? 'Max preserves the source width and height and creates a new gallery image.'
-        : 'Enhance reprocesses the image with its prompt and saves a new gallery image.';
+    hint.textContent = enhanceScaleHintText(scaleValue);
 }
 
 function applyEnhanceMagnitudeOverlays(magnitudeValue) {
@@ -1107,17 +1142,22 @@ function wireEnhanceDialog(dialog, scaleOptions) {
     const scaleSelected = document.getElementById('enhanceScaleSelected');
 
     const selectScale = (value) => {
+        lastEnhanceScale = value;
         if (scaleHidden) scaleHidden.value = value;
         if (scaleSelected) {
-            scaleSelected.textContent = scaleOptions.find((option) => option.value === value)?.name || '2×';
+            scaleSelected.textContent = enhanceScaleOptionName(scaleOptions, value);
         }
         updateEnhanceScaleHint(value);
     };
+    const resolvedScale = resolveEnhanceScaleValue(scaleOptions, scaleHidden?.value, lastEnhanceScale);
+    if (scaleHidden) scaleHidden.value = resolvedScale;
+    if (scaleSelected) scaleSelected.textContent = enhanceScaleOptionName(scaleOptions, resolvedScale);
+    updateEnhanceScaleHint(resolvedScale);
     wireEnhanceDialogClickMenu(
         document.getElementById('enhanceScaleBtn'),
         scaleOptions,
         selectScale,
-        () => scaleHidden?.value || '2'
+        () => scaleHidden?.value || lastEnhanceScale || 'max'
     );
 
     wireEnhanceMagnitudeInput();
@@ -1208,7 +1248,6 @@ function wireEnhanceDialog(dialog, scaleOptions) {
     }
 
     applyEnhanceMagnitudeOverlays(document.getElementById('enhanceMagnitudeInput')?.value || '3.0');
-    updateEnhanceScaleHint(scaleHidden?.value || '2');
 }
 
 function openEnhanceFromImage(image, options = {}) {
@@ -1250,6 +1289,9 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
     };
 
     const scaleOptions = getEnhanceScaleOptions(workingImage);
+    const initialScale = resolveEnhanceScaleValue(scaleOptions, null, lastEnhanceScale);
+    const initialScaleName = enhanceScaleOptionName(scaleOptions, initialScale);
+    const initialScaleHint = enhanceScaleHintText(initialScale);
     const initialDimensionText = getDimensionText(workingDimensions);
 
     const controlsHtml = `
@@ -1262,9 +1304,9 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
             <div class="form-group">
                 <label>Upscale amount</label>
                 <button type="button" id="enhanceScaleBtn" class="custom-dropdown-btn hover-show colored">
-                    <span id="enhanceScaleSelected">2×</span>
+                    <span id="enhanceScaleSelected">${initialScaleName}</span>
                 </button>
-                <input type="hidden" id="enhanceScaleHidden" value="2">
+                <input type="hidden" id="enhanceScaleHidden" value="${initialScale}">
             </div>
             <div class="form-group enhance-advanced-toggle-group">
                 <label>&nbsp;</label>
@@ -1337,7 +1379,7 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
                 </div>
             </div>
         </div>
-        <small id="enhanceScaleHint">Enhance reprocesses the image with its prompt and saves a new gallery image.</small>
+        <small id="enhanceScaleHint">${initialScaleHint}</small>
     `;
 
     const dialogHtml = isStudio
