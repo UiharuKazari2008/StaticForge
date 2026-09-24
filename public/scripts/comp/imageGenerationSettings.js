@@ -532,14 +532,17 @@ function getImageGenerationAutomaticDownloadMenuItem() {
 }
 
 function getImageGenerationGenerateMenuSections() {
-    return [{
-        type: 'list',
-        title: 'Image Format',
-        items: [
-            ...getImageGenerationFormatMenuItems(),
-            getImageGenerationAutomaticDownloadMenuItem()
-        ]
-    }];
+    return [
+        {
+            type: 'list',
+            title: 'Image Format',
+            items: getImageGenerationFormatMenuItems()
+        },
+        {
+            type: 'list',
+            items: [getImageGenerationAutomaticDownloadMenuItem()]
+        }
+    ];
 }
 
 function getStudioImageGenerationSettingsMenuConfig() {
