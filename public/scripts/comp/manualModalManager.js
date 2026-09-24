@@ -2417,7 +2417,8 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     if (prints > 1) requestBody.n = prints;
 
     if (values.upscale) requestBody.upscale = true;
-    if (typeof varietyEnabled !== "undefined" && varietyEnabled) {
+    // isV5Model: public/scripts/comp/utilities.js — do not send skip_cfg on V5
+    if (varietyEnabled && !isV5Model()) {
         requestBody.variety = true;
     }
     // Character prompts
@@ -3682,8 +3683,9 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
         if (document.getElementById('varietyBtn')) {
             const varietyBtn = document.getElementById('varietyBtn');
-            const caps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures() : null;
-            const gated = !!(caps && caps.varietyPlus === false);
+            // getForgeModelFeatures / isV5Model: public/scripts/comp/utilities.js
+            const caps = getForgeModelFeatures();
+            const gated = isV5Model() || !!(caps && caps.varietyPlus === false);
             // Handle both preset (variety) and metadata (skip_cfg_above_sigma) formats
             const isVarietyEnabled = gated ? false : (data.variety !== null && data.variety !== undefined ? data.variety :
                 (data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined));

@@ -176,8 +176,9 @@ function attachManualGenerationParamsListeners(signal) {
     if (varietyBtnEl) {
         varietyBtnEl.addEventListener('click', function (e) {
             e.preventDefault();
-            const caps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures() : null;
-            if (caps && caps.varietyPlus === false) {
+            // getForgeModelFeatures / isV5Model: public/scripts/comp/utilities.js
+            const caps = getForgeModelFeatures();
+            if (isV5Model() || (caps && caps.varietyPlus === false)) {
                 varietyEnabled = false;
                 this.setAttribute('data-state', 'off');
                 return;

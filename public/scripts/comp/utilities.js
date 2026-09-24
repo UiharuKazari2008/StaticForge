@@ -905,15 +905,18 @@ function updateV3ModelVisibility() {
         }
     }
 
-    // Variety+ is V4.5-only (skip_cfg_above_sigma). Hide on V5 unless a gen proves it.
-    const varietyOn = !(caps && caps.varietyPlus === false);
+    // Variety+ is V4.5-only (skip_cfg_above_sigma). Hide + disable on V5 unless a gen proves it.
+    // isV5Model: same file — covers the window before modelFeatures lands.
+    const varietyOn = !isV5Model(selected) && !(caps && caps.varietyPlus === false);
     document.querySelectorAll('#varietyBtn, button.toggle_variety, [id$="_varietyBtn"]').forEach((btn) => {
         if (!btn) return;
         if (varietyOn) {
             btn.classList.remove('hidden');
+            btn.removeAttribute('disabled');
         } else {
             btn.classList.add('hidden');
             btn.setAttribute('data-state', 'off');
+            btn.setAttribute('disabled', '');
         }
     });
     if (!varietyOn && typeof varietyEnabled !== 'undefined') {
