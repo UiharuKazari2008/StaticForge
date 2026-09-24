@@ -1663,9 +1663,11 @@ class WorkspaceManager {
 
                     // For scraps, move removed items back to files of the target workspace
                     if (removedCount > 0) {
+                        const targetFilesSet = new Set(workspaces[targetId].files);
                         removedFromScraps.forEach(item => {
-                            if (!workspaces[targetId].files.includes(item)) {
+                            if (!targetFilesSet.has(item)) {
                                 workspaces[targetId].files.push(item);
+                                targetFilesSet.add(item);
                             }
                         });
                     }
@@ -2206,30 +2208,36 @@ class WorkspaceManager {
         const workspace = workspaces[targetWorkspaceId];
 
         switch (type) {
-            case 'pinned':
+            case 'pinned': {
                 if (!workspace.pinned) {
                     workspace.pinned = [];
                 }
+                const pinnedSet = new Set(workspace.pinned);
                 for (const item of validItems) {
-                    if (!workspace.pinned.includes(item)) {
+                    if (!pinnedSet.has(item)) {
                         workspace.pinned.push(item);
+                        pinnedSet.add(item);
                         actuallyAdded.push(item);
                         addedCount++;
                     }
                 }
                 break;
-            case 'scraps':
+            }
+            case 'scraps': {
                 if (!workspace.scraps) {
                     workspace.scraps = [];
                 }
+                const scrapsSet = new Set(workspace.scraps);
                 for (const item of validItems) {
-                    if (!workspace.scraps.includes(item)) {
+                    if (!scrapsSet.has(item)) {
                         workspace.scraps.push(item);
+                        scrapsSet.add(item);
                         actuallyAdded.push(item);
                         addedCount++;
                     }
                 }
                 break;
+            }
             default:
                 throw new Error(`Unsupported type for bulk add: ${type}`);
         }
