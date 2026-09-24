@@ -440,7 +440,10 @@ function getStudioParamSnapshot() {
         resolution: values.resolutionValue,
         width: values.width || (widthEl ? parseInt(widthEl.value, 10) : undefined),
         height: values.height || (heightEl ? parseInt(heightEl.value, 10) : undefined),
-        variety: varietyBtn ? varietyBtn.getAttribute('data-state') === 'on' : Boolean(varietyEnabled),
+        // isV5Model: public/scripts/comp/utilities.js — skip_cfg must not echo on V5
+        variety: isV5Model()
+            ? false
+            : (varietyBtn ? varietyBtn.getAttribute('data-state') === 'on' : Boolean(varietyEnabled)),
         upscale: values.upscale === true || values.upscale === 2,
         strength: strengthEl ? parseFloat(strengthEl.value) : undefined,
         noise: noiseEl ? parseFloat(noiseEl.value) : undefined,
@@ -1652,9 +1655,13 @@ async function applyStudioParam(paramId, value) {
             }
             break;
         case 'variety': {
-            const on = Boolean(value);
+            // isV5Model: public/scripts/comp/utilities.js
+            const gated = isV5Model();
+            const on = gated ? false : Boolean(value);
             if (varietyBtn) varietyBtn.setAttribute('data-state', on ? 'on' : 'off');
             varietyEnabled = on;
+            // updateV3ModelVisibility: public/scripts/comp/utilities.js
+            updateV3ModelVisibility();
             break;
         }
         case 'upscale':

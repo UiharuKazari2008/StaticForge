@@ -5,8 +5,9 @@ const vm = require('vm');
 
 const src = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/utilities.js'), 'utf8');
 const getFn = src.match(/function getForgeModelFeatures\([\s\S]*?\n\}/);
+const isV5Fn = src.match(/function isV5Model\([\s\S]*?\n\}/);
 const visFn = src.match(/function updateV3ModelVisibility\(\) \{[\s\S]*?\n\}/);
-assert.ok(getFn && visFn, 'expected getForgeModelFeatures + updateV3ModelVisibility');
+assert.ok(getFn && isV5Fn && visFn, 'expected getForgeModelFeatures + isV5Model + updateV3ModelVisibility');
 
 function makeEl(id) {
     return {
@@ -20,8 +21,10 @@ function makeEl(id) {
             },
             contains(name) { return this._el.className.split(/\s+/).includes(name); }
         },
-        setAttribute() {},
-        getAttribute() { return null; }
+        attrs: {},
+        setAttribute(name, value) { this.attrs[name] = value == null ? '' : String(value); },
+        getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null; },
+        removeAttribute(name) { delete this.attrs[name]; }
     };
 }
 
@@ -69,25 +72,45 @@ function runVisibility(model, features) {
     };
     ctx.window = ctx;
     vm.createContext(ctx);
-    vm.runInContext(`${getFn[0]}\n${visFn[0]}\nupdateV3ModelVisibility();`, ctx);
+    vm.runInContext(`${getFn[0]}\n${isV5Fn[0]}\n${visFn[0]}\nupdateV3ModelVisibility();`, ctx);
     return { ctx, varietyBtn, expansionGroup, enhanceGroup, noiseHeader };
 }
 
 const v5 = runVisibility('v5', { varietyPlus: false, noiseScheduleUi: false, vibeTransfer: false, preciseReference: false });
 assert.ok(v5.varietyBtn.classList.contains('hidden'), 'V5 hides Variety+');
+assert.strictEqual(v5.varietyBtn.getAttribute('disabled'), '', 'V5 disables Variety+');
 assert.ok(v5.expansionGroup.classList.contains('hidden'), 'V5 hides expand noise-schedule group');
 assert.ok(v5.enhanceGroup.classList.contains('hidden'), 'V5 hides enhance noise-schedule group');
 assert.ok(v5.noiseHeader.classList.contains('hidden'), 'V5 hides marked noise-schedule chrome');
 assert.deepStrictEqual(v5.ctx.selectCalls, ['karras'], 'V5 forces karras when a non-karras schedule was selected');
 assert.strictEqual(v5.ctx.varietyEnabled, false);
 
+const v5NoCaps = runVisibility('v5', null);
+assert.ok(v5NoCaps.varietyBtn.classList.contains('hidden'), 'V5 hides Variety+ before modelFeatures lands');
+assert.strictEqual(v5NoCaps.varietyBtn.getAttribute('disabled'), '', 'V5 disables Variety+ before modelFeatures lands');
+assert.strictEqual(v5NoCaps.ctx.varietyEnabled, false);
+
 const v45 = runVisibility('v4_5', { varietyPlus: true, noiseScheduleUi: true, vibeTransfer: true, preciseReference: true });
 assert.ok(!v45.varietyBtn.classList.contains('hidden'), 'V4.5 keeps Variety+ visible');
+assert.strictEqual(v45.varietyBtn.getAttribute('disabled'), null, 'V4.5 keeps Variety+ enabled');
 assert.ok(!v45.expansionGroup.classList.contains('hidden'), 'V4.5 keeps expand noise-schedule group');
 assert.ok(!v45.enhanceGroup.classList.contains('hidden'), 'V4.5 keeps enhance noise-schedule group');
 assert.ok(!v45.noiseHeader.classList.contains('hidden'), 'V4.5 keeps marked noise-schedule chrome');
 assert.deepStrictEqual(v45.ctx.selectCalls, [], 'V4.5 does not force karras');
 assert.ok(v45.ctx.displayCalls >= 1, 'V4.5 refreshes sampler display');
 assert.strictEqual(v45.ctx.varietyEnabled, true);
+
+function wouldSendVariety(model, varietyEnabled) {
+    const ctx = {
+        getCurrentSelectedModel() { return model; }
+    };
+    vm.createContext(ctx);
+    vm.runInContext(`${isV5Fn[0]}\nthis.send = ${varietyEnabled} && !isV5Model();`, ctx);
+    return ctx.send;
+}
+assert.strictEqual(wouldSendVariety('v5', true), false, 'V5 request body must not send variety');
+assert.strictEqual(wouldSendVariety('v5_cur', true), false, 'V5 curated request body must not send variety');
+assert.strictEqual(wouldSendVariety('v4_5', true), true, 'V4.5 still sends variety when enabled');
+assert.strictEqual(wouldSendVariety('v4', true), true, 'V4 request body unchanged');
 
 console.log('test-studio-model-cap-chrome: ok');

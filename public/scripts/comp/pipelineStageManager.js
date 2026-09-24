@@ -1088,8 +1088,9 @@ function updateStageInheritedDisplay(stageId) {
     const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
 
     // Only update variety if using inherited values
+    // isV5Model: public/scripts/comp/utilities.js
     if (varietyBtn) {
-        varietyBtn.dataset.state = inheritedValues.variety ? 'on' : 'off';
+        varietyBtn.dataset.state = (!isV5Model() && inheritedValues.variety) ? 'on' : 'off';
     }
 
     // Update background focus inherited state
@@ -1307,7 +1308,8 @@ function getStageInheritedValues(stageId) {
                 rescale: getValueOrInherited(document.getElementById(`${prevStageId}_rescale`), parseFloat, prevInherited.rescale),
                 sampler: getValueOrInherited(document.getElementById(`${prevStageId}_sampler`), null, prevInherited.sampler),
                 noiseScheduler: getValueOrInherited(document.getElementById(`${prevStageId}_noiseScheduler`), null, prevInherited.noiseScheduler),
-                variety: document.getElementById(`${prevStageId}_varietyBtn`)?.dataset.state === 'on',
+                // isV5Model: public/scripts/comp/utilities.js
+                variety: !isV5Model() && document.getElementById(`${prevStageId}_varietyBtn`)?.dataset.state === 'on',
                 resolution: inheritedResolution,
                 seed: inheritedSeed,
                 backgroundFocus: inheritedBackgroundFocus,
@@ -1361,7 +1363,8 @@ function getManualModalValues() {
         rescale: parseFloat(manualRescale?.value) || 0.0,
         sampler: manualSelectedSampler || 'k_euler_ancestral',
         noiseScheduler: manualSelectedNoiseScheduler || 'karras',
-        variety: varietyEnabled || false,
+        // isV5Model: public/scripts/comp/utilities.js
+        variety: !isV5Model() && (varietyEnabled || false),
         resolution: extractResolutionSize(manualSelectedResolution), // Extract size from resolution
         seed: manualSeedValue,
         backgroundFocus: false, // Manual modal doesn't have background focus
@@ -3507,7 +3510,8 @@ function getExpandCanvasStageData(stageId) {
     if (rescale !== '') data.advanced.rescale = parseFloat(rescale);
     if (sampler !== '') data.advanced.sampler = sampler;
     if (noiseScheduler !== '') data.advanced.noiseScheduler = noiseScheduler;
-    if (varietyBtn?.dataset.state === 'on') data.advanced.variety = true;
+    // isV5Model: public/scripts/comp/utilities.js
+    if (!isV5Model() && varietyBtn?.dataset.state === 'on') data.advanced.variety = true;
 
     return data;
 }
@@ -3619,7 +3623,8 @@ function getEnhanceStageData(stageId) {
     if (rescale !== '') data.advanced.rescale = parseFloat(rescale);
     if (sampler !== '') data.advanced.sampler = sampler;
     if (noiseScheduler !== '') data.advanced.noiseScheduler = noiseScheduler;
-    if (varietyBtn?.dataset.state === 'on') data.advanced.variety = true;
+    // isV5Model: public/scripts/comp/utilities.js
+    if (!isV5Model() && varietyBtn?.dataset.state === 'on') data.advanced.variety = true;
 
     return data;
 }
@@ -3777,7 +3782,8 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             }
 
             const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
-            if (varietyBtn && adv.variety) {
+            // isV5Model: public/scripts/comp/utilities.js
+            if (varietyBtn && adv.variety && !isV5Model()) {
                 varietyBtn.dataset.state = 'on';
             }
 
@@ -4088,8 +4094,9 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
 
         // Set variety
         const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
+        // isV5Model: public/scripts/comp/utilities.js
         if (varietyBtn && adv.variety !== undefined) {
-            varietyBtn.dataset.state = adv.variety ? 'on' : 'off';
+            varietyBtn.dataset.state = (!isV5Model() && adv.variety) ? 'on' : 'off';
         }
 
         // Set seed toggle and value

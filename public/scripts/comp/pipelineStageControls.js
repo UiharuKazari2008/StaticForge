@@ -1318,12 +1318,18 @@ function setupStageAdvancedControls(stageId) {
     // Variety toggle
     if (varietyBtn) {
         varietyBtn.addEventListener('click', () => {
+            // isV5Model: public/scripts/comp/utilities.js
+            if (isV5Model()) {
+                varietyBtn.dataset.state = 'off';
+                return;
+            }
             varietyBtn.dataset.state = varietyBtn.dataset.state === 'on' ? 'off' : 'on';
             updateStageResetButtonVisibility(stageId);
             updateDownstreamStagesInheritedValues(stageId);
         });
         // Set initial state from inherited
-        varietyBtn.dataset.state = inheritedValues.variety ? 'on' : 'off';
+        // isV5Model: public/scripts/comp/utilities.js
+        varietyBtn.dataset.state = (!isV5Model() && inheritedValues.variety) ? 'on' : 'off';
     }
 
     // Rescale percentage overlay
