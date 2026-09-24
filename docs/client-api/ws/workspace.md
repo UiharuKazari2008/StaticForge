@@ -828,11 +828,14 @@ Additional response/push types from handler:
 |-------|-------|
 | `requestId` | Optional |
 | `id` | Required |
-| `settings` | Required. Optional `nicknames` (string[] or comma-separated string) — spoken aliases such as `lab`, `the dumpster`, `prego`. |
+| `settings` | Required. Optional `nicknames` (string[] or comma-separated string) — spoken aliases such as `lab`, `the dumpster`, `prego`. Optional `wallpaper` (`type:id`). Optional `wallpaperPosition` (CSS background-position). |
+
+`wallpaperPosition` (PR #213): prefer two tokens `"horizontal vertical"` (keywords `left|center|right` × `top|center|bottom`, or `0%`–`100%`). A **single** CSS token is accepted and expanded: `top`/`bottom` → `center top` / `center bottom`; any other one token (e.g. `center`, `left`, `50%`) gets `center` on the other axis. The server normalizes to exactly two tokens before save. Bare `"center"` from Set-as-wallpaper used to 400; it now persists as `"center center"`.
 
 **Validation errors:**
 - Workspace ID and settings object are required
 - Nicknames must be an array of strings (or a string the server splits)
+- `wallpaperPosition` must be one or two valid CSS position tokens (see above)
 
 **Success response:** `workspace_update_settings_response`
 

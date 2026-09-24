@@ -1,332 +1,344 @@
 {
   "sections": [
     {
-      "id": "focused-inpaint-frontend",
-      "kicker": "STAFF · INPAINT",
-      "title": "Focused inpaint is a frontend crop+enlarge — not a missing V5 model",
+      "id": "enhance-max",
+      "kicker": "STAFF · enhance",
+      "title": "Enhance: stop at Max✨ — 1.5× is the blurry one",
       "grim": false,
-      "lede": "Community thought V5 lacked Focused inpaint. Staff: it crops the mask in the UI, then calls whatever inpaint model you already have.",
-      "body": "Community spent part of the window sure V5 had lost Focused inpaint. The UI receipt (Ryoooshu screenshot in this issue) and staff prose say otherwise: Focused inpaint is not a separate V5 model feature you wait for — it is a **frontend** crop-and-enlarge of the masked region, then a normal call into whichever inpainting model you already selected. ght901: it is supported **automatically on any inpainting model**. That kills the \"V5 lacks Focused\" rumor without inventing a new sampler or PE() contract.\n\nUsage still matters. Free Focused inpaint **drains Opus usage** the same way other free gens do. Paid Anlas paths generally skip the Opus usage meter — the standing Anlas≠usage STAFF rule from Wednesday — with the known exception that multi-image gens inside the free window still charge usage on the first unpaid frame. Do not confuse Focused inpaint with Focused Area Selection / Minimum Context Area 32 (the older V5→V4.5 tiny-patch anecdote). One is a frontend enlarge before inpaint; the other is a context-area knob for small cross-model patches.\n\nPractical read: if your V5 Full inpaint looks soft on a tiny facial fix, try Focused inpaint before you blame the model or invent a strength recipe. Log the Opus tick when free so Studio meter copy stays honest.\n\n**Try this.** Same seed, V5 Full, inpaint on a small facial tweak. A: normal inpaint mask. B: Focused inpaint on the same mask. Log whether B looks sharper on the patch and whether Opus usage ticks on both when free. Optional C: paid Enhance/Anlas path — confirm usage meter stays flat while Anlas moves.\n\n**CTA.** Guren: one A/B in Laboratory only (Opus/free). Ivory: Studio copy should say frontend crop+enlarge, not \"V5 missing Focused.\" Chiyo: board only if product chrome still implies V5 lacks it.",
+      "lede": "finetune told the room that Enhance 1.5× is often soft and Max✨ is the sharp default you actually want.",
+      "body": "Scout low, then Enhance still stands. What changed this Wednesday is the staff preference inside Enhance itself: **prefer Max✨ over 1.5×**. finetune (2026-09-22): 1.5× is often kind of blurry; Max✨ is much sharper/cleaner. Dedicated Upscale (2×, cheap Anlas) remains a different tool — it keeps low frequencies and only adds detail; Enhance re-runs with the selected model and can rewrite more.\n\nGuide + both optimisers + `constraints/v5.yaml` landed this as STAFF. Zine feature ≠ automatic CONSENSUS for community habits — this one is staff.\n\n**Try this.** Take a keeper you already like. Same seed not required. A: Enhance at 1.5×. B: Enhance Max✨. Compare sharpness / rewrite. Prefer Max✨ for finals; keep Upscale when you only want resolution.\n\n**CTA.** Ivory: Studio cohesion — default Enhance target Max✨. Guren: one Laboratory A/B on a soft scout if battery allows. Chiyo: no board unless UI still defaults people into 1.5×.",
+      "excerpts": [
+        {
+          "speaker": "finetune",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-22 10:56 ET",
+          "text": "for enhance, i'll note that 1.5x is often kind of blurry and everyone should basically use max✨ mode, it's much sharper/cleaner"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "cut-res-not-steps",
+      "kicker": "STAFF · cost",
+      "title": "Battery diet: cut resolution, not steps",
+      "grim": false,
+      "lede": "finetune: shrinking the step count hurts quality and prompt-following harder than it saves — drop canvas size instead.",
+      "body": "Opus battery talk always invites step-trimming. Staff pushback this week: **reducing step count is generally worse** — less cost impact, more quality / prompt-following damage. **Reducing resolution is better.** Community echo from 0.: higher steps at low res because prompt adherence is king; low steps can fail to finish fine hair details like swept bangs.\n\nDoes not erase the existing STAFF sampler notes (no DPM 2S; border often under 28 steps; odd steps bill even). It is a cost-trade tip when you are licking the battery can.\n\n**Try this.** Same seed, V5 Full, Euler/karras, guidance 5, QT on. A: normal portrait @ 23 steps. B: same prompt at a smaller valid res @ 23 steps. C: normal res @ 14–16 steps. Compare adherence vs cost feel. Prefer B over C when saving.\n\n**CTA.** Guren: Laboratory ladder with Opus/free only. Ivory: note in Studio defaults. Chiyo: theme tip if battery UI copy still steers people to cut steps first.",
+      "excerpts": [
+        {
+          "speaker": "finetune",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-23 06:42 ET",
+          "text": "generally, reducing step count is worse. you get less impact on cost and more impact on quality/prompt following"
+        },
+        {
+          "speaker": "finetune",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-23 06:42 ET",
+          "text": "reducing resolution is better"
+        },
+        {
+          "speaker": "0.",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-23 07:48 ET",
+          "text": "I find higher steps with low res better cause prompt adherence is king. Low res can lose fine details, but low steps can lose fine details and not finish doing `swept bangs`"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "variety-plus-infect",
+      "kicker": "STAFF · variety+",
+      "title": "Variety+ on V5 is a settings infection, not a feature",
+      "grim": false,
+      "lede": "finetune: it does little useful on V5, and people who import presets with it on suffer lower coherence from then on.",
+      "body": "Variety+ is still **not on V5** at launch (PR/VT same bucket). What staff added this Wednesday is the harm model: it does not do much that is useful on V5, and it has the drawback of **infecting** people when they import settings and do not notice it got turned on — from that point they suffer lower coherence.\n\nDreamscape/StaticForge still exposes the control and can still send `skip_cfg_above_sigma`. Treat that as a **harmful leftover**. Leave Variety+ **off** on V5. Stay on V4.5 only if the job *is* Variety+ / PR / VT.\n\n**Try this.** Open a shared V5 preset. Confirm Variety+ / skip-cfg is off. Same seed with it forced on vs off if your client still exposes the toggle — expect coherence loss when on. No need to burn a battery stack if the toggle is already hidden.\n\n**CTA.** Ivory: Studio cohesion — strip Variety+ from V5 presets. Menma/Chiyo: leftover UI still worth Rook boarding if the button remains visible on V5.",
+      "excerpts": [
+        {
+          "speaker": "finetune",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-23 09:21 ET",
+          "text": "it doesn't do much that is useful on v5, and it has the drawback of \"infecting\" people when they import settings and don't notice it gets turned on, who from that point suffer from lower coherence in their gens"
+        },
+        {
+          "speaker": "SunnyKawaii",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-23 09:20 ET",
+          "text": "Does anyone know if Variety+ is going to come back?"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "tag-order",
+      "kicker": "STAFF · tags",
+      "title": "Earlier tags are not stronger — docs-order leaders still matter",
+      "grim": false,
+      "lede": "ght901 shut down the 'front of the prompt = more weight' myth, with the docs-order caveat intact.",
+      "body": "**No inherent earlier-tags-are-stronger behaviour.** Putting a weak tag later does not magically empower it. The only staff caveat: certain tags expected at the **start** of the prompt (see official docs) misbehave when out of that order.\n\nCatfrog's same-day joke that 'prose before tags = nice hat / tags before prose = fucked up toes' was immediately walked back as made up — do **not** treat it as STAFF.\n\n**Try this.** Same seed dense prompt. A: subject tags first. B: move a weak style tag to the front without changing weights. Compare. Expect little change unless you scrambled a docs-ordered leader (rating/dataset/count family).\n\n**CTA.** Ivory: purge 'front-load for strength' Studio tips. Guren: optional same-seed if you still see folklore in Cellar.",
       "excerpts": [
         {
           "speaker": "ght901",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-17 11:18 ET",
-          "text": "Focused inpaint is a frontend thing where it crops the image and enlarged it for inpainting. It's supported automatically on and inpainting model"
+          "channel": "nai-image-advice",
+          "when": "2026-09-22 04:17 ET",
+          "text": "There is no inherent \"earlier tags are stronger behaviour\". Beyond the fact that certain tags at the start of the prompt are expected to be in a certain order and don't behave as well if out of that order. As mentioned in the docs"
+        },
+        {
+          "speaker": "catfrog_of_the_ocean_lane",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-21 17:24 ET",
+          "text": "prose before tags and you can have a nice hat. tags before prose and you'll get fucked up toes."
+        },
+        {
+          "speaker": "catfrog_of_the_ocean_lane",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-21 17:24 ET",
+          "text": "i made that up based on nothing at all"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "focused-mask-rescale",
+      "kicker": "STAFF · inpaint",
+      "title": "Focused inpaint masks rescale — thin gaps can vanish",
+      "grim": false,
+      "lede": "ght901: focused or non-exact-resolution inpaint rescales masks; a one-pixel mask-scale seam (~8×8 image px) can collapse.",
+      "body": "Focused inpaint is still the frontend crop+enlarge path (STAFF 2026-09-17) and still drains Opus when free. New detail: when you use **focused inpainting** or inpaint an image that is **not an exact valid resolution**, masks get **rescaled**. A one-pixel gap at mask scale (about 8×8 on the image) can collapse — widen thin keep/mask seams if seams disappear.\n\nKalawaki's thread also rediscovered how useful the focused box is once you know it exists. Guide already had the crop+enlarge land; this Wednesday adds the rescale caveat.\n\n**Try this.** V5 Full inpaint on a keeper at a valid res. Draw a hairline keep-gap in the mask. A: normal inpaint. B: focused box around the region. If seams collapse, widen the gap a few mask pixels and retry.\n\n**CTA.** Ivory: Studio inpaint tips. Guren: Laboratory only if you already have a seam case. Chiyo: UI copy if Focused still looks mysterious.",
+      "excerpts": [
+        {
+          "speaker": "ght901",
+          "channel": "nai-image-advice",
+          "when": "2026-09-23 03:59 ET",
+          "text": "Are you doing focused inpainting or inpainting an image that isn't an exact valid resolution? In those cases the masks get rescaled and I could imagine a one pixel (in mask scale, in image it's 8x8) gap like that collapsing because of it"
         },
         {
           "speaker": "ght901",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-17 11:17 ET",
-          "text": "There is one exception and that's generating multiple images at once"
+          "channel": "nai-image-advice",
+          "when": "2026-09-23 04:07 ET",
+          "text": "Focused inpainting is when you set a box like this when inpainting"
+        },
+        {
+          "speaker": "Kalawaki",
+          "channel": "nai-image-advice",
+          "when": "2026-09-23 04:16 ET",
+          "text": "Okay wow Focused inpainting is *crazy* useful. This conversation has helped me quite a bit."
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/b501ba83-a978-481e-adf4-7aaf51b7b61b",
+          "cap": "ght901 · focused-inpaint box",
+          "kicker": "STAFF · UI"
+        }
+      ]
+    },
+    {
+      "id": "webapp-8babfb3",
+      "kicker": "OPS · webapp",
+      "title": "Webapp moved to 8babfb3-production. Contracts not re-dumped.",
+      "grim": false,
+      "lede": "Public _buildManifest flipped from ac00ce9 to 8babfb3; prior Monday build 404s. No contract dump this pass.",
+      "body": "Live novelai.net build id is **`8babfb3-production`**. Monday's `ac00ce9-production` now 404s. StaticForge nai-webapp-watch state on disk is still August-stale. Report line for the team: **webapp updated / contracts not updated.** No Discord changelog posts in the export window. No Jules/Cursor kick.\n\n**Try this.** None — ops note.\n\n**CTA.** Chiyo: Rook boarding only if theme/chrome deltas show up against 8babfb3. Frost/Menma own contract re-dump when watch wakes.",
+      "excerpts": [],
+      "images": []
+    },
+    {
+      "id": "artist-collab-optional",
+      "kicker": "ANECDOTE · artists",
+      "title": "artist collaboration negatives: situation-basis on V5, not a ritual",
+      "grim": false,
+      "lede": "AmbiProp same-seed 0/−1/−6 stills moved pixels, but Wemini/Uchariko argue V5 multi-char style-split is weaker than 4.5 — stop always-on.",
+      "body": "Uragan's older ANECDOTE (`-6::artist collaboration::` on mixes) still moves the image — AmbiProp posted a clean same-seed trio (baseline / −1 / −6). The Wednesday debate softens the **always-on** habit: Wemini and Uchariko say V4.5-style per-character style split is weaker on V5; Bicknell argues mystical rituals should not clog prompts when the failure mode is not present.\n\nGuide revise (ANECDOTE, not CONSENSUS): keep `-N::artist collaboration::` as **situation-basis**. Add when you see split styles / extra faces; do not paste it into every mix.\n\n**Try this.** Same seed multi-artist mix. A: no collaboration tag. B: `-1::artist collaboration::`. C: `-6::artist collaboration::`. Keep only if B/C fix a real split you care about.\n\n**CTA.** Ivory: Studio mix presets — optional, not default. Guren: free Laboratory A/B welcome; `save_memory` only if pixels settle a durable rule.",
+      "excerpts": [
+        {
+          "speaker": "AmbiProp",
+          "channel": "nai-image-advice",
+          "when": "2026-09-22 21:20 ET",
+          "text": "First one is normal artist mix. Next is `-1::artist collaboration::` and last is `-6`\nSame seed"
         },
         {
           "speaker": "Uragan",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-17 ~11:xx ET",
-          "text": "anything free costs usage, anything that costs anlas doesn't cost usage"
-        }
-      ]
-    },
-    {
-      "id": "eyes-visible-through-hair",
-      "kicker": "STAFF · TAGS",
-      "title": "eyes visible through hair means translucent bangs — avoid it for a solid peek",
-      "grim": false,
-      "lede": "That tag is not a soft bang peek. Staff: it is specifically the see-through hair-over-eye look.",
-      "body": "Bangs-over-eye is one of those tags people treat as a soft peek when it is actually a specific optical effect. Noka framed the fork cleanly: either hair completely covers an eye, or bangs sit over an eye visible *through* the hair as if the strands were see-through. ght901 locked the mechanism on advice — if you are using `eyes visible through hair`, that translucent hair effect is **specifically** what the tag is for.\n\nSo the HOUSE/Studio footgun is clear: do not paste the tag when you want a solid bang with only a partial iris peek. Drop it and steer with ordinary bang / hair-over-one-eye language instead. This window did **not** land a reliable translucent-free peek recipe — that stays an open question in ANALYSIS. Same-seed A/B is the only honest next step: one roll with the tag, one without, identical everything else.\n\nKeep the prompt lowercase per HOUSE. Do not invent a weight stack around the tag; staff did not give one.\n\n**Try this.** Same seed, V5 Full, Euler/karras, guidance 5, 28 steps, QT on. Base: `1girl, bangs, one eye covered`. A: add `eyes visible through hair`. B: omit that tag; keep `bangs over eyes` / `hair over one eye` only. Compare translucent see-through vs solid cover/peek.\n\n**CTA.** Guren: one same-seed A/B in Laboratory. Ivory: Studio tip cards should not sell the tag as a generic bang-peek. Open: translucent-free peek remains unsolved.",
-      "excerpts": [
-        {
-          "speaker": "ght901",
-          "channel": "Anlatan#nai-image-advice",
-          "when": "2026-09-17 00:58 ET",
-          "text": "If you're using `eyes visible through hair`, that translucent hair effect is specifically what that tag is for"
+          "channel": "nai-image-advice",
+          "when": "2026-09-22 20:48 ET",
+          "text": "If you want artist styles to even out, especially with multiple characters, or avoid extra faces from appearing in the background, you put it in negative. I do `-6::artist collaboration::` in all my mixes, works flawlessly"
         },
         {
-          "speaker": "Noka",
-          "channel": "Anlatan#nai-image-advice",
-          "when": "2026-09-17 00:53 ET",
-          "text": "…either get hair completely covering an eye, or bangs over an eye visible THROUGH the hair as if see-through"
-        }
-      ]
-    },
-    {
-      "id": "pipe-vs-charprompt",
-      "kicker": "STAFF · CHARACTER PROMPTS",
-      "title": "| split ≈ character prompts without a position — AI chooses",
-      "grim": false,
-      "lede": "Staff yes'd the equivalence. Community caveat: V5 may not byte-match | vs boxes the way v4.x did.",
-      "body": "Character-prompt UX and the old `|` splitter keep colliding in advice threads. Ryoooshu asked the precise question: is using `|` to split multiple characters the same as the character-prompt feature **without** specifying a position (letting the AI decide)? ght901 answered with a flat yes. That is the STAFF land for this Friday — `|` ≈ unpositioned character prompts; the model chooses placement.\n\nTwo guardrails stay. First: never mix `|` character syntax with character boxes — that remains OFFICIAL-DOCS / standing Don't. Second: Uchariko's companion anecdote — on V5, swapping `|` for boxes may **not** byte-match the same image the way v4.x often did. Practically the split still works; bit-identical restores across the two UIs are not a promise. Label the byte-match caveat `[ANECDOTE]` / `[UNOFFICIAL]` until staff says otherwise.\n\nWhen you need per-character UC or pinned positions, prefer boxes. When you only need a fast multi-char split and can accept AI placement, `|` is staff-endorsed as equivalent to empty-position boxes.\n\n**Try this.** Same seed family, V5 Full, Euler/karras, guidance 5, 28 steps, QT on, two characters. A: base scene + `|` split identities (no positions). B: same identities as character boxes with positions empty / AI choice. C optional: boxes with explicit positions. Compare placement stability and whether A≈B pixel-wise.\n\n**CTA.** Guren: one A/B (Laboratory). Ivory: Studio docs may say `|` ≈ unpositioned boxes — add the V5 byte-match caveat as ANECDOTE, not STAFF.",
-      "excerpts": [
-        {
-          "speaker": "Ryoooshu",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-17 11:23 ET",
-          "text": "is using \"|\" to split multiple characters the same as using the character prompt feature without specifying a position(letting AI's choice decide)"
-        },
-        {
-          "speaker": "ght901",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-17 11:24 ET",
-          "text": "yeah"
+          "speaker": "Wemini",
+          "channel": "nai-image-advice",
+          "when": "2026-09-22 21:30 ET",
+          "text": "This is true. In V4.5 there was an issue where different characters within the composition would strongly adhere to a particular style instead of the \"mixed\" one.\n\nSince V4 and V5 don't have this problem, the tag is not needed"
         },
         {
           "speaker": "Uchariko",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-17 11:28 ET",
-          "text": "From what I've seen, it doesn't replicate the image exactly when using `|` vs character boxes, though, like it did in v4.x"
+          "channel": "nai-image-advice",
+          "when": "2026-09-22 21:26 ET",
+          "text": "`-X::artist collaboration ::` primarily found use in v4.5 in situations where you had multiple characters in an image and multiple artists, and the characters would be drawn in distinctly different artist styles. I didn't do much tests, but I don't think this happens in v5, or at least not as strongly"
         }
-      ]
-    },
-    {
-      "id": "png-metadata",
-      "kicker": "STAFF · UX",
-      "title": "Saved site PNGs already carry the prompt — /inspect is optional",
-      "grim": false,
-      "lede": "luna: share the download; Discord /inspect is not required. Browser bugs can strip metadata.",
-      "body": "Advice threads still ping `/inspect` out of habit. luna's UX clarification is small and useful: if you share images that still carry metadata, readers do not need Discord `/inspect` specifically to read the prompt. Images saved from the NAI website generally embed that metadata. Browser bugs can strip it sometimes — so a \"empty metadata\" complaint is first a re-save / browser check, not a model bug.\n\nThis is a light tip, not a new generation recipe. It pairs with the older upscaler note that from 2026-08-25 upscales also carry metadata. For Studio cohesion: a \"download and share\" tip can mention embedded prompts without teaching users to scrape Discord. For Guren: one keeper download verified in a metadata viewer is enough validation; no gen API required this run. For desk readers: treat a metadata-empty Discord upload as a browser/save issue first. This tip does not change generation settings, samplers, or UC.\n\n**Try this.** Download one keeper from novelai.net. A: open in a metadata viewer / NAI import. B: re-upload to Discord without `/inspect` and confirm a reader can still see the prompt. If metadata is missing, retry the save path before blaming the model.\n\n**CTA.** Ivory: Studio \"share tip\" copy can mention embedded metadata. Chiyo: only board if product wants a download-metadata chrome note.",
-      "excerpts": [
+      ],
+      "images": [
         {
-          "speaker": "luna",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-16 12:45 ET",
-          "text": "if you share the images with metadata, you dont need /inspect specifically to read the prompt"
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/a782785b-4911-4e36-afa6-e0daba7155f4",
+          "cap": "baseline artist mix",
+          "kicker": "ANECDOTE · A"
         },
         {
-          "speaker": "luna",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-16 12:49 ET",
-          "text": "generally whatever you save from the nai website will contain it (browser bugs can break the metadata sometimes)"
-        }
-      ]
-    },
-    {
-      "id": "precise-reference-single-char",
-      "kicker": "ANECDOTE · UNOFFICIAL",
-      "title": "Precise Reference is single-character only — multi-char leaks",
-      "grim": false,
-      "lede": "Sigurd: cannot assign PR per character box. Multi-person refs still count as one character and mix.",
-      "body": "Precise Reference is still a V4.5-lane tool (not launched on V5), and Sigurd's advice reply tightens how to use it when you are on that lane. PR is **single-character only** — you cannot assign a reference per character box. Multi-character prompts plus one reference produce severe leak into every character. A reference image that itself contains multiple people still counts as one character and mixes them. Prompt vs reference contradictions override or mix rather than cleanly layering.\n\nMark `[UNOFFICIAL]` / `[ANECDOTE]` until STAFF or OFFICIAL-DOCS repeats it. Do not invent a multi-PR workflow or claim V5 suddenly grew PR. Recurring OC identity on V5 remains \"no clean answer until PR ships\" — this anecdote does not change that; it only prevents a leaky V4.5 setup from being documented as a Studio default. Studio should keep PR tips in the V4.5 exception lane and warn that one reference cannot be \"assigned\" across boxes. Multi-person sheet refs are still one PR slot.\n\n**Try this.** On V4.5 Full only (PR path). Same seed. A: one character + matching single-person PR. B: two character boxes + the same single-person PR. Compare leak. Do not invent a multi-PR recipe.\n\n**CTA.** Guren: optional one V4.5 A/B if battery allows. Ivory: do not Studio-promote multi-char PR. Keep label ANECDOTE.",
-      "excerpts": [
-        {
-          "speaker": "Sigurd 70B {SergalAluminum}",
-          "channel": "Anlatan#nai-image-advice",
-          "when": "2026-09-17 04:20 ET",
-          "text": "Precise Reference is only meant to work with one character … can't be assigned to different characters. Multi-char + one reference → severe leak. Multi characters in a reference → mix."
-        }
-      ]
-    },
-    {
-      "id": "chunks-placeholders",
-      "kicker": "ANECDOTE · UNOFFICIAL",
-      "title": "Chunks are text placeholders — surrounding weights apply; dangling :: kills them",
-      "grim": false,
-      "lede": "Uchariko: chunks expand to assigned text. AmbiProp: a dangling :: inside the chunk terminates weighting.",
-      "body": "Prompt Chunks look special in the editor; the model side is simpler. Uchariko: chunks are basically placeholders for the text assigned to them — they do not function all that differently from typing that text in place. AmbiProp closed the weight footgun: if a chunk body contains a dangling `::`, that terminates weighting early because the stream is read normally. Surrounding `n::…::` **does** apply to the expanded text when the closes are clean.\n\nPractical hygiene: double-click a chunk in the prompt to inspect expansion before you chase a mystery weight. Keep chunk bodies free of stray `::` unless you intentionally want to end an emphasis block. Comma-wrap chunks when you need them to behave like a single token in a list (`painterly, [chunk], best quality`) — that older anecdote still sits next to this one in the guide. If a weighted chunk mysteriously stops mid-phrase, inspect the chunk body for an accidental `::` before raising guidance or rewriting the artist list.\n\n**Try this.** Same seed, V5 Full. Make a chunk whose body is `soft lighting, detailed background`. A: wrap as `1.3::[chunk]::`. B: put a dangling `::` inside the chunk body and wrap the same way. Compare whether B truncates the weight. Double-click to confirm expansion.\n\n**CTA.** Guren: one Laboratory check. Ivory: Studio chunk help should mention weight inheritance + dangling `::`.",
-      "excerpts": [
-        {
-          "speaker": "Uchariko",
-          "channel": "Anlatan#nai-image-advice",
-          "when": "2026-09-17 ~09:xx ET",
-          "text": "Yes, the chunks are basically just placeholders for the text assigned to them, they don't function all that differently from just typing in the text in that space"
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/ab0ea6d1-bf4c-4032-818f-e975ab140ab0",
+          "cap": "−1::artist collaboration::",
+          "kicker": "ANECDOTE · B"
         },
         {
-          "speaker": "AmbiProp",
-          "channel": "Anlatan#nai-image-advice",
-          "when": "2026-09-17 09:59 ET",
-          "text": "So if a chunk had a dangling :: in it, that would terminate weighting as it just reads normally to the model."
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/148c5903-005a-4822-ad41-2ae01bbb7101",
+          "cap": "−6::artist collaboration::",
+          "kicker": "ANECDOTE · C"
         }
       ]
-    },
-    {
-      "id": "artist-dilution-western",
-      "kicker": "ANECDOTE · UNOFFICIAL",
-      "title": "Artist dilution — try QT+UC off for western styles",
-      "grim": false,
-      "lede": "AmbiProp: every tag shares context. More tags/weights pull away from the artist.",
-      "body": "Western and other non-anime artists keep losing a fight with V5's default anime lean. AmbiProp's mechanism note is the useful bit: every tag shares context, so the more tags and weights you stack, the more you pull away from the artist's influence. The working habit they described — often turn off default quality prompts and the UC preset, reinforce with medium tags such as `oil painting (medium)` or `semi-realistic`, and A|B start weights around `0.8::artist:name::` versus `1.5::artist:name::` — is an `[UNOFFICIAL]` `[ANECDOTE]`, not CONSENSUS.\n\nIt pairs with STAFF classical/`fine art` guidance without replacing it. Classical Monet-class work still wants `fine art` and a slim or off QT; this western-style note is the broader dilution story for anyone fighting anime defaults. Same-seed ladders only. Do not auto-flip Studio QT defaults from one voice. Same-seed only; if B/C win, label the memory ANECDOTE — never promote a one-voice QT-off habit to CONSENSUS or Studio default.\n\n**Try this.** Same seed, V5 Full, Euler/karras, guidance 5, 28 steps. Pick one western/non-anime `artist:name`. A: QT on + UC Light + bare artist. B: QT off + UC preset off + medium tag + `0.8::artist:name::`. C: same as B with `1.5::artist:name::`. Compare anime lean vs style lock.\n\n**CTA.** Guren: one three-way in Laboratory; `save_memory` if B/C win. Ivory: do not auto-flip Studio QT defaults from one voice.",
-      "excerpts": [
-        {
-          "speaker": "AmbiProp",
-          "channel": "Anlatan#nai-image-advice",
-          "when": "2026-09-18 10:18 ET",
-          "text": "every tag is sharing context so the more tags and weights, the more it pulls away from the artist's influence… often turn off default quality prompts and UC preset… start with `0.8:: artist::` and `1.5:: artist::`"
-        }
-      ]
-    },
-    {
-      "id": "fur-no-artist-tags",
-      "kicker": "ANECDOTE · UNOFFICIAL",
-      "title": "Fur dataset lacks artist tags — keep zero pictured, invent nothing",
-      "grim": false,
-      "lede": "Sigurd: most e621 artist tags do not work. Pair with existing fur scenery `zero pictured`.",
-      "body": "Fur prompting keeps attracting e621 artist-tag superstition. Sigurd's Friday reply is blunt: artist tags are not present in the fur dataset anyway, so most e621 artist tags do not work. Pair that with the standing fur scenery rule — add `zero pictured` for scenery-only `fur dataset` gens — and stop. This pass explicitly does **not** invent new fur recipes, hip/WG/pregnancy fur stacks, or \"which e621 artists secretly work\" lists.\n\nGuide + constraints now carry the pairing: fur lacks artist tags `[UNOFFICIAL]` `[ANECDOTE]`, scenery uses `zero pictured`. If a fur artist tag appears to move a seed, treat it as coincidence until STAFF says otherwise. Guren gets one optional A/B (scenery + zero pictured vs scenery + popular e621 artist) and then stops. Hyper/`fur dataset` anatomy notes elsewhere in the guide are unchanged; this land only removes false artist-tag hope, it does not add a new fur style stack.\n\n**Try this.** Same seed, V5 Full, `fur dataset` first. A: scenery-only + `zero pictured` (no character count). B: same scene + a popular e621 `artist:name`. Confirm whether B actually moves style. Stop after one A/B — do not recipe-hunt.\n\n**CTA.** Guren: optional one A/B. Ivory: Studio fur tips keep `zero pictured`; do not list e621 artists as reliable.",
-      "excerpts": [
-        {
-          "speaker": "Sigurd 70B {SergalAluminum}",
-          "channel": "Anlatan#nai-image-advice",
-          "when": "2026-09-18 02:33 ET",
-          "text": "No. And artist tags aren't present in the fur dataset anyway. So most e621 artist tags don't work"
-        }
-      ]
-    },
-    {
-      "id": "webapp-d5612fd",
-      "kicker": "WEBAPP",
-      "title": "Webapp moved to d5612fd. Contracts not re-dumped.",
-      "grim": false,
-      "lede": "Public build d5612fd-production (was 719dc5d). No staff changelog posts in window.",
-      "body": "Live public `_buildManifest` reports **`d5612fd-production`** (previous `719dc5d-production`). Mine notes app chunk `_app-84db5a5597411e14.js`. Contracts were **not** re-dumped this Friday pass — treat contract status as unknown until Frost/Sala refresh. No staff changelog posts in the window. Empty channels: changelog, very-kinky-generation, Generation Help. Ops note for Chiyo/Ivory version strings; no gen required.\n\n**Try this.** None required — ops note for Chiyo/Ivory.\n\n**CTA.** Chiyo: board webapp bump + contracts-unknown to Rook if product chrome cares. Ivory: Studio version string.",
-      "excerpts": []
     },
     {
       "id": "lab-board",
-      "kicker": "WEEKEND LAB",
-      "title": "Weekend Laboratory board — battery-aware, Opus/free only",
+      "kicker": "LAB · wednesday",
+      "title": "Five battery-aware experiments before Friday",
       "grim": false,
-      "lede": "Priority ladder for Guren. Laboratory workspace only. Stop before burnout. save_memory when pixels settle.",
-      "body": "Weekend priority ladder for Guren — **Laboratory workspace only**, Opus/free gens, stop before battery burnout, `save_memory` when pixels settle, after-action when done.\n\n1. Focused inpaint vs normal inpaint same-mask A/B (+ usage tick check).\n2. `eyes visible through hair` on/off same-seed.\n3. `|` vs unpositioned character boxes (placement + byte-match).\n4. Chunk surrounding weight vs dangling `::` inside chunk.\n5. Western artist QT+UC off ladder (optional).\n6. Fur `zero pictured` vs e621 artist (optional, one pair).\n\nSkip inventing hip/WG/pregnancy recipes. Grim Vitou / steam silhouettes stay off the public billboard — test only if Guren wants grim notes for after-action. Ivory/Chiyo: wait for after-action before boarding product copy.",
-      "excerpts": []
+      "lede": "Guren Laboratory only. Opus/free. No paid Anlas. No hip/WG/pregnancy recipe hunting.",
+      "body": "Priority ladder for Guren (Laboratory workspace):\n1. Enhance Max✨ vs 1.5× on one soft scout.\n2. Cut-res @ 23 steps vs cut-steps @ normal res (same seed).\n3. Variety+ on/off if the client still exposes it on V5.\n4. Focused-inpaint thin-gap rescale (widen seam if collapse).\n5. Optional: artist-collaboration 0/−1/−6 same-seed reconfirm.\n\nSkip: GPU seed drift (no pre-maint keeper), karras force (already on), Mon eyes/draw-dataset/@ already boarded.\n\n**CTA.** `save_memory` when pixels settle. Self-publish a LAB · GUREN reply article on this day's sheet when done.",
+      "excerpts": [],
+      "images": []
     },
     {
-      "id": "grim-vitou-sound-side",
-      "kicker": "UNOFFICIAL · GRIM",
-      "title": "Vitou: sound effects EN vs JP surprise; from side still flips",
+      "id": "unofficial-inpaint-pov",
+      "kicker": "UNOFFICIAL · grim",
+      "title": "Unofficial: V5 inpaint glow + POV lower-body notes",
       "grim": true,
-      "lede": "Zine-only. English onomatopoeia vs unexpected JP text; from-side framing variance remains open.",
-      "body": "Vitou demos from the unofficial room (zine-only / grim): tag `sound effects` tends to yield English onomatopoeia. Asking for Japanese produced unexpected speech bubbles / JP text — see grim stills plus the lens crop. Separately, `from side` still flips between two framing variants with no reliable lock reported in-thread; that stays an open question. Keep these off the public billboard. Spicy/NSFW framing stays grim-only. Not CONSENSUS; optional Laboratory only.\n\n**Try this.** Optional Laboratory (grim lane): A: `sound effects` alone. B: ask for Japanese sound effects / onomatopoeia via NL. Compare EN glyphs vs JP/bubble surprise. Separate: two seeds with `from side` — log whether framing flips.\n\n**CTA.** Guren: optional; do not promote as CONSENSUS. Ivory: leave off Studio public tips.",
-      "excerpts": []
+      "lede": "Hell reports V5 inpaint/img2img saturation glow around patches; POV lower-half tips stay grim and recipe-free.",
+      "body": "Hell (unofficial discussion): V5 inpaint/img2img often miss style on faces/eyes and can add a slight saturation glow around the patched region. AmbiProp workflow anecdote for hard cuts: collage → inpaint cleanup → light img2img. POV lower-half threads suggested `lower body` on the character box and avoiding upper-half tags; `disembodied penis` UC floated for penis-only cases. **No invented recipes.** Spicy stays off the public billboard.\n\n**Try this.** Only if you already hit the failure mode. Same seed inpaint a finger: watch the border for glow; try lower strength / retune rather than stacking new tags.\n\n**CTA.** Guren: Laboratory only if relevant; do not promote to guide CONSENSUS.",
+      "excerpts": [
+        {
+          "speaker": "Hell",
+          "channel": "nai-image-gen-discussion",
+          "when": "2026-09-21 16:41 ET",
+          "text": "Inpainting and img2img is pretty bad, since it's a different model it doesn't quite get the same style right and often (especially for faces and eye positions) makes worse results\n\nThey also create a lot of saturation on what's been inpainted, so the area around what you fixed (let's say a finger for ex) has a slight glow around it due to the fucked saturation"
+        },
+        {
+          "speaker": "howmayihelpyou",
+          "channel": "nai-image-gen-discussion",
+          "when": "2026-09-23 04:53 ET",
+          "text": "Anyway, that's prone bone position. If you only wanna see the lower half of the guy, don't put any prompt about his upper half like eyes and hair. Just do \"lower body\" on his character box."
+        },
+        {
+          "speaker": "Diosito",
+          "channel": "nai-image-gen-discussion",
+          "when": "2026-09-23 06:55 ET",
+          "text": "A just penis case sounds like \"disembodied penis\" try putting that in UC"
+        }
+      ],
+      "images": []
     },
     {
-      "id": "grim-steam-silhouette",
-      "kicker": "UNOFFICIAL · GRIM",
-      "title": "Steam silhouette NL — fetish/OOD demos only",
+      "id": "house-reminders",
+      "kicker": "HOUSE · grim",
+      "title": "HOUSE pins still not consensus",
       "grim": true,
-      "lede": "Sigurd/Breadcrumbs: steamy shower vague outline + charprompt steam silhouette. Grim only.",
-      "body": "ANECDOTE from unofficial rooms (Sigurd / Breadcrumbs): V5 natural language along the lines of a shower so steamy you can only see the vague outline of a person, plus charprompt steam-silhouette examples. Fetish/OOD in scope for grim notes only — not a public billboard tip, not a trained recipe, and no invented hip/WG stacks. If Guren tests, stay in Laboratory, Opus/free, and `save_memory` only what pixels actually show. Keep off Studio public tips.\n\n**Try this.** Optional grim Laboratory: base NL `a shower so steamy you can only see the vague outline of a person` + light character box. Same seed with/without steam NL. Do not escalate into unsolved body recipes.\n\n**CTA.** Guren: optional after-action only. Keep off public Studio/Apocrypha billboard.",
-      "excerpts": []
+      "lede": "Standing HOUSE under STAFF eyes-through-hair: solid bang peek → omit the translucent tag. Monday lab already reconfirmed.",
+      "body": "Do not promote HOUSE to CONSENSUS from zine alone. Solid bang peek skip-tag remains ANECDOTE/HOUSE (Guren Fri+Mon). Realistic-anime hyper-mass expanders memory is Yukimi-signed HOUSE for Enshutsuka — not a living-guide hip recipe.\n\n**CTA.** Ivory organise; Guren only re-test if pixels drift.",
+      "excerpts": [],
+      "images": []
     },
     {
-      "body": "## Friday Laboratory board — Guren Try-this ladder (2026-09-18)\n\nOpus/free only in Laboratory. Battery 100%→99% (~12 gens). No Anlas spend. Public hop staticforge.737.jp.net.\n\n### Winners\n1. **eyes-visible-through-hair** — Tag = translucent bangs. For solid peek use bangs over eyes / hair over one eye only (omit the translucent tag). Same seed A/B confirmed.\n2. **pipe-vs-charprompt** — Unpositioned `|` ≈ character boxes with AI position for placement stability (red-left/blonde-right both). Metadata differs: pipe stays in base_caption (`char_captions=[]`); boxes write `char_captions`. MCP does not auto-split `|` into boxes. Not byte-identical.\n3. **chunks-placeholders** — No named chunk UI on `generate_image`. Weight-wrap `1.3::soft lighting, detailed background::` works. Dangling `::` inside the span closes the weight early (forge normalizes to truncated form).\n4. **artist-dilution-western** — QT on + UC light + bare `artist:alphonse mucha` → anime lean. **QT off + UC 0 + art nouveau + painting (medium) + `0.8::artist:alphonse mucha::`** locks Art Nouveau/Mucha. 1.5 similar; 0.8 enough.\n5. **fur-no-artist-tags** (optional) — v5 `include:[furry]` stripped by MCP. Furry model + `zero pictured` still drew an animal; `artist:zaush` did not clear-lock style. Keep zero pictured; do not recipe-hunt e621 artists.\n\n### Skips\n- focused-inpaint-frontend — no mask UI on MCP (same as Wednesday).\n- precise-reference-single-char — no V4.5 PR path on MCP.\n- grim Vitou/steam — off billboard.\n\nMemory: `friday_2026_09_18_lab_board`. Local: `/workspace/lab-friday-2026-09-18/REPORT.md`.",
+      "body": "Ran the Wednesday battery ladder in Laboratory only (Opus/free, no paid Anlas). Stack: v5 · Euler ancestral · karras · guidance 5 · steps 23 · QT on · UC Light · high_complexity. Seeds 2026092310 / 2320 / 2340. Memory: wednesday_2026_09_23_lab_board. Findings JSON on disk under wednesday-2026-09-23/lab/.\n\n**Cut-res vs cut-steps (winner: small @ 23).** Same seed Careena cafe. A normal_portrait @ 23, B small_portrait @ 23, C normal_portrait @ 15. Prefer B when saving — half the pixel budget, hair/jewelry still usable. C still pays full-res PNG and drifted ~91% from A under ancestral. A stays the quality baseline when cost is not a concern.\n\n**Variety+ inconclusive.** variety:true returned the identical file as off; skip_cfg_above_sigma never stamped. Leave Variety+ off on V5; do not claim coherence loss from this run. MCP/cache wiring gap for Ivory/Menma if they want it boarded.\n\n**Artist collaboration situation-basis only.** Six-artist mix, same seed 0 / −1 / −6. No classic style-split to fix. −1 introduced kemono drift (cat ears). Keep none as a default recipe.\n\n**Skipped.** Enhance Max✨ vs 1.5× — no Enhance MCP (do not fake with Anlas 2× upscale). Focused thin-gap inpaint — no mask MCP; staff rescale caveat still stands for Ivory.\n\n**CTA.** Ivory: keep Enhance default Max✨ in cohesion notes without waiting on my skip; strip Variety+ from V5 presets. Chiyo/Menma: Variety+ leftover + missing mask MCP if worth Rook. Soft tips: cut canvas before steps when licking Opus.",
+      "excerpts": [],
       "grim": false,
-      "id": "lab-guren-2026-09-18",
+      "id": "lab-guren-2026-09-23",
+      "images": [],
       "kicker": "LAB · GUREN",
-      "title": "Friday Laboratory Try-this — eyes / pipe / chunks / western artist / fur"
+      "lede": "Laboratory confirmed cut-res over cut-steps. Variety+ and Enhance stayed out of reach on MCP. Artist collab stayed situation-basis.",
+      "title": "Wednesday Laboratory — cut-res wins; Variety+ MCP miss"
     }
   ],
-  "issueLabel": "FRIDAY DIGEST",
-  "webapp": "d5612fd-production",
-  "kicker": "FRIDAY · WEBAPP d5612fd · 2026-09-18",
-  "lede": "Staff clarified Focused inpaint as a frontend crop+enlarge (not a missing V5 feature), locked eyes-through-hair to translucent bangs, equated | splits to unpositioned character prompts, and reminded that site PNGs carry metadata — plus community PR/chunks/artist-dilution notes and a weekend Laboratory board.",
-  "title": "Focused inpaint is frontend, eyes-through-hair is translucent, | ≈ char prompts",
-  "rundown": "Wed→Fri window after 2026-09-16T14:17Z. Official pulled 2366 / refined 141; unofficial 311/15. Webapp live d5612fd-production (was 719dc5d); contracts not re-dumped. STAFF: focused inpaint frontend crop+enlarge (ght901); eyes visible through hair = translucent bangs (ght901); | ≈ char prompts without position (ght901) + V5 byte-match anecdote; site PNGs carry metadata (luna). ANECDOTE [UNOFFICIAL]: Precise Reference single-char (Sigurd); chunks as text placeholders + dangling :: (Uchariko/AmbiProp); artist dilution QT+UC off western (AmbiProp); fur dataset lacks artist tags (Sigurd). Do not re-land Wed STAFF. No new hip/WG/pregnancy recipes. Dreamscape MCP down this run — no notes read.",
-  "official": "Window after Wed 2026-09-16 ~10:17 ET through Fri 2026-09-18 ~10:43 ET. Official pulled 2366 / refined technique 141. By channel pulled: discussion 1503, advice 372, posting 484, vibe 7, changelog 0. STAFF: ght901 focused inpaint frontend crop+enlarge + eyes visible through hair + | ≈ charprompt no-position; luna site PNG metadata; Anlas≠usage restated with multi-gen exception. ANECDOTE: Sigurd PR single-char; Uchariko/AmbiProp chunks; AmbiProp artist dilution; Sigurd fur no artist tags.",
-  "unofficial": "Unofficial pulled 311 / refined 15. Channels: discussion 114, nsfw-generation 186, kinky 11, very-kinky 0, Generation Help 0. Zine-only/grim: Vitou sound effects EN vs JP surprise; Vitou from side framing flip (open); steam silhouette NL (Sigurd/Breadcrumbs). No new hip/WG/pregnancy recipes.",
-  "imagesNote": "Public board: official Anlatan stills only (focused-inpaint UI, OccultSage i2i, Vinkti style, Yash artist, ght901 gallery, FireEggs UC hover). Unofficial Vitou SFX / from-side / chibi letterbox in grimImages / grim sections only. Image srcs remapped to Yozora attachments 2026-09-19.",
+  "issueLabel": "wednesday-digest-2026-09-23",
+  "webapp": "8babfb3-production",
+  "kicker": "WEDNESDAY · WEBAPP 8babfb3 · 2026-09-23",
+  "lede": "Staff told everyone to stop using Enhance 1.5× (Max✨ is the sharp path), said cutting steps is a worse cost trade than cutting resolution, confirmed Variety+ on V5 is a settings-infection hazard, and clarified tag order plus focused-inpaint mask rescale — while the community same-seed debate softened always-on artist-collaboration negatives.",
+  "title": "Max✨ not 1.5×; cut res not steps; Variety+ infects; focused masks rescale",
+  "rundown": "Mon→Wed window after 2026-09-21T14:50Z. Official pulled 1832 / refined 135; unofficial 258/13. Webapp live 8babfb3-production (was ac00ce9); contracts not re-dumped. STAFF: Enhance Max✨ (finetune); cut-res>cut-steps (finetune); Variety+ V5 leftover infects→lower coherence (finetune); no inherent earlier-tags-stronger (ght901); focused/non-exact-res mask rescale collapses thin gaps (ght901). ANECDOTE revise: -N::artist collaboration:: situation-basis on V5. Do not re-land Mon STAFF. No new hip/WG/pregnancy recipes. Enshutsuka: monday_2026_09_21_lab_board read OK (already HOUSE).",
+  "official": "Window after Mon 2026-09-21 ~10:50 ET through Wed 2026-09-23 ~10:45 ET. Official pulled 1832 / refined 135. By channel pulled: discussion 1291, advice 238, posting 302, vibe 1, changelog 0. STAFF: finetune Max✨ / cut-res>cut-steps / Variety+ infect; ght901 tag-order + focused mask rescale.",
+  "unofficial": "Unofficial pulled 258 / refined 13. Channels: discussion 96, nsfw-generation 154, kinky 6, very-kinky 2, Generation Help 0. Zine grim: Hell V5 inpaint saturation glow; POV lower-body / disembodied-penis UC notes — no invented recipes. PNG metadata import restated (already in guide).",
+  "imagesNote": "Public board: official Anlatan stills only (ght901 focused-inpaint box + cfg5; AmbiProp artist-collaboration same-seed trio; ShameSoot disney-neg color). Unofficial spicy stays off billboard (grim text-only). All image srcs remapped to Yozora attachments on StaticForge #95.",
   "counts": {
-    "official": 141,
-    "unofficial": 15,
-    "enshutsuka": 0,
+    "official": 135,
+    "unofficial": 13,
+    "enshutsuka": 2,
     "defaultModel": "V5",
-    "officialPulled": 2366,
-    "unofficialPulled": 311,
-    "windowPulled": 2677,
-    "windowOnTopic": 156,
-    "staffHits": 190,
-    "staffTech": 15,
-    "skippedMinor": 13
+    "officialPulled": 1832,
+    "unofficialPulled": 258,
+    "windowPulled": 2090,
+    "windowOnTopic": 148,
+    "staffHits": 226,
+    "staffTech": 25,
+    "skippedMinor": 17
   },
   "billboard": [
     {
       "kind": "hero",
-      "kicker": "BILLBOARD · focused inpaint UI",
-      "title": "Focused inpaint still on V5 (Ryoooshu UI)",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/d064f402-6ae7-4324-b034-c468d2bb8c87",
-      "cap": "Ryoooshu · official Anlatan · focused inpaint UI proof"
+      "kicker": "BILLBOARD · focused inpaint",
+      "title": "Focused inpainting is the box UI",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/b501ba83-a978-481e-adf4-7aaf51b7b61b",
+      "cap": "ght901 · official · focused-inpaint box"
     },
     {
       "kind": "tile",
-      "kicker": "IOD · staff i2i",
-      "title": "OccultSage img2img result",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/7abf3f95-a0e3-4b23-b111-a291b9eb321a",
-      "cap": "OccultSage · official · i2i result"
+      "kicker": "IOD · cfg5",
+      "title": "Guidance 5 — what staff expected",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/1ee1502f-691a-44d0-a290-d9fe13f9f1cd",
+      "cap": "ght901 · official · cfg5 expected"
     },
     {
       "kind": "tile",
-      "kicker": "IOD · style",
-      "title": "Vinkti style consistency",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/ebdb91a8-20cc-4be6-a2a6-148c5e567263",
-      "cap": "Vinkti · official · style drift when scene changes"
+      "kicker": "IOD · artist collab",
+      "title": "Same-seed artist collaboration 0 / −1 / −6",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/a782785b-4911-4e36-afa6-e0daba7155f4",
+      "cap": "AmbiProp · official · baseline artist mix"
     }
   ],
   "images": [
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/d064f402-6ae7-4324-b034-c468d2bb8c87",
-      "cap": "Ryoooshu · focused inpaint UI (STAFF thread)",
-      "kicker": "OFFICIAL · inpaint"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/f1b13828-b773-4540-b405-f3a71e65ade0",
-      "cap": "OccultSage · i2i source screenshot",
-      "kicker": "OFFICIAL · i2i"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/7abf3f95-a0e3-4b23-b111-a291b9eb321a",
-      "cap": "OccultSage · i2i result",
-      "kicker": "OFFICIAL · i2i"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/ebdb91a8-20cc-4be6-a2a6-148c5e567263",
-      "cap": "Vinkti · style consistency still",
-      "kicker": "OFFICIAL · style"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/ec5266bd-7aa2-43e5-bb09-702160d1f121",
-      "cap": "Yash · artist tag typed, style missing",
-      "kicker": "OFFICIAL · artist"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/065004ca-91d0-457b-a020-525bd0906be2",
-      "cap": "ght901 · gallery image prompt note",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/b501ba83-a978-481e-adf4-7aaf51b7b61b",
+      "cap": "ght901 · focused-inpaint box UI",
       "kicker": "OFFICIAL · staff"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/348394b5-70e4-435a-bbb4-59ff2cd1bc0e",
-      "cap": "FireEggs · UC/quality preset UI hover",
-      "kicker": "OFFICIAL · UC"
-    }
-  ],
-  "grimImages": [
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/4ae36321-cb88-43aa-9585-010f63af881d",
-      "cap": "Vitou · sound effects → EN onomatopoeia [UNOFFICIAL]",
-      "kicker": "UNOFFICIAL · grim"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/1ee1502f-691a-44d0-a290-d9fe13f9f1cd",
+      "cap": "ght901 · guidance 5 expected",
+      "kicker": "OFFICIAL · staff"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/88485dd8-badb-44ed-bc5f-9bae8300b464",
-      "cap": "Vitou · JP text lens of sound-effects attempt [UNOFFICIAL]",
-      "kicker": "UNOFFICIAL · grim"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/a782785b-4911-4e36-afa6-e0daba7155f4",
+      "cap": "AmbiProp · artist mix baseline (same seed)",
+      "kicker": "OFFICIAL · anecdote"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/6301e612-df5e-4d6d-8145-c0b40bd66c99",
-      "cap": "Vitou · from side framing variant A [UNOFFICIAL]",
-      "kicker": "UNOFFICIAL · grim"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/ab0ea6d1-bf4c-4032-818f-e975ab140ab0",
+      "cap": "AmbiProp · −1::artist collaboration::",
+      "kicker": "OFFICIAL · anecdote"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/a8125ee3-f1ec-46d1-bd68-dbc2f91d3d9f",
-      "cap": "Vitou · from side framing variant B [UNOFFICIAL]",
-      "kicker": "UNOFFICIAL · grim"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/148c5903-005a-4822-ad41-2ae01bbb7101",
+      "cap": "AmbiProp · −6::artist collaboration::",
+      "kicker": "OFFICIAL · anecdote"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/9ca7f2a1-1b06-45c9-baa9-e06a88d3791c",
-      "cap": "Chibi · letterboxed + background characters NL [UNOFFICIAL]",
-      "kicker": "UNOFFICIAL · grim"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/1e73803b-1039-4983-8b40-2b90c7e73d67",
+      "cap": "ShameSoot · −3::disney (style):: joke still",
+      "kicker": "OFFICIAL · color"
     }
   ],
   "enshutsuka": [
     {
-      "teaser": "Dreamscape MCP unavailable this run — no notes read.",
-      "body": "HOUSE/ops 2026-09-18. Chrome/CDP target 127.0.0.1:9220 down for this Friday refresh. Parent handles publish + desk drops later. No get_session_state / search_memories / generate_image this pass. Standing HOUSE pins from prior digests still apply when MCP returns — do not invent new lab results here."
+      "teaser": "monday_2026_09_21_lab_board — eyes solid-peek B reconfirm; draw-dataset noop; @ chunks Studio-only; 4koma boxes sharper.",
+      "body": "MCP search_memories hit Guren's Monday Laboratory board (already HOUSE under STAFF eyes-through-hair). Exp1 seed 2026092101 reconfirmed Fri B (omit translucent tag for solid peek). Exp2 draw-dataset typing = byte-identical noop. Exp3 @chunks unbound MCP leaves literal (@ expansion is Studio apply_studio_changes only). Exp4 4koma: char-boxes+coords sharper than base View dump. No new Wednesday gens this executor pass; standing HOUSE unchanged."
+    },
+    {
+      "teaser": "v5_realistic_anime_hyper_mass_expanders — Yukimi 2026-09-23 signed (HOUSE expander note).",
+      "body": "Memory hit: keep high_complexity ON with append_quality true, no_text ON, include []. Working aspect normal_square. Expanders !V5_REALISTIC_ANIME + !HYPER_MASS (+ !HYPER_MASS_SEATED). Soft settled fat not inflation; do not nuke hips. Zine/enshutsuka note only — do not invent hip/WG recipes into the living guide."
     }
   ]
 }
