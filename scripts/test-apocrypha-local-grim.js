@@ -243,8 +243,8 @@ test('route: grim response headers; public has no grim markers; logged-in still 
     });
     assert.equal(publicRes.statusCode, 200);
     assert.equal(publicRes.headers['cache-control'], undefined);
-    assert.match(publicRes.body, /wrap-public/);
-    assert.doesNotMatch(publicRes.body, /grim-wrapper/);
+    assert.match(publicRes.body, /class="wrap-public"/);
+    assert.doesNotMatch(publicRes.body, /class="grim-wrapper"/);
     assert.doesNotMatch(publicRes.body, /GRIM \/ LOGGED-IN/);
     assert.doesNotMatch(publicRes.body, /UNOFFICIAL \/ SPICY KEEPERS/);
 
@@ -254,7 +254,7 @@ test('route: grim response headers; public has no grim markers; logged-in still 
     });
     assert.equal(localRes.headers['cache-control'], 'private, no-store');
     assert.equal(localRes.headers.vary, 'Cookie, X-Forwarded-For');
-    assert.match(localRes.body, /grim-wrapper/);
+    assert.match(localRes.body, /class="grim-wrapper"/);
     assert.match(localRes.body, /GRIM \/ LOGGED-IN/);
 
     const loginRes = mockRes();
@@ -263,7 +263,7 @@ test('route: grim response headers; public has no grim markers; logged-in still 
     });
     assert.equal(loginRes.headers['cache-control'], 'private, no-store');
     assert.equal(loginRes.headers.vary, 'Cookie, X-Forwarded-For');
-    assert.match(loginRes.body, /grim-wrapper/);
+    assert.match(loginRes.body, /class="grim-wrapper"/);
 
     const archive404 = mockRes();
     handleApocryphaRequest(req({ peer: LAN }), archive404, {
@@ -273,7 +273,7 @@ test('route: grim response headers; public has no grim markers; logged-in still 
     });
     assert.equal(archive404.statusCode, 404);
     assert.equal(archive404.headers['cache-control'], undefined);
-    assert.doesNotMatch(archive404.body, /grim-wrapper/);
+    assert.doesNotMatch(archive404.body, /class="grim-wrapper"/);
 
     const archiveGrim = mockRes();
     handleApocryphaRequest(req({ peer: LAN }), archiveGrim, {
@@ -287,7 +287,7 @@ test('route: grim response headers; public has no grim markers; logged-in still 
     });
     assert.equal(archiveGrim.statusCode, 200);
     assert.equal(archiveGrim.headers['cache-control'], 'private, no-store');
-    assert.match(archiveGrim.body, /grim-wrapper/);
+    assert.match(archiveGrim.body, /class="grim-wrapper"/);
 });
 
 test('applyGrimCacheHeaders writes both required fields', () => {
