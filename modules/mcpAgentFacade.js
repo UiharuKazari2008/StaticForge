@@ -61,6 +61,8 @@ const {
     findArtifactTicketByDestPath,
     findArtifactTicketByUrl,
     destPathNext,
+    destPathCurl,
+    readLocalSandboxRoot,
     tryWriteSandboxDest,
     normalizeDestPath,
     buildArtifactUrl
@@ -418,7 +420,7 @@ const TOOL_DEFS = [
     {
         name: 'ensure_artifact',
         core: true,
-        description: 'Write a minted Grok webp to dest_path when /home/workdir/artifacts exists. Pass dest_path and/or url from generate_image / get_generated_image. Returns wrote + bytes. One call — do not wrap curl in if/then.',
+        description: 'Write a minted Grok webp under mcp_local_sandbox_root when that config is set on this server. Remote callers get wrote:false reason remote-sandbox — download url with curl onto the caller machine (do not retry this tool). Pass dest_path and/or url from generate_image / get_generated_image.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -4456,21 +4458,24 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({
                 success: false,
                 wrote: false,
-                error: 'No minted artifact ticket. Call generate_image / get_generated_image first, then ensure_artifact with that dest_path or url.',
+                error: 'No minted artifact ticket. Call generate_image / get_generated_image first, then download the returned url on the caller machine.',
                 dest_path: destHint || null
             }, true);
         }
         const destPath = normalizeDestPath(destHint || ticket.destPath, ticket.filename);
-        const written = tryWriteSandboxDest(destPath, ticket.bytes);
+        const written = tryWriteSandboxDest(destPath, ticket.bytes, readLocalSandboxRoot(globalResources));
+        const remote = written.reason === 'remote-sandbox';
+        const url = buildArtifactUrl(globalResources, ticket.id);
         return mcpTextResult({
-            success: written.wrote === true,
+            success: written.wrote === true || remote,
             wrote: written.wrote === true,
             bytes: ticket.bytes.length,
             dest_path: destPath,
             wroteReason: written.reason || undefined,
-            curl: written.wrote ? undefined : `curl -fsSL ${buildArtifactUrl(globalResources, ticket.id)} -o /home/workdir/${destPath}`,
-            next: destPathNext(destPath, written.wrote)
-        }, written.wrote !== true);
+            url,
+            curl: written.wrote ? undefined : destPathCurl(url, destPath),
+            next: destPathNext(destPath, written.wrote, { url, reason: written.reason, absPath: written.absPath })
+        }, written.wrote !== true && !remote);
     }
 
     if (name === 'get_generation_job' || name === 'await_generation_job') {
