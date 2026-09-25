@@ -238,11 +238,21 @@ class WebSocketMessageHandlers {
     }
 
     // Clean up metadata cache when client disconnects
-    cleanupClientCache(sessionId) {
+    cleanupClientCache(sessionId, ws = null, sessionHasOtherClients = false) {
         if (this.metadataCache) {
             this.metadataCache.removeClient(sessionId);
         }
         wsMessageDispatcher.clearFifoChainForSession(sessionId);
+        try {
+            const searchService = this.globalResources && this.globalResources.getSearchService
+                ? this.globalResources.getSearchService()
+                : null;
+            if (searchService && typeof searchService.clearSearchStateForSocket === 'function') {
+                searchService.clearSearchStateForSocket(ws, sessionId, { sessionHasOtherClients });
+            }
+        } catch (_err) {
+            // Search service may not be initialized yet
+        }
     }
 
     // Generate UUID for presets

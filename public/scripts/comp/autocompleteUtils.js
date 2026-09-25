@@ -2760,12 +2760,11 @@ function onAutofillSearchRequestStarted(requestId) {
     if (requestId) {
         autofillSearchWatchdogTimer = setTimeout(function () {
             autofillSearchWatchdogTimer = null;
-            if (currentSearchRequestId !== requestId || !isSearching) {
+            if (currentSearchRequestId !== requestId) {
                 return;
             }
-            if (autofillSessionPacketRequestId === requestId) {
-                return;
-            }
+            // A first packet used to skip this path, which left services stuck
+            // on "searching" when the rest of the search never arrived.
             isSearching = false;
             finalizeSearchServiceStatuses();
             updateSearchStatusDisplay();

@@ -282,7 +282,11 @@ class WebSocketServer {
                     
                     // Clean up metadata cache for this client
                     if (handlers && handlers.cleanupClientCache) {
-                        handlers.cleanupClientCache(clientInfo.sessionId);
+                        handlers.cleanupClientCache(
+                            clientInfo.sessionId,
+                            ws,
+                            this.hasOtherClientForSession(clientInfo.sessionId, ws)
+                        );
                     }
                     
                     this.clearRuntimeCompileProgressThrottleForClient(ws);
@@ -310,7 +314,11 @@ class WebSocketServer {
                 // Clean up metadata cache for this client if we have session info
                 if (clientInfo && clientInfo.sessionId) {
                     if (handlers && handlers.cleanupClientCache) {
-                        handlers.cleanupClientCache(clientInfo.sessionId);
+                        handlers.cleanupClientCache(
+                            clientInfo.sessionId,
+                            ws,
+                            this.hasOtherClientForSession(clientInfo.sessionId, ws)
+                        );
                     }
                 }
                 
@@ -321,6 +329,16 @@ class WebSocketServer {
         });
 
         console.log('✓ WebSocket server initialized');
+    }
+
+    hasOtherClientForSession(sessionId, exceptWs) {
+        if (!sessionId) return false;
+        for (const [otherWs, info] of this.clients) {
+            if (otherWs !== exceptWs && info && info.sessionId === sessionId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

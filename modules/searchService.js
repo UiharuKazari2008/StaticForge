@@ -7,6 +7,7 @@ const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 
 // Search functionality module
 class SearchService {
+    static SEARCH_TURN_TIMEOUT_MS = 12000;
     constructor(globalResources = null) {
         if (!globalResources) {
             throw new Error('SearchService requires globalResources instance and should only be instantiated by globalResources.js');
@@ -31,12 +32,14 @@ class SearchService {
         // Latest request tracking for "latest wins" pattern
         this.latestRequests = new Map(); // Track latest request per session+model
         this.isProcessing = new Map(); // Track if processing is active per session+model
+        this._processingLockGen = new Map(); // Per-key lock generation so a stale finally cannot release a newer holder
+        this._activeSearchCtx = new Map(); // Per-call packet context (requestId + autofillSessionId + cancelled)
+        // waitForSearchTurn previously polled this map with no deadline. A hung
+        // processLatestRequest (thesaurus / tag API / dropped socket) starved every
+        // later autocomplete for that session+model.
 
         // Timer will be registered by globalResources when SearchService is initialized
         this._cleanupTimerId = null;
-
-        // Active search packet context (requestId + autofillSessionId) for WS responses
-        this._searchPacketContext = null;
 
         // In-process NovelAI suggest-tags cache (SQLite is L2)
         this.novelAiTagL1Cache = new Map();
@@ -135,9 +138,31 @@ class SearchService {
         }
     }
 
+    _bindSearchCallContext(key, latestRequest) {
+        const rawWs = latestRequest && latestRequest.ws;
+        const ctx = {
+            requestId: (latestRequest && latestRequest.requestId) || null,
+            autofillSessionId: (latestRequest && latestRequest.autofillSessionId) || null,
+            cancelled: false
+        };
+        this._activeSearchCtx.set(key, ctx);
+        const ws = rawWs && {
+            send: (data) => {
+                if (ctx.cancelled) return;
+                rawWs.send(data);
+            },
+            get readyState() {
+                return rawWs.readyState;
+            },
+            __searchCtx: ctx
+        };
+        return { ctx, ws, rawWs };
+    }
+
     sendSearchWs(ws, payload) {
         if (!ws) return;
-        const ctx = this._searchPacketContext || {};
+        const ctx = ws.__searchCtx || {};
+        if (ctx.cancelled) return;
         const message = {
             ...payload,
             requestId: payload.requestId ?? ctx.requestId ?? null,
@@ -465,21 +490,89 @@ class SearchService {
                 return { results: [], spellCheck: null, processed: false, superseded: true };
             }
 
+            const lockGen = (this._processingLockGen.get(key) || 0) + 1;
+            this._processingLockGen.set(key, lockGen);
             this.isProcessing.set(key, true);
-            const capturedTimestamp = latest.timestamp;
 
             try {
-                const result = await this.processLatestRequest(key);
+                const result = await this._runLatestRequestWithTimeout(
+                    key,
+                    Date.now() + SearchService.SEARCH_TURN_TIMEOUT_MS
+                );
                 return { ...result, processed: true, superseded: false };
+            } catch (error) {
+                if (error && error.code === 'SEARCH_TURN_TIMEOUT') {
+                    const ctx = this._activeSearchCtx.get(key);
+                    if (ctx) ctx.cancelled = true;
+                    return { results: [], spellCheck: null, processed: false, superseded: true, timedOut: true };
+                }
+                throw error;
             } finally {
-                this.isProcessing.set(key, false);
-
-                const currentLatest = this.latestRequests.get(key);
-                if (currentLatest && currentLatest.timestamp > capturedTimestamp) {
-                    // A newer request arrived during processing; its caller will wait and run it
+                if (this._processingLockGen.get(key) === lockGen) {
+                    this.isProcessing.set(key, false);
                 }
             }
         }
+    }
+
+    _runLatestRequestWithTimeout(key, deadline) {
+        const remaining = Math.max(1, deadline - Date.now());
+        let timer = null;
+        return Promise.race([
+            this.processLatestRequest(key),
+            new Promise((_, reject) => {
+                timer = setTimeout(() => {
+                    const ctx = this._activeSearchCtx.get(key);
+                    if (ctx) ctx.cancelled = true;
+                    const err = new Error('Search processing timeout');
+                    err.code = 'SEARCH_TURN_TIMEOUT';
+                    reject(err);
+                }, remaining);
+            })
+        ]).finally(() => {
+            if (timer) clearTimeout(timer);
+        });
+    }
+
+    clearSearchStateForSocket(ws, sessionId, options = {}) {
+        if (ws) {
+            for (const [key, req] of [...this.latestRequests.entries()]) {
+                if (req && req.ws === ws) {
+                    this.latestRequests.delete(key);
+                    const ctx = this._activeSearchCtx.get(key);
+                    if (ctx) ctx.cancelled = true;
+                }
+            }
+        }
+
+        if (!sessionId || options.sessionHasOtherClients) {
+            return;
+        }
+
+        const prefix = `${sessionId}_`;
+        for (const key of [...this.isProcessing.keys()]) {
+            if (key.startsWith(prefix) || key === sessionId) {
+                this.isProcessing.delete(key);
+            }
+        }
+        for (const [key, req] of [...this.latestRequests.entries()]) {
+            if (key.startsWith(prefix) || key === sessionId) {
+                this.latestRequests.delete(key);
+                const ctx = this._activeSearchCtx.get(key);
+                if (ctx) ctx.cancelled = true;
+            }
+        }
+        for (const [key, rateLimiter] of [...this.sessionRateLimiters.entries()]) {
+            if (!key.startsWith(prefix) && key !== sessionId) continue;
+            if (rateLimiter && rateLimiter.sessionId === sessionId) {
+                this.cancelSessionPendingRequests(rateLimiter.sessionId, rateLimiter.model);
+            }
+            this.sessionRateLimiters.delete(key);
+        }
+    }
+
+    clearSessionSearchState(sessionId) {
+        this.clearSearchStateForSocket(null, sessionId, { sessionHasOtherClients: false });
     }
 
     // Process the latest request for a given key
@@ -489,7 +582,8 @@ class SearchService {
             return { results: [], spellCheck: null };
         }
 
-        const { query, model, ws, sessionId, requestId, autofillSessionId, spellCheckText, isContinuation, priorQuery, autofillSettings } = latestRequest;
+        const { query, model, sessionId, requestId, autofillSessionId, spellCheckText, isContinuation, priorQuery, autofillSettings } = latestRequest;
+        const { ctx, ws } = this._bindSearchCallContext(key, latestRequest);
         const settings = normalizeAutofillSearchSettings(autofillSettings);
         const artistParsed = parseAutofillArtistSearchPrefix(query);
         if (artistParsed.isArtistSearch) {
@@ -501,11 +595,6 @@ class SearchService {
         const searchQuery = artistParsed.isArtistSearch ? artistParsed.remainder : query;
         const tagSearchQuery = this.truncateTagSearchQuery(searchQuery);
         const spellCheckInput = (spellCheckText || searchQuery || '').trim();
-
-        this._searchPacketContext = {
-            requestId: requestId || null,
-            autofillSessionId: autofillSessionId || null
-        };
 
         if (ws) {
             this.sendSearchWs(ws, {
@@ -756,7 +845,9 @@ class SearchService {
             console.error('Character and tag search error:', error);
             throw error;
         } finally {
-            this._searchPacketContext = null;
+            if (this._activeSearchCtx.get(key) === ctx) {
+                this._activeSearchCtx.delete(key);
+            }
         }
     }
 
@@ -1064,6 +1155,130 @@ class SearchService {
         return { fromCache: false, tags: normalized };
     }
 
+    _supersededSearchError() {
+        return new Error('Request was superseded by a newer search');
+    }
+
+    _httpsSuggestTagsRequest({
+        url,
+        headers,
+        abortSignal,
+        sessionId,
+        apiModel,
+        requestId,
+        httpsModule,
+        decompress
+    }) {
+        const httpsImpl = httpsModule || require('https');
+        const decompressFn = decompress || decompressIfNeeded;
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            let timeout = null;
+            let req = null;
+            let onAbort = null;
+            const succeed = (value) => {
+                if (settled) return;
+                settled = true;
+                if (timeout) clearTimeout(timeout);
+                if (onAbort && abortSignal) {
+                    abortSignal.removeEventListener('abort', onAbort);
+                }
+                this.markRequestCompleted(sessionId, apiModel, requestId);
+                resolve(value);
+            };
+            const fail = (err) => {
+                if (settled) return;
+                settled = true;
+                if (timeout) clearTimeout(timeout);
+                if (onAbort && abortSignal) {
+                    abortSignal.removeEventListener('abort', onAbort);
+                }
+                this.markRequestCompleted(sessionId, apiModel, requestId);
+                reject(err instanceof Error ? err : new Error(String(err)));
+            };
+
+            if (!abortSignal || abortSignal.aborted) {
+                fail(this._supersededSearchError());
+                return;
+            }
+
+            const urlObj = new URL(url);
+            req = httpsImpl.request({
+                hostname: urlObj.hostname,
+                port: 443,
+                path: urlObj.pathname + urlObj.search,
+                method: 'GET',
+                headers: headers || {}
+            }, (res) => {
+                const data = [];
+                res.on('data', (chunk) => {
+                    if (abortSignal.aborted || settled) return;
+                    data.push(chunk);
+                });
+
+                res.on('error', (error) => {
+                    fail(abortSignal.aborted
+                        ? this._supersededSearchError()
+                        : new Error(`Response error: ${error.message}`));
+                });
+
+                res.on('end', async () => {
+                    if (abortSignal.aborted) {
+                        fail(this._supersededSearchError());
+                        return;
+                    }
+                    try {
+                        const raw = Buffer.concat(data);
+                        // decompressIfNeeded: modules/browserHttp.js
+                        const buffer = await decompressFn(raw, res.headers && res.headers['content-encoding']);
+                        if (settled) return;
+                        if (abortSignal.aborted) {
+                            fail(this._supersededSearchError());
+                            return;
+                        }
+                        if (res.statusCode === 200) {
+                            try {
+                                const response = JSON.parse(buffer.toString('utf8'));
+                                this.globalResources.getApiKeyManager().recordApiSuccess('novelai');
+                                succeed(this.normalizeNovelAiSuggestTagsResponse(response));
+                            } catch (_e) {
+                                const encoding = (res.headers && res.headers['content-encoding']) || 'identity';
+                                const preview = buffer.slice(0, 80).toString('utf8').replace(/\s+/g, ' ');
+                                console.log(`❌ Request for ${apiModel} failed: Invalid JSON response (encoding=${encoding}, bytes=${buffer.length}, preview=${JSON.stringify(preview)})`);
+                                fail(new Error('Invalid JSON response from NovelAI API'));
+                            }
+                        } else {
+                            this.globalResources.getApiKeyManager().recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
+                            console.log(`❌ Request for ${apiModel} failed: HTTP ${res.statusCode}`);
+                            fail(new Error(`Tag suggestion API error: HTTP ${res.statusCode}`));
+                        }
+                    } catch (err) {
+                        fail(err);
+                    }
+                });
+            });
+
+            timeout = setTimeout(() => {
+                try { req.destroy(); } catch (_err) { /* ignore */ }
+                fail(abortSignal.aborted
+                    ? this._supersededSearchError()
+                    : new Error('Tag suggestion API request timed out after 5 seconds'));
+            }, 5000);
+
+            req.on('error', (error) => {
+                fail(abortSignal.aborted ? this._supersededSearchError() : error);
+            });
+
+            onAbort = () => {
+                try { req.destroy(); } catch (_err) { /* ignore */ }
+                fail(this._supersededSearchError());
+            };
+            abortSignal.addEventListener('abort', onAbort, { once: true });
+
+            req.end();
+        });
+    }
+
     async makeTagRequests(query, model, queryHash, ws = null, sessionId = null, requestId = null, options = {}) {
         const isContinuation = options.isContinuation === true;
         const priorQuery = options.priorQuery || '';
@@ -1131,128 +1346,15 @@ class SearchService {
                 headers
             };
 
-            return new Promise((resolve, reject) => {
-                // Check if request was aborted before starting
-                if (!abortSignal || abortSignal?.aborted) {
-                    reject(new Error('Request was superseded by a newer search'));
-                    return;
-                }
-
-                // Double-check abort signal is still valid
-                if (abortSignal.aborted) {
-                    reject(new Error('Request was superseded by a newer search'));
-                    return;
-                }
-
-                const urlObj = new URL(url);
-                const req = https.request({
-                    hostname: urlObj.hostname,
-                    port: 443,
-                    path: urlObj.pathname + urlObj.search,
-                    method: 'GET',
-                    headers: options.headers
-                }, (res) => {
-                    let data = [];
-                    res.on('data', chunk => {
-                        // Check if request was aborted before processing data
-                        if (abortSignal.aborted) {
-                            // Request was aborted, no need to process data
-                            return;
-                        }
-                        data.push(chunk);
-                    });
-
-                    res.on('error', (error) => {
-                        // Check if request was aborted before handling response error
-                        if (abortSignal.aborted) {
-                            // Request was aborted, no need to handle response error
-                            return;
-                        }
-                        // Clean up pending request
-                        this.markRequestCompleted(sessionId, apiModel, requestId);
-                        reject(new Error(`Response error: ${error.message}`));
-                    });
-
-                    res.on('end', async () => {
-                        // Check if request was aborted before processing response
-                        if (abortSignal.aborted) {
-                            // Request was aborted, no need to process response
-                            return;
-                        }
-
-                        const raw = Buffer.concat(data);
-                        // decompressIfNeeded: modules/browserHttp.js
-                        const buffer = await decompressIfNeeded(raw, res.headers['content-encoding']);
-                        if (res.statusCode === 200) {
-                            try {
-                                const response = JSON.parse(buffer.toString('utf8'));
-                                // Clean up pending request
-                                this.markRequestCompleted(sessionId, apiModel, requestId);
-                                this.globalResources.getApiKeyManager().recordApiSuccess('novelai');
-                                resolve(this.normalizeNovelAiSuggestTagsResponse(response));
-                            } catch (e) {
-                                // Clean up pending request
-                                this.markRequestCompleted(sessionId, apiModel, requestId);
-                                const encoding = res.headers['content-encoding'] || 'identity';
-                                const preview = buffer.slice(0, 80).toString('utf8').replace(/\s+/g, ' ');
-                                console.log(`❌ Request for ${apiModel} failed: Invalid JSON response (encoding=${encoding}, bytes=${buffer.length}, preview=${JSON.stringify(preview)})`);
-                                reject(new Error('Invalid JSON response from NovelAI API'));
-                            }
-                        } else {
-                            // Clean up pending request
-                            this.markRequestCompleted(sessionId, apiModel, requestId);
-                            this.globalResources.getApiKeyManager().recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
-                            console.log(`❌ Request for ${apiModel} failed: HTTP ${res.statusCode}`);
-                            reject(new Error(`Tag suggestion API error: HTTP ${res.statusCode}`));
-                        }
-                    });
-                });
-
-                // Timeout after 5 seconds
-                const timeout = setTimeout(() => {
-                    // Check if request was aborted before destroying
-                    if (abortSignal.aborted) {
-                        // Request was already aborted, no need to destroy or reject
-                        return;
-                    }
-                    req.destroy();
-                    // Clean up pending request
-                    this.markRequestCompleted(sessionId, apiModel, requestId);
-                    reject(new Error('Tag suggestion API request timed out after 5 seconds'));
-                }, 5000);
-
-                req.on('error', error => {
-                    clearTimeout(timeout);
-                    // Check if this was an abort error
-                    if (abortSignal.aborted) {
-                        // Request was aborted, no need to reject or clean up
-                        return;
-                    }
-                    // Clean up pending request
-                    this.markRequestCompleted(sessionId, apiModel, requestId);
-                    reject(error);
-                });
-
-                req.on('close', () => {
-                    clearTimeout(timeout);
-                    // Check if this was an abort close
-                    if (abortSignal.aborted) {
-                        // Request was aborted, no need to clean up
-                        return;
-                    }
-                    // Request closed normally, no action needed
-                });
-
-                // Listen for abort signal
-                abortSignal.addEventListener('abort', () => {
-                    clearTimeout(timeout);
-                    req.destroy();
-                    // Clean up pending request
-                    this.markRequestCompleted(sessionId, apiModel, requestId);
-                    reject(new Error('Request was superseded by a newer search'));
-                });
-
-                req.end();
+            return this._httpsSuggestTagsRequest({
+                url,
+                headers: options.headers,
+                abortSignal,
+                sessionId,
+                apiModel,
+                requestId,
+                httpsModule: https,
+                decompress: decompressIfNeeded
             });
         };
 
@@ -1553,7 +1655,7 @@ class SearchService {
             return;
         }
 
-        const sessionId = autofillSessionId || this._searchPacketContext?.autofillSessionId || null;
+        const sessionId = autofillSessionId || (ws && ws.__searchCtx && ws.__searchCtx.autofillSessionId) || null;
         const skipAttach = options.skipAttach === true;
 
         const seen = new Set();
