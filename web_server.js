@@ -39,6 +39,7 @@ const runtimeAssetService = require('./modules/runtimeAssetService');
 const agentAssetBundle = require('./modules/agentAssetBundle');
 const agentClientBridge = require('./modules/agentClientBridge');
 const mcpAgentFacade = require('./modules/mcpAgentFacade');
+const mcpRequestLog = require('./modules/mcpRequestLog');
 const apocryphaSite = require('./modules/apocryphaSite');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
@@ -1638,6 +1639,14 @@ app.use((req, res, next) => {
     }
     const mcpPrefix = `/${globalResources.getMcpPathUuid()}`;
     if (req.path.startsWith(mcpPrefix)) {
+        // Verbose logger skips MCP so prompts/tokens never hit stdout.
+        // Cheap one-line JSON-RPC log (method/tool/actor/IP/status/duration/abort).
+        if (mcpRequestLog.isMcpRpcPath(req.path, globalResources.getMcpPathUuid())) {
+            mcpRequestLog.attachMcpRequestLog(req, res, {
+                globalResources,
+                uuid: globalResources.getMcpPathUuid()
+            });
+        }
         return next();
     }
     const apocryphaPrefix = `/${globalResources.getApocryphaPathUuid()}`;

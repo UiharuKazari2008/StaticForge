@@ -135,6 +135,15 @@
     },
     {
       "path": [
+        "mcp_request_log"
+      ],
+      "type": "boolean",
+      "label": "MCP Request Log",
+      "editMode": "inline",
+      "description": "Log one stdout line per MCP JSON-RPC call (method, tool, actor, IP, status, duration). Default on. Never logs arguments or the MCP path UUID."
+    },
+    {
+      "path": [
         "lruCache"
       ],
       "type": "object",
