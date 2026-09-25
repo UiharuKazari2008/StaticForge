@@ -1,7 +1,8 @@
 /**
  * Short-lived Grok webp tickets for MCP dest_path.
- * Dreamscape cannot write Grok Computer `/home/workdir/artifacts`.
- * The ticket URL is what the model curls into that sandbox, then render_file.
+ * Production cannot write the caller's `/home/workdir/artifacts`.
+ * Only write locally when mcp_local_sandbox_root is set; otherwise
+ * return wrote:false reason remote-sandbox plus the download URL/curl.
  */
 
 const crypto = require('crypto');
@@ -124,32 +125,69 @@ function buildArtifactUrl(globalResources, ticketId) {
     return `${base}/${uuid}/artifacts/${ticketId}`;
 }
 
-function destPathNext(destPath, wrote) {
+function callerSandboxAbs(destPath) {
     const rel = destPath || `${DEST_PATH_PREFIX}generated.webp`;
-    if (wrote) {
-        return `wrote:true. ls /home/workdir/${rel} then render_file that path. Do not reprint with Grok Imagine. Do not paste base64.`;
-    }
-    return `wrote:false. Call ensure_artifact with this url and dest_path (one helper, no if/then). Or curl -fsSL url -o /home/workdir/${rel} then render_file. Do not reprint with Grok Imagine.`;
+    return `${SANDBOX_PREFIX.replace(/\/$/, '')}/${rel}`;
 }
 
-function sandboxAbsPath(destPath) {
+function destPathCurl(url, destPath) {
+    const abs = callerSandboxAbs(destPath);
+    if (!url) return `curl -fsSL <url> -o ${abs}`;
+    return `curl -fsSL ${url} -o ${abs}`;
+}
+
+function destPathNext(destPath, wrote, options) {
+    const rel = destPath || `${DEST_PATH_PREFIX}generated.webp`;
+    const opts = options && typeof options === 'object' ? options : {};
+    if (wrote) {
+        const abs = opts.absPath || callerSandboxAbs(rel);
+        return `wrote:true. ls ${abs} then render_file that path. Do not reprint with Grok Imagine. Do not paste base64.`;
+    }
+    const reason = opts.reason || 'remote-sandbox';
+    const curl = destPathCurl(opts.url, rel);
+    return `wrote:false (${reason}). Download on the caller machine: ${curl} then render_file. Do not reprint with Grok Imagine.`;
+}
+
+function readLocalSandboxRoot(globalResources) {
+    if (!globalResources || typeof globalResources.getConfig !== 'function') return '';
+    try {
+        const raw = globalResources.getConfig({ path: 'mcp_local_sandbox_root' });
+        return raw != null ? String(raw).trim() : '';
+    } catch (_err) {
+        return '';
+    }
+}
+
+function sandboxAbsPath(destPath, sandboxRoot) {
+    const root = String(sandboxRoot || '').trim();
+    if (!root) return null;
     const rel = String(destPath || '').replace(/^\/+/, '');
     if (!rel.startsWith(DEST_PATH_PREFIX) || rel.includes('..') || rel.includes('\0')) return null;
-    return path.posix.join(SANDBOX_PREFIX.replace(/\/$/, ''), rel);
+    const resolvedRoot = path.resolve(root);
+    const abs = path.resolve(resolvedRoot, rel);
+    if (abs !== resolvedRoot && !abs.startsWith(resolvedRoot + path.sep)) return null;
+    return abs;
 }
 
-function tryWriteSandboxDest(destPath, bytes) {
-    const abs = sandboxAbsPath(destPath);
-    if (!abs || !bytes || !Buffer.isBuffer(bytes) || !bytes.length) {
+function tryWriteSandboxDest(destPath, bytes, sandboxRoot) {
+    if (!bytes || !Buffer.isBuffer(bytes) || !bytes.length) {
         return { wrote: false, bytes: 0, reason: 'no-bytes' };
     }
+    const root = String(sandboxRoot || '').trim();
+    if (!root) {
+        return { wrote: false, bytes: bytes.length, reason: 'remote-sandbox' };
+    }
+    const abs = sandboxAbsPath(destPath, root);
+    if (!abs) {
+        return { wrote: false, bytes: bytes.length, reason: 'bad-dest' };
+    }
     try {
-        if (!fs.existsSync(SANDBOX_PREFIX)) {
+        if (!fs.existsSync(root)) {
             return { wrote: false, bytes: bytes.length, reason: 'no-sandbox' };
         }
         fs.mkdirSync(path.dirname(abs), { recursive: true });
         fs.writeFileSync(abs, bytes);
-        return { wrote: true, bytes: bytes.length, dest_path: destPath };
+        return { wrote: true, bytes: bytes.length, dest_path: destPath, absPath: abs };
     } catch (err) {
         return { wrote: false, bytes: bytes.length, reason: (err && err.message) || 'write-failed' };
     }
@@ -182,7 +220,8 @@ function attachDestPathMeta(globalResources, meta, image, destPathInput, options
     });
     const ticket = mintArtifactTicket(image, destPath, body.filename);
     if (!ticket) return body;
-    const written = tryWriteSandboxDest(ticket.destPath, ticket.bytes);
+    const sandboxRoot = readLocalSandboxRoot(globalResources);
+    const written = tryWriteSandboxDest(ticket.destPath, ticket.bytes, sandboxRoot);
     body.dest_path = ticket.destPath;
     body.bytes = ticket.bytes.length;
     body.mime = ticket.mime;
@@ -190,7 +229,12 @@ function attachDestPathMeta(globalResources, meta, image, destPathInput, options
     if (!body.wrote && written.reason) body.wroteReason = written.reason;
     body.url = buildArtifactUrl(globalResources, ticket.id);
     body.expiresAt = new Date(ticket.expiresAt).toISOString();
-    body.next = destPathNext(ticket.destPath, body.wrote);
+    if (!body.wrote && body.url) body.curl = destPathCurl(body.url, ticket.destPath);
+    body.next = destPathNext(ticket.destPath, body.wrote, {
+        url: body.url,
+        reason: written.reason,
+        absPath: written.absPath
+    });
     return body;
 }
 
@@ -200,7 +244,7 @@ function resetArtifactTickets() {
 
 const DEST_PATH_SCHEMA = {
     type: 'string',
-    description: 'Optional Grok Computer path, e.g. artifacts/1788_generated.webp. Server stores the Grok-sized webp and returns dest_path, bytes, mime, wrote, and a short-lived url (no pixels in the JSON). wrote:true only when /home/workdir/artifacts was writable. Otherwise call ensure_artifact or curl url into that path, then render_file. Keep the tool-channel webp for inspect. Do not Imagine-reprint. async generate remembers this path for await_generation_job.'
+    description: 'Optional Grok Computer path, e.g. artifacts/1788_generated.webp. Server stores the Grok-sized webp and returns dest_path, bytes, mime, wrote, and a short-lived url (no pixels in the JSON). wrote:true only when mcp_local_sandbox_root is configured and writable on this server. Otherwise wrote:false reason remote-sandbox — curl url into /home/workdir/<dest_path> on the caller machine, then render_file. Keep the tool-channel webp for inspect. Do not Imagine-reprint. async generate remembers this path for await_generation_job.'
 };
 
 module.exports = {
@@ -216,6 +260,9 @@ module.exports = {
     findArtifactTicketByUrl,
     buildArtifactUrl,
     destPathNext,
+    destPathCurl,
+    callerSandboxAbs,
+    readLocalSandboxRoot,
     attachDestPathMeta,
     tryWriteSandboxDest,
     sandboxAbsPath,

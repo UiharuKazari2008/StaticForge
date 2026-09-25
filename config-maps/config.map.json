@@ -144,6 +144,15 @@
     },
     {
       "path": [
+        "mcp_local_sandbox_root"
+      ],
+      "type": "string",
+      "label": "MCP Local Sandbox Root",
+      "editorType": "input",
+      "description": "If set, MCP dest_path writes go under this directory. Leave empty on production so callers download the artifact URL onto their own machine."
+    },
+    {
+      "path": [
         "lruCache"
       ],
       "type": "object",

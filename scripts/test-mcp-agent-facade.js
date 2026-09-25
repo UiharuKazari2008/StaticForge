@@ -123,6 +123,14 @@ assert.ok(_test.TOOL_DEFS.some((t) => t.name === 'get_latest_image'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('dest_path'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('render_file'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('Grok Imagine'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('curl -fsSL'));
+assert.ok(!_test.MCP_INSTRUCTIONS.includes('call ensure_artifact'));
+const destPathDesc = generatedImageTool.inputSchema.properties.dest_path.description;
+assert.ok(destPathDesc.includes('remote-sandbox'));
+assert.ok(!destPathDesc.includes('call ensure_artifact'));
+const ensureArtifactTool = _test.TOOL_DEFS.find((t) => t.name === 'ensure_artifact');
+assert.ok(ensureArtifactTool.description.includes('remote-sandbox'));
+assert.ok(!ensureArtifactTool.description.includes('/home/workdir/artifacts exists'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_generated_image'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('advanced_tools'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('save_preset'));
@@ -1568,8 +1576,61 @@ async function main() {
     assert.strictEqual(attached.mime, 'image/webp');
     assert.strictEqual(attached.bytes, resized.bytes.length);
     assert.strictEqual(typeof attached.wrote, 'boolean');
+    assert.strictEqual(attached.wrote, false);
+    assert.strictEqual(attached.wroteReason, 'remote-sandbox');
+    assert.ok(attached.curl.includes('curl -fsSL'));
+    assert.ok(attached.next.includes('remote-sandbox'));
+    assert.ok(!attached.next.includes('ensure_artifact'));
     assert.ok(attached.url.includes('/test-uuid-1234/artifacts/'));
     assert.ok(!JSON.stringify(attached).includes(resized.bytes.toString('base64').slice(0, 32)));
+
+    const remoteWrite = tickets.tryWriteSandboxDest('artifacts/shot.webp', resized.bytes);
+    assert.strictEqual(remoteWrite.wrote, false);
+    assert.strictEqual(remoteWrite.reason, 'remote-sandbox');
+    assert.strictEqual(remoteWrite.bytes, resized.bytes.length);
+    const hint = tickets.destPathNext('artifacts/shot.webp', false, {
+        url: attached.url,
+        reason: 'remote-sandbox'
+    });
+    assert.ok(hint.includes('curl -fsSL'));
+    assert.ok(!hint.includes('ensure_artifact'));
+
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-sandbox-'));
+    const localWrite = tickets.tryWriteSandboxDest('artifacts/shot.webp', resized.bytes, tmpRoot);
+    assert.strictEqual(localWrite.wrote, true);
+    assert.ok(fs.existsSync(path.join(tmpRoot, 'artifacts', 'shot.webp')));
+    const attachedLocal = tickets.attachDestPathMeta({
+        getMcpPathUuid: () => 'test-uuid-1234',
+        getConfig: ({ path: key }) => {
+            if (key === 'public_hostname') return 'staticforge.737.jp.net';
+            if (key === 'mcp_local_sandbox_root') return tmpRoot;
+            return null;
+        }
+    }, { filename: 'keep.png' }, resized, 'artifacts/local.webp');
+    assert.strictEqual(attachedLocal.wrote, true);
+    assert.ok(!attachedLocal.wroteReason);
+    assert.ok(fs.existsSync(path.join(tmpRoot, 'artifacts', 'local.webp')));
+
+    tickets.resetArtifactTickets();
+    const mintedEnsure = tickets.mintArtifactTicket(resized, 'artifacts/shot.webp', 'keep.png');
+    assert.ok(mintedEnsure);
+    const ensured = await _test.callTool({
+        getMcpPathUuid: () => 'test-uuid-1234',
+        getConfig: ({ path: key }) => key === 'public_hostname' ? 'staticforge.737.jp.net' : null
+    }, { applicationAuth: { applicationScopes: ['generation'] } }, 'ensure_artifact', {
+        dest_path: 'artifacts/shot.webp'
+    });
+    assert.strictEqual(ensured.isError, false);
+    const ensuredBody = JSON.parse(ensured.content[0].text);
+    assert.strictEqual(ensuredBody.wrote, false);
+    assert.strictEqual(ensuredBody.wroteReason, 'remote-sandbox');
+    assert.strictEqual(ensuredBody.success, true);
+    assert.ok(ensuredBody.curl.includes('curl -fsSL'));
+    assert.ok(!ensuredBody.next.includes('ensure_artifact'));
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
     tickets.resetArtifactTickets();
     const { flattenGenerateToolArgs } = require('../modules/agentClientBridge');
     const flatGen = flattenGenerateToolArgs({
