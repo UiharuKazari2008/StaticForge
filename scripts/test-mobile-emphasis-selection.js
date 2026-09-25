@@ -6,7 +6,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { pathToFileURL } = require('url');
 
 const ROOT = path.join(__dirname, '..');
 const PORT = 0;
@@ -285,6 +284,39 @@ async function applyViaToolbar(page, { collapseBeforeApply, usePointer }) {
     return page.evaluate(collectWrapState);
 }
 
+async function applyViaToolbarAfterCaretTap(page) {
+    await page.evaluate(() => {
+        const ta = document.getElementById('manualPrompt');
+        ta.value = 'liberalio (nikke), plump, side view, looking at viewer';
+        ta.focus();
+    });
+    await selectPlump(page);
+    const box = await page.locator('#manualPrompt').boundingBox();
+    await page.touchscreen.tap(box.x + 24, box.y + 18);
+    await page.evaluate(() => {
+        const ta = document.getElementById('manualPrompt');
+        const pos = ta.value.indexOf('side view') + 2;
+        ta.focus();
+        ta.setSelectionRange(pos, pos);
+        document.dispatchEvent(new Event('selectionchange'));
+    });
+    const chip = page.locator('.prompt-textarea-toolbar [data-action="emphasis"]').first();
+    const chipBox = await chip.boundingBox();
+    await page.touchscreen.tap(chipBox.x + chipBox.width / 2, chipBox.y + chipBox.height / 2);
+    return page.evaluate(() => {
+        const ta = document.getElementById('manualPrompt');
+        applySetEmphasisWeight(ta, 1.5);
+        updateEmphasisHighlighting(ta);
+        const inners = listManagedEmphasisBlocks(ta.value || '').map((b) => b.innerText);
+        const overlay = document.querySelector('.emphasis-highlight-overlay');
+        return {
+            inners,
+            value: ta.value,
+            highlighted: !!(overlay && overlay.querySelector('.emphasis-weight-group'))
+        };
+    });
+}
+
 async function applyDesktopMouse(page) {
     await page.evaluate(() => {
         const ta = document.getElementById('manualPrompt');
@@ -314,21 +346,20 @@ function passWrap(result, label) {
     }
 }
 
-async function resolvePlaywright() {
+function resolvePlaywright() {
     const candidates = [
         'playwright-core',
         'playwright',
         path.join(ROOT, 'node_modules/playwright-core'),
-        path.join(ROOT, 'node_modules/playwright')
+        path.join(ROOT, 'node_modules/playwright'),
+        '/tmp/pw-emphasis/node_modules/playwright-core'
     ];
     for (const id of candidates) {
         try {
             return require(id);
         } catch (_e) { /* try next */ }
     }
-    const { execSync } = require('child_process');
-    execSync('npm install --no-save --prefix /tmp/pw-emphasis playwright-core@1.55.0', { stdio: 'inherit' });
-    return require('/tmp/pw-emphasis/node_modules/playwright-core');
+    return null;
 }
 
 async function launchBrowser(pw) {
@@ -341,10 +372,14 @@ async function launchBrowser(pw) {
 }
 
 async function run() {
+    const pw = resolvePlaywright();
+    if (!pw) {
+        console.log('test-mobile-emphasis-selection: skip (Playwright not installed)');
+        return;
+    }
     writeHarness();
     const { server, port } = await startServer();
     const base = `http://127.0.0.1:${port}/emphasis-selection-harness.html`;
-    const pw = await resolvePlaywright();
     const browser = await launchBrowser(pw);
     const results = [];
 
@@ -373,6 +408,18 @@ async function run() {
             const toolbar = await applyViaToolbar(page, { collapseBeforeApply: true, usePointer: true });
             passWrap(toolbar, `${profile.name} toolbar`);
             results.push({ profile: profile.name, case: 'toolbar-1.5', result: 'PASS', wrap: toolbar.classic ? 'classic' : 'managed' });
+
+            const caretTap = await applyViaToolbarAfterCaretTap(page);
+            if (!caretTap.inners.some((t) => /side view/.test(t))) {
+                throw new Error(`${profile.name} caret tap apply did not wrap side view: ${JSON.stringify(caretTap)}`);
+            }
+            if (caretTap.inners.some((t) => t.trim() === 'plump')) {
+                throw new Error(`${profile.name} caret tap apply reused stale plump selection: ${JSON.stringify(caretTap)}`);
+            }
+            if (!caretTap.highlighted) {
+                throw new Error(`${profile.name} caret tap apply missing highlight: ${JSON.stringify(caretTap)}`);
+            }
+            results.push({ profile: profile.name, case: 'tap-caret-then-toolbar-1.5', result: 'PASS' });
 
             await context.close();
         }

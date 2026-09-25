@@ -253,8 +253,12 @@ function capturePromptTextareaSelection(textarea, options) {
         };
         return textarea._emphasisSavedSelection;
     }
-    if (options && options.clearIfCollapsed && !textarea._emphasisSelGesture) {
-        textarea._emphasisSavedSelection = null;
+    if (options && options.clearIfCollapsed) {
+        const menuHold = promptTextareaContextMenuHoldsSelection(textarea);
+        if (!menuHold && (!textarea._emphasisSelGesture || !textarea._emphasisSelPointerDown)) {
+            textarea._emphasisSelGesture = false;
+            textarea._emphasisSavedSelection = null;
+        }
     }
     return textarea._emphasisSavedSelection || {
         start,
@@ -263,15 +267,28 @@ function capturePromptTextareaSelection(textarea, options) {
     };
 }
 
+function promptTextareaContextMenuHoldsSelection(textarea) {
+    // contextMenu: public/scripts/comp/contextMenu.js
+    return Boolean(contextMenu && contextMenu.isOpen && contextMenu.currentTarget === textarea);
+}
+
 function beginPromptTextareaSelectionGesture(textarea) {
     if (!textarea) return null;
     textarea._emphasisSelGesture = true;
     return capturePromptTextareaSelection(textarea);
 }
 
+function endPromptTextareaSelectionGesture(textarea) {
+    if (!textarea) return;
+    textarea._emphasisSelPointerDown = false;
+    if (promptTextareaContextMenuHoldsSelection(textarea)) return;
+    textarea._emphasisSelGesture = false;
+}
+
 function clearPromptTextareaSavedSelection(textarea) {
     if (!textarea) return;
     textarea._emphasisSelGesture = false;
+    textarea._emphasisSelPointerDown = false;
     textarea._emphasisSavedSelection = null;
 }
 
@@ -311,9 +328,22 @@ function handlePromptTextareaSelectionGesturePointer(event) {
     const textarea = event.target.closest('textarea.prompt-textarea, textarea.character-prompt-textarea');
     if (!isPromptEmphasisSelectionTextarea(textarea)) return;
     if (event.pointerType === 'mouse') return;
+    textarea._emphasisSelPointerDown = true;
     beginPromptTextareaSelectionGesture(textarea);
+}
+
+function handlePromptTextareaSelectionGestureEnd(event) {
+    if (!event || !event.target || !event.target.closest) return;
+    if (event.target.closest('.prompt-textarea-toolbar')) return;
+    const textarea = event.target.closest('textarea.prompt-textarea, textarea.character-prompt-textarea');
+    if (!isPromptEmphasisSelectionTextarea(textarea)) return;
+    if (event.pointerType === 'mouse') return;
+    endPromptTextareaSelectionGesture(textarea);
 }
 
 document.addEventListener('touchstart', handlePromptTextareaSelectionGesturePointer, { capture: true, passive: true });
 document.addEventListener('pointerdown', handlePromptTextareaSelectionGesturePointer, { capture: true });
+document.addEventListener('touchend', handlePromptTextareaSelectionGestureEnd, { capture: true, passive: true });
+document.addEventListener('pointerup', handlePromptTextareaSelectionGestureEnd, { capture: true });
+document.addEventListener('touchcancel', handlePromptTextareaSelectionGestureEnd, { capture: true, passive: true });
 
