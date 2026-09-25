@@ -11,6 +11,10 @@ function stubResources() {
     };
 }
 
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function testSearchTurnTimeoutUnblocksLane() {
     const prevTimeout = SearchService.SEARCH_TURN_TIMEOUT_MS;
     SearchService.SEARCH_TURN_TIMEOUT_MS = 80;
@@ -18,7 +22,7 @@ async function testSearchTurnTimeoutUnblocksLane() {
         const service = new SearchService(stubResources());
         const key = 'sess1_v5';
         service.processLatestRequest = async () => {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+            await delay(1000);
             return { results: ['late'] };
         };
         service.latestRequests.set(key, {
@@ -52,7 +56,74 @@ async function testSearchTurnTimeoutUnblocksLane() {
     }
 }
 
-async function testClearSessionSearchState() {
+async function testQueuedSearchKeepsOwnBudgetAndRequestId() {
+    const prevTimeout = SearchService.SEARCH_TURN_TIMEOUT_MS;
+    SearchService.SEARCH_TURN_TIMEOUT_MS = 400;
+    try {
+        const service = new SearchService(stubResources());
+        const key = 'sess_v5';
+        const sent = [];
+        const ws = {
+            send: (s) => sent.push(JSON.parse(s)),
+            readyState: 1
+        };
+        const durations = { A: 600, B: 100 };
+
+        service.processLatestRequest = async function (k) {
+            const r = this.latestRequests.get(k);
+            const { ctx, ws: searchWs } = this._bindSearchCallContext(k, r);
+            const me = r.query;
+            try {
+                await delay(durations[me]);
+                this.sendSearchWs(searchWs, {
+                    type: 'search_characters_response',
+                    data: { results: ['from-' + me] }
+                });
+                return { results: ['from-' + me], spellCheck: null };
+            } finally {
+                if (this._activeSearchCtx.get(k) === ctx) {
+                    this._activeSearchCtx.delete(k);
+                }
+            }
+        };
+
+        const enter = (q, id) => {
+            service.latestRequests.set(key, {
+                query: q,
+                requestId: id,
+                autofillSessionId: 'af-' + id,
+                timestamp: Date.now(),
+                ws
+            });
+            return service.waitForSearchTurn(key, id);
+        };
+
+        const pA = enter('A', 'req-A');
+        await delay(50);
+        const pB = enter('B', 'req-B');
+        const [a, b] = await Promise.all([pA, pB]);
+
+        assert.strictEqual(a.timedOut, true, 'stuck A must time out');
+        assert.strictEqual(b.processed, true, 'healthy B queued behind A must still run');
+        assert.deepStrictEqual(b.results, ['from-B']);
+        assert.notStrictEqual(b.timedOut, true, 'B must get its own processing budget');
+
+        await delay(250);
+
+        const fromA = sent.filter((p) => p.data && p.data.results && p.data.results[0] === 'from-A');
+        const fromB = sent.filter((p) => p.data && p.data.results && p.data.results[0] === 'from-B');
+        assert.strictEqual(fromA.length, 0, 'timed-out A must not send after cancel');
+        assert.ok(fromB.length >= 1, 'B must send its own packet');
+        for (const pkt of fromB) {
+            assert.strictEqual(pkt.requestId, 'req-B');
+            assert.strictEqual(pkt.autofillSessionId, 'af-req-B');
+        }
+    } finally {
+        SearchService.SEARCH_TURN_TIMEOUT_MS = prevTimeout;
+    }
+}
+
+function testClearSessionSearchState() {
     const service = new SearchService(stubResources());
     service.isProcessing.set('sessA_v5', true);
     service.latestRequests.set('sessA_v5', { requestId: 'x' });
@@ -72,6 +143,28 @@ async function testClearSessionSearchState() {
     assert.strictEqual(service.isProcessing.get('sessB_v5'), true);
 }
 
+function testClearSearchStateForSocketKeepsLiveTab() {
+    const service = new SearchService(stubResources());
+    const wsOld = { id: 'old' };
+    const wsLive = { id: 'live' };
+    service.isProcessing.set('sessA_v5', true);
+    service.latestRequests.set('sessA_v5', { requestId: 'live', ws: wsLive });
+    service.latestRequests.set('sessA_v4', { requestId: 'old', ws: wsOld });
+    service.sessionRateLimiters.set('sessA_v5', {
+        sessionId: 'sessA',
+        model: 'v5',
+        pendingRequest: null,
+        isProcessing: true
+    });
+
+    service.clearSearchStateForSocket(wsOld, 'sessA', { sessionHasOtherClients: true });
+
+    assert.strictEqual(service.latestRequests.has('sessA_v4'), false);
+    assert.strictEqual(service.latestRequests.get('sessA_v5').requestId, 'live');
+    assert.strictEqual(service.isProcessing.get('sessA_v5'), true);
+    assert.strictEqual(service.sessionRateLimiters.has('sessA_v5'), true);
+}
+
 function testClientTimeoutPolicy() {
     const fs = require('fs');
     const path = require('path');
@@ -81,11 +174,24 @@ function testClientTimeoutPolicy() {
     assert.ok(/sendMessageWithRequestId[\s\S]*timeoutId = setTimeout/.test(src), 'sendMessageWithRequestId still has no timeout');
     assert.ok(src.includes('stuckHidden'), 'stuck ticker visibility missing');
     assert.ok(src.includes('this.clearPendingRequests()'), 'onerror/disconnect must clear pending');
+    assert.ok(src.includes("'resolve_dynamic_context'"), 'Rentan must be in the timeout table');
+    assert.ok(src.includes("'recompile_runtime_assets'"), 'recompile must be in the timeout table');
+    assert.ok(
+        /PROGRESS_REQUEST_TYPES = new Set\(\[[\s\S]*resolve_dynamic_context[\s\S]*recompile_runtime_assets/.test(src),
+        'Rentan/recompile must be PROGRESS so keep-alive/default 3-5m does not cut them'
+    );
+    assert.ok(
+        /t === 'search_files' \|\| t === 'omegasearch_query'/.test(src),
+        'cold gallery queries must not stay on the 8-20s light floor'
+    );
+    assert.ok(src.includes('isSilentTickerRequest(request.type)'), 'stuckHidden must honor silent ticker types');
 }
 
 async function main() {
     await testSearchTurnTimeoutUnblocksLane();
-    await testClearSessionSearchState();
+    await testQueuedSearchKeepsOwnBudgetAndRequestId();
+    testClearSessionSearchState();
+    testClearSearchStateForSocketKeepsLiveTab();
     testClientTimeoutPolicy();
     console.log('test-client-request-timeouts: ok');
 }

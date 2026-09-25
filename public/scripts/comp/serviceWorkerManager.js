@@ -128,6 +128,7 @@ class ServiceWorkerManager {
         this._bootCompleteResolvers = [];
         this._loginBootCompleteResolvers = [];
         this._pendingCacheUpdateQueue = [];
+        this._swMessageListenerAttached = false;
         this.installWizardToastId = null;
         this.installWizardUsed = false;
         this._installWizardEtaState = null;
@@ -252,21 +253,9 @@ class ServiceWorkerManager {
         if (this.bootComplete) {
             return Promise.resolve();
         }
-        const pending = this.bootPromise || new Promise((resolve) => {
+        return this.bootPromise || new Promise((resolve) => {
             this._bootCompleteResolvers.push(resolve);
         });
-        return Promise.race([
-            pending,
-            new Promise((resolve) => {
-                setTimeout(() => {
-                    if (!this.bootComplete) {
-                        console.warn('Boot gate timed out — continuing from network');
-                        this._resolveBootComplete();
-                    }
-                    resolve();
-                }, 12000);
-            })
-        ]);
     }
 
     ensureLoginBootComplete() {
@@ -482,18 +471,23 @@ class ServiceWorkerManager {
     }
 
     async _fetchManifest() {
-        const response = await fetch('/', {
-            method: 'OPTIONS',
-            headers: {
-                'X-Service-Worker-Version': '2.0',
-                'X-Requested-With': 'ServiceWorker'
-            },
-            signal: AbortSignal.timeout(8000)
-        });
-        if (!response.ok) {
+        try {
+            const response = await fetch('/', {
+                method: 'OPTIONS',
+                headers: {
+                    'X-Service-Worker-Version': '2.0',
+                    'X-Requested-With': 'ServiceWorker'
+                },
+                signal: AbortSignal.timeout(8000)
+            });
+            if (!response.ok) {
+                return [];
+            }
+            return response.json();
+        } catch (error) {
+            console.warn('Manifest fetch failed or timed out — skipping update check');
             return [];
         }
-        return response.json();
     }
 
     _flushPendingCacheUpdates() {
@@ -915,54 +909,29 @@ class ServiceWorkerManager {
                 this.bootPhase = 'waiting_sw';
                 this._showBootUiEarly('Loading offline cache…');
 
-                // Register service worker (sw.js is served early on the server)
-                this.swRegistration = await Promise.race([
-                    navigator.serviceWorker.register('/sw.js'),
-                    new Promise((_, reject) => {
-                        setTimeout(() => reject(new Error('Service worker registration timed out')), 8000);
-                    })
-                ]);
-                console.log('Service Worker registered:', this.swRegistration);
-
-                // Post-boot only — runBootSequence owns manifest/update checks during startup
-                this.swRegistration.addEventListener('updatefound', () => {
-                    if (this._bootOrchestrating || !this.bootComplete) {
-                        return;
+                // Register service worker (sw.js is served early on the server).
+                // Keep the promise so a slow first install can finish wiring after the 8s race.
+                const registerPromise = navigator.serviceWorker.register('/sw.js');
+                this._attachLateServiceWorkerRegistration(registerPromise);
+                try {
+                    this.swRegistration = await Promise.race([
+                        registerPromise,
+                        new Promise((_, reject) => {
+                            setTimeout(() => reject(new Error('Service worker registration timed out')), 8000);
+                        })
+                    ]);
+                    this._wireServiceWorkerRegistration(this.swRegistration);
+                } catch (regError) {
+                    if (!regError || regError.message !== 'Service worker registration timed out') {
+                        throw regError;
                     }
-                    if (this.swRegistration.waiting) {
-                        this.checkForWaiting();
-                    }
-                });
-
-                if (this.swRegistration.installing) {
-                    this.swRegistration.installing.addEventListener('statechange', (event) => {
-                        if (event.target.state === 'installed') {
-                            console.log('Service Worker installed successfully');
-                        }
-                    });
+                    console.warn('Service worker registration still pending — continuing from network');
                 }
 
-                navigator.serviceWorker.addEventListener('message', (event) => {
-                    this.handleServiceWorkerMessage(event);
-                });
-
-                this.startHealthCheck();
-
-                console.log('Service Worker registration state:', {
-                    active: !!this.swRegistration.active,
-                    waiting: !!this.swRegistration.waiting,
-                    installing: !!this.swRegistration.installing,
-                    controller: !!navigator.serviceWorker.controller,
-                    activeState: this.swRegistration.active?.state || 'none'
-                });
-
-                if (this.swRegistration.waiting) {
-                    console.log('Service Worker is waiting for activation');
-                    this.checkForWaiting();
+                if (this.swRegistration) {
+                    await this.waitForServiceWorkerReady();
+                    await this.fetchSwConfig();
                 }
-
-                await this.waitForServiceWorkerReady();
-                await this.fetchSwConfig();
 
                 if (window.isLoginPage) {
                     if (document.readyState === 'loading') {
@@ -993,8 +962,7 @@ class ServiceWorkerManager {
                 if (window.isLoginPage) {
                     this._resolveLoginBootComplete();
                 } else {
-                    const skipFatal = error.message === 'Server did not become ready in time'
-                        || error.message === 'Service worker registration timed out';
+                    const skipFatal = error.message === 'Server did not become ready in time';
                     if (!skipFatal) {
                         this._showBootFatalError(error);
                     }
@@ -1013,7 +981,86 @@ class ServiceWorkerManager {
         }
     }
 
+    _wireServiceWorkerRegistration(registration) {
+        if (!registration || registration.__dreamscapeWired) {
+            return;
+        }
+        registration.__dreamscapeWired = true;
+        this.swRegistration = registration;
+        console.log('Service Worker registered:', registration);
+
+        // Post-boot only — runBootSequence owns manifest/update checks during startup
+        registration.addEventListener('updatefound', () => {
+            if (this._bootOrchestrating || !this.bootComplete) {
+                return;
+            }
+            if (this.swRegistration && this.swRegistration.waiting) {
+                this.checkForWaiting();
+            }
+        });
+
+        if (registration.installing) {
+            registration.installing.addEventListener('statechange', (event) => {
+                if (event.target.state === 'installed') {
+                    console.log('Service Worker installed successfully');
+                }
+            });
+        }
+
+        if (!this._swMessageListenerAttached && navigator.serviceWorker) {
+            this._swMessageListenerAttached = true;
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                this.handleServiceWorkerMessage(event);
+            });
+        }
+
+        this.startHealthCheck();
+        this.fetchSwConfig().catch(() => {});
+
+        console.log('Service Worker registration state:', {
+            active: !!registration.active,
+            waiting: !!registration.waiting,
+            installing: !!registration.installing,
+            controller: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
+            activeState: registration.active?.state || 'none'
+        });
+
+        if (registration.waiting) {
+            console.log('Service Worker is waiting for activation');
+            this.checkForWaiting();
+        }
+    }
+
+    _attachLateServiceWorkerRegistration(registerPromise) {
+        if (!registerPromise || typeof registerPromise.then !== 'function') {
+            return;
+        }
+        registerPromise.then((reg) => {
+            this._wireServiceWorkerRegistration(reg);
+            this._warmAfterSwActive();
+        }).catch((err) => {
+            console.error('Late service worker registration failed:', err);
+        });
+    }
+
+    _warmAfterSwActive() {
+        const ready = navigator.serviceWorker && navigator.serviceWorker.ready;
+        if (!ready || typeof ready.then !== 'function') {
+            return;
+        }
+        ready.then(() => {
+            if (!this.bootComplete) {
+                this.queueCacheUpdateUntilBoot(null, true);
+                return;
+            }
+            this.checkStaticFileUpdates(true);
+        }).catch(() => {});
+    }
+
     async waitForServiceWorkerReady() {
+        if (!this.swRegistration) {
+            return { timedOut: true };
+        }
         return new Promise((resolve, reject) => {
             // Immediate check - if service worker is already ready, resolve immediately
             const immediateIsActive = this.swRegistration.active;
@@ -1021,7 +1068,7 @@ class ServiceWorkerManager {
             const immediateIsActivated = immediateIsActive?.state === 'activated';
 
             if (immediateIsActive || immediateHasController || immediateIsActivated) {
-                resolve();
+                resolve({ timedOut: false });
                 return;
             }
 
@@ -1065,7 +1112,7 @@ class ServiceWorkerManager {
                     if (checkInterval) {
                         clearInterval(checkInterval);
                     }
-                    resolve();
+                    resolve({ timedOut: false });
                     return; // Make sure we don't continue
                 }
                 console.log('⏳ Service Worker not ready yet, continuing to wait...');
@@ -1086,7 +1133,7 @@ class ServiceWorkerManager {
                     clearInterval(checkInterval);
                 }
 
-                resolve();
+                resolve({ timedOut: false });
             };
 
             navigator.serviceWorker.addEventListener('controllerchange', controllerChangeHandler);
@@ -1098,7 +1145,7 @@ class ServiceWorkerManager {
             checkReady();
 
             // Bounded wait — continue from network so "Loading offline cache…" cannot stick
-            const timeoutMs = 8000;
+            const timeoutMs = Number(this._swReadyTimeoutMs) > 0 ? this._swReadyTimeoutMs : 8000;
 
             this.swReadyTimeout = setTimeout(() => {
                 console.warn('Service Worker ready timeout — continuing from network');
@@ -1106,7 +1153,7 @@ class ServiceWorkerManager {
                     clearInterval(checkInterval);
                 }
                 navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
-                resolve();
+                resolve({ timedOut: true });
             }, timeoutMs);
         });
     }
@@ -3926,7 +3973,16 @@ class ServiceWorkerManager {
                 this.bootPhase = 'waiting_sw';
             }
 
-            await this.waitForServiceWorkerReady();
+            const ready = await this.waitForServiceWorkerReady();
+            if (ready && ready.timedOut) {
+                console.warn('Service Worker not ready — booting from network');
+                this._clearInstallWizardSession();
+                this._hideInstallWizardUi();
+                document.body.classList.remove('initializing');
+                this._resolveBootComplete();
+                this._warmAfterSwActive();
+                return;
+            }
             this.bootPhase = 'checking';
             this._setPreStartupUpdateStageMessage('Checking for updates…');
             // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
@@ -4005,7 +4061,16 @@ class ServiceWorkerManager {
                 document.body.classList.add('login-booting');
             }
 
-            await this.waitForServiceWorkerReady();
+            const ready = await this.waitForServiceWorkerReady();
+            if (ready && ready.timedOut) {
+                this._clearLoginBootSession();
+                if (window.loginPage && typeof window.loginPage.hideProgressBar === 'function') {
+                    window.loginPage.hideProgressBar();
+                }
+                this._resolveLoginBootComplete();
+                this._warmAfterSwActive();
+                return;
+            }
 
             while (true) {
                 const manifest = await this._fetchManifest();

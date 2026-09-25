@@ -547,7 +547,6 @@ class WebSocketClient {
     static LIGHT_REQUEST_TYPES = new Set([
         'search_tags',
         'search_dataset_tags',
-        'search_files',
         'search_presets',
         'search_tag_wiki',
         'search_characters',
@@ -572,7 +571,6 @@ class WebSocketClient {
         'desktop_get_shortcuts',
         'request_image_metadata',
         'fetch_autofill_wiki_previews',
-        'omegasearch_query',
         'get_tag_wiki_page',
         'get_wiki_home',
         'get_static_wiki_site_index',
@@ -596,7 +594,9 @@ class WebSocketClient {
         'director_send_message',
         'send_chat_message',
         'import_fandom_wiki_page',
-        'request_gallery'
+        'request_gallery',
+        'resolve_dynamic_context',
+        'recompile_runtime_assets'
     ]);
 
     static TIMEOUT_LIGHT_MS = 12000;
@@ -715,6 +715,7 @@ class WebSocketClient {
         this._missedPingCount = 0;
         this._lastPongAt = 0;
         this._replacingSocket = false;
+        this._resumeProbeInFlight = false;
 
         // Inactivity management (disconnect only after 2 hours of continuous user inactivity)
         this.lastUserActivity = Date.now();
@@ -1126,8 +1127,7 @@ class WebSocketClient {
         this.reconnectDelay = 1000;
         this.circuitBreaker = false;
         this.lastConnectionAttempt = 0;
-        this.isConnecting = false;
-        this.connectionLock = false;
+        this._releaseConnectLock();
 
         this.disconnect(false);
 
@@ -2403,7 +2403,7 @@ class WebSocketClient {
         const t = String(type || '');
         if (t === 'get_app_options') return 'critical';
         if (WebSocketClient.PROGRESS_REQUEST_TYPES.has(t)) return 'progress';
-        if (t.startsWith('search_index_')) return 'default';
+        if (t.startsWith('search_index_') || t === 'search_files' || t === 'omegasearch_query') return 'default';
         if (WebSocketClient.LIGHT_REQUEST_TYPES.has(t) || t.startsWith('search_') || t.startsWith('director_get_')) {
             return 'light';
         }
@@ -2437,13 +2437,6 @@ class WebSocketClient {
             return this.calculateDynamicTimeout(WebSocketClient.TIMEOUT_PROGRESS_MS, 1, 1.2, {
                 minTimeout: 120000,
                 maxTimeout: 15 * 60 * 1000,
-                noRttMultiplier: 1
-            });
-        }
-        if (type === 'workspace_list' || type === 'desktop_get_shortcuts') {
-            return this.calculateDynamicTimeout(15000, 1, 2, {
-                minTimeout: 8000,
-                maxTimeout: 20000,
                 noRttMultiplier: 1
             });
         }
@@ -3347,6 +3340,7 @@ class WebSocketClient {
 
         this.connectionLock = true;
         this.isConnecting = true;
+        this._connectingSince = 0;
         this._resetSocketAuthState();
         this._resetConnectionStatsSession();
 
@@ -3356,8 +3350,7 @@ class WebSocketClient {
         }
 
         if (this.isManualClose || this._isStartupHaltedForInstall()) {
-            this.isConnecting = false;
-            this.connectionLock = false;
+            this._releaseConnectLock();
             return;
         }
 
@@ -3372,8 +3365,7 @@ class WebSocketClient {
             try {
                 await this.pingHost();
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
-                    this.isConnecting = false;
-                    this.connectionLock = false;
+                    this._releaseConnectLock();
                     return;
                 }
                 await this._ensureBeatMinDuration('dialing', dialingStart);
@@ -3382,14 +3374,12 @@ class WebSocketClient {
                     maxAttempts: this.maxReconnectAttempts
                 });
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
-                    this.isConnecting = false;
-                    this.connectionLock = false;
+                    this._releaseConnectLock();
                     return;
                 }
             } catch (pingError) {
                 console.error('❌ Host availability check failed:', pingError.message);
-                this.isConnecting = false;
-                this.connectionLock = false;
+                this._releaseConnectLock();
 
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
                     return;
@@ -3430,9 +3420,7 @@ class WebSocketClient {
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = async () => {
-                this._clearConnectingWatchdog();
-                this.isConnecting = false;
-                this.connectionLock = false; // Release connection lock on success
+                this._releaseConnectLock();
                 this._missedPingCount = 0;
                 this._lastPongAt = Date.now();
 
@@ -3543,9 +3531,7 @@ class WebSocketClient {
 
             this.ws.onclose = (event) => {
                 console.log('🔌 WebSocket disconnected:', event.code, event.reason);
-                this._clearConnectingWatchdog();
-                this.isConnecting = false;
-                this.connectionLock = false;
+                this._releaseConnectLock();
                 this.connectionStats.connectedAt = null;
                 this._resetSocketAuthState();
 
@@ -3640,9 +3626,7 @@ class WebSocketClient {
 
             this.ws.onerror = async (error) => {
                 console.error('❌ WebSocket error:', error);
-                this._clearConnectingWatchdog();
-                this.isConnecting = false;
-                this.connectionLock = false; // Release connection lock on error
+                this._releaseConnectLock();
 
                 // Reset generation button state if generation was interrupted
                 if (typeof updateManualGenerateBtnState === 'function') {
@@ -3686,9 +3670,7 @@ class WebSocketClient {
 
         } catch (error) {
             console.error('❌ Failed to create WebSocket connection:', error);
-            this._clearConnectingWatchdog();
-            this.isConnecting = false;
-            this.connectionLock = false; // Release connection lock on exception
+            this._releaseConnectLock();
             this._setConnectionPhase('failed', {
                 message: 'NO CARRIER — Connection failure'
             });
@@ -3741,7 +3723,9 @@ class WebSocketClient {
         if (markManualClose) {
             this.isManualClose = true;
         }
+        this._connectingSince = 0;
         this.connectionLock = false; // Release connection lock
+        this.isConnecting = false;
         this.initializationLock = false; // Release initialization lock
 
         // Stop periodic pings
@@ -3799,8 +3783,7 @@ class WebSocketClient {
         this.startupHaltedForInstall = true;
         this.suppressAutoReconnect();
         this.disconnect(true);
-        this.isConnecting = false;
-        this.connectionLock = false;
+        this._releaseConnectLock();
     }
 
     _isStartupHaltedForInstall() {
@@ -3947,13 +3930,13 @@ class WebSocketClient {
 
         this.lastUserActivity = Date.now();
 
-        if (this._socketNeedsReplace()) {
-            this._replaceStaleSocket(source);
+        if (this._shouldProbeIdleSocket()) {
+            this._probeIdleSocketOnResume(source);
             return;
         }
 
-        if ((this.isConnecting || this.connectionLock) && this._connectingIsStale()) {
-            this._replaceStaleSocket(`${source}-connecting-stuck`);
+        if (this._socketNeedsReplace()) {
+            this._replaceStaleSocket(source);
             return;
         }
 
@@ -4123,10 +4106,18 @@ class WebSocketClient {
             if (this.isManualClose || this._isStartupHaltedForInstall()) {
                 return;
             }
-            if (this.isConnecting || this.connectionLock || this._connectingIsStale()) {
+            if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+                this.reconnectAttempts += 1;
                 this._replaceStaleSocket('connecting-watchdog');
             }
         }, WebSocketClient.DELAY_CONNECTING_WATCHDOG);
+    }
+
+    _releaseConnectLock() {
+        this._clearConnectingWatchdog();
+        this._connectingSince = 0;
+        this.isConnecting = false;
+        this.connectionLock = false;
     }
 
     _connectingIsStale() {
@@ -4142,11 +4133,36 @@ class WebSocketClient {
             if (this._missedPingCount >= WebSocketClient.PING_LIVENESS_MISSES) {
                 return true;
             }
-            if (this._lastPongAt && (Date.now() - this._lastPongAt) > WebSocketClient.STALE_OPEN_MS) {
-                return true;
-            }
         }
         return false;
+    }
+
+    _shouldProbeIdleSocket() {
+        return !!(this.ws
+            && this.ws.readyState === WebSocket.OPEN
+            && this._lastPongAt
+            && (Date.now() - this._lastPongAt) > WebSocketClient.STALE_OPEN_MS
+            && this._missedPingCount < WebSocketClient.PING_LIVENESS_MISSES);
+    }
+
+    _probeIdleSocketOnResume(source) {
+        if (this._resumeProbeInFlight) return;
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        this._resumeProbeInFlight = true;
+        Promise.resolve(this.pingWithAuth()).then(() => {
+            this._resumeProbeInFlight = false;
+            this._missedPingCount = 0;
+            this._lastPongAt = Date.now();
+        }).catch(() => {
+            this._resumeProbeInFlight = false;
+            if (this._replacingSocket || this.isManualClose || this._isStartupHaltedForInstall()) {
+                return;
+            }
+            if (this.isConnecting || this.connectionLock) {
+                return;
+            }
+            this._replaceStaleSocket(`${source}-probe`);
+        });
     }
 
     _disposeExistingSocket() {
@@ -4173,8 +4189,10 @@ class WebSocketClient {
         console.log(`🔄 Replacing stale socket (${source})`);
         this._clearConnectingWatchdog();
         this._disposeExistingSocket();
+        this._connectingSince = 0;
         this.isConnecting = false;
         this.connectionLock = false;
+        this._resumeProbeInFlight = false;
         this.circuitBreaker = false;
         this._missedPingCount = 0;
         this._teardownGenerationUiState();
@@ -7665,6 +7683,9 @@ class WebSocketClient {
                 timeoutError.code = 'REQUEST_TIMEOUT';
                 timeoutError.requestId = requestId;
                 timeoutError.requestType = type;
+                if (type === 'request_gallery' && this.isGalleryLoadingActive) {
+                    this.completeGalleryLoading();
+                }
                 reject(timeoutError);
             }, timeoutMs);
             this.pendingRequests.get(requestId).timeoutId = timeoutId;
@@ -8633,6 +8654,7 @@ class WebSocketClient {
                 const stuckHidden = request.type
                     && request.type !== 'ping'
                     && !request.silentTicker
+                    && !this.isSilentTickerRequest(request.type)
                     && ageMs >= WebSocketClient.STUCK_TICKER_MS;
                 if ((request.showBanner !== false && request.type) || stuckHidden) {
                     tickerRequests.push({ requestId, request });

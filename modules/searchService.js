@@ -32,15 +32,14 @@ class SearchService {
         // Latest request tracking for "latest wins" pattern
         this.latestRequests = new Map(); // Track latest request per session+model
         this.isProcessing = new Map(); // Track if processing is active per session+model
+        this._processingLockGen = new Map(); // Per-key lock generation so a stale finally cannot release a newer holder
+        this._activeSearchCtx = new Map(); // Per-call packet context (requestId + autofillSessionId + cancelled)
         // waitForSearchTurn previously polled this map with no deadline. A hung
         // processLatestRequest (thesaurus / tag API / dropped socket) starved every
         // later autocomplete for that session+model.
 
         // Timer will be registered by globalResources when SearchService is initialized
         this._cleanupTimerId = null;
-
-        // Active search packet context (requestId + autofillSessionId) for WS responses
-        this._searchPacketContext = null;
 
         // In-process NovelAI suggest-tags cache (SQLite is L2)
         this.novelAiTagL1Cache = new Map();
@@ -139,9 +138,31 @@ class SearchService {
         }
     }
 
+    _bindSearchCallContext(key, latestRequest) {
+        const rawWs = latestRequest && latestRequest.ws;
+        const ctx = {
+            requestId: (latestRequest && latestRequest.requestId) || null,
+            autofillSessionId: (latestRequest && latestRequest.autofillSessionId) || null,
+            cancelled: false
+        };
+        this._activeSearchCtx.set(key, ctx);
+        const ws = rawWs && {
+            send: (data) => {
+                if (ctx.cancelled) return;
+                rawWs.send(data);
+            },
+            get readyState() {
+                return rawWs.readyState;
+            },
+            __searchCtx: ctx
+        };
+        return { ctx, ws, rawWs };
+    }
+
     sendSearchWs(ws, payload) {
         if (!ws) return;
-        const ctx = this._searchPacketContext || {};
+        const ctx = ws.__searchCtx || {};
+        if (ctx.cancelled) return;
         const message = {
             ...payload,
             requestId: payload.requestId ?? ctx.requestId ?? null,
@@ -454,14 +475,8 @@ class SearchService {
     }
 
     async waitForSearchTurn(key, requestId) {
-        const deadline = Date.now() + SearchService.SEARCH_TURN_TIMEOUT_MS;
         while (true) {
             while (this.isProcessing.get(key)) {
-                if (Date.now() >= deadline) {
-                    // Hung prior search was holding the session+model lane.
-                    this.isProcessing.set(key, false);
-                    break;
-                }
                 await new Promise(resolve => setTimeout(resolve, 15));
             }
 
@@ -475,23 +490,26 @@ class SearchService {
                 return { results: [], spellCheck: null, processed: false, superseded: true };
             }
 
+            const lockGen = (this._processingLockGen.get(key) || 0) + 1;
+            this._processingLockGen.set(key, lockGen);
             this.isProcessing.set(key, true);
-            const capturedTimestamp = latest.timestamp;
 
             try {
-                const result = await this._runLatestRequestWithTimeout(key, deadline);
+                const result = await this._runLatestRequestWithTimeout(
+                    key,
+                    Date.now() + SearchService.SEARCH_TURN_TIMEOUT_MS
+                );
                 return { ...result, processed: true, superseded: false };
             } catch (error) {
                 if (error && error.code === 'SEARCH_TURN_TIMEOUT') {
+                    const ctx = this._activeSearchCtx.get(key);
+                    if (ctx) ctx.cancelled = true;
                     return { results: [], spellCheck: null, processed: false, superseded: true, timedOut: true };
                 }
                 throw error;
             } finally {
-                this.isProcessing.set(key, false);
-
-                const currentLatest = this.latestRequests.get(key);
-                if (currentLatest && currentLatest.timestamp > capturedTimestamp) {
-                    // A newer request arrived during processing; its caller will wait and run it
+                if (this._processingLockGen.get(key) === lockGen) {
+                    this.isProcessing.set(key, false);
                 }
             }
         }
@@ -504,6 +522,8 @@ class SearchService {
             this.processLatestRequest(key),
             new Promise((_, reject) => {
                 timer = setTimeout(() => {
+                    const ctx = this._activeSearchCtx.get(key);
+                    if (ctx) ctx.cancelled = true;
                     const err = new Error('Search processing timeout');
                     err.code = 'SEARCH_TURN_TIMEOUT';
                     reject(err);
@@ -514,17 +534,32 @@ class SearchService {
         });
     }
 
-    clearSessionSearchState(sessionId) {
-        if (!sessionId) return;
+    clearSearchStateForSocket(ws, sessionId, options = {}) {
+        if (ws) {
+            for (const [key, req] of [...this.latestRequests.entries()]) {
+                if (req && req.ws === ws) {
+                    this.latestRequests.delete(key);
+                    const ctx = this._activeSearchCtx.get(key);
+                    if (ctx) ctx.cancelled = true;
+                }
+            }
+        }
+
+        if (!sessionId || options.sessionHasOtherClients) {
+            return;
+        }
+
         const prefix = `${sessionId}_`;
         for (const key of [...this.isProcessing.keys()]) {
             if (key.startsWith(prefix) || key === sessionId) {
                 this.isProcessing.delete(key);
             }
         }
-        for (const key of [...this.latestRequests.keys()]) {
+        for (const [key, req] of [...this.latestRequests.entries()]) {
             if (key.startsWith(prefix) || key === sessionId) {
                 this.latestRequests.delete(key);
+                const ctx = this._activeSearchCtx.get(key);
+                if (ctx) ctx.cancelled = true;
             }
         }
         for (const [key, rateLimiter] of [...this.sessionRateLimiters.entries()]) {
@@ -536,6 +571,10 @@ class SearchService {
         }
     }
 
+    clearSessionSearchState(sessionId) {
+        this.clearSearchStateForSocket(null, sessionId, { sessionHasOtherClients: false });
+    }
+
     // Process the latest request for a given key
     async processLatestRequest(key) {
         const latestRequest = this.latestRequests.get(key);
@@ -543,7 +582,8 @@ class SearchService {
             return { results: [], spellCheck: null };
         }
 
-        const { query, model, ws, sessionId, requestId, autofillSessionId, spellCheckText, isContinuation, priorQuery, autofillSettings } = latestRequest;
+        const { query, model, sessionId, requestId, autofillSessionId, spellCheckText, isContinuation, priorQuery, autofillSettings } = latestRequest;
+        const { ctx, ws } = this._bindSearchCallContext(key, latestRequest);
         const settings = normalizeAutofillSearchSettings(autofillSettings);
         const artistParsed = parseAutofillArtistSearchPrefix(query);
         if (artistParsed.isArtistSearch) {
@@ -555,11 +595,6 @@ class SearchService {
         const searchQuery = artistParsed.isArtistSearch ? artistParsed.remainder : query;
         const tagSearchQuery = this.truncateTagSearchQuery(searchQuery);
         const spellCheckInput = (spellCheckText || searchQuery || '').trim();
-
-        this._searchPacketContext = {
-            requestId: requestId || null,
-            autofillSessionId: autofillSessionId || null
-        };
 
         if (ws) {
             this.sendSearchWs(ws, {
@@ -810,7 +845,9 @@ class SearchService {
             console.error('Character and tag search error:', error);
             throw error;
         } finally {
-            this._searchPacketContext = null;
+            if (this._activeSearchCtx.get(key) === ctx) {
+                this._activeSearchCtx.delete(key);
+            }
         }
     }
 
@@ -1607,7 +1644,7 @@ class SearchService {
             return;
         }
 
-        const sessionId = autofillSessionId || this._searchPacketContext?.autofillSessionId || null;
+        const sessionId = autofillSessionId || (ws && ws.__searchCtx && ws.__searchCtx.autofillSessionId) || null;
         const skipAttach = options.skipAttach === true;
 
         const seen = new Set();
