@@ -540,6 +540,66 @@ class WebSocketClient {
     }
 
     /** Outbound types excluded from ticker badge/cycle (like ping). */
+    /** Reads that must not sit on the 30s dynamic-timeout floor. */
+    static LIGHT_REQUEST_TYPES = new Set([
+        'search_tags',
+        'search_dataset_tags',
+        'search_files',
+        'search_presets',
+        'search_tag_wiki',
+        'search_characters',
+        'lookup_city',
+        'get_presets',
+        'get_autofill_ranking',
+        'get_persona_settings',
+        'get_user_global_settings',
+        'test_autofill_ranking',
+        'director_get_sessions',
+        'director_get_session',
+        'director_get_messages',
+        'director_load_rules',
+        'director_load_feedback',
+        'novel_list',
+        'novel_get',
+        'novel_resolve_image',
+        'get_chat_sessions',
+        'get_chat_session',
+        'get_chat_messages',
+        'workspace_list',
+        'desktop_get_shortcuts',
+        'request_image_metadata',
+        'fetch_autofill_wiki_previews',
+        'omegasearch_query',
+        'get_tag_wiki_page',
+        'get_wiki_home',
+        'get_static_wiki_site_index',
+        'get_static_wiki_page',
+        'resolve_grimoire_url',
+        'get_tag_autofill',
+        'resolve_text_replacements'
+    ]);
+
+    static PROGRESS_REQUEST_TYPES = new Set([
+        'generate_image',
+        'generate_preset',
+        'expand_image',
+        'reroll_expanded_image',
+        'reroll_image',
+        'upscale_image',
+        'upload_novelai_explore_image',
+        'compile_dynamic_generation',
+        'apply_tendai_preview',
+        'novel_generate',
+        'director_send_message',
+        'send_chat_message',
+        'import_fandom_wiki_page',
+        'request_gallery'
+    ]);
+
+    static TIMEOUT_LIGHT_MS = 12000;
+    static TIMEOUT_PROGRESS_MS = 10 * 60 * 1000;
+    static STUCK_TICKER_MS = 8000;
+
     static SILENT_TICKER_REQUEST_TYPES = new Set([
         'ping',
         'get_generation_quips',
@@ -2307,10 +2367,14 @@ class WebSocketClient {
      * @param {number} maxMultiplier - Maximum multiplier (default: 10)
      * @returns {number} Adjusted timeout in milliseconds
      */
-    calculateDynamicTimeout(baseTimeout, minMultiplier = 3, maxMultiplier = 10) {
+    calculateDynamicTimeout(baseTimeout, minMultiplier = 3, maxMultiplier = 10, bounds = null) {
+        const minTimeout = bounds && Number.isFinite(bounds.minTimeout) ? bounds.minTimeout : 30000;
+        const maxTimeout = bounds && Number.isFinite(bounds.maxTimeout) ? bounds.maxTimeout : 300000;
+        const noRttMultiplier = bounds && bounds.noRttMultiplier != null ? bounds.noRttMultiplier : 5;
+
         // If we don't have RTT data yet, use a conservative multiplier
         if (this.currentRtt === null || this.rttMeasurements.length === 0) {
-            return baseTimeout * 5; // Use 5x multiplier until we have RTT data
+            return Math.min(Math.max(baseTimeout * noRttMultiplier, minTimeout), maxTimeout);
         }
 
         // Calculate multiplier based on RTT
@@ -2323,14 +2387,59 @@ class WebSocketClient {
 
         // Calculate timeout using RTT-based multiplier
         const dynamicTimeout = baseTimeout * rttMultiplier;
-
-        // Ensure timeout is at least 30 seconds
-        const minTimeout = 30000; // 30 seconds minimum
         const adjustedTimeout = Math.max(dynamicTimeout, minTimeout);
-
-        // Cap at reasonable maximum (5 minutes)
-        const maxTimeout = 300000;
         return Math.min(adjustedTimeout, maxTimeout);
+    }
+
+    classifyRequestTimeoutKind(type) {
+        const t = String(type || '');
+        if (t === 'get_app_options') return 'critical';
+        if (WebSocketClient.PROGRESS_REQUEST_TYPES.has(t)) return 'progress';
+        if (t.startsWith('search_index_')) return 'default';
+        if (WebSocketClient.LIGHT_REQUEST_TYPES.has(t) || t.startsWith('search_') || t.startsWith('director_get_')) {
+            return 'light';
+        }
+        return 'default';
+    }
+
+    resolveRequestTimeoutMs(type, data = {}) {
+        const kind = this.classifyRequestTimeoutKind(type);
+        if (kind === 'critical') {
+            return this.calculateDynamicTimeout(WebSocketClient.TIMEOUT_GET_APP_OPTIONS, 1, 2, {
+                minTimeout: WebSocketClient.TIMEOUT_GET_APP_OPTIONS,
+                maxTimeout: 8000,
+                noRttMultiplier: 1
+            });
+        }
+        if (kind === 'light') {
+            return this.calculateDynamicTimeout(WebSocketClient.TIMEOUT_LIGHT_MS, 1, 2, {
+                minTimeout: 8000,
+                maxTimeout: 20000,
+                noRttMultiplier: 1
+            });
+        }
+        if (kind === 'progress') {
+            if (type === 'request_gallery' && Number(data && data.limit) === 0) {
+                return this.calculateDynamicTimeout(120000, 1, 2, {
+                    minTimeout: 120000,
+                    maxTimeout: 180000,
+                    noRttMultiplier: 1
+                });
+            }
+            return this.calculateDynamicTimeout(WebSocketClient.TIMEOUT_PROGRESS_MS, 1, 1.2, {
+                minTimeout: 120000,
+                maxTimeout: 15 * 60 * 1000,
+                noRttMultiplier: 1
+            });
+        }
+        if (type === 'workspace_list' || type === 'desktop_get_shortcuts') {
+            return this.calculateDynamicTimeout(15000, 1, 2, {
+                minTimeout: 8000,
+                maxTimeout: 20000,
+                noRttMultiplier: 1
+            });
+        }
+        return this.getEffectiveTimeout(60000);
     }
 
     /**
@@ -3519,6 +3628,11 @@ class WebSocketClient {
                 if (typeof updateManualGenerateBtnState === 'function') {
                     updateManualGenerateBtnState();
                 }
+
+                // onclose usually follows, but error-without-close must not leave
+                // pending promises waiting forever (mobile half-open / iOS).
+                this._teardownGenerationUiState();
+                this.clearPendingRequests();
 
                 if (!this.isManualClose) {
                     let errorMessage = '';
@@ -7136,22 +7250,8 @@ class WebSocketClient {
                 this.incrementPendingRequests();
             }
 
-            // Set timeout based on request type BEFORE sending - critical requests should fail fast
-            let baseTimeout = 60000; // Default 60 seconds
-
-            // Critical initialization requests should fail fast if server is not ready
-            if (message.type === 'get_app_options') {
-                baseTimeout = WebSocketClient.TIMEOUT_GET_APP_OPTIONS;
-            } else if (message.type === 'workspace_list' || message.type === 'desktop_get_shortcuts') {
-                baseTimeout = 15000;
-            } else if (message.type === 'upload_novelai_explore_image') {
-                baseTimeout = 120000;
-            } else if (message.type === 'import_fandom_wiki_page') {
-                baseTimeout = 15 * 60 * 1000;
-            }
-
-            // Calculate dynamic timeout based on RTT
-            const timeoutMs = this.getEffectiveTimeout(baseTimeout);
+            // Light reads get a short cap; generation/progress uses a long keep-alive window.
+            const timeoutMs = this.resolveRequestTimeoutMs(message.type, data);
 
             const timeoutId = setTimeout(() => {
                 if (this.pendingRequests.has(requestId)) {
@@ -7258,11 +7358,7 @@ class WebSocketClient {
             // Increment pending requests count
             this.incrementPendingRequests();
 
-            let baseTimeout = 60000;
-            if (type === 'request_gallery' && Number(data.limit) === 0) {
-                baseTimeout = 120000;
-            }
-            const timeoutMs = this.getEffectiveTimeout(baseTimeout);
+            const timeoutMs = this.resolveRequestTimeoutMs(type, data);
             const timeoutId = setTimeout(() => {
                 if (!this.pendingRequests.has(requestId)) {
                     return;
@@ -7301,12 +7397,33 @@ class WebSocketClient {
                 this.pendingRequests = new Map();
             }
 
-            this.pendingRequests.set(requestId, { resolve, reject, type, showBanner });
+            this.pendingRequests.set(requestId, { resolve, reject, type, showBanner, timestamp: Date.now() });
 
             this._acquireGenerationCloseGuardForRequest(type, requestId);
 
             // Increment pending requests count
             this.incrementPendingRequests();
+
+            const timeoutMs = this.resolveRequestTimeoutMs(type, data);
+            const timeoutId = setTimeout(() => {
+                if (!this.pendingRequests.has(requestId)) {
+                    return;
+                }
+                const request = this.pendingRequests.get(requestId);
+                this.pendingRequests.delete(requestId);
+                this.decrementPendingRequests();
+                const timeoutError = new Error(`Request timeout after ${Math.round(timeoutMs / 1000)} seconds`);
+                timeoutError.code = 'REQUEST_TIMEOUT';
+                timeoutError.requestId = requestId;
+                timeoutError.requestType = type;
+                if (WebSocketClient.PROGRESS_REQUEST_TYPES.has(request.type)) {
+                    this.clearStreamingStepQueues(null, true);
+                    this.cleanupGenerationProgressState(requestId);
+                    this.releaseGenerationCloseGuard(requestId);
+                }
+                reject(timeoutError);
+            }, timeoutMs);
+            this.pendingRequests.get(requestId).timeoutId = timeoutId;
 
             const message = {
                 type,
@@ -7314,7 +7431,14 @@ class WebSocketClient {
                 ...data
             };
 
-            this.send(message);
+            try {
+                this.send(message);
+            } catch (error) {
+                this.clearTimeoutSafely(timeoutId);
+                this.pendingRequests.delete(requestId);
+                this.decrementPendingRequests();
+                reject(error);
+            }
         });
     }
 
@@ -7400,9 +7524,35 @@ class WebSocketClient {
                 this.incrementPendingRequests();
             }
 
+            const timeoutMs = this.resolveRequestTimeoutMs(type, data);
+            const timeoutId = setTimeout(() => {
+                if (!this.pendingRequests.has(requestId)) {
+                    return;
+                }
+                const request = this.pendingRequests.get(requestId);
+                this.pendingRequests.delete(requestId);
+                if (paginationGroupId) {
+                    const group = this.paginationGroups.get(paginationGroupId);
+                    if (group) {
+                        group.completedRequests = (group.completedRequests || 0) + 1;
+                    }
+                }
+                if (!paginationGroupId || this.isPaginationGroupComplete(paginationGroupId)) {
+                    this.decrementPendingRequests();
+                }
+                const timeoutError = new Error(`Request timeout after ${Math.round(timeoutMs / 1000)} seconds`);
+                timeoutError.code = 'REQUEST_TIMEOUT';
+                timeoutError.requestId = requestId;
+                timeoutError.requestType = type;
+                reject(timeoutError);
+            }, timeoutMs);
+            this.pendingRequests.get(requestId).timeoutId = timeoutId;
+            this.pendingRequests.get(requestId).timestamp = Date.now();
+
             try {
                 this.send(message);
             } catch (error) {
+                this.clearTimeoutSafely(timeoutId);
                 this.pendingRequests.delete(requestId);
                 if (paginationGroupId) {
                     const group = this.paginationGroups.get(paginationGroupId);
@@ -8358,7 +8508,12 @@ class WebSocketClient {
                     }
                     continue;
                 }
-                if (request.showBanner !== false && request.type) {
+                const ageMs = request.timestamp ? (Date.now() - request.timestamp) : 0;
+                const stuckHidden = request.type
+                    && request.type !== 'ping'
+                    && !request.silentTicker
+                    && ageMs >= WebSocketClient.STUCK_TICKER_MS;
+                if ((request.showBanner !== false && request.type) || stuckHidden) {
                     tickerRequests.push({ requestId, request });
                 }
             }

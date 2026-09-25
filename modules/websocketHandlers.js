@@ -243,6 +243,16 @@ class WebSocketMessageHandlers {
             this.metadataCache.removeClient(sessionId);
         }
         wsMessageDispatcher.clearFifoChainForSession(sessionId);
+        try {
+            const searchService = this.globalResources && this.globalResources.getSearchService
+                ? this.globalResources.getSearchService()
+                : null;
+            if (searchService && typeof searchService.clearSessionSearchState === 'function') {
+                searchService.clearSessionSearchState(sessionId);
+            }
+        } catch (_err) {
+            // Search service may not be initialized yet
+        }
     }
 
     // Generate UUID for presets

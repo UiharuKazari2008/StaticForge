@@ -7,6 +7,7 @@ const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 
 // Search functionality module
 class SearchService {
+    static SEARCH_TURN_TIMEOUT_MS = 12000;
     constructor(globalResources = null) {
         if (!globalResources) {
             throw new Error('SearchService requires globalResources instance and should only be instantiated by globalResources.js');
@@ -31,6 +32,9 @@ class SearchService {
         // Latest request tracking for "latest wins" pattern
         this.latestRequests = new Map(); // Track latest request per session+model
         this.isProcessing = new Map(); // Track if processing is active per session+model
+        // waitForSearchTurn previously polled this map with no deadline. A hung
+        // processLatestRequest (thesaurus / tag API / dropped socket) starved every
+        // later autocomplete for that session+model.
 
         // Timer will be registered by globalResources when SearchService is initialized
         this._cleanupTimerId = null;
@@ -450,8 +454,14 @@ class SearchService {
     }
 
     async waitForSearchTurn(key, requestId) {
+        const deadline = Date.now() + SearchService.SEARCH_TURN_TIMEOUT_MS;
         while (true) {
             while (this.isProcessing.get(key)) {
+                if (Date.now() >= deadline) {
+                    // Hung prior search was holding the session+model lane.
+                    this.isProcessing.set(key, false);
+                    break;
+                }
                 await new Promise(resolve => setTimeout(resolve, 15));
             }
 
@@ -469,8 +479,13 @@ class SearchService {
             const capturedTimestamp = latest.timestamp;
 
             try {
-                const result = await this.processLatestRequest(key);
+                const result = await this._runLatestRequestWithTimeout(key, deadline);
                 return { ...result, processed: true, superseded: false };
+            } catch (error) {
+                if (error && error.code === 'SEARCH_TURN_TIMEOUT') {
+                    return { results: [], spellCheck: null, processed: false, superseded: true, timedOut: true };
+                }
+                throw error;
             } finally {
                 this.isProcessing.set(key, false);
 
@@ -479,6 +494,45 @@ class SearchService {
                     // A newer request arrived during processing; its caller will wait and run it
                 }
             }
+        }
+    }
+
+    _runLatestRequestWithTimeout(key, deadline) {
+        const remaining = Math.max(1, deadline - Date.now());
+        let timer = null;
+        return Promise.race([
+            this.processLatestRequest(key),
+            new Promise((_, reject) => {
+                timer = setTimeout(() => {
+                    const err = new Error('Search processing timeout');
+                    err.code = 'SEARCH_TURN_TIMEOUT';
+                    reject(err);
+                }, remaining);
+            })
+        ]).finally(() => {
+            if (timer) clearTimeout(timer);
+        });
+    }
+
+    clearSessionSearchState(sessionId) {
+        if (!sessionId) return;
+        const prefix = `${sessionId}_`;
+        for (const key of [...this.isProcessing.keys()]) {
+            if (key.startsWith(prefix) || key === sessionId) {
+                this.isProcessing.delete(key);
+            }
+        }
+        for (const key of [...this.latestRequests.keys()]) {
+            if (key.startsWith(prefix) || key === sessionId) {
+                this.latestRequests.delete(key);
+            }
+        }
+        for (const [key, rateLimiter] of [...this.sessionRateLimiters.entries()]) {
+            if (!key.startsWith(prefix) && key !== sessionId) continue;
+            if (rateLimiter && rateLimiter.sessionId === sessionId) {
+                this.cancelSessionPendingRequests(rateLimiter.sessionId, rateLimiter.model);
+            }
+            this.sessionRateLimiters.delete(key);
         }
     }
 
