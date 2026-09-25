@@ -511,6 +511,9 @@ class WebSocketClient {
 
     static DELAY_RECONNECT_INITIAL = 1000; // Initial reconnect delay (1 second)
     static DELAY_RECONNECT_MAX = 30000; // Maximum reconnect delay (30 seconds)
+    static DELAY_CONNECTING_WATCHDOG = 15000; // Stuck CONNECTING / connectionLock
+    static STALE_OPEN_MS = 90000; // Half-open OPEN socket with no pong
+    static PING_LIVENESS_MISSES = 2;
     static DELAY_CONNECTION_COOLDOWN = 60000; // Circuit breaker cooldown (1 minute)
     static DELAY_PING_INTERVAL = 30000; // Ping interval (30 seconds)
     static DELAY_PING_HOST = 2000; // Host ping interval (2 seconds)
@@ -707,6 +710,11 @@ class WebSocketClient {
         this.pingInterval = null;
         this.pingTimeout = null;
         this.healthCheckInterval = null;
+        this._connectingWatchdog = null;
+        this._connectingSince = 0;
+        this._missedPingCount = 0;
+        this._lastPongAt = 0;
+        this._replacingSocket = false;
 
         // Inactivity management (disconnect only after 2 hours of continuous user inactivity)
         this.lastUserActivity = Date.now();
@@ -3301,6 +3309,10 @@ class WebSocketClient {
             this._reconnectOnFocusRegain('resume');
         });
 
+        window.addEventListener('online', () => {
+            this._reconnectOnFocusRegain('online');
+        });
+
         // ServiceWorkerManager owns the single service-worker message listener and
         // forwards NETWORK_ACTIVITY events here.
     }
@@ -3412,11 +3424,17 @@ class WebSocketClient {
             const resumeQuery = resumeId ? `?agentClientId=${encodeURIComponent(resumeId)}` : '';
             const wsUrl = `${protocol}//${window.location.host}${resumeQuery}`;
 
+            this._disposeExistingSocket();
+            this._connectingSince = Date.now();
+            this._armConnectingWatchdog();
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = async () => {
+                this._clearConnectingWatchdog();
                 this.isConnecting = false;
                 this.connectionLock = false; // Release connection lock on success
+                this._missedPingCount = 0;
+                this._lastPongAt = Date.now();
 
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
                     this.disconnect(true);
@@ -3525,6 +3543,7 @@ class WebSocketClient {
 
             this.ws.onclose = (event) => {
                 console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+                this._clearConnectingWatchdog();
                 this.isConnecting = false;
                 this.connectionLock = false;
                 this.connectionStats.connectedAt = null;
@@ -3621,6 +3640,7 @@ class WebSocketClient {
 
             this.ws.onerror = async (error) => {
                 console.error('❌ WebSocket error:', error);
+                this._clearConnectingWatchdog();
                 this.isConnecting = false;
                 this.connectionLock = false; // Release connection lock on error
 
@@ -3656,11 +3676,17 @@ class WebSocketClient {
                             message: `NO CARRIER — ${errorMessage}`
                         });
                     }
+
+                    const readyState = error.target && error.target.readyState;
+                    if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) {
+                        this._replaceStaleSocket('ws-error');
+                    }
                 }
             };
 
         } catch (error) {
             console.error('❌ Failed to create WebSocket connection:', error);
+            this._clearConnectingWatchdog();
             this.isConnecting = false;
             this.connectionLock = false; // Release connection lock on exception
             this._setConnectionPhase('failed', {
@@ -3823,7 +3849,9 @@ class WebSocketClient {
             return;
         }
 
-        const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
+        const exp = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
+        const jitter = Math.floor(exp * 0.2 * Math.random());
+        const delay = Math.min(exp + jitter, this.maxReconnectDelay);
         console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
         const startupMessage = this.lastServerStartupStatus?.stageMessage;
@@ -3918,6 +3946,16 @@ class WebSocketClient {
         }
 
         this.lastUserActivity = Date.now();
+
+        if (this._socketNeedsReplace()) {
+            this._replaceStaleSocket(source);
+            return;
+        }
+
+        if ((this.isConnecting || this.connectionLock) && this._connectingIsStale()) {
+            this._replaceStaleSocket(`${source}-connecting-stuck`);
+            return;
+        }
 
         // Already connected or actively connecting — nothing to do
         if (this.isConnected() || this.isConnecting || this.connectionLock) {
@@ -4071,6 +4109,81 @@ class WebSocketClient {
         }));
     }
 
+    _clearConnectingWatchdog() {
+        if (this._connectingWatchdog) {
+            clearTimeout(this._connectingWatchdog);
+            this._connectingWatchdog = null;
+        }
+    }
+
+    _armConnectingWatchdog() {
+        this._clearConnectingWatchdog();
+        this._connectingWatchdog = setTimeout(() => {
+            this._connectingWatchdog = null;
+            if (this.isManualClose || this._isStartupHaltedForInstall()) {
+                return;
+            }
+            if (this.isConnecting || this.connectionLock || this._connectingIsStale()) {
+                this._replaceStaleSocket('connecting-watchdog');
+            }
+        }, WebSocketClient.DELAY_CONNECTING_WATCHDOG);
+    }
+
+    _connectingIsStale() {
+        return !!this._connectingSince && (Date.now() - this._connectingSince) > WebSocketClient.DELAY_CONNECTING_WATCHDOG;
+    }
+
+    _socketNeedsReplace() {
+        if (!this.ws) return false;
+        if (this.ws.readyState === WebSocket.CONNECTING && this._connectingIsStale()) {
+            return true;
+        }
+        if (this.ws.readyState === WebSocket.OPEN) {
+            if (this._missedPingCount >= WebSocketClient.PING_LIVENESS_MISSES) {
+                return true;
+            }
+            if (this._lastPongAt && (Date.now() - this._lastPongAt) > WebSocketClient.STALE_OPEN_MS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    _disposeExistingSocket() {
+        if (!this.ws) return;
+        try {
+            this.ws.onopen = null;
+            this.ws.onmessage = null;
+            this.ws.onclose = null;
+            this.ws.onerror = null;
+            if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+                this.ws.close(1000, 'Manual disconnect');
+            }
+        } catch (_err) {
+            // ignore
+        }
+        this.ws = null;
+    }
+
+    _replaceStaleSocket(source) {
+        if (this._replacingSocket || this.isManualClose || this._isStartupHaltedForInstall()) {
+            return;
+        }
+        this._replacingSocket = true;
+        console.log(`🔄 Replacing stale socket (${source})`);
+        this._clearConnectingWatchdog();
+        this._disposeExistingSocket();
+        this.isConnecting = false;
+        this.connectionLock = false;
+        this.circuitBreaker = false;
+        this._missedPingCount = 0;
+        this._teardownGenerationUiState();
+        this.clearPendingRequests();
+        this._beginTrayOnlyReconnect(source);
+        this._replacingSocket = false;
+        this.connect();
+    }
+
     send(message) {
         if (message && message.type !== 'ping') {
             this.recordUserActivity();
@@ -4105,6 +4218,8 @@ class WebSocketClient {
 
         // Handle pong responses with requestId for authentication checking
         if (message.type === 'pong') {
+            this._missedPingCount = 0;
+            this._lastPongAt = Date.now();
             if (message.vfsPathUuid && typeof bootstrapVfsPathUuidFromOptions === 'function') {
                 bootstrapVfsPathUuidFromOptions(message);
             }
@@ -6702,17 +6817,23 @@ class WebSocketClient {
                 this.send(message);
 
                 // Calculate dynamic timeout based on RTT
-                const baseTimeout = WebSocketClient.TIMEOUT_PING;
-                const timeoutMs = this.getEffectiveTimeout(baseTimeout);
+                const timeoutMs = this.calculateDynamicTimeout(WebSocketClient.TIMEOUT_PING, 1, 3, {
+                    minTimeout: WebSocketClient.TIMEOUT_PING,
+                    maxTimeout: 15000,
+                    noRttMultiplier: 1
+                });
 
                 const timeoutId = setTimeout(() => {
                     if (this.pendingRequests.has(requestId)) {
-                        const request = this.pendingRequests.get(requestId);
                         this.pendingRequests.delete(requestId);
                         this.pendingPings.delete(requestId);
                         this.decrementPendingRequests();
 
+                        this._missedPingCount += 1;
                         console.warn(`⚠️ Ping request timeout (ID: ${requestId}) after ${timeoutMs}ms`);
+                        if (this._missedPingCount >= WebSocketClient.PING_LIVENESS_MISSES) {
+                            this._replaceStaleSocket('ping-liveness');
+                        }
                         const timeoutError = new Error(`Ping request timeout after ${timeoutMs}ms`);
                         timeoutError.code = 'PING_TIMEOUT';
                         timeoutError.requestId = requestId;
