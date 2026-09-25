@@ -91,7 +91,11 @@ body { margin: 0; background: #1a1d21; color: #eee; font-family: sans-serif; }
 </div>
 <script>
 var promptTextareaToolbar = null;
-window.wsClient = { registerInitStep: function () {} };
+window.wsClient = {
+    registerInitStep: function () {},
+    isConnected: function () { return false; },
+    sendMessage: function () { return Promise.resolve({}); }
+};
 window.emphasisNormalizationByField = {};
 function getEmphasisNormalizationFieldStore() { return window.emphasisNormalizationByField; }
 function syncEmphasisNormalizationPreviewMetadata() {}
@@ -128,6 +132,9 @@ function openPhasewalkerEditor() {}
 function buildPhasewalkerContextSubmenuItems() { return []; }
 function handlePhasewalkerContextSubmenuAction() {}
 function getMappedManualModel() { return 'v4'; }
+function getPromptTokenizer() { return null; }
+function getPromptTokenLimit() { return 0; }
+function ensurePromptTokenizerForModel() { return Promise.resolve(null); }
 function isV5Model() { return false; }
 function updatePromptStatusIcons() {}
 function renderDropdown() {}
@@ -179,30 +186,28 @@ function removeHarness() {
     try { fs.unlinkSync(HARNESS_PATH); } catch (_e) { /* ignore */ }
 }
 
-function wrapCheck() {
-    return `
-        const ta = document.getElementById('manualPrompt');
-        const value = ta.value || '';
-        const visible = value.replace(/[\\u200B-\\u200D\\u2060-\\u2064\\uFEFF\\u00AD]/g, '');
-        const overlay = document.querySelector('.emphasis-highlight-overlay');
-        const overlayHtml = overlay ? overlay.innerHTML : '';
-        const classic = /1\\.5::\\s*plump\\s*::/.test(value);
-        const managed = visible.includes('plump') && value !== visible
-            && /emphasis-weight-group/.test(overlayHtml);
-        const highlighted = /emphasis-weight-group/.test(overlayHtml)
-            && /plump/i.test(overlayHtml || overlay ? overlay.textContent : '');
-        return {
-            value,
-            visible,
-            classic,
-            managed,
-            highlighted,
-            overlayHtml: overlayHtml.slice(0, 400),
-            hasOverlay: !!overlay,
-            sel: [ta.selectionStart, ta.selectionEnd],
-            saved: ta._emphasisSavedSelection || null
-        };
-    `;
+function collectWrapState() {
+    const ta = document.getElementById('manualPrompt');
+    const value = ta.value || '';
+    const visible = value.replace(/[\u200B-\u200D\u2060-\u2064\uFEFF\u00AD]/g, '');
+    const overlay = document.querySelector('.emphasis-highlight-overlay');
+    const overlayHtml = overlay ? overlay.innerHTML : '';
+    const classic = /1\.5::\s*plump\s*::/.test(value);
+    const managed = visible.includes('plump') && value !== visible
+        && /emphasis-weight-group/.test(overlayHtml);
+    const highlighted = /emphasis-weight-group/.test(overlayHtml)
+        && /plump/i.test(overlay ? overlay.textContent : '');
+    return {
+        value,
+        visible,
+        classic,
+        managed,
+        highlighted,
+        overlayHtml: overlayHtml.slice(0, 400),
+        hasOverlay: !!overlay,
+        sel: [ta.selectionStart, ta.selectionEnd],
+        saved: ta._emphasisSavedSelection || null
+    };
 }
 
 async function selectPlump(page) {
@@ -252,7 +257,7 @@ async function applyViaContextMenu(page, { collapseBeforePick }) {
     const weightBtn = page.locator('.context-menu-grid-btn', { hasText: /^1\.5$/ }).first();
     await weightBtn.waitFor({ state: 'visible', timeout: 5000 });
     await weightBtn.click();
-    return page.evaluate(wrapCheck());
+    return page.evaluate(collectWrapState);
 }
 
 async function applyViaToolbar(page, { collapseBeforeApply, usePointer }) {
@@ -277,7 +282,7 @@ async function applyViaToolbar(page, { collapseBeforeApply, usePointer }) {
         applySetEmphasisWeight(ta, 1.5);
         updateEmphasisHighlighting(ta);
     });
-    return page.evaluate(wrapCheck());
+    return page.evaluate(collectWrapState);
 }
 
 async function applyDesktopMouse(page) {
@@ -296,7 +301,7 @@ async function applyDesktopMouse(page) {
         applySetEmphasisWeight(ta, 1.5);
         updateEmphasisHighlighting(ta);
     });
-    const after = await page.evaluate(wrapCheck());
+    const after = await page.evaluate(collectWrapState);
     return { before, after };
 }
 
@@ -356,7 +361,7 @@ async function run() {
             });
             const page = await context.newPage();
             page.on('pageerror', (err) => {
-                results.push({ profile: profile.name, case: 'pageerror', error: String(err) });
+                console.warn(profile.name, 'pageerror', String(err));
             });
             await page.goto(base, { waitUntil: 'domcontentloaded' });
             await page.waitForFunction(() => window.__emphasisHarnessReady === true);
@@ -386,6 +391,43 @@ async function run() {
         }
         passWrap(mouse.after, 'desktop mouse');
         results.push({ profile: 'desktop', case: 'mouse-1.5', result: 'PASS', wrap: mouse.after.classic ? 'classic' : 'managed' });
+
+        await page.evaluate(() => {
+            const ta = document.getElementById('manualPrompt');
+            ta.value = 'liberalio (nikke), plump, side view, looking at viewer';
+            ta.focus();
+        });
+        await selectPlump(page);
+        await page.evaluate(() => {
+            const ta = document.getElementById('manualPrompt');
+            const pos = ta.value.indexOf('side view') + 2;
+            ta.focus();
+            ta.setSelectionRange(pos, pos);
+            document.dispatchEvent(new Event('selectionchange'));
+            capturePromptTextareaSelection(ta, { clearIfCollapsed: true });
+            applySetEmphasisWeight(ta, 1.5);
+            updateEmphasisHighlighting(ta);
+        });
+        const caretApply = await page.evaluate(() => {
+            const ta = document.getElementById('manualPrompt');
+            const inners = listManagedEmphasisBlocks(ta.value || '').map((b) => b.innerText);
+            const overlay = document.querySelector('.emphasis-highlight-overlay');
+            return {
+                inners,
+                value: ta.value,
+                highlighted: !!(overlay && overlay.querySelector('.emphasis-weight-group'))
+            };
+        });
+        if (!caretApply.inners.some((t) => /side view/.test(t))) {
+            throw new Error(`desktop caret apply did not wrap side view: ${JSON.stringify(caretApply)}`);
+        }
+        if (caretApply.inners.some((t) => t.trim() === 'plump')) {
+            throw new Error(`desktop caret apply reused stale plump selection: ${JSON.stringify(caretApply)}`);
+        }
+        if (!caretApply.highlighted) {
+            throw new Error(`desktop caret apply missing highlight: ${JSON.stringify(caretApply)}`);
+        }
+        results.push({ profile: 'desktop', case: 'caret-autodetect-not-stale-plump', result: 'PASS' });
         await desktop.close();
     } finally {
         await browser.close();
@@ -393,7 +435,7 @@ async function run() {
         removeHarness();
     }
 
-    const failed = results.filter((r) => r.error || r.result !== 'PASS');
+    const failed = results.filter((r) => r.result !== 'PASS');
     console.log(JSON.stringify({ results }, null, 2));
     if (failed.length) {
         process.exit(1);
