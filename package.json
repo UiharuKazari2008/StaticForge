@@ -116,6 +116,7 @@
     "test:custom-resolution": "node scripts/test-custom-resolution-legal.js",
     "test:wheel-tick-gate": "node scripts/test-wheel-tick-gate.js",
     "test:mcp-facade": "node scripts/test-mcp-agent-facade.js",
+    "test:apocrypha-local-grim": "node --test scripts/test-apocrypha-local-grim.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
     "docs:ws-api": "node scripts/tools/generate-ws-api-docs.js --write",

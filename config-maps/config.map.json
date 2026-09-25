@@ -774,6 +774,49 @@
       ],
       "type": "boolean",
       "label": "User PIN Login Enabled"
+    },
+    {
+      "path": [
+        "apocrypha"
+      ],
+      "type": "object",
+      "label": "Apocrypha Reader",
+      "closed": true,
+      "required": true,
+      "description": "Public zine Grim visibility. Default trustedProxies and localCidrs are loopback only. The reverse-proxy socket peer MUST be listed in trustedProxies or XFF is ignored (and an untrusted private peer with XFF is treated as not local)."
+    },
+    {
+      "path": [
+        "apocrypha",
+        "trustedProxies"
+      ],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Trusted Proxies",
+      "required": true,
+      "description": "IPs/CIDRs whose X-Forwarded-For is honored (rightmost untrusted hop). Default 127.0.0.0/8 and ::1. Add the proxy peer Dreamscape actually sees."
+    },
+    {
+      "path": [
+        "apocrypha",
+        "localCidrs"
+      ],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Local CIDRs",
+      "required": true,
+      "description": "IPs/CIDRs that count as local for Grim. Default loopback only. Add the LAN subnet on the host; do not put the public internet or an unlisted proxy hop here."
+    },
+    {
+      "path": [
+        "apocrypha",
+        "localGrim"
+      ],
+      "type": "boolean",
+      "label": "Local Grim",
+      "editMode": "inline",
+      "required": true,
+      "description": "When true (default), Grim is shown to local CIDRs as well as logged-in sessions. When false, Grim is session-only."
     }
   ]
 }
