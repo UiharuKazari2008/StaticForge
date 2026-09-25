@@ -21,20 +21,14 @@ function canonicalizeApiOptions(apiOpts, upscale, compileFlags) {
         const sorted = {};
         Object.keys(obj).sort().forEach((k) => {
             if (k === 'requestId' || k === 'stepPreviewHeight' || k === 'stepPreviewWidth') return;
-            let value = obj[k];
-            if (k === 'deduplicate_tags') {
-                value = flagWithDefault(value, true);
-            }
-            sorted[k] = cleanObject(value);
+            sorted[k] = cleanObject(obj[k]);
         });
         return sorted;
     };
-    const api = cleanObject(apiOpts);
-    if (!Object.prototype.hasOwnProperty.call(api, 'deduplicate_tags')) {
-        api.deduplicate_tags = true;
-    }
+    const apiSource = { ...apiOpts };
+    apiSource.deduplicate_tags = flagWithDefault(apiOpts.deduplicate_tags, true);
     return JSON.stringify({
-        api,
+        api: cleanObject(apiSource),
         upscale: !!upscale,
         prompt_normalize: flagWithDefault(flags.prompt_normalize, true),
         keep_newlines: flagWithDefault(flags.keep_newlines, false),
