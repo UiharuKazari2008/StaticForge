@@ -124,6 +124,7 @@ const {
 const { generateMobilePreviews } = require('./previewUtils');
 const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const { upscaleImageCore, resolveUpscaleRatio } = require('./imageUpscaling');
+const { canonicalizeApiOptions } = require('./generationFingerprint');
 
 async function ensureForgeDataBlurhash(forgeData, imageBuffer) {
     if (!forgeData || forgeData.blurhash || !imageBuffer) return forgeData;
@@ -4235,24 +4236,6 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
 let lastApiGenerationRecord = null;
 
-function canonicalizeApiOptions(apiOpts, upscale) {
-    if (!apiOpts || typeof apiOpts !== 'object') return '';
-    const cleanObject = (obj) => {
-        if (obj === null || typeof obj !== 'object') return obj;
-        if (Array.isArray(obj)) return obj.map(cleanObject);
-        const sorted = {};
-        Object.keys(obj).sort().forEach(k => {
-            if (k === 'requestId' || k === 'stepPreviewHeight' || k === 'stepPreviewWidth') return;
-            sorted[k] = cleanObject(obj[k]);
-        });
-        return sorted;
-    };
-    return JSON.stringify({
-        api: cleanObject(apiOpts),
-        upscale: !!upscale
-    });
-}
-
 async function handleGeneration(globalResources, opts, returnImage = false, presetName = null, workspaceId = null, req = null, streamingCallback = null, ws = null, handler = null, baseMetadata = null, stageSeeds = null) {
     bindRuntimeGlobalResources(globalResources);
     const seed = opts.seed || Math.floor(0x100000000 * Math.random() - 1);
@@ -4369,7 +4352,12 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     }
 
     // Check for duplicate generation request to NovelAI API
-    const currentFingerprint = canonicalizeApiOptions(apiOpts, opts.upscale);
+    const currentFingerprint = canonicalizeApiOptions(apiOpts, opts.upscale, {
+        prompt_normalize: opts.prompt_normalize,
+        keep_newlines: opts.keep_newlines,
+        auto_char_numerize: opts.auto_char_numerize,
+        auto_clean_uc: opts.auto_clean_uc
+    });
     if (lastApiGenerationRecord && lastApiGenerationRecord.fingerprint === currentFingerprint && lastApiGenerationRecord.filename) {
         const candidatePath = path.join(__runtimeGr.getPath('images'), lastApiGenerationRecord.filename);
         if (fs.existsSync(candidatePath)) {
