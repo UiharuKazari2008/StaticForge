@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { JSONCheckpointManager } = require('./jsonCheckpoint');
 const { DEFAULT_AUTOFILL_RANKING } = require('./autofillRankingSettings');
+const { DEFAULT_APOCRYPHA_ACCESS } = require('./clientAddress');
 const {
     DEFAULT_REPLICATION_CONFIG,
     normalizeReplicationConfig,
@@ -611,6 +612,11 @@ class ConfigManager {
                         weatherDuration: 300000,
                         locationDuration: 300000,
                         weatherFailureDuration: 150000
+                    },
+                    apocrypha: {
+                        trustedProxies: DEFAULT_APOCRYPHA_ACCESS.trustedProxies.slice(),
+                        localCidrs: DEFAULT_APOCRYPHA_ACCESS.localCidrs.slice(),
+                        localGrim: DEFAULT_APOCRYPHA_ACCESS.localGrim
                     }
                 };
             case 'favorites':

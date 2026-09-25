@@ -2,13 +2,19 @@
 
 const fs = require('fs');
 const path = require('path');
+const {
+    resolveApocryphaAccess,
+    shouldShowGrim,
+    applyGrimCacheHeaders
+} = require('./clientAddress');
 
 /**
  * Apocrypha public zine: generated views under /{apocryphaPathUuid}.
  * Public hostname apocrypha.737.jp.net proxies here (UUID stays unlisted).
  * Underground hacker zine interior only — no window chrome.
- * Anonymous: public teaser only. Authenticated: Enshutsuka memories visible.
+ * Anonymous: public teaser only. Authenticated or local (config.apocrypha): Grim visible.
  * Reads data/apocrypha/current.json for issueLabel, webapp, kicker, counts, etc.
+ * grimImages are http(s) srcs only — this router does not serve image files.
  */
 
 function escapeHtml(value) {
@@ -1194,6 +1200,56 @@ function getApocryphaInterior(options) {
     return '<style>' + scopedCss + '</style>\n<div class="apocrypha-interior">' + interior + '</div>';
 }
 
+function readApocryphaAccessConfig(globalResources) {
+    // modules/globalResources.js getConfig({ path })
+    if (!globalResources) return null;
+    try {
+        return globalResources.getConfig({ path: 'apocrypha' });
+    } catch (_err) {
+        return null;
+    }
+}
+
+function parseApocryphaRelPath(rel) {
+    const pathOnly = String(rel || '/').split('?')[0];
+    const archiveMatch = /^\/archive\/([a-z0-9][a-z0-9.-]{0,79})\/?$/i.exec(pathOnly);
+    return { issueSlug: archiveMatch ? archiveMatch[1] : '' };
+}
+
+function decideShowGrim(req, globalResources) {
+    const loggedInSession = !!(req && req.session && req.session.authenticated);
+    const access = resolveApocryphaAccess(req, readApocryphaAccessConfig(globalResources));
+    return {
+        showGrim: shouldShowGrim({
+            loggedInSession,
+            local: access.local,
+            localGrim: access.config.localGrim
+        }),
+        loggedInSession,
+        access
+    };
+}
+
+function handleApocryphaRequest(req, res, options) {
+    const opts = options || {};
+    const issueSlug = opts.issueSlug ? String(opts.issueSlug) : '';
+    const loadIssue = opts.loadArchivedIssue || loadArchivedIssue;
+    const render = opts.renderApocrypha || renderApocrypha;
+    if (issueSlug && !loadIssue(issueSlug)) {
+        res.status(404).type('html').send('<!DOCTYPE html><title>Apocrypha</title>No such issue.');
+        return;
+    }
+    const decision = decideShowGrim(req, opts.globalResources);
+    if (decision.showGrim) {
+        applyGrimCacheHeaders(res);
+    }
+    res.status(200).type('html').send(render({
+        title: 'Apocrypha — MWF digest',
+        isGrimoire: decision.showGrim,
+        issueSlug
+    }));
+}
+
 function registerRoutes(app, { globalResources }) {
     const uuid = globalResources.getApocryphaPathUuid();
     if (!uuid) {
@@ -1202,27 +1258,13 @@ function registerRoutes(app, { globalResources }) {
     }
     const prefix = `/${uuid}`;
 
-    const sendView = (req, res, isGrimoire, issueSlug) => {
-        if (issueSlug && !loadArchivedIssue(issueSlug)) {
-            res.status(404).type('html').send('<!DOCTYPE html><title>Apocrypha</title>No such issue.');
-            return;
-        }
-        res.status(200).type('html').send(renderApocrypha({
-            title: 'Apocrypha — MWF digest',
-            isGrimoire,
-            issueSlug
-        }));
-    };
-
     app.use(prefix, (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
             return next();
         }
         const rel = String(req.url || req.path || '/').split('?')[0];
-        const archiveMatch = /^\/archive\/([a-z0-9][a-z0-9.-]{0,79})\/?$/i.exec(rel);
-        const issueSlug = archiveMatch ? archiveMatch[1] : '';
-        const isGrimoire = !!(req.session && req.session.authenticated);
-        return sendView(req, res, isGrimoire, issueSlug);
+        const { issueSlug } = parseApocryphaRelPath(rel);
+        return handleApocryphaRequest(req, res, { globalResources, issueSlug });
     });
 }
 
@@ -1235,5 +1277,8 @@ module.exports = {
     revokeApocryphaSection,
     listApocrypha,
     listArchivedIssues,
-    loadArchivedIssue
+    loadArchivedIssue,
+    handleApocryphaRequest,
+    decideShowGrim,
+    parseApocryphaRelPath
 };

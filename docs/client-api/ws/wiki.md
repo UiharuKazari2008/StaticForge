@@ -209,7 +209,7 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 **Handler:** modules/ws/handlers/110-wikiHandler.js → `handleGetApocryphaZine`
 
-Renders the Apocrypha zine interior HTML for Grimoire (`tagWikiSearchModal` / Apocrypha DSAP). Live issue by default; pass a slug to read an archived day.
+Renders the Apocrypha zine interior HTML for Grimoire (`tagWikiSearchModal` / Apocrypha DSAP). Live issue by default; pass a slug to read an archived day. Session WS always includes Grim. The public HTTP reader (`/{apocryphaPathUuid}`, including `/archive/<slug>`) shows Grim to logged-in cookies **or** local IPs via `config.apocrypha` (trusted-proxy XFF — see README).
 
 **Request fields:**
 

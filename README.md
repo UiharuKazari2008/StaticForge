@@ -140,7 +140,12 @@ Create `config.json` in the root directory:
   "loginKey": "your_login_key",
   "loginPin": "your_admin_pin",
   "readOnlyPin": "your_readonly_pin",
-  "sequenziaFolder": "/path/to/sequenzia/upload/folder"
+  "sequenziaFolder": "/path/to/sequenzia/upload/folder",
+  "apocrypha": {
+    "trustedProxies": ["127.0.0.0/8", "::1"],
+    "localCidrs": ["127.0.0.0/8", "::1"],
+    "localGrim": true
+  }
 }
 ```
 
@@ -159,6 +164,28 @@ Access at `http://localhost:9220`
 - **loginPin**: Admin PIN for full access
 - **readOnlyPin**: Read-only user PIN
 - **sequenziaFolder**: Path for external integrations
+- **apocrypha**: Public zine Grim access (see below). Defaults are loopback-only.
+
+### Apocrypha local Grim
+
+The public reader (`renderApocrypha` under `/{apocryphaPathUuid}`, including `/archive/<slug>`) shows Grim blocks (hidden `grim` sections + `grimImages`) to a **logged-in session** or to a request whose resolved client IP is in `apocrypha.localCidrs`.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `apocrypha.trustedProxies` | `127.0.0.0/8`, `::1` | IPs/CIDRs allowed to supply `X-Forwarded-For`. **The reverse-proxy socket peer Dreamscape actually sees MUST be listed here.** |
+| `apocrypha.localCidrs` | `127.0.0.0/8`, `::1` | IPs/CIDRs that count as local. Add the LAN subnet on the host. |
+| `apocrypha.localGrim` | `true` | Set `false` to keep Grim session-only (previous behavior). |
+
+Resolution is fail-closed (`modules/clientAddress.js`, not `getRealIP` / `isPrivateIP`):
+
+1. `peer = req.socket.remoteAddress` (IPv4-mapped `::ffff:a.b.c.d` normalized to IPv4). `req.ip` is not used.
+2. If `peer` is **not** in `trustedProxies`, XFF is ignored and `client = peer`. If that untrusted peer is private/ULA/link-local **and** sent XFF, the request is **not** local (misconfigured or spoofed proxy).
+3. If `peer` **is** a trusted proxy, XFF is parsed (all header instances, comma-split) and walked **right to left**, skipping trusted hops. The first non-trusted hop is the client. Invalid / empty / missing XFF → not local, except a loopback peer with no XFF (direct loopback).
+4. `local` = client matches `localCidrs`. Grim responses set `Cache-Control: private, no-store` and `Vary: Cookie, X-Forwarded-For`.
+
+Do not treat “private peer” as local: production clients hit a remote proxy that appends XFF and connects from a private address. Without that peer in `trustedProxies`, Grim would otherwise leak to the public internet. Home devices that open the public URL arrive as the home WAN IP and are **not** local; LAN users must hit Dreamscape directly.
+
+Tests: `pnpm test:apocrypha-local-grim` or `node --test scripts/test-apocrypha-local-grim.js`.
 
 ### Basic Usage
 1. **Create Images**: Use the Creator button to open the generation interface
