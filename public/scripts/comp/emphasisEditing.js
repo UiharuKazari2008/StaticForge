@@ -118,6 +118,9 @@ function applySetEmphasisWeight(textarea, weight) {
     const numeric = typeof weight === 'string' ? parseFloat(weight) : weight;
     if (!Number.isFinite(numeric)) return false;
 
+    // restorePromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+    restorePromptTextareaSavedSelection(textarea);
+
     if (textarea.selectionStart !== textarea.selectionEnd) {
         const result = applyEmphasisDirectly(textarea, numeric);
         if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
@@ -136,6 +139,9 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
     if (!target) {
         return false;
     }
+
+    // restorePromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+    restorePromptTextareaSavedSelection(target);
     
     const value = target.value;
     const selectionStart = target.selectionStart;
@@ -183,7 +189,10 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
             if (window.autoResizeTextarea) {
                 window.autoResizeTextarea(target);
             }
+            target.focus();
             target.setSelectionRange(managedResult.start, managedResult.end);
+            // clearPromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+            clearPromptTextareaSavedSelection(target);
             return managedResult;
         }
     }
@@ -269,7 +278,10 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
     setTextareaValuePreservingUndo(target, newValue);
     
     const newCursorPosition = replaceStart + emphasizedText.length;
+    target.focus();
     target.setSelectionRange(newCursorPosition, newCursorPosition);
+    // clearPromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+    clearPromptTextareaSavedSelection(target);
     
     dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
     hideCharacterAutocomplete();
@@ -291,6 +303,9 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
 
 function startEmphasisEditing(target) {
     if (!target) return false;
+
+    // restorePromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+    restorePromptTextareaSavedSelection(target);
 
     clearEmphasisModeParentContext();
     emphasisEditingTarget = target;
@@ -629,6 +644,9 @@ function applyEmphasisEditing() {
         emphasisEditingManagedId = null;
         emphasisEditingValueUnit = 'weight';
         removeEmphasisSelectionHighlight(target);
+        // clearPromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+        clearPromptTextareaSavedSelection(target);
+        target.focus();
         autoResizeTextarea(target);
         updateEmphasisHighlighting(target);
         if (isToolbarMode && toolbar) {
@@ -735,6 +753,7 @@ function applyEmphasisEditing() {
     setTextareaValuePreservingUndo(target, newValue);
         
         const newCursorPosition = replaceStart + emphasizedText.length;
+        target.focus();
         target.setSelectionRange(newCursorPosition, newCursorPosition);
         
         // Reset state and cleanup
@@ -743,6 +762,8 @@ function applyEmphasisEditing() {
         emphasisEditingSelection = null;
         emphasisEditingMode = 'normal';
         emphasisEditingManagedId = null;
+        // clearPromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+        clearPromptTextareaSavedSelection(target);
         
         // Trigger input event to update any dependent UI
         dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
@@ -898,6 +919,7 @@ function applyEmphasisEditing() {
     setTextareaValuePreservingUndo(target, newValue);
             // Set cursor position after the emphasized text
             const newCursorPosition = emphasisEditingSelection.start + emphasizedText.length;
+            target.focus();
             target.setSelectionRange(newCursorPosition, newCursorPosition);
         } else {
             // If no text selection, find the start and end of the tag by searching for delimiters
@@ -1008,6 +1030,7 @@ function applyEmphasisEditing() {
 
         // Set cursor position after the emphasized text
         const newCursorPosition = processedBefore.length + prefix.length + emphasizedText.length;
+        target.focus();
         target.setSelectionRange(newCursorPosition, newCursorPosition);
     }
 
@@ -1017,6 +1040,8 @@ function applyEmphasisEditing() {
     emphasisEditingSelection = null;
     emphasisEditingMode = 'normal';
     emphasisEditingManagedId = null;
+    // clearPromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+    clearPromptTextareaSavedSelection(target);
 
     // Trigger input event to update any dependent UI
     dispatchPromptTextareaInputEvent(target, { skipAutofill: true });

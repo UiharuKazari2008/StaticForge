@@ -1094,6 +1094,9 @@ function promptCtxPasteIntoTextarea(textarea) {
 function handlePromptTextareaContextMenuAction(action, textarea, item) {
     if (!textarea || !promptCtxIsPromptTextarea(textarea)) return;
 
+    // restorePromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+    restorePromptTextareaSavedSelection(textarea);
+
     const state = getPromptTextareaMenuState(textarea);
     const toolbar = window.promptTextareaToolbar
         ? window.promptTextareaToolbar.getToolbarFromTextarea(textarea)
@@ -1321,6 +1324,12 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
 function getPromptTextareaContextMenuConfig() {
     return {
         maxHeight: true,
+        beforeShow: (_event, target) => {
+            // beginPromptTextareaSelectionGesture: public/scripts/comp/emphasisSelection.js
+            beginPromptTextareaSelectionGesture(target);
+            // restorePromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+            restorePromptTextareaSavedSelection(target, { focus: false });
+        },
         onAction: (action, target, item) => {
             handlePromptTextareaContextMenuAction(action, target, item);
         },
