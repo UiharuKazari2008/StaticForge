@@ -129,6 +129,7 @@ class ServiceWorkerManager {
         this._loginBootCompleteResolvers = [];
         this._pendingCacheUpdateQueue = [];
         this._swMessageListenerAttached = false;
+        this._swWarmScheduled = false;
         this.installWizardToastId = null;
         this.installWizardUsed = false;
         this._installWizardEtaState = null;
@@ -483,7 +484,7 @@ class ServiceWorkerManager {
             if (!response.ok) {
                 return [];
             }
-            return response.json();
+            return await response.json();
         } catch (error) {
             console.warn('Manifest fetch failed or timed out — skipping update check');
             return [];
@@ -1044,10 +1045,14 @@ class ServiceWorkerManager {
     }
 
     _warmAfterSwActive() {
+        if (this._swWarmScheduled) {
+            return;
+        }
         const ready = navigator.serviceWorker && navigator.serviceWorker.ready;
         if (!ready || typeof ready.then !== 'function') {
             return;
         }
+        this._swWarmScheduled = true;
         ready.then(() => {
             if (!this.bootComplete) {
                 this.queueCacheUpdateUntilBoot(null, true);

@@ -85,6 +85,7 @@ function loadReconnectPrototype() {
     const WebSocket = { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 };
     const WebSocketClient = {
         DELAY_CONNECTING_WATCHDOG: 15000,
+        DELAY_CONNECTING_WATCHDOG_MAX: 60000,
         STALE_OPEN_MS: 90000,
         PING_LIVENESS_MISSES: 2
     };
@@ -94,7 +95,10 @@ function loadReconnectPrototype() {
         '_socketNeedsReplace',
         '_connectingIsStale',
         '_shouldProbeIdleSocket',
-        '_probeIdleSocketOnResume'
+        '_probeIdleSocketOnResume',
+        '_connectingWatchdogDelay',
+        '_bumpConnectingWatchdogDelay',
+        '_resetConnectingWatchdogDelay'
     ];
     for (const name of names) {
         bindMethod(proto, src, name, { WebSocketClient, WebSocket });
@@ -113,6 +117,7 @@ function makeFake(proto, overrides) {
         isConnecting: false,
         connectionLock: false,
         _connectingSince: 0,
+        _connectingWatchdogDelayMs: proto._WebSocketClient.DELAY_CONNECTING_WATCHDOG,
         _missedPingCount: 0,
         _lastPongAt: 0,
         _replacingSocket: false,
@@ -175,6 +180,19 @@ async function testIdleOpenSocketProbesInsteadOfReplace(proto) {
     assert.deepStrictEqual(fake.replaceCalls, []);
 }
 
+function testConnectingWatchdogBackoff(proto) {
+    const fake = makeFake(proto);
+    assert.strictEqual(fake._connectingWatchdogDelay(), 15000);
+    fake._bumpConnectingWatchdogDelay();
+    assert.strictEqual(fake._connectingWatchdogDelay(), 30000);
+    fake._bumpConnectingWatchdogDelay();
+    assert.strictEqual(fake._connectingWatchdogDelay(), 60000);
+    fake._bumpConnectingWatchdogDelay();
+    assert.strictEqual(fake._connectingWatchdogDelay(), 60000, 'watchdog backoff must cap at 60s');
+    fake._resetConnectingWatchdogDelay();
+    assert.strictEqual(fake._connectingWatchdogDelay(), 15000, 'successful open must reset watchdog backoff');
+}
+
 async function testIdleOpenSocketReplaceOnlyIfProbeTimesOut(proto) {
     const fake = makeFake(proto, {
         ws: { readyState: proto._WebSocket.OPEN, close() {} },
@@ -210,6 +228,7 @@ function main() {
         .then(() => testVisibilityAndFocusDuringConnectStartExactlyOneConnect(proto))
         .then(() => testIdleOpenSocketProbesInsteadOfReplace(proto))
         .then(() => testIdleOpenSocketReplaceOnlyIfProbeTimesOut(proto))
+        .then(() => testConnectingWatchdogBackoff(proto))
         .then(() => {
             console.log('test-ws-reconnect-lifecycle: ok');
         });

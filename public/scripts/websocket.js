@@ -512,6 +512,7 @@ class WebSocketClient {
     static DELAY_RECONNECT_INITIAL = 1000; // Initial reconnect delay (1 second)
     static DELAY_RECONNECT_MAX = 30000; // Maximum reconnect delay (30 seconds)
     static DELAY_CONNECTING_WATCHDOG = 15000; // Stuck CONNECTING / connectionLock
+    static DELAY_CONNECTING_WATCHDOG_MAX = 60000; // Cap connecting-watchdog backoff
     static STALE_OPEN_MS = 90000; // Half-open OPEN socket with no pong
     static PING_LIVENESS_MISSES = 2;
     static DELAY_CONNECTION_COOLDOWN = 60000; // Circuit breaker cooldown (1 minute)
@@ -711,6 +712,7 @@ class WebSocketClient {
         this.pingTimeout = null;
         this.healthCheckInterval = null;
         this._connectingWatchdog = null;
+        this._connectingWatchdogDelayMs = WebSocketClient.DELAY_CONNECTING_WATCHDOG;
         this._connectingSince = 0;
         this._missedPingCount = 0;
         this._lastPongAt = 0;
@@ -3420,6 +3422,7 @@ class WebSocketClient {
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = async () => {
+                this._resetConnectingWatchdogDelay();
                 this._releaseConnectLock();
                 this._missedPingCount = 0;
                 this._lastPongAt = Date.now();
@@ -4099,8 +4102,29 @@ class WebSocketClient {
         }
     }
 
+    _connectingWatchdogDelay() {
+        const delay = Number(this._connectingWatchdogDelayMs);
+        if (!Number.isFinite(delay) || delay <= 0) {
+            this._connectingWatchdogDelayMs = WebSocketClient.DELAY_CONNECTING_WATCHDOG;
+        }
+        return this._connectingWatchdogDelayMs;
+    }
+
+    _bumpConnectingWatchdogDelay() {
+        const current = this._connectingWatchdogDelay();
+        this._connectingWatchdogDelayMs = Math.min(
+            current * 2,
+            WebSocketClient.DELAY_CONNECTING_WATCHDOG_MAX
+        );
+    }
+
+    _resetConnectingWatchdogDelay() {
+        this._connectingWatchdogDelayMs = WebSocketClient.DELAY_CONNECTING_WATCHDOG;
+    }
+
     _armConnectingWatchdog() {
         this._clearConnectingWatchdog();
+        const delayMs = this._connectingWatchdogDelay();
         this._connectingWatchdog = setTimeout(() => {
             this._connectingWatchdog = null;
             if (this.isManualClose || this._isStartupHaltedForInstall()) {
@@ -4108,9 +4132,10 @@ class WebSocketClient {
             }
             if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
                 this.reconnectAttempts += 1;
+                this._bumpConnectingWatchdogDelay();
                 this._replaceStaleSocket('connecting-watchdog');
             }
-        }, WebSocketClient.DELAY_CONNECTING_WATCHDOG);
+        }, delayMs);
     }
 
     _releaseConnectLock() {

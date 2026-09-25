@@ -1175,10 +1175,14 @@ class SearchService {
             let settled = false;
             let timeout = null;
             let req = null;
+            let onAbort = null;
             const succeed = (value) => {
                 if (settled) return;
                 settled = true;
                 if (timeout) clearTimeout(timeout);
+                if (onAbort && abortSignal) {
+                    abortSignal.removeEventListener('abort', onAbort);
+                }
                 this.markRequestCompleted(sessionId, apiModel, requestId);
                 resolve(value);
             };
@@ -1186,6 +1190,9 @@ class SearchService {
                 if (settled) return;
                 settled = true;
                 if (timeout) clearTimeout(timeout);
+                if (onAbort && abortSignal) {
+                    abortSignal.removeEventListener('abort', onAbort);
+                }
                 this.markRequestCompleted(sessionId, apiModel, requestId);
                 reject(err instanceof Error ? err : new Error(String(err)));
             };
@@ -1262,14 +1269,11 @@ class SearchService {
                 fail(abortSignal.aborted ? this._supersededSearchError() : error);
             });
 
-            req.on('close', () => {
-                if (timeout) clearTimeout(timeout);
-            });
-
-            abortSignal.addEventListener('abort', () => {
+            onAbort = () => {
                 try { req.destroy(); } catch (_err) { /* ignore */ }
                 fail(this._supersededSearchError());
-            });
+            };
+            abortSignal.addEventListener('abort', onAbort, { once: true });
 
             req.end();
         });

@@ -193,6 +193,48 @@ async function testManifestTimeoutReturnsEmpty(proto) {
     }
 }
 
+async function testManifestJsonTimeoutReturnsEmpty(proto) {
+    const prevFetch = global.fetch;
+    global.fetch = async () => ({
+        ok: true,
+        async json() {
+            const err = new Error('The operation was aborted due to timeout');
+            err.name = 'TimeoutError';
+            throw err;
+        }
+    });
+    try {
+        const mgr = makeManager(proto);
+        const manifest = await mgr._fetchManifest();
+        assert.deepStrictEqual(manifest, []);
+    } finally {
+        global.fetch = prevFetch;
+    }
+}
+
+async function testWarmAfterSwActiveRunsOnce(proto) {
+    return withNavigator({
+        serviceWorker: {
+            controller: null,
+            addEventListener() {},
+            removeEventListener() {},
+            ready: Promise.resolve()
+        }
+    }, async () => {
+        const mgr = makeManager(proto, { bootComplete: true });
+        mgr._warmAfterSwActive();
+        mgr._warmAfterSwActive();
+        mgr._attachLateServiceWorkerRegistration(Promise.resolve({
+            addEventListener() {},
+            installing: null,
+            waiting: null,
+            active: { state: 'activated' }
+        }));
+        await delay(20);
+        assert.strictEqual(mgr.warmed, 1, 'background warm must run once');
+    });
+}
+
 async function testReadyTimeoutReturnsTimedOut(proto) {
     return withNavigator({
         serviceWorker: {
@@ -244,6 +286,8 @@ async function testLateRegisterStillWires(proto) {
 function testNoFatalRegisterDiscard(src) {
     assert.ok(src.includes('_attachLateServiceWorkerRegistration'), 'late register wiring missing');
     assert.ok(src.includes('_warmAfterSwActive'), 'background warm missing');
+    assert.ok(src.includes('return await response.json()'), 'manifest json() must be awaited so timeout is caught');
+    assert.ok(src.includes('_swWarmScheduled'), 'background warm must be single-flight');
     assert.ok(src.includes('timedOut: true'), 'ready timeout must report timedOut');
     assert.ok(!src.includes('Boot gate timed out — continuing from network'), '12s boot gate must be gone');
     assert.ok(!src.includes('Service worker failed to become ready in time'), 'ready path must not reject fatally');
@@ -267,8 +311,10 @@ function main() {
     return Promise.resolve()
         .then(() => testEnsureBootCompleteDoesNotForceResolve(proto))
         .then(() => testManifestTimeoutReturnsEmpty(proto))
+        .then(() => testManifestJsonTimeoutReturnsEmpty(proto))
         .then(() => testReadyTimeoutReturnsTimedOut(proto))
         .then(() => testLateRegisterStillWires(proto))
+        .then(() => testWarmAfterSwActiveRunsOnce(proto))
         .then(() => {
             console.log('test-offline-cache-boot: ok');
         });
