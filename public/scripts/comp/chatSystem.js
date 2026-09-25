@@ -1,5 +1,9 @@
 // Chat System JavaScript
 
+// JULES: perf optimization — static Sets for O(1) chat event type lookups and zero heap allocations on render/stream
+const CHAT_METADATA_EVENT_TYPES = new Set(['memory', 'environment', 'sensory', 'emotion', 'location', 'timeofday', 'innerspeech', 'currplan', 'futureplans', 'trustlevel', 'inventory', 'offlinemessage']);
+const CHAT_VISIBLE_EVENT_TYPES = new Set(['speechdirect', 'speech', 'reply', 'actions', 'sfx', 'myname']);
+
 const CHAT_VERBOSITY_OPTIONS = [
     { value: 'auto', name: 'Auto' },
     { value: '1', name: 'Brief' },
@@ -702,13 +706,9 @@ class ChatSystem {
     }
     
     renderEventGroup(events, avatarSrc, container) {
-        // Define which events are "4th wall metadata"
-        const metadataEventTypes = ['memory', 'environment', 'sensory', 'emotion', 'location', 'timeofday', 'innerspeech', 'currplan', 'futureplans', 'trustlevel', 'inventory', 'offlinemessage'];
-        const visibleEventTypes = ['speechdirect', 'speech', 'reply', 'actions', 'sfx', 'myname'];
-        
         // Separate events into visible and metadata
-        const visibleEvents = events.filter(e => visibleEventTypes.includes(e.event_type));
-        const metadataEvents = events.filter(e => metadataEventTypes.includes(e.event_type));
+        const visibleEvents = events.filter(e => CHAT_VISIBLE_EVENT_TYPES.has(e.event_type));
+        const metadataEvents = events.filter(e => CHAT_METADATA_EVENT_TYPES.has(e.event_type));
         
         // Render visible events as a single message bubble if present
         if (visibleEvents.length > 0) {
@@ -1513,11 +1513,8 @@ class ChatSystem {
         
         // Add new events from this update
         if (message.events && Array.isArray(message.events)) {
-            // Define visible event types (events that should be displayed)
-            const visibleEventTypes = ['speechdirect', 'speech', 'reply', 'actions', 'sfx', 'myname'];
-            
             // Check if this is the first update with displayable events
-            const hasVisibleEvents = message.events.some(e => visibleEventTypes.includes(e.type) && e.content);
+            const hasVisibleEvents = message.events.some(e => CHAT_VISIBLE_EVENT_TYPES.has(e.type) && e.content);
             const wasEmpty = accumulatedEvents.length === 0;
             
             // Hide typing indicator when first displayable content arrives
@@ -1570,13 +1567,9 @@ class ChatSystem {
             return;
         }
         
-        // Define which events are "4th wall metadata" (same as in renderEventGroup)
-        const metadataEventTypes = ['memory', 'environment', 'sensory', 'emotion', 'location', 'timeofday', 'innerspeech', 'currplan', 'futureplans', 'trustlevel', 'inventory', 'offlinemessage'];
-        const visibleEventTypes = ['speechdirect', 'speech', 'reply', 'actions', 'sfx', 'myname'];
-        
         // Separate events into visible and metadata
-        const visibleEvents = events.filter(e => visibleEventTypes.includes(e.type));
-        const metadataEvents = events.filter(e => metadataEventTypes.includes(e.type));
+        const visibleEvents = events.filter(e => CHAT_VISIBLE_EVENT_TYPES.has(e.type));
+        const metadataEvents = events.filter(e => CHAT_METADATA_EVENT_TYPES.has(e.type));
         
         let contentHtml = '';
         
