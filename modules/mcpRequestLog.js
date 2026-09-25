@@ -8,8 +8,12 @@ const { monitorEventLoopDelay } = require('perf_hooks');
 
 const LAG_WARN_NS = 500 * 1e6;
 const LAG_WARN_COOLDOWN_MS = 30000;
+const LAG_SAMPLE_MS = 1000;
+const MCP_LOG_TOKEN_MAX = 64;
+const MCP_LOG_TOKEN_RE = /[^A-Za-z0-9_./:-]+/g;
 
 let lagHistogram = null;
+let lagTimer = null;
 let lastLagWarnAt = 0;
 
 function formatTimestamp(now) {
@@ -59,31 +63,31 @@ function redactMcpPath(reqPath, uuid) {
     return '/{mcp}';
 }
 
+function sanitizeMcpLogToken(value) {
+    if (value == null) return null;
+    const cleaned = String(value).replace(MCP_LOG_TOKEN_RE, '').slice(0, MCP_LOG_TOKEN_MAX);
+    return cleaned || null;
+}
+
 function peekMcpRpc(body) {
     const items = Array.isArray(body) ? body : (body && typeof body === 'object' && !Array.isArray(body) ? [body] : []);
     if (!items.length) return { rpcMethod: null, tool: null, batch: null };
     const first = items[0];
-    const rpcMethod = first && typeof first.method === 'string' ? first.method : null;
+    const rpcMethod = sanitizeMcpLogToken(first && typeof first.method === 'string' ? first.method : null);
     let tool = null;
     if (rpcMethod === 'tools/call' && first.params && typeof first.params === 'object' && !Array.isArray(first.params)) {
-        const name = String(first.params.name || '').trim();
-        tool = name || null;
+        tool = sanitizeMcpLogToken(first.params.name);
     }
     return { rpcMethod, tool, batch: items.length > 1 ? items.length : null };
 }
 
 function peekMcpActor(req) {
-    // resolveActorName / resolveBindKey: modules/agentClientBridge.js
     const auth = req && req.applicationAuth;
-    const raw = auth && (auth.appName != null ? auth.appName : auth.applicationAppName);
-    const name = String(raw || '').trim() || null;
-    let bind = null;
-    if (auth && auth.applicationKeyId) bind = `appkey:${auth.applicationKeyId}`;
-    else if (req && req.authMethod === 'dev_login_key') bind = 'dev_login_key';
-    else if (auth && auth.sessionId) bind = String(auth.sessionId);
-    else if (req && req.sessionId) bind = `session:${req.sessionId}`;
-    if (name && bind) return `${name}/${bind}`;
-    return name || bind || null;
+    const keyId = auth && auth.applicationKeyId != null ? sanitizeMcpLogToken(auth.applicationKeyId) : null;
+    if (!keyId) return null;
+    const raw = auth.appName != null ? auth.appName : auth.applicationAppName;
+    const name = raw != null ? sanitizeMcpLogToken(raw) : null;
+    return name ? `${name}/appkey:${keyId}` : `appkey:${keyId}`;
 }
 
 function peekMcpIp(req) {
@@ -111,15 +115,41 @@ function inferMcpOutcome(statusCode, body) {
     return 'ok';
 }
 
+function peekSseRpcOutcome(chunk) {
+    if (typeof chunk !== 'string') return null;
+    const marker = 'data: ';
+    const idx = chunk.indexOf(marker);
+    if (idx === -1) return null;
+    const rest = chunk.slice(idx + marker.length);
+    const end = rest.indexOf('\n');
+    const jsonText = (end === -1 ? rest : rest.slice(0, end)).trim();
+    if (!jsonText.startsWith('{') || !jsonText.endsWith('}')) return null;
+    try {
+        return inferMcpOutcome(200, JSON.parse(jsonText));
+    } catch (_err) {
+        return null;
+    }
+}
+
+function shouldSkipMcpCallLog(req, peeked) {
+    const httpMethod = req && req.method ? String(req.method).toUpperCase() : '';
+    if (httpMethod === 'GET') return true;
+    const rpc = peeked || peekMcpRpc(req && req.body);
+    return rpc.rpcMethod === 'notifications/initialized';
+}
+
 function formatMcpCallLine(info) {
     const ts = info.timestamp || formatTimestamp();
     const parts = [`📋 [${ts}] MCP`, info.ip || 'unknown'];
     if (info.httpMethod) parts.push(String(info.httpMethod));
     if (info.path) parts.push(String(info.path));
-    if (info.rpcMethod) parts.push(String(info.rpcMethod));
-    if (info.tool) parts.push(String(info.tool));
+    const rpcMethod = sanitizeMcpLogToken(info.rpcMethod);
+    const tool = sanitizeMcpLogToken(info.tool);
+    if (rpcMethod) parts.push(rpcMethod);
+    if (tool) parts.push(tool);
     if (info.batch) parts.push(`batch=${info.batch}`);
-    if (info.actor) parts.push(`actor=${info.actor}`);
+    const actor = sanitizeMcpLogToken(info.actor);
+    if (actor) parts.push(`actor=${actor}`);
     parts.push(`status=${info.status != null ? info.status : '-'}`);
     parts.push(info.outcome || 'ok');
     parts.push(`${Number(info.durationMs) || 0}ms`);
@@ -130,17 +160,26 @@ function ensureLagMonitor() {
     if (lagHistogram) return;
     lagHistogram = monitorEventLoopDelay({ resolution: 20 });
     lagHistogram.enable();
+    lagTimer = setInterval(() => {
+        maybeWarnEventLoopLag();
+    }, LAG_SAMPLE_MS);
+    if (lagTimer && typeof lagTimer.unref === 'function') lagTimer.unref();
+}
+
+function sampleEventLoopLag() {
+    if (!lagHistogram) return null;
+    const p99 = lagHistogram.percentile(99);
+    lagHistogram.reset();
+    return p99;
 }
 
 function maybeWarnEventLoopLag(nowMs) {
-    ensureLagMonitor();
-    const ns = lagHistogram.max;
-    lagHistogram.reset();
-    if (ns < LAG_WARN_NS) return false;
+    const p99 = sampleEventLoopLag();
+    if (p99 == null || p99 < LAG_WARN_NS) return false;
     const now = nowMs != null ? Number(nowMs) : Date.now();
     if (now - lastLagWarnAt < LAG_WARN_COOLDOWN_MS) return false;
     lastLagWarnAt = now;
-    console.log(`⚠️ [${formatTimestamp(now)}] MCP event-loop lag ${Math.round(ns / 1e6)}ms`);
+    console.log(`⚠️ [${formatTimestamp(now)}] MCP event-loop lag ${Math.round(p99 / 1e6)}ms`);
     return true;
 }
 
@@ -148,10 +187,12 @@ function attachMcpRequestLog(req, res, options) {
     if (req && req._mcpCallLogAttached) return false;
     const opts = options && typeof options === 'object' ? options : {};
     if (!isMcpRequestLogEnabled(opts.globalResources)) return false;
+    const peeked = peekMcpRpc(req && req.body);
+    if (shouldSkipMcpCallLog(req, peeked)) return false;
     if (req) req._mcpCallLogAttached = true;
+    ensureLagMonitor();
 
     const start = Date.now();
-    const peeked = peekMcpRpc(req && req.body);
     const ip = peekMcpIp(req);
     const httpMethod = req && req.method ? String(req.method) : null;
     const path = redactMcpPath(req && (req.path || req.url), opts.uuid);
@@ -162,7 +203,6 @@ function attachMcpRequestLog(req, res, options) {
     const emit = (outcome) => {
         if (emitted) return;
         emitted = true;
-        maybeWarnEventLoopLag();
         console.log(formatMcpCallLine({
             ip,
             httpMethod,
@@ -185,6 +225,17 @@ function attachMcpRequestLog(req, res, options) {
         };
     }
 
+    if (res && typeof res.write === 'function') {
+        const originalWrite = res.write.bind(res);
+        res.write = function mcpCallLogWrite(chunk, encoding, cb) {
+            if (outcomeHint == null) {
+                const sseOutcome = peekSseRpcOutcome(chunk);
+                if (sseOutcome) outcomeHint = sseOutcome;
+            }
+            return originalWrite(chunk, encoding, cb);
+        };
+    }
+
     if (res && typeof res.on === 'function') {
         res.on('finish', () => {
             finished = true;
@@ -200,13 +251,19 @@ function attachMcpRequestLog(req, res, options) {
 module.exports = {
     formatTimestamp,
     formatMcpCallLine,
+    sanitizeMcpLogToken,
+    MCP_LOG_TOKEN_MAX,
     redactMcpPath,
     isMcpRpcPath,
     isMcpRequestLogEnabled,
+    shouldSkipMcpCallLog,
     peekMcpRpc,
     peekMcpActor,
     peekMcpIp,
+    peekSseRpcOutcome,
     inferMcpOutcome,
     attachMcpRequestLog,
-    maybeWarnEventLoopLag
+    maybeWarnEventLoopLag,
+    sampleEventLoopLag,
+    LAG_SAMPLE_MS
 };
