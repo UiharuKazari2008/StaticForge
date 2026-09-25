@@ -252,12 +252,21 @@ class ServiceWorkerManager {
         if (this.bootComplete) {
             return Promise.resolve();
         }
-        if (this.bootPromise) {
-            return this.bootPromise;
-        }
-        return new Promise((resolve) => {
+        const pending = this.bootPromise || new Promise((resolve) => {
             this._bootCompleteResolvers.push(resolve);
         });
+        return Promise.race([
+            pending,
+            new Promise((resolve) => {
+                setTimeout(() => {
+                    if (!this.bootComplete) {
+                        console.warn('Boot gate timed out — continuing from network');
+                        this._resolveBootComplete();
+                    }
+                    resolve();
+                }, 12000);
+            })
+        ]);
     }
 
     ensureLoginBootComplete() {
@@ -276,6 +285,7 @@ class ServiceWorkerManager {
         this.bootComplete = true;
         this.bootPhase = 'complete';
         document.body.classList.remove('dreamscape-install-wizard');
+        document.body.classList.remove('initializing');
         this._hideInstallWizardUi();
         this._flushPendingCacheUpdates();
         const resolvers = this._bootCompleteResolvers.splice(0);
@@ -477,7 +487,8 @@ class ServiceWorkerManager {
             headers: {
                 'X-Service-Worker-Version': '2.0',
                 'X-Requested-With': 'ServiceWorker'
-            }
+            },
+            signal: AbortSignal.timeout(8000)
         });
         if (!response.ok) {
             return [];
@@ -905,7 +916,12 @@ class ServiceWorkerManager {
                 this._showBootUiEarly('Loading offline cache…');
 
                 // Register service worker (sw.js is served early on the server)
-                this.swRegistration = await navigator.serviceWorker.register('/sw.js');
+                this.swRegistration = await Promise.race([
+                    navigator.serviceWorker.register('/sw.js'),
+                    new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('Service worker registration timed out')), 8000);
+                    })
+                ]);
                 console.log('Service Worker registered:', this.swRegistration);
 
                 // Post-boot only — runBootSequence owns manifest/update checks during startup
@@ -977,7 +993,9 @@ class ServiceWorkerManager {
                 if (window.isLoginPage) {
                     this._resolveLoginBootComplete();
                 } else {
-                    if (error.message !== 'Server did not become ready in time') {
+                    const skipFatal = error.message === 'Server did not become ready in time'
+                        || error.message === 'Service worker registration timed out';
+                    if (!skipFatal) {
                         this._showBootFatalError(error);
                     }
                     this._resolveBootComplete();
@@ -1079,17 +1097,16 @@ class ServiceWorkerManager {
             // Initial check
             checkReady();
 
-            // Hard wait — no timeout bypass; boot gate requires a controlling SW
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            const timeoutMs = isIOS ? 120000 : 90000;
+            // Bounded wait — continue from network so "Loading offline cache…" cannot stick
+            const timeoutMs = 8000;
 
             this.swReadyTimeout = setTimeout(() => {
-                console.error('Service Worker ready timeout — boot blocked');
+                console.warn('Service Worker ready timeout — continuing from network');
                 if (checkInterval) {
                     clearInterval(checkInterval);
                 }
                 navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
-                reject(new Error('Service worker failed to become ready in time'));
+                resolve();
             }, timeoutMs);
         });
     }
