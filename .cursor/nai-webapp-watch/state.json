@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "capturedAt": "2026-09-21T15:08:50.539Z",
+  "capturedAt": "2026-09-25T14:32:45.288Z",
   "policy": "Public endpoints only. No JWT, recaptcha, cookies, or generate APIs.",
   "sources": {
     "home": {
@@ -8,15 +8,15 @@
       "status": 200,
       "bytes": 152766,
       "chunkCount": 10,
-      "chunkPathsSha256": "31b73a17b29b786c040cfec076368e4495dc4e4d67ea3ebe8a67d4fe67154289",
+      "chunkPathsSha256": "81504b458bbe67b6c0981cff5955b45eaac81706a5629cee416689d2e82791f5",
       "chunkPathsSample": [
         "/_next/static/chunks/133-b47bc6fc8cb2d637.js",
         "/_next/static/chunks/1458-731ab0e50e5410f1.js",
         "/_next/static/chunks/4870-2c40351ed4c49087.js",
         "/_next/static/chunks/7311-5eb2760447762c74.js",
         "/_next/static/chunks/framework-7e74bf61ca06990a.js",
-        "/_next/static/chunks/main-1d6d1adb59bd2fdf.js",
-        "/_next/static/chunks/pages/_app-82fe03e3291d150d.js",
+        "/_next/static/chunks/main-9b294d32a0c9c9f3.js",
+        "/_next/static/chunks/pages/_app-8f8e25e0af037617.js",
         "/_next/static/chunks/pages/index-f7fb0e87465d6f82.js"
       ]
     },
@@ -41,7 +41,7 @@
       "bytes": 44804,
       "etag": null,
       "lastModified": null,
-      "sha256": "e556330ef5d2ecf4e307a31ab9a3220e12e736e67db4434710a82e8e3a85a585"
+      "sha256": "22c51a1e05679d7a01b6fbb222e413bb7752ad9ca970747bdc928016896c5cda"
     },
     "blogUsage": {
       "url": "https://blog.novelai.net/subscription-updates-usage-limits-2025-88a208d5d9c5",
