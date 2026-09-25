@@ -918,6 +918,9 @@ class ContextMenuController {
             if (clickTarget && wasShortTap && !this.hasScrolled && clickTarget.hasAttribute('data-click-menu')) {
                 const touch = e.changedTouches && e.changedTouches[0];
                 if (touch) {
+                    // Drop this tap's ghost mousedown/click: it lands on the new overlay and steals focus
+                    // from a focused input, and the keyboard collapse then resizes/scrolls the menu shut.
+                    if (e.cancelable) e.preventDefault();
                     const syntheticTouchEvent = {
                         touches: [{ clientX: touch.clientX, clientY: touch.clientY }],
                         clientX: touch.clientX,
@@ -1113,6 +1116,13 @@ class ContextMenuController {
 
         if (isTouch && trigger !== 'context') {
             this._suppressClickMenuClickUntil = Date.now() + 400;
+            // Tap-opened menus get the long-press tolerance: URL bar / keyboard resize, tiny scroll
+            // and window blur from the opening tap must not dismiss. A new outside tap still closes.
+            this._touchOpenedMenu = true;
+            this._shieldViewportWidth = window.innerWidth;
+            this._shieldScrollX = window.scrollX || 0;
+            this._shieldScrollY = window.scrollY || 0;
+            this._touchDismissShieldUntil = Date.now() + 400;
         }
 
         // Add position-based class for corner press effect
