@@ -344,7 +344,7 @@ function registerPackets(handlersCtx) {
     regFn('generate_nax_custom_tag', handleGenerateNaxCustomTag, NAX_DESTRUCTIVE);
     regFn('delete_nax_custom_tag', handleDeleteNaxCustomTag, NAX_DESTRUCTIVE);
     regFn('get_nax_vibes_gallery', handleGetNaxVibesGallery);
-    regFn('clear_nax_vibes_gallery_cache', handleClearNaxVibesGalleryCache);
+    regFn('clear_nax_vibes_gallery_cache', handleClearNaxVibesGalleryCache, NAX_DESTRUCTIVE); // JULES: Fix privilege leak for read-only clients on NAX vibes cache clear
 }
 
 module.exports = {

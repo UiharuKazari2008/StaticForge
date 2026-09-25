@@ -447,6 +447,7 @@ class WebSocketMessageHandlers {
             'set_nax_hidden',
             'generate_nax_custom_tag',
             'delete_nax_custom_tag',
+            'clear_nax_vibes_gallery_cache', // JULES: Fix privilege leak for read-only clients on NAX vibes cache clear
             'novel_update',
             'novel_generate',
             'novel_undo',
