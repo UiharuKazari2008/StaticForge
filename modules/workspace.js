@@ -1862,6 +1862,18 @@ class WorkspaceManager {
         const ownershipChanges = [];
         const pinChanges = [];
 
+        // perf optimization — pre-calculate sets for O(1) lookups instead of O(N) array includes inside loops
+        const pinnedSets = {};
+        const scrappedSets = {};
+        Object.entries(workspaces).forEach(([workspaceId, workspace]) => {
+            if (workspace.pinned) {
+                pinnedSets[workspaceId] = new Set(workspace.pinned);
+            }
+            if (workspace.scraps) {
+                scrappedSets[workspaceId] = new Set(workspace.scraps);
+            }
+        });
+
         // Check each file to see if it's pinned or scrapped in any workspace
         filenames.forEach(filename => {
             // Find which workspaces have this file pinned or scrapped
@@ -1870,11 +1882,11 @@ class WorkspaceManager {
 
             Object.entries(workspaces).forEach(([workspaceId, workspace]) => {
                 // Check if file is pinned in this workspace
-                if (workspace.pinned && workspace.pinned.includes(filename)) {
+                if (pinnedSets[workspaceId] && pinnedSets[workspaceId].has(filename)) {
                     pinnedInWorkspaces.push(workspaceId);
                 }
                 // Check if file is scrapped in this workspace
-                if (workspace.scraps && workspace.scraps.includes(filename)) {
+                if (scrappedSets[workspaceId] && scrappedSets[workspaceId].has(filename)) {
                     scrappedInWorkspaces.push(workspaceId);
                 }
             });
@@ -1885,6 +1897,7 @@ class WorkspaceManager {
                     // Remove from source workspace
                     if (workspaces[workspaceId].pinned) {
                         workspaces[workspaceId].pinned = workspaces[workspaceId].pinned.filter(f => f !== filename);
+                        pinnedSets[workspaceId].delete(filename);
                     }
                     pinChanges.push({
                         op: 'remove', filename, workspaceId
@@ -1895,9 +1908,11 @@ class WorkspaceManager {
                 // Add to target workspace (avoid duplicates)
                 if (!workspaces[targetWorkspaceId].pinned) {
                     workspaces[targetWorkspaceId].pinned = [];
+                    pinnedSets[targetWorkspaceId] = new Set();
                 }
-                if (!workspaces[targetWorkspaceId].pinned.includes(filename)) {
+                if (!pinnedSets[targetWorkspaceId].has(filename)) {
                     workspaces[targetWorkspaceId].pinned.push(filename);
+                    pinnedSets[targetWorkspaceId].add(filename);
                     pinChanges.push({
                         op: 'upsert', filename, workspaceId: targetWorkspaceId
                     });
@@ -1909,6 +1924,7 @@ class WorkspaceManager {
                 scrappedInWorkspaces.forEach(workspaceId => {
                     if (workspaces[workspaceId].scraps) {
                         workspaces[workspaceId].scraps = workspaces[workspaceId].scraps.filter(f => f !== filename);
+                        scrappedSets[workspaceId].delete(filename);
                     }
                     ownershipChanges.push({
                         op: 'remove', filename, workspaceId, bucket: 'scraps'
@@ -1918,9 +1934,11 @@ class WorkspaceManager {
 
                 if (!workspaces[targetWorkspaceId].scraps) {
                     workspaces[targetWorkspaceId].scraps = [];
+                    scrappedSets[targetWorkspaceId] = new Set();
                 }
-                if (!workspaces[targetWorkspaceId].scraps.includes(filename)) {
+                if (!scrappedSets[targetWorkspaceId].has(filename)) {
                     workspaces[targetWorkspaceId].scraps.push(filename);
+                    scrappedSets[targetWorkspaceId].add(filename);
                     ownershipChanges.push({
                         op: 'upsert', filename, workspaceId: targetWorkspaceId, bucket: 'scraps'
                     });
