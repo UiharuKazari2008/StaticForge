@@ -1,4 +1,5 @@
 const assert = require('assert');
+const { EventEmitter } = require('events');
 const { SearchService } = require('../modules/searchService');
 
 function stubResources() {
@@ -187,9 +188,144 @@ function testClientTimeoutPolicy() {
     assert.ok(src.includes('isSilentTickerRequest(request.type)'), 'stuckHidden must honor silent ticker types');
 }
 
+function fakeHttps(onRequest) {
+    return {
+        request(_opts, cb) {
+            const req = new EventEmitter();
+            req.destroy = () => {
+                req.emit('error', new Error('destroyed'));
+            };
+            req.end = () => {
+                onRequest(req, cb);
+            };
+            return req;
+        }
+    };
+}
+
+function emitResponse(cb, { statusCode = 200, encoding = 'gzip', chunks = [Buffer.from('{}')], error = null, endDelay = 0 } = {}) {
+    const res = new EventEmitter();
+    res.statusCode = statusCode;
+    res.headers = { 'content-encoding': encoding };
+    cb(res);
+    if (error) {
+        setImmediate(() => res.emit('error', error));
+        return res;
+    }
+    setImmediate(() => {
+        for (const chunk of chunks) {
+            res.emit('data', chunk);
+        }
+        setTimeout(() => res.emit('end'), endDelay);
+    });
+    return res;
+}
+
+function tagRequestService() {
+    const service = new SearchService(stubResources());
+    service.globalResources.getApiKeyManager = () => ({
+        recordApiSuccess() {},
+        recordApiFailure() {}
+    });
+    return service;
+}
+
+async function assertSettles(promise, rejectMatch) {
+    const raced = await Promise.race([
+        promise.then((value) => ({ ok: true, value })).catch((error) => ({ ok: false, error })),
+        delay(250).then(() => ({ hung: true }))
+    ]);
+    assert.notStrictEqual(raced.hung, true, 'suggest-tags request hung');
+    if (rejectMatch) {
+        assert.strictEqual(raced.ok, false, 'suggest-tags request should reject');
+        assert.match(String(raced.error && raced.error.message), rejectMatch);
+    }
+    return raced;
+}
+
+async function testSuggestTagsErrorPathsSettle() {
+    const url = 'https://image.novelai.net/ai/generate-image/suggest-tags?model=v5&prompt=cat';
+
+    const decompressRejects = tagRequestService()._httpsSuggestTagsRequest({
+        url,
+        headers: {},
+        abortSignal: new AbortController().signal,
+        sessionId: 'sess',
+        apiModel: 'v5',
+        requestId: 'req-decompress',
+        httpsModule: fakeHttps((_req, cb) => emitResponse(cb)),
+        decompress: async () => {
+            throw new Error('bad gzip');
+        }
+    });
+    await assertSettles(decompressRejects, /bad gzip/);
+
+    const streamRejects = tagRequestService()._httpsSuggestTagsRequest({
+        url,
+        headers: {},
+        abortSignal: new AbortController().signal,
+        sessionId: 'sess',
+        apiModel: 'v5',
+        requestId: 'req-stream',
+        httpsModule: fakeHttps((_req, cb) => emitResponse(cb, { error: new Error('socket reset') })),
+        decompress: async (buf) => buf
+    });
+    await assertSettles(streamRejects, /Response error: socket reset/);
+
+    const abortController = new AbortController();
+    const abortRejects = tagRequestService()._httpsSuggestTagsRequest({
+        url,
+        headers: {},
+        abortSignal: abortController.signal,
+        sessionId: 'sess',
+        apiModel: 'v5',
+        requestId: 'req-abort',
+        httpsModule: fakeHttps((_req, cb) => {
+            emitResponse(cb, { endDelay: 40 });
+            setImmediate(() => abortController.abort());
+        }),
+        decompress: async (buf) => buf
+    });
+    await assertSettles(abortRejects, /superseded/);
+
+    const alreadyAborted = new AbortController();
+    alreadyAborted.abort();
+    const preAbortRejects = tagRequestService()._httpsSuggestTagsRequest({
+        url,
+        headers: {},
+        abortSignal: alreadyAborted.signal,
+        sessionId: 'sess',
+        apiModel: 'v5',
+        requestId: 'req-preabort',
+        httpsModule: fakeHttps(() => {
+            throw new Error('should not start https request');
+        }),
+        decompress: async (buf) => buf
+    });
+    await assertSettles(preAbortRejects, /superseded/);
+
+    const success = tagRequestService()._httpsSuggestTagsRequest({
+        url,
+        headers: {},
+        abortSignal: new AbortController().signal,
+        sessionId: 'sess',
+        apiModel: 'v5',
+        requestId: 'req-ok',
+        httpsModule: fakeHttps((_req, cb) => emitResponse(cb, {
+            encoding: 'identity',
+            chunks: [Buffer.from(JSON.stringify({ tags: [{ tag: 'cat', count: 1, confidence: 1 }] }))]
+        })),
+        decompress: async (buf) => buf
+    });
+    const settled = await assertSettles(success);
+    assert.strictEqual(settled.ok, true);
+    assert.strictEqual(settled.value.tags[0].tag, 'cat');
+}
+
 async function main() {
     await testSearchTurnTimeoutUnblocksLane();
     await testQueuedSearchKeepsOwnBudgetAndRequestId();
+    await testSuggestTagsErrorPathsSettle();
     testClearSessionSearchState();
     testClearSearchStateForSocketKeepsLiveTab();
     testClientTimeoutPolicy();
