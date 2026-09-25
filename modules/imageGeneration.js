@@ -125,6 +125,7 @@ const { generateMobilePreviews } = require('./previewUtils');
 const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const { upscaleImageCore, resolveUpscaleRatio } = require('./imageUpscaling');
 const { canonicalizeApiOptions } = require('./generationFingerprint');
+const { mapAllCharacterPromptsToApi } = require('./characterPromptApiFormat');
 
 async function ensureForgeDataBlurhash(forgeData, imageBuffer) {
     if (!forgeData || forgeData.blurhash || !imageBuffer) return forgeData;
@@ -4310,40 +4311,16 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
 
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
-        // Post-process character prompts: replace 1girl/1boy with girl/boy (skipped when auto char numerize is off)
-        const processedCharacterPrompts = opts.allCharacterPrompts.map(char => ({
-            ...char,
-            prompt: opts.auto_char_numerize === false ? char.prompt : char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
-        }));
-
-        // Filter enabled characters for API request
-        const enabledCharacters = processedCharacterPrompts.filter(char => char.enabled);
-
-        // Convert to API format: remove chara_name and use_coords from individual characters.
+        // Convert to API format: drop chara_name / use_coords from slots; send
+        // parameters.characterPrompts[i].name only when the Studio label was renamed.
         // Stock nekoai-js: null/undefined center is treated as non-0.5 → use_coords true,
         // then fills every center to 0.5/0.5 and collapses multi-char. Always send explicit
         // 0.5 placeholders when Auto Position / no real placements.
-        const hasCustomCoords = enabledCharacters.some((char) => {
-            const x = char.center?.x;
-            const y = char.center?.y;
-            if (typeof x !== 'number' || typeof y !== 'number') return false;
-            return x !== 0.5 || y !== 0.5;
-        });
-        // Explicit false (Auto Position) wins; otherwise only real placements enable coords.
-        const useCoords = opts.use_coords === false ? false : hasCustomCoords;
-
-        const apiCharacters = enabledCharacters.map(char => {
-            let center = char.center;
-            if (!useCoords || !center || typeof center.x !== 'number' || typeof center.y !== 'number') {
-                center = { x: 0.5, y: 0.5 };
-            }
-            return {
-                prompt: char.prompt,
-                uc: char.uc,
-                center,
-                enabled: char.enabled
-            };
-        });
+        // mapAllCharacterPromptsToApi: modules/characterPromptApiFormat.js
+        const { characterPrompts: apiCharacters, use_coords: useCoords } = mapAllCharacterPromptsToApi(
+            opts.allCharacterPrompts,
+            { use_coords: opts.use_coords, auto_char_numerize: opts.auto_char_numerize }
+        );
 
         if (apiCharacters.length > 0) {
             apiOpts.characterPrompts = apiCharacters;
