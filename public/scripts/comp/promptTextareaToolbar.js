@@ -1909,6 +1909,8 @@ class PromptTextareaToolbar {
 
     handleEmphasisChipContextAction(action, textarea, toolbar) {
         if (!textarea) return;
+        // restorePromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+        restorePromptTextareaSavedSelection(textarea);
         // setGlobalEmphasisSyntaxMode: public/scripts/comp/emphasisGroupIdCodec.js
         if (action === 'emphasis-show-syntax') {
             const ta = textarea;
@@ -2113,9 +2115,8 @@ class PromptTextareaToolbar {
         if (!textarea || textarea.hasAttribute('data-emphasis-group-chip-wired')) return;
         textarea.setAttribute('data-emphasis-group-chip-wired', 'true');
         const refresh = () => {
-            if (typeof textarea.selectionStart === 'number') {
-                textarea._emphasisLastCaret = textarea.selectionStart;
-            }
+            // capturePromptTextareaSelection: public/scripts/comp/emphasisSelection.js
+            capturePromptTextareaSelection(textarea);
             if (this.activeTextarea !== textarea) return;
             this.updateEmphasisGroupChip(textarea, toolbar);
         };
@@ -2247,12 +2248,15 @@ class PromptTextareaToolbar {
             return;
         }
 
-        // Blur/format can leave selection at end — restore last in-group caret first.
-        if (Number.isFinite(textarea._emphasisLastCaret)
-            && textarea.selectionStart === textarea.selectionEnd
-            && textarea.selectionStart !== textarea._emphasisLastCaret) {
-            const pos = Math.max(0, Math.min(textarea.value.length, textarea._emphasisLastCaret));
-            textarea.setSelectionRange(pos, pos);
+        // restorePromptTextareaSavedSelection: public/scripts/comp/emphasisSelection.js
+        if (!restorePromptTextareaSavedSelection(textarea)) {
+            // Blur/format can leave selection at end — restore last in-group caret first.
+            if (Number.isFinite(textarea._emphasisLastCaret)
+                && textarea.selectionStart === textarea.selectionEnd
+                && textarea.selectionStart !== textarea._emphasisLastCaret) {
+                const pos = Math.max(0, Math.min(textarea.value.length, textarea._emphasisLastCaret));
+                textarea.setSelectionRange(pos, pos);
+            }
         }
 
         // Start emphasis editing

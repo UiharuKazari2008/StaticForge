@@ -625,6 +625,8 @@ function handleEmphasisGroupCaretSelectionChange() {
     if (!el || el.tagName !== 'TEXTAREA') return;
     if (!el.classList.contains('prompt-textarea') && !el.classList.contains('character-prompt-textarea')) return;
     if (el.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) return;
+    // capturePromptTextareaSelection: public/scripts/comp/emphasisSelection.js
+    capturePromptTextareaSelection(el, { clearIfCollapsed: true });
     syncEmphasisGroupBoundaryCarets(el);
 }
 
