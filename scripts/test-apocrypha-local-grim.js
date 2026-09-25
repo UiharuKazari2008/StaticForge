@@ -6,11 +6,13 @@ const {
     normalizeIp,
     parseHopToken,
     ipInCidrs,
+    parseCidr,
     resolveClientAddress,
     normalizeApocryphaAccessConfig,
     shouldShowGrim,
     applyGrimCacheHeaders,
     resetUntrustedXffWarnings,
+    resetCidrCompileState,
     DEFAULT_APOCRYPHA_ACCESS,
     MAX_XFF_CHARS
 } = require('../modules/clientAddress');
@@ -295,4 +297,87 @@ test('applyGrimCacheHeaders writes both required fields', () => {
     applyGrimCacheHeaders(res);
     assert.equal(res.headers['cache-control'], 'private, no-store');
     assert.equal(res.headers.vary, 'Cookie, X-Forwarded-For');
+});
+
+test('invalid CIDR entries are ignored and never match or crash', () => {
+    resetCidrCompileState();
+    const x = '192.168.100.0';
+    const rejected = [
+        x + '/',
+        x + '/ ',
+        x + '/-0',
+        x + '/+24',
+        x + '/0x18',
+        x + '/1e1',
+        x + '/33',
+        '::1/129',
+        '0.0.0.0/0',
+        '::/0',
+        'garbage',
+        '',
+        24,
+        null,
+        { cidr: '8.8.8.8/32' }
+    ];
+    for (const entry of rejected) {
+        assert.equal(parseCidr(entry), null, 'parseCidr must reject ' + String(entry));
+    }
+    assert.doesNotThrow(() => {
+        ipInCidrs('8.8.8.8', rejected);
+        ipInCidrs('192.168.100.20', rejected);
+    });
+    assert.equal(ipInCidrs('8.8.8.8', rejected), false);
+    assert.equal(ipInCidrs('192.168.100.20', rejected), false);
+    assert.equal(ipInCidrs('::1', rejected), false);
+
+    const cfg = { trustedProxies: rejected, localCidrs: rejected, localGrim: true };
+    const publicDirect = resolveClientAddress(req({ peer: '8.8.8.8' }), cfg);
+    assert.equal(publicDirect.local, false);
+    assert.equal(publicDirect.trustedPeer, false);
+
+    const lanWouldHaveMatchedOldSlash = resolveClientAddress(
+        req({ peer: '192.168.100.20' }),
+        { trustedProxies: [], localCidrs: [x + '/', x + '/ '], localGrim: true }
+    );
+    assert.equal(lanWouldHaveMatchedOldSlash.local, false);
+
+    assert.equal(ipInCidrs('192.168.100.20', ['192.168.100.0/24']), true);
+    assert.equal(ipInCidrs('192.168.255.1', ['192.168.255.1']), true);
+    assert.equal(ipInCidrs('::1', ['::1']), true);
+    assert.equal(ipInCidrs('fd12::1', ['fd00::/8']), true);
+    assert.equal(ipInCidrs('192.168.100.20', ['::ffff:192.168.100.0/24']), true);
+
+    const absent = normalizeApocryphaAccessConfig({});
+    assert.deepEqual(absent.trustedProxies, ['127.0.0.0/8', '::1']);
+    assert.deepEqual(absent.localCidrs, ['127.0.0.0/8', '::1']);
+    assert.equal(resolveClientAddress(req({ peer: '127.0.0.1' }), absent).local, true);
+
+    const allInvalid = normalizeApocryphaAccessConfig({
+        trustedProxies: rejected,
+        localCidrs: rejected
+    });
+    assert.deepEqual(allInvalid.trustedProxies, rejected);
+    assert.deepEqual(allInvalid.localCidrs, rejected);
+    assert.equal(resolveClientAddress(req({ peer: '127.0.0.1' }), allInvalid).local, false);
+    assert.equal(resolveClientAddress(req({ peer: '8.8.8.8' }), allInvalid).local, false);
+});
+
+test('invalid CIDR warning is once per distinct entry', () => {
+    resetCidrCompileState();
+    const warns = [];
+    const orig = console.warn;
+    console.warn = (...args) => {
+        warns.push(args.map(String).join(' '));
+    };
+    try {
+        ipInCidrs('8.8.8.8', ['garbage']);
+        ipInCidrs('1.1.1.1', ['garbage']);
+        ipInCidrs('8.8.8.8', ['garbage', '8.8.8.8/33']);
+        const garbage = warns.filter((line) => line.includes('garbage'));
+        const slash33 = warns.filter((line) => line.includes('8.8.8.8/33'));
+        assert.equal(garbage.length, 1);
+        assert.equal(slash33.length, 1);
+    } finally {
+        console.warn = orig;
+    }
 });

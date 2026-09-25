@@ -32,7 +32,13 @@ const MAX_XFF_HOPS = 32;
 const UNTRUSTED_XFF_WARN_MS = 60 * 1000;
 const UNTRUSTED_XFF_WARN_MAX = 64;
 
+const CIDR_ENTRY_RE = /^([^/\s]+)(?:\/(\d{1,3}))?$/;
+const CIDR_LIST_CACHE_MAX = 64;
+const IGNORED_CIDR_WARN_MAX = 256;
+
 const untrustedXffWarnAt = new Map();
+const cidrListCache = new Map();
+const ignoredCidrWarned = new Set();
 
 function warnUntrustedPrivateXff(peer) {
     const key = peer || 'unknown';
@@ -49,6 +55,31 @@ function warnUntrustedPrivateXff(peer) {
 
 function resetUntrustedXffWarnings() {
     untrustedXffWarnAt.clear();
+}
+
+function ignoredCidrKey(entry) {
+    if (typeof entry === 'string') return entry;
+    try {
+        return typeof entry + ':' + JSON.stringify(entry);
+    } catch (_err) {
+        return typeof entry + ':' + String(entry);
+    }
+}
+
+function warnIgnoredCidr(entry) {
+    const key = ignoredCidrKey(entry);
+    if (ignoredCidrWarned.has(key)) return;
+    if (ignoredCidrWarned.size >= IGNORED_CIDR_WARN_MAX) {
+        const oldest = ignoredCidrWarned.values().next().value;
+        ignoredCidrWarned.delete(oldest);
+    }
+    ignoredCidrWarned.add(key);
+    console.warn('[apocrypha] ignoring invalid CIDR/IP entry:', key);
+}
+
+function resetCidrCompileState() {
+    cidrListCache.clear();
+    ignoredCidrWarned.clear();
 }
 
 function isHexGroup(value) {
@@ -154,34 +185,70 @@ function parseHopToken(raw) {
     return normalizeIp(s);
 }
 
-function addCidr(blockList, cidr) {
-    if (typeof cidr !== 'string') return false;
-    const trimmed = cidr.trim();
-    if (!trimmed) return false;
-    const slash = trimmed.lastIndexOf('/');
-    if (slash === -1) {
-        const ip = normalizeIp(trimmed);
-        const ver = net.isIP(ip);
-        if (!ver) return false;
-        blockList.addAddress(ip, ver === 4 ? 'ipv4' : 'ipv6');
+/**
+ * Strict CIDR/IP parse. Fail closed: no /0, no empty prefix, no 0x/1e1/+/- forms.
+ * Bare IP → host (/32 or /128). IPv4-mapped IPv6 is normalized to IPv4 first.
+ */
+function parseCidr(entry) {
+    if (typeof entry !== 'string') return null;
+    const trimmed = entry.trim();
+    if (!trimmed) return null;
+    const match = CIDR_ENTRY_RE.exec(trimmed);
+    if (!match) return null;
+    const ip = normalizeIp(match[1]);
+    const ver = net.isIP(ip);
+    if (ver !== 4 && ver !== 6) return null;
+    const family = ver === 4 ? 'ipv4' : 'ipv6';
+    const max = ver === 4 ? 32 : 128;
+    if (match[2] === undefined) {
+        return { ip, prefix: max, family, host: true };
+    }
+    const rawPrefix = match[2];
+    const prefix = parseInt(rawPrefix, 10);
+    if (!Number.isInteger(prefix) || prefix < 1 || prefix > max) return null;
+    if (String(prefix) !== rawPrefix) return null;
+    return { ip, prefix, family, host: false };
+}
+
+function addCidr(blockList, entry) {
+    const parsed = parseCidr(entry);
+    if (!parsed) return false;
+    if (parsed.host) {
+        blockList.addAddress(parsed.ip, parsed.family);
         return true;
     }
-    const ipPart = trimmed.slice(0, slash);
-    const prefix = Number(trimmed.slice(slash + 1));
-    const ip = normalizeIp(ipPart);
-    const ver = net.isIP(ip);
-    if (!ver || !Number.isInteger(prefix)) return false;
-    const max = ver === 4 ? 32 : 128;
-    if (prefix < 0 || prefix > max) return false;
-    blockList.addSubnet(ip, prefix, ver === 4 ? 'ipv4' : 'ipv6');
+    blockList.addSubnet(parsed.ip, parsed.prefix, parsed.family);
     return true;
 }
 
+function cidrListCacheKey(cidrs) {
+    if (!Array.isArray(cidrs)) return '[]';
+    try {
+        return JSON.stringify(cidrs);
+    } catch (_err) {
+        return null;
+    }
+}
+
 function compileCidrList(cidrs) {
+    const cacheKey = cidrListCacheKey(cidrs);
+    if (cacheKey != null && cidrListCache.has(cacheKey)) {
+        return cidrListCache.get(cacheKey);
+    }
     const list = new net.BlockList();
-    if (!Array.isArray(cidrs)) return list;
-    for (const entry of cidrs) {
-        addCidr(list, entry);
+    if (Array.isArray(cidrs)) {
+        for (const entry of cidrs) {
+            if (!addCidr(list, entry)) {
+                warnIgnoredCidr(entry);
+            }
+        }
+    }
+    if (cacheKey != null) {
+        if (cidrListCache.size >= CIDR_LIST_CACHE_MAX) {
+            const oldest = cidrListCache.keys().next().value;
+            cidrListCache.delete(oldest);
+        }
+        cidrListCache.set(cacheKey, list);
     }
     return list;
 }
@@ -330,28 +397,26 @@ function resolveClientAddress(req, options) {
     };
 }
 
-function asStringList(value, fallback) {
-    if (!Array.isArray(value)) return fallback.slice();
-    const out = [];
-    for (const item of value) {
-        if (typeof item !== 'string') continue;
-        const trimmed = item.trim();
-        if (!trimmed) continue;
-        out.push(trimmed);
-    }
-    return out;
+function copyCidrArray(value, fallback, present) {
+    if (!present) return fallback.slice();
+    if (!Array.isArray(value)) return [];
+    return value.slice();
 }
 
 function normalizeApocryphaAccessConfig(raw) {
     const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     const trustedMissing = !Object.prototype.hasOwnProperty.call(src, 'trustedProxies');
     const localMissing = !Object.prototype.hasOwnProperty.call(src, 'localCidrs');
-    const trustedProxies = trustedMissing
-        ? DEFAULT_APOCRYPHA_ACCESS.trustedProxies.slice()
-        : asStringList(src.trustedProxies, []);
-    const localCidrs = localMissing
-        ? DEFAULT_APOCRYPHA_ACCESS.localCidrs.slice()
-        : asStringList(src.localCidrs, []);
+    const trustedProxies = copyCidrArray(
+        src.trustedProxies,
+        DEFAULT_APOCRYPHA_ACCESS.trustedProxies,
+        !trustedMissing
+    );
+    const localCidrs = copyCidrArray(
+        src.localCidrs,
+        DEFAULT_APOCRYPHA_ACCESS.localCidrs,
+        !localMissing
+    );
     let localGrim = DEFAULT_APOCRYPHA_ACCESS.localGrim;
     if (Object.prototype.hasOwnProperty.call(src, 'localGrim')) {
         localGrim = src.localGrim === true;
@@ -390,6 +455,7 @@ module.exports = {
     MAX_XFF_HOPS,
     normalizeIp,
     parseHopToken,
+    parseCidr,
     ipInCidrs,
     isLoopbackIp,
     isPrivateOrLinkLocalOrUla,
@@ -398,5 +464,6 @@ module.exports = {
     normalizeApocryphaAccessConfig,
     shouldShowGrim,
     applyGrimCacheHeaders,
-    resetUntrustedXffWarnings
+    resetUntrustedXffWarnings,
+    resetCidrCompileState
 };

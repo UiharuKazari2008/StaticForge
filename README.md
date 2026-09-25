@@ -183,7 +183,7 @@ Resolution is fail-closed (`modules/clientAddress.js`, not `getRealIP` / `isPriv
 3. If `peer` **is** a trusted proxy, XFF is parsed (all header instances, comma-split) and walked **right to left**, skipping trusted hops. The first non-trusted hop is the client. Invalid / empty / missing XFF → not local, except a loopback peer with no XFF (direct loopback).
 4. `local` = client matches `localCidrs`. Grim responses set `Cache-Control: private, no-store` and `Vary: Cookie, X-Forwarded-For`.
 
-Do not treat “private peer” as local: production clients hit a remote proxy that appends XFF and connects from a private address. Without that peer in `trustedProxies`, Grim would otherwise leak to the public internet.
+Do not treat “private peer” as local: production clients hit a remote proxy that appends XFF and connects from a private address. Without that peer in `trustedProxies`, Grim would otherwise leak to the public internet. Home devices that open the public URL arrive as the home WAN IP and are **not** local; LAN users must hit Dreamscape directly.
 
 Tests: `pnpm test:apocrypha-local-grim` or `node --test scripts/test-apocrypha-local-grim.js`.
 
