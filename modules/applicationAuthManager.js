@@ -64,7 +64,7 @@ const SCOPE_WS_PACKETS = {
     wiki: [
         'search_tag_wiki', 'get_tag_wiki_page', 'refresh_tag_wiki_page',
         'get_static_wiki_site_index', 'get_static_wiki_page', 'get_wiki_home',
-        'resolve_grimoire_url',
+        'resolve_grimoire_url', 'get_apocrypha_zine',
         'import_fandom_wiki_page', 'import_static_wiki', 'update_wiki_import',
         'delete_fandom_wiki_import'
     ],
@@ -73,7 +73,7 @@ const SCOPE_WS_PACKETS = {
         'fetch_autofill_wiki_previews',
         'search_tag_wiki', 'get_tag_wiki_page', 'refresh_tag_wiki_page',
         'get_static_wiki_site_index', 'get_static_wiki_page', 'get_wiki_home',
-        'resolve_grimoire_url'
+        'resolve_grimoire_url', 'get_apocrypha_zine'
     ],
     notes: [
         'notes_create', 'notes_get', 'notes_get_by_workspace', 'notes_get_all',
