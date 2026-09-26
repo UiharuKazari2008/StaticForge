@@ -770,7 +770,7 @@ function rebuildBiasAdjustmentLayout(dom) {
         imageDisplayWidth = targetDisplayHeight * imageAR;
     } else {
         imageDisplayWidth = targetDisplayWidth;
-        imageDisplayHeight = targetDisplayWidth * imageAR;
+        imageDisplayHeight = targetDisplayWidth / imageAR;
     }
 
     dom.image.style.width = `${imageDisplayWidth}px`;

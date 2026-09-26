@@ -105,24 +105,12 @@ class CustomScrollbar {
             (element.classList && element.classList.contains('form-section-scroll'));
     }
 
-    // Deep-scan only modal / scroll-root containers (not every added leaf)
-    isScrollObserveRoot(element) {
-        if (!element || !element.classList) return false;
-        if (element.classList.contains('modal')) return true;
-        if (element.id && /modal/i.test(element.id)) return true;
-        for (const cls of element.classList) {
-            if (cls.includes('scroll-shell') || cls === 'form-section-scroll') return true;
-        }
-        return false;
-    }
-
     _initScrollHostsInNode(node) {
         if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
         if (this.shouldHaveScrollbar(node)) {
             this.createScrollbar(node);
         }
         if (!node.firstElementChild || !node.querySelectorAll) return;
-        if (!this.isScrollObserveRoot(node)) return;
         node.querySelectorAll('[data-custom-scrollbar]').forEach((element) => this.createScrollbar(element));
         node.querySelectorAll('.form-section-scroll:not([data-custom-scrollbar])').forEach((element) => this.createScrollbar(element));
     }
@@ -133,7 +121,6 @@ class CustomScrollbar {
             this.destroy(node);
         }
         if (!this.scrollbars.size || !node.firstElementChild || !node.querySelectorAll) return;
-        if (!this.isScrollObserveRoot(node) && !this.shouldHaveScrollbar(node)) return;
         node.querySelectorAll('[data-custom-scrollbar], .form-section-scroll').forEach((el) => {
             if (this.scrollbars.has(el)) {
                 this.destroy(el);
