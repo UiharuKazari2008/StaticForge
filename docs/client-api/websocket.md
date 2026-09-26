@@ -283,6 +283,8 @@ Web client behavior (`WebSocketClient`):
 | Circuit breaker | Stops auto-reconnect after repeated failures; manual reconnect resets |
 | Focus regain | Resets circuit breaker and reconnects when tab visible again |
 
+**Client liveness (browser):** on focus/visibility/online, the client may send one idle-socket probe (`pingWithAuth`) before replacing a healthy socket; stuck CONNECTING uses a backoff watchdog (15→30→60s). Light request types have per-type timeouts; search settles on decompress/stream/abort so a hung lane cannot block the next search. Offline-cache boot must not block forever on a slow manifest body.
+
 **After reconnect:**
 
 1. Receive `connection` + session restore messages (`workspace_restored`, `gallery_scroll_state`, `gallery_hint`)

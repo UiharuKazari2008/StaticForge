@@ -209,6 +209,8 @@ Additional response/push types from handler:
 
 **Handler:** modules/ws/handlers/60-generationHandler.js → `handleImageGeneration`
 
+**Character prompt names:** Studio `chara_name` on each enabled character maps to NovelAI `parameters.characterPrompts[i].name` (`modules/characterPromptApiFormat.js`). Default/blank labels omit `name` so captions stay prompt-only. Renamed characters keep their custom label on the API payload.
+
 Studio `generate_image`, `generate_preset`, and `reroll_image` enqueue on the same **global generation FIFO** as MCP (`modules/generationJobQueue.js`). One NovelAI generate at a time. After a job finishes, the next waits a semi-random 8–20s gap. While waiting, the handler pushes `image_generation_progress` with `phase: "queued"`, `jobId`, `position`, and `delayMs` (existing toast; no new chrome). `skipGenerationQueue` is set only when MCP already submitted the job (`async: true`).
 
 **Request fields:**

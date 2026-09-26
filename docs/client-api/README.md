@@ -100,6 +100,20 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Replication | [ws/replication.md](./ws/replication.md) | 12 |
 | Melaton packages | [ws/melatonPackages.md](./ws/melatonPackages.md) | 4 |
 
+## Apocrypha public Grim (HTTP)
+
+Public reader path: `/{apocryphaPathUuid}` (and `/archive/<slug>`). Session WebSocket `get_apocrypha_zine` always includes Grim.
+
+When `config.apocrypha.localGrim` is true, Grim is also shown to **local** clients resolved via trusted-proxy `X-Forwarded-For`:
+
+| Key | Role |
+|-----|------|
+| `apocrypha.localGrim` | Enable local Grim for the public HTTP reader |
+| `apocrypha.trustedProxies` | CIDR/IP list of reverse-proxy socket peers allowed to supply XFF (default: loopback only). Untrusted peers → XFF ignored |
+| `apocrypha.localCidrs` | CIDR/IP list treated as local client addresses (default: loopback only) |
+
+Home devices on the public WAN URL are **not** local. Invalid CIDRs (empty/`-0`/non-decimal prefixes, `0.0.0.0/0`, `::/0`) are rejected with a warning. Details: [ws/wiki.md](./ws/wiki.md#get_apocrypha_zine).
+
 ## Related legacy docs
 
 - [docs/websocket_android_guide.md](../websocket_android_guide.md) — older Android-focused subset (Kotlin examples); superseded by this tree for completeness
