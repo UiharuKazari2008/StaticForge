@@ -372,12 +372,12 @@ class PromptTextareaToolbar {
     updateTokenCountIncremental(changedTextarea) {
         const tokenizer = getPromptTokenizer();
         if (!tokenizer || !changedTextarea) return;
-        if (!this._groupTotalsReady) {
+        // Unseen field (e.g. rebuilt character card): totals may still hold detached fields
+        if (!this._groupTotalsReady || !this._fieldTokenCache.has(changedTextarea)) {
             this.updateAllTokenCounts();
             return;
         }
 
-        // Cache miss: recount this one field only (keep group totals warm)
         const isUc = this.isUcTextarea(changedTextarea);
         const stripped = this.stripTextForTokenCount(changedTextarea.value || '');
         const newCount = tokenizer.countTokens(stripped);
