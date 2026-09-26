@@ -201,7 +201,7 @@ class CharacterSearchModal extends WikiDisplayBase {
             return a.name.localeCompare(b.name);
         });
 
-        this.renderResults(scored.slice(0, this.renderCap).map(entry => entry.char));
+        this.renderResults(scored.map(entry => entry.char));
     }
 
     ensureResultRow(index) {
