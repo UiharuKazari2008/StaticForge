@@ -2735,11 +2735,6 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
         resolutionByValue.set(r.value, r);
     }
 
-    // If caller omitted the resolution, read it from the changed stage's cached input
-    if (!fromManual && (newResolution === undefined || newResolution === null) && changedStageId) {
-        newResolution = getStageInputs(changedStageId).resolution?.value;
-    }
-
     // Get aspect ratio and orientation for a resolution (handles both custom and preset)
     // Returns the resolved preset object when applicable so callers need not find again
     const getResolutionInfo = (stageId, resValue) => {

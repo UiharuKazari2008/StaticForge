@@ -1416,9 +1416,12 @@ class ChatSystem {
             return;
         }
         
-        // Parse once at ingest; keep the object for display
-        const ingested = this.ingestMessageContent(message.data.rawResponse);
-        this.addMessageToUI('assistant', { _chatIngest: ingested }, message.data.response);
+        // Parse once at ingest, only without structured response data (jsonData renders from the raw string)
+        const jsonData = message.data.response;
+        const content = jsonData
+            ? message.data.rawResponse
+            : { _chatIngest: this.ingestMessageContent(message.data.rawResponse) };
+        this.addMessageToUI('assistant', content, jsonData);
         this.scrollToBottom();
         
         // Reset loading state and send button
