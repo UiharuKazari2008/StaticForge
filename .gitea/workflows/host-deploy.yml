@@ -5,9 +5,11 @@
 #   push to main       -> deploy exactly github.sha (the pushed commit). Restart flags come from the
 #                         deploy:* LABELS of the PR(s) merged into that range, looked up by
 #                         scripts/host-deploy.sh through the Yozora API (never from workflow outputs).
-#   workflow_dispatch  -> allowlisted actors only, from main only. Deploys the optional `sha` input
-#                         (full 40-hex, must be on origin/main) or github.sha = origin/main at dispatch
-#                         time; restart flags come from the inputs below.
+#   workflow_dispatch  -> allowlisted actors only, from main only, first attempt only (a rerun keeps the
+#                         original actor, so reruns are refused). Deploys the optional `sha` input
+#                         (full 40-hex, on origin/main's first-parent line) or github.sha = origin/main
+#                         at dispatch time; restart flags and the free-text reason come from the inputs.
+# Push toasts/dialogs use the fixed text "StaticForge updated (PR #N)" - never PR title/body.
 # The live tree is never checked out by Actions: the step runs the host copy of
 # /home/kanmi/staticforge/scripts/host-deploy.sh, which fast-forwards the live tree to the SHA and
 # refuses if the SHA is not on origin/main or not a descendant of the current live HEAD.
@@ -59,10 +61,12 @@ jobs:
     # DISPATCH ALLOWLIST - Yukimi to confirm/edit. Keep this list in sync with the one in the
     # "Guard" step below. Exact Yozora usernames, case-sensitive.
     #   UiharuKazari2008, grok.menma
+    # Dispatch reruns are refused (run_attempt != 1): Gitea keeps the original actor on rerun.
     # ---------------------------------------------------------------------------------------------
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+       github.run_attempt == '1' &&
        contains(fromJSON('["UiharuKazari2008", "grok.menma"]'), github.actor))
     runs-on: [self-hosted, linux, dreamscape]
     defaults:
@@ -75,6 +79,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
           ACTOR: ${{ github.actor }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
           # DISPATCH ALLOWLIST (second copy, defence in depth) - Yukimi to confirm/edit.
           DISPATCH_ALLOWLIST: 'UiharuKazari2008 grok.menma'
         run: |
@@ -83,13 +88,15 @@ jobs:
           case "$EVENT_NAME" in
             push) ;;
             workflow_dispatch)
+              # A rerun keeps the original (allowlisted) actor, so only first attempts may deploy.
+              [ "$RUN_ATTEMPT" = 1 ] || { echo "::error::workflow_dispatch reruns are refused (run_attempt=$RUN_ATTEMPT); dispatch a new run"; exit 1; }
               case " $DISPATCH_ALLOWLIST " in
                 *" $ACTOR "*) ;;
                 *) echo "::error::$ACTOR is not on the host-deploy dispatch allowlist"; exit 1;;
               esac;;
             *) echo "::error::host-deploy refuses event $EVENT_NAME"; exit 1;;
           esac
-          echo "host-deploy: event=$EVENT_NAME actor=$ACTOR"
+          echo "host-deploy: event=$EVENT_NAME actor=$ACTOR attempt=$RUN_ATTEMPT"
 
       # Everything user-controlled reaches the script as env vars only - no $GITHUB_OUTPUT, no
       # PR body/title in the workflow at all.
