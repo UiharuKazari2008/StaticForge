@@ -1,24 +1,37 @@
 #!/usr/bin/env bash
-# Host deploy: merge trigger remote into live tree, mirror to the other forge,
-# then apply opt-in PR labels (restart server / push clients / restart clients).
+# Host deploy: fast-forward the live tree to one exact commit (DEPLOY_SHA) on the
+# trigger remote's main, mirror it to the other forge, then apply opt-in restarts
+# (restart server / push clients / restart clients).
 #
 # Usage:
 #   bash scripts/host-deploy.sh
 #   bash scripts/host-deploy.sh --dry-run
 #   TRIGGER_REMOTE=Public DEPLOY_RESTART_SERVER=1 DEPLOY_REASON='...' bash scripts/host-deploy.sh
+#   TRIGGER_REMOTE=origin DEPLOY_EVENT=push DEPLOY_SHA=<40-hex> bash scripts/host-deploy.sh
 #
 # Environment:
 #   STATICFORGE_LIVE_ROOT     Live tree (default: /home/kanmi/staticforge)
 #   TRIGGER_REMOTE            Public (GitHub) or origin (Yozora). Default: Public
 #   MIRROR_REMOTE             Other remote (auto: origin if Public, else Public)
 #   TRIGGER_REF               Branch on trigger remote (default: main)
-#   DEPLOY_RESTART_SERVER     1/true to PM2 restart
-#   DEPLOY_PUSH_CLIENTS       1/true to SW notify
-#   DEPLOY_RESTART_CLIENTS    1/true to broadcast restart
-#   DEPLOY_REASON             Toast / restart dialog message
-#   DEPLOY_PR_URL             Optional PR URL for comments / handoff
-#   DEPLOY_PR_NUMBER          Optional PR number
+#   DEPLOY_SHA                Exact commit to deploy (full 40-hex). Must be on
+#                             TRIGGER_REMOTE/TRIGGER_REF and a descendant of (or equal
+#                             to) the live HEAD. Default: tip of TRIGGER_REMOTE/TRIGGER_REF.
+#                             Required when DEPLOY_EVENT=push.
+#   DEPLOY_EVENT              push | workflow_dispatch | (unset = manual)
+#                             push: restart flags + reason come ONLY from the deploy:*
+#                             labels / title of the PR(s) merged in HEAD..DEPLOY_SHA,
+#                             looked up via the Yozora API; DEPLOY_RESTART_* /
+#                             DEPLOY_REASON are ignored.
+#                             otherwise: flags come from the DEPLOY_* vars below.
+#   DEPLOY_RESTART_SERVER     1/true to PM2 restart (dispatch / manual)
+#   DEPLOY_PUSH_CLIENTS       1/true to SW notify (dispatch / manual)
+#   DEPLOY_RESTART_CLIENTS    1/true to broadcast restart (dispatch / manual)
+#   DEPLOY_REASON             Toast / restart dialog message (dispatch / manual; no < or >)
+#   DEPLOY_PR_URL             Optional PR URL for comments / handoff (push: set from lookup)
+#   DEPLOY_PR_NUMBER          Optional PR number (push: set from lookup)
 #   DEPLOY_SOURCE             github | yozora (for PR comments)
+#   DEPLOY_MAX_COMMITS        Max first-parent commits scanned for PRs on push (default: 200)
 #   STATICFORGE_DEPLOY_ENV    Host secrets file (default: ~/.secrets/staticforge-deploy.env)
 #   YOZORA_TOKEN_FILE         Default: ~/.secrets/yozora-grok.cursor.token
 #   CURSOR_AGENT_ENV          Default: ~/.secrets/cursor-agent.env
@@ -37,6 +50,9 @@ YOZORA_TOKEN_FILE="${YOZORA_TOKEN_FILE:-$HOME/.secrets/yozora-grok.cursor.token}
 CURSOR_AGENT_ENV="${CURSOR_AGENT_ENV:-$HOME/.secrets/cursor-agent.env}"
 HOST_DEPLOY_LOCK="${HOST_DEPLOY_LOCK:-/tmp/staticforge-host-deploy.lock}"
 HTTP_PORT="${STATICFORGE_HTTP_PORT:-9220}"
+DEPLOY_EVENT="${DEPLOY_EVENT:-}"
+DEPLOY_SHA="${DEPLOY_SHA:-}"
+DEPLOY_MAX_COMMITS="${DEPLOY_MAX_COMMITS:-200}"
 YOZORA_API="${YOZORA_API:-https://yozora.bluesteel.737.jp.net/api/v1}"
 YOZORA_REPO="${YOZORA_REPO:-DreamScape/StaticForge}"
 AGENT_LOCK_NAME=".agent-host-deploy"
@@ -48,7 +64,7 @@ for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=1 ;;
         -h|--help)
-            sed -n '2,28p' "$0" | sed 's/^# \?//'
+            sed -n '2,39p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *)
@@ -82,41 +98,30 @@ fi
 RESTART_SERVER=0
 PUSH_CLIENTS=0
 RESTART_CLIENTS=0
-REASON="${DEPLOY_REASON:-}"
+REASON=""
 
-if truthy "${DEPLOY_RESTART_SERVER:-0}"; then RESTART_SERVER=1; fi
-if truthy "${DEPLOY_PUSH_CLIENTS:-0}"; then PUSH_CLIENTS=1; fi
-if truthy "${DEPLOY_RESTART_CLIENTS:-0}"; then RESTART_CLIENTS=1; fi
+# Exact-SHA format check up front (ancestry is checked after fetch).
+if [[ -n "$DEPLOY_SHA" && ! "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+    die "DEPLOY_SHA must be a full 40-hex lowercase commit SHA (got: $DEPLOY_SHA)"
+fi
 
-# If labels/body/title were passed via env, re-parse (overrides DEPLOY_* bools except explicit DEPLOY_REASON).
-if [[ -n "${DEPLOY_LABELS:-}" || -n "${DEPLOY_PR_BODY:-}" || -n "${DEPLOY_PR_TITLE:-}" ]]; then
-    [[ -f "$PARSE_JS" ]] || die "missing $PARSE_JS"
-    PARSED="$(
-        PARSE_JS="$PARSE_JS" \
-        DEPLOY_LABELS="${DEPLOY_LABELS:-}" \
-        DEPLOY_PR_BODY="${DEPLOY_PR_BODY:-}" \
-        DEPLOY_PR_TITLE="${DEPLOY_PR_TITLE:-}" \
-        node - <<'NODE'
-const { parseDeployFlags } = require(process.env.PARSE_JS);
-let labels = process.env.DEPLOY_LABELS || '';
-try { const j = JSON.parse(labels); if (Array.isArray(j)) labels = j; } catch (_) {}
-const r = parseDeployFlags({
-    labels,
-    body: process.env.DEPLOY_PR_BODY || '',
-    title: process.env.DEPLOY_PR_TITLE || ''
-});
-if (r.error) {
-    console.error(r.error);
-    process.exit(1);
-}
-process.stdout.write(JSON.stringify(r));
-NODE
-    )" || die "failed to parse deploy flags"
-    RESTART_SERVER="$(node -e "const r=JSON.parse(process.argv[1]); process.stdout.write(r.restartServer?'1':'0')" "$PARSED")"
-    PUSH_CLIENTS="$(node -e "const r=JSON.parse(process.argv[1]); process.stdout.write(r.pushClients?'1':'0')" "$PARSED")"
-    RESTART_CLIENTS="$(node -e "const r=JSON.parse(process.argv[1]); process.stdout.write(r.restartClients?'1':'0')" "$PARSED")"
-    if [[ -z "${DEPLOY_REASON:-}" ]]; then
-        REASON="$(node -e "const r=JSON.parse(process.argv[1]); process.stdout.write(r.reason||'')" "$PARSED")"
+if [[ "$DEPLOY_EVENT" == "push" ]]; then
+    # Push deploys take flags ONLY from merged-PR labels (resolved after fetch, below).
+    # Never from env, workflow outputs, PR body or title.
+    [[ -n "$DEPLOY_SHA" ]] || die "DEPLOY_EVENT=push requires DEPLOY_SHA"
+    [[ "$TRIGGER_REMOTE" == "origin" ]] || die "DEPLOY_EVENT=push is only supported with TRIGGER_REMOTE=origin (Yozora)"
+    if [[ -n "${DEPLOY_RESTART_SERVER:-}${DEPLOY_PUSH_CLIENTS:-}${DEPLOY_RESTART_CLIENTS:-}${DEPLOY_REASON:-}" ]]; then
+        log "WARNING: DEPLOY_RESTART_*/DEPLOY_REASON ignored for push (labels only)"
+    fi
+    unset DEPLOY_PR_NUMBER DEPLOY_PR_URL
+else
+    # workflow_dispatch / manual: explicit flags from the caller.
+    REASON="${DEPLOY_REASON:-}"
+    if truthy "${DEPLOY_RESTART_SERVER:-0}"; then RESTART_SERVER=1; fi
+    if truthy "${DEPLOY_PUSH_CLIENTS:-0}"; then PUSH_CLIENTS=1; fi
+    if truthy "${DEPLOY_RESTART_CLIENTS:-0}"; then RESTART_CLIENTS=1; fi
+    if [[ "$REASON" == *[\<\>]* ]]; then
+        die "DEPLOY_REASON must be plain text (no < or >)"
     fi
 fi
 
@@ -159,6 +164,15 @@ yozora_token() {
     tr -d '\n' < "$YOZORA_TOKEN_FILE"
 }
 
+# curl against the Yozora API with the token sent as a header from a process
+# substitution (never on the command line / in ps). Returns 1 if no token.
+yozora_curl() {
+    local tok
+    tok="$(yozora_token || true)"
+    [[ -n "$tok" ]] || return 1
+    curl -sS -m 60 -H @<(printf 'Authorization: token %s\n' "$tok") "$@"
+}
+
 comment_on_pr() {
     local body="$1"
     [[ -n "${DEPLOY_PR_NUMBER:-}" ]] || return 0
@@ -169,26 +183,20 @@ comment_on_pr() {
         fi
     fi
     if [[ "$source" == "yozora" || ( -z "$source" && "$TRIGGER_REMOTE" == "origin" ) || "$source" == "both" ]]; then
-        local tok
-        tok="$(yozora_token || true)"
-        if [[ -n "$tok" ]]; then
-            curl -sS -X POST -H "Authorization: token $tok" -H "Content-Type: application/json" \
-                "$YOZORA_API/repos/$YOZORA_REPO/issues/${DEPLOY_PR_NUMBER}/comments" \
-                -d "$(node -e "process.stdout.write(JSON.stringify({body:process.argv[1]}))" "$body")" >/dev/null || true
-        fi
+        yozora_curl -X POST -H "Content-Type: application/json" \
+            "$YOZORA_API/repos/$YOZORA_REPO/issues/${DEPLOY_PR_NUMBER}/comments" \
+            -d "$(node -e "process.stdout.write(JSON.stringify({body:process.argv[1]}))" "$body")" >/dev/null || true
     fi
 }
 
 file_handoff_issue() {
     local title="$1"
     local body="$2"
-    local tok
-    tok="$(yozora_token || true)"
-    [[ -n "$tok" ]] || { log "No YOZORA_TOKEN — skip handoff issue"; return 0; }
+    [[ -n "$(yozora_token || true)" ]] || { log "No YOZORA_TOKEN — skip handoff issue"; return 0; }
 
     # Label IDs looked up each call (do not hardcode forever — but cache this run)
     local labels_json label_ids
-    labels_json="$(curl -sS -H "Authorization: token $tok" "$YOZORA_API/repos/$YOZORA_REPO/labels?limit=50")"
+    labels_json="$(yozora_curl "$YOZORA_API/repos/$YOZORA_REPO/labels?limit=50")"
     label_ids="$(LABELS_JSON="$labels_json" node - <<'NODE'
 const labels = JSON.parse(process.env.LABELS_JSON || '[]');
 const want = ['type:infra', 'cursor-agent', 'status:ready'];
@@ -201,16 +209,16 @@ process.stdout.write(JSON.stringify(ids));
 NODE
 )"
     local created
-    created="$(curl -sS -X POST -H "Authorization: token $tok" -H "Content-Type: application/json" \
+    created="$(yozora_curl -X POST -H "Content-Type: application/json" \
         "$YOZORA_API/repos/$YOZORA_REPO/issues" \
         -d "$(TITLE="$title" BODY="$body" node -e 'process.stdout.write(JSON.stringify({title:process.env.TITLE,body:process.env.BODY,assignees:["grok.cursor"]}))')")"
     local index
     index="$(echo "$created" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(d).number||'')}catch{console.log('')}}")"
     if [[ -n "$index" ]]; then
-        curl -sS -X PUT -H "Authorization: token $tok" -H "Content-Type: application/json" \
+        yozora_curl -X PUT -H "Content-Type: application/json" \
             "$YOZORA_API/repos/$YOZORA_REPO/issues/$index/labels" \
             -d "{\"labels\":$label_ids}" >/dev/null || true
-        curl -sS -X POST -H "Authorization: token $tok" -H "Content-Type: application/json" \
+        yozora_curl -X POST -H "Content-Type: application/json" \
             "$YOZORA_API/repos/$YOZORA_REPO/issues/$index/comments" \
             -d '{"body":"@grok.rook please card. Host-deploy handoff — Cursor worker started (or attempted)."}' >/dev/null || true
         log "Handoff issue #$index"
@@ -309,8 +317,7 @@ HEAD_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 
 log "LIVE_ROOT=$LIVE_ROOT"
 log "TRIGGER=$TRIGGER_REMOTE/$TRIGGER_REF MIRROR=$MIRROR_REMOTE"
-log "flags restart_server=$RESTART_SERVER push_clients=$PUSH_CLIENTS restart_clients=$RESTART_CLIENTS"
-log "reason=${REASON:-"(empty)"}"
+log "event=${DEPLOY_EVENT:-manual} deploy_sha=${DEPLOY_SHA:-"(trigger tip)"}"
 log "HEAD=$HEAD_SHA dry_run=$DRY_RUN"
 
 # Safety: foreign agent locks
@@ -392,8 +399,116 @@ Do not stash. Reconcile or park local commits, then re-run."
     handoff "local_ahead" "$DETAIL"
 fi
 
+# --- Exact-SHA validation -------------------------------------------------------
+# Deploy exactly DEPLOY_SHA (default: trigger tip at fetch time). Refuse anything that
+# is not on TRIGGER_REMOTE/TRIGGER_REF (origin/main for Yozora) or would not be a pure
+# fast-forward of the live HEAD (no rollback, no side branches).
+LIVE_HEAD="$(git rev-parse HEAD)"
+if [[ -z "$DEPLOY_SHA" ]]; then
+    DEPLOY_SHA="$TRIGGER_SHA"
+    log "DEPLOY_SHA not set - using $TRIGGER_REMOTE/$TRIGGER_REF tip $DEPLOY_SHA"
+fi
+git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null \
+    || die "DEPLOY_SHA $DEPLOY_SHA is not a commit in the live repo after fetch"
+git merge-base --is-ancestor "$DEPLOY_SHA" "$TRIGGER_SHA" \
+    || die "DEPLOY_SHA $DEPLOY_SHA is not on $TRIGGER_REMOTE/$TRIGGER_REF ($TRIGGER_SHA) - refusing"
+if [[ "$LIVE_HEAD" != "$DEPLOY_SHA" ]] && ! git merge-base --is-ancestor "$LIVE_HEAD" "$DEPLOY_SHA"; then
+    if git merge-base --is-ancestor "$DEPLOY_SHA" "$LIVE_HEAD"; then
+        die "DEPLOY_SHA $DEPLOY_SHA is older than live HEAD $LIVE_HEAD (already deployed past it) - refusing rollback"
+    fi
+    die "DEPLOY_SHA $DEPLOY_SHA is not a descendant of live HEAD $LIVE_HEAD - refusing"
+fi
+log "deploy_sha=$DEPLOY_SHA (on $TRIGGER_REMOTE/$TRIGGER_REF, fast-forward of $LIVE_HEAD)"
+
+# --- Push: restart flags from merged-PR labels (API lookup, read-only) -----------
+# For every first-parent commit in LIVE_HEAD..DEPLOY_SHA, ask Yozora which PR was
+# merged as that commit (GET /repos/{o}/{r}/commits/{sha}/pull, Gitea >= 1.22).
+# Flags = UNION of deploy:* labels across the range (Gitea 1.25 cancels older push
+# runs, so an earlier PR's labels must not be lost). Reason = title of the newest
+# PR that carries any deploy:* label. PR bodies are never read.
+# Fails closed: any API error other than 404 aborts before the tree is touched.
+resolve_push_flags() {
+    local commits=() c code tmp count
+    mapfile -t commits < <(git rev-list --first-parent --reverse "$LIVE_HEAD..$DEPLOY_SHA")
+    count=${#commits[@]}
+    log "PR lookup over $count first-parent commit(s) $LIVE_HEAD..$DEPLOY_SHA"
+    if (( count == 0 )); then
+        log "No new commits - no label flags (use workflow_dispatch to re-apply restarts)"
+        return 0
+    fi
+    if (( count > DEPLOY_MAX_COMMITS )); then
+        die "$count commits to deploy exceeds DEPLOY_MAX_COMMITS=$DEPLOY_MAX_COMMITS - deploy via workflow_dispatch with explicit flags"
+    fi
+    [[ -n "$(yozora_token || true)" ]] || die "no Yozora token ($YOZORA_TOKEN_FILE) - cannot resolve PR labels for push deploy"
+    [[ -f "$PARSE_JS" ]] || die "missing $PARSE_JS"
+
+    tmp="$(mktemp -d)"
+    local prs_file="$tmp/prs.jsonl"
+    : > "$prs_file"
+    for c in "${commits[@]}"; do
+        code="$(yozora_curl -o "$tmp/resp.json" -w '%{http_code}' -H 'Accept: application/json' \
+            "$YOZORA_API/repos/$YOZORA_REPO/commits/$c/pull")" || code="curl-failed"
+        case "$code" in
+            200)
+                COMMIT="$c" node -e '
+const fs = require("fs");
+const pr = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+if (pr && pr.merged === true && pr.merge_commit_sha === process.env.COMMIT) {
+  process.stdout.write(JSON.stringify({
+    number: pr.number,
+    url: pr.html_url || "",
+    title: typeof pr.title === "string" ? pr.title : "",
+    labels: (pr.labels || []).map((l) => String(l && l.name || ""))
+  }) + "\n");
+}' "$tmp/resp.json" >> "$prs_file" || { rm -rf "$tmp"; die "bad PR JSON for commit $c"; }
+                ;;
+            404) : ;;  # direct push / non-merge commit: no PR
+            *) rm -rf "$tmp"; die "PR lookup for $c failed (HTTP $code) - refusing to guess flags" ;;
+        esac
+    done
+
+    local result
+    result="$(PARSE_JS="$PARSE_JS" node - "$prs_file" <<'NODE'
+const fs = require('fs');
+const { parseDeployFlags } = require(process.env.PARSE_JS);
+const prs = fs.readFileSync(process.argv[2], 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+const out = { restartServer: false, pushClients: false, restartClients: false, reason: '', number: '', url: '', prs: [] };
+for (const pr of prs) {               // oldest -> newest
+  const r = parseDeployFlags({ labels: pr.labels, title: pr.title });  // labels + title only, never body
+  const any = r.restartServer || r.pushClients || r.restartClients;
+  out.restartServer = out.restartServer || r.restartServer;
+  out.pushClients = out.pushClients || r.pushClients;
+  out.restartClients = out.restartClients || r.restartClients;
+  if (any) out.reason = r.error ? '' : r.reason;   // newest flagged PR wins; drop titles with < >
+  out.number = String(pr.number);
+  out.url = pr.url;
+  out.prs.push(`#${pr.number}[${pr.labels.filter((l) => l.startsWith('deploy:')).join(',')}]${r.error ? '(title rejected)' : ''}`);
+}
+process.stdout.write([
+  out.restartServer ? 1 : 0, out.pushClients ? 1 : 0, out.restartClients ? 1 : 0,
+  out.number, out.url, out.prs.join(' ') || '(none)', out.reason.replace(/[\r\n\t\x1f]+/g, ' ')
+].map((v) => String(v).replace(/\x1f/g, ' ')).join('\x1f'));  // \x1f: non-whitespace IFS keeps empty fields
+NODE
+    )" || { rm -rf "$tmp"; die "failed to evaluate PR labels"; }
+    rm -rf "$tmp"
+
+    local prs_summary number url
+    IFS=$'\x1f' read -r RESTART_SERVER PUSH_CLIENTS RESTART_CLIENTS number url prs_summary REASON <<<"$result"
+    REASON="${REASON:-}"
+    log "merged PRs in range: $prs_summary"
+    if [[ -n "$number" ]]; then
+        export DEPLOY_PR_NUMBER="$number" DEPLOY_PR_URL="$url"
+    fi
+}
+
+if [[ "$DEPLOY_EVENT" == "push" ]]; then
+    resolve_push_flags
+fi
+log "flags restart_server=$RESTART_SERVER push_clients=$PUSH_CLIENTS restart_clients=$RESTART_CLIENTS"
+log "reason=${REASON:-"(empty)"}"
+
 if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "DRY-RUN: would merge $TRIGGER_SHA into main, push $MIRROR_REMOTE"
+    log "DRY-RUN: would fast-forward main $LIVE_HEAD -> $DEPLOY_SHA, push $MIRROR_REMOTE"
     log "DRY-RUN: planned verbs: toast=$([ -n "$REASON" ] && (( RESTART_SERVER+PUSH_CLIENTS+RESTART_CLIENTS > 0 )) && echo yes || echo no) restart_server=$RESTART_SERVER push_clients=$PUSH_CLIENTS restart_clients=$RESTART_CLIENTS"
     exit 0
 fi
@@ -403,10 +518,10 @@ plant_agent_lock
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 [[ "$CURRENT_BRANCH" == "main" ]] || die "live tree not on main (on $CURRENT_BRANCH)"
 
-if [[ "$(git rev-parse HEAD)" != "$TRIGGER_SHA" ]]; then
-    log "Merging $TRIGGER_REMOTE/$TRIGGER_REF ($TRIGGER_SHA) into main..."
-    if ! git merge --ff-only "$TRIGGER_SHA"; then
-        DETAIL="git merge --ff-only failed for $TRIGGER_SHA onto $(git rev-parse HEAD).
+if [[ "$(git rev-parse HEAD)" != "$DEPLOY_SHA" ]]; then
+    log "Fast-forwarding main to $DEPLOY_SHA ($TRIGGER_REMOTE/$TRIGGER_REF is $TRIGGER_SHA)..."
+    if ! git merge --ff-only "$DEPLOY_SHA"; then
+        DETAIL="git merge --ff-only failed for $DEPLOY_SHA onto $(git rev-parse HEAD).
 Remotes: Public=$(git rev-parse Public/main 2>/dev/null || echo '?') origin=$(git rev-parse origin/main 2>/dev/null || echo '?')"
         cleanup_agent_lock
         PLANTED_AGENT_LOCK=0
@@ -414,11 +529,16 @@ Remotes: Public=$(git rev-parse Public/main 2>/dev/null || echo '?') origin=$(gi
         handoff "merge_failed" "$DETAIL"
     fi
 else
-    log "Already at trigger SHA"
+    log "Already at $DEPLOY_SHA"
 fi
+[[ "$(git rev-parse HEAD)" == "$DEPLOY_SHA" ]] || die "live HEAD $(git rev-parse HEAD) != DEPLOY_SHA $DEPLOY_SHA after fast-forward"
 
-log "Pushing $(git rev-parse HEAD) to $MIRROR_REMOTE/$TRIGGER_REF..."
-git push "$MIRROR_REMOTE" "HEAD:refs/heads/$TRIGGER_REF"
+if git merge-base --is-ancestor "$DEPLOY_SHA" "$MIRROR_SHA"; then
+    log "$MIRROR_REMOTE/$TRIGGER_REF ($MIRROR_SHA) already contains $DEPLOY_SHA - skip mirror push"
+else
+    log "Pushing $DEPLOY_SHA to $MIRROR_REMOTE/$TRIGGER_REF..."
+    git push "$MIRROR_REMOTE" "$DEPLOY_SHA:refs/heads/$TRIGGER_REF"
+fi
 
 broadcast_notice() {
     local message="$1"
