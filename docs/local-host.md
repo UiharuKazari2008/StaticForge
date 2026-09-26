@@ -86,29 +86,31 @@ Do **not** treat `docker compose up` on the production Dreamscape host as a migr
 | Upsert workstation edits | `pnpm sync:push` |
 | Run in Docker locally | `sudo bash scripts/setup.sh --mode docker` |
 | Bare metal locally | `sudo bash scripts/setup.sh --mode baremetal` then `node web_server.js` |
-| Host CI deploy (labels) | See [CI deploy](#ci-deploy-github--yozora) |
+| Host CI deploy (labels) | See [CI deploy](#ci-deploy-yozora) |
 
-## CI deploy (GitHub + Yozora)
+## CI deploy (Yozora)
 
-Self-hosted runners on the Dreamscape host merge a landed PR into the live tree, mirror the SHA to the other forge, then apply **opt-in** labels.
+A self-hosted runner on the Dreamscape host (`runs-on: [self-hosted, linux, dreamscape]`) fast-forwards the live tree to **one exact commit** on Yozora `main`, mirrors that SHA to GitHub, then applies **opt-in** restart labels. Only the Yozora workflow deploys; there is no GitHub deploy workflow.
 
-### Remotes
+### Remotes and triggers
 
 Live checkout remotes:
 
-- `Public` → `https://github.com/UiharuKazari2008/StaticForge.git`
-- `origin` → Yozora `UiharuKazari2008/StaticForge`
+- `origin` → Yozora `DreamScape/StaticForge` (trigger)
+- `Public` → `https://github.com/UiharuKazari2008/StaticForge.git` (mirror; the script pushes the deployed SHA here)
 
-| Trigger | Pull into live `main` | Then push |
-|---------|----------------------|-----------|
-| GitHub PR merged to `main` | `Public/main` | `origin` (`main`) |
-| Yozora PR merged to `main` | `origin/main` | `Public` (`main`) |
+[`.gitea/workflows/host-deploy.yml`](../.gitea/workflows/host-deploy.yml) runs on:
 
-Workflows listen to `pull_request` closed+merged and `workflow_dispatch` only — **not** `push`, so mirroring does not recurse.
+| Trigger | Deploys | Restart flags from |
+|---------|---------|--------------------|
+| `push` to `main` (e.g. a PR merged in Yozora) | exactly the pushed `github.sha` | `deploy:*` labels of the PR(s) merged in the deployed range, looked up via the Yozora API |
+| `workflow_dispatch` (allowlisted actors, from `main`, first attempt only) | optional `sha` input, else `main` at dispatch time | the dispatch inputs |
 
-### Labels and Reason
+There is **no** `pull_request` trigger. The target SHA must be on `origin/main`'s first-parent line and a fast-forward of the live HEAD (no rollback). The mirror push goes to GitHub, so it does not re-trigger Yozora.
 
-Add labels on the PR (create on both forges if missing):
+### Labels and toast text
+
+Add labels on the Yozora PR before merging:
 
 | Label | Effect |
 |-------|--------|
@@ -116,20 +118,23 @@ Add labels on the PR (create on both forges if missing):
 | `deploy:push-clients` | Recompile runtime assets + SW `service_worker_cache_update` |
 | `deploy:restart-clients` | Loopback `POST /agent/broadcast` with `restart: true` |
 
-**Reason** (client toast / restart dialog text): first PR-body line matching `Reason:`, `Toast:`, or `Deploy reason:`. Fallback: PR title. Plain text only (no `<` / `>`).
+Labels are only found for PRs merged through Yozora (the merge commit must be the PR's `merge_commit_sha`). Direct pushes, GitHub-side merges and manual merges deploy with no restarts. Use `workflow_dispatch` with explicit flags for those.
+
+**Toast / restart-dialog text:** on push it is always the fixed `StaticForge updated (PR #N)`. PR titles and bodies are never used. A free-text reason exists only as a `workflow_dispatch` input (plain text, no `<` / `>`).
 
 PR templates: [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md), [`.gitea/PULL_REQUEST_TEMPLATE.md`](../.gitea/PULL_REQUEST_TEMPLATE.md).
 
 ### Host script
 
 ```bash
-# Dry-run (prints remotes/SHAs/flags; hands off on dirty/lock/ahead without merging)
-TRIGGER_REMOTE=Public bash scripts/host-deploy.sh --dry-run
+# Dry-run (prints remotes/SHAs/flags; exits 1 without changes if the deploy would be blocked)
+TRIGGER_REMOTE=origin bash scripts/host-deploy.sh --dry-run
 
-# Live (CI does this after a merged PR)
-TRIGGER_REMOTE=Public \
-  DEPLOY_LABELS='["deploy:restart-server","deploy:push-clients"]' \
-  DEPLOY_PR_BODY='Reason: Ship SW cache fix' \
+# What CI runs on push (flags come from PR labels via the API)
+TRIGGER_REMOTE=origin DEPLOY_EVENT=push DEPLOY_SHA=<40-hex sha> bash scripts/host-deploy.sh
+
+# Manual deploy with explicit flags
+TRIGGER_REMOTE=origin DEPLOY_SHA=<40-hex sha> DEPLOY_RESTART_SERVER=1 DEPLOY_REASON='Ship SW cache fix' \
   bash scripts/host-deploy.sh
 ```
 
@@ -143,17 +148,29 @@ Flag parser self-test:
 node scripts/ci/parse-deploy-flags.js --self-test
 ```
 
-### Blocked deploy → Cursor worker
+### Blocked deploy: fail closed, issue routed to the Cursor pipeline
 
-If the job cannot proceed, it does **not** merge, restart, or push. It comments on the PR, files a Yozora issue (`type:infra`, `cursor-agent`, `status:ready`), and starts `agent persist` using `~/.secrets/cursor-agent.env`.
+If the deploy cannot proceed safely, the script **does not** merge, restart or push, and it **does not start any agent or worker**. It:
+
+1. logs why;
+2. comments on the PR (if known);
+3. files a Yozora issue titled `[Deploy blocked] <kind>`, with labels `type:infra`, `cursor-agent` and `status:ready`, assigned to `grok.cursor`, filed with the host's `~/.secrets/yozora-grok.cursor.token`. If an open issue with the same title already exists, it adds a comment instead of filing a new one;
+4. leaves the live tree untouched and exits **1** (the job goes red).
+
+The labels and assignee put the issue in the Cursor agent pipeline, where follow-up work runs as an agentjob, never as `kanmi` in the live tree.
 
 | Kind | Cause |
 |------|--------|
-| `dirty_tree` | Live `git status` not clean |
-| `agent_lock` | A `.agent-*` other than `.agent-host-deploy` exists |
-| `remote_ahead` / `local_ahead` / `merge_failed` | Remotes or live HEAD cannot cleanly take the trigger SHA |
+| `dirty_tree` | Tracked source files are modified or staged (see below) |
+| `agent_lock` | A `.agent-*` other than `.agent-host-deploy` exists (the issue lists the lock name and age only, never its contents) |
+| `remote_ahead` / `local_ahead` | GitHub `main` or the live HEAD has commits Yozora `main` lacks |
+| `merge_failed` | `git merge --ff-only` refused, e.g. an incoming commit touches a locally modified file or would overwrite an untracked file |
 
-Rules for the worker: no stash, no force-push to `main`, do not delete another agent's lock. After the tree is clear, re-run `scripts/host-deploy.sh` or leave a Done comment.
+**Not dirty:** untracked files (e.g. the runtime `backups/`) and the runtime-written `data/apocrypha/current.json`. Git itself still refuses the fast-forward if an incoming commit would change either (reported as `merge_failed`).
+
+If the mirror push to GitHub fails after a successful deploy, restarts still run. The PR comment reports the failure, a `[Deploy] mirror push failed` issue is filed with the same routing, and the job exits 1.
+
+Rules for whoever resolves a block: no stash, no force-push to `main`, and do not delete another agent's lock. After the tree is clear, re-run with `workflow_dispatch` or leave a Done comment.
 
 `flock` on `/tmp/staticforge-host-deploy.lock` serializes overlapping jobs.
 
@@ -162,16 +179,13 @@ Rules for the worker: no stash, no force-push to `main`, do not delete another a
 Tokens stay in `~/.secrets/` — never commit them.
 
 ```bash
-# GitHub: paste registration token into ~/.secrets/github-runner.token
-bash scripts/ci/install-github-runner.sh
-# → ~/ci-runners/github + systemd --user github-actions-runner.service
-# labels: linux,dreamscape
-
-# Yozora: enable Actions on the repo, paste token into ~/.secrets/yozora-runner.token
+# Yozora (the only host-deploy forge): enable Actions on the repo, paste token into ~/.secrets/yozora-runner.token
 bash scripts/ci/install-gitea-runner.sh
 # → ~/ci-runners/gitea + systemd --user gitea-act-runner.service
 ```
 
-Workflows: [`.github/workflows/host-deploy.yml`](../.github/workflows/host-deploy.yml), [`.gitea/workflows/host-deploy.yml`](../.gitea/workflows/host-deploy.yml) (`runs-on: [self-hosted, linux, dreamscape]`).
+The GitHub runner (`scripts/ci/install-github-runner.sh`) is **not** used for host-deploy any more. Do not register a `dreamscape` GitHub runner.
+
+Workflow: [`.gitea/workflows/host-deploy.yml`](../.gitea/workflows/host-deploy.yml) (`runs-on: [self-hosted, linux, dreamscape]`).
 
 Do **not** register runners or merge a live deploy until registration tokens are minted and a dry-run SHA is confirmed.

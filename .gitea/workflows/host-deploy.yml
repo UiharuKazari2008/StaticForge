@@ -1,15 +1,30 @@
 # Host deploy (self-hosted Dreamscape runner on Yozora / Gitea Actions)
 #
-# Same job as GitHub: pull origin → push Public. Trigger remote is origin.
+# The ONLY active copy of this workflow (Yozora is the trigger forge; GitHub is the mirror).
+# Privileged host job - Yozora policy: never on pull_request / pull_request_target.
+#   push to main       -> deploy exactly github.sha (the pushed commit). Restart flags come from the
+#                         deploy:* LABELS of the PR(s) merged into that range, looked up by
+#                         scripts/host-deploy.sh through the Yozora API (never from workflow outputs).
+#   workflow_dispatch  -> allowlisted actors only, from main only, first attempt only (a rerun keeps the
+#                         original actor, so reruns are refused). Deploys the optional `sha` input
+#                         (full 40-hex, on origin/main's first-parent line) or github.sha = origin/main
+#                         at dispatch time; restart flags and the free-text reason come from the inputs.
+# Push toasts/dialogs use the fixed text "StaticForge updated (PR #N)" - never PR title/body.
+# The live tree is never checked out by Actions: the step runs the host copy of
+# /home/kanmi/staticforge/scripts/host-deploy.sh, which fast-forwards the live tree to the SHA and
+# refuses if the SHA is not on origin/main or not a descendant of the current live HEAD.
 
 name: Host deploy
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
   workflow_dispatch:
     inputs:
+      sha:
+        description: 'Commit to deploy (full 40-hex SHA on origin/main). Empty = origin/main at dispatch time.'
+        type: string
+        default: ''
       restart_server:
         description: 'deploy:restart-server'
         type: boolean
@@ -23,7 +38,7 @@ on:
         type: boolean
         default: false
       reason:
-        description: 'Toast / restart reason'
+        description: 'Toast / restart reason (plain text)'
         type: string
         default: ''
       dry_run:
@@ -31,72 +46,85 @@ on:
         type: boolean
         default: false
 
+# Deploys run one at a time and are never cancelled by a newer run.
+# NOTE: Gitea 1.25.x ignores `concurrency:` (supported from 1.26) and instead auto-cancels an older
+# *push* run of this workflow when a newer push to main arrives. host-deploy.sh compensates: it deploys
+# every commit between the live HEAD and the SHA and applies the union of the merged PRs' deploy labels,
+# so a cancelled run's labels are not lost. The script's flock also serialises runs on the host.
+concurrency:
+  group: host-deploy
+  cancel-in-progress: false
+
 jobs:
   host-deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    # ---------------------------------------------------------------------------------------------
+    # DISPATCH ALLOWLIST - Yukimi to confirm/edit. Keep this list in sync with the one in the
+    # "Guard" step below. Exact Yozora usernames, case-sensitive.
+    #   UiharuKazari2008, grok.menma
+    # Dispatch reruns are refused (run_attempt != 1): Gitea keeps the original actor on rerun.
+    # ---------------------------------------------------------------------------------------------
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+       github.run_attempt == '1' &&
+       contains(fromJSON('["UiharuKazari2008", "grok.menma"]'), github.actor))
     runs-on: [self-hosted, linux, dreamscape]
     defaults:
       run:
         working-directory: /home/kanmi/staticforge
     steps:
-      - name: Collect deploy flags
-        id: flags
+      - name: Guard (event, ref, actor)
+        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          INPUT_RESTART_SERVER: ${{ inputs.restart_server }}
-          INPUT_PUSH_CLIENTS: ${{ inputs.push_clients }}
-          INPUT_RESTART_CLIENTS: ${{ inputs.restart_clients }}
-          INPUT_REASON: ${{ inputs.reason }}
+          REF: ${{ github.ref }}
+          ACTOR: ${{ github.actor }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          # DISPATCH ALLOWLIST (second copy, defence in depth) - Yukimi to confirm/edit.
+          DISPATCH_ALLOWLIST: 'UiharuKazari2008 grok.menma'
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            LABELS=()
-            [[ "${INPUT_RESTART_SERVER}" == "true" ]] && LABELS+=("deploy:restart-server")
-            [[ "${INPUT_PUSH_CLIENTS}" == "true" ]] && LABELS+=("deploy:push-clients")
-            [[ "${INPUT_RESTART_CLIENTS}" == "true" ]] && LABELS+=("deploy:restart-clients")
-            LABELS_JSON=$(printf '%s\n' "${LABELS[@]:-}" | node -e "const d=require('fs').readFileSync(0,'utf8').trim().split(/\n/).filter(Boolean); process.stdout.write(JSON.stringify(d))")
-            BODY=""
-            TITLE=""
-            REASON="${INPUT_REASON}"
-          else
-            LABELS_JSON="${PR_LABELS_JSON:-[]}"
-            BODY="${PR_BODY:-}"
-            TITLE="${PR_TITLE:-}"
-            REASON=""
-          fi
-          {
-            echo "labels<<EOF"
-            echo "$LABELS_JSON"
-            echo "EOF"
-            echo "body<<EOF"
-            echo "$BODY"
-            echo "EOF"
-            echo "title<<EOF"
-            echo "$TITLE"
-            echo "EOF"
-            echo "reason<<EOF"
-            echo "$REASON"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          [ "$REF" = refs/heads/main ] || { echo "::error::host-deploy only runs for refs/heads/main (got $REF)"; exit 1; }
+          case "$EVENT_NAME" in
+            push) ;;
+            workflow_dispatch)
+              # A rerun keeps the original (allowlisted) actor, so only first attempts may deploy.
+              [ "$RUN_ATTEMPT" = 1 ] || { echo "::error::workflow_dispatch reruns are refused (run_attempt=$RUN_ATTEMPT); dispatch a new run"; exit 1; }
+              case " $DISPATCH_ALLOWLIST " in
+                *" $ACTOR "*) ;;
+                *) echo "::error::$ACTOR is not on the host-deploy dispatch allowlist"; exit 1;;
+              esac;;
+            *) echo "::error::host-deploy refuses event $EVENT_NAME"; exit 1;;
+          esac
+          echo "host-deploy: event=$EVENT_NAME actor=$ACTOR attempt=$RUN_ATTEMPT"
 
+      # Everything user-controlled reaches the script as env vars only - no $GITHUB_OUTPUT, no
+      # PR body/title in the workflow at all.
       - name: Run host-deploy
+        shell: bash
         env:
           TRIGGER_REMOTE: origin
           DEPLOY_SOURCE: yozora
-          DEPLOY_PR_NUMBER: ${{ github.event.pull_request.number }}
-          DEPLOY_PR_URL: ${{ github.event.pull_request.html_url }}
-          DEPLOY_LABELS: ${{ steps.flags.outputs.labels }}
-          DEPLOY_PR_BODY: ${{ steps.flags.outputs.body }}
-          DEPLOY_PR_TITLE: ${{ steps.flags.outputs.title }}
-          DEPLOY_REASON: ${{ steps.flags.outputs.reason }}
-          DRY_FLAG: ${{ inputs.dry_run }}
+          DEPLOY_EVENT: ${{ github.event_name }}
+          PUSHED_SHA: ${{ github.sha }}
+          INPUT_SHA: ${{ github.event.inputs.sha }}
+          INPUT_RESTART_SERVER: ${{ github.event.inputs.restart_server }}
+          INPUT_PUSH_CLIENTS: ${{ github.event.inputs.push_clients }}
+          INPUT_RESTART_CLIENTS: ${{ github.event.inputs.restart_clients }}
+          INPUT_REASON: ${{ github.event.inputs.reason }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
           set -euo pipefail
           EXTRA=()
-          if [[ "${DRY_FLAG:-false}" == "true" ]]; then
-            EXTRA+=(--dry-run)
+          if [[ "$DEPLOY_EVENT" == "workflow_dispatch" ]]; then
+            export DEPLOY_SHA="${INPUT_SHA:-$PUSHED_SHA}"
+            export DEPLOY_RESTART_SERVER="${INPUT_RESTART_SERVER:-false}"
+            export DEPLOY_PUSH_CLIENTS="${INPUT_PUSH_CLIENTS:-false}"
+            export DEPLOY_RESTART_CLIENTS="${INPUT_RESTART_CLIENTS:-false}"
+            export DEPLOY_REASON="${INPUT_REASON:-}"
+            [[ "${INPUT_DRY_RUN:-false}" == "true" ]] && EXTRA+=(--dry-run)
+          else
+            # push: deploy exactly the pushed commit; flags are looked up from PR labels by the script
+            export DEPLOY_SHA="$PUSHED_SHA"
           fi
           bash /home/kanmi/staticforge/scripts/host-deploy.sh "${EXTRA[@]}"
