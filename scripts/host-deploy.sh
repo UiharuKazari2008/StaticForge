@@ -39,12 +39,13 @@
 #   STATICFORGE_HTTP_PORT     Readiness port (default: 9220)
 #
 # Fail closed: foreign agent locks, dirty tracked source, remote divergence or a failed
-# fast-forward file a Yozora issue, leave the live tree untouched and exit 1. This script
-# never starts an agent. Untracked files and RUNTIME_DIRTY_EXCLUDES are not "dirty".
+# fast-forward file a Yozora issue, leave the live tree untouched and exit 1. The issue is
+# routed to the Cursor agent pipeline (labels type:infra, cursor-agent, status:ready;
+# assignee grok.cursor) - this script itself never starts an agent.
+# Untracked files and RUNTIME_DIRTY_EXCLUDES are not "dirty".
 
 set -euo pipefail
 
-ROOT_SCRIPT="$(cd "$(dirname "$0")/.." && pwd)"
 # Prefer invoking via live tree: bash /home/kanmi/staticforge/scripts/host-deploy.sh
 LIVE_ROOT="${STATICFORGE_LIVE_ROOT:-/home/kanmi/staticforge}"
 TRIGGER_REMOTE="${TRIGGER_REMOTE:-Public}"
@@ -68,7 +69,7 @@ for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=1 ;;
         -h|--help)
-            sed -n '2,43p' "$0" | sed 's/^# \?//'
+            sed -n '2,45p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *)
@@ -139,12 +140,9 @@ fi
 cleanup_agent_lock() {
     rm -f "$LIVE_ROOT/$AGENT_LOCK_NAME"
 }
-PLANTED_AGENT_LOCK=0
-
 plant_agent_lock() {
     printf 'agent: host-deploy\nstarted: %s\nintent: host-deploy merge+flags\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         > "$LIVE_ROOT/$AGENT_LOCK_NAME"
-    PLANTED_AGENT_LOCK=1
     trap 'cleanup_agent_lock' EXIT
 }
 
@@ -206,9 +204,14 @@ dirty_tracked_source() {
     git status --porcelain --untracked-files=no -- . "${RUNTIME_DIRTY_EXCLUDES[@]}"
 }
 
+# Blocked/failed-deploy issues go to the Cursor agent pipeline (Yukimi's decision): these
+# labels + assignee put the issue in that queue, where work runs as an agentjob. Filing an
+# issue is all this script does - it never starts an agent itself.
+BLOCK_ISSUE_LABELS='["type:infra","cursor-agent","status:ready"]'
+BLOCK_ISSUE_ASSIGNEE="grok.cursor"
+
 # File a Yozora issue for a blocked/failed deploy, or comment on the open one with the same
-# title (no issue spam on repeated pushes). No assignee, no agent labels, no bot pings:
-# a human triages. Titles are fixed strings built by this script.
+# title (no issue spam on repeated pushes). Titles are fixed strings built by this script.
 file_block_issue() {
     local title="$1"
     local body="$2"
@@ -231,14 +234,27 @@ let d = ""; process.stdin.on("data", (c) => d += c); process.stdin.on("end", () 
     fi
     local labels_json label_ids created index
     labels_json="$(yozora_curl "$YOZORA_API/repos/$YOZORA_REPO/labels?limit=50" || echo '[]')"
-    label_ids="$(LABELS_JSON="$labels_json" node -e '
-let ids = [];
-try { ids = JSON.parse(process.env.LABELS_JSON || "[]").filter((l) => l.name === "type:infra").map((l) => l.id); } catch (_) {}
+    # Label ids looked up by name each time (ids differ per repo); missing labels are reported.
+    label_ids="$(LABELS_JSON="$labels_json" WANT="$BLOCK_ISSUE_LABELS" node -e '
+const want = JSON.parse(process.env.WANT);
+let labels = [];
+try { labels = JSON.parse(process.env.LABELS_JSON || "[]"); } catch (_) {}
+const ids = [];
+for (const name of want) {
+  const hit = Array.isArray(labels) && labels.find((l) => l.name === name);
+  if (hit) ids.push(hit.id); else console.error("[host-deploy] WARNING: label not found: " + name);
+}
 process.stdout.write(JSON.stringify(ids));')"
-    created="$(yozora_curl -X POST -H "Content-Type: application/json" \
-        "$YOZORA_API/repos/$YOZORA_REPO/issues" \
-        -d "$(TITLE="$title" BODY="$body" LABEL_IDS="$label_ids" node -e 'process.stdout.write(JSON.stringify({title:process.env.TITLE,body:process.env.BODY,labels:JSON.parse(process.env.LABEL_IDS||"[]")}))')" || true)"
-    index="$(printf '%s' "$created" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{process.stdout.write(String(JSON.parse(d).number||''))}catch{process.stdout.write('')}})")"
+    local assignees='["'"$BLOCK_ISSUE_ASSIGNEE"'"]' attempt
+    for attempt in with-assignee without-assignee; do
+        created="$(yozora_curl -X POST -H "Content-Type: application/json" \
+            "$YOZORA_API/repos/$YOZORA_REPO/issues" \
+            -d "$(TITLE="$title" BODY="$body" LABEL_IDS="$label_ids" ASSIGNEES="$assignees" node -e 'process.stdout.write(JSON.stringify({title:process.env.TITLE,body:process.env.BODY,labels:JSON.parse(process.env.LABEL_IDS||"[]"),assignees:JSON.parse(process.env.ASSIGNEES||"[]")}))')" || true)"
+        index="$(printf '%s' "$created" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{process.stdout.write(String(JSON.parse(d).number||''))}catch{process.stdout.write('')}})")"
+        [[ "$index" =~ ^[0-9]+$ ]] && break
+        [[ "$attempt" == with-assignee ]] && log "WARNING: filing issue with assignee $BLOCK_ISSUE_ASSIGNEE failed - retrying without assignee"
+        assignees='[]'
+    done
     if [[ "$index" =~ ^[0-9]+$ ]]; then
         log "Filed issue #$index ($title)"
     else
@@ -265,8 +281,9 @@ block() {
     local body
     body="## Host-deploy blocked: $kind
 
-The live tree was **not** changed and no restart ran. Resolve by hand (no stash, no force-push,
-do not delete another agent's \`.agent-*\` lock), then re-run host-deploy via workflow_dispatch.
+The live tree was **not** changed and no restart ran. To resolve: no stash, no force-push,
+do not delete another agent's \`.agent-*\` lock, and do not touch Hoshino's runtime files
+(\`data/apocrypha/current.json\`, \`backups/\`). Then re-run host-deploy via workflow_dispatch.
 
 \`\`\`text
 ${detail//\`/\'}
@@ -285,11 +302,16 @@ check_foreign_locks() {
     local locks=() f detail=""
     mapfile -t locks < <(foreign_agent_locks || true)
     ((${#locks[@]} > 0)) || return 0
+    # Name and age only - lock contents are never read (the issue tracker is public).
+    local name mtime age now
+    now="$(date +%s)"
     for f in "${locks[@]}"; do
-        detail+="- $f mtime=$(stat -c %y "$f" 2>/dev/null || echo '?')"$'\n'
-        detail+="  $(tr '\n' ' ' < "$f" 2>/dev/null || true)"$'\n'
+        name="$(printf '%s' "${f##*/}" | tr -c 'A-Za-z0-9._-' '?')"
+        mtime="$(stat -c %Y "$f" 2>/dev/null || echo '')"
+        if [[ "$mtime" =~ ^[0-9]+$ ]]; then age="$(( (now - mtime) / 60 )) min"; else age="?"; fi
+        detail+="- $name (age: $age)"$'\n'
     done
-    block "agent_lock" "Foreign agent lock(s) present:"$'\n'"$detail"
+    block "agent_lock" "Foreign agent lock(s) present in the live tree:"$'\n'"$detail"
 }
 
 check_dirty_tree() {
@@ -498,7 +520,6 @@ if [[ "$(git rev-parse HEAD)" != "$DEPLOY_SHA" ]]; then
     # file (e.g. runtime data/apocrypha/current.json) or would overwrite an untracked file.
     if ! MERGE_OUT="$(git merge --ff-only "$DEPLOY_SHA" 2>&1)"; then
         cleanup_agent_lock
-        PLANTED_AGENT_LOCK=0
         trap - EXIT
         block "merge_failed" "git merge --ff-only failed for $DEPLOY_SHA onto $(git rev-parse HEAD).
 $MERGE_OUT
