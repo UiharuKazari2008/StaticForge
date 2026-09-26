@@ -127,7 +127,21 @@ function getOccupiedPositionCellLabels(excludeCharacterId) {
         if (!item.classList.contains('character-prompt-item')) continue;
         if (item.id === excludeCharacterId) continue;
         const label = item.dataset.positionCell;
-        if (label) labels.add(label);
+        if (label) {
+            labels.add(label);
+            continue;
+        }
+        const sx = item.dataset.positionX;
+        const sy = item.dataset.positionY;
+        if (sx !== undefined && sy !== undefined && sx !== '' && sy !== '') {
+            const fx = parseFloat(sx);
+            const fy = parseFloat(sy);
+            if (Number.isFinite(fx) && Number.isFinite(fy)) {
+                // getCellLabelFromCoords: public/scripts/comp/characterPromptManager.js
+                const inferred = getCellLabelFromCoords(fx, fy);
+                if (inferred) labels.add(inferred);
+            }
+        }
     }
     return labels;
 }
