@@ -13,6 +13,12 @@
 # The live tree is never checked out by Actions: the step runs the host copy of
 # /home/kanmi/staticforge/scripts/host-deploy.sh, which fast-forwards the live tree to the SHA and
 # refuses if the SHA is not on origin/main or not a descendant of the current live HEAD.
+# Runner: seq-dreamscape (repo-scoped, host mode) runs as the unprivileged user sf-deploy, which cannot
+# read /home/kanmi. Its ONLY escalation is /etc/sudoers.d/60-sf-deploy on the host:
+#   sf-deploy -> (kanmi) NOPASSWD: host-deploy.sh with no args, --dry-run, --check-pm2 or --help
+# with env_reset and env_keep limited to TRIGGER_REMOTE DEPLOY_SOURCE DEPLOY_EVENT DEPLOY_SHA
+# DEPLOY_RESTART_SERVER DEPLOY_PUSH_CLIENTS DEPLOY_RESTART_CLIENTS DEPLOY_REASON GITHUB_SERVER_URL
+# GITHUB_REPOSITORY GITHUB_RUN_ID. Any other variable the script reads is not passed (host defaults apply).
 
 name: Host deploy
 
@@ -69,9 +75,8 @@ jobs:
        github.run_attempt == '1' &&
        contains(fromJSON('["UiharuKazari2008", "grok.menma"]'), github.actor))
     runs-on: [self-hosted, linux, dreamscape]
-    defaults:
-      run:
-        working-directory: /home/kanmi/staticforge
+    # No working-directory: the runner user (sf-deploy) cannot enter /home/kanmi. Steps run in the
+    # runner's own job workdir; host-deploy.sh (as kanmi via sudo) cd's into the live tree itself.
     steps:
       - name: Guard (event, ref, actor)
         shell: bash
@@ -127,4 +132,6 @@ jobs:
             # push: deploy exactly the pushed commit; flags are looked up from PR labels by the script
             export DEPLOY_SHA="$PUSHED_SHA"
           fi
-          bash /home/kanmi/staticforge/scripts/host-deploy.sh "${EXTRA[@]}"
+          # Run as kanmi through the single sudoers rule (sudo -n: fail instead of prompting). Invoked by
+          # absolute path (not `bash <path>`) so it matches the rule; args are limited to none / --dry-run.
+          sudo -n -u kanmi /home/kanmi/staticforge/scripts/host-deploy.sh "${EXTRA[@]}"
