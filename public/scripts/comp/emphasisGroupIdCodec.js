@@ -25,6 +25,7 @@ const EMPHASIS_MANAGED_INVISIBLE_SET = new Set([
     EMPHASIS_ZW.WJ, EMPHASIS_ZW.OPEN, EMPHASIS_ZW.CLOSE, EMPHASIS_ZW.BIT0, EMPHASIS_ZW.BIT1,
     '\u200D', '\uFEFF', '\u2061', '\u2062', '\u00AD'
 ]);
+const EMPHASIS_MANAGED_INVISIBLE_REGEX = new RegExp([...EMPHASIS_MANAGED_INVISIBLE_SET].join('|'));
 
 function encodeEmphasisGroupIdBits(id) {
     const n = Math.max(0, Math.min(EMPHASIS_GROUP_ID_MAX, id | 0));
@@ -336,7 +337,7 @@ function expandEmphasisGroupIds(text, weightSource, options = {}) {
 
 function stripUnmanagedEmphasisInvisibles(text) {
     if (!text || typeof text !== 'string') return text;
-    if (![...EMPHASIS_MANAGED_INVISIBLE_SET].some((ch) => text.includes(ch))) return text;
+    if (!EMPHASIS_MANAGED_INVISIBLE_REGEX.test(text)) return text;
 
     const { opens, closes } = listManagedEmphasisDelimiters(text);
     const protectedRanges = [];
