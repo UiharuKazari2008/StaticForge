@@ -104,6 +104,11 @@ async function handleGetSystemInfo(handlers, ws, message, clientInfo, wsServer) 
     const startTime = Date.now();
 
     try {
+        if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: fix system info privilege leakage
+            handlers.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
         const systemInfo = handlers.globalResources.getSystemInfoCache();
 
         if (!systemInfo) {
