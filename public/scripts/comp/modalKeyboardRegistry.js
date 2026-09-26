@@ -111,6 +111,19 @@ function rememberKeyboardOpenModal(modal) {
     }
 }
 
+/** Open modal element for listener scope; also catches modals shown without openModal. */
+function resolveKeyboardOpenModal(modalId) {
+    const cached = keyboardOpenModals.get(modalId);
+    if (cached && cached.isConnected && isModalOpenForListeners(cached)) return cached;
+    const modal = document.getElementById(modalId);
+    if (modal && isModalOpenForListeners(modal)) {
+        keyboardOpenModals.set(modalId, modal);
+        return modal;
+    }
+    keyboardOpenModals.delete(modalId);
+    return null;
+}
+
 function indexKeyboardListenerEntry(entry) {
     if (!entry || !entry.id) return;
     if (entry.type === 'global' || !entry.modalId) {
@@ -185,18 +198,10 @@ function resolveShowInOverlay(options) {
 function collectActiveKeyboardListeners(event) {
     const active = [];
     pushActiveKeyboardEntriesFromMap(keyboardGlobalListeners, event, null, active, null);
-    keyboardOpenModals.forEach((modal, modalId) => {
-        if (!isModalOpenForListeners(modal)) {
-            keyboardOpenModals.delete(modalId);
-            return;
-        }
-        pushActiveKeyboardEntriesFromMap(
-            keyboardListenersByModal.get(modalId),
-            event,
-            null,
-            active,
-            modal
-        );
+    keyboardListenersByModal.forEach((byId, modalId) => {
+        const modal = resolveKeyboardOpenModal(modalId);
+        if (!modal) return;
+        pushActiveKeyboardEntriesFromMap(byId, event, null, active, modal);
     });
     active.sort((a, b) => (b.priority || 0) - (a.priority || 0));
     return active;
@@ -206,18 +211,10 @@ function getActiveKeyboardOverlayEntries() {
     const active = [];
     const overlayOpts = { forOverlay: true };
     pushActiveKeyboardEntriesFromMap(keyboardGlobalListeners, null, overlayOpts, active, null);
-    keyboardOpenModals.forEach((modal, modalId) => {
-        if (!isModalOpenForListeners(modal)) {
-            keyboardOpenModals.delete(modalId);
-            return;
-        }
-        pushActiveKeyboardEntriesFromMap(
-            keyboardListenersByModal.get(modalId),
-            null,
-            overlayOpts,
-            active,
-            modal
-        );
+    keyboardListenersByModal.forEach((byId, modalId) => {
+        const modal = resolveKeyboardOpenModal(modalId);
+        if (!modal) return;
+        pushActiveKeyboardEntriesFromMap(byId, null, overlayOpts, active, modal);
     });
     active.sort((a, b) => {
         const tierDiff = overlayEntrySortTier(a) - overlayEntrySortTier(b);
