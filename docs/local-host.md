@@ -180,6 +180,19 @@ Rules for whoever resolves a block: no stash, no force-push to `main`, do not de
 
 `flock` on `/tmp/staticforge-host-deploy.lock` serializes overlapping jobs.
 
+### Runner and privileges
+
+The Yozora runner `seq-dreamscape` (act_runner v4.0.0, repo-scoped to DreamScape/StaticForge, host mode,
+labels `self-hosted`, `linux`, `dreamscape`, capacity 1) runs as the unprivileged system user `sf-deploy`
+(systemd unit `act_runner-dreamscape.service`), not as kanmi. The deploy step calls
+`sudo -n -u kanmi /home/kanmi/staticforge/scripts/host-deploy.sh [--dry-run]`; `/etc/sudoers.d/60-sf-deploy`
+allows exactly that script as kanmi (no args, `--dry-run` or `--help`) and nothing else, with the
+environment reset except for the deploy inputs (`TRIGGER_REMOTE`, `DEPLOY_SOURCE`, `DEPLOY_EVENT`,
+`DEPLOY_SHA`, `DEPLOY_RESTART_*`, `DEPLOY_REASON`, `GITHUB_SERVER_URL`, `GITHUB_REPOSITORY`,
+`GITHUB_RUN_ID`). Overrides such as `STATICFORGE_DEPLOY_ENV`, `YOZORA_TOKEN_FILE` or `STATICFORGE_LIVE_ROOT`
+cannot be passed from a job. If the script ever needs a new input, the sudoers `env_keep` list must be
+updated on the host as well.
+
 ### Install runners (one-time)
 
 Tokens stay in `~/.secrets/` — never commit them.
