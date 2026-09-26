@@ -116,17 +116,24 @@ function applyPinButtonState(pinBtn, isPinned) {
     pinBtn.title = isPinned ? 'Unpin image' : 'Pin image';
 }
 
-/** DOM start/end for contiguous data-index strip (gallery.children is live). */
+/** DOM start/end for contiguous data-index strip (gallery.children is live).
+ * contiguous=false when any data-index is missing, has a gap or jumps; the
+ * range then spans the whole list and callers compare per-element data-index. */
 function galleryKeepStripDomRange(items, stripMin, stripMax) {
     const total = items.length;
-    if (!total) return { start: 0, end: -1, total: 0 };
+    if (!total) return { start: 0, end: -1, total: 0, contiguous: true };
     const firstIdx = parseInt(items[0].dataset.index, 10);
-    if (isNaN(firstIdx)) return { start: 0, end: total - 1, total };
+    let contiguous = !isNaN(firstIdx);
+    for (let i = 1; contiguous && i < total; i++) {
+        if (parseInt(items[i].dataset.index, 10) !== firstIdx + i) contiguous = false;
+    }
+    if (!contiguous) return { start: 0, end: total - 1, total, contiguous };
     return {
         start: Math.max(0, stripMin - firstIdx),
         end: Math.min(total - 1, stripMax - firstIdx),
         total,
-        firstIdx
+        firstIdx,
+        contiguous
     };
 }
 
@@ -5604,14 +5611,14 @@ function updateVirtualScrollInternal() {
         const fileIndex = parseInt(el.dataset.fileIndex, 10);
         scheduleGalleryItemBlurhash(el, allImages[fileIndex]);
     };
-    if (stripDom.end >= stripDom.start) {
+    if (stripDom.contiguous && stripDom.end >= stripDom.start) {
         for (let i = 0; i < stripDom.start; i++) {
             demoteFarToPlaceholder(items[i]);
         }
         for (let i = stripDom.end + 1; i < total; i++) {
             demoteFarToPlaceholder(items[i]);
         }
-    } else {
+    } else if (stripDom.contiguous) {
         // Keep strip does not overlap loaded DOM — demote entire live list
         for (let i = 0; i < total; i++) {
             demoteFarToPlaceholder(items[i]);
@@ -5631,6 +5638,12 @@ function updateVirtualScrollInternal() {
         // Gallery list index (must align minKeep/maxKeep and visibleItems — all gallery-index space)
         const itemIndex = parseInt(el.dataset.index || i.toString(), 10);
         if (isNaN(itemIndex)) {
+            continue;
+        }
+
+        // Non-contiguous data-index: DOM offset is unreliable, compare per element
+        if (!stripDom.contiguous && (itemIndex < stripMin || itemIndex > stripMax)) {
+            demoteFarToPlaceholder(el);
             continue;
         }
 
