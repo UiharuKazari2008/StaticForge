@@ -165,6 +165,21 @@ function parseScopesJson(raw) {
     }
 }
 
+// JULES: Pre-compute static reverse lookup Map O(1) from packetType to scopes array
+const PACKET_TO_SCOPES_MAP = new Map();
+for (const [scopeId, packets] of Object.entries(SCOPE_WS_PACKETS)) {
+    if (Array.isArray(packets)) {
+        for (const packet of packets) {
+            let scopes = PACKET_TO_SCOPES_MAP.get(packet);
+            if (!scopes) {
+                scopes = [];
+                PACKET_TO_SCOPES_MAP.set(packet, scopes);
+            }
+            scopes.push(scopeId);
+        }
+    }
+}
+
 function normalizeScopes(scopes) {
     if (!Array.isArray(scopes) || scopes.length === 0) {
         return ['universal'];
@@ -179,11 +194,7 @@ function normalizeScopes(scopes) {
 function getPacketScopes(packetType) {
     const type = String(packetType || '').trim();
     if (!type) return [];
-    const out = [];
-    for (const [scopeId, packets] of Object.entries(SCOPE_WS_PACKETS)) {
-        if (packets.includes(type)) out.push(scopeId);
-    }
-    return out;
+    return PACKET_TO_SCOPES_MAP.get(type) || [];
 }
 
 function scopesAllowPacket(scopes, packetType) {
