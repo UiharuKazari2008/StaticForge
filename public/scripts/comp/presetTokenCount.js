@@ -11,6 +11,16 @@ function countPresetValue(tokenizer, text, withSeparator = false) {
     return tokenizer.countTokens(withSeparator && !trimmed.endsWith(', ') ? `${trimmed}, ` : trimmed);
 }
 
+function getOptionsDataCacheVersion(source) {
+    if (!source) return null;
+    if (source._cacheVersion != null) return source._cacheVersion;
+    if (source.updatedAt != null) return source.updatedAt;
+    if (source.timestamp != null) return source.timestamp;
+    // Fall back to datasets list identity + length (options payload replacement)
+    const datasets = source.datasets;
+    return datasets ? `${datasets.length}:${datasets}` : source;
+}
+
 function buildQwenPresetTokenCountMap(tokenizer) {
     const source = window.optionsData || {};
     const cache = { datasets: [], quality: {}, uc: {}, nsfw: {}, expanders: {} };
@@ -71,10 +81,18 @@ function getPresetTokenCountMap() {
     if (getForgeModelFeatures()?.tokenizer !== 'qwen' || !tokenizer) {
         return window.optionsData?.preset_token_counts || null;
     }
-    if (!qwenPresetTokenCountCache || qwenPresetTokenCountCache.tokenizer !== tokenizer || qwenPresetTokenCountCache.source !== window.optionsData) {
+    const modelKey = getModelKeyForTokenCount();
+    const optionsVersion = getOptionsDataCacheVersion(window.optionsData);
+    if (
+        !qwenPresetTokenCountCache
+        || qwenPresetTokenCountCache.tokenizer !== tokenizer
+        || qwenPresetTokenCountCache.modelKey !== modelKey
+        || qwenPresetTokenCountCache.optionsVersion !== optionsVersion
+    ) {
         qwenPresetTokenCountCache = {
             tokenizer,
-            source: window.optionsData,
+            modelKey,
+            optionsVersion,
             counts: buildQwenPresetTokenCountMap(tokenizer)
         };
     }
@@ -378,8 +396,22 @@ function getActivePresetTokenDelta(combinedPromptText) {
     const datasetSettings = window.datasetSettings || {};
     const isV3 = modelKey === 'v3' || modelKey === 'v3_furry';
 
+    const datasetsByValue = new Map();
+    if (Array.isArray(map.datasets)) {
+        map.datasets.forEach((entry) => {
+            if (entry && entry.value != null) datasetsByValue.set(entry.value, entry);
+        });
+    }
+    const optionsDatasetsByValue = new Map();
+    const optionsDatasets = window.optionsData?.datasets;
+    if (Array.isArray(optionsDatasets)) {
+        optionsDatasets.forEach((entry) => {
+            if (entry && entry.value != null) optionsDatasetsByValue.set(entry.value, entry);
+        });
+    }
+
     const addDatasetSubToggleTokens = (dsValue, includeParentTokens) => {
-        const entry = map.datasets.find((d) => d.value === dsValue);
+        const entry = datasetsByValue.get(dsValue);
         if (!entry) return;
         if (includeParentTokens) result.prompt += entry.tokens || 0;
         const settings = datasetSettings[dsValue];
@@ -389,7 +421,7 @@ function getActivePresetTokenDelta(combinedPromptText) {
                 if (setting && setting.enabled) {
                     let tokens = st.tokens || 0;
                     if (typeof applyBiasToText === 'function' && setting.bias !== undefined && setting.bias !== 1.0) {
-                        const raw = window.optionsData?.datasets?.find((d) => d.value === dsValue)
+                        const raw = optionsDatasetsByValue.get(dsValue)
                             ?.sub_toggles?.find((t) => t.id === st.id)?.value;
                         if (raw) tokens = countTokensForText(applyBiasToText(raw, setting.bias) + ', ');
                     }

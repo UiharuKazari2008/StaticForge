@@ -105,6 +105,42 @@ class CustomScrollbar {
             (element.classList && element.classList.contains('form-section-scroll'));
     }
 
+    // Deep-scan only modal / scroll-root containers (not every added leaf)
+    isScrollObserveRoot(element) {
+        if (!element || !element.classList) return false;
+        if (element.classList.contains('modal')) return true;
+        if (element.id && /modal/i.test(element.id)) return true;
+        for (const cls of element.classList) {
+            if (cls.includes('scroll-shell') || cls === 'form-section-scroll') return true;
+        }
+        return false;
+    }
+
+    _initScrollHostsInNode(node) {
+        if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+        if (this.shouldHaveScrollbar(node)) {
+            this.createScrollbar(node);
+        }
+        if (!node.firstElementChild || !node.querySelectorAll) return;
+        if (!this.isScrollObserveRoot(node)) return;
+        node.querySelectorAll('[data-custom-scrollbar]').forEach((element) => this.createScrollbar(element));
+        node.querySelectorAll('.form-section-scroll:not([data-custom-scrollbar])').forEach((element) => this.createScrollbar(element));
+    }
+
+    _teardownScrollHostsInNode(node) {
+        if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+        if (this.scrollbars.has(node)) {
+            this.destroy(node);
+        }
+        if (!this.scrollbars.size || !node.firstElementChild || !node.querySelectorAll) return;
+        if (!this.isScrollObserveRoot(node) && !this.shouldHaveScrollbar(node)) return;
+        node.querySelectorAll('[data-custom-scrollbar], .form-section-scroll').forEach((el) => {
+            if (this.scrollbars.has(el)) {
+                this.destroy(el);
+            }
+        });
+    }
+
     // Force re-initialization of a specific element (useful when content is added dynamically)
     forceReinit(element) {
         try {
@@ -129,40 +165,8 @@ class CustomScrollbar {
     observeNewElements() {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
-                // Handle added nodes
-                mutation.addedNodes.forEach((node) => {
-                    if (node.nodeType === Node.ELEMENT_NODE) {
-                        // Check if the added node should have a scrollbar
-                        if (this.shouldHaveScrollbar(node)) {
-                            this.createScrollbar(node);
-                        }
-                        // Check children of added node
-                        const dataAttrElements = node.querySelectorAll && node.querySelectorAll('[data-custom-scrollbar]');
-                        const classElements = node.querySelectorAll && node.querySelectorAll('.form-section-scroll:not([data-custom-scrollbar])');
-
-                        if (dataAttrElements) {
-                            dataAttrElements.forEach(element => this.createScrollbar(element));
-                        }
-                        if (classElements) {
-                            classElements.forEach(element => this.createScrollbar(element));
-                        }
-                    }
-                });
-
-                // Tear down trackers when scroll shells leave the DOM (Map keys block GC)
-                mutation.removedNodes.forEach((node) => {
-                    if (node.nodeType !== Node.ELEMENT_NODE) return;
-                    if (this.scrollbars.has(node)) {
-                        this.destroy(node);
-                    }
-                    if (!this.scrollbars.size || !node.querySelectorAll) return;
-                    node.querySelectorAll('[data-custom-scrollbar], .form-section-scroll').forEach((el) => {
-                        if (this.scrollbars.has(el)) {
-                            this.destroy(el);
-                        }
-                    });
-                });
-
+                mutation.addedNodes.forEach((node) => this._initScrollHostsInNode(node));
+                mutation.removedNodes.forEach((node) => this._teardownScrollHostsInNode(node));
             });
         });
 

@@ -15,6 +15,39 @@ let textReplacementPaginationInfo = {
     hasPrevPage: false
 };
 
+/** Strip emphasis markers from a replacement needle once per apply. */
+function getCleanReplacementPattern(str) {
+    if (!str) return '';
+    let clean = String(str);
+    // stripManagedEmphasisDelimitersForCounting: public/scripts/comp/emphasisGroupIdCodec.js
+    clean = stripManagedEmphasisDelimitersForCounting(clean);
+    return clean.replace(/-?\d+(?:\.\d+)?::/g, '').replace(/::/g, '').trim();
+}
+
+/** Delete first `count` occurrences (or all when count is null/undefined). Same output as repeated indexOf+splice. */
+function deleteNeedleOccurrences(haystack, needle, count) {
+    if (!haystack || !needle) return haystack;
+    if (count === undefined || count === null) {
+        return haystack.split(needle).join('');
+    }
+    let out = '';
+    let start = 0;
+    let removed = 0;
+    const limit = Number(count);
+    while (removed < limit) {
+        const index = haystack.indexOf(needle, start);
+        if (index === -1) {
+            out += haystack.slice(start);
+            return out;
+        }
+        out += haystack.slice(start, index);
+        start = index + needle.length;
+        removed++;
+    }
+    out += haystack.slice(start);
+    return out;
+}
+
 function extractBiasFromTextForDisplay(text) {
     if (!text || typeof text !== 'string') return null;
     // listManagedEmphasisBlocks: public/scripts/comp/emphasisGroupIdCodec.js
@@ -602,33 +635,20 @@ function convertTextReplacementToEditMode(key) {
     const value = textReplacementData[key];
     const isArray = Array.isArray(value);
     
-    // Replace display spans with full textarea containers
-    const arrayItems = item.querySelectorAll('.text-replacement-array-item');
-    
-    arrayItems.forEach((arrayItem, index) => {
-        const displayDiv = arrayItem.querySelector('.text-replacement-value-display');
-        
-        if (displayDiv) {
-            const itemValue = isArray ? value[index] : value;
-            const itemType = isArray ? 'array' : 'string';
-            
-            // Create full textarea container
-            const textareaContainer = document.createElement('div');
-            textareaContainer.className = 'character-prompt-textarea-container';
-            textareaContainer.innerHTML = `
+    // One textarea container template — clone per row instead of rebuilding via innerHTML
+    const textareaTemplate = document.createElement('div');
+    textareaTemplate.className = 'character-prompt-textarea-container';
+    textareaTemplate.innerHTML = `
                 <div class="character-prompt-textarea-background"></div>
                 <textarea 
                     class="form-control character-prompt-textarea prompt-textarea"
-                    rows="${isArray ? '2' : '3'}"
-                    data-key="${key}" 
-                    data-index="${index}"
-                    data-type="${itemType}"
+                    rows="3"
                     placeholder="Enter text replacement value..."
                     autocapitalize="false"
                     autocorrect="false"
                     spellcheck="false"
                     data-ms-editor="false"
-                >${escapeHtml(itemValue)}</textarea>
+                ></textarea>
                 <div class="prompt-textarea-toolbar hidden">
                     <div class="toolbar-left">
                         <span class="token-count">0 tokens</span>
@@ -646,6 +666,24 @@ function convertTextReplacementToEditMode(key) {
                     </div>
                 </div>
             `;
+
+    // Replace display spans with full textarea containers
+    const arrayItems = item.querySelectorAll('.text-replacement-array-item');
+    
+    arrayItems.forEach((arrayItem, index) => {
+        const displayDiv = arrayItem.querySelector('.text-replacement-value-display');
+        
+        if (displayDiv) {
+            const itemValue = isArray ? value[index] : value;
+            const itemType = isArray ? 'array' : 'string';
+            
+            const textareaContainer = textareaTemplate.cloneNode(true);
+            const textarea = textareaContainer.querySelector('textarea');
+            textarea.rows = isArray ? 2 : 3;
+            textarea.dataset.key = key;
+            textarea.dataset.index = String(index);
+            textarea.dataset.type = itemType;
+            textarea.value = itemValue == null ? '' : String(itemValue);
             
             // Replace display div with textarea container
             displayDiv.replaceWith(textareaContainer);
@@ -665,12 +703,9 @@ function convertTextReplacementToEditMode(key) {
             }
             
             // Setup the textarea
-            const textarea = textareaContainer.querySelector('textarea');
-            if (textarea) {
-                textarea.readOnly = false;
-                textarea.addEventListener('input', () => updateTextReplacementValue(key));
-                setupTextReplacementTextarea(textarea);
-            }
+            textarea.readOnly = false;
+            textarea.addEventListener('input', () => updateTextReplacementValue(key));
+            setupTextReplacementTextarea(textarea);
         }
     });
 }
@@ -1826,38 +1861,22 @@ function applyDynamicReplacementClientSide(replacement) {
     let method = 'direct';
     let appliedSuccessfully = false;
 
-    const getCleanPattern = (str) => {
-        if (!str) return '';
-        let clean = String(str);
-        if (typeof stripManagedEmphasisDelimitersForCounting === 'function') {
-            clean = stripManagedEmphasisDelimitersForCounting(clean);
-        }
-        return clean.replace(/-?\d+(?:\.\d+)?::/g, '').replace(/::/g, '').trim();
-    };
+    // Clean needles once per replacement
+    const cleanSelect = selectText ? getCleanReplacementPattern(selectText) : '';
+    const cleanAnchor = anchorText ? getCleanReplacementPattern(anchorText) : '';
 
     if (action === 'delete') {
         // Delete action
-        let deleteCount = 0;
         let textToDelete = selectText;
-        let usedFallback = false;
 
         // Try primary select_text
-        if (selectText && result.includes(selectText)) {
-            if (count !== undefined && count !== null) {
-                for (let i = 0; i < count; i++) {
-                    const index = result.indexOf(textToDelete);
-                    if (index === -1) break;
-                    result = result.substring(0, index) + result.substring(index + textToDelete.length);
-                    deleteCount++;
-                }
-            } else {
-                result = result.split(textToDelete).join('');
-                deleteCount = 1;
-            }
-            appliedSuccessfully = deleteCount > 0;
-        } else if (selectText) {
-            const cleanSelect = getCleanPattern(selectText);
-            if (cleanSelect && result.includes(cleanSelect)) {
+        let hitIndex = selectText ? result.indexOf(selectText) : -1;
+        if (hitIndex !== -1) {
+            result = deleteNeedleOccurrences(result, textToDelete, count);
+            appliedSuccessfully = (count === undefined || count === null) ? true : Number(count) > 0;
+        } else if (selectText && cleanSelect) {
+            hitIndex = result.indexOf(cleanSelect);
+            if (hitIndex !== -1) {
                 result = result.split(cleanSelect).join('');
                 appliedSuccessfully = true;
                 method = 'emphasis-matched';
@@ -1865,22 +1884,14 @@ function applyDynamicReplacementClientSide(replacement) {
         }
 
         // Try fallback if primary failed
-        if (!appliedSuccessfully && fallbackSelectText && result.includes(fallbackSelectText)) {
-            textToDelete = fallbackSelectText;
-            usedFallback = true;
-            if (count !== undefined && count !== null) {
-                for (let i = 0; i < count; i++) {
-                    const index = result.indexOf(textToDelete);
-                    if (index === -1) break;
-                    result = result.substring(0, index) + result.substring(index + textToDelete.length);
-                    deleteCount++;
-                }
-            } else {
-                result = result.split(textToDelete).join('');
-                deleteCount = 1;
+        if (!appliedSuccessfully && fallbackSelectText) {
+            hitIndex = result.indexOf(fallbackSelectText);
+            if (hitIndex !== -1) {
+                textToDelete = fallbackSelectText;
+                result = deleteNeedleOccurrences(result, textToDelete, count);
+                appliedSuccessfully = (count === undefined || count === null) ? true : Number(count) > 0;
+                if (appliedSuccessfully) method = 'fallback';
             }
-            appliedSuccessfully = deleteCount > 0;
-            if (appliedSuccessfully) method = 'fallback';
         }
 
         if (!appliedSuccessfully) {
@@ -1893,24 +1904,28 @@ function applyDynamicReplacementClientSide(replacement) {
         let usedFallback = false;
 
         // Try primary select_text
-        if (selectText && result.includes(selectText)) {
-            result = result.replace(selectText, replaceText);
+        let hitIndex = selectText ? result.indexOf(selectText) : -1;
+        if (hitIndex !== -1) {
+            result = result.slice(0, hitIndex) + replaceText + result.slice(hitIndex + selectText.length);
             appliedSuccessfully = true;
-        } else if (selectText) {
-            const cleanSelect = getCleanPattern(selectText);
-            if (cleanSelect && result.includes(cleanSelect)) {
-                result = result.replace(cleanSelect, replaceText);
+        } else if (selectText && cleanSelect) {
+            hitIndex = result.indexOf(cleanSelect);
+            if (hitIndex !== -1) {
+                result = result.slice(0, hitIndex) + replaceText + result.slice(hitIndex + cleanSelect.length);
                 appliedSuccessfully = true;
                 method = 'emphasis-matched';
             }
         }
 
         // Try fallback if primary failed
-        if (!appliedSuccessfully && fallbackSelectText && result.includes(fallbackSelectText)) {
-            textToReplace = fallbackSelectText;
-            result = result.replace(fallbackSelectText, replaceText);
-            appliedSuccessfully = true;
-            method = 'fallback';
+        if (!appliedSuccessfully && fallbackSelectText) {
+            hitIndex = result.indexOf(fallbackSelectText);
+            if (hitIndex !== -1) {
+                textToReplace = fallbackSelectText;
+                result = result.slice(0, hitIndex) + replaceText + result.slice(hitIndex + fallbackSelectText.length);
+                appliedSuccessfully = true;
+                method = 'fallback';
+            }
         }
 
         // Try alternative if both failed and replacement is optional
@@ -1932,16 +1947,16 @@ function applyDynamicReplacementClientSide(replacement) {
         let anchorApplied = false;
 
         if (anchorText) {
-            const anchorIndex = result.indexOf(anchorText);
+            let anchorIndex = result.indexOf(anchorText);
             if (anchorIndex !== -1) {
                 insertPosition = anchorIndex + anchorText.length;
                 appliedSuccessfully = true;
                 anchorApplied = true;
                 method = 'anchor';
-            } else {
-                const cleanAnchor = getCleanPattern(anchorText);
-                if (cleanAnchor && result.includes(cleanAnchor)) {
-                    insertPosition = result.indexOf(cleanAnchor) + cleanAnchor.length;
+            } else if (cleanAnchor) {
+                anchorIndex = result.indexOf(cleanAnchor);
+                if (anchorIndex !== -1) {
+                    insertPosition = anchorIndex + cleanAnchor.length;
                     appliedSuccessfully = true;
                     anchorApplied = true;
                     method = 'anchor';
@@ -1950,24 +1965,26 @@ function applyDynamicReplacementClientSide(replacement) {
         }
 
         if (!anchorApplied && selectText && selectText.trim()) {
-            const index = result.indexOf(selectText);
+            let index = result.indexOf(selectText);
             if (index !== -1) {
                 insertPosition = index + selectText.length;
                 appliedSuccessfully = true;
             } else {
-                const cleanSelect = getCleanPattern(selectText);
-                if (cleanSelect && result.includes(cleanSelect)) {
-                    insertPosition = result.indexOf(cleanSelect) + cleanSelect.length;
+                index = cleanSelect ? result.indexOf(cleanSelect) : -1;
+                if (index !== -1) {
+                    insertPosition = index + cleanSelect.length;
                     appliedSuccessfully = true;
                     method = 'emphasis-matched';
-                } else if (fallbackSelectText && result.includes(fallbackSelectText)) {
-                    const fallbackIndex = result.indexOf(fallbackSelectText);
-                    insertPosition = fallbackIndex + fallbackSelectText.length;
-                    appliedSuccessfully = true;
-                    method = 'fallback';
-                } else if (!isCritical && alternativeText) {
-                    textToAppend = alternativeText;
-                    method = 'alternative';
+                } else {
+                    index = fallbackSelectText ? result.indexOf(fallbackSelectText) : -1;
+                    if (index !== -1) {
+                        insertPosition = index + fallbackSelectText.length;
+                        appliedSuccessfully = true;
+                        method = 'fallback';
+                    } else if (!isCritical && alternativeText) {
+                        textToAppend = alternativeText;
+                        method = 'alternative';
+                    }
                 }
             }
         } else {
@@ -3249,39 +3266,59 @@ function populateCompiledPromptsSection() {
         if (noDataMessage) noDataMessage.classList.remove('hidden');
         if (basePromptContainer) basePromptContainer.classList.add('hidden');
         if (baseUcContainer) baseUcContainer.classList.add('hidden');
-        if (characterPromptsContainer) characterPromptsContainer.innerHTML = '';
+        if (characterPromptsContainer) {
+            characterPromptsContainer.innerHTML = '';
+            characterPromptsContainer._compiledCharsSig = '';
+        }
+        if (basePromptDisplay) basePromptDisplay._compiledText = '';
+        if (baseUcDisplay) baseUcDisplay._compiledText = '';
         return;
     }
 
     // Hide no data message
     if (noDataMessage) noDataMessage.classList.add('hidden');
 
-    // Populate base prompt
+    // Populate base prompt — skip highlightEmphasisInText when text unchanged
     if (finalPrompt && finalPrompt.trim()) {
         basePromptContainer.classList.remove('hidden');
-        basePromptDisplay.textContent = finalPrompt;
-
-        // Apply emphasis highlighting
-        const highlightedHtml = highlightEmphasisInText(finalPrompt);
-        basePromptOverlay.innerHTML = highlightedHtml;
+        if (basePromptDisplay._compiledText !== finalPrompt) {
+            basePromptDisplay.textContent = finalPrompt;
+            // highlightEmphasisInText: public/scripts/comp/emphasisHighlight.js
+            basePromptOverlay.innerHTML = highlightEmphasisInText(finalPrompt);
+            basePromptDisplay._compiledText = finalPrompt;
+        }
     } else {
         basePromptContainer.classList.add('hidden');
+        if (basePromptDisplay) basePromptDisplay._compiledText = '';
     }
 
     // Populate base UC
     if (finalUc && finalUc.trim()) {
         baseUcContainer.classList.remove('hidden');
-        baseUcDisplay.textContent = finalUc;
-
-        // Apply emphasis highlighting
-        const highlightedHtml = highlightEmphasisInText(finalUc);
-        baseUcOverlay.innerHTML = highlightedHtml;
+        if (baseUcDisplay._compiledText !== finalUc) {
+            baseUcDisplay.textContent = finalUc;
+            // highlightEmphasisInText: public/scripts/comp/emphasisHighlight.js
+            baseUcOverlay.innerHTML = highlightEmphasisInText(finalUc);
+            baseUcDisplay._compiledText = finalUc;
+        }
     } else {
         baseUcContainer.classList.add('hidden');
+        if (baseUcDisplay) baseUcDisplay._compiledText = '';
     }
 
-    // Populate character prompts
+    // Populate character prompts — skip rebuild when fingerprint unchanged
     if (characterPromptsContainer) {
+        let charsSig = '';
+        if (finalCharacterPrompts && Array.isArray(finalCharacterPrompts)) {
+            for (let i = 0; i < finalCharacterPrompts.length; i++) {
+                const char = finalCharacterPrompts[i];
+                charsSig += `${i}\0${char.chara_name || char.name || ''}\0${char.prompt || ''}\0${char.uc || ''}\n`;
+            }
+        }
+        if (characterPromptsContainer._compiledCharsSig === charsSig) {
+            return;
+        }
+        characterPromptsContainer._compiledCharsSig = charsSig;
         characterPromptsContainer.innerHTML = '';
 
         if (finalCharacterPrompts && Array.isArray(finalCharacterPrompts)) {
@@ -3310,7 +3347,7 @@ function populateCompiledPromptsSection() {
                     const charInputOverlay = document.createElement('div');
                     charInputOverlay.className = 'emphasis-highlight-overlay';
 
-                    // Apply emphasis highlighting
+                    // highlightEmphasisInText: public/scripts/comp/emphasisHighlight.js
                     charInputOverlay.innerHTML = highlightEmphasisInText(char.prompt);
 
                     charInputWrapper.appendChild(charInputDisplay);
@@ -3336,7 +3373,7 @@ function populateCompiledPromptsSection() {
                     const charUcOverlay = document.createElement('div');
                     charUcOverlay.className = 'emphasis-highlight-overlay';
 
-                    // Apply emphasis highlighting
+                    // highlightEmphasisInText: public/scripts/comp/emphasisHighlight.js
                     charUcOverlay.innerHTML = highlightEmphasisInText(char.uc);
 
                     charUcWrapper.appendChild(charUcDisplay);
@@ -3945,11 +3982,42 @@ function removeTextReplacement(index) {
 }
 
 // Re-render the text replacement lock list after changes
+let _textReplacementLockListStructureSig = null;
+
+function getTextReplacementLockListStructureSig(seeds, hasDynamicReplacements) {
+    let sig = hasDynamicReplacements ? '1|' : '0|';
+    for (let i = 0; i < seeds.length; i++) {
+        const seed = seeds[i];
+        sig += `${seed.key || ''}\0${seed.pattern || ''}\0${seed.source || ''}\0${seed.type || ''}\0${seed.can_lock}\0${seed.index}\0${seed.value || ''}\n`;
+    }
+    const dtr = window.dynamicGenerationData?.compiled_prompt?.text_replacements;
+    if (dtr) {
+        sig += `d:${dtr.prompt?.length || 0},${dtr.uc?.length || 0}`;
+        const compiled = window.dynamicGenerationData?.compiled_prompt;
+        if (compiled?.expiresAt) sig += `,e:${compiled.expiresAt}`;
+    }
+    return sig;
+}
+
+function patchTextReplacementLockListRows(listContainer, seeds) {
+    seeds.forEach((seed, index) => {
+        const itemDiv = listContainer.querySelector(`:scope > .text-replacement-lock-item[data-seed-row="1"][data-index="${index}"]`);
+        if (!itemDiv) return;
+        const isLocked = seed.locked === true;
+        itemDiv.classList.toggle('selected', isLocked);
+        const lockButton = itemDiv.querySelector('.text-replacement-lock-btn');
+        if (lockButton) {
+            lockButton.setAttribute('data-state', isLocked ? 'on' : 'off');
+        }
+        // updateTextReplacementLockItem: patches value/pattern/badges in place
+        updateTextReplacementLockItem(index, seed);
+    });
+    updateLockStatusText();
+}
+
 function renderTextReplacementLockList() {
     const listContainer = document.getElementById('textReplacementLockList');
     if (!listContainer) return;
-
-    listContainer.innerHTML = '';
 
     // Check if we have any replacements (Genso seeds or Rentan modifications)
     let hasDynamicReplacements = false;
@@ -3961,6 +4029,7 @@ function renderTextReplacementLockList() {
     }
 
     if (currentTextReplacementSeeds.length === 0 && !hasDynamicReplacements) {
+        _textReplacementLockListStructureSig = null;
         const emptyHint = inspectorEditorHasLoadedData()
             ? 'No Expanders in use, Click Refresh to scan prompts for prefixes.'
             : 'No Genso Expanders Available. Load data or generate an image first.';
@@ -3969,10 +4038,25 @@ function renderTextReplacementLockList() {
         return;
     }
 
+    // Reuse existing seed rows when structure/values are unchanged — only patch lock state
+    const structureSig = getTextReplacementLockListStructureSig(currentTextReplacementSeeds, hasDynamicReplacements);
+    const existingSeedRows = listContainer.querySelectorAll(':scope > .text-replacement-lock-item[data-seed-row="1"]');
+    if (
+        _textReplacementLockListStructureSig === structureSig &&
+        existingSeedRows.length === currentTextReplacementSeeds.length
+    ) {
+        patchTextReplacementLockListRows(listContainer, currentTextReplacementSeeds);
+        return;
+    }
+
+    listContainer.innerHTML = '';
+    _textReplacementLockListStructureSig = structureSig;
+
     currentTextReplacementSeeds.forEach((seed, index) => {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'text-replacement-lock-item';
         itemDiv.dataset.index = index;
+        itemDiv.dataset.seedRow = '1';
 
         const isLocked = seed.locked === true;
         const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;

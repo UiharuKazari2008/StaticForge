@@ -3331,6 +3331,10 @@ function initializeWorkspaceDragAndDrop(listEl) {
 
     let draggedItem = null;
     let draggedIndex = null;
+    let dragMidpoints = null;
+    let dragPendingY = null;
+    let dragRafId = null;
+    let dragOverItem = null;
 
     // Add event listeners to drag handles
     const dragHandles = list.querySelectorAll('.workspace-drag-handle');
@@ -3341,6 +3345,14 @@ function initializeWorkspaceDragAndDrop(listEl) {
         handle.addEventListener('touchmove', onDrag, { passive: false });
         handle.addEventListener('touchend', endDrag);
     });
+
+    function rebuildDragMidpoints() {
+        const items = Array.from(list.children);
+        dragMidpoints = items.map((item) => {
+            const r = item.getBoundingClientRect();
+            return { item, top: r.top, bottom: r.bottom };
+        });
+    }
 
     function startDrag(e) {
         e.preventDefault();
@@ -3353,6 +3365,12 @@ function initializeWorkspaceDragAndDrop(listEl) {
 
         draggedItem = item;
         draggedIndex = Array.from(list.children).indexOf(item);
+        dragPendingY = null;
+        if (dragRafId != null) {
+            cancelAnimationFrame(dragRafId);
+            dragRafId = null;
+        }
+        rebuildDragMidpoints();
 
         // Add dragging class
         draggedItem.classList.add('dragging');
@@ -3383,20 +3401,25 @@ function initializeWorkspaceDragAndDrop(listEl) {
             return; // No valid input
         }
 
-        const rect = list.getBoundingClientRect();
-        const mouseY = clientY - rect.top;
+        dragPendingY = clientY;
+        if (dragRafId == null) {
+            dragRafId = requestAnimationFrame(flushWorkspaceDrag);
+        }
+    }
 
-        // Find the item under the mouse
-        const items = Array.from(list.children);
+    function flushWorkspaceDrag() {
+        dragRafId = null;
+        if (!draggedItem || dragPendingY == null || !dragMidpoints) {
+            return;
+        }
+
+        const mouseY = dragPendingY;
+        const entries = dragMidpoints;
         let targetIndex = draggedIndex;
 
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            const itemRect = item.getBoundingClientRect();
-            const itemTop = itemRect.top - rect.top;
-            const itemBottom = itemTop + itemRect.height;
-
-            if (mouseY >= itemTop && mouseY <= itemBottom) {
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            if (mouseY >= entry.top && mouseY <= entry.bottom) {
                 targetIndex = i;
                 break;
             }
@@ -3404,25 +3427,20 @@ function initializeWorkspaceDragAndDrop(listEl) {
 
         // Move the dragged item to new position
         if (targetIndex !== draggedIndex) {
-            
-            // Remove drag-over class from all items
-            items.forEach(item => item.classList.remove('drag-over'));
-            
-            // Actually move the item in the DOM
-            if (targetIndex < items.length) {
-                list.insertBefore(draggedItem, items[targetIndex]);
+            if (targetIndex < entries.length) {
+                list.insertBefore(draggedItem, entries[targetIndex].item);
             } else {
                 list.appendChild(draggedItem);
             }
-            
-            // Add drag-over class to new position
-            const newItems = Array.from(list.children);
-            const newIndex = newItems.indexOf(draggedItem);
-            if (newIndex < newItems.length) {
-                newItems[newIndex].classList.add('drag-over');
+
+            if (dragOverItem && dragOverItem !== draggedItem) {
+                dragOverItem.classList.remove('drag-over');
             }
-            
+            draggedItem.classList.add('drag-over');
+            dragOverItem = draggedItem;
+
             draggedIndex = targetIndex;
+            rebuildDragMidpoints();
         }
     }
 
@@ -3433,14 +3451,24 @@ function initializeWorkspaceDragAndDrop(listEl) {
 
         e.preventDefault();
 
+        if (dragRafId != null) {
+            cancelAnimationFrame(dragRafId);
+            dragRafId = null;
+            flushWorkspaceDrag();
+        }
+
         // Remove document event listeners
         document.removeEventListener('mousemove', onDrag);
         document.removeEventListener('mouseup', endDrag);
 
         // Remove dragging classes
         draggedItem.classList.remove('dragging');
-        const items = Array.from(list.children);
-        items.forEach(item => item.classList.remove('drag-over'));
+        if (dragOverItem) {
+            dragOverItem.classList.remove('drag-over');
+            dragOverItem = null;
+        } else {
+            draggedItem.classList.remove('drag-over');
+        }
 
         // Restore text selection
         document.body.style.userSelect = '';
@@ -3484,6 +3512,8 @@ function initializeWorkspaceDragAndDrop(listEl) {
         // Clear dragged item
         draggedItem = null;
         draggedIndex = null;
+        dragMidpoints = null;
+        dragPendingY = null;
     }
 }
 

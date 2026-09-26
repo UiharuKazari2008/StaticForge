@@ -722,12 +722,23 @@ function resolveImageModelFeatures(image) {
     if (!image) return null;
     const candidates = collectImageModelCandidates(image);
     const featureMap = globalThis.optionsData?.modelFeatures || {};
+    if (!resolveImageModelFeatures._byApiModel || resolveImageModelFeatures._featureMapRef !== featureMap) {
+        const byApiModel = new Map();
+        Object.values(featureMap).forEach((features) => {
+            if (features && features.apiModel) {
+                byApiModel.set(features.apiModel, features);
+            }
+        });
+        resolveImageModelFeatures._byApiModel = byApiModel;
+        resolveImageModelFeatures._featureMapRef = featureMap;
+    }
+    const featuresByApiModel = resolveImageModelFeatures._byApiModel;
 
     for (const model of candidates) {
         const directFeatures = getForgeModelFeatures(model);
         if (directFeatures) return directFeatures;
 
-        const apiFeatures = Object.values(featureMap).find((features) => features?.apiModel === model);
+        const apiFeatures = featuresByApiModel.get(model);
         if (apiFeatures) return apiFeatures;
 
         if (model.includes('NovelAI') || model.includes('Stable Diffusion')) {

@@ -7,6 +7,12 @@ const KEYBOARD_UNREGISTERED_WARN_DEBOUNCE_MS = 750;
 const DEV_WARNINGS_LOG_CLIENT_SOURCE_ID = 'client:dev-warnings';
 
 const keyboardListenerRegistry = new Map();
+/** @type {Map<string, Map<string, object>>} modalId -> (listenerId -> entry) */
+const keyboardListenersByModal = new Map();
+/** @type {Map<string, object>} listenerId -> entry (global / no modal) */
+const keyboardGlobalListeners = new Map();
+/** @type {Map<string, Element>} modalId -> open modal element (no getElementById on keydown) */
+const keyboardOpenModals = new Map();
 let keyboardRegistryInitialized = false;
 let keyboardOverlayRefreshCallback = null;
 let devWarningsTrayPopup = null;
@@ -62,7 +68,7 @@ function overlayEntrySortTier(entry) {
     return 1;
 }
 
-function isKeyboardListenerActive(entry, options) {
+function isKeyboardListenerActive(entry, options, modalEl) {
     if (!entry || !entry.handler) return false;
 
     if (entry.type === 'global') {
@@ -73,7 +79,9 @@ function isKeyboardListenerActive(entry, options) {
     }
 
     if (!entry.modalId) return false;
-    const modal = document.getElementById(entry.modalId);
+    const modal = modalEl
+        || keyboardOpenModals.get(entry.modalId)
+        || document.getElementById(entry.modalId);
     if (!modal || !isModalOpenForListeners(modal)) {
         return false;
     }
@@ -92,6 +100,66 @@ function isKeyboardListenerActive(entry, options) {
     }
 
     return false;
+}
+
+function rememberKeyboardOpenModal(modal) {
+    if (!modal || !modal.id) return;
+    if (isModalOpenForListeners(modal)) {
+        keyboardOpenModals.set(modal.id, modal);
+    } else {
+        keyboardOpenModals.delete(modal.id);
+    }
+}
+
+function indexKeyboardListenerEntry(entry) {
+    if (!entry || !entry.id) return;
+    if (entry.type === 'global' || !entry.modalId) {
+        keyboardGlobalListeners.set(entry.id, entry);
+        return;
+    }
+    let byId = keyboardListenersByModal.get(entry.modalId);
+    if (!byId) {
+        byId = new Map();
+        keyboardListenersByModal.set(entry.modalId, byId);
+    }
+    byId.set(entry.id, entry);
+    const openEl = keyboardOpenModals.get(entry.modalId) || document.getElementById(entry.modalId);
+    if (openEl && isModalOpenForListeners(openEl)) {
+        keyboardOpenModals.set(entry.modalId, openEl);
+    }
+}
+
+function unindexKeyboardListenerEntry(entry) {
+    if (!entry || !entry.id) return;
+    if (entry.type === 'global' || !entry.modalId) {
+        keyboardGlobalListeners.delete(entry.id);
+        return;
+    }
+    const byId = keyboardListenersByModal.get(entry.modalId);
+    if (!byId) return;
+    byId.delete(entry.id);
+    if (byId.size === 0) {
+        keyboardListenersByModal.delete(entry.modalId);
+    }
+}
+
+function pushActiveKeyboardEntriesFromMap(map, event, options, active, modalEl) {
+    if (!map || map.size === 0) return;
+    map.forEach((entry) => {
+        if (options && options.forOverlay) {
+            if (!entry.showInOverlay) return;
+            if (!isKeyboardListenerActive(entry, options, modalEl)) return;
+            if (entry.overlayValid && !entry.overlayValid()) return;
+            if (resolveKeyboardListenerEventType(entry) !== 'keydown') return;
+            if (!entry.overlayKeys) return;
+            active.push(entry);
+            return;
+        }
+        if (entry.overlayOnly) return;
+        if (isKeyboardListenerActive(entry, options, modalEl) && keyboardListenerMatchesEventType(entry, event)) {
+            active.push(entry);
+        }
+    });
 }
 
 function resolveKeyboardListenerEventType(entry) {
@@ -116,11 +184,19 @@ function resolveShowInOverlay(options) {
 
 function collectActiveKeyboardListeners(event) {
     const active = [];
-    keyboardListenerRegistry.forEach((entry) => {
-        if (entry.overlayOnly) return;
-        if (isKeyboardListenerActive(entry) && keyboardListenerMatchesEventType(entry, event)) {
-            active.push(entry);
+    pushActiveKeyboardEntriesFromMap(keyboardGlobalListeners, event, null, active, null);
+    keyboardOpenModals.forEach((modal, modalId) => {
+        if (!isModalOpenForListeners(modal)) {
+            keyboardOpenModals.delete(modalId);
+            return;
         }
+        pushActiveKeyboardEntriesFromMap(
+            keyboardListenersByModal.get(modalId),
+            event,
+            null,
+            active,
+            modal
+        );
     });
     active.sort((a, b) => (b.priority || 0) - (a.priority || 0));
     return active;
@@ -128,13 +204,20 @@ function collectActiveKeyboardListeners(event) {
 
 function getActiveKeyboardOverlayEntries() {
     const active = [];
-    keyboardListenerRegistry.forEach((entry) => {
-        if (!entry.showInOverlay) return;
-        if (!isKeyboardListenerActive(entry, { forOverlay: true })) return;
-        if (entry.overlayValid && !entry.overlayValid()) return;
-        if (resolveKeyboardListenerEventType(entry) !== 'keydown') return;
-        if (!entry.overlayKeys) return;
-        active.push(entry);
+    const overlayOpts = { forOverlay: true };
+    pushActiveKeyboardEntriesFromMap(keyboardGlobalListeners, null, overlayOpts, active, null);
+    keyboardOpenModals.forEach((modal, modalId) => {
+        if (!isModalOpenForListeners(modal)) {
+            keyboardOpenModals.delete(modalId);
+            return;
+        }
+        pushActiveKeyboardEntriesFromMap(
+            keyboardListenersByModal.get(modalId),
+            null,
+            overlayOpts,
+            active,
+            modal
+        );
     });
     active.sort((a, b) => {
         const tierDiff = overlayEntrySortTier(a) - overlayEntrySortTier(b);
@@ -464,7 +547,12 @@ function registerKeyboardListener(options) {
     const eventType = options.eventType === 'keyup' ? 'keyup' : (options.eventType === 'keydown' ? 'keydown' : null);
     const showInOverlay = resolveShowInOverlay(options);
 
-    keyboardListenerRegistry.set(options.id, {
+    const prev = keyboardListenerRegistry.get(options.id);
+    if (prev) {
+        unindexKeyboardListenerEntry(prev);
+    }
+
+    const entry = {
         id: options.id,
         handler,
         type,
@@ -482,7 +570,9 @@ function registerKeyboardListener(options) {
         overlayFnRow: options.overlayFnRow || null,
         desktopContextOnly: options.desktopContextOnly === true,
         overlayValid: typeof options.overlayValid === 'function' ? options.overlayValid : null
-    });
+    };
+    keyboardListenerRegistry.set(options.id, entry);
+    indexKeyboardListenerEntry(entry);
 
     modalKeyboardDevLog('registered', { id: options.id, type, priority: options.priority || 0 });
     return true;
@@ -490,8 +580,10 @@ function registerKeyboardListener(options) {
 
 function deregisterKeyboardListener(id) {
     if (!id) return false;
+    const prev = keyboardListenerRegistry.get(id);
     const removed = keyboardListenerRegistry.delete(id);
-    if (removed) {
+    if (removed && prev) {
+        unindexKeyboardListenerEntry(prev);
         modalKeyboardDevLog('deregistered', { id });
     }
     return removed;
@@ -690,11 +782,15 @@ function wireDevWarningsTrayIcon() {
 }
 
 function onModalKeyboardModalOpened(modal) {
+    rememberKeyboardOpenModal(modal);
     modalKeyboardDevLog('modal opened', { id: modal && modal.id });
     notifyKeyboardOverlayContextChanged();
 }
 
 function onModalKeyboardModalClosed(modal) {
+    if (modal && modal.id) {
+        keyboardOpenModals.delete(modal.id);
+    }
     modalKeyboardDevLog('modal closed', { id: modal && modal.id });
     notifyKeyboardOverlayContextChanged();
 }
@@ -776,6 +872,9 @@ function initializeModalKeyboardRegistry() {
     installCentralKeyboardHandler();
     installKeyboardListenerDevPatch();
     wireDevWarningsTrayIcon();
+    document.querySelectorAll('.modal:not(.hidden)').forEach((modal) => {
+        rememberKeyboardOpenModal(modal);
+    });
 }
 
 initializeModalKeyboardRegistry();

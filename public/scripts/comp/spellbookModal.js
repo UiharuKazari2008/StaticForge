@@ -17,6 +17,8 @@ class SpellbookModalManager {
         this.spellbookProgressInterval = null;
 
         this.selectedPreset = '';
+        this._customPresetDropdownListRef = null;
+        this._customPresetDropdownSelected = null;
         this.confettiContainer = null;
         this.generatedWorkspace = null;
         this.generatedFilename = null;
@@ -796,11 +798,27 @@ class SpellbookModalManager {
     async renderCustomPresetDropdown(selectedValue) {
         if (!this.customPresetDropdownMenu) return;
 
+        const presets = window.optionsData && window.optionsData.presets;
+        if (
+            this._customPresetDropdownListRef === presets
+            && this.customPresetDropdownMenu.childElementCount > 0
+        ) {
+            if (this._customPresetDropdownSelected !== selectedValue) {
+                this.customPresetDropdownMenu.querySelectorAll('.custom-dropdown-option[data-value]').forEach((opt) => {
+                    opt.classList.toggle('selected', opt.dataset.value === selectedValue);
+                });
+                this._customPresetDropdownSelected = selectedValue;
+            }
+            return;
+        }
+        this._customPresetDropdownListRef = presets;
+        this._customPresetDropdownSelected = selectedValue;
+
         this.customPresetDropdownMenu.innerHTML = '';
 
         // Use global presets loaded from /options
-        if (Array.isArray(window.optionsData.presets) && window.optionsData.presets.length > 0) {
-            for (const preset of window.optionsData.presets.slice().reverse()) {
+        if (Array.isArray(presets) && presets.length > 0) {
+            for (const preset of presets.slice().reverse()) {
                 try {
                     // Skip invalid presets
                     if (!preset || !preset.name) {

@@ -21,6 +21,28 @@
 // UTILITY FUNCTIONS
 // ============================================================================
 
+/** "widthxheight" -> { value, group } for preset resolution lookup */
+let resolutionPresetByWidthHeight = null;
+
+function getResolutionPresetByWidthHeight(width, height) {
+    if (!resolutionPresetByWidthHeight) {
+        resolutionPresetByWidthHeight = new Map();
+        if (typeof RESOLUTION_GROUPS !== 'undefined' && Array.isArray(RESOLUTION_GROUPS)) {
+            RESOLUTION_GROUPS.forEach((group) => {
+                (group.options || []).forEach((opt) => {
+                    if (opt && opt.width && opt.height && opt.value) {
+                        resolutionPresetByWidthHeight.set(`${opt.width}x${opt.height}`, {
+                            value: opt.value,
+                            group: group.group
+                        });
+                    }
+                });
+            });
+        }
+    }
+    return resolutionPresetByWidthHeight.get(`${width}x${height}`) || null;
+}
+
 /**
  * Update the display of the generated image name
  * @param {string|null} imageName - The generated image name to display, or null to hide
@@ -3627,16 +3649,10 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         // Always try to detect resolution from dimensions if we have them
         if (data.width && data.height) {
             // Try to find a matching resolution preset based on width/height
-            const matchingResolution = RESOLUTIONS.find(r => r.width === data.width && r.height === data.height);
-            if (matchingResolution) {
-                resolutionToSet = matchingResolution.value;
-                // Find the group for this resolution
-                for (const group of RESOLUTION_GROUPS) {
-                    if (group.options.find(opt => opt.value === resolutionToSet)) {
-                        resolutionGroup = group.group;
-                        break;
-                    }
-                }
+            const matchingPreset = getResolutionPresetByWidthHeight(data.width, data.height);
+            if (matchingPreset) {
+                resolutionToSet = matchingPreset.value;
+                resolutionGroup = matchingPreset.group;
             } else {
                 // No exact match found, use custom resolution
                 resolutionToSet = 'custom';
@@ -4617,14 +4633,27 @@ function autoResizeTextareasAfterModalShow() {
         }
     };
 
-    queueField(manualPrompt);
-    queueField(manualUc);
-    queueField(manualPromptNegative);
+    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
+    const showBoth = promptTabs && promptTabs.classList.contains('show-both');
+    const toggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
+    const activeTab = (toggleGroup && toggleGroup.getAttribute('data-active')) || 'prompt';
+    const showPrompt = showBoth || activeTab === 'prompt';
+    const showUc = showBoth || activeTab === 'uc';
+    const showCreative = showBoth || activeTab === 'creative';
+
+    if (showPrompt) queueField(manualPrompt);
+    if (showUc) {
+        queueField(manualUc);
+        queueField(manualPromptNegative);
+    }
+    if (showCreative) queueField(creativeDirectiveInput);
 
     document.querySelectorAll('.character-prompt-item').forEach((item) => {
-        queueField(document.getElementById(`${item.id}_prompt`));
-        queueField(document.getElementById(`${item.id}_uc`));
-        queueField(document.getElementById(`${item.id}_promptNegative`));
+        if (showPrompt) queueField(document.getElementById(`${item.id}_prompt`));
+        if (showUc) {
+            queueField(document.getElementById(`${item.id}_uc`));
+            queueField(document.getElementById(`${item.id}_promptNegative`));
+        }
     });
 
     textareas.forEach((field) => {
@@ -4635,9 +4664,9 @@ function autoResizeTextareasAfterModalShow() {
         customScrollbar.beginLayoutBatch();
     }
     try {
-        prepareManualTabLayout('prompt');
-        prepareManualTabLayout('uc');
-        prepareManualTabLayout('creative');
+        if (showPrompt) prepareManualTabLayout('prompt');
+        if (showUc) prepareManualTabLayout('uc');
+        if (showCreative) prepareManualTabLayout('creative');
     } finally {
         if (typeof customScrollbar !== 'undefined') {
             customScrollbar.endLayoutBatch();

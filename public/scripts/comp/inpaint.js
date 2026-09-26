@@ -20,6 +20,12 @@ let inpaintInitButtonsWired = false;
 let inpaintModalScopeWired = false;
 let maskEditorKeyboardWired = false;
 
+// Brush stamp / preview caches (perf #246 — same coverage, less per-pixel work)
+let circleBrushMaskCache = null; // { radius, size, mask: Uint8Array }
+let brushPreviewCircleSpriteCache = null; // { radius, color, canvas }
+let brushCursorLayoutCache = null; // getBoundingClientRect + contain padding
+let lastBrushPreviewBounds = null; // { x, y, w, h } dirty rect for preview clear
+
 function isMaskEditorKeyboardContext() {
     const modal = document.getElementById('maskEditorDialog');
     if (!modal || modal.classList.contains('hidden')) return false;
@@ -330,6 +336,8 @@ function registerInpaintEventListeners() {
     
     // Create a named function for mouseleave to properly remove it later
     const handleCanvasMouseLeave = () => {
+        lastBrushPreviewBounds = null;
+        brushCursorLayoutCache = null;
         if (maskBrushPreviewCtx && maskBrushPreviewCanvas) {
             maskBrushPreviewCtx.clearRect(0, 0, maskBrushPreviewCanvas.width, maskBrushPreviewCanvas.height);
         }
@@ -505,7 +513,9 @@ function handleCanvasMouseEnter(e) {
     if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
         return; // Silently ignore if editor isn't ready
     }
-    
+
+    brushCursorLayoutCache = null;
+    lastBrushPreviewBounds = null;
     if (maskBrushPreviewCtx && maskBrushPreviewCanvas) {
         maskBrushPreviewCtx.clearRect(0, 0, maskBrushPreviewCanvas.width, maskBrushPreviewCanvas.height);
     }
@@ -550,12 +560,12 @@ function handleGlobalMouseMove(e) {
     }
     
     if (globalMouseDown && !isDrawing) {
-        const rect = maskEditorCanvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const layout = getBrushCursorLayout();
+        const x = e.clientX - layout.left;
+        const y = e.clientY - layout.top;
 
         // Check if mouse is over the canvas
-        if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+        if (x >= 0 && x <= layout.width && y >= 0 && y <= layout.height) {
             isDrawing = true;
             draw(e);
         }
@@ -572,7 +582,100 @@ function startDrawing(e) {
     isDrawing = true;
     globalMouseDown = true;
     currentMouseButton = e.button; // Track which button was pressed
+    brushCursorLayoutCache = null; // refresh layout once per stroke
     draw(e);
+}
+
+// Cached editor layout for draw / brush cursor (avoid getBoundingClientRect every move)
+function getBrushCursorLayout() {
+    if (
+        brushCursorLayoutCache &&
+        brushCursorLayoutCache.canvasWidth === maskEditorCanvas.width &&
+        brushCursorLayoutCache.canvasHeight === maskEditorCanvas.height
+    ) {
+        return brushCursorLayoutCache;
+    }
+    const rect = maskEditorCanvas.getBoundingClientRect();
+    const visualScaleX = rect.width / maskEditorCanvas.width;
+    const visualScaleY = rect.height / maskEditorCanvas.height;
+    const visualScale = Math.min(visualScaleX, visualScaleY);
+    const actualCanvasWidth = maskEditorCanvas.width * visualScale;
+    const actualCanvasHeight = maskEditorCanvas.height * visualScale;
+    const paddingX = (rect.width - actualCanvasWidth) / 2;
+    const paddingY = (rect.height - actualCanvasHeight) / 2;
+    brushCursorLayoutCache = {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        paddingX,
+        paddingY,
+        actualCanvasWidth,
+        actualCanvasHeight,
+        visualScale,
+        canvasWidth: maskEditorCanvas.width,
+        canvasHeight: maskEditorCanvas.height
+    };
+    return brushCursorLayoutCache;
+}
+
+// Precomputed circle coverage mask — same radius test as the old per-stamp loops
+function getCircleBrushMask(roundedRadius) {
+    if (circleBrushMaskCache && circleBrushMaskCache.radius === roundedRadius) {
+        return circleBrushMaskCache;
+    }
+    const size = 2 * roundedRadius + 1;
+    const mask = new Uint8Array(size * size);
+    const r2 = roundedRadius * roundedRadius;
+    for (let i = 0; i <= roundedRadius; i++) {
+        for (let j = 0; j <= roundedRadius; j++) {
+            // Equivalent to min(sqrt(...), sqrt(...)) <= roundedRadius
+            const d1 = (j + 0.5) * (j + 0.5) + (i + 0.5) * (i + 0.5);
+            const d2 = (j - 0.5) * (j - 0.5) + (i - 0.5) * (i - 0.5);
+            if (Math.min(d1, d2) <= r2) {
+                mask[(roundedRadius + i) * size + (roundedRadius + j)] = 1;
+                mask[(roundedRadius + i) * size + (roundedRadius - j)] = 1;
+                mask[(roundedRadius - i) * size + (roundedRadius + j)] = 1;
+                mask[(roundedRadius - i) * size + (roundedRadius - j)] = 1;
+            }
+        }
+    }
+    circleBrushMaskCache = { radius: roundedRadius, size, mask };
+    return circleBrushMaskCache;
+}
+
+function getBrushPreviewCircleSprite(roundedRadius, color) {
+    if (
+        brushPreviewCircleSpriteCache &&
+        brushPreviewCircleSpriteCache.radius === roundedRadius &&
+        brushPreviewCircleSpriteCache.color === color
+    ) {
+        return brushPreviewCircleSpriteCache.canvas;
+    }
+    const { size, mask } = getCircleBrushMask(roundedRadius);
+    const sprite = document.createElement('canvas');
+    sprite.width = size;
+    sprite.height = size;
+    const spriteCtx = sprite.getContext('2d');
+    const imageData = spriteCtx.createImageData(size, size);
+    const data = imageData.data;
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    // Matches prior fillStyle + globalAlpha 0.5 onto a cleared canvas
+    const a = 128;
+    for (let i = 0; i < mask.length; i++) {
+        if (mask[i]) {
+            const p = i * 4;
+            data[p] = r;
+            data[p + 1] = g;
+            data[p + 2] = b;
+            data[p + 3] = a;
+        }
+    }
+    spriteCtx.putImageData(imageData, 0, 0);
+    brushPreviewCircleSpriteCache = { radius: roundedRadius, color, canvas: sprite };
+    return sprite;
 }
 
 // Draw function
@@ -584,30 +687,17 @@ function draw(e) {
 
     e.preventDefault();
 
-    const rect = maskEditorCanvas.getBoundingClientRect();
-
-    // Calculate the actual canvas content area (accounting for object-fit: contain)
-    const visualScaleX = rect.width / maskEditorCanvas.width;
-    const visualScaleY = rect.height / maskEditorCanvas.height;
-    const visualScale = Math.min(visualScaleX, visualScaleY);
-
-    // Calculate the actual canvas content dimensions
-    const actualCanvasWidth = maskEditorCanvas.width * visualScale;
-    const actualCanvasHeight = maskEditorCanvas.height * visualScale;
-
-    // Calculate padding around the canvas content
-    const paddingX = (rect.width - actualCanvasWidth) / 2;
-    const paddingY = (rect.height - actualCanvasHeight) / 2;
+    const layout = getBrushCursorLayout();
 
     // Calculate position relative to the actual canvas content
-    const x = e.clientX - rect.left - paddingX;
-    const y = e.clientY - rect.top - paddingY;
+    const x = e.clientX - layout.left - layout.paddingX;
+    const y = e.clientY - layout.top - layout.paddingY;
 
     // Only draw if mouse is over the actual canvas content
-    if (x >= 0 && x <= actualCanvasWidth && y >= 0 && y <= actualCanvasHeight) {
+    if (x >= 0 && x <= layout.actualCanvasWidth && y >= 0 && y <= layout.actualCanvasHeight) {
         // Scale coordinates to canvas size
-        const canvasX = (x / actualCanvasWidth) * maskEditorCanvas.width;
-        const canvasY = (y / actualCanvasHeight) * maskEditorCanvas.height;
+        const canvasX = (x / layout.actualCanvasWidth) * maskEditorCanvas.width;
+        const canvasY = (y / layout.actualCanvasHeight) * maskEditorCanvas.height;
 
         // Determine which tool to use based on mouse button
         // Left mouse button (button 0) uses the opposite tool
@@ -646,10 +736,13 @@ function drawCircle(x, y, radius, color, alpha) {
     const roundedX = Math.round(x);
     const roundedY = Math.round(y);
     const roundedRadius = Math.round(radius);
-
+    const { size, mask } = getCircleBrushMask(roundedRadius);
     const startX = roundedX - roundedRadius;
     const startY = roundedY - roundedRadius;
-    const size = 2 * roundedRadius + 1;
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    const a = 255 * alpha;
 
     let imageData;
     try {
@@ -659,32 +752,14 @@ function drawCircle(x, y, radius, color, alpha) {
         return;
     }
 
-    for (let i = 0; i <= roundedRadius; i++) {
-        for (let j = 0; j <= roundedRadius; j++) {
-            // Check if pixel is within circle using distance calculation
-            const minDist = Math.min(
-                Math.sqrt((j + 0.5) * (j + 0.5) + (i + 0.5) * (i + 0.5)),
-                Math.sqrt((j - 0.5) * (j - 0.5) + (i - 0.5) * (i - 0.5))
-            );
-
-            if (minDist <= roundedRadius) {
-                // Set pixels in all four quadrants
-                const positions = [
-                    (roundedRadius + j) * 4 + (roundedRadius + i) * size * 4,
-                    (roundedRadius - j) * 4 + (roundedRadius + i) * size * 4,
-                    (roundedRadius + j) * 4 + (roundedRadius - i) * size * 4,
-                    (roundedRadius - j) * 4 + (roundedRadius - i) * size * 4
-                ];
-
-                positions.forEach(pos => {
-                    if (pos >= 0 && pos < imageData.data.length) {
-                        imageData.data[pos] = parseInt(color.slice(1, 3), 16);     // Red
-                        imageData.data[pos + 1] = parseInt(color.slice(3, 5), 16); // Green
-                        imageData.data[pos + 2] = parseInt(color.slice(5, 7), 16); // Blue
-                        imageData.data[pos + 3] = 255 * alpha;                    // Alpha
-                    }
-                });
-            }
+    const data = imageData.data;
+    for (let i = 0; i < mask.length; i++) {
+        if (mask[i]) {
+            const p = i * 4;
+            data[p] = r;
+            data[p + 1] = g;
+            data[p + 2] = b;
+            data[p + 3] = a;
         }
     }
 
@@ -697,6 +772,10 @@ function drawSquare(x, y, size, color, alpha) {
     const startY = y - Math.floor(size / 2);
     const endX = startX + size;
     const endY = startY + size;
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    const a = 255 * alpha;
 
     let imageData;
     try {
@@ -706,11 +785,12 @@ function drawSquare(x, y, size, color, alpha) {
         return;
     }
 
-    for (let i = 0; i < imageData.data.length; i += 4) {
-        imageData.data[i] = parseInt(color.slice(1, 3), 16);     // Red
-        imageData.data[i + 1] = parseInt(color.slice(3, 5), 16); // Green
-        imageData.data[i + 2] = parseInt(color.slice(5, 7), 16); // Blue
-        imageData.data[i + 3] = 255 * alpha;                    // Alpha
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+        data[i] = r;
+        data[i + 1] = g;
+        data[i + 2] = b;
+        data[i + 3] = a;
     }
 
     maskEditorCtx.putImageData(imageData, startX, startY);
@@ -726,6 +806,7 @@ function stopDrawing(e) {
     isDrawing = false;
     globalMouseDown = false;
     currentMouseButton = null; // Clear mouse button tracking
+    lastBrushPreviewBounds = null;
     if (maskBrushPreviewCtx && maskBrushPreviewCanvas) {
         maskBrushPreviewCtx.clearRect(0, 0, maskBrushPreviewCanvas.width, maskBrushPreviewCanvas.height);
     }
@@ -735,25 +816,26 @@ function stopDrawing(e) {
 function updateBrushCursor(e) {
     if (!maskEditorCanvas || !maskBrushPreviewCtx || !maskBrushPreviewCanvas) return;
 
-    // Clear previous preview
-    maskBrushPreviewCtx.clearRect(0, 0, maskBrushPreviewCanvas.width, maskBrushPreviewCanvas.height);
+    // Clear only the previous brush bounds (not the whole preview canvas)
+    if (lastBrushPreviewBounds) {
+        maskBrushPreviewCtx.clearRect(
+            lastBrushPreviewBounds.x,
+            lastBrushPreviewBounds.y,
+            lastBrushPreviewBounds.w,
+            lastBrushPreviewBounds.h
+        );
+        lastBrushPreviewBounds = null;
+    }
 
-    const rect = maskEditorCanvas.getBoundingClientRect();
-    const visualScaleX = rect.width / maskEditorCanvas.width;
-    const visualScaleY = rect.height / maskEditorCanvas.height;
-    const visualScale = Math.min(visualScaleX, visualScaleY);
-    const actualCanvasWidth = maskEditorCanvas.width * visualScale;
-    const actualCanvasHeight = maskEditorCanvas.height * visualScale;
-    const paddingX = (rect.width - actualCanvasWidth) / 2;
-    const paddingY = (rect.height - actualCanvasHeight) / 2;
-    const x = e.clientX - rect.left - paddingX;
-    const y = e.clientY - rect.top - paddingY;
+    const layout = getBrushCursorLayout();
+    const x = e.clientX - layout.left - layout.paddingX;
+    const y = e.clientY - layout.top - layout.paddingY;
 
     // Only show preview if mouse is over the actual canvas content
-    if (x >= 0 && x <= actualCanvasWidth && y >= 0 && y <= actualCanvasHeight) {
+    if (x >= 0 && x <= layout.actualCanvasWidth && y >= 0 && y <= layout.actualCanvasHeight) {
         // Scale coordinates to canvas size
-        const canvasX = (x / actualCanvasWidth) * maskEditorCanvas.width;
-        const canvasY = (y / actualCanvasHeight) * maskEditorCanvas.height;
+        const canvasX = (x / layout.actualCanvasWidth) * maskEditorCanvas.width;
+        const canvasY = (y / layout.actualCanvasHeight) * maskEditorCanvas.height;
 
         // Determine which tool to preview based on mouse button
         // Left mouse button (button 0) shows opposite tool preview
@@ -791,55 +873,48 @@ function drawBrushPreviewCircle(x, y, radius, color) {
     const roundedX = Math.round(x);
     const roundedY = Math.round(y);
     const roundedRadius = Math.round(radius);
-    for (let i = 0; i <= roundedRadius; i++) {
-        for (let j = 0; j <= roundedRadius; j++) {
-            const minDist = Math.min(
-                Math.sqrt((j + 0.5) * (j + 0.5) + (i + 0.5) * (i + 0.5)),
-                Math.sqrt((j - 0.5) * (j - 0.5) + (i - 0.5) * (i - 0.5))
-            );
-            if (minDist <= roundedRadius) {
-                // All four quadrants
-                const positions = [
-                    [roundedX + j, roundedY + i],
-                    [roundedX - j, roundedY + i],
-                    [roundedX + j, roundedY - i],
-                    [roundedX - j, roundedY - i]
-                ];
-                positions.forEach(([px, py]) => {
-                    if (
-                        px >= 0 && px < maskBrushPreviewCanvas.width &&
-                        py >= 0 && py < maskBrushPreviewCanvas.height
-                    ) {
-                        maskBrushPreviewCtx.fillStyle = color;
-                        maskBrushPreviewCtx.globalAlpha = 0.5;
-                        maskBrushPreviewCtx.fillRect(px, py, 1, 1);
-                        maskBrushPreviewCtx.globalAlpha = 1.0;
-                    }
-                });
-            }
-        }
-    }
+    const sprite = getBrushPreviewCircleSprite(roundedRadius, color);
+    const destX = roundedX - roundedRadius;
+    const destY = roundedY - roundedRadius;
+    maskBrushPreviewCtx.drawImage(sprite, destX, destY);
+    lastBrushPreviewBounds = {
+        x: destX,
+        y: destY,
+        w: sprite.width,
+        h: sprite.height
+    };
 }
 
 // Draw green square preview on overlay canvas
 function drawBrushPreviewSquare(x, y, size, color) {
     const startX = Math.round(x - Math.floor(size / 2));
     const startY = Math.round(y - Math.floor(size / 2));
-    for (let i = 0; i < size; i++) {
-        for (let j = 0; j < size; j++) {
-            const px = startX + j;
-            const py = startY + i;
-            if (
-                px >= 0 && px < maskBrushPreviewCanvas.width &&
-                py >= 0 && py < maskBrushPreviewCanvas.height
-            ) {
-                maskBrushPreviewCtx.fillStyle = color;
-                maskBrushPreviewCtx.globalAlpha = 0.5;
-                maskBrushPreviewCtx.fillRect(px, py, 1, 1);
-                maskBrushPreviewCtx.globalAlpha = 1.0;
-            }
-        }
+    let sx = startX;
+    let sy = startY;
+    let w = size;
+    let h = size;
+    if (sx < 0) {
+        w += sx;
+        sx = 0;
     }
+    if (sy < 0) {
+        h += sy;
+        sy = 0;
+    }
+    if (sx + w > maskBrushPreviewCanvas.width) {
+        w = maskBrushPreviewCanvas.width - sx;
+    }
+    if (sy + h > maskBrushPreviewCanvas.height) {
+        h = maskBrushPreviewCanvas.height - sy;
+    }
+    if (w > 0 && h > 0) {
+        maskBrushPreviewCtx.fillStyle = color;
+        maskBrushPreviewCtx.globalAlpha = 0.5;
+        maskBrushPreviewCtx.fillRect(sx, sy, w, h);
+        maskBrushPreviewCtx.globalAlpha = 1.0;
+    }
+    // Clear the full intended square (matches unclipped stamp area)
+    lastBrushPreviewBounds = { x: startX, y: startY, w: size, h: size };
 }
 
 // Touch event handlers

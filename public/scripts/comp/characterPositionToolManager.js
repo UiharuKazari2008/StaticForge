@@ -344,13 +344,20 @@ class CharacterPositionToolManager {
             candidate.classList.toggle('selected', candidate === pin);
         });
         pin.setPointerCapture(event.pointerId);
-        this.dragState = { pin, pointerId: event.pointerId };
+        const stageRect = this.stage.getBoundingClientRect();
+        const labelEl = pin.querySelector('.character-position-pin-label');
+        this.dragState = {
+            pin,
+            pointerId: event.pointerId,
+            stageRect,
+            labelText: (labelEl && labelEl.textContent) || 'Character'
+        };
         this._movePin(event);
     }
 
     _movePin(event) {
         if (!this.dragState || this.dragState.pointerId !== event.pointerId) return;
-        const rect = this.stage.getBoundingClientRect();
+        const rect = this.dragState.stageRect || this.stage.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
         const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
         const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
@@ -359,9 +366,8 @@ class CharacterPositionToolManager {
         pin.dataset.y = y.toFixed(4);
         pin.style.left = `${x * 100}%`;
         pin.style.top = `${y * 100}%`;
-        pin.title = `${pin.querySelector('.character-position-pin-label')?.textContent || 'Character'} · ${this._formatCenter(x, y)}`;
+        pin.title = `${this.dragState.labelText} · ${this._formatCenter(x, y)}`;
         this._updateReadout(pin);
-        this._syncActionButtons();
     }
 
     _finishPinDrag(event) {

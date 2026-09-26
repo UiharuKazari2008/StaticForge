@@ -17,7 +17,10 @@ let imageBiasAdjustmentData = {
     isDragging: false,
     dragStart: { x: 0, y: 0 },
     originalTransform: { x: 0, y: 0 },
-    previewMode: 'css' // Default to CSS view
+    previewMode: 'css', // Default to CSS view
+    dom: null,
+    layoutCache: null,
+    lastSrc: null
 };
 
 let _imageBiasDropdownScopeWired = false;
@@ -678,6 +681,7 @@ async function showImageBiasAdjustmentModal() {
 
         // Update UI after modal is visible (so we can get proper container dimensions)
         setTimeout(() => {
+            invalidateBiasAdjustmentLayout();
             updateBiasAdjustmentUI();
             updateBiasAdjustmentImage();
             imageBiasAdjustmentData.previewMode = 'css';
@@ -710,45 +714,40 @@ function updateBiasAdjustmentUI() {
 }
 
 // Update bias adjustment image display
-function updateBiasAdjustmentImage() {
+function ensureBiasAdjustmentDom() {
+    let dom = imageBiasAdjustmentData.dom;
+    if (dom && dom.image.isConnected && dom.wrapper.isConnected && dom.container.isConnected) {
+        return dom;
+    }
     const image = document.getElementById('biasAdjustmentImage');
     const wrapper = document.getElementById('biasAdjustmentImageWrapper');
     const targetOverlay = document.getElementById('targetAreaOverlay');
-    
-    if (!image || !wrapper || !targetOverlay) {
-        console.warn('Required DOM elements not found for bias adjustment image');
-        return;
+    const container = document.getElementById('imagePreviewContainer');
+    if (!image || !wrapper || !targetOverlay || !container) {
+        imageBiasAdjustmentData.dom = null;
+        return null;
     }
-    
     const targetBorder = targetOverlay.querySelector('.target-area-border');
     if (!targetBorder) {
-        console.warn('Target area border not found');
-        return;
+        imageBiasAdjustmentData.dom = null;
+        return null;
     }
+    dom = { image, wrapper, targetOverlay, targetBorder, container };
+    imageBiasAdjustmentData.dom = dom;
+    return dom;
+}
 
-    if (!imageBiasAdjustmentData.originalImage || !imageBiasAdjustmentData.targetDimensions) {
-        console.warn('Missing image data for bias adjustment');
-        return;
-    }
+function invalidateBiasAdjustmentLayout() {
+    imageBiasAdjustmentData.layoutCache = null;
+}
 
-    const { originalImage, targetDimensions, currentBias } = imageBiasAdjustmentData;
-
-    // Set image source
-    image.src = originalImage.src;
-
-    // Calculate display dimensions - use the actual container size with padding accounted for
-    const container = document.getElementById('imagePreviewContainer');
-    if (!container) {
-        console.warn('Image preview container not found');
-        return;
-    }
-    
-    const containerRect = container.getBoundingClientRect();
+function rebuildBiasAdjustmentLayout(dom) {
+    const { originalImage, targetDimensions } = imageBiasAdjustmentData;
+    const containerRect = dom.container.getBoundingClientRect();
     const padding = 32; // 2em = 32px (assuming 1em = 16px)
     const containerWidth = containerRect.width - (padding * 2);
     const containerHeight = containerRect.height - (padding * 2);
 
-    // Calculate target area size in display units
     const targetAR = targetDimensions.width / targetDimensions.height;
     let targetDisplayWidth, targetDisplayHeight;
 
@@ -760,49 +759,64 @@ function updateBiasAdjustmentImage() {
         targetDisplayWidth = containerHeight * targetAR;
     }
 
-    // Set target area border size
-    targetBorder.style.width = `${targetDisplayWidth}px`;
-    targetBorder.style.height = `${targetDisplayHeight}px`;
+    dom.targetBorder.style.width = `${targetDisplayWidth}px`;
+    dom.targetBorder.style.height = `${targetDisplayHeight}px`;
 
-    // Calculate scale factor to make image fill target area at scale 1.0
     const imageAR = originalImage.width / originalImage.height;
     let imageDisplayWidth, imageDisplayHeight;
 
     if (imageAR > targetAR) {
-        // Image is wider than target, scale to match target height
         imageDisplayHeight = targetDisplayHeight;
         imageDisplayWidth = targetDisplayHeight * imageAR;
     } else {
-        // Image is taller than target, scale to match target width
         imageDisplayWidth = targetDisplayWidth;
-        imageDisplayHeight = targetDisplayWidth / imageAR;
+        imageDisplayHeight = targetDisplayWidth * imageAR;
     }
 
-    // Set image size to fill target area
-    image.style.width = `${imageDisplayWidth}px`;
-    image.style.height = `${imageDisplayHeight}px`;
+    dom.image.style.width = `${imageDisplayWidth}px`;
+    dom.image.style.height = `${imageDisplayHeight}px`;
 
-    // Calculate scale factor between target dimensions and display dimensions
     const scaleX = targetDisplayWidth / targetDimensions.width;
     const scaleY = targetDisplayHeight / targetDimensions.height;
-
-    // Scale the bias position values to match the display dimensions
-    const scaledX = currentBias.x * scaleX;
-    const scaledY = currentBias.y * scaleY;
-
-    // Position the wrapper at the target area's top-left corner
-    // The target area overlay is centered in the container, so we need to calculate its position
-    // The container has 2em padding, so the target area is centered within the padded area
     const targetAreaX = (containerWidth - targetDisplayWidth) / 2;
     const targetAreaY = (containerHeight - targetDisplayHeight) / 2;
 
-    // Apply position to wrapper - start at target area top-left (0,0), then apply bias offset
-    // This matches the client preview behavior where bias 0,0 means top-left corner
-    wrapper.style.transform = `translate(${targetAreaX + scaledX}px, ${targetAreaY + scaledY}px)`;
+    imageBiasAdjustmentData.layoutCache = { scaleX, scaleY, targetAreaX, targetAreaY };
+    return imageBiasAdjustmentData.layoutCache;
+}
 
-    // Apply rotation and scale to image (from top-left corner)
-    const { scale, rotate } = currentBias;
-    image.style.transform = `rotate(${rotate}deg) scale(${scale})`;
+function applyBiasAdjustmentTransforms(dom, layout) {
+    const { currentBias } = imageBiasAdjustmentData;
+    const scaledX = currentBias.x * layout.scaleX;
+    const scaledY = currentBias.y * layout.scaleY;
+    dom.wrapper.style.transform = `translate(${layout.targetAreaX + scaledX}px, ${layout.targetAreaY + scaledY}px)`;
+    dom.image.style.transform = `rotate(${currentBias.rotate}deg) scale(${currentBias.scale})`;
+}
+
+function updateBiasAdjustmentImage() {
+    const dom = ensureBiasAdjustmentDom();
+    if (!dom) {
+        console.warn('Required DOM elements not found for bias adjustment image');
+        return;
+    }
+
+    if (!imageBiasAdjustmentData.originalImage || !imageBiasAdjustmentData.targetDimensions) {
+        console.warn('Missing image data for bias adjustment');
+        return;
+    }
+
+    const { originalImage } = imageBiasAdjustmentData;
+    if (imageBiasAdjustmentData.lastSrc !== originalImage.src) {
+        dom.image.src = originalImage.src;
+        imageBiasAdjustmentData.lastSrc = originalImage.src;
+        invalidateBiasAdjustmentLayout();
+    }
+
+    let layout = imageBiasAdjustmentData.layoutCache;
+    if (!layout || !imageBiasAdjustmentData.isDragging) {
+        layout = rebuildBiasAdjustmentLayout(dom);
+    }
+    applyBiasAdjustmentTransforms(dom, layout);
 }
 
 // Handle bias control changes
@@ -1044,6 +1058,7 @@ function resetBiasControls() {
 function handleBiasImageMouseDown(e) {
     if (e.target.id !== 'biasAdjustmentImage') return;
 
+    invalidateBiasAdjustmentLayout();
     imageBiasAdjustmentData.isDragging = true;
     imageBiasAdjustmentData.dragStart = { x: e.clientX, y: e.clientY };
     imageBiasAdjustmentData.originalTransform = { ...imageBiasAdjustmentData.currentBias };
@@ -1473,6 +1488,9 @@ function hideImageBiasAdjustmentModal() {
         imageBiasAdjustmentData.originalImage = null;
     }
     imageBiasAdjustmentData.targetDimensions = null;
+    imageBiasAdjustmentData.dom = null;
+    imageBiasAdjustmentData.layoutCache = null;
+    imageBiasAdjustmentData.lastSrc = null;
 
     // Clean up test results
     const resultsDiv = document.getElementById('biasTestResults');

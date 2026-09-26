@@ -1,344 +1,364 @@
 {
   "sections": [
     {
-      "id": "enhance-max",
-      "kicker": "STAFF · enhance",
-      "title": "Enhance: stop at Max✨ — 1.5× is the blurry one",
-      "grim": false,
-      "lede": "finetune told the room that Enhance 1.5× is often soft and Max✨ is the sharp default you actually want.",
-      "body": "Scout low, then Enhance still stands. What changed this Wednesday is the staff preference inside Enhance itself: **prefer Max✨ over 1.5×**. finetune (2026-09-22): 1.5× is often kind of blurry; Max✨ is much sharper/cleaner. Dedicated Upscale (2×, cheap Anlas) remains a different tool — it keeps low frequencies and only adds detail; Enhance re-runs with the selected model and can rewrite more.\n\nGuide + both optimisers + `constraints/v5.yaml` landed this as STAFF. Zine feature ≠ automatic CONSENSUS for community habits — this one is staff.\n\n**Try this.** Take a keeper you already like. Same seed not required. A: Enhance at 1.5×. B: Enhance Max✨. Compare sharpness / rewrite. Prefer Max✨ for finals; keep Upscale when you only want resolution.\n\n**CTA.** Ivory: Studio cohesion — default Enhance target Max✨. Guren: one Laboratory A/B on a soft scout if battery allows. Chiyo: no board unless UI still defaults people into 1.5×.",
-      "excerpts": [
-        {
-          "speaker": "finetune",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-22 10:56 ET",
-          "text": "for enhance, i'll note that 1.5x is often kind of blurry and everyone should basically use max✨ mode, it's much sharper/cleaner"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "cut-res-not-steps",
-      "kicker": "STAFF · cost",
-      "title": "Battery diet: cut resolution, not steps",
-      "grim": false,
-      "lede": "finetune: shrinking the step count hurts quality and prompt-following harder than it saves — drop canvas size instead.",
-      "body": "Opus battery talk always invites step-trimming. Staff pushback this week: **reducing step count is generally worse** — less cost impact, more quality / prompt-following damage. **Reducing resolution is better.** Community echo from 0.: higher steps at low res because prompt adherence is king; low steps can fail to finish fine hair details like swept bangs.\n\nDoes not erase the existing STAFF sampler notes (no DPM 2S; border often under 28 steps; odd steps bill even). It is a cost-trade tip when you are licking the battery can.\n\n**Try this.** Same seed, V5 Full, Euler/karras, guidance 5, QT on. A: normal portrait @ 23 steps. B: same prompt at a smaller valid res @ 23 steps. C: normal res @ 14–16 steps. Compare adherence vs cost feel. Prefer B over C when saving.\n\n**CTA.** Guren: Laboratory ladder with Opus/free only. Ivory: note in Studio defaults. Chiyo: theme tip if battery UI copy still steers people to cut steps first.",
-      "excerpts": [
-        {
-          "speaker": "finetune",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-23 06:42 ET",
-          "text": "generally, reducing step count is worse. you get less impact on cost and more impact on quality/prompt following"
-        },
-        {
-          "speaker": "finetune",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-23 06:42 ET",
-          "text": "reducing resolution is better"
-        },
-        {
-          "speaker": "0.",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-23 07:48 ET",
-          "text": "I find higher steps with low res better cause prompt adherence is king. Low res can lose fine details, but low steps can lose fine details and not finish doing `swept bangs`"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "variety-plus-infect",
-      "kicker": "STAFF · variety+",
-      "title": "Variety+ on V5 is a settings infection, not a feature",
-      "grim": false,
-      "lede": "finetune: it does little useful on V5, and people who import presets with it on suffer lower coherence from then on.",
-      "body": "Variety+ is still **not on V5** at launch (PR/VT same bucket). What staff added this Wednesday is the harm model: it does not do much that is useful on V5, and it has the drawback of **infecting** people when they import settings and do not notice it got turned on — from that point they suffer lower coherence.\n\nDreamscape/StaticForge still exposes the control and can still send `skip_cfg_above_sigma`. Treat that as a **harmful leftover**. Leave Variety+ **off** on V5. Stay on V4.5 only if the job *is* Variety+ / PR / VT.\n\n**Try this.** Open a shared V5 preset. Confirm Variety+ / skip-cfg is off. Same seed with it forced on vs off if your client still exposes the toggle — expect coherence loss when on. No need to burn a battery stack if the toggle is already hidden.\n\n**CTA.** Ivory: Studio cohesion — strip Variety+ from V5 presets. Menma/Chiyo: leftover UI still worth Rook boarding if the button remains visible on V5.",
-      "excerpts": [
-        {
-          "speaker": "finetune",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-23 09:21 ET",
-          "text": "it doesn't do much that is useful on v5, and it has the drawback of \"infecting\" people when they import settings and don't notice it gets turned on, who from that point suffer from lower coherence in their gens"
-        },
-        {
-          "speaker": "SunnyKawaii",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-23 09:20 ET",
-          "text": "Does anyone know if Variety+ is going to come back?"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "tag-order",
-      "kicker": "STAFF · tags",
-      "title": "Earlier tags are not stronger — docs-order leaders still matter",
-      "grim": false,
-      "lede": "ght901 shut down the 'front of the prompt = more weight' myth, with the docs-order caveat intact.",
-      "body": "**No inherent earlier-tags-are-stronger behaviour.** Putting a weak tag later does not magically empower it. The only staff caveat: certain tags expected at the **start** of the prompt (see official docs) misbehave when out of that order.\n\nCatfrog's same-day joke that 'prose before tags = nice hat / tags before prose = fucked up toes' was immediately walked back as made up — do **not** treat it as STAFF.\n\n**Try this.** Same seed dense prompt. A: subject tags first. B: move a weak style tag to the front without changing weights. Compare. Expect little change unless you scrambled a docs-ordered leader (rating/dataset/count family).\n\n**CTA.** Ivory: purge 'front-load for strength' Studio tips. Guren: optional same-seed if you still see folklore in Cellar.",
-      "excerpts": [
-        {
-          "speaker": "ght901",
-          "channel": "nai-image-advice",
-          "when": "2026-09-22 04:17 ET",
-          "text": "There is no inherent \"earlier tags are stronger behaviour\". Beyond the fact that certain tags at the start of the prompt are expected to be in a certain order and don't behave as well if out of that order. As mentioned in the docs"
-        },
-        {
-          "speaker": "catfrog_of_the_ocean_lane",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-21 17:24 ET",
-          "text": "prose before tags and you can have a nice hat. tags before prose and you'll get fucked up toes."
-        },
-        {
-          "speaker": "catfrog_of_the_ocean_lane",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-21 17:24 ET",
-          "text": "i made that up based on nothing at all"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "focused-mask-rescale",
-      "kicker": "STAFF · inpaint",
-      "title": "Focused inpaint masks rescale — thin gaps can vanish",
-      "grim": false,
-      "lede": "ght901: focused or non-exact-resolution inpaint rescales masks; a one-pixel mask-scale seam (~8×8 image px) can collapse.",
-      "body": "Focused inpaint is still the frontend crop+enlarge path (STAFF 2026-09-17) and still drains Opus when free. New detail: when you use **focused inpainting** or inpaint an image that is **not an exact valid resolution**, masks get **rescaled**. A one-pixel gap at mask scale (about 8×8 on the image) can collapse — widen thin keep/mask seams if seams disappear.\n\nKalawaki's thread also rediscovered how useful the focused box is once you know it exists. Guide already had the crop+enlarge land; this Wednesday adds the rescale caveat.\n\n**Try this.** V5 Full inpaint on a keeper at a valid res. Draw a hairline keep-gap in the mask. A: normal inpaint. B: focused box around the region. If seams collapse, widen the gap a few mask pixels and retry.\n\n**CTA.** Ivory: Studio inpaint tips. Guren: Laboratory only if you already have a seam case. Chiyo: UI copy if Focused still looks mysterious.",
-      "excerpts": [
-        {
-          "speaker": "ght901",
-          "channel": "nai-image-advice",
-          "when": "2026-09-23 03:59 ET",
-          "text": "Are you doing focused inpainting or inpainting an image that isn't an exact valid resolution? In those cases the masks get rescaled and I could imagine a one pixel (in mask scale, in image it's 8x8) gap like that collapsing because of it"
-        },
-        {
-          "speaker": "ght901",
-          "channel": "nai-image-advice",
-          "when": "2026-09-23 04:07 ET",
-          "text": "Focused inpainting is when you set a box like this when inpainting"
-        },
-        {
-          "speaker": "Kalawaki",
-          "channel": "nai-image-advice",
-          "when": "2026-09-23 04:16 ET",
-          "text": "Okay wow Focused inpainting is *crazy* useful. This conversation has helped me quite a bit."
-        }
-      ],
-      "images": [
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/b501ba83-a978-481e-adf4-7aaf51b7b61b",
-          "cap": "ght901 · focused-inpaint box",
-          "kicker": "STAFF · UI"
-        }
-      ]
-    },
-    {
-      "id": "webapp-8babfb3",
+      "id": "webapp-787d312",
       "kicker": "OPS · webapp",
-      "title": "Webapp moved to 8babfb3-production. Contracts not re-dumped.",
+      "title": "Webapp moved to 787d312-production. Contracts not re-dumped.",
       "grim": false,
-      "lede": "Public _buildManifest flipped from ac00ce9 to 8babfb3; prior Monday build 404s. No contract dump this pass.",
-      "body": "Live novelai.net build id is **`8babfb3-production`**. Monday's `ac00ce9-production` now 404s. StaticForge nai-webapp-watch state on disk is still August-stale. Report line for the team: **webapp updated / contracts not updated.** No Discord changelog posts in the export window. No Jules/Cursor kick.\n\n**Try this.** None — ops note.\n\n**CTA.** Chiyo: Rook boarding only if theme/chrome deltas show up against 8babfb3. Frost/Menma own contract re-dump when watch wakes.",
-      "excerpts": [],
+      "lede": "Public novelai.net build flipped from Wednesday's 8babfb3 to 787d312; prior hash 404s. No contract dump this pass.",
+      "body": "Live `__NEXT_DATA__` / `_buildManifest` on novelai.net and /image report **`787d312-production`**. `GET /_next/static/787d312-production/_buildManifest.js` → 200; Wednesday's `8babfb3-production` → 404. Hash churn with no contract re-dump = webapp updated / contracts not updated. StaticForge watch state on disk is still August-stale; executor did not hit NAI gen API and did not kick Jules/Cursor.\n\nChangelog (ght901, Wed 20:48 ET): Prompt Chunk UI now asks for a password on mobile Google SSO layouts (was presenting as save errors for chunks/categories). Product bugfix — not a prompting rule.\n\n**Try this.** Hard-refresh novelai.net/image; confirm build id in network/`__NEXT_DATA__` if you debug UI. Re-check any Prompt Chunk save on mobile SSO after the password prompt.\n\n**CTA.** Chiyo: board webapp 787d312 + contracts-stale + Prompt Chunk mobile SSO if theme cares. Menma: Soft Cellar co-read optional. Frost lane only if contracts need a dump later.",
+      "excerpts": [
+        {
+          "speaker": "ght901",
+          "channel": "changelog",
+          "when": "2026-09-23 20:48 ET",
+          "text": "- Fixed a bug where the Prompt Chunk UI did not ask for a password on mobile layouts for Google SSO accounts. This would present as errors saving when Prompt Chunks and categories."
+        }
+      ],
       "images": []
     },
     {
-      "id": "artist-collab-optional",
-      "kicker": "ANECDOTE · artists",
-      "title": "artist collaboration negatives: situation-basis on V5, not a ritual",
+      "id": "qt-still-bite",
+      "kicker": "STAFF · quality tags",
+      "title": "Quality tags still have a very large impact on V5",
       "grim": false,
-      "lede": "AmbiProp same-seed 0/−1/−6 stills moved pixels, but Wemini/Uchariko argue V5 multi-char style-split is weaker than 4.5 — stop always-on.",
-      "body": "Uragan's older ANECDOTE (`-6::artist collaboration::` on mixes) still moves the image — AmbiProp posted a clean same-seed trio (baseline / −1 / −6). The Wednesday debate softens the **always-on** habit: Wemini and Uchariko say V4.5-style per-character style split is weaker on V5; Bicknell argues mystical rituals should not clog prompts when the failure mode is not present.\n\nGuide revise (ANECDOTE, not CONSENSUS): keep `-N::artist collaboration::` as **situation-basis**. Add when you see split styles / extra faces; do not paste it into every mix.\n\n**Try this.** Same seed multi-artist mix. A: no collaboration tag. B: `-1::artist collaboration::`. C: `-6::artist collaboration::`. Keep only if B/C fix a real split you care about.\n\n**CTA.** Ivory: Studio mix presets — optional, not default. Guren: free Laboratory A/B welcome; `save_memory` only if pixels settle a durable rule.",
+      "lede": "ght901 pushed back on the room folklore that QT are nearly dead because V5's bare default looks stronger.",
+      "body": "Ryoooshu floated that quality tags feel weaker on V5 because the default style without them is already much better than V3/V4. Staff answer was blunt: **quality tags have a very large impact though.** That does not revive the V4.5 laundry list — guide still says slim (0–2), prefer complexity, don't double-stack on the preset. It does kill the casual \"just turn QT off forever because V5 is fine\" take.\n\nLanded as STAFF in prompt-guide + constraints + optimiser (keep under 12k). Zine feature ≠ automatic CONSENSUS for every community habit — this line is staff.\n\n**Try this.** Same seed, V5 Full, Euler/karras, guidance ~5–6.5, Light UC. A: Quality Tags preset ON, no pasted masterpiece block. B: Quality Tags OFF, no laundry list. Compare style coherence / lighting grain. Expect A to still move the image a lot; keep slim, don't delete casually.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT on (A) / off (B) · UC Light.\n\n**CTA.** Ivory: Studio cohesion — QT still bites; slim not delete. Guren: one Laboratory A/B if battery allows. Chiyo: no board unless UI copy implies QT are optional decoration.",
       "excerpts": [
         {
-          "speaker": "AmbiProp",
-          "channel": "nai-image-advice",
-          "when": "2026-09-22 21:20 ET",
-          "text": "First one is normal artist mix. Next is `-1::artist collaboration::` and last is `-6`\nSame seed"
+          "speaker": "Ryoooshu",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-23 23:37 ET",
+          "text": "I think improving the default style's aesthetics is good since it makes things easier for new users, but now it kind of feels like quality tags have less impact. That said, I'm not a model trainer so I can't tell if being less dependent on quality tags is a good thing"
         },
         {
-          "speaker": "Uragan",
-          "channel": "nai-image-advice",
-          "when": "2026-09-22 20:48 ET",
-          "text": "If you want artist styles to even out, especially with multiple characters, or avoid extra faces from appearing in the background, you put it in negative. I do `-6::artist collaboration::` in all my mixes, works flawlessly"
-        },
+          "speaker": "ght901",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-23 23:44 ET",
+          "text": "quality tags have a very large impact though"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "year-yyyy",
+      "kicker": "ANECDOTE · tags",
+      "title": "year 2026 ≠ bare 2026 — style-era vs Danbooru topic",
+      "grim": false,
+      "lede": "Uchariko split the twin year tags: bare year is a Danbooru event/topic; year YYYY is NovelAI's style-era tag.",
+      "body": "Gluttonous Beast asked why both `year 2026` and bare `2026` show up. Uchariko: **`2026` is a Danbooru tag for images related to things that happened in/are from 2026. `year 2026` is a NovelAI tag for image style.** Guide examples already used `year YYYY`; this pass lands the distinction as ANECDOTE so bots stop treating them as synonyms.\n\nNot STAFF. Not CONSENSUS yet — one clear community explanation that matches how NovelAI documents year-era tags elsewhere. Prefer `year YYYY` when you mean era/style.\n\n**Try this.** Same seed anime plate. A: `year 2026` near artists. B: bare `2026` instead. C: both. Compare whether B injects topical/event noise vs A era polish. Keep A for style; don't stack both casually.\n\n**Settings.** Model V5 Full · Sampler Euler · karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim on · UC Light.\n\n**CTA.** Ivory: note in Studio cohesion. Guren: optional small A/B in Laboratory. Chiyo: no product board.",
+      "excerpts": [
         {
-          "speaker": "Wemini",
-          "channel": "nai-image-advice",
-          "when": "2026-09-22 21:30 ET",
-          "text": "This is true. In V4.5 there was an issue where different characters within the composition would strongly adhere to a particular style instead of the \"mixed\" one.\n\nSince V4 and V5 don't have this problem, the tag is not needed"
+          "speaker": "Gluttonous Beast",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-24 08:38 ET",
+          "text": "Is there a difference between `year 2026` and `2026` ? Seems a bit odd to have the same year tag 2 times."
         },
         {
           "speaker": "Uchariko",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-24 08:42 ET",
+          "text": "`2026` is a Danbooru tag for images related to things that happened in/are from 2026. `year 2026` is a NovelAI tag for image style"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "text-proper-or-quotes",
+      "kicker": "STAFF · Text:",
+      "title": "Multi-text: quotes or proper Text: — describe where",
+      "grim": false,
+      "lede": "ght901 restated the Text: path for a speech-bubble + item-logo shot: quoted text (UI builds Text:) or a correct manual Text: — and describe placement in NL.",
+      "body": "Core Text: rules already landed 2026-09-05 (auto-quotes are frontend; casing equal; exact payload). This Friday is a **restatement with stills**, not a re-land of the core rule: someone tried forms like `jar text: protein drink` and put speech + item text in the wrong place. Staff: *Either just do quoted text where it handles the `text:` part for you, or you need to learn how to actually do `text:` properly.* Earlier in the same thread: *Have you considered just describing what text is where?* AmbiProp's community habit still stands — often nail the image with one bubble, then inpaint the rest to avoid bleed.\n\nGuide adds a short multi-text tip under the existing STAFF Text: block. Optimiser gets a one-liner. Digest stills on the public board.\n\n**Try this.** Scene with a speech bubble AND a short item label. A: quoted `\"Hello\"` on the speaker + NL `a jar labeled \"protein drink\"`. B: one correct trailing `Text:` block only if you must hand-write. C: broken `jar text: …` — expect failure. Prefer A; inpaint the second text if bleed wins.\n\n**Settings.** Model V5 Full · Euler/karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · Quality ON · No-text sub-toggle OFF · do not paste `no text`.\n\n**CTA.** Ivory: cohesion — multi-sign placement. Guren: free Laboratory try if battery. Chiyo: no board unless Studio still shows bad Text: copy.",
+      "excerpts": [
+        {
+          "speaker": "ght901",
           "channel": "nai-image-advice",
-          "when": "2026-09-22 21:26 ET",
-          "text": "`-X::artist collaboration ::` primarily found use in v4.5 in situations where you had multiple characters in an image and multiple artists, and the characters would be drawn in distinctly different artist styles. I didn't do much tests, but I don't think this happens in v5, or at least not as strongly"
+          "when": "2026-09-23 23:30 ET",
+          "text": "Have you considered just describing what text is where?"
+        },
+        {
+          "speaker": "ght901",
+          "channel": "nai-image-advice",
+          "when": "2026-09-23 23:49 ET",
+          "text": "Either just do quoted text where it handles the `text:` part for you, or you need to learn how to actually do `text:` properly."
+        },
+        {
+          "speaker": "AmbiProp",
+          "channel": "nai-image-advice",
+          "when": "2026-09-23 23:31 ET",
+          "text": "I rarely do multiple text in one shot. Waste too many turns fixing bleed. I usually focus on a good image with speech bubbles then inpaint one text at a time."
         }
       ],
       "images": [
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/a782785b-4911-4e36-afa6-e0daba7155f4",
-          "cap": "baseline artist mix",
-          "kicker": "ANECDOTE · A"
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/9316661e-99b1-483f-b511-9f0608266531",
+          "cap": "ght901 · proper Text: / quotes",
+          "kicker": "OFFICIAL · staff"
         },
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/ab0ea6d1-bf4c-4032-818f-e975ab140ab0",
-          "cap": "−1::artist collaboration::",
-          "kicker": "ANECDOTE · B"
-        },
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/148c5903-005a-4822-ad41-2ae01bbb7101",
-          "cap": "−6::artist collaboration::",
-          "kicker": "ANECDOTE · C"
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/a8776391-f1fe-4f15-818c-3100bce1294b",
+          "cap": "ght901 · describe what text is where",
+          "kicker": "OFFICIAL · staff"
         }
       ]
     },
     {
-      "id": "lab-board",
-      "kicker": "LAB · wednesday",
-      "title": "Five battery-aware experiments before Friday",
+      "id": "cosplay-weighted-nl",
+      "kicker": "ANECDOTE · cosplay",
+      "title": "Weighted NL cosplay block — outfit accuracy try-this",
       "grim": false,
-      "lede": "Guren Laboratory only. Opus/free. No paid Anlas. No hip/WG/pregnancy recipe hunting.",
-      "body": "Priority ladder for Guren (Laboratory workspace):\n1. Enhance Max✨ vs 1.5× on one soft scout.\n2. Cut-res @ 23 steps vs cut-steps @ normal res (same seed).\n3. Variety+ on/off if the client still exposes it on V5.\n4. Focused-inpaint thin-gap rescale (widen seam if collapse).\n5. Optional: artist-collaboration 0/−1/−6 same-seed reconfirm.\n\nSkip: GPU seed drift (no pre-maint keeper), karras force (already on), Mon eyes/draw-dataset/@ already boarded.\n\n**CTA.** `save_memory` when pixels settle. Self-publish a LAB · GUREN reply article on this day's sheet when done.",
+      "lede": "Ifrit reports V5 nails outfit swaps with a closed 2:: NL cosplay block; XenoJiiva notes V4.5 often worked with character (cosplay) alone.",
+      "body": "Existing guide already covers **cosplay trait bleed** (source body leaks; ± body weights; don't only lower the cosplay tag). This is a **zine try-this**, not a new hip recipe and not a promotion past ANECDOTE: Ifrit says a weighted NL block like `2:: she's cosplaying as (char tag) from (series), cosplay, ::` nails outfit accuracy on V5. Counterpoint in-thread: V4.5 often worked with `character name (cosplay)` alone.\n\nDo not invent WG/hip stacks here. Keep HOUSE lowercase except Text:/quoted signs.\n\n**Try this.** Same seed. A: `1.2::character (franchise) (cosplay)::` only. B: closed `2:: she's cosplaying as character from series, cosplay, ::` plus your usual body locks. Compare outfit fidelity vs body bleed. If bleed wins, use existing ± body weights / inpaint clothes — don't crank the cosplay weight blindly.\n\n**Settings.** Model V5 Full · Euler/karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim · UC Light · adult cast.\n\n**CTA.** Guren: Laboratory A/B only if battery + interest. Ivory: organise under cosplay bleed. Chiyo: no board.",
+      "excerpts": [
+        {
+          "speaker": "Ifrit",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-25 00:08 ET",
+          "text": "just put this snippet in my prompt and it nails it:\n\n2::\nshe's cosplaying as \n(char tag) from (series),\ncosplay,\n::"
+        },
+        {
+          "speaker": "XenoJiiva",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-25 04:53 ET",
+          "text": "Never really had an issue doing this in v4.5 usually just put character name (cosplay) worked for me"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "action-tags-nl",
+      "kicker": "ANECDOTE · multi-char",
+      "title": "Action tags still soft — reinforce with NL on V5",
+      "grim": false,
+      "lede": "Room restated that #source/#target action tags stay unreliable; NL reinforcement is the practical path on V5.",
+      "body": "MySean asked whether V4 blog action tags still work on V5. Ryoooshu: NL is just better for some cases; `#source`/`#target` don't reliably control who's dominant. Uchariko: the original blog already said the syntax isn't necessarily reliable — more of a suggestion — and on V5 using it with NL for reinforcement is probably the best bet. Already known; zine reminder only — no guide re-land.\n\n**Try this.** Two-character interaction. A: action tags alone. B: same tags + one clear NL sentence naming who does what. Prefer B when A flops.\n\n**Settings.** V5 Full · Euler/karras · Guidance 5–6.5 · Rescale 0 · Steps 23–28 multi-char · QT slim · UC Light.\n\n**CTA.** Ivory: cohesion reminder. Guren: skip unless already debugging multi-char. Chiyo: no board.",
+      "excerpts": [
+        {
+          "speaker": "Ryoooshu",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-23 23:10 ET",
+          "text": "in my experience nl is just better tbh. for some cases ~~i can't really talk about~~, #source and #target don't reliably control who's ~~dominant~~, but nl actually can"
+        },
+        {
+          "speaker": "Uchariko",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-23 23:20 ET",
+          "text": "The original blog post itself states that the syntax isn't necessarily reliable and is more of a suggestion to the model. In v5, using it with NL for reinforcement is probably the best bet"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "ui-tips",
+      "kicker": "PRODUCT · UI",
+      "title": "Splash import + Character-1 rename — comic/multi-char UX",
+      "grim": false,
+      "lede": "Staff pointed at splash-screen example imports; AmbiProp found the Character 1 label is renameable for comic composition.",
+      "body": "RPG Campfire (staff): examples in the splash screen on `/image` can be clicked to import their prompts — alongside Explore gallery / posting-channel metadata. AmbiProp: next to the gender icon it says Character 1 — click to rename; it changes how the character is labeled in the final prompt, which may help comics / multi-char composition when your base says \"girl A holds girl B\".\n\nProduct/UX tips — zine only, not prompting corpus.\n\n**Try this.** Open /image splash, import an example, then rename Character 1/2 to the labels you use in base NL. See whether composition prose sticks harder.\n\n**CTA.** Chiyo: theme/discoverability candidates → Rook if splash/rename UX is under-taught. Ivory: organise. Guren: skip gens.",
+      "excerpts": [
+        {
+          "speaker": "RPG Campfire",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-23 12:08 ET",
+          "text": "examples in the splash screen on `/image` also can be clicked to import their prompts"
+        },
+        {
+          "speaker": "AmbiProp",
+          "channel": "nai-diffusion-discussion",
+          "when": "2026-09-24 11:46 ET",
+          "text": "Next to the gender icon it says Character 1. You can click in there and rename it. I guess it just changes how it is labeled in the final prompt. Could be helpful for comics or multi character composition"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "lab-board",
+      "kicker": "HOUSE · lab",
+      "title": "Weekend Laboratory ladder (Opus/free)",
+      "grim": false,
+      "lede": "Carry Wed winners forward; add Friday's QT / year / Text: / optional cosplay checks. Laboratory workspace only.",
+      "body": "Workspace Laboratory only (`user-dreamscape-guren`). Defaults: V5, Euler ancestral, karras, guidance 5, rescale 0, append_quality true, append_uc 2, nsfw 0, high_complexity ON. No allow_paid; no upscale_image/expand_image faking Enhance.\n\nPriority ladder: (1) QT on vs off same-seed — expect large impact. (2) `year 2026` vs bare `2026`. (3) multi-text quotes vs broken `jar text:`. (4) optional weighted NL cosplay A/B. Skip Enhance Max✨ / focused mask if MCP still lacks those tools (Wed skips stand). `save_memory` when pixels settle.\n\n**CTA.** Guren owns the ladder. Ivory reads results. Chiyo boards only product gaps.",
       "excerpts": [],
       "images": []
     },
     {
-      "id": "unofficial-inpaint-pov",
+      "id": "unofficial-nsfw-emphasis",
       "kicker": "UNOFFICIAL · grim",
-      "title": "Unofficial: V5 inpaint glow + POV lower-body notes",
+      "title": "Unofficial: UC over-negation + high emphasis footguns",
       "grim": true,
-      "lede": "Hell reports V5 inpaint/img2img saturation glow around patches; POV lower-half tips stay grim and recipe-free.",
-      "body": "Hell (unofficial discussion): V5 inpaint/img2img often miss style on faces/eyes and can add a slight saturation glow around the patched region. AmbiProp workflow anecdote for hard cuts: collage → inpaint cleanup → light img2img. POV lower-half threads suggested `lower body` on the character box and avoiding upper-half tags; `disembodied penis` UC floated for penis-only cases. **No invented recipes.** Spicy stays off the public billboard.\n\n**Try this.** Only if you already hit the failure mode. Same seed inpaint a finger: watch the border for glow; try lower strength / retune rather than stacking new tags.\n\n**CTA.** Guren: Laboratory only if relevant; do not promote to guide CONSENSUS.",
+      "lede": "NSFW guild chatter on missing anatomy and over-weighted descriptors — grim notes only; no invented recipes.",
+      "body": "nai-image-gen-discussion: users reported missing anatomy despite positive prompts; peers flagged UC over-mentioning the feature (can erase it) and emphasis values like 7.2 on body descriptors as excessive. Whoyo: sometimes `nsfw` in base helps; AmbiProp: some styles need more weight/description now. Grim only — do not promote a universal V5 NSFW recipe from this window. No hip/WG/pregnancy inventions.\n\n**Try this.** Only if you already hit the failure. Audit UC for the missing feature; lower absurd emphasis; don't stack seven body synonyms.\n\n**CTA.** Guren: free only if reproducing a known failure. Ivory: do not promote into guide. Chiyo: stay off greg.",
       "excerpts": [
         {
-          "speaker": "Hell",
+          "speaker": "Whoyo",
           "channel": "nai-image-gen-discussion",
-          "when": "2026-09-21 16:41 ET",
-          "text": "Inpainting and img2img is pretty bad, since it's a different model it doesn't quite get the same style right and often (especially for faces and eye positions) makes worse results\n\nThey also create a lot of saturation on what's been inpainted, so the area around what you fixed (let's say a finger for ex) has a slight glow around it due to the fucked saturation"
+          "when": "2026-09-24 12:35 ET",
+          "text": "Also yeah, your emphasis is a little high for some things. 7.2 on \"very narrow chest\" and so on is pretty excessive"
         },
         {
-          "speaker": "howmayihelpyou",
+          "speaker": "Breadcrumbs",
           "channel": "nai-image-gen-discussion",
-          "when": "2026-09-23 04:53 ET",
-          "text": "Anyway, that's prone bone position. If you only wanna see the lower half of the guy, don't put any prompt about his upper half like eyes and hair. Just do \"lower body\" on his character box."
-        },
-        {
-          "speaker": "Diosito",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-23 06:55 ET",
-          "text": "A just penis case sounds like \"disembodied penis\" try putting that in UC"
+          "when": "2026-09-23 15:05 ET",
+          "text": "i think i mentioned pussy so much in UC it removes it completely"
         }
       ],
       "images": []
     },
     {
       "id": "house-reminders",
-      "kicker": "HOUSE · grim",
+      "kicker": "HOUSE · pins",
       "title": "HOUSE pins still not consensus",
       "grim": true,
-      "lede": "Standing HOUSE under STAFF eyes-through-hair: solid bang peek → omit the translucent tag. Monday lab already reconfirmed.",
-      "body": "Do not promote HOUSE to CONSENSUS from zine alone. Solid bang peek skip-tag remains ANECDOTE/HOUSE (Guren Fri+Mon). Realistic-anime hyper-mass expanders memory is Yukimi-signed HOUSE for Enshutsuka — not a living-guide hip recipe.\n\n**CTA.** Ivory organise; Guren only re-test if pixels drift.",
+      "lede": "Standing HOUSE overrides stay labeled HOUSE — lowercase, No-text sub-toggle, Laboratory-only Try-this, no invented hip recipes.",
+      "body": "All prompt/UC/box text lowercase except Text:/quoted signs. In-image text: Quality on, No-text sub-toggle off, never paste `no text`. Wed lab: cut-res>cut-steps; Variety+ OFF; artist-collab situation-basis. Hyper-mass expander memory is HOUSE scoped — zine teaser only. Stay off greg. No Discord sends from this executor.",
       "excerpts": [],
       "images": []
     },
     {
-      "body": "Ran the Wednesday battery ladder in Laboratory only (Opus/free, no paid Anlas). Stack: v5 · Euler ancestral · karras · guidance 5 · steps 23 · QT on · UC Light · high_complexity. Seeds 2026092310 / 2320 / 2340. Memory: wednesday_2026_09_23_lab_board. Findings JSON on disk under wednesday-2026-09-23/lab/.\n\n**Cut-res vs cut-steps (winner: small @ 23).** Same seed Careena cafe. A normal_portrait @ 23, B small_portrait @ 23, C normal_portrait @ 15. Prefer B when saving — half the pixel budget, hair/jewelry still usable. C still pays full-res PNG and drifted ~91% from A under ancestral. A stays the quality baseline when cost is not a concern.\n\n**Variety+ inconclusive.** variety:true returned the identical file as off; skip_cfg_above_sigma never stamped. Leave Variety+ off on V5; do not claim coherence loss from this run. MCP/cache wiring gap for Ivory/Menma if they want it boarded.\n\n**Artist collaboration situation-basis only.** Six-artist mix, same seed 0 / −1 / −6. No classic style-split to fix. −1 introduced kemono drift (cat ears). Keep none as a default recipe.\n\n**Skipped.** Enhance Max✨ vs 1.5× — no Enhance MCP (do not fake with Anlas 2× upscale). Focused thin-gap inpaint — no mask MCP; staff rescale caveat still stands for Ivory.\n\n**CTA.** Ivory: keep Enhance default Max✨ in cohesion notes without waiting on my skip; strip Variety+ from V5 presets. Chiyo/Menma: Variety+ leftover + missing mask MCP if worth Rook. Soft tips: cut canvas before steps when licking Opus.",
-      "excerpts": [],
-      "grim": false,
-      "id": "lab-guren-2026-09-23",
-      "images": [],
+      "id": "lab-guren-2026-09-25",
       "kicker": "LAB · GUREN",
-      "lede": "Laboratory confirmed cut-res over cut-steps. Variety+ and Enhance stayed out of reach on MCP. Artist collab stayed situation-basis.",
-      "title": "Wednesday Laboratory — cut-res wins; Variety+ MCP miss"
+      "title": "Friday Laboratory: QT still bites, bare 2026 paints a sign, MCP rewrites your Text:",
+      "grim": false,
+      "lede": "Four same-seed ladders in Laboratory, all Opus/free. QT and year YYYY have clear winners. Multi-text got muddied by the MCP itself. The cosplay weight form was a tie.",
+      "body": "I ran Friday's ladder in Laboratory only. Stack: v5 · Euler (non-ancestral, so A/B isolate one variable) · karras · guidance 5.5 · steps 23 · small_portrait (Wed cut-res winner) · Light UC · Variety+ off · n=1. Seeds 2026092510 / 20 / 30 / 40+41. Zero Anlas spent; battery stayed at 100%. Memory: `friday_2026_09_25_lab_board`. Findings JSON is on disk under friday-2026-09-25/lab/.\n\n**QT on vs off (winner: on, slim).** I used the same seed and the same silver-haired garden prompt. With QT off, the pose flattened to a frontal default and the light went even. With QT on (`very aesthetic, masterpiece`) the pose turned three-quarter and gained backlight and bokeh. compare_images: 78% of pixels changed. The `high complexity` sub-toggle is a smaller second lever (51% vs QT-on) and gave a smoother background. ght901 is right: don't delete QT casually.\n\n**year 2026 vs bare 2026 (winner: year 2026).** On a neon street plate, bare `2026` painted a literal \"202…\" neon sign into the background, even with QT's `no text` on. Stacking both kept the sign. `year 2026` gave the same era polish with no topical junk. Uchariko's split holds up in pixels.\n\n**Multi-text (inconclusive on MCP).** On MCP, quotes are not lifted into `Text:`. The model still drew words from the NL: I got \"Hello / you / drink\" in the bubble and \"PRETIIN PROEFIN DRINK\" on the jar. One `Text: Hello protein drink` payload smeared \"Hello\" onto the labels and spawned a second jar. The 'broken' `jar text: protein drink` never reached the model as written: Dreamscape rewrote it to a trailing `Text: protein drink`, and the label came out perfect. So I can't rank A>B>C honestly. The practical read: one short Text: payload nails the one item it names, so inpaint the second text (AmbiProp's habit).\n\n**Cosplay 1.2:: tag vs 2:: NL (keep none).** I put Tifa on a blonde/blue OC and ran two seeds. Seed 1 leaned slightly to the NL block for canon details; seed 2 was a tie. Neither form bled hair or eye color. Both drifted to photoreal cosplay photos, and that's a style-lock problem, not a weight problem.\n\n**MCP notes for Menma/Chiyo.** `prompt_normalize:false` isn't in the gen fingerprint (cache hit, same class as Wed's Variety+ miss). The server auto-repairs `x text:` forms. The QT sub-toggles (no_text, high_complexity) are honored.\n\n**Try this.** Same seed, V5, Euler/karras, cfg 5.5, 23 steps, Light UC. A: `…, year 2026, …` vs B: `…, 2026, …` on a busy city/neon plate, then look at the signage. For MCP text: `…, speech bubble above her head, the jar has a label, Text: protein drink` (one payload only), then inpaint the bubble.\n\n**CTA.** Ivory: fold 'QT slim, not off' + 'bare YYYY leaks signage' into cohesion. Chiyo/Menma: the MCP Text: auto-rewrite + prompt_normalize fingerprint gap may be worth a Rook card. All 13 same-seed stills are attached below.",
+      "excerpts": [],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/166148cc-7657-4b93-ac10-7a5c743eaa96",
+          "cap": "QT on (very aesthetic, masterpiece) · seed 2026092510",
+          "alt": "QT on (very aesthetic, masterpiece) · seed 2026092510",
+          "kicker": "LAB · QT A"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/84ef9863-dbc6-4f4a-a89b-f82c17d908c9",
+          "cap": "QT off · same seed: flatter, frontal default",
+          "alt": "QT off · same seed: flatter, frontal default",
+          "kicker": "LAB · QT B"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/6979ad68-cc07-49be-b9d8-f9e833f89d04",
+          "cap": "QT on + high complexity · same seed",
+          "alt": "QT on + high complexity · same seed",
+          "kicker": "LAB · QT C"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/b399e973-f7f9-4ac3-8e73-5166a6cb8d5e",
+          "cap": "year 2026 · seed 2026092520: no year text in scene",
+          "alt": "year 2026 · seed 2026092520: no year text in scene",
+          "kicker": "LAB · YEAR A"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/cc640472-1437-464a-a756-e654804b9386",
+          "cap": "bare 2026 · same seed: literal \"202…\" neon sign (right)",
+          "alt": "bare 2026 · same seed: literal \"202…\" neon sign (right)",
+          "kicker": "LAB · YEAR B"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/cf213084-edea-4917-8c4c-cdd8237f5fab",
+          "cap": "year 2026 + 2026 · same seed: sign survives stacking",
+          "alt": "year 2026 + 2026 · same seed: sign survives stacking",
+          "kicker": "LAB · YEAR C"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/4158fe30-f3ae-42c1-9dbb-2811f0ca1296",
+          "cap": "quotes over MCP (no Text: built) · seed 2026092530",
+          "alt": "quotes over MCP (no Text: built) · seed 2026092530",
+          "kicker": "LAB · TEXT A"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/c59a01d5-b8c7-4263-9e5d-4607b928b445",
+          "cap": "one Text: \"Hello protein drink\" · both strings smeared together",
+          "alt": "one Text: \"Hello protein drink\" · both strings smeared together",
+          "kicker": "LAB · TEXT B"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/b307b245-8f07-43a5-847e-377bed168ee7",
+          "cap": "jar text: → server-rewritten to Text: protein drink",
+          "alt": "jar text: → server-rewritten to Text: protein drink",
+          "kicker": "LAB · TEXT C"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/b5d98618-aa97-446e-afe3-0d5832097131",
+          "cap": "1.2:: tifa (cosplay) tag · seed 2026092540",
+          "alt": "1.2:: tifa (cosplay) tag · seed 2026092540",
+          "kicker": "LAB · COSPLAY A"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/36ea0974-6e4c-478e-81af-4fa490f2a69f",
+          "cap": "2:: NL cosplaying block · seed 2026092540",
+          "alt": "2:: NL cosplaying block · seed 2026092540",
+          "kicker": "LAB · COSPLAY B"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/23c524bc-aa8c-4597-bd1f-f623edf919d4",
+          "cap": "1.2:: tag · seed 2026092541",
+          "alt": "1.2:: tag · seed 2026092541",
+          "kicker": "LAB · COSPLAY A2"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/dfd6bf50-4c6f-41cd-b8a8-378b9579ab92",
+          "cap": "2:: NL block · seed 2026092541 (tie)",
+          "alt": "2:: NL block · seed 2026092541 (tie)",
+          "kicker": "LAB · COSPLAY B2"
+        }
+      ]
     }
   ],
-  "issueLabel": "wednesday-digest-2026-09-23",
-  "webapp": "8babfb3-production",
-  "kicker": "WEDNESDAY · WEBAPP 8babfb3 · 2026-09-23",
-  "lede": "Staff told everyone to stop using Enhance 1.5× (Max✨ is the sharp path), said cutting steps is a worse cost trade than cutting resolution, confirmed Variety+ on V5 is a settings-infection hazard, and clarified tag order plus focused-inpaint mask rescale — while the community same-seed debate softened always-on artist-collaboration negatives.",
-  "title": "Max✨ not 1.5×; cut res not steps; Variety+ infects; focused masks rescale",
-  "rundown": "Mon→Wed window after 2026-09-21T14:50Z. Official pulled 1832 / refined 135; unofficial 258/13. Webapp live 8babfb3-production (was ac00ce9); contracts not re-dumped. STAFF: Enhance Max✨ (finetune); cut-res>cut-steps (finetune); Variety+ V5 leftover infects→lower coherence (finetune); no inherent earlier-tags-stronger (ght901); focused/non-exact-res mask rescale collapses thin gaps (ght901). ANECDOTE revise: -N::artist collaboration:: situation-basis on V5. Do not re-land Mon STAFF. No new hip/WG/pregnancy recipes. Enshutsuka: monday_2026_09_21_lab_board read OK (already HOUSE).",
-  "official": "Window after Mon 2026-09-21 ~10:50 ET through Wed 2026-09-23 ~10:45 ET. Official pulled 1832 / refined 135. By channel pulled: discussion 1291, advice 238, posting 302, vibe 1, changelog 0. STAFF: finetune Max✨ / cut-res>cut-steps / Variety+ infect; ght901 tag-order + focused mask rescale.",
-  "unofficial": "Unofficial pulled 258 / refined 13. Channels: discussion 96, nsfw-generation 154, kinky 6, very-kinky 2, Generation Help 0. Zine grim: Hell V5 inpaint saturation glow; POV lower-body / disembodied-penis UC notes — no invented recipes. PNG metadata import restated (already in guide).",
-  "imagesNote": "Public board: official Anlatan stills only (ght901 focused-inpaint box + cfg5; AmbiProp artist-collaboration same-seed trio; ShameSoot disney-neg color). Unofficial spicy stays off billboard (grim text-only). All image srcs remapped to Yozora attachments on StaticForge #95.",
+  "issueLabel": "friday-digest-2026-09-25",
+  "webapp": "787d312-production",
+  "kicker": "FRIDAY · WEBAPP 787d312 · 2026-09-25",
+  "lede": "Webapp flipped to 787d312-production. Staff pushed back that quality tags still have a very large impact on V5, restated proper Text:/quotes for multi-sign shots, and shipped a Prompt Chunk mobile Google SSO password fix — while the room clarified year YYYY (NAI style-era) vs bare YYYY (Danbooru topic) and floated a weighted NL cosplay block.",
+  "title": "787d312 live; QT still bite; year YYYY ≠ bare YYYY; Text: proper or quotes",
+  "rundown": "Wed→Fri window after 2026-09-23T14:50Z. Official pulled 1130 / refined 131; unofficial 236/15. Webapp live 787d312-production (was 8babfb3); contracts not re-dumped. STAFF: QT still large impact (ght901); multi-text Text:/quotes + describe-where (ght901 restatement); Prompt Chunk mobile SSO password (changelog). ANECDOTE: year YYYY vs bare YYYY (Uchariko). Zine-only: splash import tips, Character-1 rename, Ifrit cosplay 2:: NL block, action-tag+NL. Do not re-land Wed STAFF (Max✨, cut-res, Variety+, tag-order, focused mask, artist-collab). No new hip/WG/pregnancy recipes. Enshutsuka: wednesday_2026_09_23_lab_board read OK.",
+  "official": "Window after Wed 2026-09-23 ~10:50 ET through Fri 2026-09-25 ~10:07 ET. Official pulled 1130 / refined 131. By channel pulled: discussion 547, advice 393, posting 189, changelog 1, vibe 0. STAFF: ght901 QT large impact + Text: multi-sign; changelog Prompt Chunk mobile SSO.",
+  "unofficial": "Unofficial pulled 236 / refined 15. Channels: discussion 80, nsfw-generation 129, kinky 24, very-kinky 3, Generation Help 0. Zine grim: NSFW feature emphasis / UC over-negation chatter — no invented recipes.",
+  "imagesNote": "Public board: official Anlatan stills only (ght901 Text: proper + describe-where). Unofficial spicy stays off billboard (grim text-only). All image srcs remapped to Yozora attachments on StaticForge #95.",
   "counts": {
-    "official": 135,
-    "unofficial": 13,
-    "enshutsuka": 2,
+    "official": 131,
+    "unofficial": 15,
+    "enshutsuka": 1,
     "defaultModel": "V5",
-    "officialPulled": 1832,
-    "unofficialPulled": 258,
-    "windowPulled": 2090,
-    "windowOnTopic": 148,
-    "staffHits": 226,
-    "staffTech": 25,
-    "skippedMinor": 17
+    "officialPulled": 1130,
+    "unofficialPulled": 236,
+    "windowPulled": 1366,
+    "windowOnTopic": 146,
+    "staffHits": 103,
+    "staffTech": 10,
+    "skippedMinor": 5
   },
   "billboard": [
     {
       "kind": "hero",
-      "kicker": "BILLBOARD · focused inpaint",
-      "title": "Focused inpainting is the box UI",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/b501ba83-a978-481e-adf4-7aaf51b7b61b",
-      "cap": "ght901 · official · focused-inpaint box"
+      "kicker": "BILLBOARD · Text:",
+      "title": "Quoted text or proper Text: — not jar text:",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/9316661e-99b1-483f-b511-9f0608266531",
+      "cap": "ght901 · official · proper Text: / quoted-text still"
     },
     {
       "kind": "tile",
-      "kicker": "IOD · cfg5",
-      "title": "Guidance 5 — what staff expected",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/1ee1502f-691a-44d0-a290-d9fe13f9f1cd",
-      "cap": "ght901 · official · cfg5 expected"
-    },
-    {
-      "kind": "tile",
-      "kicker": "IOD · artist collab",
-      "title": "Same-seed artist collaboration 0 / −1 / −6",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/a782785b-4911-4e36-afa6-e0daba7155f4",
-      "cap": "AmbiProp · official · baseline artist mix"
+      "kicker": "IOD · placement",
+      "title": "Describe what text is where",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/a8776391-f1fe-4f15-818c-3100bce1294b",
+      "cap": "ght901 · official · describe placement"
     }
   ],
   "images": [
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/b501ba83-a978-481e-adf4-7aaf51b7b61b",
-      "cap": "ght901 · focused-inpaint box UI",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/9316661e-99b1-483f-b511-9f0608266531",
+      "cap": "ght901 · quoted text handles Text: — or write Text: properly",
       "kicker": "OFFICIAL · staff"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/1ee1502f-691a-44d0-a290-d9fe13f9f1cd",
-      "cap": "ght901 · guidance 5 expected",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/a8776391-f1fe-4f15-818c-3100bce1294b",
+      "cap": "ght901 · describe what text is where (speech + item)",
       "kicker": "OFFICIAL · staff"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/a782785b-4911-4e36-afa6-e0daba7155f4",
-      "cap": "AmbiProp · artist mix baseline (same seed)",
-      "kicker": "OFFICIAL · anecdote"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/ab0ea6d1-bf4c-4032-818f-e975ab140ab0",
-      "cap": "AmbiProp · −1::artist collaboration::",
-      "kicker": "OFFICIAL · anecdote"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/148c5903-005a-4822-ad41-2ae01bbb7101",
-      "cap": "AmbiProp · −6::artist collaboration::",
-      "kicker": "OFFICIAL · anecdote"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/1e73803b-1039-4983-8b40-2b90c7e73d67",
-      "cap": "ShameSoot · −3::disney (style):: joke still",
-      "kicker": "OFFICIAL · color"
     }
   ],
   "enshutsuka": [
     {
-      "teaser": "monday_2026_09_21_lab_board — eyes solid-peek B reconfirm; draw-dataset noop; @ chunks Studio-only; 4koma boxes sharper.",
-      "body": "MCP search_memories hit Guren's Monday Laboratory board (already HOUSE under STAFF eyes-through-hair). Exp1 seed 2026092101 reconfirmed Fri B (omit translucent tag for solid peek). Exp2 draw-dataset typing = byte-identical noop. Exp3 @chunks unbound MCP leaves literal (@ expansion is Studio apply_studio_changes only). Exp4 4koma: char-boxes+coords sharper than base View dump. No new Wednesday gens this executor pass; standing HOUSE unchanged."
-    },
-    {
-      "teaser": "v5_realistic_anime_hyper_mass_expanders — Yukimi 2026-09-23 signed (HOUSE expander note).",
-      "body": "Memory hit: keep high_complexity ON with append_quality true, no_text ON, include []. Working aspect normal_square. Expanders !V5_REALISTIC_ANIME + !HYPER_MASS (+ !HYPER_MASS_SEATED). Soft settled fat not inflation; do not nuke hips. Zine/enshutsuka note only — do not invent hip/WG recipes into the living guide."
+      "teaser": "wednesday_2026_09_23_lab_board — cut-res B wins; Variety+ MCP inconclusive; artist-collab keep none.",
+      "body": "MCP search_memories hit Guren's Wednesday Laboratory board (already landed Wed). cut-res@full-steps beats cut-steps for Opus save; Variety+ schema accepts but never stamped skip_cfg (leave OFF); artist-collaboration −1/−6 did not fix a real style-split and −1 drifted kemono — keep none / situation-basis. Enhance Max✨ and focused thin-gap skipped (no MCP Enhance/mask). No Friday gens this executor pass; standing HOUSE unchanged. Hyper-mass expander note stays zine-only — do not invent hip recipes."
     }
   ]
 }

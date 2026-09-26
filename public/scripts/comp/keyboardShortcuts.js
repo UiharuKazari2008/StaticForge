@@ -11,6 +11,7 @@ let windowSwitcherActive = false;
 let windowSwitcherOverlay = null;
 let windowSwitcherWindows = [];
 let windowSwitcherSelectedIndex = 0;
+let windowSwitcherIconsBuiltFor = null;
 let ctrlKeyPressed = false;
 
 let runAppletLastAltUpTime = 0;
@@ -37,6 +38,24 @@ function resolutionShortcutLabel(value) {
     if (!value || isCustomResolutionMode(value)) return null;
     const r = typeof RESOLUTION_CACHE !== 'undefined' && RESOLUTION_CACHE.get(value);
     return r ? r.display : value;
+}
+
+/** value -> { group, index } for RESOLUTION_GROUPS option lookup */
+let resolutionValueGroupIndex = null;
+
+function getResolutionValueGroupIndex() {
+    if (resolutionValueGroupIndex) return resolutionValueGroupIndex;
+    resolutionValueGroupIndex = new Map();
+    if (typeof RESOLUTION_GROUPS !== 'undefined' && Array.isArray(RESOLUTION_GROUPS)) {
+        RESOLUTION_GROUPS.forEach((group) => {
+            (group.options || []).forEach((opt, index) => {
+                if (opt && opt.value != null) {
+                    resolutionValueGroupIndex.set(opt.value, { group, index });
+                }
+            });
+        });
+    }
+    return resolutionValueGroupIndex;
 }
 
 function showShortcutActionToast(message, options = {}) {
@@ -144,23 +163,19 @@ function cycleManualResolutionAspectPreset() {
     const currentAspect = tierMatch[2];
     const startIdx = RESOLUTION_ASPECT_CYCLE.indexOf(currentAspect);
     if (startIdx === -1) {
-        const groupEntry = typeof RESOLUTION_GROUPS !== 'undefined' && RESOLUTION_GROUPS.find(g =>
-            g.group !== 'Custom' && g.options.some(o => o.value === resVal));
-        if (!groupEntry || groupEntry.options.length < 2) return null;
-        const idx = groupEntry.options.findIndex(o => o.value === resVal);
-        if (idx === -1) return null;
-        const next = groupEntry.options[(idx + 1) % groupEntry.options.length];
-        selectManualResolution(next.value, groupEntry.group);
+        const loc = getResolutionValueGroupIndex().get(resVal);
+        if (!loc || loc.group.group === 'Custom' || !loc.group.options || loc.group.options.length < 2) return null;
+        const next = loc.group.options[(loc.index + 1) % loc.group.options.length];
+        selectManualResolution(next.value, loc.group.group);
         return resolutionShortcutLabel(next.value);
     }
     for (let step = 1; step <= 3; step++) {
         const nextAspect = RESOLUTION_ASPECT_CYCLE[(startIdx + step) % 3];
         const candidate = `${prefix}_${nextAspect}`;
         if (typeof RESOLUTION_CACHE !== 'undefined' && RESOLUTION_CACHE.has(candidate)) {
-            const groupObj = typeof RESOLUTION_GROUPS !== 'undefined' && RESOLUTION_GROUPS.find(g =>
-                g.options.some(o => o.value === candidate));
-            if (groupObj) {
-                selectManualResolution(candidate, groupObj.group);
+            const loc = getResolutionValueGroupIndex().get(candidate);
+            if (loc) {
+                selectManualResolution(candidate, loc.group.group);
                 return resolutionShortcutLabel(candidate);
             }
             return null;
@@ -1533,35 +1548,41 @@ function updateWindowSwitcherDisplay() {
     const selectedModal = windowSwitcherWindows[windowSwitcherSelectedIndex];
     if (!selectedModal) return;
     
-    // Get window title and icon using existing functions
+    // Get window title using existing functions
     const title = typeof getModalTitle === 'function' ? getModalTitle(selectedModal) : (selectedModal.id || 'Window');
-    const icon = typeof getModalIcon === 'function' ? getModalIcon(selectedModal) : 'fas fa-window';
     
     // Update title
     titleEl.textContent = title;
     
-    // Update icons
-    iconsEl.innerHTML = '';
-    windowSwitcherWindows.forEach((modal, index) => {
-        const iconEl = document.createElement('div');
-        iconEl.className = 'window-switcher-icon';
-        if (index === windowSwitcherSelectedIndex) {
-            iconEl.classList.add('selected');
-        }
-        // Use getModalIcons to get both icon and imageIcon for dual icon rendering
-        if (typeof getModalIcons === 'function' && typeof getIconHTML === 'function') {
-            const icons = getModalIcons(modal);
-            iconEl.innerHTML = getIconHTML(icons.icon || 'fas fa-window', icons.imageIcon || null);
-        } else if (typeof getModalIcon === 'function' && typeof getIconHTML === 'function') {
-            // Fallback to single icon mode
-            const modalIcon = getModalIcon(modal);
-            iconEl.innerHTML = getIconHTML(modalIcon);
-        } else {
-            // Final fallback
-            iconEl.innerHTML = `<i class="fas fa-window"></i>`;
-        }
-        iconsEl.appendChild(iconEl);
-    });
+    // Build icon row once per switcher session; later Alt-Tab steps only move selected
+    if (windowSwitcherIconsBuiltFor !== windowSwitcherWindows) {
+        iconsEl.innerHTML = '';
+        windowSwitcherWindows.forEach((modal, index) => {
+            const iconEl = document.createElement('div');
+            iconEl.className = 'window-switcher-icon';
+            if (index === windowSwitcherSelectedIndex) {
+                iconEl.classList.add('selected');
+            }
+            // Use getModalIcons to get both icon and imageIcon for dual icon rendering
+            if (typeof getModalIcons === 'function' && typeof getIconHTML === 'function') {
+                const icons = getModalIcons(modal);
+                iconEl.innerHTML = getIconHTML(icons.icon || 'fas fa-window', icons.imageIcon || null);
+            } else if (typeof getModalIcon === 'function' && typeof getIconHTML === 'function') {
+                const modalIcon = getModalIcon(modal);
+                iconEl.innerHTML = getIconHTML(modalIcon);
+            } else {
+                iconEl.innerHTML = `<i class="fas fa-window"></i>`;
+            }
+            iconsEl.appendChild(iconEl);
+        });
+        windowSwitcherIconsBuiltFor = windowSwitcherWindows;
+        return;
+    }
+
+    const iconNodes = iconsEl.children;
+    for (let i = 0; i < iconNodes.length; i++) {
+        iconNodes[i].classList.toggle('selected', i === windowSwitcherSelectedIndex);
+    }
 }
 
 // Show window switcher
@@ -1583,6 +1604,7 @@ function stopWindowSwitcher() {
     windowSwitcherActive = false;
     windowSwitcherWindows = [];
     windowSwitcherSelectedIndex = 0;
+    windowSwitcherIconsBuiltFor = null;
     hideWindowSwitcher();
 }
 

@@ -22,6 +22,113 @@ let cachedGalleryContainerEl = null;
 let galleryScrollRaf = 0;
 // Per scroll/rAF pass: strip Y math from one calibration (see measureGalleryStripGeometry)
 let galleryStripGeometryPass = null;
+// Last good strip geometry — placeholder watcher may run between rAFs after pass is cleared
+let galleryStripGeometryCached = null;
+// filename → gallery cell / pin button (maintained when cells are built/disposed)
+const galleryItemByFilename = new Map();
+const galleryPinBtnByFilename = new Map();
+
+function registerGalleryFilenameIndex(item) {
+    if (!item || !item.dataset) return;
+    const filename = item.dataset.filename;
+    if (!filename) return;
+    galleryItemByFilename.set(filename, item);
+    const pinBtn = item.querySelector('.gallery-actions button[title*="Pin"], .gallery-actions button[title*="Unpin"]')
+        || item.querySelector('.gallery-actions button');
+    if (pinBtn) {
+        galleryPinBtnByFilename.set(filename, pinBtn);
+    }
+}
+
+function unregisterGalleryFilenameIndex(item) {
+    if (!item || !item.dataset) return;
+    const filename = item.dataset.filename;
+    if (!filename) return;
+    if (galleryItemByFilename.get(filename) === item) {
+        galleryItemByFilename.delete(filename);
+    }
+    const pinBtn = galleryPinBtnByFilename.get(filename);
+    if (pinBtn && item.contains(pinBtn)) {
+        galleryPinBtnByFilename.delete(filename);
+    }
+}
+
+function clearGalleryFilenameIndex() {
+    galleryItemByFilename.clear();
+    galleryPinBtnByFilename.clear();
+}
+
+/** Exact filename → live gallery cell. Optional partial match for URL-encoding edge cases. */
+function getGalleryItemByFilename(filename, allowPartial = false) {
+    if (!filename) return null;
+    let item = galleryItemByFilename.get(filename);
+    if (item && item.isConnected) return item;
+    if (item && !item.isConnected) {
+        galleryItemByFilename.delete(filename);
+        galleryPinBtnByFilename.delete(filename);
+    }
+    if (gallery && gallery.children.length) {
+        for (let i = 0; i < gallery.children.length; i++) {
+            const el = gallery.children[i];
+            const fn = el.dataset && el.dataset.filename;
+            if (!fn) continue;
+            if (fn === filename) {
+                registerGalleryFilenameIndex(el);
+                return el;
+            }
+        }
+    }
+    if (allowPartial) {
+        for (const [fn, el] of galleryItemByFilename) {
+            if (el.isConnected && (fn.includes(filename) || filename.includes(fn))) {
+                return el;
+            }
+        }
+    }
+    return null;
+}
+
+function getGalleryPinButtonByFilename(filename) {
+    if (!filename) return null;
+    let pinBtn = galleryPinBtnByFilename.get(filename);
+    if (pinBtn && pinBtn.isConnected) return pinBtn;
+    if (pinBtn && !pinBtn.isConnected) {
+        galleryPinBtnByFilename.delete(filename);
+    }
+    const item = getGalleryItemByFilename(filename);
+    if (!item) return null;
+    registerGalleryFilenameIndex(item);
+    return galleryPinBtnByFilename.get(filename) || null;
+}
+
+/** Toggle existing FA star classes — no innerHTML rebuild. */
+function applyPinButtonState(pinBtn, isPinned) {
+    if (!pinBtn) return;
+    let icon = pinBtn.querySelector('i');
+    if (!icon) {
+        icon = document.createElement('i');
+        pinBtn.textContent = '';
+        pinBtn.appendChild(icon);
+    }
+    icon.classList.toggle('fa-solid', !!isPinned);
+    icon.classList.toggle('fa-regular', !isPinned);
+    icon.classList.add('fa-star');
+    pinBtn.title = isPinned ? 'Unpin image' : 'Pin image';
+}
+
+/** DOM start/end for contiguous data-index strip (gallery.children is live). */
+function galleryKeepStripDomRange(items, stripMin, stripMax) {
+    const total = items.length;
+    if (!total) return { start: 0, end: -1, total: 0 };
+    const firstIdx = parseInt(items[0].dataset.index, 10);
+    if (isNaN(firstIdx)) return { start: 0, end: total - 1, total };
+    return {
+        start: Math.max(0, stripMin - firstIdx),
+        end: Math.min(total - 1, stripMax - firstIdx),
+        total,
+        firstIdx
+    };
+}
 
 // Cached #galleryWindow / .gallery-container; re-query when disconnected
 function getGalleryScrollRoots() {
@@ -397,33 +504,34 @@ function processNextPlaceholders() {
     // so visible rows never stay empty while off-screen rows keep changing.
     if (isScrolling && Math.abs(scrollVelocity) > 1.2) {
         const resolveVisibleNow = () => {
-            const { galleryContainer, isContainerScroll } = getGalleryScrollRoots();
-            const viewportTop = isContainerScroll && galleryContainer ? galleryContainer.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0);
-            const viewportBottom = viewportTop + (isContainerScroll && galleryContainer ? galleryContainer.clientHeight : window.innerHeight);
+            if (!gallery || !gallery.children.length) return;
+            const roots = getGalleryScrollRoots();
+            const viewport = getGalleryViewportBounds(roots);
+            const items = gallery.children;
+            let geometry = galleryStripGeometryPass || galleryStripGeometryCached;
+            if (!geometry) {
+                geometry = measureGalleryStripGeometry(items, viewport, roots);
+                if (geometry) galleryStripGeometryCached = geometry;
+            }
             const maxImmediate = 4;
             let resolved = 0;
-            const placeholders = gallery ? gallery.querySelectorAll('.gallery-item.gallery-placeholder') : [];
-            const containerRect = isContainerScroll && galleryContainer ? galleryContainer.getBoundingClientRect() : null;
-            for (let i = 0; i < placeholders.length && resolved < maxImmediate; i++) {
-                const el = placeholders[i];
-                const rect = el.getBoundingClientRect();
-                let itemTop;
-                let itemBottom;
-                if (isContainerScroll && galleryContainer && containerRect) {
-                    itemTop = rect.top - containerRect.top + galleryContainer.scrollTop;
-                    itemBottom = rect.bottom - containerRect.top + galleryContainer.scrollTop;
-                } else {
-                    itemTop = rect.top + window.pageYOffset;
-                    itemBottom = rect.bottom + window.pageYOffset;
-                }
-                if (itemBottom <= viewportTop || itemTop >= viewportBottom) continue;
-                if (el.querySelector('img') || pendingGalleryItemImages.has(el)) continue;
+            let startDom = 0;
+            let endDom = items.length - 1;
+            if (geometry && geometry.itemHeight > 0) {
+                const firstRow = Math.floor((viewport.viewportTop - geometry.firstTop) / geometry.itemHeight);
+                const lastRow = Math.ceil((viewport.viewportBottom - geometry.firstTop) / geometry.itemHeight);
+                startDom = Math.max(0, firstRow * geometry.columns);
+                endDom = Math.min(items.length - 1, (lastRow + 1) * geometry.columns - 1);
+            }
+            for (let i = startDom; i <= endDom && resolved < maxImmediate; i++) {
+                const el = items[i];
+                if (!el.classList.contains('gallery-placeholder')) continue;
+                if (galleryItemHasImageWork(el)) continue;
                 const fileIndex = parseInt(el.dataset.fileIndex, 10);
                 const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
                 if (!image) continue;
-                if (typeof ensureGalleryItemComplete === 'function') {
-                    ensureGalleryItemComplete(el, image, fileIndex);
-                }
+                // ensureGalleryItemComplete: public/scripts/comp/galleryView.js
+                ensureGalleryItemComplete(el, image, fileIndex);
                 el.classList.remove('gallery-placeholder');
                 addImgToGalleryItemAsync(el, image);
                 resolved++;
@@ -1166,6 +1274,7 @@ function releaseGalleryItemImage(img) {
 
 function disposeGalleryItemElement(item) {
     if (!item) return;
+    unregisterGalleryFilenameIndex(item);
     // contextMenu: public/scripts/comp/contextMenu.js
     contextMenu.detachFromElement(item);
     if (intersectionObserver) {
@@ -1213,6 +1322,7 @@ function disposeGalleryContents() {
     purgePlaceholderResolutionQueue();
     placeholderCleanupQueue.clear();
     visibleItems.clear();
+    clearGalleryFilenameIndex();
 }
 
 // public/scripts/comp/galleryView.js — gallery item img with preview/full fallbacks and optional retry
@@ -3561,16 +3671,9 @@ function createGalleryItemOverlay(image) {
 
     // Set initial pin button state from WebSocket data if available
     if (image && image.isPinned !== undefined) {
-        if (image.isPinned) {
-            pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
-            pinBtn.title = 'Unpin image';
-        } else {
-            pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
-            pinBtn.title = 'Pin image';
-        }
+        applyPinButtonState(pinBtn, !!image.isPinned);
     } else {
-        pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
-        pinBtn.title = 'Pin image';
+        applyPinButtonState(pinBtn, false);
     }
 
     pinBtn.onclick = (e) => {
@@ -3879,13 +3982,7 @@ function ensureGalleryItemComplete(item, image, index) {
     } else {
         const pinBtn = overlay.querySelector('.gallery-actions button');
         if (pinBtn && image && image.isPinned !== undefined) {
-            if (image.isPinned) {
-                pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
-                pinBtn.title = 'Unpin image';
-            } else {
-                pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
-                pinBtn.title = 'Pin image';
-            }
+            applyPinButtonState(pinBtn, !!image.isPinned);
         }
     }
 
@@ -3908,6 +4005,8 @@ function ensureGalleryItemComplete(item, image, index) {
 
     // Ensure Click Listener
     wireGalleryItemClickListener(item, image);
+
+    registerGalleryFilenameIndex(item);
 
     return item;
 }
@@ -3988,94 +4087,52 @@ function removeImgFromGalleryItem(item) {
 
 // Reindex gallery items and placeholders
 function reindexGallery() {
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    if (items.length === 0) return;
+    if (!gallery || !gallery.children.length) return;
 
     // Get effective length for bounds checking
     const effectiveLength = window.filteredImageIndices && window.filteredImageIndices.length > 0
         ? window.filteredImageIndices.length
         : allImages.length;
 
-    // First, remove duplicate items by filename (keep the first one found)
+    // One pass over the live child list: drop duplicates, reindex survivors
     const seenFilenames = new Set();
-    const itemsToRemove = [];
-
-    items.forEach((el) => {
+    let writeIndex = 0;
+    for (let i = 0; i < gallery.children.length; ) {
+        const el = gallery.children[i];
         const filename = el.dataset.filename;
         if (filename) {
             if (seenFilenames.has(filename)) {
-                // Duplicate found - mark for removal
-                itemsToRemove.push(el);
-            } else {
-                seenFilenames.add(filename);
+                disposeGalleryItemElement(el);
+                el.remove();
+                continue;
             }
+            seenFilenames.add(filename);
         }
-    });
 
-    // Remove duplicates
-    itemsToRemove.forEach(el => {
-        if (el && el.parentNode) {
+        if (writeIndex >= effectiveLength) {
             disposeGalleryItemElement(el);
             el.remove();
+            continue;
         }
-    });
 
-    // Re-query items after removing duplicates
-    const remainingItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-
-    // Check if any item's index doesn't match its position
-    let needsReindex = false;
-    for (let i = 0; i < remainingItems.length; i++) {
-        const currentIndex = parseInt(remainingItems[i].dataset.index || '0');
-        if (currentIndex !== i) {
-            needsReindex = true;
-            break;
+        const indexStr = writeIndex.toString();
+        if (el.dataset.index !== indexStr) {
+            el.dataset.index = indexStr;
         }
-    }
-
-    // Reindex if needed
-    if (needsReindex) {
-        remainingItems.forEach((el, i) => {
-            // Only reindex if index is within effective bounds
-            if (i < effectiveLength) {
-                el.dataset.index = i.toString();
-                // Update fileIndex: use filteredImageIndices to get original file index in allImages
-                if (window.filteredImageIndices && window.filteredImageIndices[i] !== undefined) {
-                    const fileIndex = window.filteredImageIndices[i];
-                    if (fileIndex >= 0 && fileIndex < allImages.length) {
-                        el.dataset.fileIndex = fileIndex.toString();
-                    }
-                } else {
-                    el.dataset.fileIndex = i.toString();
-                }
-            } else {
-                // Index is out of bounds - this item shouldn't exist, remove it
-                if (el && el.parentNode) {
-                    disposeGalleryItemElement(el);
-                    el.remove();
+        if (window.filteredImageIndices && window.filteredImageIndices[writeIndex] !== undefined) {
+            const fileIndex = window.filteredImageIndices[writeIndex];
+            if (fileIndex >= 0 && fileIndex < allImages.length) {
+                const fileIndexStr = fileIndex.toString();
+                if (el.dataset.fileIndex !== fileIndexStr) {
+                    el.dataset.fileIndex = fileIndexStr;
                 }
             }
-        });
-    } else {
-        // Even if indices are correct, ensure fileIndex is accurate
-        remainingItems.forEach((el, i) => {
-            if (i < effectiveLength) {
-                if (window.filteredImageIndices && window.filteredImageIndices[i] !== undefined) {
-                    const fileIndex = window.filteredImageIndices[i];
-                    if (fileIndex >= 0 && fileIndex < allImages.length) {
-                        const currentFileIndex = parseInt(el.dataset.fileIndex || '0');
-                        if (currentFileIndex !== fileIndex) {
-                            el.dataset.fileIndex = fileIndex.toString();
-                        }
-                    }
-                } else {
-                    const currentFileIndex = parseInt(el.dataset.fileIndex || '0');
-                    if (currentFileIndex !== i) {
-                        el.dataset.fileIndex = i.toString();
-                    }
-                }
-            }
-        });
+        } else if (el.dataset.fileIndex !== indexStr) {
+            el.dataset.fileIndex = indexStr;
+        }
+        registerGalleryFilenameIndex(el);
+        writeIndex++;
+        i++;
     }
 }
 
@@ -4252,21 +4309,13 @@ function addPlaceholdersAbove() {
     // Don't add placeholders if jump-created items exist (they were just created, wait for user interaction)
     if (isJumpingToPosition) return;
 
-    // Check if there are actually images above the current position
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    let firstRealIndex = -1;
-
-    for (let i = 0; i < items.length; i++) {
-        if (items[i].classList.contains('gallery-placeholder')) {
-            continue;
-        } else {
-            firstRealIndex = parseInt(items[i].dataset.index);
-            break;
-        }
-    }
+    // Floor of the loaded strip — first child's data-index (placeholders included)
+    const firstChild = gallery.firstElementChild;
+    if (!firstChild || firstChild.dataset.index === undefined) return;
+    let firstRealIndex = parseInt(firstChild.dataset.index, 10);
 
     // If firstRealIndex is 0 or -1, there are no images above to load
-    if (firstRealIndex <= 0) return;
+    if (!(firstRealIndex > 0)) return;
 
     // Only enable scroll position preservation if user is near the top of the gallery
     const scrollTop = window.pageYOffset;
@@ -4280,16 +4329,22 @@ function addPlaceholdersAbove() {
     // Use unified buffer size calculation
     const adjustedBufferSize = calculatePlaceholderBufferSize(scrollVelocity);
 
-    // Count placeholders above
+    // Count leading placeholders without querySelectorAll
     let placeholdersAbove = 0;
+    for (let el = firstChild; el && el.classList.contains('gallery-placeholder'); el = el.nextElementSibling) {
+        placeholdersAbove++;
+    }
 
-    for (let i = 0; i < items.length; i++) {
-        if (items[i].classList.contains('gallery-placeholder')) {
-            placeholdersAbove++;
-        } else {
-            break;
+    // If the first cell is already a real item, firstRealIndex is that item's index.
+    // If leading placeholders exist, advance to the first non-placeholder index for buffer math.
+    if (placeholdersAbove > 0) {
+        let el = firstChild;
+        for (let n = 0; n < placeholdersAbove && el; n++) el = el.nextElementSibling;
+        if (el && el.dataset.index !== undefined) {
+            firstRealIndex = parseInt(el.dataset.index, 10);
         }
     }
+    if (!(firstRealIndex > 0)) return;
 
     // Collect indices for batch creation
     const indicesToAdd = [];
@@ -4309,7 +4364,8 @@ function addPlaceholdersAbove() {
 
             const imageFilename = image.filename || image.original || image.upscaled;
             const existingByIndex = gallery.querySelector(`[data-index="${idx}"].gallery-placeholder`);
-            const existingByFilename = gallery.querySelector(`[data-filename="${imageFilename}"]`);
+            // getGalleryItemByFilename: public/scripts/comp/galleryView.js
+            const existingByFilename = imageFilename ? getGalleryItemByFilename(imageFilename) : null;
 
             // Only add if no placeholder exists at this index AND no item exists with this filename
             if (!existingByIndex && !existingByFilename) {
@@ -4346,16 +4402,21 @@ function addPlaceholdersBelow() {
     // Don't add placeholders if jump-created items exist (they were just created, wait for user interaction)
     if (isJumpingToPosition) return;
 
-    // Check if there are actually images below the current position
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    let lastRealIndex = -1;
+    // Ceiling of the loaded strip — last child's data-index (placeholders included)
+    const lastChild = gallery.lastElementChild;
+    if (!lastChild || lastChild.dataset.index === undefined) return;
+    let lastRealIndex = parseInt(lastChild.dataset.index, 10);
 
-    for (let i = items.length - 1; i >= 0; i--) {
-        if (items[i].classList.contains('gallery-placeholder')) {
-            continue;
-        } else {
-            lastRealIndex = parseInt(items[i].dataset.index);
-            break;
+    // Count trailing placeholders without querySelectorAll
+    let placeholdersBelow = 0;
+    for (let el = lastChild; el && el.classList.contains('gallery-placeholder'); el = el.previousElementSibling) {
+        placeholdersBelow++;
+    }
+    if (placeholdersBelow > 0) {
+        let el = lastChild;
+        for (let n = 0; n < placeholdersBelow && el; n++) el = el.previousElementSibling;
+        if (el && el.dataset.index !== undefined) {
+            lastRealIndex = parseInt(el.dataset.index, 10);
         }
     }
 
@@ -4366,17 +4427,6 @@ function addPlaceholdersBelow() {
 
     // Use unified buffer size calculation
     const adjustedBufferSize = calculatePlaceholderBufferSize(scrollVelocity);
-
-    // Count placeholders below
-    let placeholdersBelow = 0;
-
-    for (let i = items.length - 1; i >= 0; i--) {
-        if (items[i].classList.contains('gallery-placeholder')) {
-            placeholdersBelow++;
-        } else {
-            break;
-        }
-    }
 
     // Collect indices for batch creation
     const indicesToAdd = [];
@@ -4396,7 +4446,8 @@ function addPlaceholdersBelow() {
 
             const imageFilename = image.filename || image.original || image.upscaled;
             const existingByIndex = gallery.querySelector(`[data-index="${idx}"].gallery-placeholder`);
-            const existingByFilename = gallery.querySelector(`[data-filename="${imageFilename}"]`);
+            // getGalleryItemByFilename: public/scripts/comp/galleryView.js
+            const existingByFilename = imageFilename ? getGalleryItemByFilename(imageFilename) : null;
 
             // Only add if no placeholder exists at this index AND no item exists with this filename
             if (!existingByIndex && !existingByFilename) {
@@ -4789,14 +4840,26 @@ function updateVisibleItems() {
 
     const roots = getGalleryScrollRoots();
     visibleItems.clear();
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    const items = gallery.children;
+    const total = items.length;
+    if (total === 0) return;
+
     const viewport = getGalleryViewportBounds(roots);
     // Prefer same-rAF strip geometry from updateVirtualScrollInternal; else calibrate locally (do not leak across frames)
     const geometry = galleryStripGeometryPass || measureGalleryStripGeometry(items, viewport, roots);
+    if (geometry) galleryStripGeometryCached = geometry;
 
     let firstVisibleIndex = null;
-    const total = items.length;
-    for (let i = 0; i < total; i++) {
+    let startDom = 0;
+    let endDom = total - 1;
+    if (geometry && geometry.itemHeight > 0) {
+        const firstRow = Math.floor((viewport.viewportTop - geometry.firstTop) / geometry.itemHeight) - 1;
+        const lastRow = Math.ceil((viewport.viewportBottom - geometry.firstTop) / geometry.itemHeight) + 1;
+        startDom = Math.max(0, firstRow * geometry.columns);
+        endDom = Math.min(total - 1, (lastRow + 1) * geometry.columns - 1);
+    }
+
+    for (let i = startDom; i <= endDom; i++) {
         const item = items[i];
         const bounds = (geometry && galleryItemScrollBoundsFromDomIndex(i, geometry))
             || galleryItemScrollBoundsFromRect(item, roots, viewport);
@@ -5422,8 +5485,9 @@ function updateVirtualScroll() {
 }
 
 function updateVirtualScrollInternal() {
-    // Cache DOM queries for better performance with many items
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    // Live child list — avoid querySelectorAll every scroll frame
+    if (!gallery) return;
+    const items = gallery.children;
     const total = items.length;
 
     // Early return if no items to process
@@ -5436,6 +5500,7 @@ function updateVirtualScrollInternal() {
     const { galleryContainer: galleryContainerVs, isContainerScroll: isContainerScrollVs } = rootsVs;
     const viewportVs = getGalleryViewportBounds(rootsVs);
     galleryStripGeometryPass = measureGalleryStripGeometry(items, viewportVs, rootsVs);
+    if (galleryStripGeometryPass) galleryStripGeometryCached = galleryStripGeometryPass;
 
     // First, update visible items tracking
     updateVisibleItems();
@@ -5526,8 +5591,35 @@ function updateVirtualScrollInternal() {
     // Always prioritize truly visible placeholders with a small per-pass direct-resolve budget.
     let immediateVisibleResolved = 0;
     const immediateVisibleResolveBudget = isRapidScrolling ? 4 : 8;
-    // Use data-index instead of DOM position for accurate index tracking after reindexing
-    for (let i = 0; i < total; i++) {
+    const stripDom = galleryKeepStripDomRange(items, stripMin, stripMax);
+
+    // Far from keep strip: convert to placeholders (skip cells already placeholders)
+    const demoteFarToPlaceholder = (el) => {
+        if (el.classList.contains('gallery-generating')) return;
+        if (!el.classList.contains('gallery-item')) return;
+        if (el.classList.contains('gallery-placeholder')) return;
+        el.classList.add('gallery-placeholder');
+        el.classList.remove('fade-in');
+        removeImgFromGalleryItem(el);
+        const fileIndex = parseInt(el.dataset.fileIndex, 10);
+        scheduleGalleryItemBlurhash(el, allImages[fileIndex]);
+    };
+    if (stripDom.end >= stripDom.start) {
+        for (let i = 0; i < stripDom.start; i++) {
+            demoteFarToPlaceholder(items[i]);
+        }
+        for (let i = stripDom.end + 1; i < total; i++) {
+            demoteFarToPlaceholder(items[i]);
+        }
+    } else {
+        // Keep strip does not overlap loaded DOM — demote entire live list
+        for (let i = 0; i < total; i++) {
+            demoteFarToPlaceholder(items[i]);
+        }
+    }
+
+    // Only visit the keep strip for resolve / near-viewport work
+    for (let i = stripDom.start; i <= stripDom.end; i++) {
         const el = items[i];
         const isGalleryItem = el.classList.contains('gallery-item');
         const hasPlaceholderClass = el.classList.contains('gallery-placeholder');
@@ -5542,18 +5634,7 @@ function updateVirtualScrollInternal() {
             continue;
         }
 
-        if (itemIndex < stripMin || itemIndex > stripMax) {
-            // Items far from viewport - add placeholder class for tracking, but keep as gallery-item
-            // Don't convert items created during jump operations (they should stay as real items)
-            if (isGalleryItem && !hasPlaceholderClass) {
-                el.classList.add('gallery-placeholder');
-                el.classList.remove('fade-in');
-                // Remove the img element to save memory (placeholders don't need img elements)
-                removeImgFromGalleryItem(el);
-                const fileIndex = parseInt(el.dataset.fileIndex, 10);
-                scheduleGalleryItemBlurhash(el, allImages[fileIndex]);
-            }
-        } else {
+        {
             // Items near viewport - remove placeholder class and resolve
             const isItemVisible = visibleItems.has(itemIndex);
 
@@ -5590,9 +5671,8 @@ function updateVirtualScrollInternal() {
                     const fileIndex = parseInt(el.dataset.fileIndex, 10);
                     const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
                     if (image && !galleryItemHasImageWork(el)) {
-                        if (typeof ensureGalleryItemComplete === 'function') {
-                            ensureGalleryItemComplete(el, image, fileIndex);
-                        }
+                        // ensureGalleryItemComplete: public/scripts/comp/galleryView.js
+                        ensureGalleryItemComplete(el, image, fileIndex);
                         el.classList.remove('gallery-placeholder');
                         addImgToGalleryItemAsync(el, image);
                         immediateVisibleResolved++;
@@ -5606,7 +5686,8 @@ function updateVirtualScrollInternal() {
                         lastObserverResolutionTime = now;
                         const fileIndex = parseInt(el.dataset.fileIndex, 10);
                         const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
-                        if (image && typeof ensureGalleryItemComplete === 'function') {
+                        // ensureGalleryItemComplete: public/scripts/comp/galleryView.js
+                        if (image) {
                             ensureGalleryItemComplete(el, image, fileIndex);
                         }
                         el.classList.remove('gallery-placeholder');
@@ -5650,7 +5731,18 @@ function updateVirtualScrollInternal() {
     }
 
     // --- Dynamic placeholder management above and below buffer, in full row batches ---
-    const allPlaceholders = Array.from(gallery.querySelectorAll('.gallery-placeholder'));
+    // Walk live children once — collect placeholders without querySelectorAll
+    const allPlaceholders = [];
+    const presentIndices = new Set();
+    for (let ci = 0; ci < items.length; ci++) {
+        const el = items[ci];
+        if (el.dataset && el.dataset.index !== undefined) {
+            presentIndices.add(parseInt(el.dataset.index, 10));
+        }
+        if (el.classList.contains('gallery-placeholder')) {
+            allPlaceholders.push(el);
+        }
+    }
 
     // Find checked placeholders
     const checkedIndices = allPlaceholders
@@ -5658,14 +5750,6 @@ function updateVirtualScrollInternal() {
         .filter(idx => idx !== -1);
     const firstChecked = checkedIndices.length > 0 ? checkedIndices[0] : null;
     const lastChecked = checkedIndices.length > 0 ? checkedIndices[checkedIndices.length - 1] : null;
-
-    // Build a set of all indices currently present in the DOM
-    const presentIndices = new Set();
-    Array.from(gallery.children).forEach(el => {
-        if (el.dataset && el.dataset.index !== undefined) {
-            presentIndices.add(parseInt(el.dataset.index));
-        }
-    });
 
     // Count placeholders above and below buffer
     // Use data-index instead of DOM position for accurate counting after reindexing
@@ -9383,8 +9467,8 @@ async function togglePinImage(image, pinBtn = null) {
 
         // Update UI based on local data (no API calls)
         if (pinBtn) {
-            pinBtn.innerHTML = isPinned ? '<i class="fa-regular fa-star"></i>' : '<i class="fa-solid fa-star"></i>';
-            pinBtn.title = isPinned ? 'Pin image' : 'Unpin image';
+            applyPinButtonState(pinBtn, !isPinned);
+            if (filename) galleryPinBtnByFilename.set(filename, pinBtn);
         } else {
             updateSpecificPinButton(filename);
         }
@@ -9594,51 +9678,34 @@ async function getImageMetadata(filename) {
 function updatePinButtonAppearance(pinBtn, filename) {
     // Get pin status from local data only
     const isPinned = checkIfImageIsPinned(filename);
-    if (isPinned) {
-        pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
-        pinBtn.title = 'Unpin image';
-    } else {
-        pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
-        pinBtn.title = 'Pin image';
-    }
+    applyPinButtonState(pinBtn, isPinned);
 }
 
 // Update specific pin button for an image
 function updateSpecificPinButton(filename) {
-    const galleryItems = document.querySelectorAll('.gallery-item');
-    for (const item of galleryItems) {
-        const img = item.querySelector('img');
-        const pinBtn = item.querySelector('.btn-secondary[title*="Pin"]');
-
-        if (img && pinBtn) {
-            const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
-            if (itemFilename === filename) {
-                updatePinButtonAppearance(pinBtn, filename);
-                break; // Found the specific item, no need to continue
-            }
-        }
+    const pinBtn = getGalleryPinButtonByFilename(filename);
+    if (pinBtn) {
+        updatePinButtonAppearance(pinBtn, filename);
     }
 }
 
 // Update all pin buttons in the gallery for a specific image
 function updateGalleryPinButtons(filename, isPinned) {
     try {
-        // Find all gallery items with this filename (including placeholders)
-        const galleryItems = document.querySelectorAll(`.gallery-item[data-filename="${filename}"], .gallery-placeholder[data-filename="${filename}"]`);
-
-        galleryItems.forEach(item => {
-            // The pin button has class 'btn-primary round-button', not 'btn-secondary'
-            const pinBtn = item.querySelector('.btn-primary.round-button[title*="Pin"], .btn-primary.round-button[title*="Unpin"], button[title*="Pin"], button[title*="Unpin"]');
-            if (pinBtn) {
-                if (isPinned) {
-                    pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
-                    pinBtn.title = 'Unpin image';
-                } else {
-                    pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
-                    pinBtn.title = 'Pin image';
-                }
+        const pinBtn = getGalleryPinButtonByFilename(filename);
+        if (pinBtn) {
+            applyPinButtonState(pinBtn, isPinned);
+            return;
+        }
+        // Rare miss: cell may exist before index warm — use filename index item
+        const item = getGalleryItemByFilename(filename);
+        if (item) {
+            const btn = item.querySelector('.gallery-actions button[title*="Pin"], .gallery-actions button[title*="Unpin"], button[title*="Pin"], button[title*="Unpin"]');
+            if (btn) {
+                applyPinButtonState(btn, isPinned);
+                galleryPinBtnByFilename.set(filename, btn);
             }
-        });
+        }
     } catch (error) {
         console.error('Error updating gallery pin buttons:', error);
     }

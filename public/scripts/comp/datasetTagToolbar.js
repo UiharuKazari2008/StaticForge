@@ -17,6 +17,8 @@ let selectedDatasetSearchIndex = -1; // Currently selected search result
 let isNavigating = false; // Track if we're in the middle of navigation
 let loadingDropdowns = new Set(); // Track which dropdowns are loading
 let isInitializing = false; // Track if we're in initial loading state
+let datasetTagSearchTimeout = null;
+const datasetTagSearchDebounceMs = 350;
 
 // teardownDropdown: public/scripts/comp/dropdown.js
 function teardownDatasetTagDropdownEntry(entry) {
@@ -27,6 +29,15 @@ function teardownDatasetTagDropdownEntry(entry) {
 function teardownDatasetTagDropdownLevelsFrom(fromLevel) {
     for (let i = dropdowns.length - 1; i >= fromLevel; i--) {
         teardownDatasetTagDropdownEntry(dropdowns[i]);
+    }
+}
+
+function removeDatasetTagDropdownWrappersFrom(fromLevel) {
+    for (let i = dropdowns.length - 1; i >= fromLevel; i--) {
+        const entry = dropdowns[i];
+        if (entry && entry.wrapper) {
+            entry.wrapper.remove();
+        }
     }
 }
 
@@ -483,15 +494,8 @@ async function selectDropdownOption(option, level) {
     }
     
     // Clear all subsequent dropdowns and paths
-    const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
     teardownDatasetTagDropdownLevelsFrom(level + 1);
-    const existingDropdowns = container.querySelectorAll(`[data-level]`);
-    existingDropdowns.forEach(d => {
-        const dropdownLevel = parseInt(d.dataset.level);
-        if (dropdownLevel > level) {
-            d.remove();
-        }
-    });
+    removeDatasetTagDropdownWrappersFrom(level + 1);
     
     // Remove dropdowns from array and clear current path beyond this level
     dropdowns.splice(level + 1);
@@ -521,14 +525,7 @@ async function createNextDropdown(level, path) {
             const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
             
             teardownDatasetTagDropdownLevelsFrom(level);
-            // Remove any existing dropdowns at this level and beyond
-            const existingDropdowns = container.querySelectorAll(`[data-level]`);
-            existingDropdowns.forEach(d => {
-                const dropdownLevel = parseInt(d.dataset.level);
-                if (dropdownLevel >= level) {
-                    d.remove();
-                }
-            });
+            removeDatasetTagDropdownWrappersFrom(level);
             
             // Remove dropdowns from array
             dropdowns.splice(level);
@@ -589,14 +586,7 @@ async function createTagSelectionDropdown(level, path) {
             const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
             
             teardownDatasetTagDropdownLevelsFrom(level);
-            // Remove any existing dropdowns at this level and beyond
-            const existingDropdowns = container.querySelectorAll(`[data-level]`);
-            existingDropdowns.forEach(d => {
-                const dropdownLevel = parseInt(d.dataset.level);
-                if (dropdownLevel >= level) {
-                    d.remove();
-                }
-            });
+            removeDatasetTagDropdownWrappersFrom(level);
             
             // Remove dropdowns from array
             dropdowns.splice(level);
@@ -1040,11 +1030,13 @@ async function navigateToPath(targetPath, selectTag = null) {
         container.innerHTML = '';
         dropdowns = [];
         
-        // Build path step by step
+        // Build all path levels in parallel (targetPath is already known; each level only needs its parent path)
+        const levelResults = await Promise.all(
+            targetPath.map((_, i) => window.wsClient.searchDatasetTags('*', targetPath.slice(0, i)))
+        );
+
         for (let i = 0; i < targetPath.length; i++) {
-            const partialPath = targetPath.slice(0, i);
-            
-            const result = await window.wsClient.searchDatasetTags('*', partialPath);
+            const result = levelResults[i];
             
             if (result && result.results) {
                 // Create dropdown for this level with main tags
@@ -1505,11 +1497,17 @@ async function handleSearchInput(event) {
     
     // Allow single character searches (useful when typing any letter to start search)
     if (query.length < 1) {
+        clearTimeout(datasetTagSearchTimeout);
         searchResults = [];
         hideSearchResults();
         return;
     }
     
+    clearTimeout(datasetTagSearchTimeout);
+    datasetTagSearchTimeout = setTimeout(() => runDatasetTagSearch(query), datasetTagSearchDebounceMs);
+}
+
+async function runDatasetTagSearch(query) {
     // Query server for matching tags
     try {
         if (window.wsClient && window.wsClient.isConnected()) {
@@ -1811,16 +1809,9 @@ function handleNavigateLeft(level) {
         // Remember the item we're leaving
         const itemWereLeaving = currentPath[level - 1];
         
-        // Go back to previous dropdown
-        const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
-        const existingDropdowns = container.querySelectorAll(`[data-level]`);
+        // Go back to previous dropdown using the dropdowns array (not a full [data-level] scan)
         teardownDatasetTagDropdownLevelsFrom(level);
-        existingDropdowns.forEach(d => {
-            const dropdownLevel = parseInt(d.dataset.level);
-            if (dropdownLevel >= level) {
-                d.remove();
-            }
-        });
+        removeDatasetTagDropdownWrappersFrom(level);
         
         // Remove dropdowns from array and update path
         dropdowns.splice(level);

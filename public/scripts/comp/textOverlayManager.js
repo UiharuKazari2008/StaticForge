@@ -70,6 +70,13 @@ function addTextOverlay() {
 
     textOverlaysContainer.appendChild(textOverlayItem);
     textOverlaysContainer.classList.remove('hidden');
+    textOverlayItem._overlayModel = {
+        text: '',
+        target: 0,
+        stages: ['00'],
+        type: 'speech',
+        disabled: false
+    };
 
     // Setup dropdowns
     setupTextOverlayDropdowns(textOverlayId);
@@ -293,6 +300,7 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
     // Enable/disable button handler
     const enableBtn = document.getElementById(`${textOverlayId}_enabled`);
     if (enableBtn) {
+        item._enabledBtn = enableBtn;
         enableBtn.addEventListener('click', () => {
             toggleTextOverlayEnabled(textOverlayId);
         });
@@ -308,21 +316,29 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
 
     // Auto-resize functionality
     if (textarea) {
+        item._textArea = textarea;
         autoResizeTextarea(textarea, 10);
         textarea.addEventListener('input', () => {
             autoResizeTextarea(textarea, 10);
+            // Textarea is the editing source while focused — keep model text in sync
+            if (document.activeElement === textarea) {
+                const model = ensureTextOverlayModel(item);
+                model.text = textarea.value.trim();
+            }
         });
 
         // Store original value with actual newlines before any conversion
         if (!textarea.dataset.originalValue) {
             textarea.dataset.originalValue = textarea.value;
         }
+        ensureTextOverlayModel(item).text = (textarea.dataset.originalValue || textarea.value || '').trim();
 
         // Convert newlines to display character when losing focus
         textarea.addEventListener('blur', () => {
             const currentValue = textarea.value;
             // Store the original value with actual newlines
             textarea.dataset.originalValue = currentValue;
+            ensureTextOverlayModel(item).text = currentValue.trim();
             // Convert newlines to display character (⏎)
             const displayValue = currentValue.replace(/\n/g, ' ⏎ ');
             if (displayValue !== currentValue) {
@@ -350,6 +366,7 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
             }
             // Update stored original value
             textarea.dataset.originalValue = originalValue;
+            ensureTextOverlayModel(item).text = originalValue.trim();
         });
 
         // Initialize: convert newlines to display character if not focused
@@ -359,6 +376,7 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
                 const displayValue = currentValue.replace(/\n/g, ' ⏎ ');
                 textarea.value = displayValue;
                 textarea.dataset.originalValue = currentValue;
+                ensureTextOverlayModel(item).text = currentValue.trim();
             }
         }
     }
@@ -371,6 +389,7 @@ function selectTextOverlayTarget(textOverlayId, targetIndex, targetName) {
     if (item && targetDisplay) {
         item.dataset.targetIndex = targetIndex;
         targetDisplay.textContent = targetName;
+        ensureTextOverlayModel(item).target = parseInt(targetIndex, 10) || 0;
     }
 }
 
@@ -403,6 +422,7 @@ function toggleTextOverlayStage(textOverlayId, stageId) {
 
         // Store as comma-separated string
         item.dataset.stages = newStages.join(',');
+        ensureTextOverlayModel(item).stages = newStages.slice();
 
         // Update display text
         updateTextOverlayStageDisplay(textOverlayId);
@@ -495,6 +515,7 @@ function selectTextOverlayType(textOverlayId, typeKey, typeName) {
 
     if (item && typeBtn) {
         item.dataset.textType = typeKey;
+        ensureTextOverlayModel(item).type = typeKey;
 
         // Determine icon class based on configured text_tags
         const configuredIcon = window.optionsData?.text_tags?.[typeKey]?.icon;
@@ -559,6 +580,7 @@ function toggleTextOverlayEnabled(textOverlayId) {
         } else {
             item.classList.remove('text-overlay-disabled');
         }
+        ensureTextOverlayModel(item).disabled = newState === 'off';
         // syncNoTextSubToggleForOverlays: public/scripts/comp/manualDropdownManager.js
         syncNoTextSubToggleForOverlays();
     }
@@ -659,124 +681,228 @@ function updateTextOverlayStageVisibility() {
     });
 }
 
+function ensureTextOverlayModel(item) {
+    if (!item._overlayModel) {
+        const textarea = item._textArea || document.getElementById(`${item.id}_text`);
+        if (textarea) item._textArea = textarea;
+        let text = '';
+        if (textarea) {
+            if (textarea.dataset.originalValue !== undefined && textarea.dataset.originalValue !== '') {
+                text = textarea.dataset.originalValue.trim();
+            } else {
+                const currentValue = textarea.value || '';
+                text = (currentValue.includes(' ⏎ ') ? currentValue.replace(/ ⏎ /g, '\n') : currentValue).trim();
+            }
+        }
+        const enabledBtn = item._enabledBtn || document.getElementById(`${item.id}_enabled`);
+        if (enabledBtn) item._enabledBtn = enabledBtn;
+        item._overlayModel = {
+            text,
+            target: parseInt(item.dataset.targetIndex || '0', 10) || 0,
+            stages: item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'],
+            type: item.dataset.textType || 'speech',
+            disabled: enabledBtn ? enabledBtn.getAttribute('data-state') !== 'on' : item.classList.contains('text-overlay-disabled')
+        };
+    }
+    return item._overlayModel;
+}
+
+/**
+ * Read overlay payload from the in-memory model on each card.
+ * Textarea is the editing source only while focused — sync from it then;
+ * otherwise trust model.text (kept on blur/input).
+ */
 function getTextOverlayData() {
     const textOverlayItems = textOverlaysContainer.querySelectorAll('.text-overlay-item');
     const textOverlays = [];
 
-    textOverlayItems.forEach(item => {
-        const textOverlayId = item.id;
-        const textArea = document.getElementById(`${textOverlayId}_text`);
-        if (!textArea) return;
+    // Cache dynamic-generation toggle once for empty-overlay filter
+    const dynamicGenerationToggleBtn = document.getElementById('dynamicGenerationToggleBtn');
+    const isDynamicGenerationEnabled = dynamicGenerationToggleBtn?.getAttribute('data-state') === 'open';
 
-        // Get the original text with actual newlines
-        // Use stored original value if available, otherwise convert display version back
-        let text = '';
-        if (textArea.dataset.originalValue !== undefined && textArea.dataset.originalValue !== '') {
-            text = textArea.dataset.originalValue.trim();
-        } else {
-            // If no stored original, check if current value is display version and convert
-            const currentValue = textArea.value;
-            if (currentValue.includes(' ⏎ ')) {
-                text = currentValue.replace(/ ⏎ /g, '\n').trim();
-            } else {
-                text = currentValue.trim();
+    textOverlayItems.forEach(item => {
+        const model = ensureTextOverlayModel(item);
+        const textarea = item._textArea || document.getElementById(`${item.id}_text`);
+        if (textarea) item._textArea = textarea;
+
+        // Sync text from the textarea only when it is the editing source
+        if (textarea && document.activeElement === textarea) {
+            let liveText = textarea.value;
+            if (liveText.includes(' ⏎ ')) {
+                liveText = liveText.replace(/ ⏎ /g, '\n');
             }
+            model.text = liveText.trim();
+            textarea.dataset.originalValue = liveText;
         }
 
-        const enabled = document.getElementById(`${textOverlayId}_enabled`).getAttribute('data-state') === 'on';
+        // Keep metadata from dataset (authoritative for target/stages/type) mirrored on model
+        model.target = parseInt(item.dataset.targetIndex || '0', 10) || 0;
+        const stagesRaw = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'];
+        model.stages = stagesRaw.includes('all') ? ['all'] : stagesRaw;
+        model.type = item.dataset.textType || 'speech';
+        const enabledBtn = item._enabledBtn || document.getElementById(`${item.id}_enabled`);
+        if (enabledBtn) {
+            item._enabledBtn = enabledBtn;
+            model.disabled = enabledBtn.getAttribute('data-state') !== 'on';
+        }
+
+        let text = model.text || '';
 
         // If text is empty, use the placeholder
-        if (!text) {
-            text = textArea.placeholder;
+        if (!text && textarea) {
+            text = textarea.placeholder;
         }
 
         // Skip empty overlays unless both the overlay AND Rentan are enabled
         if (!text) {
-            const dynamicGenerationToggleBtn = document.getElementById('dynamicGenerationToggleBtn');
-            const isDynamicGenerationEnabled = dynamicGenerationToggleBtn?.getAttribute('data-state') === 'open';
-
-            // Only include empty text if both overlay is enabled AND Rentan is enabled
             if (!isDynamicGenerationEnabled) {
-                return; // Skip this empty overlay
+                return;
             }
         }
-        const targetIndex = parseInt(item.dataset.targetIndex || '0');
-        const stagesRaw = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'];
-        // Keep '00' (base stage) in the array - server explicitly handles it
-        const stages = stagesRaw.includes('all') ? ['all'] : stagesRaw;
-        const textType = item.dataset.textType || 'speech';
 
         textOverlays.push({
             text: text,
-            target: targetIndex,
-            stages: stages,
-            type: textType,
-            disabled: !enabled
+            target: model.target,
+            stages: model.stages,
+            type: model.type,
+            disabled: model.disabled
         });
     });
 
     return textOverlays;
 }
 
-function loadTextOverlays(textOverlays) {
-    clearTextOverlays();
+function applyTextOverlayDataToCard(item, overlayData) {
+    const textOverlayId = item.id;
+    const textarea = item._textArea || document.getElementById(`${textOverlayId}_text`);
+    const enabledBtn = item._enabledBtn || document.getElementById(`${textOverlayId}_enabled`);
+    if (textarea) item._textArea = textarea;
+    if (enabledBtn) item._enabledBtn = enabledBtn;
 
-    if (!textOverlays || !Array.isArray(textOverlays) || textOverlays.length === 0) {
-        return;
+    const text = overlayData.text || '';
+    item.dataset.targetIndex = (overlayData.target || 0).toString();
+    const stageValue = overlayData.stage || 0;
+    const stagesArray = overlayData.stages || (stageValue === 0 ? [] : [stageValue.toString()]);
+    const stagesStored = stagesArray.length === 0 ? '00' : stagesArray.join(',');
+    item.dataset.stages = stagesStored;
+    item.dataset.textType = overlayData.type || 'speech';
+
+    if (overlayData.disabled) {
+        item.classList.add('text-overlay-disabled');
+    } else {
+        item.classList.remove('text-overlay-disabled');
     }
 
-    textOverlays.forEach(overlayData => {
-        const textOverlayId = `text_overlay_${textOverlayCounter++}`;
+    if (enabledBtn) {
+        enabledBtn.setAttribute('data-state', overlayData.disabled ? 'off' : 'on');
+    }
 
-        const textOverlayItem = document.createElement('div');
-        textOverlayItem.className = 'text-overlay-item';
-        if (overlayData.disabled) {
-            textOverlayItem.classList.add('text-overlay-disabled');
-        }
-        textOverlayItem.id = textOverlayId;
-        textOverlayItem.dataset.targetIndex = (overlayData.target || 0).toString();
-        // Initialize stages - for backward compatibility, convert single stage to stages array
-        const stageValue = overlayData.stage || 0;
-        const stagesArray = overlayData.stages || (stageValue === 0 ? [] : [stageValue.toString()]);
-        textOverlayItem.dataset.stages = stagesArray.length === 0 ? '00' : stagesArray.join(',');
-        textOverlayItem.dataset.textType = overlayData.type || 'speech';
-
-        const textTags = {
-            'speech': { name: 'Speech Bubble', tags: 'english text, speech bubble' },
-            'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
-            'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
-        };
-
-        const typeName = textTags[overlayData.type]?.name || 'Speech Bubble';
-        const targetIndex = overlayData.target || 0;
-
-        // Get target name
-        let targetName = 'Base';
-        if (targetIndex > 0) {
-            const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
-            const charItem = characterItems[targetIndex - 1];
-            if (charItem) {
-                targetName = charItem.dataset.charaName || `Character ${targetIndex}`;
-            }
-        }
-
-        // Determine icon based on text type
-        const typeIcon = overlayData.type === 'thought' ? 'fas fa-thought-bubble' :
-            overlayData.type === 'caption' ? 'fas fa-closed-captioning' :
-                'fas fa-comment-lines';
-
-        // Determine stage display text
-        const stages = stagesArray.length === 0 ? ['00'] : stagesArray;
-        let stageDisplayText = '00';
-        if (stages.length === 1 && stages[0] === 'all') {
-            stageDisplayText = 'All Stages';
-        } else if (stages.length === 1) {
-            stageDisplayText = stages[0];
+    if (textarea) {
+        textarea.dataset.originalValue = text;
+        if (document.activeElement === textarea) {
+            textarea.value = text;
         } else {
-            stageDisplayText = groupSequentialStages(stages);
+            textarea.value = text.includes('\n') ? text.replace(/\n/g, ' ⏎ ') : text;
         }
+        autoResizeTextarea(textarea, 10);
+    }
 
-        textOverlayItem.innerHTML = `
+    // Update type icons
+    const typeKey = overlayData.type || 'speech';
+    const configuredIcon = window.optionsData?.text_tags?.[typeKey]?.icon;
+    const typeIconClass = configuredIcon ||
+        (typeKey === 'thought' ? 'fas fa-thought-bubble' :
+            typeKey === 'caption' ? 'fas fa-closed-captioning' :
+                'fas fa-comment-lines');
+    const typeBtn = document.getElementById(`${textOverlayId}_type_btn`);
+    const statusTypeIcon = document.getElementById(`${textOverlayId}_status_type_icon`);
+    if (typeBtn) {
+        const icon = typeBtn.querySelector('i');
+        if (icon) icon.className = typeIconClass;
+    }
+    if (statusTypeIcon) {
+        statusTypeIcon.className = typeIconClass;
+    }
+
+    // Target display name
+    const targetIndex = overlayData.target || 0;
+    let targetName = 'Base';
+    if (targetIndex > 0) {
+        const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+        const charItem = characterItems[targetIndex - 1];
+        if (charItem) {
+            targetName = charItem.dataset.charaName || `Character ${targetIndex}`;
+        }
+    }
+    const targetDisplay = document.getElementById(`${textOverlayId}_target_display`);
+    if (targetDisplay) {
+        targetDisplay.textContent = targetName;
+    }
+
+    item._overlayModel = {
+        text: text.trim(),
+        target: targetIndex,
+        stages: stagesArray.length === 0 ? ['00'] : stagesArray.slice(),
+        type: typeKey,
+        disabled: !!overlayData.disabled
+    };
+
+    updateTextOverlayStageDisplay(textOverlayId);
+    updateTextOverlayPlaceholder(textOverlayId);
+}
+
+function createTextOverlayFromData(overlayData) {
+    const textOverlayId = `text_overlay_${textOverlayCounter++}`;
+
+    const textOverlayItem = document.createElement('div');
+    textOverlayItem.className = 'text-overlay-item';
+    if (overlayData.disabled) {
+        textOverlayItem.classList.add('text-overlay-disabled');
+    }
+    textOverlayItem.id = textOverlayId;
+    textOverlayItem.dataset.targetIndex = (overlayData.target || 0).toString();
+    // Initialize stages - for backward compatibility, convert single stage to stages array
+    const stageValue = overlayData.stage || 0;
+    const stagesArray = overlayData.stages || (stageValue === 0 ? [] : [stageValue.toString()]);
+    textOverlayItem.dataset.stages = stagesArray.length === 0 ? '00' : stagesArray.join(',');
+    textOverlayItem.dataset.textType = overlayData.type || 'speech';
+
+    const textTags = {
+        'speech': { name: 'Speech Bubble', tags: 'english text, speech bubble' },
+        'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
+        'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
+    };
+
+    const typeName = textTags[overlayData.type]?.name || 'Speech Bubble';
+    const targetIndex = overlayData.target || 0;
+
+    // Get target name
+    let targetName = 'Base';
+    if (targetIndex > 0) {
+        const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+        const charItem = characterItems[targetIndex - 1];
+        if (charItem) {
+            targetName = charItem.dataset.charaName || `Character ${targetIndex}`;
+        }
+    }
+
+    // Determine icon based on text type
+    const typeIcon = overlayData.type === 'thought' ? 'fas fa-thought-bubble' :
+        overlayData.type === 'caption' ? 'fas fa-closed-captioning' :
+            'fas fa-comment-lines';
+
+    // Determine stage display text
+    const stages = stagesArray.length === 0 ? ['00'] : stagesArray;
+    let stageDisplayText = '00';
+    if (stages.length === 1 && stages[0] === 'all') {
+        stageDisplayText = 'All Stages';
+    } else if (stages.length === 1) {
+        stageDisplayText = stages[0];
+    } else {
+        stageDisplayText = groupSequentialStages(stages);
+    }
+
+    textOverlayItem.innerHTML = `
             <div class="prompt-textarea-container text-overlay-prompt">
                 <div class="prompt-textarea-background"></div>
                 <textarea id="${textOverlayId}_text" class="form-control prompt-textarea" placeholder="Enter text to overlay..." autocapitalize="false" autocorrect="false" spellcheck="false" rows="1" data-ms-editor="false">${escapeHtml(overlayData.text || '')}</textarea>
@@ -826,15 +952,59 @@ function loadTextOverlays(textOverlays) {
             </div>
         `;
 
-        textOverlaysContainer.appendChild(textOverlayItem);
-        setupTextOverlayDropdowns(textOverlayId);
-        setupTextOverlayToolbarHandlers(textOverlayId);
-        updateTextOverlayStageDisplay(textOverlayId);
+    textOverlaysContainer.appendChild(textOverlayItem);
+    textOverlayItem._overlayModel = {
+        text: (overlayData.text || '').trim(),
+        target: targetIndex,
+        stages: stagesArray.length === 0 ? ['00'] : stagesArray.slice(),
+        type: overlayData.type || 'speech',
+        disabled: !!overlayData.disabled
+    };
+    setupTextOverlayDropdowns(textOverlayId);
+    setupTextOverlayToolbarHandlers(textOverlayId);
+    updateTextOverlayStageDisplay(textOverlayId);
+    return textOverlayItem;
+}
+
+function loadTextOverlays(textOverlays) {
+    if (!textOverlays || !Array.isArray(textOverlays) || textOverlays.length === 0) {
+        clearTextOverlays();
+        return;
+    }
+
+    const existingById = new Map();
+    textOverlaysContainer.querySelectorAll('.text-overlay-item').forEach(item => {
+        existingById.set(item.id, item);
+    });
+    const existingList = Array.from(existingById.values());
+    const usedIds = new Set();
+
+    textOverlays.forEach((overlayData, index) => {
+        // Diff by id when payload carries one; otherwise reuse existing cards by index
+        let item = null;
+        if (overlayData.id && existingById.has(overlayData.id)) {
+            item = existingById.get(overlayData.id);
+        } else if (index < existingList.length) {
+            item = existingList[index];
+        }
+
+        if (item) {
+            usedIds.add(item.id);
+            applyTextOverlayDataToCard(item, overlayData);
+        } else {
+            item = createTextOverlayFromData(overlayData);
+            usedIds.add(item.id);
+        }
     });
 
-    if (textOverlays.length > 0) {
-        textOverlaysContainer.classList.remove('hidden');
-    }
+    // Remove cards not present in the new list
+    existingById.forEach((item, id) => {
+        if (!usedIds.has(id)) {
+            deleteTextOverlay(id);
+        }
+    });
+
+    textOverlaysContainer.classList.remove('hidden');
 
     // Update visibility of target and stage dropdowns
     updateAllTextOverlayTargetDropdowns();

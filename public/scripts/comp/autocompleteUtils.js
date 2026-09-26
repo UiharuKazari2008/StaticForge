@@ -71,6 +71,8 @@ const AUTOCOMPLETE_WHEEL_MAX_STEPS_PER_EVENT = 4;
 let pendingSelectionScrollRaf = 0;
 let pendingSelectionScrollItem = null;
 let pendingKeyguideRaf = 0;
+let autofillNavPaintRaf = 0;
+let autofillListScrollContainerCache = null;
 let autofillNavActivityTimer = null;
 let lastRenderedAutocompleteIndex = -2;
 let autofillResultsListVersion = 0;
@@ -80,9 +82,14 @@ const AUTOFILL_WIKI_PREVIEW_REVEAL_MS = 700;
 let autofillWikiPreviewRevealTimer = null;
 let autofillWikiPreviewRevealIndex = -1;
 
-function invalidateAutofillResultsCache() {
+function invalidateAutofillResultsListCache() {
     autofillResultsListVersion++;
     autofillResultsListCache = null;
+    autofillListScrollContainerCache = null;
+}
+
+function invalidateAutofillResultsCache() {
+    invalidateAutofillResultsListCache();
     lastRenderedAutocompleteIndex = -2;
 }
 
@@ -131,12 +138,53 @@ function flushAutofillKeyguideUpdate() {
 }
 
 function afterAutofillListNavigationStep(e) {
-    updateCharacterAutocompleteSelection();
+    protectAutofillNavCaret();
     markAutofillListNavigationActivity();
-    if (!e || !e.repeat) {
-        // updateEmphasisTooltipVisibility: public/scripts/comp/emphasisHighlight.js
-        updateEmphasisTooltipVisibility();
+    if (e && e.repeat) {
+        if (!autofillNavPaintRaf) {
+            autofillNavPaintRaf = requestAnimationFrame(() => {
+                autofillNavPaintRaf = 0;
+                updateCharacterAutocompleteSelection();
+            });
+        }
+        return;
     }
+    if (autofillNavPaintRaf) {
+        cancelAnimationFrame(autofillNavPaintRaf);
+        autofillNavPaintRaf = 0;
+    }
+    updateCharacterAutocompleteSelection();
+    // updateEmphasisTooltipVisibility: public/scripts/comp/emphasisHighlight.js
+    updateEmphasisTooltipVisibility();
+}
+
+// Held arrows only move the index. Painting and scrolling happen once per frame.
+function tryRepeatAutofillListStep(e) {
+    if (!e || !e.repeat || !autocompleteNavigationMode) return false;
+    if (spellCheckNavigationMode || wordLookupNavigationMode) return false;
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return false;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const items = getAutocompleteResultItems();
+    const last = items.length - 1;
+    if (last < 0) return true;
+
+    let next = selectedCharacterAutocompleteIndex;
+    if (e.key === 'ArrowDown') {
+        if (next < 0) next = 0;
+        else if (next < last) next++;
+        else return true;
+    } else if (next > 0) {
+        next--;
+    } else {
+        return true;
+    }
+
+    selectedCharacterAutocompleteIndex = next;
+    afterAutofillListNavigationStep(e);
+    return true;
 }
 
 function getAutofillListScrollHost() {
@@ -189,14 +237,14 @@ function isCharacterAutocompleteOverlayOpen() {
         if (isAutofillOverlayEnteredForNavigation()) {
             return true;
         }
+        // Route tool-window keys even after a false caret-leave abort.
+        if (active !== sessionTarget && isAutofillToolWindowInteractionActive()) {
+            return true;
+        }
         if (autofillDetachedKeyboardDismissed) {
             return false;
         }
         if (active === sessionTarget && isCaretInActiveAutofillSearchArea(sessionTarget)) {
-            return true;
-        }
-        // Route tool-window keys only when the prompt is not focused (capture handler in characterAutofillToolManager.js).
-        if (active !== sessionTarget && isAutofillToolWindowInteractionActive()) {
             return true;
         }
         return false;
@@ -408,6 +456,21 @@ function engageAutofillNavigation() {
     }
 }
 
+/** Enter list navigation once. Repeat arrow keys must not rewrite the prompt highlight or restack windows. */
+function beginAutofillListNavigation() {
+    const entering = !autocompleteNavigationMode;
+    markAutofillOverlayInteractive();
+    autocompleteNavigationMode = true;
+    userActivelyNavigating = true;
+    if (isAutofillDetachedMode()) {
+        autofillDetachedKeyboardDismissed = false;
+    }
+    protectAutofillNavCaret();
+    if (entering) {
+        engageAutofillNavigation();
+    }
+}
+
 function closeAutofillToolWindowFromUser() {
     hideCharacterAutocomplete({ userClose: true });
 }
@@ -496,7 +559,8 @@ function handleAutofillToolSearchInputKeydown(e) {
         return;
     }
 
-    if (k === 'Escape' || k === 'ArrowDown' || k === 'ArrowUp' || k === 'ArrowLeft' || k === 'ArrowRight') {
+    if (k === 'Escape' || k === 'ArrowDown' || k === 'ArrowUp' || k === 'ArrowLeft' || k === 'ArrowRight'
+        || k === 'Home' || k === 'End' || k === 'PageUp' || k === 'PageDown') {
         routeAutofillKeydownFromToolSearch(e);
     }
 }
@@ -638,6 +702,7 @@ function isAutofillRoutedKeydown(e) {
     if (!e) return false;
     const k = e.key;
     if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'ArrowLeft' || k === 'ArrowRight') return true;
+    if (k === 'Home' || k === 'End' || k === 'PageUp' || k === 'PageDown') return true;
     if (k === 'Tab' && isAutofillPromptTabKey(e)) return true;
     if (isAutocompleteEnterKey(e)) return true;
     if (isAutofillAltEnterInsertKey(e)) return true;
@@ -763,14 +828,9 @@ function ensureAutofillSearchStatusElement() {
 }
 
 function rewireAutofillDetachedMouseHandlers() {
-    if (!isAutofillDetachedMode() || !characterAutocompleteList) return;
-    characterAutocompleteList.querySelectorAll('.character-autocomplete-item').forEach((item) => {
-        if (item.classList.contains('more-indicator') || item.classList.contains('no-results')) return;
-        wireAutofillItemContextMenu(item);
-    });
-    characterAutocompleteList.querySelectorAll('.spell-check-word, .word-lookup-word-row').forEach((row) => {
-        wireAutofillItemContextMenu(row);
-    });
+    // Context menus are bound once in createAutocompleteItem / spellCheck / wordLookup
+    // via wireAutofillItemContextMenu (dataset.autofillContextMenuAttached guard).
+    // Do not re-query every result row on detach expand.
 }
 
 function shouldAutofillShowAllResults() {
@@ -955,15 +1015,19 @@ function syncAutofillSearchHighlight(textarea) {
     }
 }
 
+const autofillSearchHighlightState = new WeakMap();
+
 function updateAutofillSearchHighlight(textarea, mode) {
     if (!textarea || !isAutofillTarget(textarea)) return;
     const highlightMode = mode === 'passive' ? 'passive' : 'await';
     if (!isAutofillDetachedMode() && !isCharacterAutocompleteOverlayOpen()) {
+        autofillSearchHighlightState.delete(textarea);
         clearAutofillSearchHighlight(textarea);
         return;
     }
     const bounds = getAutofillSearchHighlightBounds(textarea);
     if (!bounds) {
+        autofillSearchHighlightState.delete(textarea);
         clearAutofillSearchHighlight(textarea);
         return;
     }
@@ -974,23 +1038,48 @@ function updateAutofillSearchHighlight(textarea, mode) {
     const start = Math.max(0, Math.min(bounds.tokenStart, text.length));
     const end = Math.max(start, Math.min(bounds.tokenEnd, text.length));
     if (start >= end) {
+        autofillSearchHighlightState.delete(textarea);
         clearAutofillSearchHighlight(textarea);
         return;
+    }
+
+    const modeClass = highlightMode === 'passive'
+        ? 'autofill-search-highlight-passive'
+        : 'autofill-search-highlight-await';
+    const prev = autofillSearchHighlightState.get(textarea);
+    if (prev && prev.start === start && prev.end === end && prev.value === text) {
+        if (prev.mode === highlightMode) {
+            highlightOverlay.scrollTop = textarea.scrollTop;
+            highlightOverlay.scrollLeft = textarea.scrollLeft;
+            return;
+        }
+        const span = highlightOverlay.querySelector('.autofill-search-highlight');
+        if (span) {
+            span.className = `autofill-search-highlight ${modeClass}`;
+            autofillSearchHighlightState.set(textarea, {
+                start, end, value: text, mode: highlightMode
+            });
+            highlightOverlay.scrollTop = textarea.scrollTop;
+            highlightOverlay.scrollLeft = textarea.scrollLeft;
+            return;
+        }
     }
 
     const before = text.substring(0, start);
     const match = text.substring(start, end);
     const after = text.substring(end);
-    const modeClass = highlightMode === 'passive'
-        ? 'autofill-search-highlight-passive'
-        : 'autofill-search-highlight-await';
+    // escapeHtml: public/scripts/comp/utilities.js
     highlightOverlay.innerHTML = `${escapeHtml(before)}<span class="autofill-search-highlight ${modeClass}">${escapeHtml(match)}</span>${escapeHtml(after)}`;
+    autofillSearchHighlightState.set(textarea, {
+        start, end, value: text, mode: highlightMode
+    });
     highlightOverlay.scrollTop = textarea.scrollTop;
     highlightOverlay.scrollLeft = textarea.scrollLeft;
 }
 
 function clearAutofillSearchHighlight(textarea) {
     if (!textarea) return;
+    autofillSearchHighlightState.delete(textarea);
     const host = getPromptTextareaOverlayHost(textarea);
     const overlay = host && host.querySelector(':scope > .search-highlight-overlay');
     if (overlay && overlay.querySelector('.autofill-search-highlight')) {
@@ -1681,10 +1770,7 @@ function handleAutocompleteOverlayWheel(e) {
         steps++;
 
         if (!isAutofillOverlayEnteredForNavigation()) {
-            markAutofillOverlayInteractive();
-            autocompleteNavigationMode = true;
-            userActivelyNavigating = true;
-            engageAutofillNavigation();
+            beginAutofillListNavigation();
         }
 
         const items = getAutocompleteResultItems();
@@ -2253,6 +2339,11 @@ let isAutocompleteVisible = false; // Track if autocomplete is currently visible
 let autofillDetachedKeyboardDismissed = false;
 /** Textarea selection when list keyboard nav starts — used to detect mouse caret moves during nav. */
 let autofillNavSelectionAnchor = null;
+let autofillNavCaretGuardUntil = 0;
+
+function protectAutofillNavCaret() {
+    autofillNavCaretGuardUntil = Date.now() + 120;
+}
 
 // Track last search query to prevent unnecessary clearing
 let lastSearchQuery = '';
@@ -2701,6 +2792,7 @@ function clearAutofillWikiPreviewReveal() {
         clearTimeout(autofillWikiPreviewRevealTimer);
         autofillWikiPreviewRevealTimer = null;
     }
+    if (autofillWikiPreviewRevealIndex < 0) return;
     autofillWikiPreviewRevealIndex = -1;
     if (characterAutocompleteList) {
         characterAutocompleteList.querySelectorAll('.character-autocomplete-item.wiki-preview-revealed').forEach(function (item) {
@@ -2833,12 +2925,9 @@ function processAutofillSelectionChange() {
             target.selectionStart !== anchor.start
             || target.selectionEnd !== anchor.end
         );
-        if (caretMoved) {
-            if (isAutofillHorizontalSubNavigation()) {
-                target.setSelectionRange(anchor.start, anchor.end);
-                return;
-            }
-            abortAutofillFromCaretLeave(target);
+        if (caretMoved && anchor) {
+            target.setSelectionRange(anchor.start, anchor.end);
+            return;
         }
         return;
     }
@@ -3980,113 +4069,194 @@ function commonPrefixLength(a = '', b = '') {
     return i;
 }
 
+const TOKEN_MATCH_SCORE_CACHE = new Map();
+const TOKEN_MATCH_SCORE_CACHE_MAX = 4096;
+const LEVENSHTEIN_PAIR_CACHE = new Map();
+const LEVENSHTEIN_PAIR_CACHE_MAX = 2048;
+
+function rememberBoundedCache(map, key, value, maxSize) {
+    if (map.size >= maxSize) map.clear();
+    map.set(key, value);
+    return value;
+}
+
 function getTokenMatchScore(queryToken = '', titleToken = '') {
     const qt = queryToken.toLowerCase();
     const tt = titleToken.toLowerCase();
     if (!qt || !tt) return 0;
-    if (qt === tt) return 100;
-    if (qt.length >= 3 && tt.length >= 3 && (qt.startsWith(tt) || tt.startsWith(qt))) {
-        return 90;
-    }
-    const stemLen = commonPrefixLength(qt, tt);
-    const minLen = Math.min(qt.length, tt.length);
-    const stemThreshold = Math.max(3, Math.min(4, Math.floor(minLen * 0.72)));
-    if (stemLen >= 5) {
-        return 88;
-    }
-    if (stemLen >= stemThreshold) {
-        return 75;
-    }
-    if (qt.includes(tt) || tt.includes(qt)) {
-        if (Math.min(qt.length, tt.length) >= 3) {
-            return 55;
+
+    // Score is symmetric for every branch below — normalize key order for cache hits.
+    const cacheKey = qt < tt ? qt + '\0' + tt : tt + '\0' + qt;
+    const cached = TOKEN_MATCH_SCORE_CACHE.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    let score = 0;
+    if (qt === tt) {
+        score = 100;
+    } else if (qt.length >= 3 && tt.length >= 3 && (qt.startsWith(tt) || tt.startsWith(qt))) {
+        score = 90;
+    } else {
+        const stemLen = commonPrefixLength(qt, tt);
+        const minLen = Math.min(qt.length, tt.length);
+        const stemThreshold = Math.max(3, Math.min(4, Math.floor(minLen * 0.72)));
+        if (stemLen >= 5) {
+            score = 88;
+        } else if (stemLen >= stemThreshold) {
+            score = 75;
+        } else if ((qt.includes(tt) || tt.includes(qt)) && minLen >= 3) {
+            score = 55;
+        } else {
+            const maxLen = Math.max(qt.length, tt.length);
+            const maxDist = Math.floor(maxLen * 0.28);
+            const distance = levenshteinDistance(qt, tt, maxDist);
+            if (distance <= maxDist) {
+                const similarity = 1 - (distance / maxLen);
+                if (similarity >= 0.72) {
+                    score = Math.round(similarity * 65);
+                }
+            }
         }
     }
-    const distance = levenshteinDistance(qt, tt);
-    const maxLen = Math.max(qt.length, tt.length);
-    const similarity = 1 - (distance / maxLen);
-    if (similarity >= 0.72) {
-        return Math.round(similarity * 65);
+
+    return rememberBoundedCache(TOKEN_MATCH_SCORE_CACHE, cacheKey, score, TOKEN_MATCH_SCORE_CACHE_MAX);
+}
+
+function scoreQueryTitleTokenBests(queryTokens, titleTokens) {
+    const bestPerQuery = new Array(queryTokens.length);
+    for (let i = 0; i < queryTokens.length; i++) {
+        let best = 0;
+        const queryToken = queryTokens[i];
+        for (let j = 0; j < titleTokens.length; j++) {
+            best = Math.max(best, getTokenMatchScore(queryToken, titleTokens[j]));
+        }
+        bestPerQuery[i] = best;
     }
-    return 0;
+    return bestPerQuery;
+}
+
+function getQueryTokenCoverageScoreFromBests(bestPerQuery, queryTokenCount, titleTokenCount) {
+    if (queryTokenCount === 0) return 0;
+
+    let sum = 0;
+    let weightedSum = 0;
+    let weightTotal = 0;
+    for (let i = 0; i < queryTokenCount; i++) {
+        const best = bestPerQuery[i];
+        sum += best;
+        const weight = queryTokenCount >= 2
+            ? (i === 0 ? 1.4 : (i === queryTokenCount - 1 ? 1.0 : 1.1))
+            : 1;
+        weightedSum += best * weight;
+        weightTotal += weight;
+    }
+
+    let coverage = Math.max(sum / queryTokenCount, weightedSum / weightTotal);
+    if (titleTokenCount === queryTokenCount && queryTokenCount >= 2) {
+        coverage += 8;
+    } else if (titleTokenCount < queryTokenCount) {
+        coverage -= 12;
+    }
+    return Math.min(100, coverage);
 }
 
 function getQueryTokenCoverageScore(query, title) {
     const queryTokens = tokenizeTagSearchText(query);
     const titleTokens = tokenizeTagSearchText(title);
     if (queryTokens.length === 0) return 0;
-
-    let sum = 0;
-    let weightedSum = 0;
-    let weightTotal = 0;
-    for (let i = 0; i < queryTokens.length; i++) {
-        const queryToken = queryTokens[i];
-        let best = 0;
-        for (const titleToken of titleTokens) {
-            best = Math.max(best, getTokenMatchScore(queryToken, titleToken));
-        }
-        sum += best;
-        const weight = queryTokens.length >= 2
-            ? (i === 0 ? 1.4 : (i === queryTokens.length - 1 ? 1.0 : 1.1))
-            : 1;
-        weightedSum += best * weight;
-        weightTotal += weight;
-    }
-
-    let coverage = Math.max(sum / queryTokens.length, weightedSum / weightTotal);
-    if (titleTokens.length === queryTokens.length && queryTokens.length >= 2) {
-        coverage += 8;
-    } else if (titleTokens.length < queryTokens.length) {
-        coverage -= 12;
-    }
-    return Math.min(100, coverage);
+    const bestPerQuery = scoreQueryTitleTokenBests(queryTokens, titleTokens);
+    return getQueryTokenCoverageScoreFromBests(bestPerQuery, queryTokens.length, titleTokens.length);
 }
 
-function getTagTextMatchInfo(name, query) {
+/** One token×token pass feeds match-info tiers and string-similarity for the same name/query. */
+function computeTagTextMatchAndSimilarity(name, query) {
     const queryNorm = normalizeTagSearchText(query);
     const titleNorm = normalizeTagSearchText(name);
+    const emptyInfo = { tier: 0, matchCoverage: 0, isExactMatch: false, isPrefixMatch: false };
     if (!queryNorm) {
-        return { tier: 0, matchCoverage: 0, isExactMatch: false, isPrefixMatch: false };
+        return { matchInfo: emptyInfo, stringSimilarity: 0 };
     }
     if (!titleNorm) {
-        return { tier: 0, matchCoverage: 0, isExactMatch: false, isPrefixMatch: false };
+        return { matchInfo: emptyInfo, stringSimilarity: 0 };
     }
 
     if (titleNorm === queryNorm) {
-        return { tier: 4, matchCoverage: 100, isExactMatch: true, isPrefixMatch: true };
+        return {
+            matchInfo: { tier: 4, matchCoverage: 100, isExactMatch: true, isPrefixMatch: true },
+            stringSimilarity: 100
+        };
     }
     if (titleNorm.startsWith(queryNorm)) {
-        return { tier: 3, matchCoverage: 90, isExactMatch: false, isPrefixMatch: true };
+        return {
+            matchInfo: { tier: 3, matchCoverage: 90, isExactMatch: false, isPrefixMatch: true },
+            stringSimilarity: 85
+        };
     }
+
+    // Matches calculateStringSimilarity early includes exit (60) while match-info still token-scores.
+    let stringSimilarity = titleNorm.includes(queryNorm) ? 60 : null;
 
     const queryTokens = tokenizeTagSearchText(query);
     const titleTokens = tokenizeTagSearchText(name);
-    const coverage = getQueryTokenCoverageScore(query, name);
-    const allTokensPartial = queryTokens.length > 0 && queryTokens.every(qt =>
-        titleTokens.some(tt => getTokenMatchScore(qt, tt) >= 40)
+    const bestPerQuery = queryTokens.length
+        ? scoreQueryTitleTokenBests(queryTokens, titleTokens)
+        : [];
+    const coverage = getQueryTokenCoverageScoreFromBests(
+        bestPerQuery,
+        queryTokens.length,
+        titleTokens.length
     );
+    const allTokensPartial = queryTokens.length > 0 && bestPerQuery.every((best) => best >= 40);
 
-    if (coverage >= 90 || (coverage >= 55 && allTokensPartial)) {
-        return { tier: 2, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: true };
+    if (stringSimilarity === null) {
+        if (queryTokens.length === 0) {
+            stringSimilarity = 0;
+        } else {
+            let sum = 0;
+            for (let i = 0; i < bestPerQuery.length; i++) sum += bestPerQuery[i];
+            stringSimilarity = sum / queryTokens.length;
+        }
     }
-    if (coverage >= 35) {
+
+    let matchInfo;
+    if (coverage >= 90 || (coverage >= 55 && allTokensPartial)) {
+        matchInfo = { tier: 2, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: true };
+    } else if (coverage >= 35) {
         if (queryTokens.length >= 2 && titleTokens.length === 1) {
             const singleToken = titleTokens[0];
-            const matchedQueryWord = queryTokens.some(qt => qt === singleToken);
+            const matchedQueryWord = queryTokens.some((qt) => qt === singleToken);
             if (matchedQueryWord && coverage >= 45) {
-                return { tier: 1, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
+                matchInfo = { tier: 1, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
+            } else {
+                matchInfo = { tier: 0, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
             }
-            return { tier: 0, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
+        } else {
+            matchInfo = { tier: 1, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
         }
-        return { tier: 1, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
+    } else {
+        matchInfo = { tier: 0, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
     }
 
-    return { tier: 0, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
+    return { matchInfo, stringSimilarity };
+}
+
+function getTagTextMatchInfo(name, query) {
+    return computeTagTextMatchAndSimilarity(name, query).matchInfo;
+}
+
+function applyTagTextRelevanceFloors(stringScore, matchInfo) {
+    let score = stringScore;
+    if (matchInfo.tier === 4) score = Math.max(score, 100);
+    else if (matchInfo.tier === 3) score = Math.max(score, 85);
+    else if (matchInfo.tier === 2) score = Math.max(score, 80);
+    else if (matchInfo.tier === 1) score = Math.max(score, 60);
+    return score;
 }
 
 function resolveTagTextMatchInfo(result, query) {
     const resultName = getTagDisplayLabel(result);
-    const clientInfo = getTagTextMatchInfo(resultName, query);
+    const clientInfo = (result._textMatchQuery === query && result.textMatchInfo)
+        ? result.textMatchInfo
+        : getTagTextMatchInfo(resultName, query);
     const serverTier = typeof result.matchTier === 'number' ? result.matchTier : 0;
     const serverCoverage = typeof result.matchCoverage === 'number' ? result.matchCoverage : 0;
     const bestTier = Math.max(serverTier, clientInfo.tier, result.textMatchInfo?.tier || 0);
@@ -4114,14 +4284,8 @@ function getRawApiTagConfidence(result) {
 }
 
 function getTagTextRelevanceScore(query, tagName) {
-    const stringScore = calculateStringSimilarity(query, tagName);
-    const matchInfo = getTagTextMatchInfo(tagName, query);
-    let score = stringScore;
-    if (matchInfo.tier === 4) score = Math.max(score, 100);
-    else if (matchInfo.tier === 3) score = Math.max(score, 85);
-    else if (matchInfo.tier === 2) score = Math.max(score, 80);
-    else if (matchInfo.tier === 1) score = Math.max(score, 60);
-    return score;
+    const scored = computeTagTextMatchAndSimilarity(tagName, query);
+    return applyTagTextRelevanceFloors(scored.stringSimilarity, scored.matchInfo);
 }
 
 function pickBestTagTextMatchInfo(info1, info2) {
@@ -4139,6 +4303,7 @@ function mergeTagEnhancementFields(result1, result2, merged) {
         ...merged,
         ...(primaryBody ? { primaryBody } : {}),
         textMatchInfo: pickBestTagTextMatchInfo(result1.textMatchInfo, result2.textMatchInfo),
+        _textMatchQuery: result1._textMatchQuery || result2._textMatchQuery,
         predictionaryScore: Math.max(result1.predictionaryScore || 0, result2.predictionaryScore || 0),
         enhancedConfidence: Math.max(
             result1.enhancedConfidence || getTagScore(result1) || 0,
@@ -4542,7 +4707,8 @@ function prepareTagResultsForDisplay(results, query) {
         const dedupeKey = getTagDedupeKey(result);
         if (!tagName) continue;
 
-        const textRelevanceScore = getTagTextRelevanceScore(query, tagName);
+        const scored = computeTagTextMatchAndSimilarity(tagName, query);
+        const textRelevanceScore = applyTagTextRelevanceFloors(scored.stringSimilarity, scored.matchInfo);
         const existingScore = getTagScore(result);
         const enhancedConfidence = (textRelevanceScore * 0.35) + (existingScore * 0.65);
 
@@ -4552,7 +4718,8 @@ function prepareTagResultsForDisplay(results, query) {
             name: getTagInsertName(result),
             title: result.title || tagName,
             predictionaryScore: textRelevanceScore,
-            textMatchInfo: getTagTextMatchInfo(tagName, query),
+            textMatchInfo: scored.matchInfo,
+            _textMatchQuery: query,
             enhancedConfidence
         };
 
@@ -4679,7 +4846,8 @@ async function enhanceTagResultsWithPredictionary(results, query) {
         }
 
         const predictionaryScore = await calculateEnhancedSimilarity(query, tagName, 'tag');
-        const textRelevanceScore = getTagTextRelevanceScore(query, tagName);
+        const scored = computeTagTextMatchAndSimilarity(tagName, query);
+        const textRelevanceScore = applyTagTextRelevanceFloors(scored.stringSimilarity, scored.matchInfo);
         const blendedTextScore = Math.max(predictionaryScore, textRelevanceScore);
         const existingScore = getTagScore(result);
         const enhancedConfidence = (blendedTextScore * 0.35) + (existingScore * 0.65);
@@ -4690,7 +4858,8 @@ async function enhanceTagResultsWithPredictionary(results, query) {
             name: getTagInsertName(result),
             title: result.title || tagName,
             predictionaryScore: blendedTextScore,
-            textMatchInfo: getTagTextMatchInfo(tagName, query),
+            textMatchInfo: scored.matchInfo,
+            _textMatchQuery: query,
             enhancedConfidence
         };
 
@@ -4745,7 +4914,8 @@ async function enhanceTagResults(tags, query) {
         const tagName = getTagDisplayLabel(tag);
         const dedupeKey = getTagDedupeKey(tag);
         const predictionaryScore = await calculateEnhancedSimilarity(query, tagName, 'tag');
-        const textRelevanceScore = getTagTextRelevanceScore(query, tagName);
+        const scored = computeTagTextMatchAndSimilarity(tagName, query);
+        const textRelevanceScore = applyTagTextRelevanceFloors(scored.stringSimilarity, scored.matchInfo);
         const blendedTextScore = Math.max(predictionaryScore, textRelevanceScore);
         const existingScore = getTagScore(tag);
         const enhancedConfidence = (blendedTextScore * 0.35) + (existingScore * 0.65);
@@ -4755,7 +4925,8 @@ async function enhanceTagResults(tags, query) {
             name: getTagInsertName(tag),
             title: tag.title || tagName,
             predictionaryScore: blendedTextScore,
-            textMatchInfo: getTagTextMatchInfo(tagName, query),
+            textMatchInfo: scored.matchInfo,
+            _textMatchQuery: query,
             enhancedConfidence
         };
 
@@ -4951,7 +5122,7 @@ function assembleRankedAutofillResults(inputs) {
         topResults.push({ ...bestSpellCheckResult, _isTopTier: true });
     }
 
-    // Sort character results and limit to top 3
+    // Sort character results and limit to top 3 (ranking reads prepared predictionaryScore / enhancedSimilarity).
     if (characterResults.length > 0) {
         const sortedCharacters = [...characterResults].sort((a, b) => {
             const aRanking = getCachedComprehensiveRanking(a, query, bestTextReplacement);
@@ -4966,7 +5137,7 @@ function assembleRankedAutofillResults(inputs) {
         bottomResults.push(...bottomCharacters.map(result => ({ ...result, _isTopTier: false })));
     }
 
-    // Sort text replacement results and limit to top 3
+    // Sort text replacement results and limit to top 3 (ranking reads prepared matchScore).
     if (textReplacements.length > 0) {
         const sortedTextReplacements = [...textReplacements].sort((a, b) => {
             const aRanking = getCachedComprehensiveRanking(a, query, bestTextReplacement);
@@ -6406,12 +6577,24 @@ function clearMainAutocompleteSelection() {
     updateCharacterAutocompleteSelection();
 }
 
-function getAutocompleteResultItems() {
-    if (!characterAutocompleteList) return [];
-    if (autofillResultsListCache && autofillResultsListCache.version === autofillResultsListVersion) {
-        return autofillResultsListCache.items;
+function getLiveAutocompleteList() {
+    if (isAutofillDetachedMode()) {
+        const shell = characterAutofillToolManager?.getShellElement?.();
+        const live = shell?.querySelector('.character-autocomplete-list');
+        if (live) return live;
     }
-    const items = Array.from(characterAutocompleteList.querySelectorAll(
+    return characterAutocompleteOverlay?.querySelector('.character-autocomplete-list')
+        || characterAutocompleteList;
+}
+
+function getAutocompleteResultItems() {
+    const cached = autofillResultsListCache;
+    if (cached && cached.version === autofillResultsListVersion) {
+        return cached.items;
+    }
+    const root = getLiveAutocompleteList();
+    if (!root) return [];
+    const items = Array.from(root.querySelectorAll(
         '.character-autocomplete-item:not(.no-results):not(.more-indicator)'
     ));
     autofillResultsListCache = { version: autofillResultsListVersion, items };
@@ -6425,11 +6608,16 @@ function hasAutocompleteResultItemsForNavigation() {
 
 
 function shouldAutocompleteConsumeVerticalArrow() {
-    if (isAutofillDetachedMode() && autofillDetachedKeyboardDismissed) {
+    if (isAutofillDetachedMode() && autofillDetachedKeyboardDismissed
+        && !isAutofillToolWindowInteractionActive()) {
         return false;
     }
     if (spellCheckNavigationMode || wordLookupNavigationMode) return true;
     if (autocompleteNavigationMode && selectedCharacterAutocompleteIndex >= 0 && hasAutocompleteResultItemsForNavigation()) {
+        return true;
+    }
+    if (isAutofillDetachedMode() && isAutofillToolWindowInteractionActive()
+        && hasAutocompleteResultItemsForNavigation()) {
         return true;
     }
     const target = currentCharacterAutocompleteTarget || autofillSessionTarget;
@@ -6623,6 +6811,9 @@ function handleCharacterAutocompleteBeforeinput(e) {
 }
 
 function handleCharacterAutocompleteKeydown(e) {
+    if (tryRepeatAutofillListStep(e)) {
+        return;
+    }
     // Handle emphasis editing popup (but not when toolbar is in emphasis mode)
     if (window.emphasisEditingActive && !e.target.closest('.prompt-textarea-toolbar.emphasis-mode')) {
         // Handle integer inputs (0-9 keys)
@@ -6833,6 +7024,7 @@ function handleCharacterAutocompleteKeydown(e) {
                 return;
             }
             const allowWhileTyping = e.key === 'ArrowDown'
+                || e.key === 'PageDown' || e.key === 'PageUp' || e.key === 'Home' || e.key === 'End'
                 || (e.key === 'Tab' && isAutofillPromptTabKey(e));
             if (!allowWhileTyping) {
                 return;
@@ -6926,11 +7118,7 @@ function handleCharacterAutocompleteKeydown(e) {
                     clearWordLookupNavigationState();
                 }
 
-                // Normal autocomplete navigation
-                markAutofillOverlayInteractive();
-                autocompleteNavigationMode = true;
-                engageAutofillNavigation();
-                userActivelyNavigating = true;
+                beginAutofillListNavigation();
 
                 const itemsDown = getAutocompleteResultItems();
                 if (!itemsDown.length) {
@@ -7011,8 +7199,7 @@ function handleCharacterAutocompleteKeydown(e) {
                     break;
                 }
 
-                markAutofillOverlayInteractive();
-                autocompleteNavigationMode = true;
+                beginAutofillListNavigation();
                 selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 1, -1);
                 afterAutofillListNavigationStep(e);
                 break;
@@ -7033,11 +7220,7 @@ function handleCharacterAutocompleteKeydown(e) {
                     clearWordLookupNavigationState();
                 }
 
-                // Normal autocomplete navigation
-                markAutofillOverlayInteractive();
-                autocompleteNavigationMode = true;
-                removeAutofillFocusNavBanner();
-                userActivelyNavigating = true;
+                beginAutofillListNavigation();
 
                 const itemsPageDown = getAutocompleteResultItems();
                 if (!itemsPageDown.length) {
@@ -7071,11 +7254,7 @@ function handleCharacterAutocompleteKeydown(e) {
                     clearWordLookupNavigationState();
                 }
 
-                // Normal autocomplete navigation
-                markAutofillOverlayInteractive();
-                autocompleteNavigationMode = true;
-                removeAutofillFocusNavBanner();
-                userActivelyNavigating = true;
+                beginAutofillListNavigation();
 
                 const itemsPageUp = getAutocompleteResultItems();
                 if (!itemsPageUp.length) {
@@ -7109,11 +7288,7 @@ function handleCharacterAutocompleteKeydown(e) {
                     clearWordLookupNavigationState();
                 }
 
-                // Normal autocomplete navigation
-                markAutofillOverlayInteractive();
-                autocompleteNavigationMode = true;
-                removeAutofillFocusNavBanner();
-                userActivelyNavigating = true;
+                beginAutofillListNavigation();
 
                 const itemsHome = getAutocompleteResultItems();
                 if (!itemsHome.length) {
@@ -7144,11 +7319,7 @@ function handleCharacterAutocompleteKeydown(e) {
                     clearWordLookupNavigationState();
                 }
 
-                // Normal autocomplete navigation
-                markAutofillOverlayInteractive();
-                autocompleteNavigationMode = true;
-                removeAutofillFocusNavBanner();
-                userActivelyNavigating = true;
+                beginAutofillListNavigation();
 
                 const itemsEnd = getAutocompleteResultItems();
                 if (!itemsEnd.length) {
@@ -7890,7 +8061,6 @@ function createAutocompleteItem(result) {
     return item;
 }
 
-const AUTOFILL_LIST_CHUNK_SIZE = 32;
 let autofillListChunkRaf = 0;
 let autofillListChunkQueue = null;
 
@@ -7907,27 +8077,28 @@ function isAutofillListChunkPending() {
 }
 
 function appendAutocompleteResultItems(limitedResults, startIndex, onComplete) {
-    if (!characterAutocompleteList || !limitedResults) {
+    const listEl = getLiveAutocompleteList();
+    if (!listEl || !limitedResults) {
         if (onComplete) onComplete();
         return;
     }
-    const end = Math.min(limitedResults.length, startIndex + AUTOFILL_LIST_CHUNK_SIZE);
-    const fragment = document.createDocumentFragment();
-    for (let i = startIndex; i < end; i++) {
-        fragment.appendChild(createAutocompleteItem(limitedResults[i]));
-    }
-    characterAutocompleteList.appendChild(fragment);
-    if (end < limitedResults.length) {
-        autofillListChunkQueue = { results: limitedResults, index: end, onComplete };
-        autofillListChunkRaf = requestAnimationFrame(() => {
-            autofillListChunkRaf = 0;
-            const queued = autofillListChunkQueue;
-            if (!queued) return;
-            appendAutocompleteResultItems(queued.results, queued.index, queued.onComplete);
-        });
+    const from = Math.max(0, startIndex || 0);
+    if (from >= limitedResults.length) {
+        autofillListChunkQueue = null;
+        if (onComplete) onComplete();
         return;
     }
+    const fragment = document.createDocumentFragment();
+    for (let i = from; i < limitedResults.length; i++) {
+        fragment.appendChild(createAutocompleteItem(limitedResults[i]));
+    }
+    listEl.appendChild(fragment);
+    invalidateAutofillResultsListCache();
     autofillListChunkQueue = null;
+    if (autofillListChunkRaf) {
+        cancelAnimationFrame(autofillListChunkRaf);
+        autofillListChunkRaf = 0;
+    }
     if (onComplete) onComplete();
 }
 
@@ -8451,27 +8622,55 @@ function applySpellCorrection(target, originalWord, suggestion, misspelledRowInd
     return false;
 }
 
-// Helper function to calculate Levenshtein distance between two strings
-function levenshteinDistance(str1, str2) {
+// Helper function to calculate Levenshtein distance between two strings.
+// Optional maxDistance: return maxDistance+1 early when the row minimum exceeds it (near-miss gate).
+function levenshteinDistance(str1, str2, maxDistance) {
+    if (str1 === str2) return 0;
     const len1 = str1.length;
     const len2 = str2.length;
-    const matrix = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
+    if (!len1) return len2;
+    if (!len2) return len1;
 
-    for (let i = 0; i <= len1; i++) matrix[i][0] = i;
-    for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+    const maxDist = maxDistance == null || !Number.isFinite(maxDistance) ? Infinity : maxDistance;
+    if (Math.abs(len1 - len2) > maxDist) return maxDist + 1;
+
+    const cacheKey = len1 <= len2 ? str1 + '\0' + str2 : str2 + '\0' + str1;
+    const cached = LEVENSHTEIN_PAIR_CACHE.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    let prev = new Array(len2 + 1);
+    let curr = new Array(len2 + 1);
+    for (let j = 0; j <= len2; j++) prev[j] = j;
 
     for (let i = 1; i <= len1; i++) {
+        curr[0] = i;
+        let rowMin = curr[0];
+        const c1 = str1[i - 1];
         for (let j = 1; j <= len2; j++) {
-            const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-            matrix[i][j] = Math.min(
-                matrix[i - 1][j] + 1,      // deletion
-                matrix[i][j - 1] + 1,      // insertion
-                matrix[i - 1][j - 1] + cost // substitution
-            );
+            const cost = c1 === str2[j - 1] ? 0 : 1;
+            const deletion = prev[j] + 1;
+            const insertion = curr[j - 1] + 1;
+            const substitution = prev[j - 1] + cost;
+            const value = deletion < insertion
+                ? (deletion < substitution ? deletion : substitution)
+                : (insertion < substitution ? insertion : substitution);
+            curr[j] = value;
+            if (value < rowMin) rowMin = value;
         }
+        if (rowMin > maxDist) {
+            return maxDist + 1;
+        }
+        const swap = prev;
+        prev = curr;
+        curr = swap;
     }
 
-    return matrix[len1][len2];
+    const distance = prev[len2];
+    // Only cache exact distances (bounded early-exit results are incomplete).
+    if (distance <= maxDist || maxDist === Infinity) {
+        rememberBoundedCache(LEVENSHTEIN_PAIR_CACHE, cacheKey, distance, LEVENSHTEIN_PAIR_CACHE_MAX);
+    }
+    return distance;
 }
 
 async function addWordToDictionary(word) {
@@ -8530,34 +8729,58 @@ async function addWordToDictionary(word) {
     }
 }
 
-// Helper: resolve the element that actually scrolls (overlay list vs detached custom-scrollbar host).
+function rememberAutofillListScrollContainer(host, resolved) {
+    const scrollEl = resolved && resolved.scrollEl;
+    if (scrollEl && scrollEl.scrollHeight > scrollEl.clientHeight + 1) {
+        autofillListScrollContainerCache = { host, resolved };
+    }
+    return resolved;
+}
+
 function resolveAutofillListScrollContainer(optionElement) {
     if (!optionElement) return null;
 
+    const listEl = optionElement.closest('.character-autocomplete-list');
+    const host = listEl ? listEl.parentElement : null;
+    const cached = autofillListScrollContainerCache;
+    if (cached && cached.host === host && cached.resolved.scrollEl && cached.resolved.scrollEl.isConnected) {
+        return cached.resolved;
+    }
+
     const listShell = optionElement.closest('.character-autofill-tool-list-shell');
+    const overlayList = optionElement.closest('.character-autocomplete-list');
+    const overlay = optionElement.closest('#characterAutocompleteOverlay, .character-autocomplete-overlay');
+    const stopAt = listShell || overlay;
+
+    let node = optionElement.parentElement;
+    while (node && node !== document.body) {
+        const canScroll = node.scrollHeight > node.clientHeight + 1
+            && (getComputedStyle(node).overflowY === 'auto' || getComputedStyle(node).overflowY === 'scroll');
+        if (canScroll) {
+            return rememberAutofillListScrollContainer(host, { scrollEl: node, scrollbarHost: listShell || node });
+        }
+        if (node === stopAt) break;
+        node = node.parentElement;
+    }
+
     if (listShell) {
         // customScrollbar: public/scripts/comp/customScrollbar.js
         const customData = typeof customScrollbar !== 'undefined' && customScrollbar.scrollbars
             ? customScrollbar.scrollbars.get(listShell)
             : null;
         const scrollEl = customData?.scrollableContent
-            || listShell.querySelector(':scope > .scrollable-content');
+            || listShell.querySelector('.character-autofill-tool-scrollable, :scope > .scrollable-content');
         if (scrollEl) {
-            return { scrollEl, scrollbarHost: listShell };
+            return rememberAutofillListScrollContainer(host, { scrollEl, scrollbarHost: listShell });
         }
     }
 
-    const overlayList = optionElement.closest('#characterAutocompleteOverlay .character-autocomplete-list')
-        || optionElement.closest('.character-autocomplete-list');
     if (overlayList) {
-        return { scrollEl: overlayList, scrollbarHost: overlayList };
+        return rememberAutofillListScrollContainer(host, { scrollEl: overlayList, scrollbarHost: overlayList });
     }
-
-    const overlay = optionElement.closest('.character-autocomplete-overlay');
     if (overlay) {
-        return { scrollEl: overlay, scrollbarHost: overlay };
+        return rememberAutofillListScrollContainer(host, { scrollEl: overlay, scrollbarHost: overlay });
     }
-
     return null;
 }
 
@@ -8572,8 +8795,7 @@ function computeCenteredAutofillScrollTop(scrollEl, optionElement) {
     const scRect = scrollEl.getBoundingClientRect();
     const optionTop = (elRect.top - scRect.top) + scrollEl.scrollTop;
     const maxScroll = Math.max(0, scrollHeight - clientHeight);
-    // Expanded thesaurus/spell rows can be taller than the list; pin to the top
-    // of the target so later synonyms stay reachable when navigating down.
+    // Rows taller than the viewport pin to the top so the rest of the row stays reachable.
     if (elRect.height >= clientHeight) {
         return Math.max(0, Math.min(optionTop, maxScroll));
     }
@@ -8606,11 +8828,7 @@ function scrollToAutocompleteOption(optionElement) {
     if (finalScrollTop == null) return;
     if (Math.abs(scrollEl.scrollTop - finalScrollTop) < 1) return;
 
-    if (typeof scrollEl.scrollTo === 'function') {
-        scrollEl.scrollTo({ top: finalScrollTop, behavior: 'auto' });
-    } else {
-        scrollEl.scrollTop = finalScrollTop;
-    }
+    scrollEl.scrollTop = finalScrollTop;
 
     if (scrollbarHost !== scrollEl) {
         // customScrollbar: public/scripts/comp/customScrollbar.js
@@ -8651,7 +8869,9 @@ function updateCharacterAutocompleteSelection() {
     if (lastRenderedAutocompleteIndex >= 0 && items[lastRenderedAutocompleteIndex]) {
         const prev = items[lastRenderedAutocompleteIndex];
         prev.classList.remove('selected', 'wiki-preview-revealed');
-        updateTagWikiPreviewScroll(prev);
+        if (!userActivelyNavigating) {
+            updateTagWikiPreviewScroll(prev);
+        }
     }
 
     lastRenderedAutocompleteIndex = newIndex;
@@ -8669,7 +8889,9 @@ function updateCharacterAutocompleteSelection() {
         clearAutofillWikiPreviewReveal();
     }
 
-    scheduleAutofillKeyguideUpdate();
+    if (!userActivelyNavigating) {
+        scheduleAutofillKeyguideUpdate();
+    }
 }
 
 function selectCharacterItem(character, detailOptions = {}) {
@@ -9513,14 +9735,26 @@ function findAutocompleteTermStart(textBeforeCursor) {
     // hasManagedEmphasisGroupIds / listManagedEmphasisDelimiters: public/scripts/comp/emphasisGroupIdCodec.js
     if (hasManagedEmphasisGroupIds(textBeforeCursor)) {
         const { opens, closes } = listManagedEmphasisDelimiters(textBeforeCursor);
+        const closesById = new Map();
+        for (let c = 0; c < closes.length; c++) {
+            const close = closes[c];
+            let list = closesById.get(close.id);
+            if (!list) {
+                list = [];
+                closesById.set(close.id, list);
+            }
+            list.push(close);
+        }
         for (let o = 0; o < opens.length; o++) {
             const open = opens[o];
             let close = null;
-            for (let c = 0; c < closes.length; c++) {
-                if (closes[c].id !== open.id) continue;
-                if (closes[c].index < open.end) continue;
-                close = closes[c];
-                break;
+            const idCloses = closesById.get(open.id);
+            if (idCloses) {
+                for (let c = 0; c < idCloses.length; c++) {
+                    if (idCloses[c].index < open.end) continue;
+                    close = idCloses[c];
+                    break;
+                }
             }
             if (close) {
                 if (close.end > 0) consider(close.end - 1, 1);
@@ -9882,6 +10116,10 @@ function hideCharacterAutocomplete(options) {
         pendingSelectionScrollRaf = 0;
         pendingSelectionScrollItem = null;
     }
+    if (autofillNavPaintRaf) {
+        cancelAnimationFrame(autofillNavPaintRaf);
+        autofillNavPaintRaf = 0;
+    }
     if (pendingKeyguideRaf) {
         cancelAnimationFrame(pendingKeyguideRaf);
         pendingKeyguideRaf = 0;
@@ -10238,32 +10476,23 @@ function getAllTextReplacementResults() {
         }
     }
 
-    // Remove duplicates based on name and placeholder, keeping the best match
-    const uniqueTextReplacements = [];
-    const seen = new Map(); // Use Map to track best score for each key
-
+    // Dedupe only — scoring happens once in prepareTextReplacementResultsForDisplay.
+    const seen = new Map();
     for (const replacement of allTextReplacements) {
         const key = `${replacement.name}:${replacement.placeholder}`;
-        const currentScore = replacement.matchScore || calculateStringSimilarity(lastSearchQuery, replacement.name);
-
-        if (!seen.has(key) || currentScore > seen.get(key).score) {
-            // Add match score for sorting
-            const replacementWithScore = {
-                ...replacement,
-                matchScore: currentScore
-            };
-
-            // Update the seen map with the better score
-            seen.set(key, { score: currentScore, replacement: replacementWithScore });
+        if (!seen.has(key)) {
+            seen.set(key, replacement);
+            continue;
+        }
+        const existing = seen.get(key);
+        const existingScore = typeof existing.matchScore === 'number' ? existing.matchScore : -1;
+        const currentScore = typeof replacement.matchScore === 'number' ? replacement.matchScore : -1;
+        if (currentScore > existingScore) {
+            seen.set(key, replacement);
         }
     }
 
-    // Extract the best replacements from the seen map
-    for (const { replacement } of seen.values()) {
-        uniqueTextReplacements.push(replacement);
-    }
-
-    return uniqueTextReplacements;
+    return Array.from(seen.values());
 }
 
 // Get dynamic generation placeholder results based on query
@@ -10313,6 +10542,88 @@ function isAutofillPromptTabKey(e) {
         (t.classList.contains('prompt-textarea') || t.classList.contains('character-prompt-textarea'));
 }
 
+let promptTabCycleCache = null;
+
+function invalidatePromptTabCycleCache() {
+    promptTabCycleCache = null;
+}
+
+function buildPromptTabCycleOrder(isShowingBoth, mainActiveTab, characterItemsArray, manualPrompt, manualUc, manualPromptNegative) {
+    let cycleOrder = [];
+
+    if (isShowingBoth) {
+        cycleOrder = [manualPrompt, manualUc, manualPromptNegative].filter(Boolean);
+        characterItemsArray.forEach((characterItem) => {
+            const promptTextarea = characterItem.querySelector(`#${characterItem.id}_prompt`);
+            const ucTextarea = characterItem.querySelector(`#${characterItem.id}_uc`);
+            if (promptTextarea) cycleOrder.push(promptTextarea);
+            if (ucTextarea) cycleOrder.push(ucTextarea);
+        });
+        return cycleOrder;
+    }
+
+    if (mainActiveTab === 'prompt') {
+        cycleOrder = [manualPrompt];
+        characterItemsArray.forEach((characterItem) => {
+            const promptTextarea = characterItem.querySelector(`#${characterItem.id}_prompt`);
+            if (promptTextarea) cycleOrder.push(promptTextarea);
+        });
+        return cycleOrder;
+    }
+
+    if (mainActiveTab === 'uc') {
+        cycleOrder = [manualUc, manualPromptNegative].filter(Boolean);
+        characterItemsArray.forEach((characterItem) => {
+            const ucTextarea = characterItem.querySelector(`#${characterItem.id}_uc`);
+            const promptNegativeTextarea = characterItem.querySelector(`#${characterItem.id}_promptNegative`);
+            if (ucTextarea) cycleOrder.push(ucTextarea);
+            if (promptNegativeTextarea) cycleOrder.push(promptNegativeTextarea);
+        });
+        return cycleOrder;
+    }
+
+    cycleOrder = [manualPrompt, manualUc, manualPromptNegative].filter(Boolean);
+    characterItemsArray.forEach((characterItem) => {
+        const promptTextarea = characterItem.querySelector(`#${characterItem.id}_prompt`);
+        const ucTextarea = characterItem.querySelector(`#${characterItem.id}_uc`);
+        if (promptTextarea) cycleOrder.push(promptTextarea);
+        if (ucTextarea) cycleOrder.push(ucTextarea);
+    });
+    return cycleOrder;
+}
+
+function getPromptTabCycleOrder(manualPrompt, manualUc, manualPromptNegative, characterPromptsContainer, promptTabs) {
+    const isShowingBoth = !!(promptTabs && promptTabs.classList.contains('show-both'));
+    const mainToggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
+    const mainActiveTab = mainToggleGroup ? mainToggleGroup.getAttribute('data-active') : 'prompt';
+    const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+    let characterIds = '';
+    for (let i = 0; i < characterItems.length; i++) {
+        characterIds += characterItems[i].id + ',';
+    }
+    const cacheKey = (isShowingBoth ? '1' : '0') + '|' + (mainActiveTab || '') + '|' + characterItems.length + '|' + characterIds;
+
+    if (promptTabCycleCache && promptTabCycleCache.key === cacheKey) {
+        const order = promptTabCycleCache.order;
+        // Drop detached textareas if the DOM was rebuilt under the same ids.
+        if (order.every((el) => el && document.contains(el))) {
+            return order;
+        }
+    }
+
+    const characterItemsArray = Array.from(characterItems);
+    const cycleOrder = buildPromptTabCycleOrder(
+        isShowingBoth,
+        mainActiveTab,
+        characterItemsArray,
+        manualPrompt,
+        manualUc,
+        manualPromptNegative
+    );
+    promptTabCycleCache = { key: cacheKey, order: cycleOrder };
+    return cycleOrder;
+}
+
 // Handle Tab cycling between main prompt and character prompts
 function handlePromptTabCycling(e) {
     const manualPrompt = document.getElementById('manualPrompt');
@@ -10323,69 +10634,18 @@ function handlePromptTabCycling(e) {
 
     if (!manualPrompt || !characterPromptsContainer) return;
 
-    const isShowingBoth = promptTabs && promptTabs.classList.contains('show-both');
     const keepCharacterPromptsExpanded = document.body.classList.contains('desktop-mode');
-    const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
-    const characterItemsArray = Array.from(characterItems); // Convert NodeList to Array
     const currentlyFocused = document.activeElement;
-
-    // Define the cycling order based on show-both mode
-    let cycleOrder = [];
-
-    if (isShowingBoth) {
-        // Show both mode: prompt → uc → character prompt → character uc → next character prompt → next character uc...
-        cycleOrder = [manualPrompt, manualUc, manualPromptNegative].filter(Boolean);
-
-        // Add each character's prompt and UC textareas
-        characterItemsArray.forEach(characterItem => {
-            const promptTextarea = characterItem.querySelector(`#${characterItem.id}_prompt`);
-            const ucTextarea = characterItem.querySelector(`#${characterItem.id}_uc`);
-
-            if (promptTextarea) cycleOrder.push(promptTextarea);
-            if (ucTextarea) cycleOrder.push(ucTextarea);
-        });
-    } else {
-        // Single mode: determine which tab is active and include main prompts
-        const mainToggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
-        const mainActiveTab = mainToggleGroup ? mainToggleGroup.getAttribute('data-active') : 'prompt';
-
-        if (mainActiveTab === 'prompt') {
-            // Prompt tab is active - cycle through prompt and character prompt textareas
-            cycleOrder = [manualPrompt];
-            characterItemsArray.forEach(characterItem => {
-                const promptTextarea = characterItem.querySelector(`#${characterItem.id}_prompt`);
-                if (promptTextarea) cycleOrder.push(promptTextarea);
-            });
-        } else if (mainActiveTab === 'uc') {
-            // UC tab is active - cycle through UC, inline negative, and character UC/negative textareas
-            cycleOrder = [manualUc, manualPromptNegative].filter(Boolean);
-            characterItemsArray.forEach(characterItem => {
-                const ucTextarea = characterItem.querySelector(`#${characterItem.id}_uc`);
-                const promptNegativeTextarea = characterItem.querySelector(`#${characterItem.id}_promptNegative`);
-                if (ucTextarea) cycleOrder.push(ucTextarea);
-                if (promptNegativeTextarea) cycleOrder.push(promptNegativeTextarea);
-            });
-        } else {
-            // Fallback - include both main prompts
-            cycleOrder = [manualPrompt, manualUc, manualPromptNegative].filter(Boolean);
-            characterItemsArray.forEach(characterItem => {
-                const promptTextarea = characterItem.querySelector(`#${characterItem.id}_prompt`);
-                const ucTextarea = characterItem.querySelector(`#${characterItem.id}_uc`);
-
-                if (promptTextarea) cycleOrder.push(promptTextarea);
-                if (ucTextarea) cycleOrder.push(ucTextarea);
-            });
-        }
-    }
+    const cycleOrder = getPromptTabCycleOrder(
+        manualPrompt,
+        manualUc,
+        manualPromptNegative,
+        characterPromptsContainer,
+        promptTabs
+    );
 
     // Find current position in cycle
-    let currentIndex = -1;
-    if (currentlyFocused === manualPrompt || currentlyFocused === manualUc || currentlyFocused === manualPromptNegative) {
-        currentIndex = cycleOrder.indexOf(currentlyFocused);
-    } else {
-        // In a character textarea
-        currentIndex = cycleOrder.indexOf(currentlyFocused);
-    }
+    let currentIndex = cycleOrder.indexOf(currentlyFocused);
     if (currentIndex === -1) return;
 
     // Calculate next/previous index

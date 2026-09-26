@@ -98,6 +98,8 @@ let noTextAutoDisabledByOverlay = false;
 let qualityPresetBias = 1.0; // Default bias for quality preset
 let appendTransparency = false;
 let transparencyBias = 1.0;
+let datasetDropdownCatalogKey = null;
+let datasetDropdownSelectionKey = null;
 let presetAutocompleteTimeout = null;
 let currentPresetAutocompleteTarget = null;
 let selectedPresetAutocompleteIndex = -1;
@@ -1171,7 +1173,44 @@ function syncNoTextSubToggleForOverlays() {
  * @example
  * renderDatasetDropdown(); // Shows dataset dropdown with current selections and bias controls
  */
+function getDatasetDropdownCatalogKey() {
+    const modelKey = getCurrentDatasetModelKey();
+    const configuredDatasets = window.optionsData?.datasets;
+    const transparency = getForgeModelFeatures(modelKey)?.transparency === true;
+    const listId = configuredDatasets
+        ? `${configuredDatasets.length}:${configuredDatasets.map((d) => d.value).join('\0')}`
+        : 'fallback';
+    return `${modelKey}|${listId}|t:${transparency ? 1 : 0}`;
+}
+
+function getDatasetDropdownSelectionKey() {
+    const biasParts = selectedDatasets.map((value) => {
+        const bias = datasetBias[value];
+        return `${value}:${bias === undefined ? '' : bias}`;
+    });
+    return [
+        selectedDatasets.join('\0'),
+        appendQuality ? '1' : '0',
+        appendTransparency ? '1' : '0',
+        String(qualityPresetBias),
+        String(transparencyBias),
+        biasParts.join(',')
+    ].join('|');
+}
+
 function renderDatasetDropdown() {
+    const catalogKey = getDatasetDropdownCatalogKey();
+    const selectionKey = getDatasetDropdownSelectionKey();
+    if (
+        catalogKey === datasetDropdownCatalogKey
+        && selectionKey === datasetDropdownSelectionKey
+        && datasetDropdownMenu.childElementCount > 0
+    ) {
+        return;
+    }
+    datasetDropdownCatalogKey = catalogKey;
+    datasetDropdownSelectionKey = selectionKey;
+
     datasetDropdownMenu.innerHTML = '';
     
     const modelKey = getCurrentDatasetModelKey();

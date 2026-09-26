@@ -5,6 +5,9 @@ let spellCheckNavigationMode = false;
 let selectedSpellCheckWordIndex = -1;
 let selectedSpellCheckSuggestionIndex = -1;
 let persistentSpellCheckData = null; // Current spell check data
+let spellCheckSelectedWordEl = null;
+let spellCheckSelectedSuggestionEl = null;
+let spellCheckExpandedWordIndex = -1;
 
 function getSpellCheckInputSlice(spellMeta, value, spellOffset) {
     if (!spellMeta || !value) return null;
@@ -291,6 +294,20 @@ function collapsedSpellCheckInsertAvailable() {
 function removeSpellCheckSection() {
     const section = characterAutocompleteList?.querySelector('.spell-check-section');
     if (section) section.remove();
+    spellCheckSelectedWordEl = null;
+    spellCheckSelectedSuggestionEl = null;
+    spellCheckExpandedWordIndex = -1;
+}
+
+function clearSpellCheckSelectionClasses() {
+    if (spellCheckSelectedWordEl) {
+        spellCheckSelectedWordEl.classList.remove('selected');
+        spellCheckSelectedWordEl = null;
+    }
+    if (spellCheckSelectedSuggestionEl) {
+        spellCheckSelectedSuggestionEl.classList.remove('selected');
+        spellCheckSelectedSuggestionEl = null;
+    }
 }
 
 function getSpellCheckWordCount(section) {
@@ -377,10 +394,16 @@ function applySpellCheckWordDisplay(section, activeIndex) {
         activeIndex = 0;
     }
 
-    section.querySelectorAll('.spell-check-word').forEach(row => {
-        const rowIndex = parseInt(row.dataset.wordIndex, 10);
-        row.classList.toggle('expanded', rowIndex === activeIndex);
-    });
+    const wordSections = section.querySelectorAll('.spell-check-word');
+    if (spellCheckExpandedWordIndex >= 0
+        && spellCheckExpandedWordIndex !== activeIndex
+        && spellCheckExpandedWordIndex < wordSections.length) {
+        wordSections[spellCheckExpandedWordIndex].classList.remove('expanded');
+    }
+    if (activeIndex < wordSections.length) {
+        wordSections[activeIndex].classList.add('expanded');
+    }
+    spellCheckExpandedWordIndex = activeIndex;
 }
 
 function getSpellCheckRowIndexFromButton(btn) {
@@ -454,12 +477,18 @@ function selectSpellCheckRow(wordIndex) {
     updateSpellCheckSelection();
 }
 
+function spellCheckRowSignature(word, suggestions) {
+    const actionable = filterSpellCheckSuggestionsForWord(word, suggestions);
+    return word + '\0' + actionable.join('\0');
+}
+
 function createSpellCheckWordRow(word, suggestions, target, wordIndex) {
     const suggestionButtonsHtml = buildSpellCheckSuggestionButtons(word, suggestions, wordIndex);
 
     const row = document.createElement('div');
     row.className = 'spell-check-word';
     row.dataset.wordIndex = String(wordIndex);
+    row.dataset.spellSignature = spellCheckRowSignature(word, suggestions);
 
     const compact = document.createElement('div');
     compact.className = 'spell-check-row-compact';
@@ -470,7 +499,7 @@ function createSpellCheckWordRow(word, suggestions, target, wordIndex) {
     compact.addEventListener('click', (e) => {
         if (e.target.closest('.suggestion-btn')) return;
         e.preventDefault();
-        selectSpellCheckRow(wordIndex);
+        selectSpellCheckRow(parseInt(row.dataset.wordIndex, 10));
     });
     touchSlopUtils.registerTouchSlopTracking(compact);
     compact.addEventListener('touchend', (e) => {
@@ -478,7 +507,7 @@ function createSpellCheckWordRow(word, suggestions, target, wordIndex) {
         const maxDelta = touchSlopUtils.finalizeTouchSlop(compact, e);
         if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
         e.preventDefault();
-        selectSpellCheckRow(wordIndex);
+        selectSpellCheckRow(parseInt(row.dataset.wordIndex, 10));
     }, { passive: false });
     row.appendChild(compact);
     wireSpellCheckSuggestionButtons(compact, target);
@@ -510,28 +539,84 @@ function showSpellCheckSuggestions(spellCheckData, target) {
         return;
     }
 
-    removeSpellCheckSection();
+    let spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
+    let wordList = spellCheckSection ? spellCheckSection.querySelector('.spell-check-word-list') : null;
+    const originalTextHtml = spellCheckData.originalText
+        ? `<div class="original-text">"${spellCheckData.originalText}"</div>`
+        : '';
 
-    const spellCheckSection = document.createElement('div');
-    spellCheckSection.className = 'spell-check-section';
-    spellCheckSection.innerHTML = `
-        <div class="spell-check-header">
-            <i class="fas fa-spell-check"></i>
-            <span>Spell Check</span>
-            ${spellCheckData.originalText ? `<div class="original-text">"${spellCheckData.originalText}"</div>` : ''}
-        </div>
-    `;
+    if (!spellCheckSection) {
+        spellCheckSection = document.createElement('div');
+        spellCheckSection.className = 'spell-check-section';
+        spellCheckSection.innerHTML = `
+            <div class="spell-check-header">
+                <i class="fas fa-spell-check"></i>
+                <span>Spell Check</span>
+                ${originalTextHtml}
+            </div>
+        `;
+        wordList = document.createElement('div');
+        wordList.className = 'spell-check-word-list';
+        spellCheckSection.appendChild(wordList);
+        insertSideSectionAtTop(spellCheckSection);
+    } else {
+        const header = spellCheckSection.querySelector('.spell-check-header');
+        if (header) {
+            header.innerHTML = `
+                <i class="fas fa-spell-check"></i>
+                <span>Spell Check</span>
+                ${originalTextHtml}
+            `;
+        }
+        if (!wordList) {
+            wordList = document.createElement('div');
+            wordList.className = 'spell-check-word-list';
+            spellCheckSection.appendChild(wordList);
+        }
+    }
 
-    const wordList = document.createElement('div');
-    wordList.className = 'spell-check-word-list';
+    const existingRows = Array.from(wordList.querySelectorAll('.spell-check-word'));
+    const misspelled = spellCheckData.misspelled;
 
-    spellCheckData.misspelled.forEach((word, wordIndex) => {
+    for (let wordIndex = 0; wordIndex < misspelled.length; wordIndex++) {
+        const word = misspelled[wordIndex];
         const suggestions = spellCheckData.suggestions[word] || [];
-        wordList.appendChild(createSpellCheckWordRow(word, suggestions, target, wordIndex));
-    });
+        const signature = spellCheckRowSignature(word, suggestions);
+        const existing = existingRows[wordIndex];
+        if (existing && existing.dataset.spellSignature === signature) {
+            existing.dataset.wordIndex = String(wordIndex);
+            existing.querySelectorAll('[data-word-index]').forEach((el) => {
+                el.dataset.wordIndex = String(wordIndex);
+            });
+            continue;
+        }
+        const newRow = createSpellCheckWordRow(word, suggestions, target, wordIndex);
+        if (existing) {
+            if (spellCheckSelectedWordEl === existing) spellCheckSelectedWordEl = null;
+            if (spellCheckSelectedSuggestionEl && existing.contains(spellCheckSelectedSuggestionEl)) {
+                spellCheckSelectedSuggestionEl = null;
+            }
+            existing.replaceWith(newRow);
+            existingRows[wordIndex] = newRow;
+        } else {
+            wordList.appendChild(newRow);
+            existingRows[wordIndex] = newRow;
+        }
+    }
 
-    spellCheckSection.appendChild(wordList);
-    insertSideSectionAtTop(spellCheckSection);
+    for (let i = misspelled.length; i < existingRows.length; i++) {
+        const stale = existingRows[i];
+        if (!stale) continue;
+        if (spellCheckSelectedWordEl === stale) spellCheckSelectedWordEl = null;
+        if (spellCheckSelectedSuggestionEl && stale.contains(spellCheckSelectedSuggestionEl)) {
+            spellCheckSelectedSuggestionEl = null;
+        }
+        stale.remove();
+    }
+
+    if (spellCheckExpandedWordIndex >= misspelled.length) {
+        spellCheckExpandedWordIndex = -1;
+    }
 
     if (spellCheckNavigationMode) {
         const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
@@ -562,9 +647,13 @@ function showSpellCheckSuggestions(spellCheckData, target) {
 
         updateSpellCheckSelection();
     } else {
-        spellCheckSection.querySelectorAll('.spell-check-word').forEach(row => {
-            row.classList.remove('expanded');
-        });
+        if (spellCheckExpandedWordIndex >= 0) {
+            const rows = spellCheckSection.querySelectorAll('.spell-check-word');
+            if (rows[spellCheckExpandedWordIndex]) {
+                rows[spellCheckExpandedWordIndex].classList.remove('expanded');
+            }
+            spellCheckExpandedWordIndex = -1;
+        }
     }
 }
 
@@ -575,12 +664,7 @@ function updateSpellCheckSelection() {
     const wordCount = getSpellCheckWordCount(spellCheckSection);
     spellCheckSection.classList.toggle('nav-active', spellCheckNavigationMode && wordCount > 1);
 
-    spellCheckSection.querySelectorAll('.spell-check-word').forEach(wordSection => {
-        wordSection.classList.remove('selected');
-        wordSection.querySelectorAll('.suggestion-btn').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-    });
+    clearSpellCheckSelectionClasses();
 
     if (spellCheckNavigationMode && selectedSpellCheckWordIndex >= 0) {
         applySpellCheckWordDisplay(spellCheckSection, selectedSpellCheckWordIndex);
@@ -589,6 +673,7 @@ function updateSpellCheckSelection() {
         if (wordSections && selectedSpellCheckWordIndex < wordSections.length) {
             const selectedWordSection = wordSections[selectedSpellCheckWordIndex];
             selectedWordSection.classList.add('selected');
+            spellCheckSelectedWordEl = selectedWordSection;
             markAutofillListNavigationActivity();
 
             let scrollTarget = selectedWordSection;
@@ -596,15 +681,20 @@ function updateSpellCheckSelection() {
                 const suggestionBtns = selectedWordSection.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
                 if (suggestionBtns && selectedSpellCheckSuggestionIndex < suggestionBtns.length) {
                     suggestionBtns[selectedSpellCheckSuggestionIndex].classList.add('selected');
+                    spellCheckSelectedSuggestionEl = suggestionBtns[selectedSpellCheckSuggestionIndex];
                     scrollTarget = suggestionBtns[selectedSpellCheckSuggestionIndex];
                 }
             }
             scheduleScrollToAutocompleteOption(scrollTarget);
         }
     } else {
-        spellCheckSection.querySelectorAll('.spell-check-word').forEach(row => {
-            row.classList.remove('expanded');
-        });
+        if (spellCheckExpandedWordIndex >= 0) {
+            const rows = spellCheckSection.querySelectorAll('.spell-check-word');
+            if (rows[spellCheckExpandedWordIndex]) {
+                rows[spellCheckExpandedWordIndex].classList.remove('expanded');
+            }
+            spellCheckExpandedWordIndex = -1;
+        }
     }
     scheduleAutofillKeyguideUpdate();
 }

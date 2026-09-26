@@ -126,10 +126,40 @@ function normalizeRunQuery(raw) {
     return { query, categoryHint };
 }
 
+const RUN_SCORE_TEXT_CACHE = new Map();
+const RUN_SCORE_TEXT_CACHE_MAX = 4096;
+let runScoreTextCacheQuery = '';
+
 function runScoreText(query, text, categoryHint, entryCategory) {
-    let score = typeof calculateStringSimilarity === 'function'
-        ? calculateStringSimilarity(query, text)
-        : 0;
+    if (query !== runScoreTextCacheQuery) {
+        RUN_SCORE_TEXT_CACHE.clear();
+        runScoreTextCacheQuery = query || '';
+    }
+
+    const cacheKey = String(text || '');
+    let score = RUN_SCORE_TEXT_CACHE.get(cacheKey);
+    if (score === undefined) {
+        if (!query || !text) {
+            score = 0;
+        } else {
+            const qLower = String(query).toLowerCase();
+            const tLower = String(text).toLowerCase();
+            if (tLower === qLower) {
+                score = 100;
+            } else if (tLower.startsWith(qLower)) {
+                score = 85;
+            } else if (tLower.includes(qLower)) {
+                score = 60;
+            } else {
+                // Near-miss / normalized paths — calculateStringSimilarity: autocompleteRanking.js
+                // (prefix/stem decide inside getTokenMatchScore before any Levenshtein DP).
+                score = calculateStringSimilarity(query, text);
+            }
+        }
+        if (RUN_SCORE_TEXT_CACHE.size >= RUN_SCORE_TEXT_CACHE_MAX) RUN_SCORE_TEXT_CACHE.clear();
+        RUN_SCORE_TEXT_CACHE.set(cacheKey, score);
+    }
+
     if (categoryHint && categoryHint === entryCategory) score += 25;
     return score;
 }

@@ -283,6 +283,7 @@ class ImageLoupe {
         this._vpMatchActive = false;
         this._vpHoverSyncRaf = null;
         this._revealPresentationActive = false;
+        this._blurBackdropCache = null;
 
         this._onPointerDown = this._onPointerDown.bind(this);
         this._onPointerMove = this._onPointerMove.bind(this);
@@ -443,6 +444,7 @@ class ImageLoupe {
             this._resizeObserver.unobserve(this._observedBlurBackdrop);
         }
         this._observedBlurBackdrop = blurSource;
+        this._blurBackdropCache = null;
         this._resizeObserver.observe(blurSource);
     }
 
@@ -546,6 +548,7 @@ class ImageLoupe {
     }
 
     _onHostResize(entries) {
+        this._blurBackdropCache = null;
         if (entries && entries.length) {
             const fromPreviewLayout = entries.some(
                 (entry) => entry.target === this._observedPreviewImg || entry.target === this._observedPreviewInner
@@ -1448,6 +1451,7 @@ class ImageLoupe {
     }
 
     _onImageLoad() {
+        this._blurBackdropCache = null;
         this._scheduleRefresh();
     }
 
@@ -1587,56 +1591,71 @@ class ImageLoupe {
             this.backdropEl.style.backgroundImage = '';
             this.backdropEl.style.backgroundSize = '';
             this.backdropEl.style.backgroundPosition = '';
+            this._blurBackdropCache = null;
             return;
         }
 
-        const blurStyle = getComputedStyle(blurSource);
-        const bgImage = blurStyle.backgroundImage;
-        if (!bgImage || bgImage === 'none') {
-            this.backdropEl.style.backgroundImage = '';
-            return;
+        let cache = this._blurBackdropCache;
+        if (!cache || cache.source !== blurSource) {
+            const blurStyle = getComputedStyle(blurSource);
+            const bgImage = blurStyle.backgroundImage;
+            if (!bgImage || bgImage === 'none') {
+                this.backdropEl.style.backgroundImage = '';
+                this._blurBackdropCache = null;
+                return;
+            }
+
+            const blurRect = blurSource.getBoundingClientRect();
+            const bgSize = resolveBackgroundSizePx(blurStyle, blurRect.width, blurRect.height);
+            let resolvedSize = bgSize;
+            if (!resolvedSize) {
+                const img = this._getImage();
+                if (img && img.naturalWidth && img.naturalHeight) {
+                    const scale = Math.max(
+                        blurRect.width / img.naturalWidth,
+                        blurRect.height / img.naturalHeight
+                    );
+                    resolvedSize = {
+                        w: img.naturalWidth * scale,
+                        h: img.naturalHeight * scale
+                    };
+                }
+            }
+            if (!resolvedSize) {
+                this.backdropEl.style.backgroundImage = '';
+                this.backdropEl.style.backgroundSize = '';
+                this.backdropEl.style.backgroundPosition = '';
+                this._blurBackdropCache = null;
+                return;
+            }
+
+            const bgPos = resolveBackgroundPositionPx(
+                blurStyle.backgroundPositionX,
+                blurStyle.backgroundPositionY,
+                blurRect.width,
+                blurRect.height,
+                resolvedSize.w,
+                resolvedSize.h
+            );
+
+            cache = {
+                source: blurSource,
+                bgImage,
+                bgRepeat: blurStyle.backgroundRepeat || 'no-repeat',
+                resolvedSize,
+                bgPos,
+                blurRect
+            };
+            this._blurBackdropCache = cache;
+            this.backdropEl.style.backgroundImage = bgImage;
+            this.backdropEl.style.backgroundRepeat = cache.bgRepeat;
+            this.backdropEl.style.backgroundSize = `${resolvedSize.w}px ${resolvedSize.h}px`;
         }
 
         const loupeRect = this.viewportEl.getBoundingClientRect();
-        const blurRect = blurSource.getBoundingClientRect();
-        const offsetX = loupeRect.left - blurRect.left;
-        const offsetY = loupeRect.top - blurRect.top;
-
-        const bgSize = resolveBackgroundSizePx(blurStyle, blurRect.width, blurRect.height);
-        let resolvedSize = bgSize;
-        if (!resolvedSize) {
-            const img = this._getImage();
-            if (img && img.naturalWidth && img.naturalHeight) {
-                const scale = Math.max(
-                    blurRect.width / img.naturalWidth,
-                    blurRect.height / img.naturalHeight
-                );
-                resolvedSize = {
-                    w: img.naturalWidth * scale,
-                    h: img.naturalHeight * scale
-                };
-            }
-        }
-        if (!resolvedSize) {
-            this.backdropEl.style.backgroundImage = '';
-            this.backdropEl.style.backgroundSize = '';
-            this.backdropEl.style.backgroundPosition = '';
-            return;
-        }
-
-        const bgPos = resolveBackgroundPositionPx(
-            blurStyle.backgroundPositionX,
-            blurStyle.backgroundPositionY,
-            blurRect.width,
-            blurRect.height,
-            resolvedSize.w,
-            resolvedSize.h
-        );
-
-        this.backdropEl.style.backgroundImage = bgImage;
-        this.backdropEl.style.backgroundRepeat = blurStyle.backgroundRepeat || 'no-repeat';
-        this.backdropEl.style.backgroundSize = `${resolvedSize.w}px ${resolvedSize.h}px`;
-        this.backdropEl.style.backgroundPosition = `${bgPos.x - offsetX}px ${bgPos.y - offsetY}px`;
+        const offsetX = loupeRect.left - cache.blurRect.left;
+        const offsetY = loupeRect.top - cache.blurRect.top;
+        this.backdropEl.style.backgroundPosition = `${cache.bgPos.x - offsetX}px ${cache.bgPos.y - offsetY}px`;
     }
 
     _updateViewport() {

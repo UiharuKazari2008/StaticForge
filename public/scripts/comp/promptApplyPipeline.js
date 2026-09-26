@@ -5,6 +5,8 @@
 
 const APPEND_MARKER = '__ENSHUTSUKA_APPEND_POINT__';
 
+// deleteNeedleOccurrences / getCleanReplacementPattern: public/scripts/comp/textReplacementManager.js
+
 function getApplicationContext() {
     return window.dynamicGenerationData?.compiled_prompt?.application_context
         || window._lastCompileToPromptsApplicationContext
@@ -49,69 +51,56 @@ function applyReplacementOnResolvedText(result, replacement) {
     let appliedSuccessfully = false;
     let method = 'direct';
 
-    const getCleanPattern = (str) => {
-        if (!str) return '';
-        let clean = String(str);
-        if (typeof stripManagedEmphasisDelimitersForCounting === 'function') {
-            clean = stripManagedEmphasisDelimitersForCounting(clean);
-        }
-        return clean.replace(/-?\d+(?:\.\d+)?::/g, '').replace(/::/g, '').trim();
-    };
+    // Clean needles once per replacement (not per scan attempt)
+    const cleanSelect = selectText ? getCleanReplacementPattern(selectText) : '';
+    const cleanAnchor = anchorText ? getCleanReplacementPattern(anchorText) : '';
 
     if (action === 'delete') {
         let textToDelete = selectText;
-        if (selectText && result.includes(selectText)) {
-            if (count !== undefined && count !== null) {
-                for (let i = 0; i < count; i++) {
-                    const index = result.indexOf(textToDelete);
-                    if (index === -1) break;
-                    result = result.substring(0, index) + result.substring(index + textToDelete.length);
-                }
-            } else {
-                result = result.split(textToDelete).join('');
-            }
+        let hitIndex = selectText ? result.indexOf(selectText) : -1;
+        if (hitIndex !== -1) {
+            result = deleteNeedleOccurrences(result, textToDelete, count);
             appliedSuccessfully = true;
-        } else if (selectText) {
-            const cleanSelect = getCleanPattern(selectText);
-            if (cleanSelect && result.includes(cleanSelect)) {
+        } else if (selectText && cleanSelect) {
+            hitIndex = result.indexOf(cleanSelect);
+            if (hitIndex !== -1) {
                 result = result.split(cleanSelect).join('');
                 appliedSuccessfully = true;
                 method = 'emphasis-matched';
             }
         }
-        if (!appliedSuccessfully && fallbackSelectText && result.includes(fallbackSelectText)) {
-            textToDelete = fallbackSelectText;
-            if (count !== undefined && count !== null) {
-                for (let i = 0; i < count; i++) {
-                    const index = result.indexOf(textToDelete);
-                    if (index === -1) break;
-                    result = result.substring(0, index) + result.substring(index + textToDelete.length);
-                }
-            } else {
-                result = result.split(textToDelete).join('');
+        if (!appliedSuccessfully && fallbackSelectText) {
+            hitIndex = result.indexOf(fallbackSelectText);
+            if (hitIndex !== -1) {
+                textToDelete = fallbackSelectText;
+                result = deleteNeedleOccurrences(result, textToDelete, count);
+                appliedSuccessfully = true;
+                method = 'fallback';
             }
-            appliedSuccessfully = true;
-            method = 'fallback';
         }
         if (!appliedSuccessfully) {
             return { success: false, error: `Could not find text to delete: "${selectText}"`, result };
         }
     } else if (action === 'replace') {
-        if (selectText && result.includes(selectText)) {
-            result = result.replace(selectText, replaceText);
+        let hitIndex = selectText ? result.indexOf(selectText) : -1;
+        if (hitIndex !== -1) {
+            result = result.slice(0, hitIndex) + replaceText + result.slice(hitIndex + selectText.length);
             appliedSuccessfully = true;
-        } else if (selectText) {
-            const cleanSelect = getCleanPattern(selectText);
-            if (cleanSelect && result.includes(cleanSelect)) {
-                result = result.replace(cleanSelect, replaceText);
+        } else if (selectText && cleanSelect) {
+            hitIndex = result.indexOf(cleanSelect);
+            if (hitIndex !== -1) {
+                result = result.slice(0, hitIndex) + replaceText + result.slice(hitIndex + cleanSelect.length);
                 appliedSuccessfully = true;
                 method = 'emphasis-matched';
             }
         }
-        if (!appliedSuccessfully && fallbackSelectText && result.includes(fallbackSelectText)) {
-            result = result.replace(fallbackSelectText, replaceText);
-            appliedSuccessfully = true;
-            method = 'fallback';
+        if (!appliedSuccessfully && fallbackSelectText) {
+            hitIndex = result.indexOf(fallbackSelectText);
+            if (hitIndex !== -1) {
+                result = result.slice(0, hitIndex) + replaceText + result.slice(hitIndex + fallbackSelectText.length);
+                appliedSuccessfully = true;
+                method = 'fallback';
+            }
         } else if (!appliedSuccessfully && !isCritical && alternativeText) {
             const needsComma = result.trim() && !result.trim().endsWith(',') && !textEndsWithEmphasisGroupClose(result);
             result = result.trimEnd() + (needsComma ? ', ' : ' ') + alternativeText;
@@ -126,15 +115,15 @@ function applyReplacementOnResolvedText(result, replacement) {
         let insertPosition = result.length;
 
         if (anchorText) {
-            const anchorIndex = result.indexOf(anchorText);
+            let anchorIndex = result.indexOf(anchorText);
             if (anchorIndex !== -1) {
                 insertPosition = anchorIndex + anchorText.length;
                 appliedSuccessfully = true;
                 method = 'anchor';
-            } else {
-                const cleanAnchor = getCleanPattern(anchorText);
-                if (cleanAnchor && result.includes(cleanAnchor)) {
-                    insertPosition = result.indexOf(cleanAnchor) + cleanAnchor.length;
+            } else if (cleanAnchor) {
+                anchorIndex = result.indexOf(cleanAnchor);
+                if (anchorIndex !== -1) {
+                    insertPosition = anchorIndex + cleanAnchor.length;
                     appliedSuccessfully = true;
                     method = 'anchor';
                 }
@@ -142,23 +131,26 @@ function applyReplacementOnResolvedText(result, replacement) {
         }
 
         if (!appliedSuccessfully && selectText) {
-            const index = result.indexOf(selectText);
+            let index = result.indexOf(selectText);
             if (index !== -1) {
                 insertPosition = index + selectText.length;
                 appliedSuccessfully = true;
             } else {
-                const cleanSelect = getCleanPattern(selectText);
-                if (cleanSelect && result.includes(cleanSelect)) {
-                    insertPosition = result.indexOf(cleanSelect) + cleanSelect.length;
+                index = cleanSelect ? result.indexOf(cleanSelect) : -1;
+                if (index !== -1) {
+                    insertPosition = index + cleanSelect.length;
                     appliedSuccessfully = true;
                     method = 'emphasis-matched';
-                } else if (fallbackSelectText && result.includes(fallbackSelectText)) {
-                    insertPosition = result.indexOf(fallbackSelectText) + fallbackSelectText.length;
-                    appliedSuccessfully = true;
-                    method = 'fallback';
-                } else if (!isCritical && alternativeText) {
-                    textToAppend = alternativeText;
-                    method = 'alternative';
+                } else {
+                    index = fallbackSelectText ? result.indexOf(fallbackSelectText) : -1;
+                    if (index !== -1) {
+                        insertPosition = index + fallbackSelectText.length;
+                        appliedSuccessfully = true;
+                        method = 'fallback';
+                    } else if (!isCritical && alternativeText) {
+                        textToAppend = alternativeText;
+                        method = 'alternative';
+                    }
                 }
             }
         }
@@ -189,8 +181,16 @@ function orderReplacementQueue(queue) {
     });
     const ordered = [];
     streams.forEach((entries) => {
-        const phaseReplaceDelete = entries.filter(({ replacement }) => normalizeReplacementAction(replacement) !== 'append');
-        const phaseAppend = entries.filter(({ replacement }) => normalizeReplacementAction(replacement) === 'append');
+        const phaseReplaceDelete = [];
+        const phaseAppend = [];
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            if (normalizeReplacementAction(entry.replacement) === 'append') {
+                phaseAppend.push(entry);
+            } else {
+                phaseReplaceDelete.push(entry);
+            }
+        }
         ordered.push(...phaseReplaceDelete, ...phaseAppend);
     });
     return ordered;

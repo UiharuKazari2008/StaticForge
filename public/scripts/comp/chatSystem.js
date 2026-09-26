@@ -1030,6 +1030,91 @@ class ChatSystem {
         }
     }
 
+    /**
+     * Parse / repair message content once at ingest. Returns display fields + parsed object.
+     * Callers should keep the result and pass it to addMessageToUI instead of re-parsing.
+     */
+    ingestMessageContent(content) {
+        const result = {
+            messageContent: content,
+            actions: '',
+            sfx: '',
+            parsed: null
+        };
+
+        if (!content || typeof content !== 'string') {
+            return result;
+        }
+
+        const trimmed = content.trim();
+        if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+            return result;
+        }
+
+        try {
+            let cleanedContent = trimmed;
+
+            // Handle malformed JSON - multiple objects separated by commas (not wrapped in array)
+            if (cleanedContent.startsWith('{') && !cleanedContent.startsWith('[{') && cleanedContent.includes('},')) {
+                cleanedContent = '[' + cleanedContent + ']';
+            }
+
+            // Remove trailing commas before closing brackets/braces
+            cleanedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+
+            const parsed = JSON.parse(cleanedContent);
+            result.parsed = parsed;
+
+            if (parsed.message && typeof parsed.message === 'string') {
+                result.messageContent = parsed.message;
+            } else if (parsed.response && typeof parsed.response === 'string') {
+                result.messageContent = parsed.response;
+            } else if (Array.isArray(parsed)) {
+                const speechdirectEvents = parsed.filter(e => e.type === 'speechdirect');
+                const speechEvents = parsed.filter(e => e.type === 'speech');
+                const innerspeechEvents = parsed.filter(e => e.type === 'innerspeech');
+                const replyEvents = parsed.filter(e => e.type === 'reply');
+                const actionEvents = parsed.filter(e => e.type === 'actions');
+
+                if (speechdirectEvents.length > 0) {
+                    result.messageContent = speechdirectEvents.map(e => e.content || e.text || '').join(' ');
+                } else if (speechEvents.length > 0) {
+                    result.messageContent = speechEvents.map(e => e.content || e.text || '').join(' ');
+                } else if (innerspeechEvents.length > 0) {
+                    result.messageContent = innerspeechEvents.map(e => e.content || e.text || '').join(' ');
+                } else if (replyEvents.length > 0) {
+                    result.messageContent = replyEvents.map(e => e.content || e.text || '').join(' ');
+                } else if (actionEvents.length > 0) {
+                    result.messageContent = actionEvents.map(e => e.content || e.text || '').join(' ');
+                } else if (parsed.length > 0 && parsed[0].content) {
+                    result.messageContent = parsed[0].content;
+                }
+
+                if (actionEvents.length > 0) {
+                    result.actions = actionEvents.map(e => e.content || '').join(', ');
+                }
+                const sfxEvents = parsed.filter(e => e.type === 'sfx');
+                if (sfxEvents.length > 0) {
+                    result.sfx = sfxEvents.map(e => e.content || '').join(', ');
+                }
+            } else if (parsed.type === 'myname' && parsed.content) {
+                result.messageContent = `My name is ${parsed.content}`;
+            } else if (parsed.type === 'speechdirect' && parsed.content) {
+                result.messageContent = parsed.content;
+            } else if (parsed.type === 'speech' && parsed.content) {
+                result.messageContent = parsed.content;
+            } else if (parsed.type === 'innerspeech' && parsed.content) {
+                result.messageContent = parsed.content;
+            } else if (parsed.type && parsed.content) {
+                result.messageContent = parsed.content;
+            }
+        } catch (e) {
+            console.warn('Failed to parse message content as JSON:', e);
+        }
+
+        return result;
+    }
+
     addMessageToUI(messageType, content, jsonData = null) {
         const container = document.getElementById('chatMessagesList');
         const messageElement = document.createElement('div');
@@ -1046,74 +1131,16 @@ class ChatSystem {
         let actions = '';
         let sfx = '';
         
-        // Try to parse content as JSON if it looks like JSON and jsonData is null
-        if (!jsonData && content && typeof content === 'string' && (content.trim().startsWith('{') || content.trim().startsWith('['))) {
-            try {
-                let parsed;
-                let cleanedContent = content.trim();
-                
-                // Handle malformed JSON - multiple objects separated by commas (not wrapped in array)
-                if (cleanedContent.startsWith('{') && !cleanedContent.startsWith('[{') && cleanedContent.includes('},')) {
-                    // Try to wrap in array brackets
-                    cleanedContent = '[' + cleanedContent + ']';
-                }
-                
-                // Remove trailing commas before closing brackets/braces
-                cleanedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
-                
-                parsed = JSON.parse(cleanedContent);
-                
-                // Handle simple response objects
-                if (parsed.message && typeof parsed.message === 'string') {
-                    messageContent = parsed.message;
-                } else if (parsed.response && typeof parsed.response === 'string') {
-                    messageContent = parsed.response;
-                } else if (Array.isArray(parsed)) {
-                    // Array of events - extract the most important content
-                    // Priority: speechdirect > speech > innerspeech > reply > actions
-                    const speechdirectEvents = parsed.filter(e => e.type === 'speechdirect');
-                    const speechEvents = parsed.filter(e => e.type === 'speech');
-                    const innerspeechEvents = parsed.filter(e => e.type === 'innerspeech');
-                    const replyEvents = parsed.filter(e => e.type === 'reply');
-                    const actionEvents = parsed.filter(e => e.type === 'actions');
-                    
-                    if (speechdirectEvents.length > 0) {
-                        messageContent = speechdirectEvents.map(e => e.content || e.text || '').join(' ');
-                    } else if (speechEvents.length > 0) {
-                        messageContent = speechEvents.map(e => e.content || e.text || '').join(' ');
-                    } else if (innerspeechEvents.length > 0) {
-                        messageContent = innerspeechEvents.map(e => e.content || e.text || '').join(' ');
-                    } else if (replyEvents.length > 0) {
-                        messageContent = replyEvents.map(e => e.content || e.text || '').join(' ');
-                    } else if (actionEvents.length > 0) {
-                        messageContent = actionEvents.map(e => e.content || e.text || '').join(' ');
-                    } else if (parsed.length > 0 && parsed[0].content) {
-                        messageContent = parsed[0].content;
-                    }
-                    
-                    // Extract actions and sfx for display
-                    if (actionEvents.length > 0) {
-                        actions = actionEvents.map(e => e.content || '').join(', ');
-                    }
-                    const sfxEvents = parsed.filter(e => e.type === 'sfx');
-                    if (sfxEvents.length > 0) {
-                        sfx = sfxEvents.map(e => e.content || '').join(', ');
-                    }
-                } else if (parsed.type === 'myname' && parsed.content) {
-                    messageContent = `My name is ${parsed.content}`;
-                } else if (parsed.type === 'speechdirect' && parsed.content) {
-                    messageContent = parsed.content;
-                } else if (parsed.type === 'speech' && parsed.content) {
-                    messageContent = parsed.content;
-                } else if (parsed.type === 'innerspeech' && parsed.content) {
-                    messageContent = parsed.content;
-                } else if (parsed.type && parsed.content) {
-                    messageContent = parsed.content;
-                }
-            } catch (e) {
-                // Not valid JSON, use content as-is
-                console.warn('Failed to parse message content as JSON:', e);
-            }
+        // Prefer pre-ingested display object (parse once at ingest)
+        if (content && typeof content === 'object' && content._chatIngest) {
+            messageContent = content._chatIngest.messageContent;
+            actions = content._chatIngest.actions || '';
+            sfx = content._chatIngest.sfx || '';
+        } else if (!jsonData && content && typeof content === 'string') {
+            const ingested = this.ingestMessageContent(content);
+            messageContent = ingested.messageContent;
+            actions = ingested.actions;
+            sfx = ingested.sfx;
         }
         
         if (jsonData) {
@@ -1389,8 +1416,9 @@ class ChatSystem {
             return;
         }
         
-        // Add the AI response to the UI
-        this.addMessageToUI('assistant', message.data.rawResponse, message.data.response);
+        // Parse once at ingest; keep the object for display
+        const ingested = this.ingestMessageContent(message.data.rawResponse);
+        this.addMessageToUI('assistant', { _chatIngest: ingested }, message.data.response);
         this.scrollToBottom();
         
         // Reset loading state and send button
@@ -1443,7 +1471,8 @@ class ChatSystem {
         const streamingMessage = document.createElement('div');
         streamingMessage.className = 'chat-message assistant streaming';
         streamingMessage.id = `streaming-${activeChatId}`;
-        streamingMessage.dataset.accumulatedEvents = JSON.stringify([]); // Store accumulated events
+        // Keep events as an object on the element — no stringify/parse on every paint
+        streamingMessage._accumulatedEvents = [];
         
         // For reasoning models, show live typing with thought process
         streamingMessage.innerHTML = `
@@ -1499,16 +1528,11 @@ class ChatSystem {
             }
         }
         
-        // Get accumulated events
-        let accumulatedEvents = [];
-        try {
-            const stored = streamingElement.dataset.accumulatedEvents;
-            if (stored) {
-                accumulatedEvents = JSON.parse(stored);
-            }
-        } catch (e) {
-            console.error('Failed to parse accumulated events:', e);
+        // Get accumulated events (object kept on the element — no JSON.parse per update)
+        let accumulatedEvents = streamingElement._accumulatedEvents;
+        if (!Array.isArray(accumulatedEvents)) {
             accumulatedEvents = [];
+            streamingElement._accumulatedEvents = accumulatedEvents;
         }
         
         // Add new events from this update
@@ -1538,9 +1562,6 @@ class ChatSystem {
             
             // Sort by timestamp
             accumulatedEvents.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-            
-            // Update stored events
-            streamingElement.dataset.accumulatedEvents = JSON.stringify(accumulatedEvents);
             
             // Render the accumulated events
             this.renderStreamingEvents(streamingElement, accumulatedEvents);

@@ -171,6 +171,21 @@ class VfsVirtualGrid {
         marqueeEl.style.height = '0px';
         this.container.classList.add('explorer-marquee-active');
 
+        const itemById = new Map();
+        for (let i = 0; i < this.items.length; i++) {
+            const item = this.items[i];
+            itemById.set(item.id, item);
+        }
+        const rectCache = [];
+        this.contentEl.querySelectorAll('.explorer-item').forEach((el) => {
+            const id = el.dataset.itemId;
+            const item = itemById.get(id);
+            if (!item || item.isUploadPlaceholder) return;
+            rectCache.push({ id, el, rect: el.getBoundingClientRect() });
+        });
+        this._marqueeRectCache = rectCache;
+        this._marqueePrevSelected = new Set(this.selectedIds);
+
         const onMove = (e) => {
             dragged = true;
             e.preventDefault();
@@ -194,6 +209,8 @@ class VfsVirtualGrid {
             document.removeEventListener('mouseup', onUp);
             marqueeEl.classList.add('hidden');
             this.container.classList.remove('explorer-marquee-active');
+            this._marqueeRectCache = null;
+            this._marqueePrevSelected = null;
             if (!dragged && !addToSelection) this.clearSelection();
         };
 
@@ -208,16 +225,42 @@ class VfsVirtualGrid {
 
     _applyMarqueeSelection(clientRect, baseSelection, addToSelection) {
         const hits = new Set(addToSelection ? baseSelection : []);
-        this.contentEl.querySelectorAll('.explorer-item').forEach((el) => {
-            const id = el.dataset.itemId;
-            const item = this.items.find(i => i.id === id);
-            if (!item || item.isUploadPlaceholder) return;
-            if (this._rectsIntersect(clientRect, el.getBoundingClientRect())) {
-                hits.add(id);
+        const rectCache = this._marqueeRectCache;
+        if (rectCache) {
+            for (let i = 0; i < rectCache.length; i++) {
+                const entry = rectCache[i];
+                if (this._rectsIntersect(clientRect, entry.rect)) {
+                    hits.add(entry.id);
+                }
             }
-        });
+        } else {
+            const itemById = new Map();
+            for (let i = 0; i < this.items.length; i++) {
+                itemById.set(this.items[i].id, this.items[i]);
+            }
+            this.contentEl.querySelectorAll('.explorer-item').forEach((el) => {
+                const id = el.dataset.itemId;
+                const item = itemById.get(id);
+                if (!item || item.isUploadPlaceholder) return;
+                if (this._rectsIntersect(clientRect, el.getBoundingClientRect())) {
+                    hits.add(id);
+                }
+            });
+        }
+        const prev = this._marqueePrevSelected || this.selectedIds;
+        let unchanged = prev.size === hits.size;
+        if (unchanged) {
+            for (const id of hits) {
+                if (!prev.has(id)) {
+                    unchanged = false;
+                    break;
+                }
+            }
+        }
+        if (unchanged) return;
         this.selectedIds = hits;
-        this._updateSelectionClasses();
+        this._updateSelectionClassesDelta(prev, hits, rectCache);
+        this._marqueePrevSelected = hits;
         this.onSelectionChange(this.getSelectedItems());
     }
 
@@ -844,6 +887,34 @@ class VfsVirtualGrid {
         this.contentEl.querySelectorAll('.explorer-item').forEach(el => {
             el.classList.toggle('selected', this.selectedIds.has(el.dataset.itemId));
         });
+    }
+
+    _updateSelectionClassesDelta(prevIds, nextIds, rectCache) {
+        const elById = new Map();
+        if (rectCache) {
+            for (let i = 0; i < rectCache.length; i++) {
+                elById.set(rectCache[i].id, rectCache[i].el);
+            }
+        }
+        const resolveEl = (id) => {
+            let el = elById.get(id);
+            if (el) return el;
+            el = this.contentEl.querySelector(`.explorer-item[data-item-id="${CSS.escape(id)}"]`);
+            if (el) elById.set(id, el);
+            return el;
+        };
+        for (const id of prevIds) {
+            if (!nextIds.has(id)) {
+                const el = resolveEl(id);
+                if (el) el.classList.remove('selected');
+            }
+        }
+        for (const id of nextIds) {
+            if (!prevIds.has(id)) {
+                const el = resolveEl(id);
+                if (el) el.classList.add('selected');
+            }
+        }
     }
 
     _formatSize(bytes) {

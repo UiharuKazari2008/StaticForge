@@ -2415,11 +2415,16 @@ class EmphasisGroupsToolInstance {
         if (!grid) return;
 
         this.targets.forEach((target, i) => {
-            const card = grid.querySelector(`.emphasis-groups-card[data-index="${i}"]`);
+            const card = target.cardEl
+                || grid.querySelector(`.emphasis-groups-card[data-index="${i}"]`);
             if (!card) return;
-            const slider = card.querySelector('.emphasis-groups-card-slider');
-            const weightEl = card.querySelector('.emphasis-groups-card-weight');
-            const signBtn = card.querySelector('.emphasis-groups-card-sign');
+            if (!target.cardEl) target.cardEl = card;
+            const slider = card._emphasisSlider || card.querySelector('.emphasis-groups-card-slider');
+            const weightEl = card._emphasisWeightEl || card.querySelector('.emphasis-groups-card-weight');
+            const signBtn = card._emphasisSignBtn || card.querySelector('.emphasis-groups-card-sign');
+            if (slider && !card._emphasisSlider) card._emphasisSlider = slider;
+            if (weightEl && !card._emphasisWeightEl) card._emphasisWeightEl = weightEl;
+            if (signBtn && !card._emphasisSignBtn) card._emphasisSignBtn = signBtn;
             const w = target.cardState?.directWeight ?? target.weight;
             if (Number.isFinite(w)) {
                 const inferred = inferEmphasisWeightBand(w, target.cardState?.signMode);
@@ -4072,6 +4077,7 @@ class EmphasisGroupsToolInstance {
         const savedScrollTop = scrollEl ? scrollEl.scrollTop : 0;
 
         grid.innerHTML = '';
+        this.targets.forEach((t) => { t.cardEl = null; });
         if (!this._lastDistribution || !this.contextCards) {
             this._refreshDistributionCache();
         }
@@ -4313,6 +4319,12 @@ class EmphasisGroupsToolInstance {
                     : null;
                 this._setCardWeightDisplay(weightEl, displayWeight, normalizeShare);
                 this._setCardWeightDisplay(weightInput, displayWeight, normalizeShare);
+
+                // Keep card + direct-mode controls on the target for slider refresh (no per-tick query).
+                card._emphasisSlider = slider;
+                card._emphasisWeightEl = weightEl;
+                card._emphasisSignBtn = signBtn;
+                target.cardEl = card;
 
                 if (mergeBtn && !readOnly) {
                     mergeBtn.addEventListener('click', (e) => {

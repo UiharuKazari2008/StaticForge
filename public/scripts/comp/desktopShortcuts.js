@@ -638,8 +638,17 @@ class DesktopShortcutsManager {
         return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
     }
 
-    getShortcutIdsInRect(rect) {
+    getShortcutIdsInRect(rect, rectCache) {
         const ids = [];
+        if (rectCache) {
+            for (let i = 0; i < rectCache.length; i++) {
+                const entry = rectCache[i];
+                if (this.rectsIntersect(rect, entry.rect)) {
+                    ids.push(entry.id);
+                }
+            }
+            return ids;
+        }
         this.getAllShortcutElements().forEach((el) => {
             if (this.rectsIntersect(rect, el.getBoundingClientRect())) {
                 ids.push(el.dataset.shortcutId);
@@ -673,15 +682,49 @@ class DesktopShortcutsManager {
         this.updateSelectionVisuals();
     }
 
-    updateSelectionVisuals() {
-        this.getAllShortcutElements().forEach((el) => {
-            const isSelected = this.selectedShortcutIds.has(el.dataset.shortcutId);
-            el.classList.toggle('selected', isSelected);
-            el.dataset.selected = isSelected ? 'true' : 'false';
-        });
+    updateSelectionVisuals(options) {
+        const opts = options || {};
+        const prevSelected = opts.prevSelected;
+        const skipOverlay = opts.skipOverlay;
+        if (prevSelected) {
+            const elById = opts.elById;
+            const resolveEl = (id) => {
+                if (elById) {
+                    const cached = elById.get(id);
+                    if (cached) return cached;
+                }
+                return this.getAllShortcutElements().find((el) => el.dataset.shortcutId === id);
+            };
+            for (const id of prevSelected) {
+                if (!this.selectedShortcutIds.has(id)) {
+                    const el = resolveEl(id);
+                    if (el) {
+                        el.classList.remove('selected');
+                        el.dataset.selected = 'false';
+                    }
+                }
+            }
+            for (const id of this.selectedShortcutIds) {
+                if (!prevSelected.has(id)) {
+                    const el = resolveEl(id);
+                    if (el) {
+                        el.classList.add('selected');
+                        el.dataset.selected = 'true';
+                    }
+                }
+            }
+        } else {
+            this.getAllShortcutElements().forEach((el) => {
+                const isSelected = this.selectedShortcutIds.has(el.dataset.shortcutId);
+                el.classList.toggle('selected', isSelected);
+                el.dataset.selected = isSelected ? 'true' : 'false';
+            });
+        }
         this.desktopContainer?.classList.toggle('desktop-has-selection', this.selectedShortcutIds.size > 0);
-        // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
-        notifyKeyboardOverlayContextChanged();
+        if (!skipOverlay) {
+            // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+            notifyKeyboardOverlayContextChanged();
+        }
     }
 
     getSelectedShortcuts() {
@@ -733,6 +776,17 @@ class DesktopShortcutsManager {
         marqueeEl.style.height = '0px';
 
         this.marqueeState = { startX, startY, addToSelection, baseSelection };
+        const rectCache = [];
+        const elById = new Map();
+        this.getAllShortcutElements().forEach((el) => {
+            const id = el.dataset.shortcutId;
+            const entry = { id, el, rect: el.getBoundingClientRect() };
+            rectCache.push(entry);
+            elById.set(id, el);
+        });
+        this.marqueeState.rectCache = rectCache;
+        this.marqueeState.elById = elById;
+        this.marqueeState.prevSelected = new Set(this.selectedShortcutIds);
         document.body.classList.add('desktop-marquee-active');
 
         const moveHandler = (e) => this.handleDesktopMarqueeMove(e, moveHandler, endHandler);
@@ -773,7 +827,8 @@ class DesktopShortcutsManager {
         noteDesktopPointerSelection();
 
         const rect = { left, top, right: left + width, bottom: top + height };
-        const boxIds = this.getShortcutIdsInRect(rect);
+        const boxIds = this.getShortcutIdsInRect(rect, this.marqueeState.rectCache);
+        const prevSelected = this.marqueeState.prevSelected || new Set(this.selectedShortcutIds);
 
         if (addToSelection) {
             this.selectedShortcutIds = new Set(baseSelection);
@@ -781,7 +836,22 @@ class DesktopShortcutsManager {
         } else {
             this.selectedShortcutIds = new Set(boxIds);
         }
-        this.updateSelectionVisuals();
+        let unchanged = prevSelected.size === this.selectedShortcutIds.size;
+        if (unchanged) {
+            for (const id of this.selectedShortcutIds) {
+                if (!prevSelected.has(id)) {
+                    unchanged = false;
+                    break;
+                }
+            }
+        }
+        if (unchanged) return;
+        this.updateSelectionVisuals({
+            prevSelected,
+            elById: this.marqueeState.elById,
+            skipOverlay: true
+        });
+        this.marqueeState.prevSelected = new Set(this.selectedShortcutIds);
     }
 
     handleDesktopMarqueeEnd(event, moveHandler, endHandler) {
@@ -798,6 +868,8 @@ class DesktopShortcutsManager {
             this.selectionMarqueeEl.style.height = '0px';
         }
         this.marqueeState = null;
+        // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+        notifyKeyboardOverlayContextChanged();
     }
 
     async removeSelectedShortcuts() {

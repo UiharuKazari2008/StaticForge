@@ -199,6 +199,10 @@ function initializePipelineStageDragAndDrop() {
 
     let draggedItem = null;
     let draggedIndex = null;
+    let dragMidpoints = null;
+    let dragPendingY = null;
+    let dragRafId = null;
+    let dragOverItem = null;
 
     // Add event listeners to drag handles
     const dragHandles = list.querySelectorAll('.workspace-drag-handle');
@@ -209,6 +213,14 @@ function initializePipelineStageDragAndDrop() {
         handle.addEventListener('touchmove', onDrag, { passive: false });
         handle.addEventListener('touchend', endDrag);
     });
+
+    function rebuildDragMidpoints() {
+        const items = Array.from(list.children);
+        dragMidpoints = items.map((item) => {
+            const r = item.getBoundingClientRect();
+            return { item, top: r.top, mid: r.top + r.height / 2, bottom: r.bottom };
+        });
+    }
 
     function startDrag(e) {
         e.preventDefault();
@@ -225,6 +237,12 @@ function initializePipelineStageDragAndDrop() {
 
         draggedItem = item;
         draggedIndex = Array.from(list.children).indexOf(item);
+        dragPendingY = null;
+        if (dragRafId != null) {
+            cancelAnimationFrame(dragRafId);
+            dragRafId = null;
+        }
+        rebuildDragMidpoints();
 
         // Add dragging class
         draggedItem.classList.add('dragging');
@@ -259,45 +277,46 @@ function initializePipelineStageDragAndDrop() {
             return; // No valid input
         }
 
-        const rect = list.getBoundingClientRect();
-        const mouseY = clientY - rect.top;
+        dragPendingY = clientY;
+        if (dragRafId == null) {
+            dragRafId = requestAnimationFrame(flushPipelineStageDrag);
+        }
+    }
 
-        // Find the item under the mouse and determine if we're in top or bottom half
-        const items = Array.from(list.children);
+    function flushPipelineStageDrag() {
+        dragRafId = null;
+        if (!draggedItem || dragPendingY == null || !dragMidpoints) {
+            return;
+        }
+
+        const mouseY = dragPendingY;
+        const entries = dragMidpoints;
         let targetIndex = null;
         let insertAfter = false;
 
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            if (item === draggedItem) continue;
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            if (entry.item === draggedItem) continue;
 
-            const itemRect = item.getBoundingClientRect();
-            const itemTop = itemRect.top - rect.top;
-            const itemBottom = itemTop + itemRect.height;
-            const itemMiddle = itemTop + (itemRect.height / 2);
-
-            if (mouseY >= itemTop && mouseY <= itemBottom) {
+            if (mouseY >= entry.top && mouseY <= entry.bottom) {
                 targetIndex = i;
-                insertAfter = mouseY > itemMiddle;
+                insertAfter = mouseY > entry.mid;
                 break;
             }
         }
 
         // If no item found, check if we're below all items
-        if (targetIndex === null && items.length > 0) {
-            const lastItem = items[items.length - 1];
-            const lastItemRect = lastItem.getBoundingClientRect();
-            const lastItemBottom = lastItemRect.top - rect.top + lastItemRect.height;
-
-            if (mouseY > lastItemBottom) {
-                targetIndex = items.length - 1;
+        if (targetIndex === null && entries.length > 0) {
+            const lastEntry = entries[entries.length - 1];
+            if (mouseY > lastEntry.bottom) {
+                targetIndex = entries.length - 1;
                 insertAfter = true;
             }
         }
 
         // Move the dragged item to new position
         if (targetIndex !== null) {
-            const currentIndex = Array.from(list.children).indexOf(draggedItem);
+            const currentIndex = entries.findIndex((entry) => entry.item === draggedItem);
             let finalTargetIndex = targetIndex;
 
             // Adjust target index if we're moving down and should insert after
@@ -307,11 +326,7 @@ function initializePipelineStageDragAndDrop() {
 
             // Only move if the position actually changes
             if (finalTargetIndex !== currentIndex) {
-                // Remove drag-over class from all items
-                items.forEach(item => item.classList.remove('drag-over'));
-
-                // Actually move the item in the DOM
-                const targetItem = items[targetIndex];
+                const targetItem = entries[targetIndex].item;
                 if (insertAfter && targetItem) {
                     // Insert after the target item
                     if (targetItem.nextSibling) {
@@ -327,11 +342,14 @@ function initializePipelineStageDragAndDrop() {
                     list.appendChild(draggedItem);
                 }
 
-                // Add drag-over class to new position
+                if (dragOverItem && dragOverItem !== draggedItem) {
+                    dragOverItem.classList.remove('drag-over');
+                }
                 draggedItem.classList.add('drag-over');
+                dragOverItem = draggedItem;
 
-                // Update draggedIndex
                 draggedIndex = Array.from(list.children).indexOf(draggedItem);
+                rebuildDragMidpoints();
             }
         }
     }
@@ -343,14 +361,24 @@ function initializePipelineStageDragAndDrop() {
 
         e.preventDefault();
 
+        if (dragRafId != null) {
+            cancelAnimationFrame(dragRafId);
+            dragRafId = null;
+            flushPipelineStageDrag();
+        }
+
         if (_pipelineDragDocumentController) {
             _pipelineDragDocumentController.abort();
             _pipelineDragDocumentController = null;
         }
 
         draggedItem.classList.remove('dragging');
-        const items = Array.from(list.children);
-        items.forEach(item => item.classList.remove('drag-over'));
+        if (dragOverItem) {
+            dragOverItem.classList.remove('drag-over');
+            dragOverItem = null;
+        } else {
+            draggedItem.classList.remove('drag-over');
+        }
 
         // Restore text selection
         document.body.style.userSelect = '';
@@ -365,6 +393,8 @@ function initializePipelineStageDragAndDrop() {
 
         draggedItem = null;
         draggedIndex = null;
+        dragMidpoints = null;
+        dragPendingY = null;
     }
 }
 

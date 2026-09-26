@@ -2500,16 +2500,22 @@ class WikiDisplayBase {
             : /version/i.test(headerLabel) ? 'version'
             : /quality|stars|rarity/i.test(headerLabel) ? 'number'
             : '';
+
+        const bodies = table.tBodies.length ? [...table.tBodies] : [table];
+        const rowModels = [];
+        bodies.forEach((body) => {
+            [...body.rows].forEach((row) => {
+                if (row === headerRow || row.querySelector('th')) return;
+                rowModels.push({ row, body, sortValue: cellRaw(row) });
+            });
+        });
+
         if (!mode) {
             const sample = [];
-            const bodies = table.tBodies.length ? [...table.tBodies] : [table];
-            bodies.forEach((body) => {
-                [...body.rows].forEach((row) => {
-                    if (row === headerRow || sample.length >= 12) return;
-                    const v = cellRaw(row);
-                    if (v) sample.push(v);
-                });
-            });
+            for (let i = 0; i < rowModels.length && sample.length < 12; i++) {
+                const v = rowModels[i].sortValue;
+                if (v) sample.push(v);
+            }
             if (sample.length && sample.filter((v) => parseWikiDateMs(v) != null).length >= Math.ceil(sample.length / 2)) {
                 mode = 'date';
             } else if (sample.length && sample.filter((v) => parseWikiVersion(v)).length >= Math.ceil(sample.length / 2)) {
@@ -2518,9 +2524,9 @@ class WikiDisplayBase {
                 mode = 'number';
             }
         }
-        const compare = (rowA, rowB) => {
-            const sa = cellRaw(rowA);
-            const sb = cellRaw(rowB);
+        const compare = (a, b) => {
+            const sa = a.sortValue;
+            const sb = b.sortValue;
             const emptyA = sa === '';
             const emptyB = sb === '';
             if (emptyA !== emptyB) return emptyA ? 1 : -1;
@@ -2559,11 +2565,18 @@ class WikiDisplayBase {
             return dir === 'asc' ? cmp : -cmp;
         };
 
-        const bodies = table.tBodies.length ? [...table.tBodies] : [table];
-        bodies.forEach((body) => {
-            const rows = [...body.rows].filter((row) => row !== headerRow && !row.querySelector('th'));
-            rows.sort(compare);
-            rows.forEach((row) => body.appendChild(row));
+        const modelsByBody = new Map();
+        rowModels.forEach((model) => {
+            let list = modelsByBody.get(model.body);
+            if (!list) {
+                list = [];
+                modelsByBody.set(model.body, list);
+            }
+            list.push(model);
+        });
+        modelsByBody.forEach((models, body) => {
+            models.sort(compare);
+            models.forEach((model) => body.appendChild(model.row));
         });
     }
     

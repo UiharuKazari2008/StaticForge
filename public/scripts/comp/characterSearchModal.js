@@ -13,8 +13,28 @@ class CharacterSearchModal extends WikiDisplayBase {
         this.characters = [];
         this.currentSearchResults = [];
         this.isLoaded = false;
+        this.searchDebounceMs = 350;
+        this.searchTimeout = null;
+        this.resultRowPool = [];
+        this.renderCap = 50;
 
         this.init();
+    }
+
+    tokenizeSearchText(text) {
+        return text ? text.split(/[^a-z0-9]+/).filter(Boolean) : [];
+    }
+
+    prepareCharacterEntry(char) {
+        const name = char.name ? char.name.toLowerCase() : '';
+        const copyright = char.copyright ? char.copyright.toLowerCase() : '';
+        return {
+            char,
+            name,
+            copyright,
+            nameTokens: this.tokenizeSearchText(name),
+            copyrightTokens: this.tokenizeSearchText(copyright)
+        };
     }
 
     async init() {
@@ -54,15 +74,16 @@ class CharacterSearchModal extends WikiDisplayBase {
         try {
             const response = await fetch('/characters.json');
             const data = await response.json();
-            this.characters = data.data || [];
+            this.characters = (data.data || []).map((char) => this.prepareCharacterEntry(char));
             this.isLoaded = true;
 
             // Show initial list (maybe some popular ones or just the beginning)
-            this.renderResults(this.characters.slice(0, 50));
+            this.renderResults(this.characters.slice(0, this.renderCap).map((entry) => entry.char));
         } catch (error) {
             console.error('Failed to load character data:', error);
             if (this.resultsList) {
                 this.resultsList.innerHTML = '<div class="error-state">Failed to load characters.</div>';
+                this.resultRowPool = [];
             }
         }
     }
@@ -70,10 +91,12 @@ class CharacterSearchModal extends WikiDisplayBase {
     setupEventListeners() {
         if (this.searchInput) {
             this.searchInput.addEventListener('input', () => {
-                this.performSearch();
+                clearTimeout(this.searchTimeout);
+                this.searchTimeout = setTimeout(() => this.performSearch(), this.searchDebounceMs);
             });
             this.searchInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
+                    clearTimeout(this.searchTimeout);
                     this.performSearch();
                 }
             });
@@ -122,28 +145,27 @@ class CharacterSearchModal extends WikiDisplayBase {
     performSearch() {
         const query = this.searchInput.value.toLowerCase().trim();
         if (!query) {
-            this.renderResults(this.characters.slice(0, 50));
+            this.renderResults(this.characters.slice(0, this.renderCap).map((entry) => entry.char));
             return;
         }
 
         const searchWords = query.split(/\s+/).filter(Boolean);
-        const textHasWord = (text, word) => {
-            if (!text || !word) return false;
-            const tokens = text.split(/[^a-z0-9]+/).filter(Boolean);
+        const textHasWord = (tokens, word) => {
+            if (!tokens || !tokens.length || !word) return false;
             if (tokens.some(token => token === word)) return true;
             if (word.length >= 3 && tokens.some(token => token.startsWith(word))) return true;
             return false;
         };
 
         const scored = [];
-        for (const char of this.characters) {
-            const name = char.name ? char.name.toLowerCase() : '';
-            const copyright = char.copyright ? char.copyright.toLowerCase() : '';
+        for (const entry of this.characters) {
+            const name = entry.name;
+            const copyright = entry.copyright;
             if (!name) continue;
 
-            const nameWordHits = searchWords.filter(word => textHasWord(name, word)).length;
+            const nameWordHits = searchWords.filter(word => textHasWord(entry.nameTokens, word)).length;
             const copyrightWordHits = copyright
-                ? searchWords.filter(word => textHasWord(copyright, word)).length
+                ? searchWords.filter(word => textHasWord(entry.copyrightTokens, word)).length
                 : 0;
             const nameMatches = nameWordHits === searchWords.length;
             const copyrightMatches = !!copyright && copyrightWordHits === searchWords.length;
@@ -152,7 +174,7 @@ class CharacterSearchModal extends WikiDisplayBase {
             const copyrightPrefix = copyright.startsWith(query);
             const partialNameMatch = !nameMatches
                 && searchWords.length > 1
-                && textHasWord(name, searchWords[0]);
+                && textHasWord(entry.nameTokens, searchWords[0]);
 
             if (!nameMatches && !copyrightMatches && !nameContains && !copyrightContains
                 && !copyrightPrefix && !partialNameMatch) {
@@ -171,7 +193,7 @@ class CharacterSearchModal extends WikiDisplayBase {
             } else if (copyrightMatches || copyrightContains) {
                 score = 100 + copyrightWordHits * 5;
             }
-            scored.push({ char, score, name });
+            scored.push({ char: entry.char, score, name });
         }
 
         scored.sort((a, b) => {
@@ -179,33 +201,74 @@ class CharacterSearchModal extends WikiDisplayBase {
             return a.name.localeCompare(b.name);
         });
 
-        this.renderResults(scored.map(entry => entry.char));
+        this.renderResults(scored.slice(0, this.renderCap).map(entry => entry.char));
+    }
+
+    ensureResultRow(index) {
+        let item = this.resultRowPool[index];
+        if (item && item.isConnected) return item;
+
+        item = document.createElement('div');
+        item.className = 'tag-wiki-result-item';
+        item.innerHTML = `
+            <div class="result-name"></div>
+            <div class="result-type"></div>
+        `;
+        item.addEventListener('click', () => {
+            const char = item._character;
+            if (!char) return;
+            this.resultRowPool.forEach((el) => {
+                if (el) el.classList.remove('active');
+            });
+            item.classList.add('active');
+            this.renderCharacterDetails(char);
+        });
+        this.resultRowPool[index] = item;
+        return item;
     }
 
     renderResults(results) {
         if (!this.resultsList) return;
-        this.resultsList.innerHTML = '';
+
+        const emptyOrError = this.resultsList.querySelector('.no-results, .error-state');
+        if (emptyOrError) emptyOrError.remove();
 
         if (results.length === 0) {
+            this.resultRowPool.forEach((el) => {
+                if (el) el.remove();
+            });
+            this.resultRowPool = [];
             this.resultsList.innerHTML = '<div class="no-results">No characters found.</div>';
             return;
         }
 
-        results.forEach(char => {
-            const item = document.createElement('div');
-            item.className = 'tag-wiki-result-item';
-            item.innerHTML = `
-                <div class="result-name">${this.escapeHtml(char.name)}</div>
-                <div class="result-type">${this.escapeHtml(char.copyright || 'Original')}</div>
-            `;
-            item.addEventListener('click', () => {
-                // Remove active class from others
-                this.resultsList.querySelectorAll('.tag-wiki-result-item').forEach(el => el.classList.remove('active'));
-                item.classList.add('active');
-                this.renderCharacterDetails(char);
-            });
-            this.resultsList.appendChild(item);
-        });
+        const selectedName = this.currentSelectedCharacter ? this.currentSelectedCharacter.name : null;
+
+        for (let i = 0; i < results.length; i++) {
+            const char = results[i];
+            const item = this.ensureResultRow(i);
+            item._character = char;
+            const nameEl = item.querySelector('.result-name');
+            const typeEl = item.querySelector('.result-type');
+            if (nameEl) nameEl.textContent = char.name || '';
+            if (typeEl) typeEl.textContent = char.copyright || 'Original';
+            item.classList.toggle('active', !!(selectedName && char.name === selectedName));
+            if (item.parentNode !== this.resultsList) {
+                this.resultsList.appendChild(item);
+            } else if (this.resultsList.children[i] !== item) {
+                this.resultsList.insertBefore(item, this.resultsList.children[i] || null);
+            }
+        }
+
+        for (let i = results.length; i < this.resultRowPool.length; i++) {
+            const stale = this.resultRowPool[i];
+            if (stale) {
+                stale.remove();
+                stale._character = null;
+            }
+        }
+        this.resultRowPool.length = results.length;
+        this.currentSearchResults = results;
     }
 
     renderCharacterDetails(char) {

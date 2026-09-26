@@ -25,6 +25,8 @@ class PromptTextareaToolbar {
         this._tokenizerReadyRecountPending = false;
         this._bottomSummaryRaf = null;
         this._pendingBottomSummary = null;
+        this._searchTargetCache = null; // { viewMode, textareas }
+        this._searchTargetCacheObserver = null;
         this.init();
     }
 
@@ -370,11 +372,12 @@ class PromptTextareaToolbar {
     updateTokenCountIncremental(changedTextarea) {
         const tokenizer = getPromptTokenizer();
         if (!tokenizer || !changedTextarea) return;
-        if (!this._fieldTokenCache.has(changedTextarea)) {
+        if (!this._groupTotalsReady) {
             this.updateAllTokenCounts();
             return;
         }
 
+        // Cache miss: recount this one field only (keep group totals warm)
         const isUc = this.isUcTextarea(changedTextarea);
         const stripped = this.stripTextForTokenCount(changedTextarea.value || '');
         const newCount = tokenizer.countTokens(stripped);
@@ -903,10 +906,8 @@ class PromptTextareaToolbar {
         // Add search mode class to show search elements
         toolbar.classList.add('search-mode');
 
-        // Expand character prompts for main editor search only (not isolated modal fields)
-        if (!textarea.closest('#expansionCompiledPromptDialog')) {
-            this.expandAllCharacterPrompts();
-        }
+        // Character card textareas keep their values while collapsed — search them without expanding
+        // (jumpToSearchResult expands only the matched card via expandCharacterPromptWithSelection)
 
         // Initialize search functionality
         this.initializeSearchMode(textarea, toolbar);
@@ -1137,13 +1138,44 @@ class PromptTextareaToolbar {
             return activeTextarea ? [activeTextarea] : [];
         }
 
+        const viewMode = this.getCurrentViewMode();
+        const cache = this._searchTargetCache;
+        if (cache && cache.viewMode === viewMode && cache.textareas) {
+            const alive = [];
+            for (let i = 0; i < cache.textareas.length; i++) {
+                const ta = cache.textareas[i];
+                if (ta && ta.isConnected) alive.push(ta);
+            }
+            if (alive.length === cache.textareas.length) {
+                return alive;
+            }
+            // Some nodes detached — rebuild
+        }
+
+        this.ensureSearchTargetCacheObserver();
+
         const textareas = [];
         document.querySelectorAll('.prompt-textarea, .character-prompt-textarea').forEach((textarea) => {
             if (this.shouldIncludeTextareaInSearch(textarea)) {
                 textareas.push(textarea);
             }
         });
+        this._searchTargetCache = { viewMode, textareas };
         return textareas;
+    }
+
+    invalidateSearchTargetCache() {
+        this._searchTargetCache = null;
+    }
+
+    ensureSearchTargetCacheObserver() {
+        if (this._searchTargetCacheObserver) return;
+        const container = document.getElementById('characterPromptsContainer');
+        if (!container) return;
+        this._searchTargetCacheObserver = new MutationObserver(() => {
+            this.invalidateSearchTargetCache();
+        });
+        this._searchTargetCacheObserver.observe(container, { childList: true });
     }
 
     clearSearchHighlightsForTextarea(textarea) {
@@ -1158,10 +1190,6 @@ class PromptTextareaToolbar {
 
     clearTrackedSearchHighlights(searchState) {
         if (!searchState || !searchState.highlightedTextareas || searchState.highlightedTextareas.size === 0) {
-            this.clearAllSearchHighlights();
-            if (searchState) {
-                searchState.highlightedTextareas = new Set();
-            }
             return;
         }
         searchState.highlightedTextareas.forEach((textarea) => {
@@ -1175,9 +1203,17 @@ class PromptTextareaToolbar {
         let currentPos = 0;
         const sortedResults = [...textareaResults].sort((a, b) => a.start - b.start);
 
+        // Map result → index once (avoid indexOf inside the match loop)
+        const resultIndexMap = new Map();
+        for (let i = 0; i < allResults.length; i++) {
+            resultIndexMap.set(allResults[i], i);
+        }
+
         for (const textareaResult of sortedResults) {
             highlightedText += escapeHtml(text.substring(currentPos, textareaResult.start));
-            const originalIndex = allResults.indexOf(textareaResult);
+            const originalIndex = resultIndexMap.has(textareaResult)
+                ? resultIndexMap.get(textareaResult)
+                : -1;
             const isResultSelected = originalIndex === selectedIndex;
             const highlightClass = isResultSelected ? 'search-highlight-selected' : 'search-highlight';
             const matchText = escapeHtml(text.substring(textareaResult.start, textareaResult.end));
@@ -1234,11 +1270,17 @@ class PromptTextareaToolbar {
             '.prompt-textarea-container.director-prompt, .prompt-textarea-container.text-overlay-prompt, #expansionCompiledPromptDialog .prompt-textarea-container'
         );
 
+        const currentTextarea = searchState.textarea;
+        let firstCurrentTextareaIndex = -1;
+
         const targetTextareas = this.getSearchTargetTextareas(activeTextarea, isSingleFieldPromptSearch);
         targetTextareas.forEach((textarea, textareaIndex) => {
             const text = textarea.value;
             const matches = this.findSearchMatchesInText(text, searchQuery);
             matches.forEach((match) => {
+                if (firstCurrentTextareaIndex < 0 && textarea === currentTextarea) {
+                    firstCurrentTextareaIndex = allResults.length;
+                }
                 allResults.push({
                     textarea: textarea,
                     textareaIndex: textareaIndex,
@@ -1253,12 +1295,8 @@ class PromptTextareaToolbar {
 
         // Prioritize selecting a result from the current textarea if available
         if (allResults.length > 0) {
-            const currentTextarea = searchState.textarea;
-            const currentTextareaResults = allResults.filter(r => r.textarea === currentTextarea);
-
-            if (currentTextareaResults.length > 0) {
-                // Select first result from current textarea
-                searchState.selectedIndex = allResults.indexOf(currentTextareaResults[0]);
+            if (firstCurrentTextareaIndex >= 0) {
+                searchState.selectedIndex = firstCurrentTextareaIndex;
             } else {
                 // Fall back to first result overall
                 searchState.selectedIndex = 0;
@@ -1351,13 +1389,14 @@ class PromptTextareaToolbar {
     }
 
     clearAllSearchHighlights() {
-        document.querySelectorAll('.prompt-textarea, .character-prompt-textarea').forEach((textarea) => {
-            this.clearSearchHighlightsForTextarea(textarea);
-        });
         this.searchStates.forEach((searchState) => {
-            if (searchState.highlightedTextareas) {
-                searchState.highlightedTextareas = new Set();
+            if (!searchState.highlightedTextareas || searchState.highlightedTextareas.size === 0) {
+                return;
             }
+            searchState.highlightedTextareas.forEach((textarea) => {
+                this.clearSearchHighlightsForTextarea(textarea);
+            });
+            searchState.highlightedTextareas = new Set();
         });
     }
 
@@ -1398,26 +1437,9 @@ class PromptTextareaToolbar {
     }
 
     expandAllCharacterPrompts() {
-        // Store original collapse states and expand all character prompts
+        // Search reads textarea.value directly; collapsed cards still hold values in the DOM.
+        // Do not expand every card (avoids layout of all hidden prompts). Jump-to-match expands one card.
         this.originalCharacterStates.clear();
-
-        const characterItems = document.querySelectorAll('.character-prompt-item');
-        characterItems.forEach(item => {
-            const characterId = item.id;
-            const isCollapsed = item.classList.contains('collapsed');
-
-            // Store original state
-            this.originalCharacterStates.set(characterId, isCollapsed);
-
-            // Expand if collapsed
-            if (isCollapsed) {
-                item.classList.remove('collapsed');
-                // Update the collapse button state
-                if (window.updateCharacterPromptCollapseButton) {
-                    window.updateCharacterPromptCollapseButton(characterId, false);
-                }
-            }
-        });
     }
 
     restoreCharacterPromptStates() {
@@ -2115,10 +2137,18 @@ class PromptTextareaToolbar {
         if (!textarea || textarea.hasAttribute('data-emphasis-group-chip-wired')) return;
         textarea.setAttribute('data-emphasis-group-chip-wired', 'true');
         const refresh = () => {
-            // capturePromptTextareaSelection: public/scripts/comp/emphasisSelection.js
-            capturePromptTextareaSelection(textarea);
-            if (this.activeTextarea !== textarea) return;
-            this.updateEmphasisGroupChip(textarea, toolbar);
+            if (textarea._emphasisChipRaf) return;
+            textarea._emphasisChipRaf = requestAnimationFrame(() => {
+                textarea._emphasisChipRaf = 0;
+                if (!textarea.isConnected) return;
+                // capturePromptTextareaSelection: public/scripts/comp/emphasisSelection.js
+                capturePromptTextareaSelection(textarea);
+                if (this.activeTextarea !== textarea) return;
+                const key = textarea.selectionStart + '\0' + textarea.selectionEnd + '\0' + (textarea.value || '');
+                if (textarea._emphasisChipKey === key) return;
+                textarea._emphasisChipKey = key;
+                this.updateEmphasisGroupChip(textarea, toolbar);
+            });
         };
         textarea.addEventListener('keyup', refresh);
         textarea.addEventListener('click', refresh);

@@ -107,53 +107,60 @@ function switchManualTab(targetTab, previouslyFocused = undefined) {
 }
 
 // New function to sync main window tab selection to all character prompts
+function getCharacterPromptTabNodes(characterItem) {
+    let nodes = characterItem._promptTabNodes;
+    if (nodes && nodes.item === characterItem) return nodes;
+    const id = characterItem.id;
+    nodes = {
+        item: characterItem,
+        tabsRoot: characterItem.querySelector('.character-prompt-tabs'),
+        toggleGroup: characterItem.querySelector('.gallery-toggle-group'),
+        btnPrompt: characterItem.querySelector('.gallery-toggle-btn[data-tab="prompt"]'),
+        btnUc: characterItem.querySelector('.gallery-toggle-btn[data-tab="uc"]'),
+        btnCreative: characterItem.querySelector('.gallery-toggle-btn[data-tab="creative"]'),
+        panePrompt: document.getElementById(`${id}_prompt-tab`),
+        paneUc: document.getElementById(`${id}_uc-tab`),
+        fieldPrompt: document.getElementById(`${id}_prompt`),
+        fieldUc: document.getElementById(`${id}_uc`),
+        fieldPromptNegative: document.getElementById(`${id}_promptNegative`)
+    };
+    characterItem._promptTabNodes = nodes;
+    return nodes;
+}
+
+function refreshCharacterPromptFieldVisuals(field) {
+    if (!field) return;
+    updateEmphasisHighlighting(field);
+    autoResizeTextarea(field, 70, 0, false, true);
+}
+
 function syncCharacterPromptTabs(mainTab) {
     const characterItems = document.querySelectorAll('.character-prompt-item');
 
     characterItems.forEach(characterItem => {
-        const characterTabButtons = characterItem.querySelectorAll('.gallery-toggle-btn');
-        const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
-        const toggleGroup = characterItem.querySelector('.gallery-toggle-group');
-        const characterPromptTabs = characterItem.querySelector('.character-prompt-tabs');
+        const nodes = getCharacterPromptTabNodes(characterItem);
 
-        // Remove active class from all character tab buttons and panes
-        characterTabButtons.forEach(btn => btn.classList.remove('active'));
-        characterTabPanes.forEach(pane => pane.classList.remove('active'));
+        if (nodes.btnPrompt) nodes.btnPrompt.classList.toggle('active', mainTab === 'prompt');
+        if (nodes.btnUc) nodes.btnUc.classList.toggle('active', mainTab === 'uc');
+        if (nodes.btnCreative) nodes.btnCreative.classList.toggle('active', mainTab === 'creative');
+        if (nodes.panePrompt) nodes.panePrompt.classList.toggle('active', mainTab === 'prompt');
+        if (nodes.paneUc) nodes.paneUc.classList.toggle('active', mainTab === 'uc');
 
-        // Add active class to the corresponding character tab button and pane
-        const targetButton = characterItem.querySelector(`.gallery-toggle-btn[data-tab="${mainTab}"]`);
-        const characterId = characterItem.id;
-        const targetPane = document.getElementById(`${characterId}_${mainTab}-tab`);
-
-        if (targetButton) targetButton.classList.add('active');
-        if (targetPane) targetPane.classList.add('active');
-
-        // Remove show-both class when switching to single tab mode
-        if (characterPromptTabs) {
-            characterPromptTabs.classList.remove('show-both');
+        if (nodes.tabsRoot) {
+            nodes.tabsRoot.classList.remove('show-both');
         }
 
-        // Update the data-active attribute for the character's slider
-        if (toggleGroup) {
-            toggleGroup.setAttribute('data-active', mainTab);
+        if (nodes.toggleGroup) {
+            nodes.toggleGroup.setAttribute('data-active', mainTab);
         }
 
-        const promptTextarea = characterItem.querySelector(`#${characterId}_prompt`);
-        const ucTextarea = characterItem.querySelector(`#${characterId}_uc`);
-        const promptNegativeTextarea = characterItem.querySelector(`#${characterId}_promptNegative`);
+        if (mainTab === 'prompt') {
+            refreshCharacterPromptFieldVisuals(nodes.fieldPrompt);
+        } else if (mainTab === 'uc') {
+            refreshCharacterPromptFieldVisuals(nodes.fieldUc);
+            refreshCharacterPromptFieldVisuals(nodes.fieldPromptNegative);
+        }
 
-        if (promptTextarea) {
-            updateEmphasisHighlighting(promptTextarea);
-            autoResizeTextarea(promptTextarea, 70, 0, false, true);
-        }
-        if (ucTextarea) {
-            updateEmphasisHighlighting(ucTextarea);
-            autoResizeTextarea(ucTextarea, 70, 0, false, true);
-        }
-        if (promptNegativeTextarea) {
-            updateEmphasisHighlighting(promptNegativeTextarea);
-            autoResizeTextarea(promptNegativeTextarea, 70, 0, false, true);
-        }
         syncPromptTextareaContainersInScope(characterItem);
     });
 }
@@ -162,39 +169,25 @@ function syncCharacterPromptTabsShowBoth() {
     const characterItems = document.querySelectorAll('.character-prompt-item');
 
     characterItems.forEach(characterItem => {
-        const characterTabButtons = characterItem.querySelectorAll('.gallery-toggle-btn');
-        const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
-        const toggleGroup = characterItem.querySelector('.gallery-toggle-group');
-        const characterPromptTabs = characterItem.querySelector('.character-prompt-tabs');
-        const characterId = characterItem.id;
+        const nodes = getCharacterPromptTabNodes(characterItem);
 
-        // Show both character tab buttons and panes
-        characterTabButtons.forEach(btn => btn.classList.add('active'));
-        characterTabPanes.forEach(pane => pane.classList.add('active'));
+        if (nodes.btnPrompt) nodes.btnPrompt.classList.add('active');
+        if (nodes.btnUc) nodes.btnUc.classList.add('active');
+        if (nodes.btnCreative) nodes.btnCreative.classList.add('active');
+        if (nodes.panePrompt) nodes.panePrompt.classList.add('active');
+        if (nodes.paneUc) nodes.paneUc.classList.add('active');
 
-        // Add show-both class to character-prompt-tabs for visual separation
-        if (characterPromptTabs) {
-            characterPromptTabs.classList.add('show-both');
+        if (nodes.tabsRoot) {
+            nodes.tabsRoot.classList.add('show-both');
         }
 
-        // Update the data-active attribute for the character's slider (keep current state)
-        if (toggleGroup) {
-            const currentActive = toggleGroup.getAttribute('data-active') || 'prompt';
-            toggleGroup.setAttribute('data-active', currentActive);
+        if (nodes.toggleGroup) {
+            const currentActive = nodes.toggleGroup.getAttribute('data-active') || 'prompt';
+            nodes.toggleGroup.setAttribute('data-active', currentActive);
         }
 
-        // Update emphasis highlighting for both prompt and UC textareas
-        const promptTextarea = characterItem.querySelector(`#${characterId}_prompt`);
-        const ucTextarea = characterItem.querySelector(`#${characterId}_uc`);
-
-        if (promptTextarea) {
-            updateEmphasisHighlighting(promptTextarea);
-            autoResizeTextarea(promptTextarea, 70, 0, false, true);
-        }
-        if (ucTextarea) {
-            updateEmphasisHighlighting(ucTextarea);
-            autoResizeTextarea(ucTextarea, 70, 0, false, true);
-        }
+        refreshCharacterPromptFieldVisuals(nodes.fieldPrompt);
+        refreshCharacterPromptFieldVisuals(nodes.fieldUc);
         syncPromptTextareaContainersInScope(characterItem);
     });
 }

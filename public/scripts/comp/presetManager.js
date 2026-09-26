@@ -1585,8 +1585,8 @@ function wireInlinePresetListeners() {
             validatePresetWithTimeout();
             updateManualPresetPlaceholder();
         };
+        // input covers typing; change covers blur/commit. keyup duplicated validate/placeholder on every key.
         manualPresetName.addEventListener('input', onPresetNameChange);
-        manualPresetName.addEventListener('keyup', onPresetNameChange);
         manualPresetName.addEventListener('change', onPresetNameChange);
         manualPresetName.addEventListener('input', handlePresetAutocompleteInput);
         manualPresetName.addEventListener('keydown', handlePresetAutocompleteKeydown);

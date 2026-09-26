@@ -2793,9 +2793,6 @@ class Director {
 
         const measurementsContent = document.getElementById('measurementsContent');
 
-        // Clear previous content
-        measurementsContent.innerHTML = '';
-
         // Handle array of character measurements
         let characterMeasurements = measurements;
         let allMeasurements = measurements;
@@ -2819,10 +2816,12 @@ class Director {
         const useAdvancedHandling = characterMeasurements.EmotionState !== undefined;
 
         if (useAdvancedHandling) {
+            // Clear previous content for advanced layout
+            measurementsContent.innerHTML = '';
             // Use new advanced handling with sections
             this.renderAdvancedMeasurements(characterMeasurements, message.data, measurementsContent, selectedCharacterIndex, allMeasurements);
         } else {
-            // Use old handling for backwards compatibility
+            // Legacy path reuses measurement cells — do not wipe the grid
             this.renderLegacyMeasurements(characterMeasurements, measurementsContent);
         }
 
@@ -2896,100 +2895,142 @@ class Director {
         const characterMeasurements = measurementsArray[characterIndex];
         const measurementsContent = document.getElementById('measurementsContent');
 
-        // Clear previous content
-        measurementsContent.innerHTML = '';
-
         // Check if we should use advanced handling
         const useAdvancedHandling = characterMeasurements.EmotionState !== undefined;
 
         if (useAdvancedHandling) {
+            // Clear previous content for advanced layout
+            measurementsContent.innerHTML = '';
             // Re-render measurements for the selected character
             this.renderAdvancedMeasurements(characterMeasurements, fullData, measurementsContent, characterIndex, measurementsArray);
         } else {
-            // Use old handling for backwards compatibility
+            // Legacy path reuses measurement cells
             this.renderLegacyMeasurements(characterMeasurements, measurementsContent);
         }
     }
 
+    // Format a legacy measurement value without JSON.stringify for known shapes
+    formatLegacyMeasurementValue(value) {
+        let displayValue = value;
+        let dataType = 'default';
+
+        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+            if (value.imperial && value.metric) {
+                displayValue = `${value.imperial} / ${value.metric}`;
+                dataType = 'measurement';
+            } else if (value.cup && value.size) {
+                displayValue = `${value.cup} (${value.size})`;
+                dataType = 'measurement';
+            } else if (value.us && value.eu) {
+                displayValue = `${value.us.join('x')} / ${value.eu.join('x')}`;
+                dataType = 'measurement';
+            } else {
+                // Known-ish object: join entries instead of stringify
+                const parts = [];
+                for (const [k, v] of Object.entries(value)) {
+                    if (v === null || v === undefined) continue;
+                    if (typeof v === 'object') {
+                        parts.push(`${k}: ${Array.isArray(v) ? v.join(', ') : Object.values(v).join(' / ')}`);
+                    } else {
+                        parts.push(`${k}: ${v}`);
+                    }
+                }
+                displayValue = parts.length > 0 ? parts.join(', ') : '';
+                dataType = 'object';
+            }
+        } else if (Array.isArray(value)) {
+            if (value.length === 0) {
+                displayValue = 'None detected';
+            } else {
+                displayValue = value.join(', ');
+            }
+            dataType = 'array';
+        } else if (typeof value === 'number') {
+            displayValue = value.toFixed(2);
+            dataType = 'ratio';
+        } else if (typeof value === 'string') {
+            displayValue = value;
+            dataType = 'string';
+        }
+
+        return { displayValue, dataType };
+    }
+
     // Legacy measurements rendering for backwards compatibility
     renderLegacyMeasurements(measurements, container) {
-        // Create measurements grid
-        const measurementsGrid = document.createElement('div');
-        measurementsGrid.className = 'measurements-grid';
-        
-        // Add each measurement with proper formatting
-        Object.entries(measurements).forEach(([key, value]) => {
-            const measurementItem = document.createElement('div');
-            measurementItem.className = 'measurement-item';
-            
-            let displayValue = value;
-            let dataType = 'default';
-            
-            // Handle different value types
-            if (typeof value === 'object' && value !== null) {
-                if (value.imperial && value.metric) {
-                    // Imperial/Metric measurements
-                    displayValue = `${value.imperial} / ${value.metric}`;
-                    dataType = 'measurement';
-                } else if (value.cup && value.size) {
-                    // Breast measurements
-                    displayValue = `${value.cup} (${value.size})`;
-                    dataType = 'measurement';
-                } else if (value.us && value.eu) {
-                    // Alternative measurement format
-                    displayValue = `${value.us.join('x')} / ${value.eu.join('x')}`;
-                    dataType = 'measurement';
-                } else {
-                    // Other objects - stringify
-                    displayValue = JSON.stringify(value, null, 2);
-                    dataType = 'object';
-                }
-            } else if (Array.isArray(value)) {
-                // Arrays (like Medical Conditions)
-                if (value.length === 0) {
-                    displayValue = 'None detected';
-                } else {
-                    displayValue = value.join(', ');
-                }
-                dataType = 'array';
-            } else if (typeof value === 'number') {
-                // Numbers (ratios, etc.)
-                displayValue = value.toFixed(2);
-                dataType = 'ratio';
-            } else if (typeof value === 'string') {
-                // Strings (Age, Species, etc.)
-                displayValue = value;
-                dataType = 'string';
+        // Drop non-grid siblings so we can reuse the measurements grid across tab switches
+        Array.from(container.children).forEach(child => {
+            if (!child.classList.contains('measurements-grid')) {
+                child.remove();
             }
-            
-            // Set data type for styling
-            measurementItem.setAttribute('data-type', dataType);
-            
+        });
+
+        let measurementsGrid = container.querySelector(':scope > .measurements-grid');
+        if (!measurementsGrid) {
+            measurementsGrid = document.createElement('div');
+            measurementsGrid.className = 'measurements-grid';
+            container.appendChild(measurementsGrid);
+        }
+
+        const existingByKey = new Map();
+        measurementsGrid.querySelectorAll('.measurement-item').forEach(el => {
+            if (el.dataset.key) {
+                existingByKey.set(el.dataset.key, el);
+            }
+        });
+
+        const usedKeys = new Set();
+
+        Object.entries(measurements).forEach(([key, value]) => {
+            const formatted = this.formatLegacyMeasurementValue(value);
+            let displayValue = formatted.displayValue;
+            let dataType = formatted.dataType;
+
             // Special handling for specific keys
             if (key === 'Medical Conditions') {
-                measurementItem.setAttribute('data-type', 'medical');
+                dataType = 'medical';
             } else if (key === 'Species') {
-                measurementItem.setAttribute('data-type', 'species');
+                dataType = 'species';
             } else if (key.includes('Ratio')) {
-                measurementItem.setAttribute('data-type', 'ratio');
+                dataType = 'ratio';
             } else if (key === 'Age') {
-                measurementItem.setAttribute('data-type', 'age');
+                dataType = 'age';
             } else if (key === 'Height' || key === 'Weight') {
-                measurementItem.setAttribute('data-type', 'measurement');
+                dataType = 'measurement';
             } else if (key === 'Breast') {
-                measurementItem.setAttribute('data-type', 'measurement');
+                dataType = 'measurement';
             } else if (key === 'Humanoid Ratio') {
-                measurementItem.setAttribute('data-type', 'ratio');
+                dataType = 'ratio';
             }
-            
-            measurementItem.innerHTML = `
-                <div class="measurement-label">${key}</div>
-                <div class="measurement-value">${displayValue}</div>
-            `;
-            measurementsGrid.appendChild(measurementItem);
+
+            let measurementItem = existingByKey.get(key);
+            let labelEl;
+            let valueEl;
+            if (measurementItem) {
+                labelEl = measurementItem.querySelector('.measurement-label');
+                valueEl = measurementItem.querySelector('.measurement-value');
+                existingByKey.delete(key);
+            } else {
+                measurementItem = document.createElement('div');
+                measurementItem.className = 'measurement-item';
+                measurementItem.dataset.key = key;
+                labelEl = document.createElement('div');
+                labelEl.className = 'measurement-label';
+                valueEl = document.createElement('div');
+                valueEl.className = 'measurement-value';
+                measurementItem.appendChild(labelEl);
+                measurementItem.appendChild(valueEl);
+                measurementsGrid.appendChild(measurementItem);
+            }
+
+            measurementItem.setAttribute('data-type', dataType);
+            if (labelEl) labelEl.textContent = key;
+            if (valueEl) valueEl.textContent = displayValue;
+            usedKeys.add(key);
         });
-        
-        container.appendChild(measurementsGrid);
+
+        // Remove cells for keys no longer present
+        existingByKey.forEach(el => el.remove());
     }
 
     // Advanced measurements rendering with sections and scale badges

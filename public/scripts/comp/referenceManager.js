@@ -655,21 +655,83 @@ async function loadCacheImages() {
 }
 
 // Unified function to display reference images in any container
+function referenceImageRowSignature(image) {
+    const vibeParts = [];
+    if (image.vibes && image.vibes.length) {
+        for (const vibe of image.vibes) {
+            if (!vibe.encodings) continue;
+            for (const enc of vibe.encodings) {
+                vibeParts.push(`${enc.model}:${enc.informationExtraction}`);
+            }
+        }
+    }
+    let precisionKey = '';
+    if (image.metadata) {
+        precisionKey = `${image.metadata.precision || ''}|${image.metadata.characterReference || ''}`;
+    }
+    return [
+        image.hash || '',
+        image.workspaceId || '',
+        image.hasPreview ? '1' : '0',
+        image.isStandalone ? '1' : '0',
+        image.locked ? '1' : '0',
+        image.importedFrom || '',
+        image.hasVibes ? '1' : '0',
+        vibeParts.join(','),
+        cacheShowAllReferences ? '1' : '0',
+        getCurrentSelectedModel() || '',
+        precisionKey
+    ].join('|');
+}
+
 function displayReferenceImages(container, images, createItemFunction, options = {}) {
     if (!container) return;
 
-    container.innerHTML = '';
-
     if (images.length === 0) {
         const noImagesMessage = options.noImagesMessage || 'No References Found';
-        container.innerHTML = `
+        const existingEmpty = container.querySelector(':scope > .no-images');
+        if (!existingEmpty || container.children.length !== 1) {
+            container.innerHTML = `
         <div class="no-images">
             <i class="fas fa-image-slash"></i>
             <span>${noImagesMessage}</span>
         </div>
     `;
+        } else {
+            const label = existingEmpty.querySelector('span');
+            if (label) label.textContent = noImagesMessage;
+        }
+        if (options.addFewItemsClass) {
+            container.classList.remove('few-items');
+        }
         return;
     }
+
+    // Reuse unchanged gallery rows by hash + display signature
+    const existingByHash = new Map();
+    container.querySelectorAll('.cache-gallery-item[data-hash], .cache-manager-gallery-item[data-hash]').forEach(el => {
+        if (el.dataset.hash) {
+            existingByHash.set(el.dataset.hash, el);
+        }
+    });
+
+    const obtainItem = (image) => {
+        const sig = referenceImageRowSignature(image);
+        const existing = existingByHash.get(image.hash);
+        if (existing && existing.dataset.refSig === sig) {
+            existingByHash.delete(image.hash);
+            return existing;
+        }
+        if (existing) {
+            existing.remove();
+            existingByHash.delete(image.hash);
+        }
+        const galleryItem = createItemFunction(image);
+        galleryItem.dataset.refSig = sig;
+        return galleryItem;
+    };
+
+    const fragment = document.createDocumentFragment();
 
     // Group images by workspace
     if (options.separateWorkspaces) {
@@ -732,22 +794,24 @@ function displayReferenceImages(container, images, createItemFunction, options =
             const workspaceItemsContainer = document.createElement('div');
             workspaceItemsContainer.className = 'workspace-reference-items';
             
-            // Add all items for this workspace
+            // Patch: reuse unchanged rows, recreate only when signature changed
             workspaceItems.forEach(image => {
-                const galleryItem = createItemFunction(image);
-                workspaceItemsContainer.appendChild(galleryItem);
+                workspaceItemsContainer.appendChild(obtainItem(image));
             });
             
             workspaceContainer.appendChild(workspaceItemsContainer);
-            container.appendChild(workspaceContainer);
+            fragment.appendChild(workspaceContainer);
         });
     } else {
         // Display all images in order without workspace grouping
         images.forEach(image => {
-            const galleryItem = createItemFunction(image);
-            container.appendChild(galleryItem);
+            fragment.appendChild(obtainItem(image));
         });
     }
+
+    // Drop rows no longer in the list
+    existingByHash.forEach(el => el.remove());
+    container.replaceChildren(fragment);
 
     // Add few-items class if there are 3 or fewer items
     if (options.addFewItemsClass && images.length <= 3) {
@@ -1488,60 +1552,166 @@ function refreshReferenceBrowserForModelChange() {
     refreshVibeReferencesDisplay();
 }
 
+// Update an existing vibe row in place (model / encoding refresh) without tearing down controls
+function updateVibeReferenceItemInPlace(item, vibeRef) {
+    if (!item || !vibeRef) return;
+
+    const preview = item.querySelector('.vibe-reference-preview');
+    if (preview) {
+        let newSrc;
+        if (vibeRef.preview) {
+            newSrc = localCachePreviewUrl(vibeRef.preview);
+        } else if (vibeRef.type === 'base64' && vibeRef.image) {
+            newSrc = `data:image/png;base64,${vibeRef.image}`;
+        } else {
+            newSrc = '/static_images/background.jpg';
+        }
+        if (preview.getAttribute('src') !== newSrc) {
+            preview.src = newSrc;
+        }
+    }
+
+    const ieDropdown = item.querySelector('.vibe-reference-ie-control .custom-dropdown');
+    const ieDropdownBtn = ieDropdown && ieDropdown.querySelector('.custom-dropdown-btn');
+    const ieDropdownMenu = ieDropdown && ieDropdown.querySelector('.custom-dropdown-menu');
+    if (!ieDropdownBtn || !ieDropdownMenu) return;
+
+    const selectedIe = ieDropdownBtn.dataset.selectedIe || null;
+    const currentModel = getCurrentSelectedModel();
+    const availableEncodings = vibeRef.encodings
+        ? vibeRef.encodings.filter(encoding => encoding.model.toLowerCase() === currentModel.toLowerCase())
+        : [];
+    const allEncodings = vibeRef.encodings || [];
+
+    let ieSuffix = ieDropdownBtn.querySelector('span:last-child');
+    if (!ieSuffix || ieSuffix.textContent !== 'IE') {
+        ieSuffix = document.createElement('span');
+        ieSuffix.style.opacity = '0.5';
+        ieSuffix.textContent = 'IE';
+    }
+
+    let targetEncoding = null;
+    if (selectedIe !== null) {
+        targetEncoding = availableEncodings.find(enc =>
+            parseFloat(enc.informationExtraction) === parseFloat(selectedIe)
+        );
+    }
+    if (!targetEncoding && availableEncodings.length > 0) {
+        targetEncoding = availableEncodings[0];
+    }
+
+    const ieText = document.createElement('span');
+    if (targetEncoding) {
+        ieText.innerHTML = `<span>${(parseFloat(targetEncoding.informationExtraction) * 100).toFixed(0)}%</span>`;
+        ieDropdownBtn.dataset.selectedModel = targetEncoding.model;
+        ieDropdownBtn.dataset.selectedIe = targetEncoding.informationExtraction;
+        ieDropdownBtn.disabled = false;
+        ieDropdownBtn.title = '';
+    } else if (allEncodings.length > 0) {
+        if (selectedIe !== null) {
+            ieText.innerHTML = `<i class="fas fa-exclamation-triangle"></i><span>${(parseFloat(selectedIe) * 100).toFixed(0)}%</span>`;
+            ieDropdownBtn.title = `IE ${(parseFloat(selectedIe) * 100).toFixed(0)}% not available for ${getCurrentSelectedModelDisplayName()}`;
+            ieDropdownBtn.dataset.selectedIe = selectedIe;
+        } else {
+            ieText.innerHTML = `<i class="fas fa-exclamation-triangle"></i><span>0%</span>`;
+            ieDropdownBtn.title = `No encodings available for ${getCurrentSelectedModelDisplayName()}`;
+        }
+        ieDropdownBtn.disabled = false;
+    } else {
+        ieText.innerHTML = '<i class="fas fa-exclamation-triangle"></i><span>No encodings</span>';
+        ieDropdownBtn.disabled = true;
+        ieDropdownBtn.title = '';
+    }
+
+    ieDropdownBtn.innerHTML = '';
+    ieDropdownBtn.appendChild(ieText);
+    ieDropdownBtn.appendChild(ieSuffix);
+
+    // Rebuild IE options for the current model; keep the same button/menu nodes
+    ieDropdownMenu.innerHTML = '';
+    availableEncodings.forEach(encoding => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option';
+        option.textContent = `${(parseFloat(encoding.informationExtraction) * 100).toFixed(0)}%`;
+        option.dataset.model = encoding.model;
+        option.dataset.ie = encoding.informationExtraction;
+
+        option.addEventListener('click', () => {
+            const optionText = document.createElement('span');
+            optionText.textContent = `${(parseFloat(encoding.informationExtraction) * 100).toFixed(0)}%`;
+            ieDropdownBtn.innerHTML = '';
+            ieDropdownBtn.appendChild(optionText);
+            ieDropdownBtn.appendChild(ieSuffix);
+            ieDropdownBtn.dataset.selectedModel = encoding.model;
+            ieDropdownBtn.dataset.selectedIe = encoding.informationExtraction;
+            ieDropdownMenu.classList.add('hidden');
+            unregisterDropdownGuard(ieDropdown);
+        });
+
+        ieDropdownMenu.appendChild(option);
+    });
+
+    if (availableEncodings.length === 0 && allEncodings.length > 0) {
+        const requestOption = document.createElement('div');
+        requestOption.className = 'custom-dropdown-option missing-ie';
+        const requestIe = selectedIe !== null ? selectedIe : '0';
+        requestOption.innerHTML = `<i class="fas fa-exclamation-triangle"></i><span>${(parseFloat(requestIe) * 100).toFixed(0)}%</span>`;
+
+        requestOption.addEventListener('click', async () => {
+            ieDropdownMenu.classList.add('hidden');
+            unregisterDropdownGuard(ieDropdown);
+
+            if (vibeRef.locked) {
+                const shouldRemove = await showConfirmationDialog(
+                    'This reference cannot be modified. Would you like to remove it from your references?',
+                    [
+                        { text: 'Remove Reference', value: true, className: 'btn-danger' },
+                        { text: 'Cancel', value: false, className: 'btn-secondary' }
+                    ]
+                );
+                if (shouldRemove) {
+                    removeVibeReference(vibeRef.id);
+                }
+                return;
+            }
+
+            const targetIe = ieDropdownBtn.dataset.selectedIe || null;
+            showVibeEncodingModal('ie', vibeRef, getCurrentSelectedModel(), targetIe);
+        });
+
+        ieDropdownMenu.appendChild(requestOption);
+    }
+}
+
 // Function to refresh vibe references display
 async function refreshVibeReferencesDisplay() {
     const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
     if (!vibeReferencesContainer) return;
     
-    // Get all current vibe reference items
-    const vibeReferenceItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
+    // Skip precise-reference rows; only vibe transfer rows need IE/model refresh
+    const vibeReferenceItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item:not(.precise-reference-item)');
     
     if (vibeReferenceItems.length > 0 && cacheImages === false) {
         await loadCacheImages();
     }
 
+    const vibeById = new Map();
+    if (cacheImages && Array.isArray(cacheImages)) {
+        for (const cacheImage of cacheImages) {
+            if (!cacheImage.vibes) continue;
+            for (const vibe of cacheImage.vibes) {
+                vibeById.set(vibe.id, vibe);
+            }
+        }
+    }
+
     vibeReferenceItems.forEach(item => {
         const vibeId = item.getAttribute('data-vibe-id');
         if (!vibeId) return;
-        
-        // Store current IE, strength, and toggle values before replacing
-        const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
-        const ratioInput = item.querySelector('input.vibe-reference-ratio-input');
-        const allIndicators = item.querySelectorAll('.vibe-reference-controls .indicator');
-
-        let mainToggleBtn = null;
-        let textInjectionToggleBtn = null;
-        allIndicators.forEach(indicator => {
-            if (indicator.querySelector('.fa-power-off')) {
-                mainToggleBtn = indicator;
-            } else if (indicator.querySelector('.fa-indent')) {
-                textInjectionToggleBtn = indicator;
-            }
-        });
-
-        const currentIe = ieDropdownBtn?.dataset.selectedIe || null;
-        const currentStrength = ratioInput?.value || null;
-        const currentToggleState = mainToggleBtn?.getAttribute('data-state') || 'on';
-        const currentTextInjectionState = textInjectionToggleBtn?.getAttribute('data-state') || 'on';
-        
-        // Find the vibe reference data
-        let vibeRef = null;
-        for (const cacheImage of cacheImages) {
-            if (cacheImage.vibes) {
-                const foundVibe = cacheImage.vibes.find(vibe => vibe.id === vibeId);
-                if (foundVibe) {
-                    vibeRef = foundVibe;
-                    break;
-                }
-            }
-        }
-        
-        if (vibeRef) {
-            // Create new item with preserved IE, strength, and toggle values
-            teardownVibeReferenceItem(item);
-            const newItem = createVibeReferenceItem(vibeRef, currentIe, currentStrength, currentToggleState, currentTextInjectionState);
-            item.parentNode.replaceChild(newItem, item);
-        }
+        const vibeRef = vibeById.get(vibeId);
+        if (!vibeRef) return;
+        // Keep ratio / toggle nodes; write new IE + preview values onto existing controls
+        updateVibeReferenceItemInPlace(item, vibeRef);
     });
 }
 

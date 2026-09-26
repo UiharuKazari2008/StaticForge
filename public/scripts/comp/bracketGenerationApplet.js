@@ -1784,6 +1784,9 @@ class BracketGenerationApplet {
         if (!list) return;
 
         let draggedItem = null;
+        let dragMidpoints = null;
+        let dragPendingY = null;
+        let dragRafId = null;
 
         list.querySelectorAll('.workspace-drag-handle').forEach((handle) => {
             if (handle.dataset.bracketDragInit === 'true') return;
@@ -1795,26 +1798,58 @@ class BracketGenerationApplet {
                 if (!draggedItem) return;
                 draggedItem.classList.add('dragging');
                 document.body.style.userSelect = 'none';
+                dragPendingY = null;
+                if (dragRafId != null) {
+                    cancelAnimationFrame(dragRafId);
+                    dragRafId = null;
+                }
+
+                const rebuildDragMidpoints = () => {
+                    const items = Array.from(list.querySelectorAll('.bracket-gen-step-item')).filter((el) => el !== draggedItem);
+                    dragMidpoints = items.map((item) => {
+                        const r = item.getBoundingClientRect();
+                        return { item, mid: r.top + r.height / 2 };
+                    });
+                };
+                rebuildDragMidpoints();
 
                 const dragScope = new AbortController();
                 const dragSignal = dragScope.signal;
 
-                const onMove = (ev) => {
-                    ev.preventDefault();
-                    if (!draggedItem) return;
-                    const clientY = ev.clientY;
-                    const items = Array.from(list.querySelectorAll('.bracket-gen-step-item')).filter((el) => el !== draggedItem);
-                    for (const item of items) {
-                        const rect = item.getBoundingClientRect();
-                        if (clientY < rect.top + rect.height / 2) {
-                            list.insertBefore(draggedItem, item);
+                const flushBracketStepDrag = () => {
+                    dragRafId = null;
+                    if (!draggedItem || dragPendingY == null || !dragMidpoints) return;
+                    const clientY = dragPendingY;
+                    for (const entry of dragMidpoints) {
+                        if (clientY < entry.mid) {
+                            if (draggedItem.nextSibling !== entry.item) {
+                                list.insertBefore(draggedItem, entry.item);
+                                rebuildDragMidpoints();
+                            }
                             return;
                         }
                     }
-                    list.appendChild(draggedItem);
+                    if (list.lastElementChild !== draggedItem) {
+                        list.appendChild(draggedItem);
+                        rebuildDragMidpoints();
+                    }
+                };
+
+                const onMove = (ev) => {
+                    ev.preventDefault();
+                    if (!draggedItem) return;
+                    dragPendingY = ev.clientY;
+                    if (dragRafId == null) {
+                        dragRafId = requestAnimationFrame(flushBracketStepDrag);
+                    }
                 };
 
                 const onUp = () => {
+                    if (dragRafId != null) {
+                        cancelAnimationFrame(dragRafId);
+                        dragRafId = null;
+                        flushBracketStepDrag();
+                    }
                     dragScope.abort();
                     if (draggedItem) draggedItem.classList.remove('dragging');
                     document.body.style.userSelect = '';
@@ -1822,6 +1857,8 @@ class BracketGenerationApplet {
                     const kw = this.state.activeKeyword;
                     if (!kw) {
                         draggedItem = null;
+                        dragMidpoints = null;
+                        dragPendingY = null;
                         return;
                     }
                     const order = Array.from(list.querySelectorAll('.bracket-gen-step-item')).map((el) => el.dataset.stepId);
@@ -1843,6 +1880,8 @@ class BracketGenerationApplet {
                     }
                     this.normalizeCompareSourceStepIndex();
                     draggedItem = null;
+                    dragMidpoints = null;
+                    dragPendingY = null;
                     this.renderSteps();
                 };
 

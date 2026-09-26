@@ -24,15 +24,17 @@ function createEmphasisAutoTerminatingPattern() {
 }
 
 const EMPHASIS_NEXT_GROUP_PATTERN = new RegExp(`(?:,\\s*|\\s+)${EMPHASIS_WEIGHT_PART}::`);
+/** Shared opener scan — advance lastIndex past each block; do not construct per group. */
+const EMPHASIS_WEIGHT_OPEN_PATTERN = new RegExp(`${EMPHASIS_WEIGHT_PART}::`, 'g');
+const EMPHASIS_NEXT_GROUP_WEIGHT_AT_PATTERN = /^(?:,\s*|\s+)(-?\d+(?:\.\d+)?)::/;
 
 /** Parse emphasis blocks without treating the next group's weight:: as this block's closing ::. */
 function listEmphasisBlocks(value) {
     const blocks = [];
-    let searchFrom = 0;
+    const openRe = EMPHASIS_WEIGHT_OPEN_PATTERN;
+    openRe.lastIndex = 0;
 
-    while (searchFrom < value.length) {
-        const openRe = new RegExp(`${EMPHASIS_WEIGHT_PART}::`, 'g');
-        openRe.lastIndex = searchFrom;
+    while (openRe.lastIndex < value.length) {
         const open = openRe.exec(value);
         if (!open) break;
 
@@ -45,7 +47,7 @@ function listEmphasisBlocks(value) {
         let nextGroupAt = nextGroupMatch ? nextGroupMatch.index : -1;
         // "year 2025::" — 2025 is content, not a new opener (weights are never hundreds+)
         if (nextGroupAt >= 0) {
-            const nextWeightMatch = tail.slice(nextGroupAt).match(/^(?:,\s*|\s+)(-?\d+(?:\.\d+)?)::/);
+            const nextWeightMatch = tail.slice(nextGroupAt).match(EMPHASIS_NEXT_GROUP_WEIGHT_AT_PATTERN);
             if (nextWeightMatch && Math.abs(parseFloat(nextWeightMatch[1])) > EMPHASIS_NEXT_GROUP_WEIGHT_ABS_MAX) {
                 nextGroupAt = -1;
             }
@@ -83,7 +85,7 @@ function listEmphasisBlocks(value) {
             match
         });
 
-        searchFrom = end;
+        openRe.lastIndex = end;
     }
 
     return blocks;

@@ -392,11 +392,11 @@ class FileSearch {
     }
 
     handleSearchInput(query) {
-        this.currentQuery = query.trim();
+        this.currentQuery = (query || '').trim();
         // Expose current search term globally for title bar
         window.currentSearchTerm = this.currentQuery.length > 0 ? this.currentQuery : null;
 
-        // Clear previous timeouts
+        // Clear previous timeouts — short and long queries share the same timer
         if (this.suggestionsTimeout) {
             clearTimeout(this.suggestionsTimeout);
         }
@@ -404,20 +404,22 @@ class FileSearch {
             clearTimeout(this.searchTimeout);
         }
 
-        // Show suggestions for any input (including single letters)
         if (this.currentQuery.length === 0) {
             this.showTopResults();
-        } else if (this.currentQuery.length < 3) {
-            // Show suggestions immediately for short queries
-            this.updateTagSuggestions(this.currentQuery);
-        } else {
-            // Debounce suggestions for longer queries
-            this.suggestionsTimeout = setTimeout(() => {
-                this.updateTagSuggestions(this.currentQuery);
-            }, this.debounceDelay);
+            updateGalleryTitleBar();
+            return;
         }
 
-        // Update title bar
+        // Debounce all non-empty suggestion updates (including <3 chars)
+        const currentTagText = this.getCurrentTagText();
+        if (currentTagText.length > 0) {
+            this.suggestionsTimeout = setTimeout(() => {
+                this.updateTagSuggestions(currentTagText);
+            }, this.debounceDelay);
+        } else {
+            this.showTopResults();
+        }
+
         updateGalleryTitleBar();
     }
 
@@ -505,11 +507,18 @@ class FileSearch {
             let displayText = suggestion.originalTag;
 
             if (suggestion.type === 'full_text' && suggestion.fullText) {
-                const words = suggestion.fullText.split(/\s+/);
-                const wordIndex = words.findIndex(word =>
-                    word.toLowerCase().includes((suggestion.tag || '').toLowerCase())
-                );
+                // Server payload has no matchOffset — locate via indexOf then word window
+                const fullText = suggestion.fullText;
+                const needle = (suggestion.tag || '').toLowerCase();
+                let wordIndex = -1;
+                if (needle) {
+                    const at = fullText.toLowerCase().indexOf(needle);
+                    if (at >= 0) {
+                        wordIndex = (fullText.slice(0, at).match(/\S+/g) || []).length;
+                    }
+                }
                 if (wordIndex >= 0) {
+                    const words = fullText.split(/\s+/);
                     const start = Math.max(0, wordIndex - 2);
                     const end = Math.min(words.length, wordIndex + 3);
                     displayText = words.slice(start, end).join(' ');
@@ -597,6 +606,7 @@ class FileSearch {
         let previewImages = [];
         let headerText = '';
         let headerIcon = '';
+        const chosenFilenames = new Set();
 
         if (this.currentQuery && this.currentQuery.trim().length > 0) {
             // For specific queries: show top 10 images from search results
@@ -609,7 +619,8 @@ class FileSearch {
                         if (previewImages.length >= 10) break;
 
                         const filename = fileInfo.filename || fileInfo.original || fileInfo.upscaled;
-                        if (filename && !previewImages.find(img => img.filename === filename)) {
+                        if (filename && !chosenFilenames.has(filename)) {
+                            chosenFilenames.add(filename);
                             previewImages.push({
                                 filename: filename,
                                 metadata: fileInfo.metadata || fileInfo,
@@ -637,7 +648,8 @@ class FileSearch {
                         if (previewImages.length >= 10 || imagesFromSuggestion >= 2) break;
 
                         const filename = fileInfo.filename || fileInfo.original || fileInfo.upscaled;
-                        if (filename && !previewImages.find(img => img.filename === filename)) {
+                        if (filename && !chosenFilenames.has(filename)) {
+                            chosenFilenames.add(filename);
                             previewImages.push({
                                 filename: filename,
                                 metadata: fileInfo.metadata || fileInfo,
@@ -692,41 +704,14 @@ class FileSearch {
     }
 
     scrollToImageInGallery(filename) {
-        // Find the image element in the current gallery
-        const galleryItems = document.querySelectorAll('.gallery-item img, .gallery-item .gallery-image');
-
-        for (const img of galleryItems) {
-            const imgSrc = img.src || img.getAttribute('data-src') || '';
-            if (imgSrc.includes(encodeURIComponent(filename)) || imgSrc.includes(filename)) {
-                // Scroll to the image
-                img.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-                // Add a highlight effect
-                const galleryItem = img.closest('.gallery-item');
-                if (galleryItem) {
-                    galleryItem.classList.add('highlighted');
-                    setTimeout(() => {
-                        galleryItem.classList.remove('highlighted');
-                    }, 2000);
-                }
-                break;
-            }
-        }
-
-        // Fallback: try to find by filename in data attributes
-        if (!document.querySelector('.gallery-item.highlighted')) {
-            const galleryItemsByData = document.querySelectorAll('.gallery-item[data-filename]');
-            for (const item of galleryItemsByData) {
-                const itemFilename = item.getAttribute('data-filename');
-                if (itemFilename === filename || itemFilename.includes(filename)) {
-                    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    item.classList.add('highlighted');
-                    setTimeout(() => {
-                        item.classList.remove('highlighted');
-                    }, 2000);
-                    break;
-                }
-            }
+        // getGalleryItemByFilename: public/scripts/comp/galleryView.js
+        let galleryItem = getGalleryItemByFilename(filename, true);
+        if (galleryItem) {
+            galleryItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            galleryItem.classList.add('highlighted');
+            setTimeout(() => {
+                galleryItem.classList.remove('highlighted');
+            }, 2000);
         }
     }
 
@@ -1249,37 +1234,6 @@ class FileSearch {
         }
 
         return currentTag;
-    }
-
-    handleSearchInput(query) {
-        // Clear existing timeouts
-        if (this.suggestionsTimeout) {
-            clearTimeout(this.suggestionsTimeout);
-        }
-        if (this.searchTimeout) {
-            clearTimeout(this.searchTimeout);
-        }
-
-        this.currentQuery = query;
-
-        // For empty queries, show top results (which will use enhanced search if tags exist)
-        if (!query || query.trim().length === 0) {
-            this.showTopResults();
-            return;
-        }
-
-        // For non-empty queries, get current tag text and search
-        const currentTagText = this.getCurrentTagText();
-
-        if (currentTagText.length > 0) {
-            // Debounced search for current tag
-            this.suggestionsTimeout = setTimeout(() => {
-                this.updateTagSuggestions(currentTagText);
-            }, this.debounceDelay);
-        } else {
-            // No current tag text, show top results (which will use enhanced search if tags exist)
-            this.showTopResults();
-        }
     }
 
     ensureMobileExpandedState() {

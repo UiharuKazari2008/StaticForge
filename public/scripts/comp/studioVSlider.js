@@ -20,6 +20,8 @@ const STUDIO_VSLIDER_OMIT_UNDER = 0.98;
 let studioVSliderWidgets = [];
 let studioVSliderWired = false;
 let studioVSliderHooksWired = false;
+let studioVSliderDirtyPreviewIds = new Set();
+let studioVSliderPreviewRaf = 0;
 
 function studioVSliderClamp01(n) {
     const value = Number(n);
@@ -674,8 +676,15 @@ function studioVSliderMarkDirty(widgetId, mutator) {
     if (!widget) return;
     mutator(widget);
     widget.dirty = true;
-    studioVSliderSyncFooter();
-    studioVSliderRefreshPreviews();
+    studioVSliderDirtyPreviewIds.add(widgetId);
+    if (studioVSliderPreviewRaf) return;
+    studioVSliderPreviewRaf = requestAnimationFrame(() => {
+        studioVSliderPreviewRaf = 0;
+        const ids = studioVSliderDirtyPreviewIds;
+        studioVSliderDirtyPreviewIds = new Set();
+        ids.forEach((id) => studioVSliderRefreshWidgetPreview(id));
+        studioVSliderSyncFooter();
+    });
 }
 
 function studioVSliderEscape(text) {
@@ -838,74 +847,123 @@ function studioVSliderRenderCard(widget) {
 function studioVSliderRefreshAxisRow(card, axis, value) {
     const row = card.querySelector(`[data-vslider-axis-row="${axis.id}"]`);
     if (!row) return;
+    const state = studioVSliderAxisNeighbors(axis.stops, value);
     const statusHost = row.querySelector(`[data-vslider-status="${axis.id}"]`);
     if (statusHost) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = studioVSliderAxisStatusHtml(axis, value);
-        const next = tmp.firstElementChild;
-        if (next) statusHost.replaceWith(next);
+        if (state.mode === 'empty') {
+            statusHost.textContent = '—';
+        } else if (state.mode === 'between') {
+            statusHost.replaceChildren();
+            const lead = document.createElement('strong');
+            lead.textContent = 'between';
+            statusHost.appendChild(lead);
+            statusHost.appendChild(document.createTextNode(' '));
+            const leftSpan = document.createElement('span');
+            if (state.nearer === state.left) leftSpan.className = 'vslider-stop';
+            leftSpan.textContent = state.left.text;
+            statusHost.appendChild(leftSpan);
+            statusHost.appendChild(document.createTextNode(' → '));
+            const rightSpan = document.createElement('span');
+            if (state.nearer === state.right) rightSpan.className = 'vslider-stop';
+            rightSpan.textContent = state.right.text;
+            statusHost.appendChild(rightSpan);
+        } else {
+            statusHost.replaceChildren();
+            const lead = document.createElement('strong');
+            lead.textContent = state.isMedian ? 'at median' : 'at';
+            statusHost.appendChild(lead);
+            statusHost.appendChild(document.createTextNode(' → '));
+            const stopSpan = document.createElement('span');
+            stopSpan.className = 'vslider-stop';
+            stopSpan.textContent = state.nearer ? state.nearer.text : '';
+            statusHost.appendChild(stopSpan);
+        }
     }
     const blendHost = row.querySelector(`[data-vslider-blend="${axis.id}"]`);
     if (blendHost) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = studioVSliderAxisBlendHtml(axis, value);
-        const next = tmp.firstElementChild;
-        if (next) blendHost.replaceWith(next);
+        if (state.mode !== 'between' || !state.blendText || state.blendText.indexOf('::') === -1) {
+            blendHost.classList.add('hidden');
+            blendHost.textContent = '';
+        } else {
+            blendHost.classList.remove('hidden');
+            let code = blendHost.querySelector('code');
+            if (!code) {
+                blendHost.textContent = '';
+                blendHost.appendChild(document.createTextNode('writes '));
+                code = document.createElement('code');
+                blendHost.appendChild(code);
+            }
+            code.textContent = state.blendText;
+        }
     }
     const ticks = row.querySelector('.slider-ticks');
-    if (ticks) ticks.outerHTML = studioVSliderStopTicksHtml(axis.stops, value);
+    if (ticks) {
+        const sorted = studioVSliderSortStops(axis.stops);
+        const v = studioVSliderClamp01(value);
+        const tickEls = ticks.querySelectorAll('.slider-tick');
+        for (let i = 0; i < tickEls.length; i++) {
+            const stop = sorted[i];
+            if (!stop) continue;
+            const active = Math.abs(v - stop.at) <= STUDIO_VSLIDER_EXACT_EPS;
+            tickEls[i].style.backgroundColor = active ? 'var(--primary-color)' : '';
+        }
+    }
+}
+
+function studioVSliderRefreshWidgetPreview(widgetId) {
+    const widget = studioVSliderWidgets.find((entry) => entry.id === widgetId);
+    if (!widget) return;
+    const card = document.querySelector(`[data-vslider-card="${widget.id}"]`);
+    if (!card) return;
+    const kind = card.querySelector('[data-vslider-kind]');
+    if (kind) kind.textContent = studioVSliderKindBadge(widget);
+    card.querySelectorAll('.glass-slider[data-vslider-axis]').forEach((slider) => {
+        const axisId = slider.getAttribute('data-vslider-axis');
+        const axis = (widget.axes || []).find((entry) => entry.id === axisId);
+        if (!axis) return;
+        const value = widget.value[axisId];
+        slider.value = String(Math.round(studioVSliderClamp01(value) * 100));
+        studioVSliderRefreshAxisRow(card, axis, value);
+    });
+    const knob = card.querySelector('[data-vslider-knob]');
+    if (knob && widget.axes && widget.axes.length >= 2 && widget.kind === 'xypad') {
+        const x = studioVSliderClamp01(widget.value[widget.axes[0].id]);
+        const y = studioVSliderClamp01(widget.value[widget.axes[1].id]);
+        knob.style.left = `${x * 100}%`;
+        knob.style.top = `${(1 - y) * 100}%`;
+        const xState = studioVSliderAxisNeighbors(widget.axes[0].stops, x);
+        const yState = studioVSliderAxisNeighbors(widget.axes[1].stops, y);
+        const xEl = card.querySelector('[data-vslider-pad-x]');
+        const yEl = card.querySelector('[data-vslider-pad-y]');
+        if (xEl) xEl.textContent = xState.nearer ? xState.nearer.text : '';
+        if (yEl) yEl.textContent = yState.nearer ? yState.nearer.text : '';
+    }
+    const star = card.querySelector('[data-vslider-star]');
+    if (star && widget.kind === 'star') {
+        const axes = widget.axes;
+        const radius = 120;
+        const pts = axes.map((axis, index) => studioVSliderStarPoint(index, axes.length, radius, widget.value[axis.id]));
+        const poly = star.querySelector('[data-vslider-star-poly]');
+        if (poly) poly.setAttribute('points', pts.map((pt) => `${pt.x},${pt.y}`).join(' '));
+        star.querySelectorAll('[data-vslider-star-axis]').forEach((dot) => {
+            const axisId = dot.getAttribute('data-vslider-star-axis');
+            const index = axes.findIndex((axis) => axis.id === axisId);
+            if (index < 0) return;
+            const state = studioVSliderAxisNeighbors(axes[index].stops, widget.value[axisId]);
+            dot.setAttribute('cx', String(pts[index].x));
+            dot.setAttribute('cy', String(pts[index].y));
+            dot.setAttribute('fill', state.isMedian ? '#fff' : '#ff4500');
+            const label = star.querySelector(`[data-vslider-star-label="${axisId}"]`);
+            if (label) {
+                label.textContent = state.nearer ? state.nearer.text : '';
+                label.setAttribute('fill', state.isMedian ? '#ccc' : '#ff4500');
+            }
+        });
+    }
 }
 
 function studioVSliderRefreshPreviews() {
-    studioVSliderWidgets.forEach((widget) => {
-        const card = document.querySelector(`[data-vslider-card="${widget.id}"]`);
-        if (!card) return;
-        const kind = card.querySelector('[data-vslider-kind]');
-        if (kind) kind.textContent = studioVSliderKindBadge(widget);
-        card.querySelectorAll('.glass-slider[data-vslider-axis]').forEach((slider) => {
-            const axisId = slider.getAttribute('data-vslider-axis');
-            const axis = (widget.axes || []).find((entry) => entry.id === axisId);
-            if (!axis) return;
-            const value = widget.value[axisId];
-            slider.value = String(Math.round(studioVSliderClamp01(value) * 100));
-            studioVSliderRefreshAxisRow(card, axis, value);
-        });
-        const knob = card.querySelector('[data-vslider-knob]');
-        if (knob && widget.axes && widget.axes.length >= 2 && widget.kind === 'xypad') {
-            const x = studioVSliderClamp01(widget.value[widget.axes[0].id]);
-            const y = studioVSliderClamp01(widget.value[widget.axes[1].id]);
-            knob.style.left = `${x * 100}%`;
-            knob.style.top = `${(1 - y) * 100}%`;
-            const xState = studioVSliderAxisNeighbors(widget.axes[0].stops, x);
-            const yState = studioVSliderAxisNeighbors(widget.axes[1].stops, y);
-            const xEl = card.querySelector('[data-vslider-pad-x]');
-            const yEl = card.querySelector('[data-vslider-pad-y]');
-            if (xEl) xEl.textContent = xState.nearer ? xState.nearer.text : '';
-            if (yEl) yEl.textContent = yState.nearer ? yState.nearer.text : '';
-        }
-        const star = card.querySelector('[data-vslider-star]');
-        if (star && widget.kind === 'star') {
-            const axes = widget.axes;
-            const radius = 120;
-            const pts = axes.map((axis, index) => studioVSliderStarPoint(index, axes.length, radius, widget.value[axis.id]));
-            const poly = star.querySelector('[data-vslider-star-poly]');
-            if (poly) poly.setAttribute('points', pts.map((pt) => `${pt.x},${pt.y}`).join(' '));
-            star.querySelectorAll('[data-vslider-star-axis]').forEach((dot) => {
-                const axisId = dot.getAttribute('data-vslider-star-axis');
-                const index = axes.findIndex((axis) => axis.id === axisId);
-                if (index < 0) return;
-                const state = studioVSliderAxisNeighbors(axes[index].stops, widget.value[axisId]);
-                dot.setAttribute('cx', String(pts[index].x));
-                dot.setAttribute('cy', String(pts[index].y));
-                dot.setAttribute('fill', state.isMedian ? '#fff' : '#ff4500');
-                const label = star.querySelector(`[data-vslider-star-label="${axisId}"]`);
-                if (label) {
-                    label.textContent = state.nearer ? state.nearer.text : '';
-                    label.setAttribute('fill', state.isMedian ? '#ccc' : '#ff4500');
-                }
-            });
-        }
-    });
+    studioVSliderWidgets.forEach((widget) => studioVSliderRefreshWidgetPreview(widget.id));
     studioVSliderSyncFooter();
 }
 
@@ -1490,14 +1548,8 @@ function studioVSliderWireEditor(body) {
     if (prefixInput) {
         prefixInput.addEventListener('input', () => {
             const prefix = prefixInput.value.trim();
-            draft.target = prefix
-                ? { kind: 'expander', prefix }
-                : { kind: 'expander', prefix: '' };
-            (draft.axes || []).forEach((axis) => {
-                axis.target = draft.target && draft.target.prefix
-                    ? studioVSliderClone(draft.target)
-                    : axis.target;
-            });
+            // Axes read draft.target on save — do not clone onto every axis per keystroke
+            draft.target = { kind: 'expander', prefix };
         });
     }
 

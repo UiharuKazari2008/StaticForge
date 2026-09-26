@@ -327,14 +327,37 @@ function startEmphasisEditing(target) {
     let emphasisMode = 'normal'; // 'normal', 'brace', 'group'
     let cursorPosition = selectionStart;
 
-    // findManagedEmphasisBlockAtCursor / resolveEmphasisBagForTextarea: public/scripts/comp/emphasisGroupIdCodec.js
+    // Resolve bag once; list managed/classic blocks once; test caret candidates against those lists.
+    // findManagedEmphasisBlockAtCursor / resolveEmphasisBagForTextarea / listManagedEmphasisBlocks /
+    // resolveWeightForEmphasisGroupId / hasManagedEmphasisGroupIds: public/scripts/comp/emphasisGroupIdCodec.js
     const bag = resolveEmphasisBagForTextarea(target);
     let managedBlock = null;
-    for (let i = 0; i < cursorCandidates.length; i++) {
-        managedBlock = findManagedEmphasisBlockAtCursor(value, cursorCandidates[i], bag);
-        if (managedBlock) {
-            cursorPosition = cursorCandidates[i];
-            break;
+    if (hasManagedEmphasisGroupIds(value)) {
+        const managedBlocks = listManagedEmphasisBlocks(value);
+        for (let i = 0; i < cursorCandidates.length; i++) {
+            const pos = cursorCandidates[i];
+            for (let j = 0; j < managedBlocks.length; j++) {
+                const b = managedBlocks[j];
+                if (pos < b.start || pos > b.end) continue;
+                const resolved = resolveWeightForEmphasisGroupId(b.id, bag);
+                const weight = Number.isFinite(resolved)
+                    ? resolved
+                    : (Number.isFinite(b.textWeight) ? b.textWeight : 1);
+                managedBlock = {
+                    id: b.id,
+                    start: b.start,
+                    end: b.end,
+                    openEnd: b.openEnd,
+                    closeStart: b.closeStart,
+                    innerText: b.innerText,
+                    weight,
+                    needsTerminator: b.needsTerminator,
+                    legacy: !!b.legacy
+                };
+                cursorPosition = pos;
+                break;
+            }
+            if (managedBlock) break;
         }
     }
     if (managedBlock) {
@@ -357,13 +380,25 @@ function startEmphasisEditing(target) {
         }
     }
 
-    const emphasisBlock = insideEmphasis
-        ? null
-        : (findEmphasisBlockAtCursor(value, cursorPosition)
-            || (cursorPosition !== selectionStart ? findEmphasisBlockAtCursor(value, selectionStart) : null)
-            || (lastCaret !== cursorPosition && lastCaret !== selectionStart
-                ? findEmphasisBlockAtCursor(value, lastCaret)
-                : null));
+    let emphasisBlock = null;
+    if (!insideEmphasis) {
+        // Classic path only probes live caret + last in-field caret (selection range was managed-only).
+        const classicBlocks = listEmphasisBlocks(value);
+        const classicCandidates = [selectionStart];
+        if (lastCaret !== selectionStart) classicCandidates.push(lastCaret);
+        for (let i = 0; i < classicCandidates.length; i++) {
+            const pos = classicCandidates[i];
+            for (let j = 0; j < classicBlocks.length; j++) {
+                const b = classicBlocks[j];
+                if (pos >= b.start && pos < b.end) {
+                    emphasisBlock = b;
+                    cursorPosition = pos;
+                    break;
+                }
+            }
+            if (emphasisBlock) break;
+        }
+    }
     if (emphasisBlock) {
         insideEmphasis = true;
         emphasisEditingValue = emphasisBlock.weight;

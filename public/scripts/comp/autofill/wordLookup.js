@@ -6,6 +6,9 @@ let selectedWordLookupWordIndex = -1;
 let selectedWordLookupSuggestionIndex = -1;
 let activeWordLookupWordIndex = 0;
 let persistentWordLookupData = null; // Current word lookup data
+let wordLookupSelectedWordEl = null;
+let wordLookupSelectedSuggestionEl = null;
+let wordLookupExpandedWordIndex = -1;
 
 function attachWordLookupTermBounds(wordLookupData, target, lookupQuery) {
     if (!wordLookupData || !target) {
@@ -177,6 +180,20 @@ function getWordLookupSection() {
 function removeWordLookupSection() {
     const section = getWordLookupSection();
     if (section) section.remove();
+    wordLookupSelectedWordEl = null;
+    wordLookupSelectedSuggestionEl = null;
+    wordLookupExpandedWordIndex = -1;
+}
+
+function clearWordLookupSelectionClasses() {
+    if (wordLookupSelectedWordEl) {
+        wordLookupSelectedWordEl.classList.remove('selected');
+        wordLookupSelectedWordEl = null;
+    }
+    if (wordLookupSelectedSuggestionEl) {
+        wordLookupSelectedSuggestionEl.classList.remove('selected');
+        wordLookupSelectedSuggestionEl = null;
+    }
 }
 
 function getWordLookupWordRows(section) {
@@ -294,11 +311,16 @@ function applyWordLookupWordDisplay(section, activeIndex) {
     }
     activeWordLookupWordIndex = activeIndex;
 
-    section.querySelectorAll('.word-lookup-word-row').forEach(row => {
-        const rowIndex = parseInt(row.dataset.wordIndex, 10);
-        const isActive = rowIndex === activeIndex;
-        row.classList.toggle('expanded', isActive);
-    });
+    const wordSections = getWordLookupWordRows(section);
+    if (wordLookupExpandedWordIndex >= 0
+        && wordLookupExpandedWordIndex !== activeIndex
+        && wordLookupExpandedWordIndex < wordSections.length) {
+        wordSections[wordLookupExpandedWordIndex].classList.remove('expanded');
+    }
+    if (activeIndex < wordSections.length) {
+        wordSections[activeIndex].classList.add('expanded');
+    }
+    wordLookupExpandedWordIndex = activeIndex;
 }
 
 function wireWordLookupSuggestionButtons(container, target) {
@@ -474,9 +496,13 @@ function showWordLookupSection(wordLookupData, target) {
         }
         updateWordLookupSelection();
     } else {
-        wordLookupSection.querySelectorAll('.word-lookup-word-row').forEach(row => {
-            row.classList.remove('expanded');
-        });
+        if (wordLookupExpandedWordIndex >= 0) {
+            const rows = getWordLookupWordRows(wordLookupSection);
+            if (rows[wordLookupExpandedWordIndex]) {
+                rows[wordLookupExpandedWordIndex].classList.remove('expanded');
+            }
+            wordLookupExpandedWordIndex = -1;
+        }
     }
 }
 
@@ -502,12 +528,7 @@ function updateWordLookupSelection() {
     const wordCount = getWordLookupWordCount(wordLookupSection);
     wordLookupSection.classList.toggle('nav-active', wordLookupNavigationMode && wordCount > 1);
 
-    wordLookupSection.querySelectorAll('.suggestion-btn').forEach(btn => {
-        btn.classList.remove('selected');
-    });
-    wordLookupSection.querySelectorAll('.word-lookup-word-row').forEach(row => {
-        row.classList.remove('selected');
-    });
+    clearWordLookupSelectionClasses();
 
     if (wordLookupNavigationMode && selectedWordLookupWordIndex >= 0) {
         applyWordLookupWordDisplay(wordLookupSection, selectedWordLookupWordIndex);
@@ -516,6 +537,7 @@ function updateWordLookupSelection() {
         if (wordSections.length && selectedWordLookupWordIndex < wordSections.length) {
             const selectedWordSection = wordSections[selectedWordLookupWordIndex];
             selectedWordSection.classList.add('selected');
+            wordLookupSelectedWordEl = selectedWordSection;
             markAutofillListNavigationActivity();
 
             let scrollTarget = selectedWordSection;
@@ -523,15 +545,20 @@ function updateWordLookupSelection() {
                 const suggestionBtns = selectedWordSection.querySelectorAll('.word-lookup-row-expanded .suggestion-btn');
                 if (suggestionBtns && selectedWordLookupSuggestionIndex < suggestionBtns.length) {
                     suggestionBtns[selectedWordLookupSuggestionIndex].classList.add('selected');
+                    wordLookupSelectedSuggestionEl = suggestionBtns[selectedWordLookupSuggestionIndex];
                     scrollTarget = suggestionBtns[selectedWordLookupSuggestionIndex];
                 }
             }
             scheduleScrollToAutocompleteOption(scrollTarget);
         }
     } else {
-        wordLookupSection.querySelectorAll('.word-lookup-word-row').forEach(row => {
-            row.classList.remove('expanded');
-        });
+        if (wordLookupExpandedWordIndex >= 0) {
+            const rows = getWordLookupWordRows(wordLookupSection);
+            if (rows[wordLookupExpandedWordIndex]) {
+                rows[wordLookupExpandedWordIndex].classList.remove('expanded');
+            }
+            wordLookupExpandedWordIndex = -1;
+        }
     }
     scheduleAutofillKeyguideUpdate();
 }

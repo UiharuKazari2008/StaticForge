@@ -448,18 +448,17 @@ function omegasearchDsapHighlightTerms(text, terms) {
     if (!raw || !normalized.length) return omegasearchDsapEscapeHtml(raw);
 
     const sorted = [...normalized].sort((a, b) => b.length - a.length);
-    const lower = raw.toLowerCase();
-    const ranges = [];
+    const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = sorted.map(escapeRegExp).join('|');
+    if (!pattern) return omegasearchDsapEscapeHtml(raw);
 
-    for (const term of sorted) {
-        const termLower = term.toLowerCase();
-        let idx = 0;
-        while (idx < lower.length) {
-            const found = lower.indexOf(termLower, idx);
-            if (found === -1) break;
-            ranges.push({ start: found, end: found + term.length });
-            idx = found + 1;
-        }
+    const re = new RegExp(pattern, 'gi');
+    const ranges = [];
+    let match;
+    while ((match = re.exec(raw)) !== null) {
+        ranges.push({ start: match.index, end: match.index + match[0].length });
+        // Advance one char so overlapping hits match the old indexOf(+1) scan
+        re.lastIndex = match.index + 1;
     }
 
     if (!ranges.length) return omegasearchDsapEscapeHtml(raw);

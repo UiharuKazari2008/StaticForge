@@ -517,6 +517,27 @@ async function initializePhotoSwipe() {
             },
         });
 
+        // One filename → cell map for thumb/placeholder fallbacks (avoid querySelectorAll per slide)
+        const galleryFilenameMap = new Map();
+        if (typeof gallery !== 'undefined' && gallery && gallery.children) {
+            for (let gi = 0; gi < gallery.children.length; gi++) {
+                const cell = gallery.children[gi];
+                const fn = cell.dataset && cell.dataset.filename;
+                if (fn) galleryFilenameMap.set(fn, cell);
+            }
+        }
+        const findGalleryCellByFilename = (filename) => {
+            if (!filename) return null;
+            let targetItem = galleryFilenameMap.get(filename);
+            if (targetItem) return targetItem;
+            // getGalleryItemByFilename: public/scripts/comp/galleryView.js
+            targetItem = getGalleryItemByFilename(filename, true);
+            if (targetItem) {
+                galleryFilenameMap.set(targetItem.dataset.filename || filename, targetItem);
+            }
+            return targetItem;
+        };
+
         // Add thumbEl filter for zoom animation from thumbnails
         lightbox.addFilter('thumbEl', (thumbEl, data, index) => {
             // Only use manual preview image if:
@@ -548,21 +569,7 @@ async function initializePhotoSwipe() {
                 const filename = data.data.filename || data.data.upscaled || data.data.original;
                 if (filename) {
                     console.log('Filename found:', filename);
-                    // Try exact filename match first
-                    targetItem = document.querySelector(`[data-filename="${filename}"]`);
-                    // If still not found, try partial match (in case of URL encoding issues)
-                    if (!targetItem) {
-                        console.log('Filename not found, trying partial match');
-                        const allItems = document.querySelectorAll('[data-filename]');
-                        for (const item of allItems) {
-                            const itemFilename = item.dataset.filename;
-                            if (itemFilename && (itemFilename.includes(filename) || filename.includes(itemFilename))) {
-                                console.log('Partial match found:', itemFilename);
-                                targetItem = item;
-                                break;
-                            }
-                        }
-                    }
+                    targetItem = findGalleryCellByFilename(filename);
                 }
             }
             
@@ -606,19 +613,7 @@ async function initializePhotoSwipe() {
             if (!targetItem && slide.data) {
                 const filename = slide.data.filename || slide.data.upscaled || slide.data.original;
                 if (filename) {
-                    // Try exact filename match first
-                    targetItem = document.querySelector(`[data-filename="${filename}"]`);
-                    // If still not found, try partial match (in case of URL encoding issues)
-                    if (!targetItem) {
-                        const allItems = document.querySelectorAll('[data-filename]');
-                        for (const item of allItems) {
-                            const itemFilename = item.dataset.filename;
-                            if (itemFilename && (itemFilename.includes(filename) || filename.includes(itemFilename))) {
-                                targetItem = item;
-                                break;
-                            }
-                        }
-                    }
+                    targetItem = findGalleryCellByFilename(filename);
                 }
             }
             

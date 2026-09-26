@@ -1029,7 +1029,8 @@ function setupMainMenuContextMenus() {
 
             case 'sw-check-updates':
                 if (window.serviceWorkerManager) {
-                    await window.serviceWorkerManager.checkStaticFileUpdates(false);
+                    // refreshServerCacheAndCheck: compile runtime assets, then pull the new SW manifest
+                    await window.serviceWorkerManager.refreshServerCacheAndCheck();
                 }
                 break;
 

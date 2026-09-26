@@ -50,12 +50,15 @@ class CharacterAutofillToolManager {
         const routeTarget = currentCharacterAutocompleteTarget || this.getInsertTarget() || this.linkedTextarea;
         if (!routeTarget) return false;
         if (document.activeElement === routeTarget) return false;
+        // tryRepeatAutofillListStep: public/scripts/comp/autocompleteUtils.js
+        if (tryRepeatAutofillListStep(e)) return true;
         // isCharacterAutocompleteOverlayOpen: public/scripts/comp/autocompleteUtils.js
         if (!isCharacterAutocompleteOverlayOpen()) return false;
         // isAutofillRoutedKeydown: public/scripts/comp/autocompleteUtils.js
         if (!isAutofillRoutedKeydown(e)) return false;
         e.preventDefault();
         e.stopPropagation();
+        this.markInteracted();
         const proxied = new Proxy(e, {
             get(target, prop) {
                 if (prop === 'target') return routeTarget;
@@ -63,7 +66,7 @@ class CharacterAutofillToolManager {
                 return typeof val === 'function' ? val.bind(target) : val;
             }
         });
-        routeTarget.focus({ preventScroll: true });
+        // Do not focus the prompt — focus() fires selectionchange and aborts list nav.
         // handleCharacterAutocompleteKeydown: public/scripts/comp/autocompleteUtils.js
         handleCharacterAutocompleteKeydown(proxied);
         return true;

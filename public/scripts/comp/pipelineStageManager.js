@@ -2712,16 +2712,48 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
         return; // Stage not found and not from manual
     }
 
+    // Cache each stage's inputs for this cascade pass
+    const stageInputCache = new Map();
+    const getStageInputs = (stageId) => {
+        let cached = stageInputCache.get(stageId);
+        if (!cached) {
+            cached = {
+                resolution: document.getElementById(`${stageId}_resolution`),
+                resolutionSelected: document.getElementById(`${stageId}_resolutionSelected`),
+                width: document.getElementById(`${stageId}_width`),
+                height: document.getElementById(`${stageId}_height`),
+                branchToggle: document.getElementById(`${stageId}_branchToggle`)
+            };
+            stageInputCache.set(stageId, cached);
+        }
+        return cached;
+    };
+
+    // Preset lookup map — avoid repeated RESOLUTIONS.find per stage
+    const resolutionByValue = new Map();
+    for (const r of RESOLUTIONS) {
+        resolutionByValue.set(r.value, r);
+    }
+
+    // If caller omitted the resolution, read it from the changed stage's cached input
+    if (!fromManual && (newResolution === undefined || newResolution === null) && changedStageId) {
+        newResolution = getStageInputs(changedStageId).resolution?.value;
+    }
+
     // Get aspect ratio and orientation for a resolution (handles both custom and preset)
+    // Returns the resolved preset object when applicable so callers need not find again
     const getResolutionInfo = (stageId, resValue) => {
         if (isCustomResolutionMode(resValue)) {
-            // Check if this is from manual (use manual inputs) or from a stage
-            const widthInput = fromManual ?
-                document.getElementById('manualWidth') :
-                document.getElementById(`${stageId}_width`);
-            const heightInput = fromManual ?
-                document.getElementById('manualHeight') :
-                document.getElementById(`${stageId}_height`);
+            let widthInput;
+            let heightInput;
+            if (fromManual) {
+                widthInput = document.getElementById('manualWidth');
+                heightInput = document.getElementById('manualHeight');
+            } else {
+                const inputs = getStageInputs(stageId);
+                widthInput = inputs.width;
+                heightInput = inputs.height;
+            }
 
             if (widthInput && heightInput && widthInput.value && heightInput.value) {
                 const width = parseInt(widthInput.value);
@@ -2730,17 +2762,17 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
                 let orientation = 'square';
                 if (height > width * 1.05) orientation = 'portrait'; // 5% threshold
                 else if (width > height * 1.05) orientation = 'landscape';
-                return { width, height, aspectRatio, orientation, isCustom: true };
+                return { width, height, aspectRatio, orientation, isCustom: true, preset: null };
             }
             return null;
         } else {
-            const res = RESOLUTIONS.find(r => r.value === resValue);
+            const res = resolutionByValue.get(resValue);
             if (!res) return null;
             const aspectRatio = res.width / res.height;
             let orientation = 'square';
             if (res.height > res.width) orientation = 'portrait';
             else if (res.width > res.height) orientation = 'landscape';
-            return { width: res.width, height: res.height, aspectRatio, orientation, isCustom: false };
+            return { width: res.width, height: res.height, aspectRatio, orientation, isCustom: false, preset: res };
         }
     };
 
@@ -2753,21 +2785,22 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
     };
 
     // Find a resolution with the target orientation (prefer same group, then normal, then any)
+    // Returns the resolved preset object (not just the value string)
     const findResolutionByOrientation = (targetOrientation, preferredGroup = 'Normal') => {
         const suffix = targetOrientation === 'portrait' ? '_portrait' :
             targetOrientation === 'landscape' ? '_landscape' : '_square';
 
         // Try preferred group first
         let found = RESOLUTIONS.find(r => r.value.startsWith(preferredGroup.toLowerCase() + suffix));
-        if (found) return found.value;
+        if (found) return found;
 
         // Try normal group
         found = RESOLUTIONS.find(r => r.value.startsWith('normal' + suffix));
-        if (found) return found.value;
+        if (found) return found;
 
         // Try any group
         found = RESOLUTIONS.find(r => r.value.endsWith(suffix) && !r.value.startsWith('small_'));
-        if (found) return found.value;
+        if (found) return found;
 
         return null;
     };
@@ -2780,8 +2813,8 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
     let previousAspectRatio = previousInfo.aspectRatio;
 
     // Check if the changed stage is a branch (or if we're cascading from manual)
-    const changedBranchToggle = changedStageId ? document.getElementById(`${changedStageId}_branchToggle`) : null;
-    const isChangedBranch = changedBranchToggle?.dataset.state === 'on';
+    const changedInputs = changedStageId ? getStageInputs(changedStageId) : null;
+    const isChangedBranch = changedInputs?.branchToggle?.dataset.state === 'on';
 
     // Process each downstream expand canvas stage
     for (let i = changedIndex + 1; i < allStages.length; i++) {
@@ -2791,10 +2824,10 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
         if (stage.dataset.stageType !== STAGE_TYPES.EXPAND_CANVAS) continue;
 
         const stageId = stage.id;
+        const inputs = getStageInputs(stageId);
 
         // Check if this downstream stage is a branch
-        const stageBranchToggle = document.getElementById(`${stageId}_branchToggle`);
-        const isStageBranch = stageBranchToggle?.dataset.state === 'on';
+        const isStageBranch = inputs.branchToggle?.dataset.state === 'on';
 
         // Skip branch cascade rules:
         // - If changed stage is a branch, only affect other branch stages
@@ -2809,8 +2842,8 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
             // Non-branch stage changed: skip branch stages
             continue;
         }
-        const resolutionInput = document.getElementById(`${stageId}_resolution`);
-        const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
+        const resolutionInput = inputs.resolution;
+        const resolutionSelected = inputs.resolutionSelected;
 
         if (!resolutionInput || !resolutionSelected || !previousOrientation) {
             // Conflict: clear this and all downstream resolutions
@@ -2832,8 +2865,8 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
 
         if (isDownstreamCustom) {
             // Swap width and height for custom resolution (rotate aspect ratio)
-            const widthInput = document.getElementById(`${stageId}_width`);
-            const heightInput = document.getElementById(`${stageId}_height`);
+            const widthInput = inputs.width;
+            const heightInput = inputs.height;
 
             if (widthInput && heightInput && widthInput.value && heightInput.value) {
                 const currentWidth = parseInt(widthInput.value);
@@ -2862,8 +2895,8 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
                 }
             }
         } else {
-            // Check current resolution orientation
-            const currentRes = RESOLUTIONS.find(r => r.value === resolutionInput.value);
+            // Use cached preset map instead of RESOLUTIONS.find per stage
+            const currentRes = resolutionByValue.get(resolutionInput.value);
 
             if (currentRes) {
                 // Determine current resolution's orientation
@@ -2883,42 +2916,41 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
                 }
             }
 
-            // Current resolution doesn't match - find a suitable one
+            // Current resolution doesn't match - find a suitable preset and pass it through
             const preferredGroup = currentRes ? currentRes.value.split('_')[0] : 'normal';
-            const newValue = findResolutionByOrientation(nextOrientation, preferredGroup);
+            const newRes = findResolutionByOrientation(nextOrientation, preferredGroup);
 
-            if (!newValue) {
+            if (!newRes) {
                 // No suitable resolution found - clear this and downstream
                 clearStageResolution(stageId);
                 previousOrientation = null;
                 continue;
             }
 
+            const newValue = newRes.value;
+
             // Update this stage's resolution
             resolutionInput.value = newValue;
-            const newRes = RESOLUTIONS.find(r => r.value === newValue);
-            if (newRes) {
-                // Find group for display
-                let displayGroup = null;
-                for (const g of RESOLUTION_GROUPS) {
-                    if (g.options.find(o => o.value === newValue)) {
-                        displayGroup = g;
-                        break;
-                    }
+            // Find group for display
+            let displayGroup = null;
+            for (const g of RESOLUTION_GROUPS) {
+                if (g.options.find(o => o.value === newValue)) {
+                    displayGroup = g;
+                    break;
                 }
-
-                const opt = displayGroup?.options.find(o => o.value === newValue);
-                if (opt && displayGroup) {
-                    // public/scripts/comp/utilities.js
-                    resolutionSelected.innerHTML = formatResolutionSelectedHtml(opt, displayGroup);
-                }
-
-                // Update bias orientation
-                updateStageBiasOrientation(stageId, newValue);
-
-                // Update previous info for next iteration
-                previousAspectRatio = newRes.width / newRes.height;
             }
+
+            const opt = displayGroup?.options.find(o => o.value === newValue);
+            if (opt && displayGroup) {
+                // public/scripts/comp/utilities.js
+                resolutionSelected.innerHTML = formatResolutionSelectedHtml(opt, displayGroup);
+            }
+
+            // Update bias orientation
+            updateStageBiasOrientation(stageId, newValue);
+
+            // Update previous info for next iteration from the resolved preset
+            previousAspectRatio = newRes.width / newRes.height;
 
             previousOrientation = nextOrientation;
         }

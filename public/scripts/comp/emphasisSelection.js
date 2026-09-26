@@ -1,5 +1,8 @@
 // Emphasis selection and cursor/brace helpers
 
+/** Dedicated /g scanner — do not share lastIndex with EMPHASIS_BRACE_BLOCK_PATTERN consumers. */
+const EMPHASIS_BRACE_BLOCK_SCAN = new RegExp(EMPHASIS_BRACE_BLOCK_PATTERN.source, 'g');
+
 function findEmphasisBlockOverlappingSelection(value, selStart, selEnd) {
     for (const block of listEmphasisBlocks(value)) {
         if (selStart < block.end && selEnd > block.start) {
@@ -15,7 +18,8 @@ function findEmphasisBlockOverlappingSelection(value, selStart, selEnd) {
 }
 
 function findBraceBlockOverlappingSelection(value, selStart, selEnd) {
-    const pattern = new RegExp(EMPHASIS_BRACE_BLOCK_PATTERN.source, 'g');
+    const pattern = EMPHASIS_BRACE_BLOCK_SCAN;
+    pattern.lastIndex = 0;
     let match;
     while ((match = pattern.exec(value)) !== null) {
         const start = match.index;
@@ -34,7 +38,8 @@ function findBraceBlockOverlappingSelection(value, selStart, selEnd) {
 
 function findEmphasisBraceBlockAtCursor(value, searchStart, searchEnd, cursorPosition) {
     const slice = value.substring(searchStart, searchEnd);
-    const pattern = new RegExp(EMPHASIS_BRACE_BLOCK_PATTERN.source, 'g');
+    const pattern = EMPHASIS_BRACE_BLOCK_SCAN;
+    pattern.lastIndex = 0;
     let match;
     while ((match = pattern.exec(slice)) !== null) {
         const start = searchStart + match.index;
@@ -114,46 +119,56 @@ function findAutoDetectTagBounds(value, cursorPosition) {
         };
     }
 
-    // findManagedEmphasisBlockAtCursor: public/scripts/comp/emphasisGroupIdCodec.js
-    const managedBlock = findManagedEmphasisBlockAtCursor(value, cursorPosition);
-    if (managedBlock) {
+    // One managed + one classic scan; pick the block that contains the caret.
+    // hasManagedEmphasisGroupIds / listManagedEmphasisBlocks / resolveWeightForEmphasisGroupId:
+    // public/scripts/comp/emphasisGroupIdCodec.js
+    const managedBlocks = hasManagedEmphasisGroupIds(value) ? listManagedEmphasisBlocks(value) : [];
+    for (let i = 0; i < managedBlocks.length; i++) {
+        const b = managedBlocks[i];
+        if (cursorPosition < b.start || cursorPosition > b.end) continue;
+        const resolved = resolveWeightForEmphasisGroupId(b.id);
+        const weight = Number.isFinite(resolved)
+            ? resolved
+            : (Number.isFinite(b.textWeight) ? b.textWeight : 1);
         return {
-            start: managedBlock.start,
-            end: managedBlock.end,
+            start: b.start,
+            end: b.end,
             mode: 'group',
-            weight: managedBlock.weight,
-            managedId: managedBlock.id
+            weight,
+            managedId: b.id
         };
     }
 
-    const emphasisBlock = findEmphasisBlockAtCursor(value, cursorPosition);
-    if (emphasisBlock) {
-        return {
-            start: emphasisBlock.start,
-            end: emphasisBlock.end,
-            mode: 'group',
-            weight: emphasisBlock.weight
-        };
+    const classicBlocks = listEmphasisBlocks(value);
+    for (let i = 0; i < classicBlocks.length; i++) {
+        const b = classicBlocks[i];
+        if (cursorPosition >= b.start && cursorPosition < b.end) {
+            return {
+                start: b.start,
+                end: b.end,
+                mode: 'group',
+                weight: b.weight
+            };
+        }
     }
 
     const textBeforeCursor = value.substring(0, cursorPosition);
     const textAfterCursor = value.substring(cursorPosition);
 
-    let blockStart = findEmphasisBlockEndBefore(value, cursorPosition);
+    let blockStart = 0;
+    for (let i = 0; i < classicBlocks.length; i++) {
+        const b = classicBlocks[i];
+        if (b.end <= cursorPosition) blockStart = Math.max(blockStart, b.end);
+    }
 
-    // Managed open/close ends are term boundaries (same role as classic ::)
-    // listManagedEmphasisBlocks: public/scripts/comp/emphasisGroupIdCodec.js
-    if (hasManagedEmphasisGroupIds(value)) {
-        const managedBlocks = listManagedEmphasisBlocks(value);
-        for (let i = 0; i < managedBlocks.length; i++) {
-            const b = managedBlocks[i];
-            if (b.end <= cursorPosition) {
-                blockStart = Math.max(blockStart, b.end);
-            }
-            if (b.openEnd <= cursorPosition && b.openEnd > blockStart
-                && cursorPosition <= b.closeStart) {
-                blockStart = Math.max(blockStart, b.openEnd);
-            }
+    for (let i = 0; i < managedBlocks.length; i++) {
+        const b = managedBlocks[i];
+        if (b.end <= cursorPosition) {
+            blockStart = Math.max(blockStart, b.end);
+        }
+        if (b.openEnd <= cursorPosition && b.openEnd > blockStart
+            && cursorPosition <= b.closeStart) {
+            blockStart = Math.max(blockStart, b.openEnd);
         }
     }
 
@@ -169,19 +184,20 @@ function findAutoDetectTagBounds(value, cursorPosition) {
         blockStart = Math.max(blockStart, periodIdx + 1);
     }
 
-    let blockEnd = findEmphasisBlockStartAfter(value, cursorPosition);
+    let blockEnd = value.length;
+    for (let i = 0; i < classicBlocks.length; i++) {
+        const b = classicBlocks[i];
+        if (b.start >= cursorPosition) blockEnd = Math.min(blockEnd, b.start);
+    }
 
-    if (hasManagedEmphasisGroupIds(value)) {
-        const managedBlocks = listManagedEmphasisBlocks(value);
-        for (let i = 0; i < managedBlocks.length; i++) {
-            const b = managedBlocks[i];
-            if (b.start >= cursorPosition) {
-                blockEnd = Math.min(blockEnd, b.start);
-            }
-            if (b.closeStart >= cursorPosition && b.closeStart < blockEnd
-                && cursorPosition >= b.openEnd) {
-                blockEnd = Math.min(blockEnd, b.closeStart);
-            }
+    for (let i = 0; i < managedBlocks.length; i++) {
+        const b = managedBlocks[i];
+        if (b.start >= cursorPosition) {
+            blockEnd = Math.min(blockEnd, b.start);
+        }
+        if (b.closeStart >= cursorPosition && b.closeStart < blockEnd
+            && cursorPosition >= b.openEnd) {
+            blockEnd = Math.min(blockEnd, b.closeStart);
         }
     }
 

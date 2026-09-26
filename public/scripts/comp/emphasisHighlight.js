@@ -135,49 +135,55 @@ function handleNsfwTagDetection(textarea, currentValue) {
     if (!textarea || !currentValue) return;
 
     const previousValue = previousTextareaValues.get(textarea) || '';
-    const currentValueLower = currentValue.toLowerCase();
-    const previousValueLower = previousValue.toLowerCase();
+    if (currentValue === previousValue) return;
 
-    // Check if "nsfw" was added (appears in current but not in previous)
-    const nsfwRegex = /\bnsfw\b/gi;
-    const hasNsfwNow = nsfwRegex.test(currentValueLower);
-    const hadNsfwBefore = nsfwRegex.test(previousValueLower);
-
-    if (hasNsfwNow && !hadNsfwBefore) {
-        // NSFW tag was just added, remove it and set appropriate mode
-
-        // Remove all instances of "nsfw" (case insensitive)
-        let cleanedValue = currentValue.replace(nsfwRegex, '').trim();
-
-        // Clean up extra spaces and commas
-        cleanedValue = cleanedValue.replace(/\s*,\s*,/g, ',').replace(/^,\s*/, '').replace(/,\s*$/, '');
-
-        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
-        setTextareaValuePreservingUndo(textarea, cleanedValue);
-
-        // Determine NSFW mode based on textarea type
-        let nsfwMode = 1; // Default for prompts
-
-        // Check if this is a UC textarea
-        const isUcTextarea = textarea.id === 'manualUc' ||
-                           textarea.id === 'manualPromptNegative' ||
-                           textarea.classList.contains('uc-textarea') ||
-                           textarea.closest('.character-uc-container') ||
-                           textarea.getAttribute('data-type') === 'uc' ||
-                           (textarea.id && textarea.id.endsWith('_uc')); // Character UC textareas
-
-        if (isUcTextarea) {
-            nsfwMode = -1; // Remove mode for UC textareas
-        }
-
-        // Set the NSFW value
-        selectNsfwValue(nsfwMode);
-        previousTextareaValues.set(textarea, cleanedValue);
+    // Diff to the edited span, then expand to word bounds so char-by-char "nsfw" still hits.
+    let start = 0;
+    const minLen = Math.min(previousValue.length, currentValue.length);
+    while (start < minLen && previousValue.charCodeAt(start) === currentValue.charCodeAt(start)) start++;
+    let endOld = previousValue.length;
+    let endNew = currentValue.length;
+    while (endOld > start && endNew > start
+        && previousValue.charCodeAt(endOld - 1) === currentValue.charCodeAt(endNew - 1)) {
+        endOld--;
+        endNew--;
+    }
+    let checkStart = start;
+    let checkEnd = endNew;
+    while (checkStart > 0 && /[A-Za-z0-9_]/.test(currentValue[checkStart - 1])) checkStart--;
+    while (checkEnd < currentValue.length && /[A-Za-z0-9_]/.test(currentValue[checkEnd])) checkEnd++;
+    const editedSlice = currentValue.slice(checkStart, checkEnd);
+    if (!/\bnsfw\b/i.test(editedSlice)) {
+        previousTextareaValues.set(textarea, currentValue);
+        return;
+    }
+    // Newly added only — skip if previous already had the word
+    if (/\bnsfw\b/i.test(previousValue)) {
+        previousTextareaValues.set(textarea, currentValue);
         return;
     }
 
-    // Store current value for next comparison
-    previousTextareaValues.set(textarea, currentValue);
+    // NSFW tag was just added, remove it and set appropriate mode
+    let cleanedValue = currentValue.replace(/\bnsfw\b/gi, '').trim();
+    cleanedValue = cleanedValue.replace(/\s*,\s*,/g, ',').replace(/^,\s*/, '').replace(/,\s*$/, '');
+
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(textarea, cleanedValue);
+
+    let nsfwMode = 1;
+    const isUcTextarea = textarea.id === 'manualUc' ||
+                       textarea.id === 'manualPromptNegative' ||
+                       textarea.classList.contains('uc-textarea') ||
+                       textarea.closest('.character-uc-container') ||
+                       textarea.getAttribute('data-type') === 'uc' ||
+                       (textarea.id && textarea.id.endsWith('_uc'));
+    if (isUcTextarea) {
+        nsfwMode = -1;
+    }
+
+    // selectNsfwValue: public/scripts/comp/manualModalManager.js (or NSFW control)
+    selectNsfwValue(nsfwMode);
+    previousTextareaValues.set(textarea, cleanedValue);
 }
 
 function updateEmphasisHighlighting(textarea) {
@@ -227,6 +233,7 @@ function updateEmphasisHighlighting(textarea) {
             : null;
         overlay.innerHTML = highlightEmphasisInText(paintValue, bag);
     }
+    invalidateEmphasisSpanIndex(overlay);
 
     // Sync scroll position
     overlay.scrollTop = textarea.scrollTop;
@@ -251,6 +258,7 @@ function initializeEmphasisOverlay(textarea) {
     if (!overlay) return;
 
     overlay.innerHTML = highlightedValue;
+    invalidateEmphasisSpanIndex(overlay);
 
     // Sync scroll position
     overlay.scrollTop = textarea.scrollTop;
@@ -282,18 +290,100 @@ function getEmphasisHighlightStyle(weight) {
     };
 }
 
-let cachedU1TagPattern = null;
-let cachedU1TagPatternSource = null;
+let cachedU1TagMatcher = null;
+let cachedU1TagMatcherVersion = null;
 
-function getU1TagPattern() {
-    if (!window.u1 || !window.u1.length) return null;
-    if (cachedU1TagPattern && cachedU1TagPatternSource === window.u1) {
-        return cachedU1TagPattern;
+/** Cheap stamp so in-place length changes invalidate without holding the array ref. */
+function getU1TagsVersion(tags) {
+    if (!tags || !tags.length) return null;
+    return tags.length + '\0' + tags[0] + '\0' + tags[tags.length - 1];
+}
+
+function isU1WordChar(ch) {
+    return ch !== undefined && /[A-Za-z0-9_]/.test(ch);
+}
+
+/** Same as JS `\b` between index-1 and index (including string ends). */
+function isU1WordBoundaryAt(str, index) {
+    const left = index > 0 && isU1WordChar(str[index - 1]);
+    const right = index < str.length && isU1WordChar(str[index]);
+    return left !== right;
+}
+
+/**
+ * Length-bucket matcher for NSFW u1 tags (longest-first, `\b`…`\b` semantics).
+ * Avoids compiling one giant alternation regex on every list identity change.
+ */
+function getU1TagMatcher() {
+    // u1: public/scripts/comp/tagSets.js
+    if (typeof u1 === 'undefined' || !u1 || !u1.length) return null;
+    const version = getU1TagsVersion(u1);
+    if (cachedU1TagMatcher && cachedU1TagMatcherVersion === version) {
+        return cachedU1TagMatcher;
     }
-    const sortedTags = [...window.u1].sort((a, b) => b.length - a.length);
-    cachedU1TagPattern = new RegExp(`\\b(${sortedTags.map(tag => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
-    cachedU1TagPatternSource = window.u1;
-    return cachedU1TagPattern;
+
+    const byLength = new Map();
+    for (let i = 0; i < u1.length; i++) {
+        const tag = u1[i];
+        if (typeof tag !== 'string' || !tag) continue;
+        const lower = tag.toLowerCase();
+        const len = lower.length;
+        let set = byLength.get(len);
+        if (!set) {
+            set = new Set();
+            byLength.set(len, set);
+        }
+        set.add(lower);
+    }
+    const lengths = Array.from(byLength.keys()).sort((a, b) => b - a);
+    if (!lengths.length) {
+        cachedU1TagMatcher = null;
+        cachedU1TagMatcherVersion = version;
+        return null;
+    }
+
+    const matcher = {
+        replace(content, onMatch) {
+            if (!content) return content;
+            const lower = content.toLowerCase();
+            let out = '';
+            let i = 0;
+            while (i < content.length) {
+                if (!isU1WordBoundaryAt(content, i)) {
+                    out += content[i];
+                    i++;
+                    continue;
+                }
+                let matchedLen = 0;
+                for (let li = 0; li < lengths.length; li++) {
+                    const len = lengths[li];
+                    if (i + len > content.length) continue;
+                    if (!isU1WordBoundaryAt(content, i + len)) continue;
+                    if (byLength.get(len).has(lower.slice(i, i + len))) {
+                        matchedLen = len;
+                        break;
+                    }
+                }
+                if (matchedLen) {
+                    const matched = content.slice(i, i + matchedLen);
+                    out += onMatch(matched, i);
+                    i += matchedLen;
+                } else {
+                    out += content[i];
+                    i++;
+                }
+            }
+            return out;
+        }
+    };
+    cachedU1TagMatcher = matcher;
+    cachedU1TagMatcherVersion = version;
+    return matcher;
+}
+
+/** @deprecated Prefer getU1TagMatcher — kept name for any external stub. */
+function getU1TagPattern() {
+    return getU1TagMatcher();
 }
 
 /**
@@ -342,8 +432,38 @@ function escapeEmphasisHighlightText(s) {
         .replace(/>/g, '&gt;');
 }
 
+/** Insert {start,end} into a start-sorted covered list (binary). */
+function emphasisCoveredRangesInsert(ranges, start, end) {
+    let lo = 0;
+    let hi = ranges.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (ranges[mid].start <= start) lo = mid + 1;
+        else hi = mid;
+    }
+    ranges.splice(lo, 0, { start, end });
+}
+
+/**
+ * True when [start,end) is inside a covered range.
+ * `ranges` must be sorted by start (non-overlapping as built by collect/list).
+ * Stops at the first range that starts past the hit.
+ */
 function emphasisRangeIsCovered(ranges, start, end) {
-    return ranges.some((r) => start >= r.start && end <= r.end);
+    let lo = 0;
+    let hi = ranges.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (ranges[mid].start <= start) lo = mid + 1;
+        else hi = mid;
+    }
+    if (lo === 0) return false;
+    return end <= ranges[lo - 1].end;
+}
+
+/** Point coverage: index inside a sorted covered range. */
+function emphasisIndexIsCovered(ranges, index) {
+    return emphasisRangeIsCovered(ranges, index, index + 1);
 }
 
 /** Collect all weight-group spans from raw prompt text (indices match textarea.value). */
@@ -373,7 +493,7 @@ function collectEmphasisWeightGroupSpecs(text, weightSource) {
                 closePart: text.slice(b.closeStart, b.end),
                 weight
             });
-            covered.push({ start: b.start, end: b.end });
+            emphasisCoveredRangesInsert(covered, b.start, b.end);
         });
     }
 
@@ -394,7 +514,7 @@ function collectEmphasisWeightGroupSpecs(text, weightSource) {
             closePart: '::',
             weight: parseFloat(m[1])
         });
-        covered.push({ start: m.index, end });
+        emphasisCoveredRangesInsert(covered, m.index, end);
     }
     EMPHASIS_PATTERNS.weightEmphasis.lastIndex = 0;
 
@@ -414,7 +534,7 @@ function collectEmphasisWeightGroupSpecs(text, weightSource) {
             closePart: '',
             weight: parseFloat(m[1])
         });
-        covered.push({ start: m.index, end });
+        emphasisCoveredRangesInsert(covered, m.index, end);
     }
     EMPHASIS_PATTERNS.weightEmphasisAutoTerminating.lastIndex = 0;
 
@@ -434,7 +554,7 @@ function collectEmphasisWeightGroupSpecs(text, weightSource) {
             closePart: m[3],
             weight: weightFromBraceLevel(braceLevel, 'brace')
         });
-        covered.push({ start: m.index, end });
+        emphasisCoveredRangesInsert(covered, m.index, end);
     }
     EMPHASIS_PATTERNS.braceEmphasis.lastIndex = 0;
 
@@ -455,7 +575,7 @@ function collectEmphasisWeightGroupSpecs(text, weightSource) {
             closePart: m[3],
             weight: weightFromBraceLevel(bracketLevel, 'bracket')
         });
-        covered.push({ start: m.index, end });
+        emphasisCoveredRangesInsert(covered, m.index, end);
     }
     EMPHASIS_PATTERNS.bracketEmphasis.lastIndex = 0;
 
@@ -482,6 +602,7 @@ function emphasisCaretDistanceToBoundary(value, caret, boundary) {
 function listEmphasisWeightGroupBoundsForCaret(value) {
     const out = [];
     if (!value) return out;
+    const covered = [];
 
     if (typeof hasManagedEmphasisGroupIds === 'function'
         && typeof listManagedEmphasisBlocks === 'function'
@@ -495,55 +616,143 @@ function listEmphasisWeightGroupBoundsForCaret(value) {
                 end: b.end,
                 kind: 'managed'
             });
+            emphasisCoveredRangesInsert(covered, b.start, b.end);
         });
     }
 
     let m;
     while ((m = EMPHASIS_PATTERNS.weightEmphasis.exec(value)) !== null) {
-        const covered = out.some((b) => m.index >= b.start && m.index < b.end);
-        if (covered) continue;
+        if (emphasisIndexIsCovered(covered, m.index)) continue;
         const openLen = m[1].length + 2;
+        const end = m.index + m[0].length;
         out.push({
             id: null,
             start: m.index,
             openEnd: m.index + openLen,
-            closeStart: m.index + m[0].length - 2,
-            end: m.index + m[0].length,
+            closeStart: end - 2,
+            end,
             kind: 'classic'
         });
+        emphasisCoveredRangesInsert(covered, m.index, end);
     }
     EMPHASIS_PATTERNS.weightEmphasis.lastIndex = 0;
 
     while ((m = EMPHASIS_PATTERNS.braceEmphasis.exec(value)) !== null) {
-        const covered = out.some((b) => m.index >= b.start && m.index < b.end);
-        if (covered) continue;
+        if (emphasisIndexIsCovered(covered, m.index)) continue;
+        const end = m.index + m[0].length;
         out.push({
             id: null,
             start: m.index,
             openEnd: m.index + m[1].length,
             closeStart: m.index + m[1].length + m[2].length,
-            end: m.index + m[0].length,
+            end,
             kind: 'brace'
         });
+        emphasisCoveredRangesInsert(covered, m.index, end);
     }
     EMPHASIS_PATTERNS.braceEmphasis.lastIndex = 0;
 
     while ((m = EMPHASIS_PATTERNS.bracketEmphasis.exec(value)) !== null) {
         if (m[0].includes('!') || m[2].includes('|')) continue;
-        const covered = out.some((b) => m.index >= b.start && m.index < b.end);
-        if (covered) continue;
+        if (emphasisIndexIsCovered(covered, m.index)) continue;
+        const end = m.index + m[0].length;
         out.push({
             id: null,
             start: m.index,
             openEnd: m.index + m[1].length,
             closeStart: m.index + m[1].length + m[2].length,
-            end: m.index + m[0].length,
+            end,
             kind: 'bracket'
         });
+        emphasisCoveredRangesInsert(covered, m.index, end);
     }
     EMPHASIS_PATTERNS.bracketEmphasis.lastIndex = 0;
 
     return out.sort((a, b) => a.start - b.start);
+}
+
+const EMPHASIS_CARET_CLASSES = [
+    'emphasis-caret-start-near', 'emphasis-caret-start-in', 'emphasis-caret-start-out',
+    'emphasis-caret-end-near', 'emphasis-caret-end-in', 'emphasis-caret-end-out'
+];
+const emphasisCaretBoundsCache = new WeakMap();
+let emphasisCaretSyncRaf = 0;
+
+function invalidateEmphasisSpanIndex(overlay) {
+    if (!overlay) return;
+    overlay._emphasisSpanIndex = null;
+    overlay._emphasisCaretMarked = null;
+}
+
+function getEmphasisCaretBounds(textarea, value) {
+    const cached = emphasisCaretBoundsCache.get(textarea);
+    if (cached && cached.value === value) return cached.bounds;
+    const bounds = listEmphasisWeightGroupBoundsForCaret(value);
+    emphasisCaretBoundsCache.set(textarea, { value, bounds });
+    return bounds;
+}
+
+function getEmphasisSpanIndex(overlay) {
+    if (overlay._emphasisSpanIndex) return overlay._emphasisSpanIndex;
+    const list = overlay.querySelectorAll('.emphasis-weight-group');
+    const byId = new Map();
+    const byStart = new Map();
+    for (let i = 0; i < list.length; i++) {
+        const el = list[i];
+        if (el.dataset.empId) byId.set(el.dataset.empId, el);
+        if (el.dataset.empStart) byStart.set(el.dataset.empStart, el);
+    }
+    const index = { list, byId, byStart };
+    overlay._emphasisSpanIndex = index;
+    return index;
+}
+
+function clearEmphasisCaretMarks(overlay) {
+    const marked = overlay._emphasisCaretMarked;
+    if (!marked) return;
+    for (let i = 0; i < marked.length; i++) {
+        marked[i].classList.remove(...EMPHASIS_CARET_CLASSES);
+    }
+    overlay._emphasisCaretMarked = null;
+}
+
+function emphasisBoundNearCaret(value, caret, bound, prox, skipInvisible) {
+    const rawStart = Math.min(Math.abs(caret - bound.start), Math.abs(caret - bound.openEnd));
+    const rawEnd = Math.min(Math.abs(caret - bound.closeStart), Math.abs(caret - bound.end));
+    const rawBudget = skipInvisible ? prox + 64 : prox;
+    if (rawStart > rawBudget && rawEnd > rawBudget) return null;
+
+    const distStart = Math.min(
+        emphasisCaretDistanceToBoundary(value, caret, bound.start),
+        emphasisCaretDistanceToBoundary(value, caret, bound.openEnd)
+    );
+    const distEnd = Math.min(
+        emphasisCaretDistanceToBoundary(value, caret, bound.closeStart),
+        emphasisCaretDistanceToBoundary(value, caret, bound.end)
+    );
+    if (distStart > prox && distEnd > prox) return null;
+    return { distStart, distEnd };
+}
+
+function findEmphasisSpanForBound(index, bound, used) {
+    if (bound.kind === 'managed' && bound.id != null) {
+        const byId = index.byId.get(String(bound.id));
+        if (byId && !used.has(byId)) return byId;
+    }
+    const byStart = index.byStart.get(String(bound.start));
+    if (byStart && !used.has(byStart)) return byStart;
+    for (let i = 0; i < index.list.length; i++) {
+        const el = index.list[i];
+        if (used.has(el)) continue;
+        const s = Number(el.dataset.empStart);
+        const e = Number(el.dataset.empEnd);
+        if (!Number.isFinite(s) || !Number.isFinite(e)) {
+            if (!el.dataset.empStart) return el;
+            continue;
+        }
+        if (!(e <= bound.start || s >= bound.end)) return el;
+    }
+    return null;
 }
 
 /**
@@ -558,76 +767,69 @@ function syncEmphasisGroupBoundaryCarets(textarea) {
         : null;
     if (!overlay) return;
 
-    const CARETS = [
-        'emphasis-caret-start-near', 'emphasis-caret-start-in', 'emphasis-caret-start-out',
-        'emphasis-caret-end-near', 'emphasis-caret-end-in', 'emphasis-caret-end-out'
-    ];
-    const spans = [...overlay.querySelectorAll('.emphasis-weight-group')];
-    spans.forEach((el) => CARETS.forEach((c) => el.classList.remove(c)));
-
+    clearEmphasisCaretMarks(overlay);
     if (document.activeElement !== textarea) return;
     if (textarea.selectionStart !== textarea.selectionEnd) return;
 
     const value = textarea.value || '';
     const caret = textarea.selectionStart;
+    const bounds = getEmphasisCaretBounds(textarea, value);
+    if (!bounds.length) return;
+
+    // hasManagedEmphasisGroupIds: public/scripts/comp/emphasisGroupIdCodec.js
+    const skipInvisible = hasManagedEmphasisGroupIds(value);
     // _managedCaretMoveDir: public/scripts/comp/emphasisGroupIdCodec.js
     const leaveDir = Number.isFinite(textarea._managedCaretMoveDir) ? textarea._managedCaretMoveDir : 0;
     const prox = EMPHASIS_GROUP_CARET_PROXIMITY;
-    const liveBounds = listEmphasisWeightGroupBoundsForCaret(value);
+    const index = getEmphasisSpanIndex(overlay);
+    const used = new Set();
+    const marked = [];
 
-    const usedSpans = new Set();
-    const findSpanForBound = (bound) => {
-        if (bound.kind === 'managed' && bound.id != null) {
-            const byId = spans.find((el) => !usedSpans.has(el) && el.dataset.empId === String(bound.id));
-            if (byId) return byId;
-        }
-        const byStart = spans.find((el) => !usedSpans.has(el) && Number(el.dataset.empStart) === bound.start);
-        if (byStart) return byStart;
-        // Fallback: first unused span whose painted range overlaps (stale HTML offsets)
-        return spans.find((el) => {
-            if (usedSpans.has(el)) return false;
-            const s = Number(el.dataset.empStart);
-            const e = Number(el.dataset.empEnd);
-            if (!Number.isFinite(s) || !Number.isFinite(e)) return !el.dataset.empStart;
-            return !(e <= bound.start || s >= bound.end);
-        });
-    };
+    for (let i = 0; i < bounds.length; i++) {
+        const bound = bounds[i];
+        const near = emphasisBoundNearCaret(value, caret, bound, prox, skipInvisible);
+        if (!near) continue;
+        const el = findEmphasisSpanForBound(index, bound, used);
+        if (!el) continue;
+        used.add(el);
+        marked.push(el);
 
-    liveBounds.forEach((bound) => {
-        const el = findSpanForBound(bound);
-        if (!el) return;
-        usedSpans.add(el);
-
-        const distStart = Math.min(
-            emphasisCaretDistanceToBoundary(value, caret, bound.start),
-            emphasisCaretDistanceToBoundary(value, caret, bound.openEnd)
-        );
-        const distEnd = Math.min(
-            emphasisCaretDistanceToBoundary(value, caret, bound.closeStart),
-            emphasisCaretDistanceToBoundary(value, caret, bound.end)
-        );
-
-        if (distStart <= prox) {
+        if (near.distStart <= prox) {
             const startInside = resolveEmphasisCaretEdgeMembership(caret, leaveDir, bound, 'start');
             el.classList.add('emphasis-caret-start-near');
             el.classList.add(startInside ? 'emphasis-caret-start-in' : 'emphasis-caret-start-out');
         }
-        if (distEnd <= prox) {
+        if (near.distEnd <= prox) {
             const endInside = resolveEmphasisCaretEdgeMembership(caret, leaveDir, bound, 'end');
             el.classList.add('emphasis-caret-end-near');
             el.classList.add(endInside ? 'emphasis-caret-end-in' : 'emphasis-caret-end-out');
         }
-    });
+    }
+
+    if (marked.length) overlay._emphasisCaretMarked = marked;
+}
+
+function flushEmphasisGroupCaretSync() {
+    emphasisCaretSyncRaf = 0;
+    const el = document.activeElement;
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    if (!el.classList.contains('prompt-textarea') && !el.classList.contains('character-prompt-textarea')) return;
+    if (el.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) return;
+
+    const key = el.selectionStart + '\0' + el.selectionEnd + '\0' + (el.value || '');
+    if (el._emphasisCaretSyncKey === key) return;
+    el._emphasisCaretSyncKey = key;
+    // capturePromptTextareaSelection: public/scripts/comp/emphasisSelection.js
+    capturePromptTextareaSelection(el, { clearIfCollapsed: true });
+    syncEmphasisGroupBoundaryCarets(el);
 }
 
 function handleEmphasisGroupCaretSelectionChange() {
     const el = document.activeElement;
     if (!el || el.tagName !== 'TEXTAREA') return;
     if (!el.classList.contains('prompt-textarea') && !el.classList.contains('character-prompt-textarea')) return;
-    if (el.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) return;
-    // capturePromptTextareaSelection: public/scripts/comp/emphasisSelection.js
-    capturePromptTextareaSelection(el, { clearIfCollapsed: true });
-    syncEmphasisGroupBoundaryCarets(el);
+    if (emphasisCaretSyncRaf) return;
+    emphasisCaretSyncRaf = requestAnimationFrame(flushEmphasisGroupCaretSync);
 }
 
 document.addEventListener('selectionchange', handleEmphasisGroupCaretSelectionChange);
@@ -636,14 +838,24 @@ function highlightEmphasisInText(text, weightSource) {
     if (!text) return '';
 
     const weightSpecs = collectEmphasisWeightGroupSpecs(text, weightSource);
-    let highlightedText = text;
     const weightPlaceholders = [];
-
-    for (let i = weightSpecs.length - 1; i >= 0; i--) {
-        const spec = weightSpecs[i];
-        const id = `__EMPWG_${weightPlaceholders.length}__`;
-        weightPlaceholders.push({ id, spec });
-        highlightedText = highlightedText.slice(0, spec.start) + id + highlightedText.slice(spec.end);
+    // One forward pass: plain slices + placeholder ids (no reverse whole-string slice per group).
+    let highlightedText;
+    if (!weightSpecs.length) {
+        highlightedText = text;
+    } else {
+        const chunks = [];
+        let cursor = 0;
+        for (let i = 0; i < weightSpecs.length; i++) {
+            const spec = weightSpecs[i];
+            if (spec.start > cursor) chunks.push(text.slice(cursor, spec.start));
+            const id = `__EMPWG_${i}__`;
+            weightPlaceholders.push({ id, spec });
+            chunks.push(id);
+            cursor = spec.end;
+        }
+        if (cursor < text.length) chunks.push(text.slice(cursor));
+        highlightedText = chunks.join('');
     }
 
     // Function to calculate dynamic colors based on weight
@@ -698,17 +910,17 @@ function highlightEmphasisInText(text, weightSource) {
     }
 
     function applyNSFWHighlighting(content) {
-        const tagPattern = getU1TagPattern();
-        if (!tagPattern) return content;
+        const matcher = getU1TagMatcher();
+        if (!matcher) return content;
 
-        return content.replace(tagPattern, (match, tag) => {
-            const tagIndex = content.indexOf(match);
-            const beforeTag = content.substring(0, tagIndex);
-            const afterTag = content.substring(tagIndex + match.length);
-            const hasSingleColonBefore = beforeTag.endsWith(':') && !beforeTag.endsWith('::');
-            const hasSingleColonAfter = afterTag.startsWith(':') && !afterTag.startsWith('::');
+        return matcher.replace(content, (match, offset) => {
+            // Colon neighbors from match index — no indexOf rescan of the whole segment.
+            const before = offset > 0 ? content[offset - 1] : '';
+            const after = content[offset + match.length] || '';
+            const hasSingleColonBefore = before === ':' && (offset < 2 || content[offset - 2] !== ':');
+            const hasSingleColonAfter = after === ':' && content[offset + match.length + 1] !== ':';
             if (hasSingleColonBefore || hasSingleColonAfter) return match;
-            return `<span class="emphasis-highlight" style="background: ${NSFW_TAG_HIGHLIGHT.background}; box-shadow: inset 0 0 0 1px ${NSFW_TAG_HIGHLIGHT.ring};">${tag}</span>`;
+            return `<span class="emphasis-highlight" style="background: ${NSFW_TAG_HIGHLIGHT.background}; box-shadow: inset 0 0 0 1px ${NSFW_TAG_HIGHLIGHT.ring};">${match}</span>`;
         });
     }
 

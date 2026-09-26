@@ -36,8 +36,9 @@ function calculateComprehensiveRanking(result, query, bestTextReplacement = null
         isExactMatch = matchInfo.isExactMatch;
         isPrefixMatch = matchInfo.isPrefixMatch;
 
-        const textRelevance = result.predictionaryScore ||
-            getTagTextRelevanceScore(query, resultName);
+        const textRelevance = typeof result.predictionaryScore === 'number'
+            ? result.predictionaryScore
+            : getTagTextRelevanceScore(query, resultName);
 
         const queryNormLen = normalizeTagSearchText(query).length;
         const nameNormLen = normalizeTagSearchText(resultName).length;
@@ -100,11 +101,14 @@ function calculateComprehensiveRanking(result, query, bestTextReplacement = null
 
     const cfg = rankingCfg.clientNonTag;
 
-    // Base score from similarity calculation (non-tag results)
-    const similarityScore = result.predictionaryScore ||
-        result.enhancedSimilarity ||
-        result.matchScore ||
-        calculateStringSimilarity(query, resultName);
+    // Prefer scores prepared by prepare*ForDisplay — do not recompute string similarity.
+    const similarityScore = typeof result.predictionaryScore === 'number'
+        ? result.predictionaryScore
+        : (typeof result.enhancedSimilarity === 'number'
+            ? result.enhancedSimilarity
+            : (typeof result.matchScore === 'number'
+                ? result.matchScore
+                : calculateStringSimilarity(query, resultName)));
 
     // Exact match bonus (highest priority)
     if (nameLower === queryLower) {
@@ -197,37 +201,60 @@ function clearAutofillRankingScoreCache() {
     /* no-op: rankingVersion is embedded in the cache key */
 }
 
-// Calculate string similarity score for better ranking
+const STRING_SIMILARITY_CACHE = new Map();
+const STRING_SIMILARITY_CACHE_MAX = 4096;
+
+// Calculate string similarity score for better ranking.
+// getTokenMatchScore / levenshteinDistance: public/scripts/comp/autocompleteUtils.js
 function calculateStringSimilarity(query, text) {
     if (!query || !text) return 0;
 
+    const cacheKey = query + '\0' + text;
+    const cached = STRING_SIMILARITY_CACHE.get(cacheKey);
+    if (cached !== undefined) return cached;
+
     const queryNorm = normalizeTagSearchText(query);
     const textNorm = normalizeTagSearchText(text);
-    if (!queryNorm || !textNorm) return 0;
-
-    if (textNorm === queryNorm) return 100;
-    if (textNorm.startsWith(queryNorm)) return 85;
-    if (textNorm.includes(queryNorm)) return 60;
-
-    const queryWords = tokenizeTagSearchText(query);
-    const textWords = tokenizeTagSearchText(text);
-    if (queryWords.length === 0) return 0;
-
-    let matchScore = 0;
-    const totalWords = queryWords.length;
-
-    for (const queryWord of queryWords) {
-        let bestWordScore = 0;
-        for (const textWord of textWords) {
-            bestWordScore = Math.max(bestWordScore, getTokenMatchScore(queryWord, textWord));
-        }
-        matchScore += bestWordScore;
+    if (!queryNorm || !textNorm) {
+        if (STRING_SIMILARITY_CACHE.size >= STRING_SIMILARITY_CACHE_MAX) STRING_SIMILARITY_CACHE.clear();
+        STRING_SIMILARITY_CACHE.set(cacheKey, 0);
+        return 0;
     }
 
-    return totalWords > 0 ? matchScore / totalWords : 0;
+    let score;
+    if (textNorm === queryNorm) {
+        score = 100;
+    } else if (textNorm.startsWith(queryNorm)) {
+        score = 85;
+    } else if (textNorm.includes(queryNorm)) {
+        score = 60;
+    } else {
+        const queryWords = tokenizeTagSearchText(query);
+        const textWords = tokenizeTagSearchText(text);
+        if (queryWords.length === 0) {
+            score = 0;
+        } else {
+            let matchScore = 0;
+            for (let i = 0; i < queryWords.length; i++) {
+                let bestWordScore = 0;
+                const queryWord = queryWords[i];
+                for (let j = 0; j < textWords.length; j++) {
+                    // Prefix/stem/includes decide inside getTokenMatchScore before any DP.
+                    bestWordScore = Math.max(bestWordScore, getTokenMatchScore(queryWord, textWords[j]));
+                }
+                matchScore += bestWordScore;
+            }
+            score = matchScore / queryWords.length;
+        }
+    }
+
+    if (STRING_SIMILARITY_CACHE.size >= STRING_SIMILARITY_CACHE_MAX) STRING_SIMILARITY_CACHE.clear();
+    STRING_SIMILARITY_CACHE.set(cacheKey, score);
+    return score;
 }
 
-// Get the best text replacement match for the current query
+// Get the best text replacement match for the current query.
+// Requires prepareTextReplacementResultsForDisplay to have set matchScore — do not rescore here.
 function getBestTextReplacementMatch(textReplacements, query) {
     if (!textReplacements || textReplacements.length === 0 || !query) return null;
 
@@ -235,12 +262,12 @@ function getBestTextReplacementMatch(textReplacements, query) {
     let bestScore = 0;
 
     for (const replacement of textReplacements) {
-        // Use existing match score if available, otherwise calculate it
-        const totalScore = replacement.matchScore || calculateStringSimilarity(query, replacement.name);
+        if (typeof replacement.matchScore !== 'number') continue;
+        const totalScore = replacement.matchScore;
 
         if (totalScore > bestScore) {
             bestScore = totalScore;
-            bestMatch = { ...replacement, matchScore: totalScore };
+            bestMatch = replacement;
         }
     }
 

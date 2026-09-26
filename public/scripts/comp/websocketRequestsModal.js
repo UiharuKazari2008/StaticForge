@@ -25,6 +25,7 @@ class WebSocketRequestsModal {
         this.renderTarget = null;
         this._domReady = false;
         this._modalListenerScopeRegistered = false;
+        this._activeRequestDomById = new Map();
         
         this.init();
     }
@@ -335,7 +336,8 @@ class WebSocketRequestsModal {
         const currentHash = requests.map(r => {
             const fifo = typeof isWsFifoDispatch === 'function' && isWsFifoDispatch(r.type) ? 'f' : 'p';
             const fifoPos = fifoQueueIndex.get(r.id)?.position || 0;
-            return `${r.id}:${r.age}:${r.isPending ? 'p' : 'c'}:${fifo}:${fifoPos}`;
+            // Age is updated in place; keep it out of the structural hash
+            return `${r.id}:${r.isPending ? 'p' : 'c'}:${fifo}:${fifoPos}:${r.error ? 'e' : 'ok'}`;
         }).join('|');
         const hashKey = this.renderTarget ? 'sidebar-active' : 'modal-active';
         if (this.lastActiveHash === `${hashKey}:${currentHash}` && activeRequestsList.querySelectorAll('.request-item').length > 0) {
@@ -348,6 +350,7 @@ class WebSocketRequestsModal {
         if (requests.length === 0) {
             const existingItems = activeRequestsList.querySelectorAll('.request-item');
             existingItems.forEach(item => item.remove());
+            this._activeRequestDomById.clear();
             
             const emptyEl = lists.activeEmpty;
             if (emptyEl) {
@@ -406,6 +409,21 @@ class WebSocketRequestsModal {
             activeRequestsList.insertAdjacentHTML('beforeend', html);
         }
 
+        // Keep row nodes on the request objects (and a modal map — request objects are rebuilt each tick)
+        this._activeRequestDomById.clear();
+        requests.forEach((req) => {
+            const item = activeRequestsList.querySelector(`[data-request-id="${CSS.escape(String(req.id))}"]`);
+            const refs = {
+                rowEl: item || null,
+                ageEl: item ? item.querySelector('.request-age') : null,
+                iconEl: item ? item.querySelector('.request-name i') : null
+            };
+            this._activeRequestDomById.set(req.id, refs);
+            req.rowEl = refs.rowEl;
+            req.ageEl = refs.ageEl;
+            req.iconEl = refs.iconEl;
+        });
+
         this.attachRequestItemContextMenus(activeRequestsList, requests);
     }
     
@@ -413,44 +431,75 @@ class WebSocketRequestsModal {
         const activeRequestsList = listEl || this._getLists().activeList;
         if (!activeRequestsList) return;
         requests.forEach(req => {
-            const item = activeRequestsList.querySelector(`[data-request-id="${req.id}"]`);
-            if (item) {
-                const ageElement = item.querySelector('.request-age');
-                
-                // Only update/show age for pending requests
-                if (req.isPending) {
-                    if (ageElement) {
-                        ageElement.textContent = this.formatDuration(req.age);
-                    } else {
-                        // Add age element if it doesn't exist
-                        const metaElement = item.querySelector('.request-meta');
-                        if (metaElement) {
-                            const typeElement = metaElement.querySelector('.request-type');
-                            if (typeElement && typeElement.nextSibling) {
-                                const ageSpan = document.createElement('span');
-                                ageSpan.className = 'request-age';
-                                ageSpan.textContent = this.formatDuration(req.age);
-                                typeElement.parentNode.insertBefore(ageSpan, typeElement.nextSibling);
-                            }
+            const cached = this._activeRequestDomById.get(req.id);
+            if (cached) {
+                req.rowEl = cached.rowEl;
+                req.ageEl = cached.ageEl;
+                req.iconEl = cached.iconEl;
+            }
+
+            let item = req.rowEl;
+            if (!item || !item.isConnected) {
+                item = activeRequestsList.querySelector(`[data-request-id="${CSS.escape(String(req.id))}"]`);
+                req.rowEl = item || null;
+            }
+            if (!item) return;
+
+            let ageElement = req.ageEl;
+            if (ageElement && !ageElement.isConnected) {
+                ageElement = null;
+                req.ageEl = null;
+            }
+            if (!ageElement) {
+                ageElement = item.querySelector('.request-age');
+                req.ageEl = ageElement || null;
+            }
+            
+            // Only update/show age for pending requests
+            if (req.isPending) {
+                if (ageElement) {
+                    ageElement.textContent = this.formatDuration(req.age);
+                } else {
+                    // Add age element if it doesn't exist
+                    const metaElement = item.querySelector('.request-meta');
+                    if (metaElement) {
+                        const typeElement = metaElement.querySelector('.request-type');
+                        if (typeElement && typeElement.nextSibling) {
+                            const ageSpan = document.createElement('span');
+                            ageSpan.className = 'request-age';
+                            ageSpan.textContent = this.formatDuration(req.age);
+                            typeElement.parentNode.insertBefore(ageSpan, typeElement.nextSibling);
+                            req.ageEl = ageSpan;
                         }
                     }
-                } else {
-                    // Remove age element for completed requests
-                    if (ageElement) {
-                        ageElement.remove();
-                    }
                 }
-                
-                // Update icon if request completed (moved from pending to completed)
-                if (!req.isPending) {
-                    const iconElement = item.querySelector('.request-name i');
-                    if (iconElement) {
-                        iconElement.className = req.error ? 'fas fa-times-circle' : 'fas fa-check-circle';
-                        // Remove spin class if it exists
-                        iconElement.classList.remove('fa-spin');
-                    }
+            } else {
+                // Remove age element for completed requests
+                if (ageElement) {
+                    ageElement.remove();
+                    req.ageEl = null;
                 }
             }
+            
+            // Update icon if request completed (moved from pending to completed)
+            if (!req.isPending) {
+                let iconElement = req.iconEl;
+                if (!iconElement || !iconElement.isConnected) {
+                    iconElement = item.querySelector('.request-name i');
+                    req.iconEl = iconElement || null;
+                }
+                if (iconElement) {
+                    iconElement.className = req.error ? 'fas fa-times-circle' : 'fas fa-check-circle';
+                    // Remove spin class if it exists
+                    iconElement.classList.remove('fa-spin');
+                }
+            }
+
+            this._activeRequestDomById.set(req.id, {
+                rowEl: req.rowEl,
+                ageEl: req.ageEl,
+                iconEl: req.iconEl
+            });
         });
     }
 
