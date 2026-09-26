@@ -127,16 +127,31 @@ PR templates: [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPL
 ### Host script
 
 ```bash
+# TRIGGER_REMOTE and DEPLOY_EVENT are required; the script refuses if either is unset
+# (no silent fallback to manual mode with GitHub/Public as the trigger).
+
 # Dry-run (prints remotes/SHAs/flags; exits 1 without changes if the deploy would be blocked)
-TRIGGER_REMOTE=origin bash scripts/host-deploy.sh --dry-run
+TRIGGER_REMOTE=origin DEPLOY_EVENT=manual bash scripts/host-deploy.sh --dry-run
 
 # What CI runs on push (flags come from PR labels via the API)
 TRIGGER_REMOTE=origin DEPLOY_EVENT=push DEPLOY_SHA=<40-hex sha> bash scripts/host-deploy.sh
 
 # Manual deploy with explicit flags
-TRIGGER_REMOTE=origin DEPLOY_SHA=<40-hex sha> DEPLOY_RESTART_SERVER=1 DEPLOY_REASON='Ship SW cache fix' \
-  bash scripts/host-deploy.sh
+TRIGGER_REMOTE=origin DEPLOY_EVENT=manual DEPLOY_SHA=<40-hex sha> DEPLOY_RESTART_SERVER=1 \
+  DEPLOY_REASON='Ship SW cache fix' bash scripts/host-deploy.sh
+
+# PM2 daemon guard only (no fetch, no tree access, no pm2 call); exit 0 = ok
+bash scripts/host-deploy.sh --check-pm2
 ```
+
+**PM2 guard and restarts.** Every deploy (dry-run included) first checks, without calling `pm2`, that
+`pm2-kanmi.service` is active, `~/.pm2/rpc.sock` and `pub.sock` exist, and the pid in `~/.pm2/pm2.pid`
+is alive and inside `pm2-kanmi.service`'s cgroup. It refuses (`[Deploy blocked] pm2_daemon_down`)
+otherwise, because any `pm2` command, even `pm2 ping`, would spawn a new daemon inside the caller's
+unit (the runner's) with the caller's env. The check runs again right before the restart. The server is
+restarted **by name** (`pm2 restart Dreamscape`, no `--update-env`), which keeps Dreamscape's saved env
+as it is (PM2 5.3.1). Restarting through `ecosystem.config.js` would force `updateEnv` and merge
+sudo's reset env (PATH, DEPLOY_*, GITHUB_*) into it.
 
 Always runs against `STATICFORGE_LIVE_ROOT` (default `/home/kanmi/staticforge`). Does **not** use Actions `checkout` into the live tree.
 
@@ -186,12 +201,28 @@ The Yozora runner `seq-dreamscape` (act_runner v4.0.0, repo-scoped to DreamScape
 labels `self-hosted`, `linux`, `dreamscape`, capacity 1) runs as the unprivileged system user `sf-deploy`
 (systemd unit `act_runner-dreamscape.service`), not as kanmi. The deploy step calls
 `sudo -n -u kanmi /home/kanmi/staticforge/scripts/host-deploy.sh [--dry-run]`; `/etc/sudoers.d/60-sf-deploy`
-allows exactly that script as kanmi (no args, `--dry-run` or `--help`) and nothing else, with the
+allows exactly that script as kanmi (no args, `--dry-run`, `--check-pm2` or `--help`) and nothing else, with the
 environment reset except for the deploy inputs (`TRIGGER_REMOTE`, `DEPLOY_SOURCE`, `DEPLOY_EVENT`,
 `DEPLOY_SHA`, `DEPLOY_RESTART_*`, `DEPLOY_REASON`, `GITHUB_SERVER_URL`, `GITHUB_REPOSITORY`,
 `GITHUB_RUN_ID`). Overrides such as `STATICFORGE_DEPLOY_ENV`, `YOZORA_TOKEN_FILE` or `STATICFORGE_LIVE_ROOT`
-cannot be passed from a job. If the script ever needs a new input, the sudoers `env_keep` list must be
-updated on the host as well.
+cannot be passed from a job. If the script ever needs a new input or argument, the sudoers file must be
+updated on the host as well (and checked with `visudo -c`).
+
+`/etc/sudoers.d/60-sf-deploy` on seq-nja-core (root:root 0440, no secrets), exact contents:
+
+```sudoers
+# Managed by Sala (2026-09-26): StaticForge dreamscape runner. sf-deploy may run exactly the live-tree
+# host-deploy script as kanmi (no args, --dry-run, --check-pm2 or --help) and nothing else. The script
+# reads its inputs from env only; env is reset and only the deploy inputs below are passed through.
+Cmnd_Alias SF_HOST_DEPLOY = /home/kanmi/staticforge/scripts/host-deploy.sh "", \
+                            /home/kanmi/staticforge/scripts/host-deploy.sh --dry-run, \
+                            /home/kanmi/staticforge/scripts/host-deploy.sh --check-pm2, \
+                            /home/kanmi/staticforge/scripts/host-deploy.sh --help
+Defaults:sf-deploy env_reset, !setenv, !lecture, \
+    secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Defaults!SF_HOST_DEPLOY env_keep = "TRIGGER_REMOTE DEPLOY_SOURCE DEPLOY_EVENT DEPLOY_SHA DEPLOY_RESTART_SERVER DEPLOY_PUSH_CLIENTS DEPLOY_RESTART_CLIENTS DEPLOY_REASON GITHUB_SERVER_URL GITHUB_REPOSITORY GITHUB_RUN_ID"
+sf-deploy ALL=(kanmi) NOPASSWD: SF_HOST_DEPLOY
+```
 
 ### Install runners (one-time)
 

@@ -15,7 +15,7 @@
 # refuses if the SHA is not on origin/main or not a descendant of the current live HEAD.
 # Runner: seq-dreamscape (repo-scoped, host mode) runs as the unprivileged user sf-deploy, which cannot
 # read /home/kanmi. Its ONLY escalation is /etc/sudoers.d/60-sf-deploy on the host:
-#   sf-deploy -> (kanmi) NOPASSWD: host-deploy.sh with no args, --dry-run or --help
+#   sf-deploy -> (kanmi) NOPASSWD: host-deploy.sh with no args, --dry-run, --check-pm2 or --help
 # with env_reset and env_keep limited to TRIGGER_REMOTE DEPLOY_SOURCE DEPLOY_EVENT DEPLOY_SHA
 # DEPLOY_RESTART_SERVER DEPLOY_PUSH_CLIENTS DEPLOY_RESTART_CLIENTS DEPLOY_REASON GITHUB_SERVER_URL
 # GITHUB_REPOSITORY GITHUB_RUN_ID. Any other variable the script reads is not passed (host defaults apply).

@@ -3,22 +3,22 @@
 # trigger remote's main, mirror it to the other forge, then apply opt-in restarts
 # (restart server / push clients / restart clients).
 #
-# Usage:
-#   bash scripts/host-deploy.sh
-#   bash scripts/host-deploy.sh --dry-run
-#   TRIGGER_REMOTE=Public DEPLOY_RESTART_SERVER=1 DEPLOY_REASON='...' bash scripts/host-deploy.sh
+# Usage (TRIGGER_REMOTE and DEPLOY_EVENT are REQUIRED - there is no default trigger remote):
+#   TRIGGER_REMOTE=origin DEPLOY_EVENT=manual bash scripts/host-deploy.sh --dry-run
+#   TRIGGER_REMOTE=origin DEPLOY_EVENT=manual DEPLOY_RESTART_SERVER=1 DEPLOY_REASON='...' bash scripts/host-deploy.sh
 #   TRIGGER_REMOTE=origin DEPLOY_EVENT=push DEPLOY_SHA=<40-hex> bash scripts/host-deploy.sh
+#   bash scripts/host-deploy.sh --check-pm2     # PM2 daemon guard only (no fetch, no tree access, no pm2 call)
 #
 # Environment:
 #   STATICFORGE_LIVE_ROOT     Live tree (default: /home/kanmi/staticforge)
-#   TRIGGER_REMOTE            Public (GitHub) or origin (Yozora). Default: Public
+#   TRIGGER_REMOTE            Public (GitHub) or origin (Yozora). REQUIRED (refuses if unset).
 #   MIRROR_REMOTE             Other remote (auto: origin if Public, else Public)
 #   TRIGGER_REF               Branch on trigger remote (default: main)
 #   DEPLOY_SHA                Exact commit to deploy (full 40-hex). Must be on
 #                             TRIGGER_REMOTE/TRIGGER_REF and a descendant of (or equal
 #                             to) the live HEAD. Default: tip of TRIGGER_REMOTE/TRIGGER_REF.
 #                             Required when DEPLOY_EVENT=push.
-#   DEPLOY_EVENT              push | workflow_dispatch | (unset = manual)
+#   DEPLOY_EVENT              push | workflow_dispatch | manual. REQUIRED (refuses if unset).
 #                             push: restart flags + reason come ONLY from the deploy:*
 #                             labels / title of the PR(s) merged in HEAD..DEPLOY_SHA,
 #                             looked up via the Yozora API; DEPLOY_RESTART_* /
@@ -37,6 +37,12 @@
 #   YOZORA_TOKEN_FILE         Default: ~/.secrets/yozora-grok.cursor.token
 #   HOST_DEPLOY_LOCK          flock path (default: /tmp/staticforge-host-deploy.lock)
 #   STATICFORGE_HTTP_PORT     Readiness port (default: 9220)
+#   PM2_HOME                  PM2 home for the daemon guard (default: ~/.pm2)
+#
+# PM2: every deploy first checks, WITHOUT calling pm2, that the real daemon (pm2-kanmi.service) is up;
+# any pm2 command (even `pm2 ping`) would otherwise spawn a new daemon inside the caller's
+# (runner's) cgroup with the caller's env. Server restarts are by NAME (`pm2 restart Dreamscape`,
+# no --update-env), which keeps Dreamscape's saved env untouched (PM2 5.3.1).
 #
 # Fail closed: foreign agent locks, dirty tracked source, remote divergence or a failed
 # fast-forward file a Yozora issue, leave the live tree untouched and exit 1. The issue is
@@ -48,7 +54,7 @@ set -euo pipefail
 
 # Prefer invoking via live tree: bash /home/kanmi/staticforge/scripts/host-deploy.sh
 LIVE_ROOT="${STATICFORGE_LIVE_ROOT:-/home/kanmi/staticforge}"
-TRIGGER_REMOTE="${TRIGGER_REMOTE:-Public}"
+TRIGGER_REMOTE="${TRIGGER_REMOTE:-}"
 TRIGGER_REF="${TRIGGER_REF:-main}"
 DEPLOY_ENV_FILE="${STATICFORGE_DEPLOY_ENV:-$HOME/.secrets/staticforge-deploy.env}"
 YOZORA_TOKEN_FILE="${YOZORA_TOKEN_FILE:-$HOME/.secrets/yozora-grok.cursor.token}"
@@ -63,13 +69,18 @@ YOZORA_REPO="${YOZORA_REPO:-DreamScape/StaticForge}"
 AGENT_LOCK_NAME=".agent-host-deploy"
 # Always use scripts from the live tree (never Actions checkout).
 PARSE_JS="$LIVE_ROOT/scripts/ci/parse-deploy-flags.js"
+PM2_SERVICE="pm2-kanmi.service"
+PM2_DIR="${PM2_HOME:-$HOME/.pm2}"
 
 DRY_RUN=0
+CHECK_PM2_ONLY=0
 for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=1 ;;
+        --check-pm2) CHECK_PM2_ONLY=1 ;;
         -h|--help)
-            sed -n '2,45p' "$0" | sed 's/^# \?//'
+            # The leading comment block (line 2 up to the first non-comment line).
+            awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
             exit 0
             ;;
         *)
@@ -88,6 +99,48 @@ truthy() {
         *) return 1 ;;
     esac
 }
+
+# --- PM2 daemon guard (never calls pm2) -------------------------------------------
+# Any pm2 command - `pm2 ping` included - auto-launches a new God daemon when none is reachable.
+# Run from the runner (sudo -u kanmi), that daemon would live inside act_runner-dreamscape.service's
+# cgroup and sandbox with sudo's reset env, and `pm2-kanmi.service` would fight it over rpc.sock.
+# So only systemd, the filesystem and /proc are consulted here. Prints the failed check.
+pm2_daemon_problem() {
+    local pid cgroup
+    if ! systemctl is-active --quiet "$PM2_SERVICE"; then
+        echo "$PM2_SERVICE is not active"; return 0
+    fi
+    [[ -S "$PM2_DIR/rpc.sock" ]] || { echo "PM2 socket missing: $PM2_DIR/rpc.sock"; return 0; }
+    [[ -S "$PM2_DIR/pub.sock" ]] || { echo "PM2 socket missing: $PM2_DIR/pub.sock"; return 0; }
+    [[ -r "$PM2_DIR/pm2.pid" ]] || { echo "PM2 pid file missing/unreadable: $PM2_DIR/pm2.pid"; return 0; }
+    pid="$(tr -d '[:space:]' < "$PM2_DIR/pm2.pid")"
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || { echo "PM2 pid file does not hold a pid"; return 0; }
+    kill -0 "$pid" 2>/dev/null || { echo "PM2 daemon pid $pid is not alive"; return 0; }
+    cgroup="$(systemctl show -p ControlGroup --value "$PM2_SERVICE" 2>/dev/null || true)"
+    [[ -n "$cgroup" ]] || { echo "cannot read $PM2_SERVICE ControlGroup"; return 0; }
+    if ! grep -qxF "0::$cgroup" "/proc/$pid/cgroup" 2>/dev/null; then
+        echo "PM2 daemon pid $pid is not in $PM2_SERVICE's cgroup ($cgroup)"; return 0
+    fi
+    return 1
+}
+
+if (( CHECK_PM2_ONLY )); then
+    if problem="$(pm2_daemon_problem)"; then
+        echo "[host-deploy] PM2 guard FAILED: $problem" >&2
+        exit 1
+    fi
+    log "PM2 guard ok: $PM2_SERVICE active, $PM2_DIR/{rpc,pub}.sock present, daemon pid $(tr -d '[:space:]' < "$PM2_DIR/pm2.pid") alive in its cgroup"
+    exit 0
+fi
+
+# Refuse instead of guessing: a dropped sudoers env_keep (or a bare manual run) must not fall back
+# to manual mode with GitHub (Public) as the trigger.
+[[ -n "$TRIGGER_REMOTE" ]] || die "TRIGGER_REMOTE is not set (Public or origin) - refusing (sudo env_keep?)"
+case "$DEPLOY_EVENT" in
+    push|workflow_dispatch|manual) ;;
+    "") die "DEPLOY_EVENT is not set (push, workflow_dispatch or manual) - refusing (sudo env_keep?)" ;;
+    *) die "DEPLOY_EVENT must be push, workflow_dispatch or manual (got: $DEPLOY_EVENT)" ;;
+esac
 
 if [[ "$TRIGGER_REMOTE" == "Public" ]]; then
     MIRROR_REMOTE="${MIRROR_REMOTE:-origin}"
@@ -448,12 +501,24 @@ MIRROR_FAILED=0
 
 log "LIVE_ROOT=$LIVE_ROOT"
 log "TRIGGER=$TRIGGER_REMOTE/$TRIGGER_REF MIRROR=$MIRROR_REMOTE"
-log "event=${DEPLOY_EVENT:-manual} deploy_sha=${DEPLOY_SHA:-"(trigger tip)"}"
+log "event=$DEPLOY_EVENT deploy_sha=${DEPLOY_SHA:-"(trigger tip)"}"
 log "HEAD=$HEAD_SHA dry_run=$DRY_RUN"
 
 # Safety: foreign agent locks, dirty tracked source
 check_foreign_locks
 check_dirty_tree
+
+# PM2 daemon guard - before any fetch/fast-forward and before any pm2 call, dry-run included.
+check_pm2_daemon() {
+    local problem
+    if problem="$(pm2_daemon_problem)"; then
+        block "pm2_daemon_down" "PM2 daemon check failed: $problem
+Refusing to deploy from here: any pm2 call would spawn a daemon inside the caller's (runner's) unit
+with a reset env. Start pm2-kanmi.service (systemctl start pm2-kanmi) and re-run."
+    fi
+    log "PM2 guard ok ($PM2_SERVICE)"
+}
+check_pm2_daemon
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: fetch $TRIGGER_REMOTE $MIRROR_REMOTE (read-only probe)"
@@ -712,15 +777,29 @@ if [[ -n "$REASON" ]] && (( RESTART_SERVER + PUSH_CLIENTS + RESTART_CLIENTS > 0 
 fi
 
 if (( RESTART_SERVER == 1 )); then
+    # Re-check right before the first pm2 call (the tree is already live at this point).
+    if PM2_PROBLEM="$(pm2_daemon_problem)"; then
+        file_block_issue "[Deploy] PM2 daemon down - restart skipped" "## Host-deploy: server restart skipped
+
+\`$DEPLOY_SHA\` is live, but the PM2 daemon check failed right before the restart, so no pm2 command ran:
+
+$(fence_untrusted "$PM2_PROBLEM")
+
+Start pm2-kanmi.service and re-run host-deploy via workflow_dispatch with restart_server." || true
+        die "deployed $(git rev-parse --short HEAD) but skipped the PM2 restart: $PM2_PROBLEM"
+    fi
     if (( PUSH_CLIENTS == 1 )); then
         log "PM2 restart + SW notify..."
         bash "$LIVE_ROOT/scripts/notify-service-worker-update.sh" --restart
         DID_RESTART_WITH_NOTIFY=1
     else
         log "PM2 restart (./restart)..."
-        # ./restart tails logs forever — run the pm2 steps only
+        # ./restart tails logs forever — run the pm2 steps only.
+        # Restart by NAME without --update-env: PM2 5.3.1 then keeps Dreamscape's saved env exactly.
+        # (Restarting via ecosystem.config.js forces updateEnv and would merge this caller's env -
+        # sudo's reset env, DEPLOY_*/GITHUB_* - into Dreamscape's stored env.)
         pm2 flush Dreamscape || true
-        pm2 restart ecosystem.config.js --update-env
+        pm2 restart Dreamscape
         pm2 reset Dreamscape || true
         # Wait ready
         STATICFORGE_HTTP_PORT="$HTTP_PORT" STATICFORGE_SERVER_WAIT_TIMEOUT_MS="${STATICFORGE_SERVER_WAIT_TIMEOUT_MS:-180000}" \
