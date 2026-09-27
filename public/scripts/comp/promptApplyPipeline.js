@@ -101,7 +101,8 @@ function applyReplacementOnResolvedText(result, replacement) {
                 appliedSuccessfully = true;
                 method = 'fallback';
             }
-        } else if (!appliedSuccessfully && !isCritical && alternativeText) {
+        }
+        if (!appliedSuccessfully && !isCritical && alternativeText) {
             const needsComma = result.trim() && !result.trim().endsWith(',') && !textEndsWithEmphasisGroupClose(result);
             result = result.trimEnd() + (needsComma ? ', ' : ' ') + alternativeText;
             appliedSuccessfully = true;

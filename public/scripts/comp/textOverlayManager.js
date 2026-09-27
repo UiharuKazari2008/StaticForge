@@ -733,6 +733,11 @@ function getTextOverlayData() {
             }
             model.text = liveText.trim();
             textarea.dataset.originalValue = liveText;
+        } else if (textarea && textarea.value) {
+            // Programmatic .value edits skip the input/blur sync; unfocused value may be the ⏎ display form
+            const value = textarea.value;
+            const valueText = (value.includes(' ⏎ ') ? value.replace(/ ⏎ /g, '\n') : value).trim();
+            if (valueText && valueText !== model.text) model.text = valueText;
         }
 
         // Keep metadata from dataset (authoritative for target/stages/type) mirrored on model

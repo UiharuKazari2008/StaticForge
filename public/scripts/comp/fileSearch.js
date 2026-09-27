@@ -392,11 +392,7 @@ class FileSearch {
     }
 
     handleSearchInput(query) {
-        this.currentQuery = (query || '').trim();
-        // Expose current search term globally for title bar
-        window.currentSearchTerm = this.currentQuery.length > 0 ? this.currentQuery : null;
-
-        // Clear previous timeouts — short and long queries share the same timer
+        // Clear existing timeouts
         if (this.suggestionsTimeout) {
             clearTimeout(this.suggestionsTimeout);
         }
@@ -404,23 +400,26 @@ class FileSearch {
             clearTimeout(this.searchTimeout);
         }
 
-        if (this.currentQuery.length === 0) {
+        this.currentQuery = query;
+
+        // For empty queries, show top results (which will use enhanced search if tags exist)
+        if (!query || query.trim().length === 0) {
             this.showTopResults();
-            updateGalleryTitleBar();
             return;
         }
 
-        // Debounce all non-empty suggestion updates (including <3 chars)
+        // For non-empty queries, get current tag text and search
         const currentTagText = this.getCurrentTagText();
+
         if (currentTagText.length > 0) {
+            // Debounced search for current tag
             this.suggestionsTimeout = setTimeout(() => {
                 this.updateTagSuggestions(currentTagText);
             }, this.debounceDelay);
         } else {
+            // No current tag text, show top results (which will use enhanced search if tags exist)
             this.showTopResults();
         }
-
-        updateGalleryTitleBar();
     }
 
     async updateTagSuggestions(query) {

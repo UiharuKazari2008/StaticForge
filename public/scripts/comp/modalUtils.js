@@ -36,11 +36,9 @@ function getOpenTaskbarModals() {
     return Array.from(document.querySelectorAll('.modal:not(.hidden)')).filter(shouldShowInTaskbar);
 }
 
-/** type -> Map(modalId -> modal) — updated on open/close, not regrouped every paint */
+/** type -> Map(modalId -> modal). Rebuilt from the DOM on every taskbar update:
+ * some windows (galleryWindow, manualModal desktop path) are unhidden without openModal. */
 let taskbarModalGroupsCache = new Map();
-let taskbarModalGroupsInitialized = false;
-/** Last taskbar item marked active (individual or group) */
-let taskbarLastActiveItem = null;
 
 function rebuildTaskbarModalGroupsCache() {
     taskbarModalGroupsCache = new Map();
@@ -52,55 +50,6 @@ function rebuildTaskbarModalGroupsCache() {
             taskbarModalGroupsCache.set(type, group);
         }
         group.set(modal.id, modal);
-    });
-    taskbarModalGroupsInitialized = true;
-}
-
-function ensureTaskbarModalGroupsCache() {
-    if (!taskbarModalGroupsInitialized) {
-        rebuildTaskbarModalGroupsCache();
-    }
-}
-
-function noteTaskbarModalOpened(modal) {
-    if (!modal || !modal.id) return;
-    ensureTaskbarModalGroupsCache();
-    if (!shouldShowInTaskbar(modal)) {
-        noteTaskbarModalClosed(modal);
-        return;
-    }
-    const type = getModalType(modal);
-    let group = taskbarModalGroupsCache.get(type);
-    if (!group) {
-        group = new Map();
-        taskbarModalGroupsCache.set(type, group);
-    }
-    group.set(modal.id, modal);
-}
-
-function noteTaskbarModalClosed(modal) {
-    if (!modal || !modal.id) return;
-    ensureTaskbarModalGroupsCache();
-    const type = getModalType(modal);
-    const group = taskbarModalGroupsCache.get(type);
-    if (!group) return;
-    group.delete(modal.id);
-    if (group.size === 0) {
-        taskbarModalGroupsCache.delete(type);
-    }
-}
-
-function pruneTaskbarModalGroupsCache() {
-    ensureTaskbarModalGroupsCache();
-    taskbarModalGroupsCache.forEach((group, type) => {
-        group.forEach((modal, id) => {
-            if (!shouldShowInTaskbar(modal)) {
-                group.delete(id);
-            }
-        });
-        if (group.size === 0) {
-            taskbarModalGroupsCache.delete(type);
-        }
     });
 }
 
@@ -2911,7 +2860,6 @@ function openModal(modal) {
     }
 
     // Update taskbar (debounced for performance)
-    noteTaskbarModalOpened(modal);
     debouncedUpdateTaskbarWindows();
 
     // Only add modal-open class for non-transient, non-moved modals
@@ -3039,7 +2987,6 @@ function closeMainModal(modal) {
     modal.classList.add('closing');
 
     // Update taskbar (debounced for performance)
-    noteTaskbarModalClosed(modal);
     debouncedUpdateTaskbarWindows();
 
     // If this is the last non-transient, non-moved modal, animate the backdrop out
@@ -4191,39 +4138,98 @@ function dedupeTaskbarWindowItems() {
     toRemove.forEach((item) => removeTaskbarItemNow(item));
 }
 
-// Lightweight function to update active states without regrouping every open modal
+// Lightweight function to update active states and content without recreating DOM elements or triggering animations
 function updateTaskbarActiveStates() {
     if (!taskbarWindows) return;
 
-    ensureTaskbarModalGroupsCache();
+    // Get all open modals (not hidden and not closing) - includes minimised windows
+    const openModals = getOpenTaskbarModals();
 
-    let newActiveItem = null;
-    const activeId = currentActiveWindowId;
-    if (activeId) {
-        newActiveItem = taskbarWindows.querySelector(
-            `.taskbar-window-item[data-modal-id="${activeId}"]:not(.taskbar-window-group):not(.leaving)`
-        );
-        if (!newActiveItem) {
-            const activeModal = document.getElementById(activeId);
-            if (activeModal && shouldShowInTaskbar(activeModal)) {
-                const type = getModalType(activeModal);
-                const group = taskbarModalGroupsCache.get(type);
-                if (group && group.size > 3) {
-                    newActiveItem = taskbarWindows.querySelector(
-                        `.taskbar-window-group[data-group-type="${type}"]:not(.leaving)`
-                    );
+    // Group modals by type to check grouping state
+    const modalGroups = new Map();
+    openModals.forEach(modal => {
+        const type = getModalType(modal);
+        if (!modalGroups.has(type)) {
+            modalGroups.set(type, []);
+        }
+        modalGroups.get(type).push(modal);
+    });
+
+    // Get existing taskbar items (both individual and grouped)
+    const existingItems = Array.from(taskbarWindows.querySelectorAll('.taskbar-window-item, .taskbar-window-group'));
+
+    // Update active/minimised states and content (no DOM recreation, no animations)
+    existingItems.forEach(item => {
+        if (item.classList.contains('leaving') || item.classList.contains('entering')) return;
+
+        const modalId = item.dataset.modalId;
+        const groupType = item.dataset.groupType;
+
+        if (modalId) {
+            // Individual item
+            const modal = openModals.find(m => m.id === modalId);
+
+            if (modal) {
+                const isActive = isModalActiveForTaskbar(modal);
+                const isMinimised = modal.classList.contains('minimised');
+                const title = getModalTitle(modal);
+                const { icon, imageIcon } = getModalIcons(modal);
+
+                // Toggle state classes in place — never reset className (re-adding entering restarts CSS animations)
+                syncTaskbarItemStateClasses(item, isActive, isMinimised);
+
+                // Update icon and text content without recreating elements (preserves event listeners)
+                // Only update if elements already exist - don't add/remove elements here (that's handled by updateTaskbarWindows)
+                const iconEl = item.querySelector('i');
+                const imageIconEl = item.querySelector('img.icon-image');
+                const textEl = item.querySelector('span');
+
+                // Update font icon if it exists and changed
+                if (iconEl && icon && !isImageIcon(icon)) {
+                    const expectedClass = imageIcon ? `${icon} icon-fa` : icon;
+                    if (iconEl.className !== expectedClass) {
+                        iconEl.className = expectedClass;
+                    }
+                }
+
+                // Update image icon src if it exists and changed
+                if (imageIconEl && imageIcon) {
+                    const imagePath = resolveAppIconPath(imageIcon);
+                    const expectedSrc = new URL(imagePath, window.location.origin).href;
+                    if (imageIconEl.src !== expectedSrc) {
+                        imageIconEl.src = expectedSrc;
+                    }
+                    const srcset = buildAppIconSrcset(imageIcon);
+                    if (srcset && imageIconEl.getAttribute('srcset') !== srcset) {
+                        imageIconEl.setAttribute('srcset', srcset);
+                        imageIconEl.setAttribute('sizes', '192px');
+                    }
+                }
+
+                if (textEl && textEl.textContent !== title) {
+                    textEl.textContent = title;
+                }
+            }
+        } else if (groupType) {
+            // Group item - update based on modals in the group
+            const modals = modalGroups.get(groupType) || [];
+            const shouldGroup = modals.length > 3;
+
+            if (shouldGroup && modals.length > 0) {
+                // Recalculate active state for the group
+                const hasActive = modals.some(m => isModalActiveForTaskbar(m) && !m.classList.contains('minimised'));
+                const allMinimised = modals.every(m => m.classList.contains('minimised'));
+
+                syncTaskbarItemStateClasses(item, hasActive && !allMinimised, allMinimised);
+
+                // Update count badge if it exists
+                const countBadge = item.querySelector('.taskbar-group-count');
+                if (countBadge && countBadge.textContent !== String(modals.length)) {
+                    countBadge.textContent = modals.length;
                 }
             }
         }
-    }
-
-    if (taskbarLastActiveItem && taskbarLastActiveItem !== newActiveItem && taskbarLastActiveItem.isConnected) {
-        taskbarLastActiveItem.classList.remove('active');
-    }
-    if (newActiveItem && newActiveItem !== taskbarLastActiveItem) {
-        newActiveItem.classList.add('active');
-    }
-    taskbarLastActiveItem = newActiveItem && newActiveItem.isConnected ? newActiveItem : null;
+    });
 }
 
 function updateTaskbarWindows() {
@@ -4232,9 +4238,9 @@ function updateTaskbarWindows() {
     // Close any open group menu when updating (to prevent stale menus)
     closeTaskbarGroupMenu();
 
-    pruneTaskbarModalGroupsCache();
+    rebuildTaskbarModalGroupsCache();
 
-    // STEP 1: EVALUATE - Determine what SHOULD exist from the incremental group map
+    // STEP 1: EVALUATE - Determine what SHOULD exist from the group map
     const itemsThatShouldExist = new Map(); // modalId or groupType -> { type: 'individual'|'group', data: {...} }
 
     taskbarModalGroupsCache.forEach((modalsMap, type) => {
@@ -4504,9 +4510,6 @@ function updateTaskbarWindows() {
             }
         }
     });
-
-    // Keep active-item pointer aligned after create/update (focus path only toggles two nodes)
-    taskbarLastActiveItem = taskbarWindows.querySelector('.taskbar-window-item.active:not(.leaving)') || null;
 
     // Broadcast taskbar/window state changes so other UI controls can stay in sync.
     document.dispatchEvent(new CustomEvent('taskbarWindowsUpdated'));

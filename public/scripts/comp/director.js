@@ -2925,17 +2925,8 @@ class Director {
                 displayValue = `${value.us.join('x')} / ${value.eu.join('x')}`;
                 dataType = 'measurement';
             } else {
-                // Known-ish object: join entries instead of stringify
-                const parts = [];
-                for (const [k, v] of Object.entries(value)) {
-                    if (v === null || v === undefined) continue;
-                    if (typeof v === 'object') {
-                        parts.push(`${k}: ${Array.isArray(v) ? v.join(', ') : Object.values(v).join(' / ')}`);
-                    } else {
-                        parts.push(`${k}: ${v}`);
-                    }
-                }
-                displayValue = parts.length > 0 ? parts.join(', ') : '';
+                // Other objects - stringify
+                displayValue = JSON.stringify(value, null, 2);
                 dataType = 'object';
             }
         } else if (Array.isArray(value)) {

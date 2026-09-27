@@ -16,9 +16,8 @@ function getOptionsDataCacheVersion(source) {
     if (source._cacheVersion != null) return source._cacheVersion;
     if (source.updatedAt != null) return source.updatedAt;
     if (source.timestamp != null) return source.timestamp;
-    // Fall back to datasets list identity + length (options payload replacement)
-    const datasets = source.datasets;
-    return datasets ? `${datasets.length}:${datasets}` : source;
+    // Fall back to payload identity: loadOptions() (also run after preset save) installs a new object
+    return source;
 }
 
 function buildQwenPresetTokenCountMap(tokenizer) {

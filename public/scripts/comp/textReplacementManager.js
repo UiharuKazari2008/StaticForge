@@ -24,27 +24,19 @@ function getCleanReplacementPattern(str) {
     return clean.replace(/-?\d+(?:\.\d+)?::/g, '').replace(/::/g, '').trim();
 }
 
-/** Delete first `count` occurrences (or all when count is null/undefined). Same output as repeated indexOf+splice. */
+/** Delete first `count` occurrences (or all when count is null/undefined).
+ * Each removal rescans from the start, so occurrences formed across the join count too. */
 function deleteNeedleOccurrences(haystack, needle, count) {
     if (!haystack || !needle) return haystack;
     if (count === undefined || count === null) {
         return haystack.split(needle).join('');
     }
-    let out = '';
-    let start = 0;
-    let removed = 0;
-    const limit = Number(count);
-    while (removed < limit) {
-        const index = haystack.indexOf(needle, start);
-        if (index === -1) {
-            out += haystack.slice(start);
-            return out;
-        }
-        out += haystack.slice(start, index);
-        start = index + needle.length;
-        removed++;
+    let out = haystack;
+    for (let i = 0; i < count; i++) {
+        const index = out.indexOf(needle);
+        if (index === -1) break;
+        out = out.substring(0, index) + out.substring(index + needle.length);
     }
-    out += haystack.slice(start);
     return out;
 }
 
