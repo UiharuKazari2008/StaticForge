@@ -1161,13 +1161,19 @@ class VfsManager {
         }
 
         const shortcutItems = items.filter(i => i.isShortcut || i.isDesktopShortcut);
+        // JULES: perf optimization — O(1) Map lookup instead of O(N) shortcutItems.find(...) inside location loop
+        const shortcutItemsByTargetKey = new Map();
         const locationKeys = new Set();
         for (const item of shortcutItems) {
             if (item.isDesktopShortcut) continue;
-            locationKeys.add(`${item.targetKind}:${item.targetId}`);
+            const key = `${item.targetKind}:${item.targetId}`;
+            locationKeys.add(key);
+            if (!shortcutItemsByTargetKey.has(key)) {
+                shortcutItemsByTargetKey.set(key, item);
+            }
         }
         for (const key of locationKeys) {
-            const item = shortcutItems.find(i => `${i.targetKind}:${i.targetId}` === key);
+            const item = shortcutItemsByTargetKey.get(key);
             if (!item) continue;
             const loc = await this._resolveShortcutOriginalLocation(item, ctx);
             ctx.targetLocationMap.set(key, loc);
