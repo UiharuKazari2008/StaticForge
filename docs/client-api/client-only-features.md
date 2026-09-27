@@ -49,7 +49,7 @@ Sync helper: `syncAuthLocalStorageFromServer()` in `public/scripts/comp/connecti
 | Runtime assets | Server `.cache/runtime-assets/` | Transparent `/css/`, `/scripts/` optimization |
 | Browser-agent mode | `/app?agent=1` | Skips worker registration and cache updates, clears Cache Storage after old-worker cleanup, forces desktop/windowed boot. `/agent` preloads app-shell CSS/JS into a 120s private HTTP cache for `dev_admin` sessions; optional `GET /agent/assets.zip`. Loopback `POST /agent/broadcast` shows a toast or confirmation dialog on all connected clients; `restart: true` reuses the Client Update countdown dialog and restarts those tabs after `timeout`. Localhost `/agent/clients` + `/agent/bind` + `/agent/session/*` drive one bound Studio tab (Ivory/Menma: loopback + Bearer, not the PIN pad). `GET /agent/scopes` and `POST /agent/packet` honor named app-key scopes (`generation`, `vfs`, `autofill`) without a bind. `POST /agent/session/update` shows the mandatory 15s Client Update dialog on the bound tab, then applies client updates and restarts that tab. |
 
-Custom native clients typically **skip** service worker entirely; use direct HTTP for static assets.
+**Update-loop hardening (Sep27 overnight / Yozora #257, live tree):** `cache.delete(url)` misses `Vary` / `?sha=` siblings, so a stale row without `x-file-hash` could make the client re-download forever. `sw.js` now `purgeStaticCacheEntries(cache, urlPath)` (pathname match across keys) and stores responses via `staticCacheResponseWithHash` (sets `x-file-hash`, strips `vary` / `content-encoding`). Progress posts snapshot counters before `matchAll` so a finished download cannot zero the toast. `serviceWorkerManager.js` builds a per-path Cache key index and treats `cachedHash === file.hash` as skip. Custom native clients typically **skip** service worker entirely; use direct HTTP for static assets.
 
 After server-side client edits, web deploy runs `scripts/notify-service-worker-update.sh`.
 
@@ -133,6 +133,8 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 
 Spell-check overlay UI lives in `public/scripts/comp/autofill/spellCheck.js`. Word-lookup overlay UI lives in `public/scripts/comp/autofill/wordLookup.js`. Both were split out of `autocompleteUtils.js` (#22). Debounce/cache of `search_tags` stays in `autocompleteUtils.js`.
 
+**Artist prefix autofill (Sep27 overnight / Yozora #253):** Client parses `artist:` and `art by ` via `parseAutofillArtistSearchPrefix` (`AUTOFILL_ARTIST_COLON_RE`). Ranking/filter and the WS `search_tags` query use the **name remainder** only — an empty remainder does not send (avoids Missing query parameter). Insertion rewrites to `artist:name` (no spaces) or `art by name` (spaced), matching `modules/naxTagsDatabase.js`. Wiki miss / tag-wiki open strips the same prefix so search stays in the wiki window (`tagWikiSearchModal.js`).
+
 ---
 
 ## Novel manager UI
@@ -157,6 +159,19 @@ Two login UX paths:
 Both POST same `/` login action.
 
 **Realtime press feedback (Yozora #168 / GitHub PR #106, 2026-09-11):** digit/key buttons on both paths show immediate pressed-state styling while the pointer/touch is down (not only on click). Client-only CSS class toggles in `pinModal.js` / `login.js`; no server or WS change.
+
+## Studio New Session / Save As (client chrome)
+
+`public/scripts/comp/studioSession.js` (Yozora #256, Sep27 overnight safety snapshot) — web-only Manual Studio chrome; no new WS packet types.
+
+| Action | Behavior |
+|--------|----------|
+| **New Session** | `startStudioNewSession()` — `clearManualForm()`, reset manual preview, `forgetLastStudioPreview()`, clear `#manualPresetName`, toast "New Session" |
+| **Save As → Preset** | Current Preset (disabled when name empty) or New Preset — name dialog with workspace picker + suggestion search over `searchPresets` / `optionsData.presets` |
+| **Save As → To Desktop** | Writes a desktop request shortcut (`STUDIO_SAVE_REQUEST_TYPE = 'request'`) via existing `saveRequestAsDesktopShortcut` / `handleManualSave` paths |
+| **Save As → To Folder** | Folder browser (icons grid, overwrite confirm) then same request-save path |
+
+Menu builders: `getStudioSaveAsMenuItems()`. Depends on `manualModalManager.js`, `generationOrchestrator.js`, `imageGenerationSettings.js`, `presetManager.js`. Custom clients can omit; server APIs unchanged.
 
 ## Studio soft tips (client toasts)
 

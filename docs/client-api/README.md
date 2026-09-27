@@ -114,6 +114,13 @@ When `config.apocrypha.localGrim` is true, Grim is also shown to **local** clien
 
 Home devices on the public WAN URL are **not** local. Invalid CIDRs (empty/`-0`/non-decimal prefixes, `0.0.0.0/0`, `::/0`) are rejected with a warning. Details: [ws/wiki.md](./ws/wiki.md#get_apocrypha_zine).
 
+## Recent ships (Sep27 7am)
+
+| Ship | Notes |
+|------|-------|
+| **PR #254 / #242–#251** | Pyra review-band fix-forward on `main` (`97a2a8e`): autocomplete ranking zero-score fallback, nested emphasis coverage, gallery keep-strip per-index, character position cells, prompt replacement/token recount, bias preview + scrollbar deep-scan, character search hit cap removed, modal keyboard/taskbar + preset cache identity, chat/director/overlay no-op cascade. Tests under `scripts/test-*-fixforward.js`. |
+| **Overnight WIP snapshot** (`38d86e4` + merge) | Client chrome: Studio New Session / Save As (`studioSession.js`, #256); SW update-loop hash purge (#257); `artist:` / `art by` autofill remainder ranking (#253). See [client-only-features.md](./client-only-features.md). |
+
 ## Related legacy docs
 
 - [docs/websocket_android_guide.md](../websocket_android_guide.md) — older Android-focused subset (Kotlin examples); superseded by this tree for completeness

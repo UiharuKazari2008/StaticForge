@@ -142,6 +142,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 |---------|------|-----|------|-------------|
 | Weight Rack (emphasis groups) | — | — | — | `emphasisGroupsToolManager.js`, forge `emphasis_normalization` |
 | Studio soft tips | — | — | — | `studioSoftTips.js` glass toasts (A1111 weights, accessory NL, fur/`zero pictured`; Yozora #167 / PR #104) |
+| Studio New Session / Save As | — | `searchPresets` (name dialog only) | — | `studioSession.js` (#256): clear form / save preset / desktop request / folder request |
 
 ---
 

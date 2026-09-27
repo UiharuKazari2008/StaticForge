@@ -439,6 +439,8 @@ Additional response/push types from handler:
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
+**Client artist prefixes:** Web autofill may send `query` with the name remainder after stripping `artist:` / `art by ` (see `parseAutofillArtistSearchPrefix` in `autocompleteUtils.js`). Server still receives a plain tag query; prefix rewrite is client-side on insert.
+
 ### `spellcheck_add_word`
 
 **Auth:** Session required. Admin only (destructive — blocked for readonly)
