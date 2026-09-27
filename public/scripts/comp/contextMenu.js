@@ -445,12 +445,22 @@ class ContextMenuController {
                 }
             });
         });
+        config.sections.forEach((section) => {
+            if (section.type !== 'grid' || !section.items) return;
+            section.items.forEach((cell) => {
+                if (cell._element && cell._element.dataset.contextMenu) {
+                    this.detachFromElement(cell._element);
+                    cell._element.classList.remove('has-item-context-menu');
+                }
+            });
+        });
     }
 
     isNestedItemContextOpen(target, trigger) {
         if (!this.isOpen || trigger !== 'context' || !target || !this.menu) return false;
         if (!target.classList.contains('has-item-context-menu')) return false;
-        return this.menu.contains(target);
+        if (this.menu.contains(target)) return true;
+        return !!(this.currentSubmenu && this.currentSubmenu.contains(target));
     }
 
     /** True when keyboard focus is inside the open menu tree (root menu, submenu, or nested inputs). */
@@ -1058,6 +1068,13 @@ class ContextMenuController {
             this.menuStack = [];
         }
 
+        let nestedConfig = null;
+        if (isNestedItemContext && target && target.dataset) {
+            const nestedId = trigger === 'click' ? target.dataset.clickMenu : target.dataset.contextMenu;
+            const nestedBag = trigger === 'click' ? this.clickMenuConfigs : this.configs;
+            nestedConfig = nestedBag && nestedId ? nestedBag[nestedId] : null;
+        }
+
         if (isNestedItemContext) {
             this.pushMenuStackSnapshot();
             this.hideSubmenu();
@@ -1070,9 +1087,9 @@ class ContextMenuController {
             this.menu.style.opacity = '';
         }
 
-        const config = trigger === 'click'
+        const config = nestedConfig || (trigger === 'click'
             ? this.clickMenuConfigs[target.dataset.clickMenu]
-            : this.configs && this.configs[target.dataset.contextMenu];
+            : this.configs && this.configs[target.dataset.contextMenu]);
         if (!config) {
             console.error('Menu configuration not found for trigger:', trigger, target);
             return;
@@ -1214,8 +1231,8 @@ class ContextMenuController {
 
         if (config.maxHeight !== undefined) {
             if (config.maxHeight === true) {
-                // Use 100vh minus padding (assuming 20px total padding)
-                menu.style.setProperty('--context-menu-max-height', 'calc(100vh - 20px)');
+                // Use 100vh minus padding (~24px top + bottom)
+                menu.style.setProperty('--context-menu-max-height', 'calc(100vh - 48px)');
             } else if (typeof config.maxHeight === 'number') {
                 // Use the specified pixel value
                 menu.style.setProperty('--context-menu-max-height', `${config.maxHeight}px`);
@@ -1966,6 +1983,8 @@ class ContextMenuController {
             e.stopPropagation();
             runClick();
         });
+
+        this.wireItemContextMenu(btn, cell, target);
 
         return btn;
     }
@@ -2953,22 +2972,35 @@ class ContextMenuController {
         });
     }
 
+    _removeNestedSubmenu() {
+        if (!this.nestedSubmenu) return;
+        this.nestedSubmenu.remove();
+        this.nestedSubmenu = null;
+    }
+
     showSubmenu(parentItem, submenuItems, target, customHandler = null) {
-        // Remove any existing submenu
-        this.hideSubmenu();
+        const nesting = !!(this.currentSubmenu && parentItem && this.currentSubmenu.contains(parentItem));
+        this._submenuNesting = nesting;
+        if (nesting) {
+            this._removeNestedSubmenu();
+        } else {
+            this.hideSubmenu();
+        }
 
         // Keep parent item active
         parentItem.classList.add('keyboard-selected');
 
-        // Store submenu state for refreshing all items when toggling
-        this.currentSubmenuState = {
-            parentItem: parentItem,
-            submenuItems: submenuItems,
-            target: target,
-            customHandler: customHandler,
-            optionsfn: parentItem._optionsfn,
-            handlerfn: customHandler || parentItem._handlerfn
-        };
+        if (!this._submenuNesting) {
+            // Store submenu state for refreshing all items when toggling
+            this.currentSubmenuState = {
+                parentItem: parentItem,
+                submenuItems: submenuItems,
+                target: target,
+                customHandler: customHandler,
+                optionsfn: parentItem._optionsfn,
+                handlerfn: customHandler || parentItem._handlerfn
+            };
+        }
 
         // Create submenu container
         const submenu = document.createElement('div');
@@ -3238,6 +3270,26 @@ class ContextMenuController {
                 });
             }
 
+            if ((subItem.submenu && Array.isArray(subItem.submenu)) || (subItem.optionsfn && typeof subItem.optionsfn === 'function')) {
+                const arrowElement = document.createElement('i');
+                arrowElement.className = 'context-menu-submenu-arrow fas fa-chevron-right';
+                subItemElement.appendChild(arrowElement);
+                subItemElement.classList.add('has-submenu');
+                subItemElement._optionsfn = subItem.optionsfn;
+                subItemElement.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isNestedDisabled = typeof subItem.disabled === 'function' ? subItem.disabled() : subItem.disabled;
+                    if (isNestedDisabled) return;
+                    let nestedItems = subItem.submenu;
+                    if (subItem.optionsfn && typeof subItem.optionsfn === 'function') {
+                        nestedItems = subItem.optionsfn(target);
+                    }
+                    if (nestedItems && Array.isArray(nestedItems)) {
+                        this.showSubmenu(subItemElement, nestedItems, target, subItem.handlerfn);
+                    }
+                });
+            }
+
             // Store reference to DOM element on subItem for later updates
             subItem._element = subItemElement;
             this.wireItemContextMenu(subItemElement, subItem, target);
@@ -3251,6 +3303,20 @@ class ContextMenuController {
 
         // Position the submenu (this also sets opacity to 1)
         this.positionSubmenu(submenu, parentItem);
+
+        if (this._submenuNesting) {
+            this.nestedSubmenu = submenu;
+            this._submenuNesting = false;
+            submenu.addEventListener('mouseenter', () => {
+                this.clearHoverTimers();
+            });
+            submenu.addEventListener('mouseleave', (e) => {
+                const relatedTarget = e.relatedTarget;
+                if (relatedTarget && parentItem.contains(relatedTarget)) return;
+                this._removeNestedSubmenu();
+            });
+            return;
+        }
 
         this.currentSubmenu = submenu;
 
@@ -3268,6 +3334,9 @@ class ContextMenuController {
                     // Mouse is moving back to parent, don't close
                     return;
                 }
+                if (relatedTarget && this.nestedSubmenu && this.nestedSubmenu.contains(relatedTarget)) {
+                    return;
+                }
 
                 // Mouse is leaving submenu, start close timer
                 this.clearHoverTimers();
@@ -3280,7 +3349,8 @@ class ContextMenuController {
         // Add click outside handler for submenu
         const submenuClickHandler = (e) => {
             // Only handle clicks that are actually outside the submenu
-            if (!submenu.contains(e.target) && !parentItem.contains(e.target)) {
+            const inNested = this.nestedSubmenu && this.nestedSubmenu.contains(e.target);
+            if (!submenu.contains(e.target) && !parentItem.contains(e.target) && !inNested) {
                 e.stopPropagation(); // Prevent bubbling to overlay handlers
                 // On mobile, don't close submenu on outside click - keep it open
                 // On desktop, close it
@@ -3328,7 +3398,12 @@ class ContextMenuController {
     }
 
     hideSubmenu() {
+        this._removeNestedSubmenu();
         if (this.currentSubmenu) {
+            this.currentSubmenu.querySelectorAll('[data-context-menu]').forEach((el) => {
+                this.detachFromElement(el);
+                el.classList.remove('has-item-context-menu');
+            });
             this.currentSubmenu.remove();
             this.currentSubmenu = null;
         }

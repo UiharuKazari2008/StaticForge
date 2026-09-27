@@ -4,6 +4,7 @@
 // Studio prompt-option globals (defaults). Declared here so utilities.js / dropdowns
 // can read them during earlier init steps before registerInitStep(37) runs.
 var keepPromptNewlines = false;
+var bakePromptNewlines = false;
 var autoCharNumerize = true;
 var autoFormatOnBlur = true;
 var promptNormalize = true;
@@ -3423,6 +3424,7 @@ class PromptTextareaToolbar {
 
     toggleKeepNewlines() {
         keepPromptNewlines = !keepPromptNewlines;
+        if (!keepPromptNewlines) bakePromptNewlines = false;
         this.syncKeepNewlinesButtons();
         // updatePromptStatusIcons: public/scripts/comp/utilities.js
         updatePromptStatusIcons();

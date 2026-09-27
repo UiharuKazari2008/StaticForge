@@ -36,9 +36,8 @@ function calculateComprehensiveRanking(result, query, bestTextReplacement = null
         isExactMatch = matchInfo.isExactMatch;
         isPrefixMatch = matchInfo.isPrefixMatch;
 
-        const textRelevance = typeof result.predictionaryScore === 'number'
-            ? result.predictionaryScore
-            : getTagTextRelevanceScore(query, resultName);
+        const textRelevance = result.predictionaryScore ||
+            getTagTextRelevanceScore(query, resultName);
 
         const queryNormLen = normalizeTagSearchText(query).length;
         const nameNormLen = normalizeTagSearchText(resultName).length;
@@ -101,14 +100,11 @@ function calculateComprehensiveRanking(result, query, bestTextReplacement = null
 
     const cfg = rankingCfg.clientNonTag;
 
-    // Prefer scores prepared by prepare*ForDisplay — do not recompute string similarity.
-    const similarityScore = typeof result.predictionaryScore === 'number'
-        ? result.predictionaryScore
-        : (typeof result.enhancedSimilarity === 'number'
-            ? result.enhancedSimilarity
-            : (typeof result.matchScore === 'number'
-                ? result.matchScore
-                : calculateStringSimilarity(query, resultName)));
+    // Prefer scores prepared by prepare*ForDisplay. A stored 0 falls through.
+    const similarityScore = result.predictionaryScore ||
+        result.enhancedSimilarity ||
+        result.matchScore ||
+        calculateStringSimilarity(query, resultName);
 
     // Exact match bonus (highest priority)
     if (nameLower === queryLower) {

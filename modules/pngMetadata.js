@@ -624,6 +624,7 @@ class PngMetadata {
                     'skip_pipeline_stages',
                     'auto_clean_uc',
                     'keep_newlines',
+                    'bake_newlines',
                     'auto_char_numerize',
                     'prompt_normalize',
                     'deduplicate_tags',
@@ -1111,6 +1112,11 @@ class PngMetadata {
         // Add keep_newlines if available
         if (forgeData.keep_newlines !== undefined) {
             result.keep_newlines = forgeData.keep_newlines;
+        }
+
+        // Add bake_newlines if available
+        if (forgeData.bake_newlines !== undefined) {
+            result.bake_newlines = !!forgeData.bake_newlines && !!result.keep_newlines;
         }
 
         // Add auto_char_numerize if available

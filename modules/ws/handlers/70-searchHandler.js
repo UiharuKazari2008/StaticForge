@@ -170,9 +170,15 @@ async function handleCityLookup(handlers, ws, message, clientInfo, wsServer) {
 async function handleCharacterSearch(handlers, ws, message, clientInfo, wsServer) {
         const { query, model, requestId, autofillSessionId, spellCheckText, isContinuation, autofillSettings, modelMode } = message;
 
-        if (!query) {
-            // JULES: Pass requestId so client requests resolve/reject properly
-            handlers.sendError(ws, 'Missing query parameter', 'search_characters', message.requestId);
+        if (!String(query || '').trim()) {
+            // Bare autofill prefixes (artist: / art by) used to arrive as an empty query and toast this error.
+            handlers.sendToClient(ws, {
+                type: 'search_characters_complete',
+                data: { results: [], spellCheck: null },
+                timestamp: new Date().toISOString(),
+                requestId: requestId,
+                autofillSessionId: autofillSessionId || null
+            });
             return;
         }
 

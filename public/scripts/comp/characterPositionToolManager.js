@@ -41,8 +41,46 @@ class CharacterPositionToolManager {
         document.getElementById('characterPositionToolCloseBtn').addEventListener('click', () => {
             void closeModal(this.element);
         });
-        document.getElementById('characterPositionsToolBtn').addEventListener('click', () => {
+        const toolBtn = document.getElementById('characterPositionsToolBtn');
+        toolBtn.addEventListener('click', () => {
             this.open();
+        });
+        // contextMenu: public/scripts/comp/contextMenu.js
+        contextMenu.attachToElement(toolBtn, {
+            sections: [
+                {
+                    type: 'custom',
+                    title: 'Positions',
+                    content: () => this._buildContextPreview()
+                },
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            text: 'Remove',
+                            icon: 'fas fa-eraser',
+                            action: 'charpos-remove',
+                            showIndicator: true
+                        },
+                        {
+                            text: 'Apply',
+                            icon: 'fas fa-check',
+                            action: 'charpos-apply',
+                            showIndicator: true,
+                            disabled: () => !this._hasReturnedCenters()
+                        }
+                    ]
+                }
+            ],
+            onAction: (action) => {
+                if (action === 'charpos-remove') {
+                    this._clearToAiChoice();
+                    return;
+                }
+                if (action === 'charpos-apply') {
+                    this._applyReturnedCenters();
+                }
+            }
         });
         this.clearBtn.addEventListener('click', () => this._clearToAiChoice());
         this.revertBtn.addEventListener('click', () => this._revertToReturned());
@@ -293,6 +331,38 @@ class CharacterPositionToolManager {
         this.stage.style.height = `${Math.max(1, Math.floor(height))}px`;
     }
 
+    _buildContextPreview() {
+        const stage = document.createElement('div');
+        stage.className = 'character-position-stage';
+        const dims = this._stageAspectDimensions();
+        const ratio = dims.width / Math.max(1, dims.height);
+        const maxW = 200;
+        const maxH = 150;
+        let width = maxW;
+        let height = width / ratio;
+        if (height > maxH) {
+            height = maxH;
+            width = height * ratio;
+        }
+        stage.style.width = `${Math.round(width)}px`;
+        stage.style.height = `${Math.round(height)}px`;
+
+        const items = this._characterItems();
+        items.forEach((item, index) => {
+            const { x, y } = this._centerForItem(item, index, items.length);
+            const nameInput = item.querySelector('.character-name-input');
+            const name = nameInput?.value.trim() || `Character ${index + 1}`;
+            const dot = document.createElement('span');
+            dot.className = 'character-position-pin';
+            dot.style.left = `${x * 100}%`;
+            dot.style.top = `${y * 100}%`;
+            dot.style.setProperty('--character-pin-color', `hsl(${(index * 67 + 205) % 360} 78% 58%)`);
+            dot.title = `${name} · ${this._formatCenter(x, y)}`;
+            stage.appendChild(dot);
+        });
+        return stage;
+    }
+
     _centerForItem(item, index, count) {
         const storedX = Number.parseFloat(item.dataset.positionX);
         const storedY = Number.parseFloat(item.dataset.positionY);
@@ -476,7 +546,25 @@ class CharacterPositionToolManager {
 
     _clearToAiChoice() {
         void closeModal(this.element);
+        // clearCharacterPromptPositions: public/scripts/comp/characterPromptManager.js
         clearCharacterPromptPositions();
+        this._syncIndicator();
+    }
+
+    _applyReturnedCenters() {
+        if (!this._hasReturnedCenters()) return;
+        const items = this._characterItems();
+        items.forEach((item, index) => {
+            const returned = this.returnedCenters[index];
+            if (!returned || !Number.isFinite(returned.x) || !Number.isFinite(returned.y)) return;
+            // setCharacterPromptPosition: public/scripts/comp/characterPromptManager.js
+            setCharacterPromptPosition(item.id, returned.x, returned.y);
+        });
+        this._setAutoPosition(false);
+        if (this._isMounted()) {
+            this._renderPins(items);
+            this._syncActionButtons();
+        }
         this._syncIndicator();
     }
 

@@ -195,6 +195,6 @@ ${dsapSmfBuildSectionHdr('Control Panel')}
 <table class="dsap-smf-home-table" cellspacing="0" cellpadding="6" width="100%" border="0">
   ${rows}
 </table>
-<p class="dsap-smf-home-foot">Dreamscape System Control Panel</p>
+<p class="dsap-smf-home-foot">Control Panel</p>
 ${dsapSmfBuildRootClose()}`;
 }

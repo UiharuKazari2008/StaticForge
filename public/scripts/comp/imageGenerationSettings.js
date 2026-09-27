@@ -304,6 +304,12 @@ function readLastStudioPreviewFilename() {
     }
 }
 
+function forgetLastStudioPreview() {
+    try {
+        localStorage.removeItem(STUDIO_LAST_PREVIEW_LS);
+    } catch (_err) { /* */ }
+}
+
 function isStudioStreamEnabled() {
     return imageGenerationSettingsState.streamImageGeneration !== false;
 }
@@ -531,6 +537,86 @@ function getImageGenerationAutomaticDownloadMenuItem() {
     };
 }
 
+const ENHANCE_PRESET_STORAGE_KEY = 'enhancePreset';
+const DEFAULT_ENHANCE_PRESET = { magnitude: 3.0, scale: '1' };
+const ENHANCE_PRESET_SCALE_OPTIONS = [
+    { value: '1', text: '1×' },
+    { value: '1.5', text: '1.5×' },
+    { value: '2', text: '2×' }
+];
+
+function normalizeEnhancePresetMagnitude(raw) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return DEFAULT_ENHANCE_PRESET.magnitude;
+    const stepped = Math.round(n * 2) / 2;
+    return Math.max(1.0, Math.min(5.5, stepped));
+}
+
+function normalizeEnhancePresetScale(raw) {
+    const value = String(raw == null ? '' : raw);
+    for (let i = 0; i < ENHANCE_PRESET_SCALE_OPTIONS.length; i++) {
+        if (ENHANCE_PRESET_SCALE_OPTIONS[i].value === value) return value;
+    }
+    return DEFAULT_ENHANCE_PRESET.scale;
+}
+
+function normalizeEnhancePreset(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    return {
+        magnitude: normalizeEnhancePresetMagnitude(src.magnitude),
+        scale: normalizeEnhancePresetScale(src.scale)
+    };
+}
+
+function getEnhancePreset() {
+    try {
+        const raw = localStorage.getItem(ENHANCE_PRESET_STORAGE_KEY);
+        if (!raw) return { ...DEFAULT_ENHANCE_PRESET };
+        return normalizeEnhancePreset(JSON.parse(raw));
+    } catch (_err) {
+        return { ...DEFAULT_ENHANCE_PRESET };
+    }
+}
+
+function persistEnhancePreset(patch) {
+    const next = normalizeEnhancePreset({ ...getEnhancePreset(), ...(patch || {}) });
+    try {
+        localStorage.setItem(ENHANCE_PRESET_STORAGE_KEY, JSON.stringify(next));
+    } catch (_err) { /* ignore quota / private mode */ }
+    return next;
+}
+
+function getEnhancePresetMagnitudeMenuItems() {
+    const items = [];
+    for (let m = 1.0; m <= 5.5 + 1e-9; m += 0.5) {
+        const value = Number(m.toFixed(1));
+        items.push({
+            text: value.toFixed(1),
+            action: 'enhance-preset-magnitude',
+            value,
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: function (item) {
+                item.checked = Math.abs(getEnhancePreset().magnitude - value) < 1e-9;
+            }
+        });
+    }
+    return items;
+}
+
+function getEnhancePresetScaleMenuItems() {
+    return ENHANCE_PRESET_SCALE_OPTIONS.map((spec) => ({
+        text: spec.text,
+        action: 'enhance-preset-scale',
+        value: spec.value,
+        keepMenuOpen: true,
+        showIndicator: true,
+        loadfn: function (item) {
+            item.checked = getEnhancePreset().scale === spec.value;
+        }
+    }));
+}
+
 function getImageGenerationGenerateMenuSections() {
     return [
         {
@@ -547,26 +633,69 @@ function getImageGenerationGenerateMenuSections() {
 
 function getStudioImageGenerationSettingsMenuConfig() {
     return {
-        sections: [{
-            type: 'list',
-            items: [
-                ...IMAGE_GENERATION_BOOLEAN_MENU_ITEMS.map(buildImageGenerationBooleanMenuItem),
-                { separator: true },
-                {
-                    icon: 'fa-regular fa-chess-board',
-                    text: 'Transparent Background',
-                    optionsfn: getImageGenerationTransparencySubmenu
-                },
-                {
-                    icon: 'fa-regular fa-circle-half-stroke',
-                    text: 'Alpha Mode',
-                    optionsfn: getImageGenerationAlphaMenuItems
-                },
-                { separator: true, text: 'Image Format' },
-                ...getImageGenerationFormatMenuItems(),
-                getImageGenerationAutomaticDownloadMenuItem()
-            ]
-        }],
+        sections: [
+            {
+                type: 'list',
+                title: 'File',
+                items: [
+                    {
+                        icon: 'fa-regular fa-file',
+                        text: 'New Session',
+                        action: 'studio-new-session'
+                    },
+                    {
+                        icon: 'fa-regular fa-floppy-disk',
+                        text: 'Save As',
+                        // getStudioSaveAsMenuItems: public/scripts/comp/studioSession.js
+                        optionsfn: getStudioSaveAsMenuItems
+                    }
+                ]
+            },
+            {
+                type: 'list',
+                items: [
+                    ...IMAGE_GENERATION_BOOLEAN_MENU_ITEMS.map(buildImageGenerationBooleanMenuItem),
+                    { separator: true },
+                    {
+                        icon: 'fa-regular fa-chess-board',
+                        text: 'Transparent Background',
+                        optionsfn: getImageGenerationTransparencySubmenu
+                    },
+                    {
+                        icon: 'fa-regular fa-circle-half-stroke',
+                        text: 'Alpha Mode',
+                        optionsfn: getImageGenerationAlphaMenuItems
+                    },
+                    { separator: true, text: 'Image Format' },
+                    ...getImageGenerationFormatMenuItems(),
+                    getImageGenerationAutomaticDownloadMenuItem()
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Enhance Preset',
+                items: [
+                    {
+                        icon: 'fas fa-gauge-high',
+                        text: 'Magnitude',
+                        optionsfn: getEnhancePresetMagnitudeMenuItems,
+                        valueDisplay: function () {
+                            return getEnhancePreset().magnitude.toFixed(1);
+                        }
+                    },
+                    {
+                        icon: 'nai-upscale',
+                        text: 'Upscale',
+                        optionsfn: getEnhancePresetScaleMenuItems,
+                        valueDisplay: function () {
+                            const scale = getEnhancePreset().scale;
+                            const spec = ENHANCE_PRESET_SCALE_OPTIONS.find((option) => option.value === scale);
+                            return spec ? spec.text : scale;
+                        }
+                    }
+                ]
+            }
+        ],
         onAction: handleImageGenerationSettingsMenuAction
     };
 }
@@ -586,6 +715,24 @@ function openStudioTransparencyCustomColorPicker() {
 
 function handleImageGenerationSettingsMenuAction(action, target, item) {
     const row = item || target;
+    if (action === 'studio-new-session') {
+        // startStudioNewSession: public/scripts/comp/studioSession.js
+        startStudioNewSession();
+        return true;
+    }
+    if (action === 'studio-save-preset-current' || action === 'studio-save-preset-new' || action === 'studio-save-desktop') {
+        // openStudioSaveNameDialog: public/scripts/comp/studioSession.js
+        const mode = action === 'studio-save-desktop'
+            ? 'desktop'
+            : (action === 'studio-save-preset-current' ? 'preset-current' : 'preset-new');
+        openStudioSaveNameDialog(mode);
+        return true;
+    }
+    if (action === 'studio-save-folder') {
+        // openStudioSaveFolderDialog: public/scripts/comp/studioSession.js
+        openStudioSaveFolderDialog();
+        return true;
+    }
     if (action === 'imggen-toggle' && row && row.key) {
         const next = getImageGenerationSettings()[row.key] !== true;
         void persistImageGenerationSettingsPatch({ [row.key]: next });
@@ -607,6 +754,14 @@ function handleImageGenerationSettingsMenuAction(action, target, item) {
         const bg = normalizeImageGenerationTransparencyBackgroundClient(row.value);
         void persistImageGenerationSettingsPatch({ transparencyBackground: bg });
         if (bg === 'custom') openStudioTransparencyCustomColorPicker();
+        return true;
+    }
+    if (action === 'enhance-preset-magnitude' && row && row.value != null) {
+        persistEnhancePreset({ magnitude: row.value });
+        return true;
+    }
+    if (action === 'enhance-preset-scale' && row && row.value != null) {
+        persistEnhancePreset({ scale: row.value });
         return true;
     }
     return false;

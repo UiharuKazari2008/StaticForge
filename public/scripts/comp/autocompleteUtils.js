@@ -505,8 +505,7 @@ function triggerAutofillToolSearchFromInput(query) {
     if (!target || !autofillEnabled) return;
 
     const searchText = String(query || '').trim();
-    if (!searchText) return;
-    if (!searchText.startsWith('<') && !searchText.startsWith('!') && searchText.length < 2) return;
+    if (!autofillTypedQueryIsSearchable(searchText, 2)) return;
 
     enterAutofillToolLookupMode();
     currentCharacterAutocompleteTarget = target;
@@ -868,6 +867,33 @@ function ensureDetachedAutofillListComplete() {
     );
 }
 
+function resolveAutofillShownResults(displayResults) {
+    if (!isSearching && !hasSearchServicesInFlight()
+        && autofillSessionPacketRequestId === currentSearchRequestId) {
+        autofillNoSearchResults = !autofillRequestHasResults;
+    }
+    const rows = displayResults || [];
+    if (!autofillNoSearchResults) {
+        if (rows.length) lastValidAutofillResults = rows;
+        return { rows: rows, pin: false };
+    }
+    if (rows.length) return { rows: rows, pin: true };
+    if (lastValidAutofillResults.length) return { rows: lastValidAutofillResults, pin: true };
+    return { rows: [], pin: true };
+}
+
+function appendAutofillNoSearchResultsPin() {
+    if (!characterAutocompleteList) return;
+    const noResultsItem = document.createElement('div');
+    noResultsItem.className = 'character-autocomplete-item no-results';
+    noResultsItem.innerHTML = `
+        <div class="character-info-row">
+            <span class="character-name">no search results</span>
+        </div>
+    `;
+    characterAutocompleteList.insertBefore(noResultsItem, characterAutocompleteList.firstChild);
+}
+
 function appendAutofillResultsFooterBanner(displayResults) {
     if (!characterAutocompleteList || !displayResults.length) return;
 
@@ -1225,6 +1251,24 @@ function getActiveAutofillArtistSearch() {
     return parseAutofillArtistSearchPrefix(currentSearchQuery || lastSearchQuery || '');
 }
 
+/** Rank and filter artist lookup against the name, not the artist: / art by prefix. */
+function getAutofillRankingQuery(query) {
+    const parsed = parseAutofillArtistSearchPrefix(query || '');
+    if (parsed.isArtistSearch && parsed.remainder) return parsed.remainder;
+    return query || '';
+}
+
+/** artist: and art by need a name before a search is sent. An empty remainder used to hit Missing query parameter. */
+function autofillTypedQueryIsSearchable(searchText, minQueryLen) {
+    const text = String(searchText || '');
+    if (!text) return false;
+    const artist = parseAutofillArtistSearchPrefix(text);
+    if (artist.isArtistSearch) return artist.remainder.length >= 1;
+    if (text.startsWith('<') || text.startsWith('!')) return true;
+    const minLen = minQueryLen == null ? 2 : minQueryLen;
+    return text.length >= minLen;
+}
+
 function isArtistTagResult(result) {
     if (!isTagResult(result)) return false;
     return getTagCategorySlug(result) === 'artist';
@@ -1254,7 +1298,7 @@ function applyAutofillArtistPrefixFilter(results) {
     if (!results || !results.length) return results || [];
     if (!getActiveAutofillArtistSearch().isArtistSearch) return results;
     return results.filter(function (result) {
-        return isArtistTagResult(result) || isNovelaiTagResult(result);
+        return isArtistTagResult(result);
     });
 }
 
@@ -2139,6 +2183,10 @@ window.handleSearchResponse = function (message) {
         }
 
         if (message.data && message.data.results) {
+            if (message.data.results.length > 0) {
+                autofillRequestHasResults = true;
+                autofillNoSearchResults = false;
+            }
             const resultsByService = new Map();
             message.data.results.forEach(result => {
                 let serviceName = result.serviceName || result.model || 'unknown';
@@ -2239,6 +2287,11 @@ window.handleSearchResponse = function (message) {
         applyServiceResultsUpdate(serviceName, results, {
             mergeBodyPreviews: false
         });
+
+        if (serviceName !== 'spellcheck' && serviceName !== 'wordLookup' && results.length > 0) {
+            autofillRequestHasResults = true;
+            autofillNoSearchResults = false;
+        }
 
         if (serviceName === 'spellcheck') {
             if (results.length > 0) {
@@ -2347,6 +2400,12 @@ function protectAutofillNavCaret() {
 
 // Track last search query to prevent unnecessary clearing
 let lastSearchQuery = '';
+/** Rows from the last search that returned matches. Kept on screen when a later search is empty. */
+let lastValidAutofillResults = [];
+/** True once this request's result packets included at least one row. */
+let autofillRequestHasResults = false;
+/** Settled search returned nothing. Pin stays up until the next request or a result row arrives. */
+let autofillNoSearchResults = false;
 
 // Track whether services have been initialized for the current autofill session
 let servicesInitialized = false;
@@ -2843,6 +2902,8 @@ window.resetAutofillServicesConfigCache = resetAutofillServicesConfigCache;
 window.shouldDismissAutofillFromClick = shouldDismissAutofillFromClick;
 
 function onAutofillSearchRequestStarted(requestId) {
+    autofillRequestHasResults = false;
+    autofillNoSearchResults = false;
     autofillSessionPacketRequestId = null;
     autofillWikiPreviewRequestedTagIds.clear();
     if (autofillSearchWatchdogTimer) {
@@ -3953,6 +4014,9 @@ function updateTagWikiPreviewScroll(item) {
 
 function markSearchSessionComplete() {
     isSearching = false;
+    if (!hasSearchServicesInFlight() && autofillSessionPacketRequestId === currentSearchRequestId) {
+        autofillNoSearchResults = !autofillRequestHasResults;
+    }
     currentSearchQuery = '';
     searchCompletionStatus.isComplete = true;
     updateSearchStatusDisplay();
@@ -5025,8 +5089,9 @@ async function rebuildAndDisplayResults() {
             allCharacterResults.push(...prepareCharacterResultsForDisplay(characterResults, lastSearchQuery));
         }
     }
+    const rankingQuery = getAutofillRankingQuery(lastSearchQuery);
     const allTagResults = allTagResultsRaw.length > 0
-        ? prepareTagResultsForDisplay(allTagResultsRaw, lastSearchQuery)
+        ? prepareTagResultsForDisplay(allTagResultsRaw, rankingQuery)
         : [];
 
     const autofillConfig = currentCharacterAutocompleteTarget
@@ -5035,8 +5100,8 @@ async function rebuildAndDisplayResults() {
     if (isAutofillTagsOnlyMode(autofillConfig)) {
         allSearchResults = allTagResults.map(result => ({ ...result, _isTopTier: false }));
         allSearchResults.sort((a, b) => {
-            const aRanking = getCachedComprehensiveRanking(a, lastSearchQuery, null);
-            const bRanking = getCachedComprehensiveRanking(b, lastSearchQuery, null);
+            const aRanking = getCachedComprehensiveRanking(a, rankingQuery, null);
+            const bRanking = getCachedComprehensiveRanking(b, rankingQuery, null);
             if (aRanking.score !== bRanking.score) {
                 return bRanking.score - aRanking.score;
             }
@@ -5066,7 +5131,7 @@ async function rebuildAndDisplayResults() {
 
     // Merge + rank the mixed result set (shared with the DSAP-SMF Autofill Ranking Test tab).
     allSearchResults = assembleRankedAutofillResults({
-        query: lastSearchQuery,
+        query: rankingQuery,
         bestSpellCheckResult,
         characterResults: allCharacterResults,
         tagResults: allTagResults,
@@ -5833,7 +5898,7 @@ function processCharacterAutocompleteInputCore(e) {
         }
 
         scheduleAutofillSearchDebounced(target, searchText, function () {
-            if (searchText.length >= 2) {
+            if (autofillTypedQueryIsSearchable(searchText, 2)) {
                 lastSearchText = searchText;
                 searchCharacters(searchText, target);
             } else {
@@ -5856,7 +5921,7 @@ function processCharacterAutocompleteInputCore(e) {
         if (e.inputType === 'deleteContentBackward') {
             if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
                 scheduleAutofillSearchDebounced(target, searchText, function () {
-                    if (searchText.startsWith('<') || searchText.length >= minQueryLen) {
+                    if (autofillTypedQueryIsSearchable(searchText, minQueryLen)) {
                         searchCharacters(searchText, target);
                     } else {
                         hideCharacterAutocomplete();
@@ -5869,7 +5934,7 @@ function processCharacterAutocompleteInputCore(e) {
         }
 
         scheduleAutofillSearchDebounced(target, searchText, function () {
-            if (searchText.startsWith('<') || searchText.length >= minQueryLen) {
+            if (autofillTypedQueryIsSearchable(searchText, minQueryLen)) {
                 lastSearchText = searchText;
                 searchCharacters(searchText, target);
             } else {
@@ -5934,7 +5999,7 @@ function processCharacterAutocompleteInputCore(e) {
         // If user is actively navigating or has an item selected, start normal search
         if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
             scheduleAutofillSearchDebounced(target, searchText, function () {
-                if (searchText.startsWith('<') || searchText.length >= minQueryLen) {
+                if (autofillTypedQueryIsSearchable(searchText, minQueryLen)) {
                     searchCharacters(searchText, target);
                 } else {
                     hideCharacterAutocomplete();
@@ -5950,7 +6015,7 @@ function processCharacterAutocompleteInputCore(e) {
     }
 
     scheduleAutofillSearchDebounced(target, searchText, function () {
-        if (searchText.startsWith('<') || searchText.length >= minQueryLen) {
+        if (autofillTypedQueryIsSearchable(searchText, minQueryLen)) {
             lastSearchText = searchText;
             searchCharacters(searchText, target);
         } else {
@@ -6000,7 +6065,7 @@ function getWikiTermFromPromptTextareaForKeyboard(textarea) {
     } else {
         const bounds = getAutocompleteSearchBounds(textarea);
         if (bounds) {
-            raw = value.substring(bounds.tokenStart, Math.min(start, bounds.tokenEnd));
+            raw = value.substring(bounds.tokenStart, bounds.tokenEnd);
         } else {
             const textBefore = value.substring(0, start);
             const lastComma = textBefore.lastIndexOf(',');
@@ -6011,7 +6076,11 @@ function getWikiTermFromPromptTextareaForKeyboard(textarea) {
     if (t.toLowerCase().startsWith('text:')) {
         t = sanitizePromptFragmentForWikiSearch(t.slice(5));
     }
-    return t;
+    const artist = parseAutofillArtistSearchPrefix(t);
+    if (artist.isArtistSearch) {
+        t = artist.remainder;
+    }
+    return t.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** Fresh autofill at caret without editing text (double Ctrl, or Alt+Space with force). */
@@ -6051,11 +6120,7 @@ function triggerCharacterAutofillSearchAtCaret(target, forceRefresh) {
 
     const bounds = getAutocompleteSearchBounds(target);
     const searchText = bounds && typeof bounds.query === 'string' ? bounds.query : '';
-    if (!searchText || (!searchText.startsWith('<') && searchText.length < 1)) {
-        hideCharacterAutocomplete();
-        return;
-    }
-    if (!searchText.startsWith('<') && searchText.length < 2 && !forceRefresh) {
+    if (!autofillTypedQueryIsSearchable(searchText, forceRefresh ? 1 : 2)) {
         hideCharacterAutocomplete();
         return;
     }
@@ -6074,7 +6139,7 @@ function getWikiSearchTermFromAutocompleteItem(selectedItem) {
         }
     }
     if (type === 'tag') {
-        return String(selectedItem.dataset.tagName || '').trim();
+        return String(selectedItem.dataset.tagName || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
     }
     if (type === 'textReplacement' || type === 'dynamicPlaceholder') {
         return String(selectedItem.dataset.placeholder || '').trim();
@@ -6711,7 +6776,7 @@ function applyAutocompleteItemElement(item) {
 function tryApplySelectedAutocompleteItem() {
     if (selectedCharacterAutocompleteIndex < 0) return false;
 
-    const items = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+    const items = getAutocompleteResultItems();
     const selectedItem = items[selectedCharacterAutocompleteIndex];
     return applyAutocompleteItemElement(selectedItem);
 }
@@ -7679,7 +7744,11 @@ async function searchCharacters(query, target, forceRefresh, options) {
         // Update current search query
         currentSearchQuery = query;
         const artistParsed = parseAutofillArtistSearchPrefix(query);
-        const wsQuery = artistParsed.isArtistSearch ? artistParsed.remainder : query;
+        if (artistParsed.isArtistSearch && !artistParsed.remainder) {
+            hideCharacterAutocomplete();
+            return;
+        }
+        const wsQuery = query;
         syncAutofillToolSearchInput();
 
         // Generate UUID for this search request
@@ -8141,7 +8210,8 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
     const autofillConfig = getAutofillConfig(target);
 
     // Filter out spell check and dictionary results from main display; apply session type/sort
-    let displayResults = getAutofillVisibleResults(results, target);
+    const shown = resolveAutofillShownResults(getAutofillVisibleResults(results, target));
+    let displayResults = shown.rows;
     const preserveSelection = shouldPreserveAutofillListSelection();
     if (preserveSelection && selectedCharacterAutocompleteIndex >= 0 && displayResults.length > 0) {
         storeCurrentSelection();
@@ -8207,18 +8277,11 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
         showWordLookupSection(currentWordLookupData, target);
     }
 
-    // If no results and search is fully idle, show a "no results" message
-    if (displayResults.length === 0 && !isSearching && !hasSearchServicesInFlight()) {
-        const noResultsItem = document.createElement('div');
-        noResultsItem.className = 'character-autocomplete-item no-results';
-        noResultsItem.innerHTML = `
-            <div class="character-info-row">
-                <span class="character-name">No results found</span>
-                <span class="character-copyright">Try a different search term</span>
-            </div>
-        `;
-        characterAutocompleteList.appendChild(noResultsItem);
-    } else if (displayResults.length > 0) {
+    // If this search settled empty, keep the last matching rows and pin a notice.
+    if (autofillNoSearchResults || (displayResults.length === 0 && !isSearching && !hasSearchServicesInFlight())) {
+        appendAutofillNoSearchResultsPin();
+    }
+    if (displayResults.length > 0) {
         cancelAutofillListChunks();
         appendAutocompleteResultItems(limitedResults, 0, () => {
             appendAutofillResultsFooterBanner(displayResults);
@@ -8328,7 +8391,8 @@ function updateAutocompleteDisplayImmediate(results, target) {
     const currentResultsHash = createResultsHash(results)
         + (target ? target.id || target.className || '' : '')
         + expansionKey
-        + getAutofillViewControlHashKey();
+        + getAutofillViewControlHashKey()
+        + (autofillNoSearchResults ? ':nr' : '');
 
     // Only update if results actually changed, or list has no result rows yet (status-only shell)
     const hasResultRows = characterAutocompleteList.querySelector('.character-autocomplete-item:not(.more-indicator):not(.no-results)');
@@ -8353,7 +8417,8 @@ function updateAutocompleteDisplayImmediate(results, target) {
     const autofillConfig = getAutofillConfig(target);
 
     // Filter out spell check and dictionary results from main display; apply session type/sort
-    let displayResults = getAutofillVisibleResults(results, target);
+    const shown = resolveAutofillShownResults(getAutofillVisibleResults(results, target));
+    let displayResults = shown.rows;
     const spellCheckResult = (autofillConfig.spellcheck && shouldShowAutofillSideSections())
         ? results.find(result => result.type === 'spellcheck')
         : null;
@@ -8522,18 +8587,11 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
         showWordLookupSection(currentWordLookupData, target);
     }
 
-    // If no results and search is fully idle, show a "no results" message
-    if (displayResults.length === 0 && !isSearching && !hasSearchServicesInFlight()) {
-        const noResultsItem = document.createElement('div');
-        noResultsItem.className = 'character-autocomplete-item no-results';
-        noResultsItem.innerHTML = `
-            <div class="character-info-row">
-                <span class="character-name">No results found</span>
-                <span class="character-copyright">Try a different search term</span>
-            </div>
-        `;
-        characterAutocompleteList.appendChild(noResultsItem);
-    } else if (displayResults.length > 0) {
+    // If this search settled empty, keep the last matching rows and pin a notice.
+    if (autofillNoSearchResults || (displayResults.length === 0 && !isSearching && !hasSearchServicesInFlight())) {
+        appendAutofillNoSearchResultsPin();
+    }
+    if (displayResults.length > 0) {
         cancelAutofillListChunks();
         appendAutocompleteResultItems(limitedResults, 0, () => {
             appendAutofillResultsFooterBanner(displayResults);
@@ -9782,6 +9840,9 @@ function findAutocompleteTermEnd(value, cursorPosition) {
     }
 
     const textAfter = value.substring(cursorPosition, maxEnd);
+    const tokenStart = findAutocompleteTermStart(value.substring(0, cursorPosition));
+    const beforeCursor = value.substring(tokenStart, cursorPosition).trim();
+    const extendThroughSpaces = /^artist:/i.test(beforeCursor) || /^art\s+by(\s|$)/i.test(beforeCursor);
     for (let i = 0; i < textAfter.length; i++) {
         if (textAfter[i] === ':' && textAfter[i + 1] === ':') {
             return cursorPosition + i;
@@ -9789,7 +9850,11 @@ function findAutocompleteTermEnd(value, cursorPosition) {
         if (textAfter[i] === ':' && i > 0 && textAfter[i - 1] === ':') {
             continue;
         }
-        if (/[,\s|{}\[\]%.]/.test(textAfter[i])) {
+        const ch = textAfter[i];
+        if (extendThroughSpaces && (ch === ' ' || ch === '\t')) {
+            continue;
+        }
+        if (/[,\s|{}\[\]%.]/.test(ch)) {
             return cursorPosition + i;
         }
     }
@@ -10165,6 +10230,9 @@ function hideCharacterAutocomplete(options) {
     serviceResults.clear();
     allSearchResults = [];
     window.allAutocompleteResults = [];
+    lastValidAutofillResults = [];
+    autofillRequestHasResults = false;
+    autofillNoSearchResults = false;
     currentSearchTimestamp = null;
 
     persistentSpellCheckData = null;
@@ -10631,6 +10699,7 @@ function handlePromptTabCycling(e) {
     const manualPromptNegative = document.getElementById('manualPromptNegative');
     const characterPromptsContainer = document.getElementById('characterPromptsContainer');
     const promptTabs = document.querySelector('.prompt-tabs');
+    const isShowingBoth = !!(promptTabs && promptTabs.classList.contains('show-both'));
 
     if (!manualPrompt || !characterPromptsContainer) return;
 

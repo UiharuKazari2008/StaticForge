@@ -33,6 +33,8 @@ let suppressNextPreviewClick = false;
 let compareRegisteredBaselineData = null;
 let comparePreGenerationBaselineData = null;
 let compareAltF10ComboIndex = 0;
+let compareDefaultsArmed = false;
+let compareDefaultsPendingModes = null;
 const COMPARE_DEFAULT_SETTINGS = {
     overlayOpacity: 50,
     blendMode: 'normal',
@@ -98,7 +100,8 @@ function getManualCompareElements() {
     const previewImage = document.getElementById('manualPreviewImage');
     const sourceImage = document.getElementById('manualPreviewCompareSourceImage');
     const useAsSourceBtn = document.getElementById('manualPreviewUseAsSourceBtn');
-    return { previewContent, previewImage, sourceImage, useAsSourceBtn };
+    const replaceSourceBtn = document.getElementById('manualPreviewReplaceSourceBtn');
+    return { previewContent, previewImage, sourceImage, useAsSourceBtn, replaceSourceBtn };
 }
 
 function getCurrentPreviewDimensions() {
@@ -135,6 +138,7 @@ function setCompareSourceData(data) {
     releaseManualPreviewElementImageSrc(sourceImage);
     sourceImage.src = compareSourceImageData.url;
     sourceImage.classList.remove('hidden');
+    applyCompareDefaultSettings();
     updateCompareDisplayState();
     updateCompareControlsState();
     syncCompareLoupeRevealToLoupe();
@@ -420,9 +424,44 @@ function isPreviewSameAsCompareSource() {
     return false;
 }
 
+function maybeFireCompareDefaultsArmed() {
+    if (!compareDefaultsArmed || !compareDefaultsPendingModes) {
+        return false;
+    }
+    if (!compareSourceImageData || !compareSourceImageData.url) {
+        compareDefaultsArmed = false;
+        compareDefaultsPendingModes = null;
+        return false;
+    }
+    if (isPreviewSameAsCompareSource()) {
+        return false;
+    }
+    compareOverlayEnabled = Boolean(compareDefaultsPendingModes.overlay);
+    compareSlideEnabled = Boolean(compareDefaultsPendingModes.slide);
+    compareLoupeRevealEnabled = Boolean(compareDefaultsPendingModes.reveal);
+    compareDefaultsArmed = false;
+    compareDefaultsPendingModes = null;
+    compareViewQuickSuspended = false;
+    persistCompareViewQuickStoredIfActive();
+    updateCompareDisplayState();
+    // Avoid syncCompareLoupeRevealToLoupe here — it re-enters updateCompareControlsState.
+    // refreshManualPreviewImageLoupe / setManualPreviewLoupeViewportMatchZoom: public/scripts/comp/manualModalManager.js
+    if (compareLoupeRevealEnabled) {
+        refreshManualPreviewImageLoupe();
+        setManualPreviewLoupeViewportMatchZoom({ skipSnap: true });
+    } else {
+        // exitManualPreviewLoupeRevealMode: public/scripts/comp/manualModalManager.js
+        exitManualPreviewLoupeRevealMode();
+        refreshManualPreviewImageLoupe();
+    }
+    return true;
+}
+
 function updateCompareControlsState() {
-    const { useAsSourceBtn } = getManualCompareElements();
+    const { useAsSourceBtn, replaceSourceBtn } = getManualCompareElements();
     const hasSource = Boolean(compareSourceImageData && compareSourceImageData.url);
+
+    maybeFireCompareDefaultsArmed();
 
     if (useAsSourceBtn) {
         if (!hasSource) {
@@ -443,6 +482,10 @@ function updateCompareControlsState() {
             useAsSourceBtn.title = 'Toggle Comparison View';
         }
     }
+
+    if (replaceSourceBtn) {
+        replaceSourceBtn.classList.toggle('hidden', !hasSource);
+    }
 }
 
 function clearCompareSourceImage() {
@@ -457,6 +500,8 @@ function clearCompareSourceImage() {
     compareInhibitedByExpandCanvas = false;
     compareTempShowSourceActive = false;
     compareTempHideSourceActive = false;
+    compareDefaultsArmed = false;
+    compareDefaultsPendingModes = null;
     const { sourceImage } = getManualCompareElements();
     if (sourceImage) {
         releaseManualPreviewElementImageSrc(sourceImage);
@@ -469,36 +514,116 @@ function clearCompareSourceImage() {
     notifyKeyboardOverlayContextChanged();
 }
 
-function applyCompareDefaultSettingsStub() {
-    const loaded = loadCompareDefaultSettings();
-    if (loaded && loaded.overlayRuntime) {
-        compareRuntimeSettings = { ...COMPARE_DEFAULT_SETTINGS, ...loaded.overlayRuntime };
-    }
-    if (loaded) {
-        compareOverlayEnabled = Boolean(loaded.defaultOverlayEnabled);
-        compareSlideEnabled = Boolean(loaded.defaultSlideEnabled);
-        persistCompareViewQuickStoredIfActive();
+function readCompareDefaultSettingsRaw() {
+    try {
+        const stored = localStorage.getItem('compareDefaultSettings');
+        if (!stored) return null;
+        return JSON.parse(stored);
+    } catch (e) {
+        console.warn('Failed to load compare default settings from localStorage:', e);
+        return null;
     }
 }
 
-function loadCompareDefaultSettings() {
-    try {
-        const stored = localStorage.getItem('compareDefaultSettings');
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            return {
-                overlayRuntime: parsed.overlayRuntime ? { ...COMPARE_DEFAULT_SETTINGS, ...parsed.overlayRuntime } : { ...COMPARE_DEFAULT_SETTINGS },
-                defaultOverlayEnabled: !!parsed.defaultOverlayEnabled,
-                defaultSlideEnabled: !!parsed.defaultSlideEnabled
-            };
+function hasCompareSavedDefaults() {
+    const raw = readCompareDefaultSettingsRaw();
+    return Boolean(raw && raw.saved);
+}
+
+function getCompareAutoEnableState() {
+    const raw = readCompareDefaultSettingsRaw();
+    return Boolean(raw && raw.autoEnableState);
+}
+
+function setCompareAutoEnableState(enabled) {
+    const raw = readCompareDefaultSettingsRaw() || {};
+    raw.autoEnableState = Boolean(enabled);
+    saveCompareDefaultSettings(raw);
+}
+
+function buildCompareDefaultSettingsSnapshot() {
+    const enableState = (compareOverlayEnabled || compareSlideEnabled || compareLoupeRevealEnabled) && !compareViewQuickSuspended;
+    return {
+        saved: true,
+        overlayRuntime: { ...COMPARE_DEFAULT_SETTINGS, ...compareRuntimeSettings },
+        defaultOverlayEnabled: Boolean(compareOverlayEnabled),
+        defaultSlideEnabled: Boolean(compareSlideEnabled),
+        defaultLoupeRevealEnabled: Boolean(compareLoupeRevealEnabled),
+        splitPosition: compareSplitPosition,
+        enableState: Boolean(enableState),
+        autoEnableState: getCompareAutoEnableState()
+    };
+}
+
+function applyCompareDefaultSettings() {
+    const loaded = loadCompareDefaultSettings();
+    compareDefaultsArmed = false;
+    compareDefaultsPendingModes = null;
+    if (!loaded || !loaded.saved) {
+        return;
+    }
+
+    if (loaded.overlayRuntime) {
+        compareRuntimeSettings = { ...COMPARE_DEFAULT_SETTINGS, ...loaded.overlayRuntime };
+    }
+    if (Number.isFinite(loaded.splitPosition)) {
+        setCompareSplitPosition(loaded.splitPosition);
+    }
+
+    const desiredOverlay = Boolean(loaded.defaultOverlayEnabled);
+    const desiredSlide = Boolean(loaded.defaultSlideEnabled);
+    const desiredReveal = Boolean(loaded.defaultLoupeRevealEnabled);
+    const wantEnable = Boolean(loaded.enableState);
+    const autoEnable = Boolean(loaded.autoEnableState);
+
+    if (autoEnable && wantEnable) {
+        const pending = {
+            overlay: desiredOverlay,
+            slide: desiredSlide,
+            reveal: desiredReveal
+        };
+        if (isPreviewSameAsCompareSource()) {
+            compareOverlayEnabled = false;
+            compareSlideEnabled = false;
+            compareLoupeRevealEnabled = false;
+            compareDefaultsArmed = true;
+            compareDefaultsPendingModes = pending;
+        } else {
+            compareOverlayEnabled = pending.overlay;
+            compareSlideEnabled = pending.slide;
+            compareLoupeRevealEnabled = pending.reveal;
+            compareViewQuickSuspended = false;
         }
-    } catch (e) {
-        console.warn('Failed to load compare default settings from localStorage:', e);
+    } else {
+        // Visual settings applied above; do not auto-enable comparison display
+        compareOverlayEnabled = false;
+        compareSlideEnabled = false;
+        compareLoupeRevealEnabled = false;
+    }
+    persistCompareViewQuickStoredIfActive();
+}
+
+// Kept for any external callers that still use the stub name
+function applyCompareDefaultSettingsStub() {
+    applyCompareDefaultSettings();
+}
+
+function loadCompareDefaultSettings() {
+    const parsed = readCompareDefaultSettingsRaw();
+    if (!parsed) {
+        return null;
     }
     return {
-        overlayRuntime: { ...COMPARE_DEFAULT_SETTINGS },
-        defaultOverlayEnabled: false,
-        defaultSlideEnabled: false
+        saved: Boolean(parsed.saved),
+        overlayRuntime: parsed.overlayRuntime
+            ? { ...COMPARE_DEFAULT_SETTINGS, ...parsed.overlayRuntime }
+            : { ...COMPARE_DEFAULT_SETTINGS },
+        defaultOverlayEnabled: !!parsed.defaultOverlayEnabled,
+        defaultSlideEnabled: !!parsed.defaultSlideEnabled,
+        defaultLoupeRevealEnabled: !!parsed.defaultLoupeRevealEnabled,
+        splitPosition: Number.isFinite(Number(parsed.splitPosition)) ? Number(parsed.splitPosition) : 50,
+        enableState: !!parsed.enableState,
+        autoEnableState: !!parsed.autoEnableState
     };
 }
 
@@ -510,6 +635,28 @@ function saveCompareDefaultSettings(settings) {
     } catch (e) {
         console.warn('Failed to save compare default settings to localStorage:', e);
     }
+}
+
+function clearCompareDefaultSettings() {
+    try {
+        localStorage.removeItem('compareDefaultSettings');
+    } catch (e) {
+        console.warn('Failed to clear compare default settings from localStorage:', e);
+    }
+    compareDefaultsArmed = false;
+    compareDefaultsPendingModes = null;
+}
+
+function compareReplaceSourceFromPreview() {
+    setCompareSourceFromCurrentPreview();
+    compareOverlayEnabled = false;
+    compareSlideEnabled = false;
+    compareLoupeRevealEnabled = false;
+    compareViewQuickSuspended = false;
+    compareAltF10ComboIndex = 0;
+    updateCompareDisplayState();
+    updateCompareControlsState();
+    syncCompareLoupeRevealToLoupe();
 }
 
 function compareSourcePrimaryClick(showToast = false) {
@@ -663,6 +810,86 @@ function resetCompareRuntimeSettings() {
     syncCompareLoupeRevealToLoupe();
 }
 
+function compareMenuHasSource() {
+    return Boolean(compareSourceImageData && compareSourceImageData.url);
+}
+
+function compareMenuCurrentPreviewInfo() {
+    const current = window.currentManualPreviewImage;
+    const img = document.getElementById('manualPreviewImage');
+    const filename = current?.upscaled || current?.filename || current?.original || current?.base || '';
+    // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+    const galleryUrl = filename ? localGalleryImageUrl(filename) : '';
+    const liveUrl = img && !img.classList.contains('hidden')
+        ? (img.dataset.blobUrl || img.dataset.manualPreviewUrl || img.currentSrc || img.src)
+        : '';
+    const url = galleryUrl || liveUrl;
+    if (!url || url === 'about:blank') return null;
+    return {
+        url,
+        width: current?.width || img?.naturalWidth || 0,
+        height: current?.height || img?.naturalHeight || 0,
+        filename: filename || 'preview',
+        original: filename || undefined
+    };
+}
+
+function compareMenuPreviewInfo() {
+    if (compareMenuHasSource()) {
+        const chainFile = compareSourceImageData.chainSourceFile;
+        // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        const displayUrl = (chainFile ? localGalleryImageUrl(chainFile) : null) || compareSourceImageData.url;
+        return {
+            url: displayUrl,
+            width: compareSourceImageData.width || 0,
+            height: compareSourceImageData.height || 0,
+            filename: chainFile || 'compare-source',
+            original: chainFile || undefined
+        };
+    }
+    return compareMenuCurrentPreviewInfo();
+}
+
+function buildCompareMenuPreview() {
+    const info = compareMenuPreviewInfo();
+    const container = document.createElement('div');
+    container.className = 'compare-menu-preview-container';
+    container.style.cssText = 'padding: 4px 8px 0 8px; display: flex; justify-content: center; align-items: center; min-height: 120px; flex-shrink: 0;';
+    if (!info || !info.url) {
+        container.style.minHeight = 'auto';
+        container.textContent = 'No image';
+        container.style.padding = '8px';
+        container.style.color = 'var(--text-muted)';
+        return container;
+    }
+    const img = document.createElement('img');
+    img.src = info.url;
+    img.alt = compareMenuHasSource() ? 'Compare source' : 'Current image';
+    img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: pointer;';
+    img.loading = 'lazy';
+    img.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (contextMenu) contextMenu.hideMenu();
+        // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
+        openGalleryImageInViewer({
+            url: info.url,
+            width: info.width || img.naturalWidth || 0,
+            height: info.height || img.naturalHeight || 0,
+            filename: info.filename,
+            original: info.original,
+            upscaled: info.original
+        });
+    });
+    img.onerror = function () {
+        container.style.minHeight = 'auto';
+        container.textContent = 'Preview not available';
+        container.style.padding = '8px';
+        container.style.color = 'var(--text-muted)';
+    };
+    container.appendChild(img);
+    return container;
+}
+
 function getCompareContextMenuConfig() {
     const overlayOpacityOptions = [15, 25, 50, 75, 85].map(value => ({
         text: `${value}%`,
@@ -708,45 +935,22 @@ function getCompareContextMenuConfig() {
         sections: [
             {
                 type: 'custom',
-                title: "Comparison",
-                hidden: () => !compareSourceImageData || !compareSourceImageData.url,
+                title: 'Comparison',
                 content: function () {
-                    if (!compareSourceImageData || !compareSourceImageData.url) {
-                        return '';
-                    }
-                    const container = document.createElement('div');
-                    container.className = 'compare-menu-preview-container';
-                    container.style.cssText = 'padding: 4px 8px 0 8px; display: flex; justify-content: center; align-items: center; min-height: 120px; flex-shrink: 0;';
-                    const chainFile = compareSourceImageData.chainSourceFile;
-                    const displayUrl = (chainFile ? localGalleryImageUrl(chainFile) : null) || compareSourceImageData.url;
-                    const img = document.createElement('img');
-                    img.src = displayUrl;
-                    img.alt = 'Compare source';
-                    img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: pointer;';
-                    img.loading = 'lazy';
-                    img.addEventListener('click', function (e) {
-                        e.stopPropagation();
-                        if (contextMenu) {
-                            contextMenu.hideMenu();
-                        }
-                        const viewerUrl = (chainFile ? localGalleryImageUrl(chainFile) : null) || compareSourceImageData.url;
-                        // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
-                        openGalleryImageInViewer({
-                            url: viewerUrl,
-                            width: compareSourceImageData.width || img.naturalWidth || 0,
-                            height: compareSourceImageData.height || img.naturalHeight || 0,
-                            filename: chainFile || 'compare-source',
-                            original: chainFile || undefined,
-                            upscaled: chainFile || undefined
-                        });
-                    });
-                    img.onerror = function () {
-                        container.style.minHeight = 'auto';
-                        container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text-muted);">Preview not available</div>';
-                    };
-                    container.appendChild(img);
-                    return container;
+                    return buildCompareMenuPreview();
                 }
+            },
+            {
+                type: 'list',
+                hidden: () => compareMenuHasSource(),
+                items: [
+                    {
+                        icon: 'fas fa-eye-dropper',
+                        text: 'Enable',
+                        action: 'compareEnable',
+                        disabled: () => !compareMenuCurrentPreviewInfo()
+                    }
+                ]
             },
             {
                 type: 'list',
@@ -785,6 +989,30 @@ function getCompareContextMenuConfig() {
             },
             {
                 type: 'list',
+                title: 'Defaults',
+                hidden: () => !compareSourceImageData || !compareSourceImageData.url,
+                items: [
+                    { icon: 'fas fa-floppy-disk', text: 'Save Default Settings', action: 'compareSaveDefaultSettings', keepMenuOpen: false },
+                    {
+                        icon: 'fas fa-trash',
+                        text: 'Clear Default Settings',
+                        action: 'compareClearDefaultSettings',
+                        keepMenuOpen: false,
+                        className: 'text-danger',
+                        disabled: () => !hasCompareSavedDefaults()
+                    },
+                    {
+                        icon: 'fas fa-bolt',
+                        text: 'Auto Enable State',
+                        action: 'compareToggleAutoEnableState',
+                        keepMenuOpen: true,
+                        showIndicator: true,
+                        loadfn: (item) => { item.checked = getCompareAutoEnableState(); }
+                    }
+                ]
+            },
+            {
+                type: 'list',
                 title: 'Actions',
                 hidden: () => !compareSourceImageData || !compareSourceImageData.url,
                 items: [
@@ -801,6 +1029,10 @@ function getCompareContextMenuConfig() {
 
 function handleCompareContextMenuAction(action, target, item) {
     if (!action) return;
+    if (action === 'compareEnable') {
+        compareSourcePrimaryClick(true);
+        return;
+    }
     if (action === 'compareToggleLoupeReveal') {
         setCompareLoupeRevealEnabled(!compareLoupeRevealEnabled, { setVpZoom: true });
         compareAltF10ComboIndex = compareLoupeRevealEnabled ? 4 : 0;
@@ -842,15 +1074,23 @@ function handleCompareContextMenuAction(action, target, item) {
         return;
     }
     if (action === 'compareReplaceSource') {
-        setCompareSourceFromCurrentPreview();
-        compareOverlayEnabled = false;
-        compareSlideEnabled = false;
-        compareLoupeRevealEnabled = false;
-        compareViewQuickSuspended = false;
-        compareAltF10ComboIndex = 0;
-        updateCompareDisplayState();
-        updateCompareControlsState();
-        syncCompareLoupeRevealToLoupe();
+        compareReplaceSourceFromPreview();
+        return;
+    }
+    if (action === 'compareSaveDefaultSettings') {
+        saveCompareDefaultSettings(buildCompareDefaultSettingsSnapshot());
+        // showGlassToast: public/scripts/comp/toastManager.js
+        showGlassToast('success', null, 'Comparison defaults saved', false, 1800, '<i class="fas fa-floppy-disk"></i>');
+        return;
+    }
+    if (action === 'compareClearDefaultSettings') {
+        clearCompareDefaultSettings();
+        // showGlassToast: public/scripts/comp/toastManager.js
+        showGlassToast('info', null, 'Comparison defaults cleared', false, 1800, '<i class="fas fa-trash"></i>');
+        return;
+    }
+    if (action === 'compareToggleAutoEnableState') {
+        setCompareAutoEnableState(!getCompareAutoEnableState());
         return;
     }
     if (action === 'compareClearSource') {
@@ -1276,6 +1516,7 @@ function wireCompareViewListeners() {
     wireCompareViewKeyboardListeners();
     const manualModal = document.getElementById('manualModal');
     const manualPreviewUseAsSourceBtn = document.getElementById('manualPreviewUseAsSourceBtn');
+    const manualPreviewReplaceSourceBtn = document.getElementById('manualPreviewReplaceSourceBtn');
     const manualPreviewImage = document.getElementById('manualPreviewImage');
 
     if (manualPreviewUseAsSourceBtn) {
@@ -1286,6 +1527,14 @@ function wireCompareViewListeners() {
         if (contextMenu) {
             contextMenu.attachToElement(manualPreviewUseAsSourceBtn, getCompareContextMenuConfig());
         }
+    }
+
+    if (manualPreviewReplaceSourceBtn && manualPreviewReplaceSourceBtn.dataset.wired !== 'true') {
+        manualPreviewReplaceSourceBtn.dataset.wired = 'true';
+        manualPreviewReplaceSourceBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            compareReplaceSourceFromPreview();
+        });
     }
 
     if (manualPreviewImage) {

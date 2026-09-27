@@ -44,7 +44,7 @@ Rules:
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
 - params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field.
-- params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
+- params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / bake_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
 - dataset_config: include (replace list), bias, settings (e.g. settings.__quality__.no_text.enabled false for in-image text; keep append_quality on), nsfw, nsfw_bias. Echoed on GET /agent/session/state.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
@@ -81,6 +81,7 @@ const STUDIO_CHANGE_PARAM_DEFS = [
     { id: 'quality_preset_bias', label: 'Quality bias' },
     { id: 'transparency_bias', label: 'Transparency bias' },
     { id: 'keep_newlines', label: 'Keep newlines' },
+    { id: 'bake_newlines', label: 'Bake new lines' },
     { id: 'auto_char_numerize', label: 'Auto char numerize' },
     { id: 'prompt_normalize', label: 'Prompt normalize' },
     { id: 'deduplicate_tags', label: 'Deduplicate tags' },
@@ -276,7 +277,8 @@ function studioChangeFormatValue(id, value) {
     }
     if (id === 'variety' || id === 'upscale' || id === 'append_quality' || id === 'append_transparency'
         || id === 'seedLock' || id === 'normalize_vibes' || id === 'use_coords' || id === 'save_base_output'
-        || id === 'skip_pipeline_stages' || id === 'keep_newlines' || id === 'auto_char_numerize'
+        || id === 'skip_pipeline_stages' || id === 'keep_newlines' || id === 'bake_newlines'
+        || id === 'auto_char_numerize'
         || id === 'prompt_normalize' || id === 'deduplicate_tags' || id === 'auto_clean_uc') {
         return value ? 'On' : 'Off';
     }
@@ -290,7 +292,8 @@ function studioChangeFormatValue(id, value) {
 function studioChangeValuesEqual(id, a, b) {
     if (id === 'variety' || id === 'upscale' || id === 'append_quality' || id === 'append_transparency'
         || id === 'seedLock' || id === 'normalize_vibes' || id === 'use_coords' || id === 'save_base_output'
-        || id === 'skip_pipeline_stages' || id === 'keep_newlines' || id === 'auto_char_numerize'
+        || id === 'skip_pipeline_stages' || id === 'keep_newlines' || id === 'bake_newlines'
+        || id === 'auto_char_numerize'
         || id === 'prompt_normalize' || id === 'deduplicate_tags' || id === 'auto_clean_uc') {
         return Boolean(a) === Boolean(b);
     }
@@ -465,6 +468,7 @@ function getStudioParamSnapshot() {
         quality_preset_bias: typeof qualityPresetBias === 'number' ? qualityPresetBias : 1,
         transparency_bias: typeof transparencyBias === 'number' ? transparencyBias : 1,
         keep_newlines: !!keepPromptNewlines,
+        bake_newlines: !!(bakePromptNewlines && keepPromptNewlines),
         auto_char_numerize: autoCharNumerize !== false,
         prompt_normalize: promptNormalize !== false,
         deduplicate_tags: deduplicateTags !== false,
@@ -1763,6 +1767,10 @@ async function applyStudioParam(paramId, value) {
         }
         case 'keep_newlines':
             keepPromptNewlines = studioChangeFlagOn(value);
+            if (!keepPromptNewlines) bakePromptNewlines = false;
+            break;
+        case 'bake_newlines':
+            bakePromptNewlines = studioChangeFlagOn(value) && !!keepPromptNewlines;
             break;
         case 'auto_char_numerize':
             autoCharNumerize = studioChangeFlagOn(value);

@@ -6,6 +6,41 @@
     min-height: 500px;
 }
 
+#studioSaveFolderModal {
+    width: 720px;
+    height: 520px;
+    min-width: 520px;
+    min-height: 420px;
+}
+
+#studioSaveFolderModal .explorer-statusbar > .form-control {
+    flex: 1;
+    min-width: 0;
+    height: 32px;
+}
+
+#studioSaveNameModal {
+    width: min(420px, 92vw);
+}
+
+#studioSaveNameModal .modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+#studioSaveNameModal .form-row {
+    align-items: center;
+}
+
+#studioSaveNameModal .preset-autocomplete-overlay {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    transform: none;
+}
+
 /* Explorer Applet Styles — shell uses naxt-modal-content; see #explorerModal rules below */
 
 .explorer-drives-container {
@@ -223,7 +258,8 @@
     min-width: 6rem;
 }
 
-#explorerModal .modal-window-title-toolbar .explorer-address-bar {
+#explorerModal .modal-window-title-toolbar .explorer-address-bar,
+#studioSaveFolderModal .modal-window-title-toolbar .explorer-address-bar {
     font-family: var(--font-mono);
     font-size: 0.8125rem;
 }
@@ -236,7 +272,8 @@
     flex-shrink: 0;
 }
 
-#explorerModal .explorer-grid-host {
+#explorerModal .explorer-grid-host,
+#studioSaveFolderModal .explorer-grid-host {
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -296,7 +333,8 @@
     outline-offset: -4px;
 }
 
-#explorerModal .explorer-statusbar {
+#explorerModal .explorer-statusbar,
+#studioSaveFolderModal .explorer-statusbar {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
@@ -329,7 +367,8 @@
     flex-shrink: 0;
 }
 
-#explorerModal .explorer-view-toggle.active {
+#explorerModal .explorer-view-toggle.active,
+#studioSaveFolderModal .explorer-view-toggle.active {
     background: rgba(135, 206, 250, 0.25);
 }
 

@@ -1,11 +1,15 @@
 const path = require('path');
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { getApocryphaInterior, loadArchivedIssue } = require('../../apocryphaSite');
+const { parseAutofillArtistSearchPrefix } = require('../../autofillSearchSettings');
+const { findArtistPreview } = require('../../naxTagsDatabase');
 
 const WIKI_DESTRUCTIVE = { destructive: true };
 
 async function handleSearchTagWiki(handler, ws, message, clientInfo, wsServer) {
-    const { query, category, searchType = 'name', source = 'both', includeNonTag = false, limit = 50 } = message;
+    const artistQuery = parseAutofillArtistSearchPrefix(message.query);
+    const query = artistQuery.isArtistSearch ? artistQuery.remainder : message.query;
+    const { category, searchType = 'name', source = 'both', includeNonTag = false, limit = 50 } = message;
     const includeOnline = message.includeOnline === true || message.includeOnline === 'true';
     const localLimit = includeOnline && searchType === 'name' ? Math.min(limit, 30) : limit;
 
@@ -303,14 +307,16 @@ async function handleGetTagWikiPage(handler, ws, message, clientInfo, wsServer) 
                 return;
             }
 
+            const pageTitle = tag ? (tag.title || tagNameDisplay) : tagNameDisplay;
             handler.sendToClient(ws, {
                 type: 'get_tag_wiki_page_response',
                 requestId: message.requestId,
                 data: {
-                    tagName: tag ? (tag.title || tagNameDisplay) : tagNameDisplay,
+                    tagName: pageTitle,
                     bodies: bodies,
                     bodySource: 'both',
-                    fetchedOnline: danbooruFetchedOnline || e621FetchedOnline
+                    fetchedOnline: danbooruFetchedOnline || e621FetchedOnline,
+                    naxImage: findArtistPreview(pageTitle) || findArtistPreview(tagName)
                 },
                 timestamp: new Date().toISOString()
             });
@@ -386,15 +392,17 @@ async function handleGetTagWikiPage(handler, ws, message, clientInfo, wsServer) 
         }
 
         const html = await formatWikiBody(handler, tagLookup, bodyText, format, wikiId, sourceId);
+        const pageTitle = tag ? (tag.title || tagName) : tagName;
 
         handler.sendToClient(ws, {
             type: 'get_tag_wiki_page_response',
             requestId: message.requestId,
             data: {
-                tagName: tag ? (tag.title || tagName) : tagName,
+                tagName: pageTitle,
                 html: html,
                 bodySource: source,
-                fetchedOnline: fetchedOnline
+                fetchedOnline: fetchedOnline,
+                naxImage: findArtistPreview(pageTitle) || findArtistPreview(tagName)
             },
             timestamp: new Date().toISOString()
         });

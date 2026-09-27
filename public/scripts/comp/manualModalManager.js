@@ -2518,6 +2518,7 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     }
 
     requestBody.keep_newlines = !!window.keepPromptNewlines;
+    requestBody.bake_newlines = !!(bakePromptNewlines && keepPromptNewlines);
     requestBody.auto_char_numerize = window.autoCharNumerize !== false;
     requestBody.prompt_normalize = window.promptNormalize !== false;
     requestBody.deduplicate_tags = window.deduplicateTags !== false;
@@ -4518,6 +4519,11 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 window.promptTextareaToolbar.syncKeepNewlinesButtons();
             }
         }
+        if (data.forge_data && data.forge_data.bake_newlines !== undefined) {
+            window.bakePromptNewlines = !!data.forge_data.bake_newlines && !!window.keepPromptNewlines;
+        } else if (data.forge_data && data.forge_data.keep_newlines === false) {
+            window.bakePromptNewlines = false;
+        }
 
         if (data.forge_data && data.forge_data.auto_char_numerize !== undefined) {
             window.autoCharNumerize = !!data.forge_data.auto_char_numerize;
@@ -6364,7 +6370,7 @@ function toggleManualModalWindowed() {
     }
 }
 
-async function saveRequestAsDesktopShortcut() {
+async function saveRequestAsDesktopShortcut(options = {}) {
     try {
         const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
         const values = collectManualFormValues();
@@ -6384,7 +6390,7 @@ async function saveRequestAsDesktopShortcut() {
             return true;
         }
 
-        if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
+        if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return false;
 
         const requestBody = {
             prompt: values.prompt,
@@ -6392,7 +6398,7 @@ async function saveRequestAsDesktopShortcut() {
             guidance: values.guidance,
             rescale: values.rescale,
             allow_paid: forcePaidRequest,
-            workspace: activeWorkspace
+            workspace: (options.workspaceId || activeWorkspace)
         };
 
         const resolutionData = processResolutionValue(values.resolutionValue);
@@ -6416,7 +6422,7 @@ async function saveRequestAsDesktopShortcut() {
 
             if (!requestBody.image) {
                 showError('No source image found for variation');
-                return;
+                return false;
             }
 
             if (window.currentMaskCompressed) {
@@ -6449,7 +6455,7 @@ async function saveRequestAsDesktopShortcut() {
             );
 
             if (seedChoice === 'cancel' || seedChoice === null) {
-                return;
+                return false;
             }
 
             if (seedChoice === 'automatic') {
@@ -6492,24 +6498,89 @@ async function saveRequestAsDesktopShortcut() {
         }
 
         const presetNameEl = document.getElementById('manualPresetName');
-        const name = (presetNameEl && presetNameEl.value.trim()) || 'Untitled';
+        const nameOverride = options.name != null ? String(options.name).trim() : '';
+        const name = nameOverride || (presetNameEl && presetNameEl.value.trim()) || 'Untitled';
+        const workspaceId = options.workspaceId || activeWorkspace;
+        const shortcutData = {
+            requestBody: generationParams,
+            preview: embeddedPreview
+        };
+
+        if (options.overwriteId && String(options.overwriteId).startsWith('temp-')
+            && typeof desktopShortcuts !== 'undefined') {
+            const local = desktopShortcuts.shortcuts.find((s) => s.id === options.overwriteId);
+            if (local) {
+                local.name = name;
+                local.data = shortcutData;
+                desktopShortcuts.updateShortcutInDOM(options.overwriteId, { name: name });
+                showGlassToast('success', null, 'Request shortcut updated', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+                return true;
+            }
+        }
+
+        if (options.overwriteId && wsClient && wsClient.isConnected()) {
+            await wsClient.updateDesktopShortcut(workspaceId, options.overwriteId, {
+                name: name,
+                data: shortcutData
+            });
+            if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts.currentWorkspace === workspaceId) {
+                const local = desktopShortcuts.shortcuts.find((s) => s.id === options.overwriteId);
+                if (local) {
+                    local.name = name;
+                    local.data = shortcutData;
+                    desktopShortcuts.updateShortcutInDOM(options.overwriteId, { name: name });
+                }
+            }
+            showGlassToast('success', null, 'Request shortcut updated', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+            return true;
+        }
+
+        if (options.dest === 'vfs') {
+            if (!options.path) {
+                showError('Choose a folder');
+                return false;
+            }
+            if (options.overwriteEntryId) {
+                await vfsClient.deleteEntry(options.overwriteEntryId);
+            }
+            await vfsClient.createShortcut(options.path, {
+                name: name,
+                type: 'request',
+                data: shortcutData
+            }, workspaceId);
+            showGlassToast('success', null, 'Request saved to folder', false, 3000, '<i class="fas fa-folder"></i>');
+            return true;
+        }
+
+        if (workspaceId !== activeWorkspace) {
+            if (!wsClient || !wsClient.isConnected()) {
+                showGlassToast('error', 'Error', 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+                return false;
+            }
+            await wsClient.addDesktopShortcut(workspaceId, {
+                name: name,
+                type: 'request',
+                data: shortcutData
+            });
+            showGlassToast('success', null, 'Request saved as desktop shortcut', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+            return true;
+        }
 
         if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts.addShortcut) {
             await desktopShortcuts.addShortcut({
                 name: name,
                 type: 'request',
-                data: {
-                    requestBody: generationParams,
-                    preview: embeddedPreview
-                }
+                data: shortcutData
             });
             showGlassToast('success', null, 'Request saved as desktop shortcut', false, 3000, '<i class="fas fa-floppy-disk"></i>');
-        } else {
-            showGlassToast('error', 'Error', 'Desktop shortcuts not available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+            return true;
         }
+        showGlassToast('error', 'Error', 'Desktop shortcuts not available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return false;
     } catch (error) {
         console.error('Failed to save request as desktop shortcut:', error);
         showGlassToast('error', 'Error', 'Failed to save request as desktop shortcut', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return false;
     }
 }
 

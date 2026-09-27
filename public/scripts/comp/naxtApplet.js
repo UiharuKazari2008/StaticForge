@@ -36,6 +36,12 @@ const NAXT_MARK_FILTER_OPTIONS = [
     { value: 'hidden', label: 'Hidden', icon: 'fas fa-trash' }
 ];
 
+const NAXT_MISSING_FILTER_OPTIONS = [
+    { value: 'include', label: 'Show in sort', icon: 'fas fa-question' },
+    { value: 'hide', label: 'Hide missing', icon: 'fas fa-eye-slash' },
+    { value: 'only', label: 'Only missing', icon: 'fas fa-question' }
+];
+
 function naxtEscapeHtml(s) {
     return String(s)
         .replace(/&/g, '&amp;')
@@ -197,6 +203,26 @@ function naxtApplyEmphasisToFragment(fragment, bias) {
 }
 
 /** Prompt fragment for a NAX tag (artist galleries use artist:/art by; curated artists use plain tag). */
+function naxtQuickFavoriteTags() {
+    // getPromptContextMenuFavorites: public/scripts/comp/textReplacementManager.js
+    if (typeof getPromptContextMenuFavorites !== 'function') return [];
+    const data = getPromptContextMenuFavorites();
+    return (data && data.tags) || [];
+}
+
+function naxtFindQuickFavorite(tagName) {
+    const key = String(tagName || '').trim().toLowerCase();
+    if (!key) return null;
+    return naxtQuickFavoriteTags().find((entry) => {
+        const name = String((entry && (entry.name || entry.originalName)) || '').trim().toLowerCase();
+        return name === key;
+    }) || null;
+}
+
+function naxtTagIsQuickFavorite(tagName) {
+    return !!naxtFindQuickFavorite(tagName);
+}
+
 function naxtFormatTagFragment(tagName, gallerySlug) {
     const sl = String(gallerySlug || '').toLowerCase();
     if (/^artists-v[\d.]+$/i.test(sl) || sl === 'artists-v4.5') {
@@ -216,13 +242,18 @@ class NaxtApplet {
         this.selectedGallerySlug = '';
         this.sortKey = 'score';
         this.markFilter = 'all';
+        this.missingMode = 'include';
+        this.missingBatchActive = false;
+        this.missingBatchStop = false;
         this.elevatePins = 0;
         this.bag = [];
         this.invert = false;
         this.filterRowVisible = false;
         this.offset = 0;
+        this.shown = 0;
         this.total = 0;
         this.hasMore = false;
+        this.pendingMissingMarks = null;
         this.loading = false;
         this.requestGen = 0;
         this.filterReloadTimer = null;
@@ -414,12 +445,178 @@ class NaxtApplet {
     resetCustomTagPreview() {
         this.pendingCustomTag = null;
         this.pendingCustomTagAlreadyExists = false;
+        this.pendingMissingMarks = null;
+        this.setCustomTagPlaceholder('Enter a tag and generate a preview', 'nai-sparkles');
         if (this.customTagInput) {
             this.customTagInput.value = '';
             this.customTagInput.disabled = false;
         }
         this.setCustomTagPreviewState('empty');
         this.syncCustomTagControls();
+    }
+
+    setCustomTagPlaceholder(message, iconClass) {
+        if (!this.customTagPreviewPlaceholder) return;
+        const span = this.customTagPreviewPlaceholder.querySelector('span');
+        const icon = this.customTagPreviewPlaceholder.querySelector('i');
+        if (span) span.textContent = message;
+        if (icon && iconClass) icon.className = iconClass;
+    }
+
+    openMissingTag(item) {
+        if (!item || !this.customTagModal) return;
+        const g = this.galleries.find((x) => x.slug === this.selectedGallerySlug);
+        const label = g ? naxtGalleryMenuLabel(g) : this.selectedGallerySlug;
+        if (this.customTagModalTitle) {
+            this.customTagModalTitle.textContent = label ? `${item.tag} [${label}]` : item.tag;
+        }
+        this.resetCustomTagPreview();
+        this.pendingMissingMarks = {
+            favorite: !!item.favorite,
+            tryMark: !!item.tryMark
+        };
+        if (this.customTagInput) {
+            this.customTagInput.value = item.tag || '';
+        }
+        this.setCustomTagPlaceholder('Missing from this gallery. Generate to add it.', 'fas fa-question');
+        if (typeof openModal === 'function') {
+            openModal(this.customTagModal);
+        }
+    }
+
+    async applyPendingMissingMarks(item) {
+        const marks = this.pendingMissingMarks;
+        this.pendingMissingMarks = null;
+        if (!marks || !item || !item.gallerySlug || !item.tag) return;
+        if (marks.favorite) {
+            await this.setFavoriteForTag(item.gallerySlug, item.tag, true);
+            item.favorite = true;
+        }
+        if (marks.tryMark) {
+            await this.setTryMarkForTag(item.gallerySlug, item.tag, true);
+            item.tryMark = true;
+        }
+        this.pendingCustomTag = item;
+        this.syncCustomTagOverlayButtons();
+    }
+
+    async waitMissingBatchDelay() {
+        // Same gap as preset generation in modules/imageGeneration.js (random 5–15s).
+        const delaySeconds = Math.floor(Math.random() * 11) + 5;
+        const end = Date.now() + delaySeconds * 1000;
+        while (Date.now() < end) {
+            if (this.missingBatchStop) return false;
+            const left = Math.max(1, Math.ceil((end - Date.now()) / 1000));
+            if (this.statusBar) {
+                this.statusBar.textContent = `Waiting ${left}s before the next preview`;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        return !this.missingBatchStop;
+    }
+
+    replaceMissingCard(item) {
+        if (!item || !item.gallerySlug || !item.tag) return false;
+        const card = this.findVisibleCard(item.gallerySlug, item.tag);
+        if (!card || !card.parentNode) return false;
+        const fresh = this.createCard(Object.assign({}, item, { missing: false }));
+        card.replaceWith(fresh);
+        this.observeNewImages();
+        return true;
+    }
+
+    async generateAllMissing() {
+        if (this.missingBatchActive) {
+            this.missingBatchStop = true;
+            return;
+        }
+        if (!this.isGenerationEnabledForSlug(this.selectedGallerySlug)) return;
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', null, 'WebSocket not connected', false, 4000, '<i class="fas fa-plug"></i>');
+            }
+            return;
+        }
+
+        const tags = [];
+        let offset = 0;
+        let hasMore = true;
+        while (hasMore) {
+            const data = await window.wsClient.sendMessage('get_nax_tags', {
+                gallerySlug: this.selectedGallerySlug,
+                query: this.committedSearchQuery,
+                sort: 'name',
+                markFilter: this.markFilter,
+                missingMode: 'only',
+                offset,
+                limit: 100
+            }, false);
+            const items = (data && data.items) || [];
+            items.forEach((item) => {
+                if (item && item.missing && item.tag) tags.push(item);
+            });
+            hasMore = !!(data && data.hasMore);
+            offset += items.length;
+            if (!items.length) hasMore = false;
+        }
+
+        if (!tags.length) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('info', null, 'No missing tags to generate', false, 3000, '<i class="fas fa-question"></i>');
+            }
+            return;
+        }
+
+        this.missingBatchActive = true;
+        this.missingBatchStop = false;
+        let done = 0;
+        let failed = 0;
+        try {
+            for (let i = 0; i < tags.length; i++) {
+                if (this.missingBatchStop) break;
+                const entry = tags[i];
+                if (this.statusBar) {
+                    this.statusBar.textContent = `Generating ${i + 1} of ${tags.length}: ${entry.tag}`;
+                }
+                try {
+                    const data = await window.wsClient.sendMessage('generate_nax_custom_tag', {
+                        gallerySlug: this.selectedGallerySlug,
+                        tag: entry.tag
+                    }, false);
+                    const item = data && data.item;
+                    if (!item) throw new Error('No preview returned');
+                    if (entry.favorite) {
+                        await this.setFavoriteForTag(item.gallerySlug, item.tag, true);
+                        item.favorite = true;
+                    }
+                    if (entry.tryMark) {
+                        await this.setTryMarkForTag(item.gallerySlug, item.tag, true);
+                        item.tryMark = true;
+                    }
+                    this.replaceMissingCard(item);
+                    done++;
+                } catch (error) {
+                    failed++;
+                    console.error('generate missing', entry.tag, error);
+                }
+                if (i < tags.length - 1 && !this.missingBatchStop) {
+                    const keepGoing = await this.waitMissingBatchDelay();
+                    if (!keepGoing) break;
+                }
+            }
+        } finally {
+            this.missingBatchActive = false;
+            this.missingBatchStop = false;
+            this.updateStatusBar();
+        }
+
+        if (typeof showGlassToast === 'function') {
+            const stopped = done + failed < tags.length;
+            const msg = stopped
+                ? `Stopped after ${done} generated`
+                : `Generated ${done}${failed ? `, ${failed} failed` : ''}`;
+            showGlassToast(failed && !done ? 'error' : 'success', null, msg, false, 3500, '<i class="fas fa-wand-magic-sparkles"></i>');
+        }
     }
 
     setCustomTagPreviewState(state, message = '') {
@@ -609,11 +806,14 @@ class NaxtApplet {
                 throw new Error('No preview returned');
             }
             this.showCustomTagPreview(item, { alreadyExists: !!data.alreadyExists });
+            await this.applyPendingMissingMarks(item);
+            const stayed = this.replaceMissingCard(item);
             if (data.alreadyExists) {
                 if (typeof showGlassToast === 'function') {
                     showGlassToast('info', null, 'Tag already exists in this gallery', false, 3500, '<i class="fas fa-info-circle"></i>');
                 }
-            } else {
+                if (!stayed) await this.reloadFromTop();
+            } else if (!stayed) {
                 await this.reloadFromTop();
             }
         } catch (e) {
@@ -703,6 +903,7 @@ class NaxtApplet {
         if (this.activeQuickFilter) return true;
         if (this.invert) return true;
         if (this.markFilter && this.markFilter !== 'all') return true;
+        if (this.missingMode && this.missingMode !== 'include') return true;
         if (this.sortKey === 'ratio' || this.sortKey === 'random') return true;
         const els = [this.minUp, this.maxUp, this.minDown, this.maxDown, this.minScore, this.maxScore, this.minRatio, this.maxRatio];
         for (const el of els) {
@@ -872,19 +1073,35 @@ class NaxtApplet {
             anchorAlign: 'end',
             maxHeight: 360,
             beforeShow: () => applet.refreshMarkFilterClickMenuItems(),
-            sections: [{ type: 'list', items: [] }],
+            sections: [
+                { type: 'list', items: [] },
+                { type: 'list', title: 'Missing', items: [] }
+            ],
             onAction: (action, target, item) => {
-                if (action !== 'select-mark-filter' || item.markValue == null) return;
-                applet.markFilter = item.markValue;
-                applet.updateMarkFilterButton();
-                void applet.reloadFromTop();
-                applet.syncFilterToggleIndicator();
+                if (action === 'select-mark-filter' && item.markValue != null) {
+                    applet.markFilter = item.markValue;
+                    applet.updateMarkFilterButton();
+                    void applet.reloadFromTop();
+                    applet.syncFilterToggleIndicator();
+                    return;
+                }
+                if (action === 'select-missing-mode' && item.missingMode != null) {
+                    applet.missingMode = item.missingMode;
+                    applet.updateMarkFilterButton();
+                    void applet.reloadFromTop();
+                    applet.syncFilterToggleIndicator();
+                    return;
+                }
+                if (action === 'naxt-generate-all-missing') {
+                    void applet.generateAllMissing();
+                }
             }
         };
     }
 
     refreshMarkFilterClickMenuItems() {
         if (!this.markFilterClickMenuConfig) return;
+        const applet = this;
         this.markFilterClickMenuConfig.sections[0].items = NAXT_MARK_FILTER_OPTIONS.map((opt) => ({
             text: opt.label,
             icon: opt.icon,
@@ -894,6 +1111,22 @@ class NaxtApplet {
                 item.highlighted = item.markValue === this.markFilter;
             }
         }));
+        const missingItems = NAXT_MISSING_FILTER_OPTIONS.map((opt) => ({
+            text: opt.label,
+            icon: opt.icon,
+            action: 'select-missing-mode',
+            missingMode: opt.value,
+            loadfn: (item) => {
+                item.highlighted = item.missingMode === this.missingMode;
+            }
+        }));
+        missingItems.push({
+            text: this.missingBatchActive ? 'Stop generating' : 'Generate missing',
+            icon: this.missingBatchActive ? 'fas fa-stop' : 'fas fa-wand-magic-sparkles',
+            action: 'naxt-generate-all-missing',
+            disabled: () => !applet.missingBatchActive && !applet.isGenerationEnabledForSlug(applet.selectedGallerySlug)
+        });
+        this.markFilterClickMenuConfig.sections[1].items = missingItems;
     }
 
     buildElevatePinsClickMenuConfig() {
@@ -1109,8 +1342,12 @@ class NaxtApplet {
             this.markFilterIcon.className = (opt.icon || 'fas fa-bookmark') + ' naxt-mark-filter-icon';
         }
         if (this.markFilterBtn) {
-            this.markFilterBtn.setAttribute('data-state', this.markFilter !== 'all' ? 'open' : 'off');
-            this.markFilterBtn.title = `Filter by mark: ${opt.label}`;
+            const missingOn = this.missingMode && this.missingMode !== 'include';
+            this.markFilterBtn.setAttribute('data-state', (this.markFilter !== 'all' || missingOn) ? 'open' : 'off');
+            let title = `Filter by mark: ${opt.label}`;
+            if (this.missingMode === 'hide') title += ' · hiding missing';
+            if (this.missingMode === 'only') title += ' · missing only';
+            this.markFilterBtn.title = title;
         }
     }
 
@@ -1403,6 +1640,7 @@ class NaxtApplet {
         this.activeQuickFilter = '';
         this.syncQuickFilterButtons();
         this.markFilter = 'all';
+        this.missingMode = 'include';
         this.updateMarkFilterButton();
         this.sortKey = 'score';
         this.randomSeed = 0;
@@ -1668,6 +1906,8 @@ class NaxtApplet {
 
     applyHomeDefaults() {
         this.filterRowVisible = false;
+        this.missingMode = 'include';
+        this.updateMarkFilterButton();
         this.syncFilterToolbarVisibility();
         this.syncFilterToggleIndicator();
         this.sortKey = 'score';
@@ -1816,6 +2056,7 @@ class NaxtApplet {
 
     async reloadFromTop() {
         this.offset = 0;
+        this.shown = 0;
         this.hasMore = true;
         if (this.grid) this.grid.innerHTML = '';
         await this.loadPage(false);
@@ -1849,6 +2090,7 @@ class NaxtApplet {
             query: this.committedSearchQuery,
             sort: this.sortKey,
             markFilter: this.markFilter,
+            missingMode: this.missingMode || 'include',
             invert: this.invert,
             minUp: this.numOrNull(this.minUp),
             maxUp: this.numOrNull(this.maxUp),
@@ -1873,6 +2115,7 @@ class NaxtApplet {
             this.hasMore = !!(data && data.hasMore);
             if (!append) {
                 this.offset = 0;
+                this.shown = 0;
                 if (this.grid) this.grid.innerHTML = '';
             }
             if (this.grid) {
@@ -1880,7 +2123,9 @@ class NaxtApplet {
                     this.grid.appendChild(this.createCard(it));
                 }
             }
-            this.offset += items.length;
+            const realAdded = data && data.realCount != null ? Number(data.realCount) : items.length;
+            this.offset += Number.isFinite(realAdded) ? realAdded : items.length;
+            this.shown += items.length;
             this.updateEmptyState();
             this.observeNewImages();
             this.updateStatusBar();
@@ -1903,8 +2148,8 @@ class NaxtApplet {
     }
 
     updateStatusBar() {
-        if (!this.statusBar) return;
-        const shown = this.offset;
+        if (!this.statusBar || this.missingBatchActive) return;
+        const shown = this.shown;
         const tot = this.total;
         if (!shown && !tot) {
             this.statusBar.textContent = '0 tags';
@@ -1915,7 +2160,7 @@ class NaxtApplet {
 
     updateEmptyState() {
         if (!this.emptyState) return;
-        const hasItems = this.offset > 0;
+        const hasItems = this.shown > 0;
         if (hasItems) {
             this.emptyState.classList.add('hidden');
             return;
@@ -2020,6 +2265,28 @@ class NaxtApplet {
 
         const listItems = [
             {
+                text: 'Favorite Tag',
+                icon: 'fas fa-star',
+                action: 'naxt-quick-fav',
+                showIndicator: true,
+                keepMenuOpen: true,
+                loadfn: (item, target) => {
+                    const tag = target && target.dataset && target.dataset.tag;
+                    item.checked = naxtTagIsQuickFavorite(tag);
+                    if (item._quickFavLoading || favoritesDataLoaded || item._quickFavTried) return;
+                    if (typeof loadFavorites !== 'function') return;
+                    item._quickFavTried = true;
+                    item._quickFavLoading = true;
+                    void loadFavorites().then(() => {
+                        item._quickFavLoading = false;
+                        item.checked = naxtTagIsQuickFavorite(tag);
+                        if (item._element && contextMenu) {
+                            contextMenu.refreshListItemDisplay(item._element, item, target);
+                        }
+                    });
+                }
+            },
+            {
                 text: 'PhaseWalker',
                 icon: 'fas fa-layer-group',
                 openOnHover: true,
@@ -2071,6 +2338,14 @@ class NaxtApplet {
                 text: 'Delete custom tag',
                 icon: 'fas fa-trash',
                 action: 'naxt-delete-custom'
+            });
+        }
+
+        if (options.isMissing && this.isGenerationEnabledForSlug(this.selectedGallerySlug)) {
+            listItems.unshift({
+                text: 'Generate',
+                icon: 'fas fa-wand-magic-sparkles',
+                action: 'naxt-generate-missing'
             });
         }
 
@@ -2148,12 +2423,22 @@ class NaxtApplet {
             this.copyTag(tag);
         } else if (action === 'naxt-fav') {
             void this.toggleFavorite(target);
+        } else if (action === 'naxt-quick-fav') {
+            void this.toggleQuickAccessFavorite(target);
         } else if (action === 'naxt-try') {
             void this.toggleTry(target);
         } else if (action === 'naxt-hide') {
             void this.toggleHidden(target);
         } else if (action === 'naxt-delete-custom') {
             void this.deleteCustomTag(gallerySlug, tag);
+        } else if (action === 'naxt-generate-missing') {
+            this.openMissingTag({
+                tag,
+                gallerySlug,
+                favorite: target.dataset.favorite === '1',
+                tryMark: target.dataset.try === '1'
+            });
+            void this.submitCustomTag();
         }
     }
 
@@ -2174,23 +2459,34 @@ class NaxtApplet {
         card.dataset.favorite = item.favorite ? '1' : '0';
         card.dataset.try = item.tryMark ? '1' : '0';
         card.dataset.hidden = item.hidden ? '1' : '0';
-        card.dataset.id = String(item.id);
+        if (item.id != null) {
+            card.dataset.id = String(item.id);
+        }
         if (item.isCustom) {
             card.dataset.isCustom = '1';
+        }
+        if (item.missing) {
+            card.dataset.missing = '1';
         }
 
         const wrap = document.createElement('div');
         wrap.className = 'naxt-card-img-wrap';
-        const img = document.createElement('img');
-        img.className = 'naxt-card-img';
-        img.alt = item.tag;
-        img.decoding = 'async';
-        img.loading = 'lazy';
-        img.setAttribute('data-src', this.imageUrl(item));
+        if (item.missing) {
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-question';
+            icon.setAttribute('aria-hidden', 'true');
+            wrap.appendChild(icon);
+        } else {
+            const img = document.createElement('img');
+            img.className = 'naxt-card-img';
+            img.alt = item.tag;
+            img.decoding = 'async';
+            img.loading = 'lazy';
+            img.setAttribute('data-src', this.imageUrl(item));
+            wrap.appendChild(img);
+        }
 
-        wrap.appendChild(img);
-
-        if (!item.isCustom) {
+        if (!item.missing && !item.isCustom) {
             const votes = document.createElement('div');
             votes.className = 'naxt-card-votes';
             votes.innerHTML = `<span><i class="fas fa-arrow-up"></i>${item.upvotes}</span><span><i class="fas fa-arrow-down"></i>${item.downvotes}</span>`;
@@ -2205,6 +2501,15 @@ class NaxtApplet {
         card.appendChild(cap);
 
         const openCard = () => {
+            if (card.dataset.missing === '1') {
+                this.openMissingTag({
+                    tag: card.dataset.tag,
+                    gallerySlug: card.dataset.gallerySlug,
+                    favorite: card.dataset.favorite === '1',
+                    tryMark: card.dataset.try === '1'
+                });
+                return;
+            }
             this.openInWindow(card);
         };
         card.addEventListener('click', openCard);
@@ -2220,7 +2525,7 @@ class NaxtApplet {
             }, { passive: false });
         }
 
-        this.attachNaxtTagContextMenu(card, { inBag: false, isCustom: !!item.isCustom });
+        this.attachNaxtTagContextMenu(card, { inBag: false, isCustom: !!item.isCustom, isMissing: !!item.missing });
 
         return card;
     }
@@ -2336,15 +2641,86 @@ class NaxtApplet {
         card.dataset.favorite = favorite ? '1' : '0';
     }
 
+    async toggleQuickAccessFavorite(target) {
+        const tag = target && target.dataset && target.dataset.tag;
+        if (!tag) return;
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', null, 'Unable to update favorites: not connected', false, 4000, '<i class="fas fa-plug"></i>');
+            }
+            return;
+        }
+        const tags = naxtQuickFavoriteTags();
+        const existing = naxtFindQuickFavorite(tag);
+        if (existing) {
+            const index = tags.indexOf(existing);
+            if (index >= 0) tags.splice(index, 1);
+            if (!existing.id) return;
+            try {
+                await window.wsClient.sendMessage('favorites_remove', {
+                    favoriteType: 'tags',
+                    itemId: existing.id
+                }, false);
+            } catch (error) {
+                if (index >= 0) tags.splice(index, 0, existing);
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', null, (error && error.message) || 'Failed to remove favorite tag', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
+                }
+            }
+            return;
+        }
+        const itemData = {
+            type: 'tag',
+            name: tag,
+            originalName: tag,
+            description: tag
+        };
+        const optimistic = { ...itemData, id: null };
+        tags.push(optimistic);
+        try {
+            const result = await window.wsClient.sendMessage('favorites_add', {
+                favoriteType: 'tags',
+                item: itemData
+            }, false);
+            const saved = result && result.item;
+            if (saved && saved.id) optimistic.id = saved.id;
+        } catch (error) {
+            const index = tags.indexOf(optimistic);
+            if (index >= 0) tags.splice(index, 1);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', null, (error && error.message) || 'Failed to favorite tag', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
+        }
+    }
+
     async toggleFavorite(target) {
+        if (target.dataset.missing === '1') {
+            this.openMissingTag({
+                tag: target.dataset.tag,
+                gallerySlug: target.dataset.gallerySlug,
+                favorite: target.dataset.favorite === '1',
+                tryMark: target.dataset.try === '1'
+            });
+            return;
+        }
         const slug = target.dataset.gallerySlug;
         const tag = target.dataset.tag;
         const next = target.dataset.favorite !== '1';
-        await this.setFavoriteForTag(slug, tag, next);
+        // Optimistic so keepMenuOpen Favorite Tag indicator refreshes before await.
         target.dataset.favorite = next ? '1' : '0';
+        await this.setFavoriteForTag(slug, tag, next);
     }
 
     async toggleTry(target) {
+        if (target.dataset.missing === '1') {
+            this.openMissingTag({
+                tag: target.dataset.tag,
+                gallerySlug: target.dataset.gallerySlug,
+                favorite: target.dataset.favorite === '1',
+                tryMark: target.dataset.try === '1'
+            });
+            return;
+        }
         const slug = target.dataset.gallerySlug;
         const tag = target.dataset.tag;
         const next = target.dataset.try !== '1';
@@ -2353,6 +2729,15 @@ class NaxtApplet {
     }
 
     async toggleHidden(target) {
+        if (target.dataset.missing === '1') {
+            this.openMissingTag({
+                tag: target.dataset.tag,
+                gallerySlug: target.dataset.gallerySlug,
+                favorite: target.dataset.favorite === '1',
+                tryMark: target.dataset.try === '1'
+            });
+            return;
+        }
         const slug = target.dataset.gallerySlug;
         const tag = target.dataset.tag;
         const next = target.dataset.hidden !== '1';

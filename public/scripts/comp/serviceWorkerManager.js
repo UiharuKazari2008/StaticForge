@@ -1467,41 +1467,76 @@ class ServiceWorkerManager {
         return null;
     }
 
-    async getFilesNeedingUpdate(files) {
-        const filesToUpdate = [];
-        
-        for (const file of files) {
-            try {
-                const cache = await caches.open('static-cache-v1');
-                const cachedResponse = await this._matchCachedFile(cache, file);
-                
-                if (!cachedResponse) {
-                    filesToUpdate.push(file);
+    async _hashIndexForPath(cache, pathname) {
+        if (!this._staticCacheKeyIndex) {
+            const index = new Map();
+            const keys = await cache.keys();
+            for (let i = 0; i < keys.length; i++) {
+                const request = keys[i];
+                let keyPath = '';
+                try {
+                    keyPath = new URL(request.url).pathname;
+                } catch (_) {
                     continue;
                 }
-                
-                // Check if hash matches - look for the hash in multiple places
-                let cachedHash = cachedResponse.headers.get('x-file-hash');
-                
-                // If no hash in headers, try to get it from the response URL or other sources
-                if (!cachedHash) {
-                    // Try to extract hash from response URL if it was stored there
+                let list = index.get(keyPath);
+                if (!list) {
+                    list = [];
+                    index.set(keyPath, list);
+                }
+                list.push(request);
+            }
+            this._staticCacheKeyIndex = index;
+        }
+        return this._staticCacheKeyIndex.get(pathname) || [];
+    }
+
+    async getFilesNeedingUpdate(files) {
+        const filesToUpdate = [];
+        const cache = await caches.open('static-cache-v1');
+        this._staticCacheKeyIndex = null;
+
+        for (const file of files) {
+            try {
+                const cachedResponse = await this._matchCachedFile(cache, file);
+                let cachedHash = cachedResponse && cachedResponse.headers.get('x-file-hash');
+
+                if (!cachedHash && cachedResponse) {
                     const responseUrl = cachedResponse.url;
                     const urlHashMatch = responseUrl.match(/[?&]hash=([^&]+)/);
                     if (urlHashMatch) {
                         cachedHash = urlHashMatch[1];
                     }
                 }
-                
-                if (!cachedHash || cachedHash !== file.hash) {
-                    console.log(`Hash mismatch or missing for ${file.url}, adding to update list`);
-                    filesToUpdate.push(file);
+
+                if (cachedHash === file.hash) {
+                    continue;
                 }
+
+                // A Vary / ?sha= sibling can hide the row that actually has the new hash.
+                const path = normalizeStaticFilePath(file.url);
+                const extras = await this._hashIndexForPath(cache, path);
+                let found = false;
+                for (let i = 0; i < extras.length; i++) {
+                    const alt = await cache.match(extras[i]);
+                    const altHash = alt && alt.headers.get('x-file-hash');
+                    if (altHash === file.hash) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) {
+                    continue;
+                }
+
+                console.log(`Hash mismatch or missing for ${file.url}, adding to update list`);
+                filesToUpdate.push(file);
             } catch (error) {
                 console.error(`Error checking file ${file.url}:`, error);
                 filesToUpdate.push(file);
             }
         }
+        this._staticCacheKeyIndex = null;
         return filesToUpdate;
     }
 
@@ -3272,6 +3307,20 @@ class ServiceWorkerManager {
         });
 
         if (result.success && result.filesDownloaded > 0 && !result.hasErrors) {
+            const stillPending = await this.getFilesNeedingUpdate(files);
+            if (stillPending.length > 0) {
+                console.warn(`Downloaded updates but ${stillPending.length} files still mismatch; not restarting`);
+                if (useInitModal) {
+                    this._hideInitUpdateModal();
+                }
+                return {
+                    success: false,
+                    filesDownloaded: result.filesDownloaded,
+                    stillPending: stillPending.length,
+                    hasErrors: true
+                };
+            }
+
             const updateKind = this.classifyStaticCacheUpdate(files);
             const canApplyWithoutRestart = (updateKind === 'css-only' || updateKind === 'apply-safe')
                 && this.isCssOnlyAutoApplyEnabled();

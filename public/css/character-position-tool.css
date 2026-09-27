@@ -99,6 +99,21 @@
     z-index: 3;
 }
 
+.context-menu .character-position-stage {
+    margin: 6px auto;
+    flex: none;
+}
+
+.context-menu .character-position-pin {
+    width: 12px;
+    height: 12px;
+    min-width: 12px;
+    border-width: 1px;
+    font-size: 0;
+    cursor: default;
+    box-shadow: none;
+}
+
 .character-position-pin-label {
     position: absolute;
     left: 50%;

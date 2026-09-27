@@ -19,6 +19,7 @@ async function handleAddFavorite(handlers, ws, message, clientInfo, wsServer) {
                 type: 'favorites_add_response',
                 success: true,
                 item: result.item,
+                data: { success: true, item: result.item },
                 requestId: message.requestId
             });
         } else {
@@ -45,6 +46,7 @@ async function handleRemoveFavorite(handlers, ws, message, clientInfo, wsServer)
             handlers.sendToClient(ws, {
                 type: 'favorites_remove_response',
                 success: true,
+                data: { success: true },
                 requestId: message.requestId
             });
         } else {

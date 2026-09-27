@@ -76,6 +76,7 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
 | `quality_preset_bias` | number | Quality preset bias (typical `1.0`). |
 | `transparency_bias` | number | Transparency preset bias (typical `1.0`). |
 | `keep_newlines` | boolean | Keep prompt newlines. |
+| `bake_newlines` | boolean | Bake newlines into the NovelAI request (requires `keep_newlines`; when true, server skips newline-destroying normalisation). |
 | `auto_char_numerize` | boolean | Auto character numerize. |
 | `prompt_normalize` | boolean | Prompt normalize. |
 | `deduplicate_tags` | boolean | Deduplicate tags. |
@@ -314,7 +315,7 @@ Rules:
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
 - params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field.
-- params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
+- params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / bake_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
 - dataset_config: include (replace list), bias, settings (e.g. settings.__quality__.no_text.enabled false for in-image text; keep append_quality on), nsfw, nsfw_bias. Echoed on GET /agent/session/state.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.

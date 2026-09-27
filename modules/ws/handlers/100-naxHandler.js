@@ -40,6 +40,7 @@ async function handleGetNaxTags(handler, ws, message, clientInfo, wsServer) {
         maxRatio,
         randomSeed,
         markFilter = 'all',
+        missingMode = 'include',
         offset = 0,
         limit = 50
     } = message;
@@ -51,6 +52,7 @@ async function handleGetNaxTags(handler, ws, message, clientInfo, wsServer) {
 
     const sortKey = ['score', 'name', 'date', 'ratio', 'random'].includes(sort) ? sort : 'score';
     const markKey = ['all', 'favorites', 'try', 'unmarked', 'hidden', 'custom'].includes(markFilter) ? markFilter : 'all';
+    const missingKey = ['include', 'hide', 'only'].includes(missingMode) ? missingMode : 'include';
     const naxTagsDatabase = handler.globalResources.getNaxTagsDatabase();
     let elevatePins = 0;
     if (typeof message.elevatePins !== 'undefined') {
@@ -77,7 +79,9 @@ async function handleGetNaxTags(handler, ws, message, clientInfo, wsServer) {
             markFilter: markKey,
             elevatePins,
             offset,
-            limit
+            limit,
+            includeMissing: true,
+            missingMode: missingKey
         });
         handler.sendToClient(ws, {
             type: 'get_nax_tags_response',
@@ -102,10 +106,13 @@ async function handleGetNaxMarkedTags(handler, ws, message, clientInfo, wsServer
             gallerySlug,
             limit
         });
+        const missing = !gallerySlug
+            ? naxTagsDatabase.listMissingLinkedMarks(markKey)
+            : [];
         handler.sendToClient(ws, {
             type: 'get_nax_marked_tags_response',
             requestId: message.requestId,
-            data: { items, markFilter: markKey },
+            data: { items, missing, markFilter: markKey },
             timestamp: new Date().toISOString()
         });
     } catch (error) {

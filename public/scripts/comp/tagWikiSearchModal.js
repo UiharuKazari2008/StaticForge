@@ -2086,7 +2086,10 @@ class WikiDisplayBase {
     }
     
     resolveBooruWikiTagName(tag) {
-        const raw = String(tag?.name || tag?.title || '').trim();
+        let raw = String(tag?.name || tag?.title || '').trim();
+        // parseAutofillArtistSearchPrefix: public/scripts/comp/autocompleteUtils.js
+        const artist = parseAutofillArtistSearchPrefix(raw);
+        if (artist.isArtistSearch) raw = artist.remainder;
         return raw
             .replace(/\\/g, '')
             .replace(/^(?:species|invalid):/i, '')
@@ -2115,7 +2118,10 @@ class WikiDisplayBase {
     }
 
     buildWikiTagFromTerm(term, extra = {}) {
-        const title = String(term || '').trim();
+        let title = String(term || '').trim();
+        // parseAutofillArtistSearchPrefix: public/scripts/comp/autocompleteUtils.js
+        const artist = parseAutofillArtistSearchPrefix(title);
+        if (artist.isArtistSearch) title = artist.remainder;
         if (!title) return null;
         const tag = { title, name: title, ...extra };
         tag.name = this.resolveBooruWikiTagName(tag);
@@ -2166,6 +2172,14 @@ class WikiDisplayBase {
         }
     }
     
+    naxArtistImageHtml(content, title) {
+        const img = content && content.naxImage;
+        if (!img || !img.gallerySlug || !img.filename) return '';
+        const src = '/naxCache/' + encodeURIComponent(img.gallerySlug) + '/' + encodeURIComponent(img.filename);
+        const alt = this.escapeHtml(img.tag || title || '');
+        return `<div class="tag-wiki-body-content"><img class="wiki-embedded-image" src="${this.escapeHtml(src)}" alt="${alt}"></div>`;
+    }
+
     renderWikiPage(content) {
         if (!this.displayArea) return;
 
@@ -2348,6 +2362,7 @@ class WikiDisplayBase {
         
         const displayHtml = `
             <div class="tag-wiki-page">
+                ${this.naxArtistImageHtml(content, title)}
                 ${titleHtml}
                 ${bodiesHtml}
             </div>
@@ -3874,6 +3889,26 @@ class WikiWindowInstance extends WikiDisplayBase {
         const target = String(url || '').trim();
         if (!target) return;
 
+        // Search stays in this window. The DSAP search activator returns true
+        // even when this shell has no showSearchResultsPage, which would skip the fallback.
+        const routePathEarly = typeof grimoireStripPseudoProtocol === 'function'
+            ? grimoireStripPseudoProtocol(target)
+            : target.replace(/^(edtx|rdf|dsap):\/\//i, '');
+        const lowerEarly = routePathEarly.toLowerCase();
+        if (lowerEarly.includes('en.grimoire.jp/search')) {
+            let q = '';
+            const qMatch = target.match(/[?&]q=([^?&#]+)/i);
+            if (qMatch) {
+                try {
+                    q = decodeURIComponent(qMatch[1].replace(/\+/g, ' '));
+                } catch (e) {
+                    q = qMatch[1];
+                }
+            }
+            this.showSearchForTerm(q);
+            return;
+        }
+
         // navigateDsapIfMatched: public/scripts/comp/dsapRegistry.js
         if (typeof navigateDsapIfMatched === 'function' && navigateDsapIfMatched(this, target)) {
             return;
@@ -3903,6 +3938,39 @@ class WikiWindowInstance extends WikiDisplayBase {
             if (pageId) this.openStaticWikiPage('novelai', pageId);
             else this.showStaticWikiSiteIndex('novelai');
         }
+    }
+
+    /** Grimoire search results drawn into this wiki window. Does not open the main browser. */
+    showSearchForTerm(term) {
+        const host = tagWikiSearchModal;
+        if (!host || !this.displayArea || typeof host.showSearchResultsPage !== 'function') return;
+        const q = String(term || '').trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
+        this.getSourceIcon = (source) => host.getSourceIcon(source);
+        this.showSearchControlsContextMenu = (anchor, returnOnly) => host.showSearchControlsContextMenu.call(host, anchor, returnOnly);
+        this.currentSearchResults = [];
+        this.setAddress({ displayUrl: q ? `edtx://en.grimoire.jp/search?q=${encodeURIComponent(q)}` : 'edtx://en.grimoire.jp/search', mode: 'edtx' });
+        host.showSearchResultsPage.call(this, q, true);
+        if (!q || typeof host.searchTagWiki !== 'function') {
+            host.showSearchResultsPage.call(this, q, false);
+            return;
+        }
+        host.searchTagWiki(q, {
+            searchType: this.currentSearchType || 'name',
+            source: this.currentSource || 'both',
+            includeOnline: !!this.includeOnline
+        }).then((results) => {
+            this.currentSearchResults = results || [];
+            host.showSearchResultsPage.call(this, q, false);
+            this.addToHistory({
+                type: 'search',
+                query: q,
+                results: this.currentSearchResults
+            });
+        }).catch((err) => {
+            console.error('Wiki window search failed:', err);
+            this.currentSearchResults = [];
+            host.showSearchResultsPage.call(this, q, false);
+        });
     }
 
     openInNewWindow() {
@@ -5973,7 +6041,10 @@ class TagWikiSearchModal extends WikiDisplayBase {
      */
     openSearchForTerm(searchText) {
         if (!this.modal) return;
-        const term = String(searchText || '').trim();
+        let term = String(searchText || '').trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
+        // parseAutofillArtistSearchPrefix: public/scripts/comp/autocompleteUtils.js
+        const artist = parseAutofillArtistSearchPrefix(term);
+        if (artist.isArtistSearch) term = artist.remainder.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
         if (!term) return;
 
         const wasMinimised = this.modal.classList.contains('minimised');
@@ -6086,23 +6157,12 @@ class TagWikiSearchModal extends WikiDisplayBase {
             const result = await this.getTagWikiPage(tag, { force: !!options.force });
 
             if (!this.hasWikiPageContent(result)) {
-                const errorMessage = (result && result.error) || 'No matching wiki page';
-                if (winInstance && winInstance.displayArea) {
-                    // Show error inside the already-visible standalone window
-                    const canGoBack = winInstance.history && winInstance.historyIndex > 0;
-                    winInstance.displayArea.innerHTML = `
-                        <div class="tag-wiki-error">
-                            <i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(errorMessage)}
-                            ${canGoBack ? '<button class="btn-secondary btn-small wiki-error-back-btn">Back</button>' : ''}
-                        </div>
-                    `;
-                    // wire back if present
-                    const backBtn = winInstance.displayArea.querySelector('.wiki-error-back-btn');
-                    if (backBtn && winInstance.goBack) {
-                        backBtn.addEventListener('click', () => winInstance.goBack());
-                    }
-                } else if (typeof showGlassToast === 'function') {
-                    showGlassToast('info', null, errorMessage, false, 3500, '<i class="fas fa-book"></i>');
+                const searchTitle = (tag && tag.title) || trimmed;
+                const searchUrl = `edtx://en.grimoire.jp/search?q=${encodeURIComponent(searchTitle)}`;
+                if (winInstance && typeof winInstance.navigate === 'function') {
+                    winInstance.navigate(searchUrl);
+                } else {
+                    this.openSearchForTerm(searchTitle);
                 }
                 return false;
             }

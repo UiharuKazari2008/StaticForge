@@ -519,6 +519,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+    const enhanceBtn = document.getElementById('manualPreviewEnhanceBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
@@ -891,6 +892,9 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             if (upscaleBtn) {
                 upscaleBtn.classList.remove('hidden');
             }
+            if (enhanceBtn) {
+                enhanceBtn.classList.remove('hidden');
+            }
 
             if (rerollBtn) rerollBtn.classList.remove('hidden');
             if (variationBtn) variationBtn.classList.remove('hidden');
@@ -1048,6 +1052,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+    const enhanceBtn = document.getElementById('manualPreviewEnhanceBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
@@ -1229,6 +1234,9 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             // Show upscale button only if upscaling is available for this resolution
             if (upscaleBtn) {
                 upscaleBtn.classList.remove('hidden');
+            }
+            if (enhanceBtn) {
+                enhanceBtn.classList.remove('hidden');
             }
 
             if (rerollBtn) rerollBtn.classList.remove('hidden');
@@ -1467,6 +1475,7 @@ function resetManualPreview() {
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+    const enhanceBtn = document.getElementById('manualPreviewEnhanceBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
@@ -1494,6 +1503,7 @@ function resetManualPreview() {
         if (downloadBtn) downloadBtn.classList.add('hidden');
         if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.add('hidden');
         if (upscaleBtn) upscaleBtn.classList.add('hidden');
+        if (enhanceBtn) enhanceBtn.classList.add('hidden');
         if (rerollBtn) rerollBtn.classList.add('hidden');
         if (variationBtn) variationBtn.classList.add('hidden');
         if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.add('hidden');

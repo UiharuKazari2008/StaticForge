@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-26T11:14:38.136437+00:00",
+  "updated_at": "2026-09-27T07:06:29.383739-04:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
-  "last_breakfast_at": "2026-09-26T11:11:40.078726+00:00",
+  "last_breakfast_at": "2026-09-27T07:06:29.383739-04:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Sep26 7am loop. Locks none at start; planted .agent-menma. Source quiet (cache/telemetry only). Work pile open=[]. No cake / no feast.\n\nSafety snapshot 1cb003f (+4715/-2537, 55 files): emphasis caret/managed-block, autofill spell-check, broad public/scripts/comp WIP aligning with cursor-agent #242\u2013#251 Review. backups/ untracked.\n\nDocs tip c18c32f: client-api Apocrypha localGrim/trustedProxies/localCidrs; characterPrompts[].name; MCP remote-sandbox; WS client liveness. Pile mirrored.\n\nDeploy: push runs #8/#9 failed on .agent-menma (expected); cleared lock; workflow_dispatch run #10 success for c18c32f (ff, no restart \u2014 no deploy:* labels). Closed #252. PM2 still online revision metadata 0001cd3 / 14h (WIP already on disk before snapshot).\n\nJules kicked (no poll): defect https://jules.google.com/session/11368274843358995494 ; perf https://jules.google.com/session/10537723207393492887\n\nBackup: .cache/db-backups/2026-09-26T11-12-32-818Z keep=2 (dropped 2026-09-22). RAM drop_caches. Stay off greg/#5/#179. #38 leftover for Rook.\n",
+  "cake_note": "Sep27 7am loop. Stale lock .agent-cursor-artist-autofill (started 2026-09-26T23:30-04, mtime Sep26 19:37) left in place; planted .agent-menma. Source idle (newest public/sw.js ~05:52 ET). Work pile open=[]. No cake / no feast (Rook owns).\n\nSafety snapshot: overnight WIP beyond origin/main (behind 9 = PR #254 #242\u2013#251) \u2014 #253 artist autofill, #256 New Session/Save As (studioSession.js), #257 SW update loop, plus post-#254 live tree. backups/ left untracked.\n\nDocs: client-api band #242\u2013#251 + overnight session/SW/artist notes (refine after commits).\n\nJules: defect/perf/(security if clear) after push. Backup keep=2. RAM drop_caches if allowed. NO bounce (Rook HOLD until Pyra clears \u2014 #242\u2013#251 now CLOSED on origin; still no pm2 restart). Stay off greg/#5/#179. No Menma Ready small-fix.",
   "eaten": [
     {
       "id": "sf-22",

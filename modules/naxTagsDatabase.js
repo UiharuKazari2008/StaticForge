@@ -9,10 +9,28 @@ const Database = require('better-sqlite3');
 
 let DB_PATH = null;
 
-/** Artist style pairs share favorites by tag name. */
+/** Same-kind galleries share favorite + try_mark by tag name across versions. */
 const NAX_FAVORITE_MERGE_GROUPS = [
-    ['danbooru-artist-tags-v4.5', 'danbooru-artist-tags-2-v4.5'],
-    ['danbooru-artist-tags-v5', 'danbooru-artist-tags-2-v5']
+    [
+        'danbooru-artist-tags-v4',
+        'danbooru-artist-tags-v4.5',
+        'danbooru-artist-tags-2-v4.5',
+        'danbooru-artist-tags-v5',
+        'danbooru-artist-tags-2-v5'
+    ],
+    [
+        'danbooru-character-tags-v4',
+        'danbooru-character-tags-v4.5',
+        'danbooru-character-tags-v5'
+    ],
+    [
+        'danbooru-face-tags-v4',
+        'danbooru-face-tags-v4.5'
+    ],
+    [
+        'danbooru-hair-tags-v4.5',
+        'danbooru-hair-tags-v5'
+    ]
 ];
 
 let db = null;
@@ -292,7 +310,9 @@ function queryTags(opts) {
         markFilter = 'all',
         elevatePins = 0,
         offset = 0,
-        limit = 50
+        limit = 50,
+        includeMissing = false,
+        missingMode = 'include'
     } = opts;
 
     if (!isValidSlug(gallerySlug)) {
@@ -353,9 +373,9 @@ function queryTags(opts) {
 
     const whereSql = where.join(' AND ');
     const pinMode = normalizeElevatePins(elevatePins);
-
-    const totalRow = d.prepare(`SELECT COUNT(*) AS c FROM nax_tags WHERE ${whereSql}`).get(...params);
-    const total = totalRow ? totalRow.c : 0;
+    const mode = includeMissing && (missingMode === 'hide' || missingMode === 'only')
+        ? missingMode
+        : (includeMissing ? 'include' : 'hide');
 
     const ratioOrderExpr = 'COALESCE(1.0 * upvotes / NULLIF(upvotes + downvotes, 0), -1)';
     const pinnedFirstExpr = naxPinnedFirstExpr(pinMode);
@@ -381,23 +401,206 @@ function queryTags(opts) {
 
     const lim = Math.min(Math.max(Number(limit) || 50, 1), 100);
     const off = Math.max(Number(offset) || 0, 0);
+    const missingUnion = mode === 'hide' ? null : buildMissingTagUnion(d, gallerySlug, mark, query, opts);
+
+    if (mode === 'only' && !missingUnion) {
+        return { items: [], total: 0, hasMore: false, realCount: 0 };
+    }
+
+    const baseSelect = `
+        SELECT id, gallery_slug, tag, filename, upvotes, downvotes, score,
+               favorite, try_mark, hidden_mark, export_index, is_custom, 0 AS missing
+        FROM nax_tags
+        WHERE ${whereSql}
+    `;
+    let sourceSql = baseSelect;
+    let sourceParams = params;
+    if (mode === 'only' && missingUnion) {
+        sourceSql = missingUnion.sql;
+        sourceParams = missingUnion.params;
+    } else if (missingUnion) {
+        sourceSql = `${baseSelect} UNION ALL ${missingUnion.sql}`;
+        sourceParams = params.concat(missingUnion.params);
+    }
+
+    const totalRow = d.prepare(`SELECT COUNT(*) AS c FROM (${sourceSql})`).get(...sourceParams);
+    const total = totalRow ? totalRow.c : 0;
 
     const rows = d.prepare(`
         SELECT id, gallery_slug AS gallerySlug, tag, filename, upvotes, downvotes, score,
-               favorite, try_mark AS tryMark, hidden_mark AS hiddenMark, export_index AS exportIndex, is_custom AS isCustom
-        FROM nax_tags
-        WHERE ${whereSql}
-        ORDER BY ${orderBy}
-        LIMIT ? OFFSET ?
-    `).all(...params, ...orderExtraParams, lim, off);
+               favorite, try_mark AS tryMark, hidden_mark AS hiddenMark, export_index AS exportIndex,
+               is_custom AS isCustom, missing
+        FROM (
+            SELECT * FROM (${sourceSql})
+            ORDER BY ${orderBy}
+            LIMIT ? OFFSET ?
+        )
+    `).all(...sourceParams, ...orderExtraParams, lim, off);
 
-    const items = rows.map(mapTagRow);
+    const items = rows.map((row) => {
+        const item = mapTagRow(row);
+        if (row.missing) item.missing = true;
+        return item;
+    });
 
     return {
         items,
         total,
-        hasMore: off + items.length < total
+        hasMore: off + items.length < total,
+        realCount: items.length
     };
+}
+
+function queryHasNumericBound(value) {
+    return value !== null && value !== undefined && value !== '' && !Number.isNaN(Number(value));
+}
+
+/** A new custom tag is stored with score 0 and no votes, so ratio filters exclude it. */
+function zeroScoreRowExcluded(bounds) {
+    if (!bounds) return false;
+    if (queryHasNumericBound(bounds.minUp) && Number(bounds.minUp) > 0) return true;
+    if (queryHasNumericBound(bounds.minDown) && Number(bounds.minDown) > 0) return true;
+    if (queryHasNumericBound(bounds.minScore) && Number(bounds.minScore) > 0) return true;
+    if (queryHasNumericBound(bounds.maxUp) && Number(bounds.maxUp) < 0) return true;
+    if (queryHasNumericBound(bounds.maxDown) && Number(bounds.maxDown) < 0) return true;
+    if (queryHasNumericBound(bounds.maxScore) && Number(bounds.maxScore) < 0) return true;
+    if (queryHasNumericBound(bounds.minRatio) || queryHasNumericBound(bounds.maxRatio)) return true;
+    return false;
+}
+
+/**
+ * Virtual rows for linked favorite/try tags that have no row in this gallery.
+ * Sort keys match insertCustomTag: score 0, no votes, next export_index.
+ * @returns {{ sql: string, params: any[] } | null}
+ */
+function buildMissingTagUnion(d, gallerySlug, markFilter, query, bounds) {
+    const mark = String(markFilter || 'all').toLowerCase();
+    if (mark !== 'all' && mark !== 'favorites' && mark !== 'try') return null;
+    if (zeroScoreRowExcluded(bounds)) return null;
+
+    const group = getSlugsInMergeGroupFor(gallerySlug, d);
+    const siblings = group.filter((slug) => slug !== gallerySlug);
+    if (!siblings.length) return null;
+
+    let markSql = '(favorite = 1 OR try_mark = 1)';
+    if (mark === 'favorites') markSql = 'favorite = 1';
+    else if (mark === 'try') markSql = 'try_mark = 1';
+
+    const maxRow = d.prepare(
+        'SELECT COALESCE(MAX(export_index), -1) AS m FROM nax_tags WHERE gallery_slug = ?'
+    ).get(gallerySlug);
+    const nextExport = (maxRow && maxRow.m != null ? maxRow.m : -1) + 1;
+
+    const placeholders = siblings.map(() => '?').join(', ');
+    const q = String(query || '').trim();
+    const querySql = q ? 'AND instr(lower(tag), lower(?)) > 0' : '';
+    const params = [gallerySlug, nextExport, ...siblings];
+    if (q) params.push(q);
+    params.push(gallerySlug);
+
+    const sql = `
+        SELECT
+            -(length(m.tag) * 10007 + unicode(substr(m.tag, 1, 1)) + ifnull(unicode(substr(m.tag, 2, 1)), 0)) AS id,
+            ? AS gallery_slug,
+            m.tag AS tag,
+            '' AS filename,
+            0 AS upvotes,
+            0 AS downvotes,
+            0 AS score,
+            m.favorite AS favorite,
+            m.try_mark AS try_mark,
+            0 AS hidden_mark,
+            ? AS export_index,
+            0 AS is_custom,
+            1 AS missing
+        FROM (
+            SELECT tag, MAX(favorite) AS favorite, MAX(try_mark) AS try_mark
+            FROM nax_tags
+            WHERE gallery_slug IN (${placeholders})
+              AND ${markSql}
+              AND ${NAX_HIDDEN_WHERE}
+              ${querySql}
+            GROUP BY tag
+        ) m
+        WHERE NOT EXISTS (
+            SELECT 1 FROM nax_tags t WHERE t.gallery_slug = ? AND t.tag = m.tag
+        )
+    `;
+    return { sql, params };
+}
+
+/**
+ * Favorite or try tags that exist in a linked gallery and have no row here.
+ * @returns {object[]}
+ */
+function listMissingForGallery(gallerySlug, markFilter, query, bounds) {
+    const d = getDb();
+    if (!d || !isValidSlug(gallerySlug)) return [];
+    const mark = String(markFilter || 'all').toLowerCase();
+    if (mark !== 'all' && mark !== 'favorites' && mark !== 'try') return [];
+    if (bounds && (
+        queryHasNumericBound(bounds.minUp) || queryHasNumericBound(bounds.maxUp)
+        || queryHasNumericBound(bounds.minDown) || queryHasNumericBound(bounds.maxDown)
+        || queryHasNumericBound(bounds.minScore) || queryHasNumericBound(bounds.maxScore)
+        || queryHasNumericBound(bounds.minRatio) || queryHasNumericBound(bounds.maxRatio)
+    )) {
+        return [];
+    }
+
+    const group = getSlugsInMergeGroupFor(gallerySlug, d);
+    const siblings = group.filter((slug) => slug !== gallerySlug);
+    if (!siblings.length) return [];
+
+    let markSql = '(favorite = 1 OR try_mark = 1)';
+    if (mark === 'favorites') markSql = 'favorite = 1';
+    else if (mark === 'try') markSql = 'try_mark = 1';
+
+    const placeholders = siblings.map(() => '?').join(', ');
+    const params = siblings.slice();
+    let querySql = '';
+    const q = String(query || '').trim();
+    if (q) {
+        querySql = 'AND instr(lower(tag), lower(?)) > 0';
+        params.push(q);
+    }
+
+    const rows = d.prepare(`
+        SELECT tag,
+               MAX(favorite) AS favorite,
+               MAX(try_mark) AS tryMark
+        FROM nax_tags
+        WHERE gallery_slug IN (${placeholders})
+          AND ${markSql}
+          AND ${NAX_HIDDEN_WHERE}
+          ${querySql}
+        GROUP BY tag
+        ORDER BY tag COLLATE NOCASE ASC
+    `).all(...params);
+
+    const existsStmt = d.prepare(
+        'SELECT 1 AS ok FROM nax_tags WHERE gallery_slug = ? AND tag = ?'
+    );
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !row.tag || existsStmt.get(gallerySlug, row.tag)) continue;
+        out.push({
+            id: null,
+            gallerySlug,
+            tag: row.tag,
+            filename: '',
+            upvotes: 0,
+            downvotes: 0,
+            score: 0,
+            favorite: row.favorite === 1,
+            tryMark: row.tryMark === 1,
+            hidden: false,
+            exportIndex: null,
+            isCustom: false,
+            missing: true
+        });
+    }
+    return out;
 }
 
 function setFavorite(gallerySlug, tag, favorite) {
@@ -740,6 +943,39 @@ function curatedArtistGallerySlugsForModel(model) {
     return existingGallerySlugs(['artists-v4.5']);
 }
 
+/** First NAX artist-gallery image for a tag name (spaced or underscored). */
+function findArtistPreview(tagName) {
+    const raw = String(tagName || '').trim();
+    if (!raw) return null;
+    const spaced = raw.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+    const underscored = spaced.replace(/\s+/g, '_');
+    const collapsed = spaced.replace(/\s+/g, '');
+    const variants = [];
+    const seen = new Set();
+    for (const variant of [raw, spaced, underscored, collapsed, spaced.toLowerCase(), underscored.toLowerCase(), collapsed.toLowerCase()]) {
+        if (!variant || seen.has(variant)) continue;
+        seen.add(variant);
+        variants.push(variant);
+    }
+    const slugs = existingGallerySlugs([
+        'danbooru-artist-tags-v5',
+        'danbooru-artist-tags-2-v5',
+        'danbooru-artist-tags-v4.5',
+        'danbooru-artist-tags-2-v4.5',
+        'danbooru-artist-tags-v4',
+        'artists-v4.5'
+    ]);
+    for (const slug of slugs) {
+        for (const variant of variants) {
+            const row = getTagRow(slug, variant);
+            if (row && row.filename) {
+                return { gallerySlug: row.gallerySlug, filename: row.filename, tag: row.tag };
+            }
+        }
+    }
+    return null;
+}
+
 function isNaxCuratedArtistGallery(gallerySlug) {
     const sl = String(gallerySlug || '').toLowerCase();
     return /^artists-v[\d.]+$/i.test(sl) || sl === 'artists-v4.5';
@@ -981,6 +1217,54 @@ function canResolveNaxInternalExpander(presetId, kind, model) {
  * @param {object} opts
  * @returns {object[]}
  */
+/**
+ * Marked tags that have no row in a linked gallery of the same merge group.
+ * @param {'favorites'|'try'} markFilter
+ * @returns {{ tag: string, gallerySlug: string, missing: true, favorite: boolean, tryMark: boolean }[]}
+ */
+function listMissingLinkedMarks(markFilter) {
+    const d = getDb();
+    if (!d) return [];
+    const wantFavorite = markFilter !== 'try';
+    const wantTry = markFilter === 'try';
+    const markSql = wantTry ? 'try_mark = 1' : 'favorite = 1';
+    const galleryExists = d.prepare('SELECT 1 AS ok FROM nax_galleries WHERE slug = ?');
+    const tagExistsStmt = d.prepare(
+        'SELECT 1 AS ok FROM nax_tags WHERE gallery_slug = ? AND tag = ?'
+    );
+    const out = [];
+    for (const group of NAX_FAVORITE_MERGE_GROUPS) {
+        const slugs = group.filter((slug) => !!galleryExists.get(slug));
+        if (slugs.length < 2) continue;
+        const placeholders = slugs.map(() => '?').join(', ');
+        const tags = d.prepare(`
+            SELECT DISTINCT tag FROM nax_tags
+            WHERE gallery_slug IN (${placeholders}) AND ${markSql}
+        `).all(...slugs);
+        for (let i = 0; i < tags.length; i++) {
+            const tag = tags[i] && tags[i].tag;
+            if (!tag) continue;
+            for (let s = 0; s < slugs.length; s++) {
+                const gallerySlug = slugs[s];
+                if (!tagExistsStmt.get(gallerySlug, tag)) {
+                    out.push({
+                        tag,
+                        gallerySlug,
+                        missing: true,
+                        favorite: wantFavorite,
+                        tryMark: wantTry
+                    });
+                }
+            }
+        }
+    }
+    return out;
+}
+
+function listMissingLinkedFavoriteTags() {
+    return listMissingLinkedMarks('favorites');
+}
+
 function queryMarkedTags(opts = {}) {
     const d = getDb();
     if (!d) return [];
@@ -1087,6 +1371,7 @@ module.exports = {
     isNaxModelV5,
     artistGallerySlugsForModel,
     curatedArtistGallerySlugsForModel,
+    findArtistPreview,
     isNaxCuratedArtistGallery,
     formatTagForPrompt,
     pickRandomMarkedTag,
@@ -1108,9 +1393,12 @@ module.exports = {
     NAX_ELEVATE_BOTH,
     normalizeElevatePins,
     queryMarkedTags,
+    listMissingLinkedMarks,
+    listMissingLinkedFavoriteTags,
     getInternalNaxTextReplacements,
     getNaxExpanderPresetsForClient,
     queryTags,
+    listMissingForGallery,
     setFavorite,
     setTryMark,
     setHiddenMark,

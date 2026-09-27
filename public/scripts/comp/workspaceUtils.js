@@ -3310,6 +3310,10 @@ function completeWorkspaceSwitch() {
     
     // Hide workspace progress modal/toast
     hideWorkspaceProgressModal();
+    // hideGalleryProgressModal: public/scripts/comp/galleryView.js
+    if (typeof hideGalleryProgressModal === 'function') {
+        hideGalleryProgressModal();
+    }
     if (workspaceToastId) {
         removeGlassToast(workspaceToastId);
         workspaceToastId = null;

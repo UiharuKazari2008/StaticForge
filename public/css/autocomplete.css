@@ -1196,6 +1196,21 @@ textarea {
     font-weight: normal;
 }
 
+.character-autocomplete-item.no-results {
+    order: -1;
+    cursor: default;
+    pointer-events: none;
+}
+
+.character-autocomplete-item.no-results:hover:not(:disabled) {
+    background: transparent;
+}
+
+.character-autocomplete-item.no-results .character-name {
+    color: var(--text-muted);
+    font-weight: normal;
+}
+
 /* Emphasis tooltip in autocomplete */
 .character-autocomplete-tooltip {
     background: var(--glass-layer-dark-3);

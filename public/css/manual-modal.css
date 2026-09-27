@@ -460,6 +460,11 @@ div#manualModal:not(.windowed) {
         opacity: 0;
     }
 
+    html.can-hover .manual-preview-content:not(:hover) #manualPreviewReplaceSourceBtn {
+        opacity: 0;
+        pointer-events: none;
+    }
+
 
 #manualPreviewCloseBtn {
     -webkit-backdrop-filter: blur(3px);

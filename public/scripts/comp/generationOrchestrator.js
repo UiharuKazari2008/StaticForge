@@ -34,11 +34,12 @@ async function saveManualPreset(presetName, config) {
 }
 
 // Handle manual save button
-async function handleManualSave() {
-    const presetName = manualPresetName.value.trim();
+async function handleManualSave(options = {}) {
+    const nameOverride = options && options.name != null ? String(options.name).trim() : '';
+    const presetName = nameOverride || manualPresetName.value.trim();
     if (!presetName) {
         showError('Please enter a preset name to save');
-        return;
+        return false;
     }
 
     const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
@@ -62,7 +63,7 @@ async function handleManualSave() {
     }
 
     // Validate required fields for both paths
-    if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
+    if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return false;
 
     // Prepare base requestBody (shared between both paths)
     const requestBody = {
@@ -71,7 +72,7 @@ async function handleManualSave() {
         guidance: values.guidance,
         rescale: values.rescale,
         allow_paid: forcePaidRequest,
-        workspace: activeWorkspace
+        workspace: (options && options.workspaceId) || activeWorkspace
     };
 
     // Process resolution to determine if it's custom or predefined
@@ -98,7 +99,7 @@ async function handleManualSave() {
 
         if (!requestBody.image) {
             showError('No source image found for variation');
-            return;
+            return false;
         }
 
         // Add mask data if it exists
@@ -115,12 +116,15 @@ async function handleManualSave() {
 
     // Add shared fields and preset name
     addSharedFieldsToRequestBody(requestBody, values);
-    if (values.presetName) requestBody.preset = values.presetName;
+    if (presetName) requestBody.preset = presetName;
 
     const generationParams = {
         model: values.model.toLowerCase(),
         ...requestBody
     };
+    if (options && options.workspaceId) {
+        generationParams.target_workspace = options.workspaceId;
+    }
 
     // Remove skip_pipeline_stages from preset - this is a runtime flag only
     delete generationParams.skip_pipeline_stages;
@@ -137,7 +141,7 @@ async function handleManualSave() {
         );
 
         if (seedChoice === 'cancel' || seedChoice === null) {
-            return; // User cancelled
+            return false;
         }
 
         if (seedChoice === 'automatic') {
@@ -148,6 +152,13 @@ async function handleManualSave() {
     }
 
     await saveManualPreset(presetName, generationParams);
+    if (nameOverride && manualPresetName) {
+        manualPresetName.value = nameOverride;
+        // updateManualPresetToggleBtn: public/scripts/comp/presetManager.js
+        updateManualPresetToggleBtn();
+        updatePresetLoadSaveState();
+    }
+    return true;
 }
 
 // Update generate button state

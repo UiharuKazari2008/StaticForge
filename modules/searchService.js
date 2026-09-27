@@ -689,12 +689,17 @@ class SearchService {
                     })
                     : completeSkippedService('characters', 1);
 
-                const runTags = wantTags && (settings.naiAnimeTags || settings.naiFurryTags || settings.dbAnimeTags || settings.dbFurryTags)
+                const runTags = artistSearch
+                    ? this.performArtistAutofillSearch(tagSearchQuery, model, ws, requestId, tagOptions).catch(error => {
+                        console.error('Artist autofill search error:', error);
+                        return [];
+                    })
+                    : (wantTags && (settings.naiAnimeTags || settings.naiFurryTags || settings.dbAnimeTags || settings.dbFurryTags)
                     ? this.performTagSearch(tagSearchQuery, model, ws, sessionId, requestId, tagOptions).catch(error => {
                         console.error('Tag search error:', error);
                         return [];
                     })
-                    : Promise.resolve([]);
+                    : Promise.resolve([]));
 
                 const runSpellcheck = wantSpellSide && settings.spellcheck
                     ? this.performSpellCheckAsync(spellCheckInput, ws, requestId).catch(error => {
@@ -2035,6 +2040,303 @@ class SearchService {
                 });
             }
 
+            return [];
+        }
+    }
+
+    artistAutofillGallerySlugs(model) {
+        let naxDb = null;
+        try {
+            naxDb = this.globalResources.getNaxTagsDatabase();
+        } catch (_err) {
+            return [];
+        }
+        if (!naxDb) return [];
+        const slugs = [];
+        const push = (list) => {
+            for (const slug of list || []) {
+                if (slug && !slugs.includes(slug)) slugs.push(slug);
+            }
+        };
+        if (typeof naxDb.artistGallerySlugsForModel === 'function') {
+            push(naxDb.artistGallerySlugsForModel(model));
+        }
+        if (typeof naxDb.curatedArtistGallerySlugsForModel === 'function') {
+            push(naxDb.curatedArtistGallerySlugsForModel(model));
+        }
+        if (!slugs.length && typeof naxDb.getGalleries === 'function') {
+            push(naxDb.getGalleries()
+                .map((gallery) => gallery && gallery.slug)
+                .filter((slug) => String(slug || '').toLowerCase().includes('artist')));
+        }
+        return slugs;
+    }
+
+    artistLookupQueryVariants(query) {
+        const trimmed = String(query || '').trim();
+        if (!trimmed) return [];
+        const variants = new Set();
+        variants.add(trimmed);
+        const underscored = trimmed.replace(/\s+/g, '_');
+        const spaced = trimmed.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+        if (underscored) variants.add(underscored);
+        if (spaced) variants.add(spaced);
+        return [...variants];
+    }
+
+    mapNaxArtistAutofillTag(item, query, index) {
+        const raw = String(item.tag || '').trim();
+        const title = raw.replace(/_/g, ' ');
+        const q = String(query || '').trim().toLowerCase().replace(/_/g, ' ');
+        const titleLower = title.toLowerCase();
+        let matchTier = 1;
+        let matchCoverage = 50;
+        if (q && titleLower === q) {
+            matchTier = 4;
+            matchCoverage = 100;
+        } else if (q && titleLower.startsWith(q)) {
+            matchTier = 3;
+            matchCoverage = 90;
+        } else if (q && titleLower.includes(q)) {
+            matchTier = 2;
+            matchCoverage = 70;
+        }
+        return {
+            type: 'tag',
+            title,
+            name: title,
+            category: 1,
+            categoryName: 'Artist',
+            d_count: 1,
+            e_count: 0,
+            n_count: Number(item.upvotes) || 0,
+            datasets: ['danbooru'],
+            hasWiki: false,
+            rank: index,
+            score: Math.min(100, 40 + Math.min(60, Number(item.score) || 0)),
+            matchTier,
+            matchCoverage,
+            source: 'anime-local',
+            serviceName: 'anime-local',
+            model: 'anime-local',
+            gallerySlug: item.gallerySlug || ''
+        };
+    }
+
+    collectNaxArtistAutofillTags(query, model, limit) {
+        let naxDb = null;
+        try {
+            naxDb = this.globalResources.getNaxTagsDatabase();
+        } catch (_err) {
+            return [];
+        }
+        if (!naxDb || typeof naxDb.queryTags !== 'function') return [];
+        const slugs = this.artistAutofillGallerySlugs(model);
+        const variants = this.artistLookupQueryVariants(query);
+        const byName = new Map();
+        for (const slug of slugs) {
+            for (const variant of variants) {
+                const page = naxDb.queryTags({
+                    gallerySlug: slug,
+                    query: variant,
+                    sort: 'score',
+                    markFilter: 'all',
+                    offset: 0,
+                    limit
+                });
+                for (const item of (page && page.items) || []) {
+                    if (!item || !item.tag) continue;
+                    const key = String(item.tag).toLowerCase();
+                    const prev = byName.get(key);
+                    if (!prev || (Number(item.score) || 0) > (Number(prev.score) || 0)) {
+                        byName.set(key, { ...item, gallerySlug: slug });
+                    }
+                }
+            }
+        }
+        return [...byName.values()]
+            .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))
+            .slice(0, limit)
+            .map((item, index) => this.mapNaxArtistAutofillTag(item, query, index));
+    }
+
+    attachWikiArtistCounts(tags) {
+        if (!tags || !tags.length) return tags || [];
+        let lookup = null;
+        try {
+            lookup = this.globalResources.getTagDatabase();
+        } catch (_err) {
+            return tags;
+        }
+        if (!lookup || typeof lookup.lookupAutofillCountRows !== 'function') return tags;
+        const rows = lookup.lookupAutofillCountRows(tags.map((tag) => tag.title || tag.name || ''));
+        return tags.map((tag) => {
+            const key = lookup.normalizeTagName(tag.title || tag.name || '');
+            const row = key ? rows.get(key) : null;
+            if (!row) return tag;
+            const dCount = Number(row.d_count) || 0;
+            const eCount = Number(row.e_count) || 0;
+            const datasets = [];
+            if (dCount > 0 || (tag.d_count || 0) > 0) datasets.push('danbooru');
+            if (eCount > 0) datasets.push('e621');
+            return {
+                ...tag,
+                id: tag.id || row.id,
+                d_count: dCount > 0 ? dCount : (tag.d_count || 0),
+                e_count: eCount,
+                n_count: Number(row.n_count) || tag.n_count || 0,
+                category: row.category != null ? row.category : tag.category,
+                categoryName: typeof lookup.getCategoryName === 'function'
+                    ? (lookup.getCategoryName(row.category) || tag.categoryName)
+                    : tag.categoryName,
+                datasets: datasets.length ? datasets : (tag.datasets || [])
+            };
+        });
+    }
+
+    /** One row per artist. Both post counts use the existing dual-match sakura + paw icons. */
+    shapeArtistAutofillTag(tag) {
+        const dCount = Number(tag.d_count) || 0;
+        const eCount = Number(tag.e_count) || 0;
+        const base = {
+            ...tag,
+            type: 'tag',
+            d_count: dCount,
+            e_count: eCount
+        };
+        if (dCount > 0 && eCount > 0) {
+            const localResult = {
+                d_count: dCount,
+                e_count: eCount,
+                n_count: tag.n_count || 0,
+                model: 'anime-local',
+                serviceName: 'anime-local',
+                hasWiki: !!tag.hasWiki,
+                wikiSources: tag.wikiSources || [],
+                title: tag.title,
+                name: tag.name,
+                category: tag.category,
+                categoryName: tag.categoryName,
+                primaryBody: tag.primaryBody || ''
+            };
+            return {
+                ...base,
+                source: 'dual-match',
+                serviceName: 'dual-match',
+                model: 'dual-match',
+                isDualMatch: true,
+                mergedServices: ['anime-local', 'furry-local'],
+                localResult
+            };
+        }
+        if (eCount > 0) {
+            return {
+                ...base,
+                source: 'furry-local',
+                serviceName: 'furry-local',
+                model: 'furry-local'
+            };
+        }
+        return {
+            ...base,
+            source: 'anime-local',
+            serviceName: 'anime-local',
+            model: 'anime-local'
+        };
+    }
+
+    /**
+     * Prompt autofill for artist: / art by — NAX artist galleries plus local artist-category tags.
+     * Does not call NovelAI suggest-tags (that API errors on an empty or prefix-only prompt).
+     */
+    async performArtistAutofillSearch(query, model, ws = null, requestId = null, options = {}) {
+        const tagOptions = options || {};
+        const settings = tagOptions.autofillSettings || null;
+        const maxResults = settings?.maxResults || 35;
+        const trimmed = String(query || '').trim();
+        const animeLocalService = this.tagAutofillSearch?.getAnimeLocalServiceName?.() || 'anime-local';
+        const furryLocalService = this.tagAutofillSearch?.getFurryLocalServiceName?.() || 'furry-local';
+
+        const finishServices = (animeTags, furryTags) => {
+            if (!ws || !this.tagAutofillSearch) return;
+            const sendStream = (serviceName, tags) => {
+                const wsResults = (tags || []).map((tag, index) =>
+                    this.tagAutofillSearch.formatWebSocketResult(tag, index, model)
+                );
+                this.sendSearchWs(ws, {
+                    type: 'search_results_update',
+                    service: serviceName,
+                    searchModel: model,
+                    results: wsResults,
+                    serviceOrder: 0,
+                    isComplete: true,
+                    requestId: requestId
+                });
+                this.sendSearchWs(ws, {
+                    type: 'search_status_update',
+                    services: [{ name: serviceName, status: tags && tags.length ? 'completed' : 'completed-none' }],
+                    requestId: requestId
+                });
+            };
+            sendStream(animeLocalService, animeTags);
+            sendStream(furryLocalService, furryTags);
+
+            let apiModels = [];
+            try {
+                const mapped = this.globalResources.getNekoAiService('Model')[String(model || '').toUpperCase()];
+                if (mapped) apiModels.push(mapped);
+            } catch (_err) { /* model map optional */ }
+            apiModels.push('nai-diffusion-furry-3');
+            apiModels = [...new Set(apiModels)];
+            this.sendSearchWs(ws, {
+                type: 'search_status_update',
+                services: apiModels.map((name) => ({ name, status: 'completed-none' })),
+                requestId: requestId
+            });
+            this.sendSearchWs(ws, {
+                type: 'search_results_complete',
+                totalServices: 2 + apiModels.length,
+                completedServices: 2 + apiModels.length,
+                requestId: requestId
+            });
+        };
+
+        if (trimmed.length < 1) {
+            finishServices([], []);
+            return [];
+        }
+
+        try {
+            const naxTags = this.attachWikiArtistCounts(
+                this.collectNaxArtistAutofillTags(trimmed, model, maxResults)
+            );
+            let localTags = [];
+            if (this.tagAutofillSearch) {
+                localTags = await this.tagAutofillSearch.searchTags(trimmed, {
+                    limit: maxResults,
+                    model: tagOptions.suggestModel || model,
+                    artistSearch: true
+                });
+            }
+            const seen = new Set(localTags.map((tag) => String(tag.title || tag.name || '').toLowerCase().replace(/_/g, ' ')));
+            const naxOnly = naxTags.filter((tag) => {
+                const key = String(tag.title || tag.name || '').toLowerCase().replace(/_/g, ' ');
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+            const combined = localTags.concat(naxOnly).map((tag) => this.shapeArtistAutofillTag(tag));
+            const anime = [];
+            const furry = [];
+            for (const tag of combined) {
+                if ((tag.e_count || 0) > 0 && !(tag.d_count > 0)) furry.push(tag);
+                else anime.push(tag);
+            }
+            finishServices(anime, furry);
+            return combined;
+        } catch (error) {
+            console.error('Artist autofill search error:', error);
+            finishServices([], []);
             return [];
         }
     }

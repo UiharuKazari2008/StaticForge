@@ -19,6 +19,9 @@ const PROMPT_CTX_DYNAMIC_PLACEHOLDERS = [
 
 const promptCtxThesaurusCache = new Map();
 let promptCtxNaxFavoritesCache = null;
+let promptCtxNaxFavoritesMissingCache = null;
+let promptCtxNaxTryCache = null;
+let promptCtxNaxTryMissingCache = null;
 let promptCtxNaxFavoritesLoadPromise = null;
 let promptCtxNaxGalleriesCache = null;
 let promptCtxNaxGalleriesLoadPromise = null;
@@ -32,8 +35,36 @@ const PROMPT_CTX_FAV_GRID_CELL_CLASS = 'prompt-ctx-fav-grid-cell';
 /** Loose slug before constrained — image/data from loose wins when tag exists in both. NAX_FAVORITE_MERGE_GROUPS: modules/naxTagsDatabase.js */
 const PROMPT_CTX_NAX_FAV_MERGE_GROUPS = [
     {
-        slugs: ['danbooru-artist-tags-2-v4.5', 'danbooru-artist-tags-v4.5'],
+        slugs: [
+            'danbooru-artist-tags-2-v5',
+            'danbooru-artist-tags-v5',
+            'danbooru-artist-tags-2-v4.5',
+            'danbooru-artist-tags-v4.5',
+            'danbooru-artist-tags-v4'
+        ],
         title: 'Artists'
+    },
+    {
+        slugs: [
+            'danbooru-character-tags-v5',
+            'danbooru-character-tags-v4.5',
+            'danbooru-character-tags-v4'
+        ],
+        title: 'Characters'
+    },
+    {
+        slugs: [
+            'danbooru-face-tags-v4.5',
+            'danbooru-face-tags-v4'
+        ],
+        title: 'Faces'
+    },
+    {
+        slugs: [
+            'danbooru-hair-tags-v5',
+            'danbooru-hair-tags-v4.5'
+        ],
+        title: 'Hair'
     }
 ];
 
@@ -642,25 +673,48 @@ async function promptCtxEnsureNaxGalleriesLoaded() {
         } catch {
             promptCtxNaxGalleriesCache = [];
         }
+        promptCtxRefreshFavoritesSubmenuIfOpen();
         return promptCtxNaxGalleriesCache;
     })();
     return promptCtxNaxGalleriesLoadPromise;
 }
 
+function promptCtxRefreshFavoritesSubmenuIfOpen() {
+    // contextMenu.refreshSubmenu: public/scripts/comp/contextMenu.js
+    if (typeof contextMenu === 'undefined' || !contextMenu || !contextMenu.currentSubmenuState) return;
+    const parent = contextMenu.currentSubmenuState.parentItem;
+    const label = parent && parent.querySelector ? parent.querySelector('.context-menu-item-text') : null;
+    if (!label || label.textContent !== 'Favorites') return;
+    contextMenu.refreshSubmenu();
+}
+
 async function promptCtxEnsureNaxFavoritesLoaded() {
-    if (promptCtxNaxFavoritesCache) return promptCtxNaxFavoritesCache;
+    if (promptCtxNaxFavoritesCache && promptCtxNaxTryCache) return promptCtxNaxFavoritesCache;
     if (promptCtxNaxFavoritesLoadPromise) return promptCtxNaxFavoritesLoadPromise;
     promptCtxNaxFavoritesLoadPromise = (async () => {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             promptCtxNaxFavoritesCache = [];
+            promptCtxNaxFavoritesMissingCache = [];
+            promptCtxNaxTryCache = [];
+            promptCtxNaxTryMissingCache = [];
             return [];
         }
         try {
-            const data = await window.wsClient.sendMessage('get_nax_marked_tags', { markFilter: 'favorites' }, false);
-            promptCtxNaxFavoritesCache = (data && data.items) || [];
+            const [fav, tried] = await Promise.all([
+                window.wsClient.sendMessage('get_nax_marked_tags', { markFilter: 'favorites', limit: 2000 }, false),
+                window.wsClient.sendMessage('get_nax_marked_tags', { markFilter: 'try', limit: 2000 }, false)
+            ]);
+            promptCtxNaxFavoritesCache = (fav && fav.items) || [];
+            promptCtxNaxFavoritesMissingCache = (fav && fav.missing) || [];
+            promptCtxNaxTryCache = (tried && tried.items) || [];
+            promptCtxNaxTryMissingCache = (tried && tried.missing) || [];
         } catch {
             promptCtxNaxFavoritesCache = [];
+            promptCtxNaxFavoritesMissingCache = [];
+            promptCtxNaxTryCache = [];
+            promptCtxNaxTryMissingCache = [];
         }
+        promptCtxRefreshFavoritesSubmenuIfOpen();
         return promptCtxNaxFavoritesCache;
     })();
     return promptCtxNaxFavoritesLoadPromise;
@@ -737,29 +791,145 @@ function promptCtxMakeFavoriteGridCell({ tooltip, action, data, image, icon = 'f
     return cell;
 }
 
-function promptCtxNaxFavMergePriority(slug, mergeGroup) {
-    const idx = mergeGroup.slugs.indexOf(slug);
-    return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+function promptCtxCanGenerateNaxGallery(slug) {
+    const galleries = promptCtxNaxGalleriesCache;
+    if (!Array.isArray(galleries)) return true;
+    const gallery = galleries.find((entry) => entry && entry.slug === slug);
+    return !!(gallery && gallery.generationEnabled);
 }
 
-function promptCtxMergeNaxFavoriteGroup(grouped, mergeGroup) {
-    const byTag = new Map();
-    mergeGroup.slugs.forEach((slug) => {
-        const entries = grouped.get(slug) || [];
-        entries.forEach((entry) => {
-            const tag = entry.tag || '';
-            if (!tag) return;
-            const priority = promptCtxNaxFavMergePriority(slug, mergeGroup);
-            const existing = byTag.get(tag);
-            if (!existing || priority < existing.priority) {
-                byTag.set(tag, { entry, priority });
-            }
-        });
-        grouped.delete(slug);
+function promptCtxInvalidateNaxFavoritesCache() {
+    promptCtxNaxFavoritesCache = null;
+    promptCtxNaxFavoritesMissingCache = null;
+    promptCtxNaxTryCache = null;
+    promptCtxNaxTryMissingCache = null;
+    promptCtxNaxFavoritesLoadPromise = null;
+}
+
+function promptCtxNaxSlotTooltip(tag, slug, galleries, missing) {
+    const label = promptCtxNaxGalleryLabel(slug, galleries);
+    if (missing) {
+        return label ? `${tag} — missing from ${label}` : `${tag} — missing`;
+    }
+    return label ? `${tag} — ${label}` : tag;
+}
+
+function promptCtxMakeMissingFavoriteGridCell(entry, galleries) {
+    const tag = entry.tag || '';
+    const slug = entry.gallerySlug || '';
+    const label = promptCtxNaxGalleryLabel(slug, galleries);
+    const favorite = !!entry.favorite;
+    const tryMark = !!entry.tryMark;
+    const cell = promptCtxMakeFavoriteGridCell({
+        tooltip: promptCtxNaxSlotTooltip(tag, slug, galleries, true),
+        action: 'prompt-ctx-nax-favorite-insert',
+        data: { tag, gallerySlug: slug, missing: true, favorite, tryMark },
+        image: null,
+        icon: 'fas fa-question'
     });
-    return Array.from(byTag.values())
-        .map(({ entry }) => entry)
-        .sort((a, b) => String(a.tag || '').localeCompare(String(b.tag || ''), undefined, { sensitivity: 'base' }));
+    const menuItems = [
+        { separator: true, text: label ? `${tag} — ${label}` : tag }
+    ];
+    if (promptCtxCanGenerateNaxGallery(slug)) {
+        menuItems.push({
+            text: 'Generate',
+            icon: 'fas fa-wand-magic-sparkles',
+            action: 'prompt-ctx-nax-generate-missing',
+            data: { tag, gallerySlug: slug, favorite, tryMark }
+        });
+    }
+    cell.itemContextMenu = {
+        sections: [{
+            type: 'list',
+            items: menuItems
+        }],
+        onAction: (action, target, item) => {
+            if (action === 'prompt-ctx-nax-generate-missing') {
+                void promptCtxGenerateMissingNaxFavorite(item);
+            }
+        }
+    };
+    return cell;
+}
+
+async function promptCtxGenerateMissingNaxFavorite(item) {
+    const data = item && item.data;
+    const tag = data && data.tag;
+    const gallerySlug = data && data.gallerySlug;
+    if (!tag || !gallerySlug) return;
+    if (!window.wsClient || !window.wsClient.isConnected()) {
+        showGlassToast('error', null, 'WebSocket not connected', false, 4000, '<i class="fas fa-plug"></i>');
+        return;
+    }
+    try {
+        const result = await window.wsClient.sendMessage('generate_nax_custom_tag', {
+            gallerySlug,
+            tag
+        }, false);
+        if (!result || result.success === false) {
+            throw new Error((result && result.error) || 'Generation failed');
+        }
+        const wantFavorite = !!(data.favorite);
+        const wantTry = !!(data.tryMark);
+        if (wantFavorite) {
+            await window.wsClient.sendMessage('set_nax_favorite', {
+                gallerySlug,
+                tag,
+                favorite: true
+            }, false);
+        }
+        if (wantTry) {
+            await window.wsClient.sendMessage('set_nax_try', {
+                gallerySlug,
+                tag,
+                tryMark: true
+            }, false);
+        }
+        promptCtxInvalidateNaxFavoritesCache();
+        showGlassToast('success', null, `Generated ${tag}`, false, 2500, '<i class="fas fa-wand-magic-sparkles"></i>');
+    } catch (error) {
+        showGlassToast('error', null, (error && error.message) || 'Generation failed', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+function promptCtxIndexMarkedBySlug(entries) {
+    const bySlug = new Map();
+    (entries || []).forEach((entry) => {
+        const slug = (entry && entry.gallerySlug) || '';
+        const tag = (entry && entry.tag) || '';
+        if (!slug || !tag) return;
+        let tags = bySlug.get(slug);
+        if (!tags) {
+            tags = new Map();
+            bySlug.set(slug, tags);
+        }
+        const prev = tags.get(tag);
+        if (!prev || (!prev.filename && entry.filename)) {
+            tags.set(tag, entry);
+        }
+    });
+    return bySlug;
+}
+
+function promptCtxGalleryInstalled(slug, galleries) {
+    if (!Array.isArray(galleries) || !galleries.length) return true;
+    return galleries.some((entry) => entry && entry.slug === slug);
+}
+
+function promptCtxMarksForLinkedTag(tag, slugs, favBySlug, tryBySlug) {
+    let favorite = false;
+    let tryMark = false;
+    slugs.forEach((slug) => {
+        const favEntry = favBySlug.get(slug) && favBySlug.get(slug).get(tag);
+        const tryEntry = tryBySlug.get(slug) && tryBySlug.get(slug).get(tag);
+        if (favEntry || (tryEntry && (tryEntry.favorite === 1 || tryEntry.favorite === true))) {
+            favorite = true;
+        }
+        if (tryEntry || (favEntry && (favEntry.tryMark === 1 || favEntry.tryMark === true))) {
+            tryMark = true;
+        }
+    });
+    return { favorite, tryMark };
 }
 
 function promptCtxAppendNaxFavoriteGridSection(items, title, entries) {
@@ -785,35 +955,86 @@ function promptCtxAppendNaxFavoriteGridSection(items, title, entries) {
 
 function promptCtxAppendNaxFavoriteGrids(items, galleries) {
     void promptCtxEnsureNaxFavoritesLoaded();
-    if (!promptCtxNaxFavoritesCache && promptCtxNaxFavoritesLoadPromise) {
+    if ((!promptCtxNaxFavoritesCache || !promptCtxNaxTryCache) && promptCtxNaxFavoritesLoadPromise) {
         items.push({ text: 'Loading…', disabled: true });
         return;
     }
 
     const favorites = promptCtxNaxFavoritesCache || [];
-    if (!favorites.length) return;
+    const tried = promptCtxNaxTryCache || [];
+    if (!favorites.length && !tried.length) return;
 
-    const grouped = new Map();
-    favorites.forEach((entry) => {
-        const slug = entry.gallerySlug || '';
-        const tag = entry.tag || '';
-        if (!slug || !tag) return;
-        if (!grouped.has(slug)) grouped.set(slug, []);
-        grouped.get(slug).push(entry);
-    });
+    const favBySlug = promptCtxIndexMarkedBySlug(favorites);
+    const tryBySlug = promptCtxIndexMarkedBySlug(tried);
 
     PROMPT_CTX_NAX_FAV_MERGE_GROUPS.forEach((mergeGroup) => {
-        const hasAny = mergeGroup.slugs.some((slug) => (grouped.get(slug) || []).length > 0);
-        if (!hasAny) return;
-        const merged = promptCtxMergeNaxFavoriteGroup(grouped, mergeGroup);
-        promptCtxAppendNaxFavoriteGridSection(
-            items,
-            promptCtxNaxFavGridTitle(null, galleries, mergeGroup.title),
-            merged
-        );
+        const slugs = mergeGroup.slugs.filter((slug) => promptCtxGalleryInstalled(slug, galleries));
+        if (slugs.length < 2) return;
+        const tagSet = new Set();
+        slugs.forEach((slug) => {
+            const favs = favBySlug.get(slug);
+            const tries = tryBySlug.get(slug);
+            if (favs) favs.forEach((_, tag) => tagSet.add(tag));
+            if (tries) tries.forEach((_, tag) => tagSet.add(tag));
+        });
+        if (!tagSet.size) return;
+
+        const tags = Array.from(tagSet).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        const cells = [];
+        tags.forEach((tag) => {
+            const marks = promptCtxMarksForLinkedTag(tag, slugs, favBySlug, tryBySlug);
+            slugs.forEach((slug) => {
+                const entry = (favBySlug.get(slug) && favBySlug.get(slug).get(tag))
+                    || (tryBySlug.get(slug) && tryBySlug.get(slug).get(tag));
+                if (entry && entry.filename) {
+                    cells.push(promptCtxMakeFavoriteGridCell({
+                        tooltip: promptCtxNaxSlotTooltip(tag, slug, galleries, false),
+                        action: 'prompt-ctx-nax-favorite-insert',
+                        data: { tag, gallerySlug: slug },
+                        image: promptCtxNaxImageUrl(entry) || null,
+                        icon: 'fas fa-star'
+                    }));
+                    return;
+                }
+                cells.push(promptCtxMakeMissingFavoriteGridCell({
+                    tag,
+                    gallerySlug: slug,
+                    favorite: marks.favorite,
+                    tryMark: marks.tryMark
+                }, galleries));
+            });
+        });
+
+        slugs.forEach((slug) => {
+            favBySlug.delete(slug);
+            tryBySlug.delete(slug);
+        });
+
+        items.push({
+            type: 'grid',
+            title: promptCtxNaxFavGridTitle(null, galleries, mergeGroup.title),
+            className: PROMPT_CTX_FAV_GRID_CLASS,
+            items: cells
+        });
     });
 
-    grouped.forEach((entries, slug) => {
+    const leftoverSlugs = new Set([...favBySlug.keys(), ...tryBySlug.keys()]);
+    leftoverSlugs.forEach((slug) => {
+        const seen = new Set();
+        const entries = [];
+        const favs = favBySlug.get(slug);
+        const tries = tryBySlug.get(slug);
+        if (favs) {
+            favs.forEach((entry, tag) => {
+                seen.add(tag);
+                entries.push(entry);
+            });
+        }
+        if (tries) {
+            tries.forEach((entry, tag) => {
+                if (!seen.has(tag)) entries.push(entry);
+            });
+        }
         promptCtxAppendNaxFavoriteGridSection(
             items,
             promptCtxNaxFavGridTitle(slug, galleries),
@@ -1730,8 +1951,7 @@ if (typeof window !== 'undefined') {
     window.initPromptTextareaContextMenu = initPromptTextareaContextMenu;
     window.attachPromptTextareaContextMenu = attachPromptTextareaContextMenu;
     window.invalidatePromptCtxNaxFavoritesCache = function invalidatePromptCtxNaxFavoritesCache() {
-        promptCtxNaxFavoritesCache = null;
-        promptCtxNaxFavoritesLoadPromise = null;
+        promptCtxInvalidateNaxFavoritesCache();
     };
     window.invalidatePromptCtxNaxExpanderPresetsCache = function invalidatePromptCtxNaxExpanderPresetsCache() {
         promptCtxNaxExpanderPresetsCache = null;

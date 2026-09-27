@@ -3576,6 +3576,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             text_overlays: body.text_overlays || preset?.text_overlays || undefined,
             auto_clean_uc: body.auto_clean_uc !== undefined ? body.auto_clean_uc : (preset && preset.auto_clean_uc !== undefined ? preset.auto_clean_uc : true),
             keep_newlines: body.keep_newlines !== undefined ? !!body.keep_newlines : (preset && preset.keep_newlines !== undefined ? !!preset.keep_newlines : false),
+            bake_newlines: body.bake_newlines !== undefined ? !!body.bake_newlines : (preset && preset.bake_newlines !== undefined ? !!preset.bake_newlines : false),
             auto_char_numerize: body.auto_char_numerize !== undefined ? !!body.auto_char_numerize : (preset && preset.auto_char_numerize !== undefined ? !!preset.auto_char_numerize : true),
             prompt_normalize: body.prompt_normalize !== undefined ? !!body.prompt_normalize : (preset && preset.prompt_normalize !== undefined ? !!preset.prompt_normalize : true),
             deduplicate_tags: body.deduplicate_tags !== undefined ? !!body.deduplicate_tags : (preset && preset.deduplicate_tags !== undefined ? !!preset.deduplicate_tags : true),
@@ -3584,6 +3585,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 ? body.vSlider
                 : (preset && Array.isArray(preset.vSlider) ? preset.vSlider : undefined),
         };
+        // bake_newlines requires keep_newlines
+        if (!baseOptions.keep_newlines) baseOptions.bake_newlines = false;
 
         // Hard gate unsupported V5 capabilities (vibe / precise reference / e2e upscale / Variety+)
         if (forgeCaps) {
@@ -4069,13 +4072,19 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         };
         // When the client's "keep newlines" toggle is on, preserve intentional line breaks
         // and only collapse horizontal whitespace runs; otherwise flatten to a single line.
+        // When "bake newlines" is on (requires keep), also protect \n through marker/emphasis
+        // normalization so the NovelAI request body keeps real newlines.
         // When "prompt normalize" is off, skip separator normalization entirely.
         const keepNewlines = !!baseOptions.keep_newlines;
+        const bakeNewlines = !!baseOptions.bake_newlines && keepNewlines;
+        if (!keepNewlines) baseOptions.bake_newlines = false;
+        else baseOptions.bake_newlines = bakeNewlines;
         const promptNormalize = baseOptions.prompt_normalize !== false;
+        const BAKE_NL_SENTINEL = '\uE000BakeNL\uE001';
         const normalizePromptSeparators = (text) => {
             if (typeof text !== 'string') return text;
             if (!promptNormalize) return text;
-            if (keepNewlines) {
+            if (keepNewlines || bakeNewlines) {
                 return text
                     .replace(/\r\n?/g, '\n')
                     .replace(/,[^\S\n]*,+/g, ', ')
@@ -4100,7 +4109,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             || body.emphasis_normalization
             || null;
         const sanitizeAndNormalizeText = (text, fieldHint) => {
-            let out = sanitizeMarkerFromText(text);
+            let out = text;
+            if (bakeNewlines && typeof out === 'string') {
+                out = out.replace(/\r\n?/g, '\n').split('\n').join(BAKE_NL_SENTINEL);
+            }
+            out = sanitizeMarkerFromText(out);
             if (typeof out === 'string' && hasManagedEmphasisGroupIds(out)) {
                 const prepared = prepareEmphasisTextForNovelAI(out, emphasisNormForExpand, fieldHint);
                 if (prepared.warnings.length) {
@@ -4115,10 +4128,14 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 }
                 out = prepared.text;
             }
-            return normalizeEmphasisPromptSyntax(
+            out = normalizeEmphasisPromptSyntax(
                 normalizePromptSeparators(out),
                 { fixCommas: true }
             );
+            if (bakeNewlines && typeof out === 'string') {
+                out = out.split(BAKE_NL_SENTINEL).join('\n');
+            }
+            return out;
         };
 
         // Preserve managed ids in forge input_* (editor hydrate); API fields still expand below.
@@ -4299,6 +4316,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.text_replacements;
     delete apiOpts.auto_clean_uc;
     delete apiOpts.keep_newlines;
+    delete apiOpts.bake_newlines;
     delete apiOpts.auto_char_numerize;
     delete apiOpts.prompt_normalize;
     delete apiOpts.emphasis_normalization;
@@ -4332,6 +4350,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     const currentFingerprint = canonicalizeApiOptions(apiOpts, opts.upscale, {
         prompt_normalize: opts.prompt_normalize,
         keep_newlines: opts.keep_newlines,
+        bake_newlines: opts.bake_newlines,
         auto_char_numerize: opts.auto_char_numerize,
         auto_clean_uc: opts.auto_clean_uc
     });
@@ -4772,6 +4791,10 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         // Save keep-newlines setting so reload can restore the toggle state
         if (opts.keep_newlines !== undefined) {
             forgeData.keep_newlines = opts.keep_newlines;
+        }
+        // Save bake-newlines setting so reload can restore the toggle state
+        if (opts.bake_newlines !== undefined) {
+            forgeData.bake_newlines = !!opts.bake_newlines && !!opts.keep_newlines;
         }
         // Save auto-char-numerize setting so reload can restore the toggle state
         if (opts.auto_char_numerize !== undefined) {
@@ -6709,6 +6732,13 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
         requestBody.keep_newlines = extractedMetadata.keep_newlines;
     } else if (forgeData.keep_newlines !== undefined) {
         requestBody.keep_newlines = forgeData.keep_newlines;
+    }
+
+    // Add bake_newlines if available (requires keep_newlines)
+    if (extractedMetadata.bake_newlines !== undefined) {
+        requestBody.bake_newlines = !!extractedMetadata.bake_newlines && !!requestBody.keep_newlines;
+    } else if (forgeData.bake_newlines !== undefined) {
+        requestBody.bake_newlines = !!forgeData.bake_newlines && !!requestBody.keep_newlines;
     }
 
     // Add auto_char_numerize if available

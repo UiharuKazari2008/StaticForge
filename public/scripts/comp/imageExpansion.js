@@ -1007,8 +1007,7 @@ function collectEnhanceDialogValues(dialog) {
     const magnitude = dialog.querySelector('#enhanceMagnitudeInput')?.value || '3.0';
     const strengthRaw = dialog.querySelector('#enhanceStrengthInput')?.value ?? '';
     const noiseRaw = dialog.querySelector('#enhanceNoiseInput')?.value ?? '';
-    const { strength, noise } = resolveEnhanceStrengthNoise(magnitude, strengthRaw, noiseRaw);
-    const values = { scale, magnitude, strength, noise };
+    const extra = {};
     const optionalNumberFields = [
         ['steps', '#enhanceStepsInput'],
         ['guidance', '#enhanceGuidanceInput'],
@@ -1019,15 +1018,21 @@ function collectEnhanceDialogValues(dialog) {
         const raw = dialog.querySelector(selector)?.value;
         if (raw === '' || raw == null) continue;
         const parsed = Number(raw);
-        if (Number.isFinite(parsed)) values[key] = parsed;
+        if (Number.isFinite(parsed)) extra[key] = parsed;
     }
     const sampler = dialog.querySelector('#enhanceSamplerHidden')?.value;
-    if (sampler) values.sampler = sampler;
+    if (sampler) extra.sampler = sampler;
     const noiseScheduler = dialog.querySelector('#enhanceNoiseSchedulerHidden')?.value;
-    if (noiseScheduler) values.noiseScheduler = noiseScheduler;
+    if (noiseScheduler) extra.noiseScheduler = noiseScheduler;
     const model = dialog.querySelector('#enhanceModelHidden')?.value;
-    if (model) values.model = model;
-    return values;
+    if (model) extra.model = model;
+    return buildEnhanceRequestValues({
+        scale,
+        magnitude,
+        strengthRaw,
+        noiseRaw,
+        extra
+    });
 }
 
 function enhanceScaleHintText(scaleValue) {
@@ -1250,6 +1255,288 @@ function wireEnhanceDialog(dialog, scaleOptions) {
     applyEnhanceMagnitudeOverlays(document.getElementById('enhanceMagnitudeInput')?.value || '3.0');
 }
 
+function buildEnhanceRequestValues({ scale, magnitude, strengthRaw = '', noiseRaw = '', extra = null } = {}) {
+    const scaleValue = scale != null && scale !== '' ? String(scale) : '1';
+    const magnitudeValue = magnitude != null && magnitude !== '' ? String(magnitude) : '3.0';
+    const { strength, noise } = resolveEnhanceStrengthNoise(magnitudeValue, strengthRaw, noiseRaw);
+    const values = { scale: scaleValue, magnitude: magnitudeValue, strength, noise };
+    if (extra && typeof extra === 'object') {
+        Object.assign(values, extra);
+    }
+    return values;
+}
+
+async function runEnhanceImageRequest(targetFilename, enhanceValues, submitBtn = null) {
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('loading');
+    }
+
+    const isMax = enhanceValues.scale === 'max';
+    const scaleLabel = isMax ? 'Max' : `${enhanceValues.scale}×`;
+    const enhanceToastId = showGlassToast(
+        'info',
+        isMax ? 'Max Enhancing' : 'Enhancing',
+        isMax ? 'Enhancing image at its source dimensions...' : `Enhancing image at ${scaleLabel}...`,
+        true,
+        false,
+        '<i class="fas fa-wand-magic-sparkles"></i>'
+    );
+
+    try {
+        const { scale, ...rest } = enhanceValues;
+        const result = await wsClient.enhanceImage(targetFilename, scale, activeWorkspace || null, rest);
+        updateGlassToastComplete(enhanceToastId, {
+            type: 'success',
+            title: isMax ? 'Max Enhance Complete' : 'Enhance Complete',
+            message: 'Enhanced image saved to the gallery.',
+            customIcon: '<i class="fas fa-wand-magic-sparkles"></i>',
+            showProgress: false
+        });
+
+        const imageSrc = localGalleryImageUrl(result.filename);
+        const mockResponse = {
+            headers: {
+                get: (headerName) => {
+                    if (headerName === 'X-Generated-Filename') return result.filename;
+                    if (headerName === 'X-Seed') return result.seed;
+                    return null;
+                }
+            }
+        };
+        // handleImageResult: public/scripts/comp/manualModalManager.js
+        await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
+        return result;
+    } catch (error) {
+        updateGlassToastComplete(enhanceToastId, {
+            type: 'error',
+            title: isMax ? 'Max Enhance Failed' : 'Enhance Failed',
+            message: error.message || 'Failed to enhance image',
+            customIcon: '<i class="nai-cross"></i>',
+            showProgress: false
+        });
+        throw error;
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('loading');
+        }
+    }
+}
+
+function handleManualPreviewEnhanceClick(e) {
+    e.preventDefault();
+    if (!window.currentManualPreviewImage) {
+        showGlassToast('error', 'Enhance Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+        return;
+    }
+    const filename = getEnhanceSourceFilename(window.currentManualPreviewImage);
+    if (!filename) {
+        showGlassToast('error', 'Enhance Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+        return;
+    }
+    // getEnhancePreset: public/scripts/comp/imageGenerationSettings.js
+    const preset = getEnhancePreset();
+    const enhanceValues = buildEnhanceRequestValues({
+        scale: preset.scale,
+        magnitude: preset.magnitude
+    });
+    void runEnhanceImageRequest(filename, enhanceValues);
+}
+
+let enhanceMiniDialog = null;
+
+function closeEnhanceMiniDialog() {
+    const dialog = enhanceMiniDialog;
+    enhanceMiniDialog = null;
+    if (!dialog) return;
+    const scaleBtn = dialog.querySelector('[data-enhance-mini-scale]');
+    if (scaleBtn) {
+        enhanceDialogClickMenuButtons = enhanceDialogClickMenuButtons.filter((btn) => btn !== scaleBtn);
+        // contextMenu.detachClickMenuFromElement: public/scripts/comp/contextMenu.js
+        contextMenu.detachClickMenuFromElement(scaleBtn);
+    }
+    // closeModal: public/scripts/comp/modalUtils.js
+    closeModal(dialog).then(() => {
+        if (dialog.parentNode) dialog.parentNode.removeChild(dialog);
+    });
+}
+
+function positionEnhanceMiniDialog(event, dialog) {
+    const pad = 10;
+    const dialogWidth = dialog.offsetWidth || 350;
+    const dialogHeight = dialog.offsetHeight || 180;
+    let x;
+    let y;
+    const pointX = event && event.clientX;
+    const pointY = event && event.clientY;
+    if (Number.isFinite(pointX) && Number.isFinite(pointY)) {
+        x = pointX - dialogWidth / 2;
+        y = pointY - dialogHeight - pad;
+        if (y < pad) y = pointY + pad;
+    } else {
+        x = (window.innerWidth - dialogWidth) / 2;
+        y = (window.innerHeight - dialogHeight) / 2;
+    }
+    x = Math.max(pad, Math.min(x, window.innerWidth - dialogWidth - pad));
+    y = Math.max(pad, Math.min(y, window.innerHeight - dialogHeight - pad));
+    dialog.style.left = `${x}px`;
+    dialog.style.top = `${y}px`;
+}
+
+function openEnhanceMiniWindow(image, event) {
+    const filename = getEnhanceSourceFilename(image);
+    if (!filename) {
+        showGlassToast('error', 'Enhance Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+        return;
+    }
+    closeEnhanceMiniDialog();
+
+    // getEnhancePreset: public/scripts/comp/imageGenerationSettings.js
+    const preset = getEnhancePreset();
+    const scaleOptions = getEnhanceScaleOptions(image);
+    const initialScale = resolveEnhanceScaleValue(scaleOptions, preset.scale, lastEnhanceScale);
+    let selectedScale = initialScale;
+    const presetMagnitude = Number(preset.magnitude);
+    const initialMagnitude = Number.isFinite(presetMagnitude) ? presetMagnitude.toFixed(1) : '3.0';
+
+    const dialog = document.createElement('div');
+    dialog.id = 'enhanceMiniDialog';
+    dialog.className = 'modal hidden transient tool-window on-top credit-cost-dialog';
+    dialog.dataset.windowPositionMode = 'manual-only';
+
+    const content = document.createElement('div');
+    content.className = 'credit-cost-content enhance-dialog';
+
+    const header = document.createElement('div');
+    header.className = 'credit-cost-header';
+    const headerIcon = document.createElement('i');
+    headerIcon.className = 'fas fa-wand-magic-sparkles';
+    const headerTitle = document.createElement('span');
+    headerTitle.textContent = 'Enhance';
+    header.appendChild(headerIcon);
+    header.appendChild(headerTitle);
+
+    const row = document.createElement('div');
+    row.className = 'form-row';
+
+    const magnitudeGroup = document.createElement('div');
+    magnitudeGroup.className = 'form-group';
+    const magnitudeLabel = document.createElement('label');
+    magnitudeLabel.textContent = 'Magnitude';
+    magnitudeLabel.htmlFor = 'enhanceMiniMagnitude';
+    const magnitudeInput = document.createElement('input');
+    magnitudeInput.type = 'number';
+    magnitudeInput.id = 'enhanceMiniMagnitude';
+    magnitudeInput.className = 'form-control hover-show colored';
+    magnitudeInput.min = '1.0';
+    magnitudeInput.max = '5.5';
+    magnitudeInput.step = '0.5';
+    magnitudeInput.value = initialMagnitude;
+    magnitudeInput.style.width = '100%';
+    magnitudeGroup.appendChild(magnitudeLabel);
+    magnitudeGroup.appendChild(magnitudeInput);
+
+    const scaleGroup = document.createElement('div');
+    scaleGroup.className = 'form-group';
+    const scaleLabel = document.createElement('label');
+    scaleLabel.textContent = 'Upscale amount';
+    const scaleBtn = document.createElement('button');
+    scaleBtn.type = 'button';
+    scaleBtn.className = 'custom-dropdown-btn hover-show colored';
+    scaleBtn.dataset.enhanceMiniScale = '1';
+    scaleBtn.style.width = '100%';
+    const scaleSelected = document.createElement('span');
+    scaleSelected.textContent = enhanceScaleOptionName(scaleOptions, initialScale);
+    scaleBtn.appendChild(scaleSelected);
+    scaleGroup.appendChild(scaleLabel);
+    scaleGroup.appendChild(scaleBtn);
+
+    row.appendChild(magnitudeGroup);
+    row.appendChild(scaleGroup);
+
+    const buttons = document.createElement('div');
+    buttons.className = 'credit-cost-buttons';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'credit-cost-cancel-btn btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'credit-cost-confirm-btn btn-primary';
+    confirmBtn.textContent = 'Enhance ';
+    const confirmIcon = document.createElement('i');
+    confirmIcon.className = 'fas fa-arrow-right';
+    confirmBtn.appendChild(confirmIcon);
+    buttons.appendChild(cancelBtn);
+    buttons.appendChild(confirmBtn);
+
+    content.appendChild(header);
+    content.appendChild(row);
+    content.appendChild(buttons);
+    dialog.appendChild(content);
+    document.body.appendChild(dialog);
+    enhanceMiniDialog = dialog;
+
+    const selectScale = (value) => {
+        selectedScale = value;
+        lastEnhanceScale = value;
+        scaleSelected.textContent = enhanceScaleOptionName(scaleOptions, value);
+    };
+    wireEnhanceDialogClickMenu(
+        scaleBtn,
+        scaleOptions,
+        selectScale,
+        () => selectedScale
+    );
+
+    cancelBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeEnhanceMiniDialog();
+    });
+    confirmBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const enhanceValues = buildEnhanceRequestValues({
+            scale: selectedScale,
+            magnitude: magnitudeInput.value
+        });
+        closeEnhanceMiniDialog();
+        void runEnhanceImageRequest(filename, enhanceValues);
+    });
+    dialog.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        e.preventDefault();
+        closeEnhanceMiniDialog();
+    });
+
+    dialog.style.visibility = 'hidden';
+    dialog.classList.remove('hidden');
+    positionEnhanceMiniDialog(event, dialog);
+    dialog.style.visibility = '';
+    dialog.classList.add('hidden');
+    // openModal, assignModalZIndex: public/scripts/comp/modalUtils.js
+    openModal(dialog);
+    assignModalZIndex(dialog);
+}
+
+function handleManualPreviewEnhanceContextMenu(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.currentManualPreviewImage) {
+        showGlassToast('error', 'Enhance Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+        return;
+    }
+    openEnhanceMiniWindow(window.currentManualPreviewImage, e);
+}
+
+function wireManualPreviewEnhanceBtn() {
+    const btn = document.getElementById('manualPreviewEnhanceBtn');
+    if (!btn || btn.dataset.enhanceBtnWired === 'true') return;
+    btn.dataset.enhanceBtnWired = 'true';
+    btn.addEventListener('click', handleManualPreviewEnhanceClick);
+    btn.addEventListener('contextmenu', handleManualPreviewEnhanceContextMenu);
+}
+
 function openEnhanceFromImage(image, options = {}) {
     const filename = getEnhanceSourceFilename(image);
     if (!filename) {
@@ -1288,8 +1575,14 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
             : 'the source dimensions';
     };
 
+    // getEnhancePreset: public/scripts/comp/imageGenerationSettings.js
+    const enhancePreset = getEnhancePreset();
+    const presetMagnitude = Number(enhancePreset.magnitude);
+    const initialMagnitude = Number.isFinite(presetMagnitude)
+        ? presetMagnitude.toFixed(1)
+        : '3.0';
     const scaleOptions = getEnhanceScaleOptions(workingImage);
-    const initialScale = resolveEnhanceScaleValue(scaleOptions, null, lastEnhanceScale);
+    const initialScale = resolveEnhanceScaleValue(scaleOptions, enhancePreset.scale, lastEnhanceScale);
     const initialScaleName = enhanceScaleOptionName(scaleOptions, initialScale);
     const initialScaleHint = enhanceScaleHintText(initialScale);
     const initialDimensionText = getDimensionText(workingDimensions);
@@ -1299,7 +1592,7 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
         <div class="form-row">
             <div class="form-group">
                 <label for="enhanceMagnitudeInput">Magnitude</label>
-                <input type="number" id="enhanceMagnitudeInput" class="form-control hover-show colored" min="1.0" max="5.5" step="0.5" value="3.0">
+                <input type="number" id="enhanceMagnitudeInput" class="form-control hover-show colored" min="1.0" max="5.5" step="0.5" value="${initialMagnitude}">
             </div>
             <div class="form-group">
                 <label>Upscale amount</label>
@@ -1404,57 +1697,11 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
         </div>`;
 
     const executeEnhance = async (enhanceValues, targetFilename, targetImage, submitBtn) => {
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.classList.add('loading');
-        }
-
-        const isMax = enhanceValues.scale === 'max';
-        const scaleLabel = isMax ? 'Max' : `${enhanceValues.scale}×`;
-        const enhanceToastId = showGlassToast(
-            'info',
-            isMax ? 'Max Enhancing' : 'Enhancing',
-            isMax ? 'Enhancing image at its source dimensions...' : `Enhancing image at ${scaleLabel}...`,
-            true,
-            false,
-            '<i class="fas fa-wand-magic-sparkles"></i>'
-        );
-
         try {
-            const { scale, ...rest } = enhanceValues;
-            const result = await wsClient.enhanceImage(targetFilename, scale, activeWorkspace || null, rest);
-            updateGlassToastComplete(enhanceToastId, {
-                type: 'success',
-                title: isMax ? 'Max Enhance Complete' : 'Enhance Complete',
-                message: 'Enhanced image saved to the gallery.',
-                customIcon: '<i class="fas fa-wand-magic-sparkles"></i>',
-                showProgress: false
-            });
-
-            const imageSrc = localGalleryImageUrl(result.filename);
-            const mockResponse = {
-                headers: {
-                    get: (headerName) => {
-                        if (headerName === 'X-Generated-Filename') return result.filename;
-                        if (headerName === 'X-Seed') return result.seed;
-                        return null;
-                    }
-                }
-            };
-            await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
-        } catch (error) {
-            updateGlassToastComplete(enhanceToastId, {
-                type: 'error',
-                title: isMax ? 'Max Enhance Failed' : 'Enhance Failed',
-                message: error.message || 'Failed to enhance image',
-                customIcon: '<i class="nai-cross"></i>',
-                showProgress: false
-            });
+            await runEnhanceImageRequest(targetFilename, enhanceValues, submitBtn);
+        } catch (_error) {
+            // Toast already updated in runEnhanceImageRequest
         } finally {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.classList.remove('loading');
-            }
             if (isStudio) {
                 checkDivergence();
             }
@@ -3222,6 +3469,7 @@ function wireImageExpansionKeyboardShortcuts() {
 // Initialize expansion modal when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     wireImageExpansionKeyboardShortcuts();
+    wireManualPreviewEnhanceBtn();
     // Setup all dropdowns
     setupExpansionResolutionDropdown();
     setupExpansionBiasDropdown();

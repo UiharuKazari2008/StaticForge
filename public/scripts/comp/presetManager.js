@@ -1629,24 +1629,37 @@ function wireInlinePresetListeners() {
     }
 }
 
+function syncRollSeedBtnVisibility() {
+    const sproutSeedBtn = document.getElementById('sproutSeedBtn');
+    const rollSeedBtn = document.getElementById('rollSeedBtn');
+    if (!rollSeedBtn) return;
+    const locked = sproutSeedBtn && sproutSeedBtn.getAttribute('data-state') === 'on';
+    rollSeedBtn.classList.toggle('hidden', !locked);
+}
+
 function wireSeedListeners() {
     const sproutSeedBtn = document.getElementById('sproutSeedBtn');
     const loadSeedBtn = document.getElementById('loadSeedBtn');
     const manualSeedEl = document.getElementById('manualSeed');
     const clearSeedBtnEl = document.getElementById('clearSeedBtn');
+    const rollSeedBtn = document.getElementById('rollSeedBtn');
 
     if (manualSeedEl && manualSeedEl.dataset.wired !== 'true') {
         manualSeedEl.dataset.wired = 'true';
         manualSeedEl.addEventListener('input', (e) => {
             clearSeedBtnEl?.classList.toggle('hidden', !e.target.value);
+            syncRollSeedBtnVisibility();
         });
         manualSeedEl.addEventListener('change', (e) => {
             clearSeedBtnEl?.classList.toggle('hidden', !e.target.value);
-            // updateSproutSeedButtonFromPreviewSeed: public/scripts/app.js
+            syncRollSeedBtnVisibility();
+            // updateSproutSeedButtonFromPreviewSeed: public/scripts/comp/seedSproutManager.js
             updateSproutSeedButtonFromPreviewSeed();
+            syncRollSeedBtnVisibility();
         });
         manualSeedEl.addEventListener('blur', (e) => {
             clearSeedBtnEl?.classList.toggle('hidden', !e.target.value);
+            syncRollSeedBtnVisibility();
         });
     }
 
@@ -1654,15 +1667,39 @@ function wireSeedListeners() {
         clearSeedBtnEl.dataset.wired = 'true';
         clearSeedBtnEl.addEventListener('click', (e) => {
             e.preventDefault();
-            // clearSeed: public/scripts/app.js
+            // clearSeed: public/scripts/comp/seedSproutManager.js
             clearSeed();
+            syncRollSeedBtnVisibility();
+        });
+    }
+
+    if (rollSeedBtn && rollSeedBtn.dataset.wired !== 'true') {
+        rollSeedBtn.dataset.wired = 'true';
+        rollSeedBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const seedEl = document.getElementById('manualSeed');
+            if (!seedEl) return;
+            // Same ballpark as NaxtApplet randomSeed; range 1..2147483646
+            const seed = Math.floor(Math.random() * 2147483646) + 1;
+            seedEl.value = String(seed);
+            seedEl.dispatchEvent(new Event('input', { bubbles: true }));
+            seedEl.dispatchEvent(new Event('change', { bubbles: true }));
+            syncRollSeedBtnVisibility();
         });
     }
 
     if (sproutSeedBtn && sproutSeedBtn.dataset.wired !== 'true') {
         sproutSeedBtn.dataset.wired = 'true';
-        // toggleSproutSeed: public/scripts/app.js
+        // toggleSproutSeed: public/scripts/comp/seedSproutManager.js
         sproutSeedBtn.addEventListener('click', toggleSproutSeed);
+        sproutSeedBtn.addEventListener('click', () => {
+            requestAnimationFrame(() => syncRollSeedBtnVisibility());
+        });
+        if (sproutSeedBtn.dataset.rollSeedObserver !== 'true') {
+            sproutSeedBtn.dataset.rollSeedObserver = 'true';
+            const observer = new MutationObserver(() => syncRollSeedBtnVisibility());
+            observer.observe(sproutSeedBtn, { attributes: true, attributeFilter: ['data-state', 'class'] });
+        }
         if (typeof contextMenu !== 'undefined' && contextMenu.attachToElement) {
             // getSproutSeedContextMenuConfig: public/scripts/comp/manualModalManager.js
             contextMenu.attachToElement(sproutSeedBtn, getSproutSeedContextMenuConfig());
@@ -1671,14 +1708,18 @@ function wireSeedListeners() {
 
     if (loadSeedBtn && loadSeedBtn.dataset.wired !== 'true') {
         loadSeedBtn.dataset.wired = 'true';
-        // loadSeedFromPreview: public/scripts/app.js
+        // loadSeedFromPreview: public/scripts/comp/seedSproutManager.js
         loadSeedBtn.addEventListener('click', loadSeedFromPreview);
+        loadSeedBtn.addEventListener('click', () => {
+            requestAnimationFrame(() => syncRollSeedBtnVisibility());
+        });
     }
 
-    // updateSproutSeedButton: public/scripts/app.js
+    // updateSproutSeedButton: public/scripts/comp/seedSproutManager.js
     if (typeof updateSproutSeedButton === 'function') {
         updateSproutSeedButton();
     }
+    syncRollSeedBtnVisibility();
 }
 
 // Initialize when DOM is loaded

@@ -1343,6 +1343,7 @@ let favoritesData = {
     tags: [],
     textReplacements: []
 };
+let favoritesDataLoaded = false;
 let currentFavoritesType = 'tags';
 
 // Initialize favorites manager
@@ -1452,11 +1453,13 @@ async function loadFavorites() {
                     tags: favorites.tags || [],
                     textReplacements: favorites.textReplacements || []
                 };
+                favoritesDataLoaded = true;
                 updateFavoritesCounts();
                 console.log('Loaded favorites:', favoritesData);
             } else {
                 console.warn('No favorites received from server:', result);
                 favoritesData = { tags: [], textReplacements: [] };
+                favoritesDataLoaded = true;
             }
         } else {
             console.error('WebSocket connection not available');

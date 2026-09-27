@@ -47,7 +47,7 @@ class TagAutofillSearch {
             limit,
             includeBreakdown: !!options.includeBreakdown,
             model: options.model || '',
-            artistOrNovelai: options.artistSearch === true,
+            artistOnly: options.artistSearch === true,
             novelaiOnly: options.novelaiOnly === true
         });
 

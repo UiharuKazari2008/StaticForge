@@ -445,9 +445,9 @@ function emphasisCoveredRangesInsert(ranges, start, end) {
 }
 
 /**
- * True when [start,end) is inside a covered range.
- * `ranges` must be sorted by start (non-overlapping as built by collect/list).
- * Stops at the first range that starts past the hit.
+ * True when [start,end) is inside some covered range.
+ * `ranges` is sorted by start. A wider group stored earlier can still cover
+ * a later inner group, so every candidate with start <= the query is checked.
  */
 function emphasisRangeIsCovered(ranges, start, end) {
     let lo = 0;
@@ -457,8 +457,11 @@ function emphasisRangeIsCovered(ranges, start, end) {
         if (ranges[mid].start <= start) lo = mid + 1;
         else hi = mid;
     }
-    if (lo === 0) return false;
-    return end <= ranges[lo - 1].end;
+    for (let i = lo - 1; i >= 0; i--) {
+        const range = ranges[i];
+        if (range.start <= start && end <= range.end) return true;
+    }
+    return false;
 }
 
 /** Point coverage: index inside a sorted covered range. */

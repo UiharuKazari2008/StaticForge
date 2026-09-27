@@ -66,7 +66,7 @@ input:disabled[data-context-menu],
     transform: translateZ(0);
     line-height: 1.75;
     padding: 0.25em 0;
-    max-height: var(--context-menu-max-height, 85vh);
+    max-height: var(--context-menu-max-height, calc(100vh - 48px));
     overflow-y: auto;
     width: auto;
     transform-origin: top center;
@@ -117,7 +117,7 @@ input:disabled[data-context-menu],
     max-width: 400px;
     z-index: var(--z-context-menu);
     padding: 0.25em 0;
-    max-height: 400px;
+    max-height: var(--context-menu-max-height, calc(100vh - 48px));
     overflow-y: auto;
     transform: translateZ(0);
     line-height: 1.75;
@@ -179,13 +179,13 @@ span.context-menu-item-state {
 @keyframes contextMenuFadeIn {
     0% {
         opacity: 0;
-        max-height: calc(var(--context-menu-max-height, 85vh) * 0.75);
+        max-height: calc(var(--context-menu-max-height, calc(100vh - 48px)) * 0.75);
         padding-block: 0.1875em;
     }
 
     100% {
         opacity: 1;
-        max-height: var(--context-menu-max-height, 85vh);
+        max-height: var(--context-menu-max-height, calc(100vh - 48px));
         padding-block: 0.25em;
     }
 }
@@ -193,13 +193,13 @@ span.context-menu-item-state {
 @keyframes contextMenuFadeOut {
     0% {
         opacity: 1;
-        max-height: var(--context-menu-max-height, 85vh);
+        max-height: var(--context-menu-max-height, calc(100vh - 48px));
         padding-block: 0.25em;
     }
 
     100% {
         opacity: 0;
-        max-height: calc(var(--context-menu-max-height, 85vh) * 0.75);
+        max-height: calc(var(--context-menu-max-height, calc(100vh - 48px)) * 0.75);
         padding-block: 0.1875em;
     }
 }
@@ -815,6 +815,13 @@ span.context-menu-item-state {
 .context-menu-submenu-grid.prompt-ctx-fav-grid .context-menu-grid-btn.prompt-ctx-fav-grid-cell.has-grid-image {
     position: relative;
     padding: 0;
+}
+
+.context-menu-submenu-grid.prompt-ctx-fav-grid .context-menu-grid-btn.prompt-ctx-fav-grid-cell:not(.has-grid-image) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.75rem;
 }
 
 .context-menu-submenu-grid.prompt-ctx-fav-grid .context-menu-grid-btn .context-menu-grid-image {

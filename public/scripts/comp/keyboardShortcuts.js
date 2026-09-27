@@ -299,6 +299,7 @@ const MANUAL_CLASSIC_LEFT = [
     shortcutListItem('Alt + F', 'Favorite Tag', 'fa fa-star'),
     shortcutListItem('Alt + D', 'Disable Syntax', 'fa fa-ban'),
     shortcutListItem('Alt + C', 'Clear Preview', 'fas fa-image-slash'),
+    shortcutListItem('Alt + N', 'New Session', 'fa-regular fa-file'),
     shortcutListItem('Alt + Esc', 'Close Editor', 'fa fa-times'),
     shortcutListDivider(),
     shortcutListItem('Alt + ,', 'Previous Image', 'nai-directional-arrow-left'),
@@ -1380,6 +1381,18 @@ function handleKeyDown(event) {
             resetManualPreview();
             showShortcutActionToast('Cleared Preview');
             break;
+        case 'ALT+N': {
+            const saveNameModal = document.getElementById('studioSaveNameModal');
+            const saveFolderModal = document.getElementById('studioSaveFolderModal');
+            const saveDialogOpen = (saveNameModal && !saveNameModal.classList.contains('hidden'))
+                || (saveFolderModal && !saveFolderModal.classList.contains('hidden'));
+            if (saveDialogOpen || !shouldHandleManualModalActions) break;
+            event.preventDefault();
+            event.stopPropagation();
+            // startStudioNewSession: public/scripts/comp/studioSession.js
+            startStudioNewSession();
+            break;
+        }
         case 'ALT+ESCAPE':
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();

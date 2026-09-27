@@ -116,17 +116,32 @@ function applyPinButtonState(pinBtn, isPinned) {
     pinBtn.title = isPinned ? 'Unpin image' : 'Pin image';
 }
 
-/** DOM start/end for contiguous data-index strip (gallery.children is live). */
+/** DOM start/end for a data-index strip (gallery.children is live).
+ * Contiguous runs use arithmetic. A gap or jump sets filterByIndex so callers
+ * keep and drop by dataset.index instead of DOM offset. */
 function galleryKeepStripDomRange(items, stripMin, stripMax) {
     const total = items.length;
-    if (!total) return { start: 0, end: -1, total: 0 };
+    if (!total) return { start: 0, end: -1, total: 0, contiguous: true };
     const firstIdx = parseInt(items[0].dataset.index, 10);
-    if (isNaN(firstIdx)) return { start: 0, end: total - 1, total };
+    if (isNaN(firstIdx)) return { start: 0, end: total - 1, total, contiguous: true };
+    const lastIdx = parseInt(items[total - 1].dataset.index, 10);
+    const midIdx = parseInt(items[total >> 1].dataset.index, 10);
+    if (!isNaN(lastIdx) && lastIdx === firstIdx + total - 1 && midIdx === firstIdx + (total >> 1)) {
+        return {
+            start: Math.max(0, stripMin - firstIdx),
+            end: Math.min(total - 1, stripMax - firstIdx),
+            total,
+            firstIdx,
+            contiguous: true
+        };
+    }
     return {
-        start: Math.max(0, stripMin - firstIdx),
-        end: Math.min(total - 1, stripMax - firstIdx),
+        start: 0,
+        end: total - 1,
         total,
-        firstIdx
+        firstIdx,
+        contiguous: false,
+        filterByIndex: true
     };
 }
 
@@ -1737,16 +1752,19 @@ function ensureGalleryLoadProgressVisible() {
     return true;
 }
 
+function isGalleryProgressTerminalPhase(progress) {
+    const phase = progress && progress.phase;
+    return phase === 'complete' || phase === 'cache_valid';
+}
+
 function updateGalleryDataProgress(progress) {
     syncGalleryProgressDialogState();
+    const terminal = isGalleryProgressTerminalPhase(progress);
     if (!galleryProgressModal && !galleryProgressToastId) {
-        if (progress && progress.phase === 'block_fetch') {
-            ensureGalleryLoadProgressVisible();
-        } else if (isGalleryWindowHidden()) {
+        if (terminal || isGalleryWindowHidden()) {
             return;
-        } else {
-            ensureGalleryLoadProgressVisible();
         }
+        ensureGalleryLoadProgressVisible();
     }
     if (!galleryProgressModal && !galleryProgressToastId) {
         return;
@@ -1784,6 +1802,10 @@ function updateGalleryDataProgress(progress) {
                 statusSpan.textContent = formatGalleryProgressStatusText(progress);
             }
         }
+    }
+
+    if (terminal) {
+        hideGalleryProgressModal();
     }
 }
 
@@ -5592,6 +5614,11 @@ function updateVirtualScrollInternal() {
     let immediateVisibleResolved = 0;
     const immediateVisibleResolveBudget = isRapidScrolling ? 4 : 8;
     const stripDom = galleryKeepStripDomRange(items, stripMin, stripMax);
+    const itemInKeepStrip = (el) => {
+        if (!stripDom.filterByIndex) return true;
+        const idx = parseInt(el.dataset.index, 10);
+        return !isNaN(idx) && idx >= stripMin && idx <= stripMax;
+    };
 
     // Far from keep strip: convert to placeholders (skip cells already placeholders)
     const demoteFarToPlaceholder = (el) => {
@@ -5604,7 +5631,11 @@ function updateVirtualScrollInternal() {
         const fileIndex = parseInt(el.dataset.fileIndex, 10);
         scheduleGalleryItemBlurhash(el, allImages[fileIndex]);
     };
-    if (stripDom.end >= stripDom.start) {
+    if (stripDom.filterByIndex) {
+        for (let i = 0; i < total; i++) {
+            if (!itemInKeepStrip(items[i])) demoteFarToPlaceholder(items[i]);
+        }
+    } else if (stripDom.end >= stripDom.start) {
         for (let i = 0; i < stripDom.start; i++) {
             demoteFarToPlaceholder(items[i]);
         }
@@ -5621,6 +5652,7 @@ function updateVirtualScrollInternal() {
     // Only visit the keep strip for resolve / near-viewport work
     for (let i = stripDom.start; i <= stripDom.end; i++) {
         const el = items[i];
+        if (stripDom.filterByIndex && !itemInKeepStrip(el)) continue;
         const isGalleryItem = el.classList.contains('gallery-item');
         const hasPlaceholderClass = el.classList.contains('gallery-placeholder');
 

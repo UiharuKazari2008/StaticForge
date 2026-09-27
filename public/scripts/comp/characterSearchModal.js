@@ -16,7 +16,11 @@ class CharacterSearchModal extends WikiDisplayBase {
         this.searchDebounceMs = 350;
         this.searchTimeout = null;
         this.resultRowPool = [];
-        this.renderCap = 50;
+        this.resultRowHeight = 0;
+        this.resultWindowStart = -1;
+        this.resultWindowEnd = -1;
+        this.resultSpacerBefore = null;
+        this.resultSpacerAfter = null;
 
         this.init();
     }
@@ -77,13 +81,16 @@ class CharacterSearchModal extends WikiDisplayBase {
             this.characters = (data.data || []).map((char) => this.prepareCharacterEntry(char));
             this.isLoaded = true;
 
-            // Show initial list (maybe some popular ones or just the beginning)
-            this.renderResults(this.characters.slice(0, this.renderCap).map((entry) => entry.char));
+            this.renderResults(this.characters.map((entry) => entry.char));
         } catch (error) {
             console.error('Failed to load character data:', error);
             if (this.resultsList) {
-                this.resultsList.innerHTML = '<div class="error-state">Failed to load characters.</div>';
-                this.resultRowPool = [];
+                this.clearCharacterSearchRows();
+                this.resultsList.textContent = '';
+                const err = document.createElement('div');
+                err.className = 'error-state';
+                err.textContent = 'Failed to load characters.';
+                this.resultsList.appendChild(err);
             }
         }
     }
@@ -145,7 +152,7 @@ class CharacterSearchModal extends WikiDisplayBase {
     performSearch() {
         const query = this.searchInput.value.toLowerCase().trim();
         if (!query) {
-            this.renderResults(this.characters.slice(0, this.renderCap).map((entry) => entry.char));
+            this.renderResults(this.characters.map((entry) => entry.char));
             return;
         }
 
@@ -201,7 +208,7 @@ class CharacterSearchModal extends WikiDisplayBase {
             return a.name.localeCompare(b.name);
         });
 
-        this.renderResults(scored.slice(0, this.renderCap).map(entry => entry.char));
+        this.renderResults(scored.map(entry => entry.char));
     }
 
     ensureResultRow(index) {
@@ -227,48 +234,188 @@ class CharacterSearchModal extends WikiDisplayBase {
         return item;
     }
 
+    clearCharacterSearchRows() {
+        this.resultRowPool.forEach((el) => {
+            if (!el) return;
+            el.remove();
+            el._character = null;
+        });
+        this.resultRowPool = [];
+        if (this.resultSpacerBefore) this.resultSpacerBefore.remove();
+        if (this.resultSpacerAfter) this.resultSpacerAfter.remove();
+        this.resultWindowStart = -1;
+        this.resultWindowEnd = -1;
+    }
+
+    characterSearchScroller() {
+        const list = this.resultsList;
+        if (!list) return null;
+        const wrapped = list.closest('.scrollable-content');
+        if (wrapped) return wrapped;
+        const listOy = getComputedStyle(list).overflowY;
+        if (listOy === 'auto' || listOy === 'scroll') return list;
+        const modal = list.closest('.modal');
+        let el = list.parentElement;
+        while (el && el !== document.body && el !== document.documentElement) {
+            const oy = getComputedStyle(el).overflowY;
+            if (oy === 'auto' || oy === 'scroll') return el;
+            if (modal && el === modal) break;
+            el = el.parentElement;
+        }
+        return list;
+    }
+
+    bindCharacterSearchScroll() {
+        const scroller = this.characterSearchScroller();
+        if (!scroller) return;
+        if (!this._onResultScroll) {
+            this._onResultScroll = () => {
+                if (this._resultPaintRaf) return;
+                this._resultPaintRaf = requestAnimationFrame(() => {
+                    this._resultPaintRaf = 0;
+                    this.paintCharacterSearchWindow();
+                });
+            };
+        }
+        if (scroller !== this._resultScroller) {
+            if (this._resultScroller) {
+                this._resultScroller.removeEventListener('scroll', this._onResultScroll);
+            }
+            scroller.addEventListener('scroll', this._onResultScroll, { passive: true });
+            this._resultScroller = scroller;
+        }
+        if (!this._resultResizeObserver) {
+            this._resultResizeObserver = new ResizeObserver(() => {
+                if (this._resultPaintRaf) return;
+                this._resultPaintRaf = requestAnimationFrame(() => {
+                    this._resultPaintRaf = 0;
+                    this.paintCharacterSearchWindow();
+                });
+            });
+        }
+        if (this._resultResizeTarget !== scroller) {
+            if (this._resultResizeTarget) this._resultResizeObserver.unobserve(this._resultResizeTarget);
+            this._resultResizeObserver.observe(scroller);
+            this._resultResizeTarget = scroller;
+        }
+    }
+
+    ensureCharacterSearchSpacers() {
+        if (!this.resultSpacerBefore) {
+            this.resultSpacerBefore = document.createElement('div');
+            this.resultSpacerBefore.setAttribute('aria-hidden', 'true');
+        }
+        if (!this.resultSpacerAfter) {
+            this.resultSpacerAfter = document.createElement('div');
+            this.resultSpacerAfter.setAttribute('aria-hidden', 'true');
+        }
+        if (this.resultSpacerBefore.parentNode !== this.resultsList) {
+            this.resultsList.insertBefore(this.resultSpacerBefore, this.resultsList.firstChild);
+        }
+        if (this.resultSpacerAfter.parentNode !== this.resultsList) {
+            this.resultsList.appendChild(this.resultSpacerAfter);
+        }
+    }
+
     renderResults(results) {
         if (!this.resultsList) return;
+        this.currentSearchResults = results;
+        this.resultWindowStart = -1;
+        this.resultWindowEnd = -1;
+        const scroller = this.characterSearchScroller();
+        if (scroller) scroller.scrollTop = 0;
+        this.paintCharacterSearchWindow();
+    }
+
+    paintCharacterSearchWindow() {
+        if (!this.resultsList) return;
+        const results = this.currentSearchResults || [];
 
         const emptyOrError = this.resultsList.querySelector('.no-results, .error-state');
         if (emptyOrError) emptyOrError.remove();
 
         if (results.length === 0) {
-            this.resultRowPool.forEach((el) => {
-                if (el) el.remove();
-            });
-            this.resultRowPool = [];
-            this.resultsList.innerHTML = '<div class="no-results">No characters found.</div>';
+            this.clearCharacterSearchRows();
+            this.resultsList.textContent = '';
+            const empty = document.createElement('div');
+            empty.className = 'no-results';
+            empty.textContent = 'No characters found.';
+            this.resultsList.appendChild(empty);
             return;
         }
 
-        const selectedName = this.currentSelectedCharacter ? this.currentSelectedCharacter.name : null;
+        this.bindCharacterSearchScroll();
+        this.ensureCharacterSearchSpacers();
+        const scroller = this._resultScroller || this.resultsList;
 
-        for (let i = 0; i < results.length; i++) {
-            const char = results[i];
-            const item = this.ensureResultRow(i);
+        if (!this.resultRowHeight) {
+            const probe = this.ensureResultRow(0);
+            const nameEl = probe.querySelector('.result-name');
+            const typeEl = probe.querySelector('.result-type');
+            if (nameEl) nameEl.textContent = results[0].name || '';
+            if (typeEl) typeEl.textContent = results[0].copyright || 'Original';
+            probe._character = results[0];
+            this.resultsList.insertBefore(probe, this.resultSpacerAfter);
+            const style = getComputedStyle(probe);
+            const height = probe.offsetHeight
+                + (parseFloat(style.marginTop) || 0)
+                + (parseFloat(style.marginBottom) || 0);
+            this.resultRowHeight = height > 0 ? height : 36;
+        }
+
+        const rowHeight = this.resultRowHeight;
+        const viewHeight = scroller.clientHeight || 480;
+        const overscan = 8;
+        const windowSize = Math.max(24, Math.ceil(viewHeight / rowHeight) + overscan * 2);
+        let scrolled = scroller.scrollTop;
+        if (scroller !== this.resultsList) {
+            const scRect = scroller.getBoundingClientRect();
+            const listRect = this.resultsList.getBoundingClientRect();
+            scrolled = scRect.top - listRect.top;
+            if (scrolled < 0) scrolled = 0;
+        }
+        let start = Math.floor(scrolled / rowHeight) - overscan;
+        if (start < 0) start = 0;
+        let end = start + windowSize;
+        if (end > results.length) {
+            end = results.length;
+            start = Math.max(0, end - windowSize);
+        }
+        if (start === this.resultWindowStart && end === this.resultWindowEnd) return;
+
+        this.resultSpacerBefore.style.height = (start * rowHeight) + 'px';
+        this.resultSpacerAfter.style.height = ((results.length - end) * rowHeight) + 'px';
+
+        const selectedName = this.currentSelectedCharacter ? this.currentSelectedCharacter.name : null;
+        const visible = end - start;
+        for (let slot = 0; slot < visible; slot++) {
+            const char = results[start + slot];
+            const item = this.ensureResultRow(slot);
             item._character = char;
             const nameEl = item.querySelector('.result-name');
             const typeEl = item.querySelector('.result-type');
-            if (nameEl) nameEl.textContent = char.name || '';
-            if (typeEl) typeEl.textContent = char.copyright || 'Original';
+            const nameText = char.name || '';
+            const typeText = char.copyright || 'Original';
+            if (nameEl && nameEl.textContent !== nameText) nameEl.textContent = nameText;
+            if (typeEl && typeEl.textContent !== typeText) typeEl.textContent = typeText;
             item.classList.toggle('active', !!(selectedName && char.name === selectedName));
-            if (item.parentNode !== this.resultsList) {
-                this.resultsList.appendChild(item);
-            } else if (this.resultsList.children[i] !== item) {
-                this.resultsList.insertBefore(item, this.resultsList.children[i] || null);
-            }
         }
 
-        for (let i = results.length; i < this.resultRowPool.length; i++) {
+        for (let i = visible; i < this.resultRowPool.length; i++) {
             const stale = this.resultRowPool[i];
             if (stale) {
                 stale.remove();
                 stale._character = null;
             }
         }
-        this.resultRowPool.length = results.length;
-        this.currentSearchResults = results;
+        this.resultRowPool.length = visible;
+
+        for (let slot = 0; slot < visible; slot++) {
+            this.resultsList.insertBefore(this.resultRowPool[slot], this.resultSpacerAfter);
+        }
+
+        this.resultWindowStart = start;
+        this.resultWindowEnd = end;
     }
 
     renderCharacterDetails(char) {

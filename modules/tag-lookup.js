@@ -18,6 +18,7 @@ const execAsync = promisify(exec);
 const Database = require('better-sqlite3');
 const { buildTitleSearchIndexData } = require('./tagTitleIndex');
 const { normalizeAutofillRanking } = require('./autofillRankingSettings');
+const { parseAutofillArtistSearchPrefix } = require('./autofillSearchSettings');
 const { isTagSuggestable, getTagSuggestCutoffMs, normalizeOfflineTagTitle } = require('./tagModelCutoff');
 
 const AUTOFILL_SEARCH_CACHE_MAX = 500;
@@ -822,6 +823,34 @@ class TagLookup {
         .replace(/[\s\-_]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+    /** Sync d_count / e_count lookup for artist autofill (Danbooru and e621 on one title). */
+    lookupAutofillCountRows(titles) {
+    const out = new Map();
+    this.initSearchDb();
+    if (!this.searchDb || !titles || !titles.length) return out;
+    const keys = [];
+    const seen = new Set();
+    for (const title of titles) {
+        const key = this.normalizeTagName(title || '');
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        keys.push(key);
+    }
+    const chunkSize = 80;
+    for (let i = 0; i < keys.length; i += chunkSize) {
+        const chunk = keys.slice(i, i + chunkSize);
+        const placeholders = chunk.map(() => '?').join(',');
+        const rows = this.searchDb.prepare(
+            `SELECT id, title, normalized_title, category, d_count, e_count, n_count
+             FROM tags WHERE normalized_title IN (${placeholders})`
+        ).all(...chunk);
+        for (const row of rows) {
+            if (row && row.normalized_title) out.set(row.normalized_title, row);
+        }
+    }
+    return out;
 }
 
     /**
@@ -1989,6 +2018,7 @@ class TagLookup {
         includeBreakdown = false,
         model = '',
         artistOrNovelai = false,
+        artistOnly = false,
         novelaiOnly = false
     } = options;
 
@@ -1998,7 +2028,7 @@ class TagLookup {
     const rankingCfg = this.getRankingConfig();
     const normalized = this.normalizeTagName(query);
     const sanitizedLimit = Math.max(limit, 1);
-    const cacheKey = `${normalized}\x00${sanitizedLimit}\x00${category ?? ''}\x00${minUseCount ?? ''}\x00${rankingCfg.rankingVersion}\x00${includeBreakdown ? 1 : 0}\x00${getTagSuggestCutoffMs(model)}\x00${artistOrNovelai ? 1 : 0}\x00${novelaiOnly ? 1 : 0}`;
+    const cacheKey = `${normalized}\x00${sanitizedLimit}\x00${category ?? ''}\x00${minUseCount ?? ''}\x00${rankingCfg.rankingVersion}\x00${includeBreakdown ? 1 : 0}\x00${getTagSuggestCutoffMs(model)}\x00${artistOrNovelai ? 1 : 0}\x00${artistOnly ? 1 : 0}\x00${novelaiOnly ? 1 : 0}`;
     const cached = this.getAutofillSearchCacheEntry(cacheKey);
     if (cached) {
         return cached;
@@ -2087,7 +2117,7 @@ class TagLookup {
 
     const rankedIds = [...candidateScores.entries()]
         .sort((a, b) => b[1] - a[1])
-        .slice(0, (artistOrNovelai || novelaiOnly) ? sanitizedLimit * 12 : sanitizedLimit * 4)
+        .slice(0, (artistOrNovelai || artistOnly || novelaiOnly) ? sanitizedLimit * 12 : sanitizedLimit * 4)
         .map(([id]) => id);
 
     const rows = this.fetchTagsByIdsSync(rankedIds);
@@ -2118,13 +2148,15 @@ class TagLookup {
     if (category !== undefined) {
         results = results.filter(entry => entry.row.category === category);
     }
-    if (artistOrNovelai) {
+    if (artistOnly || artistOrNovelai) {
         results = results.filter(entry => {
             const row = entry.row;
-            if (this.getNovelTrainingCount(row) > 0) return true;
             const cat = row.category;
-            if (cat === 1 || cat === '1') return true;
-            return typeof cat === 'string' && cat.toLowerCase() === 'artist';
+            const isArtist = cat === 1 || cat === '1'
+                || (typeof cat === 'string' && cat.toLowerCase() === 'artist');
+            if (isArtist) return true;
+            if (artistOnly) return false;
+            return this.getNovelTrainingCount(row) > 0;
         });
     }
     if (novelaiOnly) {
@@ -5708,7 +5740,10 @@ class TagLookup {
      */
     normalizeTitleForUrl(title) {
         if (!title) return '';
-        let normalized = title.trim();
+        let normalized = String(title).trim();
+        const artist = parseAutofillArtistSearchPrefix(normalized);
+        if (artist.isArtistSearch) normalized = artist.remainder;
+        if (!normalized) return '';
         normalized = normalized.replace(/\\/g, '');
         normalized = normalized.replace(/^(?:species|invalid):/i, '');
         return normalized.replace(/\s+/g, '_').trim();

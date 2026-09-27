@@ -65,8 +65,8 @@ function registerDreamscapeHomeDsap() {
             launchId: 'control-panel',
             icon: 'fas fa-gauge',
             text: 'Control Panel',
-            fullName: 'Dreamscape System Control Panel',
-            appMenu: true,
+            fullName: 'Control Panel',
+            appMenu: false,
             startMenu: true,
             startMenuIndex: 5,
             launch() {

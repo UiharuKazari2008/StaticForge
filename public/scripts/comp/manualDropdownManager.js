@@ -2464,6 +2464,18 @@ function setupDatasetDropdownContextMenu() {
                         }
                     },
                     {
+                        icon: 'fas fa-grip-lines',
+                        text: 'Bake New Lines',
+                        action: 'toggleBakeNewlines',
+                        keepMenuOpen: true,
+                        showIndicator: true,
+                        disabled: false,
+                        loadfn: (item) => {
+                            item.disabled = !window.keepPromptNewlines;
+                            item.checked = !!window.bakePromptNewlines && !!window.keepPromptNewlines;
+                        }
+                    },
+                    {
                         icon: 'fas fa-hashtag',
                         text: 'Auto Char Numerize',
                         action: 'toggleAutoCharNumerize',
@@ -2536,10 +2548,18 @@ function handleDatasetContextMenuAction(event) {
             break;
         case 'toggleNewlines':
             keepPromptNewlines = !keepPromptNewlines;
+            if (!keepPromptNewlines) bakePromptNewlines = false;
             // syncKeepNewlinesButtons: public/scripts/comp/promptTextareaToolbar.js
             promptTextareaToolbar.syncKeepNewlinesButtons();
             // updatePromptStatusIcons: public/scripts/comp/utilities.js
             updatePromptStatusIcons();
+            break;
+        case 'toggleBakeNewlines':
+            if (!keepPromptNewlines) {
+                bakePromptNewlines = false;
+                break;
+            }
+            bakePromptNewlines = !bakePromptNewlines;
             break;
         case 'toggleAutoCharNumerize':
             autoCharNumerize = autoCharNumerize === false;

@@ -89,11 +89,14 @@ async function handleSavePreset(handlers, ws, message, clientInfo, wsServer) {
             config.uuid = existingPreset?.uuid || handlers.generateUUID();
         }
 
-        if (existingPreset?.target_workspace) {
-            config.target_workspace = existingPreset.target_workspace;
-        } else if (!config.target_workspace || config.target_workspace === 'default') {
-            const activeWorkspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
-            config.target_workspace = activeWorkspaceId;
+        const explicitWorkspace = config.target_workspace && config.target_workspace !== 'default';
+        if (!explicitWorkspace) {
+            if (existingPreset?.target_workspace) {
+                config.target_workspace = existingPreset.target_workspace;
+            } else {
+                const activeWorkspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+                config.target_workspace = activeWorkspaceId;
+            }
         }
 
         const success = handlers.globalResources.modifyConfig('promptConfig').assign(['presets', presetName], config);

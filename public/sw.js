@@ -963,14 +963,17 @@ function checkStallDetection() {
             const now = Date.now();
             if (now - lastHeartbeatTime > 10000) {
                 lastHeartbeatTime = now;
-                // Send a heartbeat progress update
+                // Snapshot before matchAll — downloadState is reset when the download finishes
+                const completedNow = downloadState.completed;
+                const totalNow = downloadState.total;
+                const currentFileNow = downloadState.currentFile;
                 self.clients.matchAll().then(clients => {
                     clients.forEach(client => {
                         client.postMessage({
                             type: 'STATIC_CACHE_PROGRESS',
-                            completed: downloadState.completed,
-                            total: downloadState.total,
-                            currentFile: downloadState.currentFile,
+                            completed: completedNow,
+                            total: totalNow,
+                            currentFile: currentFileNow,
                             heartbeat: true
                         });
                     });
@@ -1004,31 +1007,68 @@ function stopStallDetection() {
     lastHeartbeatTime = 0;
 }
 
+// Drop every static-cache row for this path, including Vary / ?sha= siblings.
+// cache.delete(url) misses those, and cache.match then keeps returning the old row
+// with no x-file-hash — the client re-downloads and restarts forever.
+async function purgeStaticCacheEntries(cache, urlPath) {
+    let target;
+    try {
+        target = new URL(urlPath, self.location.origin);
+    } catch (error) {
+        return;
+    }
+    const keys = await cache.keys();
+    await Promise.all(keys.map((request) => {
+        try {
+            const keyUrl = new URL(request.url);
+            if (keyUrl.origin === target.origin && keyUrl.pathname === target.pathname) {
+                return cache.delete(request);
+            }
+        } catch (error) { /* ignore bad key */ }
+        return undefined;
+    }));
+}
+
+function staticCacheResponseWithHash(bodyBuffer, response, hash) {
+    const headers = new Headers(response.headers);
+    headers.delete('vary');
+    headers.delete('content-encoding');
+    headers.set('content-length', String(bodyBuffer.byteLength));
+    headers.set('x-file-hash', hash);
+    return new Response(bodyBuffer, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: headers
+    });
+}
+
 // Cache static files from server
 async function cacheStaticFiles(files, silent = false) {
     // Check if already downloading
     if (downloadState.isDownloading) {
         console.warn('Download already in progress, sending current status');
-        // Immediately send current status to all clients
+        const completedNow = downloadState.completed;
+        const totalNow = downloadState.total;
+        const currentFileNow = downloadState.currentFile;
+        const startTimeNow = downloadState.startTime;
+        const lastProgressTimeNow = downloadState.lastProgressTime;
         self.clients.matchAll().then(clients => {
             clients.forEach(client => {
-                // Send current status immediately
                 client.postMessage({
                     type: 'STATIC_CACHE_ALREADY_IN_PROGRESS',
                     currentDownload: {
-                        completed: downloadState.completed,
-                        total: downloadState.total,
-                        currentFile: downloadState.currentFile,
-                        startTime: downloadState.startTime,
-                        lastProgressTime: downloadState.lastProgressTime
+                        completed: completedNow,
+                        total: totalNow,
+                        currentFile: currentFileNow,
+                        startTime: startTimeNow,
+                        lastProgressTime: lastProgressTimeNow
                     }
                 });
-                // Also send a progress update to sync the UI
                 client.postMessage({
                     type: 'STATIC_CACHE_PROGRESS',
-                    completed: downloadState.completed,
-                    total: downloadState.total,
-                    currentFile: downloadState.currentFile
+                    completed: completedNow,
+                    total: totalNow,
+                    currentFile: currentFileNow
                 });
             });
         });
@@ -1105,48 +1145,32 @@ async function cacheStaticFiles(files, silent = false) {
                 
                 if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
                     try {
-                        // Check if file already exists in cache
-                        const existingResponse = await cache.match(file.url);
-                        if (existingResponse) {
-                            // Delete the old entry to ensure clean replacement
-                            await cache.delete(file.url);
-                        }
+                        const body = await response.arrayBuffer();
+                        await purgeStaticCacheEntries(cache, file.url);
+                        const cacheKey = new Request(file.url);
+                        await cache.put(cacheKey, staticCacheResponseWithHash(body, response, file.hash));
 
-                        // Add hash to response headers for future comparison
-                        const headers = new Headers(response.headers);
-                        headers.set('x-file-hash', file.hash);
-
-                        const responseWithHash = new Response(response.body, {
-                            status: response.status,
-                            statusText: response.statusText,
-                            headers: headers
-                        });
-
-                        await cache.put(file.url, responseWithHash);
-                        downloadState.updatedFiles.push({ url: file.url, hash: file.hash });
-
-                        // Verify it was cached with the new hash
-                        const cachedResponse = await cache.match(file.url);
-                        if (cachedResponse) {
-                            const newHash = cachedResponse.headers.get('x-file-hash');
-
-                            // Double-check the hash matches what we intended to store
-                            if (newHash !== file.hash) {
-                                console.warn(`Hash mismatch! Expected: ${file.hash}, Got: ${newHash}`);
-                            }
+                        const cachedResponse = await cache.match(cacheKey, { ignoreVary: true });
+                        const newHash = cachedResponse && cachedResponse.headers.get('x-file-hash');
+                        if (newHash !== file.hash) {
+                            console.warn(`Hash mismatch! Expected: ${file.hash}, Got: ${newHash}`);
+                        } else {
+                            downloadState.updatedFiles.push({ url: file.url, hash: file.hash });
                         }
 
                         downloadState.completed++;
                         downloadState.lastProgressTime = Date.now();
 
-                        // Notify client of progress
+                        const completedNow = downloadState.completed;
+                        const totalNow = downloadState.total;
+                        const currentFileNow = file.url;
                         self.clients.matchAll().then(clients => {
                             clients.forEach(client => {
                                 client.postMessage({
                                     type: 'STATIC_CACHE_PROGRESS',
-                                    completed: downloadState.completed,
-                                    total: downloadState.total,
-                                    currentFile: file.url
+                                    completed: completedNow,
+                                    total: totalNow,
+                                    currentFile: currentFileNow
                                 });
                             });
                         });

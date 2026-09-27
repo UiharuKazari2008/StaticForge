@@ -42,6 +42,10 @@ const vfsClient = {
         return wsClient.sendMessage('vfs_folder_has_user_files', { folderIds });
     },
 
+    async createShortcut(path, shortcut, workspaceId) {
+        return wsClient.sendMessage('vfs_create_shortcut', { path, shortcut, workspaceId });
+    },
+
     async createFolder(path, name) {
         return wsClient.sendMessage('vfs_create_folder', { path, name });
     },
