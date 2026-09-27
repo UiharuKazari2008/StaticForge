@@ -84,6 +84,17 @@ const SCOPE_WS_PACKETS = {
         'delete_knowledge_memories_bulk', 'count_knowledge_memories_by_filter',
         'delete_knowledge_memories_by_filter', 'update_knowledge_memory'
     ],
+    nax: [
+        'get_nax_galleries', 'get_nax_tags', 'get_nax_marked_tags', 'get_nax_expander_presets',
+        'set_nax_favorite', 'set_nax_try', 'set_nax_hidden', 'generate_nax_custom_tag',
+        'delete_nax_custom_tag', 'get_nax_vibes_gallery', 'clear_nax_vibes_gallery_cache'
+    ],
+    explore: [
+        'get_novelai_explore_gallery', 'get_novelai_explore_user', 'get_novelai_explore_post',
+        'set_novelai_explore_post_like', 'downvote_novelai_explore_post', 'block_novelai_explore_creator',
+        'list_novelai_explore_blocked_creators', 'clear_novelai_explore_gallery_cache',
+        'ensure_novelai_explore_image', 'check_novelai_explore_upload', 'upload_novelai_explore_image'
+    ],
     infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check']
 };
 
@@ -101,6 +112,8 @@ const AVAILABLE_SCOPES = [
     { id: 'autofill', label: 'Autofill / Grimoire', description: 'Autofill ranking and tag wiki / Grimoire (not search)' },
     { id: 'notes', label: 'Notes', description: 'Notepad create, read, and update' },
     { id: 'knowledge', label: 'Knowledge', description: 'Knowledge memory read and update' },
+    { id: 'nax', label: 'NAX', description: 'NovelAI Explore tags database and galleries' },
+    { id: 'explore', label: 'Explore', description: 'NovelAI Explore (Agora) gallery and post operations' },
     { id: 'infrastructure', label: 'Infrastructure', description: 'Ping, status, version checks' },
     // Module-based scopes (sfapp_ prefix)
     { id: 'sfapp_cake_pantry', label: 'Cake Pantry', description: 'Account-based cake tracking (deliver, feed, inspect, consume)' },
