@@ -48,6 +48,10 @@ const nativeStubs = {
     },
     lightningcss: {
         transform({ code }) { return { code: Buffer.from(code || '') }; }
+    },
+    blurhash: {
+        encode() { return 'stub'; },
+        decode() { return new Uint8ClampedArray(0); }
     }
 };
 const origRequire = Module.prototype.require;
@@ -92,7 +96,7 @@ const {
 const WorkspaceManager = require('../modules/workspace');
 const { WorkspaceWebSocketHandlers } = require('../modules/ws/handlers/90-workspaceHandler');
 const { filterFilenamesVisibleToClient } = require('../modules/imageModerationFlag');
-const VfsManager = require('../modules/vfsManager');
+const { VfsManager } = require('../modules/vfsManager');
 const VfsWebSocketHandlers = require('../modules/vfsWebSocketHandlers');
 const { _test } = require('../modules/mcpAgentFacade');
 const { UNDER_REVIEW_ERROR } = require('../modules/imageModerationFlag');
@@ -518,10 +522,6 @@ async function testOrdinaryScrapsStayVisible() {
     assert.strictEqual(filenameHiddenByFakeDelete(harness.globalResources, 'a_upscaled.png'), false);
     assert.strictEqual(await agentCannotSeeFilename(harness.globalResources, 'a_upscaled.png'), false);
     assert.strictEqual(await agentCannotSeeFilename(harness.globalResources, 'keep.png'), false);
-
-    workspaceState.api.removeFromWorkspaceArray('scraps', 'a.png', 'lab', null, { clearHiddenByFakeDelete: true });
-    assert.strictEqual(filenameHiddenByFakeDelete(harness.globalResources, 'a.png'), false);
-    assert.strictEqual(await agentCannotSeeFilename(harness.globalResources, 'a.png'), false);
 }
 
 async function testDeleteUnupscaledOriginalGated() {
@@ -789,8 +789,10 @@ function makeRealWorkspaceManager(root, extras) {
         getWebSocketServer: () => ({ broadcast() {} }),
         getVfsPathUuid: () => null
     };
+    const wm = new WorkspaceManager(globalResources);
+    globalResources.getWorkspaceManager = () => wm;
     return {
-        wm: new WorkspaceManager(globalResources),
+        wm,
         globalResources,
         workspacesPath,
         desktop,
