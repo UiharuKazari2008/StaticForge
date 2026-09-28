@@ -37,6 +37,7 @@ const PROMPT_CTX_NAX_FAV_MERGE_GROUPS = [
     {
         slugs: [
             'danbooru-artist-tags-2-v5',
+            'danbooru-artist-tags-male-2-v5',
             'danbooru-artist-tags-v5',
             'danbooru-artist-tags-2-v4.5',
             'danbooru-artist-tags-v4.5',

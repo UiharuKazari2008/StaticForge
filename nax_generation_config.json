@@ -166,6 +166,18 @@
       "qualityToggle": true,
       "ucPreset": 2,
       "seed": 2320725169
+    },
+    "danbooru-artist-tags-male-2-v5": {
+      "promptTemplate": "artist:<INPUT_VALUE>, cowboy shot, -2::panties, huge breasts::",
+      "characterPrompt": "boy, facing viewer, fully clothed",
+      "model": "nai-diffusion-5-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 4,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 0,
+      "seed": 2138582679
     }
   }
 }

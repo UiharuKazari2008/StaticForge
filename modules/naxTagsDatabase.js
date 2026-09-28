@@ -16,7 +16,8 @@ const NAX_FAVORITE_MERGE_GROUPS = [
         'danbooru-artist-tags-v4.5',
         'danbooru-artist-tags-2-v4.5',
         'danbooru-artist-tags-v5',
-        'danbooru-artist-tags-2-v5'
+        'danbooru-artist-tags-2-v5',
+        'danbooru-artist-tags-male-2-v5'
     ],
     [
         'danbooru-character-tags-v4',
@@ -925,7 +926,8 @@ function artistGallerySlugsForModel(model) {
     if (isNaxModelV5(model)) {
         return existingGallerySlugs([
             'danbooru-artist-tags-v5',
-            'danbooru-artist-tags-2-v5'
+            'danbooru-artist-tags-2-v5',
+            'danbooru-artist-tags-male-2-v5'
         ]);
     }
     if (isNaxModelV45(model)) {
@@ -960,6 +962,7 @@ function findArtistPreview(tagName) {
     const slugs = existingGallerySlugs([
         'danbooru-artist-tags-v5',
         'danbooru-artist-tags-2-v5',
+        'danbooru-artist-tags-male-2-v5',
         'danbooru-artist-tags-v4.5',
         'danbooru-artist-tags-2-v4.5',
         'danbooru-artist-tags-v4',
