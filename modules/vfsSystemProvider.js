@@ -27,6 +27,7 @@ const ROOT_JSON_ENTRIES = [
     { pathKey: 'datasetTagsFurry', name: 'dataset_tags_furry.json', icon: 'fas fa-paw' },
     { pathKey: 'naxGenerationConfig', name: 'nax_generation_config.json', icon: 'fas fa-flask' }
 ];
+const ROOT_JSON_PATH_KEYS = new Set(ROOT_JSON_ENTRIES.map(entry => entry.pathKey));
 
 const APPLICATION_ENTRIES = [
     { id: 'naxt', name: 'Atelier', icon: 'fas fa-flask', openTarget: 'applet', appletId: 'naxt' },
@@ -190,7 +191,7 @@ class VfsSystemProvider {
             }));
         }
         for (const entry of ROOT_JSON_ENTRIES) {
-            const fp = this._safePathKey(entry.pathKey);
+            const fp = this._resolveRootJsonPath(entry.pathKey);
             let size = 0;
             let mtime = null;
             if (fp && fs.existsSync(fp)) {
@@ -420,7 +421,7 @@ class VfsSystemProvider {
         if (segments.length > 0) return { itemCount: 0, totalSizeBytes: 0 };
         let totalSizeBytes = 0;
         for (const entry of ROOT_JSON_ENTRIES) {
-            const fp = this._safePathKey(entry.pathKey);
+            const fp = this._resolveRootJsonPath(entry.pathKey);
             if (fp && fs.existsSync(fp)) {
                 try {
                     totalSizeBytes += fs.statSync(fp).size;
@@ -568,9 +569,13 @@ class VfsSystemProvider {
         return abs;
     }
 
-    _safePathKey(key) {
+    _resolveRootJsonPath(pathKey) {
+        // Allowlist only — do not call getPath() for other keys (existence oracle).
+        if (typeof pathKey !== 'string' || !ROOT_JSON_PATH_KEYS.has(pathKey)) {
+            return null;
+        }
         try {
-            return this.globalResources.getPath(key);
+            return this.globalResources.getPath(pathKey);
         } catch (_) {
             return null;
         }
@@ -678,7 +683,7 @@ class VfsSystemProvider {
     }
 
     _readRootJson(pathKey) {
-        const fp = this._safePathKey(pathKey);
+        const fp = this._resolveRootJsonPath(pathKey);
         if (!fp || !fs.existsSync(fp)) {
             throw new Error('File not found');
         }
