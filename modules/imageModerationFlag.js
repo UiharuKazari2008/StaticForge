@@ -301,6 +301,22 @@ function markHiddenByFakeDelete(globalResources, filenames, workspaceId) {
     return id;
 }
 
+async function filenameIsModerationFlagged(globalResources, filename) {
+    if (!filename) return false;
+    try {
+        const db = globalResources && typeof globalResources.getMetadataDatabase === 'function'
+            ? globalResources.getMetadataDatabase()
+            : null;
+        if (db && typeof db.isImageOrPairFlagged === 'function') {
+            return await db.isImageOrPairFlagged(filename);
+        }
+        if (db && typeof db.isImageFlagged === 'function') {
+            return await db.isImageFlagged(filename);
+        }
+    } catch (_err) { /* flag check is best-effort */ }
+    return false;
+}
+
 async function filterFilenamesVisibleToClient(globalResources, filenames, clientInfo) {
     const list = Array.isArray(filenames) ? filenames : [];
     if (!isMcpAgentClient(clientInfo)) return list.slice();
@@ -312,6 +328,73 @@ async function filterFilenamesVisibleToClient(globalResources, filenames, client
     return out;
 }
 
+async function filterGroupsVisibleToClient(globalResources, groups, clientInfo) {
+    const list = Array.isArray(groups) ? groups : [];
+    if (!isMcpAgentClient(clientInfo)) return groups;
+    const out = [];
+    for (const group of list) {
+        if (!group || typeof group !== 'object') {
+            out.push(group);
+            continue;
+        }
+        out.push({
+            ...group,
+            images: await filterFilenamesVisibleToClient(globalResources, group.images || [], clientInfo)
+        });
+    }
+    return out;
+}
+
+async function filterGroupVisibleToClient(globalResources, group, clientInfo) {
+    if (!group || typeof group !== 'object' || !isMcpAgentClient(clientInfo)) return group;
+    return {
+        ...group,
+        images: await filterFilenamesVisibleToClient(globalResources, group.images || [], clientInfo)
+    };
+}
+
+async function payloadHiddenFromAgent(globalResources, value) {
+    const names = [];
+    collectPayloadFilenames(value, names);
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const key of ['previewImageFilename', 'targetId']) {
+            if (typeof value[key] === 'string' && value[key] && !names.includes(value[key])) {
+                names.push(value[key]);
+            }
+        }
+        if ((value.targetKind === 'image' || value.targetKind === 'scrap')
+            && typeof value.name === 'string' && value.name && !names.includes(value.name)) {
+            names.push(value.name);
+        }
+    }
+    for (const name of names) {
+        if (await agentCannotSeeFilename(globalResources, name)) return true;
+    }
+    return false;
+}
+
+async function filterVfsListItemsVisibleToClient(globalResources, items, clientInfo) {
+    const list = Array.isArray(items) ? items : [];
+    if (!isMcpAgentClient(clientInfo)) return items;
+    const out = [];
+    for (const item of list) {
+        if (await payloadHiddenFromAgent(globalResources, item)) continue;
+        out.push(item);
+    }
+    return out;
+}
+
+async function filterDesktopShortcutsVisibleToClient(globalResources, desktopData, clientInfo) {
+    if (!desktopData || !isMcpAgentClient(clientInfo)) return desktopData;
+    const shortcuts = Array.isArray(desktopData.shortcuts) ? desktopData.shortcuts : [];
+    const kept = [];
+    for (const shortcut of shortcuts) {
+        if (await payloadHiddenFromAgent(globalResources, shortcut)) continue;
+        kept.push(shortcut);
+    }
+    return { ...desktopData, shortcuts: kept };
+}
+
 function filenameHiddenByFakeDelete(globalResources, filename) {
     if (!filename) return false;
     return collectFakeDeletedFilenames(globalResources).has(filename);
@@ -321,18 +404,7 @@ async function agentCannotSeeFilename(globalResources, filename) {
     if (!filename) return false;
     // CURSOR: agents hide flagged images and fake-deleted names only — ordinary scraps stay visible
     if (filenameHiddenByFakeDelete(globalResources, filename)) return true;
-    try {
-        const db = globalResources && typeof globalResources.getMetadataDatabase === 'function'
-            ? globalResources.getMetadataDatabase()
-            : null;
-        if (db && typeof db.isImageOrPairFlagged === 'function') {
-            return await db.isImageOrPairFlagged(filename);
-        }
-        if (db && typeof db.isImageFlagged === 'function') {
-            return await db.isImageFlagged(filename);
-        }
-    } catch (_err) { /* hide check is best-effort */ }
-    return false;
+    return filenameIsModerationFlagged(globalResources, filename);
 }
 
 async function rejectAgentHiddenHttpFile(req, res, globalResources, filename, errorText) {
@@ -734,7 +806,12 @@ module.exports = {
     markHiddenByFakeDelete,
     clearHiddenByFakeDelete,
     filenameHiddenByFakeDelete,
+    filenameIsModerationFlagged,
     filterFilenamesVisibleToClient,
+    filterGroupsVisibleToClient,
+    filterGroupVisibleToClient,
+    filterVfsListItemsVisibleToClient,
+    filterDesktopShortcutsVisibleToClient,
     agentCannotSeeFilename,
     rejectAgentHiddenHttpFile,
     collectAgentHiddenDeleteErrors,

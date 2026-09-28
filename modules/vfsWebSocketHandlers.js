@@ -2,6 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
+const {
+    isMcpAgentClient,
+    filterVfsListItemsVisibleToClient
+} = require('./imageModerationFlag');
 
 // modules/replicationJournal.js
 async function recordReplicationVfsJournal(contentHash, payload = null) {
@@ -73,6 +77,18 @@ class VfsWebSocketHandlers {
             sortDirection: sortDirection || 'asc',
             search: search || ''
         });
+        if (isMcpAgentClient(clientInfo) && result && Array.isArray(result.items)) {
+            const before = result.items.length;
+            result.items = await filterVfsListItemsVisibleToClient(
+                this.globalResources,
+                result.items,
+                clientInfo
+            );
+            const dropped = before - result.items.length;
+            if (dropped > 0 && typeof result.totalCount === 'number') {
+                result.totalCount = Math.max(0, result.totalCount - dropped);
+            }
+        }
         this.handlers.sendToClient(ws, {
             type: 'vfs_list_directory_response',
             requestId: message.requestId,

@@ -22,6 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const workspaceCssService = require('./workspaceCssService');
+const { filterDesktopShortcutsVisibleToClient } = require('./imageModerationFlag');
 
 /*
  * WebSocket Response Format Standards for Workspace Operations:
@@ -779,7 +780,11 @@ class WebSocketMessageHandlers {
             }
 
             const workspaceManager = this.globalResources.getWorkspaceManager();
-            const desktopData = workspaceManager.getDesktopShortcuts(workspaceId);
+            const desktopData = await filterDesktopShortcutsVisibleToClient(
+                this.globalResources,
+                workspaceManager.getDesktopShortcuts(workspaceId),
+                clientInfo
+            );
 
             this.sendToClient(ws, {
                 type: 'desktop_get_shortcuts_response',

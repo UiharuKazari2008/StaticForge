@@ -165,7 +165,8 @@ const {
     isMcpAgentClient,
     agentCannotSeeFilename,
     collectAgentHiddenDeleteErrors,
-    mergeBulkDeleteExtraErrors
+    mergeBulkDeleteExtraErrors,
+    filenameIsModerationFlagged
 } = require('./imageModerationFlag');
 function broadcastImageFlagUpdated(globalResources, filename, flag, workspaceId) {
     const ws = globalResources && typeof globalResources.getWebSocketServer === 'function'
@@ -4485,13 +4486,13 @@ async function callTool(globalResources, req, name, args) {
         if (!filenames.length) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
         }
-        for (const filename of filenames) {
-            if (await mcpFilenameIsFlagged(globalResources, filename)) {
-                return mcpUnderReviewResult({ filename: null });
-            }
-        }
         const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
         if (input.remove === true) {
+            for (const filename of filenames) {
+                if (await filenameIsModerationFlagged(globalResources, filename)) {
+                    return mcpUnderReviewResult({ filename: null });
+                }
+            }
             const results = [];
             for (const filename of filenames) {
                 results.push(flattenPacket(await dispatchPacketTool(globalResources, req, 'workspace_remove_scrap', {
@@ -4500,6 +4501,11 @@ async function callTool(globalResources, req, name, args) {
                 })));
             }
             return mcpTextResult({ success: results.every((row) => row.success), workspaceId, filenames, results });
+        }
+        for (const filename of filenames) {
+            if (await mcpFilenameIsFlagged(globalResources, filename)) {
+                return mcpUnderReviewResult({ filename: null });
+            }
         }
         return mcpTextResult(flattenPacket(await dispatchPacketTool(globalResources, req, 'workspace_bulk_add_scrap', {
             id: workspaceId,

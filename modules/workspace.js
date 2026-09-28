@@ -398,6 +398,18 @@ class WorkspaceManager {
         return names;
     }
 
+    _carryHiddenByFakeDelete(source, target) {
+        const names = Array.isArray(source && source.hiddenByFakeDelete) ? source.hiddenByFakeDelete : [];
+        if (!target || names.length === 0) return;
+        if (!Array.isArray(target.hiddenByFakeDelete)) target.hiddenByFakeDelete = [];
+        const seen = new Set(target.hiddenByFakeDelete);
+        for (const name of names) {
+            if (!name || seen.has(name)) continue;
+            target.hiddenByFakeDelete.push(name);
+            seen.add(name);
+        }
+    }
+
     clearHiddenByFakeDelete(filenames, workspacesOverride = null) {
         const workspaces = workspacesOverride || this.globalResources.getWorkspacesConfig({ clone: true });
         const drop = new Set((Array.isArray(filenames) ? filenames : [filenames]).filter(Boolean));
@@ -626,6 +638,8 @@ class WorkspaceManager {
         workspaces.default.scraps = [...new Set(workspaces.default.scraps)];
         workspaces.default.pinned = [...new Set(workspaces.default.pinned)];
 
+        this._carryHiddenByFakeDelete(workspace, workspaces.default);
+
         delete workspaces[id];
         this.globalResources.saveConfig('workspaces', workspaces);
         if (ownershipChanges.length > 0 || pinChanges.length > 0) {
@@ -709,6 +723,8 @@ class WorkspaceManager {
         targetWorkspace.files = [...new Set(targetWorkspace.files)];
         targetWorkspace.scraps = [...new Set(targetWorkspace.scraps)];
         targetWorkspace.pinned = [...new Set(targetWorkspace.pinned)];
+
+        this._carryHiddenByFakeDelete(sourceWorkspace, targetWorkspace);
 
         delete workspaces[sourceId];
         this.globalResources.saveConfig('workspaces', workspaces);
@@ -1302,7 +1318,13 @@ class WorkspaceManager {
                 totalRemoved += removed;
                 needsSave = true;
             }
-            const removedScraps = this.removeFromWorkspaceArray('scraps', validFilenames, workspaceId, workspaces);
+            const removedScraps = this.removeFromWorkspaceArray(
+                'scraps',
+                validFilenames,
+                workspaceId,
+                workspaces,
+                { clearHiddenByFakeDelete: true }
+            );
             hiddenCleared += this._lastHiddenByFakeDeleteCleared || 0;
             if (removedScraps > 0) {
                 totalRemoved += removedScraps;

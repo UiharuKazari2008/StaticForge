@@ -437,20 +437,31 @@ class VfsManager {
         });
     }
 
-    async _removeVirtualSurfaceFromSource(ref) {
+    _skipFakeDeletedScrapsFromOptions(options) {
+        return isMcpAgentClient(options && options.clientInfo) || !!(options && options.skipFakeDeletedScraps);
+    }
+
+    async _removeVirtualSurfaceFromSource(ref, options = {}) {
         const wsId = ref.workspaceId;
         if (!wsId) return;
         const wm = this.globalResources.getWorkspaceManager();
         const refDb = this.globalResources.getReferenceMetadataDatabase();
+        const skipFakeDeletedScraps = this._skipFakeDeletedScrapsFromOptions(options);
         switch (ref.targetKind) {
             case 'image':
                 wm.removeFromWorkspaceArray('files', [ref.targetId], wsId);
                 break;
             case 'scrap':
-                if (this._skipFakeDeletedScraps && filenameHiddenByFakeDelete(this.globalResources, ref.targetId)) {
+                if (skipFakeDeletedScraps && filenameHiddenByFakeDelete(this.globalResources, ref.targetId)) {
                     return;
                 }
-                wm.removeFromWorkspaceArray('scraps', [ref.targetId], wsId);
+                wm.removeFromWorkspaceArray(
+                    'scraps',
+                    [ref.targetId],
+                    wsId,
+                    null,
+                    { clearHiddenByFakeDelete: !skipFakeDeletedScraps }
+                );
                 break;
             case 'reference':
                 refDb.removeReferenceFromWorkspace(ref.targetId, wsId);
@@ -2259,20 +2270,27 @@ class VfsManager {
         await vfsDatabase.deleteEntry(entry.id);
     }
 
-    async _deleteVirtualSurfaceAsset(ref) {
+    async _deleteVirtualSurfaceAsset(ref, options = {}) {
         const wsId = ref.workspaceId;
         if (!wsId) return;
         const wm = this.globalResources.getWorkspaceManager();
         const refDb = this.globalResources.getReferenceMetadataDatabase();
+        const skipFakeDeletedScraps = this._skipFakeDeletedScrapsFromOptions(options);
         switch (ref.targetKind) {
             case 'image':
                 wm.removeFromWorkspaceArray('files', [ref.targetId], wsId);
                 break;
             case 'scrap':
-                if (this._skipFakeDeletedScraps && filenameHiddenByFakeDelete(this.globalResources, ref.targetId)) {
+                if (skipFakeDeletedScraps && filenameHiddenByFakeDelete(this.globalResources, ref.targetId)) {
                     return;
                 }
-                wm.removeFromWorkspaceArray('scraps', [ref.targetId], wsId);
+                wm.removeFromWorkspaceArray(
+                    'scraps',
+                    [ref.targetId],
+                    wsId,
+                    null,
+                    { clearHiddenByFakeDelete: !skipFakeDeletedScraps }
+                );
                 break;
             case 'reference':
                 refDb.removeReferenceFromWorkspace(ref.targetId, wsId);
@@ -2600,8 +2618,6 @@ class VfsManager {
     }
 
     async moveItems(itemRefs, targetPath, options = {}) {
-        this._skipFakeDeletedScraps = isMcpAgentClient(options && options.clientInfo);
-        try {
         const parsed = this.parsePath(targetPath);
         const isDesktopTarget = this._isDesktopTargetPath(parsed);
         const location = this.resolveLocationFromPath(targetPath);
@@ -2730,7 +2746,7 @@ class VfsManager {
                 results.push(this.makeFolderItem(moved, { workspaceId: sourceWsId }));
             } else if (this._isVirtualSurfaceKind(ref.targetKind)) {
                 const entry = await this._createVirtualSurfaceEntry(ref, targetPath);
-                await this._removeVirtualSurfaceFromSource(ref);
+                await this._removeVirtualSurfaceFromSource(ref, options);
                 results.push(entry);
             } else if (ref.isShortcut || ref.targetKind === 'vfs-entry') {
                 const entryFolderId = await this._resolveEntryFolderId(targetPath);
@@ -2741,9 +2757,6 @@ class VfsManager {
             }
         }
         return results;
-        } finally {
-            this._skipFakeDeletedScraps = false;
-        }
     }
 
     async copyItems(itemRefs, targetPath, options = {}) {
@@ -2942,8 +2955,8 @@ class VfsManager {
         return ['vfs-folder', 'user-file', 'image', 'scrap', 'reference', 'vibe', 'note'].includes(kind);
     }
 
-    async _hideVirtualSurfaceAsset(ref) {
-        return this._removeVirtualSurfaceFromSource(ref);
+    async _hideVirtualSurfaceAsset(ref, options = {}) {
+        return this._removeVirtualSurfaceFromSource(ref, options);
     }
 
     async _restoreVirtualSurfaceAsset(ref) {
@@ -3037,7 +3050,7 @@ class VfsManager {
         });
     }
 
-    async _trashVirtualSurfaceItem(ref, sourcePath, workspaceId) {
+    async _trashVirtualSurfaceItem(ref, sourcePath, workspaceId, options = {}) {
         const kind = ref.targetKind;
         const targetId = ref.targetId;
         if (!kind || !targetId) throw new Error('Invalid item for trash');
@@ -3046,7 +3059,7 @@ class VfsManager {
             throw new Error('Item is already in trash');
         }
 
-        await this._hideVirtualSurfaceAsset({ targetKind: kind, targetId, workspaceId });
+        await this._hideVirtualSurfaceAsset({ targetKind: kind, targetId, workspaceId }, options);
 
         const payload = {
             previewImageFilename: ref.previewImageFilename || null,
@@ -3072,8 +3085,6 @@ class VfsManager {
     }
 
     async moveItemsToTrash(itemRefs, sourcePath, options = {}) {
-        this._skipFakeDeletedScraps = isMcpAgentClient(options && options.clientInfo);
-        try {
         const workspaceId = this._resolveTrashWorkspaceId(sourcePath, itemRefs?.[0]);
         if (!workspaceId) throw new Error('Workspace required for trash');
 
@@ -3088,15 +3099,12 @@ class VfsManager {
             } else if (kind === 'user-file') {
                 results.push(await this._trashUserFile(ref.targetId || ref.id, sourcePath, workspaceId));
             } else if (this._isVirtualSurfaceKind(kind)) {
-                results.push(await this._trashVirtualSurfaceItem(ref, sourcePath, workspaceId));
+                results.push(await this._trashVirtualSurfaceItem(ref, sourcePath, workspaceId, options));
             } else {
                 throw new Error(`Cannot move ${kind} to trash`);
             }
         }
         return results;
-        } finally {
-            this._skipFakeDeletedScraps = false;
-        }
     }
 
     async restoreFromTrash(trashItemId) {

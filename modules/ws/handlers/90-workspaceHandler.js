@@ -4,7 +4,9 @@ const workspaceCssService = require('../../workspaceCssService');
 const {
     isMcpAgentClient,
     agentCannotSeeFilename,
-    filterFilenamesVisibleToClient
+    filterFilenamesVisibleToClient,
+    filterGroupsVisibleToClient,
+    filterGroupVisibleToClient
 } = require('../../imageModerationFlag');
 
 const WORKSPACE_DESTRUCTIVE = { destructive: true, ...WS_DISPATCH_FIFO_CONNECTION };
@@ -302,24 +304,8 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            let excludeFilenames = null;
-            if (isMcpAgentClient(clientInfo)) {
-                const wm = this.globalResources.getWorkspaceManager();
-                const files = await wm._readWorkspaceGalleryFilenames(sourceId, 'files');
-                const scraps = await wm._readWorkspaceGalleryFilenames(sourceId, 'scraps');
-                const pinned = sourceWorkspace.pinned || [];
-                excludeFilenames = new Set();
-                for (const name of [...files, ...scraps, ...(pinned || [])]) {
-                    if (name && await agentCannotSeeFilename(this.globalResources, name)) {
-                        excludeFilenames.add(name);
-                    }
-                }
-            }
-            const result = await this.globalResources.getWorkspaceManager().dumpWorkspace(
-                sourceId,
-                targetId,
-                excludeFilenames ? { excludeFilenames } : {}
-            );
+            // CURSOR: agent dump still moves hidden/fake-deleted names so they are not orphaned
+            const result = await this.globalResources.getWorkspaceManager().dumpWorkspace(sourceId, targetId);
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_dump_response',
@@ -601,6 +587,11 @@ class WorkspaceWebSocketHandlers {
                     data: { success: true, message: 'File removed from scraps' },
                     timestamp: new Date().toISOString()
                 });
+                this.broadcast(wsServer, {
+                    type: 'workspace_updated',
+                    data: { action: 'scrap_removed', workspaceId: id, filename },
+                    timestamp: new Date().toISOString()
+                });
                 return;
             }
 
@@ -789,7 +780,11 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            const groups = this.globalResources.getWorkspaceManager().getWorkspaceGroups(id);
+            const groups = await filterGroupsVisibleToClient(
+                this.globalResources,
+                this.globalResources.getWorkspaceManager().getWorkspaceGroups(id),
+                clientInfo
+            );
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_get_groups_response',
@@ -847,7 +842,11 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            const group = this.globalResources.getWorkspaceManager().getGroup(id, groupId);
+            const group = await filterGroupVisibleToClient(
+                this.globalResources,
+                this.globalResources.getWorkspaceManager().getGroup(id, groupId),
+                clientInfo
+            );
 
             if (!group) {
                 this.handlers.sendError(ws, 'Group not found', 'workspace_get_group', message.requestId);
@@ -995,7 +994,14 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            const groups = this.globalResources.getWorkspaceManager().getGroupsForImage(id, filename);
+            let groups = [];
+            if (!(isMcpAgentClient(clientInfo) && await agentCannotSeeFilename(this.globalResources, filename))) {
+                groups = await filterGroupsVisibleToClient(
+                    this.globalResources,
+                    this.globalResources.getWorkspaceManager().getGroupsForImage(id, filename),
+                    clientInfo
+                );
+            }
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_get_image_groups_response',
@@ -1361,7 +1367,6 @@ class WorkspaceWebSocketHandlers {
             }
 
             let successCount = 0;
-            let actuallyRemoved = 0;
             const isAgent = isMcpAgentClient(clientInfo);
 
             for (const filename of filenames) {
@@ -1378,7 +1383,6 @@ class WorkspaceWebSocketHandlers {
                         { clearHiddenByFakeDelete: !isAgent }
                     );
                     successCount++;
-                    actuallyRemoved++;
                 } catch (error) {
                     console.error(`Failed to remove ${filename} from scraps:`, error);
                 }
@@ -1391,13 +1395,11 @@ class WorkspaceWebSocketHandlers {
                 timestamp: new Date().toISOString()
             });
 
-            if (actuallyRemoved > 0) {
-                this.broadcast(wsServer, {
-                    type: 'workspace_updated',
-                    data: { action: 'bulk_remove_scrap', workspaceId: id, removedCount: actuallyRemoved },
-                    timestamp: new Date().toISOString()
-                });
-            }
+            this.broadcast(wsServer, {
+                type: 'workspace_updated',
+                data: { action: 'bulk_remove_scrap', workspaceId: id, removedCount: successCount },
+                timestamp: new Date().toISOString()
+            });
         } catch (error) {
             console.error('Workspace bulk remove scrap error:', error);
             this.handlers.sendError(ws, 'Failed to bulk remove from scraps', error.message, message.requestId);
