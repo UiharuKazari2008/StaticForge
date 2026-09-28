@@ -268,6 +268,19 @@ function makeWorkspaceState(initial) {
                 }
                 return targetId;
             },
+            clearHiddenByFakeDelete(filenames) {
+                const drop = new Set(Array.isArray(filenames) ? filenames : [filenames]);
+                let cleared = 0;
+                for (const rec of Object.values(workspaces)) {
+                    if (!Array.isArray(rec.hiddenByFakeDelete)) continue;
+                    rec.hiddenByFakeDelete = rec.hiddenByFakeDelete.filter((name) => {
+                        if (!drop.has(name)) return true;
+                        cleared += 1;
+                        return false;
+                    });
+                }
+                return cleared;
+            },
             listHiddenByFakeDelete() {
                 const names = [];
                 for (const rec of Object.values(workspaces)) {
@@ -276,6 +289,15 @@ function makeWorkspaceState(initial) {
                     }
                 }
                 return names;
+            },
+            removeFromWorkspaceArray(type, filename, id) {
+                const rec = workspaces[id] || workspaces.default;
+                if (!rec) throw new Error(`Workspace ${id} not found`);
+                const names = Array.isArray(filename) ? filename : [filename];
+                if (type === 'scraps' && Array.isArray(rec.scraps)) {
+                    rec.scraps = rec.scraps.filter((name) => !names.includes(name));
+                }
+                this.clearHiddenByFakeDelete(names);
             },
             removeFilesFromWorkspaces() {}
         }
@@ -420,6 +442,22 @@ async function testRealAndFakeMatchFrozenMain() {
     assert.deepStrictEqual(realPair.sent[0].data, mainPair);
     assert.deepStrictEqual(fakePair.sent[0].data, mainPair);
 
+    const dupMain = fs.mkdtempSync(path.join(os.tmpdir(), 'del-dup-main-'));
+    const dupReal = fs.mkdtempSync(path.join(os.tmpdir(), 'del-dup-real-'));
+    const dupFake = fs.mkdtempSync(path.join(os.tmpdir(), 'del-dup-fake-'));
+    seedDeleteTree(dupMain);
+    seedDeleteTree(dupReal);
+    seedDeleteTree(dupFake);
+    const dupNames = ['a.png', 'a.png'];
+    const mainDup = frozenMainBulkDelete(pathsForRoot(dupMain), dupNames);
+    const realDup = await runBulkDelete(dupReal, user, dupNames);
+    const fakeDup = await runBulkDelete(dupFake, agent, dupNames);
+    assert.strictEqual(mainDup.successful, 1);
+    assert.strictEqual(mainDup.failed, 1);
+    assert.deepStrictEqual(mainDup.errors, [{ filename: 'a.png', error: 'File not found' }]);
+    assert.deepStrictEqual(realDup.sent[0].data, mainDup);
+    assert.deepStrictEqual(fakeDup.sent[0].data, mainDup);
+
     const orderMain = fs.mkdtempSync(path.join(os.tmpdir(), 'del-order-main-'));
     const orderFake = fs.mkdtempSync(path.join(os.tmpdir(), 'del-order-fake-'));
     seedDeleteTree(orderMain, { files: {} });
@@ -473,6 +511,10 @@ async function testOrdinaryScrapsStayVisible() {
     assert.strictEqual(filenameHiddenByFakeDelete(harness.globalResources, 'a_upscaled.png'), false);
     assert.strictEqual(await agentCannotSeeFilename(harness.globalResources, 'a_upscaled.png'), false);
     assert.strictEqual(await agentCannotSeeFilename(harness.globalResources, 'keep.png'), false);
+
+    workspaceState.api.removeFromWorkspaceArray('scraps', 'a.png', 'lab');
+    assert.strictEqual(filenameHiddenByFakeDelete(harness.globalResources, 'a.png'), false);
+    assert.strictEqual(await agentCannotSeeFilename(harness.globalResources, 'a.png'), false);
 }
 
 async function testDeleteUnupscaledOriginalGated() {

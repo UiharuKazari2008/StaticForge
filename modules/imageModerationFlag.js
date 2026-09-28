@@ -255,6 +255,32 @@ function collectFakeDeletedFilenames(globalResources) {
     return set;
 }
 
+function clearHiddenByFakeDelete(globalResources, filenames) {
+    const list = Array.isArray(filenames) ? filenames : [filenames];
+    const names = list.filter(Boolean);
+    if (!names.length) return 0;
+    const wm = globalResources && typeof globalResources.getWorkspaceManager === 'function'
+        ? globalResources.getWorkspaceManager()
+        : null;
+    if (wm && typeof wm.clearHiddenByFakeDelete === 'function') {
+        return wm.clearHiddenByFakeDelete(names);
+    }
+    const all = wm && typeof wm.getWorkspaces === 'function' ? wm.getWorkspaces() : null;
+    if (!all) return 0;
+    const drop = new Set(names);
+    let cleared = 0;
+    for (const rec of Object.values(all)) {
+        if (!rec || !Array.isArray(rec.hiddenByFakeDelete)) continue;
+        const next = rec.hiddenByFakeDelete.filter((name) => {
+            if (!drop.has(name)) return true;
+            cleared += 1;
+            return false;
+        });
+        rec.hiddenByFakeDelete = next;
+    }
+    return cleared;
+}
+
 function markHiddenByFakeDelete(globalResources, filenames, workspaceId) {
     const list = Array.isArray(filenames) ? filenames : [];
     if (!list.length) return 'default';
@@ -320,29 +346,42 @@ async function collectAgentHiddenDeleteErrors(globalResources, filenames) {
 }
 
 function mergeBulkDeleteExtraErrors(data, originalFilenames, extraErrors) {
+    const extras = Array.isArray(extraErrors) ? extraErrors.filter((row) => row && row.filename) : [];
+    if (!extras.length) {
+        return data;
+    }
     const list = Array.isArray(originalFilenames) ? originalFilenames : [];
-    const extras = Array.isArray(extraErrors) ? extraErrors : [];
-    const extraByName = new Map();
-    for (const row of extras) {
-        if (row && row.filename && !extraByName.has(row.filename)) extraByName.set(row.filename, row);
-    }
-    const resultByName = new Map();
-    for (const row of (data && data.results) || []) {
-        if (row && row.filename) resultByName.set(row.filename, row);
-    }
-    const errorByName = new Map();
-    for (const row of (data && data.errors) || []) {
-        if (row && row.filename) errorByName.set(row.filename, row);
-    }
+    const extraQ = extras.slice();
+    const resultQ = ((data && data.results) || []).slice();
+    const errorQ = ((data && data.errors) || []).slice();
     const results = [];
     const errors = [];
     for (const filename of list) {
-        if (extraByName.has(filename)) {
-            errors.push(extraByName.get(filename));
-        } else if (resultByName.has(filename)) {
-            results.push(resultByName.get(filename));
-        } else if (errorByName.has(filename)) {
-            errors.push(errorByName.get(filename));
+        if (extraQ.length && extraQ[0].filename === filename) {
+            errors.push(extraQ.shift());
+            continue;
+        }
+        if (resultQ.length && resultQ[0].filename === filename) {
+            results.push(resultQ.shift());
+            continue;
+        }
+        if (errorQ.length && errorQ[0].filename === filename) {
+            errors.push(errorQ.shift());
+            continue;
+        }
+        const extraIdx = extraQ.findIndex((row) => row.filename === filename);
+        if (extraIdx !== -1) {
+            errors.push(extraQ.splice(extraIdx, 1)[0]);
+            continue;
+        }
+        const resultIdx = resultQ.findIndex((row) => row.filename === filename);
+        if (resultIdx !== -1) {
+            results.push(resultQ.splice(resultIdx, 1)[0]);
+            continue;
+        }
+        const errorIdx = errorQ.findIndex((row) => row.filename === filename);
+        if (errorIdx !== -1) {
+            errors.push(errorQ.splice(errorIdx, 1)[0]);
         }
     }
     return {
@@ -526,6 +565,7 @@ function planBulkDelete(globalResources, filenames, options) {
                                 const dynGenPreviewPath = path.join(getPath('cache'), 'dynGenPreview', `${previewHash}.png`);
                                 if (fs.existsSync(dynGenPreviewPath)) {
                                     entryFiles.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
+                                    console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
                                 }
                             }
                         }
@@ -679,6 +719,7 @@ module.exports = {
     resolveDeleteWorkspaceId,
     collectFakeDeletedFilenames,
     markHiddenByFakeDelete,
+    clearHiddenByFakeDelete,
     filenameHiddenByFakeDelete,
     agentCannotSeeFilename,
     rejectAgentHiddenHttpFile,

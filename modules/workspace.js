@@ -398,6 +398,25 @@ class WorkspaceManager {
         return names;
     }
 
+    clearHiddenByFakeDelete(filenames, workspacesOverride = null) {
+        const workspaces = workspacesOverride || this.globalResources.getWorkspacesConfig({ clone: true });
+        const drop = new Set((Array.isArray(filenames) ? filenames : [filenames]).filter(Boolean));
+        if (!drop.size) return 0;
+        let cleared = 0;
+        for (const rec of Object.values(workspaces)) {
+            if (!rec || !Array.isArray(rec.hiddenByFakeDelete) || !rec.hiddenByFakeDelete.length) continue;
+            rec.hiddenByFakeDelete = rec.hiddenByFakeDelete.filter((name) => {
+                if (!drop.has(name)) return true;
+                cleared += 1;
+                return false;
+            });
+        }
+        if (!workspacesOverride && cleared > 0) {
+            this.globalResources.saveConfig('workspaces', workspaces);
+        }
+        return cleared;
+    }
+
     // Get a specific workspace
     getWorkspace(id) {
         const workspaces = this.globalResources.getWorkspacesConfig();
@@ -425,6 +444,7 @@ class WorkspaceManager {
             presets: [],
             files: [],
             scraps: [],
+            hiddenByFakeDelete: [],
             pinned: [], // Initialize empty pinned array
             groups: {}, // Initialize empty groups object
             lastGalleryDestructiveAt: 0
@@ -1707,6 +1727,9 @@ class WorkspaceManager {
                     // Also remove from default workspace scraps if not the default workspace (scraps are shared)
                     if (targetId !== 'default' && workspaces.default && workspaces.default.scraps) {
                         workspaces.default.scraps = workspaces.default.scraps.filter(item => !validItemsSet.has(item));
+                    }
+                    if (removedFromScraps.length > 0) {
+                        this.clearHiddenByFakeDelete(removedFromScraps, workspaces);
                     }
                 }
                 break;

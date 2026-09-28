@@ -37,6 +37,13 @@
     { "path": ["*", "sort"], "type": "number", "label": "Sort Order", "required": true },
     { "path": ["*", "files"], "type": "array", "itemsType": "string", "label": "Gallery Files", "required": true },
     { "path": ["*", "scraps"], "type": "array", "itemsType": "string", "label": "Scraps", "required": true },
+    {
+      "path": ["*", "hiddenByFakeDelete"],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Hidden By Fake Delete",
+      "description": "Filenames an MCP fake delete scrapped; hidden from agents until the owner unscraps or restores them"
+    },
     { "path": ["*", "pinned"], "type": "array", "itemsType": "string", "label": "Pinned", "required": true },
     { "path": ["*", "presets"], "type": "array", "itemsType": "string", "label": "Presets", "required": true },
     { "path": ["*", "groups"], "type": "object", "label": "Groups", "closed": true, "required": true },
