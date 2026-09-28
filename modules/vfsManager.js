@@ -1160,15 +1160,17 @@ class VfsManager {
             }
         }
 
+        // JULES: perf optimization — index shortcutItems by key O(M) instead of O(K * M) repeated linear scans with find
         const shortcutItems = items.filter(i => i.isShortcut || i.isDesktopShortcut);
-        const locationKeys = new Set();
+        const shortcutItemsByKey = new Map();
         for (const item of shortcutItems) {
             if (item.isDesktopShortcut) continue;
-            locationKeys.add(`${item.targetKind}:${item.targetId}`);
+            const key = `${item.targetKind}:${item.targetId}`;
+            if (!shortcutItemsByKey.has(key)) {
+                shortcutItemsByKey.set(key, item);
+            }
         }
-        for (const key of locationKeys) {
-            const item = shortcutItems.find(i => `${i.targetKind}:${i.targetId}` === key);
-            if (!item) continue;
+        for (const [key, item] of shortcutItemsByKey.entries()) {
             const loc = await this._resolveShortcutOriginalLocation(item, ctx);
             ctx.targetLocationMap.set(key, loc);
         }
