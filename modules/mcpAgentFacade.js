@@ -159,7 +159,21 @@ const {
     collectPayloadFilenames,
     galleryNamesFromRow
 } = require('./imageModerationFlag');
-const { broadcastImageFlagUpdated } = require('./ws/handlers/120-galleryHandler');
+function broadcastImageFlagUpdated(globalResources, filename, flag, workspaceId) {
+    const ws = globalResources && typeof globalResources.getWebSocketServer === 'function'
+        ? globalResources.getWebSocketServer()
+        : null;
+    if (!ws || typeof ws.broadcast !== 'function') return;
+    ws.broadcast({
+        type: 'image_flag_updated',
+        data: {
+            filename,
+            flag,
+            workspaceId: workspaceId || 'default'
+        },
+        timestamp: new Date().toISOString()
+    });
+}
 // modules/mcpRateLimiter.js — #66 owns TOOL_RATE_GROUPS this wave
 if (!TOOL_RATE_GROUPS.get_character_card) TOOL_RATE_GROUPS.get_character_card = 'search';
 if (!TOOL_RATE_GROUPS.ensure_artifact) TOOL_RATE_GROUPS.ensure_artifact = 'gallery';
@@ -4402,7 +4416,7 @@ async function callTool(globalResources, req, name, args) {
         const flaggedBy = resolveActorName(req) || 'mcp';
         const flag = await metadataDb.flagImage(filename, { flaggedBy, reason });
         const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
-        broadcastImageFlagUpdated(null, globalResources.getWebSocketServer && globalResources.getWebSocketServer(), filename, flag, workspaceId);
+        broadcastImageFlagUpdated(globalResources, filename, flag, workspaceId);
         return mcpTextResult({
             success: true,
             filename,

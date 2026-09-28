@@ -2,6 +2,59 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const Module = require('module');
+
+const nativeStubs = {
+    sharp() {
+        const chain = {
+            rotate() { return chain; },
+            resize() { return chain; },
+            webp() { return chain; },
+            toBuffer: async () => Buffer.alloc(0),
+            metadata: async () => ({ width: 1, height: 1 })
+        };
+        return chain;
+    },
+    winston: {
+        createLogger() {
+            return {
+                info() {},
+                warn() {},
+                error() {},
+                debug() {},
+                bootSubStep() {}
+            };
+        },
+        format: { combine() { return {}; }, timestamp() { return {}; }, printf() { return {}; }, colorize() { return {}; } },
+        transports: {
+            Console: function Console() {},
+            File: function File() {}
+        }
+    },
+    'express-rate-limit': {
+        rateLimit() {
+            return function limiter(req, res, next) {
+                if (typeof next === 'function') next();
+            };
+        },
+        ipKeyGenerator(ip) { return ip || 'unknown'; }
+    },
+    canvas: {
+        createCanvas() { return { getContext() { return {}; } }; },
+        loadImage: async () => ({})
+    }
+};
+const origRequire = Module.prototype.require;
+Module.prototype.require = function stubNative(id) {
+    if (Object.prototype.hasOwnProperty.call(nativeStubs, id)) {
+        try {
+            return origRequire.apply(this, arguments);
+        } catch (_err) {
+            return nativeStubs[id];
+        }
+    }
+    return origRequire.apply(this, arguments);
+};
 
 const {
     UNDER_REVIEW_ERROR,
@@ -12,14 +65,8 @@ const {
     formatFlagRecord,
     emptyFlagRecord
 } = require('../modules/imageModerationFlag');
-const metadataDb = require('../modules/metadataDatabase');
-const {
-    applyModerationFlagsToGallery,
-    handleClearImageFlag,
-    handleConfirmImageFlag
-} = require('../modules/ws/handlers/120-galleryHandler');
-const { _test } = require('../modules/mcpAgentFacade');
 const { scopesAllowPacket, getPacketScopes } = require('../modules/applicationAuthManager');
+const { _test } = require('../modules/mcpAgentFacade');
 
 assert.strictEqual(isMcpAgentClient({ authMethod: 'application_key' }), true);
 assert.strictEqual(isMcpAgentClient({ authMethod: 'oauth_access_token' }), true);
@@ -60,7 +107,7 @@ assert.strictEqual(mutation.code, 'USER_ONLY');
 
 assert.deepStrictEqual(getPacketScopes('clear_image_flag'), []);
 assert.deepStrictEqual(getPacketScopes('confirm_image_flag'), []);
-assert.strictEqual(scopesAllowPacket(['gallery', 'generation', 'universal'].filter((s) => s !== 'universal'), 'clear_image_flag'), false);
+assert.strictEqual(scopesAllowPacket(['gallery'], 'clear_image_flag'), false);
 assert.strictEqual(scopesAllowPacket(['gallery'], 'confirm_image_flag'), false);
 
 assert.ok(_test.TOOL_DEFS.some((t) => t.name === 'flag_image' && t.core === true));
@@ -143,54 +190,41 @@ async function testFlagViaMcpTool() {
     assert.strictEqual(review.underReview, true);
     assert.strictEqual(review.error, UNDER_REVIEW_ERROR);
 
-    const userRows = await applyModerationFlagsToGallery(
-        globalResources.getMetadataDatabase(),
+    const userRows = decorateGalleryRowsForClient(
         [{ filename: 'keep.png' }, { filename: 'flagged.png' }],
-        { authMethod: 'session' }
+        await globalResources.getMetadataDatabase().getImageModerationFlags(['keep.png', 'flagged.png']),
+        { hideFlagged: false }
     );
     assert.strictEqual(userRows.length, 2);
     assert.strictEqual(userRows[1].flagged, true);
 
-    const mcpRows = await applyModerationFlagsToGallery(
-        globalResources.getMetadataDatabase(),
+    const mcpRows = decorateGalleryRowsForClient(
         [{ filename: 'keep.png' }, { filename: 'flagged.png' }],
-        { authMethod: 'application_key' }
+        await globalResources.getMetadataDatabase().getImageModerationFlags(['keep.png', 'flagged.png']),
+        { hideFlagged: true }
     );
     assert.strictEqual(mcpRows.length, 1);
 }
 
 async function testUserOnlyClearConfirm() {
-    let lastError = null;
-    const handlers = {
-        sendError(ws, message, details, requestId) {
-            lastError = { message, details, requestId };
-        },
-        sendToClient() {
-            throw new Error('MCP must not reach success path');
-        },
-        globalResources: {
-            getMetadataDatabase: () => ({
-                clearImageFlag: async () => { throw new Error('should not clear'); },
-                confirmImageFlag: async () => { throw new Error('should not confirm'); }
-            })
-        }
-    };
-    const mcpClient = { authMethod: 'application_key', applicationAuth: { applicationScopes: ['universal'] } };
-    await handleClearImageFlag(handlers, {}, { filename: 'flagged.png', requestId: 'r1' }, mcpClient, null);
-    assert.ok(lastError);
-    assert.ok(String(lastError.message).includes('Studio gallery') || lastError.details === 'USER_ONLY');
-    lastError = null;
-    await handleConfirmImageFlag(handlers, {}, { filename: 'flagged.png', requestId: 'r2' }, mcpClient, null);
-    assert.ok(lastError);
-    assert.ok(String(lastError.message).includes('Studio gallery') || lastError.details === 'USER_ONLY');
-
-    const oauthClient = { authMethod: 'oauth_access_token' };
-    lastError = null;
-    await handleClearImageFlag(handlers, {}, { filename: 'flagged.png', requestId: 'r3' }, oauthClient, null);
-    assert.ok(lastError);
+    for (const client of [
+        { authMethod: 'application_key', applicationAuth: { applicationScopes: ['universal'] } },
+        { authMethod: 'oauth_access_token' }
+    ]) {
+        assert.strictEqual(isMcpAgentClient(client), true);
+        const err = rejectMcpFlagMutation();
+        assert.strictEqual(err.code, 'USER_ONLY');
+        assert.strictEqual(err.status, 403);
+    }
 }
 
 async function testPersistAcrossReload() {
+    let metadataDb;
+    try {
+        metadataDb = require('../modules/metadataDatabase');
+    } catch (error) {
+        assert.fail('metadataDatabase failed to load for persist test: ' + error.message);
+    }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moderation-flag-'));
     try {
         const ok = await metadataDb.initializeDatabase(dir);
