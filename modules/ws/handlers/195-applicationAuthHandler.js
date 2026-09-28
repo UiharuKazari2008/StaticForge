@@ -320,12 +320,12 @@ async function handleCreateApplicationKey(handlersCtx, ws, message, clientInfo, 
 }
 
 async function handleUpdateApplicationKeyFlags(handlersCtx, ws, message, clientInfo, wsServer) {
-    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     if (isMcpAgentClient(clientInfo)) {
         const err = rejectMcpTokenConfigMutation();
         handlersCtx.sendError(ws, err.message, err.code, message.requestId);
         return;
     }
+    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     const { keyId, allowDelete } = message;
     if (!keyId) {
         handlersCtx.sendError(ws, 'keyId is required', 'MISSING_KEY_ID', message.requestId);
