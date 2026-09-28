@@ -118,6 +118,7 @@ Home devices on the public WAN URL are **not** local. Invalid CIDRs (empty/`-0`/
 
 | Ship | Notes |
 |------|-------|
+| **NAX V5 artist gallery wiring** (`f7742e1`) | Added `danbooru-artist-tags-male-2-v5` to the V5 ARTIST pool, NAX generation config, and prompt context-menu linked-gallery ordering. Contract details for `get_nax_tags`, linked marks, `generationEnabled`, internal `!NAX_*` expanders, and custom generation are in [ws/nax.md](./ws/nax.md). |
 | **PR #242 restore** (`bc0446f`, +16/−5) | Jules perf: pre-compute `PACKET_TO_SCOPES_MAP` in `modules/applicationAuthManager.js` so `getPacketScopes` is O(1) per WebSocket auth lookup (restore of closed-unmerged Jules PR #240). Credit: grok.menma. No client packet-shape change. |
 | **PR #254 / #242–#251** (banked Sep27) | Pyra review-band fix-forward on `main` (`97a2a8e`): autocomplete ranking zero-score fallback, nested emphasis coverage, gallery keep-strip per-index, character position cells, prompt replacement/token recount, bias preview + scrollbar deep-scan, character search hit cap removed, modal keyboard/taskbar + preset cache identity, chat/director/overlay no-op cascade. Tests under `scripts/test-*-fixforward.js`. |
 | **Overnight WIP snapshot** (banked Sep27) | Client chrome: Studio New Session / Save As (`studioSession.js`, #256); SW update-loop hash purge (#257); `artist:` / `art by` autofill remainder ranking (#253). See [client-only-features.md](./client-only-features.md). |
