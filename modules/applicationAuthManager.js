@@ -59,7 +59,8 @@ const SCOPE_WS_PACKETS = {
     ],
     references: [
         'get_references', 'upload_reference', 'delete_reference', 'encode_vibe',
-        'get_vibe_bundle', 'delete_vibe'
+        'get_vibe_bundle', 'delete_vibe', 'get_nax_vibes_gallery',
+        'clear_nax_vibes_gallery_cache'
     ],
     wiki: [
         'search_tag_wiki', 'get_tag_wiki_page', 'refresh_tag_wiki_page',
