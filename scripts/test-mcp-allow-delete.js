@@ -42,6 +42,12 @@ const nativeStubs = {
     canvas: {
         createCanvas() { return { getContext() { return {}; } }; },
         loadImage: async () => ({})
+    },
+    terser: {
+        minify: async (code) => ({ code: code || '' })
+    },
+    lightningcss: {
+        transform({ code }) { return { code: Buffer.from(code || '') }; }
     }
 };
 const origRequire = Module.prototype.require;
