@@ -1326,8 +1326,11 @@ class VfsManager {
                 items,
                 options.clientInfo
             );
-            // CURSOR: agent size is the filtered page, not the pre-filter VFS/SQL total
-            totalSizeBytes = items.reduce((s, i) => s + (i.size || 0), 0);
+            if (parsed.type === 'system-folder'
+                && (parsed.systemName === 'Pictures' || parsed.systemName === 'Scraps')) {
+                // CURSOR: Pictures/Scraps size is the filtered gallery items only
+                totalSizeBytes = items.reduce((s, i) => s + (i.size || 0), 0);
+            }
         } else {
             totalSizeBytes = totalSizeBytes || items.reduce((s, i) => s + (i.size || 0), 0);
         }
@@ -2137,12 +2140,18 @@ class VfsManager {
                 limit: 1,
                 clientInfo: options.clientInfo
             });
+            let totalSizeBytes = listing.totalSizeBytes;
+            if (parsed.type === 'workspace-home' && parsed.workspaceId) {
+                // _getWorkspaceHomePathStats: modules/vfsManager.js — same image-byte max as main
+                const home = await this._getWorkspaceHomePathStats(parsed.workspaceId);
+                totalSizeBytes = home.totalSizeBytes;
+            }
             const stats = {
                 path: vfsPath,
                 displayName: display.displayName,
                 displayPath: display.displayPath,
                 itemCount: listing.totalCount,
-                totalSizeBytes: listing.totalSizeBytes,
+                totalSizeBytes,
                 selectedCount: 0
             };
             if (parsed.type === 'workspace-home' && parsed.workspaceId) {
