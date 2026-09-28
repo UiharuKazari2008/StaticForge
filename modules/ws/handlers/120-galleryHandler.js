@@ -23,7 +23,9 @@ const {
     collectAgentHiddenDeleteErrors,
     mergeBulkDeleteExtraErrors,
     executeRealBulkDelete,
-    agentCannotSeeFilename
+    agentCannotSeeFilename,
+    filenameIsModerationFlagged,
+    filenameHiddenByFakeDelete
 } = require('../../imageModerationFlag');
 
 const GALLERY_DESTRUCTIVE = { destructive: true };
@@ -742,18 +744,23 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
         // Track client workspace usage
         handlers.metadataCache.trackClientWorkspace(clientInfo.sessionId, workspaceId);
 
-        if (isMcpAgentClient(clientInfo)
-            && await agentCannotSeeFilename(handlers.globalResources, filename)) {
-            // CURSOR: MCP request_image_metadata — flagged/scrapped filename is under review
-            handlers.sendToClient(ws, {
-                type: 'error',
-                message: UNDER_REVIEW_ERROR,
-                error: UNDER_REVIEW_ERROR,
-                data: mcpUnderReviewPayload({ filename: null }),
-                requestId: message.requestId || null,
-                timestamp: new Date().toISOString()
-            });
-            return;
+        if (isMcpAgentClient(clientInfo)) {
+            if (await filenameIsModerationFlagged(handlers.globalResources, filename)) {
+                // CURSOR: MCP request_image_metadata — flagged filename is under review
+                handlers.sendToClient(ws, {
+                    type: 'error',
+                    message: UNDER_REVIEW_ERROR,
+                    error: UNDER_REVIEW_ERROR,
+                    data: mcpUnderReviewPayload({ filename: null }),
+                    requestId: message.requestId || null,
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
+            if (filenameHiddenByFakeDelete(handlers.globalResources, filename)) {
+                handlers.sendError(ws, 'Image not found', 'request_image_metadata', message.requestId);
+                return;
+            }
         }
 
         let cachedMetadata = handlers.metadataCache.get(workspaceId, filename);
@@ -1001,16 +1008,26 @@ async function handleFindImageIndexRequest(handlers, ws, message, clientInfo, ws
 
         const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
         const metadataDb = handlers.globalResources.getMetadataDatabase();
-        if (isMcpAgentClient(clientInfo)
-            && await agentCannotSeeFilename(handlers.globalResources, filename)) {
-            // CURSOR: MCP find_image_index — flagged/scrapped filename is not found
-            handlers.sendToClient(ws, {
-                type: 'find_image_index_response',
-                requestId: message.requestId,
-                data: { index: -1, underReview: true },
-                timestamp: new Date().toISOString()
-            });
-            return;
+        if (isMcpAgentClient(clientInfo)) {
+            if (await filenameIsModerationFlagged(handlers.globalResources, filename)) {
+                // CURSOR: MCP find_image_index — flagged filename is under review
+                handlers.sendToClient(ws, {
+                    type: 'find_image_index_response',
+                    requestId: message.requestId,
+                    data: { index: -1, underReview: true },
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
+            if (filenameHiddenByFakeDelete(handlers.globalResources, filename)) {
+                handlers.sendToClient(ws, {
+                    type: 'find_image_index_response',
+                    requestId: message.requestId,
+                    data: { index: -1 },
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
         }
         const index = await metadataDb.findGalleryWorkspaceItemIndex(workspaceId, viewType, filename);
 
@@ -1732,5 +1749,7 @@ module.exports = {
     handleClearImageFlag,
     handleConfirmImageFlag,
     handleDeleteImagesBulk,
-    handleDeleteUnupscaledOriginal
+    handleDeleteUnupscaledOriginal,
+    handleImageMetadataRequest,
+    handleFindImageIndexRequest
 };

@@ -166,7 +166,8 @@ const {
     agentCannotSeeFilename,
     collectAgentHiddenDeleteErrors,
     mergeBulkDeleteExtraErrors,
-    filenameIsModerationFlagged
+    filenameIsModerationFlagged,
+    filenameHiddenByFakeDelete
 } = require('./imageModerationFlag');
 function broadcastImageFlagUpdated(globalResources, filename, flag, workspaceId) {
     const ws = globalResources && typeof globalResources.getWebSocketServer === 'function'
@@ -3694,25 +3695,34 @@ async function resolveGalleryFilename(globalResources, req, input) {
     if (name) {
         const existing = galleryFileExists(globalResources, name);
         if (existing) {
-            if (await mcpFilenameIsFlagged(globalResources, existing)) {
+            if (await filenameIsModerationFlagged(globalResources, existing)) {
                 // CURSOR: MCP resolve by filename — flagged image is under review
                 return { filename: existing, workspaceId, underReview: true };
+            }
+            if (filenameHiddenByFakeDelete(globalResources, existing)) {
+                return { filename: null, workspaceId };
             }
             return { filename: existing, workspaceId };
         }
         if (!path.extname(name)) {
             const withPng = galleryFileExists(globalResources, `${name}.png`);
             if (withPng) {
-                if (await mcpFilenameIsFlagged(globalResources, withPng)) {
+                if (await filenameIsModerationFlagged(globalResources, withPng)) {
                     return { filename: withPng, workspaceId, underReview: true };
+                }
+                if (filenameHiddenByFakeDelete(globalResources, withPng)) {
+                    return { filename: null, workspaceId };
                 }
                 return { filename: withPng, workspaceId };
             }
         }
         const found = await lookupFilenameViaSearch(globalResources, req, name, workspaceId);
         if (found) {
-            if (await mcpFilenameIsFlagged(globalResources, found)) {
+            if (await filenameIsModerationFlagged(globalResources, found)) {
                 return { filename: found, workspaceId, underReview: true };
+            }
+            if (filenameHiddenByFakeDelete(globalResources, found)) {
+                return { filename: null, workspaceId };
             }
             return { filename: found, workspaceId };
         }
@@ -3720,8 +3730,11 @@ async function resolveGalleryFilename(globalResources, req, input) {
     if (seed) {
         const found = await lookupFilenameViaSearch(globalResources, req, seed, workspaceId);
         if (found) {
-            if (await mcpFilenameIsFlagged(globalResources, found)) {
+            if (await filenameIsModerationFlagged(globalResources, found)) {
                 return { filename: found, workspaceId, underReview: true };
+            }
+            if (filenameHiddenByFakeDelete(globalResources, found)) {
+                return { filename: null, workspaceId };
             }
             return { filename: found, workspaceId };
         }
@@ -4503,7 +4516,7 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({ success: results.every((row) => row.success), workspaceId, filenames, results });
         }
         for (const filename of filenames) {
-            if (await mcpFilenameIsFlagged(globalResources, filename)) {
+            if (await filenameIsModerationFlagged(globalResources, filename)) {
                 return mcpUnderReviewResult({ filename: null });
             }
         }
@@ -4519,7 +4532,7 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
         }
         for (const filename of filenames) {
-            if (await mcpFilenameIsFlagged(globalResources, filename)) {
+            if (await filenameIsModerationFlagged(globalResources, filename)) {
                 return mcpUnderReviewResult({ filename: null });
             }
         }
@@ -4551,7 +4564,7 @@ async function callTool(globalResources, req, name, args) {
     if (name === 'open_in_lumen' || name === 'open_in_glancewell') {
         const filenames = collectFilenames(input);
         for (const filename of filenames) {
-            if (await mcpFilenameIsFlagged(globalResources, filename)) {
+            if (await filenameIsModerationFlagged(globalResources, filename)) {
                 return mcpUnderReviewResult({ filename: null });
             }
         }
@@ -5086,8 +5099,15 @@ async function callTool(globalResources, req, name, args) {
                 workspaceId: lookedUp.workspaceId
             }, true);
         }
-        if (await mcpFilenameIsFlagged(globalResources, filename)) {
+        if (await filenameIsModerationFlagged(globalResources, filename)) {
             return mcpUnderReviewResult({ filename: null, workspaceId: lookedUp.workspaceId });
+        }
+        if (filenameHiddenByFakeDelete(globalResources, filename)) {
+            return mcpTextResult({
+                success: false,
+                error: 'No gallery image matched. Pass filename, seed, or use get_latest_image.',
+                workspaceId: lookedUp.workspaceId
+            }, true);
         }
         const wantFull = input.full === true;
         const packet = await dispatchPacketTool(globalResources, req, 'request_image_metadata', { filename });
@@ -6175,6 +6195,7 @@ module.exports = {
         maybeOpenGeneratedInLumen,
         boundViewerOpenShouldBroadcast,
         openViewerFromMcp,
+        resolveGalleryFilename,
         readRemoteAccessSettings,
         resolveMcpStudioAutoFlags,
         pickStudioFieldsFromBoundReply,

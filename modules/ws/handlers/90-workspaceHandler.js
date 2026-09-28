@@ -37,7 +37,8 @@ class WorkspaceWebSocketHandlers {
                 ? await metadataDb.getGalleryWorkspaceImageCountsById(workspaceIds, 'images')
                 : new Map();
 
-            const workspaceList = Object.entries(workspaces).map(([id, workspace]) => {
+            const workspaceList = [];
+            for (const [id, workspace] of Object.entries(workspaces)) {
                 let fileCount = Array.isArray(workspace.files) ? workspace.files.length : 0;
                 if (metadataDb) {
                     const metaCount = galleryFileCounts.get(id);
@@ -45,7 +46,16 @@ class WorkspaceWebSocketHandlers {
                         fileCount = metaCount;
                     }
                 }
-                return {
+                if (isMcpAgentClient(clientInfo)) {
+                    const names = await this.globalResources.getWorkspaceManager()
+                        ._readWorkspaceGalleryFilenames(id, 'files');
+                    fileCount = (await filterFilenamesVisibleToClient(
+                        this.globalResources,
+                        names,
+                        clientInfo
+                    )).length;
+                }
+                workspaceList.push({
                 id,
                 name: workspace.name,
                 color: workspace.color || '#102040',
@@ -61,8 +71,8 @@ class WorkspaceWebSocketHandlers {
                 cacheFileCount: workspaceCacheCounts[id] || 0, // Use database count
                 isActive: id === activeWorkspaceId,
                 isDefault: id === 'default'
-            };
             });
+            }
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_list_response',
@@ -104,6 +114,15 @@ class WorkspaceWebSocketHandlers {
                 } catch (_error) {
                     // Fall back to in-memory array length when SQL meta is unavailable.
                 }
+            }
+            if (isMcpAgentClient(clientInfo)) {
+                const names = await this.globalResources.getWorkspaceManager()
+                    ._readWorkspaceGalleryFilenames(activeId, 'files');
+                fileCount = (await filterFilenamesVisibleToClient(
+                    this.globalResources,
+                    names,
+                    clientInfo
+                )).length;
             }
 
             this.handlers.sendToClient(ws, {
@@ -305,7 +324,20 @@ class WorkspaceWebSocketHandlers {
             }
 
             // CURSOR: agent dump still moves hidden/fake-deleted names so they are not orphaned
-            const result = await this.globalResources.getWorkspaceManager().dumpWorkspace(sourceId, targetId);
+            const wm = this.globalResources.getWorkspaceManager();
+            let hiddenGallery = 0;
+            if (isMcpAgentClient(clientInfo)) {
+                const files = await wm._readWorkspaceGalleryFilenames(sourceId, 'files');
+                const scraps = await wm._readWorkspaceGalleryFilenames(sourceId, 'scraps');
+                const pinned = sourceWorkspace.pinned || [];
+                const visibleFiles = await filterFilenamesVisibleToClient(this.globalResources, files, clientInfo);
+                const visibleScraps = await filterFilenamesVisibleToClient(this.globalResources, scraps, clientInfo);
+                const visiblePinned = await filterFilenamesVisibleToClient(this.globalResources, pinned, clientInfo);
+                hiddenGallery = (files.length + scraps.length + pinned.length)
+                    - (visibleFiles.length + visibleScraps.length + visiblePinned.length);
+            }
+            const result = await wm.dumpWorkspace(sourceId, targetId);
+            const movedCount = Math.max(0, (result || 0) - hiddenGallery);
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_dump_response',
@@ -317,7 +349,7 @@ class WorkspaceWebSocketHandlers {
                     sourceWorkspaceName: sourceWorkspace.name,
                     targetWorkspaceId: targetId,
                     targetWorkspaceName: targetWorkspace.name,
-                    movedCount: result || 0
+                    movedCount
                 },
                 timestamp: new Date().toISOString()
             });
@@ -331,7 +363,7 @@ class WorkspaceWebSocketHandlers {
                     targetId,
                     sourceWorkspaceName: sourceWorkspace.name,
                     targetWorkspaceName: targetWorkspace.name,
-                    movedCount: result || 0
+                    movedCount
                 },
                 timestamp: new Date().toISOString()
             });
@@ -544,7 +576,10 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            this.globalResources.getWorkspaceManager().addToWorkspaceArray('scraps', filename, id);
+            if (!(isMcpAgentClient(clientInfo)
+                && await agentCannotSeeFilename(this.globalResources, filename))) {
+                this.globalResources.getWorkspaceManager().addToWorkspaceArray('scraps', filename, id);
+            }
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_add_scrap_response',
@@ -636,7 +671,10 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            this.globalResources.getWorkspaceManager().addToWorkspaceArray('pinned', filename, id);
+            if (!(isMcpAgentClient(clientInfo)
+                && await agentCannotSeeFilename(this.globalResources, filename))) {
+                this.globalResources.getWorkspaceManager().addToWorkspaceArray('pinned', filename, id);
+            }
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_add_pinned_response',
@@ -671,7 +709,10 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            this.globalResources.getWorkspaceManager().removeFromWorkspaceArray('pinned', filename, id);
+            if (!(isMcpAgentClient(clientInfo)
+                && await agentCannotSeeFilename(this.globalResources, filename))) {
+                this.globalResources.getWorkspaceManager().removeFromWorkspaceArray('pinned', filename, id);
+            }
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_remove_pinned_response',
@@ -1326,7 +1367,10 @@ class WorkspaceWebSocketHandlers {
 
             for (const filename of filenames) {
                 try {
-                    this.globalResources.getWorkspaceManager().addToWorkspaceArray('scraps', filename, id);
+                    if (!(isMcpAgentClient(clientInfo)
+                        && await agentCannotSeeFilename(this.globalResources, filename))) {
+                        this.globalResources.getWorkspaceManager().addToWorkspaceArray('scraps', filename, id);
+                    }
                     successCount++;
                 } catch (error) {
                     console.error(`Failed to add ${filename} to scraps:`, error);

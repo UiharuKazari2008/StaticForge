@@ -2,10 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
-const {
-    isMcpAgentClient,
-    filterVfsListItemsVisibleToClient
-} = require('./imageModerationFlag');
 
 // modules/replicationJournal.js
 async function recordReplicationVfsJournal(contentHash, payload = null) {
@@ -75,20 +71,9 @@ class VfsWebSocketHandlers {
             limit: limit || 300,
             sortField: sortField || 'name',
             sortDirection: sortDirection || 'asc',
-            search: search || ''
+            search: search || '',
+            clientInfo
         });
-        if (isMcpAgentClient(clientInfo) && result && Array.isArray(result.items)) {
-            const before = result.items.length;
-            result.items = await filterVfsListItemsVisibleToClient(
-                this.globalResources,
-                result.items,
-                clientInfo
-            );
-            const dropped = before - result.items.length;
-            if (dropped > 0 && typeof result.totalCount === 'number') {
-                result.totalCount = Math.max(0, result.totalCount - dropped);
-            }
-        }
         this.handlers.sendToClient(ws, {
             type: 'vfs_list_directory_response',
             requestId: message.requestId,
@@ -97,9 +82,9 @@ class VfsWebSocketHandlers {
         });
     }
 
-    async handleVfsGetPathStats(ws, message) {
+    async handleVfsGetPathStats(ws, message, clientInfo) {
         const { path: vfsPath } = this.getPayload(message);
-        const stats = await this.getVfs().getPathStats(vfsPath || '/');
+        const stats = await this.getVfs().getPathStats(vfsPath || '/', { clientInfo });
         this.handlers.sendToClient(ws, {
             type: 'vfs_get_path_stats_response',
             requestId: message.requestId,
@@ -695,7 +680,7 @@ function registerVfsPackets(handlersCtx) {
     };
 
     reg('vfs_list_directory', (ctx) => vfs.handleVfsListDirectory(ctx.ws, ctx.message, ctx.clientInfo));
-    reg('vfs_get_path_stats', (ctx) => vfs.handleVfsGetPathStats(ctx.ws, ctx.message));
+    reg('vfs_get_path_stats', (ctx) => vfs.handleVfsGetPathStats(ctx.ws, ctx.message, ctx.clientInfo));
     reg('vfs_resolve_path', (ctx) => vfs.handleVfsResolvePath(ctx.ws, ctx.message));
     reg('vfs_folder_has_user_files', (ctx) => vfs.handleVfsFolderHasUserFiles(ctx.ws, ctx.message));
     reg('vfs_create_folder', (ctx) => vfs.handleVfsCreateFolder(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);

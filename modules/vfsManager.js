@@ -7,7 +7,11 @@ const {
     getSystemSegmentDisplayLabel,
     resolveSystemSegmentInput
 } = require('./vfsSystemProvider');
-const { isMcpAgentClient, filenameHiddenByFakeDelete } = require('./imageModerationFlag');
+const {
+    isMcpAgentClient,
+    filenameHiddenByFakeDelete,
+    filterVfsListItemsVisibleToClient
+} = require('./imageModerationFlag');
 
 const VFS_SYSTEM_IDS = {
     SYSTEM: '@system',
@@ -1316,6 +1320,13 @@ class VfsManager {
             listSortDirection = 'asc';
         }
         items = this.sortItems(items, listSortField, listSortDirection);
+        if (isMcpAgentClient(options.clientInfo)) {
+            items = await filterVfsListItemsVisibleToClient(
+                this.globalResources,
+                items,
+                options.clientInfo
+            );
+        }
         const totalCount = items.length;
         totalSizeBytes = totalSizeBytes || items.reduce((s, i) => s + (i.size || 0), 0);
         const page = this.paginateItems(items, offset, limit);
@@ -2105,14 +2116,42 @@ class VfsManager {
         }
     }
 
-    async getPathStats(vfsPath) {
+    async getPathStats(vfsPath, options = {}) {
         const normalized = this.normalizePath(vfsPath);
-        const cached = this._pathStatsCache.get(normalized);
+        const cacheKey = isMcpAgentClient(options && options.clientInfo)
+            ? `${normalized}::agent`
+            : normalized;
+        const cached = this._pathStatsCache.get(cacheKey);
         if (cached && Date.now() - cached.at < this._pathStatsCacheTtlMs) {
             return cached.stats;
         }
 
         const parsed = this.parsePath(vfsPath);
+        if (isMcpAgentClient(options && options.clientInfo)) {
+            const display = await this.getPathDisplayInfo(vfsPath);
+            const listing = await this.listDirectory(vfsPath, {
+                offset: 0,
+                limit: 1,
+                clientInfo: options.clientInfo
+            });
+            const stats = {
+                path: vfsPath,
+                displayName: display.displayName,
+                displayPath: display.displayPath,
+                itemCount: listing.totalCount,
+                totalSizeBytes: listing.totalSizeBytes,
+                selectedCount: 0
+            };
+            if (parsed.type === 'workspace-home' && parsed.workspaceId) {
+                const wsInfo = this._getWorkspaceStatsFromCache(parsed.workspaceId);
+                if (wsInfo) stats.workspaceStats = wsInfo;
+            }
+            if (parsed.type === 'root' && this.globalResources.getSystemInfoCache?.()?.disk) {
+                stats.disk = this.globalResources.getSystemInfoCache().disk;
+            }
+            this._pathStatsCache.set(cacheKey, { stats, at: Date.now() });
+            return stats;
+        }
         const [display, listingStats] = await Promise.all([
             this.getPathDisplayInfo(vfsPath),
             this._computePathListingStats(parsed)
@@ -2137,7 +2176,7 @@ class VfsManager {
             stats.disk = this.globalResources.getSystemInfoCache().disk;
         }
 
-        this._pathStatsCache.set(normalized, { stats, at: Date.now() });
+        this._pathStatsCache.set(cacheKey, { stats, at: Date.now() });
         return stats;
     }
 
