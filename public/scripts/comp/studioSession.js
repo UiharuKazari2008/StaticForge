@@ -27,7 +27,7 @@ function startStudioNewSession() {
     clearManualForm();
     resetManualPreview();
     forgetLastStudioPreview();
-    if (manualPresetName) manualPresetName.value = '';
+    if (typeof manualPresetName !== 'undefined' && manualPresetName) manualPresetName.value = '';
     updateManualPresetToggleBtn();
     showGlassToast('info', null, 'New Session', false, 2000, '<i class="fa-regular fa-file"></i>');
 }
@@ -345,7 +345,7 @@ function openStudioSaveNameDialog(mode) {
     const title = document.getElementById('studioSaveNameTitle');
     if (!modal || !input) return;
     studioSaveNameState.mode = mode;
-    const currentName = manualPresetName ? manualPresetName.value.trim() : '';
+    const currentName = (typeof manualPresetName !== 'undefined' && manualPresetName) ? manualPresetName.value.trim() : '';
     if (mode === 'preset-current') input.value = currentName;
     else if (mode === 'desktop') input.value = currentName;
     else input.value = '';
@@ -574,7 +574,7 @@ async function openStudioSaveFolderDialog() {
     const modal = document.getElementById('studioSaveFolderModal');
     const nameInput = document.getElementById('studioSaveFolderName');
     if (!modal) return;
-    const currentName = manualPresetName ? manualPresetName.value.trim() : '';
+    const currentName = (typeof manualPresetName !== 'undefined' && manualPresetName) ? manualPresetName.value.trim() : '';
     if (nameInput) nameInput.value = currentName;
     studioSaveFolderSetView(studioSaveFolderState.viewMode || 'icons-lg');
     const start = (typeof activeWorkspace !== 'undefined' && activeWorkspace)
