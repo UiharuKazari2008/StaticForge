@@ -746,6 +746,29 @@
     opacity: 0;
 }
 
+.gallery-item[data-flagged="true"] .gallery-item-flag-badge,
+.gallery-item-flag-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: var(--z-layer-10);
+    display: none;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: var(--glass-layer-4);
+    border: 1px solid var(--border-primary);
+    color: var(--text-primary);
+    font-size: 0.7rem;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.gallery-item[data-flagged="true"] .gallery-item-flag-badge {
+    display: inline-flex;
+}
+
 .gallery-item-overlay {
     position: absolute;
     top: 0;

@@ -7,6 +7,15 @@ const { isImageLarge, matchOriginalResolution } = require('../../imageTools');
 const replicationRemoteFetch = require('../../replicationRemoteFetch');
 const { isReplicationGalleryClient, canGalleryUseRemoteMaster } = require('../../replication/replicationContracts');
 
+const {
+    UNDER_REVIEW_ERROR,
+    isMcpAgentClient,
+    galleryNamesFromRow,
+    decorateGalleryRowsForClient,
+    mcpUnderReviewPayload,
+    rejectMcpFlagMutation
+} = require('../../imageModerationFlag');
+
 const GALLERY_DESTRUCTIVE = { destructive: true };
 
 const GALLERY_BLOCK_SIZE = 750;
@@ -100,6 +109,36 @@ function galleryUpdatedAtMs(value) {
 function galleryRowLatestFilename(row) {
     if (!row) return null;
     return row.original || row.filename || row.upscaled || null;
+}
+
+async function applyModerationFlagsToGallery(metadataDb, gallery, clientInfo) {
+    const rows = Array.isArray(gallery) ? gallery : [];
+    if (!rows.length || !metadataDb || typeof metadataDb.getImageModerationFlags !== 'function') {
+        return rows;
+    }
+    const names = [];
+    for (const row of rows) {
+        for (const name of galleryNamesFromRow(row)) names.push(name);
+    }
+    const flags = await metadataDb.getImageModerationFlags(names);
+    // CURSOR: MCP request_gallery hides flagged rows; user gallery keeps them + flag fields
+    return decorateGalleryRowsForClient(rows, flags, { hideFlagged: isMcpAgentClient(clientInfo) });
+}
+
+function broadcastImageFlagUpdated(handlers, wsServer, filename, flag, workspaceId) {
+    const ws = wsServer || (handlers && handlers.globalResources && handlers.globalResources.getWebSocketServer
+        ? handlers.globalResources.getWebSocketServer()
+        : null);
+    if (!ws || typeof ws.broadcast !== 'function') return;
+    ws.broadcast({
+        type: 'image_flag_updated',
+        data: {
+            filename,
+            flag,
+            workspaceId: workspaceId || 'default'
+        },
+        timestamp: new Date().toISOString()
+    });
 }
 
 async function buildGalleryHint(handlers, workspaceId) {
@@ -325,7 +364,8 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
     shouldFilterReplicationIndex,
     assetRegistry,
     isGalleryBlockFetch,
-    afterCursor
+    afterCursor,
+    clientInfo
 }) {
     if (!light) {
         return false;
@@ -447,12 +487,14 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
         await new Promise((resolve) => { setImmediate(resolve); });
     }
 
+    const visibleGallery = await applyModerationFlagsToGallery(metadataDb, gallery, clientInfo);
+
     handlers.stopKeepAliveInterval(requestId);
     handlers.sendToClient(ws, {
         type: 'request_gallery_response',
         requestId,
         data: {
-            gallery,
+            gallery: visibleGallery,
             viewType,
             workspaceId: activeWorkspaceId,
             blockSize: GALLERY_BLOCK_SIZE,
@@ -460,7 +502,7 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
             pinnedIndexes,
             lastGalleryDestructiveAt,
             lastGalleryUpdatedAt: Number(lastGalleryUpdatedAt) || 0,
-            latestFilename: offset === 0 ? galleryRowLatestFilename(gallery[0]) : null,
+            latestFilename: offset === 0 ? galleryRowLatestFilename(visibleGallery[0]) : null,
             replicationContext,
             pagination: {
                 offset,
@@ -539,7 +581,8 @@ async function handleGalleryRequest(handlers, ws, message, clientInfo, wsServer)
                 shouldFilterReplicationIndex: false,
                 assetRegistry: null,
                 isGalleryBlockFetch: true,
-                afterCursor
+                afterCursor,
+                clientInfo
             });
             if (servedBlockPage) {
                 return;
@@ -601,7 +644,8 @@ async function handleGalleryRequest(handlers, ws, message, clientInfo, wsServer)
                 shouldFilterReplicationIndex,
                 assetRegistry,
                 isGalleryBlockFetch: false,
-                afterCursor
+                afterCursor,
+                clientInfo
             });
             if (servedFastPage) {
                 return;
@@ -663,6 +707,24 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
 
         // Track client workspace usage
         handlers.metadataCache.trackClientWorkspace(clientInfo.sessionId, workspaceId);
+
+        if (isMcpAgentClient(clientInfo)) {
+            const flagged = typeof metadataDb.isImageOrPairFlagged === 'function'
+                ? await metadataDb.isImageOrPairFlagged(filename)
+                : await metadataDb.isImageFlagged(filename);
+            if (flagged) {
+                // CURSOR: MCP request_image_metadata — flagged filename is under review
+                handlers.sendToClient(ws, {
+                    type: 'error',
+                    message: UNDER_REVIEW_ERROR,
+                    error: UNDER_REVIEW_ERROR,
+                    data: mcpUnderReviewPayload({ filename: null }),
+                    requestId: message.requestId || null,
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
+        }
 
         let cachedMetadata = handlers.metadataCache.get(workspaceId, filename);
 
@@ -825,6 +887,15 @@ async function handleImageByIndexRequest(handlers, ws, message, clientInfo, wsSe
             return;
         }
 
+        if (isMcpAgentClient(clientInfo)) {
+            const decorated = await applyModerationFlagsToGallery(metadataDb, [image], clientInfo);
+            if (!decorated.length) {
+                // CURSOR: MCP request_image_by_index — flagged row is under review
+                handlers.sendError(ws, UNDER_REVIEW_ERROR, 'request_image_by_index', message.requestId);
+                return;
+            }
+        }
+
         // Load full metadata only for the target image (check cache first)
         let metadata = null;
         try {
@@ -895,6 +966,21 @@ async function handleFindImageIndexRequest(handlers, ws, message, clientInfo, ws
 
         const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
         const metadataDb = handlers.globalResources.getMetadataDatabase();
+        if (isMcpAgentClient(clientInfo)) {
+            const flagged = typeof metadataDb.isImageOrPairFlagged === 'function'
+                ? await metadataDb.isImageOrPairFlagged(filename)
+                : await metadataDb.isImageFlagged(filename);
+            if (flagged) {
+                // CURSOR: MCP find_image_index — flagged filename is not found
+                handlers.sendToClient(ws, {
+                    type: 'find_image_index_response',
+                    requestId: message.requestId,
+                    data: { index: -1, underReview: true },
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
+        }
         const index = await metadataDb.findGalleryWorkspaceItemIndex(workspaceId, viewType, filename);
 
         // Send response
@@ -1598,6 +1684,64 @@ async function handleUrlUploadMetadataRequest(handlers, ws, message, clientInfo,
     }
 }
 
+async function handleClearImageFlag(handlers, ws, message, clientInfo, wsServer) {
+    if (isMcpAgentClient(clientInfo)) {
+        // CURSOR: clear_image_flag is user-only — reject MCP even with universal
+        const err = rejectMcpFlagMutation();
+        handlers.sendError(ws, err.message, err.code, message.requestId);
+        return;
+    }
+    const filename = message && message.filename;
+    if (!filename) {
+        handlers.sendError(ws, 'Missing filename parameter', 'clear_image_flag', message.requestId);
+        return;
+    }
+    try {
+        const metadataDb = handlers.globalResources.getMetadataDatabase();
+        const flag = await metadataDb.clearImageFlag(filename);
+        const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo && clientInfo.sessionId);
+        broadcastImageFlagUpdated(handlers, wsServer, filename, flag, workspaceId);
+        handlers.sendToClient(ws, {
+            type: 'clear_image_flag_response',
+            requestId: message.requestId,
+            data: { filename, flag, success: true },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Clear image flag error:', error);
+        handlers.sendError(ws, 'Failed to clear image flag', error.message, message.requestId);
+    }
+}
+
+async function handleConfirmImageFlag(handlers, ws, message, clientInfo, wsServer) {
+    if (isMcpAgentClient(clientInfo)) {
+        // CURSOR: confirm_image_flag is user-only — reject MCP even with universal
+        const err = rejectMcpFlagMutation();
+        handlers.sendError(ws, err.message, err.code, message.requestId);
+        return;
+    }
+    const filename = message && message.filename;
+    if (!filename) {
+        handlers.sendError(ws, 'Missing filename parameter', 'confirm_image_flag', message.requestId);
+        return;
+    }
+    try {
+        const metadataDb = handlers.globalResources.getMetadataDatabase();
+        const flag = await metadataDb.confirmImageFlag(filename);
+        const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo && clientInfo.sessionId);
+        broadcastImageFlagUpdated(handlers, wsServer, filename, flag, workspaceId);
+        handlers.sendToClient(ws, {
+            type: 'confirm_image_flag_response',
+            requestId: message.requestId,
+            data: { filename, flag, success: true },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Confirm image flag error:', error);
+        handlers.sendError(ws, error.message || 'Failed to confirm image flag', 'confirm_image_flag', message.requestId);
+    }
+}
+
 /**
  * Register gallery WebSocket packet handlers on wsPacketRegistry.
  * @param {import('../../websocketHandlers').WebSocketMessageHandlers} handlersCtx
@@ -1625,12 +1769,20 @@ function registerPackets(handlersCtx) {
     regFn('delete_unupscaled_original', handleDeleteUnupscaledOriginal, GALLERY_DESTRUCTIVE);
     regFn('send_to_sequenzia_bulk', handleSendToSequenziaBulk);
     regFn('update_image_preset_bulk', handleUpdateImagePresetBulk, GALLERY_DESTRUCTIVE);
+    // Not in SCOPE_WS_PACKETS: MCP without universal is denied at the WS gate;
+    // handlers still reject MCP/universal so clear/confirm stay user-only.
+    regFn('clear_image_flag', handleClearImageFlag);
+    regFn('confirm_image_flag', handleConfirmImageFlag);
 }
 
 module.exports = {
     registerPackets,
     broadcastGalleryMutation,
+    broadcastImageFlagUpdated,
     clientMatchesGalleryWorkspace,
     buildGalleryHint,
-    galleryUpdatedAtMs
+    galleryUpdatedAtMs,
+    applyModerationFlagsToGallery,
+    handleClearImageFlag,
+    handleConfirmImageFlag
 };

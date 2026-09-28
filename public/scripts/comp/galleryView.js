@@ -3650,6 +3650,67 @@ function wireGalleryItemCheckbox(item, checkbox, filename, image) {
     });
 }
 
+function formatGalleryFlagWhen(value) {
+    const n = Number(value);
+    if (!n) return '';
+    const ms = n < 1e12 ? n * 1000 : n;
+    try {
+        return new Date(ms).toLocaleString();
+    } catch (_err) {
+        return '';
+    }
+}
+
+function applyGalleryFlagBadge(item, image) {
+    if (!item) return;
+    const flagged = !!(image && image.flagged);
+    item.dataset.flagged = flagged ? 'true' : 'false';
+    let badge = item.querySelector('.gallery-item-flag-badge');
+    if (!flagged) {
+        if (badge) badge.remove();
+        return;
+    }
+    if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'gallery-item-flag-badge';
+        item.appendChild(badge);
+    }
+    const confirmed = !!(image.flagConfirmed);
+    badge.innerHTML = confirmed
+        ? '<i class="fas fa-flag"></i> Confirmed'
+        : '<i class="fas fa-flag"></i> Review';
+    badge.title = [image.flagReason, image.flaggedBy, formatGalleryFlagWhen(image.flaggedAt)]
+        .filter(Boolean)
+        .join(' · ');
+}
+
+function applyImageFlagUpdated(data) {
+    if (!data || !data.filename) return;
+    const filename = data.filename;
+    const flag = data.flag || {};
+    if (Array.isArray(allImages)) {
+        for (let i = 0; i < allImages.length; i++) {
+            const row = allImages[i];
+            if (!row) continue;
+            if (row.filename === filename || row.original === filename || row.upscaled === filename) {
+                row.flagged = !!flag.flagged;
+                row.flaggedBy = flag.flaggedBy || null;
+                row.flagReason = flag.reason || flag.flagReason || null;
+                row.flaggedAt = flag.flaggedAt || null;
+                row.flagConfirmed = !!flag.confirmed;
+                row.flagConfirmedAt = flag.confirmedAt || null;
+            }
+        }
+    }
+    const item = typeof galleryItemByFilename !== 'undefined' && galleryItemByFilename.get
+        ? galleryItemByFilename.get(filename)
+        : (gallery && gallery.querySelector(`.gallery-item[data-filename="${filename}"]`));
+    const fileIndex = item ? parseInt(item.dataset.fileIndex, 10) : NaN;
+    const image = (allImages && Number.isFinite(fileIndex) && allImages[fileIndex])
+        || findImageByFilename(filename);
+    if (item && image) applyGalleryFlagBadge(item, image);
+}
+
 function createGalleryItemOverlay(image) {
     const overlay = document.createElement('div');
     overlay.className = 'gallery-item-overlay';
@@ -3908,6 +3969,47 @@ function buildGalleryItemContextMenuConfig(image, item) {
                         icon: 'fas fa-fire',
                         text: 'Incinerate',
                         action: 'delete'
+                    },
+                    {
+                        icon: 'fas fa-flag',
+                        text: 'Flagged for review',
+                        subtitle: '',
+                        hidden: () => {
+                            const fileIndex = parseInt(item.dataset.fileIndex, 10);
+                            const currentImg = (allImages && allImages[fileIndex]) || image;
+                            return !(currentImg && currentImg.flagged);
+                        },
+                        loadfn: (menuItem, target) => {
+                            const fileIndex = parseInt(target.dataset.fileIndex, 10);
+                            const currentImg = (allImages && allImages[fileIndex]) || image;
+                            if (!currentImg || !currentImg.flagged) return;
+                            const when = formatGalleryFlagWhen(currentImg.flaggedAt);
+                            const who = currentImg.flaggedBy || 'agent';
+                            const reason = currentImg.flagReason || 'No reason';
+                            menuItem.subtitle = currentImg.flagConfirmed
+                                ? `${reason} · ${who}${when ? ` · ${when}` : ''} · confirmed`
+                                : `${reason} · ${who}${when ? ` · ${when}` : ''}`;
+                        }
+                    },
+                    {
+                        icon: 'fas fa-flag-slash',
+                        text: 'Clear flag',
+                        action: 'clear-flag',
+                        hidden: () => {
+                            const fileIndex = parseInt(item.dataset.fileIndex, 10);
+                            const currentImg = (allImages && allImages[fileIndex]) || image;
+                            return !(currentImg && currentImg.flagged);
+                        }
+                    },
+                    {
+                        icon: 'fas fa-flag-checkered',
+                        text: 'Confirm flag',
+                        action: 'confirm-flag',
+                        hidden: () => {
+                            const fileIndex = parseInt(item.dataset.fileIndex, 10);
+                            const currentImg = (allImages && allImages[fileIndex]) || image;
+                            return !(currentImg && currentImg.flagged) || !!(currentImg && currentImg.flagConfirmed);
+                        }
                     }
                 ]
             }
@@ -4007,6 +4109,8 @@ function ensureGalleryItemComplete(item, image, index) {
             applyPinButtonState(pinBtn, !!image.isPinned);
         }
     }
+
+    applyGalleryFlagBadge(item, image);
 
     // Ensure Context Menu
     const cm = window.contextMenu || (typeof contextMenu !== 'undefined' ? contextMenu : null);
@@ -8002,6 +8106,14 @@ function handleGalleryContextMenuAction(event) {
             deleteImage(image);
             break;
 
+        case 'clear-flag':
+            clearGalleryImageFlag(image);
+            break;
+
+        case 'confirm-flag':
+            confirmGalleryImageFlag(image);
+            break;
+
         case 'set-wallpaper':
             // Open desktop settings modal with this image
             openDesktopSettingsModal(`file:${filename}`);
@@ -9829,6 +9941,38 @@ function downloadImageOptimized(image) {
     link.href = localGalleryDerivedImageUrl('opti', filename);
     link.download = filename;
     link.click();
+}
+
+async function clearGalleryImageFlag(image) {
+    const filename = image && (image.filename || image.original || image.upscaled);
+    if (!filename || !window.wsClient) return;
+    try {
+        await window.wsClient.clearImageFlag(filename);
+        applyImageFlagUpdated({
+            filename,
+            flag: { flagged: false }
+        });
+        if (typeof showGlassToast === 'function') {
+            showGlassToast('success', null, 'Flag cleared', false, 3000, '<i class="fas fa-flag"></i>');
+        }
+    } catch (error) {
+        if (typeof showError === 'function') showError('Failed to clear flag: ' + error.message);
+    }
+}
+
+async function confirmGalleryImageFlag(image) {
+    const filename = image && (image.filename || image.original || image.upscaled);
+    if (!filename || !window.wsClient) return;
+    try {
+        const result = await window.wsClient.confirmImageFlag(filename);
+        const flag = (result && result.data && result.data.flag) || { flagged: true, confirmed: true };
+        applyImageFlagUpdated({ filename, flag });
+        if (typeof showGlassToast === 'function') {
+            showGlassToast('success', null, 'Flag confirmed', false, 3000, '<i class="fas fa-flag-checkered"></i>');
+        }
+    } catch (error) {
+        if (typeof showError === 'function') showError('Failed to confirm flag: ' + error.message);
+    }
 }
 
 // Delete image

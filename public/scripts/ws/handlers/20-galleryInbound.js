@@ -354,6 +354,16 @@ registerWsInboundHandler({
 });
 
 registerWsInboundHandler({
+    id: 'gallery.imageFlagUpdated',
+    type: 'image_flag_updated',
+    phase: 'only',
+    handler(message) {
+        // applyImageFlagUpdated: public/scripts/comp/galleryView.js
+        applyImageFlagUpdated(message && message.data);
+    }
+});
+
+registerWsInboundHandler({
     id: 'gallery.replicationResponse',
     type: 'request_gallery_response',
     phase: 'post',

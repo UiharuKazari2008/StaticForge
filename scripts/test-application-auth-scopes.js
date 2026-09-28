@@ -63,5 +63,10 @@ assert.strictEqual(scopesAllowPacket(['notes'], 'notes_save_content'), true);
 assert.strictEqual(scopesAllowPacket(['wiki'], 'notes_create'), false);
 assert.strictEqual(scopesAllowPacket(['universal'], 'get_autofill_ranking'), true);
 assert.strictEqual(scopesAllowPacket([], 'generate_image'), false);
+assert.deepStrictEqual(getPacketScopes('clear_image_flag'), []);
+assert.deepStrictEqual(getPacketScopes('confirm_image_flag'), []);
+assert.strictEqual(scopesAllowPacket(['gallery'], 'clear_image_flag'), false);
+assert.strictEqual(scopesAllowPacket(['universal'], 'clear_image_flag'), true);
+assert.strictEqual(scopesAllowPacket(['universal'], 'confirm_image_flag'), true);
 
 console.log('test-application-auth-scopes: ok');

@@ -38,6 +38,7 @@ const MODULE_DEFS = {
         description: 'Gallery browse and image retrieval',
         tools: [
             'get_generated_image', 'resolve_lookback', 'get_latest_image', 'get_images',
+            'flag_image',
             'delete_images', 'open_in_lumen', 'open_in_glancewell',
             'compare_images', 'evaluate_workspace_themes'
         ]

@@ -3,6 +3,25 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 const { getTimezoneByCoordinates } = require('../../dynamicGenerationHandlers');
 const { normalizeAutofillSearchSettings } = require('../../autofillSearchSettings');
 const omegasearchFilters = require('../../omegasearchFilters');
+const {
+    isMcpAgentClient,
+    decorateGalleryRowsForClient,
+    galleryNamesFromRow
+} = require('../../imageModerationFlag');
+
+async function filterSearchResultsForClient(metadataDb, results, clientInfo) {
+    const rows = Array.isArray(results) ? results : [];
+    if (!rows.length || !isMcpAgentClient(clientInfo) || !metadataDb || typeof metadataDb.getImageModerationFlags !== 'function') {
+        return rows;
+    }
+    const names = [];
+    for (const row of rows) {
+        for (const name of galleryNamesFromRow(row)) names.push(name);
+    }
+    const flags = await metadataDb.getImageModerationFlags(names);
+    // CURSOR: MCP search_files / omegasearch — omit flagged images
+    return decorateGalleryRowsForClient(rows, flags, { hideFlagged: true });
+}
 
 const SEARCH_DESTRUCTIVE = { destructive: true };
 
@@ -418,6 +437,8 @@ async function handleFileSearch(handlers, ws, message, clientInfo, wsServer) {
 
             // Perform the tag-based search using cached data
             const searchResults = await searchFilesByTags(handlers, query, viewType, clientInfo.sessionId);
+            const metadataDb = handlers.globalResources.getMetadataDatabase();
+            const visibleResults = await filterSearchResultsForClient(metadataDb, searchResults.results, clientInfo);
 
             // Search complete
 
@@ -428,8 +449,8 @@ async function handleFileSearch(handlers, ws, message, clientInfo, wsServer) {
                     status: 'complete',
                     query: query,
                     viewType: viewType,
-                    results: searchResults.results,
-                    count: searchResults.results.length,
+                    results: visibleResults,
+                    count: visibleResults.length,
                     tagSuggestions: searchResults.tagSuggestions,
                     timestamp: new Date().toISOString()
                 },
@@ -1001,7 +1022,11 @@ async function handleOmegasearchQuery(handlers, ws, message, clientInfo, wsServe
 
         const sendOmegasearchResponse = async (sessionRow, fromCache) => {
             const pageSlice = sessionRow.results.slice(safeOffset, safeOffset + safeLimit);
-            const pageResults = await enrichOmegasearchPageResults(metadataDb, pageSlice, viewType);
+            const pageResults = await filterSearchResultsForClient(
+                metadataDb,
+                await enrichOmegasearchPageResults(metadataDb, pageSlice, viewType),
+                clientInfo
+            );
             sessionRow.expiresAt = Date.now() + OMEGASEARCH_SESSION_TTL_MS;
 
             wsServer.sendToClient(ws, {

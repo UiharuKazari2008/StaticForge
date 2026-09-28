@@ -69,6 +69,7 @@ _test.TOOL_DEFS.forEach((tool) => {
 });
 // #106: legacy Knowledge* aliases stay callable but must not duplicate tools/list schemas
 const listedUniversal = _test.listToolsForScopes(['universal'], null).map((t) => t.name);
+assert.ok(listedUniversal.includes('flag_image'));
 const listedNameSet = new Set(listedUniversal);
 assert.strictEqual(listedNameSet.size, listedUniversal.length, 'tools/list has duplicate tool names');
 for (const aliasName of ['saveKnowledgeMemory', 'retrieveKnowledgeMemory', 'searchKnowledgeMemories', 'listKnowledgeMemories']) {
@@ -377,6 +378,7 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('get_open_windows'));
 assert.strictEqual(_test.rateGroupForTool('get_open_windows'), 'studio');
 assert.strictEqual(_test.rateGroupForTool('get_generation_job'), 'free');
 assert.strictEqual(_test.rateGroupForTool('await_generation_job'), 'free');
+assert.ok(genOnly.some((t) => t.name === 'flag_image'));
 assert.ok(genOnly.some((t) => t.name === 'advanced_tools'));
 assert.ok(genOnly.some((t) => t.name === 'bind_session'));
 assert.ok(genOnly.some((t) => t.name === 'list_clients'));
@@ -387,6 +389,7 @@ assert.ok(!genOnly.some((t) => t.name === 'get_images'));
 assert.ok(!genOnly.some((t) => t.name === 'generate_preset'));
 
 const galleryOnly = _test.listToolsForScopes(['gallery']);
+assert.ok(galleryOnly.some((t) => t.name === 'flag_image'));
 assert.ok(galleryOnly.some((t) => t.name === 'get_generated_image'));
 assert.ok(galleryOnly.some((t) => t.name === 'advanced_tools'));
 assert.ok(!galleryOnly.some((t) => t.name === 'get_images'));
@@ -394,11 +397,13 @@ assert.ok(!galleryOnly.some((t) => t.name === 'get_latest_image'));
 assert.ok(!galleryOnly.some((t) => t.name === 'generate_image'));
 
 const workspaceOnly = _test.listToolsForScopes(['workspace']);
+assert.ok(workspaceOnly.some((t) => t.name === 'flag_image'));
 assert.ok(workspaceOnly.some((t) => t.name === 'get_workspaces'));
 assert.ok(workspaceOnly.some((t) => t.name === 'advanced_tools'));
 assert.ok(!workspaceOnly.some((t) => t.name === 'generate_image'));
 
 const autofillOnly = _test.listToolsForScopes(['autofill']);
+assert.ok(autofillOnly.some((t) => t.name === 'flag_image'));
 assert.ok(autofillOnly.some((t) => t.name === 'search_autofill'));
 assert.ok(autofillOnly.some((t) => t.name === 'search_wiki'), 'autofill keys already include wiki packets');
 assert.ok(autofillOnly.some((t) => t.name === 'get_wiki_page'));
@@ -410,6 +415,7 @@ assert.ok(!autofillOnly.some((t) => t.name === 'generate_image'));
 assert.ok(!autofillOnly.some((t) => t.name === 'list_static_wiki_sites'));
 
 const wikiOnly = _test.listToolsForScopes(['wiki']);
+assert.ok(wikiOnly.some((t) => t.name === 'flag_image'));
 assert.ok(wikiOnly.some((t) => t.name === 'search_wiki'));
 assert.ok(wikiOnly.some((t) => t.name === 'get_wiki_page'));
 assert.ok(wikiOnly.some((t) => t.name === 'get_character_card'));
@@ -420,6 +426,7 @@ assert.ok(!wikiOnly.some((t) => t.name === 'get_static_wiki_page'));
 assert.ok(!wikiOnly.some((t) => t.name === 'search_autofill'));
 
 const presetsOnly = _test.listToolsForScopes(['presets']);
+assert.ok(presetsOnly.some((t) => t.name === 'flag_image'));
 assert.ok(presetsOnly.some((t) => t.name === 'save_preset'));
 assert.ok(presetsOnly.some((t) => t.name === 'apply_preset_to_studio'));
 assert.ok(presetsOnly.some((t) => t.name === 'advanced_tools'));
@@ -435,8 +442,12 @@ assert.ok(!generationTools.some((t) => t.name === 'generate_preset'));
 
 const refsOnly = _test.listToolsForScopes(['references']);
 assert.ok(refsOnly.some((t) => t.name === 'resolve_lookback'));
+assert.ok(refsOnly.some((t) => t.name === 'flag_image'));
 assert.ok(refsOnly.some((t) => t.name === 'advanced_tools'));
-assert.deepStrictEqual(refsOnly.filter((t) => t.name !== 'resolve_lookback').map((t) => t.name), ['advanced_tools']);
+assert.deepStrictEqual(
+    refsOnly.filter((t) => t.name !== 'resolve_lookback' && t.name !== 'flag_image').map((t) => t.name),
+    ['advanced_tools']
+);
 
 const searchOnly = _test.listToolsForScopes(['search']);
 
@@ -445,6 +456,7 @@ assert.ok(searchOnly.some((t) => t.name === 'get_explore_post'));
 assert.ok(searchOnly.some((t) => t.name === 'omegasearch'));
 assert.ok(searchOnly.some((t) => t.name === 'search_nax'));
 assert.ok(searchOnly.some((t) => t.name === 'list_nax_galleries'));
+assert.ok(searchOnly.some((t) => t.name === 'flag_image'));
 assert.ok(searchOnly.some((t) => t.name === 'advanced_tools'));
 assert.ok(!searchOnly.some((t) => t.name === 'search_autofill'));
 assert.ok(!genOnly.some((t) => t.name === 'search_nax'));
@@ -615,6 +627,7 @@ const noMemDb = _test.runMemoryTool({}, 'list_memories', {});
 assert.strictEqual(noMemDb.success, false);
 
 const notesOnly = _test.listToolsForScopes(['notes']);
+assert.ok(notesOnly.some((t) => t.name === 'flag_image'));
 assert.ok(notesOnly.some((t) => t.name === 'list_notes'));
 assert.ok(notesOnly.some((t) => t.name === 'get_note'));
 assert.ok(notesOnly.some((t) => t.name === 'save_note_content'));
@@ -668,6 +681,7 @@ const coreNames = _test.TOOL_DEFS.filter((t) => t.core).map((t) => t.name);
 assert.ok(coreNames.includes('get_workspaces'));
 assert.ok(coreNames.includes('save_preset'));
 assert.ok(coreNames.includes('get_generated_image'));
+assert.ok(coreNames.includes('flag_image'));
 assert.ok(coreNames.includes('delete_images'));
 assert.ok(coreNames.includes('scrap_images'));
 assert.ok(coreNames.includes('toggle_favorite'));
@@ -707,7 +721,10 @@ assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
 assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
 assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
-assert.strictEqual(coreNames.length, 69);
+assert.strictEqual(coreNames.length, 70);
+assert.strictEqual(_test.rateGroupForTool('flag_image'), 'write');
+assert.ok(_test.toolAllowedForScopes(['notes'], { name: 'flag_image', scope: 'gallery' }));
+assert.ok(_test.toolAllowedForScopes([], { name: 'flag_image', scope: 'gallery' }));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -809,6 +826,7 @@ assert.ok(galleryOnlyTools.some((t) => t.name === 'compare_images'));
 assert.ok(galleryOnlyTools.some((t) => t.name === 'open_in_glancewell'));
 
 const vfsOnly = _test.listToolsForScopes(['vfs']);
+assert.ok(vfsOnly.some((t) => t.name === 'flag_image'));
 assert.ok(vfsOnly.some((t) => t.name === 'vfs_list'));
 assert.ok(vfsOnly.some((t) => t.name === 'vfs_read'));
 assert.ok(vfsOnly.some((t) => t.name === 'create_shortcut'));

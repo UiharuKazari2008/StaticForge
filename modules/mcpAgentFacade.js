@@ -152,6 +152,14 @@ const {
     resetRateGroupHits,
     createMcpRateLimiter
 } = require('./mcpRateLimiter');
+const {
+    UNDER_REVIEW_ERROR,
+    mcpUnderReviewPayload,
+    decorateGalleryRowsForClient,
+    collectPayloadFilenames,
+    galleryNamesFromRow
+} = require('./imageModerationFlag');
+const { broadcastImageFlagUpdated } = require('./ws/handlers/120-galleryHandler');
 // modules/mcpRateLimiter.js — #66 owns TOOL_RATE_GROUPS this wave
 if (!TOOL_RATE_GROUPS.get_character_card) TOOL_RATE_GROUPS.get_character_card = 'search';
 if (!TOOL_RATE_GROUPS.ensure_artifact) TOOL_RATE_GROUPS.ensure_artifact = 'gallery';
@@ -1348,6 +1356,21 @@ const TOOL_DEFS = [
                 noteId: { type: 'string' },
                 content: { type: 'string' },
                 append: { type: 'boolean', description: 'If true, append after existing body' }
+            }
+        }
+    },
+    {
+        name: 'flag_image',
+        core: true,
+        description: 'Flag a gallery image for moderation review. Hidden from every MCP image path until the Studio user clears or confirms the flag. Pass filename and a non-empty reason. Does not delete.',
+        scope: 'gallery',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['filename', 'reason'],
+            properties: {
+                filename: { type: 'string', description: 'Gallery basename' },
+                reason: { type: 'string', description: 'Why this image should be reviewed' }
             }
         }
     },
@@ -3470,13 +3493,19 @@ async function collectSessionState(globalResources, req, input) {
         const focusedUnchanged = !!(prevCheckpoint && prevCheckpoint.focusedFilename && prevCheckpoint.focusedFilename === focusedFilename);
         const lastGeneratedFilename = (stateData && stateData.lastGeneratedImageName) || null;
         const studioFilename = (out.studio && out.studio.filename) || (stateData && stateData.filename) || null;
+        const redacted = await redactMcpFilenameFields(globalResources, out);
+        const attachStudio = studioFilename && !(await mcpFilenameIsFlagged(globalResources, studioFilename))
+            ? studioFilename
+            : null;
         return attachFocusedWindowImage(
             globalResources,
-            out,
-            rawWindows,
-            includeImage && !focusedUnchanged,
-            lastGeneratedFilename,
-            studioFilename
+            redacted,
+            Array.isArray(redacted.windows) ? redacted.windows : rawWindows,
+            includeImage && !focusedUnchanged && !!attachStudio,
+            lastGeneratedFilename && !(await mcpFilenameIsFlagged(globalResources, lastGeneratedFilename))
+                ? lastGeneratedFilename
+                : null,
+            attachStudio
         );
     } catch (error) {
         if (error.status === 504) {
@@ -3619,6 +3648,11 @@ async function lookupFilenameViaSearch(globalResources, req, query, workspaceId)
 }
 
 async function latestGalleryFilename(globalResources, req, workspaceId) {
+    const db = metadataDbOf(globalResources);
+    if (db && typeof db.getLatestUnflaggedGalleryFilename === 'function') {
+        const latest = await db.getLatestUnflaggedGalleryFilename(workspaceId || 'default', 'images');
+        if (latest) return latest;
+    }
     const packet = await dispatchPacketTool(globalResources, req, 'request_gallery', {
         workspaceId,
         offset: 0,
@@ -3636,17 +3670,38 @@ async function resolveGalleryFilename(globalResources, req, input) {
     let name = sanitizeGalleryFilename(input.filename || input.image || '');
     if (name) {
         const existing = galleryFileExists(globalResources, name);
-        if (existing) return { filename: existing, workspaceId };
+        if (existing) {
+            if (await mcpFilenameIsFlagged(globalResources, existing)) {
+                // CURSOR: MCP resolve by filename — flagged image is under review
+                return { filename: existing, workspaceId, underReview: true };
+            }
+            return { filename: existing, workspaceId };
+        }
         if (!path.extname(name)) {
             const withPng = galleryFileExists(globalResources, `${name}.png`);
-            if (withPng) return { filename: withPng, workspaceId };
+            if (withPng) {
+                if (await mcpFilenameIsFlagged(globalResources, withPng)) {
+                    return { filename: withPng, workspaceId, underReview: true };
+                }
+                return { filename: withPng, workspaceId };
+            }
         }
         const found = await lookupFilenameViaSearch(globalResources, req, name, workspaceId);
-        if (found) return { filename: found, workspaceId };
+        if (found) {
+            if (await mcpFilenameIsFlagged(globalResources, found)) {
+                return { filename: found, workspaceId, underReview: true };
+            }
+            return { filename: found, workspaceId };
+        }
     }
     if (seed) {
         const found = await lookupFilenameViaSearch(globalResources, req, seed, workspaceId);
-        if (found) return { filename: found, workspaceId };
+        if (found) {
+            if (await mcpFilenameIsFlagged(globalResources, found)) {
+                return { filename: found, workspaceId, underReview: true };
+            }
+            return { filename: found, workspaceId };
+        }
     }
     if (!name && !seed) {
         const latest = await latestGalleryFilename(globalResources, req, workspaceId);
@@ -3721,7 +3776,90 @@ function readGalleryImage(globalResources, filename) {
     };
 }
 
+function metadataDbOf(globalResources) {
+    return globalResources && typeof globalResources.getMetadataDatabase === 'function'
+        ? globalResources.getMetadataDatabase()
+        : null;
+}
+
+async function mcpFilenameIsFlagged(globalResources, filename) {
+    const db = metadataDbOf(globalResources);
+    if (!db || !filename) return false;
+    if (typeof db.isImageOrPairFlagged === 'function') return db.isImageOrPairFlagged(filename);
+    if (typeof db.isImageFlagged === 'function') return db.isImageFlagged(filename);
+    return false;
+}
+
+function mcpUnderReviewResult(extra) {
+    return mcpTextResult(mcpUnderReviewPayload(extra), true);
+}
+
+function extractImg2imgFilename(value) {
+    if (typeof value !== 'string' || !value) return null;
+    const raw = value.trim();
+    const stripped = raw.startsWith('file:') ? raw.slice(5) : raw;
+    return sanitizeGalleryFilename(stripped);
+}
+
+async function filterMcpGalleryRows(globalResources, rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) return list;
+    const db = metadataDbOf(globalResources);
+    if (!db || typeof db.getImageModerationFlags !== 'function') return list;
+    const names = [];
+    for (const row of list) {
+        for (const name of galleryNamesFromRow(row)) names.push(name);
+    }
+    const flags = await db.getImageModerationFlags(names);
+    // CURSOR: MCP list/search/evaluate — omit flagged images
+    return decorateGalleryRowsForClient(list, flags, { hideFlagged: true });
+}
+
+async function redactMcpFilenameFields(globalResources, payload) {
+    if (!payload || typeof payload !== 'object') return payload;
+    const names = [];
+    collectPayloadFilenames(payload, names);
+    if (!names.length) return payload;
+    const db = metadataDbOf(globalResources);
+    if (!db || typeof db.flaggedFilenameSet !== 'function') return payload;
+    const flagged = await db.flaggedFilenameSet(names);
+    if (!flagged.size) return payload;
+    const scrub = (value) => {
+        if (!value) return value;
+        if (typeof value === 'string') return flagged.has(value) ? null : value;
+        if (Array.isArray(value)) {
+            return value.map(scrub).filter((item) => item != null && item !== '');
+        }
+        if (typeof value === 'object') {
+            const next = { ...value };
+            for (const key of ['filename', 'original', 'upscaled', 'focusedFilename', 'latestFilename', 'lastGenerated', 'filenameBefore']) {
+                if (typeof next[key] === 'string' && flagged.has(next[key])) {
+                    next[key] = null;
+                }
+            }
+            if (Array.isArray(next.filenames)) next.filenames = scrub(next.filenames);
+            if (Array.isArray(next.selected)) next.selected = scrub(next.selected);
+            if (Array.isArray(next.results)) next.results = next.results.filter((row) => !galleryNamesFromRow(row).some((name) => flagged.has(name)));
+            if (Array.isArray(next.gallery)) next.gallery = next.gallery.filter((row) => !galleryNamesFromRow(row).some((name) => flagged.has(name)));
+            if (Array.isArray(next.items)) {
+                next.items = next.items.filter((item) => {
+                    const name = item && (item.name || item.filename || item.targetId);
+                    return !name || !flagged.has(name);
+                });
+            }
+            if (Array.isArray(next.windows)) next.windows = next.windows.map((win) => scrub(win));
+            if (next.data && typeof next.data === 'object') next.data = scrub(next.data);
+            if (next.studio && typeof next.studio === 'object') next.studio = scrub(next.studio);
+            return next;
+        }
+        return value;
+    };
+    return scrub(payload);
+}
+
 function toolAllowedForScopes(scopes, tool) {
+    // CURSOR: flag_image is on every MCP identity (app, menma, guren, chiyo, …)
+    if (tool && tool.name === 'flag_image') return true;
     if (tool.name === 'resolve_lookback') {
         return agentHasNamedScope(scopes, 'gallery')
             || agentHasNamedScope(scopes, 'notes')
@@ -4195,6 +4333,9 @@ async function callTool(globalResources, req, name, args) {
         const packet = await dispatchPacketTool(globalResources, req, 'omegasearch_query', input);
         const flat = flattenPacket(packet);
         const q = String(input.query || input.filename || '').trim();
+        if (Array.isArray(flat.results)) {
+            flat.results = await filterMcpGalleryRows(globalResources, flat.results);
+        }
         const results = Array.isArray(flat.results) ? flat.results : [];
         const exact = results.find((row) => row && (row.filename === q || row.filename === path.basename(q)));
         if (exact && exact.filename) {
@@ -4245,6 +4386,33 @@ async function callTool(globalResources, req, name, args) {
         }));
     }
 
+    if (name === 'flag_image') {
+        const filename = sanitizeGalleryFilename(input.filename);
+        const reason = String(input.reason || '').trim();
+        if (!filename) {
+            return mcpTextResult({ success: false, error: 'filename is required' }, true);
+        }
+        if (!reason) {
+            return mcpTextResult({ success: false, error: 'reason is required' }, true);
+        }
+        const metadataDb = metadataDbOf(globalResources);
+        if (!metadataDb || typeof metadataDb.flagImage !== 'function') {
+            return mcpTextResult({ success: false, error: 'Metadata database is not ready' }, true);
+        }
+        const flaggedBy = resolveActorName(req) || 'mcp';
+        const flag = await metadataDb.flagImage(filename, { flaggedBy, reason });
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
+        broadcastImageFlagUpdated(null, globalResources.getWebSocketServer && globalResources.getWebSocketServer(), filename, flag, workspaceId);
+        return mcpTextResult({
+            success: true,
+            filename,
+            flagged: true,
+            flaggedBy: flag.flaggedBy,
+            reason: flag.reason,
+            flaggedAt: flag.flaggedAt
+        });
+    }
+
     if (name === 'delete_images') {
         const filenames = collectFilenames(input);
         if (!filenames.length) {
@@ -4257,6 +4425,11 @@ async function callTool(globalResources, req, name, args) {
         const filenames = collectFilenames(input);
         if (!filenames.length) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
+        }
+        for (const filename of filenames) {
+            if (await mcpFilenameIsFlagged(globalResources, filename)) {
+                return mcpUnderReviewResult({ filename: null });
+            }
         }
         const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
         if (input.remove === true) {
@@ -4279,6 +4452,11 @@ async function callTool(globalResources, req, name, args) {
         const filenames = collectFilenames(input);
         if (!filenames.length) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
+        }
+        for (const filename of filenames) {
+            if (await mcpFilenameIsFlagged(globalResources, filename)) {
+                return mcpUnderReviewResult({ filename: null });
+            }
         }
         const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
         const record = workspaceRecord(globalResources, workspaceId) || {};
@@ -4305,11 +4483,14 @@ async function callTool(globalResources, req, name, args) {
         });
     }
 
-    if (name === 'open_in_lumen') {
-        return openViewerFromMcp(globalResources, input, 'lumen', req);
-    }
-    if (name === 'open_in_glancewell') {
-        return openViewerFromMcp(globalResources, input, 'glancewell', req);
+    if (name === 'open_in_lumen' || name === 'open_in_glancewell') {
+        const filenames = collectFilenames(input);
+        for (const filename of filenames) {
+            if (await mcpFilenameIsFlagged(globalResources, filename)) {
+                return mcpUnderReviewResult({ filename: null });
+            }
+        }
+        return openViewerFromMcp(globalResources, input, name === 'open_in_lumen' ? 'lumen' : 'glancewell', req);
     }
 
     if (name === 'compare_images') {
@@ -4322,6 +4503,9 @@ async function callTool(globalResources, req, name, args) {
             filename: input.filenameB || input.b,
             workspace: workspaceId
         });
+        if (lookedA.underReview || lookedB.underReview) {
+            return mcpUnderReviewResult();
+        }
         if (!lookedA.filename || !lookedB.filename) {
             return mcpTextResult({
                 success: false,
@@ -4368,7 +4552,7 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({ success: false, error: 'Metadata database is not ready' }, true);
         }
         const limit = Math.min(120, Math.max(1, Number(input.limit) || 80));
-        const rows = await metadataDb.listWorkspaceGalleryImageRows(workspaceId);
+        const rows = await filterMcpGalleryRows(globalResources, await metadataDb.listWorkspaceGalleryImageRows(workspaceId));
         const sample = rows.slice(0, limit);
         const metas = typeof metadataDb.getMultipleMetadata === 'function'
             ? await metadataDb.getMultipleMetadata(sample.map((row) => row.filename))
@@ -4379,6 +4563,10 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'vfs_read') {
+        const vfsName = sanitizeGalleryFilename(input.fileId || input.path || input.systemFileKey || '');
+        if (vfsName && await mcpFilenameIsFlagged(globalResources, vfsName)) {
+            return mcpUnderReviewResult({ filename: null });
+        }
         if (input.fileId) {
             return mcpTextResult(await dispatchPacketTool(globalResources, req, 'vfs_download_file', {
                 fileId: input.fileId
@@ -4396,6 +4584,10 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'create_shortcut') {
+        const shortcutImage = sanitizeGalleryFilename(input.filename || (input.data && input.data.filename) || '');
+        if (shortcutImage && await mcpFilenameIsFlagged(globalResources, shortcutImage)) {
+            return mcpUnderReviewResult({ filename: null });
+        }
         const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
         const dest = pickShortcutString(input, ['dest', 'path']) || '@desktop';
         const wantStudio = input.fromStudio === true || input.fromStudio === 'true'
@@ -4557,6 +4749,14 @@ async function callTool(globalResources, req, name, args) {
     if (generateNames.includes(name)) {
         const destPathHint = pickDestPathInput(input);
         let payload = flattenGenerateToolArgs(input);
+        const sourceName = extractImg2imgFilename(payload.image)
+            || extractImg2imgFilename(input.image)
+            || sanitizeGalleryFilename(input.filename || '');
+        if (sourceName && (name === 'upscale_image' || name === 'expand_image' || name === 'generate_image' || name === 'generate_preset')) {
+            if (await mcpFilenameIsFlagged(globalResources, sourceName)) {
+                return mcpUnderReviewResult({ filename: null });
+            }
+        }
         if (name === 'expand_image') {
             payload = mergeExpansionOverrideParams(payload);
         }
@@ -4739,7 +4939,15 @@ async function callTool(globalResources, req, name, args) {
             input.workspace = input.workspaceId;
         }
         const packet = await dispatchPacketTool(globalResources, req, def.packet, input);
-        return mcpTextResult(flattenPacket(packet), !packet.success);
+        const flat = flattenPacket(packet);
+        if (name === 'get_images' && Array.isArray(flat.gallery)) {
+            flat.gallery = await filterMcpGalleryRows(globalResources, flat.gallery);
+        }
+        if (name === 'vfs_list' && (Array.isArray(flat.items) || Array.isArray(flat.gallery))) {
+            const redacted = await redactMcpFilenameFields(globalResources, flat);
+            return mcpTextResult(redacted, !packet.success);
+        }
+        return mcpTextResult(flat, !packet.success);
     }
 
     if (name === 'get_linkxi_persona') {
@@ -4803,12 +5011,18 @@ async function callTool(globalResources, req, name, args) {
         if (filename && pendingApply && pendingApply.filenameBefore && filename !== pendingApply.filenameBefore) {
             completeApplyGenerateJob(pendingApply.jobId, filename);
         }
+        if (lookedUp.underReview) {
+            return mcpUnderReviewResult({ filename: null, workspaceId: lookedUp.workspaceId });
+        }
         if (!filename) {
             return mcpTextResult({
                 success: false,
                 error: 'No gallery image matched. Pass filename, seed, or use get_latest_image.',
                 workspaceId: lookedUp.workspaceId
             }, true);
+        }
+        if (await mcpFilenameIsFlagged(globalResources, filename)) {
+            return mcpUnderReviewResult({ filename: null, workspaceId: lookedUp.workspaceId });
         }
         const wantFull = input.full === true;
         const packet = await dispatchPacketTool(globalResources, req, 'request_image_metadata', { filename });
@@ -4918,7 +5132,7 @@ async function callTool(globalResources, req, name, args) {
             if (!isDiff || Object.prototype.hasOwnProperty.call(data, 'model')) {
                 body.settings = buildStudioSettingsCatalog(globalResources, data.model);
             }
-            return mcpTextResult(body);
+            return mcpTextResult(await redactMcpFilenameFields(globalResources, body));
         } catch (error) {
             if (error.status === 504) {
                 return mcpTextResult({
@@ -4946,15 +5160,19 @@ async function callTool(globalResources, req, name, args) {
         }
         const data = await sendBoundCommand(globalResources, 'get_windows', {}, 8000, bind.bindKey);
         const windows = Array.isArray(data.windows) ? data.windows : [];
-        const focusedFilename = pickFocusedWindowFilename(windows);
-        const wantImage = input.includeImage !== false && input.includeImage !== 'false';
+        const redacted = await redactMcpFilenameFields(globalResources, { windows });
+        const visibleWindows = Array.isArray(redacted.windows) ? redacted.windows : [];
+        const focusedFilename = pickFocusedWindowFilename(visibleWindows);
+        const wantImage = input.includeImage !== false && input.includeImage !== 'false'
+            && focusedFilename
+            && !(await mcpFilenameIsFlagged(globalResources, focusedFilename));
         const body = {
             success: true,
             bound: true,
             autoBound: !!bind.auto,
             workspaceId: data.workspaceId || null,
             activeWindowId: data.activeWindowId || null,
-            windows,
+            windows: visibleWindows,
             focusedFilename,
             next: focusedFilename
                 ? 'Focused file is this result\'s webp (unless includeImage false). Call get_generated_image for NovelAI metadata. Gallery selected: delete_images / scrap_images / toggle_favorite. Grimoire text is windows[].data.text.'
@@ -5866,6 +6084,12 @@ module.exports = {
         pickAgentPacketReply,
         listToolsForScopes,
         toolAllowedForScopes,
+        mcpFilenameIsFlagged,
+        mcpUnderReviewResult,
+        filterMcpGalleryRows,
+        redactMcpFilenameFields,
+        extractImg2imgFilename,
+        UNDER_REVIEW_ERROR,
         collectAutofillTerms,
         resolveAutofillSearchModel,
         normalizeAutofillTagKey,

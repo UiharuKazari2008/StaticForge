@@ -6636,6 +6636,14 @@ class WebSocketClient {
         return this.sendMessage('delete_unupscaled_original', { filename });
     }
 
+    async clearImageFlag(filename) {
+        return this.sendMessageWithCallback('clear_image_flag', { filename });
+    }
+
+    async confirmImageFlag(filename) {
+        return this.sendMessageWithCallback('confirm_image_flag', { filename });
+    }
+
     async sendToSequenziaBulk(filenames) {
         return this.sendMessage('send_to_sequenzia_bulk', { filenames });
     }

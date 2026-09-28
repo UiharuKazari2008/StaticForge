@@ -100,6 +100,7 @@ const TOOL_RATE_GROUPS = {
     upscale_image: 'generate',
     expand_image: 'generate',
     delete_images: 'write',
+    flag_image: 'write',
     scrap_images: 'write',
     toggle_favorite: 'write',
     open_in_lumen: 'free',
