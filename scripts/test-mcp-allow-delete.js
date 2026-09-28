@@ -624,18 +624,23 @@ async function testFacadePassesWorkspace() {
     assert.strictEqual(body.message, 'Bulk delete completed');
     assert.ok(workspaceState.scraps.some((row) => row.filename === 'a.png' && row.id === 'lab'));
 
+    const ghostRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'del-facade-ghost-'));
+    seedDeleteTree(ghostRoot, { files: { 'b.png': 'b' } });
+    const ghostState = makeWorkspaceState();
+    const ghostResources = makeDeleteHandlers(ghostRoot, { workspaceState: ghostState }).globalResources;
     const ghost = parseToolText(await _test.callTool(
-        globalResources,
+        ghostResources,
         {
             authMethod: 'application_key',
             applicationKeyId: 'key-1',
             applicationAuth: { applicationScopes: ['gallery', 'workspace'], applicationKeyId: 'key-1' }
         },
         'delete_images',
-        { filename: 'a.png', workspace: 'ghost' }
+        { filename: 'b.png', workspace: 'ghost' }
     ));
     assert.strictEqual(ghost.success, true);
-    assert.ok(workspaceState.scraps.some((row) => row.filename === 'a.png' && row.id === 'default'));
+    assert.ok(ghostState.scraps.some((row) => row.filename === 'b.png' && row.id === 'default'));
+    assert.strictEqual(filenameHiddenByFakeDelete(ghostResources, 'b.png'), true);
 
     const names = [];
     collectPayloadFilenames({ shortcuts: [{ name: 'a.png', data: { filename: 'a.png' } }] }, names);
