@@ -394,7 +394,7 @@ class McpOAuthProvider {
         const nowSec = Math.floor(Date.now() / 1000);
 
         const row = await getDb().get(
-            `SELECT t.*, k.user_type, k.app_name
+            `SELECT t.*, k.user_type, k.app_name, k.allow_delete
              FROM oauth_access_tokens t
              JOIN application_keys k ON k.id = t.application_key_id
              WHERE t.token_hash = ? AND t.expires_at > ? AND t.revoked_at IS NULL
@@ -419,7 +419,8 @@ class McpOAuthProvider {
             appName: row.app_name || null,
             clientId: row.client_id,
             resource: row.resource,
-            expiresAt: row.expires_at * 1000
+            expiresAt: row.expires_at * 1000,
+            allowDelete: row.allow_delete === 1 || row.allow_delete === true
         };
     }
 

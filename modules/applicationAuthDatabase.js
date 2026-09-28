@@ -43,7 +43,8 @@ async function createApplicationAuthTables() {
             last_used_at INTEGER,
             revoked_at INTEGER,
             replaced_by_id TEXT,
-            status TEXT NOT NULL DEFAULT 'active'
+            status TEXT NOT NULL DEFAULT 'active',
+            allow_delete INTEGER NOT NULL DEFAULT 0
         )
     `);
 
@@ -95,6 +96,11 @@ async function createApplicationAuthTables() {
         await db.exec(`ALTER TABLE application_auth_requests ADD COLUMN pending_key_plain TEXT`);
     } catch (error) {
         // Column already exists
+    }
+    try {
+        await db.exec(`ALTER TABLE application_keys ADD COLUMN allow_delete INTEGER NOT NULL DEFAULT 0`);
+    } catch (error) {
+        // Column already exists — existing tokens keep the default (off)
     }
 
     await db.exec(`

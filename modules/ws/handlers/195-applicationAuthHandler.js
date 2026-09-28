@@ -1,4 +1,5 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
+const { isMcpAgentClient, rejectMcpTokenConfigMutation } = require('../../imageModerationFlag');
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
 const APP_AUTH_CRITICAL = { critical: true, owner: 'applicationAuth' };
@@ -48,6 +49,7 @@ async function handleAuthenticateApplication(handlersCtx, ws, message, clientInf
     clientInfo.applicationScopes = result.scopes;
     clientInfo.applicationUserAgent = ua;
     clientInfo.sessionId = `appkey:${result.applicationKeyId}`;
+    clientInfo.allowDelete = result.allowDelete === true;
 
     const payload = {
         type: 'application_authenticated',
@@ -97,6 +99,7 @@ async function handleRefreshApplicationKey(handlersCtx, ws, message, clientInfo,
     if (clientInfo.applicationKeyId === result.previousKeyId) {
         clientInfo.applicationKeyId = result.summary.id;
         clientInfo.sessionId = `appkey:${result.summary.id}`;
+        clientInfo.allowDelete = !!(result.summary && result.summary.allowDelete);
     }
 
     wsServer.sendToClient(ws, {
@@ -316,6 +319,32 @@ async function handleCreateApplicationKey(handlersCtx, ws, message, clientInfo, 
     });
 }
 
+async function handleUpdateApplicationKeyFlags(handlersCtx, ws, message, clientInfo, wsServer) {
+    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
+    if (isMcpAgentClient(clientInfo)) {
+        const err = rejectMcpTokenConfigMutation();
+        handlersCtx.sendError(ws, err.message, err.code, message.requestId);
+        return;
+    }
+    const { keyId, allowDelete } = message;
+    if (!keyId) {
+        handlersCtx.sendError(ws, 'keyId is required', 'MISSING_KEY_ID', message.requestId);
+        return;
+    }
+    const manager = getManager(handlersCtx);
+    const result = await manager.setApplicationKeyAllowDelete(keyId, allowDelete);
+    if (!result.success) {
+        handlersCtx.sendError(ws, result.error || 'Failed to update key flags', 'UPDATE_FAILED', message.requestId);
+        return;
+    }
+    wsServer.sendToClient(ws, {
+        type: 'update_application_key_flags_response',
+        requestId: message.requestId,
+        data: result,
+        timestamp: new Date().toISOString()
+    });
+}
+
 async function handleRevokeApplicationKey(handlersCtx, ws, message, clientInfo, wsServer) {
     if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     const { keyId } = message;
@@ -409,6 +438,7 @@ function registerPackets(handlersCtx) {
     reg('list_application_keys', handleListApplicationKeys);
     reg('get_application_auth_scopes', handleGetApplicationAuthScopes);
     reg('create_application_key', handleCreateApplicationKey, ADMIN_DESTRUCTIVE);
+    reg('update_application_key_flags', handleUpdateApplicationKeyFlags, ADMIN_DESTRUCTIVE);
     reg('revoke_application_key', handleRevokeApplicationKey, ADMIN_DESTRUCTIVE);
     reg('list_application_auth_requests', handleListApplicationAuthRequests);
     reg('approve_application_auth_request', handleApproveApplicationAuthRequest, ADMIN_DESTRUCTIVE);
@@ -416,5 +446,6 @@ function registerPackets(handlersCtx) {
 }
 
 module.exports = {
-    registerPackets
+    registerPackets,
+    handleUpdateApplicationKeyFlags
 };

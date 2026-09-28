@@ -1826,7 +1826,9 @@ async function dispatchAgentPacket(globalResources, req, message) {
         authMethod: req.authMethod || 'application_key',
         applicationScopes: scopes,
         sessionId: req.sessionId || (req.applicationAuth && req.applicationAuth.sessionId) || null,
-        userAgent: snippetUserAgent(req.headers && req.headers['user-agent'])
+        userAgent: snippetUserAgent(req.headers && req.headers['user-agent']),
+        allowDelete: !!(req.allowDelete === true || (req.applicationAuth && req.applicationAuth.allowDelete === true)),
+        applicationAuth: req.applicationAuth || null
     };
     await entry.handler({
         ws: sink.ws,

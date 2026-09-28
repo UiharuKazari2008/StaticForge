@@ -7269,6 +7269,10 @@ class WebSocketClient {
         return this.sendMessage('revoke_application_key', { keyId });
     }
 
+    async updateApplicationKeyFlags(payload) {
+        return this.sendMessage('update_application_key_flags', payload);
+    }
+
     async listApplicationAuthRequests(status = 'pending') {
         return this.sendMessage('list_application_auth_requests', { status });
     }

@@ -68,5 +68,8 @@ assert.deepStrictEqual(getPacketScopes('confirm_image_flag'), []);
 assert.strictEqual(scopesAllowPacket(['gallery'], 'clear_image_flag'), false);
 assert.strictEqual(scopesAllowPacket(['universal'], 'clear_image_flag'), true);
 assert.strictEqual(scopesAllowPacket(['universal'], 'confirm_image_flag'), true);
+assert.deepStrictEqual(getPacketScopes('update_application_key_flags'), []);
+assert.strictEqual(scopesAllowPacket(['gallery'], 'update_application_key_flags'), false);
+assert.strictEqual(scopesAllowPacket(['universal'], 'update_application_key_flags'), true);
 
 console.log('test-application-auth-scopes: ok');

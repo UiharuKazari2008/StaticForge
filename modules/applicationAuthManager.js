@@ -129,7 +129,8 @@ const ADMIN_MANAGEMENT_WS_PACKETS = new Set([
     'revoke_application_key',
     'list_application_auth_requests',
     'approve_application_auth_request',
-    'deny_application_auth_request'
+    'deny_application_auth_request',
+    'update_application_key_flags'
 ]);
 
 function hashSecret(value) {
@@ -154,6 +155,10 @@ function isApplicationKeyFormat(token) {
 
 function isTempTokenFormat(token) {
     return typeof token === 'string' && token.startsWith(TEMP_TOKEN_PREFIX);
+}
+
+function coerceAllowDelete(value) {
+    return value === true || value === 1 || value === '1';
 }
 
 function parseScopesJson(raw) {
@@ -239,7 +244,8 @@ function rowToKeySummary(row, includeExpired = false) {
         revokedAt: row.revoked_at ? row.revoked_at * 1000 : null,
         status,
         isPerpetual: row.expires_at == null,
-        refreshOverdue: status === 'refresh_required' || (refreshBeforeAt <= Date.now() && status === 'active')
+        refreshOverdue: status === 'refresh_required' || (refreshBeforeAt <= Date.now() && status === 'active'),
+        allowDelete: coerceAllowDelete(row.allow_delete)
     };
 }
 
@@ -378,7 +384,8 @@ class ApplicationAuthManager {
             refreshBeforeAt: row.refresh_before_at * 1000,
             originalExpiresAt: row.original_expires_at != null ? row.original_expires_at * 1000 : null,
             userAgentMatched: uaMatched,
-            userAgentBypassed: !!(unknownUserAgentBypass && !uaMatched)
+            userAgentBypassed: !!(unknownUserAgentBypass && !uaMatched),
+            allowDelete: coerceAllowDelete(row.allow_delete)
         };
     }
 
@@ -429,7 +436,8 @@ class ApplicationAuthManager {
             applicationKeyId: row.application_key_id,
             appName: row.app_name || null,
             tempTokenId: row.id,
-            skipUserAgentCheck: true
+            skipUserAgentCheck: true,
+            allowDelete: coerceAllowDelete(keyRow.allow_delete)
         };
     }
 
@@ -475,12 +483,12 @@ class ApplicationAuthManager {
         await getDb().run(
             `INSERT INTO application_keys
              (id, key_hash, key_prefix, app_name, user_agent, scopes, user_type,
-              expires_at, refresh_before_at, original_expires_at, created_at, last_refreshed_at, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              expires_at, refresh_before_at, original_expires_at, created_at, last_refreshed_at, status, allow_delete)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 id, keyHash, keyPrefix, String(appName).trim(), String(userAgent).trim(),
                 JSON.stringify(normalizedScopes), userType === 'readonly' ? 'readonly' : 'admin',
-                expiresAtSec, refreshBeforeAt, expiresAtSec, nowSec, nowSec, 'active'
+                expiresAtSec, refreshBeforeAt, expiresAtSec, nowSec, nowSec, 'active', 0
             ]
         );
 
@@ -522,12 +530,12 @@ class ApplicationAuthManager {
             await getDb().run(
                 `INSERT INTO application_keys
                  (id, key_hash, key_prefix, app_name, user_agent, scopes, user_type,
-                  expires_at, refresh_before_at, original_expires_at, created_at, last_refreshed_at, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  expires_at, refresh_before_at, original_expires_at, created_at, last_refreshed_at, status, allow_delete)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     newId, newHash, newPrefix, oldRow.app_name, oldRow.user_agent, oldRow.scopes,
                     oldRow.user_type, oldRow.expires_at, newRefreshBefore, oldRow.original_expires_at,
-                    oldRow.created_at, nowSec, 'active'
+                    oldRow.created_at, nowSec, 'active', coerceAllowDelete(oldRow.allow_delete) ? 1 : 0
                 ]
             );
             await getDb().run('COMMIT');
@@ -552,6 +560,23 @@ class ApplicationAuthManager {
             ['revoked', nowSec, keyId]
         );
         return { success: (result?.changes || 0) > 0 };
+    }
+
+    async setApplicationKeyAllowDelete(keyId, allowDelete) {
+        const id = String(keyId || '').trim();
+        if (!id) return { success: false, error: 'KEY_NOT_FOUND' };
+        const row = await getDb().get('SELECT * FROM application_keys WHERE id = ?', [id]);
+        if (!row) return { success: false, error: 'KEY_NOT_FOUND' };
+        if (row.status !== 'active' || row.revoked_at) {
+            return { success: false, error: 'NOT_ACTIVE' };
+        }
+        const value = coerceAllowDelete(allowDelete) ? 1 : 0;
+        await getDb().run(
+            `UPDATE application_keys SET allow_delete = ? WHERE id = ? AND revoked_at IS NULL AND status = 'active'`,
+            [value, id]
+        );
+        const next = await getDb().get('SELECT * FROM application_keys WHERE id = ?', [id]);
+        return { success: true, summary: rowToKeySummary(next, true) };
     }
 
     async mergeNamedScopes(keyId, requestedScopes, { userType = null } = {}) {
@@ -855,5 +880,7 @@ module.exports = {
     scopesAllowPacket,
     isApplicationKeyFormat,
     isTempTokenFormat,
+    coerceAllowDelete,
+    ADMIN_MANAGEMENT_WS_PACKETS,
     OMEGASEARCH_QUERY_PACKET_SCHEMA
 };

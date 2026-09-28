@@ -363,6 +363,7 @@ ${dsapSmfBuildHeader({
           <th align="left">Application</th>
           <th align="left">Key</th>
           <th align="left">Scopes</th>
+          <th align="center" width="100">Allow delete</th>
           <th align="center" width="90">Status</th>
           <th align="center" width="110">Expires</th>
           <th align="center" width="110">Refresh by</th>
@@ -1210,6 +1211,11 @@ const securityDsapDriver = {
         if (action === 'keychain-unlock') {
             const row = btn.closest('[data-sec-keychain-service]');
             if (row) void this._unlockKeychainService(root, row.dataset.secKeychainService);
+            return;
+        }
+        if (action === 'toggle-appkey-allow-delete') {
+            const keyId = btn.closest('[data-sec-appkey-id]')?.dataset.secAppkeyId;
+            if (keyId) void this._setAppkeyAllowDelete(root, keyId, btn.dataset.state !== 'on');
             return;
         }
         if (action === 'revoke-appkey') {
@@ -2151,11 +2157,16 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             const refreshBy = securityDsapFormatTimestamp(key.refreshBeforeAt);
             const scopes = (key.scopes || []).join(', ');
             const canRevoke = key.status === 'active' || key.status === 'refresh_required';
+            const allowDeleteOn = key.allowDelete === true;
+            const allowDeleteBtn = canRevoke
+                ? `<button type="button" class="sec-dsap-action-btn sec-btn-small sec-pin-toggle" data-sec-action="toggle-appkey-allow-delete" data-state="${allowDeleteOn ? 'on' : 'off'}" title="Allow this token to permanently delete gallery images"><i class="fas fa-toggle-${allowDeleteOn ? 'on' : 'off'}"></i> ${allowDeleteOn ? 'On' : 'Off'}</button>`
+                : '—';
             return `
 <tr data-sec-appkey-id="${securityDsapEscapeAttr(key.id)}">
   <td>${securityDsapEscapeHtml(key.appName)}<br><span class="sec-dsap-setting-hint">${securityDsapEscapeHtml(key.userAgent)}</span></td>
   <td><code>${securityDsapEscapeHtml(key.keyPrefix)}…</code></td>
   <td>${securityDsapEscapeHtml(scopes)}</td>
+  <td align="center">${allowDeleteBtn}</td>
   <td align="center" class="${statusClass}">${securityDsapEscapeHtml(key.status)}</td>
   <td align="center">${securityDsapEscapeHtml(expires)}</td>
   <td align="center">${securityDsapEscapeHtml(refreshBy)}</td>
@@ -2280,6 +2291,22 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             void this._loadAppkeys(root);
         } catch (err) {
             if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', err.message || 'Failed to create key', false, 5000);
+        }
+    },
+
+    async _setAppkeyAllowDelete(root, keyId, allowDelete) {
+        if (!(await this._ensureWs())) return;
+        try {
+            const response = await wsClient.updateApplicationKeyFlags({ keyId, allowDelete });
+            if (!response?.success) throw new Error(response?.error || 'Failed to update allow delete');
+            const key = this._state.appkeys.keys.find((item) => item.id === keyId);
+            if (key) key.allowDelete = allowDelete === true;
+            this._renderAppkeys(root);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', null, allowDelete ? 'Token may permanently delete' : 'Token delete is off', false, 3000, '<i class="fas fa-key"></i>');
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', err.message || 'Failed to update allow delete', false, 5000);
         }
     },
 

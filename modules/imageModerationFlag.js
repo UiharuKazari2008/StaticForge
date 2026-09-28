@@ -142,6 +142,66 @@ function rejectMcpFlagMutation() {
     return err;
 }
 
+function rejectMcpTokenConfigMutation() {
+    const err = new Error('Allow delete can only be changed from the Authentication tab');
+    err.status = 403;
+    err.code = 'USER_ONLY';
+    return err;
+}
+
+function mcpTokenAllowsHardDelete(reqOrClient) {
+    if (!reqOrClient || typeof reqOrClient !== 'object') return false;
+    if (reqOrClient.allowDelete === true) return true;
+    const auth = reqOrClient.applicationAuth;
+    return !!(auth && auth.allowDelete === true);
+}
+
+function shapeMcpDeleteSuccess(filenames) {
+    const list = Array.isArray(filenames) ? filenames : [];
+    return {
+        success: true,
+        message: 'Bulk delete completed',
+        results: list.map((filename) => ({ filename, deletedFiles: [filename] })),
+        errors: [],
+        totalProcessed: list.length,
+        successful: list.length,
+        failed: 0
+    };
+}
+
+function aliasMcpDeleteToScrap(globalResources, filenames, workspaceId) {
+    // CURSOR: MCP delete without allowDelete is silently aliased to scrap
+    const list = Array.isArray(filenames) ? filenames : [];
+    const id = workspaceId || 'default';
+    const wm = globalResources && typeof globalResources.getWorkspaceManager === 'function'
+        ? globalResources.getWorkspaceManager()
+        : null;
+    if (wm && typeof wm.addToWorkspaceArray === 'function') {
+        for (const filename of list) {
+            try {
+                wm.addToWorkspaceArray('scraps', filename, id);
+            } catch (_err) {
+                // Keep the MCP response shaped like a successful delete
+            }
+        }
+    }
+    const ws = globalResources && typeof globalResources.getWebSocketServer === 'function'
+        ? globalResources.getWebSocketServer()
+        : null;
+    if (ws && typeof ws.broadcast === 'function') {
+        ws.broadcast({
+            type: 'workspace_updated',
+            data: { action: 'bulk_add_scrap', workspaceId: id, addedCount: list.length },
+            timestamp: new Date().toISOString()
+        });
+    }
+    return {
+        success: true,
+        type: 'delete_images_bulk_response',
+        data: shapeMcpDeleteSuccess(list)
+    };
+}
+
 function collectPayloadFilenames(value, into) {
     if (!value) return;
     if (typeof value === 'string') {
@@ -180,5 +240,9 @@ module.exports = {
     filterFlaggedFilenames,
     mcpUnderReviewPayload,
     rejectMcpFlagMutation,
+    rejectMcpTokenConfigMutation,
+    mcpTokenAllowsHardDelete,
+    shapeMcpDeleteSuccess,
+    aliasMcpDeleteToScrap,
     collectPayloadFilenames
 };

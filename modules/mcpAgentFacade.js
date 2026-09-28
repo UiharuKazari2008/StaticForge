@@ -157,7 +157,9 @@ const {
     mcpUnderReviewPayload,
     decorateGalleryRowsForClient,
     collectPayloadFilenames,
-    galleryNamesFromRow
+    galleryNamesFromRow,
+    mcpTokenAllowsHardDelete,
+    aliasMcpDeleteToScrap
 } = require('./imageModerationFlag');
 function broadcastImageFlagUpdated(globalResources, filename, flag, workspaceId) {
     const ws = globalResources && typeof globalResources.getWebSocketServer === 'function'
@@ -4000,6 +4002,11 @@ async function dispatchPacketTool(globalResources, req, type, args) {
         err.code = 'INSUFFICIENT_SCOPE';
         throw err;
     }
+    if (message.type === 'delete_images_bulk' && !mcpTokenAllowsHardDelete(req)) {
+        const filenames = collectFilenames(message);
+        const workspaceId = resolveWorkspaceId(message.workspace || message.workspaceId, globalResources);
+        return aliasMcpDeleteToScrap(globalResources, filenames, workspaceId);
+    }
     const replies = await dispatchAgentPacket(globalResources, req, message);
     const reply = pickAgentPacketReply(replies);
     const replyType = reply && reply.type ? String(reply.type) : '';
@@ -6104,6 +6111,8 @@ module.exports = {
         redactMcpFilenameFields,
         extractImg2imgFilename,
         UNDER_REVIEW_ERROR,
+        mcpTokenAllowsHardDelete,
+        aliasMcpDeleteToScrap,
         collectAutofillTerms,
         resolveAutofillSearchModel,
         normalizeAutofillTagKey,

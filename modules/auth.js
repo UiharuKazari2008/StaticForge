@@ -47,7 +47,8 @@ async function resolveApplicationAuth(req, globalResources, options = {}) {
             applicationScopes: result.scopes,
             appName: result.appName || null,
             skipUserAgentCheck: true,
-            sessionId: `apptok:${result.tempTokenId}`
+            sessionId: `apptok:${result.tempTokenId}`,
+            allowDelete: result.allowDelete === true
         };
     }
 
@@ -65,7 +66,8 @@ async function resolveApplicationAuth(req, globalResources, options = {}) {
             applicationUserAgent: userAgent,
             sessionId: `appkey:${result.applicationKeyId}`,
             userAgentMatched: result.userAgentMatched === true,
-            userAgentBypassed: result.userAgentBypassed === true
+            userAgentBypassed: result.userAgentBypassed === true,
+            allowDelete: result.allowDelete === true
         };
     }
 
@@ -206,7 +208,8 @@ function createMcpAuthMiddleware(globalResources, options = {}) {
                                 appName: validation.appName || null,
                                 oauthClientId: validation.clientId,
                                 oauthResource: validation.resource,
-                                sessionId: `oauth:${validation.applicationKeyId}`
+                                sessionId: `oauth:${validation.applicationKeyId}`,
+                                allowDelete: validation.allowDelete === true
                             });
                             return next();
                         }

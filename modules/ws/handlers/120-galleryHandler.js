@@ -13,7 +13,9 @@ const {
     galleryNamesFromRow,
     decorateGalleryRowsForClient,
     mcpUnderReviewPayload,
-    rejectMcpFlagMutation
+    rejectMcpFlagMutation,
+    mcpTokenAllowsHardDelete,
+    aliasMcpDeleteToScrap
 } = require('../../imageModerationFlag');
 
 const GALLERY_DESTRUCTIVE = { destructive: true };
@@ -1082,6 +1084,18 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
 
         if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
             handlers.sendError(ws, 'Filenames array is required', 'delete_images_bulk', message.requestId);
+            return;
+        }
+
+        if (isMcpAgentClient(clientInfo) && !mcpTokenAllowsHardDelete(clientInfo)) {
+            const workspaceId = message.workspace || message.workspaceId || 'default';
+            const aliased = aliasMcpDeleteToScrap(handlers.globalResources, filenames, workspaceId);
+            handlers.sendToClient(ws, {
+                type: 'delete_images_bulk_response',
+                requestId: message.requestId,
+                data: aliased.data,
+                timestamp: new Date().toISOString()
+            });
             return;
         }
 
