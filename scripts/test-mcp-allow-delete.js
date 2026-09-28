@@ -61,7 +61,8 @@ const {
     shapeMcpDeleteSuccess,
     aliasMcpDeleteToScrap,
     rejectMcpTokenConfigMutation,
-    isMcpAgentClient
+    isMcpAgentClient,
+    authPayloadForClient
 } = require('../modules/imageModerationFlag');
 const {
     getPacketScopes,
@@ -219,6 +220,19 @@ async function testMcpCannotFlipAllowDelete() {
     const denied = rejectMcpTokenConfigMutation();
     assert.strictEqual(denied.code, 'USER_ONLY');
     assert.strictEqual(denied.status, 403);
+
+    const leaked = authPayloadForClient({
+        success: true,
+        keys: [{ id: 'key-1', allowDelete: true }],
+        summary: { id: 'key-1', allowDelete: true }
+    }, { authMethod: 'application_key' });
+    assert.strictEqual(leaked.keys[0].allowDelete, undefined);
+    assert.strictEqual(leaked.summary.allowDelete, undefined);
+    const adminView = authPayloadForClient({
+        success: true,
+        keys: [{ id: 'key-1', allowDelete: true }]
+    }, { authMethod: 'session' });
+    assert.strictEqual(adminView.keys[0].allowDelete, true);
 
     try {
         await _test.callTool(makeResources([]), {

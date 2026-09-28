@@ -149,6 +149,26 @@ function rejectMcpTokenConfigMutation() {
     return err;
 }
 
+function redactAllowDeleteFromValue(value) {
+    if (!value || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(redactAllowDeleteFromValue);
+    const next = { ...value };
+    delete next.allowDelete;
+    if (next.summary && typeof next.summary === 'object') {
+        next.summary = redactAllowDeleteFromValue(next.summary);
+    }
+    if (Array.isArray(next.keys)) {
+        next.keys = redactAllowDeleteFromValue(next.keys);
+    }
+    return next;
+}
+
+function authPayloadForClient(data, clientInfo) {
+    if (!isMcpAgentClient(clientInfo)) return data;
+    // CURSOR: MCP tokens must not read allowDelete from key summaries
+    return redactAllowDeleteFromValue(data);
+}
+
 function mcpTokenAllowsHardDelete(reqOrClient) {
     if (!reqOrClient || typeof reqOrClient !== 'object') return false;
     if (reqOrClient.allowDelete === true) return true;
@@ -241,6 +261,8 @@ module.exports = {
     mcpUnderReviewPayload,
     rejectMcpFlagMutation,
     rejectMcpTokenConfigMutation,
+    redactAllowDeleteFromValue,
+    authPayloadForClient,
     mcpTokenAllowsHardDelete,
     shapeMcpDeleteSuccess,
     aliasMcpDeleteToScrap,

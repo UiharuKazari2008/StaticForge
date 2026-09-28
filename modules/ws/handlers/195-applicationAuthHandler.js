@@ -1,5 +1,5 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
-const { isMcpAgentClient, rejectMcpTokenConfigMutation } = require('../../imageModerationFlag');
+const { isMcpAgentClient, rejectMcpTokenConfigMutation, authPayloadForClient } = require('../../imageModerationFlag');
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
 const APP_AUTH_CRITICAL = { critical: true, owner: 'applicationAuth' };
@@ -105,11 +105,11 @@ async function handleRefreshApplicationKey(handlersCtx, ws, message, clientInfo,
     wsServer.sendToClient(ws, {
         type: 'application_key_refreshed',
         requestId: message.requestId,
-        data: {
+        data: authPayloadForClient({
             success: true,
             applicationKey: result.key,
             summary: result.summary
-        },
+        }, clientInfo),
         timestamp: new Date().toISOString()
     });
 }
@@ -216,11 +216,11 @@ async function handleClaimApplicationAuthorization(handlersCtx, ws, message, cli
     wsServer.sendToClient(ws, {
         type: 'application_authorization_claimed',
         requestId: message.requestId,
-        data: {
+        data: authPayloadForClient({
             success: true,
             applicationKey: result.applicationKey,
             summary: result.summary
-        },
+        }, clientInfo),
         timestamp: new Date().toISOString()
     });
 }
@@ -268,7 +268,7 @@ async function handleListApplicationKeys(handlersCtx, ws, message, clientInfo, w
     wsServer.sendToClient(ws, {
         type: 'list_application_keys_response',
         requestId: message.requestId,
-        data: { success: true, keys },
+        data: authPayloadForClient({ success: true, keys }, clientInfo),
         timestamp: new Date().toISOString()
     });
 }
@@ -310,11 +310,11 @@ async function handleCreateApplicationKey(handlersCtx, ws, message, clientInfo, 
     wsServer.sendToClient(ws, {
         type: 'create_application_key_response',
         requestId: message.requestId,
-        data: {
+        data: authPayloadForClient({
             success: true,
             applicationKey: created.key,
             summary: created.summary
-        },
+        }, clientInfo),
         timestamp: new Date().toISOString()
     });
 }
@@ -390,11 +390,11 @@ async function handleApproveApplicationAuthRequest(handlersCtx, ws, message, cli
     wsServer.sendToClient(ws, {
         type: 'approve_application_auth_request_response',
         requestId: message.requestId,
-        data: {
+        data: authPayloadForClient({
             success: true,
             applicationKey: result.key,
             summary: result.summary
-        },
+        }, clientInfo),
         timestamp: new Date().toISOString()
     });
 }
