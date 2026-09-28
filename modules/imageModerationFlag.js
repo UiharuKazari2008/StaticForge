@@ -407,6 +407,35 @@ async function agentCannotSeeFilename(globalResources, filename) {
     return filenameIsModerationFlagged(globalResources, filename);
 }
 
+function galleryPairBaseName(filename) {
+    return String(filename || '').replace(/\.(png|jpg|jpeg)$/i, '').replace(/_upscaled$/i, '');
+}
+
+function countPairedGalleryFilenames(filenames) {
+    const bases = new Set();
+    for (const name of Array.isArray(filenames) ? filenames : []) {
+        if (!name) continue;
+        bases.add(galleryPairBaseName(name));
+    }
+    return bases.size;
+}
+
+function galleryFilenameExistsOnDisk(globalResources, filename) {
+    if (!filename || !globalResources || typeof globalResources.getPath !== 'function') return false;
+    try {
+        return fs.existsSync(path.join(globalResources.getPath('images'), filename));
+    } catch (_err) {
+        return false;
+    }
+}
+
+async function agentShouldNoopGalleryName(globalResources, filename) {
+    if (!filename) return true;
+    // CURSOR: missing gallery file and hidden/flagged names are the same silent no-op
+    if (await agentCannotSeeFilename(globalResources, filename)) return true;
+    return !galleryFilenameExistsOnDisk(globalResources, filename);
+}
+
 async function rejectAgentHiddenHttpFile(req, res, globalResources, filename, errorText) {
     if (!isMcpAgentClient(req)) return false;
     if (!(await agentCannotSeeFilename(globalResources, filename))) return false;
@@ -813,6 +842,10 @@ module.exports = {
     filterVfsListItemsVisibleToClient,
     filterDesktopShortcutsVisibleToClient,
     agentCannotSeeFilename,
+    galleryPairBaseName,
+    countPairedGalleryFilenames,
+    galleryFilenameExistsOnDisk,
+    agentShouldNoopGalleryName,
     rejectAgentHiddenHttpFile,
     collectAgentHiddenDeleteErrors,
     mergeBulkDeleteExtraErrors,

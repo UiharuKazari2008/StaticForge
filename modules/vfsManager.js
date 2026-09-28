@@ -1326,9 +1326,12 @@ class VfsManager {
                 items,
                 options.clientInfo
             );
+            // CURSOR: agent size is the filtered page, not the pre-filter VFS/SQL total
+            totalSizeBytes = items.reduce((s, i) => s + (i.size || 0), 0);
+        } else {
+            totalSizeBytes = totalSizeBytes || items.reduce((s, i) => s + (i.size || 0), 0);
         }
         const totalCount = items.length;
-        totalSizeBytes = totalSizeBytes || items.reduce((s, i) => s + (i.size || 0), 0);
         const page = this.paginateItems(items, offset, limit);
 
         return {

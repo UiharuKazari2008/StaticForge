@@ -4,6 +4,8 @@ const workspaceCssService = require('../../workspaceCssService');
 const {
     isMcpAgentClient,
     agentCannotSeeFilename,
+    agentShouldNoopGalleryName,
+    countPairedGalleryFilenames,
     filterFilenamesVisibleToClient,
     filterGroupsVisibleToClient,
     filterGroupVisibleToClient
@@ -49,11 +51,11 @@ class WorkspaceWebSocketHandlers {
                 if (isMcpAgentClient(clientInfo)) {
                     const names = await this.globalResources.getWorkspaceManager()
                         ._readWorkspaceGalleryFilenames(id, 'files');
-                    fileCount = (await filterFilenamesVisibleToClient(
+                    fileCount = countPairedGalleryFilenames(await filterFilenamesVisibleToClient(
                         this.globalResources,
                         names,
                         clientInfo
-                    )).length;
+                    ));
                 }
                 workspaceList.push({
                 id,
@@ -118,11 +120,11 @@ class WorkspaceWebSocketHandlers {
             if (isMcpAgentClient(clientInfo)) {
                 const names = await this.globalResources.getWorkspaceManager()
                     ._readWorkspaceGalleryFilenames(activeId, 'files');
-                fileCount = (await filterFilenamesVisibleToClient(
+                fileCount = countPairedGalleryFilenames(await filterFilenamesVisibleToClient(
                     this.globalResources,
                     names,
                     clientInfo
-                )).length;
+                ));
             }
 
             this.handlers.sendToClient(ws, {
@@ -327,9 +329,11 @@ class WorkspaceWebSocketHandlers {
             const wm = this.globalResources.getWorkspaceManager();
             let hiddenGallery = 0;
             if (isMcpAgentClient(clientInfo)) {
-                const files = await wm._readWorkspaceGalleryFilenames(sourceId, 'files');
-                const scraps = await wm._readWorkspaceGalleryFilenames(sourceId, 'scraps');
-                const pinned = sourceWorkspace.pinned || [];
+                // _readWorkspaceGalleryMoveLists: modules/workspace.js
+                const { files, scraps, pinned } = await wm._readWorkspaceGalleryMoveLists(
+                    sourceId,
+                    sourceWorkspace
+                );
                 const visibleFiles = await filterFilenamesVisibleToClient(this.globalResources, files, clientInfo);
                 const visibleScraps = await filterFilenamesVisibleToClient(this.globalResources, scraps, clientInfo);
                 const visiblePinned = await filterFilenamesVisibleToClient(this.globalResources, pinned, clientInfo);
@@ -577,7 +581,7 @@ class WorkspaceWebSocketHandlers {
             }
 
             if (!(isMcpAgentClient(clientInfo)
-                && await agentCannotSeeFilename(this.globalResources, filename))) {
+                && await agentShouldNoopGalleryName(this.globalResources, filename))) {
                 this.globalResources.getWorkspaceManager().addToWorkspaceArray('scraps', filename, id);
             }
 
@@ -672,7 +676,7 @@ class WorkspaceWebSocketHandlers {
             }
 
             if (!(isMcpAgentClient(clientInfo)
-                && await agentCannotSeeFilename(this.globalResources, filename))) {
+                && await agentShouldNoopGalleryName(this.globalResources, filename))) {
                 this.globalResources.getWorkspaceManager().addToWorkspaceArray('pinned', filename, id);
             }
 
@@ -710,7 +714,7 @@ class WorkspaceWebSocketHandlers {
             }
 
             if (!(isMcpAgentClient(clientInfo)
-                && await agentCannotSeeFilename(this.globalResources, filename))) {
+                && await agentShouldNoopGalleryName(this.globalResources, filename))) {
                 this.globalResources.getWorkspaceManager().removeFromWorkspaceArray('pinned', filename, id);
             }
 
@@ -1368,7 +1372,7 @@ class WorkspaceWebSocketHandlers {
             for (const filename of filenames) {
                 try {
                     if (!(isMcpAgentClient(clientInfo)
-                        && await agentCannotSeeFilename(this.globalResources, filename))) {
+                        && await agentShouldNoopGalleryName(this.globalResources, filename))) {
                         this.globalResources.getWorkspaceManager().addToWorkspaceArray('scraps', filename, id);
                     }
                     successCount++;

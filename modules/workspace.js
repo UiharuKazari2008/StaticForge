@@ -602,17 +602,7 @@ class WorkspaceManager {
         const movedVibes = refDb.moveAllVibesBetweenWorkspaces(id, 'default');
 
         // Gallery membership lives in SQL after strip — do not trust empty in-memory arrays.
-        const files = await this._readWorkspaceGalleryFilenames(id, 'files');
-        const scraps = await this._readWorkspaceGalleryFilenames(id, 'scraps');
-        const metadataDb = this.globalResources.getMetadataDatabase();
-        let pinned = workspace.pinned || [];
-        if (metadataDb) {
-            try {
-                pinned = await metadataDb.listGalleryWorkspacePinFilenames(id);
-            } catch (error) {
-                console.warn('Failed to read pins for workspace delete; using in-memory list:', error.message || error);
-            }
-        }
+        const { files, scraps, pinned } = await this._readWorkspaceGalleryMoveLists(id, workspace);
         const gallerySource = { files, scraps, pinned };
 
         // Count items being moved (use database counts for references/vibes/gallery)
@@ -682,17 +672,7 @@ class WorkspaceManager {
         const movedVibes = refDb.moveAllVibesBetweenWorkspaces(sourceId, targetId);
 
         // Gallery membership lives in SQL after strip — do not trust empty in-memory arrays.
-        let files = await this._readWorkspaceGalleryFilenames(sourceId, 'files');
-        let scraps = await this._readWorkspaceGalleryFilenames(sourceId, 'scraps');
-        const metadataDb = this.globalResources.getMetadataDatabase();
-        let pinned = sourceWorkspace.pinned || [];
-        if (metadataDb) {
-            try {
-                pinned = await metadataDb.listGalleryWorkspacePinFilenames(sourceId);
-            } catch (error) {
-                console.warn('Failed to read pins for workspace dump; using in-memory list:', error.message || error);
-            }
-        }
+        let { files, scraps, pinned } = await this._readWorkspaceGalleryMoveLists(sourceId, sourceWorkspace);
         const exclude = options && options.excludeFilenames instanceof Set ? options.excludeFilenames : null;
         if (exclude && exclude.size) {
             files = files.filter((name) => !exclude.has(name));
@@ -1388,6 +1368,21 @@ class WorkspaceManager {
             return workspace.scraps || [];
         }
         return workspace.files || [];
+    }
+
+    async _readWorkspaceGalleryMoveLists(workspaceId, workspaceRecord) {
+        const files = await this._readWorkspaceGalleryFilenames(workspaceId, 'files');
+        const scraps = await this._readWorkspaceGalleryFilenames(workspaceId, 'scraps');
+        const metadataDb = this.globalResources.getMetadataDatabase();
+        let pinned = (workspaceRecord && workspaceRecord.pinned) || [];
+        if (metadataDb) {
+            try {
+                pinned = await metadataDb.listGalleryWorkspacePinFilenames(workspaceId);
+            } catch (error) {
+                console.warn('Failed to read pins for workspace dump; using in-memory list:', error.message || error);
+            }
+        }
+        return { files, scraps, pinned };
     }
 
     _collectGalleryPinMoves(sourceWorkspaceId, targetWorkspaceId, sourceWorkspace) {
