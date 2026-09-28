@@ -2052,10 +2052,10 @@ class SearchService {
             return [];
         }
         if (!naxDb) return [];
-        const slugs = [];
+        const slugs = new Set();
         const push = (list) => {
             for (const slug of list || []) {
-                if (slug && !slugs.includes(slug)) slugs.push(slug);
+                if (slug) slugs.add(slug);
             }
         };
         if (typeof naxDb.artistGallerySlugsForModel === 'function') {
@@ -2064,12 +2064,12 @@ class SearchService {
         if (typeof naxDb.curatedArtistGallerySlugsForModel === 'function') {
             push(naxDb.curatedArtistGallerySlugsForModel(model));
         }
-        if (!slugs.length && typeof naxDb.getGalleries === 'function') {
+        if (!slugs.size && typeof naxDb.getGalleries === 'function') {
             push(naxDb.getGalleries()
                 .map((gallery) => gallery && gallery.slug)
                 .filter((slug) => String(slug || '').toLowerCase().includes('artist')));
         }
-        return slugs;
+        return Array.from(slugs);
     }
 
     artistLookupQueryVariants(query) {
