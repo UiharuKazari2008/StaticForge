@@ -443,12 +443,26 @@ async function galleryFilenameHasOwnership(globalResources, filename) {
     }
 }
 
+async function galleryFilenameHasMetadata(globalResources, filename) {
+    if (!filename || !globalResources) return false;
+    try {
+        const metadataDb = globalResources.getMetadataDatabase
+            ? globalResources.getMetadataDatabase()
+            : globalResources.metadataDatabase;
+        if (!metadataDb) return false;
+        // getCachedMetadata: modules/metadataDatabase.js
+        return !!(await metadataDb.getCachedMetadata(filename));
+    } catch (_err) {
+        return false;
+    }
+}
+
 async function agentShouldNoopGalleryName(globalResources, filename) {
     if (!filename) return true;
-    // CURSOR: hidden/flagged no-op; missing only when no local file AND no ownership row
+    // CURSOR: hidden/flagged no-op; missing = no local file AND no images-table metadata row
     if (await agentCannotSeeFilename(globalResources, filename)) return true;
     if (galleryFilenameExistsOnDisk(globalResources, filename)) return false;
-    return !(await galleryFilenameHasOwnership(globalResources, filename));
+    return !(await galleryFilenameHasMetadata(globalResources, filename));
 }
 
 async function rejectAgentHiddenHttpFile(req, res, globalResources, filename, errorText) {
@@ -861,6 +875,7 @@ module.exports = {
     countPairedGalleryFilenames,
     galleryFilenameExistsOnDisk,
     galleryFilenameHasOwnership,
+    galleryFilenameHasMetadata,
     agentShouldNoopGalleryName,
     rejectAgentHiddenHttpFile,
     collectAgentHiddenDeleteErrors,

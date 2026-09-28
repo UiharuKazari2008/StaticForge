@@ -103,6 +103,9 @@ const { VfsManager } = require('../modules/vfsManager');
 const VfsWebSocketHandlers = require('../modules/vfsWebSocketHandlers');
 const { WebSocketMessageHandlers } = require('../modules/websocketHandlers');
 const vfsDatabase = require('../modules/vfsDatabase');
+const metadataDatabase = require('../modules/metadataDatabase');
+const metadataWriteQueue = require('../modules/metadataWriteQueue');
+const { registerPackets: registerWorkspacePackets } = require('../modules/ws/handlers/90-workspaceHandler');
 const { _test } = require('../modules/mcpAgentFacade');
 const { UNDER_REVIEW_ERROR } = require('../modules/imageModerationFlag');
 
@@ -1609,32 +1612,189 @@ async function testAgentMissingAndHiddenMutationsNoop() {
     assert.ok(ownerMissing.readSaved().default.scraps.includes('a.png'));
 }
 
-function ownershipMetadataDb(ownedNames) {
-    const owned = new Set(ownedNames);
-    return {
-        async getGalleryOwnershipForFilename(filename) {
-            if (!owned.has(filename)) return null;
-            return {
-                workspaceId: 'default',
-                bucket: 'files',
-                workspaces: [{ workspaceId: 'default', bucket: 'files' }]
-            };
+async function insertImageRowForTest(databasesPath, filename, extras = {}) {
+    const sqlite3 = require('sqlite3');
+    const { open } = require('sqlite');
+    const conn = await open({
+        filename: path.join(databasesPath, 'metadata.db'),
+        driver: sqlite3.Database
+    });
+    try {
+        await conn.run(
+            `INSERT OR IGNORE INTO images (filename, md5, width, height, metadata)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+                filename,
+                extras.md5 || 'test',
+                extras.width || 1,
+                extras.height || 1,
+                JSON.stringify(extras.metadata || {})
+            ]
+        );
+        if (extras.workspaceId) {
+            await conn.run('PRAGMA foreign_keys = OFF');
+            await conn.run(
+                `INSERT OR REPLACE INTO gallery_workspace_ownership
+                 (filename, workspace_id, bucket, created_at) VALUES (?, ?, ?, strftime('%s', 'now'))`,
+                [filename, extras.workspaceId, extras.bucket || 'files']
+            );
+        }
+    } finally {
+        await conn.close();
+    }
+}
+
+function attachWorkspacePackets(globalResources) {
+    const sent = [];
+    const broadcasts = [];
+    const writeSink = (ws, payload) => {
+        sent.push(payload);
+        if (ws && ws.readyState === 1 && typeof ws.send === 'function') {
+            ws.send(JSON.stringify(payload));
+        }
+    };
+    const handlersCtx = {
+        globalResources,
+        // sendToClient: modules/websocketHandlers.js — facade sink captures via ws.send
+        sendToClient(ws, payload) { writeSink(ws, payload); },
+        sendError(ws, message, details, requestId) {
+            writeSink(ws, { type: 'error', message, details, requestId });
         },
-        async isImageOrPairFlagged() { return false; },
-        async isImageFlagged() { return false; }
+        isDestructiveOperation() { return false; }
+    };
+    globalResources.getWebSocketMessageHandlers = () => handlersCtx;
+    globalResources.getWebSocketServer = () => ({
+        broadcast(msg) { broadcasts.push(msg); },
+        hasConnectedClients() { return true; }
+    });
+    registerWorkspacePackets(handlersCtx);
+    return { sent, broadcasts };
+}
+
+function facadeAgentReq() {
+    return {
+        authMethod: 'application_key',
+        applicationKeyId: 'key-1',
+        applicationAuth: { applicationScopes: ['gallery', 'workspace'], applicationKeyId: 'key-1' }
     };
 }
 
-function makeRemoteOwnedTree() {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-remote-owned-'));
-    const tree = makeRealWorkspaceManager(root, {
-        metadataDb: ownershipMetadataDb(['remote.png'])
-    });
-    fs.writeFileSync(path.join(root, 'images', 'keep.png'), 'keep');
-    const rec = tree.wm.getWorkspace('default');
-    if (!rec.files.includes('remote.png')) rec.files.push('remote.png');
-    tree.globalResources.saveConfig('workspaces', tree.globalResources.getWorkspacesConfig());
-    return { root, ...tree };
+function dropNameFromFiles(wm, filename) {
+    const rec = wm.getWorkspace('default');
+    rec.files = (rec.files || []).filter((name) => name !== filename);
+}
+
+async function testAgentUnscrapThenGetFilesFakeVsReal() {
+    const fake = makeRealWorkspaceManager(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-unscrap-fake-')));
+    fs.writeFileSync(path.join(fake.globalResources.getPath('images'), 'a.png'), 'orig');
+    fake.wm.markHiddenByFakeDelete(['a.png'], 'default');
+    fake.wm.addToWorkspaceArray('scraps', 'a.png', 'default');
+    const fakeWs = makeWorkspaceHandlers(fake.globalResources, fake.wm);
+    await fakeWs.wsHandlers.handleWorkspaceRemoveScrap(
+        {},
+        { id: 'default', filename: 'a.png', requestId: 'r-unscrap-fake' },
+        agentClient(),
+        fakeWs.wsServer
+    );
+    fakeWs.sent.length = 0;
+    await fakeWs.wsHandlers.handleWorkspaceGetFiles(
+        {},
+        { id: 'default', requestId: 'r-files-fake' },
+        agentClient(),
+        fakeWs.wsServer
+    );
+    const fakeFiles = fakeWs.sent[0].data.files;
+    assert.ok(!fakeFiles.includes('a.png'));
+    assert.ok(!fake.wm.getWorkspace('default').files.includes('a.png'));
+
+    const real = makeRealWorkspaceManager(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-unscrap-real-')));
+    dropNameFromFiles(real.wm, 'a.png');
+    const realWs = makeWorkspaceHandlers(real.globalResources, real.wm);
+    await realWs.wsHandlers.handleWorkspaceRemoveScrap(
+        {},
+        { id: 'default', filename: 'a.png', requestId: 'r-unscrap-real' },
+        agentClient(),
+        realWs.wsServer
+    );
+    realWs.sent.length = 0;
+    await realWs.wsHandlers.handleWorkspaceGetFiles(
+        {},
+        { id: 'default', requestId: 'r-files-real' },
+        agentClient(),
+        realWs.wsServer
+    );
+    assert.deepStrictEqual(realWs.sent[0].data.files, fakeFiles);
+    assert.ok(!real.wm.getWorkspace('default').files.includes('a.png'));
+
+    realWs.sent.length = 0;
+    realWs.broadcasts.length = 0;
+    await realWs.wsHandlers.handleWorkspaceBulkRemoveScrap(
+        {},
+        { id: 'default', filenames: ['a.png'], requestId: 'r-bulk-unscrap-real' },
+        agentClient(),
+        realWs.wsServer
+    );
+    assert.ok(!real.wm.getWorkspace('default').files.includes('a.png'));
+
+    const vfs = new VfsManager(real.globalResources);
+    await vfs._removeVirtualSurfaceFromSource(
+        { targetKind: 'scrap', targetId: 'a.png', workspaceId: 'default' },
+        { clientInfo: agentClient() }
+    );
+    assert.ok(!real.wm.getWorkspace('default').files.includes('a.png'));
+
+    const owner = makeRealWorkspaceManager(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-unscrap-owner-')));
+    dropNameFromFiles(owner.wm, 'a.png');
+    const ownerWs = makeWorkspaceHandlers(owner.globalResources, owner.wm);
+    await ownerWs.wsHandlers.handleWorkspaceRemoveScrap(
+        {},
+        { id: 'default', filename: 'a.png', requestId: 'r-unscrap-owner' },
+        userClient(),
+        ownerWs.wsServer
+    );
+    assert.ok(owner.wm.getWorkspace('default').files.includes('a.png'));
+
+    const facadeFake = makeRealWorkspaceManager(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-unscrap-fface-')));
+    fs.writeFileSync(path.join(facadeFake.globalResources.getPath('images'), 'a.png'), 'orig');
+    facadeFake.wm.markHiddenByFakeDelete(['a.png'], 'default');
+    facadeFake.wm.addToWorkspaceArray('scraps', 'a.png', 'default');
+    attachWorkspacePackets(facadeFake.globalResources);
+    const facadeFakeUnscrap = parseToolText(await _test.callTool(
+        facadeFake.globalResources,
+        facadeAgentReq(),
+        'scrap_images',
+        { filename: 'a.png', remove: true }
+    ));
+    assert.strictEqual(facadeFakeUnscrap.success, true);
+    const facadeFakeWs = makeWorkspaceHandlers(facadeFake.globalResources, facadeFake.wm);
+    await facadeFakeWs.wsHandlers.handleWorkspaceGetFiles(
+        {},
+        { id: 'default', requestId: 'r-files-fface' },
+        agentClient(),
+        facadeFakeWs.wsServer
+    );
+    assert.ok(!facadeFakeWs.sent[0].data.files.includes('a.png'));
+    assert.ok(!facadeFake.wm.getWorkspace('default').files.includes('a.png'));
+
+    const facadeReal = makeRealWorkspaceManager(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-unscrap-rface-')));
+    dropNameFromFiles(facadeReal.wm, 'a.png');
+    attachWorkspacePackets(facadeReal.globalResources);
+    const facadeRealUnscrap = parseToolText(await _test.callTool(
+        facadeReal.globalResources,
+        facadeAgentReq(),
+        'scrap_images',
+        { filename: 'a.png', remove: true }
+    ));
+    assert.strictEqual(facadeRealUnscrap.success, true);
+    const facadeRealWs = makeWorkspaceHandlers(facadeReal.globalResources, facadeReal.wm);
+    await facadeRealWs.wsHandlers.handleWorkspaceGetFiles(
+        {},
+        { id: 'default', requestId: 'r-files-rface' },
+        agentClient(),
+        facadeRealWs.wsServer
+    );
+    assert.deepStrictEqual(facadeRealWs.sent[0].data.files, facadeFakeWs.sent[0].data.files);
+    assert.ok(!facadeReal.wm.getWorkspace('default').files.includes('a.png'));
 }
 
 async function mutateGalleryAs(ws, client, method, filename, extra) {
@@ -1648,45 +1808,108 @@ async function mutateGalleryAs(ws, client, method, filename, extra) {
     );
 }
 
+function makeMetadataBackedTree(root, extras) {
+    const tree = makeRealWorkspaceManager(root, extras);
+    fs.writeFileSync(path.join(root, 'images', 'keep.png'), 'keep');
+    const rec = tree.wm.getWorkspace('default');
+    if (extras && extras.extraFiles) {
+        for (const name of extras.extraFiles) {
+            if (!rec.files.includes(name)) rec.files.push(name);
+        }
+    }
+    tree.globalResources.saveConfig('workspaces', tree.globalResources.getWorkspacesConfig());
+    return tree;
+}
+
 async function testAgentOwnedRemoteFileMatchesMain() {
-    const agentScrap = makeRemoteOwnedTree();
-    const ownerScrap = makeRemoteOwnedTree();
-    assert.ok(!fs.existsSync(path.join(agentScrap.root, 'images', 'remote.png')));
-    assert.strictEqual(await agentShouldNoopGalleryName(agentScrap.globalResources, 'remote.png'), false);
-    assert.strictEqual(await agentShouldNoopGalleryName(ownerScrap.globalResources, 'a.png'), true);
+    const dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-meta-db-'));
+    assert.strictEqual(await metadataDatabase.initializeDatabase(dbDir), true);
+    try {
+        await insertImageRowForTest(dbDir, 'remote.png', { workspaceId: 'default' });
+        await insertImageRowForTest(dbDir, 'gone.png', { workspaceId: 'default' });
+        await metadataDatabase.removeImageMetadata(['gone.png']);
+        const orphanSql = require('sqlite3');
+        const { open } = require('sqlite');
+        const conn = await open({
+            filename: path.join(dbDir, 'metadata.db'),
+            driver: orphanSql.Database
+        });
+        try {
+            await conn.run('PRAGMA foreign_keys = OFF');
+            await conn.run(
+                `INSERT OR REPLACE INTO gallery_workspace_ownership
+                 (filename, workspace_id, bucket, created_at) VALUES (?, ?, ?, strftime('%s', 'now'))`,
+                ['gone.png', 'default', 'files']
+            );
+        } finally {
+            await conn.close();
+        }
+        await metadataWriteQueue.drainAll();
 
-    const agentScrapWs = makeWorkspaceHandlers(agentScrap.globalResources, agentScrap.wm);
-    const ownerScrapWs = makeWorkspaceHandlers(ownerScrap.globalResources, ownerScrap.wm);
-    await mutateGalleryAs(agentScrapWs, agentClient(), 'handleWorkspaceAddScrap', 'remote.png');
-    await mutateGalleryAs(ownerScrapWs, userClient(), 'handleWorkspaceAddScrap', 'remote.png');
-    assert.deepStrictEqual(agentScrapWs.sent[0].data, ownerScrapWs.sent[0].data);
-    assert.deepStrictEqual(agentScrapWs.broadcasts[0].data, ownerScrapWs.broadcasts[0].data);
-    assert.ok(agentScrap.wm.getWorkspace('default').scraps.includes('remote.png'));
-    assert.ok(ownerScrap.wm.getWorkspace('default').scraps.includes('remote.png'));
-    assert.ok(!agentScrap.wm.getWorkspace('default').files.includes('remote.png'));
-    assert.ok(!ownerScrap.wm.getWorkspace('default').files.includes('remote.png'));
+        assert.ok(await metadataDatabase.getCachedMetadata('remote.png'));
+        assert.strictEqual(await metadataDatabase.getCachedMetadata('gone.png'), null);
+        const goneOwn = await metadataDatabase.getGalleryOwnershipForFilename('gone.png');
+        assert.ok(goneOwn);
 
-    const agentPin = makeRemoteOwnedTree();
-    const ownerPin = makeRemoteOwnedTree();
-    const agentPinWs = makeWorkspaceHandlers(agentPin.globalResources, agentPin.wm);
-    const ownerPinWs = makeWorkspaceHandlers(ownerPin.globalResources, ownerPin.wm);
-    await mutateGalleryAs(agentPinWs, agentClient(), 'handleWorkspaceAddPinned', 'remote.png');
-    await mutateGalleryAs(ownerPinWs, userClient(), 'handleWorkspaceAddPinned', 'remote.png');
-    assert.deepStrictEqual(agentPinWs.sent[0].data, ownerPinWs.sent[0].data);
-    assert.deepStrictEqual(agentPinWs.broadcasts[0].data, ownerPinWs.broadcasts[0].data);
-    assert.ok(agentPin.wm.getWorkspace('default').pinned.includes('remote.png'));
-    assert.ok(ownerPin.wm.getWorkspace('default').pinned.includes('remote.png'));
+        const extras = { metadataDb: metadataDatabase, extraFiles: ['remote.png', 'gone.png'] };
+        const agentScrap = makeMetadataBackedTree(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-remote-agent-')), extras);
+        const ownerScrap = makeMetadataBackedTree(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-remote-owner-')), extras);
+        assert.ok(!fs.existsSync(path.join(agentScrap.globalResources.getPath('images'), 'remote.png')));
+        assert.strictEqual(await agentShouldNoopGalleryName(agentScrap.globalResources, 'remote.png'), false);
+        assert.strictEqual(await agentShouldNoopGalleryName(agentScrap.globalResources, 'gone.png'), true);
+        assert.strictEqual(await agentShouldNoopGalleryName(agentScrap.globalResources, 'a.png'), true);
 
-    const agentFav = makeRemoteOwnedTree();
-    const ownerFav = makeRemoteOwnedTree();
-    const agentFavWs = makeWorkspaceHandlers(agentFav.globalResources, agentFav.wm);
-    const ownerFavWs = makeWorkspaceHandlers(ownerFav.globalResources, ownerFav.wm);
-    await mutateGalleryAs(agentFavWs, agentClient(), 'handleWorkspaceAddPinned', 'remote.png');
-    await mutateGalleryAs(ownerFavWs, userClient(), 'handleWorkspaceAddPinned', 'remote.png');
-    assert.deepStrictEqual(agentFavWs.sent[0].data, ownerFavWs.sent[0].data);
-    assert.deepStrictEqual(agentFavWs.broadcasts[0].data, ownerFavWs.broadcasts[0].data);
-    assert.ok(agentFav.wm.getWorkspace('default').pinned.includes('remote.png'));
-    assert.ok(ownerFav.wm.getWorkspace('default').pinned.includes('remote.png'));
+        const agentScrapWs = makeWorkspaceHandlers(agentScrap.globalResources, agentScrap.wm);
+        const ownerScrapWs = makeWorkspaceHandlers(ownerScrap.globalResources, ownerScrap.wm);
+        await mutateGalleryAs(agentScrapWs, agentClient(), 'handleWorkspaceAddScrap', 'remote.png');
+        await mutateGalleryAs(ownerScrapWs, userClient(), 'handleWorkspaceAddScrap', 'remote.png');
+        assert.deepStrictEqual(agentScrapWs.sent[0].data, ownerScrapWs.sent[0].data);
+        assert.deepStrictEqual(agentScrapWs.broadcasts[0].data, ownerScrapWs.broadcasts[0].data);
+        assert.ok(agentScrap.wm.getWorkspace('default').scraps.includes('remote.png'));
+        assert.ok(ownerScrap.wm.getWorkspace('default').scraps.includes('remote.png'));
+
+        const goneFake = makeMetadataBackedTree(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-gone-fake-')), extras);
+        goneFake.wm.markHiddenByFakeDelete(['gone.png'], 'default');
+        goneFake.wm.addToWorkspaceArray('scraps', 'gone.png', 'default');
+        const goneReal = makeMetadataBackedTree(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-gone-real-')), extras);
+        dropNameFromFiles(goneReal.wm, 'gone.png');
+        const goneFakeWs = makeWorkspaceHandlers(goneFake.globalResources, goneFake.wm);
+        const goneRealWs = makeWorkspaceHandlers(goneReal.globalResources, goneReal.wm);
+        await mutateGalleryAs(goneFakeWs, agentClient(), 'handleWorkspaceRemoveScrap', 'gone.png');
+        await mutateGalleryAs(goneRealWs, agentClient(), 'handleWorkspaceRemoveScrap', 'gone.png');
+        assert.ok(!goneFake.wm.getWorkspace('default').files.includes('gone.png'));
+        assert.ok(!goneReal.wm.getWorkspace('default').files.includes('gone.png'));
+        await mutateGalleryAs(goneRealWs, agentClient(), 'handleWorkspaceAddScrap', 'gone.png');
+        assert.ok(!goneReal.wm.getWorkspace('default').scraps.includes('gone.png'));
+        assert.ok(!goneReal.wm.getWorkspace('default').files.includes('gone.png'));
+
+        const agentPin = makeMetadataBackedTree(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-remote-pin-a-')), extras);
+        const ownerPin = makeMetadataBackedTree(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-remote-pin-o-')), extras);
+        const agentPinWs = makeWorkspaceHandlers(agentPin.globalResources, agentPin.wm);
+        const ownerPinWs = makeWorkspaceHandlers(ownerPin.globalResources, ownerPin.wm);
+        await mutateGalleryAs(agentPinWs, agentClient(), 'handleWorkspaceAddPinned', 'remote.png');
+        await mutateGalleryAs(ownerPinWs, userClient(), 'handleWorkspaceAddPinned', 'remote.png');
+        assert.deepStrictEqual(agentPinWs.sent[0].data, ownerPinWs.sent[0].data);
+        assert.ok(agentPin.wm.getWorkspace('default').pinned.includes('remote.png'));
+        assert.ok(ownerPin.wm.getWorkspace('default').pinned.includes('remote.png'));
+
+        const agentFav = makeMetadataBackedTree(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-remote-fav-a-')), extras);
+        const ownerFav = makeMetadataBackedTree(fs.mkdtempSync(path.join(os.tmpdir(), 'wm-remote-fav-o-')), extras);
+        attachWorkspacePackets(agentFav.globalResources);
+        const favAgent = parseToolText(await _test.callTool(
+            agentFav.globalResources,
+            facadeAgentReq(),
+            'toggle_favorite',
+            { filename: 'remote.png' }
+        ));
+        const ownerFavWs = makeWorkspaceHandlers(ownerFav.globalResources, ownerFav.wm);
+        await mutateGalleryAs(ownerFavWs, userClient(), 'handleWorkspaceAddPinned', 'remote.png');
+        assert.strictEqual(favAgent.success, true);
+        assert.ok(agentFav.wm.getWorkspace('default').pinned.includes('remote.png'));
+        assert.ok(ownerFav.wm.getWorkspace('default').pinned.includes('remote.png'));
+    } finally {
+        try { await metadataDatabase.closeDatabase(); } catch (_err) { /* test-only */ }
+    }
 }
 
 async function run() {
@@ -1701,6 +1924,7 @@ async function run() {
     await testListingFiltersOmitHidden();
     await testFakeDeletedMatchesRealDeleteTells();
     await testAgentMissingAndHiddenMutationsNoop();
+    await testAgentUnscrapThenGetFilesFakeVsReal();
     await testAgentOwnedRemoteFileMatchesMain();
     await testFacadeScrapImagesRemoveFakeDeleted();
     await testDeleteUnupscaledOriginalGated();

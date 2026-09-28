@@ -619,7 +619,7 @@ class WorkspaceWebSocketHandlers {
             }
 
             if (isMcpAgentClient(clientInfo)
-                && await agentCannotSeeFilename(this.globalResources, filename)) {
+                && await agentShouldNoopGalleryName(this.globalResources, filename)) {
                 this.handlers.sendToClient(ws, {
                     type: 'workspace_remove_scrap_response',
                     requestId: message.requestId,
@@ -1419,7 +1419,7 @@ class WorkspaceWebSocketHandlers {
 
             for (const filename of filenames) {
                 try {
-                    if (isAgent && await agentCannotSeeFilename(this.globalResources, filename)) {
+                    if (isAgent && await agentShouldNoopGalleryName(this.globalResources, filename)) {
                         successCount++;
                         continue;
                     }

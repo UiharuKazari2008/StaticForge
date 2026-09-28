@@ -9,7 +9,7 @@ const {
 } = require('./vfsSystemProvider');
 const {
     isMcpAgentClient,
-    filenameHiddenByFakeDelete,
+    agentShouldNoopGalleryName,
     filterVfsListItemsVisibleToClient
 } = require('./imageModerationFlag');
 
@@ -456,7 +456,8 @@ class VfsManager {
                 wm.removeFromWorkspaceArray('files', [ref.targetId], wsId);
                 break;
             case 'scrap':
-                if (skipFakeDeletedScraps && filenameHiddenByFakeDelete(this.globalResources, ref.targetId)) {
+                if (skipFakeDeletedScraps
+                    && await agentShouldNoopGalleryName(this.globalResources, ref.targetId)) {
                     return;
                 }
                 wm.removeFromWorkspaceArray(
@@ -2332,7 +2333,8 @@ class VfsManager {
                 wm.removeFromWorkspaceArray('files', [ref.targetId], wsId);
                 break;
             case 'scrap':
-                if (skipFakeDeletedScraps && filenameHiddenByFakeDelete(this.globalResources, ref.targetId)) {
+                if (skipFakeDeletedScraps
+                    && await agentShouldNoopGalleryName(this.globalResources, ref.targetId)) {
                     return;
                 }
                 wm.removeFromWorkspaceArray(
