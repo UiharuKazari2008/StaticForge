@@ -263,7 +263,13 @@ async function run() {
     await testDeleteWithFlagIsRealDelete();
     await testMcpCannotFlipAllowDelete();
     await testExistingTokensDefaultOff();
+    try {
+        await getDb().close();
+    } catch (_err) {
+        // test-only shutdown
+    }
     console.log('test-mcp-allow-delete: ok');
+    process.exit(0);
 }
 
 run().catch((error) => {

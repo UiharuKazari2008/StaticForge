@@ -261,6 +261,7 @@ async function run() {
     await testUserOnlyClearConfirm();
     await testPersistAcrossReload();
     console.log('test-image-moderation-flag: ok');
+    process.exit(0);
 }
 
 run().catch((error) => {
