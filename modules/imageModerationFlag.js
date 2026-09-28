@@ -301,6 +301,17 @@ function markHiddenByFakeDelete(globalResources, filenames, workspaceId) {
     return id;
 }
 
+async function filterFilenamesVisibleToClient(globalResources, filenames, clientInfo) {
+    const list = Array.isArray(filenames) ? filenames : [];
+    if (!isMcpAgentClient(clientInfo)) return list.slice();
+    const out = [];
+    for (const name of list) {
+        if (!name || await agentCannotSeeFilename(globalResources, name)) continue;
+        out.push(name);
+    }
+    return out;
+}
+
 function filenameHiddenByFakeDelete(globalResources, filename) {
     if (!filename) return false;
     return collectFakeDeletedFilenames(globalResources).has(filename);
@@ -565,7 +576,9 @@ function planBulkDelete(globalResources, filenames, options) {
                                 const dynGenPreviewPath = path.join(getPath('cache'), 'dynGenPreview', `${previewHash}.png`);
                                 if (fs.existsSync(dynGenPreviewPath)) {
                                     entryFiles.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
-                                    console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
+                                    if (unlink) {
+                                        console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
+                                    }
                                 }
                             }
                         }
@@ -721,6 +734,7 @@ module.exports = {
     markHiddenByFakeDelete,
     clearHiddenByFakeDelete,
     filenameHiddenByFakeDelete,
+    filterFilenamesVisibleToClient,
     agentCannotSeeFilename,
     rejectAgentHiddenHttpFile,
     collectAgentHiddenDeleteErrors,

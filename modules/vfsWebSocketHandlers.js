@@ -159,7 +159,7 @@ class VfsWebSocketHandlers {
     async handleVfsMoveItems(ws, message, clientInfo, wsServer) {
         try {
             const { items, targetPath } = this.getPayload(message);
-            const results = await this.getVfs().moveItems(items, targetPath);
+            const results = await this.getVfs().moveItems(items, targetPath, { clientInfo });
             const movedDesktop = (items || []).some(i =>
                 i.isDesktopShortcut || i.shortcutType || i.shortcutId
                 || i.isVfsShortcutEntry || i.vfsEntryId
@@ -545,7 +545,7 @@ class VfsWebSocketHandlers {
 
     async handleVfsMoveToTrash(ws, message, clientInfo, wsServer) {
         const { items, sourcePath } = this.getPayload(message);
-        const results = await this.getVfs().moveItemsToTrash(items, sourcePath);
+        const results = await this.getVfs().moveItemsToTrash(items, sourcePath, { clientInfo });
         this.broadcastVfsUpdated(wsServer, sourcePath);
         this.handlers.sendToClient(ws, {
             type: 'vfs_move_to_trash_response',

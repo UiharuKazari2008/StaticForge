@@ -79,6 +79,9 @@ const {
     handleDeleteImagesBulk,
     handleDeleteUnupscaledOriginal
 } = require('../modules/ws/handlers/120-galleryHandler');
+const WorkspaceManager = require('../modules/workspace');
+const { WorkspaceWebSocketHandlers } = require('../modules/ws/handlers/90-workspaceHandler');
+const { filterFilenamesVisibleToClient } = require('../modules/imageModerationFlag');
 const { _test } = require('../modules/mcpAgentFacade');
 
 function parseToolText(result) {
@@ -290,14 +293,16 @@ function makeWorkspaceState(initial) {
                 }
                 return names;
             },
-            removeFromWorkspaceArray(type, filename, id) {
+            removeFromWorkspaceArray(type, filename, id, _override, options) {
                 const rec = workspaces[id] || workspaces.default;
                 if (!rec) throw new Error(`Workspace ${id} not found`);
                 const names = Array.isArray(filename) ? filename : [filename];
                 if (type === 'scraps' && Array.isArray(rec.scraps)) {
                     rec.scraps = rec.scraps.filter((name) => !names.includes(name));
                 }
-                this.clearHiddenByFakeDelete(names);
+                if (options && options.clearHiddenByFakeDelete) {
+                    this.clearHiddenByFakeDelete(names);
+                }
             },
             removeFilesFromWorkspaces() {}
         }
@@ -512,7 +517,7 @@ async function testOrdinaryScrapsStayVisible() {
     assert.strictEqual(await agentCannotSeeFilename(harness.globalResources, 'a_upscaled.png'), false);
     assert.strictEqual(await agentCannotSeeFilename(harness.globalResources, 'keep.png'), false);
 
-    workspaceState.api.removeFromWorkspaceArray('scraps', 'a.png', 'lab');
+    workspaceState.api.removeFromWorkspaceArray('scraps', 'a.png', 'lab', null, { clearHiddenByFakeDelete: true });
     assert.strictEqual(filenameHiddenByFakeDelete(harness.globalResources, 'a.png'), false);
     assert.strictEqual(await agentCannotSeeFilename(harness.globalResources, 'a.png'), false);
 }
@@ -705,9 +710,139 @@ async function testFacadePassesWorkspace() {
     assert.strictEqual(hiddenBody.error, 'Image not found');
 }
 
+function makeRealWorkspaceManager(root) {
+    fs.mkdirSync(path.join(root, 'images'), { recursive: true });
+    const workspacesPath = path.join(root, 'workspaces.json');
+    const initial = {
+        default: {
+            name: 'Default',
+            color: '#102040',
+            sort: 0,
+            files: ['a.png', 'keep.png'],
+            scraps: [],
+            hiddenByFakeDelete: [],
+            pinned: ['pin.png'],
+            presets: [],
+            groups: {}
+        }
+    };
+    fs.writeFileSync(workspacesPath, JSON.stringify(initial));
+    let cache = JSON.parse(JSON.stringify(initial));
+    const globalResources = {
+        getPath(kind) {
+            if (kind === 'workspaceFile') return workspacesPath;
+            if (kind === 'images') return path.join(root, 'images');
+            if (kind === 'cache') return path.join(root, 'cache');
+            if (kind === 'uploadCache') return path.join(root, 'cache', 'upload');
+            return root;
+        },
+        getWorkspacesConfig(opts) {
+            return opts && opts.clone ? JSON.parse(JSON.stringify(cache)) : cache;
+        },
+        setWorkspacesConfigCache(next) { cache = next; },
+        saveConfig(type, data) {
+            if (type === 'workspaces' && data) {
+                cache = data;
+                fs.writeFileSync(workspacesPath, JSON.stringify(data));
+            }
+        },
+        getMetadataDatabase: () => null,
+        metadataDatabase: null,
+        getDataPlumbing: () => ({ publish() {} }),
+        getReferenceMetadataDatabase: () => ({
+            deleteMetadata() {},
+            getWorkspaceReferenceCounts() { return {}; },
+            moveAllReferencesBetweenWorkspaces() { return 0; },
+            moveAllVibesBetweenWorkspaces() { return 0; }
+        }),
+        getNotesDatabase: () => null,
+        getWebSocketServer: () => ({ broadcast() {} })
+    };
+    return {
+        wm: new WorkspaceManager(globalResources),
+        globalResources,
+        workspacesPath,
+        readSaved() { return JSON.parse(fs.readFileSync(workspacesPath, 'utf8')); }
+    };
+}
+
+async function testRealWorkspaceManagerPersistsClear() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-clear-'));
+    const { wm, workspacesPath, readSaved } = makeRealWorkspaceManager(root);
+    wm.markHiddenByFakeDelete(['a.png'], 'default');
+    assert.ok(readSaved().default.hiddenByFakeDelete.includes('a.png'));
+    wm.addToWorkspaceArray('scraps', 'a.png', 'default');
+    wm.removeFromWorkspaceArray('scraps', 'a.png', 'default', null, { clearHiddenByFakeDelete: true });
+    const saved = JSON.parse(fs.readFileSync(workspacesPath, 'utf8'));
+    assert.ok(!saved.default.hiddenByFakeDelete.includes('a.png'));
+    assert.ok(saved.default.files.includes('a.png'));
+}
+
+async function testAgentUnscrapLeavesHidden() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-agent-unscrap-'));
+    const { wm, globalResources, readSaved } = makeRealWorkspaceManager(root);
+    wm.markHiddenByFakeDelete(['a.png'], 'default');
+    wm.addToWorkspaceArray('scraps', 'a.png', 'default');
+    const sent = [];
+    const broadcasts = [];
+    const handlers = {
+        globalResources: {
+            ...globalResources,
+            getWorkspaceManager: () => wm,
+            getMetadataDatabase: () => ({
+                async isImageOrPairFlagged() { return false; },
+                async isImageFlagged() { return false; }
+            })
+        },
+        sendToClient(_ws, payload) { sent.push(payload); },
+        sendError(_ws, message, details) { sent.push({ type: 'error', message, details }); }
+    };
+    const wsHandlers = new WorkspaceWebSocketHandlers(handlers);
+    await wsHandlers.handleWorkspaceRemoveScrap(
+        {},
+        { id: 'default', filename: 'a.png', requestId: 'r-unscrap' },
+        agentClient(),
+        { broadcast(msg) { broadcasts.push(msg); } }
+    );
+    assert.strictEqual(sent[0].type, 'workspace_remove_scrap_response');
+    assert.deepStrictEqual(sent[0].data, { success: true, message: 'File removed from scraps' });
+    assert.strictEqual(broadcasts.length, 0);
+    const saved = readSaved();
+    assert.ok(saved.default.hiddenByFakeDelete.includes('a.png'));
+    assert.ok(saved.default.scraps.includes('a.png'));
+    assert.strictEqual(await agentCannotSeeFilename(handlers.globalResources, 'a.png'), true);
+
+    wm.markHiddenByFakeDelete(['keep.png'], 'default');
+    await wsHandlers.handleWorkspaceGetFiles(
+        {},
+        { id: 'default', requestId: 'r-files' },
+        agentClient(),
+        { broadcast() {} }
+    );
+    const filesReply = sent.find((row) => row.type === 'workspace_get_files_response');
+    assert.ok(filesReply);
+    assert.ok(!filesReply.data.files.includes('keep.png'));
+    assert.ok(!filesReply.data.files.includes('a.png'));
+
+    const listing = await filterFilenamesVisibleToClient(
+        handlers.globalResources,
+        ['keep.png', 'a.png', 'pin.png'],
+        agentClient()
+    );
+    assert.deepStrictEqual(listing, ['pin.png']);
+    const ownerListing = await filterFilenamesVisibleToClient(
+        handlers.globalResources,
+        ['keep.png', 'a.png', 'pin.png'],
+        userClient()
+    );
+    assert.deepStrictEqual(ownerListing, ['keep.png', 'a.png', 'pin.png']);
+}
+
 async function run() {
     await testRealAndFakeMatchFrozenMain();
     await testOrdinaryScrapsStayVisible();
+    await testRealWorkspaceManagerPersistsClear();
+    await testAgentUnscrapLeavesHidden();
     await testDeleteUnupscaledOriginalGated();
     await testMcpCannotFlipAllowDelete();
     await testExistingTokensDefaultOff();

@@ -645,7 +645,7 @@ class WorkspaceManager {
     }
 
     // Dump workspace (merge items into another workspace)
-    async dumpWorkspace(sourceId, targetId) {
+    async dumpWorkspace(sourceId, targetId, options = {}) {
 
         if (sourceId === 'default') {
             throw new Error('Cannot dump the default workspace');
@@ -668,8 +668,8 @@ class WorkspaceManager {
         const movedVibes = refDb.moveAllVibesBetweenWorkspaces(sourceId, targetId);
 
         // Gallery membership lives in SQL after strip — do not trust empty in-memory arrays.
-        const files = await this._readWorkspaceGalleryFilenames(sourceId, 'files');
-        const scraps = await this._readWorkspaceGalleryFilenames(sourceId, 'scraps');
+        let files = await this._readWorkspaceGalleryFilenames(sourceId, 'files');
+        let scraps = await this._readWorkspaceGalleryFilenames(sourceId, 'scraps');
         const metadataDb = this.globalResources.getMetadataDatabase();
         let pinned = sourceWorkspace.pinned || [];
         if (metadataDb) {
@@ -678,6 +678,12 @@ class WorkspaceManager {
             } catch (error) {
                 console.warn('Failed to read pins for workspace dump; using in-memory list:', error.message || error);
             }
+        }
+        const exclude = options && options.excludeFilenames instanceof Set ? options.excludeFilenames : null;
+        if (exclude && exclude.size) {
+            files = files.filter((name) => !exclude.has(name));
+            scraps = scraps.filter((name) => !exclude.has(name));
+            pinned = pinned.filter((name) => !exclude.has(name));
         }
         const gallerySource = { files, scraps, pinned };
 
@@ -1289,6 +1295,7 @@ class WorkspaceManager {
         // Remove from all workspaces
         const workspaces = this.globalResources.getWorkspacesConfig({ clone: true });
         let needsSave = false;
+        let hiddenCleared = 0;
         Object.keys(workspaces).forEach(workspaceId => {
             const removed = this.removeFromWorkspaceArray('files', validFilenames, workspaceId, workspaces);
             if (removed > 0) {
@@ -1296,6 +1303,7 @@ class WorkspaceManager {
                 needsSave = true;
             }
             const removedScraps = this.removeFromWorkspaceArray('scraps', validFilenames, workspaceId, workspaces);
+            hiddenCleared += this._lastHiddenByFakeDeleteCleared || 0;
             if (removedScraps > 0) {
                 totalRemoved += removedScraps;
                 needsSave = true;
@@ -1309,6 +1317,9 @@ class WorkspaceManager {
 
         if (needsSave) {
             this.globalResources.setWorkspacesConfigCache(workspaces);
+            if (hiddenCleared > 0) {
+                this.globalResources.saveConfig('workspaces', workspaces);
+            }
             if (options.skipDestructiveBump !== true) {
                 this.bumpAllGalleryDestructiveTimestamps();
             }
@@ -1665,8 +1676,10 @@ class WorkspaceManager {
     }
 
     // Common function to remove items from workspace array
-    removeFromWorkspaceArray(type, items, workspaceId = null, workspacesOverride = null) {
+    removeFromWorkspaceArray(type, items, workspaceId = null, workspacesOverride = null, options = null) {
         const workspaces = workspacesOverride || this.globalResources.getWorkspacesConfig({ clone: true });
+        const clearHidden = !!(options && options.clearHiddenByFakeDelete);
+        this._lastHiddenByFakeDeleteCleared = 0;
 
         const targetId = workspaceId || 'default';
 
@@ -1728,8 +1741,8 @@ class WorkspaceManager {
                     if (targetId !== 'default' && workspaces.default && workspaces.default.scraps) {
                         workspaces.default.scraps = workspaces.default.scraps.filter(item => !validItemsSet.has(item));
                     }
-                    if (removedFromScraps.length > 0) {
-                        this.clearHiddenByFakeDelete(removedFromScraps, workspaces);
+                    if (clearHidden && removedFromScraps.length > 0) {
+                        this._lastHiddenByFakeDeleteCleared = this.clearHiddenByFakeDelete(removedFromScraps, workspaces);
                     }
                 }
                 break;
@@ -1778,12 +1791,18 @@ class WorkspaceManager {
 
             if (!workspacesOverride) {
                 this._commitWorkspacesState(workspaces, type);
+                if (this._lastHiddenByFakeDeleteCleared > 0) {
+                    this.globalResources.saveConfig('workspaces', workspaces);
+                }
                 if (type === 'files') {
                     this.bumpGalleryDestructiveTimestamp([targetId]);
                     for (const filename of actuallyRemoved) {
                         recordReplicationWorkspaceFilenameJournal(filename, targetId, { operation: 'DELETE' });
                     }
                 }
+            } else if (this._lastHiddenByFakeDeleteCleared > 0) {
+                this.globalResources.setWorkspacesConfigCache(workspaces);
+                this.globalResources.saveConfig('workspaces', workspaces);
             }
         }
 

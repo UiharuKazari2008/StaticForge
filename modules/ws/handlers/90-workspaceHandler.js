@@ -1,6 +1,11 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { WS_DISPATCH_FIFO_CONNECTION } = require('../wsMessageDispatcher');
 const workspaceCssService = require('../../workspaceCssService');
+const {
+    isMcpAgentClient,
+    agentCannotSeeFilename,
+    filterFilenamesVisibleToClient
+} = require('../../imageModerationFlag');
 
 const WORKSPACE_DESTRUCTIVE = { destructive: true, ...WS_DISPATCH_FIFO_CONNECTION };
 
@@ -297,7 +302,24 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            const result = await this.globalResources.getWorkspaceManager().dumpWorkspace(sourceId, targetId);
+            let excludeFilenames = null;
+            if (isMcpAgentClient(clientInfo)) {
+                const wm = this.globalResources.getWorkspaceManager();
+                const files = await wm._readWorkspaceGalleryFilenames(sourceId, 'files');
+                const scraps = await wm._readWorkspaceGalleryFilenames(sourceId, 'scraps');
+                const pinned = sourceWorkspace.pinned || [];
+                excludeFilenames = new Set();
+                for (const name of [...files, ...scraps, ...(pinned || [])]) {
+                    if (name && await agentCannotSeeFilename(this.globalResources, name)) {
+                        excludeFilenames.add(name);
+                    }
+                }
+            }
+            const result = await this.globalResources.getWorkspaceManager().dumpWorkspace(
+                sourceId,
+                targetId,
+                excludeFilenames ? { excludeFilenames } : {}
+            );
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_dump_response',
@@ -353,13 +375,18 @@ class WorkspaceWebSocketHandlers {
                 currentFiles.forEach((file) => workspaceFiles.add(file));
             }
 
+            const files = await filterFilenamesVisibleToClient(
+                this.globalResources,
+                Array.from(workspaceFiles),
+                clientInfo
+            );
             this.handlers.sendToClient(ws, {
                 type: 'workspace_get_files_response',
                 requestId: message.requestId,
                 data: {
                     workspaceId: id,
                     workspaceName: workspace.name,
-                    files: Array.from(workspaceFiles)
+                    files
                 },
                 timestamp: new Date().toISOString()
             });
@@ -462,7 +489,11 @@ class WorkspaceWebSocketHandlers {
             }
 
             // Get scraps for the requested workspace (scraps are shared across workspaces)
-            const scraps = await this.globalResources.getWorkspaceManager().getActiveWorkspaceScraps(clientInfo.sessionId);
+            const scraps = await filterFilenamesVisibleToClient(
+                this.globalResources,
+                await this.globalResources.getWorkspaceManager().getActiveWorkspaceScraps(clientInfo.sessionId),
+                clientInfo
+            );
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_get_scraps_response',
@@ -470,7 +501,7 @@ class WorkspaceWebSocketHandlers {
                 data: {
                     workspaceId: id,
                     workspaceName: workspace.name,
-                    scraps: scraps
+                    scraps
                 },
                 timestamp: new Date().toISOString()
             });
@@ -491,7 +522,11 @@ class WorkspaceWebSocketHandlers {
             }
 
             // Get pinned images for the requested workspace
-            const pinned = await this.globalResources.getWorkspaceManager().getActiveWorkspacePinned(clientInfo.sessionId);
+            const pinned = await filterFilenamesVisibleToClient(
+                this.globalResources,
+                await this.globalResources.getWorkspaceManager().getActiveWorkspacePinned(clientInfo.sessionId),
+                clientInfo
+            );
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_get_pinned_response',
@@ -499,7 +534,7 @@ class WorkspaceWebSocketHandlers {
                 data: {
                     workspaceId: id,
                     workspaceName: workspace.name,
-                    pinned: pinned
+                    pinned
                 },
                 timestamp: new Date().toISOString()
             });
@@ -558,7 +593,24 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            this.globalResources.getWorkspaceManager().removeFromWorkspaceArray('scraps', filename, id);
+            if (isMcpAgentClient(clientInfo)
+                && await agentCannotSeeFilename(this.globalResources, filename)) {
+                this.handlers.sendToClient(ws, {
+                    type: 'workspace_remove_scrap_response',
+                    requestId: message.requestId,
+                    data: { success: true, message: 'File removed from scraps' },
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
+
+            this.globalResources.getWorkspaceManager().removeFromWorkspaceArray(
+                'scraps',
+                filename,
+                id,
+                null,
+                { clearHiddenByFakeDelete: !isMcpAgentClient(clientInfo) }
+            );
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_remove_scrap_response',
@@ -1309,11 +1361,24 @@ class WorkspaceWebSocketHandlers {
             }
 
             let successCount = 0;
+            let actuallyRemoved = 0;
+            const isAgent = isMcpAgentClient(clientInfo);
 
             for (const filename of filenames) {
                 try {
-                    this.globalResources.getWorkspaceManager().removeFromWorkspaceArray('scraps', filename, id);
+                    if (isAgent && await agentCannotSeeFilename(this.globalResources, filename)) {
+                        successCount++;
+                        continue;
+                    }
+                    this.globalResources.getWorkspaceManager().removeFromWorkspaceArray(
+                        'scraps',
+                        filename,
+                        id,
+                        null,
+                        { clearHiddenByFakeDelete: !isAgent }
+                    );
                     successCount++;
+                    actuallyRemoved++;
                 } catch (error) {
                     console.error(`Failed to remove ${filename} from scraps:`, error);
                 }
@@ -1326,12 +1391,13 @@ class WorkspaceWebSocketHandlers {
                 timestamp: new Date().toISOString()
             });
 
-            // Broadcast workspace update to all clients
-            this.broadcast(wsServer, {
-                type: 'workspace_updated',
-                data: { action: 'bulk_remove_scrap', workspaceId: id, removedCount: successCount },
-                timestamp: new Date().toISOString()
-            });
+            if (actuallyRemoved > 0) {
+                this.broadcast(wsServer, {
+                    type: 'workspace_updated',
+                    data: { action: 'bulk_remove_scrap', workspaceId: id, removedCount: actuallyRemoved },
+                    timestamp: new Date().toISOString()
+                });
+            }
         } catch (error) {
             console.error('Workspace bulk remove scrap error:', error);
             this.handlers.sendError(ws, 'Failed to bulk remove from scraps', error.message, message.requestId);

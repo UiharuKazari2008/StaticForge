@@ -7,6 +7,7 @@ const {
     getSystemSegmentDisplayLabel,
     resolveSystemSegmentInput
 } = require('./vfsSystemProvider');
+const { isMcpAgentClient, filenameHiddenByFakeDelete } = require('./imageModerationFlag');
 
 const VFS_SYSTEM_IDS = {
     SYSTEM: '@system',
@@ -446,6 +447,9 @@ class VfsManager {
                 wm.removeFromWorkspaceArray('files', [ref.targetId], wsId);
                 break;
             case 'scrap':
+                if (this._skipFakeDeletedScraps && filenameHiddenByFakeDelete(this.globalResources, ref.targetId)) {
+                    return;
+                }
                 wm.removeFromWorkspaceArray('scraps', [ref.targetId], wsId);
                 break;
             case 'reference':
@@ -2265,6 +2269,9 @@ class VfsManager {
                 wm.removeFromWorkspaceArray('files', [ref.targetId], wsId);
                 break;
             case 'scrap':
+                if (this._skipFakeDeletedScraps && filenameHiddenByFakeDelete(this.globalResources, ref.targetId)) {
+                    return;
+                }
                 wm.removeFromWorkspaceArray('scraps', [ref.targetId], wsId);
                 break;
             case 'reference':
@@ -2592,7 +2599,9 @@ class VfsManager {
         throw new Error(`Cannot paste items to "${targetPath}" (${parsed.type})`);
     }
 
-    async moveItems(itemRefs, targetPath) {
+    async moveItems(itemRefs, targetPath, options = {}) {
+        this._skipFakeDeletedScraps = isMcpAgentClient(options && options.clientInfo);
+        try {
         const parsed = this.parsePath(targetPath);
         const isDesktopTarget = this._isDesktopTargetPath(parsed);
         const location = this.resolveLocationFromPath(targetPath);
@@ -2732,6 +2741,9 @@ class VfsManager {
             }
         }
         return results;
+        } finally {
+            this._skipFakeDeletedScraps = false;
+        }
     }
 
     async copyItems(itemRefs, targetPath, options = {}) {
@@ -3059,7 +3071,9 @@ class VfsManager {
         return this._trashRecordToItem(trashItem, { workspaceId, ...payload });
     }
 
-    async moveItemsToTrash(itemRefs, sourcePath) {
+    async moveItemsToTrash(itemRefs, sourcePath, options = {}) {
+        this._skipFakeDeletedScraps = isMcpAgentClient(options && options.clientInfo);
+        try {
         const workspaceId = this._resolveTrashWorkspaceId(sourcePath, itemRefs?.[0]);
         if (!workspaceId) throw new Error('Workspace required for trash');
 
@@ -3080,6 +3094,9 @@ class VfsManager {
             }
         }
         return results;
+        } finally {
+            this._skipFakeDeletedScraps = false;
+        }
     }
 
     async restoreFromTrash(trashItemId) {
