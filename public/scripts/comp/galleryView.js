@@ -3973,7 +3973,7 @@ function buildGalleryItemContextMenuConfig(image, item) {
                     {
                         icon: 'fas fa-flag',
                         text: 'Flagged for review',
-                        subtitle: '',
+                        subtext: '',
                         hidden: () => {
                             const fileIndex = parseInt(item.dataset.fileIndex, 10);
                             const currentImg = (allImages && allImages[fileIndex]) || image;
@@ -3986,7 +3986,7 @@ function buildGalleryItemContextMenuConfig(image, item) {
                             const when = formatGalleryFlagWhen(currentImg.flaggedAt);
                             const who = currentImg.flaggedBy || 'agent';
                             const reason = currentImg.flagReason || 'No reason';
-                            menuItem.subtitle = currentImg.flagConfirmed
+                            menuItem.subtext = currentImg.flagConfirmed
                                 ? `${reason} · ${who}${when ? ` · ${when}` : ''} · confirmed`
                                 : `${reason} · ${who}${when ? ` · ${when}` : ''}`;
                         }
@@ -3996,6 +3996,7 @@ function buildGalleryItemContextMenuConfig(image, item) {
                         text: 'Clear flag',
                         action: 'clear-flag',
                         hidden: () => {
+                            if (localStorage.getItem('userType') !== 'admin') return true;
                             const fileIndex = parseInt(item.dataset.fileIndex, 10);
                             const currentImg = (allImages && allImages[fileIndex]) || image;
                             return !(currentImg && currentImg.flagged);
@@ -4006,6 +4007,7 @@ function buildGalleryItemContextMenuConfig(image, item) {
                         text: 'Confirm flag',
                         action: 'confirm-flag',
                         hidden: () => {
+                            if (localStorage.getItem('userType') !== 'admin') return true;
                             const fileIndex = parseInt(item.dataset.fileIndex, 10);
                             const currentImg = (allImages && allImages[fileIndex]) || image;
                             return !(currentImg && currentImg.flagged) || !!(currentImg && currentImg.flagConfirmed);

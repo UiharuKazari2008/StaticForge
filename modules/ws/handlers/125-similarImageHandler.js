@@ -1,4 +1,5 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
+const { filterSimilarGroupsForClient } = require('../../imageModerationFlag');
 
 const SIMILAR_DESTRUCTIVE = { destructive: true };
 
@@ -41,13 +42,18 @@ async function handleGetSimilarImageGroups(handlers, ws, message, clientInfo, _w
             groupLimit: message.groupLimit,
             itemLimit: message.itemLimit
         });
+        const visible = await filterSimilarGroupsForClient(
+            handlers.globalResources,
+            payload,
+            clientInfo
+        );
 
         handlers.sendToClient(ws, {
             type: 'get_similar_image_groups_response',
             requestId: message.requestId,
             data: {
                 success: true,
-                ...payload
+                ...visible
             },
             timestamp: new Date().toISOString()
         });
@@ -110,7 +116,9 @@ async function handleScrapSimilarImages(handlers, ws, message, clientInfo, wsSer
             message: {
                 type: 'delete_images_bulk',
                 requestId: message.requestId,
-                filenames
+                filenames,
+                workspace: workspaceId,
+                workspaceId
             },
             clientInfo,
             wsServer

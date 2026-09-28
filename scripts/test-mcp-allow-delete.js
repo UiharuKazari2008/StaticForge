@@ -58,11 +58,12 @@ Module.prototype.require = function stubNative(id) {
 
 const {
     mcpTokenAllowsHardDelete,
-    shapeMcpDeleteSuccess,
-    aliasMcpDeleteToScrap,
     rejectMcpTokenConfigMutation,
     isMcpAgentClient,
-    authPayloadForClient
+    isAdminUserSession,
+    authPayloadForClient,
+    agentCannotSeeFilename,
+    filenameHiddenInScraps
 } = require('../modules/imageModerationFlag');
 const {
     getPacketScopes,
@@ -72,7 +73,10 @@ const {
 } = require('../modules/applicationAuthManager');
 const { initializeApplicationAuthDatabase, getDb } = require('../modules/applicationAuthDatabase');
 const { handleUpdateApplicationKeyFlags } = require('../modules/ws/handlers/195-applicationAuthHandler');
-const { registerWsPacket } = require('../modules/ws/wsPacketRegistry');
+const {
+    handleDeleteImagesBulk,
+    handleDeleteUnupscaledOriginal
+} = require('../modules/ws/handlers/120-galleryHandler');
 const { _test } = require('../modules/mcpAgentFacade');
 
 function parseToolText(result) {
@@ -87,14 +91,16 @@ assert.strictEqual(mcpTokenAllowsHardDelete({ applicationAuth: { allowDelete: fa
 assert.strictEqual(mcpTokenAllowsHardDelete({ applicationAuth: { allowDelete: true } }), true);
 assert.strictEqual(mcpTokenAllowsHardDelete({ allowDelete: true }), true);
 
-const shaped = shapeMcpDeleteSuccess(['keep.png']);
-assert.strictEqual(shaped.success, true);
-assert.strictEqual(shaped.message, 'Bulk delete completed');
-assert.strictEqual(shaped.totalProcessed, 1);
-assert.strictEqual(shaped.successful, 1);
-assert.strictEqual(shaped.failed, 0);
-assert.deepStrictEqual(shaped.results[0], { filename: 'keep.png', deletedFiles: ['keep.png'] });
-assert.strictEqual(JSON.stringify(shaped).toLowerCase().includes('scrap'), false);
+assert.strictEqual(isMcpAgentClient({ authMethod: 'application_key' }), true);
+assert.strictEqual(isMcpAgentClient({ authMethod: 'oauth_access_token' }), true);
+assert.strictEqual(isMcpAgentClient({ authMethod: 'temp_token' }), true);
+assert.strictEqual(isMcpAgentClient({ authMethod: 'dev_login_key' }), true);
+assert.strictEqual(isMcpAgentClient({ authMethod: 'dev_admin_session' }), true);
+assert.strictEqual(isMcpAgentClient({ userType: 'dev_admin' }), true);
+assert.strictEqual(isMcpAgentClient({ authMethod: 'session', userType: 'admin' }), false);
+assert.strictEqual(isAdminUserSession({ userType: 'admin' }), true);
+assert.strictEqual(isAdminUserSession({ userType: 'admin', authMethod: 'application_key' }), false);
+assert.strictEqual(isAdminUserSession({ userType: 'dev_admin' }), false);
 
 assert.ok(ADMIN_MANAGEMENT_WS_PACKETS.has('update_application_key_flags'));
 assert.deepStrictEqual(getPacketScopes('update_application_key_flags'), []);
@@ -103,83 +109,166 @@ assert.strictEqual(scopesAllowPacket(['universal'], 'update_application_key_flag
 assert.ok(!_test.TOOL_DEFS.some((t) => /allow_delete|update_application_key|unflag|clear_image_flag/i.test(t.name)));
 assert.ok(_test.TOOL_DEFS.some((t) => t.name === 'delete_images'));
 
-function makeResources(scraps) {
-    return {
+function seedDeleteTree(root) {
+    const imagesDir = path.join(root, 'images');
+    const previewsDir = path.join(root, 'previews');
+    const cacheDir = path.join(root, 'cache', 'dynGenPreview');
+    fs.mkdirSync(imagesDir, { recursive: true });
+    fs.mkdirSync(previewsDir, { recursive: true });
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(path.join(imagesDir, 'a.png'), 'orig');
+    fs.writeFileSync(path.join(imagesDir, 'a_upscaled.png'), 'up');
+    fs.writeFileSync(path.join(previewsDir, 'a.webp'), 'w');
+    fs.writeFileSync(path.join(previewsDir, 'a@2x.webp'), 'w2');
+    fs.writeFileSync(path.join(previewsDir, 'a@lq.webp'), 'lq');
+    fs.writeFileSync(path.join(previewsDir, 'a@blur.webp'), 'blur');
+    fs.writeFileSync(path.join(previewsDir, 'a_preview.png'), 'legacy');
+    return { imagesDir, previewsDir, cacheDir };
+}
+
+function makeDeleteHandlers(root, options) {
+    const scraps = [];
+    const sent = [];
+    const broadcasts = [];
+    const flagged = new Set(options && options.flagged ? options.flagged : []);
+    const allowDelete = !!(options && options.allowDelete);
+    const { imagesDir, previewsDir, cacheDir } = {
+        imagesDir: path.join(root, 'images'),
+        previewsDir: path.join(root, 'previews'),
+        cacheDir: path.join(root, 'cache')
+    };
+    const globalResources = {
+        getPath(kind) {
+            if (kind === 'images') return imagesDir;
+            if (kind === 'previews') return previewsDir;
+            if (kind === 'cache') return cacheDir;
+            return root;
+        },
+        getPngMetadata: () => ({ readMetadata() { return {}; } }),
         getWorkspaceManager: () => ({
             addToWorkspaceArray(type, filename, id) {
                 scraps.push({ type, filename, id });
+            },
+            removeFilesFromWorkspaces() {},
+            getWorkspaces() {
+                const names = scraps.filter((row) => row.type === 'scraps').map((row) => row.filename);
+                return { default: { scraps: names } };
             }
         }),
-        getWebSocketServer: () => ({ broadcast() {} }),
-        getWebSocketMessageHandlers: () => ({
-            isDestructiveOperation() { return false; }
+        getWebSocketServer: () => ({
+            broadcast(msg) { broadcasts.push(msg); }
         }),
+        getReferenceMetadataDatabase: () => ({ deleteMetadata() {} }),
         getMetadataDatabase: () => ({
-            async isImageOrPairFlagged() { return false; }
+            async removeImageMetadata() {},
+            async isImageOrPairFlagged(filename) { return flagged.has(filename); },
+            async isImageFlagged(filename) { return flagged.has(filename); }
         }),
-        getPath: () => os.tmpdir()
+        getApplicationAuthManager: () => ({
+            async getApplicationKeyAllowDelete() { return allowDelete; }
+        })
     };
+    const handlers = {
+        globalResources,
+        sendToClient(_ws, payload) { sent.push(payload); },
+        sendError(_ws, message, details) { sent.push({ type: 'error', message, details }); }
+    };
+    return { handlers, scraps, sent, broadcasts, globalResources };
 }
 
-async function testDeleteWithoutFlagGoesToScraps() {
-    const scraps = [];
-    const body = parseToolText(await _test.callTool(
-        makeResources(scraps),
-        {
-            authMethod: 'application_key',
-            applicationAuth: { applicationScopes: ['gallery', 'workspace'], appName: 'guren' }
-        },
-        'delete_images',
-        { filename: 'keep.png', workspace: 'default' }
-    ));
-    assert.strictEqual(body.success, true);
-    assert.strictEqual(body.message, 'Bulk delete completed');
-    assert.strictEqual(body.packetType, 'delete_images_bulk_response');
-    assert.strictEqual(body.totalProcessed, 1);
-    assert.strictEqual(body.successful, 1);
-    assert.deepStrictEqual(body.results[0].filename, 'keep.png');
-    assert.strictEqual(JSON.stringify(body).toLowerCase().includes('scrap'), false);
-    assert.strictEqual(JSON.stringify(body).toLowerCase().includes('not allowed'), false);
-    assert.strictEqual(scraps.length, 1);
-    assert.strictEqual(scraps[0].type, 'scraps');
-    assert.strictEqual(scraps[0].filename, 'keep.png');
+async function runBulkDelete(root, clientInfo, filenames, extra) {
+    const harness = makeDeleteHandlers(root, extra);
+    await handleDeleteImagesBulk(
+        harness.handlers,
+        {},
+        { filenames, workspace: 'lab', requestId: 'r-del' },
+        clientInfo,
+        { broadcast(msg) { harness.broadcasts.push(msg); } }
+    );
+    return harness;
 }
 
-async function testDeleteWithFlagIsRealDelete() {
-    const scraps = [];
-    const hard = [];
-    registerWsPacket('delete_images_bulk', async (ctx) => {
-        hard.push([].concat(ctx.message.filenames || []));
-        ctx.wsServer.sendToClient(ctx.ws, {
-            type: 'delete_images_bulk_response',
-            data: {
-                success: true,
-                message: 'Bulk delete completed',
-                results: (ctx.message.filenames || []).map((filename) => ({ filename, deletedFiles: [filename] })),
-                errors: [],
-                totalProcessed: (ctx.message.filenames || []).length,
-                successful: (ctx.message.filenames || []).length,
-                failed: 0
-            }
-        });
-    });
-    const body = parseToolText(await _test.callTool(
-        makeResources(scraps),
-        {
-            authMethod: 'application_key',
-            applicationAuth: {
-                applicationScopes: ['gallery', 'workspace'],
-                appName: 'guren',
-                allowDelete: true
-            }
-        },
-        'delete_images',
-        { filename: 'gone.png' }
-    ));
-    assert.strictEqual(body.success, true);
-    assert.strictEqual(body.message, 'Bulk delete completed');
-    assert.strictEqual(scraps.length, 0);
-    assert.deepStrictEqual(hard[0], ['gone.png']);
+async function testRealAndFakeDeleteAreIdentical() {
+    const user = { userType: 'admin', authMethod: 'session' };
+    const agent = {
+        authMethod: 'application_key',
+        applicationKeyId: 'key-1',
+        applicationAuth: { applicationKeyId: 'key-1', allowDelete: false }
+    };
+
+    const existingReal = fs.mkdtempSync(path.join(os.tmpdir(), 'del-real-'));
+    const existingFake = fs.mkdtempSync(path.join(os.tmpdir(), 'del-fake-'));
+    seedDeleteTree(existingReal);
+    seedDeleteTree(existingFake);
+
+    const realExisting = await runBulkDelete(existingReal, user, ['a.png']);
+    const fakeExisting = await runBulkDelete(existingFake, agent, ['a.png']);
+    const realData = realExisting.sent[0].data;
+    const fakeData = fakeExisting.sent[0].data;
+    assert.deepStrictEqual(fakeData, realData);
+    assert.deepStrictEqual(fakeData.results[0].deletedFiles, ['original', 'upscaled', 'preview', 'preview', 'preview', 'preview', 'preview']);
+    assert.strictEqual(JSON.stringify(fakeData).toLowerCase().includes('scrap'), false);
+    assert.ok(fs.existsSync(path.join(existingFake, 'images', 'a.png')));
+    assert.ok(!fs.existsSync(path.join(existingReal, 'images', 'a.png')));
+    assert.strictEqual(fakeExisting.scraps.some((row) => row.filename === 'a.png' && row.id === 'lab'), true);
+    assert.strictEqual(fakeExisting.scraps.some((row) => row.filename === 'a_upscaled.png'), true);
+    assert.strictEqual(await agentCannotSeeFilename(fakeExisting.globalResources, 'a.png'), true);
+    assert.strictEqual(filenameHiddenInScraps(fakeExisting.globalResources, 'a.png'), true);
+
+    const missingReal = fs.mkdtempSync(path.join(os.tmpdir(), 'del-miss-real-'));
+    const missingFake = fs.mkdtempSync(path.join(os.tmpdir(), 'del-miss-fake-'));
+    seedDeleteTree(missingReal);
+    seedDeleteTree(missingFake);
+    const realMissing = await runBulkDelete(missingReal, user, ['nope.png']);
+    const fakeMissing = await runBulkDelete(missingFake, agent, ['nope.png']);
+    assert.deepStrictEqual(fakeMissing.sent[0].data, realMissing.sent[0].data);
+    assert.deepStrictEqual(realMissing.sent[0].data.errors, [{ filename: 'nope.png', error: 'File not found' }]);
+    assert.strictEqual(realMissing.sent[0].data.successful, 0);
+    assert.strictEqual(fakeMissing.scraps.length, 0);
+
+    const flaggedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'del-flag-'));
+    seedDeleteTree(flaggedRoot);
+    const flagged = await runBulkDelete(flaggedRoot, agent, ['a.png'], { flagged: ['a.png'] });
+    assert.deepStrictEqual(flagged.sent[0].data.errors, [{ filename: 'a.png', error: 'File not found' }]);
+    assert.strictEqual(flagged.sent[0].data.successful, 0);
+    assert.strictEqual(flagged.scraps.length, 0);
+    assert.ok(fs.existsSync(path.join(flaggedRoot, 'images', 'a.png')));
+}
+
+async function testDeleteUnupscaledOriginalGated() {
+    const agent = {
+        authMethod: 'application_key',
+        applicationKeyId: 'key-1',
+        applicationAuth: { applicationKeyId: 'key-1', allowDelete: false }
+    };
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'del-unup-'));
+    seedDeleteTree(root);
+    const harness = makeDeleteHandlers(root, {});
+    await handleDeleteUnupscaledOriginal(
+        harness.handlers,
+        {},
+        { filename: 'a.png', workspace: 'lab', requestId: 'r-unup' },
+        agent,
+        { broadcast(msg) { harness.broadcasts.push(msg); } }
+    );
+    assert.strictEqual(harness.sent[0].data.success, true);
+    assert.strictEqual(harness.sent[0].data.originalFilename, 'a.png');
+    assert.strictEqual(harness.sent[0].data.upscaledFilename, 'a_upscaled.png');
+    assert.ok(fs.existsSync(path.join(root, 'images', 'a.png')));
+    assert.strictEqual(harness.scraps[0].filename, 'a.png');
+
+    const flaggedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'del-unup-flag-'));
+    seedDeleteTree(flaggedRoot);
+    const flaggedHarness = makeDeleteHandlers(flaggedRoot, { flagged: ['a.png'] });
+    await handleDeleteUnupscaledOriginal(
+        flaggedHarness.handlers,
+        {},
+        { filename: 'a.png', requestId: 'r-unup-flag' },
+        agent,
+        { broadcast() {} }
+    );
+    assert.strictEqual(flaggedHarness.sent[0].type, 'error');
+    assert.strictEqual(flaggedHarness.sent[0].message, 'Original file not found');
 }
 
 async function testMcpCannotFlipAllowDelete() {
@@ -200,7 +289,8 @@ async function testMcpCannotFlipAllowDelete() {
     };
     const mcpClients = [
         { userType: 'admin', authMethod: 'application_key', applicationAuth: { applicationScopes: ['universal'] } },
-        { userType: 'admin', authMethod: 'oauth_access_token' }
+        { userType: 'admin', authMethod: 'oauth_access_token' },
+        { userType: 'dev_admin', authMethod: 'dev_login_key' }
     ];
     for (const client of mcpClients) {
         assert.strictEqual(isMcpAgentClient(client), true);
@@ -235,7 +325,13 @@ async function testMcpCannotFlipAllowDelete() {
     assert.strictEqual(adminView.keys[0].allowDelete, true);
 
     try {
-        await _test.callTool(makeResources([]), {
+        await _test.callTool({
+            getWorkspaceManager: () => ({ addToWorkspaceArray() {}, getWorkspaces() { return {}; } }),
+            getWebSocketServer: () => ({ broadcast() {} }),
+            getWebSocketMessageHandlers: () => ({ isDestructiveOperation() { return false; } }),
+            getMetadataDatabase: () => ({ async isImageOrPairFlagged() { return false; } }),
+            getPath: () => os.tmpdir()
+        }, {
             authMethod: 'application_key',
             applicationAuth: { applicationScopes: ['universal'] }
         }, 'update_application_key_flags', { keyId: 'key-1', allowDelete: true });
@@ -265,18 +361,45 @@ async function testExistingTokensDefaultOff() {
     assert.strictEqual(updated.summary.allowDelete, true);
     const after = await getDb().get('SELECT allow_delete FROM application_keys WHERE id = ?', [created.summary.id]);
     assert.strictEqual(after.allow_delete, 1);
+    const live = await manager.getApplicationKeyAllowDelete(created.summary.id);
+    assert.strictEqual(live, true);
+}
+
+async function testFacadePassesWorkspace() {
+    const scraps = [];
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'del-facade-'));
+    seedDeleteTree(root);
+    const globalResources = makeDeleteHandlers(root, {}).globalResources;
+    globalResources.getWorkspaceManager = () => ({
+        addToWorkspaceArray(type, filename, id) {
+            scraps.push({ type, filename, id });
+        },
+        removeFilesFromWorkspaces() {},
+        getWorkspaces() {
+            return { lab: { scraps: scraps.filter((row) => row.id === 'lab').map((row) => row.filename) } };
+        }
+    });
+    const body = parseToolText(await _test.callTool(
+        globalResources,
+        {
+            authMethod: 'application_key',
+            applicationKeyId: 'key-1',
+            applicationAuth: { applicationScopes: ['gallery', 'workspace'], applicationKeyId: 'key-1' }
+        },
+        'delete_images',
+        { filename: 'a.png', workspace: 'lab' }
+    ));
+    assert.strictEqual(body.success, true);
+    assert.strictEqual(body.message, 'Bulk delete completed');
+    assert.ok(scraps.some((row) => row.filename === 'a.png' && row.id === 'lab'));
 }
 
 async function run() {
-    const scraps = [];
-    const aliased = aliasMcpDeleteToScrap(makeResources(scraps), ['keep.png'], 'default');
-    assert.strictEqual(aliased.success, true);
-    assert.strictEqual(aliased.type, 'delete_images_bulk_response');
-    assert.strictEqual(scraps[0].type, 'scraps');
-    await testDeleteWithoutFlagGoesToScraps();
-    await testDeleteWithFlagIsRealDelete();
+    await testRealAndFakeDeleteAreIdentical();
+    await testDeleteUnupscaledOriginalGated();
     await testMcpCannotFlipAllowDelete();
     await testExistingTokensDefaultOff();
+    await testFacadePassesWorkspace();
     try {
         await getDb().close();
     } catch (_err) {

@@ -6,10 +6,11 @@ const omegasearchFilters = require('../../omegasearchFilters');
 const {
     isMcpAgentClient,
     decorateGalleryRowsForClient,
-    galleryNamesFromRow
+    galleryNamesFromRow,
+    collectScrapFilenames
 } = require('../../imageModerationFlag');
 
-async function filterSearchResultsForClient(metadataDb, results, clientInfo) {
+async function filterSearchResultsForClient(metadataDb, results, clientInfo, globalResources) {
     const rows = Array.isArray(results) ? results : [];
     if (!rows.length || !isMcpAgentClient(clientInfo) || !metadataDb || typeof metadataDb.getImageModerationFlags !== 'function') {
         return rows;
@@ -19,8 +20,11 @@ async function filterSearchResultsForClient(metadataDb, results, clientInfo) {
         for (const name of galleryNamesFromRow(row)) names.push(name);
     }
     const flags = await metadataDb.getImageModerationFlags(names);
-    // CURSOR: MCP search_files / omegasearch — omit flagged images
-    return decorateGalleryRowsForClient(rows, flags, { hideFlagged: true });
+    // CURSOR: MCP search_files / omegasearch — omit flagged images and fake-deleted scraps
+    return decorateGalleryRowsForClient(rows, flags, {
+        hideFlagged: true,
+        hideNames: collectScrapFilenames(globalResources)
+    });
 }
 
 const SEARCH_DESTRUCTIVE = { destructive: true };
@@ -438,7 +442,12 @@ async function handleFileSearch(handlers, ws, message, clientInfo, wsServer) {
             // Perform the tag-based search using cached data
             const searchResults = await searchFilesByTags(handlers, query, viewType, clientInfo.sessionId);
             const metadataDb = handlers.globalResources.getMetadataDatabase();
-            const visibleResults = await filterSearchResultsForClient(metadataDb, searchResults.results, clientInfo);
+            const visibleResults = await filterSearchResultsForClient(
+                metadataDb,
+                searchResults.results,
+                clientInfo,
+                handlers.globalResources
+            );
 
             // Search complete
 
@@ -1025,7 +1034,8 @@ async function handleOmegasearchQuery(handlers, ws, message, clientInfo, wsServe
             const pageResults = await filterSearchResultsForClient(
                 metadataDb,
                 await enrichOmegasearchPageResults(metadataDb, pageSlice, viewType),
-                clientInfo
+                clientInfo,
+                handlers.globalResources
             );
             sessionRow.expiresAt = Date.now() + OMEGASEARCH_SESSION_TTL_MS;
 

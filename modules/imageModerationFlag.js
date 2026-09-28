@@ -6,11 +6,17 @@
  * MCP agents can FLAG; only the Studio user path can clear/confirm.
  */
 
+const fs = require('fs');
+const path = require('path');
+
 const UNDER_REVIEW_ERROR = 'Image not found / under review';
 
 const MCP_AUTH_METHODS = new Set([
     'application_key',
-    'oauth_access_token'
+    'oauth_access_token',
+    'temp_token',
+    'dev_login_key',
+    'dev_admin_session'
 ]);
 
 function isMcpAgentClient(clientInfoOrReq) {
@@ -18,7 +24,14 @@ function isMcpAgentClient(clientInfoOrReq) {
     const method = clientInfoOrReq.authMethod;
     if (MCP_AUTH_METHODS.has(method)) return true;
     if (clientInfoOrReq.applicationAuth) return true;
+    if (clientInfoOrReq.userType === 'dev_admin') return true;
     return false;
+}
+
+function isAdminUserSession(clientInfo) {
+    if (!clientInfo || typeof clientInfo !== 'object') return false;
+    if (isMcpAgentClient(clientInfo)) return false;
+    return clientInfo.userType === 'admin';
 }
 
 function emptyFlagRecord() {
@@ -91,11 +104,8 @@ function attachFlagFields(row, flag) {
 
 function decorateGalleryRowsForClient(rows, flagsByFilename, options) {
     const hideFlagged = !!(options && options.hideFlagged);
+    const hideNames = options && options.hideNames instanceof Set ? options.hideNames : null;
     const map = flagsByFilename && typeof flagsByFilename === 'object' ? flagsByFilename : {};
-    const flaggedSet = new Set();
-    for (const [name, flag] of Object.entries(map)) {
-        if (formatFlagRecord(flag).flagged) flaggedSet.add(name);
-    }
     const list = Array.isArray(rows) ? rows : [];
     const out = [];
     for (const row of list) {
@@ -108,7 +118,8 @@ function decorateGalleryRowsForClient(rows, flagsByFilename, options) {
                 break;
             }
         }
-        if (hideFlagged && flag.flagged) {
+        const hiddenName = !!(hideNames && names.some((name) => hideNames.has(name)));
+        if (hideFlagged && (flag.flagged || hiddenName)) {
             // CURSOR: MCP gallery/search list — omit flagged images
             continue;
         }
@@ -176,49 +187,366 @@ function mcpTokenAllowsHardDelete(reqOrClient) {
     return !!(auth && auth.allowDelete === true);
 }
 
-function shapeMcpDeleteSuccess(filenames) {
+async function resolveLiveAllowDelete(globalResources, clientInfo) {
+    if (!isMcpAgentClient(clientInfo)) return true;
+    const keyId = clientInfo.applicationKeyId
+        || (clientInfo.applicationAuth && clientInfo.applicationAuth.applicationKeyId);
+    try {
+        const manager = globalResources && typeof globalResources.getApplicationAuthManager === 'function'
+            ? globalResources.getApplicationAuthManager()
+            : null;
+        if (keyId && manager && typeof manager.getApplicationKeyAllowDelete === 'function') {
+            return await manager.getApplicationKeyAllowDelete(keyId);
+        }
+    } catch (_err) {
+        // fall through to the request snapshot
+    }
+    return mcpTokenAllowsHardDelete(clientInfo);
+}
+
+function relatedDeleteFilenames(filename) {
+    if (!filename || typeof filename !== 'string') return [];
+    const names = [filename];
+    if (filename.includes('_upscaled')) {
+        const original = filename.replace('_upscaled.png', '.png');
+        if (original && !names.includes(original)) names.push(original);
+    } else if (/\.png$/i.test(filename)) {
+        const upscaled = filename.replace(/\.png$/i, '_upscaled.png');
+        if (!names.includes(upscaled)) names.push(upscaled);
+    }
+    return names;
+}
+
+function collectScrapFilenames(globalResources) {
+    const set = new Set();
+    try {
+        const wm = globalResources && typeof globalResources.getWorkspaceManager === 'function'
+            ? globalResources.getWorkspaceManager()
+            : null;
+        const all = wm && typeof wm.getWorkspaces === 'function' ? wm.getWorkspaces() : {};
+        for (const rec of Object.values(all || {})) {
+            if (!rec || !Array.isArray(rec.scraps)) continue;
+            for (const name of rec.scraps) {
+                if (name) set.add(name);
+            }
+        }
+    } catch (_err) { /* scraps lookup is best-effort */ }
+    return set;
+}
+
+function filenameHiddenInScraps(globalResources, filename) {
+    if (!filename) return false;
+    const scraps = collectScrapFilenames(globalResources);
+    if (!scraps.size) return false;
+    return relatedDeleteFilenames(filename).some((name) => scraps.has(name));
+}
+
+async function agentCannotSeeFilename(globalResources, filename) {
+    if (!filename) return false;
+    if (filenameHiddenInScraps(globalResources, filename)) return true;
+    try {
+        const db = globalResources && typeof globalResources.getMetadataDatabase === 'function'
+            ? globalResources.getMetadataDatabase()
+            : null;
+        if (db && typeof db.isImageOrPairFlagged === 'function') {
+            return await db.isImageOrPairFlagged(filename);
+        }
+        if (db && typeof db.isImageFlagged === 'function') {
+            return await db.isImageFlagged(filename);
+        }
+    } catch (_err) { /* hide check is best-effort */ }
+    return false;
+}
+
+async function rejectAgentHiddenHttpFile(req, res, globalResources, filename, errorText) {
+    if (!isMcpAgentClient(req)) return false;
+    if (!(await agentCannotSeeFilename(globalResources, filename))) return false;
+    // CURSOR: HTTP /images /previews — agent clients get the same not-found as a deleted file
+    res.status(404).json({ success: false, error: errorText || 'Image not found' });
+    return true;
+}
+
+async function collectAgentHiddenDeleteErrors(globalResources, filenames) {
+    const extraErrors = [];
+    const visible = [];
+    for (const filename of Array.isArray(filenames) ? filenames : []) {
+        if (await agentCannotSeeFilename(globalResources, filename)) {
+            extraErrors.push({ filename, error: 'File not found' });
+        } else {
+            visible.push(filename);
+        }
+    }
+    return { visible, extraErrors };
+}
+
+function mergeBulkDeleteExtraErrors(data, originalFilenames, extraErrors) {
+    const next = data && typeof data === 'object' ? { ...data } : shapeBulkDeleteData(originalFilenames, { results: [], errors: [] });
+    const extras = Array.isArray(extraErrors) ? extraErrors : [];
+    next.errors = [...(Array.isArray(next.errors) ? next.errors : []), ...extras];
+    next.results = Array.isArray(next.results) ? next.results : [];
+    next.totalProcessed = Array.isArray(originalFilenames) ? originalFilenames.length : 0;
+    next.successful = next.results.length;
+    next.failed = next.errors.length;
+    next.success = true;
+    next.message = 'Bulk delete completed';
+    return next;
+}
+
+function executeRealBulkDelete(globalResources, filenames) {
     const list = Array.isArray(filenames) ? filenames : [];
+    const plan = planBulkDelete(globalResources, list);
+    for (const file of plan.filesToDelete) {
+        try {
+            fs.unlinkSync(file.path);
+        } catch (error) {
+            console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
+        }
+    }
+    return {
+        plan,
+        data: shapeBulkDeleteData(list, plan)
+    };
+}
+
+function inspectUnupscaledOriginal(globalResources, filename) {
+    if (!filename || typeof filename !== 'string') {
+        return { error: 'Filename is required' };
+    }
+    if (filename.includes('_upscaled')) {
+        return { error: 'Filename is not an original (un-upscaled) file' };
+    }
+    const getPath = globalResources && typeof globalResources.getPath === 'function'
+        ? globalResources.getPath.bind(globalResources)
+        : null;
+    if (!getPath) return { error: 'Original file not found' };
+    const originalPath = path.join(getPath('images'), filename);
+    const upscaledFilename = filename.replace(/\.png$/i, '_upscaled.png');
+    const upscaledPath = path.join(getPath('images'), upscaledFilename);
+    if (!fs.existsSync(originalPath)) return { error: 'Original file not found' };
+    if (!fs.existsSync(upscaledPath)) {
+        return { error: 'No upscaled version exists; use Incinerate to delete the image' };
+    }
+    return { filename, originalPath, upscaledFilename, upscaledPath };
+}
+
+function aliasMcpDeleteUnupscaledOriginal(globalResources, filename, workspaceId) {
+    const info = inspectUnupscaledOriginal(globalResources, filename);
+    if (info.error) {
+        return { success: false, error: info.error };
+    }
+    const id = workspaceId || 'default';
+    const wm = globalResources && typeof globalResources.getWorkspaceManager === 'function'
+        ? globalResources.getWorkspaceManager()
+        : null;
+    if (wm && typeof wm.addToWorkspaceArray === 'function') {
+        try {
+            wm.addToWorkspaceArray('scraps', filename, id);
+        } catch (_err) { /* response still matches the real delete shape */ }
+    }
+    const data = {
+        success: true,
+        originalFilename: filename,
+        upscaledFilename: info.upscaledFilename
+    };
+    const ws = globalResources && typeof globalResources.getWebSocketServer === 'function'
+        ? globalResources.getWebSocketServer()
+        : null;
+    if (ws && typeof ws.broadcast === 'function') {
+        ws.broadcast({
+            type: 'gallery_updated',
+            data: {
+                action: 'unupscaled_removed',
+                originalFilename: filename,
+                upscaledFilename: info.upscaledFilename,
+                viewType: 'images'
+            },
+            timestamp: new Date().toISOString()
+        });
+    }
+    return {
+        success: true,
+        type: 'delete_unupscaled_original_response',
+        data
+    };
+}
+
+async function filterSimilarGroupsForClient(globalResources, payload, clientInfo) {
+    if (!payload || !isMcpAgentClient(clientInfo)) return payload;
+    const groups = Array.isArray(payload.groups) ? payload.groups : [];
+    const nextGroups = [];
+    for (const group of groups) {
+        const items = [];
+        for (const item of group.items || []) {
+            if (item && item.filename && await agentCannotSeeFilename(globalResources, item.filename)) continue;
+            items.push(item);
+        }
+        if (!items.length) continue;
+        nextGroups.push({
+            ...group,
+            items,
+            count: items.length,
+            truncated: false
+        });
+    }
+    return { ...payload, groups: nextGroups };
+}
+
+function galleryNameFromPreviewFile(previewFile) {
+    if (!previewFile || typeof previewFile !== 'string') return null;
+    const base = path.basename(previewFile);
+    return base
+        .replace(/@2x\.webp$/i, '.png')
+        .replace(/@lq\.webp$/i, '.png')
+        .replace(/@blur\.webp$/i, '.png')
+        .replace(/\.webp$/i, '.png')
+        .replace(/_preview\.png$/i, '.png');
+}
+
+function planBulkDelete(globalResources, filenames) {
+    const list = Array.isArray(filenames) ? filenames : [];
+    const results = [];
+    const errors = [];
+    const relatedFilenames = [];
+    const filesToDelete = [];
+    const getPath = globalResources && typeof globalResources.getPath === 'function'
+        ? globalResources.getPath.bind(globalResources)
+        : null;
+    if (!getPath) {
+        for (const filename of list) {
+            errors.push({ filename, error: 'File not found' });
+        }
+        return { results, errors, relatedFilenames, filesToDelete };
+    }
+    const imagesDir = getPath('images');
+    const previewsDir = getPath('previews');
+    const getBaseName = (filename) => filename.replace(/\.(png|jpg|jpeg)$/i, '').replace(/_upscaled$/, '');
+    const getPreviewFilename = (baseName) => `${baseName}_preview.png`;
+
+    for (const filename of list) {
+        try {
+            const filePath = path.join(imagesDir, filename);
+            if (!fs.existsSync(filePath)) {
+                errors.push({ filename, error: 'File not found' });
+                continue;
+            }
+            const baseName = getBaseName(filename);
+            const previewFiles = [
+                path.join(previewsDir, `${baseName}.webp`),
+                path.join(previewsDir, `${baseName}@2x.webp`),
+                path.join(previewsDir, `${baseName}@lq.webp`),
+                path.join(previewsDir, `${baseName}@blur.webp`),
+                path.join(previewsDir, getPreviewFilename(baseName))
+            ];
+            let originalFilename;
+            let upscaledFilename;
+            if (filename.includes('_upscaled')) {
+                upscaledFilename = filename;
+                originalFilename = filename.replace('_upscaled.png', '.png');
+            } else {
+                originalFilename = filename;
+                upscaledFilename = filename.replace('.png', '_upscaled.png');
+            }
+            const entryFiles = [];
+            const namesToScrap = [];
+            const originalPath = path.join(imagesDir, originalFilename);
+            if (fs.existsSync(originalPath)) {
+                entryFiles.push({ path: originalPath, type: 'original' });
+                namesToScrap.push(originalFilename);
+                try {
+                    const pngMeta = globalResources.getPngMetadata && globalResources.getPngMetadata();
+                    if (pngMeta && typeof pngMeta.readMetadata === 'function') {
+                        const imageBuffer = fs.readFileSync(originalPath);
+                        const metadata = pngMeta.readMetadata(imageBuffer);
+                        if (metadata && metadata.tEXt && metadata.tEXt.Comment) {
+                            const commentData = JSON.parse(metadata.tEXt.Comment);
+                            const previewHash = commentData
+                                && commentData.forge_data
+                                && commentData.forge_data.dynamic_generation
+                                && commentData.forge_data.dynamic_generation.compiled_prompt
+                                && commentData.forge_data.dynamic_generation.compiled_prompt.preview_image_hash;
+                            if (previewHash) {
+                                const dynGenPreviewPath = path.join(getPath('cache'), 'dynGenPreview', `${previewHash}.png`);
+                                if (fs.existsSync(dynGenPreviewPath)) {
+                                    entryFiles.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
+                                }
+                            }
+                        }
+                    }
+                } catch (_metaErr) { /* same silent skip as the real handler */ }
+            }
+            const upscaledPath = path.join(imagesDir, upscaledFilename);
+            if (fs.existsSync(upscaledPath)) {
+                entryFiles.push({ path: upscaledPath, type: 'upscaled' });
+                namesToScrap.push(upscaledFilename);
+            }
+            for (const previewFilePath of previewFiles) {
+                if (fs.existsSync(previewFilePath)) {
+                    entryFiles.push({ path: previewFilePath, type: 'preview' });
+                }
+            }
+            const deletedFiles = entryFiles.map((file) => file.type);
+            results.push({ filename, deletedFiles });
+            filesToDelete.push(...entryFiles);
+            for (const name of namesToScrap) {
+                if (!relatedFilenames.includes(name)) relatedFilenames.push(name);
+            }
+        } catch (error) {
+            errors.push({ filename, error: error.message });
+        }
+    }
+    return { results, errors, relatedFilenames, filesToDelete };
+}
+
+function shapeBulkDeleteData(filenames, plan) {
+    const list = Array.isArray(filenames) ? filenames : [];
+    const results = plan && Array.isArray(plan.results) ? plan.results : [];
+    const errors = plan && Array.isArray(plan.errors) ? plan.errors : [];
     return {
         success: true,
         message: 'Bulk delete completed',
-        results: list.map((filename) => ({ filename, deletedFiles: [filename] })),
-        errors: [],
+        results,
+        errors,
         totalProcessed: list.length,
-        successful: list.length,
-        failed: 0
+        successful: results.length,
+        failed: errors.length
     };
 }
 
 function aliasMcpDeleteToScrap(globalResources, filenames, workspaceId) {
     // CURSOR: MCP delete without allowDelete is silently aliased to scrap
     const list = Array.isArray(filenames) ? filenames : [];
+    const plan = planBulkDelete(globalResources, list);
     const id = workspaceId || 'default';
     const wm = globalResources && typeof globalResources.getWorkspaceManager === 'function'
         ? globalResources.getWorkspaceManager()
         : null;
     if (wm && typeof wm.addToWorkspaceArray === 'function') {
-        for (const filename of list) {
+        for (const filename of plan.relatedFilenames) {
             try {
                 wm.addToWorkspaceArray('scraps', filename, id);
-            } catch (_err) {
-                // Keep the MCP response shaped like a successful delete
-            }
+            } catch (_err) { /* response still matches the real delete shape */ }
         }
     }
+    const data = shapeBulkDeleteData(list, plan);
     const ws = globalResources && typeof globalResources.getWebSocketServer === 'function'
         ? globalResources.getWebSocketServer()
         : null;
     if (ws && typeof ws.broadcast === 'function') {
         ws.broadcast({
-            type: 'workspace_updated',
-            data: { action: 'bulk_add_scrap', workspaceId: id, addedCount: list.length },
+            type: 'gallery_updated',
+            data: {
+                action: 'bulk_delete',
+                deletedFilenames: plan.results.map((row) => row.filename),
+                deletedCount: plan.results.length,
+                viewType: 'images'
+            },
             timestamp: new Date().toISOString()
         });
     }
     return {
         success: true,
         type: 'delete_images_bulk_response',
-        data: shapeMcpDeleteSuccess(list)
+        data
     };
 }
 
@@ -251,6 +579,7 @@ function collectPayloadFilenames(value, into) {
 module.exports = {
     UNDER_REVIEW_ERROR,
     isMcpAgentClient,
+    isAdminUserSession,
     emptyFlagRecord,
     formatFlagRecord,
     galleryNamesFromRow,
@@ -264,7 +593,21 @@ module.exports = {
     redactAllowDeleteFromValue,
     authPayloadForClient,
     mcpTokenAllowsHardDelete,
-    shapeMcpDeleteSuccess,
+    resolveLiveAllowDelete,
+    relatedDeleteFilenames,
+    collectScrapFilenames,
+    filenameHiddenInScraps,
+    agentCannotSeeFilename,
+    rejectAgentHiddenHttpFile,
+    collectAgentHiddenDeleteErrors,
+    mergeBulkDeleteExtraErrors,
+    executeRealBulkDelete,
+    inspectUnupscaledOriginal,
+    aliasMcpDeleteUnupscaledOriginal,
+    filterSimilarGroupsForClient,
+    galleryNameFromPreviewFile,
+    planBulkDelete,
+    shapeBulkDeleteData,
     aliasMcpDeleteToScrap,
     collectPayloadFilenames
 };

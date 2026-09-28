@@ -2295,6 +2295,17 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
     },
 
     async _setAppkeyAllowDelete(root, keyId, allowDelete) {
+        // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+        const ok = await showConfirmationDialog(
+            allowDelete
+                ? 'Allow this token to permanently delete gallery images? This cannot be undone from the token.'
+                : 'Turn off permanent delete for this token?',
+            [
+                { text: allowDelete ? 'Allow delete' : 'Turn off', value: true, className: allowDelete ? 'btn-danger' : 'btn-primary' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ]
+        );
+        if (!ok) return;
         if (!(await this._ensureWs())) return;
         try {
             const response = await wsClient.updateApplicationKeyFlags({ keyId, allowDelete });

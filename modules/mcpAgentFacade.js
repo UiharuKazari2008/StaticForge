@@ -159,7 +159,12 @@ const {
     collectPayloadFilenames,
     galleryNamesFromRow,
     mcpTokenAllowsHardDelete,
-    aliasMcpDeleteToScrap
+    aliasMcpDeleteToScrap,
+    resolveLiveAllowDelete,
+    collectScrapFilenames,
+    agentCannotSeeFilename,
+    collectAgentHiddenDeleteErrors,
+    mergeBulkDeleteExtraErrors
 } = require('./imageModerationFlag');
 function broadcastImageFlagUpdated(globalResources, filename, flag, workspaceId) {
     const ws = globalResources && typeof globalResources.getWebSocketServer === 'function'
@@ -3799,11 +3804,7 @@ function metadataDbOf(globalResources) {
 }
 
 async function mcpFilenameIsFlagged(globalResources, filename) {
-    const db = metadataDbOf(globalResources);
-    if (!db || !filename) return false;
-    if (typeof db.isImageOrPairFlagged === 'function') return db.isImageOrPairFlagged(filename);
-    if (typeof db.isImageFlagged === 'function') return db.isImageFlagged(filename);
-    return false;
+    return agentCannotSeeFilename(globalResources, filename);
 }
 
 function mcpUnderReviewResult(extra) {
@@ -3827,8 +3828,11 @@ async function filterMcpGalleryRows(globalResources, rows) {
         for (const name of galleryNamesFromRow(row)) names.push(name);
     }
     const flags = await db.getImageModerationFlags(names);
-    // CURSOR: MCP list/search/evaluate — omit flagged images
-    return decorateGalleryRowsForClient(list, flags, { hideFlagged: true });
+    // CURSOR: MCP list/search/evaluate — omit flagged images and fake-deleted scraps
+    return decorateGalleryRowsForClient(list, flags, {
+        hideFlagged: true,
+        hideNames: collectScrapFilenames(globalResources)
+    });
 }
 
 async function redactMcpFilenameFields(globalResources, payload) {
@@ -3839,6 +3843,10 @@ async function redactMcpFilenameFields(globalResources, payload) {
     const db = metadataDbOf(globalResources);
     if (!db || typeof db.flaggedFilenameSet !== 'function') return payload;
     const flagged = await db.flaggedFilenameSet(names);
+    const scraps = collectScrapFilenames(globalResources);
+    for (const name of names) {
+        if (scraps.has(name)) flagged.add(name);
+    }
     if (!flagged.size) return payload;
     const scrub = (value) => {
         if (!value) return value;
@@ -4002,10 +4010,16 @@ async function dispatchPacketTool(globalResources, req, type, args) {
         err.code = 'INSUFFICIENT_SCOPE';
         throw err;
     }
-    if (message.type === 'delete_images_bulk' && !mcpTokenAllowsHardDelete(req)) {
-        const filenames = collectFilenames(message);
-        const workspaceId = resolveWorkspaceId(message.workspace || message.workspaceId, globalResources);
-        return aliasMcpDeleteToScrap(globalResources, filenames, workspaceId);
+    if (message.type === 'delete_images_bulk') {
+        const allowDelete = await resolveLiveAllowDelete(globalResources, req);
+        if (!allowDelete) {
+            const filenames = collectFilenames(message);
+            const workspaceId = resolveWorkspaceId(message.workspace || message.workspaceId, globalResources);
+            const split = await collectAgentHiddenDeleteErrors(globalResources, filenames);
+            const aliased = aliasMcpDeleteToScrap(globalResources, split.visible, workspaceId);
+            aliased.data = mergeBulkDeleteExtraErrors(aliased.data, filenames, split.extraErrors);
+            return aliased;
+        }
     }
     const replies = await dispatchAgentPacket(globalResources, req, message);
     const reply = pickAgentPacketReply(replies);
@@ -4421,17 +4435,24 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({ success: false, error: 'Metadata database is not ready' }, true);
         }
         const flaggedBy = resolveActorName(req) || 'mcp';
-        const flag = await metadataDb.flagImage(filename, { flaggedBy, reason });
-        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
-        broadcastImageFlagUpdated(globalResources, filename, flag, workspaceId);
-        return mcpTextResult({
-            success: true,
-            filename,
-            flagged: true,
-            flaggedBy: flag.flaggedBy,
-            reason: flag.reason,
-            flaggedAt: flag.flaggedAt
-        });
+        try {
+            const flag = await metadataDb.flagImage(filename, { flaggedBy, reason });
+            const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
+            broadcastImageFlagUpdated(globalResources, filename, flag, workspaceId);
+            return mcpTextResult({
+                success: true,
+                filename,
+                flagged: true,
+                flaggedBy: flag.flaggedBy,
+                reason: flag.reason,
+                flaggedAt: flag.flaggedAt
+            });
+        } catch (error) {
+            if (error && error.status === 404) {
+                return mcpUnderReviewResult({ filename: null });
+            }
+            throw error;
+        }
     }
 
     if (name === 'delete_images') {
@@ -4439,7 +4460,10 @@ async function callTool(globalResources, req, name, args) {
         if (!filenames.length) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
         }
-        return mcpTextResult(flattenPacket(await dispatchPacketTool(globalResources, req, 'delete_images_bulk', { filenames })));
+        return mcpTextResult(flattenPacket(await dispatchPacketTool(globalResources, req, 'delete_images_bulk', {
+            filenames,
+            workspace: input.workspace || input.workspaceId
+        })));
     }
 
     if (name === 'scrap_images') {
@@ -4964,7 +4988,7 @@ async function callTool(globalResources, req, name, args) {
         if (name === 'get_images' && Array.isArray(flat.gallery)) {
             flat.gallery = await filterMcpGalleryRows(globalResources, flat.gallery);
         }
-        if (name === 'vfs_list' && (Array.isArray(flat.items) || Array.isArray(flat.gallery))) {
+        if (name === 'vfs_list' || name === 'vfs_stat' || name === 'list_desktop_items') {
             const redacted = await redactMcpFilenameFields(globalResources, flat);
             return mcpTextResult(redacted, !packet.success);
         }
@@ -5256,7 +5280,7 @@ async function callTool(globalResources, req, name, args) {
             });
             responseNext = 'apply does not return pixels. await_generation_job with this jobId, or get_generated_image since=apply. Do not treat filenameBefore as the new print.';
         }
-        return mcpTextResult({
+        const applyResult = {
             success: true,
             autoBound: !!bind.auto,
             ...data,
@@ -5266,7 +5290,8 @@ async function callTool(globalResources, req, name, args) {
                 filenameExpected: data.filenameExpected || null
             } : {}),
             ...(responseNext ? { next: responseNext } : {})
-        });
+        };
+        return mcpTextResult(await redactMcpFilenameFields(globalResources, applyResult));
     }
 
     if (name === 'run_client_js' || name === 'inspect_elements') {

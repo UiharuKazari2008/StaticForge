@@ -1507,6 +1507,9 @@ async function removeImageMetadata(filenames, options = {}) {
     for (const filename of valid) {
         metadataWriteQueue.removeHotGalleryOwnershipForFilename(filename);
         metadataWriteQueue.removeHotImage(filename);
+        if (typeof hotModerationFlags !== 'undefined' && hotModerationFlags) {
+            hotModerationFlags.delete(filename);
+        }
 
         const image = await db.get('SELECT id FROM images WHERE filename = ?', [filename]);
         
@@ -1568,6 +1571,9 @@ async function removeImageMetadataBatch(filenames, batchSize = 500, precomputedB
             for (const filename of batch) {
                 metadataWriteQueue.removeHotGalleryOwnershipForFilename(filename);
                 metadataWriteQueue.removeHotImage(filename);
+                if (typeof hotModerationFlags !== 'undefined' && hotModerationFlags) {
+                    hotModerationFlags.delete(filename);
+                }
             }
             
             try {
@@ -1875,20 +1881,53 @@ async function flaggedFilenameSet(filenames) {
     return set;
 }
 
-async function ensureImageRowForFlag(filename) {
-    if (!dbInitialized || !db || !filename) return false;
-    const existing = await db.get('SELECT filename FROM images WHERE filename = ?', [filename]);
-    if (existing) return true;
+async function insertImageRow(filename, extras = {}) {
+    if (!dbInitialized || !db || !filename) {
+        const err = new Error('File not found');
+        err.status = 404;
+        throw err;
+    }
     await db.run(
-        `INSERT OR IGNORE INTO images (filename, md5, metadata, flagged)
-         VALUES (?, '', '{}', 0)`,
-        [filename]
+        `INSERT OR IGNORE INTO images (filename, md5, width, height, metadata)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+            filename,
+            extras.md5 || 'test',
+            extras.width || 1,
+            extras.height || 1,
+            JSON.stringify(extras.metadata || {})
+        ]
     );
     return true;
 }
 
 async function flagImageRow(filename, options) {
     const { formatFlagRecord } = require('./imageModerationFlag');
+    if (!filename) {
+        const err = new Error('File not found');
+        err.status = 404;
+        throw err;
+    }
+    if (!dbInitialized || !db) {
+        const err = new Error('File not found');
+        err.status = 404;
+        throw err;
+    }
+    const existing = await db.get(
+        `SELECT filename, flagged, flagged_by, flag_reason, flagged_at, flag_confirmed, flag_confirmed_at
+         FROM images WHERE filename = ?`,
+        [filename]
+    );
+    if (!existing) {
+        const err = new Error('File not found');
+        err.status = 404;
+        throw err;
+    }
+    const current = formatFlagRecord(existing);
+    if (current.flagged) {
+        rememberHotModerationFlag(filename, current);
+        return current;
+    }
     const reason = String(options && options.reason != null ? options.reason : '').trim();
     const flaggedBy = String(options && options.flaggedBy != null ? options.flaggedBy : 'user').trim() || 'user';
     const flaggedAt = options && options.flaggedAt ? Number(options.flaggedAt) : Date.now();
@@ -1900,21 +1939,18 @@ async function flagImageRow(filename, options) {
         flag_confirmed: 0,
         flag_confirmed_at: null
     });
-    if (dbInitialized && db) {
-        await ensureImageRowForFlag(filename);
-        await db.run(
-            `UPDATE images
-             SET flagged = 1,
-                 flagged_by = ?,
-                 flag_reason = ?,
-                 flagged_at = ?,
-                 flag_confirmed = 0,
-                 flag_confirmed_at = NULL,
-                 updated_at = strftime('%s', 'now')
-             WHERE filename = ?`,
-            [flaggedBy, reason, flaggedAt, filename]
-        );
-    }
+    await db.run(
+        `UPDATE images
+         SET flagged = 1,
+             flagged_by = ?,
+             flag_reason = ?,
+             flagged_at = ?,
+             flag_confirmed = 0,
+             flag_confirmed_at = NULL,
+             updated_at = strftime('%s', 'now')
+         WHERE filename = ?`,
+        [flaggedBy, reason, flaggedAt, filename]
+    );
     rememberHotModerationFlag(filename, record);
     return record;
 }
@@ -1933,10 +1969,26 @@ async function flagImage(filename, options) {
     }
     const flaggedBy = String(options && options.flaggedBy != null ? options.flaggedBy : 'user').trim() || 'user';
     const flaggedAt = Date.now();
+    if (!dbInitialized || !db) {
+        const err = new Error('File not found');
+        err.status = 404;
+        throw err;
+    }
+    const primary = await db.get('SELECT filename FROM images WHERE filename = ?', [filename]);
+    if (!primary) {
+        const err = new Error('File not found');
+        err.status = 404;
+        throw err;
+    }
     const names = await relatedGalleryFilenames(filename);
     let record = null;
     for (const name of names) {
-        record = await flagImageRow(name, { reason, flaggedBy, flaggedAt });
+        try {
+            record = await flagImageRow(name, { reason, flaggedBy, flaggedAt });
+        } catch (error) {
+            if (error && error.status === 404 && name !== filename) continue;
+            throw error;
+        }
     }
     return record;
 }
@@ -2646,8 +2698,15 @@ async function migrateFromJSON(jsonFilePath) {
         if (jsonData.images) {
             for (const [filename, imageData] of Object.entries(jsonData.images)) {
                 await db.run(`
-                    INSERT OR REPLACE INTO images (filename, md5, width, height, parent, upscaled, size, mtime, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR REPLACE INTO images (filename, md5, width, height, parent, upscaled, size, mtime, metadata,
+                        flagged, flagged_by, flag_reason, flagged_at, flag_confirmed, flag_confirmed_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        COALESCE((SELECT flagged FROM images WHERE filename = ?), 0),
+                        (SELECT flagged_by FROM images WHERE filename = ?),
+                        (SELECT flag_reason FROM images WHERE filename = ?),
+                        (SELECT flagged_at FROM images WHERE filename = ?),
+                        COALESCE((SELECT flag_confirmed FROM images WHERE filename = ?), 0),
+                        (SELECT flag_confirmed_at FROM images WHERE filename = ?))
                 `, [
                     filename,
                     imageData.md5 || '',
@@ -2657,7 +2716,13 @@ async function migrateFromJSON(jsonFilePath) {
                     imageData.upscaled ? 1 : 0,
                     imageData.size || 0,
                     imageData.mtime || 0,
-                    JSON.stringify(imageData.metadata || {})
+                    JSON.stringify(imageData.metadata || {}),
+                    filename,
+                    filename,
+                    filename,
+                    filename,
+                    filename,
+                    filename
                 ]);
                 
                 // Migrate receipts
@@ -7822,6 +7887,8 @@ module.exports = {
     listFlaggedFilenames,
     flaggedFilenameSet,
     flagImage,
+    flagImageRow,
+    insertImageRow,
     clearImageFlag,
     confirmImageFlag,
     getLatestUnflaggedGalleryFilename,

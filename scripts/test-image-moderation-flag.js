@@ -70,6 +70,10 @@ const { _test } = require('../modules/mcpAgentFacade');
 
 assert.strictEqual(isMcpAgentClient({ authMethod: 'application_key' }), true);
 assert.strictEqual(isMcpAgentClient({ authMethod: 'oauth_access_token' }), true);
+assert.strictEqual(isMcpAgentClient({ authMethod: 'temp_token' }), true);
+assert.strictEqual(isMcpAgentClient({ authMethod: 'dev_login_key' }), true);
+assert.strictEqual(isMcpAgentClient({ authMethod: 'dev_admin_session' }), true);
+assert.strictEqual(isMcpAgentClient({ userType: 'dev_admin' }), true);
 assert.strictEqual(isMcpAgentClient({ applicationAuth: { applicationKeyId: 'x' } }), true);
 assert.strictEqual(isMcpAgentClient({ authMethod: 'session' }), false);
 assert.strictEqual(isMcpAgentClient({}), false);
@@ -229,6 +233,8 @@ async function testPersistAcrossReload() {
     try {
         const ok = await metadataDb.initializeDatabase(dir);
         assert.strictEqual(ok, true);
+        await metadataDb.insertImageRow('flagged.png');
+        await metadataDb.insertImageRow('keep.png');
         const flagged = await metadataDb.flagImage('flagged.png', {
             flaggedBy: 'guren',
             reason: 'persist me'
@@ -249,6 +255,26 @@ async function testPersistAcrossReload() {
         await metadataDb.flagImage('flagged.png', { flaggedBy: 'user', reason: 'again' });
         const confirmed = await metadataDb.confirmImageFlag('flagged.png');
         assert.strictEqual(confirmed.confirmed, true);
+
+        const overwritten = await metadataDb.flagImage('flagged.png', {
+            flaggedBy: 'intruder',
+            reason: 'rewrite the review'
+        });
+        assert.strictEqual(overwritten.flaggedBy, 'user');
+        assert.strictEqual(overwritten.reason, 'again');
+        assert.strictEqual(overwritten.confirmed, true);
+
+        try {
+            await metadataDb.flagImage('missing.png', { flaggedBy: 'guren', reason: 'no row' });
+            assert.fail('flagImage must reject filenames that are not in the gallery');
+        } catch (error) {
+            assert.strictEqual(error.status, 404);
+            assert.strictEqual(error.message, 'File not found');
+        }
+
+        await metadataDb.removeImageMetadata(['flagged.png']);
+        const afterDelete = await metadataDb.getImageModerationFlag('flagged.png');
+        assert.strictEqual(afterDelete.flagged, false);
         await metadataDb.closeDatabase();
     } finally {
         try { await metadataDb.closeDatabase(); } catch (_err) { /* ignore */ }

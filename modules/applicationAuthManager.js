@@ -562,6 +562,16 @@ class ApplicationAuthManager {
         return { success: (result?.changes || 0) > 0 };
     }
 
+    async getApplicationKeyAllowDelete(keyId) {
+        const id = String(keyId || '').trim();
+        if (!id) return false;
+        const row = await getDb().get(
+            `SELECT allow_delete FROM application_keys WHERE id = ? AND status = ? AND revoked_at IS NULL`,
+            [id, 'active']
+        );
+        return coerceAllowDelete(row && row.allow_delete);
+    }
+
     async setApplicationKeyAllowDelete(keyId, allowDelete) {
         const id = String(keyId || '').trim();
         if (!id) return { success: false, error: 'KEY_NOT_FOUND' };

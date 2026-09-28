@@ -10,12 +10,20 @@ const { isReplicationGalleryClient, canGalleryUseRemoteMaster } = require('../..
 const {
     UNDER_REVIEW_ERROR,
     isMcpAgentClient,
+    isAdminUserSession,
     galleryNamesFromRow,
     decorateGalleryRowsForClient,
     mcpUnderReviewPayload,
     rejectMcpFlagMutation,
-    mcpTokenAllowsHardDelete,
-    aliasMcpDeleteToScrap
+    resolveLiveAllowDelete,
+    aliasMcpDeleteToScrap,
+    aliasMcpDeleteUnupscaledOriginal,
+    inspectUnupscaledOriginal,
+    collectScrapFilenames,
+    collectAgentHiddenDeleteErrors,
+    mergeBulkDeleteExtraErrors,
+    executeRealBulkDelete,
+    agentCannotSeeFilename
 } = require('../../imageModerationFlag');
 
 const GALLERY_DESTRUCTIVE = { destructive: true };
@@ -113,7 +121,7 @@ function galleryRowLatestFilename(row) {
     return row.original || row.filename || row.upscaled || null;
 }
 
-async function applyModerationFlagsToGallery(metadataDb, gallery, clientInfo) {
+async function applyModerationFlagsToGallery(metadataDb, gallery, clientInfo, globalResources) {
     const rows = Array.isArray(gallery) ? gallery : [];
     if (!rows.length || !metadataDb || typeof metadataDb.getImageModerationFlags !== 'function') {
         return rows;
@@ -123,8 +131,14 @@ async function applyModerationFlagsToGallery(metadataDb, gallery, clientInfo) {
         for (const name of galleryNamesFromRow(row)) names.push(name);
     }
     const flags = await metadataDb.getImageModerationFlags(names);
+    const hideNames = isMcpAgentClient(clientInfo)
+        ? collectScrapFilenames(globalResources)
+        : null;
     // CURSOR: MCP request_gallery hides flagged rows; user gallery keeps them + flag fields
-    return decorateGalleryRowsForClient(rows, flags, { hideFlagged: isMcpAgentClient(clientInfo) });
+    return decorateGalleryRowsForClient(rows, flags, {
+        hideFlagged: isMcpAgentClient(clientInfo),
+        hideNames
+    });
 }
 
 function broadcastImageFlagUpdated(handlers, wsServer, filename, flag, workspaceId) {
@@ -140,7 +154,7 @@ function broadcastImageFlagUpdated(handlers, wsServer, filename, flag, workspace
             workspaceId: workspaceId || 'default'
         },
         timestamp: new Date().toISOString()
-    });
+    }, (info) => !isMcpAgentClient(info));
 }
 
 async function buildGalleryHint(handlers, workspaceId) {
@@ -489,7 +503,25 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
         await new Promise((resolve) => { setImmediate(resolve); });
     }
 
-    const visibleGallery = await applyModerationFlagsToGallery(metadataDb, gallery, clientInfo);
+    const visibleGallery = await applyModerationFlagsToGallery(metadataDb, gallery, clientInfo, handlers.globalResources);
+    let visibleTotal = totalItems;
+    let visiblePins = pinnedIndexes;
+    if (isMcpAgentClient(clientInfo)) {
+        const hiddenOnPage = gallery.length - visibleGallery.length;
+        visibleTotal = Math.max(0, totalItems - hiddenOnPage);
+        const hiddenNames = new Set();
+        for (const row of gallery) {
+            if (visibleGallery.includes(row)) continue;
+            for (const name of galleryNamesFromRow(row)) hiddenNames.add(name);
+        }
+        if (Array.isArray(visiblePins) && hiddenNames.size) {
+            visiblePins = visiblePins.filter((idx) => {
+                const row = gallery[idx];
+                if (!row) return true;
+                return !galleryNamesFromRow(row).some((name) => hiddenNames.has(name));
+            });
+        }
+    }
 
     handlers.stopKeepAliveInterval(requestId);
     handlers.sendToClient(ws, {
@@ -501,7 +533,7 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
             workspaceId: activeWorkspaceId,
             blockSize: GALLERY_BLOCK_SIZE,
             blockOffset: offset,
-            pinnedIndexes,
+            pinnedIndexes: visiblePins,
             lastGalleryDestructiveAt,
             lastGalleryUpdatedAt: Number(lastGalleryUpdatedAt) || 0,
             latestFilename: offset === 0 ? galleryRowLatestFilename(visibleGallery[0]) : null,
@@ -509,8 +541,8 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
             pagination: {
                 offset,
                 limit,
-                hasMore,
-                totalItems
+                hasMore: (offset + limit) < visibleTotal,
+                totalItems: visibleTotal
             }
         },
         timestamp: new Date().toISOString()
@@ -710,22 +742,18 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
         // Track client workspace usage
         handlers.metadataCache.trackClientWorkspace(clientInfo.sessionId, workspaceId);
 
-        if (isMcpAgentClient(clientInfo)) {
-            const flagged = typeof metadataDb.isImageOrPairFlagged === 'function'
-                ? await metadataDb.isImageOrPairFlagged(filename)
-                : await metadataDb.isImageFlagged(filename);
-            if (flagged) {
-                // CURSOR: MCP request_image_metadata — flagged filename is under review
-                handlers.sendToClient(ws, {
-                    type: 'error',
-                    message: UNDER_REVIEW_ERROR,
-                    error: UNDER_REVIEW_ERROR,
-                    data: mcpUnderReviewPayload({ filename: null }),
-                    requestId: message.requestId || null,
-                    timestamp: new Date().toISOString()
-                });
-                return;
-            }
+        if (isMcpAgentClient(clientInfo)
+            && await agentCannotSeeFilename(handlers.globalResources, filename)) {
+            // CURSOR: MCP request_image_metadata — flagged/scrapped filename is under review
+            handlers.sendToClient(ws, {
+                type: 'error',
+                message: UNDER_REVIEW_ERROR,
+                error: UNDER_REVIEW_ERROR,
+                data: mcpUnderReviewPayload({ filename: null }),
+                requestId: message.requestId || null,
+                timestamp: new Date().toISOString()
+            });
+            return;
         }
 
         let cachedMetadata = handlers.metadataCache.get(workspaceId, filename);
@@ -890,7 +918,12 @@ async function handleImageByIndexRequest(handlers, ws, message, clientInfo, wsSe
         }
 
         if (isMcpAgentClient(clientInfo)) {
-            const decorated = await applyModerationFlagsToGallery(metadataDb, [image], clientInfo);
+            const decorated = await applyModerationFlagsToGallery(
+                metadataDb,
+                [image],
+                clientInfo,
+                handlers.globalResources
+            );
             if (!decorated.length) {
                 // CURSOR: MCP request_image_by_index — flagged row is under review
                 handlers.sendError(ws, UNDER_REVIEW_ERROR, 'request_image_by_index', message.requestId);
@@ -968,20 +1001,16 @@ async function handleFindImageIndexRequest(handlers, ws, message, clientInfo, ws
 
         const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
         const metadataDb = handlers.globalResources.getMetadataDatabase();
-        if (isMcpAgentClient(clientInfo)) {
-            const flagged = typeof metadataDb.isImageOrPairFlagged === 'function'
-                ? await metadataDb.isImageOrPairFlagged(filename)
-                : await metadataDb.isImageFlagged(filename);
-            if (flagged) {
-                // CURSOR: MCP find_image_index — flagged filename is not found
-                handlers.sendToClient(ws, {
-                    type: 'find_image_index_response',
-                    requestId: message.requestId,
-                    data: { index: -1, underReview: true },
-                    timestamp: new Date().toISOString()
-                });
-                return;
-            }
+        if (isMcpAgentClient(clientInfo)
+            && await agentCannotSeeFilename(handlers.globalResources, filename)) {
+            // CURSOR: MCP find_image_index — flagged/scrapped filename is not found
+            handlers.sendToClient(ws, {
+                type: 'find_image_index_response',
+                requestId: message.requestId,
+                data: { index: -1, underReview: true },
+                timestamp: new Date().toISOString()
+            });
+            return;
         }
         const index = await metadataDb.findGalleryWorkspaceItemIndex(workspaceId, viewType, filename);
 
@@ -1078,6 +1107,38 @@ async function handleGalleryPositionHint(handlers, ws, message, clientInfo, wsSe
         console.error('gallery_position_hint error:', error);
     }
 }
+async function finishRealBulkDelete(handlers, filenames, extraErrors, wsServer) {
+    const executed = executeRealBulkDelete(handlers.globalResources, filenames);
+    const related = executed.plan.relatedFilenames || [];
+    if (related.length > 0) {
+        try {
+            handlers.globalResources.getReferenceMetadataDatabase().deleteMetadata
+                && related.forEach((name) => {
+                    handlers.globalResources.getReferenceMetadataDatabase().deleteMetadata(name);
+                });
+        } catch (_err) { /* reference cleanup is best-effort */ }
+        handlers.globalResources.getWorkspaceManager().removeFilesFromWorkspaces(
+            related,
+            { skipDestructiveBump: true }
+        );
+        await handlers.globalResources.getMetadataDatabase().removeImageMetadata(related);
+    }
+    const data = mergeBulkDeleteExtraErrors(executed.data, filenames, extraErrors);
+    if (wsServer && typeof wsServer.broadcast === 'function') {
+        wsServer.broadcast({
+            type: 'gallery_updated',
+            data: {
+                action: 'bulk_delete',
+                deletedFilenames: (executed.plan.results || []).map((row) => row.filename),
+                deletedCount: (executed.plan.results || []).length,
+                viewType: 'images'
+            },
+            timestamp: new Date().toISOString()
+        });
+    }
+    return data;
+}
+
 async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServer) {
     try {
         const { filenames } = message;
@@ -1087,179 +1148,39 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
             return;
         }
 
-        if (isMcpAgentClient(clientInfo) && !mcpTokenAllowsHardDelete(clientInfo)) {
-            const workspaceId = message.workspace || message.workspaceId || 'default';
-            const aliased = aliasMcpDeleteToScrap(handlers.globalResources, filenames, workspaceId);
-            handlers.sendToClient(ws, {
-                type: 'delete_images_bulk_response',
-                requestId: message.requestId,
-                data: aliased.data,
-                timestamp: new Date().toISOString()
-            });
-            return;
-        }
+        const workspaceId = message.workspace || message.workspaceId || 'default';
+        let work = filenames;
+        let extraErrors = [];
 
-        const results = [];
-        const errors = [];
-        const allFilenamesToRemoveFromWorkspaces = new Set();
-
-        // Helper functions
-        const getBaseName = (filename) => {
-            return filename.replace(/\.(png|jpg|jpeg)$/i, '').replace(/_upscaled$/, '');
-        };
-
-        const getPreviewFilename = (baseName) => {
-            return `${baseName}_preview.png`;
-        };
-
-        for (const filename of filenames) {
-            try {
-                const filePath = path.join(handlers.globalResources.getPath("images"), filename);
-
-                if (!fs.existsSync(filePath)) {
-                    errors.push({ filename, error: 'File not found' });
-                    continue;
-                }
-
-                // Get the base name to find related files
-                const baseName = getBaseName(filename);
-                const previewFile = getPreviewFilename(baseName);
-                const previewPath = path.join(handlers.globalResources.getPath("previews"), previewFile);
-
-                // Define all preview files that may exist
-                const previewFiles = [
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@2x.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@lq.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@blur.webp`),
-                    previewPath // Legacy preview format
-                ];
-
-                // Always delete both the base and upscaled version
-                const filesToDelete = [];
-                const filenamesToRemoveFromWorkspaces = [];
-
-                // Determine base/original and upscaled filenames
-                let originalFilename, upscaledFilename;
-                if (filename.includes('_upscaled')) {
-                    upscaledFilename = filename;
-                    originalFilename = filename.replace('_upscaled.png', '.png');
-                } else {
-                    originalFilename = filename;
-                    upscaledFilename = filename.replace('.png', '_upscaled.png');
-                }
-
-                // Add original file if exists
-                const originalPath = path.join(handlers.globalResources.getPath("images"), originalFilename);
-                if (fs.existsSync(originalPath)) {
-                    filesToDelete.push({ path: originalPath, type: 'original' });
-                    filenamesToRemoveFromWorkspaces.push(originalFilename);
-
-                    // Try to extract and delete dynGenPreview file from original
-                    try {
-                        const imageBuffer = fs.readFileSync(originalPath);
-                        const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
-                        if (metadata?.tEXt?.Comment) {
-                            const commentData = JSON.parse(metadata.tEXt.Comment);
-                            const previewHash = commentData?.forge_data?.dynamic_generation?.compiled_prompt?.preview_image_hash;
-
-                            if (previewHash) {
-                                const dynGenPreviewDir = path.join(handlers.globalResources.getPath("cache"), 'dynGenPreview');
-                                const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
-
-                                if (fs.existsSync(dynGenPreviewPath)) {
-                                    filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
-                                    console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
-                                }
-                            }
-                        }
-                    } catch (metadataError) {
-                        // Silently ignore metadata extraction errors
-                        console.debug(`Could not extract metadata for preview cleanup: ${metadataError.message}`);
-                    }
-                }
-
-                // Add upscaled file if exists
-                const upscaledPath = path.join(handlers.globalResources.getPath("images"), upscaledFilename);
-                if (fs.existsSync(upscaledPath)) {
-                    filesToDelete.push({ path: upscaledPath, type: 'upscaled' });
-                    filenamesToRemoveFromWorkspaces.push(upscaledFilename);
-                }
-
-                // Add all preview files (webp and legacy formats)
-                for (const previewFilePath of previewFiles) {
-                    if (fs.existsSync(previewFilePath)) {
-                        filesToDelete.push({ path: previewFilePath, type: 'preview' });
-                    }
-                }
-
-                // Queue workspace + metadata cleanup (batched after all filesystem deletes)
-                for (const fn of filenamesToRemoveFromWorkspaces) {
-                    allFilenamesToRemoveFromWorkspaces.add(fn);
-                }
-
-                // Delete reference metadata for deleted files
-                for (const filename of filenamesToRemoveFromWorkspaces) {
-                    handlers.globalResources.getReferenceMetadataDatabase().deleteMetadata(filename);
-                }
-
-                // Delete all related files
-                const deletedFiles = [];
-                for (const file of filesToDelete) {
-                    try {
-                        fs.unlinkSync(file.path);
-                        deletedFiles.push(file.type);
-                    } catch (error) {
-                        console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
-                    }
-                }
-
-                results.push({ filename, deletedFiles });
-                console.log(`🗑️ Bulk deleted: ${filename} (${deletedFiles.join(', ')})`);
-
-            } catch (error) {
-                errors.push({ filename, error: error.message });
+        if (isMcpAgentClient(clientInfo)) {
+            const split = await collectAgentHiddenDeleteErrors(handlers.globalResources, filenames);
+            work = split.visible;
+            extraErrors = split.extraErrors;
+            const allowDelete = await resolveLiveAllowDelete(handlers.globalResources, clientInfo);
+            if (!allowDelete) {
+                const aliased = aliasMcpDeleteToScrap(handlers.globalResources, work, workspaceId);
+                const data = mergeBulkDeleteExtraErrors(aliased.data, filenames, extraErrors);
+                handlers.sendToClient(ws, {
+                    type: 'delete_images_bulk_response',
+                    requestId: message.requestId,
+                    data,
+                    timestamp: new Date().toISOString()
+                });
+                return;
             }
         }
 
-        const filenamesRemoved = [...allFilenamesToRemoveFromWorkspaces];
-        if (filenamesRemoved.length > 0) {
-            handlers.globalResources.getWorkspaceManager().removeFilesFromWorkspaces(
-                filenamesRemoved,
-                { skipDestructiveBump: true }
-            );
-            await handlers.globalResources.getMetadataDatabase().removeImageMetadata(filenamesRemoved);
-        }
-
-        console.log(`✅ Bulk delete completed: ${results.length} successful, ${errors.length} failed`);
+        const data = await finishRealBulkDelete(handlers, work, extraErrors, wsServer);
+        data.totalProcessed = filenames.length;
+        data.successful = data.results.length;
+        data.failed = data.errors.length;
 
         handlers.sendToClient(ws, {
             type: 'delete_images_bulk_response',
             requestId: message.requestId,
-            data: {
-                success: true,
-                message: 'Bulk delete completed',
-                results: results,
-                errors: errors,
-                totalProcessed: filenames.length,
-                successful: results.length,
-                failed: errors.length
-            },
+            data,
             timestamp: new Date().toISOString()
         });
-
-        // Broadcast gallery update to all clients
-        wsServer.broadcast({
-            type: 'gallery_updated',
-            data: {
-                action: 'bulk_delete',
-                deletedFilenames: results.map(r => r.filename),
-                deletedCount: results.length,
-                viewType: 'images' // Default to images view for bulk delete
-            },
-            timestamp: new Date().toISOString()
-        });
-
     } catch (error) {
         console.error('Delete images bulk error:', error);
         handlers.sendError(ws, 'Failed to bulk delete images', error.message, message.requestId);
@@ -1273,24 +1194,38 @@ async function handleDeleteUnupscaledOriginal(handlers, ws, message, clientInfo,
             handlers.sendError(ws, 'Filename is required', 'delete_unupscaled_original', message.requestId);
             return;
         }
-        if (filename.includes('_upscaled')) {
-            handlers.sendError(ws, 'Filename is not an original (un-upscaled) file', 'delete_unupscaled_original', message.requestId);
-            return;
-        }
 
-        const imagesDir = handlers.globalResources.getPath('images');
-        const originalPath = path.join(imagesDir, filename);
-        const upscaledFilename = filename.replace(/\.png$/i, '_upscaled.png');
-        const upscaledPath = path.join(imagesDir, upscaledFilename);
-
-        if (!fs.existsSync(originalPath)) {
+        if (isMcpAgentClient(clientInfo)
+            && await agentCannotSeeFilename(handlers.globalResources, filename)) {
             handlers.sendError(ws, 'Original file not found', 'delete_unupscaled_original', message.requestId);
             return;
         }
-        if (!fs.existsSync(upscaledPath)) {
-            handlers.sendError(ws, 'No upscaled version exists; use Incinerate to delete the image', 'delete_unupscaled_original', message.requestId);
+
+        if (isMcpAgentClient(clientInfo)
+            && !(await resolveLiveAllowDelete(handlers.globalResources, clientInfo))) {
+            const workspaceId = message.workspace || message.workspaceId || 'default';
+            const aliased = aliasMcpDeleteUnupscaledOriginal(handlers.globalResources, filename, workspaceId);
+            if (!aliased.success) {
+                handlers.sendError(ws, aliased.error, 'delete_unupscaled_original', message.requestId);
+                return;
+            }
+            handlers.sendToClient(ws, {
+                type: 'delete_unupscaled_original_response',
+                requestId: message.requestId,
+                data: aliased.data,
+                timestamp: new Date().toISOString()
+            });
             return;
         }
+
+        const info = inspectUnupscaledOriginal(handlers.globalResources, filename);
+        if (info.error) {
+            handlers.sendError(ws, info.error, 'delete_unupscaled_original', message.requestId);
+            return;
+        }
+
+        const originalPath = info.originalPath;
+        const upscaledFilename = info.upscaledFilename;
 
         const filesToDelete = [{ path: originalPath, type: 'original' }];
         try {
@@ -1699,8 +1634,8 @@ async function handleUrlUploadMetadataRequest(handlers, ws, message, clientInfo,
 }
 
 async function handleClearImageFlag(handlers, ws, message, clientInfo, wsServer) {
-    if (isMcpAgentClient(clientInfo)) {
-        // CURSOR: clear_image_flag is user-only — reject MCP even with universal
+    if (isMcpAgentClient(clientInfo) || !isAdminUserSession(clientInfo)) {
+        // CURSOR: clear_image_flag is admin-session only — reject MCP, /agent/packet, and non-admin
         const err = rejectMcpFlagMutation();
         handlers.sendError(ws, err.message, err.code, message.requestId);
         return;
@@ -1728,8 +1663,8 @@ async function handleClearImageFlag(handlers, ws, message, clientInfo, wsServer)
 }
 
 async function handleConfirmImageFlag(handlers, ws, message, clientInfo, wsServer) {
-    if (isMcpAgentClient(clientInfo)) {
-        // CURSOR: confirm_image_flag is user-only — reject MCP even with universal
+    if (isMcpAgentClient(clientInfo) || !isAdminUserSession(clientInfo)) {
+        // CURSOR: confirm_image_flag is admin-session only — reject MCP, /agent/packet, and non-admin
         const err = rejectMcpFlagMutation();
         handlers.sendError(ws, err.message, err.code, message.requestId);
         return;
@@ -1798,5 +1733,7 @@ module.exports = {
     galleryUpdatedAtMs,
     applyModerationFlagsToGallery,
     handleClearImageFlag,
-    handleConfirmImageFlag
+    handleConfirmImageFlag,
+    handleDeleteImagesBulk,
+    handleDeleteUnupscaledOriginal
 };

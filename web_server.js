@@ -46,6 +46,7 @@ const serverStartupStatus = require('./modules/serverStartupStatus');
 const { browserRequest } = require('./modules/browserHttp');
 const { getQwenTokenizerDefinition } = require('./modules/qwenTokenizerAssetCache');
 const { getOpusUsageFromAccountData } = require('./modules/opusUsage');
+const { rejectAgentHiddenHttpFile, galleryNameFromPreviewFile } = require('./modules/imageModerationFlag');
 
 let runtimeCompileComplete = false;
 
@@ -1555,8 +1556,12 @@ app.use('/temp', express.static(path.join(cacheDir, 'tempDownload'), {
         res.setHeader('Expires', '0');
     }
 }));
-app.use('/previews/:preview', authMiddleware, (req, res) => {
+app.use('/previews/:preview', authMiddleware, async (req, res) => {
     const previewFile = decodeURIComponent(req.params.preview);
+    const galleryName = galleryNameFromPreviewFile(previewFile);
+    if (await rejectAgentHiddenHttpFile(req, res, globalResources, galleryName, 'Preview not found')) {
+        return;
+    }
     const previewPath = path.join(previewsDir, previewFile);
     if (!fs.existsSync(previewPath)) {
         return res.status(404).json({ success: false, error: 'Preview not found' });
@@ -1723,6 +1728,9 @@ app.use((req, res, next) => {
 });
 app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
+    if (await rejectAgentHiddenHttpFile(req, res, globalResources, filename, 'Image not found')) {
+        return;
+    }
     const filePath = path.join(imagesDir, filename);
     
     // Check if file exists
@@ -2481,6 +2489,9 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
     app.get(`${vfsPath}/images/:filename`, authMiddleware, async (req, res) => {
         try {
             const filename = decodeURIComponent(req.params.filename);
+            if (await rejectAgentHiddenHttpFile(req, res, globalResources, filename, 'Image not found')) {
+                return;
+            }
             const workspaceId = req.query.ws;
             if (!workspaceId) return res.status(400).json({ success: false, error: 'workspace required' });
             const ws = globalResources.getWorkspaceManager().getWorkspaces()[workspaceId];
