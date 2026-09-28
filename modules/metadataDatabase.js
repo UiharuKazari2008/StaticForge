@@ -1881,26 +1881,6 @@ async function flaggedFilenameSet(filenames) {
     return set;
 }
 
-async function insertImageRow(filename, extras = {}) {
-    if (!dbInitialized || !db || !filename) {
-        const err = new Error('File not found');
-        err.status = 404;
-        throw err;
-    }
-    await db.run(
-        `INSERT OR IGNORE INTO images (filename, md5, width, height, metadata)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
-            filename,
-            extras.md5 || 'test',
-            extras.width || 1,
-            extras.height || 1,
-            JSON.stringify(extras.metadata || {})
-        ]
-    );
-    return true;
-}
-
 async function flagImageRow(filename, options) {
     const { formatFlagRecord } = require('./imageModerationFlag');
     if (!filename) {
@@ -7888,7 +7868,6 @@ module.exports = {
     flaggedFilenameSet,
     flagImage,
     flagImageRow,
-    insertImageRow,
     clearImageFlag,
     confirmImageFlag,
     getLatestUnflaggedGalleryFilename,

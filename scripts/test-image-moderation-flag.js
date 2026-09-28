@@ -63,7 +63,10 @@ const {
     mcpUnderReviewPayload,
     rejectMcpFlagMutation,
     formatFlagRecord,
-    emptyFlagRecord
+    emptyFlagRecord,
+    collectPayloadFilenames,
+    filenameHiddenByFakeDelete,
+    collectFakeDeletedFilenames
 } = require('../modules/imageModerationFlag');
 const { scopesAllowPacket, getPacketScopes } = require('../modules/applicationAuthManager');
 const { _test } = require('../modules/mcpAgentFacade');
@@ -125,6 +128,30 @@ assert.ok(!_test.TOOL_DEFS.some((t) => t.name === 'unflag_image' || t.name === '
 function parseToolText(result) {
     const text = result && result.content && result.content[0] && result.content[0].text;
     return text ? JSON.parse(text) : {};
+}
+
+async function insertImageRowForTest(databasesPath, filename, extras = {}) {
+    const sqlite3 = require('sqlite3');
+    const { open } = require('sqlite');
+    const conn = await open({
+        filename: path.join(databasesPath, 'metadata.db'),
+        driver: sqlite3.Database
+    });
+    try {
+        await conn.run(
+            `INSERT OR IGNORE INTO images (filename, md5, width, height, metadata)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+                filename,
+                extras.md5 || 'test',
+                extras.width || 1,
+                extras.height || 1,
+                JSON.stringify(extras.metadata || {})
+            ]
+        );
+    } finally {
+        await conn.close();
+    }
 }
 
 async function testFlagViaMcpTool() {
@@ -208,6 +235,54 @@ async function testFlagViaMcpTool() {
         { hideFlagged: true }
     );
     assert.strictEqual(mcpRows.length, 1);
+
+    const again = parseToolText(await _test.callTool(globalResources, req, 'flag_image', {
+        filename: 'flagged.png',
+        reason: 'must not echo existing flagger'
+    }));
+    assert.strictEqual(again.success, false);
+    assert.strictEqual(again.underReview, true);
+    assert.strictEqual(again.flaggedBy, undefined);
+    assert.strictEqual(again.reason, undefined);
+
+    const fakeDeleted = {
+        ...globalResources,
+        getWorkspaceManager: () => ({
+            listHiddenByFakeDelete() { return ['ghost.png']; },
+            getWorkspaces() { return { default: { hiddenByFakeDelete: ['ghost.png'], scraps: ['owner-scrap.png'] } }; }
+        })
+    };
+    const hiddenFlag = parseToolText(await _test.callTool(fakeDeleted, req, 'flag_image', {
+        filename: 'ghost.png',
+        reason: 'already fake-deleted'
+    }));
+    assert.strictEqual(hiddenFlag.success, false);
+    assert.strictEqual(hiddenFlag.underReview, true);
+    assert.strictEqual(hiddenFlag.flaggedBy, undefined);
+    assert.strictEqual(await _test.mcpFilenameIsFlagged(fakeDeleted, 'ghost.png'), true);
+    assert.strictEqual(await _test.mcpFilenameIsFlagged(fakeDeleted, 'owner-scrap.png'), false);
+    assert.strictEqual(filenameHiddenByFakeDelete(fakeDeleted, 'ghost.png'), true);
+    assert.strictEqual(filenameHiddenByFakeDelete(fakeDeleted, 'owner-scrap.png'), false);
+    assert.ok(collectFakeDeletedFilenames(fakeDeleted).has('ghost.png'));
+    assert.ok(!collectFakeDeletedFilenames(fakeDeleted).has('owner-scrap.png'));
+
+    const names = [];
+    collectPayloadFilenames({
+        shortcuts: [
+            { name: 'flagged.png', type: 'image', data: { filename: 'flagged.png' } },
+            { name: 'keep.png', type: 'image' }
+        ]
+    }, names);
+    assert.ok(names.includes('flagged.png'));
+    assert.ok(names.includes('keep.png'));
+    const redacted = await _test.redactMcpFilenameFields(globalResources, {
+        shortcuts: [
+            { name: 'flagged.png', type: 'image', data: { filename: 'flagged.png' } },
+            { name: 'keep.png', type: 'image', data: { filename: 'keep.png' } }
+        ]
+    });
+    assert.strictEqual(redacted.shortcuts.length, 1);
+    assert.strictEqual(redacted.shortcuts[0].name, 'keep.png');
 }
 
 async function testUserOnlyClearConfirm() {
@@ -233,8 +308,8 @@ async function testPersistAcrossReload() {
     try {
         const ok = await metadataDb.initializeDatabase(dir);
         assert.strictEqual(ok, true);
-        await metadataDb.insertImageRow('flagged.png');
-        await metadataDb.insertImageRow('keep.png');
+        await insertImageRowForTest(dir, 'flagged.png');
+        await insertImageRowForTest(dir, 'keep.png');
         const flagged = await metadataDb.flagImage('flagged.png', {
             flaggedBy: 'guren',
             reason: 'persist me'

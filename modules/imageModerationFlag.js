@@ -217,33 +217,73 @@ function relatedDeleteFilenames(filename) {
     return names;
 }
 
-function collectScrapFilenames(globalResources) {
+function resolveDeleteWorkspaceId(globalResources, workspaceId) {
+    const requested = workspaceId || 'default';
+    try {
+        const wm = globalResources && typeof globalResources.getWorkspaceManager === 'function'
+            ? globalResources.getWorkspaceManager()
+            : null;
+        if (wm && typeof wm.getWorkspace === 'function' && wm.getWorkspace(requested)) {
+            return requested;
+        }
+        const all = wm && typeof wm.getWorkspaces === 'function' ? wm.getWorkspaces() : {};
+        if (all && all[requested]) return requested;
+    } catch (_err) { /* fall back to default */ }
+    return 'default';
+}
+
+function collectFakeDeletedFilenames(globalResources) {
     const set = new Set();
     try {
         const wm = globalResources && typeof globalResources.getWorkspaceManager === 'function'
             ? globalResources.getWorkspaceManager()
             : null;
+        if (wm && typeof wm.listHiddenByFakeDelete === 'function') {
+            for (const name of wm.listHiddenByFakeDelete() || []) {
+                if (name) set.add(name);
+            }
+            return set;
+        }
         const all = wm && typeof wm.getWorkspaces === 'function' ? wm.getWorkspaces() : {};
         for (const rec of Object.values(all || {})) {
-            if (!rec || !Array.isArray(rec.scraps)) continue;
-            for (const name of rec.scraps) {
+            if (!rec || !Array.isArray(rec.hiddenByFakeDelete)) continue;
+            for (const name of rec.hiddenByFakeDelete) {
                 if (name) set.add(name);
             }
         }
-    } catch (_err) { /* scraps lookup is best-effort */ }
+    } catch (_err) { /* fake-delete lookup is best-effort */ }
     return set;
 }
 
-function filenameHiddenInScraps(globalResources, filename) {
+function markHiddenByFakeDelete(globalResources, filenames, workspaceId) {
+    const list = Array.isArray(filenames) ? filenames : [];
+    if (!list.length) return 'default';
+    const id = resolveDeleteWorkspaceId(globalResources, workspaceId);
+    const wm = globalResources && typeof globalResources.getWorkspaceManager === 'function'
+        ? globalResources.getWorkspaceManager()
+        : null;
+    if (wm && typeof wm.markHiddenByFakeDelete === 'function') {
+        return wm.markHiddenByFakeDelete(list, id);
+    }
+    const all = wm && typeof wm.getWorkspaces === 'function' ? wm.getWorkspaces() : null;
+    const rec = all && (all[id] || all.default);
+    if (!rec) return id;
+    if (!Array.isArray(rec.hiddenByFakeDelete)) rec.hiddenByFakeDelete = [];
+    for (const name of list) {
+        if (name && !rec.hiddenByFakeDelete.includes(name)) rec.hiddenByFakeDelete.push(name);
+    }
+    return id;
+}
+
+function filenameHiddenByFakeDelete(globalResources, filename) {
     if (!filename) return false;
-    const scraps = collectScrapFilenames(globalResources);
-    if (!scraps.size) return false;
-    return relatedDeleteFilenames(filename).some((name) => scraps.has(name));
+    return collectFakeDeletedFilenames(globalResources).has(filename);
 }
 
 async function agentCannotSeeFilename(globalResources, filename) {
     if (!filename) return false;
-    if (filenameHiddenInScraps(globalResources, filename)) return true;
+    // CURSOR: agents hide flagged images and fake-deleted names only — ordinary scraps stay visible
+    if (filenameHiddenByFakeDelete(globalResources, filename)) return true;
     try {
         const db = globalResources && typeof globalResources.getMetadataDatabase === 'function'
             ? globalResources.getMetadataDatabase()
@@ -280,28 +320,45 @@ async function collectAgentHiddenDeleteErrors(globalResources, filenames) {
 }
 
 function mergeBulkDeleteExtraErrors(data, originalFilenames, extraErrors) {
-    const next = data && typeof data === 'object' ? { ...data } : shapeBulkDeleteData(originalFilenames, { results: [], errors: [] });
+    const list = Array.isArray(originalFilenames) ? originalFilenames : [];
     const extras = Array.isArray(extraErrors) ? extraErrors : [];
-    next.errors = [...(Array.isArray(next.errors) ? next.errors : []), ...extras];
-    next.results = Array.isArray(next.results) ? next.results : [];
-    next.totalProcessed = Array.isArray(originalFilenames) ? originalFilenames.length : 0;
-    next.successful = next.results.length;
-    next.failed = next.errors.length;
-    next.success = true;
-    next.message = 'Bulk delete completed';
-    return next;
+    const extraByName = new Map();
+    for (const row of extras) {
+        if (row && row.filename && !extraByName.has(row.filename)) extraByName.set(row.filename, row);
+    }
+    const resultByName = new Map();
+    for (const row of (data && data.results) || []) {
+        if (row && row.filename) resultByName.set(row.filename, row);
+    }
+    const errorByName = new Map();
+    for (const row of (data && data.errors) || []) {
+        if (row && row.filename) errorByName.set(row.filename, row);
+    }
+    const results = [];
+    const errors = [];
+    for (const filename of list) {
+        if (extraByName.has(filename)) {
+            errors.push(extraByName.get(filename));
+        } else if (resultByName.has(filename)) {
+            results.push(resultByName.get(filename));
+        } else if (errorByName.has(filename)) {
+            errors.push(errorByName.get(filename));
+        }
+    }
+    return {
+        success: true,
+        message: 'Bulk delete completed',
+        results,
+        errors,
+        totalProcessed: list.length,
+        successful: results.length,
+        failed: errors.length
+    };
 }
 
 function executeRealBulkDelete(globalResources, filenames) {
     const list = Array.isArray(filenames) ? filenames : [];
-    const plan = planBulkDelete(globalResources, list);
-    for (const file of plan.filesToDelete) {
-        try {
-            fs.unlinkSync(file.path);
-        } catch (error) {
-            console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
-        }
-    }
+    const plan = planBulkDelete(globalResources, list, { unlink: true });
     return {
         plan,
         data: shapeBulkDeleteData(list, plan)
@@ -334,15 +391,14 @@ function aliasMcpDeleteUnupscaledOriginal(globalResources, filename, workspaceId
     if (info.error) {
         return { success: false, error: info.error };
     }
-    const id = workspaceId || 'default';
+    const id = resolveDeleteWorkspaceId(globalResources, workspaceId);
     const wm = globalResources && typeof globalResources.getWorkspaceManager === 'function'
         ? globalResources.getWorkspaceManager()
         : null;
     if (wm && typeof wm.addToWorkspaceArray === 'function') {
-        try {
-            wm.addToWorkspaceArray('scraps', filename, id);
-        } catch (_err) { /* response still matches the real delete shape */ }
+        wm.addToWorkspaceArray('scraps', filename, id);
     }
+    markHiddenByFakeDelete(globalResources, [filename], id);
     const data = {
         success: true,
         originalFilename: filename,
@@ -402,12 +458,14 @@ function galleryNameFromPreviewFile(previewFile) {
         .replace(/_preview\.png$/i, '.png');
 }
 
-function planBulkDelete(globalResources, filenames) {
+function planBulkDelete(globalResources, filenames, options) {
     const list = Array.isArray(filenames) ? filenames : [];
+    const unlink = !!(options && options.unlink);
     const results = [];
     const errors = [];
     const relatedFilenames = [];
     const filesToDelete = [];
+    const claimedImagePaths = new Set();
     const getPath = globalResources && typeof globalResources.getPath === 'function'
         ? globalResources.getPath.bind(globalResources)
         : null;
@@ -425,7 +483,7 @@ function planBulkDelete(globalResources, filenames) {
     for (const filename of list) {
         try {
             const filePath = path.join(imagesDir, filename);
-            if (!fs.existsSync(filePath)) {
+            if (claimedImagePaths.has(filePath) || !fs.existsSync(filePath)) {
                 errors.push({ filename, error: 'File not found' });
                 continue;
             }
@@ -484,16 +542,32 @@ function planBulkDelete(globalResources, filenames) {
                     entryFiles.push({ path: previewFilePath, type: 'preview' });
                 }
             }
-            const deletedFiles = entryFiles.map((file) => file.type);
+            claimedImagePaths.add(originalPath);
+            claimedImagePaths.add(upscaledPath);
+            const deletedFiles = [];
+            for (const file of entryFiles) {
+                if (unlink) {
+                    try {
+                        fs.unlinkSync(file.path);
+                        deletedFiles.push(file.type);
+                    } catch (error) {
+                        console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
+                    }
+                } else {
+                    deletedFiles.push(file.type);
+                }
+            }
             results.push({ filename, deletedFiles });
             filesToDelete.push(...entryFiles);
             for (const name of namesToScrap) {
                 if (!relatedFilenames.includes(name)) relatedFilenames.push(name);
             }
+            console.log(`🗑️ Bulk deleted: ${filename} (${deletedFiles.join(', ')})`);
         } catch (error) {
             errors.push({ filename, error: error.message });
         }
     }
+    console.log(`✅ Bulk delete completed: ${results.length} successful, ${errors.length} failed`);
     return { results, errors, relatedFilenames, filesToDelete };
 }
 
@@ -516,17 +590,16 @@ function aliasMcpDeleteToScrap(globalResources, filenames, workspaceId) {
     // CURSOR: MCP delete without allowDelete is silently aliased to scrap
     const list = Array.isArray(filenames) ? filenames : [];
     const plan = planBulkDelete(globalResources, list);
-    const id = workspaceId || 'default';
+    const id = resolveDeleteWorkspaceId(globalResources, workspaceId);
     const wm = globalResources && typeof globalResources.getWorkspaceManager === 'function'
         ? globalResources.getWorkspaceManager()
         : null;
     if (wm && typeof wm.addToWorkspaceArray === 'function') {
         for (const filename of plan.relatedFilenames) {
-            try {
-                wm.addToWorkspaceArray('scraps', filename, id);
-            } catch (_err) { /* response still matches the real delete shape */ }
+            wm.addToWorkspaceArray('scraps', filename, id);
         }
     }
+    markHiddenByFakeDelete(globalResources, plan.relatedFilenames, id);
     const data = shapeBulkDeleteData(list, plan);
     const ws = globalResources && typeof globalResources.getWebSocketServer === 'function'
         ? globalResources.getWebSocketServer()
@@ -570,6 +643,14 @@ function collectPayloadFilenames(value, into) {
         if (Array.isArray(value.selected)) collectPayloadFilenames(value.selected, into);
         if (Array.isArray(value.results)) collectPayloadFilenames(value.results, into);
         if (Array.isArray(value.gallery)) collectPayloadFilenames(value.gallery, into);
+        if (Array.isArray(value.shortcuts)) {
+            for (const item of value.shortcuts) {
+                collectPayloadFilenames(item, into);
+                if (item && typeof item === 'object' && typeof item.name === 'string' && item.name && !into.includes(item.name)) {
+                    into.push(item.name);
+                }
+            }
+        }
         if (Array.isArray(value.windows)) collectPayloadFilenames(value.windows, into);
         if (value.data && typeof value.data === 'object') collectPayloadFilenames(value.data, into);
         if (value.studio && typeof value.studio === 'object') collectPayloadFilenames(value.studio, into);
@@ -595,8 +676,10 @@ module.exports = {
     mcpTokenAllowsHardDelete,
     resolveLiveAllowDelete,
     relatedDeleteFilenames,
-    collectScrapFilenames,
-    filenameHiddenInScraps,
+    resolveDeleteWorkspaceId,
+    collectFakeDeletedFilenames,
+    markHiddenByFakeDelete,
+    filenameHiddenByFakeDelete,
     agentCannotSeeFilename,
     rejectAgentHiddenHttpFile,
     collectAgentHiddenDeleteErrors,

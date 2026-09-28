@@ -161,7 +161,8 @@ const {
     mcpTokenAllowsHardDelete,
     aliasMcpDeleteToScrap,
     resolveLiveAllowDelete,
-    collectScrapFilenames,
+    collectFakeDeletedFilenames,
+    isMcpAgentClient,
     agentCannotSeeFilename,
     collectAgentHiddenDeleteErrors,
     mergeBulkDeleteExtraErrors
@@ -179,7 +180,7 @@ function broadcastImageFlagUpdated(globalResources, filename, flag, workspaceId)
             workspaceId: workspaceId || 'default'
         },
         timestamp: new Date().toISOString()
-    });
+    }, (info) => !isMcpAgentClient(info));
 }
 // modules/mcpRateLimiter.js — #66 owns TOOL_RATE_GROUPS this wave
 if (!TOOL_RATE_GROUPS.get_character_card) TOOL_RATE_GROUPS.get_character_card = 'search';
@@ -3831,7 +3832,7 @@ async function filterMcpGalleryRows(globalResources, rows) {
     // CURSOR: MCP list/search/evaluate — omit flagged images and fake-deleted scraps
     return decorateGalleryRowsForClient(list, flags, {
         hideFlagged: true,
-        hideNames: collectScrapFilenames(globalResources)
+        hideNames: collectFakeDeletedFilenames(globalResources)
     });
 }
 
@@ -3843,9 +3844,9 @@ async function redactMcpFilenameFields(globalResources, payload) {
     const db = metadataDbOf(globalResources);
     if (!db || typeof db.flaggedFilenameSet !== 'function') return payload;
     const flagged = await db.flaggedFilenameSet(names);
-    const scraps = collectScrapFilenames(globalResources);
+    const hidden = collectFakeDeletedFilenames(globalResources);
     for (const name of names) {
-        if (scraps.has(name)) flagged.add(name);
+        if (hidden.has(name)) flagged.add(name);
     }
     if (!flagged.size) return payload;
     const scrub = (value) => {
@@ -3869,6 +3870,16 @@ async function redactMcpFilenameFields(globalResources, payload) {
                 next.items = next.items.filter((item) => {
                     const name = item && (item.name || item.filename || item.targetId);
                     return !name || !flagged.has(name);
+                });
+            }
+            if (Array.isArray(next.shortcuts)) {
+                next.shortcuts = next.shortcuts.filter((item) => {
+                    if (!item || typeof item !== 'object') return true;
+                    const shortcutNames = [item.filename, item.name];
+                    if (item.data && typeof item.data === 'object') {
+                        shortcutNames.push(item.data.filename, item.data.name);
+                    }
+                    return !shortcutNames.some((name) => typeof name === 'string' && flagged.has(name));
                 });
             }
             if (Array.isArray(next.windows)) next.windows = next.windows.map((win) => scrub(win));
@@ -4430,6 +4441,10 @@ async function callTool(globalResources, req, name, args) {
         if (!reason) {
             return mcpTextResult({ success: false, error: 'reason is required' }, true);
         }
+        // CURSOR: same visibility as every other MCP image path — hidden/fake-deleted → not-found
+        if (await agentCannotSeeFilename(globalResources, filename)) {
+            return mcpUnderReviewResult({ filename: null });
+        }
         const metadataDb = metadataDbOf(globalResources);
         if (!metadataDb || typeof metadataDb.flagImage !== 'function') {
             return mcpTextResult({ success: false, error: 'Metadata database is not ready' }, true);
@@ -4443,9 +4458,8 @@ async function callTool(globalResources, req, name, args) {
                 success: true,
                 filename,
                 flagged: true,
-                flaggedBy: flag.flaggedBy,
-                reason: flag.reason,
-                flaggedAt: flag.flaggedAt
+                flaggedBy,
+                reason
             });
         } catch (error) {
             if (error && error.status === 404) {

@@ -1862,6 +1862,9 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
 // Slim PNG route - strips PNG metadata/blueprint data
 app.use('/image/slim/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
+    if (await rejectAgentHiddenHttpFile(req, res, globalResources, filename, 'Image not found')) {
+        return;
+    }
     const filePath = path.join(imagesDir, filename);
     
     // Check if file exists
@@ -1899,6 +1902,9 @@ app.use('/image/slim/:filename', authMiddleware, async (req, res) => {
 // Optimized JPG route - converts to optimized JPEG
 app.use('/image/opti/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
+    if (await rejectAgentHiddenHttpFile(req, res, globalResources, filename, 'Image not found')) {
+        return;
+    }
     const filePath = path.join(imagesDir, filename);
     
     // Check if file exists
@@ -2975,6 +2981,9 @@ app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, getQueue
         }
 
         const filename = req.params.filename;
+        if (await rejectAgentHiddenHttpFile(req, res, globalResources, filename, `No metadata found for image: ${filename}`)) {
+            return;
+        }
         const workspace = req.query.workspace || req.body.workspace || 'default';
         
         // Get image metadata

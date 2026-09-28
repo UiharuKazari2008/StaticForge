@@ -3973,22 +3973,22 @@ function buildGalleryItemContextMenuConfig(image, item) {
                     {
                         icon: 'fas fa-flag',
                         text: 'Flagged for review',
-                        subtext: '',
+                        subtext: (target) => {
+                            const el = target || item;
+                            const fileIndex = parseInt(el.dataset.fileIndex, 10);
+                            const currentImg = (allImages && allImages[fileIndex]) || image;
+                            if (!currentImg || !currentImg.flagged) return '';
+                            const when = formatGalleryFlagWhen(currentImg.flaggedAt);
+                            const who = currentImg.flaggedBy || 'agent';
+                            const reason = currentImg.flagReason || 'No reason';
+                            return currentImg.flagConfirmed
+                                ? `${reason} · ${who}${when ? ` · ${when}` : ''} · confirmed`
+                                : `${reason} · ${who}${when ? ` · ${when}` : ''}`;
+                        },
                         hidden: () => {
                             const fileIndex = parseInt(item.dataset.fileIndex, 10);
                             const currentImg = (allImages && allImages[fileIndex]) || image;
                             return !(currentImg && currentImg.flagged);
-                        },
-                        loadfn: (menuItem, target) => {
-                            const fileIndex = parseInt(target.dataset.fileIndex, 10);
-                            const currentImg = (allImages && allImages[fileIndex]) || image;
-                            if (!currentImg || !currentImg.flagged) return;
-                            const when = formatGalleryFlagWhen(currentImg.flaggedAt);
-                            const who = currentImg.flaggedBy || 'agent';
-                            const reason = currentImg.flagReason || 'No reason';
-                            menuItem.subtext = currentImg.flagConfirmed
-                                ? `${reason} · ${who}${when ? ` · ${when}` : ''} · confirmed`
-                                : `${reason} · ${who}${when ? ` · ${when}` : ''}`;
                         }
                     },
                     {

@@ -7,7 +7,7 @@ const {
     isMcpAgentClient,
     decorateGalleryRowsForClient,
     galleryNamesFromRow,
-    collectScrapFilenames
+    collectFakeDeletedFilenames
 } = require('../../imageModerationFlag');
 
 async function filterSearchResultsForClient(metadataDb, results, clientInfo, globalResources) {
@@ -23,7 +23,7 @@ async function filterSearchResultsForClient(metadataDb, results, clientInfo, glo
     // CURSOR: MCP search_files / omegasearch — omit flagged images and fake-deleted scraps
     return decorateGalleryRowsForClient(rows, flags, {
         hideFlagged: true,
-        hideNames: collectScrapFilenames(globalResources)
+        hideNames: collectFakeDeletedFilenames(globalResources)
     });
 }
 

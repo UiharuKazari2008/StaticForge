@@ -19,7 +19,7 @@ const {
     aliasMcpDeleteToScrap,
     aliasMcpDeleteUnupscaledOriginal,
     inspectUnupscaledOriginal,
-    collectScrapFilenames,
+    collectFakeDeletedFilenames,
     collectAgentHiddenDeleteErrors,
     mergeBulkDeleteExtraErrors,
     executeRealBulkDelete,
@@ -132,7 +132,7 @@ async function applyModerationFlagsToGallery(metadataDb, gallery, clientInfo, gl
     }
     const flags = await metadataDb.getImageModerationFlags(names);
     const hideNames = isMcpAgentClient(clientInfo)
-        ? collectScrapFilenames(globalResources)
+        ? collectFakeDeletedFilenames(globalResources)
         : null;
     // CURSOR: MCP request_gallery hides flagged rows; user gallery keeps them + flag fields
     return decorateGalleryRowsForClient(rows, flags, {
@@ -1107,8 +1107,8 @@ async function handleGalleryPositionHint(handlers, ws, message, clientInfo, wsSe
         console.error('gallery_position_hint error:', error);
     }
 }
-async function finishRealBulkDelete(handlers, filenames, extraErrors, wsServer) {
-    const executed = executeRealBulkDelete(handlers.globalResources, filenames);
+async function finishRealBulkDelete(handlers, workFilenames, originalFilenames, extraErrors, wsServer) {
+    const executed = executeRealBulkDelete(handlers.globalResources, workFilenames);
     const related = executed.plan.relatedFilenames || [];
     if (related.length > 0) {
         try {
@@ -1123,7 +1123,7 @@ async function finishRealBulkDelete(handlers, filenames, extraErrors, wsServer) 
         );
         await handlers.globalResources.getMetadataDatabase().removeImageMetadata(related);
     }
-    const data = mergeBulkDeleteExtraErrors(executed.data, filenames, extraErrors);
+    const data = mergeBulkDeleteExtraErrors(executed.data, originalFilenames, extraErrors);
     if (wsServer && typeof wsServer.broadcast === 'function') {
         wsServer.broadcast({
             type: 'gallery_updated',
@@ -1170,10 +1170,7 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
             }
         }
 
-        const data = await finishRealBulkDelete(handlers, work, extraErrors, wsServer);
-        data.totalProcessed = filenames.length;
-        data.successful = data.results.length;
-        data.failed = data.errors.length;
+        const data = await finishRealBulkDelete(handlers, work, filenames, extraErrors, wsServer);
 
         handlers.sendToClient(ws, {
             type: 'delete_images_bulk_response',

@@ -366,6 +366,38 @@ class WorkspaceManager {
         return this.globalResources.getWorkspacesConfig();
     }
 
+    markHiddenByFakeDelete(filenames, workspaceId) {
+        const workspaces = this.globalResources.getWorkspacesConfig({ clone: true });
+        const requested = workspaceId || 'default';
+        const targetId = workspaces[requested] ? requested : 'default';
+        if (!workspaces[targetId]) {
+            throw new Error(`Workspace ${targetId} not found`);
+        }
+        if (!Array.isArray(workspaces[targetId].hiddenByFakeDelete)) {
+            workspaces[targetId].hiddenByFakeDelete = [];
+        }
+        const seen = new Set(workspaces[targetId].hiddenByFakeDelete);
+        for (const name of Array.isArray(filenames) ? filenames : [filenames]) {
+            if (!name || seen.has(name)) continue;
+            workspaces[targetId].hiddenByFakeDelete.push(name);
+            seen.add(name);
+        }
+        this.globalResources.saveConfig('workspaces', workspaces);
+        return targetId;
+    }
+
+    listHiddenByFakeDelete() {
+        const all = this.getWorkspaces() || {};
+        const names = [];
+        for (const rec of Object.values(all)) {
+            if (!rec || !Array.isArray(rec.hiddenByFakeDelete)) continue;
+            for (const name of rec.hiddenByFakeDelete) {
+                if (name) names.push(name);
+            }
+        }
+        return names;
+    }
+
     // Get a specific workspace
     getWorkspace(id) {
         const workspaces = this.globalResources.getWorkspacesConfig();
