@@ -110,7 +110,9 @@ function hideSplashScreen(onHidden) {
  * Update the manual modal titlebar with preset name
  */
 function updateManualModalTitlebar(value = null, skipTaskbarUpdate = false) {
-    const _windowTitle = (value || manualPresetName.value)?.trim();
+    // JULES: Safe retrieval of manualPresetName to prevent ReferenceError when element/var is missing
+    const presetNameEl = typeof manualPresetName !== 'undefined' && manualPresetName ? manualPresetName : document.getElementById('manualPresetName');
+    const _windowTitle = (value || presetNameEl?.value)?.trim();
     manualModal.querySelector('.manual-modal-title .modal-window-title-main span').textContent = 'DreamStudio 2026 R7' + (_windowTitle ? ` - ${_windowTitle}` : '');
     if (!skipTaskbarUpdate) updateTaskbarWindows();
 }
