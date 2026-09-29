@@ -933,6 +933,22 @@ async function syncShipCake(accountId, params) {
     const cakeLog = await getCakeLog(accountId, 100) || [];
     const pendingDeliveries = state.pending_deliveries || [];
 
+    // JULES: perf sweep - pre-build Set for O(1) reason lookups instead of O(P + L * N) linear searches per issue
+    const deliveredReasons = new Set();
+    for (const d of pendingDeliveries) {
+        if (d?.reason) deliveredReasons.add(d.reason);
+    }
+    for (const l of cakeLog) {
+        if (l) {
+            if (l.reason) deliveredReasons.add(l.reason);
+            if (Array.isArray(l.named_for)) {
+                for (const name of l.named_for) {
+                    if (name) deliveredReasons.add(name);
+                }
+            }
+        }
+    }
+
     if (!Array.isArray(issues)) issues = [];
     for (const issue of issues) {
         if (new Date(issue.closed_at) <= sinceDate) continue;
@@ -975,8 +991,7 @@ async function syncShipCake(accountId, params) {
                 const sha = pr.merge_commit_sha || pr.head?.sha || 'unknown';
                 const reasonKey = `ship:${issue.number}:${sha}`;
 
-                const alreadyDelivered = pendingDeliveries.some(d => d.reason === reasonKey) ||
-                                         cakeLog.some(l => (l.named_for || []).includes(reasonKey) || l.reason === reasonKey);
+                const alreadyDelivered = deliveredReasons.has(reasonKey);
 
                 if (alreadyDelivered) continue;
 
