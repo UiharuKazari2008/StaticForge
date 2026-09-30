@@ -303,17 +303,20 @@ function registerPackets(handlersCtx) {
         }, { owner: 'explore', ...meta });
     };
 
+    // JULES: Flag mutating/cache-clearing operations as destructive for read-only user gate
+    const EXPLORE_DESTRUCTIVE = { destructive: true };
+
     regFn('get_novelai_explore_gallery', handleGetNovelaiExploreGallery);
     regFn('get_novelai_explore_user', handleGetNovelaiExploreUser);
     regFn('get_novelai_explore_post', handleGetNovelaiExplorePost);
-    regFn('set_novelai_explore_post_like', handleSetNovelaiExplorePostLike);
-    regFn('downvote_novelai_explore_post', handleDownvoteNovelaiExplorePost);
-    regFn('block_novelai_explore_creator', handleBlockNovelaiExploreCreator);
+    regFn('set_novelai_explore_post_like', handleSetNovelaiExplorePostLike, EXPLORE_DESTRUCTIVE);
+    regFn('downvote_novelai_explore_post', handleDownvoteNovelaiExplorePost, EXPLORE_DESTRUCTIVE);
+    regFn('block_novelai_explore_creator', handleBlockNovelaiExploreCreator, EXPLORE_DESTRUCTIVE);
     regFn('list_novelai_explore_blocked_creators', handleListNovelaiExploreBlockedCreators);
-    regFn('clear_novelai_explore_gallery_cache', handleClearNovelaiExploreGalleryCache);
+    regFn('clear_novelai_explore_gallery_cache', handleClearNovelaiExploreGalleryCache, EXPLORE_DESTRUCTIVE);
     regFn('ensure_novelai_explore_image', handleEnsureNovelaiExploreImage);
     regFn('check_novelai_explore_upload', handleCheckNovelaiExploreUpload);
-    regFn('upload_novelai_explore_image', handleUploadNovelaiExploreImage);
+    regFn('upload_novelai_explore_image', handleUploadNovelaiExploreImage, EXPLORE_DESTRUCTIVE);
 }
 
 module.exports = {
