@@ -72,7 +72,7 @@ function resolveWorkspaceRef(workspaces, value) {
 class WorkspaceManager {
     constructor(globalResources) {
         if (!globalResources) {
-            throw new Error('WebSocketServer requires globalResources instance and shoudl only be instantiated by globalResources.js');
+            throw new Error('WorkspaceManager requires globalResources instance and should only be instantiated by globalResources.js');
         }
         // Store globalResources reference
         this.globalResources = globalResources;
