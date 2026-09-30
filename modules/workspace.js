@@ -2475,9 +2475,10 @@ class WorkspaceManager {
                     throw new Error('Workspace not found');
                 }
 
-                // Update positions for each shortcut
+                // JULES: perf optimization — Set/Map lookup O(1) instead of Array.find O(S) inside loop
+                const shortcutMap = new Map((config[workspaceId].shortcuts || []).map(s => [s.id, s]));
                 positions.forEach(({ id, position }) => {
-                    const shortcut = config[workspaceId].shortcuts.find(s => s.id === id);
+                    const shortcut = shortcutMap.get(id);
                     if (shortcut) {
                         shortcut.position = position;
                     }
