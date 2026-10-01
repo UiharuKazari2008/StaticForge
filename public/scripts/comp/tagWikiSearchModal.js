@@ -3185,7 +3185,8 @@ class WikiDisplayBase {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             console.error('WebSocket not connected');
             if (typeof showGlassToast !== 'undefined') {
-                showGlassToast('WebSocket not connected', 'error');
+                // JULES: Fix showGlassToast parameter order (type, title, message)
+                showGlassToast('error', null, 'WebSocket not connected');
             }
             return;
         }
@@ -3228,7 +3229,8 @@ class WikiDisplayBase {
                     `;
                 }
                 if (typeof showGlassToast !== 'undefined') {
-                    showGlassToast(`Error: ${result.error}`, 'error');
+                    // JULES: Fix showGlassToast parameter order (type, title, message)
+                    showGlassToast('error', null, `Error: ${result.error}`);
                 }
                 return;
             }
@@ -3244,7 +3246,8 @@ class WikiDisplayBase {
                 }
                 this.renderWikiPage(result);
                 if (typeof showGlassToast !== 'undefined') {
-                    showGlassToast('Wiki page refreshed from online', 'success');
+                    // JULES: Fix showGlassToast parameter order (type, title, message)
+                    showGlassToast('success', null, 'Wiki page refreshed from online');
                 }
             }
         } catch (error) {
@@ -3257,7 +3260,8 @@ class WikiDisplayBase {
                 `;
             }
             if (typeof showGlassToast !== 'undefined') {
-                showGlassToast(`Error: ${error.message}`, 'error');
+                // JULES: Fix showGlassToast parameter order (type, title, message)
+                showGlassToast('error', null, `Error: ${error.message}`);
             }
         }
     }
