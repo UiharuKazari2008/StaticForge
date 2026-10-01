@@ -101,6 +101,11 @@ async function handleVersionCheck(handlers, ws, message, clientInfo, wsServer) {
 }
 
 async function handleGetSystemInfo(handlers, ws, message, clientInfo, wsServer) {
+    if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: system info admin check
+        handlers.sendError(ws, 'Administrator access required', 'get_system_info', message.requestId);
+        return;
+    }
+
     const startTime = Date.now();
 
     try {
