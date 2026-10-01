@@ -1945,28 +1945,21 @@ class ReferenceMetadataDatabase {
      */
     moveAllReferencesBetweenWorkspaces(sourceWorkspaceId, targetWorkspaceId) {
         try {
-            // Get all references in source workspace
-            const references = this.getWorkspaceReferences(sourceWorkspaceId);
-            if (references.length === 0) return 0;
+            const insertStmt = this.db.prepare(`
+                INSERT OR IGNORE INTO reference_workspace_ownership (hash, workspace_id)
+                SELECT hash, ? FROM reference_workspace_ownership WHERE workspace_id = ?
+            `);
+            const deleteStmt = this.db.prepare(`
+                DELETE FROM reference_workspace_ownership WHERE workspace_id = ?
+            `);
 
-            // Remove from source and add to target in a transaction
-            const removeStmt = this.db.prepare(`DELETE FROM reference_workspace_ownership WHERE hash = ? AND workspace_id = ?`);
-            const addStmt = this.db.prepare(`INSERT OR IGNORE INTO reference_workspace_ownership (hash, workspace_id) VALUES (?, ?)`);
-            
-            const transaction = this.db.transaction((refList) => {
-                let moved = 0;
-                for (const hash of refList) {
-                    // Remove from source
-                    removeStmt.run(hash, sourceWorkspaceId);
-                    // Add to target (will ignore if already exists)
-                    if (addStmt.run(hash, targetWorkspaceId).changes > 0) {
-                        moved++;
-                    }
-                }
+            const transaction = this.db.transaction(() => {
+                const moved = insertStmt.run(targetWorkspaceId, sourceWorkspaceId).changes;
+                deleteStmt.run(sourceWorkspaceId);
                 return moved;
             });
 
-            return transaction(references);
+            return transaction();
         } catch (error) {
             console.error('Error moving references between workspaces:', error);
             throw error;
@@ -1981,28 +1974,21 @@ class ReferenceMetadataDatabase {
      */
     moveAllVibesBetweenWorkspaces(sourceWorkspaceId, targetWorkspaceId) {
         try {
-            // Get all vibes in source workspace
-            const vibes = this.getWorkspaceVibes(sourceWorkspaceId);
-            if (vibes.length === 0) return 0;
+            const insertStmt = this.db.prepare(`
+                INSERT OR IGNORE INTO reference_vibe_workspace_ownership (vibe_id, workspace_id)
+                SELECT vibe_id, ? FROM reference_vibe_workspace_ownership WHERE workspace_id = ?
+            `);
+            const deleteStmt = this.db.prepare(`
+                DELETE FROM reference_vibe_workspace_ownership WHERE workspace_id = ?
+            `);
 
-            // Remove from source and add to target in a transaction
-            const removeStmt = this.db.prepare(`DELETE FROM reference_vibe_workspace_ownership WHERE vibe_id = ? AND workspace_id = ?`);
-            const addStmt = this.db.prepare(`INSERT OR IGNORE INTO reference_vibe_workspace_ownership (vibe_id, workspace_id) VALUES (?, ?)`);
-            
-            const transaction = this.db.transaction((vibeList) => {
-                let moved = 0;
-                for (const vibeId of vibeList) {
-                    // Remove from source
-                    removeStmt.run(vibeId, sourceWorkspaceId);
-                    // Add to target (will ignore if already exists)
-                    if (addStmt.run(vibeId, targetWorkspaceId).changes > 0) {
-                        moved++;
-                    }
-                }
+            const transaction = this.db.transaction(() => {
+                const moved = insertStmt.run(targetWorkspaceId, sourceWorkspaceId).changes;
+                deleteStmt.run(sourceWorkspaceId);
                 return moved;
             });
 
-            return transaction(vibes);
+            return transaction();
         } catch (error) {
             console.error('Error moving vibes between workspaces:', error);
             throw error;
