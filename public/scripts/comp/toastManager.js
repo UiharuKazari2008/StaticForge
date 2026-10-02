@@ -890,10 +890,10 @@ function getToolDisplayName(toolName) {
 }
 
 /**
- * Get tool icon and background color based on tool name
+ * Get tool icon, background color, and border color based on tool name
  * @param {string} toolName - Name of the tool
  * @param {string} toolState - State of the tool ('executing' or 'completed')
- * @returns {Object} Object with icon and backgroundColor
+ * @returns {Object} Object with icon, backgroundColor, and borderColor
  */
 function getToolIconAndBackground(toolName, toolState = 'completed') {
 
@@ -901,87 +901,111 @@ function getToolIconAndBackground(toolName, toolState = 'completed') {
         'searchTagDatabase': {
             icon: '<i class="fas fa-search"></i>',
             backgroundColor: 'rgb(10 78 139 / 69%)', // Blue
+            borderColor: 'rgb(10 78 139)',
         },
         'searchTagsBatch': {
             icon: '<i class="fas fa-search"></i>',
             backgroundColor: 'rgb(10 78 139 / 69%)', // Indigo
+            borderColor: 'rgb(10 78 139)',
         },
         'getDatasetGroupContents': {
             icon: '<i class="fas fa-list-tree"></i>',
             backgroundColor: 'rgb(97 67 20 / 84%)', // Brown
+            borderColor: 'rgb(97 67 20)',
         },
 
         'validateTextReplacement': {
             icon: '<i class="fas fa-monitor-waveform"></i>',
             backgroundColor: 'rgb(68 101 6 / 84%)', // Green
+            borderColor: 'rgb(68 101 6)',
         },
 
         'getTagDetails': {
             icon: '<i class="fas fa-memo-circle-info"></i>',
             backgroundColor: 'rgb(48 42 121 / 84%)', // Purple
+            borderColor: 'rgb(48 42 121)',
         },
         'resolveTagLinks': {
             icon: '<i class="fas fa-diagram-nested"></i>',
             backgroundColor: 'rgb(48 42 121 / 84%)', // Pink
+            borderColor: 'rgb(48 42 121)',
         },
         'searchByDescription': {
             icon: '<i class="fas fa-file-alt"></i>',
             backgroundColor: 'rgb(48 42 121 / 84%)', // Sky blue
+            borderColor: 'rgb(48 42 121)',
         },
 
         'getBodyChunk': {
             icon: '<i class="fas fa-book-open"></i>',
             backgroundColor: 'rgb(48 42 121 / 84%)', // Purple
+            borderColor: 'rgb(48 42 121)',
         },
 
         'analyzeTokenCount': {
             icon: '<i class="fas fa-scanner-keyboard"></i>',
             backgroundColor: 'rgb(68 101 6 / 84%)', // Emerald
+            borderColor: 'rgb(68 101 6)',
         },
 
         'webSearch': {
             icon: '<i class="fas fa-globe"></i>',
             backgroundColor: 'rgb(91 50 7 / 84%)', // Orange
+            borderColor: 'rgb(91 50 7)',
         },
         'fetchUrl': {
             icon: '<i class="fas fa-download"></i>',
             backgroundColor: 'rgb(91 50 7 / 84%)', // Teal
+            borderColor: 'rgb(91 50 7)',
         },
         'fetchImage': {
             icon: '<i class="fas fa-image"></i>',
             backgroundColor: 'rgb(91 50 7 / 84%)', // Pink
+            borderColor: 'rgb(91 50 7)',
         },
 
         'saveKnowledgeMemory': {
             icon: '<i class="fas fa-book-arrow-up"></i>',
             backgroundColor: 'rgb(88 28 135 / 84%)', // Purple
+            borderColor: 'rgb(88 28 135)',
         },
         'retrieveKnowledgeMemory': {
             icon: '<i class="fas fa-book-open"></i>',
             backgroundColor: 'rgb(88 28 135 / 84%)', // Purple
+            borderColor: 'rgb(88 28 135)',
         },
         'searchKnowledgeMemories': {
             icon: '<i class="fas fa-search-location"></i>',
             backgroundColor: 'rgb(88 28 135 / 84%)', // Purple
+            borderColor: 'rgb(88 28 135)',
         },
 
         'completeTooling': {
             icon: '<i class="fas fa-check-double"></i>',
             backgroundColor: 'rgb(0 71 58 / 84%)', // Green
+            borderColor: 'rgb(0 71 58)',
         },
         'publishAnalysisResults': {
             icon: '<i class="fas fa-circles-overlap"></i>',
             backgroundColor: 'rgb(90 15 15 / 84%)', // Red/Dark red
+            borderColor: 'rgb(90 15 15)',
         },
         'planTextReplacements': {
             icon: '<i class="fas fa-clipboard-list"></i>',
             backgroundColor: 'rgb(27 69 2 / 84%)', // Purple
+            borderColor: 'rgb(27 69 2)',
         }
     };
 
-    let result = toolConfig[toolName] || {
+    const matched = toolConfig[toolName] || {
         icon: '<i class="fas fa-cog"></i>',
         backgroundColor: 'rgba(156, 163, 175, 0.1)', // Gray
+        borderColor: 'rgba(156, 163, 175, 0.4)',
+    };
+    let result = {
+        icon: matched.icon,
+        backgroundColor: matched.backgroundColor,
+        borderColor: matched.borderColor || 'rgba(156, 163, 175, 0.4)'
     };
     if (toolState === 'executing' && toolName !== 'completeTooling') {
         result.icon = '<i class="fas fa-spinner-third fa-spin"></i>';
