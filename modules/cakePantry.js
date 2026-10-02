@@ -832,19 +832,19 @@ async function feedCake(accountId, params) {
 /**
  * inspect_pantry - View piles, past consumes, kg history
  */
-async function inspectPantry(accountId, params = {}) {
-    const state = await getAccountState(accountId);
+async function inspectPantry(accountId, params = {}, options = {}) {
+    const state = options.state || await getAccountState(accountId);
     if (!state) {
         return { success: false, error: 'Unknown account', accountId };
     }
     const { state: seededState, seeded } = ensureCurrentKgSeeded(accountId, state);
     Object.assign(state, seededState);
-    if (seeded && !state._sqliteUnavailable && !state._sqliteError && !state._importStatusUnknown) {
+    if (seeded && !options.state && !state._sqliteUnavailable && !state._sqliteError && !state._importStatusUnknown) {
         await saveAccountState(accountId, state);
     }
 
     const logLimit = Number(params.log_limit) || 20;
-    const cakeLog = await getCakeLog(accountId, logLimit);
+    const cakeLog = options.cakeLog || await getCakeLog(accountId, logLimit);
 
     const kgHistory = (state.history || []).map((h) => ({
         at: h.at,
@@ -1101,8 +1101,10 @@ async function updateMealImages(accountId, params = {}, options = {}) {
         nextAfter = resolved.id;
     }
 
-    await ensurePantryMigration(accountId);
-    const status = await getAccountImportStatus(accountId);
+    if (!options.importStatus) {
+        await ensurePantryMigration(accountId);
+    }
+    const status = options.importStatus || await getAccountImportStatus(accountId);
     if (status.imported === 'unknown') {
         return { success: false, error: status.reason || 'SQLite unavailable', accountId, meal_id: mealId };
     }
