@@ -294,7 +294,7 @@ MCP tools are organized into **module sets**. Clients select which modules they 
 
 Example: Grok web must not get cake feeding → do not grant `sfapp_cake_pantry:feed`. A bot may have deliver without consume → grant `sfapp_cake_pantry:deliver` only.
 
-Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants only `deliver_cake`. The full `sfapp_cake_pantry` grants all four pantry tools.
+Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants only `deliver_cake`. The full `sfapp_cake_pantry` grants all pantry tools. `update_meal_images` is in the `consume` / write scope, not `inspect`.
 
 #### Cake Pantry Module (`sfapp_cake_pantry`)
 
@@ -305,8 +305,9 @@ Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo, Guren. All a
 | `sync_ship_cake` | Scan closed Gitea StaticForge issues since last consume, auto-deliver cake for lines deleted. Skips greg. Dedups against pending/past. Math: 1 slice per 40 lines/10KB. Pass `accountId`, `since` (default last consume/breakfast), `dry_run`. | `deliver` |
 | `deliver_cake` | Add slices to a pile with reason (reward for ship/work). Pass `accountId`, `slices` (or `line_counts` for auto-calc: 1/40 lines or 10KB, min 1 cap 16), `reason`, `cake_type`, optional `do_not_eat` (or `cake_type=dry-verify` for forever-skip), `credit` (`grok.menma` = 1.25x). | `deliver` |
 | `feed_cake` | Yukimi grants slices (promotion or just because). Distinct from deliver. Pass `accountId`, `slices`, `reason`, `cake_type`, optional `do_not_eat` / `cake_type=dry-verify`, `from`. | `feed` |
-| `inspect_pantry` | View piles, past consumes, kg history. Returns data, not a wall of text. Pass `accountId`, optional `log_limit`. | `inspect` |
+| `inspect_pantry` | View piles, past consumes, kg history. Returns data, not a wall of text. Each meal in `past_consumes` includes a stable `meal_id` (derived/backfilled if the record had none). Pass `accountId`, optional `log_limit`. | `inspect` |
 | `consume_cake` | Eater eats pending slices (**soft sitting cap default 8**; remainder carries). Override with `slices` and/or `max_slices` up to **all eligible pending**. Skips dry-verify forever via `cake_type=dry-verify` and/or `do_not_eat` (not reason substring). Returns kg before/after; **does not auto-generate** before/after images (pass refs or get `visual_gen.status=not_generated` with clear error while kg still saves). Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. | `consume` |
+| `update_meal_images` | Re-point `before`/`after` image ids on an **existing** meal (`cake_log` entry). Pass `accountId`, `meal_id` (from `inspect_pantry`), and at least one of `before_image` / `after_image`. Validates ids with the same gallery lookup as `generate_image` / `consume_cake`. Appends `image_history`. **Never** changes kg, slices, timestamps, or totals. **Never** deletes images. | `consume` |
 | `get_work_pile` | Work pile snapshot `{ open, done_since_breakfast, eaten, updated_at, last_breakfast_at }`. Pass `accountId`. | `inspect` |
 | `add_work_item` | Add open (or `done_since_breakfast`) item. Required `accountId`, `work_id`, `summary`; optional `source_from`, `cake`, `slices_hint`, `type`. | `deliver` |
 | `complete_work_item` | Move item from `open` → `done_since_breakfast`. Pass `accountId`, `work_id`. | `deliver` |

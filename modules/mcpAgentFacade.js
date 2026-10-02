@@ -113,6 +113,7 @@ const {
     feedCake,
     inspectPantry,
     consumeCake,
+    updateMealImages,
     listAccounts: listCakePantryAccounts,
     getWorkPile,
     saveWorkPile,
@@ -1844,6 +1845,23 @@ const TOOL_DEFS = [
                 named_for: { type: 'array', items: { type: 'string' }, description: 'What this consume is named for' },
                 commits: { type: 'array', items: { type: 'string' } },
                 loop: { type: 'string', description: 'Loop name (7am-breakfast, etc.)' }
+            }
+        }
+    },
+    {
+        name: 'update_meal_images',
+        core: true,
+        description: 'Re-point before/after image ids on an existing pantry meal (cake_log entry). Use when a consume recorded the wrong keeper pair. Requires meal_id from inspect_pantry and at least one of before_image/after_image. Validates each new id with the same gallery lookup generate_image / consume_cake image ids resolve against. Rejects unknown meal_id or unknown image ids. Appends image_history { old_before, old_after, new_before, new_after, at, client }. Never changes kg, slice amounts, timestamps, or totals. Never deletes images, files, gallery entries, or scraps.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId', 'meal_id'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account that owns the meal' },
+                meal_id: { type: 'string', description: 'Stable meal_id from inspect_pantry.past_consumes' },
+                before_image: { type: 'string', description: 'Replacement before image filename (must already exist via generate_image). Omit to leave the current before id.' },
+                after_image: { type: 'string', description: 'Replacement after image filename (must already exist via generate_image). Omit to leave the current after id.' }
             }
         }
     },
@@ -5146,6 +5164,22 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
         }
         const result = await consumeCake(accountId, input);
+        return mcpTextResult(result, !result.success);
+    }
+
+    if (name === 'update_meal_images') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
+        }
+        const result = await updateMealImages(accountId, {
+            meal_id: input.meal_id,
+            before_image: input.before_image,
+            after_image: input.after_image,
+            client: resolveActorName(req) || resolveBindKey(req)
+        }, {
+            resolveImage: (id) => galleryFileExists(globalResources, id)
+        });
         return mcpTextResult(result, !result.success);
     }
 

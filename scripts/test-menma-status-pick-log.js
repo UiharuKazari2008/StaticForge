@@ -64,6 +64,7 @@ assert.strictEqual(menmaNull.before, null);
 assert.strictEqual(menmaNull.after, null);
 
 const extraClobber = composeCakeLogEntry({
+    id: 42,
     at: '2026-09-12T23:41:26.375Z',
     loop: 'pantry-7:30pm',
     slices: 8,
@@ -83,6 +84,7 @@ const extraClobber = composeCakeLogEntry({
 assert.strictEqual(extraClobber.before, IVORY_BEFORE);
 assert.strictEqual(extraClobber.after, IVORY_AFTER);
 assert.strictEqual(extraClobber.visual_gen_status, 'provided');
+assert.strictEqual(extraClobber.meal_id, '42');
 
 const extraAliasOnly = composeCakeLogEntry({
     at: '2026-09-12T23:41:26.375Z',

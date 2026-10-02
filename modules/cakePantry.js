@@ -37,6 +37,9 @@ const {
     saveAccountStateToDb,
     appendCakeLogToDb,
     getCakeLogFromDb,
+    findCakeLogRowByMealId,
+    updateCakeLogImagesToDb,
+    composeCakeLogEntry,
     hasAccountStateInDb,
     getWorkPileFromDb,
     saveWorkPileToDb,
@@ -850,7 +853,9 @@ async function inspectPantry(accountId, params = {}) {
         gained_kg: h.gained_kg
     }));
 
-    const pastConsumes = cakeLog.filter((e) => e.meal || e.loop || e.slices > 0);
+    const pastConsumes = cakeLog
+        .filter((e) => e.meal || e.loop || e.slices > 0)
+        .map((e) => attachMealId(accountId, e));
 
     return {
         success: true,
@@ -873,6 +878,301 @@ async function inspectPantry(accountId, params = {}) {
         past_consumes: pastConsumes,
         last_before: state.last_before,
         last_after: state.last_after
+    };
+}
+
+/** Ledger fields that update_meal_images must never change. */
+const MEAL_FROZEN_KEYS = [
+    'at', 'loop', 'date_local', 'slices', 'stacks', 'cake_type', 'cake_rating',
+    'kg_before', 'kg_after', 'gained_kg', 'chair', 'landscape', 'named_for',
+    'qa', 'commits', 'deliveries_consumed', 'feeds_consumed', 'slices_requested',
+    'max_slices_per_sitting', 'sitting_ceiling', 'soft_cap_override',
+    'skipped_do_not_eat', 'pending_slices_after', 'visual_gen_status',
+    'landed', 'left_open'
+];
+
+/**
+ * Deterministic meal_id when the record has none (file-era / pre-#277).
+ * Does not include image ids so re-pointing keeps the same id.
+ */
+function deriveMealId(accountId, entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    if (entry.meal_id != null && String(entry.meal_id).trim() !== '') {
+        return String(entry.meal_id);
+    }
+    if (entry.id != null && String(entry.id).trim() !== '') {
+        return String(entry.id);
+    }
+    const at = entry.at != null ? String(entry.at) : '';
+    const slices = entry.slices != null ? String(entry.slices) : '';
+    const kgBefore = entry.kg_before != null ? String(entry.kg_before) : '';
+    const kgAfter = entry.kg_after != null ? String(entry.kg_after) : '';
+    return `meal_${accountId}_${at}_${slices}_${kgBefore}_${kgAfter}`;
+}
+
+/**
+ * Return a shallow copy with meal_id set. Never mutates other fields.
+ */
+function attachMealId(accountId, entry) {
+    if (!entry || typeof entry !== 'object') return entry;
+    const mealId = deriveMealId(accountId, entry);
+    if (entry.meal_id === mealId) return entry;
+    return { ...entry, meal_id: mealId };
+}
+
+function frozenMealLedger(meal) {
+    const frozen = {};
+    for (const key of MEAL_FROZEN_KEYS) {
+        if (meal && Object.prototype.hasOwnProperty.call(meal, key)) {
+            frozen[key] = meal[key];
+        }
+    }
+    return frozen;
+}
+
+function currentMealImages(meal) {
+    if (!meal || typeof meal !== 'object') return { before: null, after: null };
+    return {
+        before: meal.before || meal.before_image || meal.before_img || null,
+        after: meal.after || meal.after_image || meal.after_img || null
+    };
+}
+
+/** Same basename rules as mcpAgentFacade.sanitizeGalleryFilename / galleryFileExists. */
+function sanitizePantryImageName(filename) {
+    const raw = String(filename || '').trim();
+    if (!raw) return null;
+    if (raw.includes('..') || raw.includes('/') || raw.includes('\\') || raw.includes('\0')) {
+        return null;
+    }
+    return path.basename(raw);
+}
+
+/**
+ * Default lookup: same path generate_image / get_generated_image / consume_cake
+ * refs resolve against (gallery images dir + basename).
+ */
+function defaultResolvePantryImage(imageId) {
+    const safe = sanitizePantryImageName(imageId);
+    if (!safe) return null;
+    const gr = getGlobalResources();
+    if (!gr || typeof gr.getPath !== 'function') return null;
+    try {
+        const imagesDir = path.resolve(gr.getPath('images'));
+        const filePath = path.resolve(imagesDir, safe);
+        if (!filePath.startsWith(imagesDir + path.sep) && filePath !== imagesDir) {
+            return null;
+        }
+        if (fs.existsSync(filePath)) return safe;
+    } catch (_) {
+        return null;
+    }
+    return null;
+}
+
+function resolvePantryImageId(imageId, resolveImage) {
+    const raw = imageId == null ? '' : String(imageId).trim();
+    if (!raw) return { ok: false, error: 'Unknown image id' };
+    const safe = sanitizePantryImageName(raw);
+    if (!safe) {
+        return { ok: false, error: `Unknown image id: ${raw}` };
+    }
+    const lookup = typeof resolveImage === 'function' ? resolveImage : defaultResolvePantryImage;
+    const found = lookup(safe) || lookup(raw);
+    if (!found) {
+        return { ok: false, error: `Unknown image id: ${safe}` };
+    }
+    return { ok: true, id: typeof found === 'string' ? found : safe };
+}
+
+/**
+ * Re-point before/after on one meal object. Never changes frozen ledger fields.
+ */
+function applyMealImageUpdate(meal, patch = {}) {
+    if (!meal || typeof meal !== 'object') {
+        return { ok: false, error: 'Unknown meal' };
+    }
+    const current = currentMealImages(meal);
+    const nextBefore = patch.before !== undefined ? patch.before : current.before;
+    const nextAfter = patch.after !== undefined ? patch.after : current.after;
+    const next = { ...meal };
+    next.before = nextBefore;
+    next.after = nextAfter;
+    if ('before_image' in meal) next.before_image = nextBefore;
+    if ('after_image' in meal) next.after_image = nextAfter;
+    if ('before_img' in meal) next.before_img = nextBefore;
+    if ('after_img' in meal) next.after_img = nextAfter;
+    const history = Array.isArray(meal.image_history) ? meal.image_history.slice() : [];
+    history.push({
+        old_before: current.before,
+        old_after: current.after,
+        new_before: nextBefore,
+        new_after: nextAfter,
+        at: patch.now || new Date().toISOString(),
+        client: patch.client != null ? patch.client : null
+    });
+    next.image_history = history;
+    return {
+        ok: true,
+        meal: next,
+        frozen_before: frozenMealLedger(meal),
+        frozen_after: frozenMealLedger(next)
+    };
+}
+
+function mealIdMatches(accountId, entry, mealId) {
+    const wanted = String(mealId);
+    const decorated = attachMealId(accountId, entry);
+    if (decorated && String(decorated.meal_id) === wanted) return true;
+    if (entry && entry.id != null && String(entry.id) === wanted) return true;
+    return false;
+}
+
+function rewriteJsonlMeal(filePath, accountId, mealId, updater) {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const trailing = raw.endsWith('\n');
+    const body = trailing ? raw.slice(0, -1) : raw;
+    const lines = body.length ? body.split('\n') : [];
+    let found = false;
+    let updatedMeal = null;
+    const out = lines.map((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return line;
+        let entry;
+        try { entry = JSON.parse(trimmed); } catch (_) { return line; }
+        if (found || !mealIdMatches(accountId, entry, mealId)) return line;
+        found = true;
+        const applied = updater(attachMealId(accountId, entry));
+        if (!applied || !applied.ok) {
+            throw applied && applied.error ? new Error(applied.error) : new Error('Failed to update meal images');
+        }
+        updatedMeal = applied.meal;
+        return JSON.stringify(applied.meal);
+    });
+    if (!found) return { found: false };
+    fs.writeFileSync(filePath, out.join('\n') + (trailing || out.length ? '\n' : ''), 'utf8');
+    return { found: true, meal: updatedMeal };
+}
+
+/**
+ * update_meal_images - Re-point before/after image ids on an existing cake_log meal.
+ * Never changes kg, slice amounts, timestamps, or totals. Never deletes images.
+ */
+async function updateMealImages(accountId, params = {}, options = {}) {
+    const def = ACCOUNT_DEFS[accountId];
+    if (!def) {
+        return { success: false, error: 'Unknown account', accountId };
+    }
+
+    const mealId = params.meal_id != null ? String(params.meal_id).trim() : '';
+    if (!mealId) {
+        return { success: false, error: 'meal_id is required', accountId };
+    }
+
+    const hasBefore = params.before_image != null && String(params.before_image).trim() !== '';
+    const hasAfter = params.after_image != null && String(params.after_image).trim() !== '';
+    if (!hasBefore && !hasAfter) {
+        return {
+            success: false,
+            error: 'At least one of before_image or after_image is required',
+            accountId,
+            meal_id: mealId
+        };
+    }
+
+    const resolveImage = typeof options.resolveImage === 'function'
+        ? options.resolveImage
+        : defaultResolvePantryImage;
+
+    let nextBefore;
+    let nextAfter;
+    if (hasBefore) {
+        const resolved = resolvePantryImageId(params.before_image, resolveImage);
+        if (!resolved.ok) {
+            return { success: false, error: resolved.error, accountId, meal_id: mealId };
+        }
+        nextBefore = resolved.id;
+    }
+    if (hasAfter) {
+        const resolved = resolvePantryImageId(params.after_image, resolveImage);
+        if (!resolved.ok) {
+            return { success: false, error: resolved.error, accountId, meal_id: mealId };
+        }
+        nextAfter = resolved.id;
+    }
+
+    await ensurePantryMigration(accountId);
+    const status = await getAccountImportStatus(accountId);
+    if (status.imported === 'unknown') {
+        return { success: false, error: status.reason || 'SQLite unavailable', accountId, meal_id: mealId };
+    }
+
+    const now = options.now || new Date().toISOString();
+    const client = params.client != null ? params.client : (options.client != null ? options.client : null);
+    const patch = { now, client };
+    if (hasBefore) patch.before = nextBefore;
+    if (hasAfter) patch.after = nextAfter;
+
+    const applyFound = (meal) => applyMealImageUpdate(meal, patch);
+
+    if (status.imported === true) {
+        if (!status.db) {
+            return { success: false, error: 'SQLite unavailable', accountId, meal_id: mealId };
+        }
+        const row = await findCakeLogRowByMealId(status.db, accountId, mealId);
+        if (!row) {
+            return { success: false, error: `Unknown meal_id: ${mealId}`, accountId, meal_id: mealId };
+        }
+        const meal = attachMealId(accountId, composeCakeLogEntry(row));
+        const applied = applyFound(meal);
+        if (!applied.ok) {
+            return { success: false, error: applied.error, accountId, meal_id: mealId };
+        }
+        const saved = await updateCakeLogImagesToDb(status.db, accountId, row, {
+            before: applied.meal.before,
+            after: applied.meal.after,
+            image_history: applied.meal.image_history,
+            meal_id: applied.meal.meal_id
+        });
+        if (!saved) {
+            return { success: false, error: 'Failed to update meal images', accountId, meal_id: mealId };
+        }
+        return {
+            success: true,
+            accountId,
+            meal_id: applied.meal.meal_id,
+            before_image: applied.meal.before,
+            after_image: applied.meal.after,
+            image_history: applied.meal.image_history,
+            meal: applied.meal
+        };
+    }
+
+    const dir = getAccountDir(accountId);
+    if (!dir) {
+        return { success: false, error: 'Unknown account', accountId, meal_id: mealId };
+    }
+    const logPath = path.join(dir, 'cake-log.jsonl');
+    if (!fs.existsSync(logPath)) {
+        return { success: false, error: `Unknown meal_id: ${mealId}`, accountId, meal_id: mealId };
+    }
+    let rewritten;
+    try {
+        rewritten = rewriteJsonlMeal(logPath, accountId, mealId, applyFound);
+    } catch (e) {
+        return { success: false, error: e.message || 'Failed to update meal images', accountId, meal_id: mealId };
+    }
+    if (!rewritten.found) {
+        return { success: false, error: `Unknown meal_id: ${mealId}`, accountId, meal_id: mealId };
+    }
+    return {
+        success: true,
+        accountId,
+        meal_id: rewritten.meal.meal_id,
+        before_image: rewritten.meal.before,
+        after_image: rewritten.meal.after,
+        image_history: rewritten.meal.image_history,
+        meal: rewritten.meal
     };
 }
 
@@ -1542,6 +1842,9 @@ module.exports = {
     feedCake,
     inspectPantry,
     consumeCake,
+    updateMealImages,
+    deriveMealId,
+    attachMealId,
     listAccounts,
     getAccountDef,
     getWorkPile,
@@ -1554,5 +1857,18 @@ module.exports = {
     saveMenmaWorkPile,
     addMenmaWorkItem,
     completeMenmaWorkItem,
-    removeMenmaWorkItem
+    removeMenmaWorkItem,
+    _test: {
+        MEAL_FROZEN_KEYS,
+        deriveMealId,
+        attachMealId,
+        frozenMealLedger,
+        currentMealImages,
+        sanitizePantryImageName,
+        defaultResolvePantryImage,
+        resolvePantryImageId,
+        applyMealImageUpdate,
+        mealIdMatches,
+        rewriteJsonlMeal
+    }
 };
