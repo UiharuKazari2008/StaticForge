@@ -176,20 +176,22 @@ function applyBiasToText(input, bias) {
     }
 }
 
+// JULES: perf optimization — Set lookup O(1) instead of Array.includes O(N) inside filter loop
+const ALLOWED_FAST_MODE_TOOL_NAMES = new Set([
+    'retrieveKnowledgeMemory',
+    'searchKnowledgeMemories',
+    'validateTextReplacement',
+    'completeTooling'
+]);
+
 /**
  * Filter tools for fast mode - only allows memory tools, verification tools, and complete tooling
  * @param {Array} tools - Array of all available tools
  * @returns {Array} Filtered array of tools allowed in fast mode
  */
 function filterToolsForFastMode(tools) {
-    const allowedToolNames = [
-        'retrieveKnowledgeMemory',
-        'searchKnowledgeMemories',
-        'validateTextReplacement',
-        'completeTooling'
-    ];
-    
-    return tools.filter(tool => allowedToolNames.includes(tool.name));
+    if (!Array.isArray(tools)) return [];
+    return tools.filter(tool => tool && ALLOWED_FAST_MODE_TOOL_NAMES.has(tool.name));
 }
 
 
