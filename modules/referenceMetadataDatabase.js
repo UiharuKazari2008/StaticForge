@@ -833,11 +833,43 @@ class ReferenceMetadataDatabase {
 
             const placeholders = workspaceIds.map(() => '?').join(',');
             const stmt = this.db.prepare(`SELECT DISTINCT hash FROM reference_workspace_ownership WHERE workspace_id IN (${placeholders}) ORDER BY created_at DESC`);
-            const results = stmt.all(workspaceIds);
+            const results = stmt.all(...workspaceIds);
             return results.map(r => r.hash);
         } catch (error) {
             console.error('Error getting multiple workspace references:', error);
             return [];
+        }
+    }
+
+    /**
+     * Get reference total size for multiple workspaces (batch query for performance)
+     * @param {Array} workspaceIds - Array of workspace IDs
+     * @returns {Object} Object with workspace ID as key and total size in bytes as value
+     */
+    getWorkspaceReferenceSizes(workspaceIds) {
+        try {
+            if (!workspaceIds || workspaceIds.length === 0) return {};
+
+            const placeholders = workspaceIds.map(() => '?').join(',');
+            const stmt = this.db.prepare(`
+                SELECT rwo.workspace_id, SUM(rfc.size) as total_size
+                FROM reference_workspace_ownership rwo
+                JOIN reference_file_cache rfc ON rwo.hash = rfc.hash
+                WHERE rwo.workspace_id IN (${placeholders})
+                GROUP BY rwo.workspace_id
+            `);
+            const results = stmt.all(...workspaceIds);
+
+            const sizes = {};
+            workspaceIds.forEach(id => sizes[id] = 0); // Initialize all to 0
+            results.forEach(result => {
+                sizes[result.workspace_id] = result.total_size || 0;
+            });
+
+            return sizes;
+        } catch (error) {
+            console.error('Error getting workspace reference sizes:', error);
+            return {};
         }
     }
 
@@ -857,7 +889,7 @@ class ReferenceMetadataDatabase {
                 WHERE workspace_id IN (${placeholders})
                 GROUP BY workspace_id
             `);
-            const results = stmt.all(workspaceIds);
+            const results = stmt.all(...workspaceIds);
             
             const counts = {};
             workspaceIds.forEach(id => counts[id] = 0); // Initialize all to 0
@@ -1641,6 +1673,37 @@ class ReferenceMetadataDatabase {
     }
 
     /**
+     * Get vibe counts for multiple workspaces (batch query for performance)
+     * @param {Array} workspaceIds - Array of workspace IDs
+     * @returns {Object} Object with workspace ID as key and count as value
+     */
+    getWorkspaceVibeCounts(workspaceIds) {
+        try {
+            if (!workspaceIds || workspaceIds.length === 0) return {};
+
+            const placeholders = workspaceIds.map(() => '?').join(',');
+            const stmt = this.db.prepare(`
+                SELECT workspace_id, COUNT(*) as count
+                FROM reference_vibe_workspace_ownership
+                WHERE workspace_id IN (${placeholders})
+                GROUP BY workspace_id
+            `);
+            const results = stmt.all(...workspaceIds);
+
+            const counts = {};
+            workspaceIds.forEach(id => counts[id] = 0); // Initialize all to 0
+            results.forEach(result => {
+                counts[result.workspace_id] = result.count;
+            });
+
+            return counts;
+        } catch (error) {
+            console.error('Error getting workspace vibe counts:', error);
+            return {};
+        }
+    }
+
+    /**
      * Get all vibes for multiple workspaces
      * @param {Array} workspaceIds - Array of workspace IDs
      * @returns {Array} Array of vibe IDs
@@ -1651,7 +1714,7 @@ class ReferenceMetadataDatabase {
 
             const placeholders = workspaceIds.map(() => '?').join(',');
             const stmt = this.db.prepare(`SELECT DISTINCT vibe_id FROM reference_vibe_workspace_ownership WHERE workspace_id IN (${placeholders}) ORDER BY created_at DESC`);
-            const results = stmt.all(workspaceIds);
+            const results = stmt.all(...workspaceIds);
             return results.map(r => r.vibe_id);
         } catch (error) {
             console.error('Error getting multiple workspace vibes:', error);
@@ -1745,7 +1808,7 @@ class ReferenceMetadataDatabase {
                 ORDER BY wo.created_at DESC
             `);
             
-            const results = stmt.all(workspaceIds);
+            const results = stmt.all(...workspaceIds);
             
             // Group by hash and build result structure
             const resultMap = {};
@@ -1821,7 +1884,7 @@ class ReferenceMetadataDatabase {
                 ORDER BY vwo.created_at DESC
             `);
             
-            const results = stmt.all(workspaceIds);
+            const results = stmt.all(...workspaceIds);
             
             // Get all unique vibe IDs to load encodings in one batch
             const uniqueVibeIds = [...new Set(results.map(r => r.vibe_id))];
