@@ -2032,15 +2032,18 @@ class VfsManager {
             }
             case 'References': {
                 const refDb = this.globalResources.getReferenceMetadataDatabase();
-                const { cacheFiles: cacheFilesMap, vibes: vibeRowsMap } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId);
-                let totalSizeBytes = 0;
                 let refCount = 0;
-                for (const hash in cacheFilesMap) {
-                    totalSizeBytes += cacheFilesMap[hash]?.size || 0;
-                    refCount++;
+                let vibeCount = 0;
+                let totalSizeBytes = 0;
+
+                if (refDb && typeof refDb.getWorkspaceReferenceCounts === 'function') {
+                    refCount = refDb.getWorkspaceReferenceCounts([workspaceId])[workspaceId] || 0;
+                    vibeCount = refDb.getWorkspaceVibeCounts([workspaceId])[workspaceId] || 0;
+                    totalSizeBytes = refDb.getWorkspaceReferenceSizes([workspaceId])[workspaceId] || 0;
                 }
+
                 return {
-                    itemCount: refCount + Object.keys(vibeRowsMap).length,
+                    itemCount: refCount + vibeCount,
                     totalSizeBytes
                 };
             }
