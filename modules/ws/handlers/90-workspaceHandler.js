@@ -1429,7 +1429,7 @@ function registerPackets(handlersCtx) {
     reg('workspace_update_color', 'handleWorkspaceUpdateColor', WORKSPACE_DESTRUCTIVE);
     reg('workspace_update_background_color', 'handleWorkspaceUpdateBackgroundColor', WORKSPACE_DESTRUCTIVE);
     reg('workspace_update_settings', 'handleWorkspaceUpdateSettings', WORKSPACE_DESTRUCTIVE);
-    reg('workspace_update_window_positions', 'handleWorkspaceUpdateWindowPositions');
+    reg('workspace_update_window_positions', 'handleWorkspaceUpdateWindowPositions', WORKSPACE_DESTRUCTIVE); // JULES: Fix privilege leakage for read-only clients on window position updates
     reg('workspace_update_primary_font', 'handleWorkspaceUpdatePrimaryFont', WORKSPACE_DESTRUCTIVE);
     reg('workspace_update_textarea_font', 'handleWorkspaceUpdateTextareaFont', WORKSPACE_DESTRUCTIVE);
     reg('workspace_reorder', 'handleWorkspaceReorder', WORKSPACE_DESTRUCTIVE);
