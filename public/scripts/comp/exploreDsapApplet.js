@@ -49,6 +49,42 @@ function exploreEscapeHtml(text) {
     return div.innerHTML;
 }
 
+/** renderSimpleDropdown passes the option value string, not the option object. */
+function exploreApplyDropdownValue(options, value, hidden, selected) {
+    const opt = options.find((o) => o.value === value);
+    if (hidden) hidden.value = value;
+    if (selected) selected.textContent = opt ? opt.label : String(value);
+}
+
+function exploreSetupFilterDropdown(root, ids, options, onSelect) {
+    const dropdown = root.querySelector(ids.dropdown);
+    const btn = root.querySelector(ids.btn);
+    const menu = root.querySelector(ids.menu);
+    const hidden = root.querySelector(ids.hidden);
+    const selected = root.querySelector(ids.selected);
+    // setupDropdown: public/scripts/comp/dropdown.js
+    // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
+    // closeDropdown: public/scripts/comp/dropdown.js
+    setupDropdown(
+        dropdown,
+        btn,
+        menu,
+        (selectedVal) => renderSimpleDropdown(
+            menu,
+            options,
+            'value',
+            'label',
+            (value) => {
+                exploreApplyDropdownValue(options, value, hidden, selected);
+                onSelect(value);
+            },
+            () => closeDropdown(menu, btn),
+            selectedVal
+        ),
+        () => (hidden && hidden.value) || ''
+    );
+}
+
 function exploreParseState(host) {
     const segments = host.getPathSegments() || [];
     const sort = (host.getQueryParam('sort') || 'new').toLowerCase();
@@ -502,27 +538,8 @@ function explorePresetModelKey(model) {
 
 /** Map NAI Source / determineModelFromMetadata result → Studio model key (v4_5, …). */
 function exploreResolveEditorModel(parsed) {
-    if (parsed?.model) {
-        const existing = explorePresetModelKey(parsed.model);
-        if (['v5', 'v5_cur', 'v4_5', 'v4_5_cur', 'v4_5_mod', 'v4', 'v4_cur', 'v3', 'furry'].includes(existing)) {
-            return existing;
-        }
-    }
-    const source = parsed?.source || parsed?.Source || '';
-    // determineModelFromMetadata: public/scripts/comp/referenceManager.js
-    const detected = determineModelFromMetadata({ source });
-    const map = {
-        V5: 'v5',
-        V5_CUR: 'v5_cur',
-        V4_5: 'v4_5',
-        V4_5_CUR: 'v4_5_cur',
-        V4: 'v4',
-        V4_CUR: 'v4_cur',
-        V3: 'v3',
-        FURRY: 'furry'
-    };
-    if (map[detected]) return map[detected];
-    return 'v4_5';
+    // resolveStudioModelKey: public/scripts/comp/utilities.js
+    return resolveStudioModelKey(parsed, 'v4_5');
 }
 
 function exploreQualityPresetsMap() {
@@ -600,60 +617,8 @@ function exploreTryStripQualitySuffix(prompt, qualityValue) {
  * Neutral NSFW removes "nsfw" from UC on generate — strip that prefix with the UC preset match.
  */
 function exploreStripAndFlagPresets(metadata) {
-    const model = metadata.model || 'v5';
-    let prompt = String(metadata.prompt || '');
-    let uc = String(metadata.uc || '');
-    let appendQuality = false;
-    let appendUc = 0;
-
-    const qualityCandidates = exploreCollectQualityCandidates(model);
-    for (let qi = 0; qi < qualityCandidates.length && !appendQuality; qi++) {
-        const qualityValue = qualityCandidates[qi];
-        const groups = prompt.split('|').map((g) => g.trim());
-        if (groups.length > 0) {
-            const stripped = exploreTryStripQualitySuffix(groups[0], qualityValue);
-            if (stripped !== null) {
-                groups[0] = stripped;
-                prompt = groups.filter((g) => g !== '').join(' | ');
-                appendQuality = true;
-                break;
-            }
-        }
-        const whole = exploreTryStripQualitySuffix(prompt, qualityValue);
-        if (whole !== null) {
-            prompt = whole;
-            appendQuality = true;
-        }
-    }
-
-    const ucPresets = exploreResolveUcPresets(model);
-    for (let i = ucPresets.length - 1; i >= 0; i--) {
-        const ucValue = String(ucPresets[i] || '').trim();
-        if (!ucValue || !uc) continue;
-
-        // Explore often prefixes UC with "nsfw, " (NAI NSFW tag). Neutral NSFW strips it on generate.
-        let body = uc;
-        if (body.toLowerCase().startsWith('nsfw, ')) {
-            body = body.slice(6).trimStart();
-        }
-
-        if (body.startsWith(ucValue + ', ')) {
-            uc = body.slice(ucValue.length + 2).trim();
-            appendUc = i + 1;
-            break;
-        }
-        if (body === ucValue) {
-            uc = '';
-            appendUc = i + 1;
-            break;
-        }
-    }
-
-    metadata.prompt = prompt;
-    metadata.uc = uc;
-    metadata.append_quality = appendQuality;
-    metadata.append_uc = appendUc;
-    return metadata;
+    // studioPrepareImportedPrompt: public/scripts/comp/imageGenerationSettings.js
+    return studioPrepareImportedPrompt(metadata);
 }
 
 /** Enable the canonical furry mode dataset for legacy Explore furry posts. */
@@ -2067,6 +2032,9 @@ const exploreDsapDriver = {
             sort: 'new',
             period: 'day',
             search: '',
+            model: '',
+            aspect: '',
+            vt: '',
             results: [],
             page: 1,
             total: 0,
@@ -2138,6 +2106,9 @@ const exploreDsapDriver = {
             sort: parsed.sort,
             period: parsed.period,
             search: parsed.search,
+            model: parsed.model,
+            aspect: parsed.aspect,
+            vt: parsed.vt,
             detailId: parsed.detailId,
             creatorId: parsed.detailId ? '' : parsed.creatorId,
             creatorName: parsed.detailId ? '' : parsed.creatorName,
@@ -2757,10 +2728,6 @@ const exploreDsapDriver = {
         const refreshBtn = root.querySelector('#exRefreshBtn');
 
         if (mode === 'gallery') {
-            const sortHidden = root.querySelector('#exSortHidden');
-            const periodHidden = root.querySelector('#exPeriodHidden');
-            const sortSelected = root.querySelector('#exSortSelected');
-            const periodSelected = root.querySelector('#exPeriodSelected');
             const periodWrap = root.querySelector('#exPeriodDropdown');
             const searchInput = root.querySelector('#exSearchInput');
 
@@ -2787,108 +2754,51 @@ const exploreDsapDriver = {
                 host.navigate(exploreBuildGalleryUrl(next));
             };
 
-            // setupDropdown: public/scripts/comp/dropdown.js
-            // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
-            setupDropdown(
-                root.querySelector('#exSortDropdown'),
-                root.querySelector('#exSortBtn'),
-                root.querySelector('#exSortMenu'),
-                (selectedVal) => renderSimpleDropdown(
-                    root.querySelector('#exSortMenu'),
-                    EXPLORE_SORT_OPTIONS,
-                    'value',
-                    'label',
-                    (item) => {
-                        sortHidden.value = item.value;
-                        sortSelected.textContent = item.label;
-                        navigateWith({ sort: item.value, page: 1, offset: 0 });
-                    },
-                    closeDropdown,
-                    selectedVal
-                ),
-                () => sortHidden.value
-            );
-
-            setupDropdown(
-                root.querySelector('#exPeriodDropdown'),
-                root.querySelector('#exPeriodBtn'),
-                root.querySelector('#exPeriodMenu'),
-                (selectedVal) => renderSimpleDropdown(
-                    root.querySelector('#exPeriodMenu'),
-                    EXPLORE_PERIOD_OPTIONS,
-                    'value',
-                    'label',
-                    (item) => {
-                        periodHidden.value = item.value;
-                        periodSelected.textContent = item.label;
-                        navigateWith({ period: item.value, page: 1, offset: 0 });
-                    },
-                    closeDropdown,
-                    selectedVal
-                ),
-                () => periodHidden.value
-            );
-
-
-            setupDropdown(
-                root.querySelector('#exModelDropdown'),
-                root.querySelector('#exModelBtn'),
-                root.querySelector('#exModelMenu'),
-                (selectedVal) => renderSimpleDropdown(
-                    root.querySelector('#exModelMenu'),
-                    EXPLORE_MODEL_OPTIONS,
-                    'value',
-                    'label',
-                    (item) => {
-                        root.querySelector('#exModelHidden').value = item.value;
-                        root.querySelector('#exModelSelected').textContent = item.label;
-                        navigateWith({ model: item.value, page: 1, offset: 0 });
-                    },
-                    closeDropdown,
-                    selectedVal
-                ),
-                () => root.querySelector('#exModelHidden').value
-            );
-
-            setupDropdown(
-                root.querySelector('#exAspectDropdown'),
-                root.querySelector('#exAspectBtn'),
-                root.querySelector('#exAspectMenu'),
-                (selectedVal) => renderSimpleDropdown(
-                    root.querySelector('#exAspectMenu'),
-                    EXPLORE_ASPECT_OPTIONS,
-                    'value',
-                    'label',
-                    (item) => {
-                        root.querySelector('#exAspectHidden').value = item.value;
-                        root.querySelector('#exAspectSelected').textContent = item.label;
-                        navigateWith({ aspect: item.value, page: 1, offset: 0 });
-                    },
-                    closeDropdown,
-                    selectedVal
-                ),
-                () => root.querySelector('#exAspectHidden').value
-            );
-
-            setupDropdown(
-                root.querySelector('#exVtDropdown'),
-                root.querySelector('#exVtBtn'),
-                root.querySelector('#exVtMenu'),
-                (selectedVal) => renderSimpleDropdown(
-                    root.querySelector('#exVtMenu'),
-                    EXPLORE_VT_OPTIONS,
-                    'value',
-                    'label',
-                    (item) => {
-                        root.querySelector('#exVtHidden').value = item.value;
-                        root.querySelector('#exVtSelected').textContent = item.label;
-                        navigateWith({ vt: item.value, page: 1, offset: 0 });
-                    },
-                    closeDropdown,
-                    selectedVal
-                ),
-                () => root.querySelector('#exVtHidden').value
-            );
+            exploreSetupFilterDropdown(root, {
+                dropdown: '#exSortDropdown',
+                btn: '#exSortBtn',
+                menu: '#exSortMenu',
+                hidden: '#exSortHidden',
+                selected: '#exSortSelected'
+            }, EXPLORE_SORT_OPTIONS, (value) => {
+                navigateWith({ sort: value, page: 1, offset: 0 });
+            });
+            exploreSetupFilterDropdown(root, {
+                dropdown: '#exPeriodDropdown',
+                btn: '#exPeriodBtn',
+                menu: '#exPeriodMenu',
+                hidden: '#exPeriodHidden',
+                selected: '#exPeriodSelected'
+            }, EXPLORE_PERIOD_OPTIONS, (value) => {
+                navigateWith({ period: value, page: 1, offset: 0 });
+            });
+            exploreSetupFilterDropdown(root, {
+                dropdown: '#exModelDropdown',
+                btn: '#exModelBtn',
+                menu: '#exModelMenu',
+                hidden: '#exModelHidden',
+                selected: '#exModelSelected'
+            }, EXPLORE_MODEL_OPTIONS, (value) => {
+                navigateWith({ model: value, page: 1, offset: 0 });
+            });
+            exploreSetupFilterDropdown(root, {
+                dropdown: '#exAspectDropdown',
+                btn: '#exAspectBtn',
+                menu: '#exAspectMenu',
+                hidden: '#exAspectHidden',
+                selected: '#exAspectSelected'
+            }, EXPLORE_ASPECT_OPTIONS, (value) => {
+                navigateWith({ aspect: value, page: 1, offset: 0 });
+            });
+            exploreSetupFilterDropdown(root, {
+                dropdown: '#exVtDropdown',
+                btn: '#exVtBtn',
+                menu: '#exVtMenu',
+                hidden: '#exVtHidden',
+                selected: '#exVtSelected'
+            }, EXPLORE_VT_OPTIONS, (value) => {
+                navigateWith({ vt: value, page: 1, offset: 0 });
+            });
 
             if (periodWrap) periodWrap.classList.toggle('is-disabled', state.sort === 'new');
             const modelWrap = root.querySelector('#exModelDropdown');

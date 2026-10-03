@@ -584,6 +584,47 @@ class PromptTextareaToolbar {
         this.applyTokenProgressWidths(progressFill, editableTokens, nonEditableTokens, groupTotal, maxTokens);
     }
 
+    // buildStudioChangeSnapshot: public/scripts/comp/studioChangeJson.js
+    getTokenUsageSnapshot() {
+        if (!this._groupTotalsReady) {
+            this.updateAllTokenCounts();
+        }
+        if (!this._groupTotalsReady) return null;
+        const model = typeof manualSelectedModel !== 'undefined' ? manualSelectedModel : null;
+        // getForgeModelFeatures / getPromptTokenLimit: public/scripts/comp/utilities.js
+        const features = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures(model) : null;
+        const limitRaw = typeof getPromptTokenLimit === 'function' ? getPromptTokenLimit(model) : null;
+        const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : null;
+        let recommended = features && Number(features.recommendedTokens);
+        if (!Number.isFinite(recommended) || recommended <= 0) {
+            recommended = limit ? Math.max(1, Math.round(limit * 0.75)) : null;
+        }
+        const side = (editable, nonEditable) => {
+            const total = Math.max(0, (Number(editable) || 0) + (Number(nonEditable) || 0));
+            const ofLimit = limit ? Math.round((total / limit) * 10000) / 10000 : null;
+            const ofRecommended = recommended ? Math.round((total / recommended) * 10000) / 10000 : null;
+            return {
+                editable: Number(editable) || 0,
+                nonEditable: Number(nonEditable) || 0,
+                total,
+                ofLimit,
+                ofRecommended,
+                percentOfLimit: ofLimit == null ? null : Math.round(ofLimit * 1000) / 10,
+                percentOfRecommended: ofRecommended == null ? null : Math.round(ofRecommended * 1000) / 10,
+                overLimit: !!(limit && total > limit),
+                overRecommended: !!(recommended && total > recommended)
+            };
+        };
+        return {
+            model: model || null,
+            tokenizer: (features && features.tokenizer) || null,
+            limit,
+            recommended,
+            prompt: side(this._groupTotals.editablePrompt, this._groupTotals.nePrompt),
+            uc: side(this._groupTotals.editableUc, this._groupTotals.neUc)
+        };
+    }
+
     updateBottomSummary(editablePrompt, editableUc, nePrompt, neUc, maxTokens) {
         const totalPrompt = editablePrompt + nePrompt;
         const totalUc = editableUc + neUc;
@@ -624,10 +665,7 @@ class PromptTextareaToolbar {
             { value: 'trim-emphasis-start', display: 'Trim Start', icon: 'fas fa-bracket-square' },
             { value: 'trim-emphasis-end', display: 'Trim End', icon: 'fas fa-bracket-square-right' },
             { value: 'clear-emphasis', display: 'Reset Emphasis', icon: 'fas fa-eraser' },
-            { value: 'reindex-group-ids', display: 'Reset Group IDs', icon: 'fas fa-list-ol' },
-            { value: 'split-emphasis', display: 'Split Emphasis', icon: 'fas fa-scissors', toolbarWide: true },
-            { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' },
-            { value: 'studio-vslider', display: 'vSlider', icon: 'fas fa-sliders' }
+            { value: 'split-emphasis', display: 'Split Emphasis', icon: 'fas fa-scissors', toolbarWide: true }
         ];
         return menuOptions;
     }
@@ -3407,17 +3445,14 @@ class PromptTextareaToolbar {
     toggleAutofill(toolbar) {
         const isEnabled = window.toggleAutofill ? window.toggleAutofill() : true;
         const allToolbars = document.querySelectorAll('.prompt-textarea-toolbar');
-        allToolbars.forEach((toolbarElement, index) => {
+        allToolbars.forEach((toolbarElement) => {
             const autofillBtn = toolbarElement.querySelector('[data-action="autofill"]');
             if (autofillBtn) {
                 autofillBtn.setAttribute('data-state', isEnabled ? 'on' : 'off');
-                // Update icon to show state
                 const icon = autofillBtn.querySelector('i');
                 if (icon) {
                     icon.className = isEnabled ? 'fas fa-lightbulb' : 'fas fa-lightbulb-slash';
                 }
-            } else {
-                console.warn(`No autofill button found in toolbar ${index}`);
             }
         });
     }

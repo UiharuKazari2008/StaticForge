@@ -309,15 +309,17 @@ function determineModelFromMetadata(metadata) {
     
     const source = metadata.source;
 
-    // NovelAI Diffusion V5 models (sample Source: "NovelAI Diffusion V5 0ADF9AB7")
+    // NovelAI Diffusion V5. Live image-app chunk (2026-09-29): current full
+    // Source is "NovelAI Diffusion V5 DB276663". New V5 hashes are full.
     // JULES:#171
     if (source.includes("NovelAI Diffusion V5")) {
         switch (source) {
             case "NovelAI Diffusion V5 657484A5":
             case "NovelAI Diffusion V5 0ADF9AB7":
+            case "NovelAI Diffusion V5 DB276663":
                 return "V5";
             default:
-                return "V5_CUR";
+                return "V5";
         }
     }
     
@@ -328,6 +330,7 @@ function determineModelFromMetadata(metadata) {
             case "NovelAI Diffusion V4.5 1229B44F":
             case "NovelAI Diffusion V4.5 B9F340FD":
             case "NovelAI Diffusion V4.5 F3D95188":
+            case "NovelAI Diffusion V4.5 5BB76870":
                 return "V4_5";
             case "NovelAI Diffusion V4.5 C02D4F98":
             case "NovelAI Diffusion V4.5 5AB81C7C":
@@ -346,7 +349,7 @@ function determineModelFromMetadata(metadata) {
             case "NovelAI Diffusion V4 770A9E12":
                 return "V4_CUR";
             default:
-                return "V4_5";
+                return source.includes("V4.5") ? "V4_5" : "V4";
         }
     }
     

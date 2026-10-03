@@ -36,6 +36,10 @@
 }
 
 .director-container.director-open {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    height: min(600px, calc(100vh - 203px));
     max-height: calc(100vh - 203px);
     min-height: min(600px, calc(100vh - 203px));
     opacity: 1;
@@ -136,6 +140,8 @@
     margin-bottom: 16px;
     font-size: 24px;
     font-weight: 600;
+    justify-content: center;
+    width: 100%;
 }
 
 .director-welcome-message p {
@@ -172,12 +178,54 @@
     margin-bottom: 0;
 }
 
+.director-chat-messages:has([data-quick-start]) {
+    flex: 1 1 auto;
+    min-height: 100%;
+    justify-content: center;
+}
+
+.director-welcome-message img {
+    width: 72px;
+    height: 72px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto 12px;
+}
+
+.director-chat-messages [data-quick-start] .director-welcome-tips {
+    max-width: 520px;
+    margin: 12px auto 0;
+    padding: var(--spacing-md);
+    text-align: center;
+}
+
+.director-chat-messages [data-quick-start] .director-welcome-tips > p {
+    font-size: 0.85em;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+.director-chat-messages [data-quick-start] .btn-group-compact {
+    justify-content: center;
+}
+
+.director-chat-messages [data-quick-start] .director-welcome-message > p {
+    text-align: center;
+    margin-top: 12px;
+}
+
+.director-chat-messages [data-quick-start] .director-welcome-message > p:empty {
+    display: none;
+    margin: 0;
+}
+
 .director-content {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    /* Allow child scrolling containers to handle overflow */
     position: relative;
 }
 
@@ -186,7 +234,8 @@
 }
 
 .director-view {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
 }
@@ -281,35 +330,64 @@
 }
 
 /* Message filter positions */
-#directorMessageFilterGroup[data-filter="messages"] .gallery-toggle-slider {
+#directorMessageFilterGroup[data-filter="chat"] .gallery-toggle-slider {
     width: calc(calc(100% / 3) - 4px);
     transform: translateX(0);
     background: hsl(200deg 100% 50% / 23%);
     border-color: hsl(200deg 100% 60% / 41%);
 }
 
-#directorMessageFilterGroup[data-filter="messages"] .gallery-toggle-btn.active {
+#directorMessageFilterGroup[data-filter="chat"] .gallery-toggle-btn.active {
     color: #7fbfff;
 }
 
-#directorMessageFilterGroup[data-filter="all"] .gallery-toggle-slider {
+#directorMessageFilterGroup[data-filter="chat-tools"] .gallery-toggle-slider {
     transform: translateX(calc(100% + 2px));
     width: calc(calc(100% / 3) - 3px);
 }
 
-#directorMessageFilterGroup[data-filter="all"] .gallery-toggle-btn.active {
+#directorMessageFilterGroup[data-filter="chat-tools"] .gallery-toggle-btn.active {
     color: var(--text-accent-tinted);
 }
 
-#directorMessageFilterGroup[data-filter="quotes"] .gallery-toggle-slider {
+#directorMessageFilterGroup[data-filter="all"] .gallery-toggle-slider {
     width: calc(calc(100% / 3) - 2px);
     transform: translateX(calc(200% + 4px));
     background: hsl(110.18deg 100% 50% / 32%);
     border-color: hsl(133.41deg 100% 60% / 51.3%);
 }
 
-#directorMessageFilterGroup[data-filter="quotes"] .gallery-toggle-btn.active {
+#directorMessageFilterGroup[data-filter="all"] .gallery-toggle-btn.active {
     color: #92ff9f;
+}
+
+#directorPersonaGroup.gallery-toggle-group {
+    grid-template-columns: 1fr 1fr;
+}
+
+#directorPersonaGroup .gallery-toggle-slider {
+    width: calc(50% - 2px);
+}
+
+#directorPersonaGroup .gallery-toggle-btn {
+    min-height: 30px;
+    min-width: 52px;
+    padding: 0 8px;
+}
+
+#directorPersonaGroup[data-persona="xi"] .gallery-toggle-slider {
+    transform: translateX(100%);
+}
+
+/* Xi is a coding chat. Wren's print thumbnails, quick tasks, and browser stills stay off. */
+#directorCommonHeader[data-persona="xi"] #directorSessionPreviewContainer,
+#directorCommonHeader[data-persona="xi"] #directorHeaderActionsNewSession,
+#directorContainer[data-persona="xi"] [data-quick-start],
+#directorWindow[data-persona="xi"] [data-quick-start],
+#directorContainer[data-persona="xi"] .director-session-item > .director-session-preview,
+#directorWindow[data-persona="xi"] #directorSessionImagesPane,
+#directorWindow[data-persona="xi"] #directorBrowserPane {
+    display: none;
 }
 
 /* Header element visibility control */
@@ -321,7 +399,7 @@
 }
 
 #directorSendBtn {
-    min-width: 64px;
+    min-width: 0;
 }
 
 .director-session-preview-container {
@@ -402,6 +480,10 @@
     /* Allow flex shrinking */
 }
 
+.director-session-item[data-archived="1"] {
+    opacity: 0.72;
+}
+
 .director-session-item {
     display: flex;
     align-items: center;
@@ -420,8 +502,8 @@
 }
 
 .director-session-preview {
-    width: 72px;
-    height: 72px;
+    width: 45px;
+    height: 45px;
     border-radius: var(--border-radius-md);
     object-fit: cover;
     margin-right: 12px;
@@ -435,11 +517,28 @@
 }
 
 .director-session-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-weight: 500;
-    white-space: nowrap;
+    font-variation-settings: "wght" 500;
+}
+
+.director-session-name span {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-variation-settings: "wght" 500;
+    white-space: nowrap;
+}
+
+#directorWorkspaceBanner {
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+#directorWorkspaceBanner span {
+    flex: 1;
+    min-width: 0;
 }
 
 .director-session-date {
@@ -477,52 +576,256 @@
 }
 
 .director-chat-messages-container {
-    overflow-y: auto;
+    overflow: hidden;
     display: flex;
-    /* padding: 16px;    */
+    flex: 1;
     min-width: 100%;
-    height: 100%;
+    min-height: 0;
 }
 
 .director-chat-messages-container:not(:has(.scrollable-content)) {
     padding: 16px;
-    flex-direction: column-reverse;
+    flex-direction: column;
 }
 
 .director-chat-messages-container .scrollable-content {
-    flex-direction: column-reverse;
+    flex-direction: column;
     width: 100%;
+    height: 100%;
+    min-height: 0;
 }
 
 .director-chat-messages {
-    flex: 1;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    width: 100%;
+}
+
+/* Agent task list for the chat (set_session_tasks). Same block in the Studio
+   panel and #directorWindow because it is the same #directorSessionChat. */
+.director-task-list {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-sm);
+    background: var(--glass-layer-dark-2);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-sm);
+}
+
+.director-task-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--spacing-sm);
+    font-size: 0.85em;
+    line-height: 1.3;
+    color: var(--text-secondary);
+}
+
+.director-task-row > i {
+    flex: 0 0 auto;
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+.director-task-row[data-done="1"] {
+    color: var(--text-muted);
+    text-decoration: line-through;
+}
+
+.director-task-row[data-done="1"] > i {
+    color: #81c784;
+}
+
+#manualModal .director-chat-messages-container .custom-scrollbar,
+#manualModal .director-sessions-list .custom-scrollbar {
+    top: var(--spacing-sm);
+    height: calc(100% - (var(--spacing-sm) * 2));
+}
+
+@media (min-width: 1101px) {
+    #manualModal:not(.windowed) .form-section.form-section-scroll > .scrollable-content:has(#directorCommonHeader:not(.hidden)) {
+        padding-top: calc(var(--spacing-lg) + var(--titlebar-area-height, 0px));
+    }
+
+    .titlebar-android body:not(.desktop-mode) #manualModal .director-chat-messages-container .scrollable-content,
+    .titlebar-android body:not(.desktop-mode) #manualModal .director-sessions-list .scrollable-content {
+        padding-top: var(--spacing-md);
+    }
 }
 
 .director-message {
     display: flex;
     flex-direction: column;
     padding: 12px;
-    border-radius: 8px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-2);
     gap: var(--spacing-sm);
+    backdrop-filter: blur(14px);
+}
+
+.director-message,
+.director-message .director-message-content,
+.director-message .director-message-content *,
+.director-user-message-input,
+.director-user-message-input * {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.director-message button,
+.director-message button * {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.director-message[data-linked="1"] {
+    outline: 1px solid var(--glass-border-4);
+}
+
+.director-row-arrive {
+    animation: director-row-in 0.42s cubic-bezier(0.22, 1.25, 0.36, 1);
+}
+
+@keyframes director-row-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.86);
+    }
+    70% {
+        opacity: 1;
+        transform: scale(1.035);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.director-message.user,
+.director-message.assistant,
+.director-message.thinking,
+.director-message.tool {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
 }
 
 .director-message.user {
-    background: var(--glass-layer-2);
+    background: var(--glass-layer-3);
     color: white;
-    margin-left: 20%;
-    border: 1px solid var(--glass-border-2);
+    border: 1px solid var(--glass-border-3);
+    border-radius: 22px;
 }
 
 .director-message.assistant {
-    background: var(--glass-layer-1);
-    margin-right: 20%;
+    background: var(--glass-layer-2);
     border: 1px solid var(--glass-border-2);
     padding: var(--spacing-sm);
+    border-radius: 22px;
+}
+
+.director-message.thinking,
+.director-message.tool {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--text-muted);
+    border-radius: 0;
+    backdrop-filter: none;
+}
+
+/* Compressed log: thinking and tool rows read as a log, not as chat.
+   createTraceRow (public/scripts/comp/director.js) builds these two. */
+.director-message.thinking,
+.director-message.tool {
+    padding: 3px var(--spacing-sm);
+    gap: 2px;
+    border-radius: 5px;
+    font-size: 0.78em;
+    line-height: 1.35;
+}
+
+.director-message.thinking .director-user-message-header,
+.director-message.tool .director-user-message-header {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: var(--spacing-xs);
+    min-width: 0;
+    min-height: 0;
+    height: 1.6em;
+    overflow: hidden;
+}
+
+.director-message.thinking .director-user-message-header .btn-small,
+.director-message.tool .director-user-message-header .btn-small {
+    flex: 0 0 auto;
+    height: 1.35em;
+    min-height: 0;
+    padding: 0 6px;
+    line-height: 1;
+}
+
+.director-message.thinking .director-request-type-badge,
+.director-message.tool .director-request-type-badge {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    font-size: 1em;
+    letter-spacing: 0;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.director-message.thinking .director-expand-button,
+.director-message.tool .director-expand-button {
+    font-size: 1em;
+    padding: 0 2px;
+    margin-left: auto;
+}
+
+.director-message.thinking .director-expand-button i,
+.director-message.tool .director-expand-button i {
+    font-size: 0.9em;
+}
+
+.director-message.thinking.expanded .director-expand-button i,
+.director-message.tool.expanded .director-expand-button i {
+    transform: rotate(180deg);
+}
+
+.director-message.thinking:not(.expanded) .director-message-content {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    overflow: hidden;
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+.director-message.thinking:not(.expanded) .director-thinking-line {
+    white-space: nowrap;
+}
+
+.director-message.thinking:not(.expanded) .director-thinking-full,
+.director-message.thinking.expanded .director-thinking-line {
+    display: none;
+}
+
+.director-message.tool:not(.expanded) .director-message-content {
+    display: none;
+}
+
+.director-message.thinking.expanded .director-message-content,
+.director-message.tool.expanded .director-message-content {
+    display: block;
+    overflow: visible;
+    white-space: pre-wrap;
+    user-select: text;
 }
 
 .director-message-content {
@@ -531,6 +834,21 @@
     flex-direction: column;
     align-items: flex-start;
     gap: var(--spacing-xs);
+}
+
+.director-message.assistant .director-message-content {
+    display: block;
+}
+
+/* show_chat_image card: the picture sits in the thread, not in the session strip */
+.director-chat-image {
+    max-width: 100%;
+    max-height: 320px;
+    border-radius: var(--border-radius-md);
+    object-fit: contain;
+    background: var(--bg-secondary);
+    border: 1px solid var(--glass-border-4);
+    cursor: pointer;
 }
 
 .director-message-actions {
@@ -558,12 +876,176 @@
     font-weight: bold;
 }
 
+#directorSessionChat {
+    position: relative;
+}
+
+.director-chat-messages {
+    padding-bottom: 4em;
+}
+
+#directorSessionChat.director-composer-center .director-chat-messages {
+    padding-bottom: 4em;
+}
+
+#directorComposer {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-end;
+    width: min(720px, calc(100% - 24px));
+    height: auto;
+    transform: translateX(-50%);
+    transition: bottom 0.48s cubic-bezier(0.22, 1.2, 0.36, 1), transform 0.48s cubic-bezier(0.22, 1.2, 0.36, 1);
+    pointer-events: none;
+}
+
+#directorComposer > * {
+    pointer-events: auto;
+    flex: 0 0 auto;
+}
+
+#directorSessionChat.director-composer-center #directorComposer {
+    bottom: 50%;
+    transform: translate(-50%, 50%);
+}
+
+#directorSessionChat.director-composer-instant #directorComposer {
+    transition: none;
+}
+
 .director-chat-input {
-    padding: var(--spacing-md);
-    border-top: 1px solid var(--glass-border-1);
-    background: var(--bg-toolbar);
-    flex-shrink: 0;
-    box-shadow: 0 0 25px 0px black;
+    width: 100%;
+    flex: 0 0 auto;
+    height: auto;
+    padding: 0 4px;
+    border: 1px solid var(--glass-border-3);
+    border-radius: 1rem;
+    background: var(--glass-layer-3);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 10px 28px hsl(0 0% 0% / 28%);
+}
+
+#directorComposerWelcome {
+    width: 100%;
+    max-height: 16rem;
+    overflow: hidden;
+    opacity: 1;
+    transition: opacity 0.35s ease, max-height 0.45s ease, padding 0.45s ease;
+}
+
+#directorComposerWelcome:empty,
+#directorSessionChat:not(.director-composer-center) #directorComposerWelcome {
+    max-height: 0;
+    opacity: 0;
+    padding: 0;
+    margin: 0;
+    pointer-events: none;
+}
+
+#directorComposer .director-welcome-message {
+    max-width: none;
+    padding: 10px 12px 6px;
+}
+
+#directorComposer .director-welcome-message img {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 6px;
+}
+
+#directorComposer .director-welcome-message h3 {
+    font-size: 1.05rem;
+    margin-bottom: 8px;
+}
+
+#directorComposer .btn-group-compact {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+#directorComposer [data-task] {
+    border-radius: 999px;
+    padding: 0.2em 0.75em;
+    min-height: 0;
+}
+
+#directorComposer [data-task][data-state="on"][data-task="high-five"] {
+    background: #3d7eff;
+    border-color: #3d7eff;
+}
+
+#directorComposer [data-task][data-state="on"][data-task="optimise"] {
+    background: #2f9e62;
+    border-color: #2f9e62;
+}
+
+#directorComposer [data-task][data-state="on"][data-task="throwback"] {
+    background: #d0892d;
+    border-color: #d0892d;
+}
+
+#directorComposer [data-task][data-state="on"][data-task="vacation"] {
+    background: #1aa6b8;
+    border-color: #1aa6b8;
+}
+
+#directorComposer [data-task][data-state="on"][data-task="makeover"] {
+    background: #d45d9e;
+    border-color: #d45d9e;
+}
+
+#directorComposer [data-task][data-state="on"][data-task="friend"] {
+    background: #7a5cff;
+    border-color: #7a5cff;
+}
+
+#directorComposer [data-task][data-state="on"][data-task="walk-forward"] {
+    background: #e06a2c;
+    border-color: #e06a2c;
+}
+
+#directorComposer [data-task][data-state="on"][data-task="bbq"] {
+    background: #d3483f;
+    border-color: #d3483f;
+}
+
+#directorComposer [data-quick-note] {
+    text-align: center;
+    color: var(--text-muted);
+    margin: 8px 0 0;
+    min-height: 1.2em;
+}
+
+#directorComposer [data-quick-note]:empty {
+    display: none;
+}
+
+html.disable-blur .director-chat-input {
+    background: var(--glass-layer-2-opaque);
+    border-color: var(--glass-border-4);
+}
+
+html.disable-blur .director-attach-chip {
+    background: var(--glass-layer-3-opaque);
+}
+
+#directorHeaderActionsSessionChat #directorMessageFilterGroup {
+    display: none;
+}
+
+.director-chat-input #directorAttachDropdownBtn,
+.director-chat-input #directorChatInput,
+.director-chat-input #directorSendBtn {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
 }
 
 .director-actions-dropdown {
@@ -575,14 +1057,88 @@
 .director-input-row {
     display: flex;
     gap: 8px;
-    align-items: flex-end;
+    align-items: center;
+    width: 100%;
 }
 
-.director-input-row input,
-.director-input-row textarea {
+.director-input-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    width: 100%;
+    height: auto;
+    flex: 0 0 auto;
+    min-height: 0;
+}
+
+.director-chat-input #directorChatInput.form-control {
+    display: block;
+    flex: 1 1 auto;
+    align-self: center;
+    width: auto;
+    min-width: 0;
+    height: auto;
+    min-height: 2.25rem;
+    max-height: 7.5rem;
+    margin: 0;
+    padding: 0.4rem 0.5rem;
+    line-height: 1.35;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    resize: none;
+    box-sizing: border-box;
+    color: var(--text-primary);
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    pointer-events: auto;
+}
+
+.director-chat-input #directorChatInput::placeholder {
+    color: hsl(0 0% 100% / 48%);
+    opacity: 1;
+}
+
+.director-chat-input #directorAttachDropdownBtn,
+.director-chat-input #directorSendBtn {
+    width: 2rem;
+    height: 2rem;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border-radius: 999px;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.director-input-row textarea:not(#directorChatInput) {
     padding: 0 0.5em;
     flex: 1;
     min-width: 0;
+}
+
+#directorAttachDropdown.custom-dropdown {
+    flex: 0 0 auto;
+    width: auto;
+    align-self: center;
+}
+
+#directorAttachDropdown .custom-dropdown-btn {
+    width: auto;
+    min-width: 32px;
+    padding: 0.4em 0.55em;
+    justify-content: center;
+}
+
+.director-chat-input #directorAttachDropdownBtn.custom-dropdown-btn {
+    width: 2rem;
+    height: 2rem;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
 }
 
 .director-typing-indicator {
@@ -949,9 +1505,9 @@
 /* Director Message Actions Flex Layout */
 .director-message-actions {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
 }
 
 .director-message-indicators {
@@ -2000,12 +2556,28 @@
 .director-message-content code,
 .director-message-primary-focus code,
 .director-message-issues code {
+    display: inline;
     background: var(--bg-quaternary, #333);
     color: var(--primary-color, #ff4500);
     padding: 2px 4px;
     border-radius: 3px;
     font-family: monospace;
     font-size: 0.9em;
+}
+
+.director-message-content pre,
+.director-message-primary-focus pre,
+.director-message-issues pre {
+    display: block;
+    white-space: pre-wrap;
+    margin: 8px 0;
+}
+
+.director-message-content pre code,
+.director-message-primary-focus pre code,
+.director-message-issues pre code {
+    display: block;
+    white-space: pre-wrap;
 }
 
 .director-message-content a,
@@ -2179,4 +2751,453 @@
 
 #directorFeedbackModal {
     width: 500px;
+}
+
+#directorAttachChips:empty {
+    display: none;
+}
+
+#directorAttachChips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    width: 100%;
+    padding: 0 2px 6px;
+}
+
+.director-attach-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    padding: 2px 2px 2px 4px;
+    border-radius: 999px;
+    border: 1px solid var(--glass-border-3);
+    background: var(--glass-layer-4);
+    backdrop-filter: blur(12px);
+}
+
+.director-attach-chip .btn-secondary {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    min-width: 0;
+    min-height: 0;
+    height: 1.6rem;
+    width: 1.6rem;
+    padding: 0;
+}
+
+.director-attach-chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 16em;
+}
+
+#directorAttachChips .director-attach-chip {
+    position: relative;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    max-width: 36px;
+    flex: 0 0 auto;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 50%;
+}
+
+#directorAttachChips .director-attach-chip .director-session-preview {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+#directorAttachChips .director-attach-chip > i {
+    font-size: 0.95rem;
+    pointer-events: none;
+}
+
+#directorAttachChips .director-attach-chip .btn-secondary {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border-radius: 50%;
+    opacity: 0;
+    background: hsl(0 0% 0% / 55%);
+    color: white;
+}
+
+#directorAttachChips .director-attach-chip:hover .btn-secondary,
+#directorAttachChips .director-attach-chip:focus-within .btn-secondary {
+    opacity: 1;
+}
+
+.director-message .director-message-actions[data-prints] {
+    flex-wrap: wrap;
+}
+
+.director-message .director-attach-chip .director-session-preview,
+.director-attach-chip .director-session-preview,
+#directorAttachDropdownMenu .director-session-preview {
+    width: 36px;
+    height: 36px;
+    margin-right: 0;
+    flex: 0 0 auto;
+}
+
+#directorAttachDropdownMenu .custom-dropdown-option > span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+}
+
+#directorUsageDisplay,
+#directorContextDisplay {
+    height: 32px;
+}
+
+.director-live-turn {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+}
+
+#directorHistoryWindow {
+    flex-direction: column;
+}
+
+#directorHistoryWindow .modal-content {
+    flex: 1 1 auto;
+    flex-direction: row;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+}
+
+#directorHistoryWindow .director-history-list {
+    flex: 0 0 260px;
+    min-height: 0;
+    border-right: 1px solid var(--glass-border-3);
+}
+
+#directorHistoryWindow .director-history-reader {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
+#directorHistoryWindow .director-history-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+    width: 100%;
+    text-align: left;
+    white-space: normal;
+}
+
+#directorHistoryWindow .director-history-item[data-selected="1"] {
+    background: var(--glass-layer-3);
+}
+
+#directorHistoryWindow .director-history-preview {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+#directorHistoryWindow .director-history-text {
+    white-space: pre-wrap;
+    width: 100%;
+    user-select: text;
+}
+
+/* Director desktop window (#directorWindow): hosts the same #directorCommonHeader / #directorContainer as Studio */
+#directorWindow {
+    flex-direction: column;
+}
+
+#directorWindow .modal-content {
+    flex: 1 1 auto;
+    flex-direction: row;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+}
+
+#directorWindow .director-window-chat {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    min-width: 0;
+    min-height: 0;
+    padding: var(--spacing-sm);
+    /* Wide-layout switch below measures this column, not the viewport. */
+    container-type: inline-size;
+    container-name: director-window;
+}
+
+#directorCommonHeader {
+    container-type: inline-size;
+    container-name: director-header;
+}
+
+/* Model, reasoning, and fast. Shown left of the tools menu only in #directorWindow.
+   Studio keeps those rows in the tools menu (director.js toolsMenuConfig). */
+#directorModelPick {
+    display: none;
+}
+
+#directorWindow #directorModelPick {
+    display: flex;
+}
+
+@container director-header (max-width: 860px) {
+    #directorWindow #directorCommonHeader #directorModelPick {
+        display: none;
+    }
+}
+
+@container director-header (max-width: 640px) {
+    #directorCommonHeader #directorMessageFilterGroup {
+        display: none;
+    }
+}
+
+#directorSessionList > .director-header::before {
+    content: 'Sessions';
+    font-weight: 600;
+    font-size: 16px;
+}
+
+#directorSessionList > .director-header:has(#directorPersonaGroup:not(.hidden))::before {
+    content: none;
+}
+
+#directorCommonHeader .director-header-center {
+    justify-content: flex-start;
+    gap: var(--spacing-sm);
+}
+
+#directorCommonHeader .director-header-center h3 {
+    width: auto;
+    flex: 0 1 auto;
+}
+
+#directorWindow #directorModelPick .uc-boxes {
+    gap: 3px;
+}
+
+#directorWindow #directorModelPick .uc-box {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+
+#directorWindow #directorModelPick .uc-box.on {
+    background: #ffffff;
+    box-shadow: 0 0 5px 0 rgb(255 170 54);
+}
+
+/* Wide window: the session list is a static left panel and the hamburger is gone.
+   Director.staticSessionPanel (public/scripts/comp/director.js) reads
+   --director-static-sessions so the breakpoint stays in this file. */
+@container director-window (min-width: 900px) {
+    #directorWindow .director-container {
+        --director-static-sessions: 1;
+    }
+
+    #directorWindow #directorMenuBtn {
+        display: none;
+    }
+
+    #directorWindow #directorSessionList > .director-header {
+        display: flex;
+    }
+
+    #directorWindow .director-content {
+        flex-direction: row;
+    }
+
+    #directorWindow .director-session-overlay,
+    #directorWindow .director-session-overlay.hidden {
+        display: flex !important;
+        position: relative;
+        transform: none;
+        flex: 0 0 260px;
+        width: 260px;
+        height: auto;
+        border-right-width: 1px;
+        box-shadow: none;
+        z-index: auto;
+        transition: none;
+    }
+
+    #directorWindow .director-view {
+        min-width: 0;
+    }
+}
+
+/* Session prints, newest first (#directorSessionImagesPane in public/app.html) */
+#directorWindow .director-session-images-pane {
+    position: relative;
+    flex: 0 0 auto;
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border-left: 1px solid var(--glass-border-3);
+    background: rgb(0 0 0 / 28%);
+    overflow: visible;
+}
+
+#directorSessionImagesToggle {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    min-width: 22px;
+    min-height: 48px;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+#directorWindow .director-session-images-pane:hover #directorSessionImagesToggle,
+#directorWindow .director-session-images-pane:focus-within #directorSessionImagesToggle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#directorWindow .director-session-images-pane.is-collapsed {
+    flex: 0 0 0;
+    width: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    overflow: visible;
+}
+
+#directorWindow .director-session-images-pane.is-collapsed::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 36px;
+    height: 100%;
+    transform: translateX(-8px);
+}
+
+#directorWindow .director-session-images-pane.is-collapsed #directorSessionImagesToggle {
+    left: auto;
+    right: 8px;
+}
+
+#directorWindow .director-session-images-pane.is-collapsed #directorSessionImages {
+    display: none;
+}
+
+#directorWindow .director-session-images {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    /* 96px thumb, then the same gap used between thumbs, then the 8px scrollbar */
+    width: calc(96px + var(--spacing-xs) + 8px);
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+#directorWindow #directorSessionImages .scrollable-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    align-items: flex-start;
+    padding: var(--spacing-sm);;
+}
+
+#directorWindow .director-session-images .director-session-preview {
+    width: 96px;
+    height: 96px;
+    margin: 0;
+    flex: 0 0 auto;
+}
+
+#directorWindow .director-session-images .director-session-preview.pending {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+#directorWindow .director-container.director-open,
+#directorWindow .director-container.director-closed {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    opacity: 1;
+    transition: none;
+}
+
+#directorWindow .director-browser-pane {
+    flex: 0 0 38%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 0;
+    padding: var(--spacing-sm);
+    border-left: 1px solid var(--glass-border-3);
+    background: rgb(0 0 0 / 28%);
+}
+
+#directorWindow .director-browser-preview {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: var(--border-radius-sm);
+}
+
+/* #directorTrayIcon states, same shape as .runpod-tray-icon / .search-indexing-indicator
+   (public/css/desktop-shell.css). Idle keeps the default tray colour. */
+.director-tray-icon {
+    color: var(--text-secondary);
+}
+
+.director-tray-icon.working i {
+    color: #64b5f6;
+    animation: pulse-generation 1.5s ease-in-out infinite;
+}
+
+.director-tray-icon.interrupted i {
+    color: #ffb74d;
+}
+
+.director-tray-icon.failed i {
+    color: #e57373;
+}
+
+.director-tray-icon.offline {
+    opacity: 0.45;
+}
+
+.director-tray-icon.offline i {
+    color: #e57373;
 }

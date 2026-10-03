@@ -1,0 +1,15 @@
+{
+  "name": "grimoire-browser",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remote Chromium for Grimoire. Dreamscape iframes this service, not the target site.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "puppeteer-core": "23.11.1",
+    "sharp": "0.33.5",
+    "ws": "^8.18.3"
+  }
+}

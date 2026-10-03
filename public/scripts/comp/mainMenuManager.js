@@ -255,8 +255,13 @@ function setupMainMenuContextMenus() {
                 icons: [
                     {
                         icon: 'fa-regular fa-chevron-double-up',
-                        text: 'Jump to Top',
+                        tooltip: 'Jump to Top',
                         action: 'jump-to-top'
+                    },
+                    {
+                        icon: 'fa-regular fa-arrows-rotate',
+                        tooltip: 'Refresh Gallery',
+                        action: 'refresh-gallery'
                     },
                     {
                         icon: (target) => {
@@ -711,7 +716,7 @@ function setupMainMenuContextMenus() {
                     },
                     {
                         icon: 'fa-regular fa-window-alt',
-                        tooltip: 'Melaton Desktop',
+                        tooltip: 'MeletonFX Desktop',
                         action: 'toggle-gallery-window',
                         hidden: () => document.body.classList.contains('desktop-mode'),
                         hideOnBreakpoint: "mobile"
@@ -771,6 +776,11 @@ function setupMainMenuContextMenus() {
             case 'jump-to-top':
                 displayGalleryFromStartIndex(0);
                 window.scrollTo(0, { behavior: 'instant' });
+                break;
+            case 'refresh-gallery':
+                // invalidateGalleryImagesSyncState — public/scripts/comp/galleryImagesLoad.js
+                invalidateGalleryImagesSyncState();
+                await switchGalleryView(currentGalleryView, true);
                 break;
             case 'open-jump-index':
                 if (typeof window.openGalleryJumpIndexToolWindow === 'function') {

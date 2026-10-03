@@ -18,6 +18,8 @@ const metadataWriteQueue = {
     hotImages: new Map(),
     hotGalleryOwnership: new Map(),
     removedGalleryOwnership: new Set(),
+    epochs: new Map(),
+    gates: new Map(),
 
     galleryKey(filename, workspaceId, bucket) {
         return `${filename}\0${workspaceId}\0${bucket || 'files'}`;
@@ -226,10 +228,89 @@ const metadataWriteQueue = {
         return rows;
     },
 
+    bumpEpoch(filename) {
+        if (!filename) return 0;
+        const next = (this.epochs.get(filename) || 0) + 1;
+        this.epochs.set(filename, next);
+        return next;
+    },
+
+    isCurrentEpoch(filename, epoch) {
+        if (!filename) return true;
+        return this.epochs.get(filename) === epoch;
+    },
+
+    getEpoch(filename) {
+        return this.epochs.get(filename);
+    },
+
+    dropPendingForFilename(filename) {
+        if (!filename) return;
+        const keep = (job) => job.filename !== filename;
+        this.queue = this.queue.filter(keep);
+        this.backgroundQueue = this.backgroundQueue.filter(keep);
+    },
+
+    async withFilenameGates(filenames, fn) {
+        const unique = [];
+        const seen = new Set();
+        for (const filename of filenames || []) {
+            if (!filename || seen.has(filename)) continue;
+            seen.add(filename);
+            unique.push(filename);
+        }
+        if (!unique.length) return fn();
+        const held = [];
+        try {
+            for (const filename of unique) {
+                const prev = this.gates.get(filename) || Promise.resolve();
+                let release;
+                const done = new Promise((resolve) => {
+                    release = resolve;
+                });
+                const tail = prev.catch(() => {}).then(() => done);
+                this.gates.set(filename, tail);
+                await prev.catch(() => {});
+                held.push({ filename, release, tail });
+            }
+            return await fn();
+        } finally {
+            for (let i = held.length - 1; i >= 0; i--) {
+                const { filename, release, tail } = held[i];
+                release();
+                if (this.gates.get(filename) === tail) {
+                    this.gates.delete(filename);
+                }
+            }
+        }
+    },
+
+    async withFilenameGate(filename, fn) {
+        if (!filename) return fn();
+        const prev = this.gates.get(filename) || Promise.resolve();
+        let release;
+        const done = new Promise((resolve) => {
+            release = resolve;
+        });
+        const tail = prev.catch(() => {}).then(() => done);
+        this.gates.set(filename, tail);
+        await prev.catch(() => {});
+        try {
+            return await fn();
+        } finally {
+            release();
+            if (this.gates.get(filename) === tail) {
+                this.gates.delete(filename);
+            }
+        }
+    },
+
     enqueue(taskFn, label, hooks = {}) {
         this.queue.push({
             taskFn,
             label: label || 'task',
+            filename: hooks.filename || null,
+            epoch: hooks.epoch,
             onSuccess: hooks.onSuccess || null,
             onFailure: hooks.onFailure || null
         });
@@ -243,6 +324,8 @@ const metadataWriteQueue = {
         this.backgroundQueue.push({
             taskFn,
             label: label || 'background',
+            filename: hooks.filename || null,
+            epoch: hooks.epoch,
             onSuccess: hooks.onSuccess || null,
             onFailure: hooks.onFailure || null
         });
@@ -280,7 +363,11 @@ const metadataWriteQueue = {
     async drainLoop() {
         let job = this.takeNextJob();
         while (job) {
-            const { taskFn, label, onSuccess, onFailure } = job;
+            const { taskFn, label, filename, epoch, onSuccess, onFailure } = job;
+            if (filename && epoch != null && !this.isCurrentEpoch(filename, epoch)) {
+                job = this.takeNextJob();
+                continue;
+            }
             let lastError = null;
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {

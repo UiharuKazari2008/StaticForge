@@ -16,17 +16,17 @@ const EMPHASIS_BRACE_WEAKEN_FACTOR = 1 / EMPHASIS_BRACE_STRENGTHEN_FACTOR;
 const EMPHASIS_BRACE_LEVEL_MAX = 24;
 
 function createEmphasisTraditionalPattern() {
-    return new RegExp(`(${EMPHASIS_WEIGHT_PART})::(.+?)::`, 'g');
+    return new RegExp(`(${EMPHASIS_WEIGHT_PART})\\s*::(.+?)::`, 'g');
 }
 
 function createEmphasisAutoTerminatingPattern() {
-    return new RegExp(`(${EMPHASIS_WEIGHT_PART})::(.+?)(?=\\s*${EMPHASIS_WEIGHT_PART}::|$)`, 'g');
+    return new RegExp(`(${EMPHASIS_WEIGHT_PART})\\s*::(.+?)(?=\\s*${EMPHASIS_WEIGHT_PART}\\s*::|$)`, 'g');
 }
 
-const EMPHASIS_NEXT_GROUP_PATTERN = new RegExp(`(?:,\\s*|\\s+)${EMPHASIS_WEIGHT_PART}::`);
+const EMPHASIS_NEXT_GROUP_PATTERN = new RegExp(`(?:,\\s*|\\s+)(${EMPHASIS_WEIGHT_PART})\\s*::`);
 /** Shared opener scan — advance lastIndex past each block; do not construct per group. */
-const EMPHASIS_WEIGHT_OPEN_PATTERN = new RegExp(`${EMPHASIS_WEIGHT_PART}::`, 'g');
-const EMPHASIS_NEXT_GROUP_WEIGHT_AT_PATTERN = /^(?:,\s*|\s+)(-?\d+(?:\.\d+)?)::/;
+const EMPHASIS_WEIGHT_OPEN_PATTERN = new RegExp(`(${EMPHASIS_WEIGHT_PART})\\s*::`, 'g');
+const EMPHASIS_NEXT_GROUP_WEIGHT_AT_PATTERN = /^(?:,\s*|\s+)(-?\d+(?:\.\d+)?)\s*::/;
 
 /** Parse emphasis blocks without treating the next group's weight:: as this block's closing ::. */
 function listEmphasisBlocks(value) {
@@ -39,7 +39,7 @@ function listEmphasisBlocks(value) {
         if (!open) break;
 
         const start = open.index;
-        const weightStr = open[0].slice(0, -2);
+        const weightStr = open[1];
         const contentStart = start + open[0].length;
         const tail = value.substring(contentStart);
 
@@ -92,8 +92,8 @@ function listEmphasisBlocks(value) {
 }
 
 function parseEmphasisBlockSpan(blockText) {
-    const traditional = new RegExp(`^(${EMPHASIS_WEIGHT_PART})::(.+)::$`);
-    const autoTerminating = new RegExp(`^(${EMPHASIS_WEIGHT_PART})::(.+)$`);
+    const traditional = new RegExp(`^(${EMPHASIS_WEIGHT_PART})\\s*::(.+)::$`);
+    const autoTerminating = new RegExp(`^(${EMPHASIS_WEIGHT_PART})\\s*::(.+)$`);
     const tradMatch = blockText.match(traditional);
     if (tradMatch) {
         return {

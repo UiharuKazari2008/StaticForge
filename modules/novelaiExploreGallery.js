@@ -1039,6 +1039,9 @@ async function getExploreGallery(options = {}) {
     const sort = normalizeSort(options.sort);
     const period = normalizePeriod(options.period);
     const search = (options.search || '').trim();
+    const model = (options.model || '').trim().toLowerCase();
+    const aspect = (options.aspect || '').trim().toLowerCase();
+    const vt = (options.vt || '').trim().toLowerCase();
     const creatorId = (options.creatorId || '').trim();
     const limit = Math.min(Math.max(parseInt(options.limit, 10) || PAGE_LIMIT, 1), PAGE_LIMIT);
 
@@ -1054,6 +1057,9 @@ async function getExploreGallery(options = {}) {
         sort: creatorId ? 'new' : sort,
         period,
         search,
+        model,
+        aspect,
+        vt,
         creatorId
     };
 
@@ -1137,11 +1143,13 @@ async function getExploreGallery(options = {}) {
         fetchRawPage
     });
 
-    // Gentle thumb prefetch (do not block response)
-    const ids = collected.results.map((r) => r.id);
-    setTimeout(() => {
-        prefetchThumbnails(ids, apiKey, apiKeyManager).catch(() => {});
-    }, 0);
+    // Gentle thumb prefetch (do not block response). Studio feed warms thumbs once itself.
+    if (!options.skipThumbPrefetch) {
+        const ids = collected.results.map((r) => r.id);
+        setTimeout(() => {
+            prefetchThumbnails(ids, apiKey, apiKeyManager).catch(() => {});
+        }, 0);
+    }
 
     const now = Date.now();
     return {
@@ -1414,6 +1422,203 @@ async function uploadExploreImage(filename, title, options = {}) {
     };
 }
 
+/** Studio empty-state Explorer: Top for Week, then Month posts not already in that week list. */
+const STUDIO_EXPLORE_PAGES = 3;
+const STUDIO_EXPLORE_REFRESH_MS = 12 * 60 * 60 * 1000;
+const STUDIO_FEED_FILE = 'studio_explore_feed.json';
+const STUDIO_FEED_KIND = 'top-week-month';
+
+let studioFeedRefreshPromise = null;
+let studioFeedTimer = null;
+let studioFeedScheduleStarted = false;
+
+function studioFeedPath() {
+    if (!pageCacheDir) return null;
+    return path.join(pageCacheDir, STUDIO_FEED_FILE);
+}
+
+function thumbExtById(ids) {
+    const wanted = new Set(ids);
+    const map = new Map();
+    if (!imageCacheDir || !wanted.size) return map;
+    let names = [];
+    try {
+        names = fs.readdirSync(imageCacheDir);
+    } catch {
+        return map;
+    }
+    names.forEach((name) => {
+        const match = /^thumb_([0-9a-fA-F-]{36})(\.[a-zA-Z0-9]+)?$/.exec(name);
+        if (!match || !wanted.has(match[1])) return;
+        if (!map.has(match[1])) map.set(match[1], match[2] || '');
+    });
+    return map;
+}
+
+function slimStudioExploreItem(row, ext) {
+    if (!row || !row.id) return null;
+    const item = {
+        id: String(row.id),
+        title: row.title || '',
+        thumbnailUrl: publicThumbUrl(row.id, ext || ''),
+        width: row.width || row.image?.width || null,
+        height: row.height || row.image?.height || null,
+        creatorName: row.creatorName || row.creator?.name || ''
+    };
+    if (row.period === 'week' || row.period === 'month') item.period = row.period;
+    return item;
+}
+
+function readStudioExploreFeed() {
+    const filePath = studioFeedPath();
+    if (!filePath || !fs.existsSync(filePath)) return null;
+    try {
+        const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        const rows = Array.isArray(raw.results) ? raw.results : [];
+        const exts = thumbExtById(rows.map((row) => row && row.id).filter(Boolean));
+        const results = rows.map((row) => slimStudioExploreItem(row, exts.get(String(row.id)) || '')).filter(Boolean);
+        return {
+            results,
+            refreshedAt: raw.refreshedAt || null,
+            pageCount: raw.pageCount || STUDIO_EXPLORE_PAGES,
+            feedKind: raw.feedKind || null
+        };
+    } catch (e) {
+        console.warn('novelaiExploreGallery: studio feed read failed', e.message);
+        return null;
+    }
+}
+
+function writeStudioExploreFeed(payload) {
+    const filePath = studioFeedPath();
+    if (!filePath) return;
+    try {
+        const part = `${filePath}.part`;
+        fs.writeFileSync(part, JSON.stringify(payload));
+        fs.renameSync(part, filePath);
+    } catch (e) {
+        console.warn('novelaiExploreGallery: studio feed write failed', e.message);
+    }
+}
+
+function studioFeedIsCurrent(feed) {
+    return Boolean(feed && feed.feedKind === STUDIO_FEED_KIND && feed.results && feed.results.length);
+}
+
+async function appendStudioExplorePeriod(period, options, seen, merged) {
+    let pageError = null;
+    for (let page = 1; page <= STUDIO_EXPLORE_PAGES; page++) {
+        try {
+            const data = await getExploreGallery({
+                sort: 'top',
+                period,
+                page,
+                limit: PAGE_LIMIT,
+                forceRefresh: true,
+                skipThumbPrefetch: true,
+                getApiKey: options.getApiKey,
+                apiKey: options.apiKey,
+                apiKeyManager: options.apiKeyManager
+            });
+            (data.results || []).forEach((row) => {
+                if (!row?.id || seen.has(row.id)) return;
+                seen.add(row.id);
+                const slim = slimStudioExploreItem(row, '');
+                if (!slim) return;
+                slim.period = period;
+                merged.push(slim);
+            });
+        } catch (e) {
+            pageError = e;
+            console.warn(`novelaiExploreGallery: studio feed ${period} page ${page} failed`, e.message);
+            break;
+        }
+    }
+    return pageError;
+}
+
+async function refreshStudioExploreFeed(options = {}) {
+    if (studioFeedRefreshPromise) return studioFeedRefreshPromise;
+    studioFeedRefreshPromise = (async () => {
+        const merged = [];
+        const seen = new Set();
+        const weekError = await appendStudioExplorePeriod('week', options, seen, merged);
+        const monthError = await appendStudioExplorePeriod('month', options, seen, merged);
+        if (!merged.length) {
+            throw weekError || monthError || new Error('Studio Explorer feed is empty');
+        }
+        const payload = {
+            refreshedAt: Date.now(),
+            pageCount: STUDIO_EXPLORE_PAGES,
+            feedKind: STUDIO_FEED_KIND,
+            results: merged
+        };
+        writeStudioExploreFeed(payload);
+        const ids = merged.map((row) => row.id);
+        setTimeout(() => {
+            resolveExploreApiKey(options).then(({ apiKey, apiKeyManager }) => {
+                prefetchThumbnails(ids, apiKey, apiKeyManager).catch(() => {});
+            }).catch((e) => {
+                console.warn('novelaiExploreGallery: studio thumb prefetch skipped', e.message);
+            });
+        }, 0);
+        const weekCount = merged.filter((row) => row.period === 'week').length;
+        const monthCount = merged.filter((row) => row.period === 'month').length;
+        console.log(`✓ Studio Explorer feed cached (${merged.length} posts, top week ${weekCount} + month ${monthCount})`);
+        return readStudioExploreFeed() || payload;
+    })().finally(() => {
+        studioFeedRefreshPromise = null;
+    });
+    return studioFeedRefreshPromise;
+}
+
+async function getStudioExploreFeed(options = {}) {
+    const existing = readStudioExploreFeed();
+    if (!studioFeedRefreshPromise && !studioFeedIsCurrent(existing)) {
+        refreshStudioExploreFeed(options).catch((e) => {
+            console.warn('novelaiExploreGallery: studio feed refresh failed', e.message);
+        });
+    }
+    if (studioFeedRefreshPromise) {
+        try {
+            await studioFeedRefreshPromise;
+        } catch (e) {
+            if (existing && existing.results.length) {
+                return { ...existing, fromCache: true, error: e.message };
+            }
+            throw e;
+        }
+        const fresh = readStudioExploreFeed();
+        if (fresh && fresh.results.length) return { ...fresh, fromCache: false };
+    }
+    if (existing && existing.results.length) return { ...existing, fromCache: true };
+    const after = readStudioExploreFeed();
+    if (after) return { ...after, fromCache: false };
+    return { results: [], refreshedAt: null, pageCount: STUDIO_EXPLORE_PAGES, feedKind: null, fromCache: false };
+}
+
+function startStudioExploreFeedSchedule() {
+    if (studioFeedScheduleStarted) return;
+    studioFeedScheduleStarted = true;
+    const run = () => {
+        refreshStudioExploreFeed().catch((e) => {
+            console.warn('novelaiExploreGallery: studio feed refresh failed', e.message);
+            const retry = setTimeout(() => {
+                refreshStudioExploreFeed().catch((err) => {
+                    console.warn('novelaiExploreGallery: studio feed retry failed', err.message);
+                });
+            }, 30000);
+            if (retry.unref) retry.unref();
+        });
+    };
+    // After listen. A refresh started inside boot init times out while the event loop is busy.
+    const bootTimer = setTimeout(run, 60000);
+    if (bootTimer.unref) bootTimer.unref();
+    studioFeedTimer = setInterval(run, STUDIO_EXPLORE_REFRESH_MS);
+    if (studioFeedTimer.unref) studioFeedTimer.unref();
+    console.log('✓ Studio Explorer feed scheduled (boot + 12h, top week then month)');
+}
+
 function clearExploreGalleryCache(options = {}) {
     memoryCache.clear();
     let clearedPages = 0;
@@ -1446,6 +1651,12 @@ function clearExploreGalleryCache(options = {}) {
         }
     }
 
+    setTimeout(() => {
+        refreshStudioExploreFeed().catch((e) => {
+            console.warn('novelaiExploreGallery: studio feed refresh after clear failed', e.message);
+        });
+    }, 0);
+
     return { cleared: true, clearedPages, clearedImages };
 }
 
@@ -1472,6 +1683,8 @@ module.exports = {
     initNovelaiExploreGallery,
     setApiKeyResolver,
     getExploreGallery,
+    getStudioExploreFeed,
+    startStudioExploreFeedSchedule,
     getExploreLikedGallery,
     getExploreUserSelf,
     getExplorePost,

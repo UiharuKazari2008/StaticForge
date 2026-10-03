@@ -10,6 +10,20 @@
 
 let dynamicGenerationUIWired = false;
 let dynamicGenContextMenuActionWired = false;
+let rentanSystemMenuConfig = null;
+
+function getRentanSystemSubmenuItems() {
+    if (!rentanSystemMenuConfig || !Array.isArray(rentanSystemMenuConfig.sections)) {
+        return [{ text: 'Rentan is still starting', disabled: true }];
+    }
+    const items = [];
+    rentanSystemMenuConfig.sections.forEach((section) => {
+        if (!section || section.type === 'custom' || !Array.isArray(section.items)) return;
+        if (items.length) items.push({ separator: true });
+        items.push.apply(items, section.items);
+    });
+    return items.length ? items : [{ text: 'No Rentan options', disabled: true }];
+}
 
 function initDynamicCarousel() {
     if (!dynamicCarousel || dynamicCarousel._dynGenCarouselWired) return;
@@ -944,6 +958,8 @@ function setupDynamicGenerationContextMenus() {
             ]
         }]
     };
+
+    rentanSystemMenuConfig = lockMenuConfig;
 
     // Attach context menus to buttons
     contextMenu.attachToElement(document.getElementById('todBtn'), todMenuConfig);

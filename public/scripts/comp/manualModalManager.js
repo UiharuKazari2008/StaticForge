@@ -359,6 +359,33 @@ function addSeedToHistory(seed) {
 /**
  * Creates the context menu configuration for generate button (per-stage generation)
  */
+function getGenerateStageMenuItems() {
+    const items = [];
+    const pipelineStages = getPipelineStages();
+    const totalCount = pipelineStages.length + 1;
+
+    for (let stageIndex = 0; stageIndex < totalCount; stageIndex++) {
+        const label = getPipelineStageMenuLabel(stageIndex);
+        let subtext = '';
+        if (stageIndex > 0) {
+            const stageData = pipelineStages[stageIndex - 1];
+            if (stageRequiresChaining(stageData)) {
+                subtext = canUseSavedStageData(stageIndex) ? 'uses saved' : 'runs from base';
+            } else {
+                subtext = 'direct';
+            }
+        }
+        items.push({
+            icon: label.icon,
+            text: label.text,
+            subtext: subtext || undefined,
+            action: `generate-stage-${stageIndex}`,
+            disabled: !!window.isGenerating
+        });
+    }
+    return items;
+}
+
 function getGenerateButtonContextMenuConfig() {
     return {
         sections: [
@@ -370,30 +397,7 @@ function getGenerateButtonContextMenuConfig() {
                     return !stages || stages.length === 0;
                 },
                 initfn: function (section) {
-                    const items = [];
-                    const pipelineStages = getPipelineStages();
-                    const totalCount = pipelineStages.length + 1;
-
-                    for (let stageIndex = 0; stageIndex < totalCount; stageIndex++) {
-                        const label = getPipelineStageMenuLabel(stageIndex);
-                        let subtext = '';
-                        if (stageIndex > 0) {
-                            const stageData = pipelineStages[stageIndex - 1];
-                            if (stageRequiresChaining(stageData)) {
-                                subtext = canUseSavedStageData(stageIndex) ? 'uses saved' : 'runs from base';
-                            } else {
-                                subtext = 'direct';
-                            }
-                        }
-                        items.push({
-                            icon: label.icon,
-                            text: label.text,
-                            subtext: subtext || undefined,
-                            action: `generate-stage-${stageIndex}`,
-                            disabled: !!window.isGenerating
-                        });
-                    }
-                    section.items = items;
+                    section.items = getGenerateStageMenuItems();
                 }
             },
             // getImageGenerationGenerateMenuSections: public/scripts/comp/imageGenerationSettings.js
@@ -415,36 +419,31 @@ function handleGenerateButtonContextMenuAction(action, target, item) {
 /**
  * Creates the context menu configuration for sprout seed button
  */
+function getRecentSeedMenuItems() {
+    if (manualSeedHistory.length === 0) {
+        return [{
+            icon: 'fas fa-seedling',
+            text: 'No seed available',
+            action: 'no-history',
+            disabled: true
+        }];
+    }
+    return manualSeedHistory.slice().reverse().map((seed) => ({
+        icon: 'fas fa-seedling',
+        text: seed.toString(),
+        action: `select-seed-${seed}`
+    }));
+}
+
 function getSproutSeedContextMenuConfig() {
     return {
         sections: [
             {
                 type: 'list',
                 title: 'Recent Seeds',
-                items: [], // Will be populated dynamically by loadfn
-                initfn: function (section, target) {
-                    // Generate items dynamically when menu opens
-                    const items = [];
-
-                    if (manualSeedHistory.length === 0) {
-                        items.push({
-                            icon: 'fas fa-seedling',
-                            text: 'No seed available',
-                            action: 'no-history',
-                            disabled: true
-                        });
-                    } else {
-                        // Display seeds (oldest first, so reverse the array)
-                        manualSeedHistory.slice().reverse().forEach((seed, index) => {
-                            items.push({
-                                icon: 'fas fa-seedling',
-                                text: seed.toString(),
-                                action: `select-seed-${seed}`
-                            });
-                        });
-                    }
-
-                    section.items = items;
+                items: [],
+                initfn: function (section) {
+                    section.items = getRecentSeedMenuItems();
                 }
             }
         ],
@@ -583,6 +582,11 @@ function createManualPreviewImageContextMenuConfig() {
                         action: 'copy-lookback'
                     },
                     {
+                        icon: 'fas fa-clapperboard',
+                        text: 'Ask Wren',
+                        action: 'ask-wren'
+                    },
+                    {
                         separator: true,
                         hidden: () => !document.body.classList.contains('desktop-mode')
                     },
@@ -639,6 +643,63 @@ function isManualPreviewContextTarget(target) {
     return !!(target.classList && target.classList.contains('manual-preview-image-container'));
 }
 
+function applyImageAsVariationBase(image) {
+    if (!image) {
+        showGlassToast('error', 'Variation Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+        return;
+    }
+    const filename = image.original || image.filename || image.upscaled;
+    if (!filename) {
+        showGlassToast('error', 'Variation Failed', 'No image found', false, undefined, '<i class="fas fa-image-slash"></i>');
+        return;
+    }
+    const source = `file:${filename}`;
+    const previewUrl = localGalleryImageUrl(filename);
+
+    window.uploadedImageData = {
+        image_source: source,
+        width: 0,
+        height: 0,
+        bias: 2,
+        isBiasMode: true,
+        isClientSide: false
+    };
+
+    const tempImg = new Image();
+    tempImg.onload = () => {
+        window.uploadedImageData.width = tempImg.width;
+        window.uploadedImageData.height = tempImg.height;
+        updateImageBiasOrientation();
+    };
+    tempImg.onerror = () => {
+        console.warn('Failed to load image dimensions, using defaults');
+        window.uploadedImageData.width = 512;
+        window.uploadedImageData.height = 512;
+        updateImageBiasOrientation();
+    };
+    tempImg.src = previewUrl;
+
+    releaseVariationImageSrc();
+    variationImage.src = previewUrl;
+    variationImage.classList.remove('hidden');
+
+    if (manualStrengthValue) manualStrengthValue.value = '0.8';
+    if (manualNoiseValue) manualNoiseValue.value = '0.1';
+
+    updatePercentageOverlays();
+
+    if (transformationRow) {
+        transformationRow.classList.add('display-image');
+    }
+    document.getElementById('manualImg2ImgGroup').classList.remove('hidden');
+
+    updateInpaintButtonState();
+    renderImageBiasDropdown('2');
+
+    updateUploadDeleteButtonVisibility();
+    hideManualPreviewResponsive();
+}
+
 async function handleManualPreviewImageContextMenuAction(event) {
     const { action, target, item } = event.detail;
 
@@ -661,73 +722,7 @@ async function handleManualPreviewImageContextMenuAction(event) {
 
     switch (action) {
         case 'load-base-image':
-            if (window.currentManualPreviewImage) {
-                // For preview, only set the base image without replacing dialog contents
-                const filename = window.currentManualPreviewImage.original;
-                if (filename) {
-                    const source = `file:${filename}`;
-                    const previewUrl = localGalleryImageUrl(filename);
-
-                    window.uploadedImageData = {
-                        image_source: source,
-                        width: 0, // Will be updated when image loads
-                        height: 0,
-                        bias: 2, // Default center bias
-                        isBiasMode: true,
-                        isClientSide: false
-                    };
-
-                    // Load actual image dimensions
-                    const tempImg = new Image();
-                    tempImg.onload = () => {
-                        window.uploadedImageData.width = tempImg.width;
-                        window.uploadedImageData.height = tempImg.height;
-
-                        // Update image bias orientation after setting image dimensions
-                        updateImageBiasOrientation();
-                    };
-                    tempImg.onerror = () => {
-                        console.warn('Failed to load image dimensions, using defaults');
-                        window.uploadedImageData.width = 512;
-                        window.uploadedImageData.height = 512;
-
-                        // Update image bias orientation after setting image dimensions
-                        updateImageBiasOrientation();
-                    };
-                    tempImg.src = previewUrl;
-
-                    // Set the variation image
-                    releaseVariationImageSrc();
-                    variationImage.src = previewUrl;
-                    variationImage.classList.remove('hidden');
-
-
-                    // Set strength to 0.8 and noise to 0.1 for variation
-                    if (manualStrengthValue) manualStrengthValue.value = '0.8';
-                    if (manualNoiseValue) manualNoiseValue.value = '0.1';
-
-                    // Update percentage overlays after setting default values
-                    updatePercentageOverlays();
-
-                    // Show transformation section content
-                    if (transformationRow) {
-                        transformationRow.classList.add('display-image');
-                    }
-                    document.getElementById('manualImg2ImgGroup').classList.remove('hidden');
-
-                    // Update inpaint button state
-                    updateInpaintButtonState();
-                    renderImageBiasDropdown('2');
-
-                    updateUploadDeleteButtonVisibility();
-                    hideManualPreviewResponsive();
-
-                } else {
-                    showGlassToast('error', 'Variation Failed', 'No image found', false, undefined, '<i class="fas fa-image-slash"></i>');
-                }
-            } else {
-                showGlassToast('error', 'Variation Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
-            }
+            applyImageAsVariationBase(window.currentManualPreviewImage);
             break;
         case 'modify-preview':
             if (window.currentManualPreviewImage) {
@@ -840,6 +835,11 @@ async function handleManualPreviewImageContextMenuAction(event) {
         case 'copy-lookback':
             // copyLookbackImage: public/scripts/comp/copyLookback.js
             copyLookbackImage(filename);
+            break;
+
+        case 'ask-wren':
+            // askWrenAboutImage: public/scripts/comp/director.js
+            askWrenAboutImage(filename);
             break;
 
         case 'start-chat':
@@ -2996,7 +2996,8 @@ async function openManualModalWithContent(content = null, event = null) {
     if (typeof wireStudioVfsDrop === 'function') wireStudioVfsDrop();
 
     // readLastStudioPreviewFilename: public/scripts/comp/imageGenerationSettings.js
-    if ((!content || content.type === 'none') && !studioPreviewRestoreInFlight) {
+    const skipPreviewRestore = !!(content && content.skipPreviewRestore);
+    if ((!content || content.type === 'none') && !skipPreviewRestore && !studioPreviewRestoreInFlight) {
         const persistOn = getImageGenerationSettings().persistHistory;
         const lastName = persistOn ? readLastStudioPreviewFilename() : '';
         const gallery = allImages || [];
@@ -3284,14 +3285,20 @@ async function openManualModalWithContent(content = null, event = null) {
                     manualModal.classList.remove('opening');
                     void manualModal.offsetWidth;
                     openModal(manualModal);
-                    manualPrompt.focus();
+                    // mcpLaunchKeepsTopWindow: public/scripts/comp/modalUtils.js — MCP opens stay behind the focused window
+if (typeof mcpLaunchKeepsTopWindow !== 'function' || !mcpLaunchKeepsTopWindow()) {
+    manualPrompt.focus();
+}
                     schedulePostOpenPromptLayout();
                     resolve();
                 });
                 return;
             }
             openModal(manualModal);
-            manualPrompt.focus();
+            // mcpLaunchKeepsTopWindow: public/scripts/comp/modalUtils.js — MCP opens stay behind the focused window
+if (typeof mcpLaunchKeepsTopWindow !== 'function' || !mcpLaunchKeepsTopWindow()) {
+    manualPrompt.focus();
+}
             schedulePostOpenPromptLayout();
             resolve();
         };
@@ -3544,13 +3551,28 @@ async function restoreGalleryState() {
  * over the compiled/flattened fields stored on generation metadata.
  * Same remap as modules/pngMetadata.js extractRelevantFields (gallery load).
  */
+function forgeEditorPromptSwallowedSpacedWeight(text) {
+    return typeof text === 'string'
+        && text.indexOf('::') >= 0
+        && /-?\d+(?:\.\d+)?\s*\u2060\u2064/.test(text);
+}
+
 function applyForgeEditorInputToMetadata(data) {
     if (!data || typeof data !== 'object') return data;
     const forgeData = data.forge_data || {};
     const next = Object.assign({}, data);
     if (forgeData.input_prompt !== undefined) {
-        next.prompt = forgeData.input_prompt;
+        const compiled = typeof data.compiled_prompt === 'string' ? data.compiled_prompt : '';
+        const swallowed = forgeEditorPromptSwallowedSpacedWeight(forgeData.input_prompt)
+            && compiled.indexOf('::') >= 0;
+        next.prompt = swallowed ? compiled : forgeData.input_prompt;
         next.uc = forgeData.input_uc || '';
+        if (swallowed && next.forge_data && next.forge_data.emphasis_normalization) {
+            const norm = Object.assign({}, next.forge_data.emphasis_normalization);
+            delete norm.manualPrompt;
+            delete norm.prompt;
+            next.forge_data = Object.assign({}, next.forge_data, { emphasis_normalization: norm });
+        }
     }
     if ((next.input_prompt_negative == null || next.input_prompt_negative === '')
         && forgeData.input_prompt_negative !== undefined) {
@@ -3641,7 +3663,8 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             }
         }
 
-        selectManualModel(data.model || 'v5', '');
+        // resolveStudioModelKey: public/scripts/comp/utilities.js
+        selectManualModel(resolveStudioModelKey(data), '');
 
         // Handle resolution loading with proper custom dimension support
         let resolutionToSet = 'normal_portrait'; // Default fallback

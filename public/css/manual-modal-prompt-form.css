@@ -1157,7 +1157,8 @@ div#manualResolutionDropdownMenu {
 
 #manualBalanceSplit,
 #innerBalanceDisplay,
-#manualGenUsageSplit {
+#manualGenUsageSplit,
+#directorUsageSplit {
     border-left: 2px dotted;
     padding-left: var(--spacing-sm);
     gap: 0.35em;

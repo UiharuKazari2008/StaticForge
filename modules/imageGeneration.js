@@ -8,7 +8,8 @@ const {
     matchCommaTextColon,
     splitPromptAtTextColon,
     insertBeforeTextColonOrFirstGroup,
-    stripNoTextTag
+    stripNoTextTag,
+    compileTextOverlayAppend
 } = require('./promptTextBoundary');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 const { resolveNekoEnumValue } = require('./nekoEnumResolve');
@@ -2303,12 +2304,12 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
         // Apply text overlays if any exist
         if (body.text_overlays && Array.isArray(body.text_overlays) && body.text_overlays.length > 0) {
-            const currentStageIndex = stageData?.stageIndex || 0;
             const textTags = currentPromptConfig.text_tags || {
                 'speech': { name: 'Speech Bubble', tags: 'english text, speech bubble' },
                 'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
                 'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
             };
+            const textOverlayBuckets = new Map();
 
             body.text_overlays.forEach((overlay, index) => {
                 // Skip if disabled
@@ -2346,8 +2347,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     return; // Skip if not for this stage
                 }
 
-                // Get text and type
-                let text = overlay.text || '';
+                // Get text and type. ⏎ is display-only (public/scripts/comp/textOverlayManager.js).
+                let text = String(overlay.text || '').replace(/[ \t]*\u23CE[ \t]*/g, '\n');
+                overlay.text = text;
                 let type = overlay.type || 'speech';
 
                 // Log when applying overlay
@@ -2368,53 +2370,27 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     }
                 }
 
-                const tags = textTags[type]?.tags || 'english text, speech bubble';
                 const targetIndex = overlay.target || 0;
+                if (!textOverlayBuckets.has(targetIndex)) textOverlayBuckets.set(targetIndex, []);
+                textOverlayBuckets.get(targetIndex).push({ text, type });
+                __runtimeGr.getLogger().detailed(`📝 Applied overlay: "${text.substring(0, 40)}${text.length > 40 ? '...' : ''}" (type: ${type})`);
+            });
 
-                // Calculate emphasis for tags based on text length
-                // Range: 1.5 (short text) to 5.5 (long text)
-                // More text = higher emphasis to prevent tags from being overshadowed
-                const textLength = text.length;
-                let tagEmphasis;
-
-                if (textLength <= 10) {
-                    // Very short text: minimum emphasis
-                    tagEmphasis = 1.5;
-                } else if (textLength >= 200) {
-                    // Very long text: maximum emphasis
-                    tagEmphasis = 5.5;
-                } else {
-                    // Scale linearly between 1.5 and 5.5 based on text length
-                    // Formula: 1.5 + ((length - 10) / (200 - 10)) * (5.5 - 1.5)
-                    tagEmphasis = 1.5 + ((textLength - 10) / 190) * 4.0;
-                    // Round to 1 decimal place
-                    tagEmphasis = Math.round(tagEmphasis * 10) / 10;
-                }
-
-                // Apply emphasis to tags using applyBiasToText to properly handle inner emphasis groups
-                const emphasizedTags = applyBiasToText(tags, tagEmphasis);
-
-                // Build the text append string
-                const textAppend = `, ${emphasizedTags}, Text: ${text}`;
-                __runtimeGr.getLogger().verbose(`📝 Text overlay append (emphasis ${tagEmphasis}): "${textAppend.substring(0, 60)}${textAppend.length > 60 ? '...' : ''}"`);
-
-                // Determine which prompt to append to
+            textOverlayBuckets.forEach((group, targetIndex) => {
+                const textAppend = compileTextOverlayAppend(group, textTags, applyBiasToText);
+                if (!textAppend) return;
+                __runtimeGr.getLogger().verbose(`📝 Text overlay append: "${textAppend.substring(0, 60)}${textAppend.length > 60 ? '...' : ''}"`);
                 if (targetIndex === 0) {
-                    // Apply to base prompt
                     if (processedPrompt) {
-                        processedPrompt = stripNoTextTag(processedPrompt);
-                        processedPrompt += textAppend;
-                        __runtimeGr.getLogger().detailed(`📝 Applied overlay: "${text.substring(0, 40)}${text.length > 40 ? '...' : ''}" (type: ${type})`);
+                        processedPrompt = stripNoTextTag(processedPrompt) + textAppend;
                     }
                 } else {
-                    // Apply to character prompt (targetIndex - 1 gives array index)
                     const charIndex = targetIndex - 1;
                     if (processedCharacterPrompts && processedCharacterPrompts[charIndex]) {
                         const char = processedCharacterPrompts[charIndex];
                         if (char.prompt) {
-                            char.prompt = stripNoTextTag(char.prompt);
-                            char.prompt += textAppend;
-                            console.log(`📝 Applied text overlay to character ${targetIndex} prompt: "${text}" (type: ${type})`);
+                            char.prompt = stripNoTextTag(char.prompt) + textAppend;
+                            console.log(`📝 Applied text overlay to character ${targetIndex} prompt`);
                         }
                     }
                 }
@@ -6265,8 +6241,10 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     delete stageOpts.noise;
                 }
 
-                // Generate stage image using the unified approach
-                const stageResult = await handleGeneration(globalResources, stageOpts, true, null, bodyData.workspace, mockReq, streamingCallback, ws, handler, baseMetadata, stageSeeds);
+                // Generate stage image using the unified approach.
+                // Same preset label as stage 0. A null name saves the file as "generated".
+                const stagePresetName = bodyData?.preset || bodyData?.presetName || null;
+                const stageResult = await handleGeneration(globalResources, stageOpts, true, stagePresetName, bodyData.workspace, mockReq, streamingCallback, ws, handler, baseMetadata, stageSeeds);
 
                 // Update locked replacements pool with new replacements from this stage
                 if (stageResult.text_replacements_seed && Array.isArray(stageResult.text_replacements_seed)) {

@@ -661,6 +661,11 @@ async function closeDatabase() {
         metadataReadDbPath = null;
     }
     if (db) {
+        try {
+            await db.run('PRAGMA wal_checkpoint(TRUNCATE)');
+        } catch (walError) {
+            logger.warn('WAL checkpoint before close:', walError.message);
+        }
         await db.close();
         db = null;
         logger.info('Database connection closed');
@@ -1079,16 +1084,27 @@ async function persistReceiptToDb(filename, receiptData, imageId = null) {
  * Queue image metadata persistence without blocking the caller on SQL.
  */
 function queueImageMetadataPersist(filename, metadata, label = 'image') {
+    const epoch = metadataWriteQueue.bumpEpoch(filename);
     metadataWriteQueue.stageImage(filename, metadata);
     metadataWriteQueue.enqueue(
-        () => persistImageRowToDb(filename, metadata),
+        () => metadataWriteQueue.withFilenameGate(filename, async () => {
+            if (!metadataWriteQueue.isCurrentEpoch(filename, epoch)) return;
+            await persistImageRowToDb(filename, metadata);
+            if (!metadataWriteQueue.isCurrentEpoch(filename, epoch)) return;
+            metadataWriteQueue.markImagePersisted(filename);
+        }),
         `${label}:${filename}`,
-        { onSuccess: () => metadataWriteQueue.markImagePersisted(filename) }
+        { filename, epoch }
     );
     if (WRITE_GALLERY_ITEMS) {
-        metadataWriteQueue.enqueue(async () => {
-            await refreshGalleryWorkspaceItemsForFilename(filename);
-        }, `gallery-item-refresh:${filename}`);
+        metadataWriteQueue.enqueue(
+            () => metadataWriteQueue.withFilenameGate(filename, async () => {
+                if (!metadataWriteQueue.isCurrentEpoch(filename, epoch)) return;
+                await refreshGalleryWorkspaceItemsForFilename(filename);
+            }),
+            `gallery-item-refresh:${filename}`,
+            { filename, epoch }
+        );
     }
 }
 
@@ -1097,9 +1113,11 @@ function queueImageMetadataPersist(filename, metadata, label = 'image') {
  */
 function scheduleSearchIndexUpdate(filename, metadata, label = 'search-index') {
     if (!filename || !metadata) return;
+    const epoch = metadataWriteQueue.getEpoch(filename);
     metadataWriteQueue.enqueueBackground(
         () => updateSearchIndexes(filename, metadata),
-        `${label}:${filename}`
+        `${label}:${filename}`,
+        { filename, epoch }
     );
 }
 
@@ -1446,6 +1464,9 @@ async function removeImageMetadata(filenames, options = {}) {
     let removedCount = 0;
 
     for (const filename of valid) {
+        await metadataWriteQueue.withFilenameGate(filename, async () => {
+        metadataWriteQueue.bumpEpoch(filename);
+        metadataWriteQueue.dropPendingForFilename(filename);
         metadataWriteQueue.removeHotGalleryOwnershipForFilename(filename);
         metadataWriteQueue.removeHotImage(filename);
 
@@ -1471,6 +1492,7 @@ async function removeImageMetadata(filenames, options = {}) {
             
             removedCount++;
         }
+        });
     }
     
     if (removedCount > 0) {
@@ -1506,12 +1528,15 @@ async function removeImageMetadataBatch(filenames, batchSize = 500, precomputedB
         // Process in batches to avoid overwhelming the database
         for (let i = 0; i < filenames.length; i += batchSize) {
             const batch = filenames.slice(i, i + batchSize);
-            for (const filename of batch) {
-                metadataWriteQueue.removeHotGalleryOwnershipForFilename(filename);
-                metadataWriteQueue.removeHotImage(filename);
-            }
-            
             try {
+                await metadataWriteQueue.withFilenameGates(batch, async () => {
+                for (const filename of batch) {
+                    metadataWriteQueue.bumpEpoch(filename);
+                    metadataWriteQueue.dropPendingForFilename(filename);
+                    metadataWriteQueue.removeHotGalleryOwnershipForFilename(filename);
+                    metadataWriteQueue.removeHotImage(filename);
+                }
+                
                 // Use a transaction for each batch
                 await db.run('BEGIN TRANSACTION');
                 
@@ -1555,6 +1580,7 @@ async function removeImageMetadataBatch(filenames, batchSize = 500, precomputedB
                 
                 // Commit transaction
                 await db.run('COMMIT');
+                });
             } catch (error) {
                 try {
                     await db.run('ROLLBACK');
@@ -2997,14 +3023,17 @@ function parseModelSourceFromPngMeta(pngMeta) {
 function determineForgeModelCode(source) {
     if (!source) return 'unknown';
 
+    // Live image app (2026-09-29): current V5 full Source is DB276663.
+    // Unknown V5 hashes stay full. Curated is only the explicit cases.
     // JULES:#171
     if (source.includes('NovelAI Diffusion V5')) {
         switch (source) {
             case 'NovelAI Diffusion V5 657484A5':
             case 'NovelAI Diffusion V5 0ADF9AB7':
+            case 'NovelAI Diffusion V5 DB276663':
                 return 'V5';
             default:
-                return 'V5_CUR';
+                return 'V5';
         }
     }
 
@@ -3014,6 +3043,7 @@ function determineForgeModelCode(source) {
             case 'NovelAI Diffusion V4.5 1229B44F':
             case 'NovelAI Diffusion V4.5 B9F340FD':
             case 'NovelAI Diffusion V4.5 F3D95188':
+            case 'NovelAI Diffusion V4.5 5BB76870':
                 return 'V4_5';
             case 'NovelAI Diffusion V4.5 C02D4F98':
             case 'NovelAI Diffusion V4.5 5AB81C7C':
@@ -4561,6 +4591,81 @@ async function countGalleryWorkspacePins(workspaceId) {
         [workspaceId]
     );
     return Number(row?.count) || 0;
+}
+
+const GENERATION_CHAIN_MAX_GAP_MS = 20 * 60 * 1000;
+
+function generationChainMtimeMs(mtime) {
+    const n = Number(mtime) || 0;
+    if (n <= 0) return 0;
+    return n > 1000000000000 ? n : n * 1000;
+}
+
+async function queryGenerationChainSeedRows(seed, workspaceId) {
+    const params = [String(seed)];
+    let workspaceSql = '';
+    if (workspaceId) {
+        workspaceSql = `AND EXISTS (
+            SELECT 1 FROM gallery_workspace_items g
+            WHERE g.workspace_id = ?
+              AND (g.original = i.filename OR g.upscaled = i.filename)
+        )`;
+        params.push(workspaceId);
+    }
+    return db.all(`
+        SELECT i.filename AS filename, i.mtime AS mtime,
+          json_array_length(i.metadata, '$.forge_data.stage_seeds') AS stage_count
+        FROM image_search_facets f
+        JOIN images i ON i.filename = f.filename
+        WHERE f.seed = ?
+        ${workspaceSql}
+        ORDER BY i.mtime ASC, i.filename ASC
+    `, params);
+}
+
+async function listGenerationChainFiles(filename, workspaceId) {
+    if (!dbInitialized || !db || !filename) return [];
+    const self = await db.get(`
+        SELECT json_extract(metadata, '$.upscaled') AS upscaled,
+               json_extract(metadata, '$.parent') AS parent
+        FROM images WHERE filename = ?
+    `, [filename]);
+    const upscaled = self && (self.upscaled === 1 || self.upscaled === '1' || self.upscaled === true);
+    const lookup = upscaled && self.parent ? self.parent : filename;
+    const seedRow = await db.get(
+        `SELECT seed FROM image_search_facets WHERE filename = ?`,
+        [lookup]
+    );
+    let seed = seedRow && seedRow.seed != null ? String(seedRow.seed) : '';
+    if (!seed) {
+        const metaRow = await db.get(
+            `SELECT json_extract(metadata, '$.seed') AS seed FROM images WHERE filename = ?`,
+            [lookup]
+        );
+        seed = metaRow && metaRow.seed != null ? String(metaRow.seed) : '';
+    }
+    if (!seed) return [];
+    let rows = workspaceId ? await queryGenerationChainSeedRows(seed, workspaceId) : [];
+    if (!rows || !rows.length) rows = await queryGenerationChainSeedRows(seed, null);
+    const items = (rows || []).map((row) => ({
+        filename: row.filename,
+        mtime: generationChainMtimeMs(row.mtime),
+        stageIndex: row.stage_count == null ? 0 : (Number(row.stage_count) || 0)
+    })).filter((row) => row.filename);
+    const clusters = [];
+    let current = [];
+    items.forEach((item) => {
+        const prev = current[current.length - 1];
+        if (prev && item.mtime - prev.mtime > GENERATION_CHAIN_MAX_GAP_MS) {
+            clusters.push(current);
+            current = [item];
+        } else {
+            current.push(item);
+        }
+    });
+    if (current.length) clusters.push(current);
+    const hit = clusters.find((group) => group.some((item) => item.filename === lookup || item.filename === filename));
+    return (hit || []).map((item) => ({ filename: item.filename, stageIndex: item.stageIndex }));
 }
 
 async function listGalleryWorkspacePinBases(workspaceId) {
@@ -7062,16 +7167,8 @@ function getCheckpointManager() {
     return db ? db.getCheckpointManager() : null;
 }
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-    closeDatabase();
-    process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-    closeDatabase();
-    process.exit(0);
-});
+// Shutdown is web_server gracefulShutdown -> globalResources.shutdown() -> closeDatabase().
+// Do not register SIGINT/SIGTERM here: an un-awaited close plus process.exit drops the write queue.
 
 /**
  * Top prompt/character tags for a set of filenames (for dynamic quip term extraction).
@@ -7482,6 +7579,7 @@ module.exports = {
     getGalleryWorkspaceStatsById,
     getGalleryWorkspaceProbeMeta,
     GALLERY_BLOCK_SIZE,
+    listGenerationChainFiles,
     listGalleryWorkspacePinBases,
     listGalleryWorkspacePinIndexes,
     listGalleryWorkspacePinFilenames,

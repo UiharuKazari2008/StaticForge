@@ -97,6 +97,7 @@ function handleWorkspaceDataMessage(message) {
         }
         if (window.currentWorkspace !== message.data.id) {
             window.currentWorkspace = message.data.id;
+            if (window.directorInstance) window.directorInstance.paintWorkspaceBanner();
 
             const workspaceSelector = document.getElementById('workspace-selector');
             if (workspaceSelector) {

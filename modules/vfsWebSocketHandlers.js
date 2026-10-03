@@ -230,6 +230,18 @@ class VfsWebSocketHandlers {
         });
     }
 
+    async handleVfsUpdateShortcutEntry(ws, message, clientInfo, wsServer) {
+        const { entryId, name, data } = this.getPayload(message);
+        const entry = await this.getVfs().updateShortcutEntry(entryId, { name, data });
+        this.broadcastVfsUpdated(wsServer, null);
+        this.handlers.sendToClient(ws, {
+            type: 'vfs_update_shortcut_entry_response',
+            requestId: message.requestId,
+            data: { success: true, entry },
+            timestamp: new Date().toISOString()
+        });
+    }
+
     async handleVfsRenameShortcutEntry(ws, message, clientInfo, wsServer) {
         const { entryId, name } = this.getPayload(message);
         const entry = await this.getVfs().renameShortcutEntry(entryId, name);
@@ -690,6 +702,7 @@ function registerVfsPackets(handlersCtx) {
     reg('vfs_move_items', (ctx) => vfs.handleVfsMoveItems(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
     reg('vfs_copy_items', (ctx) => vfs.handleVfsCopyItems(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
     reg('vfs_delete_entry', (ctx) => vfs.handleVfsDeleteEntry(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_update_shortcut_entry', (ctx) => vfs.handleVfsUpdateShortcutEntry(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
     reg('vfs_rename_shortcut_entry', (ctx) => vfs.handleVfsRenameShortcutEntry(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
     reg('vfs_rename_entry', (ctx) => vfs.handleVfsRenameEntry(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
     reg('vfs_upload_file', (ctx) => vfs.handleVfsUploadFile(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);

@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>App icon studio</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 14px/1.4 system-ui, sans-serif;
+    background: #161616;
+    color: #eee;
+  }
+  header, main { padding: 16px 20px; }
+  header { border-bottom: 1px solid #333; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p { margin: 0; color: #bbb; }
+  main { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+  label { display: block; margin: 10px 0 4px; color: #ccc; }
+  input, textarea, select, button {
+    font: inherit;
+    color: inherit;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 6px;
+  }
+  input[type="text"], textarea, select { width: 100%; padding: 6px 8px; }
+  input[type="file"] { width: 100%; padding: 6px 0; background: transparent; border: 0; }
+  input[type="range"] {
+    width: 100%;
+    height: 32px;
+    margin: 4px 0 8px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    accent-color: #f5d76e;
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
+  }
+  textarea { min-height: 64px; resize: vertical; }
+  button { padding: 7px 10px; cursor: pointer; }
+  button.primary { background: #2d4a38; border-color: #3d6b50; }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  .row button { flex: 1; }
+  .list { margin-top: 16px; max-height: 420px; overflow: auto; border-top: 1px solid #333; }
+  .icon-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    border-bottom: 1px solid #2a2a2a;
+  }
+  .icon-row.tight .open { color: #ffb4a8; }
+  .icon-row .open {
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 6px 4px;
+  }
+  .icon-row img { width: 32px; height: 32px; object-fit: contain; background: #0e0e0e; }
+  .pad { font-variant-numeric: tabular-nums; color: #aaa; }
+  .stage { display: flex; flex-direction: column; gap: 12px; }
+  .crop-frame {
+    width: min(520px, 100%);
+    aspect-ratio: 1;
+    position: relative;
+    overflow: hidden;
+    background-color: #2a2a2a;
+    background-image:
+      linear-gradient(45deg, #3a3a3a 25%, transparent 25%),
+      linear-gradient(-45deg, #3a3a3a 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #3a3a3a 75%),
+      linear-gradient(-45deg, transparent 75%, #3a3a3a 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    border: 2px solid #f2f2f2;
+    touch-action: none;
+  }
+  #source {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    user-select: none;
+  }
+  .safe-area {
+    position: absolute;
+    border: 1px dashed #f5d76e;
+    box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.28);
+    pointer-events: none;
+  }
+  .safe-label {
+    position: absolute;
+    left: 6px;
+    top: 4px;
+    font-size: 11px;
+    color: #f5d76e;
+  }
+  .readout { min-height: 2.8em; }
+  .readout.warn { color: #ffb4a8; }
+  .previews { display: flex; gap: 16px; align-items: end; }
+  .preview { text-align: center; color: #aaa; font-size: 12px; }
+  canvas.dark { background: #111; }
+  canvas.light { background: #f4f4f4; }
+  .refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .ref-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 2px 4px;
+  }
+  .ref-chip img { width: 32px; height: 32px; object-fit: contain; background: #111; }
+  .ref-chip button { padding: 2px 6px; }
+  #status.error { color: #ffb4a8; }
+</style>
+</head>
+<body>
+<header>
+  <h1>App icon studio</h1>
+  <p id="lead">Frame the icon inside the square. The dashed box is the safe area. Save keeps the original and writes the scaled master.</p>
+</header>
+<main>
+  <section>
+    <form id="gen">
+      <label for="input">Subject</label>
+      <input id="input" name="input" placeholder="leather notebook with sticky notes and a pen">
+      <label for="from">Replaces</label>
+      <input id="from" name="from" placeholder="Notepad">
+      <label for="extra">Extra</label>
+      <textarea id="extra" name="extra" placeholder="matte black metal, no yellow, a round dial on the front"></textarea>
+      <label for="refs">Reference images</label>
+      <input id="refs" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+      <div id="ref-list" class="refs"></div>
+      <label for="name">File name</label>
+      <input id="name" name="name" placeholder="notebook">
+      <label for="model">Model</label>
+      <select id="model"></select>
+      <label for="quality">Quality</label>
+      <select id="quality"></select>
+      <div class="row">
+        <button class="primary" type="submit" id="generate">Generate</button>
+      </div>
+    </form>
+    <div id="status"></div>
+    <div class="list" id="list"></div>
+  </section>
+  <section class="stage">
+    <div id="frame" class="crop-frame" tabindex="0">
+      <img id="source" alt="">
+      <div id="safe" class="safe-area"><span class="safe-label">safe</span></div>
+    </div>
+    <label for="inset">Safe area inset <span id="inset-label">12%</span></label>
+    <input id="inset" type="range" min="4" max="24" value="12">
+    <div id="readout" class="readout">Pick an icon or generate one.</div>
+    <div class="row">
+      <button type="button" id="fit">Fit inside safe area</button>
+      <button type="button" id="center">Center</button>
+      <button type="button" id="reset">Show full image</button>
+      <button type="button" class="primary" id="save">Save crop</button>
+    </div>
+    <div class="previews">
+      <div class="preview">Start menu<canvas id="p28" class="dark" width="28" height="28"></canvas></div>
+      <div class="preview">Start menu<canvas id="p28b" class="light" width="28" height="28"></canvas></div>
+      <div class="preview">Shortcut<canvas id="p64" class="dark" width="64" height="64"></canvas></div>
+      <div class="preview">Shortcut<canvas id="p64b" class="light" width="64" height="64"></canvas></div>
+    </div>
+  </section>
+</main>
+<script>
+const frame = document.getElementById('frame');
+const source = document.getElementById('source');
+const safe = document.getElementById('safe');
+const readout = document.getElementById('readout');
+const statusEl = document.getElementById('status');
+const listEl = document.getElementById('list');
+let config = { safeInset: 0.12, outputSize: 384, qualities: ['low', 'medium', 'high'], qualities25: ['high'] };
+let view = { x: 0, y: 0, size: 1 };
+let bitmap = null;
+let natural = { w: 0, h: 0 };
+let currentName = '';
+let references = [];
+let refSeq = 0;
+let drag = null;
+
+function setStatus(text, isError) {
+  statusEl.textContent = text || '';
+  statusEl.className = isError ? 'error' : '';
+}
+
+function insetFraction() {
+  return Number(document.getElementById('inset').value) / 100;
+}
+
+function applySafe() {
+  const inset = insetFraction();
+  const pct = (inset * 100).toFixed(0);
+  document.getElementById('inset-label').textContent = pct + '%';
+  safe.style.left = pct + '%';
+  safe.style.top = pct + '%';
+  safe.style.width = ((1 - inset * 2) * 100) + '%';
+  safe.style.height = ((1 - inset * 2) * 100) + '%';
+}
+
+function layout() {
+  const side = frame.clientWidth;
+  source.style.width = (natural.w / view.size) * side + 'px';
+  source.style.height = (natural.h / view.size) * side + 'px';
+  source.style.left = (-view.x / view.size) * side + 'px';
+  source.style.top = (-view.y / view.size) * side + 'px';
+}
+
+function captureBitmap() {
+  const canvas = document.createElement('canvas');
+  canvas.width = natural.w;
+  canvas.height = natural.h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(source, 0, 0);
+  bitmap = ctx.getImageData(0, 0, natural.w, natural.h).data;
+}
+
+function opaqueBounds(minAlpha) {
+  if (!bitmap) return null;
+  let minX = natural.w;
+  let minY = natural.h;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < natural.h; y++) {
+    const row = y * natural.w * 4;
+    for (let x = 0; x < natural.w; x++) {
+      if (bitmap[row + x * 4 + 3] < minAlpha) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return null;
+  return { minX, minY, maxX, maxY };
+}
+
+function cropMargins() {
+  const bounds = opaqueBounds(128);
+  if (!bounds) return null;
+  return {
+    left: (bounds.minX - view.x) / view.size,
+    top: (bounds.minY - view.y) / view.size,
+    right: (view.x + view.size - bounds.maxX - 1) / view.size,
+    bottom: (view.y + view.size - bounds.maxY - 1) / view.size
+  };
+}
+
+function pct(n) {
+  return Math.round(n * 1000) / 10;
+}
+
+function report() {
+  const margins = cropMargins();
+  const inset = insetFraction();
+  if (!margins) {
+    readout.textContent = currentName ? 'No opaque pixels in view.' : 'Pick an icon or generate one.';
+    readout.className = 'readout';
+    drawPreviews();
+    return;
+  }
+  const sides = [
+    ['left', margins.left],
+    ['top', margins.top],
+    ['right', margins.right],
+    ['bottom', margins.bottom]
+  ];
+  const tight = sides.filter((side) => side[1] < inset);
+  const text = sides.map((side) => side[0] + ' ' + pct(side[1]) + '%').join('  ');
+  if (tight.length) {
+    readout.textContent = 'Body padding in this crop: ' + text + '. ' + tight.map((side) => side[0]).join(', ') + ' crosses the safe area. Zoom out until the body sits inside the dashed square. Shadow may stay in the margin.';
+    readout.className = 'readout warn';
+  } else {
+    readout.textContent = 'Body padding in this crop: ' + text + '. The body is inside the safe area.';
+    readout.className = 'readout';
+  }
+  drawPreviews();
+}
+
+function drawPreviews() {
+  ['p28', 'p28b', 'p64', 'p64b'].forEach((id) => {
+    const canvas = document.getElementById(id);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!natural.w) return;
+    ctx.drawImage(source, view.x, view.y, view.size, view.size, 0, 0, canvas.width, canvas.height);
+  });
+}
+
+function showFull() {
+  const side = Math.max(natural.w, natural.h);
+  view = { x: (natural.w - side) / 2, y: (natural.h - side) / 2, size: side };
+  layout();
+  report();
+}
+
+function fitSafe() {
+  const bounds = opaqueBounds(128);
+  if (!bounds) return;
+  const inset = insetFraction();
+  const bw = bounds.maxX - bounds.minX + 1;
+  const bh = bounds.maxY - bounds.minY + 1;
+  const side = Math.max(bw, bh) / Math.max(0.4, 1 - inset * 2) * 1.04;
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cy = (bounds.minY + bounds.maxY) / 2;
+  view = { x: cx - side / 2, y: cy - side / 2, size: side };
+  layout();
+  report();
+}
+
+function centerSubject() {
+  const bounds = opaqueBounds(128);
+  if (!bounds) return;
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cy = (bounds.minY + bounds.maxY) / 2;
+  view.x = cx - view.size / 2;
+  view.y = cy - view.size / 2;
+  layout();
+  report();
+}
+
+function loadIcon(name) {
+  currentName = name;
+  document.getElementById('name').value = name.replace(/\.png$/i, '');
+  source.onload = () => {
+    natural = { w: source.naturalWidth, h: source.naturalHeight };
+    captureBitmap();
+    fitSafe();
+    setStatus('Aligned ' + name + ' to its detected edges.');
+  };
+  source.onerror = () => setStatus('Could not load ' + name + '.', true);
+  source.src = '/icon/source/' + encodeURIComponent(name) + '?t=' + Date.now();
+}
+
+function renderList(payload) {
+  const newest = payload.icons[0];
+  if (newest) {
+    const b = newest.body;
+    document.getElementById('lead').textContent =
+      'Newest icon ' + newest.name + ' body padding is L ' + pct(b.left) + '%  T ' + pct(b.top) + '%  R ' + pct(b.right) + '%  B ' + pct(b.bottom) + '%. ' +
+      payload.tight + ' of ' + payload.total + ' icons sit tighter than the ' + Math.round(config.safeInset * 100) + '% safe area. Save keeps the original and writes a ' + config.outputSize + 'px master.';
+  }
+  listEl.innerHTML = '';
+  payload.icons.forEach((icon) => {
+    const row = document.createElement('div');
+    row.className = 'icon-row' + (icon.minBody < config.safeInset ? ' tight' : '');
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'open';
+    const thumb = document.createElement('img');
+    thumb.alt = '';
+    thumb.src = '/icon/source/' + encodeURIComponent(icon.name) + '?t=' + icon.mtime;
+    const label = document.createElement('span');
+    label.textContent = icon.name;
+    const pad = document.createElement('span');
+    pad.className = 'pad';
+    pad.textContent = pct(icon.minBody) + '%';
+    open.append(thumb, label, pad);
+    open.addEventListener('click', () => loadIcon(icon.name));
+    const refBtn = document.createElement('button');
+    refBtn.type = 'button';
+    refBtn.textContent = 'Ref';
+    refBtn.addEventListener('click', () => addReference({
+      id: ++refSeq,
+      label: icon.name,
+      preview: '/icon/source/' + encodeURIComponent(icon.name),
+      icon: icon.name
+    }));
+    row.append(open, refBtn);
+    listEl.appendChild(row);
+  });
+}
+
+async function refreshList() {
+  const res = await fetch('/api/icons');
+  const payload = await res.json();
+  renderList(payload);
+}
+
+frame.addEventListener('pointerdown', (event) => {
+  if (!natural.w || event.button !== 0) return;
+  frame.setPointerCapture(event.pointerId);
+  drag = { x: event.clientX, y: event.clientY, vx: view.x, vy: view.y };
+});
+frame.addEventListener('pointermove', (event) => {
+  if (!drag) return;
+  const side = frame.clientWidth;
+  view.x = drag.vx - ((event.clientX - drag.x) / side) * view.size;
+  view.y = drag.vy - ((event.clientY - drag.y) / side) * view.size;
+  layout();
+});
+frame.addEventListener('pointerup', () => {
+  if (!drag) return;
+  drag = null;
+  report();
+});
+frame.addEventListener('wheel', (event) => {
+  if (!natural.w) return;
+  event.preventDefault();
+  const rect = frame.getBoundingClientRect();
+  const px = (event.clientX - rect.left) / rect.width;
+  const py = (event.clientY - rect.top) / rect.height;
+  const srcX = view.x + px * view.size;
+  const srcY = view.y + py * view.size;
+  let dy = event.deltaY;
+  if (event.deltaMode === 1) dy *= 16;
+  else if (event.deltaMode === 2) dy *= rect.height;
+  const factor = Math.exp(dy * 0.00022);
+  const cap = Math.max(natural.w, natural.h) * 3;
+  const next = Math.min(Math.max(view.size * factor, 32), cap);
+  view.size = next;
+  view.x = srcX - px * next;
+  view.y = srcY - py * next;
+  layout();
+  clearTimeout(frame.zoomReport);
+  frame.zoomReport = setTimeout(report, 70);
+}, { passive: false });
+
+document.getElementById('inset').addEventListener('input', onInset);
+document.getElementById('inset').addEventListener('change', onInset);
+function onInset() {
+  applySafe();
+  report();
+}
+document.getElementById('fit').addEventListener('click', fitSafe);
+document.getElementById('center').addEventListener('click', () => { if (natural.w) centerSubject(); });
+document.getElementById('reset').addEventListener('click', () => { if (natural.w) showFull(); });
+document.getElementById('model').addEventListener('change', fillQualities);
+
+function fillQualities() {
+  const model = document.getElementById('model').value;
+  const levels = model.startsWith('gpt-image-2.5') ? config.qualities25 : config.qualities;
+  const select = document.getElementById('quality');
+  const previous = select.value || 'high';
+  select.innerHTML = '';
+  levels.forEach((level) => {
+    const option = document.createElement('option');
+    option.value = level;
+    option.textContent = level;
+    if (level === previous) option.selected = true;
+    select.appendChild(option);
+  });
+  if (!select.value) select.value = levels.includes('high') ? 'high' : levels[0];
+}
+
+function renderRefs() {
+  const box = document.getElementById('ref-list');
+  box.innerHTML = '';
+  references.forEach((ref) => {
+    const chip = document.createElement('div');
+    chip.className = 'ref-chip';
+    const img = document.createElement('img');
+    img.alt = '';
+    img.src = ref.preview;
+    const name = document.createElement('span');
+    name.textContent = ref.label;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => {
+      references = references.filter((item) => item.id !== ref.id);
+      if (String(ref.preview).startsWith('blob:')) URL.revokeObjectURL(ref.preview);
+      renderRefs();
+    });
+    chip.append(img, name, remove);
+    box.appendChild(chip);
+  });
+}
+
+function addReference(entry) {
+  if (references.length >= 8) {
+    setStatus('Up to 8 reference images.', true);
+    return;
+  }
+  if (entry.icon && references.some((item) => item.icon === entry.icon)) return;
+  references.push(entry);
+  renderRefs();
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('refs').addEventListener('change', async (event) => {
+  const files = Array.from(event.target.files || []);
+  for (const file of files) {
+    const data = await fileToBase64(file);
+    addReference({
+      id: ++refSeq,
+      label: file.name,
+      preview: URL.createObjectURL(file),
+      data: data,
+      name: file.name
+    });
+  }
+  event.target.value = '';
+});
+
+function generateBody(name, force) {
+  return {
+    input: document.getElementById('input').value,
+    from: document.getElementById('from').value,
+    extra: document.getElementById('extra').value,
+    name: name,
+    model: document.getElementById('model').value,
+    quality: document.getElementById('quality').value,
+    force: force,
+    references: references.map((ref) => ref.icon ? { icon: ref.icon } : { name: ref.name, data: ref.data })
+  };
+}
+
+document.getElementById('gen').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = document.getElementById('name').value.trim();
+  if (!name || !document.getElementById('input').value.trim()) {
+    setStatus('Subject and file name are required.', true);
+    return;
+  }
+  const button = document.getElementById('generate');
+  button.disabled = true;
+  setStatus('Generating…');
+  try {
+    let res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(generateBody(name, false))
+    });
+    let payload = await res.json();
+    if (!res.ok && /already exists/.test(payload.error || '') && confirm('Replace the stored original for ' + name + '?')) {
+      res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(generateBody(name, true))
+      });
+      payload = await res.json();
+    }
+    if (!res.ok) throw new Error(payload.error || 'Generate failed');
+    const refs = payload.referenceCount ? ' Used ' + payload.referenceCount + ' reference image' + (payload.referenceCount === 1 ? '' : 's') + '.' : '';
+    setStatus('Original saved. Extra is sent as a required direction.' + refs + ' Frame it, then save the crop.');
+    loadIcon(payload.name);
+    refreshList();
+  } catch (err) {
+    setStatus(err.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById('save').addEventListener('click', async () => {
+  if (!currentName || !natural.w) {
+    setStatus('Load an icon before saving.', true);
+    return;
+  }
+  setStatus('Saving…');
+  try {
+    const res = await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: currentName, x: view.x, y: view.y, size: view.size })
+    });
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload.error || 'Save failed');
+    const kept = payload.storedOriginal ? 'Stored the pre-crop file as the original. ' : 'Original kept. ';
+    setStatus(kept + 'Master written at ' + payload.outputSize + 'px. Smaller sizes compiled: ' + (payload.compiled ? 'yes' : 'no') + '.');
+    await refreshList();
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+});
+
+applySafe();
+fetch('/api/config').then((res) => res.json()).then((payload) => {
+  config = payload;
+  const model = document.getElementById('model');
+  payload.models.forEach((id) => {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = id;
+    if (id === payload.defaultModel) option.selected = true;
+    model.appendChild(option);
+  });
+  document.getElementById('inset').value = String(Math.round(payload.safeInset * 100));
+  applySafe();
+  fillQualities();
+  return refreshList();
+}).catch((err) => setStatus(err.message, true));
+</script>
+</body>
+</html>

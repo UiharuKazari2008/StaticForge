@@ -1,5 +1,8 @@
 const assert = require('assert');
 const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { createMcpAuthMiddleware } = require('../modules/auth');
 const { _test, McpOAuthProvider } = require('../modules/mcpAgentFacade');
 const { validateRedirectUri, verifyPkceChallenge, parseScopes, ALLOWED_REDIRECT_URI_HOSTS } = require('../modules/mcpOAuthProvider');
@@ -243,6 +246,10 @@ assert.strictEqual(_test.assembleCharacterCard({
     name: 'unknown',
     wiki: { text: '', markdown: '', empty: true }
 }).next, _test.WIKI_EMPTY_NEXT);
+assert.ok(_test.WIKI_EMPTY_NEXT.includes('generate_nax_tag'));
+assert.ok(_test.WIKI_EMPTY_NEXT.includes('delete_nax_tag'));
+assert.strictEqual(_test.naxSingleTagError('name (copyright)'), null);
+assert.ok(_test.naxSingleTagError('name, copyright'));
 
 const filledCard = _test.assembleCharacterCard({
     name: 'alice (nikke)',
@@ -451,6 +458,23 @@ assert.ok(!genOnly.some((t) => t.name === 'search_nax'));
 assert.strictEqual(_test.rateGroupForTool('search_nax'), 'search');
 assert.strictEqual(_test.rateGroupForTool('list_nax_galleries'), 'free');
 assert.ok(_test.MCP_INSTRUCTIONS.includes('search_nax'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('generate_nax_tag'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('user_vibe'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('user_interests'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('preciseReferences'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('delete_nax_tag'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('comma-separated tag string'));
+const { normalizeEnhancerGroups } = require('../modules/charactersDatabase');
+assert.deepStrictEqual(normalizeEnhancerGroups('pink hair, red eyes'), [['pink hair', 'red eyes']]);
+assert.deepStrictEqual(normalizeEnhancerGroups(['pink hair', 'red eyes']), [['pink hair', 'red eyes']]);
+assert.deepStrictEqual(
+    normalizeEnhancerGroups(['quadrupedal human girl, human taur']),
+    [['quadrupedal human girl', 'human taur']]
+);
+assert.deepStrictEqual(
+    normalizeEnhancerGroups([['pink hair', 'red eyes'], ['school uniform']]),
+    [['pink hair', 'red eyes'], ['school uniform']]
+);
 
 assert.ok(_test.MCP_INSTRUCTIONS.includes('search_explore'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_explore_post'));
@@ -650,9 +674,10 @@ assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'update_client').description.in
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'restart_client').description.includes('appliedWithoutRestart'));
 assert.strictEqual(_test.TOOL_DEFS.find((t) => t.name === 'restart_client').core, true);
 assert.strictEqual(_test.TOOL_DEFS.find((t) => t.name === 'inspect_elements').inputSchema.required[0], 'selectors');
-assert.ok(_test.MCP_INSTRUCTIONS.includes('update_client'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('restart_client'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('appliedWithoutRestart'));
+// Client-browser testing is a Cursor ingest workflow, not Wren / grok.com. It stays on the tool descriptions only.
+assert.ok(!_test.MCP_INSTRUCTIONS.includes('update_client'));
+assert.ok(!_test.MCP_INSTRUCTIONS.includes('restart_client'));
+assert.ok(!_test.MCP_INSTRUCTIONS.includes('notify-service-worker'));
 assert.strictEqual(_test.rateGroupForTool('get_client_physics'), 'studio');
 assert.ok(_test.MCP_INSTRUCTIONS.includes('needsClientChoice'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('nearest'));
@@ -707,7 +732,69 @@ assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
 assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
 assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
-assert.strictEqual(coreNames.length, 69);
+for (const name of ['set_window', 'open_application', 'offer_director_window', 'vfs_stat', 'vfs_mkdir', 'vfs_rename', 'vfs_move', 'vfs_copy', 'vfs_write', 'vfs_delete']) {
+    assert.ok(coreNames.includes(name), name);
+    assert.ok(_test.rateGroupForTool(name), `rate group ${name}`);
+}
+// Director chat name plus its one task list (modules/cursorDirector.js index.json)
+for (const name of ['set_session_title', 'set_session_tasks', 'set_session_task', 'get_session_tasks', 'close_session_tasks']) {
+    assert.ok(coreNames.includes(name), name);
+    assert.ok(_test.rateGroupForTool(name), `rate group ${name}`);
+    assert.ok(require('../modules/mcpModuleRegistry').toolInModule(name, 'core_generation'), `core_generation missing ${name}`);
+}
+// offer_workspace_switch / show_chat_image ride the same Director session path
+for (const name of ['offer_workspace_switch', 'show_chat_image']) {
+    assert.ok(coreNames.includes(name), name);
+    assert.strictEqual(_test.rateGroupForTool(name), 'write', `rate group ${name}`);
+    assert.ok(require('../modules/mcpModuleRegistry').toolInModule(name, 'core_generation'), `core_generation missing ${name}`);
+}
+const workspaceOffer = _test.TOOL_DEFS.find((t) => t.name === 'offer_workspace_switch');
+assert.ok(workspaceOffer.description.includes('does not move the workspace itself'));
+assert.deepStrictEqual(Object.keys(workspaceOffer.inputSchema.properties).sort(), ['chatId', 'reason', 'workspace', 'workspaceId']);
+const chatImage = _test.TOOL_DEFS.find((t) => t.name === 'show_chat_image');
+assert.ok(chatImage.description.includes('Do not call it after every generate'));
+assert.deepStrictEqual(Object.keys(chatImage.inputSchema.properties).sort(), ['caption', 'chatId', 'filename', 'path', 'url']);
+// Only the image paths this host already serves, and always host-relative
+assert.strictEqual(_test.chatImageUrlSource('/images/a%20b.png').src, '/images/a%20b.png');
+assert.strictEqual(_test.chatImageUrlSource('/image/slim/x.webp').src, '/image/slim/x.webp');
+assert.strictEqual(_test.chatImageUrlSource('/cache/preview/x.webp?v=2').src, '/cache/preview/x.webp?v=2');
+assert.strictEqual(_test.chatImageUrlSource('https://dreamscape.example/previews/x.webp').src, '/previews/x.webp');
+assert.ok(_test.chatImageUrlSource('https://evil.example/hack.png').error);
+assert.ok(_test.chatImageUrlSource('/etc/passwd').error);
+assert.ok(_test.chatImageUrlSource('/images/../../etc/passwd').error);
+assert.ok(_test.chatImageUrlSource('file:///etc/passwd').error);
+assert.ok(_test.chatImageUrlSource('').error);
+// Unknown workspaces are rejected instead of falling back to default
+const fakeWorkspaces = { globalResources: { getWorkspaceManager: () => ({ getWorkspaces: () => ({ default: { name: 'Default' }, lab: { name: 'The Lab' } }) }) } };
+assert.strictEqual(_test.workspaceRecordExact(fakeWorkspaces.globalResources, 'lab').name, 'The Lab');
+assert.strictEqual(_test.workspaceRecordExact(fakeWorkspaces.globalResources, 'nope'), null);
+assert.ok(_test.MCP_INSTRUCTIONS.includes('offer_workspace_switch'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('show_chat_image'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Dreamspace'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Wren'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'set_session_title').description.includes('once'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'set_session_title').description.includes('Do not call it again'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('set_session_title once'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('close_session_tasks'));
+const directorTasks = require('../modules/cursorDirector')._test.normalizeSessionTasks;
+assert.deepStrictEqual(directorTasks([{ title: 'read the brief' }, { id: 'b', title: 'print it', done: true }]), [
+    { id: '1', title: 'read the brief', done: false },
+    { id: 'b', title: 'print it', done: true }
+]);
+assert.deepStrictEqual(directorTasks([{ id: 'a', title: '  ' }, { id: 'a', title: 'one' }, { id: 'a', title: 'two' }]), [
+    { id: 'a', title: 'one', done: false },
+    { id: 'a_', title: 'two', done: false }
+]);
+assert.deepStrictEqual(directorTasks('nope'), []);
+assert.strictEqual(directorTasks(new Array(60).fill({ title: 'step' })).length, 40);
+// The running Director turn is the chat; chatId is only the fallback
+assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => null }, { chatId: '  chat-a  ' }), 'chat-a');
+assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 'running' }, {}), 'running');
+assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => null }, {}), null);
+assert.strictEqual(coreNames.length, 100);
+assert.ok(coreNames.includes('ledge'));
+assert.ok(coreNames.includes('generate_nax_tag'));
+assert.ok(coreNames.includes('delete_nax_tag'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -812,7 +899,11 @@ const vfsOnly = _test.listToolsForScopes(['vfs']);
 assert.ok(vfsOnly.some((t) => t.name === 'vfs_list'));
 assert.ok(vfsOnly.some((t) => t.name === 'vfs_read'));
 assert.ok(vfsOnly.some((t) => t.name === 'create_shortcut'));
-assert.ok(!vfsOnly.some((t) => t.name === 'vfs_write'));
+for (const name of ['vfs_write', 'vfs_delete', 'vfs_stat', 'vfs_mkdir', 'vfs_rename', 'vfs_move', 'vfs_copy']) {
+    assert.ok(vfsOnly.some((t) => t.name === name), name);
+}
+assert.ok(!vfsOnly.some((t) => t.name === 'set_window'));
+assert.ok(!_test.listToolsForScopes(['gallery']).some((t) => t.name === 'vfs_write'));
 
 assert.deepStrictEqual(_test.collectOmegasearchBlocks({ query: '1girl sunset' }), ['1girl sunset']);
 assert.deepStrictEqual(
@@ -915,6 +1006,18 @@ assert.strictEqual(velvetV45.results.length, 0);
 assert.ok(velvetV45.neighbors.includes('noir (black rabbit) (nikke)'));
 assert.ok(String(velvetV45.next || '').includes('wrong family'));
 assert.ok(String(velvetV45.next || '').includes('You may still try it'));
+assert.ok(String(velvetV45.next || '').includes('not proof'));
+
+const artistPrefixed = _test.trimAutofillBatch('artist:metalforever', true, {
+    results: [
+        { name: 'metalforever', type: 'tag', matchScore: 100, model: 'nai-diffusion-5-full', n_count: 1200 },
+        { name: 'metaljelly', type: 'tag', matchScore: 40, model: 'nai-diffusion-5-full' }
+    ]
+});
+assert.strictEqual(artistPrefixed.untrained, false);
+assert.strictEqual(artistPrefixed.trained, true);
+assert.strictEqual(artistPrefixed.results[0].tag, 'metalforever');
+assert.strictEqual(artistPrefixed.results[0].exact, true);
 
 const velvetV5 = _test.trimAutofillBatch('velvet (sensual rabbit) (nikke)', true, {
     results: [
@@ -1405,7 +1508,7 @@ async function main() {
     assert.ok(noClientPayload.remoteAccess);
     assert.strictEqual(noClientPayload.remoteAccess.defaultGenerationMethod, 'studio');
     assert.strictEqual(noClientPayload.remoteAccess.autoGenerate, false);
-    assert.strictEqual(noClientPayload.remoteAccess.openGeneratedImages, 'lumen');
+    assert.strictEqual(noClientPayload.remoteAccess.openGeneratedImages, 'ledge');
     assert.ok(noClientPayload.next.includes('generate_image'));
     const fullSession = await _test.collectSessionState({
         getPath: () => require('path').join(__dirname, '..', '.cache'),
@@ -1442,8 +1545,9 @@ async function main() {
     const lumenSkip = await _test.maybeOpenGeneratedInLumen({
         getWebSocketServer: () => ({ clients: new Map() })
     }, { applicationAuth: { applicationScopes: ['generation'] } }, ['shot.png']);
-    assert.strictEqual(lumenSkip.opened, false);
-    assert.strictEqual(lumenSkip.reason, 'no-client');
+    assert.strictEqual(lumenSkip.opened, true);
+    assert.strictEqual(lumenSkip.target, 'ledge');
+    assert.ok(lumenSkip.sessionId);
 
     const lumenDisabled = await _test.maybeOpenGeneratedInLumen({
         getWebSocketServer: () => ({ clients: new Map() }),
@@ -1477,7 +1581,9 @@ async function main() {
     }), {
         defaultGenerationMethod: 'detached',
         autoGenerate: true,
-        openGeneratedImages: 'glancewell'
+        openGeneratedImages: 'glancewell',
+        minPrintsPerTurn: 1,
+        maxPrintsPerTurn: 8
     });
 
     // OAuth 2.1 tests
@@ -1688,7 +1794,247 @@ async function main() {
     assert.ok(!docHtml.includes('<article'));
     assert.ok(!/^\s*<pre>/.test(docHtml));
 
+    await runDirectorMcpTests();
+
     console.log('test-mcp-agent-facade: ok');
+}
+
+function fakeBoundStudio(clientId, onCommand) {
+    const bridge = require('../modules/agentClientBridge');
+    const sent = [];
+    const ws = { readyState: 1 };
+    const wsServer = {
+        clients: new Map([[ws, { authenticated: true, clientId, connectedAt: Date.now() - 60000 }]]),
+        sendToClient(target, msg) {
+            sent.push(msg);
+            if (msg.type !== 'agent_session_command' || !onCommand) return;
+            const data = onCommand(msg.data);
+            if (data !== undefined) {
+                setImmediate(() => bridge.handleAgentSessionResult(null, target, { requestId: msg.requestId, data }));
+            }
+        }
+    };
+    return {
+        sent,
+        globalResources: {
+            getWebSocketServer: () => wsServer,
+            getPromptConfig: () => ({}),
+            getPath: () => os.tmpdir()
+        }
+    };
+}
+
+async function runDirectorMcpTests() {
+    const fsp = fs.promises;
+    const bridge = require('../modules/agentClientBridge');
+    const applyReliability = require('../modules/mcpReliability');
+
+    // apply_studio_changes: nested change.prompt / change.fields.prompt used to 400 or drop the prompt.
+    const topShape = _test.liftNestedStudioText({ prompt: '1girl, rain', uc: 'blurry', change: { model: 'v5' } });
+    const nestedShape = _test.liftNestedStudioText({ change: { model: 'v5', prompt: '1girl, rain', uc: 'blurry' } });
+    const nestedFields = _test.liftNestedStudioText({ change: { model: 'v5', fields: { prompt: '1girl, rain', uc: 'blurry' } } });
+    const topFields = _test.liftNestedStudioText({ change: { model: 'v5' }, fields: { prompt: '1girl, rain', uc: 'blurry' } });
+    const stringChange = _test.liftNestedStudioText({ change: JSON.stringify({ prompt: '1girl, rain', uc: 'blurry' }) });
+    const topAssembled = bridge.assembleStudioChangeFromToolArgs(topShape);
+    for (const shape of [nestedShape, nestedFields, topFields]) {
+        assert.strictEqual(shape.prompt, '1girl, rain');
+        assert.strictEqual(shape.uc, 'blurry');
+        assert.deepStrictEqual(bridge.assembleStudioChangeFromToolArgs(shape), topAssembled);
+    }
+    assert.strictEqual(stringChange.prompt, '1girl, rain');
+    assert.ok(bridge.assembleStudioChangeFromToolArgs(stringChange));
+    const promptOnlyNested = _test.liftNestedStudioText({ change: { prompt: 'solo' } });
+    assert.ok(bridge.assembleStudioChangeFromToolArgs(promptOnlyNested), 'prompt-only nested change must not assemble to null (400)');
+    const keepsTop = _test.liftNestedStudioText({ prompt: 'top wins', change: { prompt: 'nested' } });
+    assert.strictEqual(keepsTop.prompt, 'top wins');
+    assert.ok(!('prompt' in keepsTop.change));
+    const untouched = { change: { model: 'v5', steps: 28 } };
+    assert.deepStrictEqual(_test.liftNestedStudioText(untouched), untouched);
+
+    const applyStudio = fakeBoundStudio('a1b2c3d4e5f6', (data) => ({ ok: true, echo: data }));
+    const applyBindKey = 'appkey:director-mcp-apply';
+    bridge.bindClient(applyStudio.globalResources, { clientId: 'a1b2c3d4e5f6', bindKey: applyBindKey });
+    const applyArgs = { bindKey: applyBindKey, autoApply: true, autoGenerate: false };
+    const sentTop = await _test.applyStudioChanges(applyStudio.globalResources, { ...applyArgs, prompt: '1girl, rain', uc: 'blurry' });
+    const sentNested = await _test.applyStudioChanges(applyStudio.globalResources, { ...applyArgs, change: { prompt: '1girl, rain', uc: 'blurry' } });
+    const sentNestedFields = await _test.applyStudioChanges(applyStudio.globalResources, {
+        ...applyArgs,
+        change: { fields: { prompt: '1girl, rain', uc: 'blurry' } }
+    });
+    assert.strictEqual(sentTop.echo.command, 'apply_studio');
+    assert.deepStrictEqual(sentNested.echo.change, sentTop.echo.change);
+    assert.deepStrictEqual(sentNestedFields.echo.change, sentTop.echo.change);
+    assert.strictEqual(sentNested.echo.prompt, '1girl, rain');
+    assert.strictEqual(sentNested.echo.uc, 'blurry');
+
+    // await_generation_job: never filenameBefore, never an older print.
+    const galleryDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mcp-apply-gallery-'));
+    const galleryGr = {
+        getPath: () => galleryDir,
+        getWebSocketServer: () => ({ clients: new Map() })
+    };
+    const printBytes = Buffer.alloc(256, 7);
+    applyReliability.resetApplyGenerateJobs();
+    const staleJob = applyReliability.rememberApplyGenerateJob({ bindKey: 'k-await', workspaceId: 'lab', filenameBefore: `${Date.now() - 3600000}_before.png` });
+    const beforeName = staleJob.filenameBefore;
+    const oldName = `${staleJob.createdAt - 86400000}_other workspace melody.png`;
+    const newName = `${staleJob.createdAt + 1000}_lab new print.png`;
+    await fsp.writeFile(path.join(galleryDir, beforeName), printBytes);
+    await fsp.writeFile(path.join(galleryDir, oldName), printBytes);
+    assert.strictEqual(_test.galleryFilenameBornMs(newName), staleJob.createdAt + 1000);
+    assert.strictEqual(_test.galleryFilenameBornMs('plain.png'), null);
+    assert.strictEqual(_test.isApplyJobOwnPrint(galleryGr, staleJob, beforeName), false);
+    assert.strictEqual(_test.isApplyJobOwnPrint(galleryGr, staleJob, oldName), false);
+    assert.strictEqual(_test.isApplyJobOwnPrint(galleryGr, staleJob, newName), false, 'not on disk yet');
+    assert.strictEqual(_test.isApplyJobOwnPrint(galleryGr, { ...staleJob, filenameOpenBefore: newName }, newName), false);
+
+    const awaitReq = { applicationAuth: { applicationScopes: ['generation', 'gallery'] } };
+    const pendingPayload = (result) => {
+        const payload = JSON.parse(result.content[0].text);
+        assert.strictEqual(payload.pending, true);
+        assert.strictEqual(payload.success, false);
+        assert.strictEqual(payload.filename, undefined);
+        assert.strictEqual(payload.filenameBefore, undefined);
+        assert.ok(!result.content[0].text.includes(beforeName));
+        assert.ok(!result.content[0].text.includes(oldName));
+        return payload;
+    };
+    const savedWait = _test.applyPrintWait.timeoutMs;
+    _test.applyPrintWait.timeoutMs = 0;
+    try {
+        applyReliability.completeApplyGenerateJob(staleJob.jobId, beforeName);
+        pendingPayload(await _test.callTool(galleryGr, awaitReq, 'get_generation_job', { jobId: staleJob.jobId }));
+        assert.strictEqual(staleJob.status, 'running');
+        assert.strictEqual(staleJob.filename, null);
+
+        applyReliability.completeApplyGenerateJob(staleJob.jobId, oldName);
+        const awaited = pendingPayload(await _test.callTool(galleryGr, awaitReq, 'await_generation_job', { jobId: staleJob.jobId }));
+        assert.strictEqual(awaited.jobId, staleJob.jobId);
+        assert.strictEqual(awaited.workspaceId, 'lab');
+
+        pendingPayload(await _test.callTool(galleryGr, awaitReq, 'await_generation_job', { jobId: staleJob.jobId }));
+    } finally {
+        _test.applyPrintWait.timeoutMs = savedWait;
+    }
+    await fsp.writeFile(path.join(galleryDir, newName), printBytes);
+    assert.strictEqual(_test.isApplyJobOwnPrint(galleryGr, staleJob, newName), true);
+    applyReliability.completeApplyGenerateJob(staleJob.jobId, newName);
+    _test.reopenStaleApplyJob(galleryGr, staleJob);
+    assert.strictEqual(staleJob.status, 'completed');
+    assert.strictEqual(staleJob.filename, newName);
+    applyReliability.resetApplyGenerateJobs();
+    await fsp.rm(galleryDir, { recursive: true, force: true });
+
+    // set_window / open_application: viewport percent only.
+    assert.deepStrictEqual(_test.validateSetWindowArgs({ id: 'w1', action: 'move', left: 0, top: 100 }).payload, { id: 'w1', action: 'move', left: 0, top: 100 });
+    assert.deepStrictEqual(_test.validateSetWindowArgs({ id: 'w1', action: 'resize', width: '50%', height: 25.5 }).payload, { id: 'w1', action: 'resize', width: 50, height: 25.5 });
+    assert.deepStrictEqual(_test.validateSetWindowArgs({ id: 'w1', action: 'FOCUS' }).payload, { id: 'w1', action: 'focus' });
+    for (const bad of [
+        { id: 'w1', action: 'move', left: 120, top: 10 },
+        { id: 'w1', action: 'move', left: -1 },
+        { id: 'w1', action: 'move', left: '640px' },
+        { id: 'w1', action: 'move', x: 10, left: 5 },
+        { id: 'w1', action: 'resize', widthPx: 800, width: 50 },
+        { id: 'w1', action: 'resize', width: 0 },
+        { id: 'w1', action: 'resize', left: 10 },
+        { id: 'w1', action: 'move' },
+        { id: 'w1', action: 'focus', left: 10 },
+        { id: 'w1', action: 'maximize' },
+        { action: 'close' }
+    ]) {
+        assert.ok(_test.validateSetWindowArgs(bad).error, JSON.stringify(bad));
+    }
+    assert.deepStrictEqual(_test.validateOpenApplicationArgs({ launchId: 'character-db' }).payload, { launchId: 'character-db' });
+    assert.ok(_test.validateOpenApplicationArgs({ launchId: '../x' }).error);
+    assert.ok(_test.validateOpenApplicationArgs({}).error);
+    const rejected = await _test.callTool(applyStudio.globalResources, awaitReq, 'set_window', { id: 'w1', action: 'move', left: 1920, top: 0 });
+    assert.strictEqual(rejected.isError, true);
+    assert.ok(!applyStudio.sent.some((msg) => msg.data && msg.data.command === 'set_window'));
+
+    const windowStudio = fakeBoundStudio('b1b2c3d4e5f6', (data) => ({ ok: true, echoCommand: data.command }));
+    const windowReq = { applicationAuth: { applicationKeyId: 'director-mcp-window', applicationScopes: ['generation'] } };
+    const moved = JSON.parse((await _test.callTool(windowStudio.globalResources, windowReq, 'set_window', { id: 'w1', action: 'move', left: 10, top: 20 })).content[0].text);
+    assert.strictEqual(moved.success, true);
+    assert.strictEqual(moved.echoCommand, 'set_window');
+    const opened = JSON.parse((await _test.callTool(windowStudio.globalResources, windowReq, 'open_application', { launchId: 'notebook' })).content[0].text);
+    assert.strictEqual(opened.echoCommand, 'open_application');
+    const windowCommands = windowStudio.sent.filter((msg) => msg.type === 'agent_session_command').map((msg) => msg.data);
+    assert.deepStrictEqual(windowCommands.map((row) => row.command), ['set_window', 'open_application']);
+    assert.strictEqual(windowCommands[0].left, 10);
+    assert.strictEqual(windowCommands[1].launchId, 'notebook');
+
+    // offer_director_window: fire and forget — the fake tab never replies.
+    const deafStudio = fakeBoundStudio('c1b2c3d4e5f6', () => undefined);
+    const noticeReq = { applicationAuth: { applicationKeyId: 'director-mcp-notice', applicationScopes: ['generation'] } };
+    const noticeStart = Date.now();
+    const notice = JSON.parse((await _test.callTool(deafStudio.globalResources, noticeReq, 'offer_director_window', {})).content[0].text);
+    assert.ok(Date.now() - noticeStart < 1000);
+    assert.strictEqual(notice.notified, true);
+    const noticeMsgs = deafStudio.sent.filter((msg) => msg.type === 'agent_session_command');
+    assert.strictEqual(noticeMsgs.length, 1);
+    assert.strictEqual(noticeMsgs[0].data.command, 'director_long_job_notice');
+    assert.strictEqual(noticeMsgs[0].data.text, 'This is a long job. Director is still working.');
+    const noClientNotice = JSON.parse((await _test.callTool({ getWebSocketServer: () => ({ clients: new Map() }) }, noticeReq, 'offer_director_window', {})).content[0].text);
+    assert.strictEqual(noClientNotice.notified, false);
+
+    // get_session_state: tagCutoff from tagModelCutoff.js, vfs mount state.
+    const cutoff = require('../modules/tagModelCutoff');
+    assert.strictEqual(_test.TAG_CUTOFF.v4_5.through, '2025-05-29');
+    assert.strictEqual(_test.TAG_CUTOFF.v5.through, '2026-07-31');
+    assert.strictEqual(_test.TAG_CUTOFF.v4_5.hiddenAfterMs, cutoff.V45_CUTOFF_MS);
+    assert.strictEqual(_test.TAG_CUTOFF.v5.hiddenFromMs, cutoff.V5_CUTOFF_MS);
+    assert.strictEqual(_test.buildTagCutoff('nai-diffusion-4-5-full').active, 'v4_5');
+    assert.strictEqual(_test.buildTagCutoff('nai-diffusion-5-full').active, cutoff.isV5SuggestModel('nai-diffusion-5-full') ? 'v5' : 'v4_5');
+    const mountTmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'mcp-vfs-mount-'));
+    assert.strictEqual(await _test.statVfsMount(mountTmp), 'absent');
+    assert.strictEqual(await _test.statVfsMount(path.join(mountTmp, 'missing')), 'absent');
+    assert.strictEqual(await _test.readVfsMountState(path.join(mountTmp, 'vfs'), Date.now()), 'absent');
+    const sessionWithCutoff = JSON.parse((await _test.collectSessionState({
+        getPath: () => path.join(__dirname, '..', '.cache'),
+        getPromptConfig: () => ({ quality_presets: { v5: 'best quality' }, uc_presets: {}, nsfw_presets: {} }),
+        getWebSocketServer: () => ({ clients: new Map() })
+    }, { applicationAuth: { applicationScopes: ['generation'] } }, { view: 'live' })).content[0].text);
+    assert.strictEqual(sessionWithCutoff.tagCutoff.v5.through, '2026-07-31');
+    assert.strictEqual(sessionWithCutoff.vfsPath, 'vfs');
+    assert.ok(['mounted', 'absent', 'unknown'].includes(sessionWithCutoff.vfsMount));
+
+    // VFS paths and sourcePath containment.
+    assert.deepStrictEqual(_test.splitVfsPath('/Pictures/Rain/a.png'), { path: '/Pictures/Rain/a.png', parent: '/Pictures/Rain', name: 'a.png' });
+    assert.deepStrictEqual(_test.splitVfsPath('notes.txt'), { path: '/notes.txt', parent: '/', name: 'notes.txt' });
+    assert.deepStrictEqual(_test.splitVfsPath('/'), { path: '/', parent: null, name: '' });
+    assert.strictEqual(_test.splitVfsPath('/a/../b'), null);
+    assert.strictEqual(_test.splitVfsPath('./a'), null);
+    const home = path.join(mountTmp, 'director');
+    await fsp.mkdir(path.join(home, 'work'), { recursive: true });
+    await fsp.mkdir(path.join(home, '.cursor'), { recursive: true });
+    await fsp.writeFile(path.join(home, 'work', 'out.txt'), 'hello');
+    await fsp.writeFile(path.join(home, 'key'), 'secret');
+    await fsp.writeFile(path.join(home, '.cursor', 'mcp.json'), '{}');
+    await fsp.writeFile(path.join(mountTmp, 'outside.txt'), 'nope');
+    await fsp.symlink(path.join(mountTmp, 'outside.txt'), path.join(home, 'work', 'escape.txt'));
+    const okSource = _test.resolveDirectorSourcePath('work/out.txt', home);
+    assert.strictEqual(okSource.size, 5);
+    assert.strictEqual(_test.resolveDirectorSourcePath(path.join(home, 'work', 'out.txt'), home).size, 5);
+    for (const bad of [
+        path.join(mountTmp, 'outside.txt'),
+        '../outside.txt',
+        'work/../../outside.txt',
+        'work/escape.txt',
+        'key',
+        '.cursor/mcp.json',
+        'work',
+        '/etc/passwd',
+        ''
+    ]) {
+        assert.ok(_test.resolveDirectorSourcePath(bad, home).error, `sourcePath ${bad}`);
+    }
+    await fsp.rm(mountTmp, { recursive: true, force: true });
+    const vfsWriteOutside = await _test.callTool({}, { applicationAuth: { applicationScopes: ['vfs'] } }, 'vfs_write', {
+        path: '/notes/x.txt',
+        sourcePath: '/etc/passwd'
+    });
+    assert.strictEqual(vfsWriteOutside.isError, true);
+    assert.ok(vfsWriteOutside.content[0].text.includes('sourcePath'));
 }
 
 main().catch((error) => {

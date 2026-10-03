@@ -323,25 +323,23 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
             // Textarea is the editing source while focused — keep model text in sync
             if (document.activeElement === textarea) {
                 const model = ensureTextOverlayModel(item);
-                model.text = textarea.value.trim();
+                model.text = textOverlayDisplayToNewlines(textarea.value).trim();
             }
         });
 
         // Store original value with actual newlines before any conversion
         if (!textarea.dataset.originalValue) {
-            textarea.dataset.originalValue = textarea.value;
+            textarea.dataset.originalValue = textOverlayDisplayToNewlines(textarea.value);
         }
-        ensureTextOverlayModel(item).text = (textarea.dataset.originalValue || textarea.value || '').trim();
+        ensureTextOverlayModel(item).text = textOverlayDisplayToNewlines(textarea.dataset.originalValue || textarea.value || '').trim();
 
         // Convert newlines to display character when losing focus
         textarea.addEventListener('blur', () => {
-            const currentValue = textarea.value;
-            // Store the original value with actual newlines
-            textarea.dataset.originalValue = currentValue;
-            ensureTextOverlayModel(item).text = currentValue.trim();
-            // Convert newlines to display character (⏎)
-            const displayValue = currentValue.replace(/\n/g, ' ⏎ ');
-            if (displayValue !== currentValue) {
+            const stored = textOverlayDisplayToNewlines(textarea.value);
+            textarea.dataset.originalValue = stored;
+            ensureTextOverlayModel(item).text = stored.trim();
+            const displayValue = textOverlayNewlinesToDisplay(stored);
+            if (displayValue !== textarea.value) {
                 textarea.value = displayValue;
             }
         });
@@ -349,8 +347,7 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
         // Convert display character back to newlines when gaining focus
         textarea.addEventListener('focus', () => {
             const currentValue = textarea.value;
-            // Convert display character back to newlines
-            const originalValue = currentValue.replace(/ ⏎ /g, '\n');
+            const originalValue = textOverlayDisplayToNewlines(currentValue);
             if (originalValue !== currentValue) {
                 // Restore cursor position as much as possible
                 const cursorPosition = textarea.selectionStart;
@@ -372,11 +369,11 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
         // Initialize: convert newlines to display character if not focused
         if (document.activeElement !== textarea) {
             const currentValue = textarea.value;
-            if (currentValue.includes('\n')) {
-                const displayValue = currentValue.replace(/\n/g, ' ⏎ ');
-                textarea.value = displayValue;
-                textarea.dataset.originalValue = currentValue;
-                ensureTextOverlayModel(item).text = currentValue.trim();
+            const stored = textOverlayDisplayToNewlines(currentValue);
+            if (stored.includes('\n')) {
+                textarea.value = textOverlayNewlinesToDisplay(stored);
+                textarea.dataset.originalValue = stored;
+                ensureTextOverlayModel(item).text = stored.trim();
             }
         }
     }
@@ -681,6 +678,17 @@ function updateTextOverlayStageVisibility() {
     });
 }
 
+// ⏎ is a display stand-in for a newline in an unfocused overlay box. It is not prompt text.
+function textOverlayNewlinesToDisplay(text) {
+    return String(text || '').replace(/\n/g, ' \u23CE ');
+}
+
+function textOverlayDisplayToNewlines(text) {
+    const value = String(text || '');
+    if (value.indexOf('\u23CE') === -1) return value;
+    return value.replace(/[ \t]*\u23CE[ \t]*/g, '\n');
+}
+
 function ensureTextOverlayModel(item) {
     if (!item._overlayModel) {
         const textarea = item._textArea || document.getElementById(`${item.id}_text`);
@@ -688,10 +696,9 @@ function ensureTextOverlayModel(item) {
         let text = '';
         if (textarea) {
             if (textarea.dataset.originalValue !== undefined && textarea.dataset.originalValue !== '') {
-                text = textarea.dataset.originalValue.trim();
+                text = textOverlayDisplayToNewlines(textarea.dataset.originalValue).trim();
             } else {
-                const currentValue = textarea.value || '';
-                text = (currentValue.includes(' ⏎ ') ? currentValue.replace(/ ⏎ /g, '\n') : currentValue).trim();
+                text = textOverlayDisplayToNewlines(textarea.value || '').trim();
             }
         }
         const enabledBtn = item._enabledBtn || document.getElementById(`${item.id}_enabled`);
@@ -727,16 +734,12 @@ function getTextOverlayData() {
 
         // Sync text from the textarea only when it is the editing source
         if (textarea && document.activeElement === textarea) {
-            let liveText = textarea.value;
-            if (liveText.includes(' ⏎ ')) {
-                liveText = liveText.replace(/ ⏎ /g, '\n');
-            }
+            const liveText = textOverlayDisplayToNewlines(textarea.value);
             model.text = liveText.trim();
             textarea.dataset.originalValue = liveText;
         } else if (textarea && textarea.value) {
             // Programmatic .value edits skip the input/blur sync; unfocused value may be the ⏎ display form
-            const value = textarea.value;
-            const valueText = (value.includes(' ⏎ ') ? value.replace(/ ⏎ /g, '\n') : value).trim();
+            const valueText = textOverlayDisplayToNewlines(textarea.value).trim();
             if (valueText && valueText !== model.text) model.text = valueText;
         }
 
@@ -751,7 +754,7 @@ function getTextOverlayData() {
             model.disabled = enabledBtn.getAttribute('data-state') !== 'on';
         }
 
-        let text = model.text || '';
+        let text = textOverlayDisplayToNewlines(model.text || '').trim();
 
         // If text is empty, use the placeholder
         if (!text && textarea) {
@@ -807,7 +810,7 @@ function applyTextOverlayDataToCard(item, overlayData) {
         if (document.activeElement === textarea) {
             textarea.value = text;
         } else {
-            textarea.value = text.includes('\n') ? text.replace(/\n/g, ' ⏎ ') : text;
+            textarea.value = text.includes('\n') ? textOverlayNewlinesToDisplay(text) : text;
         }
         autoResizeTextarea(textarea, 10);
     }

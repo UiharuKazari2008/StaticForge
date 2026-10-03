@@ -785,6 +785,24 @@ textarea {
     width: 100%;
     min-height: 1.6em;
     font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.35em;
+}
+
+.character-autocomplete-view-bar .custom-dropdown-btn > i {
+    flex: none;
+    width: 1em;
+    text-align: center;
+    opacity: 0.85;
+}
+
+.character-autocomplete-view-bar .custom-dropdown-btn > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .character-autocomplete-view-bar .custom-dropdown.autofill-view-control-cycled .custom-dropdown-btn {

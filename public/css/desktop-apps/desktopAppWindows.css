@@ -1,0 +1,120 @@
+/* MeletonFX calculator, alarm, pomodoro, and remote desktop sessions.
+   Shared modal classes draw the chrome. These rules only make the three
+   windows fill extra height: keypad rows on the calculator, the clock
+   on alarm and pomodoro.
+   Link before hidden.css in public/app.html:
+   <link rel="stylesheet" href="/css/desktop-apps/desktopAppWindows.css">
+   The same flex is also set inline in calculator.js and alarmPomodoro.js
+   so the windows still grow if this file is not linked yet.
+*/
+
+#desktopCalculatorModal,
+#desktopAlarmModal,
+#desktopPomodoroModal {
+    flex-direction: column;
+    width: 280px;
+}
+
+#desktopAlarmModal,
+#desktopPomodoroModal {
+    width: 380px;
+}
+
+#desktopCalculatorModal > .modal-content,
+#desktopAlarmModal > .modal-content,
+#desktopPomodoroModal > .modal-content {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+#desktopCalculatorModal .modal-body,
+#desktopCalculatorModal #desktopCalculatorPad,
+#desktopAlarmModal .form-section,
+#desktopPomodoroModal .form-section {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#desktopCalculatorModal .modal-body {
+    display: flex;
+    flex-direction: column;
+}
+
+#desktopCalculatorModal #desktopCalculatorDisplay {
+    flex: 0 0 auto;
+}
+
+#desktopCalculatorModal #desktopCalculatorPad > .form-row {
+    flex: 1 1 auto;
+    align-items: stretch;
+    min-height: 32px;
+}
+
+#desktopCalculatorModal #desktopCalculatorPad > .form-row > .form-group {
+    min-height: 0;
+}
+
+#desktopCalculatorModal #desktopCalculatorPad > .form-row > .form-group > button {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 32px;
+}
+
+#desktopAlarmRemain,
+#desktopPomodoroRemain {
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0;
+}
+
+#desktopAlarmModal .form-section > .form-row,
+#desktopAlarmModal .form-section > .section-header,
+#desktopPomodoroModal .form-section > .form-row,
+#desktopPomodoroModal .form-section > .section-header {
+    flex: 0 0 auto;
+}
+
+/* Remote desktop session (guacRemote.js): the badge shows while keys are not
+   going to the Guacamole iframe. A focused cross-origin iframe still matches
+   :focus in this document, so no script tracks capture. */
+.modal[data-window-identifier="desktopGuacSession"] .modal-body,
+.modal[data-window-identifier="desktopGuacHome"] .modal-body {
+    position: relative;
+}
+
+.desktop-guac-capture-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: none;
+    padding: 4px 8px;
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-5);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.modal[data-window-identifier="desktopGuacSession"] .modal-body:has(> iframe):not(:focus-within) > .desktop-guac-capture-badge,
+.modal[data-window-identifier="desktopGuacHome"] .modal-body:has(> iframe):not(:focus-within) > .desktop-guac-capture-badge {
+    display: block;
+}
+
+/* Connecting line over the frame, so hiding it never resizes the remote display */
+.modal[data-window-identifier="desktopGuacSession"] .modal-body > .form-hint,
+.modal[data-window-identifier="desktopGuacHome"] .modal-body > .form-hint {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    margin: 0;
+    padding: 4px 8px;
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-5);
+    pointer-events: none;
+}
+
+/* .form-hint sets display, which would beat the hidden attribute */
+.modal[data-window-identifier^="desktopGuac"] .form-hint[hidden] {
+    display: none;
+}

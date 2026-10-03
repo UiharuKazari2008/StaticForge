@@ -1243,7 +1243,8 @@ class WorkspaceManager {
                 totalRemoved += removed;
                 needsSave = true;
             }
-            const removedScraps = this.removeFromWorkspaceArray('scraps', validFilenames, workspaceId, workspaces);
+            // Delete drops scrap membership only. Unscrap is the path that puts a scrap back into files.
+            const removedScraps = this.removeFromWorkspaceArray('scraps', validFilenames, workspaceId, workspaces, { restoreScrapsToFiles: false });
             if (removedScraps > 0) {
                 totalRemoved += removedScraps;
                 needsSave = true;
@@ -1321,21 +1322,35 @@ class WorkspaceManager {
         return changes;
     }
 
+    _enqueueGalleryMetadataSync(task) {
+        const prev = this._galleryMetadataSyncTail || Promise.resolve();
+        const next = prev.then(() => task(), () => task());
+        this._galleryMetadataSyncTail = next.catch((err) => {
+            console.error('Gallery metadata sync failed:', err && err.message ? err.message : err);
+        });
+        return next;
+    }
+
+    async flushGalleryMetadataSync() {
+        const tail = this._galleryMetadataSyncTail;
+        if (tail) {
+            await tail;
+        }
+    }
+
     _queueGalleryPinSync(changes) {
         if (!changes || changes.length === 0) {
-            return;
+            return this._galleryMetadataSyncTail || Promise.resolve();
         }
         const metadataDb = this.globalResources.metadataDatabase;
         if (!metadataDb) {
-            return;
+            return Promise.resolve();
         }
-        Promise.all(changes.map(({ op, filename, workspaceId }) => (
+        return this._enqueueGalleryMetadataSync(() => Promise.all(changes.map(({ op, filename, workspaceId }) => (
             op === 'upsert'
                 ? metadataDb.addGalleryWorkspacePin(workspaceId, filename)
                 : metadataDb.removeGalleryWorkspacePin(workspaceId, filename)
-        ))).catch((err) => {
-            console.error('Gallery pin sync failed:', err.message || err);
-        });
+        ))).then(() => metadataWriteQueue.drainAll()));
     }
 
     _queueGalleryOwnershipAndPinSync(ownershipChanges, pinChanges) {
@@ -1457,16 +1472,14 @@ class WorkspaceManager {
     }
 
     _queueGalleryOwnershipSync(changes) {
-        if (!changes || changes.length === 0) return;
+        if (!changes || changes.length === 0) return this._galleryMetadataSyncTail || Promise.resolve();
         const metadataDb = this.globalResources.metadataDatabase;
-        if (!metadataDb) return;
-        Promise.all(changes.map(({ op, filename, workspaceId, bucket }) => (
+        if (!metadataDb) return Promise.resolve();
+        return this._enqueueGalleryMetadataSync(() => Promise.all(changes.map(({ op, filename, workspaceId, bucket }) => (
             op === 'upsert'
                 ? metadataDb.upsertGalleryOwnership(filename, workspaceId, bucket)
                 : metadataDb.removeGalleryOwnership(filename, workspaceId, bucket)
-        ))).then(() => metadataWriteQueue.drainAll()).catch(err => {
-            console.error('Gallery ownership sync failed:', err.message || err);
-        });
+        ))).then(() => metadataWriteQueue.drainAll()));
     }
 
     // Common function to add items to workspace array
@@ -1613,8 +1626,9 @@ class WorkspaceManager {
     }
 
     // Common function to remove items from workspace array
-    removeFromWorkspaceArray(type, items, workspaceId = null, workspacesOverride = null) {
+    removeFromWorkspaceArray(type, items, workspaceId = null, workspacesOverride = null, options = null) {
         const workspaces = workspacesOverride || this.globalResources.getWorkspacesConfig({ clone: true });
+        const restoreScrapsToFiles = !options || options.restoreScrapsToFiles !== false;
 
         const targetId = workspaceId || 'default';
 
@@ -1661,8 +1675,8 @@ class WorkspaceManager {
                     actuallyRemoved.push(...removedFromScraps);
                     removedCount = removedFromScraps.length;
 
-                    // For scraps, move removed items back to files of the target workspace
-                    if (removedCount > 0) {
+                    // Unscrap puts the image back in this workspace's gallery. Delete must not.
+                    if (restoreScrapsToFiles && removedCount > 0) {
                         const targetFilesSet = new Set(workspaces[targetId].files);
                         removedFromScraps.forEach(item => {
                             if (!targetFilesSet.has(item)) {
@@ -1704,7 +1718,7 @@ class WorkspaceManager {
                 const ownershipChanges = actuallyRemoved.map(filename => ({
                     op: 'remove', filename, workspaceId: targetId, bucket
                 }));
-                if (type === 'scraps') {
+                if (type === 'scraps' && restoreScrapsToFiles) {
                     actuallyRemoved.forEach(filename => {
                         ownershipChanges.push({
                             op: 'upsert', filename, workspaceId: targetId, bucket: 'files'

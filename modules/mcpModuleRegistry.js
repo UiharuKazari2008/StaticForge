@@ -23,8 +23,11 @@ const MODULE_DEFS = {
         description: 'Image generation, Studio control, presets',
         tools: [
             'generate_image', 'get_generation_job', 'await_generation_job', 'ensure_artifact',
-            'get_session_state', 'get_studio_state', 'get_open_windows', 'get_client_physics',
-            'list_clients', 'bind_session', 'apply_studio_changes', 'run_client_js', 'inspect_elements',
+            'get_session_state', 'get_studio_state', 'get_open_windows', 'set_window', 'open_application',
+            'offer_director_window', 'get_client_physics',
+            'set_session_title', 'set_session_tasks', 'set_session_task', 'get_session_tasks', 'close_session_tasks',
+            'offer_workspace_switch', 'show_chat_image', 'request_form',
+            'list_clients', 'bind_session', 'apply_studio_changes', 'print_studio', 'run_client_js', 'inspect_elements',
             'update_client', 'restart_client',
             'get_linkxi_persona', 'save_linkxi_persona',
             'get_prompt_guide', 'list_memories', 'search_memories', 'get_memory', 'save_memory',
@@ -38,7 +41,7 @@ const MODULE_DEFS = {
         description: 'Gallery browse and image retrieval',
         tools: [
             'get_generated_image', 'resolve_lookback', 'get_latest_image', 'get_images',
-            'delete_images', 'open_in_lumen', 'open_in_glancewell',
+            'delete_images', 'open_in_lumen', 'open_in_studio', 'open_in_glancewell', 'ledge',
             'compare_images', 'evaluate_workspace_themes'
         ]
     },
@@ -99,7 +102,10 @@ const MODULE_DEFS = {
         scope: 'vfs',
         label: 'Core VFS',
         description: 'Virtual file system',
-        tools: ['vfs_list', 'vfs_read', 'vfs_stat', 'vfs_write', 'vfs_delete', 'list_desktop_items', 'create_shortcut']
+        tools: [
+            'vfs_list', 'vfs_read', 'vfs_stat', 'vfs_mkdir', 'vfs_rename', 'vfs_move', 'vfs_copy',
+            'vfs_write', 'vfs_delete', 'list_desktop_items', 'create_shortcut'
+        ]
     },
 
     // Specialized modules

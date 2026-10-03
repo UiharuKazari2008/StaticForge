@@ -844,6 +844,11 @@ class ImageViewer {
                     action: 'image-viewer-copy-lookback'
                 },
                 {
+                    icon: 'fas fa-clapperboard',
+                    text: 'Ask Wren',
+                    action: 'image-viewer-ask-wren'
+                },
+                {
                     icon: 'fas fa-image',
                     text: 'Set as Wallpaper',
                     action: 'image-viewer-set-wallpaper',
@@ -967,6 +972,10 @@ class ImageViewer {
             case 'image-viewer-copy-lookback':
                 // copyLookbackImage: public/scripts/comp/copyLookback.js
                 copyLookbackImage(this.getImageFilename());
+                break;
+            case 'image-viewer-ask-wren':
+                // askWrenAboutImage: public/scripts/comp/director.js
+                askWrenAboutImage(this.getImageFilename());
                 break;
             case 'image-viewer-set-wallpaper':
                 this.setAsWallpaper();

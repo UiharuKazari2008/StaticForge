@@ -8,6 +8,28 @@ const MODAL_Z_INCREMENT = 10; // Increment between modal layers
 /** After this many bump layers in a tier, compact with a full stack rewrite */
 const MODAL_Z_COMPACT_LAYER_LIMIT = 250;
 let modalStack = []; // Array to track modal stack order
+// MCP launches (open_application, apply that opens Studio, viewers) nest under the
+// window that was already on top so the user's focus stays put.
+let mcpKeepTopDepth = 0;
+
+function pushMcpKeepTopWindow() {
+    mcpKeepTopDepth += 1;
+}
+
+function popMcpKeepTopWindow() {
+    mcpKeepTopDepth = Math.max(0, mcpKeepTopDepth - 1);
+}
+
+function mcpLaunchKeepsTopWindow() {
+    return mcpKeepTopDepth > 0;
+}
+
+// Dialogs the user has to answer stay in front of an MCP launch.
+function mcpLaunchShouldLeaveOnTop(modal) {
+    if (!modal) return false;
+    if (modal.classList.contains('on-top') || modal.classList.contains('alert-theme')) return true;
+    return TASKBAR_SYSTEM_MODAL_IDS.has(modal.id);
+}
 
 // Bootstrap / connection overlays — never shown as taskbar window buttons
 const TASKBAR_SYSTEM_MODAL_IDS = new Set([
@@ -838,12 +860,13 @@ async function ensureDesktopPositionsAfterEntry() {
             || desktopShortcuts.currentWorkspace !== workspaceId
             || desktopShortcuts.shortcuts.length === 0;
 
+        let shortcutsReady = !needsLoad;
         if (needsLoad) {
             desktopShortcuts.currentWorkspace = workspaceId;
-            await desktopShortcuts.loadShortcuts(workspaceId);
+            shortcutsReady = await desktopShortcuts.loadShortcuts(workspaceId);
         }
 
-        if (desktopShortcuts.gridContainer && desktopShortcuts.freeformContainer) {
+        if (shortcutsReady && desktopShortcuts.gridContainer && desktopShortcuts.freeformContainer) {
             desktopShortcuts.renderShortcuts();
         }
     }
@@ -1397,9 +1420,58 @@ function handleModalActivatePointer(e, modal) {
     handleModalClick(modal);
 }
 
+let galleryDragScrollPin = null;
+
+function pinGalleryScrollForWindowDrag() {
+    if (galleryDragScrollPin) return;
+    const galleryEl = document.getElementById('gallery');
+    if (!galleryEl) return;
+    const blockSize = galleryEl.getBoundingClientRect().height;
+    if (!(blockSize > 0)) return;
+    // getGalleryScrollRoots: public/scripts/comp/galleryView.js
+    const { galleryContainer, isContainerScroll } = getGalleryScrollRoots();
+    const scrollEl = (isContainerScroll && galleryContainer)
+        ? galleryContainer
+        : (document.scrollingElement || document.documentElement);
+    galleryEl.style.setProperty('--gallery-drag-block-size', Math.ceil(blockSize) + 'px');
+    galleryDragScrollPin = {
+        galleryEl,
+        scrollEl,
+        scrollTop: scrollEl.scrollTop,
+        prevOverflowAnchor: scrollEl.style.overflowAnchor
+    };
+    scrollEl.style.overflowAnchor = 'none';
+}
+
+function applyPinnedGalleryScroll(pin) {
+    if (!pin || !pin.scrollEl || !pin.scrollEl.isConnected) return;
+    if (pin.scrollEl.scrollTop !== pin.scrollTop) {
+        pin.scrollEl.scrollTop = pin.scrollTop;
+    }
+}
+
+function releaseGalleryScrollAfterWindowDrag() {
+    const pin = galleryDragScrollPin;
+    galleryDragScrollPin = null;
+    if (!pin) return;
+    applyPinnedGalleryScroll(pin);
+    if (pin.galleryEl) {
+        pin.galleryEl.style.removeProperty('--gallery-drag-block-size');
+    }
+    if (!pin.scrollEl || !pin.scrollEl.isConnected) return;
+    pin.scrollEl.style.overflowAnchor = pin.prevOverflowAnchor || '';
+    applyPinnedGalleryScroll(pin);
+}
+
 function setWindowInteractionPaintLock(on) {
+    if (on) {
+        pinGalleryScrollForWindowDrag();
+    } else {
+        applyPinnedGalleryScroll(galleryDragScrollPin);
+    }
     document.body.classList.toggle('is-window-dragging', !!on);
     if (!on) {
+        releaseGalleryScrollAfterWindowDrag();
         // updateVirtualScroll: public/scripts/comp/galleryView.js
         updateVirtualScroll();
     }
@@ -2765,9 +2837,11 @@ function openModal(modal) {
     const hasTitleBar = modal.querySelector('.modal-window-title') !== null;
     const isMoveable = hasTitleBar && !isBlocked;
 
+    const underTop = mcpLaunchKeepsTopWindow() && getTopOpenModal() && getTopOpenModal() !== modal;
+
     if (isAlreadyOpen) {
-        // Modal is already open, bring it to front if it's moveable
-        if (isMoveable) {
+        // Already open: a user click brings it forward. An MCP launch leaves the top window alone.
+        if (isMoveable && !underTop) {
             bringModalToFront(modal);
         }
         return;
@@ -2829,9 +2903,10 @@ function openModal(modal) {
         }
     }
 
-    // Assign z-index to modal (newly opened modals go on top) - but only for moveable modals
+    // Assign z-index to modal (newly opened modals go on top) - but only for moveable modals.
+    // MCP launches insert under the current top window instead of taking focus.
     if (isMoveable) {
-        assignModalZIndex(modal);
+        assignModalZIndex(modal, underTop ? { underTop: true } : undefined);
     }
 
     // Add resize handles for resizable windows
@@ -3161,12 +3236,18 @@ function closeMainModal(modal) {
 }
 
 // Modal z-index management functions
-function assignModalZIndex(modal) {
+function assignModalZIndex(modal, options) {
+    const underTop = !!(options && options.underTop);
     // Add modal to the top of the stack if not already there
     const modalIndex = modalStack.indexOf(modal);
     if (modalIndex !== -1) {
         // Modal already in stack, remove it first
         modalStack.splice(modalIndex, 1);
+    }
+    if (underTop && modalStack.length) {
+        modalStack.splice(modalStack.length - 1, 0, modal);
+        updateModalStackZIndexes({ skipActiveWindow: true });
+        return;
     }
     // Add to top of stack (end of array)
     modalStack.push(modal);
@@ -5646,11 +5727,13 @@ const startMenuLaunchables = [
     { launchId: 'spellbook', icon: 'fas fa-hat-wizard', imageIcon: 'caster.png', text: 'Spellcaster', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openSpellbookApplet(); } },
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', appMenu: true, action: () => { showCacheManagerModal(); } },
     { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openBracketGenerationApplet(); } },
+    { launchId: 'director', icon: 'fas fa-clapperboard', imageIcon: 'director.png', text: 'Director', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/director.js */ await openDirectorWindow(); } },
     { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Grimoire', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openGrimoireApplet(); } },
     { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openNaxtApplet(); } },
     { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
+    { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'remote_desktop.png', text: 'Remote Desktop', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
 ];
 
 /** Root start menu shell rows (folders + run). */
@@ -5716,6 +5799,11 @@ function buildToolsSubmenuItems() {
         { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'slider.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
         { launchId: 'character-db', icon: 'fas fa-users', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
         { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
+        { launchId: 'calculator', icon: 'fas fa-calculator', text: 'Calculator', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
+        { launchId: 'alarm', icon: 'fas fa-alarm-clock', text: 'Alarm', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
+        { launchId: 'pomodoro', icon: 'fas fa-timer', text: 'Pomodoro', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
+        { launchId: 'music', icon: 'fas fa-music', text: 'Music', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayers.js */ openDesktopMusicPlayer(); } },
+        { launchId: 'video', icon: 'fas fa-video', text: 'Video', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayers.js */ openDesktopVideoPlayer(); } },
     ].filter(isStartMenuEntryEnabled);
     // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
     const dsapAtTools = typeof getDsapStartMenuEntriesAtLocation === 'function'
@@ -5843,6 +5931,92 @@ const startMenuSubmenus = {
     toolbox: () => buildToolsSubmenuItems(),
     'all-apps': () => getAllAppsMenuItems()
 };
+
+const appIconMemoryImages = [];
+const shellIconFontSpecs = [
+    '900 16px "Font Awesome 6 Pro"',
+    '400 16px "Font Awesome 6 Pro"',
+    '300 16px "Font Awesome 6 Pro"',
+    '100 16px "Font Awesome 6 Pro"',
+    '900 16px "Font Awesome 6 Duotone"',
+    '400 16px "Font Awesome 6 Brands"',
+    '900 16px "Font Awesome 6 Sharp"',
+    '16px "remixicon"',
+    '16px "Material Design Icons"'
+];
+
+function appIconMemoryUrl(imageIcon) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const target = 192 * dpr;
+    let size = APP_ICON_SRCSET_SIZES[APP_ICON_SRCSET_SIZES.length - 1];
+    for (let i = 0; i < APP_ICON_SRCSET_SIZES.length; i++) {
+        if (APP_ICON_SRCSET_SIZES[i] >= target) {
+            size = APP_ICON_SRCSET_SIZES[i];
+            break;
+        }
+    }
+    return resolveAppIconPath(imageIcon, size);
+}
+
+function collectShellImageIcons(into, value, seenMenus) {
+    if (!value || seenMenus.has(value)) return;
+    if (typeof value === 'function') {
+        seenMenus.add(value);
+        try {
+            collectShellImageIcons(into, value(), seenMenus);
+        } catch (_error) {
+            // Submenu builder is not ready yet.
+        }
+        return;
+    }
+    if (Array.isArray(value)) {
+        seenMenus.add(value);
+        for (let i = 0; i < value.length; i++) {
+            collectShellImageIcons(into, value[i], seenMenus);
+        }
+        return;
+    }
+    if (typeof value !== 'object') return;
+    seenMenus.add(value);
+    if (value.imageIcon) into.add(value.imageIcon);
+    if (value.submenu && startMenuSubmenus[value.submenu]) {
+        collectShellImageIcons(into, startMenuSubmenus[value.submenu], seenMenus);
+    }
+    const keys = Object.keys(value);
+    let onlyFns = keys.length > 0 && !value.imageIcon && !value.icon;
+    for (let i = 0; i < keys.length; i++) {
+        if (typeof value[keys[i]] !== 'function') onlyFns = false;
+    }
+    if (!onlyFns) return;
+    for (let i = 0; i < keys.length; i++) {
+        collectShellImageIcons(into, value[keys[i]], seenMenus);
+    }
+}
+
+async function preloadShellIconsAndFonts() {
+    const names = new Set();
+    const seenMenus = new Set();
+    collectShellImageIcons(names, startMenuConfig, seenMenus);
+    collectShellImageIcons(names, startMenuSubmenus, seenMenus);
+    const loads = [];
+    names.forEach((name) => {
+        const url = appIconMemoryUrl(name);
+        if (!url) return;
+        loads.push(new Promise((resolve) => {
+            const img = new Image();
+            appIconMemoryImages.push(img);
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+            img.src = url;
+        }));
+    });
+    if (document.fonts && document.fonts.load) {
+        for (let i = 0; i < shellIconFontSpecs.length; i++) {
+            loads.push(document.fonts.load(shellIconFontSpecs[i]).catch(() => []));
+        }
+    }
+    await Promise.all(loads);
+}
 
 let startMenuPinnedLaunchIds = null;
 
@@ -6983,18 +7157,14 @@ async function clearDesktopWallpaper() {
 // Precache wallpaper: delete old cache entry and load new one
 async function precacheWallpaper(wallpaperUrl) {
     try {
-        // Use service worker manager to delete old cache and precache new file
-        if (window.serviceWorkerManager) {
+        // refreshWallpaper: public/scripts/comp/serviceWorkerManager.js
+        // preloadWallpaperIntoMemory: public/scripts/comp/workspaceUtils.js
+        if (window.serviceWorkerManager && window.serviceWorkerManager.refreshWallpaper) {
+            await window.serviceWorkerManager.refreshWallpaper(wallpaperUrl);
+        } else if (window.serviceWorkerManager) {
             await window.serviceWorkerManager.deleteAndPrecache(wallpaperUrl);
-        } else {
-            // Fallback if service worker manager is not available
-            const img = new Image();
-            await new Promise((resolve, reject) => {
-                img.onload = resolve;
-                img.onerror = reject;
-                img.src = `${wallpaperUrl}?t=${Date.now()}`;
-            });
         }
+        await preloadWallpaperIntoMemory(wallpaperUrl);
     } catch (error) {
         console.warn('Error precaching wallpaper:', error);
         // Continue anyway - the image will still load, just might be slower
@@ -7533,7 +7703,7 @@ function setupDesktopContextMenu() {
                     },
                     {
                         icon: 'fa-light fa-info-circle',
-                        text: 'About Melaton',
+                        text: 'About MeletonFX',
                         action: 'open-about-melatonin'
                     }
                 ]
@@ -8509,12 +8679,15 @@ function normalizeNaxtElevatePinsClient(value) {
 let remoteAccessSettingsState = {
     defaultGenerationMethod: 'studio',
     autoGenerate: false,
-    openGeneratedImages: 'lumen'
+    openGeneratedImages: 'ledge',
+    minPrintsPerTurn: 1,
+    maxPrintsPerTurn: 8
 };
 let remoteAccessSettingsWired = false;
 
 function normalizeRemoteAccessGenerationMethodClient(raw) {
     const value = String(raw || '').toLowerCase().replace(/[\s_-]+/g, '');
+    if (value === 'auto') return 'auto';
     if (value === 'detached' || value === 'detachedrequest' || value === 'generateimage') {
         return 'detached';
     }
@@ -8523,17 +8696,30 @@ function normalizeRemoteAccessGenerationMethodClient(raw) {
 
 function normalizeRemoteAccessOpenGeneratedClient(raw) {
     const value = String(raw || '').toLowerCase();
+    if (value === 'ledge') return 'ledge';
     if (value === 'glancewell') return 'glancewell';
+    if (value === 'lumen') return 'lumen';
     if (value === 'disabled' || value === 'off' || value === 'none') return 'disabled';
-    return 'lumen';
+    return 'ledge';
+}
+
+function normalizeRemoteAccessPrintsClient(raw, fallback) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(8, Math.max(1, Math.round(n)));
 }
 
 function applyRemoteAccessSettingsToState(settings) {
     const src = settings && typeof settings === 'object' ? settings : {};
+    let minPrintsPerTurn = normalizeRemoteAccessPrintsClient(src.minPrintsPerTurn, 1);
+    let maxPrintsPerTurn = normalizeRemoteAccessPrintsClient(src.maxPrintsPerTurn, 8);
+    if (maxPrintsPerTurn < minPrintsPerTurn) maxPrintsPerTurn = minPrintsPerTurn;
     remoteAccessSettingsState = {
         defaultGenerationMethod: normalizeRemoteAccessGenerationMethodClient(src.defaultGenerationMethod),
         autoGenerate: src.autoGenerate === true,
-        openGeneratedImages: normalizeRemoteAccessOpenGeneratedClient(src.openGeneratedImages)
+        openGeneratedImages: normalizeRemoteAccessOpenGeneratedClient(src.openGeneratedImages),
+        minPrintsPerTurn,
+        maxPrintsPerTurn
     };
 }
 
@@ -8556,6 +8742,10 @@ function syncRemoteAccessSettingsUI() {
             btn.classList.toggle('active', btn.dataset.open === remoteAccessSettingsState.openGeneratedImages);
         });
     }
+    const maxPrints = document.getElementById('remoteAccessMaxPrints');
+    if (maxPrints) maxPrints.value = String(remoteAccessSettingsState.maxPrintsPerTurn);
+    const minPrints = document.getElementById('remoteAccessMinPrints');
+    if (minPrints) minPrints.value = String(remoteAccessSettingsState.minPrintsPerTurn);
 }
 
 async function persistRemoteAccessSettingsPatch(patch) {
@@ -8597,6 +8787,25 @@ function wireRemoteAccessSettingsModal() {
             });
         });
     }
+    const wirePrints = (id, key) => {
+        const input = document.getElementById(id);
+        if (!input) return;
+        const commit = () => {
+            const value = normalizeRemoteAccessPrintsClient(input.value, remoteAccessSettingsState[key]);
+            input.value = String(value);
+            void persistRemoteAccessSettingsPatch({ [key]: value });
+        };
+        input.addEventListener('change', commit);
+        input.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            const dir = event.deltaY < 0 ? 1 : -1;
+            const next = normalizeRemoteAccessPrintsClient((Number(input.value) || 1) + dir, remoteAccessSettingsState[key]);
+            input.value = String(next);
+            void persistRemoteAccessSettingsPatch({ [key]: next });
+        }, { passive: false });
+    };
+    wirePrints('remoteAccessMaxPrints', 'maxPrintsPerTurn');
+    wirePrints('remoteAccessMinPrints', 'minPrintsPerTurn');
     const closeBtn = document.getElementById('closeRemoteAccessSettingsBtn');
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
@@ -9351,7 +9560,7 @@ let aboutMelatoninSystemInfo = null;
 async function openAboutMelatoninModal() {
     const modal = document.getElementById('aboutMelatoninModal');
     if (!modal) {
-        console.error('About Melaton modal not found');
+        console.error('About MeletonFX modal not found');
         return;
     }
 

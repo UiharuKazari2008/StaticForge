@@ -52,7 +52,7 @@ const FEATURE_MANIFEST = {
     },
     grimoire: {
         styles: ['css/tag-wiki-search.css'],
-        scripts: ['scripts/comp/tagWikiSearchModal.js']
+        scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/tagWikiSearchModal.js']
     },
     character_search: {
         depends: ['grimoire'],
@@ -224,5 +224,5 @@ async function openBracketGenerationApplet(options) {
     await featureLoader.loadFeature('bracket_gen');
     // initializePhasewalkerTray: public/scripts/comp/bracketGenerationApplet.js
     initializePhasewalkerTray();
-    bracketGenerationApplet.open(options);
+    return bracketGenerationApplet.open(options);
 }

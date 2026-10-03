@@ -222,9 +222,60 @@ function applyDesktopWallpaperInline(wallpaperPath, wallpaperPosition) {
     document.documentElement.style.setProperty('--desktop-wallpaper-position', position);
     document.body.style.setProperty('--desktop-wallpaper', wallpaperCss);
     document.body.style.setProperty('--desktop-wallpaper-position', position);
-    const img = new Image();
-    img.src = wallpaperUrl;
+    // preloadWallpaperIntoMemory: this file
+    preloadWallpaperIntoMemory(wallpaperUrl);
     return true;
+}
+
+const wallpaperMemoryImages = new Map();
+
+function collectWorkspaceWallpaperUrls() {
+    const urls = [];
+    const seen = new Set();
+    if (!workspaces) return urls;
+    Object.keys(workspaces).forEach((id) => {
+        // resolveWorkspaceWallpaperUrl: public/scripts/comp/modalUtils.js
+        const url = resolveWorkspaceWallpaperUrl(workspaces[id] && workspaces[id].wallpaper);
+        if (!url || seen.has(url)) return;
+        seen.add(url);
+        urls.push(url);
+    });
+    return urls;
+}
+
+function preloadWallpaperIntoMemory(url) {
+    if (!url) return Promise.resolve();
+    const existing = wallpaperMemoryImages.get(url);
+    if (existing && existing.complete && existing.naturalWidth > 0) {
+        return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+        const img = new Image();
+        wallpaperMemoryImages.set(url, img);
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        img.src = url;
+    });
+}
+
+async function syncWorkspaceWallpaperCache(refreshUrls) {
+    const urls = collectWorkspaceWallpaperUrls();
+    const refresh = Array.isArray(refreshUrls) ? refreshUrls.filter(Boolean) : [];
+    const keep = new Set(urls);
+    wallpaperMemoryImages.forEach((_img, url) => {
+        if (!keep.has(url) || refresh.indexOf(url) !== -1) {
+            wallpaperMemoryImages.delete(url);
+        }
+    });
+    const swm = window.serviceWorkerManager;
+    if (swm && swm.syncWallpaperUrls) {
+        try {
+            await swm.syncWallpaperUrls(urls, refresh);
+        } catch (error) {
+            console.warn('Wallpaper cache sync failed:', error);
+        }
+    }
+    await Promise.all(urls.map((url) => preloadWallpaperIntoMemory(url)));
 }
 
 function applyEarlyWorkspaceThemeInline(settings) {
@@ -1008,6 +1059,9 @@ async function loadWorkspaces() {
             // Update workspaces
             workspaces = newWorkspaces;
             activeWorkspace = data.activeWorkspace;
+
+            // Fill the wallpaper cache and drop any workspace that no longer uses one.
+            await syncWorkspaceWallpaperCache();
 
             // Point the stylesheet at the live compiled hash before dropping inline boot
             // wallpaper. app.html's baked ?sha= is from the last full compile and can
@@ -2941,6 +2995,13 @@ if (window.wsClient) {
     });
     
     // Enable taskbar after other workspace tasks are done
+    window.wsClient.registerInitStep(0.55, 'Preloading icons', async () => {
+        // preloadShellIconsAndFonts: public/scripts/comp/modalUtils.js
+        await Promise.race([
+            preloadShellIconsAndFonts(),
+            new Promise((resolve) => setTimeout(resolve, 8000))
+        ]);
+    });
     window.wsClient.registerInitStep(16, 'Starting Taskbar', async () => {
         if (window.isDesktop) {
             const taskbar = document.getElementById('desktopTaskbar');
@@ -3211,8 +3272,12 @@ function initializeWebSocketWorkspaceEvents() {
                         styleUpdateNeeded = true;
                     }
                     if (data.settings.wallpaper !== undefined) {
-                        workspace.wallpaper = data.settings.wallpaper;
+                        workspace.wallpaper = data.settings.wallpaper
+                            ? normalizeWallpaperPath(data.settings.wallpaper)
+                            : data.settings.wallpaper;
                         styleUpdateNeeded = true;
+                        const refreshUrl = resolveWorkspaceWallpaperUrl(workspace.wallpaper);
+                        await syncWorkspaceWallpaperCache(refreshUrl ? [refreshUrl] : []);
                     }
                     if (data.settings.wallpaperPosition !== undefined) {
                         workspace.wallpaperPosition = data.settings.wallpaperPosition;

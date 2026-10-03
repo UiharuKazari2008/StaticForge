@@ -3,6 +3,10 @@
     width: 500px;
 }
 
+#imageExpansionDialog .modal-content {
+    position: relative;
+}
+
 #expansionCompiledPromptDialog {
     width: 700px;
     height: 650px;

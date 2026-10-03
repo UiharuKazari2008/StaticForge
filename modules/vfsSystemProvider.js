@@ -1,4 +1,5 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const SYSTEM_ROOT_FOLDERS = [
@@ -6,7 +7,8 @@ const SYSTEM_ROOT_FOLDERS = [
     { id: '@sys-config', name: 'AppData', icon: 'fas fa-sliders', segment: 'Config' },
     { id: '@sys-logs', name: 'Logs', icon: 'fas fa-scroll', segment: 'Logs' },
     { id: '@sys-databases', name: 'Databases', icon: 'fas fa-table', segment: 'Databases' },
-    { id: '@sys-apps', name: 'Applications', icon: 'fas fa-grid-2', segment: 'Applications' }
+    { id: '@sys-apps', name: 'Applications', icon: 'fas fa-grid-2', segment: 'Applications' },
+    { id: '@sys-director', name: 'Director', icon: 'fas fa-clapperboard', segment: 'Director' }
 ];
 
 const CONFIG_EDITOR_ENTRIES = [
@@ -34,6 +36,7 @@ const APPLICATION_ENTRIES = [
     { id: 'chat', name: 'Chat', icon: 'fas fa-messages', openTarget: 'applet', appletId: 'chat' },
     { id: 'chat-persona', name: 'LinkXi', icon: 'fas fa-user-doctor-message', openTarget: 'applet', appletId: 'chat-persona' },
     { id: 'config-editor', name: 'Runes', icon: 'fas fa-binary', openTarget: 'applet', appletId: 'config-editor' },
+    { id: 'director', name: 'Director', icon: 'fas fa-clapperboard', openTarget: 'applet', appletId: 'director' },
     { id: 'dynamic-quips', name: 'Dynamic Quips', icon: 'fas fa-comment-heart', openTarget: 'applet', appletId: 'dynamic-quips' },
     { id: 'event-viewer', name: 'Periscope', icon: 'fas fa-wave-square', openTarget: 'applet', appletId: 'event-viewer', adminOnly: true },
     { id: 'expanders', name: 'Expanders', icon: 'fas fa-book-font', openTarget: 'applet', appletId: 'expanders' },
@@ -67,6 +70,17 @@ const LOG_SOURCE_FILES = {
 
 const CACHE_BLOCKED_DIRS = new Set(['sessions']);
 const CACHE_SKIP_SUFFIXES = ['.db-shm', '.db-wal'];
+
+// Director home is ~/.cache/dreamscape-director (modules/cursorDirector.js directorHome()).
+// Read-only listing. Secrets and churn are refused by path, not by hiding them in the UI.
+const DIRECTOR_BLOCKED_NAMES = new Set(['key']);
+const DIRECTOR_BLOCKED_DIRS = new Set(['browser-profile']);
+const DIRECTOR_GIT_BLOCKED_DIRS = new Set(['objects', 'hooks']);
+const DIRECTOR_TEXT_EXTS = new Set([
+    '.md', '.mdc', '.jsonl', '.yml', '.yaml', '.toml', '.ini', '.csv',
+    '.js', '.mjs', '.cjs', '.ts', '.tsx', '.py', '.sh', '.css', '.html', '.svg'
+]);
+const DIRECTOR_TEXT_DOTFILES = new Set(['.gitignore', '.cursorignore', '.gitattributes', '.env.example']);
 const TEXT_READ_MAX_BYTES = 2 * 1024 * 1024;
 const IMAGE_READ_MAX_BYTES = 8 * 1024 * 1024;
 const BINARY_DOWNLOAD_MAX_BYTES = 256 * 1024 * 1024;
@@ -167,6 +181,8 @@ class VfsSystemProvider {
                 return this._listDatabases(rest);
             case 'Applications':
                 return this._listApplications(rest);
+            case 'Director':
+                return this._listDirector(rest);
             default:
                 throw new Error(`Unknown system folder: ${root}`);
         }
@@ -405,6 +421,8 @@ class VfsSystemProvider {
                 return this._getDatabasesPathStats(rest);
             case 'Applications':
                 return this._getApplicationsPathStats(rest);
+            case 'Director':
+                return this._getDirectorPathStats(rest);
             default:
                 return { itemCount: 0, totalSizeBytes: 0 };
         }
@@ -481,7 +499,8 @@ class VfsSystemProvider {
         return this._getConfigPathStats([]).totalSizeBytes
             + this._getLogsPathStats([]).totalSizeBytes
             + this._getDatabasesPathStats([]).totalSizeBytes
-            + this._getCachePathStats([]).totalSizeBytes;
+            + this._getCachePathStats([]).totalSizeBytes
+            + this._getDirectorPathStats([]).totalSizeBytes;
     }
 
     _listCache(relativeSegments) {
@@ -569,6 +588,270 @@ class VfsSystemProvider {
         return abs;
     }
 
+    _directorHome() {
+        return path.resolve(os.homedir(), '.cache', 'dreamscape-director');
+    }
+
+    _directorRealHome() {
+        const root = this._directorHome();
+        try {
+            return fs.realpathSync(root);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    // Blocks secrets and git churn by relative segments, so the same rule covers list and read.
+    _isDirectorBlockedRelPath(parts) {
+        if (!parts.length) return false;
+        if (DIRECTOR_BLOCKED_NAMES.has(parts[parts.length - 1])) return true;
+        for (let i = 0; i < parts.length; i++) {
+            if (DIRECTOR_BLOCKED_DIRS.has(parts[i])) return true;
+            if (parts[i] === '.cursor' && parts[i + 1] === 'mcp.json') return true;
+            if (parts[i] === '.git' && DIRECTOR_GIT_BLOCKED_DIRS.has(parts[i + 1])) return true;
+        }
+        return false;
+    }
+
+    _resolveDirectorPath(relativePath) {
+        const root = this._directorHome();
+        const realRoot = this._directorRealHome();
+        if (!realRoot) return null;
+
+        const normalized = (relativePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        const parts = normalized ? normalized.split('/') : [];
+        if (parts.some(part => !part || part === '.' || part === '..')) {
+            return null;
+        }
+        if (this._isDirectorBlockedRelPath(parts)) {
+            return null;
+        }
+
+        const abs = parts.length ? path.resolve(root, parts.join('/')) : root;
+        if (abs !== root && !abs.startsWith(root + path.sep)) {
+            return null;
+        }
+
+        // Symlinks out of the Director home (workspace/images, workspace/previews) are refused.
+        let real;
+        try {
+            real = fs.realpathSync(abs);
+        } catch (_) {
+            return null;
+        }
+        if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
+            return null;
+        }
+        return abs;
+    }
+
+    _isDirectorEntryVisible(parts, isDirectory, absPath) {
+        if (this._isDirectorBlockedRelPath(parts)) return false;
+        if (CACHE_SKIP_SUFFIXES.some(s => parts[parts.length - 1].endsWith(s))) return false;
+        if (isDirectory) return true;
+        // index.json is the agent's own chunk index — omit it once it is too big to preview.
+        if (parts.length === 1 && parts[0] === 'index.json') {
+            try {
+                return fs.statSync(absPath).size <= TEXT_READ_MAX_BYTES;
+            } catch (_) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    _isDirectorTextFile(name, mimeType) {
+        if (mimeType.startsWith('text/')) return true;
+        const ext = path.extname(name).toLowerCase();
+        if (ext) return ext === '.json' || ext === '.log' || DIRECTOR_TEXT_EXTS.has(ext);
+        return DIRECTOR_TEXT_DOTFILES.has(name);
+    }
+
+    _getCachedDirectorDirSizeBytes(absPath, parts) {
+        const cacheKey = `director:${absPath}`;
+        const cached = this._cacheDirSizeCache.get(cacheKey);
+        if (cached && Date.now() - cached.at < this._cacheDirSizeCacheTtlMs) {
+            return cached.bytes;
+        }
+        const bytes = this._sumDirectorDirSizeBytes(absPath, parts);
+        this._cacheDirSizeCache.set(cacheKey, { bytes, at: Date.now() });
+        return bytes;
+    }
+
+    _sumDirectorDirSizeBytes(absPath, parts) {
+        let total = 0;
+        let entries = [];
+        try {
+            entries = fs.readdirSync(absPath, { withFileTypes: true });
+        } catch (_) {
+            return 0;
+        }
+        for (const ent of entries) {
+            const childParts = [...parts, ent.name];
+            if (this._isDirectorBlockedRelPath(childParts)) continue;
+            const fp = path.join(absPath, ent.name);
+            if (ent.isDirectory()) {
+                total += this._getCachedDirectorDirSizeBytes(fp, childParts);
+            } else if (ent.isFile()) {
+                try {
+                    total += fs.statSync(fp).size;
+                } catch (_) { /* skip */ }
+            }
+        }
+        return total;
+    }
+
+    _getDirectorPathStats(relativeSegments) {
+        const parts = this.normalizeSegments(relativeSegments);
+        const abs = this._resolveDirectorPath(parts.join('/'));
+        if (!abs) return { itemCount: 0, totalSizeBytes: 0 };
+
+        let entries = [];
+        try {
+            entries = fs.readdirSync(abs, { withFileTypes: true });
+        } catch (_) {
+            return { itemCount: 0, totalSizeBytes: 0 };
+        }
+
+        let itemCount = 0;
+        let totalSizeBytes = 0;
+        for (const ent of entries) {
+            const childParts = [...parts, ent.name];
+            const fp = path.join(abs, ent.name);
+            if (!this._isDirectorEntryVisible(childParts, ent.isDirectory(), fp)) continue;
+            itemCount++;
+            if (ent.isDirectory()) {
+                totalSizeBytes += this._getCachedDirectorDirSizeBytes(fp, childParts);
+            } else if (ent.isFile()) {
+                try {
+                    totalSizeBytes += fs.statSync(fp).size;
+                } catch (_) { /* skip */ }
+            }
+        }
+        return { itemCount, totalSizeBytes };
+    }
+
+    _listDirector(relativeSegments) {
+        const parts = this.normalizeSegments(relativeSegments);
+        // Director has never run on this host — show an empty folder, not an error.
+        if (!parts.length && !this._directorRealHome()) {
+            return [];
+        }
+        const rel = parts.join('/');
+        const abs = this._resolveDirectorPath(rel);
+        if (!abs) {
+            throw new Error('Access denied');
+        }
+
+        let entries = [];
+        try {
+            entries = fs.readdirSync(abs, { withFileTypes: true });
+        } catch (_) {
+            throw new Error(`Director path not found: ${rel || '/'}`);
+        }
+
+        const items = [];
+        for (const ent of entries) {
+            const name = ent.name;
+            const childParts = [...parts, name];
+            const fp = path.join(abs, name);
+            if (!this._isDirectorEntryVisible(childParts, ent.isDirectory(), fp)) continue;
+            // Symlinks that leave the Director home resolve to null and are dropped.
+            if (ent.isSymbolicLink() && !this._resolveDirectorPath(childParts.join('/'))) continue;
+
+            const childRel = childParts.join('/');
+            const childNav = this.systemNavPath(['Director', ...childParts]);
+
+            if (ent.isDirectory()) {
+                const dirSize = this._getCachedDirectorDirSizeBytes(fp, childParts);
+                items.push({
+                    ...this.makeFolder(name, `sys-director-dir-${childRel}`, childNav, 'fas fa-folder'),
+                    size: dirSize,
+                    sizeBytes: dirSize,
+                    typeLabel: 'Director Folder'
+                });
+                continue;
+            }
+
+            if (!ent.isFile()) continue;
+            let size = 0;
+            let mtime = null;
+            try {
+                const st = fs.statSync(fp);
+                size = st.size;
+                mtime = Math.floor(st.mtimeMs / 1000);
+            } catch (_) { /* skip */ }
+
+            const ext = path.extname(name).toLowerCase();
+            const mimeType = MIME_BY_EXT[ext] || 'application/octet-stream';
+            const isImage = mimeType.startsWith('image/');
+            const isText = this._isDirectorTextFile(name, mimeType);
+
+            items.push({
+                ...this.makeFile({
+                    id: `sys-director-file-${childRel}`,
+                    name,
+                    icon: isImage ? 'fas fa-file-image' : (isText ? 'fas fa-file-code' : 'fas fa-file'),
+                    openTarget: isImage ? 'viewer' : (isText ? 'text' : 'download'),
+                    systemFileKey: `director:${childRel}`,
+                    mimeType: isText && mimeType === 'application/octet-stream' ? 'text/plain' : mimeType,
+                    syntax: ext === '.json' || ext === '.jsonl' ? 'json' : (ext === '.log' ? 'log' : (isText ? 'text' : null)),
+                    size,
+                    modifiedAt: mtime
+                }),
+                sizeBytes: size,
+                typeLabel: 'Director File'
+            });
+        }
+
+        return items;
+    }
+
+    _readDirectorFile(relativePath) {
+        const abs = this._resolveDirectorPath(relativePath);
+        if (!abs || !fs.existsSync(abs)) {
+            throw new Error('File not found');
+        }
+        const st = fs.statSync(abs);
+        if (!st.isFile()) {
+            throw new Error('Not a file');
+        }
+
+        const name = path.basename(abs);
+        const ext = path.extname(name).toLowerCase();
+        const mimeType = MIME_BY_EXT[ext] || 'application/octet-stream';
+
+        if (mimeType.startsWith('image/')) {
+            if (st.size > IMAGE_READ_MAX_BYTES) {
+                throw new Error(`Image too large to preview (${this._formatBytes(st.size)})`);
+            }
+            return {
+                kind: 'image',
+                name,
+                mimeType,
+                base64: fs.readFileSync(abs).toString('base64'),
+                size: st.size,
+                readOnly: true
+            };
+        }
+
+        if (!this._isDirectorTextFile(name, mimeType)) {
+            throw new Error('Binary Director files cannot be previewed');
+        }
+        if (st.size > TEXT_READ_MAX_BYTES) {
+            throw new Error(`File too large to preview (${this._formatBytes(st.size)})`);
+        }
+        return {
+            kind: 'text',
+            name,
+            mimeType: mimeType === 'application/octet-stream' ? 'text/plain' : mimeType,
+            syntax: ext === '.json' || ext === '.jsonl' ? 'json' : (ext === '.log' ? 'log' : 'text'),
+            content: fs.readFileSync(abs, 'utf8'),
+            size: st.size,
+            readOnly: true
+        };
+    }
+
     _resolveRootJsonPath(pathKey) {
         // Allowlist only — do not call getPath() for other keys (existence oracle).
         if (typeof pathKey !== 'string' || !ROOT_JSON_PATH_KEYS.has(pathKey)) {
@@ -596,11 +879,13 @@ class VfsSystemProvider {
 
     resolveDownloadableFile(systemFileKey) {
         const parsed = this._parseSystemFileKey(systemFileKey);
-        if (!parsed || parsed.kind !== 'cache') {
-            throw new Error('Only cache files can be downloaded');
+        if (!parsed || (parsed.kind !== 'cache' && parsed.kind !== 'director')) {
+            throw new Error('Only cache and Director files can be downloaded');
         }
 
-        const abs = this._resolveCachePath(parsed.relativePath);
+        const abs = parsed.kind === 'director'
+            ? this._resolveDirectorPath(parsed.relativePath)
+            : this._resolveCachePath(parsed.relativePath);
         if (!abs || !fs.existsSync(abs)) {
             throw new Error('File not found');
         }
@@ -618,9 +903,11 @@ class VfsSystemProvider {
         const ext = path.extname(abs).toLowerCase();
         const mimeType = MIME_BY_EXT[ext] || 'application/octet-stream';
         const isImage = mimeType.startsWith('image/');
-        const isText = mimeType.startsWith('text/') || ext === '.json' || ext === '.log';
+        const isText = parsed.kind === 'director'
+            ? this._isDirectorTextFile(path.basename(abs), mimeType)
+            : (mimeType.startsWith('text/') || ext === '.json' || ext === '.log');
         if (isImage || isText) {
-            throw new Error('Text and image cache files should be opened in preview');
+            throw new Error('Text and image files should be opened in preview');
         }
 
         return {
@@ -652,6 +939,8 @@ class VfsSystemProvider {
                 return this._readRootJson(parsed.pathKey);
             case 'cache':
                 return this._readCacheFile(parsed.relativePath);
+            case 'director':
+                return this._readDirectorFile(parsed.relativePath);
             default:
                 throw new Error('Unsupported system file key');
         }
@@ -676,6 +965,8 @@ class VfsSystemProvider {
             case 'rootjson':
                 return { kind, pathKey: rest };
             case 'cache':
+                return { kind, relativePath: rest };
+            case 'director':
                 return { kind, relativePath: rest };
             default:
                 return null;

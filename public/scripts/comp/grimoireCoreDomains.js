@@ -310,10 +310,12 @@
 
   // --- 5. Apocrypha Issue Views ---
   // Uses shell.showApocryphaZine() which calls server renderApocrypha via WS.
-  // Public https://apocrypha.737.jp.net/ is public-only; Grimoire uses this in-app path.
+  // Public site stays https://apocrypha.737.jp.net/. In-app path is rdf:// (static page, not dtext or an applet).
   registerDsap({
     url: 'apocrypha.737.jp.net',
-    aliases: [],
+    aliases: [
+      'rdf://apocrypha.737.jp.net'
+    ],
     title: 'Apocrypha',
     type: 'core',
     activate(shell, match) {
@@ -321,9 +323,18 @@
       const path = String((match && (match.displayPath || match.normalized)) || '');
       const archiveMatch = /\/archive\/([a-z0-9][a-z0-9.-]{0,79})/i.exec(path);
       const slug = archiveMatch ? archiveMatch[1] : '';
+      const display = slug
+        ? `rdf://apocrypha.737.jp.net/archive/${slug}`
+        : 'rdf://apocrypha.737.jp.net/';
+      if (typeof shell.setAddress === 'function') {
+        shell.setAddress({ displayUrl: display, mode: 'rdf' });
+      }
       if (typeof shell.showApocryphaZine === 'function') {
         shell.showApocryphaZine({ slug });
       }
+      // showApocryphaZine clears a previous applet synchronously. Set this after that
+      // so the router does not restamp the page as dsap://.
+      shell._dsapState = { entry: match && match.entry, url: display, core: true };
       if (typeof shell.setNavigationLoading === 'function') shell.setNavigationLoading(false);
       return true;
     }

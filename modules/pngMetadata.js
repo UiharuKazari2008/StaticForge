@@ -822,6 +822,7 @@ class PngMetadata {
             input_prompt_negative: resultPromptNegative,
             model: model,
             model_display_name: modelDisplayName,
+            source: meta.source || null,
             steps: meta.steps,
             scale: meta.scale,
             cfg_rescale: meta.cfg_rescale,
@@ -1133,6 +1134,9 @@ class PngMetadata {
         if (forgeData.deduplicate_tags !== undefined) {
             result.deduplicate_tags = forgeData.deduplicate_tags;
         }
+        if (meta.sm != null || meta.sm_dyn != null) {
+            result.variety = !!(meta.sm || meta.sm_dyn);
+        }
         
         // Include forge_data in result
         result.forge_data = forgeData;
@@ -1154,15 +1158,19 @@ class PngMetadata {
         
         const source = meta.source;
 
-        // NovelAI Diffusion V5 models (sample Source: "NovelAI Diffusion V5 0ADF9AB7")
+        // NovelAI Diffusion V5. Live image-app chunk (2026-09-29) labels current full
+        // as Source "NovelAI Diffusion V5 DB276663" / model_name "NovelAI Diffusion V5".
+        // Any new V5 hash is full unless it is listed as curated. V4.5 is checked
+        // first so "V4.5" is never read as V5.
         // JULES:#171
         if (source.includes("NovelAI Diffusion V5")) {
             switch (source) {
                 case "NovelAI Diffusion V5 657484A5":
                 case "NovelAI Diffusion V5 0ADF9AB7":
+                case "NovelAI Diffusion V5 DB276663":
                     return "V5";
                 default:
-                    return "V5_CUR";
+                    return "V5";
             }
         }
         
@@ -1173,6 +1181,7 @@ class PngMetadata {
                 case "NovelAI Diffusion V4.5 1229B44F":
                 case "NovelAI Diffusion V4.5 B9F340FD":
                 case "NovelAI Diffusion V4.5 F3D95188":
+                case "NovelAI Diffusion V4.5 5BB76870":
                     return "V4_5";
                 case "NovelAI Diffusion V4.5 C02D4F98":
                 case "NovelAI Diffusion V4.5 5AB81C7C":
@@ -1191,7 +1200,7 @@ class PngMetadata {
                 case "NovelAI Diffusion V4 770A9E12":
                     return "V4_CUR";
                 default:
-                    return "V4_5";
+                    return source.includes("V4.5") ? "V4_5" : "V4";
             }
         }
         

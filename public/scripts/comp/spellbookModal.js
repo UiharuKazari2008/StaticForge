@@ -1820,25 +1820,8 @@ class SpellbookModalManager {
                 throw new Error('WebSocket not connected. Please check your connection.');
             }
 
-            // Fetch metadata to get image dimensions
-            let metadata = null;
-            if (typeof getImageMetadata === 'function') {
-                metadata = await getImageMetadata(this.generatedFilename);
-            }
-
-            const imageDimensions = metadata ? {
-                width: metadata.actual_width || metadata.width,
-                height: metadata.actual_height || metadata.height,
-                resPreset: metadata.actual_resolution || metadata.resPreset || metadata.resolution
-            } : null;
-
-            // Open the expansion modal
-            if (typeof openImageExpansionModal === 'function') {
-                openImageExpansionModal(this.generatedFilename, imageDimensions);
-            } else {
-                console.error('openImageExpansionModal function not found');
-                showGlassToast('error', 'Error', 'Image expansion feature not available', false, 5000, '<i class="nai-cross"></i>');
-            }
+            // openImageExpansionModal: public/scripts/comp/imageExpansion.js
+            openImageExpansionModal(this.generatedFilename);
 
         } catch (error) {
             console.error('Expand error:', error);

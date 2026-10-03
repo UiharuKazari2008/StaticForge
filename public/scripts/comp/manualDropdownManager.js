@@ -1534,14 +1534,8 @@ function updateDatasetDisplay() {
         datasetBtn.setAttribute('data-state', selectedDatasets.length > 0 ? 'on' : 'off');
     }
     
-    // Update bias value displays in the dropdown if it's open
     selectedDatasets.forEach(dataset => {
-        const biasValueSpan = document.querySelector(`.dataset-bias-value[data-dataset="${dataset}"]`);
-        if (biasValueSpan) {
-            const biasValue = datasetBias[dataset] || 1.0;
-            const displayValue = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
-            biasValueSpan.textContent = displayValue;
-        }
+        paintDatasetBiasLabels(dataset);
     });
     
     updatePromptStatusIcons();
@@ -1592,13 +1586,7 @@ function adjustDatasetBias(dataset, delta, datasetConfig) {
     const currentValue = datasetBias[dataset] !== undefined ? datasetBias[dataset] : defaultValue;
     const newValue = Math.max(min, Math.min(max, currentValue + delta));
     datasetBias[dataset] = Math.round(newValue * 10) / 10; // Round to 1 decimal place
-    
-    // Update the bias value display in the dropdown
-    const biasValueSpan = document.querySelector(`.dataset-bias-value[data-dataset="${dataset}"]`);
-    if (biasValueSpan) {
-        const displayValue = datasetBias[dataset] !== 1.0 ? datasetBias[dataset].toFixed(1) : '1.0';
-        biasValueSpan.textContent = displayValue;
-    }
+    paintDatasetBiasLabels(dataset);
     
     // Update dataset display to ensure dropdown stays in sync
     updateDatasetDisplay();
@@ -1911,6 +1899,7 @@ function adjustSubToggleBias(dataset, subToggleId, delta, subToggleConfig) {
 
     renderSubTogglesDropdown();
     updateSubTogglesButtonState();
+    paintSubToggleBiasLabels(dataset);
 }
 
 /**
@@ -1989,13 +1978,7 @@ function closeSubTogglesDropdown() {
 function adjustQualityPresetBias(delta) {
     qualityPresetBias = Math.max(0.0, Math.min(9.0, qualityPresetBias + delta));
     qualityPresetBias = Math.round(qualityPresetBias * 10) / 10; // Round to 1 decimal place
-    
-    // Update the display in the dropdown
-    const qualityBiasValue = datasetDropdownMenu.querySelector('[data-action="quality-bias"]');
-    if (qualityBiasValue) {
-        const display = qualityPresetBias !== 1.0 ? qualityPresetBias.toFixed(1) : '1.0';
-        qualityBiasValue.textContent = display;
-    }
+    paintBiasActionLabels('quality-bias', qualityPresetBias);
 }
 
 function adjustDatasetPresetBias(isTransparency, delta) {
@@ -2005,8 +1988,7 @@ function adjustDatasetPresetBias(isTransparency, delta) {
     }
     transparencyBias = Math.max(0.0, Math.min(9.0, transparencyBias + delta));
     transparencyBias = Math.round(transparencyBias * 10) / 10;
-    const valueEl = datasetDropdownMenu.querySelector('[data-action="transparency-bias"]');
-    if (valueEl) valueEl.textContent = transparencyBias !== 1.0 ? transparencyBias.toFixed(1) : '1.0';
+    paintBiasActionLabels('transparency-bias', transparencyBias);
 }
 
 /**
@@ -2142,31 +2124,7 @@ function setupUcDropdownContextMenu() {
         sections: [
             {
                 type: 'list',
-                items: [
-                    {
-                        icon: 'fas fa-plus-circle',
-                        text: 'Add Preset Contents',
-                        action: 'addPresetContents',
-                        disabled: false
-                    },
-                    {
-                        icon: 'fas fa-broom',
-                        text: 'Auto Remove Phrases',
-                        action: 'toggleAutoClean',
-                        keepMenuOpen: true,
-                        showIndicator: true,
-                        disabled: false,
-                        loadfn: (item) => {
-                            // Update the icon based on current state
-                            const autoCleanState = ucPresetsDropdownBtn.dataset.autoClean === 'on';
-                            if (autoCleanState) {
-                                item.icon = 'fas fa-check-square';
-                            } else {
-                                item.icon = 'fa-regular fa-square';
-                            }
-                        }
-                    }
-                ]
+                items: getUcPresetContextMenuItems()
             }
         ]
     };
@@ -2185,15 +2143,7 @@ function handleUcContextMenuAction(event) {
     
     // Only handle actions for UC dropdown button
     if (target !== ucPresetsDropdownBtn) return;
-
-    switch (action) {
-        case 'addPresetContents':
-            addUcPresetContents();
-            break;
-        case 'toggleAutoClean':
-            toggleAutoCleanUc();
-            break;
-    }
+    runUcContextAction(action);
 }
 
 /**
@@ -2418,6 +2368,559 @@ function applyBiasToText(input, bias) {
     }
 }
 
+function formatStudioBiasLabel(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n === 1) return '1.0';
+    return n.toFixed(1);
+}
+
+function paintBiasText(selector, value) {
+    const display = formatStudioBiasLabel(value);
+    document.querySelectorAll(selector).forEach((el) => {
+        el.textContent = display;
+    });
+}
+
+function paintDatasetBiasLabels(dataset) {
+    const biasValue = datasetBias[dataset] !== undefined ? datasetBias[dataset] : 1.0;
+    const escaped = CSS.escape(String(dataset));
+    paintBiasText(`.dataset-bias-value[data-dataset="${escaped}"]:not([data-toggle])`, biasValue);
+}
+
+function paintBiasActionLabels(action, value) {
+    paintBiasText(`.dataset-bias-value[data-action="${action}"]`, value);
+}
+
+function paintSubToggleBiasLabels(dataset) {
+    const settings = window.datasetSettings && window.datasetSettings[dataset];
+    if (!settings) return;
+    const escapedDataset = CSS.escape(String(dataset));
+    Object.keys(settings).forEach((id) => {
+        const bias = settings[id] && settings[id].bias;
+        if (bias === undefined) return;
+        const escapedId = CSS.escape(String(id));
+        paintBiasText(`.dataset-bias-value[data-dataset="${escapedDataset}"][data-toggle="${escapedId}"]`, bias);
+    });
+}
+
+function paintNsfwBiasLabels() {
+    paintBiasText(`.dataset-bias-value[data-nsfw="${selectedNsfwValue}"]`, nsfwBias || 1.0);
+}
+
+function bindStudioRowWheel(anchor, onTick) {
+    if (!anchor) return;
+    // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+    const allowTick = createWheelTickGate(400);
+    queueMicrotask(() => {
+        const row = anchor.closest('.context-menu-item');
+        if (!row || row.dataset.studioRowWheel === '1') return;
+        row.dataset.studioRowWheel = '1';
+        row.addEventListener('wheel', (e) => {
+            if (!guardWheelTick(e, allowTick, { stop: true })) return;
+            onTick(e);
+            const valueEl = row.querySelector('.dataset-bias-value');
+            if (!valueEl) return;
+            valueEl.classList.add('scrolling');
+            setTimeout(() => valueEl.classList.remove('scrolling'), 200);
+        }, { passive: false });
+    });
+}
+
+function wireStudioBiasControls(controls, adjust) {
+    if (!controls) return;
+    controls.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const stepEl = e.target.closest('[data-bias-step]');
+        if (!stepEl) return;
+        adjust(Number(stepEl.dataset.biasStep));
+    });
+    controls.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+    bindStudioRowWheel(controls, (e) => {
+        adjust(e.deltaY > 0 ? -0.1 : 0.1);
+    });
+}
+
+function buildStudioBiasRowContent(label, iconClass, selected, biasText, adjust) {
+    return function () {
+        const wrap = document.createElement('div');
+        wrap.className = 'dataset-option-content';
+        const left = document.createElement('div');
+        left.className = 'dataset-option-left';
+        if (iconClass) {
+            const icon = document.createElement('i');
+            icon.className = iconClass;
+            left.appendChild(icon);
+        }
+        const name = document.createElement('span');
+        name.className = 'dataset-name';
+        name.textContent = label;
+        left.appendChild(name);
+        wrap.appendChild(left);
+        const right = document.createElement('div');
+        right.className = 'dataset-option-right';
+        if (selected) {
+            const controls = document.createElement('div');
+            controls.className = 'dataset-bias-controls';
+            const decrease = document.createElement('button');
+            decrease.type = 'button';
+            decrease.className = 'dataset-bias-decrease';
+            decrease.dataset.biasStep = '-0.1';
+            decrease.innerHTML = '<i class="fas fa-minus"></i>';
+            const value = document.createElement('span');
+            value.className = 'dataset-bias-value';
+            value.textContent = biasText;
+            const increase = document.createElement('button');
+            increase.type = 'button';
+            increase.className = 'dataset-bias-increase';
+            increase.dataset.biasStep = '0.1';
+            increase.innerHTML = '<i class="fas fa-plus"></i>';
+            controls.appendChild(decrease);
+            controls.appendChild(value);
+            controls.appendChild(increase);
+            wireStudioBiasControls(controls, adjust);
+            right.appendChild(controls);
+        }
+        wrap.appendChild(right);
+        return wrap;
+    };
+}
+
+function getStudioDatasetCatalog() {
+    const modelKey = getCurrentDatasetModelKey();
+    const modelCaps = getForgeModelFeatures(modelKey);
+    const configuredDatasets = window.optionsData?.datasets || [
+        { value: 'anime dataset', display: 'Anime', icon: 'nai-sakura', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
+        { value: 'fur dataset', display: 'Furry', icon: 'nai-paw', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
+        { value: 'background dataset', display: 'Backgrounds', icon: 'fas fa-tree', type: 'dataset', min: -3, max: 5, default: 0.75, negative: false, sub_toggles: [] }
+    ];
+    const allowedDatasets = configuredDatasets.filter((dataset) => datasetAllowedForModel(dataset, modelKey));
+    const qualityPreset = allowedDatasets.find((dataset) => dataset.isQualityPreset) || {
+        value: '__quality__',
+        display: 'Quality',
+        icon: 'fa-crown fas',
+        type: 'preset',
+        isQualityPreset: true
+    };
+    const transparencyPreset = modelCaps?.transparency === true
+        ? (allowedDatasets.find((dataset) => dataset.isTransparencyPreset) || {
+            value: '__transparency__',
+            display: 'Transparency',
+            icon: 'fas fa-chess-board',
+            type: 'preset',
+            isTransparencyPreset: true
+        })
+        : null;
+    const datasets = allowedDatasets.filter((dataset) => !dataset.isQualityPreset && !dataset.isTransparencyPreset);
+    return { datasets, qualityPreset, transparencyPreset };
+}
+
+function studioDatasetBiasRow(dataset, selected, biasValue, adjust) {
+    const biasText = formatStudioBiasLabel(biasValue);
+    return {
+        action: 'studio-dataset-row',
+        datasetConfig: dataset,
+        keepMenuOpen: true,
+        showIndicator: true,
+        loadfn: (item) => {
+            if (item.datasetKind === 'quality') item.checked = !!appendQuality;
+            else if (item.datasetKind === 'transparency') item.checked = !!appendTransparency;
+            else if (item.datasetConfig) item.checked = selectedDatasets.includes(item.datasetConfig.value);
+        },
+        content: buildStudioBiasRowContent(dataset.display, dataset.icon || 'fa-cube fas', selected, biasText, adjust)
+    };
+}
+
+function getStudioDatasetMenuItems() {
+    const { datasets, qualityPreset, transparencyPreset } = getStudioDatasetCatalog();
+    const items = [];
+    if (datasets.length) {
+        items.push({ separator: true, text: 'Datasets' });
+        datasets.forEach((dataset) => {
+            const selected = selectedDatasets.includes(dataset.value);
+            const biasValue = datasetBias[dataset.value] !== undefined
+                ? datasetBias[dataset.value]
+                : (dataset.default !== undefined ? dataset.default : 1.0);
+            const row = studioDatasetBiasRow(dataset, selected, biasValue, (delta) => {
+                adjustDatasetBias(dataset.value, delta, dataset);
+            });
+            row.datasetKind = 'dataset';
+            const valueElHook = row.content;
+            row.content = function () {
+                const node = valueElHook();
+                const valueEl = node.querySelector('.dataset-bias-value');
+                if (valueEl) valueEl.dataset.dataset = dataset.value;
+                return node;
+            };
+            items.push(row);
+        });
+    }
+    items.push({ separator: true, text: 'Presets' });
+    const qualitySelected = !!appendQuality;
+    const qualityRow = studioDatasetBiasRow(qualityPreset, qualitySelected, qualityPresetBias, (delta) => {
+        adjustDatasetPresetBias(false, delta);
+    });
+    qualityRow.datasetKind = 'quality';
+    qualityRow.content = function () {
+        const node = buildStudioBiasRowContent(
+            qualityPreset.display,
+            qualityPreset.icon,
+            !!appendQuality,
+            formatStudioBiasLabel(qualityPresetBias),
+            (delta) => adjustDatasetPresetBias(false, delta)
+        )();
+        const valueEl = node.querySelector('.dataset-bias-value');
+        if (valueEl) valueEl.dataset.action = 'quality-bias';
+        return node;
+    };
+    items.push(qualityRow);
+    if (transparencyPreset) {
+        const transparencyRow = studioDatasetBiasRow(transparencyPreset, !!appendTransparency, transparencyBias, (delta) => {
+            adjustDatasetPresetBias(true, delta);
+        });
+        transparencyRow.datasetKind = 'transparency';
+        transparencyRow.content = function () {
+            const node = buildStudioBiasRowContent(
+                transparencyPreset.display,
+                transparencyPreset.icon,
+                !!appendTransparency,
+                formatStudioBiasLabel(transparencyBias),
+                (delta) => adjustDatasetPresetBias(true, delta)
+            )();
+            const valueEl = node.querySelector('.dataset-bias-value');
+            if (valueEl) valueEl.dataset.action = 'transparency-bias';
+            return node;
+        };
+        items.push(transparencyRow);
+    }
+    items.push({ separator: true });
+    items.push.apply(items, getDatasetDropdownFooterMenuItems());
+    return items;
+}
+
+function pushStudioSubToggleRow(items, dataset, subToggle) {
+    const defaultBias = getSubToggleDefaultBias(subToggle);
+    items.push({
+        action: 'studio-subtoggle-row',
+        datasetValue: dataset.value,
+        subToggle: subToggle,
+        keepMenuOpen: true,
+        showIndicator: true,
+        loadfn: (item) => {
+            item.checked = !!(item.subToggle && isSubToggleEnabled(item.datasetValue, item.subToggle));
+        },
+        content: function () {
+            const liveSelected = isSubToggleEnabled(dataset.value, subToggle);
+            const liveStored = window.datasetSettings?.[dataset.value]?.[subToggle.id];
+            const liveBias = liveStored && liveStored.bias !== undefined ? liveStored.bias : defaultBias;
+            const node = buildStudioBiasRowContent(
+                subToggle.name,
+                subToggle.icon || 'fas fa-toggle-on',
+                liveSelected,
+                formatStudioBiasLabel(liveBias),
+                (delta) => adjustSubToggleBias(dataset.value, subToggle.id, delta, subToggle)
+            )();
+            const valueEl = node.querySelector('.dataset-bias-value');
+            if (valueEl) {
+                valueEl.dataset.dataset = dataset.value;
+                valueEl.dataset.toggle = subToggle.id;
+            }
+            return node;
+        }
+    });
+}
+
+function pushStudioSubToggleGroups(items, dataset, toggles) {
+    const groupDefs = dataset.sub_toggle_groups || [];
+    const grouped = {};
+    const ungrouped = [];
+    toggles.forEach((subToggle) => {
+        if (subToggle.group) {
+            if (!grouped[subToggle.group]) grouped[subToggle.group] = [];
+            grouped[subToggle.group].push(subToggle);
+        } else {
+            ungrouped.push(subToggle);
+        }
+    });
+    ungrouped.forEach((subToggle) => pushStudioSubToggleRow(items, dataset, subToggle));
+    const remainingGroups = new Set(Object.keys(grouped));
+    groupDefs.forEach((group) => {
+        const groupItems = grouped[group.id];
+        if (!groupItems || !groupItems.length) return;
+        remainingGroups.delete(group.id);
+        items.push({ separator: true, text: group.name || group.id });
+        groupItems.forEach((subToggle) => pushStudioSubToggleRow(items, dataset, subToggle));
+    });
+    remainingGroups.forEach((groupId) => {
+        items.push({ separator: true, text: groupId });
+        grouped[groupId].forEach((subToggle) => pushStudioSubToggleRow(items, dataset, subToggle));
+    });
+}
+
+function getStudioAdjustmentMenuItems() {
+    ensureActiveSubTogglesInitialized();
+    const items = [];
+    const modelKey = getCurrentDatasetModelKey();
+    const active = getActiveSubToggleDatasets();
+    active.forEach((dataset) => {
+        const toggles = getVisibleSubToggles(dataset, modelKey);
+        if (!toggles.length) return;
+        items.push({ separator: true, text: dataset.display || dataset.value });
+        pushStudioSubToggleGroups(items, dataset, toggles);
+    });
+    return items;
+}
+
+function getStudioUcPresetMenuItems() {
+    const furryFocus = selectedDatasets.some((dataset) => dataset === 'fur dataset' || dataset === 'furry dataset');
+    const ucTable = resolvePresetTableForModel(window.optionsData?.uc_presets, manualSelectedModel);
+    const presets = [
+        { value: 0, display: UC_PRESET_LEVEL_LABELS[0] },
+        { value: 1, display: UC_PRESET_LEVEL_LABELS[1], furryFocus: false },
+        { value: 2, display: UC_PRESET_LEVEL_LABELS[2] },
+        { value: 3, display: UC_PRESET_LEVEL_LABELS[3] },
+        { value: 4, display: UC_PRESET_LEVEL_LABELS[4] },
+        { value: 5, display: UC_PRESET_LEVEL_LABELS[5] }
+    ].filter((preset) => {
+        if (preset.furryFocus === false && furryFocus) return false;
+        if (preset.value === 5 && (!Array.isArray(ucTable) || !ucTable[4])) return false;
+        return true;
+    }).map((preset) => ({
+        text: preset.display,
+        action: 'studio-uc-select-' + preset.value,
+        value: preset.value,
+        keepMenuOpen: true,
+        showIndicator: true,
+        loadfn: (item) => {
+            item.checked = selectedUcPreset === preset.value;
+        }
+    }));
+    presets.push({ separator: true });
+    presets.push.apply(presets, getUcPresetContextMenuItems());
+    return presets;
+}
+
+function getStudioNsfwBiasMenuItems() {
+    const nsfwOptions = [
+        { value: 3, name: 'Nude' },
+        { value: 2, name: 'Skimpy' },
+        { value: 1, name: 'Allow' },
+        { value: 0, name: 'Neutral' },
+        { value: -1, name: 'Remove' },
+        { value: -2, name: 'Clense' }
+    ];
+    return nsfwOptions.map((option) => {
+        const selected = selectedNsfwValue === option.value;
+        return {
+            action: 'studio-nsfw-select',
+            value: option.value,
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: (item) => {
+                item.checked = selectedNsfwValue === item.value;
+            },
+            content: function () {
+                const liveSelected = selectedNsfwValue === option.value;
+                const node = buildStudioBiasRowContent(
+                    option.name,
+                    '',
+                    liveSelected,
+                    formatStudioBiasLabel(nsfwBias || 1.0),
+                    (delta) => adjustNsfwBias(delta)
+                )();
+                const valueEl = node.querySelector('.dataset-bias-value');
+                if (valueEl) valueEl.dataset.nsfw = String(option.value);
+                return node;
+            }
+        };
+    });
+}
+
+function getDatasetDropdownFooterMenuItems() {
+    return [
+        {
+            icon: 'fas fa-plus-circle',
+            text: 'Add Preset Contents',
+            action: 'addQualityPresetContents',
+            loadfn: (item) => {
+                item.disabled = !appendQuality;
+            }
+        },
+        {
+            icon: 'fas fa-undo',
+            text: 'Reset',
+            action: 'resetDatasets'
+        }
+    ];
+}
+
+function getDatasetPromptSyntaxMenuItems() {
+    return [
+        {
+            icon: 'fas fa-paragraph',
+            text: 'Keep Newlines',
+            action: 'toggleNewlines',
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: (item) => {
+                item.checked = !!window.keepPromptNewlines;
+            }
+        },
+        {
+            icon: 'fas fa-grip-lines',
+            text: 'Bake New Lines',
+            action: 'toggleBakeNewlines',
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: (item) => {
+                item.disabled = !window.keepPromptNewlines;
+                item.checked = !!window.bakePromptNewlines && !!window.keepPromptNewlines;
+            }
+        },
+        {
+            icon: 'fas fa-hashtag',
+            text: 'Auto Char Numerize',
+            action: 'toggleAutoCharNumerize',
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: (item) => {
+                item.checked = window.autoCharNumerize !== false;
+            }
+        },
+        {
+            icon: 'fas fa-wand-magic-sparkles',
+            text: 'Auto Format',
+            action: 'toggleAutoFormat',
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: (item) => {
+                item.checked = window.autoFormatOnBlur !== false;
+            }
+        },
+        {
+            icon: 'fas fa-align-left',
+            text: 'Prompt Normalize',
+            action: 'togglePromptNormalize',
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: (item) => {
+                item.checked = window.promptNormalize !== false;
+            }
+        },
+        {
+            icon: 'fas fa-clone',
+            text: 'Deduplicate',
+            action: 'toggleDeduplicate',
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: (item) => {
+                item.checked = window.deduplicateTags !== false;
+            }
+        }
+    ];
+}
+
+function getUcPresetContextMenuItems() {
+    return [
+        {
+            icon: 'fas fa-plus-circle',
+            text: 'Add Preset Contents',
+            action: 'addPresetContents'
+        },
+        {
+            icon: 'fas fa-broom',
+            text: 'Auto Remove Phrases',
+            action: 'toggleAutoClean',
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: (item) => {
+                const autoCleanState = ucPresetsDropdownBtn.dataset.autoClean === 'on';
+                item.checked = autoCleanState;
+                item.icon = autoCleanState ? 'fas fa-check-square' : 'fa-regular fa-square';
+            }
+        }
+    ];
+}
+
+function toggleStudioQualityPreset(isTransparency) {
+    const dataset = isTransparency
+        ? (findDatasetConfig('__transparency__') || { value: '__transparency__', isTransparencyPreset: true })
+        : (findDatasetConfig('__quality__') || { value: '__quality__', isQualityPreset: true });
+    if (isTransparency) {
+        appendTransparency = !appendTransparency;
+        if (appendTransparency) initSubTogglesForDataset(dataset);
+        else clearSubTogglesForDataset(dataset.value);
+    } else {
+        appendQuality = !appendQuality;
+        if (appendQuality) initSubTogglesForDataset(dataset);
+        else clearSubTogglesForDataset(dataset.value);
+    }
+    updatePromptStatusIcons();
+    renderDatasetDropdown();
+    updateSubTogglesButtonState();
+    // notifyStudioSoftTipsDatasetChange: public/scripts/comp/studioSoftTips.js
+    notifyStudioSoftTipsDatasetChange();
+}
+
+function runDatasetContextAction(action) {
+    switch (action) {
+        case 'addQualityPresetContents':
+            addQualityPresetContents();
+            return true;
+        case 'resetDatasets':
+            resetDatasets();
+            return true;
+        case 'toggleNewlines':
+            keepPromptNewlines = !keepPromptNewlines;
+            if (!keepPromptNewlines) bakePromptNewlines = false;
+            // syncKeepNewlinesButtons: public/scripts/comp/promptTextareaToolbar.js
+            promptTextareaToolbar.syncKeepNewlinesButtons();
+            // updatePromptStatusIcons: public/scripts/comp/utilities.js
+            updatePromptStatusIcons();
+            return true;
+        case 'toggleBakeNewlines':
+            if (!keepPromptNewlines) {
+                bakePromptNewlines = false;
+                return true;
+            }
+            bakePromptNewlines = !bakePromptNewlines;
+            return true;
+        case 'toggleAutoCharNumerize':
+            autoCharNumerize = autoCharNumerize === false;
+            updatePromptStatusIcons();
+            return true;
+        case 'toggleAutoFormat':
+            autoFormatOnBlur = autoFormatOnBlur === false;
+            return true;
+        case 'togglePromptNormalize':
+            promptNormalize = promptNormalize === false;
+            updatePromptStatusIcons();
+            return true;
+        case 'toggleDeduplicate':
+            deduplicateTags = deduplicateTags === false;
+            updatePromptStatusIcons();
+            return true;
+        default:
+            return false;
+    }
+}
+
+function runUcContextAction(action) {
+    switch (action) {
+        case 'addPresetContents':
+            addUcPresetContents();
+            return true;
+        case 'toggleAutoClean':
+            toggleAutoCleanUc();
+            return true;
+        default:
+            return false;
+    }
+}
+
 /**
  * Setup dataset dropdown context menu
  * @function
@@ -2434,92 +2937,10 @@ function setupDatasetDropdownContextMenu() {
         sections: [
             {
                 type: 'list',
-                items: [
-                    {
-                        icon: 'fas fa-plus-circle',
-                        text: 'Add Preset Contents',
-                        action: 'addQualityPresetContents',
-                        disabled: false,
-                        loadfn: (item) => {
-                            // Disable if quality preset is off
-                            item.disabled = !appendQuality;
-                        }
-                    },
-                    {
-                        icon: 'fas fa-undo',
-                        text: 'Reset',
-                        action: 'resetDatasets',
-                        disabled: false
-                    },
-                    { separator: true },
-                    {
-                        icon: 'fas fa-paragraph',
-                        text: 'Keep Newlines',
-                        action: 'toggleNewlines',
-                        keepMenuOpen: true,
-                        showIndicator: true,
-                        disabled: false,
-                        loadfn: (item) => {
-                            item.checked = !!window.keepPromptNewlines;
-                        }
-                    },
-                    {
-                        icon: 'fas fa-grip-lines',
-                        text: 'Bake New Lines',
-                        action: 'toggleBakeNewlines',
-                        keepMenuOpen: true,
-                        showIndicator: true,
-                        disabled: false,
-                        loadfn: (item) => {
-                            item.disabled = !window.keepPromptNewlines;
-                            item.checked = !!window.bakePromptNewlines && !!window.keepPromptNewlines;
-                        }
-                    },
-                    {
-                        icon: 'fas fa-hashtag',
-                        text: 'Auto Char Numerize',
-                        action: 'toggleAutoCharNumerize',
-                        keepMenuOpen: true,
-                        showIndicator: true,
-                        disabled: false,
-                        loadfn: (item) => {
-                            item.checked = window.autoCharNumerize !== false;
-                        }
-                    },
-                    {
-                        icon: 'fas fa-wand-magic-sparkles',
-                        text: 'Auto Format',
-                        action: 'toggleAutoFormat',
-                        keepMenuOpen: true,
-                        showIndicator: true,
-                        disabled: false,
-                        loadfn: (item) => {
-                            item.checked = window.autoFormatOnBlur !== false;
-                        }
-                    },
-                    {
-                        icon: 'fas fa-align-left',
-                        text: 'Prompt Normalize',
-                        action: 'togglePromptNormalize',
-                        keepMenuOpen: true,
-                        showIndicator: true,
-                        disabled: false,
-                        loadfn: (item) => {
-                            item.checked = window.promptNormalize !== false;
-                        }
-                    },
-                    {
-                        icon: 'fas fa-clone',
-                        text: 'Deduplicate',
-                        action: 'toggleDeduplicate',
-                        keepMenuOpen: true,
-                        showIndicator: true,
-                        disabled: false,
-                        loadfn: (item) => {
-                            item.checked = window.deduplicateTags !== false;
-                        }
-                    }
-                ]
+                items: getDatasetDropdownFooterMenuItems().concat(
+                    [{ separator: true }],
+                    getDatasetPromptSyntaxMenuItems()
+                )
             }
         ]
     };
@@ -2538,48 +2959,7 @@ function handleDatasetContextMenuAction(event) {
     
     // Only handle actions for dataset dropdown button
     if (target !== datasetDropdownBtn) return;
-
-    switch (action) {
-        case 'addQualityPresetContents':
-            addQualityPresetContents();
-            break;
-        case 'resetDatasets':
-            resetDatasets();
-            break;
-        case 'toggleNewlines':
-            keepPromptNewlines = !keepPromptNewlines;
-            if (!keepPromptNewlines) bakePromptNewlines = false;
-            // syncKeepNewlinesButtons: public/scripts/comp/promptTextareaToolbar.js
-            promptTextareaToolbar.syncKeepNewlinesButtons();
-            // updatePromptStatusIcons: public/scripts/comp/utilities.js
-            updatePromptStatusIcons();
-            break;
-        case 'toggleBakeNewlines':
-            if (!keepPromptNewlines) {
-                bakePromptNewlines = false;
-                break;
-            }
-            bakePromptNewlines = !bakePromptNewlines;
-            break;
-        case 'toggleAutoCharNumerize':
-            autoCharNumerize = autoCharNumerize === false;
-            // updatePromptStatusIcons: public/scripts/comp/utilities.js
-            updatePromptStatusIcons();
-            break;
-        case 'toggleAutoFormat':
-            autoFormatOnBlur = autoFormatOnBlur === false;
-            break;
-        case 'togglePromptNormalize':
-            promptNormalize = promptNormalize === false;
-            // updatePromptStatusIcons: public/scripts/comp/utilities.js
-            updatePromptStatusIcons();
-            break;
-        case 'toggleDeduplicate':
-            deduplicateTags = deduplicateTags === false;
-            // updatePromptStatusIcons: public/scripts/comp/utilities.js
-            updatePromptStatusIcons();
-            break;
-    }
+    runDatasetContextAction(action);
 }
 
 /**
@@ -2865,13 +3245,7 @@ function adjustNsfwBias(delta) {
     const currentValue = nsfwBias || 1.0;
     const newValue = Math.max(0.1, Math.min(3.0, currentValue + delta));
     nsfwBias = Math.round(newValue * 10) / 10; // Round to 1 decimal place
-
-    // Update the bias value display in the dropdown
-    const biasValueSpan = document.querySelector(`.dataset-bias-value[data-nsfw="${selectedNsfwValue}"]`);
-    if (biasValueSpan) {
-        const displayValue = nsfwBias !== 1.0 ? nsfwBias.toFixed(1) : '1.0';
-        biasValueSpan.textContent = displayValue;
-    }
+    paintNsfwBiasLabels();
 
     // Update dropdown display
     updateNsfwButtonDisplay();

@@ -252,67 +252,53 @@ class ChatSystem {
 
     async openChatModal(filename, characterName = null) {
         this.currentFilename = filename;
-        
-        // Set the background image
+
+        const modal = document.getElementById('chatModal');
+        const cover = document.getElementById('chatModalLoadingCover');
+        const nameField = document.getElementById('chatName');
+        const mindSeed = document.getElementById('chatMindSeed');
+
         const backgroundImage = document.getElementById('chatBackgroundImage');
         backgroundImage.src = localGalleryImageUrl(filename);
-        
-        // Update modal info
+
         document.getElementById('chatCharacterName').textContent = characterName || 'Unknown';
         document.getElementById('chatFilename').textContent = filename;
-        
-        // Reset form
-        document.getElementById('chatName').value = characterName || '';
-        document.getElementById('chatMindSeed').value = '';
+
+        nameField.value = characterName || '';
+        mindSeed.value = '';
         document.getElementById('chatStoryContext').value = '';
         document.getElementById('chatViewerContext').value = '';
         setChatVerbosityField('chatVerbosityHidden', 'chatVerbositySelected', this.personaSettings?.default_verbosity || 3);
-        
-        // Fetch image metadata to extract creative directive if dynamic generation was enabled
+
+        if (cover) cover.classList.add('show');
+        openModal(modal);
+
+        const token = (this._chatMetaToken || 0) + 1;
+        this._chatMetaToken = token;
+
         try {
             if (window.wsClient && window.wsClient.isConnected()) {
                 const metadata = await window.wsClient.sendMessage('request_image_metadata', {
                     filename: filename
                 });
-                
-                // The response is the metadata object directly
-                if (metadata && metadata.dynamic_generation && metadata.dynamic_generation.directive) {
-                    const directive = metadata.dynamic_generation.directive.trim();
-                    if (directive) {
-                        document.getElementById('chatMindSeed').value = directive;
-                        console.log('✅ Copied creative directive from image metadata:', directive);
-                    }
+                if (token !== this._chatMetaToken) return;
+
+                const metaName = metadata && (metadata.character_name || metadata.characterName);
+                if (metaName && !characterName) {
+                    document.getElementById('chatCharacterName').textContent = metaName;
+                    if (!nameField.value) nameField.value = metaName;
+                }
+
+                const directive = metadata && metadata.dynamic_generation && metadata.dynamic_generation.directive;
+                if (directive && String(directive).trim()) {
+                    mindSeed.value = String(directive).trim();
                 }
             }
         } catch (error) {
-            console.warn('⚠️ Could not fetch image metadata for creative directive:', error);
-            // Non-critical error, continue without directive
+            console.warn('Could not fetch image metadata for creative directive:', error);
+        } finally {
+            if (token === this._chatMetaToken && cover) cover.classList.remove('show');
         }
-        
-        
-        // Fetch image metadata to extract creative directive if dynamic generation was enabled
-        try {
-            if (window.wsClient && window.wsClient.isConnected()) {
-                const metadata = await window.wsClient.sendMessage('request_image_metadata', {
-                    filename: filename
-                });
-                
-                // The response is the metadata object directly
-                if (metadata && metadata.dynamic_generation && metadata.dynamic_generation.directive) {
-                    const directive = metadata.dynamic_generation.directive.trim();
-                    if (directive) {
-                        document.getElementById('chatMindSeed').value = directive;
-                        console.log('✅ Copied creative directive from image metadata:', directive);
-                    }
-                }
-            }
-        } catch (error) {
-            console.warn('⚠️ Could not fetch image metadata for creative directive:', error);
-            // Non-critical error, continue without directive
-        }
-        
-        // Open modal
-        openModal(document.getElementById('chatModal'));
     }
 
     async closeChatModal() {

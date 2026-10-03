@@ -542,14 +542,7 @@ function clearAllCache() {
 
 // Initialized by globalResources.initializeTagSearchDatabase(databasesPath) at server startup
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-    closeTagSearchDatabase();
-});
-
-process.on('SIGTERM', () => {
-    closeTagSearchDatabase();
-});
+// Shutdown is web_server gracefulShutdown -> globalResources.shutdown().
 
 module.exports = {
     initializeTagSearchDatabase,

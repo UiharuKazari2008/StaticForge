@@ -89,7 +89,9 @@ function loadMethod(file, header, name, globals = {}) {
         document: { activeElement: null, getElementById: () => null }
     };
     vm.createContext(ctx);
-    vm.runInContext(extractBlock(src, 'function ensureTextOverlayModel(') + '\n'
+    vm.runInContext(extractBlock(src, 'function textOverlayNewlinesToDisplay(') + '\n'
+        + extractBlock(src, 'function textOverlayDisplayToNewlines(') + '\n'
+        + extractBlock(src, 'function ensureTextOverlayModel(') + '\n'
         + extractBlock(src, 'function getTextOverlayData('), ctx);
     const getData = vm.runInContext('getTextOverlayData', ctx);
 
@@ -101,6 +103,13 @@ function loadMethod(file, header, name, globals = {}) {
     data = getData();
     assert.deepStrictEqual(Array.from(data, (d) => d.text), ['programmatic text', 'edited\nby script'],
         'programmatic edits picked up (display form converted)');
+
+    shown._textArea.value = 'hello ⏎';
+    empty._textArea.value = 'a ⏎ ⏎ b';
+    data = getData();
+    assert.deepStrictEqual(Array.from(data, (d) => d.text), ['a\n\nb', 'hello'],
+        'trimmed and collapsed display marks become newlines');
+    assert.ok(!data.some((d) => d.text.includes('⏎')), 'display mark is not sent');
     console.log('ok: overlay text falls back to textarea value');
 }
 

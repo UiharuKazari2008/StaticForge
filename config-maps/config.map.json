@@ -817,6 +817,28 @@
       "editMode": "inline",
       "required": true,
       "description": "When true (default), Grim is shown to local CIDRs as well as logged-in sessions. When false, Grim is session-only."
+    },
+    {
+      "path": ["xi"],
+      "type": "object",
+      "label": "Xi",
+      "closed": true,
+      "description": "Host-side Director persona. Stays off until enabled on this instance."
+    },
+    {
+      "path": ["xi", "enabled"],
+      "type": "boolean",
+      "label": "Enable Xi",
+      "editMode": "inline",
+      "restartRequired": true,
+      "description": "Show the Wren / Xi switch and run Xi on the host. A server start is required."
+    },
+    {
+      "path": ["xi", "workspace"],
+      "type": "string",
+      "label": "Xi Workspace",
+      "editorType": "input",
+      "description": "Folder Xi edits. Empty uses this repo."
     }
   ]
 }

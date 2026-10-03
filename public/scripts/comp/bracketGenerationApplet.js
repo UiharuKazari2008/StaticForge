@@ -440,6 +440,24 @@ function bracketGenHasReplacementContent(value) {
     return String(value || '').trim() !== '';
 }
 
+function bracketGenImplicitPhaseNameFromPrompts(promptTexts) {
+    const texts = [];
+    (promptTexts || []).forEach((raw) => {
+        const text = String(raw || '').trim();
+        if (text) texts.push(text);
+    });
+    if (!texts.length) return '';
+    const first = texts[0];
+    if (texts.some((text) => text !== first)) return '';
+    if (first.indexOf(',') !== -1) return '';
+    return first;
+}
+
+function phasewalkerWorkspaceDesktopPath() {
+    const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : '';
+    return workspaceId ? `/Workspaces/${workspaceId}/Desktop` : '/';
+}
+
 function bracketGenKeywordHasFieldContent(keyword, field, keywordSteps) {
     const steps = keywordSteps?.[keyword] || [];
     return steps.some((s) => String(s[field] || '').trim() !== '');
@@ -480,6 +498,59 @@ function bracketGenUpdateManagedStep0PhaseName(name) {
             delete r.phaseStepName;
         }
     });
+}
+
+function bracketGenSubstituteToken(text, token, value) {
+    if (!text || !token) return text || '';
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('!' + escaped + '(?:\\b|$)', 'g');
+    const replacement = String(value || '').trim();
+    let next = text.replace(re, replacement);
+    if (next === text) return text;
+    next = next.replace(/[ \t]*,(?:[ \t]*,)+[ \t]*/g, ', ');
+    next = next.replace(/^[ \t]*,[ \t]*/, '');
+    next = next.replace(/[ \t]*,[ \t]*$/, '');
+    return next.trim();
+}
+
+function bracketGenPromptTextareas() {
+    const fields = [];
+    ['manualPrompt', 'manualUc', 'manualPromptNegative'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) fields.push(el);
+    });
+    document.querySelectorAll('.character-prompt-textarea').forEach((el) => fields.push(el));
+    return fields;
+}
+
+function bracketGenExpanderValueText(entry) {
+    if (!entry) return '';
+    if (Array.isArray(entry.value)) return String(entry.value[0] || '');
+    return String(entry.value || '');
+}
+
+function bracketGenBakeStageIntoPrompts(stageIndex) {
+    if (typeof requestBodyReplacements === 'undefined') return false;
+    const managed = requestBodyReplacements.filter((r) => r.managed);
+    if (!managed.length) return false;
+    const names = [];
+    managed.forEach((entry) => {
+        if (entry.name && names.indexOf(entry.name) === -1) names.push(entry.name);
+    });
+    const fields = bracketGenPromptTextareas();
+    names.forEach((name) => {
+        const entry = managed.find((row) => row.name === name && bracketGenExpanderStageIndex(row) === stageIndex);
+        const value = bracketGenExpanderValueText(entry);
+        fields.forEach((el) => {
+            const next = bracketGenSubstituteToken(el.value, name, value);
+            if (next === el.value) return;
+            // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+            setTextareaValuePreservingUndo(el, next);
+            bracketGenRefreshPromptTextarea(el);
+        });
+    });
+    deleteAllManagedBracketArtifacts();
+    return true;
 }
 
 async function validateBracketPlaceholdersBeforeGeneration(values) {
@@ -575,6 +646,7 @@ class BracketGenerationApplet {
         this._skipCloseConfirm = false;
         this._pendingAutoCompile = false;
         this._desktopShortcut = null;
+        this._vfsFile = null;
         this._savedSnapshot = null;
         this.trayEl = null;
         this.trayGlyph = null;
@@ -645,6 +717,32 @@ class BracketGenerationApplet {
         if (index === 0 && this.state.useStage0) {
             bracketGenUpdateManagedStep0PhaseName(trimmed);
         }
+    }
+
+    applyStepNameToRow(index, name) {
+        const stepItem = this.stepsContainer?.querySelector(`.bracket-gen-step-item[data-step-index="${index}"]`);
+        if (!stepItem) return;
+        const input = stepItem.querySelector('.bracket-gen-step-name-input');
+        const placeholder = stepItem.querySelector('.bracket-gen-step-name-placeholder');
+        const visible = String(name || '').trim();
+        if (input) input.value = visible;
+        if (placeholder) placeholder.textContent = visible;
+    }
+
+    resolvePhaseNameForCompile(index) {
+        const display = this.getStepDisplayName(index);
+        const fallback = `Step ${index + 1}`;
+        if (display && display !== fallback) return display;
+        const prompts = this.state.keywords.map((kw) => {
+            const steps = this.state.keywordSteps[kw] || [];
+            const step = index < steps.length ? steps[index] : null;
+            return step ? step.prompt : '';
+        });
+        const implicit = bracketGenImplicitPhaseNameFromPrompts(prompts);
+        if (!implicit) return '';
+        this.setStepName(index, implicit);
+        this.applyStepNameToRow(index, implicit);
+        return implicit;
     }
 
     saveStepNamesFromInputs() {
@@ -964,92 +1062,396 @@ class BracketGenerationApplet {
     }
 
     setupGearDropdown() {
-        const dropdown = document.getElementById('bracketGenGearDropdown');
         const btn = document.getElementById('bracketGenGearDropdownBtn');
-        const menu = document.getElementById('bracketGenGearDropdownMenu');
-        // setupDropdown: public/scripts/comp/dropdown.js
-        if (!dropdown || !btn || !menu) return;
-        if (dropdown.getAttribute('data-dropdown-initialized') === 'true') return;
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        if (!btn || !contextMenu) return;
+        if (btn.dataset.phasewalkerMenuWired === 'true') return;
+        btn.dataset.phasewalkerMenuWired = 'true';
+        contextMenu.attachClickMenuToElement(btn, this.getMenuConfig());
+    }
 
-        setupDropdown(
-            dropdown,
-            btn,
-            menu,
-            () => {
-                menu.innerHTML = '';
-                const hasKeyword = !!this.state.activeKeyword;
-                const keywordItems = [
-                    {
-                        icon: 'fas fa-pen',
-                        text: 'Rename Keyword',
-                        action: () => this.renameKeyword(),
-                        disabled: !hasKeyword
-                    },
-                    {
-                        icon: 'fas fa-trash-alt',
-                        text: 'Delete Keyword',
-                        action: () => this.deleteKeyword(),
-                        disabled: !hasKeyword || this.state.keywords.length <= 1
+    boundDocument() {
+        return this._vfsFile || this._desktopShortcut || null;
+    }
+
+    getMenuConfig() {
+        const applet = this;
+        return {
+            openSubmenusOnHover: true,
+            sections: [
+                {
+                    type: 'list',
+                    title: 'File',
+                    initfn(section) {
+                        section.items = applet.buildFileMenuItems();
                     }
-                ];
-                keywordItems.forEach((item) => {
-                    const opt = document.createElement('div');
-                    opt.className = 'custom-dropdown-option' + (item.disabled ? ' disabled' : '');
-                    opt.innerHTML = `<i class="${item.icon}"></i> ${item.text}`;
-                    if (!item.disabled) {
-                        opt.addEventListener('click', () => {
-                            closeDropdown(menu, btn);
-                            item.action();
-                        });
+                },
+                {
+                    type: 'list',
+                    title: 'Keyword',
+                    initfn(section) {
+                        const hasKeyword = !!applet.state.activeKeyword;
+                        section.items = [
+                            {
+                                icon: 'fas fa-pen',
+                                text: 'Rename Keyword',
+                                action: 'pw-rename-keyword',
+                                disabled: !hasKeyword
+                            },
+                            {
+                                icon: 'fas fa-trash-alt',
+                                text: 'Delete Keyword',
+                                action: 'pw-delete-keyword',
+                                disabled: !hasKeyword || applet.state.keywords.length <= 1
+                            }
+                        ];
                     }
-                    menu.appendChild(opt);
-                });
+                },
+                {
+                    type: 'list',
+                    initfn(section) {
+                        section.items = [
+                            {
+                                icon: applet.state.useStage0 ? 'fas fa-check' : 'fas fa-square',
+                                text: 'Use Stage 0',
+                                action: 'pw-toggle-stage0'
+                            },
+                            {
+                                icon: 'fas fa-trash-alt',
+                                text: 'Delete Stages',
+                                action: 'pw-delete-stages',
+                                disabled: !hasManagedBracketArtifacts()
+                            }
+                        ];
+                    }
+                }
+            ],
+            onAction(action) {
+                applet.handleFileMenuAction(action);
+            }
+        };
+    }
 
-                const separator = document.createElement('div');
-                separator.className = 'custom-dropdown-separator';
-                menu.appendChild(separator);
-
-                const useStage0Opt = document.createElement('div');
-                useStage0Opt.className = 'custom-dropdown-option';
-                useStage0Opt.innerHTML = this.state.useStage0
-                    ? '<i class="fas fa-check"></i> Use Stage 0'
-                    : '<i class="fas fa-square"></i> Use Stage 0';
-                useStage0Opt.addEventListener('click', () => {
-                    this.state.useStage0 = !this.state.useStage0;
-                    closeDropdown(menu, btn);
-                    this.normalizeCompareSourceStepIndex();
-                    this.renderSteps();
-                    this.updateChrome();
-                });
-                menu.appendChild(useStage0Opt);
-
-                const mainSeparator = document.createElement('div');
-                mainSeparator.className = 'custom-dropdown-separator';
-                menu.appendChild(mainSeparator);
-
-                const mainItems = [
-                    {
-                        icon: this._desktopShortcut ? 'fas fa-save' : 'fas fa-arrow-down-left',
-                        text: this._desktopShortcut ? 'Save changes' : 'Add to Desktop',
-                        action: () => (this._desktopShortcut ? this.saveShortcutChanges() : this.addToDesktop())
-                    },
-                    { icon: 'fas fa-file-import', text: 'Load from Editor', action: () => this.loadFromEditor() },
-                    { icon: 'fas fa-trash-alt', text: 'Delete Stages', action: () => this.deleteStages() }
-                ];
-                mainItems.forEach((item) => {
-                    const opt = document.createElement('div');
-                    opt.className = 'custom-dropdown-option';
-                    opt.innerHTML = `<i class="${item.icon}"></i> ${item.text}`;
-                    opt.addEventListener('click', () => {
-                        closeDropdown(menu, btn);
-                        item.action();
-                    });
-                    menu.appendChild(opt);
-                });
+    buildFileMenuItems() {
+        const canSave = !!this.boundDocument();
+        const hasData = this.hasToolData();
+        return [
+            { icon: 'fa-regular fa-file', text: 'New', action: 'pw-new' },
+            { icon: 'fas fa-floppy-disk', text: 'Save', action: 'pw-save', disabled: !canSave },
+            {
+                icon: 'fa-regular fa-floppy-disk',
+                text: 'Save As',
+                disabled: !hasData,
+                optionsfn() {
+                    return [
+                        { icon: 'fas fa-desktop', text: 'Desktop', action: 'pw-save-desktop' }
+                    ];
+                }
             },
-            () => null,
-            { preventFocusTransfer: true }
+            { icon: 'fa-regular fa-folder-open', text: 'Open', action: 'pw-open' },
+            {
+                icon: 'fas fa-file-import',
+                text: 'Load from Studio',
+                action: 'pw-load-studio',
+                disabled: !bracketGenIsEditorOpen() || !hasManagedBracketArtifacts()
+            }
+        ];
+    }
+
+    handleFileMenuAction(action) {
+        if (action === 'pw-new') {
+            void this.newDocument();
+            return;
+        }
+        if (action === 'pw-save') {
+            void this.saveBound();
+            return;
+        }
+        if (action === 'pw-save-desktop') {
+            void this.saveAsDesktop();
+            return;
+        }
+        if (action === 'pw-open') {
+            void this.openFromVfs();
+            return;
+        }
+        if (action === 'pw-load-studio') {
+            this.loadFromEditor();
+            return;
+        }
+        if (action === 'pw-rename-keyword') {
+            void this.renameKeyword();
+            return;
+        }
+        if (action === 'pw-delete-keyword') {
+            void this.deleteKeyword();
+            return;
+        }
+        if (action === 'pw-toggle-stage0') {
+            this.state.useStage0 = !this.state.useStage0;
+            this.normalizeCompareSourceStepIndex();
+            this.renderSteps();
+            this.updateChrome();
+            return;
+        }
+        if (action === 'pw-delete-stages') {
+            void this.deleteStages();
+        }
+    }
+
+    suggestFileName() {
+        const bound = this.boundDocument();
+        if (bound && bound.name) return bound.name;
+        if (this.state.keywords.length) return this.state.keywords.join(', ');
+        return 'Phasewalker';
+    }
+
+    async newDocument() {
+        this.saveStepTextareasToState();
+        if (this.hasToolData()) {
+            const confirmed = await showConfirmationDialog(
+                'Clear Phasewalker?',
+                [
+                    { text: 'Clear', value: true, icon: 'fa-regular fa-file', className: 'btn-danger' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ],
+                null,
+                { title: 'New', icon: 'fa-regular fa-file' }
+            );
+            if (!confirmed) return;
+        }
+        this._desktopShortcut = null;
+        this._vfsFile = null;
+        this._savedSnapshot = null;
+        this.state.keywords = [];
+        this.state.keywordSteps = {};
+        this.state.stepNames = [];
+        this.state.activeKeyword = '';
+        this.state.useStage0 = true;
+        this.state.compareSourceStepIndex = null;
+        this.stepCounter = 0;
+        this.renderSteps();
+        this.updateChrome();
+    }
+
+    bindDesktopShortcut(id, name, snapshot) {
+        this._desktopShortcut = { id: id, name: name };
+        this._vfsFile = null;
+        this._savedSnapshot = JSON.parse(JSON.stringify(snapshot));
+        this.updateChrome();
+    }
+
+    bindVfsFile(file, snapshot) {
+        this._vfsFile = {
+            id: file.id,
+            name: file.name,
+            path: file.path || ''
+        };
+        this._desktopShortcut = null;
+        this._savedSnapshot = JSON.parse(JSON.stringify(snapshot));
+        this.updateChrome();
+    }
+
+    async saveBound() {
+        if (this._vfsFile) {
+            await this.saveVfsFile();
+            return;
+        }
+        if (this._desktopShortcut) {
+            await this.saveShortcutChanges();
+        }
+    }
+
+    async saveVfsFile() {
+        if (!this._vfsFile || !vfsClient) {
+            showGlassToast('error', null, 'File is not open', false, 4000);
+            return;
+        }
+        const snapshot = this.getSnapshot();
+        const name = this._vfsFile.name || 'Phasewalker';
+        try {
+            await vfsClient.updateShortcutEntry(this._vfsFile.id, {
+                name: name,
+                data: { label: name, state: snapshot }
+            });
+            this._savedSnapshot = JSON.parse(JSON.stringify(snapshot));
+            this.updateChrome();
+            showGlassToast('success', null, 'Saved', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+        } catch (err) {
+            console.error(err);
+            showGlassToast('error', null, err.message || 'Failed to save', false, 5000);
+        }
+    }
+
+    async saveAsDesktop() {
+        if (!this.hasToolData()) {
+            showGlassToast('warning', null, 'Nothing to save', false, 3000);
+            return;
+        }
+        // studioOpenFolderDialog: public/scripts/comp/studioSession.js
+        if (typeof studioOpenFolderDialog !== 'function') {
+            showGlassToast('error', null, 'File browser unavailable', false, 4000);
+            return;
+        }
+        const applet = this;
+        await studioOpenFolderDialog('save', {
+            startPath: phasewalkerWorkspaceDesktopPath(),
+            host: {
+                acceptType: 'bracket-generation',
+                title: 'Save Phasewalker',
+                suggestName() {
+                    return applet.suggestFileName();
+                },
+                onSave(info) {
+                    return applet.saveToVfsBrowser(info);
+                }
+            }
+        });
+    }
+
+    async openFromVfs() {
+        // studioOpenFolderDialog: public/scripts/comp/studioSession.js
+        if (typeof studioOpenFolderDialog !== 'function') {
+            showGlassToast('error', null, 'File browser unavailable', false, 4000);
+            return;
+        }
+        const applet = this;
+        await studioOpenFolderDialog('open-vfs', {
+            startPath: phasewalkerWorkspaceDesktopPath(),
+            host: {
+                acceptType: 'bracket-generation',
+                title: 'Open Phasewalker',
+                rejectMessage: 'Choose a Phasewalker file',
+                onOpen(item, folderPath) {
+                    return applet.loadFromVfsItem(item, folderPath);
+                }
+            }
+        });
+    }
+
+    async confirmSaveBeforeUnload() {
+        if (!this.hasToolData()) return true;
+        if (this._vfsFile) {
+            if (this.isShortcutDirty()) await this.saveBound();
+            return !this.isShortcutDirty();
+        }
+        const choice = await showConfirmationDialog(
+            'Save the Phasewalker session before unloading?',
+            [
+                { text: 'Save', value: 'save', className: 'btn-primary' },
+                { text: "Don't save", value: 'unload', className: 'btn-secondary' },
+                { text: 'Cancel', value: null, className: 'btn-secondary' }
+            ],
+            null,
+            { title: 'Use this phase', icon: 'fas fa-crown' }
         );
+        if (choice === 'unload') return true;
+        if (choice !== 'save') return false;
+        return this.saveAsAndWait();
+    }
+
+    saveAsAndWait() {
+        const modal = document.getElementById('studioSaveFolderModal');
+        if (!modal) return Promise.resolve(false);
+        this._unloadSaveOk = false;
+        return new Promise((resolve) => {
+            let done = false;
+            const finish = (ok) => {
+                if (done) return;
+                done = true;
+                observer.disconnect();
+                resolve(!!ok);
+            };
+            const observer = new MutationObserver(() => {
+                if (modal.classList.contains('hidden')) finish(this._unloadSaveOk);
+            });
+            observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+            this.saveAsDesktop().then(() => {
+                if (modal.classList.contains('hidden')) finish(this._unloadSaveOk);
+            }).catch(() => finish(false));
+        });
+    }
+
+    async saveToVfsBrowser(info) {
+        this._unloadSaveOk = false;
+        const snapshot = this.getSnapshot();
+        const name = info.name;
+        const data = { label: name, state: snapshot };
+        const overwrite = info.overwrite || {};
+        try {
+            if (overwrite.overwriteId) {
+                await this.writeDesktopShortcut(overwrite.overwriteId, name, data, info.workspaceId);
+                this.bindDesktopShortcut(overwrite.overwriteId, name, snapshot);
+                showGlassToast('success', null, 'Saved', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+                this._unloadSaveOk = true;
+                return true;
+            }
+            if (overwrite.overwriteEntryId) {
+                await vfsClient.updateShortcutEntry(overwrite.overwriteEntryId, { name: name, data: data });
+                this.bindVfsFile({ id: overwrite.overwriteEntryId, name: name, path: info.path }, snapshot);
+                showGlassToast('success', null, 'Saved', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+                this._unloadSaveOk = true;
+                return true;
+            }
+            const result = await vfsClient.createShortcut(info.path, {
+                name: name,
+                type: 'bracket-generation',
+                data: data
+            }, info.workspaceId);
+            if (result && result.dest === 'desktop' && result.shortcut) {
+                this.bindDesktopShortcut(result.shortcut.id, result.shortcut.name || name, snapshot);
+            } else if (result && result.entry) {
+                this.bindVfsFile({
+                    id: result.entry.id,
+                    name: result.entry.display_name || name,
+                    path: result.path || info.path
+                }, snapshot);
+            }
+            showGlassToast('success', null, 'Saved', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+            this._unloadSaveOk = true;
+            return true;
+        } catch (err) {
+            console.error(err);
+            showGlassToast('error', null, err.message || 'Failed to save', false, 5000);
+            return false;
+        }
+    }
+
+    async writeDesktopShortcut(shortcutId, name, data, workspaceId) {
+        const shortcut = desktopShortcuts && desktopShortcuts.shortcuts
+            ? desktopShortcuts.shortcuts.find((row) => row.id === shortcutId)
+            : null;
+        if (shortcut) {
+            shortcut.name = name;
+            shortcut.data = { ...(shortcut.data || {}), ...data };
+            desktopShortcuts.updateShortcutInDOM(shortcutId, { name: name });
+            if (!shortcut._isNew) {
+                shortcut._isModified = true;
+                shortcut._dataModified = true;
+            }
+            desktopShortcuts.debouncedSave();
+            return;
+        }
+        const wsId = workspaceId || (typeof activeWorkspace !== 'undefined' ? activeWorkspace : '');
+        await wsClient.updateDesktopShortcut(wsId, shortcutId, { name: name, data: data });
+    }
+
+    loadFromVfsItem(item, folderPath) {
+        const state = item && item.shortcutData && item.shortcutData.state;
+        if (!state) {
+            showGlassToast('error', null, 'Phasewalker file has no saved state', false, 4000);
+            return;
+        }
+        if (!this.modal) this.init();
+        const manualModal = document.getElementById('manualModal');
+        const editorOpen = manualModal && !manualModal.classList.contains('hidden');
+        const opts = { state: state, autoCompile: editorOpen };
+        if (item.isVfsShortcutEntry) {
+            opts.vfsFile = { id: item.id, name: item.name, path: folderPath || '' };
+        } else {
+            opts.desktopShortcut = { id: item.id, name: item.name };
+        }
+        void this.open(opts);
     }
 
     validateKeywordName(name, currentName) {
@@ -1194,7 +1596,7 @@ class BracketGenerationApplet {
     }
 
     isShortcutDirty() {
-        if (!this._desktopShortcut || !this._savedSnapshot) return false;
+        if (!this.boundDocument() || !this._savedSnapshot) return false;
         return !bracketGenSnapshotsEqual(this.getSnapshot(), this._savedSnapshot);
     }
 
@@ -1215,8 +1617,9 @@ class BracketGenerationApplet {
     updateTitleBar() {
         const el = document.getElementById('bracketGenTitleLabel');
         if (!el) return;
-        if (this._desktopShortcut) {
-            const name = this._desktopShortcut.name || 'Shortcut';
+        const bound = this.boundDocument();
+        if (bound) {
+            const name = bound.name || 'Shortcut';
             const dirty = this.isShortcutDirty();
             el.textContent = `Phasewalker [${name}${dirty ? '*' : ''}]`;
         } else {
@@ -1269,7 +1672,7 @@ class BracketGenerationApplet {
             return;
         }
         if (action === 'pw-tray-save-shortcut') {
-            void this.saveShortcutChanges();
+            void this.saveBound();
             return;
         }
         if (action === 'pw-tray-toggle-stage0') {
@@ -1321,7 +1724,7 @@ class BracketGenerationApplet {
             disabled: !bracketGenIsEditorOpen() || !this.hasToolData()
         });
         items.push({
-            text: 'Load from Editor',
+            text: 'Load from Studio',
             icon: 'fas fa-file-import',
             action: 'pw-tray-load',
             disabled: !bracketGenIsEditorOpen() || !hasManagedBracketArtifacts()
@@ -1333,10 +1736,10 @@ class BracketGenerationApplet {
             disabled: !hasManagedBracketArtifacts()
         });
         items.push({
-            text: this._desktopShortcut ? 'Save changes' : 'Add to Desktop',
-            icon: this._desktopShortcut ? 'fas fa-save' : 'fas fa-arrow-down-left',
-            action: this._desktopShortcut ? 'pw-tray-save-shortcut' : 'pw-tray-desktop',
-            disabled: !this.hasToolData()
+            text: this.boundDocument() ? 'Save' : 'Add to Desktop',
+            icon: this.boundDocument() ? 'fas fa-save' : 'fas fa-arrow-down-left',
+            action: this.boundDocument() ? 'pw-tray-save-shortcut' : 'pw-tray-desktop',
+            disabled: this.boundDocument() ? false : !this.hasToolData()
         });
         items.push({
             text: this.state.useStage0 ? 'Use Stage 0' : 'Use Stage 0 (off)',
@@ -1412,24 +1815,24 @@ class BracketGenerationApplet {
     }
 
     async saveShortcutChanges() {
-        if (!this._desktopShortcut || !desktopShortcuts) {
-            showGlassToast('error', null, 'Desktop shortcuts unavailable', false, 4000);
+        if (!this._desktopShortcut) {
+            showGlassToast('error', null, 'Nothing to save', false, 4000);
             return;
         }
         const snapshot = this.getSnapshot();
-        const shortcut = desktopShortcuts.shortcuts.find((s) => s.id === this._desktopShortcut.id);
-        if (!shortcut) {
-            showGlassToast('error', null, 'Desktop shortcut not found', false, 4000);
-            return;
+        const name = this._desktopShortcut.name || 'Phasewalker';
+        try {
+            await this.writeDesktopShortcut(this._desktopShortcut.id, name, {
+                label: name,
+                state: snapshot
+            });
+            this._savedSnapshot = JSON.parse(JSON.stringify(snapshot));
+            this.updateChrome();
+            showGlassToast('success', null, 'Saved', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+        } catch (err) {
+            console.error(err);
+            showGlassToast('error', null, err.message || 'Failed to save', false, 5000);
         }
-        shortcut.data = { ...shortcut.data, label: shortcut.name, state: snapshot };
-        if (!shortcut._isNew) {
-            shortcut._isModified = true;
-        }
-        desktopShortcuts.debouncedSave();
-        this._savedSnapshot = JSON.parse(JSON.stringify(snapshot));
-        this.updateChrome();
-        showGlassToast('success', null, 'Shortcut saved', false, 3000, '<i class="fas fa-check"></i>');
     }
 
     getExpanderStageTarget(stepIndex) {
@@ -1897,6 +2300,7 @@ class BracketGenerationApplet {
             return false;
         }
         this.saveStepTextareasToState();
+        this.saveStepNamesFromInputs();
         const maxSteps = this.getMaxStepCount();
         if (maxSteps === 0 || this.state.keywords.length === 0) {
             showGlassToast('warning', null, 'Add at least one keyword and one step', false, 4000);
@@ -1919,8 +2323,7 @@ class BracketGenerationApplet {
 
             if (this.state.useStage0 && i === 0) {
                 if (hasStepData) {
-                    const stepDisplayName = this.getStepDisplayName(0);
-                    const phaseStepName = stepDisplayName.startsWith('Step ') ? '' : stepDisplayName;
+                    const phaseStepName = this.resolvePhaseNameForCompile(0);
                     let step0NamePending = phaseStepName;
                     this.state.keywords.forEach((kw) => {
                         const step = stepsAtIndex(kw);
@@ -1938,8 +2341,7 @@ class BracketGenerationApplet {
                 continue;
             }
 
-            const stepDisplayName = this.getStepDisplayName(i);
-            const defaultTypeLabel = stepDisplayName.startsWith('Step ') ? '' : stepDisplayName;
+            const defaultTypeLabel = this.resolvePhaseNameForCompile(i);
             addPipelineStage('variation', { useBaseImage: false, displayName: defaultTypeLabel || undefined });
 
             const container = document.getElementById('pipelineStagesContainer');
@@ -2017,11 +2419,27 @@ class BracketGenerationApplet {
         if (!this.modal) this.init();
         if (!this.modal) return;
 
-        if (options.desktopShortcut) {
+        if (options.vfsFile) {
+            this._vfsFile = {
+                id: options.vfsFile.id,
+                name: options.vfsFile.name,
+                path: options.vfsFile.path || ''
+            };
+            this._desktopShortcut = null;
+            const migrated = bracketGenMigrateSnapshot(options.state);
+            this._savedSnapshot = {
+                keywords: migrated.keywords,
+                keywordSteps: JSON.parse(JSON.stringify(migrated.keywordSteps)),
+                stepNames: Array.isArray(migrated.stepNames) ? [...migrated.stepNames] : [],
+                useStage0: options.state?.useStage0 !== false,
+                compareSourceStepIndex: migrated.compareSourceStepIndex ?? null
+            };
+        } else if (options.desktopShortcut) {
             this._desktopShortcut = {
                 id: options.desktopShortcut.id,
                 name: options.desktopShortcut.name
             };
+            this._vfsFile = null;
             const migrated = bracketGenMigrateSnapshot(options.state);
             this._savedSnapshot = {
                 keywords: migrated.keywords,
@@ -2032,6 +2450,7 @@ class BracketGenerationApplet {
             };
         } else {
             this._desktopShortcut = null;
+            this._vfsFile = null;
             this._savedSnapshot = null;
         }
 

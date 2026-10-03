@@ -402,11 +402,33 @@ class ContextMenuController {
         let indicatorDot = itemElement.querySelector('.context-menu-item-indicator');
         if (!indicatorDot) {
             indicatorDot = document.createElement('span');
-            itemElement.appendChild(indicatorDot);
         }
+        const submenuArrow = itemElement.querySelector(':scope > .context-menu-submenu-arrow');
+        if (submenuArrow) itemElement.insertBefore(indicatorDot, submenuArrow);
+        else if (!indicatorDot.parentNode) itemElement.appendChild(indicatorDot);
         indicatorDot.className = 'context-menu-item-indicator indicator-' + indicatorStyle;
-        indicatorDot.classList.toggle('checked', item.checked === true || item.dataState === 'on');
+        const indicatorState = item.dataState || '';
+        const indicatorOn = item.checked === true || indicatorState === 'on' || indicatorState === 'armed' || indicatorState === 'suspended';
+        indicatorDot.classList.toggle('checked', indicatorOn);
+        if (indicatorOn && indicatorState && indicatorState !== 'off') indicatorDot.setAttribute('data-state', indicatorState);
+        else indicatorDot.removeAttribute('data-state');
         itemElement.classList.add('has-toggle-indicator');
+    }
+
+    appendRowDots(itemElement, item) {
+        const count = Number(item && item.dots);
+        if (!itemElement || !Number.isFinite(count) || count < 1) return;
+        const filled = Math.min(3, Math.round(count));
+        const wrap = document.createElement('div');
+        wrap.className = 'uc-level-dots';
+        for (let i = 1; i <= 3; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'uc-level-dot' + (i <= filled ? ' active' : '');
+            wrap.appendChild(dot);
+        }
+        const indicator = itemElement.querySelector(':scope > .context-menu-item-indicator');
+        if (indicator) itemElement.insertBefore(wrap, indicator);
+        else itemElement.appendChild(wrap);
     }
 
     resolveItemContextMenuConfig(item, menuTarget) {
@@ -1117,11 +1139,10 @@ class ContextMenuController {
         // Call initfn for all sections before rendering to allow dynamic item generation
         this.executeInitFunctions(config, target);
 
+        this.activeRootMenuConfig = config;
         this.renderMenu(config, target);
         this.currentTarget = target;
         this.positionMenu(event, isTouch);
-
-        this.activeRootMenuConfig = config;
 
         // Call loadfn for all sections after menu is fully rendered and positioned
         this.executeLoadFunctions(config, target);
@@ -1596,6 +1617,7 @@ class ContextMenuController {
 
             // Indicator for toggles / selection (box or dot) or row highlight
             this.applyItemHighlightAndIndicator(itemElement, item);
+            this.appendRowDots(itemElement, item);
 
             // Apply tooltip if it exists
             if (item.tooltip !== undefined) {
@@ -1661,8 +1683,7 @@ class ContextMenuController {
                     }
                 });
 
-                // Hover support for submenu
-                if (!!item.openOnHover) {
+                if (this._itemOpensSubmenuOnHover(item)) {
                     this.addSubmenuHoverSupport(itemElement, item, target);
                 }
             } else if (item.optionsfn && typeof item.optionsfn === 'function') {
@@ -1681,8 +1702,7 @@ class ContextMenuController {
                     }
                 });
 
-                // Hover support for submenu
-                if (!!item.openOnHover) {
+                if (this._itemOpensSubmenuOnHover(item)) {
                     this.addSubmenuHoverSupport(itemElement, item, target);
                 }
             }
@@ -2864,6 +2884,24 @@ class ContextMenuController {
         }
     }
 
+    _submenusOpenOnHover() {
+        return !!(this.activeRootMenuConfig && this.activeRootMenuConfig.openSubmenusOnHover);
+    }
+
+    _itemOpensSubmenuOnHover(item) {
+        if (!item) return false;
+        if (item.openOnHover) return true;
+        return this._submenusOpenOnHover();
+    }
+
+    _pointerStillInItemFlyout(itemElement, relatedTarget) {
+        if (!relatedTarget || !itemElement) return false;
+        if (this.currentSubmenu && this.currentSubmenuState && this.currentSubmenuState.parentItem === itemElement && this.currentSubmenu.contains(relatedTarget)) return true;
+        if (this.nestedSubmenu && this.nestedSubmenuState && this.nestedSubmenuState.parentItem === itemElement && this.nestedSubmenu.contains(relatedTarget)) return true;
+        if (this.deepSubmenu && this.deepSubmenuState && this.deepSubmenuState.parentItem === itemElement && this.deepSubmenu.contains(relatedTarget)) return true;
+        return false;
+    }
+
     addSubmenuHoverSupport(itemElement, item, target) {
         // Mouse enter - start timer to open submenu
         itemElement.addEventListener('mouseenter', () => {
@@ -2889,18 +2927,26 @@ class ContextMenuController {
 
         // Mouse leave - start timer to close submenu (but submenu hover will cancel it)
         itemElement.addEventListener('mouseleave', (e) => {
-            // Check if mouse is moving to the submenu
             const relatedTarget = e.relatedTarget;
-            if (relatedTarget && this.currentSubmenu && this.currentSubmenu.contains(relatedTarget)) {
-                // Mouse is moving to submenu, don't close
+            if (this._pointerStillInItemFlyout(itemElement, relatedTarget)) return;
+
+            this.clearHoverTimers();
+
+            const panel = itemElement.parentElement;
+            if (relatedTarget && panel && panel.contains(relatedTarget)) {
+                if (this.nestedSubmenuState && this.nestedSubmenuState.parentItem === itemElement) {
+                    this._removeNestedSubmenu();
+                } else if (this.deepSubmenuState && this.deepSubmenuState.parentItem === itemElement) {
+                    this._removeDeepSubmenu();
+                }
                 return;
             }
 
-            // Mouse is leaving parent item, start close timer
-            this.clearHoverTimers();
-            this.hoverTimers.closeTimer = setTimeout(() => {
-                this.hideSubmenu();
-            }, this.hoverSettings.closeDelay);
+            if (this.menu && this.menu.contains(itemElement)) {
+                this.hoverTimers.closeTimer = setTimeout(() => {
+                    this.hideSubmenu();
+                }, this.hoverSettings.closeDelay);
+            }
         });
     }
 
@@ -2972,35 +3018,90 @@ class ContextMenuController {
         });
     }
 
+    _removeDeepSubmenu() {
+        if (this.deepSubmenuState && this.deepSubmenuState.parentItem) {
+            this.deepSubmenuState.parentItem.classList.remove('keyboard-selected');
+        }
+        if (this.deepSubmenu) {
+            this.deepSubmenu.remove();
+            this.deepSubmenu = null;
+        }
+        this.deepSubmenuState = null;
+    }
+
     _removeNestedSubmenu() {
-        if (!this.nestedSubmenu) return;
+        this._removeDeepSubmenu();
+        if (this.nestedSubmenuState && this.nestedSubmenuState.parentItem) {
+            this.nestedSubmenuState.parentItem.classList.remove('keyboard-selected');
+        }
+        if (!this.nestedSubmenu) {
+            this.nestedSubmenuState = null;
+            return;
+        }
         this.nestedSubmenu.remove();
         this.nestedSubmenu = null;
+        this.nestedSubmenuState = null;
+    }
+
+    _storeSubmenuLayer(layer, parentItem, submenuItems, target, customHandler) {
+        const state = {
+            parentItem: parentItem,
+            submenuItems: submenuItems,
+            target: target,
+            customHandler: customHandler,
+            optionsfn: parentItem._optionsfn,
+            handlerfn: customHandler || parentItem._handlerfn
+        };
+        if (layer === 'deep') this.deepSubmenuState = state;
+        else if (layer === 'nested') this.nestedSubmenuState = state;
+        else this.currentSubmenuState = state;
+    }
+
+    _refreshLayerForItem(subItemElement, subItem, target) {
+        const inDeep = !!(this.deepSubmenu && subItemElement && this.deepSubmenu.contains(subItemElement));
+        const inNested = !inDeep && !!(this.nestedSubmenu && subItemElement && this.nestedSubmenu.contains(subItemElement));
+        const state = inDeep ? this.deepSubmenuState : (inNested ? this.nestedSubmenuState : null);
+        if (state && state.parentItem) {
+            const getOptionsFn = state.optionsfn || state.parentItem._optionsfn;
+            const items = getOptionsFn ? getOptionsFn(state.target) : state.submenuItems;
+            if (items && Array.isArray(items)) {
+                this.showSubmenu(state.parentItem, items, state.target, state.handlerfn);
+            }
+            return;
+        }
+        if (this.currentSubmenuState) {
+            if (this.currentSubmenuState.optionsfn) this.refreshSubmenu();
+            else this.refreshAllSubmenuItems();
+            return;
+        }
+        if (subItemElement && subItem) this.refreshListItemDisplay(subItemElement, subItem, target);
     }
 
     showSubmenu(parentItem, submenuItems, target, customHandler = null) {
-        const nesting = !!(this.currentSubmenu && parentItem && this.currentSubmenu.contains(parentItem));
-        this._submenuNesting = nesting;
-        if (nesting) {
+        this.clearHoverTimers();
+        const parentInRoot = !!(this.menu && parentItem && this.menu.contains(parentItem));
+        const fromNested = !parentInRoot && !!(this.nestedSubmenu && parentItem && this.nestedSubmenu.contains(parentItem));
+        const nesting = !parentInRoot && !fromNested && !!(this.currentSubmenu && parentItem && this.currentSubmenu.contains(parentItem));
+        let nestMode = false;
+        if (fromNested) {
+            this._removeDeepSubmenu();
+            nestMode = 'deep';
+        } else if (nesting) {
+            this._removeDeepSubmenu();
             this._removeNestedSubmenu();
+            nestMode = 'nested';
         } else {
+            const previousParent = this.currentSubmenuState && this.currentSubmenuState.parentItem;
             this.hideSubmenu();
+            if (previousParent && previousParent !== parentItem) previousParent.classList.remove('keyboard-selected');
+            nestMode = false;
         }
+        this._submenuNesting = nestMode;
 
         // Keep parent item active
         parentItem.classList.add('keyboard-selected');
 
-        if (!this._submenuNesting) {
-            // Store submenu state for refreshing all items when toggling
-            this.currentSubmenuState = {
-                parentItem: parentItem,
-                submenuItems: submenuItems,
-                target: target,
-                customHandler: customHandler,
-                optionsfn: parentItem._optionsfn,
-                handlerfn: customHandler || parentItem._handlerfn
-            };
-        }
+        this._storeSubmenuLayer(nestMode || 'root', parentItem, submenuItems, target, customHandler);
 
         // Create submenu container
         const submenu = document.createElement('div');
@@ -3169,6 +3270,7 @@ class ContextMenuController {
 
             // Indicator for toggles / selection (box or dot) or row highlight
             this.applyItemHighlightAndIndicator(subItemElement, subItem);
+            this.appendRowDots(subItemElement, subItem);
 
             // Apply className if it exists
             if (subItem.className) {
@@ -3219,23 +3321,8 @@ class ContextMenuController {
                         };
                         runHandler();
                         if (subItem.keepMenuOpen) {
-                            // If menu stays open, check if this is a dynamic submenu (optionsfn) or static submenu
-                            // For static submenus, just refresh items (call loadfn again)
-                            // For dynamic submenus (optionsfn), regenerate the entire submenu
-                            // If not in a submenu at all, just refresh the item display
-                            if (this.currentSubmenuState) {
-                                if (this.currentSubmenuState.optionsfn) {
-                                    // Dynamic submenu - regenerate from optionsfn
-                                    this.refreshSubmenu();
-                                } else {
-                                    // Static submenu - just refresh items (call loadfn again)
-                                    this.refreshAllSubmenuItems();
-                                }
-                            } else {
-                                // Not in a submenu - just refresh this item's display
-                                // This shouldn't happen for submenu items, but handle it gracefully
-                                this.refreshListItemDisplay(subItemElement, subItem, target);
-                            }
+                            // Refresh the submenu that contains this item (root, nested, or one level deeper)
+                            this._refreshLayerForItem(subItemElement, subItem, target);
                         }
                     }
                 });
@@ -3248,23 +3335,8 @@ class ContextMenuController {
                         if (!subItem.keepMenuOpen) {
                             this.hideMenu({ instant: true });
                         } else {
-                            // If menu stays open, check if this is a dynamic submenu (optionsfn) or static submenu
-                            // For static submenus, just refresh items (call loadfn again)
-                            // For dynamic submenus (optionsfn), regenerate the entire submenu
-                            // If not in a submenu at all, just refresh the item display
-                            if (this.currentSubmenuState) {
-                                if (this.currentSubmenuState.optionsfn) {
-                                    // Dynamic submenu - regenerate from optionsfn
-                                    this.refreshSubmenu();
-                                } else {
-                                    // Static submenu - just refresh items (call loadfn again)
-                                    this.refreshAllSubmenuItems();
-                                }
-                            } else {
-                                // Not in a submenu - just refresh this item's display
-                                // This shouldn't happen for submenu items, but handle it gracefully
-                                this.refreshListItemDisplay(subItemElement, subItem, target);
-                            }
+                            // Refresh the submenu that contains this item (root, nested, or one level deeper)
+                            this._refreshLayerForItem(subItemElement, subItem, target);
                         }
                     }
                 });
@@ -3288,6 +3360,20 @@ class ContextMenuController {
                         this.showSubmenu(subItemElement, nestedItems, target, subItem.handlerfn);
                     }
                 });
+                if (this._itemOpensSubmenuOnHover(subItem)) {
+                    this.addSubmenuHoverSupport(subItemElement, subItem, target);
+                }
+            } else if (this._submenusOpenOnHover()) {
+                subItemElement.addEventListener('mouseenter', () => {
+                    const nestedParent = this.nestedSubmenuState && this.nestedSubmenuState.parentItem;
+                    if (nestedParent && nestedParent !== subItemElement && submenu.contains(nestedParent)) {
+                        this._removeNestedSubmenu();
+                    }
+                    const deepParent = this.deepSubmenuState && this.deepSubmenuState.parentItem;
+                    if (deepParent && deepParent !== subItemElement && submenu.contains(deepParent)) {
+                        this._removeDeepSubmenu();
+                    }
+                });
             }
 
             // Store reference to DOM element on subItem for later updates
@@ -3304,19 +3390,30 @@ class ContextMenuController {
         // Position the submenu (this also sets opacity to 1)
         this.positionSubmenu(submenu, parentItem);
 
-        if (this._submenuNesting) {
-            this.nestedSubmenu = submenu;
+        if (this._submenuNesting === 'deep' || this._submenuNesting === 'nested') {
+            const layer = this._submenuNesting;
             this._submenuNesting = false;
+            if (layer === 'deep') this.deepSubmenu = submenu;
+            else this.nestedSubmenu = submenu;
             submenu.addEventListener('mouseenter', () => {
                 this.clearHoverTimers();
             });
             submenu.addEventListener('mouseleave', (e) => {
                 const relatedTarget = e.relatedTarget;
                 if (relatedTarget && parentItem.contains(relatedTarget)) return;
-                this._removeNestedSubmenu();
+                if (layer === 'nested' && relatedTarget && this.deepSubmenu && this.deepSubmenu.contains(relatedTarget)) return;
+                if (layer === 'deep') this._removeDeepSubmenu();
+                else this._removeNestedSubmenu();
             });
             return;
         }
+
+        if (this.menu) {
+            this.menu.querySelectorAll('.context-menu-item.keyboard-selected').forEach((el) => {
+                if (el !== parentItem) el.classList.remove('keyboard-selected');
+            });
+        }
+        parentItem.classList.add('keyboard-selected');
 
         this.currentSubmenu = submenu;
 
@@ -3337,6 +3434,9 @@ class ContextMenuController {
                 if (relatedTarget && this.nestedSubmenu && this.nestedSubmenu.contains(relatedTarget)) {
                     return;
                 }
+                if (relatedTarget && this.deepSubmenu && this.deepSubmenu.contains(relatedTarget)) {
+                    return;
+                }
 
                 // Mouse is leaving submenu, start close timer
                 this.clearHoverTimers();
@@ -3350,7 +3450,9 @@ class ContextMenuController {
         const submenuClickHandler = (e) => {
             // Only handle clicks that are actually outside the submenu
             const inNested = this.nestedSubmenu && this.nestedSubmenu.contains(e.target);
-            if (!submenu.contains(e.target) && !parentItem.contains(e.target) && !inNested) {
+            const inDeep = this.deepSubmenu && this.deepSubmenu.contains(e.target);
+            if (this.menu && this.menu.contains(e.target)) return;
+            if (!submenu.contains(e.target) && !parentItem.contains(e.target) && !inNested && !inDeep) {
                 e.stopPropagation(); // Prevent bubbling to overlay handlers
                 // On mobile, don't close submenu on outside click - keep it open
                 // On desktop, close it
@@ -3411,9 +3513,10 @@ class ContextMenuController {
         // Clear submenu state
         this.currentSubmenuState = null;
 
-        // Remove active state from any parent items
-        const activeItems = this.menu.querySelectorAll('.context-menu-item.keyboard-selected');
-        activeItems.forEach(item => item.classList.remove('keyboard-selected'));
+        // Remove active state from any parent items, including ones outside this.menu
+        document.querySelectorAll('.context-menu-item.keyboard-selected').forEach((item) => {
+            item.classList.remove('keyboard-selected');
+        });
 
         if (this.submenuClickHandler) {
             document.removeEventListener('click', this.submenuClickHandler);

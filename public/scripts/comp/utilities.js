@@ -859,6 +859,82 @@ function getCurrentSelectedModel() {
     return manualSelectedModel || manualModelHidden?.value || '';
 }
 
+const STUDIO_MODEL_FROM_DETECTED = {
+    V5: 'v5',
+    V5_CUR: 'v5_cur',
+    V4_5: 'v4_5',
+    V4_5_CUR: 'v4_5_cur',
+    V4: 'v4',
+    V4_CUR: 'v4_cur',
+    V3: 'v3',
+    FURRY: 'v3_furry'
+};
+
+const STUDIO_MODEL_FROM_SLUG = {
+    'nai-diffusion-5-full': 'v5',
+    'nai-diffusion-5-curated': 'v5_cur',
+    'nai-diffusion-4-5-full': 'v4_5',
+    'nai-diffusion-4-5-curated': 'v4_5_cur',
+    'nai-diffusion-4-full': 'v4',
+    'nai-diffusion-4-curated': 'v4_cur',
+    'nai-diffusion-3': 'v3',
+    'nai-diffusion-furry-3': 'v3_furry'
+};
+
+function studioModelFamily(key) {
+    const value = String(key || '').toLowerCase();
+    if (value === 'v5' || value === 'v5_cur') return 'v5';
+    if (value === 'v4_5' || value === 'v4_5_cur') return 'v4_5';
+    if (value === 'v4' || value === 'v4_cur') return 'v4';
+    if (value === 'v3' || value === 'v3_furry') return 'v3';
+    return value;
+}
+
+function normalizeStudioModelToken(raw) {
+    const text = String(raw || '').trim();
+    if (!text || text.toLowerCase() === 'unknown') return '';
+    const slug = text.toLowerCase();
+    if (STUDIO_MODEL_FROM_SLUG[slug]) return STUDIO_MODEL_FROM_SLUG[slug];
+    const upper = text.toUpperCase();
+    if (STUDIO_MODEL_FROM_DETECTED[upper]) return STUDIO_MODEL_FROM_DETECTED[upper];
+    const key = slug.replace(/\./g, '_').replace(/-/g, '_');
+    if (key === 'v4_5' || key === 'v4_5full' || key === 'v4_5_full') return 'v4_5';
+    if (key === 'v4_5_cur' || key === 'v4_5curated' || key === 'v4_5_curated') return 'v4_5_cur';
+    if (key === 'v5' || key === 'v5_full') return 'v5';
+    if (key === 'v5_cur' || key === 'v5_curated') return 'v5_cur';
+    if (key === 'v4' || key === 'v4_full' || key === 'v4full') return 'v4';
+    if (key === 'v4_cur' || key === 'v4_curated' || key === 'v4curated') return 'v4_cur';
+    if (key === 'v3') return 'v3';
+    if (key === 'furry' || key === 'v3_furry') return 'v3_furry';
+    return '';
+}
+
+/**
+ * Studio dropdown key for a loaded prompt.
+ * A missing or V5-stamped model field still yields V4.5 when Source says V4.5.
+ * determineModelFromMetadata: public/scripts/comp/reference/pngMetadata.js
+ */
+function resolveStudioModelKey(data, fallback = 'v5') {
+    const record = data && typeof data === 'object' ? data : { model: data };
+    const fromField = normalizeStudioModelToken(record.model);
+    const sourceText = record.source || record.Source || '';
+    let fromSource = '';
+    if (sourceText) {
+        const detected = determineModelFromMetadata({ source: String(sourceText) });
+        fromSource = STUDIO_MODEL_FROM_DETECTED[detected] || '';
+    }
+    if (!fromSource && record.model && /NovelAI|Stable Diffusion/i.test(String(record.model))) {
+        const detected = determineModelFromMetadata({ source: String(record.model) });
+        fromSource = STUDIO_MODEL_FROM_DETECTED[detected] || '';
+    }
+    if (fromField && fromSource && studioModelFamily(fromField) !== studioModelFamily(fromSource)) {
+        return fromSource;
+    }
+    if (fromField) return fromField;
+    if (fromSource) return fromSource;
+    return fallback;
+}
+
 /**
  * Helper function to update UI visibility based on model selection (V3 datasets/chars; V5 vibe/precise/variety caps).
  */
@@ -2693,6 +2769,8 @@ function applyPromptFormattingBeforeGeneration() {
     if (typeof manualUc !== 'undefined' && manualUc) textareas.push(manualUc);
     if (typeof manualPromptNegative !== 'undefined' && manualPromptNegative) textareas.push(manualPromptNegative);
     document.querySelectorAll('.prompt-textarea, .character-prompt-textarea').forEach((el) => {
+        // Overlay boxes use ⏎ as a display newline. Comma formatting trims those spaces and the mark is then sent as text.
+        if (el.closest('.text-overlay-prompt')) return;
         if (!textareas.includes(el)) textareas.push(el);
     });
 

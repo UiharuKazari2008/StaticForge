@@ -14,6 +14,7 @@ const naxTagsDatabase = require('../naxTagsDatabase');
 const NaxTagGenerationService = require('../naxTagGeneration');
 const naxVibesGallery = require('../naxVibesGallery');
 const novelaiExploreGallery = require('../novelaiExploreGallery');
+const quickstartGalleryCache = require('../quickstartGalleryCache');
 const applicationAuthDatabase = require('../applicationAuthDatabase');
 const telemetryDatabase = require('../telemetryDatabase');
 const { ApplicationAuthManager } = require('../applicationAuthManager');
@@ -208,6 +209,10 @@ function initializeNovelaiExploreGallery(gr) {
     });
     gr.novelaiExploreGallery = novelaiExploreGallery;
     console.log('✓ NovelAI Explore (Agora) gallery proxy ready');
+    quickstartGalleryCache.initQuickstartGalleryCache(gr.getPath('cache'));
+    gr.quickstartGalleryCache = quickstartGalleryCache;
+    console.log('✓ Quickstart gallery image cache ready');
+    novelaiExploreGallery.startStudioExploreFeedSchedule();
 }
 
 function initializeNaxTagsDatabase(gr) {

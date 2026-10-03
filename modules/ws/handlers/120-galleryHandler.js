@@ -789,6 +789,31 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
     }
 }
 
+async function handleStageChainRequest(handlers, ws, message, clientInfo) {
+    const filename = message.filename;
+    if (!filename) {
+        handlers.sendError(ws, 'Missing filename parameter', 'stage_chain_files', message.requestId);
+        return;
+    }
+
+    try {
+        const workspaceId = clientInfo && clientInfo.sessionId
+            ? handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId)
+            : null;
+        const metadataDb = handlers.globalResources.getMetadataDatabase();
+        const files = await metadataDb.listGenerationChainFiles(filename, workspaceId);
+        handlers.sendToClient(ws, {
+            type: 'stage_chain_files_response',
+            requestId: message.requestId,
+            data: { files },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Stage chain request error:', error);
+        handlers.sendError(ws, 'Failed to load stage chain', error.message, message.requestId);
+    }
+}
+
 // Handle image by index request messages
 async function handleImageByIndexRequest(handlers, ws, message, clientInfo, wsServer) {
     const { index, viewType = 'images' } = message;
@@ -1002,6 +1027,7 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
         const results = [];
         const errors = [];
         const allFilenamesToRemoveFromWorkspaces = new Set();
+        const alreadyMissing = [];
 
         // Helper functions
         const getBaseName = (filename) => {
@@ -1017,7 +1043,8 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
                 const filePath = path.join(handlers.globalResources.getPath("images"), filename);
 
                 if (!fs.existsSync(filePath)) {
-                    errors.push({ filename, error: 'File not found' });
+                    alreadyMissing.push(filename);
+                    results.push({ filename, deletedFiles: ['already-missing'] });
                     continue;
                 }
 
@@ -1122,12 +1149,17 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
             }
         }
 
+        for (const filename of alreadyMissing) {
+            allFilenamesToRemoveFromWorkspaces.add(filename);
+        }
         const filenamesRemoved = [...allFilenamesToRemoveFromWorkspaces];
         if (filenamesRemoved.length > 0) {
-            handlers.globalResources.getWorkspaceManager().removeFilesFromWorkspaces(
+            const workspaceManager = handlers.globalResources.getWorkspaceManager();
+            workspaceManager.removeFilesFromWorkspaces(
                 filenamesRemoved,
                 { skipDestructiveBump: true }
             );
+            await workspaceManager.flushGalleryMetadataSync();
             await handlers.globalResources.getMetadataDatabase().removeImageMetadata(filenamesRemoved);
         }
 
@@ -1616,6 +1648,7 @@ function registerPackets(handlersCtx) {
 
     regFn('request_gallery', handleGalleryRequest, { dispatch: 'parallel' });
     regFn('request_image_metadata', handleImageMetadataRequest, { dispatch: 'parallel' });
+    regFn('stage_chain_files', handleStageChainRequest, { dispatch: 'parallel' });
     regFn('request_url_upload_metadata', handleUrlUploadMetadataRequest);
     regFn('request_image_by_index', handleImageByIndexRequest);
     regFn('find_image_index', handleFindImageIndexRequest);

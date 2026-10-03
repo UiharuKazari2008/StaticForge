@@ -4,6 +4,8 @@
 
 const wsPacketRegistry = require('../wsPacketRegistry');
 
+const EXPLORE_DESTRUCTIVE = { destructive: true };
+
 function exploreApiOpts(handler, message) {
     const apiKeyManager = handler.globalResources.getApiKeyManager();
     return {
@@ -65,6 +67,22 @@ async function handleGetNovelaiExploreGallery(handler, ws, message, clientInfo, 
             return;
         }
         handler.sendError(ws, 'Failed to load Explore gallery', error.message, message.requestId);
+    }
+}
+
+async function handleGetStudioExploreFeed(handler, ws, message, clientInfo, wsServer) {
+    try {
+        const explore = handler.globalResources.getNovelaiExploreGallery();
+        const data = await explore.getStudioExploreFeed();
+        handler.sendToClient(ws, {
+            type: 'get_studio_explore_feed_response',
+            requestId: message.requestId,
+            data,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('get_studio_explore_feed:', error);
+        handler.sendError(ws, 'Failed to load Explorer feed', error.message, message.requestId);
     }
 }
 
@@ -304,21 +322,23 @@ function registerPackets(handlersCtx) {
     };
 
     regFn('get_novelai_explore_gallery', handleGetNovelaiExploreGallery);
+    regFn('get_studio_explore_feed', handleGetStudioExploreFeed);
     regFn('get_novelai_explore_user', handleGetNovelaiExploreUser);
     regFn('get_novelai_explore_post', handleGetNovelaiExplorePost);
-    regFn('set_novelai_explore_post_like', handleSetNovelaiExplorePostLike);
-    regFn('downvote_novelai_explore_post', handleDownvoteNovelaiExplorePost);
-    regFn('block_novelai_explore_creator', handleBlockNovelaiExploreCreator);
+    regFn('set_novelai_explore_post_like', handleSetNovelaiExplorePostLike, EXPLORE_DESTRUCTIVE);
+    regFn('downvote_novelai_explore_post', handleDownvoteNovelaiExplorePost, EXPLORE_DESTRUCTIVE);
+    regFn('block_novelai_explore_creator', handleBlockNovelaiExploreCreator, EXPLORE_DESTRUCTIVE);
     regFn('list_novelai_explore_blocked_creators', handleListNovelaiExploreBlockedCreators);
-    regFn('clear_novelai_explore_gallery_cache', handleClearNovelaiExploreGalleryCache);
+    regFn('clear_novelai_explore_gallery_cache', handleClearNovelaiExploreGalleryCache, EXPLORE_DESTRUCTIVE);
     regFn('ensure_novelai_explore_image', handleEnsureNovelaiExploreImage);
     regFn('check_novelai_explore_upload', handleCheckNovelaiExploreUpload);
-    regFn('upload_novelai_explore_image', handleUploadNovelaiExploreImage);
+    regFn('upload_novelai_explore_image', handleUploadNovelaiExploreImage, EXPLORE_DESTRUCTIVE);
 }
 
 module.exports = {
     registerPackets,
     handleGetNovelaiExploreGallery,
+    handleGetStudioExploreFeed,
     handleGetNovelaiExploreUser,
     handleGetNovelaiExplorePost,
     handleSetNovelaiExplorePostLike,

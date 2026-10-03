@@ -22,10 +22,23 @@ const cssBody = 'body{color:red}';
 fs.writeFileSync(path.join(cssDir, 'fixture.css'), cssBody);
 const cssHash = sha256(cssBody);
 
+const scriptsDir = path.join(publicDir, 'scripts');
+const distDir = path.join(publicDir, 'dist', 'vendor');
+fs.mkdirSync(scriptsDir, { recursive: true });
+fs.mkdirSync(distDir, { recursive: true });
+const scriptBody = 'var fixture = 1;\n';
+const distCssBody = '.vendor{color:blue}';
+fs.writeFileSync(path.join(scriptsDir, 'foo.js'), scriptBody);
+fs.writeFileSync(path.join(distDir, 'vendor.css'), distCssBody);
+const scriptHash = sha256(scriptBody);
+const distHash = sha256(distCssBody);
+
 const trackedHtml = [
     '<!doctype html>',
     `<link rel="stylesheet" href="/css/fixture.css?sha=stale-hash">`,
+    '<link rel="stylesheet" href="/dist/vendor/vendor.css">',
     '<script src="/scripts/foo.js"></script>',
+    '<script src="scripts/foo.js"></script>',
     ''
 ].join('\n');
 fs.writeFileSync(path.join(publicDir, 'app.html'), trackedHtml);
@@ -52,6 +65,9 @@ assert.ok(fs.existsSync(cacheLaunch), 'rewritten launch.html lives under .cache/
 
 const rewritten = fs.readFileSync(cacheApp, 'utf8');
 assert.ok(rewritten.includes(`href="/css/fixture.css?sha=${cssHash}"`), rewritten);
+assert.ok(rewritten.includes(`href="/dist/vendor/vendor.css?sha=${distHash}"`), rewritten);
+assert.ok(rewritten.includes(`src="/scripts/foo.js?sha=${scriptHash}"`), rewritten);
+assert.ok(!rewritten.includes('src="scripts/foo.js"'), rewritten);
 assert.ok(!rewritten.includes('stale-hash'), rewritten);
 
 assert.strictEqual(runtimeAssetService.isHtmlShaLinkWebPath('/app.html'), true);
@@ -75,11 +91,13 @@ const withScript = trackedHtml.replace(
     '<script src="/scripts/foo.js"></script>',
     '<script src="/scripts/foo.js"></script>\n<script src="/scripts/bar.js"></script>'
 );
+fs.writeFileSync(path.join(scriptsDir, 'bar.js'), 'var bar = 1;\n');
+const barHash = sha256('var bar = 1;\n');
 fs.writeFileSync(path.join(publicDir, 'app.html'), withScript);
 runtimeAssetService.updateHtmlStylesheetShaLinks(root);
 assert.strictEqual(fs.readFileSync(path.join(publicDir, 'app.html'), 'utf8'), withScript);
 const refreshed = fs.readFileSync(cacheApp, 'utf8');
-assert.ok(refreshed.includes('/scripts/bar.js'), refreshed);
+assert.ok(refreshed.includes(`src="/scripts/bar.js?sha=${barHash}"`), refreshed);
 assert.ok(refreshed.includes(`href="/css/fixture.css?sha=${cssHash}"`), refreshed);
 
 fs.unlinkSync(cacheApp);

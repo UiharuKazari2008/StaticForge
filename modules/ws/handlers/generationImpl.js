@@ -3,6 +3,7 @@ const { upscaleImageWebSocket } = require('../../imageUpscaling');
 const { resolveDynamicContext } = require('../../dynamicGenerationHandlers');
 const { broadcastGalleryMutation } = require('./120-galleryHandler');
 const { notifyGenerationQueued } = require('../../generationJobQueue');
+const { completeApplyGenerateFromWorkspace } = require('../../mcpReliability');
 
 function takeSkipGenerationQueue(message) {
     if (!message || !message.skipGenerationQueue) return false;
@@ -65,12 +66,14 @@ function attachStagedGenerationResponseFields(responseData, result) {
 async function broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo, result, workspaceId) {
     const filenames = collectSavedGenerationFilenames(result);
     if (filenames.length === 0) return;
+    const savedWorkspace = result?.workspace || workspaceId || null;
     await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
         viewType: 'images',
         action: 'append_top',
         filenames,
-        workspaceId: result?.workspace || workspaceId || null
+        workspaceId: savedWorkspace
     });
+    completeApplyGenerateFromWorkspace(savedWorkspace, filenames);
 }
 
 function normalizeExpansionOverrideParams(data) {

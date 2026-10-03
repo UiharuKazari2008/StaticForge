@@ -472,16 +472,8 @@ async function deleteDirectorMessagesFrom(sessionId, messageId) {
     }
 }
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-    closeDirectorDatabase();
-    process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-    closeDirectorDatabase();
-    process.exit(0);
-});
+// Shutdown is web_server gracefulShutdown -> globalResources.shutdown().
+// Do not exit here: process.exit before the metadata write queue drains drops gallery writes.
 
 module.exports = {
     initializeDirectorDatabase,

@@ -3013,8 +3013,8 @@ function wrapOrUpdateManagedEmphasisSelection(textarea, weight, options = {}) {
         if (id < 0) return false;
         groupsById[id] = numericWeight;
         // Strip classic wrap if selection is already classic emphasis
-        const traditional = selectedText.match(new RegExp(`^(${EMPHASIS_WEIGHT_PART})::(.+)::$`));
-        const autoTerm = selectedText.match(new RegExp(`^(${EMPHASIS_WEIGHT_PART})::(.+)$`));
+        const traditional = selectedText.match(new RegExp(`^(${EMPHASIS_WEIGHT_PART})\\s*::(.+)::$`));
+        const autoTerm = selectedText.match(new RegExp(`^(${EMPHASIS_WEIGHT_PART})\\s*::(.+)$`));
         if (traditional) innerText = traditional[2];
         else if (autoTerm) innerText = autoTerm[2];
     }

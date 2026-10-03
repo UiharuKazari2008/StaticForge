@@ -344,9 +344,12 @@ function listApocrypha(input) {
     };
 }
 
-function renderPreviousDaysNav(viewingSlug) {
+const APOCRYPHA_PUBLIC_ORIGIN = 'https://apocrypha.737.jp.net/';
+const APOCRYPHA_INTERNAL_ORIGIN = 'rdf://apocrypha.737.jp.net/';
+
+function renderPreviousDaysNav(viewingSlug, origin) {
     const archives = listArchivedIssues();
-    const liveHref = 'https://apocrypha.737.jp.net/';
+    const liveHref = origin || APOCRYPHA_PUBLIC_ORIGIN;
     let html = '<div class="sidebar-url"><span class="sidebar-url-label">PREVIOUS DAYS</span>';
     html += '<a href="' + liveHref + '">' + (viewingSlug ? 'live issue' : 'live (this issue)') + '</a>';
     if (!archives.length) {
@@ -436,10 +439,11 @@ function renderSectionArticle(sec) {
         '</div>';
 }
 
-function renderApocrypha({ title, isGrimoire, issueSlug }) {
+function renderApocrypha({ title, isGrimoire, issueSlug, navOrigin }) {
     const viewingSlug = issueSlug ? safeIssueSlug(issueSlug) : '';
     const data = (viewingSlug ? loadArchivedIssue(viewingSlug) : getApocryphaData()) || {};
-    const previousDaysHtml = renderPreviousDaysNav(viewingSlug);
+    const pageOrigin = navOrigin || APOCRYPHA_PUBLIC_ORIGIN;
+    const previousDaysHtml = renderPreviousDaysNav(viewingSlug, pageOrigin);
 
     const issueLabelStr = data.issueLabel ? escapeHtml(data.issueLabel) : 'MONDAY DIGEST';
     const kickerStr = data.kicker ? escapeHtml(data.kicker) : '';
@@ -1082,8 +1086,8 @@ html, body {
                     </div>
 
                     <div class="sidebar-url">
-                        <span class="sidebar-url-label">PUBLIC URL</span>
-                        <a href="https://apocrypha.737.jp.net/">apocrypha.737.jp.net</a>
+                        <span class="sidebar-url-label">${pageOrigin === APOCRYPHA_PUBLIC_ORIGIN ? 'PUBLIC URL' : 'PATH'}</span>
+                        <a href="${pageOrigin}">apocrypha.737.jp.net</a>
                     </div>
                     ${previousDaysHtml}
                 </aside>
@@ -1091,7 +1095,7 @@ html, body {
 
             <!-- Footer -->
             <footer class="footer">
-                Public: <a href="https://apocrypha.737.jp.net/">https://apocrypha.737.jp.net/</a> · 
+                ${pageOrigin === APOCRYPHA_PUBLIC_ORIGIN ? 'Public: ' : ''}<a href="${pageOrigin}">${pageOrigin}</a> · 
                 Grim-only blocks use the red wrapper.
             </footer>
         </div>
@@ -1179,7 +1183,11 @@ function getApocryphaInteriorCss() {
 }
 
 function getApocryphaInterior(options) {
-    const full = renderApocrypha(options);
+    const opts = options || {};
+    const full = renderApocrypha({
+        ...opts,
+        navOrigin: opts.navOrigin || APOCRYPHA_INTERNAL_ORIGIN
+    });
     const startTag = '<main>';
     const endTag = '</main>';
     const startIdx = full.indexOf(startTag);

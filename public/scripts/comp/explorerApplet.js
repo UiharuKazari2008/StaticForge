@@ -670,6 +670,7 @@ class ExplorerApplet {
                     { separator: true },
                     { icon: 'fas fa-person-to-portal', text: 'Create Chat', action: 'start-chat' },
                     { icon: 'fas fa-link', text: 'Copy Lookback', action: 'copy-lookback' },
+                    { icon: 'fas fa-clapperboard', text: 'Ask Wren', action: 'ask-wren' },
                     { icon: 'fas fa-globe', text: 'Publish to Explorer', action: 'publish-to-explorer' },
                     {
                         icon: 'fas fa-image',
@@ -1542,6 +1543,10 @@ class ExplorerApplet {
             case 'copy-lookback':
                 // copyLookbackImage: public/scripts/comp/copyLookback.js
                 copyLookbackImage(filename);
+                break;
+            case 'ask-wren':
+                // askWrenAboutImage: public/scripts/comp/director.js
+                askWrenAboutImage(filename);
                 break;
             case 'publish-to-explorer':
                 // openPublishToExplorerDialog — public/scripts/comp/galleryView.js
@@ -3878,7 +3883,10 @@ class ExplorerApplet {
             id: item.id,
             name: item.name,
             type: item.shortcutType,
-            data: item.shortcutData || {}
+            data: item.shortcutData || {},
+            isVfsShortcutEntry: !!item.isVfsShortcutEntry,
+            isDesktopShortcut: !!item.isDesktopShortcut,
+            vfsPath: item.isVfsShortcutEntry ? (this.currentPath || '') : ''
         };
     }
 

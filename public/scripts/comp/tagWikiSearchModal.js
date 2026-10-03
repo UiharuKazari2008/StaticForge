@@ -210,6 +210,21 @@ class WikiDisplayBase {
         // Intentionally empty for standalone / base cases.
     }
 
+    exitAddressEdit() {
+        // TagWikiSearchModal owns the address editor. Standalone windows have none.
+    }
+
+    finishGrimoireNavigationLoading() {
+        // TagWikiSearchModal owns the address spinner.
+    }
+
+    showGrimoireNavigateErrorPage(options) {
+        const opts = options || {};
+        const state = opts.kind === 'browser_unavailable' ? 'unavailable' : 'failed';
+        // grimoireShowRemoteTabPage: public/scripts/comp/grimoireRemoteBrowser.js
+        grimoireShowRemoteTabPage(this, state, opts.url || '');
+    }
+
     // Robust link interception for any content rendered into displayArea.
     // Prevents links/anchors from "exiting the application" (following real hrefs or causing full nav).
     // Called after innerHTML sets for wiki content, search pages, lookup pages, etc.
@@ -226,18 +241,6 @@ class WikiDisplayBase {
             if (/^https?:\/\//i.test(href)) {
                 // In-app tag wiki links are handled by setupLinkHandlers (verify before navigate)
                 if (a.classList.contains('tag-wiki-link')) {
-                    return;
-                }
-                // public/scripts/comp/grimoireCoreDomains.js — apocrypha.737.jp.net stays in Grimoire
-                if (/apocrypha\.737\.jp\.net/i.test(href)) {
-                    a.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        if (typeof this.navigate === 'function') {
-                            this.navigate(href);
-                        } else if (window.tagWikiSearchModal && typeof window.tagWikiSearchModal.navigate === 'function') {
-                            window.tagWikiSearchModal.navigate(href);
-                        }
-                    });
                     return;
                 }
                 if (!a.hasAttribute('target')) a.setAttribute('target', '_blank');
@@ -1662,8 +1665,8 @@ class WikiDisplayBase {
             const slug = String(options.slug || options.issue || '').trim()
                 || ((String(options.url || '').match(/\/archive\/([a-z0-9][a-z0-9.-]{0,79})/i) || [])[1] || '');
             const displayUrl = slug
-                ? 'https://apocrypha.737.jp.net/archive/' + slug
-                : 'https://apocrypha.737.jp.net/';
+                ? 'rdf://apocrypha.737.jp.net/archive/' + slug
+                : 'rdf://apocrypha.737.jp.net/';
             // modules/ws/handlers/110-wikiHandler.js: get_apocrypha_zine
             const response = await wsClient.sendMessage('get_apocrypha_zine', slug ? { slug } : {});
             if (response && response.interior) {
@@ -1673,7 +1676,7 @@ class WikiDisplayBase {
             }
 
             if (typeof this.setAddress === 'function') {
-                this.setAddress({ displayUrl, mode: 'edtx' });
+                this.setAddress({ displayUrl, mode: 'rdf' });
             }
 
             if (!options.skipHistory && typeof this.addToHistory === 'function') {
@@ -1728,7 +1731,7 @@ class WikiDisplayBase {
         const apocryphaBtn = this.displayArea.querySelector('[data-action="open-apocrypha"]');
         if (apocryphaBtn) {
             apocryphaBtn.addEventListener('click', () => {
-                this.showApocryphaZine();
+                this.navigate('rdf://apocrypha.737.jp.net/');
             });
         }
 
@@ -3312,7 +3315,10 @@ class WikiDisplayBase {
         }
         if (entry.type === 'wiki' && entry.tag) {
             return entry.tag.title || entry.tag.name || `Wiki Page ${index + 1}`;
-        } else if (entry.query) {
+        } else         if (entry.type === 'web') {
+            return entry.title || entry.url || 'Web';
+        }
+        if (entry.query) {
             return `Search: ${entry.query}`;
         }
         
@@ -4064,6 +4070,15 @@ class WikiWindowInstance extends WikiDisplayBase {
     restoreHistoryEntry(entry) {
         if (!entry) return;
 
+        if (entry.type === 'web' && entry.url) {
+            // grimoireOpenRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
+            grimoireOpenRemoteBrowser(this, entry.url, { host: this, skipHistory: true });
+            this.updateNavigationButtons();
+            return;
+        }
+        // grimoireCloseRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
+        grimoireCloseRemoteBrowser(this);
+
         if (entry.type === 'home') {
             this.currentSelectedTag = null;
             this.currentTagName = null;
@@ -4159,7 +4174,7 @@ class WikiWindowInstance extends WikiDisplayBase {
                 const entry = this.history[i];
                 
                 // Standalone windows: wiki, DSAP, and static docs in history menus
-                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index'].includes(entry.type)) {
+                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index', 'web'].includes(entry.type)) {
                     continue;
                 }
                 
@@ -4196,7 +4211,7 @@ class WikiWindowInstance extends WikiDisplayBase {
                 const entry = this.history[i];
                 
                 // Standalone windows: wiki, DSAP, and static docs in history menus
-                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index'].includes(entry.type)) {
+                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index', 'web'].includes(entry.type)) {
                     continue;
                 }
                 
@@ -4303,6 +4318,8 @@ class WikiWindowInstance extends WikiDisplayBase {
     }
     
     close() {
+        // grimoireCloseRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
+        grimoireCloseRemoteBrowser(this);
         const finish = () => {
             if (this.manager) {
                 this.manager.removeWindow(this.id);
@@ -5511,6 +5528,17 @@ class TagWikiSearchModal extends WikiDisplayBase {
     wireAddressBar() {
         if (!this.addressBar || !this.addressDisplay || !this.addressEdit) return;
 
+        const siteBtn = document.getElementById('grimoireAddressSiteBtn');
+        if (siteBtn && !siteBtn.dataset.grimoireSiteMenu) {
+            siteBtn.dataset.grimoireSiteMenu = '1';
+            siteBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // grimoireShowSiteMenu: public/scripts/comp/grimoireRemoteBrowser.js
+                grimoireShowSiteMenu(e);
+            });
+        }
+
         // Click on display layer -> enter edit (reveal input + refresh)
         this.addressDisplay.addEventListener('click', (e) => {
             e.preventDefault();
@@ -5586,8 +5614,17 @@ class TagWikiSearchModal extends WikiDisplayBase {
         // unless this call is explicitly forcing the update (e.g. from sync after swap or active change).
         const updatingActiveLeft = (this.activePane === this) || force;
 
+        // http(s) and chrome:// stay real URLs. grimoireRemoteBrowser.js iframes the browser service.
+        const isChrome = /^chrome:\/\//i.test(fullUrl);
+        const isHttps = /^https:\/\//i.test(fullUrl);
+        const isHttp = /^http:\/\//i.test(fullUrl);
+        const isWeb = isChrome || isHttps || isHttp;
+        if (isChrome) mode = 'chrome';
+        else if (isHttps) mode = 'https';
+        else if (isHttp) mode = 'http';
+
         // Ensure we have an internal fullUrl with protocol for navigation/router.
-        if (!/^(edtx|rdf|dsap):\/\//i.test(fullUrl)) {
+        if (!isWeb && !/^(edtx|rdf|dsap):\/\//i.test(fullUrl)) {
             // isDsapPseudoUrl: public/scripts/comp/dsapRegistry.js
             if (mode === 'dsap' || (typeof isDsapPseudoUrl === 'function' && isDsapPseudoUrl(fullUrl))) {
                 fullUrl = `dsap://${fullUrl.replace(/^\/+/, '')}`;
@@ -5601,7 +5638,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
         // For Layer 1 (visible display span): show only the path part (no protocol scheme),
         // since we have a mode icon that indicates the protocol/type.
-        const displayPath = fullUrl.replace(/^(edtx|rdf|dsap):\/\//i, '');
+        const displayPath = isWeb ? fullUrl : fullUrl.replace(/^(edtx|rdf|dsap):\/\//i, '');
 
         this.currentAddress = { fullUrl, displayPath, mode };
         this._currentAddress = { displayUrl: displayPath, fullUrl, mode };
@@ -5624,10 +5661,12 @@ class TagWikiSearchModal extends WikiDisplayBase {
             let icon = 'fas fa-book';
             const lower = fullUrl.toLowerCase();
             // isDsapPseudoUrl: public/scripts/comp/dsapRegistry.js
-            if (lower.startsWith('dsap://') || mode === 'dsap' || (typeof isDsapPseudoUrl === 'function' && isDsapPseudoUrl(fullUrl))) {
-                icon = 'fas fa-puzzle-piece';
-            } else if (lower.startsWith('rdf://') || lower.includes('docs.') || mode === 'rdf') {
+            if (isWeb) {
+                icon = 'fas fa-globe';
+            } else if (lower.startsWith('rdf://') || mode === 'rdf') {
                 icon = 'fas fa-file-alt';
+            } else if (lower.startsWith('dsap://') || mode === 'dsap' || (typeof isDsapPseudoUrl === 'function' && isDsapPseudoUrl(fullUrl))) {
+                icon = 'fas fa-puzzle-piece';
             } else if (lower.includes('wiki.danbooru') || lower.includes('wiki.e621')) {
                 icon = 'fas fa-globe';
             }
@@ -5635,7 +5674,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
         }
 
         if (this.addressBar) {
-            this.addressBar.dataset.protocol = (fullUrl.match(/^(edtx|rdf|dsap):/i)?.[1] || mode || 'edtx').toLowerCase();
+            this.addressBar.dataset.protocol = isWeb
+                ? mode
+                : (fullUrl.match(/^(edtx|rdf|dsap):/i)?.[1] || mode || 'edtx').toLowerCase();
         }
     }
 
@@ -5650,9 +5691,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
             }
             icon.className = 'fas fa-spinner-third fa-spin';
             this.addressBar.classList.add('nav-loading');
-            if (display) display.style.pointerEvents = 'none';
-            // disable entering edit while loading
-            this.addressBar.style.cursor = 'progress';
+            if (display) display.style.pointerEvents = '';
+            this.addressBar.style.cursor = '';
             // visual loading hint on the path without losing the target url
             if (this.addressPath && !this.addressPath.dataset.loadingHint) {
                 this.addressPath.dataset.loadingHint = '1';
@@ -5697,6 +5737,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (!this.addressBar || !this.addressEdit) return;
         this.addressBar.classList.remove('edit-active');
         this.addressEdit.classList.add('hidden');
+        if (this.searchInput && document.activeElement === this.searchInput) this.searchInput.blur();
     }
 
     exitAddressEditAndRestore() {
@@ -5786,6 +5827,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 title = 'Invalid address';
                 const protoLabel = this.escapeHtml(protocol || 'unknown');
                 detail = `The protocol <strong>${protoLabel}://</strong> is not supported. Use <strong>edtx://</strong>, <strong>rdf://</strong>, or <strong>dsap://</strong> addresses in Dreamscape Browser.`;
+            } else if (kind === 'browser_unavailable') {
+                title = 'Web browser unavailable';
+                detail = 'Grimoire could not open the remote browser service. Check that it is running and Dreamscape is pointed at it.';
             }
 
             this.displayArea.innerHTML = `
@@ -5862,6 +5906,18 @@ class TagWikiSearchModal extends WikiDisplayBase {
     navigate(pseudoUrl = '') {
         const url = String(pseudoUrl || '').trim();
         if (!url) return;
+
+        // grimoireNormalizeWebUrl / grimoireBareWebUrl: public/scripts/comp/grimoireRemoteBrowser.js
+        const webUrl = grimoireNormalizeWebUrl(url) || grimoireBareWebUrl(url);
+        if (webUrl) {
+            const shell = (this.activePane && this.activePane !== this) ? this.activePane : this;
+            this.exitAddressEdit();
+            grimoireOpenRemoteBrowser(shell, webUrl, { host: this });
+            return;
+        }
+        // grimoireCloseRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
+        grimoireCloseRemoteBrowser(this);
+        if (this.activePane && this.activePane !== this) grimoireCloseRemoteBrowser(this.activePane);
 
         const target = this.activePane;
         if (target !== this) {
@@ -6284,6 +6340,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
             // Most right-pane usage is wiki pages or static docs.
             this.setNavigationLoading(true);
             try {
+                // grimoireRemoteBrowserReload: public/scripts/comp/grimoireRemoteBrowser.js
+                if (grimoireRemoteBrowserReload(p)) return;
+
                 const tag = (typeof p.getCurrentTagName === 'function') ? p.getCurrentTagName() : null;
                 if (tag && typeof p.refreshFromOnline === 'function') {
                     await p.refreshFromOnline();
@@ -6315,6 +6374,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
         // We also drive the address bar loading indicator for the main browser.
         this.setNavigationLoading(true);
         try {
+            // grimoireRemoteBrowserReload: public/scripts/comp/grimoireRemoteBrowser.js
+            if (grimoireRemoteBrowserReload(p)) return;
+
             // Wiki tag page? Use getter (currentSelectedTag may be set even if currentTagName is not after some restores)
             let tag = this.getCurrentTagName();
             if (!tag) {
@@ -7307,6 +7369,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
     
     goHome() {
+        // grimoireCloseRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
+        grimoireCloseRemoteBrowser(this);
+        if (this.rightPane) grimoireCloseRemoteBrowser(this.rightPane);
         if (this.searchInput) {
             this.searchInput.value = '';
         }
@@ -7321,6 +7386,20 @@ class TagWikiSearchModal extends WikiDisplayBase {
     
     restoreHistoryEntry(entry) {
         if (!entry) return;
+
+        if (entry.type !== 'web') {
+            // grimoireCloseRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
+            grimoireCloseRemoteBrowser(this);
+        }
+
+        if (entry.type === 'web' && entry.url) {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            // grimoireOpenRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
+            grimoireOpenRemoteBrowser(this, entry.url, { host: this, skipHistory: true });
+            this.updateNavigationButtons();
+            return;
+        }
 
         if (entry.type === 'home') {
             this.currentSelectedTag = null;
@@ -7492,7 +7571,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 const entry = this.history[i];
                 
                 // Standalone windows: wiki, DSAP, and static docs in history menus
-                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index'].includes(entry.type)) {
+                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index', 'web'].includes(entry.type)) {
                     continue;
                 }
                 
@@ -7529,7 +7608,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 const entry = this.history[i];
                 
                 // Standalone windows: wiki, DSAP, and static docs in history menus
-                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index'].includes(entry.type)) {
+                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index', 'web'].includes(entry.type)) {
                     continue;
                 }
                 

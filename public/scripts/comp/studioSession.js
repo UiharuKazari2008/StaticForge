@@ -20,41 +20,33 @@ const studioSaveFolderState = {
     viewMode: 'icons-lg',
     grid: null,
     navToken: 0,
-    wired: false
+    wired: false,
+    mode: 'save',
+    selected: [],
+    host: null
 };
 
-function startStudioNewSession() {
+function startStudioNewSession(options) {
     clearManualForm();
     resetManualPreview();
-    forgetLastStudioPreview();
+    if (!options || options.keepHistory !== true) forgetLastStudioPreview();
     if (manualPresetName) manualPresetName.value = '';
     updateManualPresetToggleBtn();
+    if (options && options.quiet === true) return;
     showGlassToast('info', null, 'New Session', false, 2000, '<i class="fa-regular fa-file"></i>');
+}
+
+function studioSessionPresetName() {
+    const el = document.getElementById('manualPresetName');
+    return el ? String(el.value || '').trim() : '';
 }
 
 function getStudioSaveAsMenuItems() {
     return [
         {
-            icon: 'fas fa-book-sparkles',
-            text: 'Preset',
-            optionsfn: function () {
-                return [
-                    {
-                        icon: 'fas fa-floppy-disk',
-                        text: 'Current Preset',
-                        action: 'studio-save-preset-current',
-                        disabled: function () {
-                            const el = document.getElementById('manualPresetName');
-                            return !el || !String(el.value || '').trim();
-                        }
-                    },
-                    {
-                        icon: 'fa-regular fa-file-circle-plus',
-                        text: 'New Preset',
-                        action: 'studio-save-preset-new'
-                    }
-                ];
-            }
+            icon: 'fa-regular fa-file-circle-plus',
+            text: 'New Preset',
+            action: 'studio-save-preset-new'
         },
         {
             icon: 'fas fa-desktop',
@@ -338,25 +330,42 @@ async function studioSaveNameFillAuto() {
     studioSaveNameQueueSearch();
 }
 
+function studioSaveNameApplyChrome(mode) {
+    const title = document.getElementById('studioSaveNameTitle');
+    const saveBtn = document.getElementById('studioSaveNameSaveBtn');
+    const autoBtn = document.getElementById('studioSaveNameAutoBtn');
+    const workspaceBtn = document.getElementById('studioSaveNameWorkspaceBtn');
+    const labels = {
+        desktop: ['Save to Desktop', 'Save'],
+        rename: ['Session Name', 'Set'],
+        'load-preset': ['Open Preset', 'Open'],
+        'preset-current': ['Save Preset', 'Save'],
+        'preset-new': ['Save Preset', 'Save']
+    };
+    const pair = labels[mode] || labels['preset-new'];
+    if (title) title.textContent = pair[0];
+    if (saveBtn) saveBtn.textContent = pair[1];
+    const hideExtras = mode === 'rename' || mode === 'load-preset';
+    if (autoBtn) autoBtn.classList.toggle('hidden', hideExtras);
+    if (workspaceBtn) workspaceBtn.classList.toggle('hidden', hideExtras);
+}
+
 function openStudioSaveNameDialog(mode) {
     wireStudioSaveNameDialog();
     const modal = document.getElementById('studioSaveNameModal');
     const input = document.getElementById('studioSaveNameInput');
-    const title = document.getElementById('studioSaveNameTitle');
     if (!modal || !input) return;
     studioSaveNameState.mode = mode;
-    const currentName = manualPresetName ? manualPresetName.value.trim() : '';
-    if (mode === 'preset-current') input.value = currentName;
-    else if (mode === 'desktop') input.value = currentName;
+    const currentName = studioSessionPresetName();
+    if (mode === 'preset-current' || mode === 'desktop' || mode === 'rename') input.value = currentName;
     else input.value = '';
-    if (title) {
-        title.textContent = mode === 'desktop' ? 'Save to Desktop' : 'Save Preset';
-    }
+    studioSaveNameApplyChrome(mode);
     studioSaveNameSetWorkspace(typeof activeWorkspace !== 'undefined' ? activeWorkspace : '');
     studioSaveHideSuggestions();
     openModal(modal);
     bringModalToFront(modal);
     input.focus();
+    input.select();
     if (input.value.trim().length >= 2) studioSaveNameQueueSearch();
 }
 
@@ -372,12 +381,80 @@ async function studioSaveFindDesktopRequest(workspaceId, name) {
     return list.find((shortcut) => shortcut && shortcut.type === STUDIO_SAVE_REQUEST_TYPE && shortcut.name === name) || null;
 }
 
+async function studioRenameSessionPreset(newName) {
+    const oldName = studioSessionPresetName();
+    if (!newName || newName === oldName) return true;
+    // isValidPresetName: public/scripts/comp/presetManager.js
+    if (isValidPresetName(newName)) {
+        showError('A preset with that name already exists');
+        return false;
+    }
+    if (isValidPresetName(oldName)) {
+        if (!wsClient || !wsClient.isConnected()) {
+            showError('WebSocket not connected');
+            return false;
+        }
+        try {
+            await wsClient.updatePreset(oldName, { name: newName });
+            // loadOptions: public/scripts/comp/presetManager.js
+            await loadOptions();
+        } catch (err) {
+            showError(err.message || 'Failed to rename preset');
+            return false;
+        }
+    }
+    if (manualPresetName) {
+        manualPresetName.value = newName;
+        // updateManualPresetToggleBtn: public/scripts/comp/presetManager.js
+        updateManualPresetToggleBtn();
+    }
+    showGlassToast('success', null, `Session name set to “${newName}”`, false, 2200, '<i class="fas fa-pen"></i>');
+    return true;
+}
+
+async function studioSaveCurrentPreset() {
+    const name = studioSessionPresetName();
+    if (!name) return;
+    // isValidPresetName: public/scripts/comp/presetManager.js
+    if (isValidPresetName(name)) {
+        // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+        const choice = await showConfirmationDialog(
+            `A preset named “${name}” already exists.`,
+            [
+                { text: 'Overwrite', value: 'overwrite', className: 'btn-primary', icon: 'fas fa-floppy-disk' },
+                { text: 'Rename', value: 'rename', className: 'btn-secondary', icon: 'fas fa-pen' },
+                { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
+            ],
+            null,
+            { title: 'Save Preset', icon: 'fas fa-floppy-disk' }
+        );
+        if (choice === 'rename') {
+            openStudioSaveNameDialog('rename');
+            return;
+        }
+        if (choice !== 'overwrite') return;
+    }
+    // handleManualSave: public/scripts/comp/generationOrchestrator.js
+    await handleManualSave({ name: name });
+}
+
 async function studioSaveNameConfirm() {
     const modal = document.getElementById('studioSaveNameModal');
     const input = document.getElementById('studioSaveNameInput');
     const name = input ? input.value.trim() : '';
     if (!name) {
         showError('Enter a name');
+        return;
+    }
+    if (studioSaveNameState.mode === 'load-preset') {
+        closeModal(modal);
+        // openManualModalWithContent: public/scripts/comp/manualModalManager.js
+        await openManualModalWithContent({ type: 'preset', name: name, title: name });
+        return;
+    }
+    if (studioSaveNameState.mode === 'rename') {
+        const renamed = await studioRenameSessionPreset(name);
+        if (renamed) closeModal(modal);
         return;
     }
     const workspaceId = studioSaveNameState.workspaceId || activeWorkspace;
@@ -414,8 +491,13 @@ function studioSaveFolderNavPath(item, currentPath) {
     return null;
 }
 
+function studioSaveFolderAcceptType() {
+    const host = studioSaveFolderState.host;
+    return (host && host.acceptType) || STUDIO_SAVE_REQUEST_TYPE;
+}
+
 function studioSaveFolderSameType(item) {
-    return !!(item && item.shortcutType === STUDIO_SAVE_REQUEST_TYPE && item.kind !== 'folder');
+    return !!(item && item.shortcutType === studioSaveFolderAcceptType() && item.kind !== 'folder');
 }
 
 function studioSaveFolderOverwrite(name) {
@@ -491,6 +573,10 @@ function wireStudioSaveFolderDialog() {
         viewMode: studioSaveFolderState.viewMode,
         populateIconBox: (box, item) => studioSaveFolderPopulateIcon(box, item),
         onItemOpen: (item) => {
+            if (studioSaveFolderState.mode !== 'save') {
+                void studioOpenFolderItem(item);
+                return;
+            }
             const nav = studioSaveFolderNavPath(item, studioSaveFolderState.path);
             if (nav) {
                 studioSaveFolderNavigate(nav);
@@ -502,7 +588,9 @@ function wireStudioSaveFolderDialog() {
             }
         },
         onSelectionChange: (selected) => {
-            const item = (selected || []).find((row) => studioSaveFolderSameType(row));
+            studioSaveFolderState.selected = selected || [];
+            if (studioSaveFolderState.mode !== 'save') return;
+            const item = studioSaveFolderState.selected.find((row) => studioSaveFolderSameType(row));
             if (!item) return;
             const input = document.getElementById('studioSaveFolderName');
             if (input) input.value = item.name || '';
@@ -551,12 +639,18 @@ function wireStudioSaveFolderDialog() {
     }
     if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal(modal));
     if (closeBtn) closeBtn.addEventListener('click', () => closeModal(modal));
-    if (saveBtn) saveBtn.addEventListener('click', () => studioSaveFolderConfirm());
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            if (studioSaveFolderState.mode === 'save') studioSaveFolderConfirm();
+            else studioSaveFolderOpenSelected();
+        });
+    }
     if (nameInput) {
         nameInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                studioSaveFolderConfirm();
+                if (studioSaveFolderState.mode === 'save') studioSaveFolderConfirm();
+                else studioSaveFolderOpenSelected();
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 e.stopPropagation();
@@ -564,26 +658,76 @@ function wireStudioSaveFolderDialog() {
             }
         });
     }
+    if (contextMenu) {
+        const workspaceBtn = document.getElementById('studioSaveFolderWorkspaceBtn');
+        if (workspaceBtn) {
+            contextMenu.attachClickMenuToElement(workspaceBtn, {
+                sections: [{
+                    type: 'list',
+                    initfn: function (section) {
+                        section.items = studioSaveWorkspaceMenuItems();
+                    }
+                }],
+                onAction: function (action, _target, item) {
+                    if (action === 'studio-save-workspace' && item && item.workspaceId) {
+                        studioOpenGalleryWorkspace(item.workspaceId);
+                    }
+                }
+            });
+        }
+    }
+}
+
+function studioSaveFolderApplyChrome(mode) {
+    studioSaveFolderState.mode = mode || 'save';
+    const title = document.getElementById('studioSaveFolderTitle');
+    const saveBtn = document.getElementById('studioSaveFolderSaveBtn');
+    const nameInput = document.getElementById('studioSaveFolderName');
+    const autoBtn = document.getElementById('studioSaveFolderAutoBtn');
+    const workspaceBtn = document.getElementById('studioSaveFolderWorkspaceBtn');
+    const openMode = studioSaveFolderState.mode !== 'save';
+    const hostTitle = studioSaveFolderState.host && studioSaveFolderState.host.title;
+    if (title) {
+        title.textContent = hostTitle
+            || (studioSaveFolderState.mode === 'open-gallery'
+                ? 'Open Gallery Image'
+                : (studioSaveFolderState.mode === 'open-vfs' ? 'Open VFS File' : 'Save As'));
+    }
+    if (saveBtn) saveBtn.textContent = openMode ? 'Open' : 'Save';
+    if (nameInput) nameInput.classList.toggle('hidden', openMode);
+    if (autoBtn) autoBtn.classList.toggle('hidden', openMode);
+    if (workspaceBtn) workspaceBtn.classList.toggle('hidden', studioSaveFolderState.mode !== 'open-gallery');
 }
 
 async function openStudioSaveFolderDialog() {
-    // featureLoader.loadFeature: public/scripts/comp/featureLoader.js
+    await studioOpenFolderDialog('save');
+}
+
+async function studioOpenFolderDialog(mode, options = {}) {
     // featureLoader.loadFeature: public/scripts/comp/featureLoader.js
     try { await featureLoader.loadFeature('explorer'); } catch (_err) { /* icon fallback */ }
     wireStudioSaveFolderDialog();
     const modal = document.getElementById('studioSaveFolderModal');
     const nameInput = document.getElementById('studioSaveFolderName');
     if (!modal) return;
-    const currentName = manualPresetName ? manualPresetName.value.trim() : '';
-    if (nameInput) nameInput.value = currentName;
+    studioSaveFolderState.host = options.host || null;
+    studioSaveFolderApplyChrome(mode);
+    if (nameInput && mode === 'save') {
+        const suggest = studioSaveFolderState.host && studioSaveFolderState.host.suggestName;
+        nameInput.value = typeof suggest === 'function' ? suggest() : studioSessionPresetName();
+    }
     studioSaveFolderSetView(studioSaveFolderState.viewMode || 'icons-lg');
-    const start = (typeof activeWorkspace !== 'undefined' && activeWorkspace)
-        ? `/Workspaces/${activeWorkspace}`
-        : '/';
+    const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : '';
+    let start = options.startPath || '/';
+    if (!options.startPath) {
+        if (mode === 'open-gallery' && workspaceId) start = `/Workspaces/${workspaceId}/Pictures`;
+        else if (mode === 'save' && workspaceId) start = `/Workspaces/${workspaceId}`;
+    }
+    studioOpenFolderSyncWorkspaceDot(workspaceId);
     openModal(modal);
     bringModalToFront(modal);
     await studioSaveFolderNavigate(start);
-    if (nameInput) nameInput.focus();
+    if (nameInput && mode === 'save') nameInput.focus();
 }
 
 async function studioSaveFolderConfirm() {
@@ -599,6 +743,17 @@ async function studioSaveFolderConfirm() {
     const workspaceId = (parts[0] === 'Workspaces' && parts[1])
         ? parts[1]
         : activeWorkspace;
+    const host = studioSaveFolderState.host;
+    if (host && typeof host.onSave === 'function') {
+        const savedByHost = await host.onSave({
+            path: studioSaveFolderState.path,
+            name: name,
+            overwrite: overwrite,
+            workspaceId: workspaceId
+        });
+        if (savedByHost) closeModal(modal);
+        return;
+    }
     const saved = await saveRequestAsDesktopShortcut({
         dest: 'vfs',
         path: studioSaveFolderState.path,
@@ -608,4 +763,140 @@ async function studioSaveFolderConfirm() {
         overwriteEntryId: overwrite.overwriteEntryId || null
     });
     if (saved) closeModal(modal);
+}
+
+function studioOpenFolderSyncWorkspaceDot(workspaceId) {
+    const ws = (typeof workspaces !== 'undefined' && workspaces) ? workspaces[workspaceId] : null;
+    const dot = document.getElementById('studioSaveFolderWorkspaceDot');
+    const btn = document.getElementById('studioSaveFolderWorkspaceBtn');
+    const color = (ws && ws.color) || '#102040';
+    const label = (ws && ws.name) || workspaceId || 'Workspace';
+    if (dot) dot.style.backgroundColor = color;
+    if (btn) btn.title = label;
+}
+
+function studioOpenGalleryWorkspace(workspaceId) {
+    if (!workspaceId) return;
+    studioOpenFolderSyncWorkspaceDot(workspaceId);
+    studioSaveFolderNavigate(`/Workspaces/${workspaceId}/Pictures`);
+}
+
+function studioSaveFolderOpenSelected() {
+    const selected = studioSaveFolderState.selected || [];
+    const item = selected[0];
+    if (!item) {
+        showGlassToast('info', null, 'Select a file', false, 2000, '<i class="fas fa-folder-open"></i>');
+        return;
+    }
+    void studioOpenFolderItem(item);
+}
+
+async function studioOpenSessionFromImage(filename, workspaceId) {
+    if (!filename) return;
+    const modal = document.getElementById('studioSaveFolderModal');
+    if (modal) closeModal(modal);
+    const image = {
+        filename: filename,
+        original: filename,
+        workspaceId: workspaceId || undefined
+    };
+    // openManualModalWithContent: public/scripts/comp/manualModalManager.js
+    await openManualModalWithContent({ type: 'image', image: image });
+}
+
+async function studioOpenFolderItem(item) {
+    if (!item) return;
+    const nav = studioSaveFolderNavPath(item, studioSaveFolderState.path);
+    if (nav) {
+        studioSaveFolderNavigate(nav);
+        const parts = nav.split('/').filter(Boolean);
+        if (parts[0] === 'Workspaces' && parts[1]) studioOpenFolderSyncWorkspaceDot(parts[1]);
+        return;
+    }
+    const host = studioSaveFolderState.host;
+    if (host && typeof host.onOpen === 'function') {
+        if (item.shortcutType === studioSaveFolderAcceptType()) {
+            const hostModal = document.getElementById('studioSaveFolderModal');
+            if (hostModal) closeModal(hostModal);
+            await host.onOpen(item, studioSaveFolderState.path);
+            return;
+        }
+        showGlassToast('info', null, host.rejectMessage || 'Choose a file', false, 2500, '<i class="fas fa-folder-open"></i>');
+        return;
+    }
+    const galleryMode = studioSaveFolderState.mode === 'open-gallery';
+    const filename = item.previewImageFilename || item.targetId;
+    if (item.targetKind === 'image' || item.targetKind === 'scrap' || item.shortcutType === 'image') {
+        const imageName = item.shortcutType === 'image'
+            ? ((item.shortcutData && item.shortcutData.filename) || filename)
+            : filename;
+        await studioOpenSessionFromImage(imageName, item.workspaceId);
+        return;
+    }
+    if (galleryMode) {
+        showGlassToast('info', null, 'Choose an image', false, 2000, '<i class="fas fa-images"></i>');
+        return;
+    }
+    if (item.shortcutType === 'request' || item.shortcutType === 'preset') {
+        const shortcut = {
+            type: item.shortcutType,
+            name: item.name,
+            id: item.id,
+            data: item.shortcutData || {}
+        };
+        const modal = document.getElementById('studioSaveFolderModal');
+        if (modal) closeModal(modal);
+        // desktopShortcuts: public/scripts/comp/desktopShortcuts.js
+        if (item.shortcutType === 'request') await desktopShortcuts.handleRequestClick(shortcut);
+        else await desktopShortcuts.handlePresetClick(shortcut);
+        return;
+    }
+    showGlassToast('info', null, 'Choose an image, preset, or saved session', false, 2500, '<i class="fas fa-folder-open"></i>');
+}
+
+let studioAboutCloseHandler = null;
+
+function hideStudioAboutSplash() {
+    const splash = document.getElementById('manualModalSplash');
+    if (studioAboutCloseHandler) {
+        document.removeEventListener('pointerdown', studioAboutCloseHandler, true);
+        studioAboutCloseHandler = null;
+    }
+    if (!splash) return;
+    splash.classList.remove('splash-about');
+    splash.classList.add('hidden');
+    const statusText = splash.querySelector('.splash-status-text');
+    if (statusText) {
+        statusText.textContent = 'Initializing...';
+        statusText.style.whiteSpace = '';
+    }
+}
+
+function showStudioAboutSplash() {
+    const splash = document.getElementById('manualModalSplash');
+    if (!splash) return;
+    hideStudioAboutSplash();
+    const statusText = splash.querySelector('.splash-status-text');
+    const clientVersion = (wsClient && wsClient.clientVersion) ? wsClient.clientVersion : '';
+    const lines = ['DreamStudio 2026 R7'];
+    if (clientVersion) lines.push('Client ' + clientVersion);
+    if (statusText) statusText.textContent = lines.join('\n');
+    splash.classList.add('splash-about');
+    splash.classList.remove('hidden');
+    studioAboutCloseHandler = function () {
+        hideStudioAboutSplash();
+    };
+    setTimeout(() => {
+        if (!studioAboutCloseHandler) return;
+        document.addEventListener('pointerdown', studioAboutCloseHandler, true);
+    }, 0);
+    fetch('/app', { method: 'OPTIONS', cache: 'no-cache' })
+        .then((response) => response.ok ? response.json() : null)
+        .then((data) => {
+            if (!data || !splash.classList.contains('splash-about') || !statusText) return;
+            const serverVersion = data.serverVersion || data.version;
+            if (!serverVersion) return;
+            statusText.textContent = lines.concat(['Server ' + serverVersion]).join('\n');
+        })
+        .catch(() => { /* version line stays client-only */ });
 }

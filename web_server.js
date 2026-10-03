@@ -38,12 +38,15 @@ const pm2Service = require('./modules/pm2Service');
 const runtimeAssetService = require('./modules/runtimeAssetService');
 const agentAssetBundle = require('./modules/agentAssetBundle');
 const agentClientBridge = require('./modules/agentClientBridge');
+const cursorDirector = require('./modules/cursorDirector');
 const mcpAgentFacade = require('./modules/mcpAgentFacade');
 const mcpRequestLog = require('./modules/mcpRequestLog');
 const apocryphaSite = require('./modules/apocryphaSite');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
 const { browserRequest } = require('./modules/browserHttp');
+const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
+const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacRemoteBridge');
 const { getQwenTokenizerDefinition } = require('./modules/qwenTokenizerAssetCache');
 const { getOpusUsageFromAccountData } = require('./modules/opusUsage');
 
@@ -1131,6 +1134,13 @@ app.use(compression({
         if (req.path && (req.path.startsWith('/images/') || req.path.startsWith('/previews/'))) {
             return false;
         }
+        if (req.path && req.path.startsWith('/api/grimoire-browser/sessions/') && req.path.endsWith('/frames')) {
+            return false;
+        }
+        // Guacamole HTTP tunnel fallback streams reads until the next one queues
+        if (req.path === '/api/desktop-guac/web/tunnel') {
+            return false;
+        }
         // Use compression for all other requests
         return compression.filter(req, res);
     }
@@ -1564,10 +1574,38 @@ app.use('/previews/:preview', authMiddleware, (req, res) => {
     const previewStat = fs.statSync(previewPath);
     res.setHeader('Cache-Control', 'private, max-age=259200');
     res.setHeader('Content-Length', previewStat.size);
-    res.sendFile(previewFile, { root: previewsDir });
+    res.sendFile(previewFile, { root: previewsDir }, (err) => {
+        if (!err || res.writableEnded) return;
+        if (res.headersSent) {
+            res.destroy();
+            return;
+        }
+        res.status(err.code === 'ENOENT' ? 404 : 500).end();
+    });
 });
 app.get('/naxCache/:gallerySlug/:filename', authMiddleware, (req, res) => {
     handleNaxImageRequest(globalResources, req, res, cacheDir);
+});
+// Quick Start previews: lazy-fetch missing webps into .cache/quickstart/ before static serve
+app.use('/cache/quickstart', authMiddleware, async (req, res, next) => {
+    try {
+        const base = path.basename(String(req.path || '').replace(/^\/+/, ''));
+        if (!base || base.includes('..')) return next();
+        const abs = path.join(cacheDir, 'quickstart', base);
+        if (fs.existsSync(abs)) return next();
+        let cache = null;
+        try {
+            cache = globalResources.getQuickstartGalleryCache();
+        } catch {
+            return next();
+        }
+        if (!cache.isQuickstartFileName(base)) return next();
+        await cache.ensureQuickstartFile(base);
+        return next();
+    } catch (err) {
+        console.warn('[quickstart] ensure failed:', err.message);
+        return next();
+    }
 });
 // Agora / Explore: lazy-fetch missing thumbs/blobs into .cache/explore_files before static serve
 app.use('/cache/explore_files', authMiddleware, async (req, res, next) => {
@@ -1721,6 +1759,11 @@ app.use((req, res, next) => {
     
     next();
 });
+
+// After session + body parsing. Earlier registration never saw the login cookie.
+mountGrimoireBrowserBridge(app, authMiddleware);
+mountGuacRemoteBridge(app, authMiddleware);
+
 app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(imagesDir, filename);
@@ -1848,8 +1891,15 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
         }
     }
     
-    // Send the file
-    res.sendFile(filePath);
+    // Send the file. Unlink during the stream must end the response or the browser holds the connection.
+    res.sendFile(filePath, (err) => {
+        if (!err || res.writableEnded) return;
+        if (res.headersSent) {
+            res.destroy();
+            return;
+        }
+        res.status(err.code === 'ENOENT' ? 404 : 500).end();
+    });
 });
 // Slim PNG route - strips PNG metadata/blueprint data
 app.use('/image/slim/:filename', authMiddleware, async (req, res) => {
@@ -2427,6 +2477,13 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
         }
     });
 
+    // modules/vfsFuseHttp.js — `${vfsPath}/fs/...` VFS API for a Linux FUSE client
+    require('./modules/vfsFuseHttp').registerVfsFuseRoutes(app, {
+        vfsPath,
+        authMiddleware,
+        globalResources
+    });
+
     app.get(`${vfsPath}/system/:encodedKey`, authMiddleware, async (req, res) => {
         try {
             const vfs = globalResources.getVfsManager();
@@ -2496,6 +2553,72 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
         }
     });
 })();
+
+// Director browser captures. Fallback for director_browser_preview events that carry no url.
+const DIRECTOR_PREVIEW_TYPES = {
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif'
+};
+
+// One path segment only: express already decoded the param, so %2f arrives as a slash here.
+function directorPreviewSegment(value) {
+    const raw = String(value || '');
+    if (!raw || raw === '.' || raw === '..') return null;
+    if (raw.includes('/') || raw.includes('\\') || raw.includes('\0')) return null;
+    return raw;
+}
+
+// Confined read of one file in chats/<id>/<subdir>: single path segment, realpath
+// must stay inside that folder. Serves browser captures and show_chat_image pictures.
+function directorChatRoots() {
+    // modules/cursorDirector.js — layout().chats is ~/.cache/dreamscape-director/chats
+    const roots = [cursorDirector.layout().chats];
+    try {
+        // modules/xiDirector.js — chatsDir() is ~/.cache/dreamscape-xi/chats
+        roots.push(require('./modules/xiDirector').chatsDir());
+    } catch (_) { /* Xi is optional */ }
+    return roots;
+}
+
+function sendDirectorChatFile(res, chatId, subdir, filename, contentType) {
+    const roots = directorChatRoots();
+    for (let i = 0; i < roots.length; i++) {
+        try {
+            const root = fs.realpathSync(path.join(roots[i], chatId, subdir));
+            const target = fs.realpathSync(path.join(root, filename));
+            if (!target.startsWith(root + path.sep)) continue;
+            if (!fs.statSync(target).isFile()) continue;
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Cache-Control', 'private, max-age=60');
+            fs.createReadStream(target).pipe(res);
+            return;
+        } catch (_) { /* try the other persona's chat folder */ }
+    }
+    res.status(404).send('Not found');
+}
+
+app.get('/director/browser/:chatId/:filename', authMiddleware, (req, res) => {
+    const chatId = directorPreviewSegment(req.params.chatId);
+    const filename = directorPreviewSegment(req.params.filename);
+    if (!chatId || !filename) return res.status(404).send('Not found');
+    const contentType = DIRECTOR_PREVIEW_TYPES[path.extname(filename).toLowerCase()];
+    if (!contentType) return res.status(404).send('Not found');
+    sendDirectorChatFile(res, chatId, 'browser', filename, contentType);
+});
+
+// show_chat_image copies the picture into chats/<id>/chat-images (modules/mcpAgentFacade.js)
+app.get('/director/image/:chatId/:filename', authMiddleware, (req, res) => {
+    const chatId = directorPreviewSegment(req.params.chatId);
+    const filename = directorPreviewSegment(req.params.filename);
+    if (!chatId || !filename) return res.status(404).send('Not found');
+    const contentType = DIRECTOR_PREVIEW_TYPES[path.extname(filename).toLowerCase()];
+    if (!contentType) return res.status(404).send('Not found');
+    // CHAT_IMAGE_DIRNAME: modules/cursorDirector.js
+    sendDirectorChatFile(res, chatId, cursorDirector.CHAT_IMAGE_DIRNAME, filename, contentType);
+});
 
 // Serve trace attachments
 app.use('/traces/files', authMiddleware, (req, res, next) => {
@@ -3474,6 +3597,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
     await globalResources.logger.bootStep('WebSocket Server', async () => {
         updateServerStage('websocket_init');
         const { wsServer } = globalResources.initializeWebSocketServer();
+        attachGuacWebUpgrade(server, sessionMiddleware);
         serverStartupStatus.setCapability('websocket', true);
 
         // Start ping interval with server data callback
@@ -3595,6 +3719,40 @@ async function handleAdminUnixSocketMessage(message, socket) {
         
         globalResources.logger.bootSubStep(`Server listening on port ${globalResources.getConfig().port}`);
     });
+
+    // Director computer warm-up. Hosts without bubblewrap still boot; Director just stays offline.
+    try {
+        await globalResources.logger.bootStep('Director Computer', async () => {
+            const prepared = await cursorDirector.prepareDirector(globalResources);
+            if (prepared.ready) {
+                globalResources.logger.bootSubStep('Director computer ready');
+                if (prepared.cursorLogin && prepared.cursorLogin.ok === false) {
+                    globalResources.logger.warn('Director: Cursor is not logged in on this machine. Run cursor-agent login, then restart Dreamscape.');
+                }
+            } else if (prepared.code === 'BWRAP_MISSING') {
+                globalResources.logger.warn('BWRAP_MISSING: bubblewrap is not installed, Director sessions are unavailable');
+            } else {
+                globalResources.logger.warn(`Director computer prepare skipped (${prepared.code}): ${prepared.error || 'unknown error'}`);
+            }
+        });
+    } catch (err) {
+        globalResources.logger.warn(`Director computer prepare failed: ${err.message}`);
+    }
+
+    try {
+        await globalResources.logger.bootStep('Xi', async () => {
+            // modules/xiDirector.js — detached host agent, only when config.xi.enabled
+            const xiDirector = require('./modules/xiDirector');
+            const preparedXi = xiDirector.prepareXi(globalResources);
+            if (preparedXi.enabled) {
+                globalResources.logger.bootSubStep(`Xi ready (${preparedXi.attached || 0} reattached)`);
+            } else {
+                globalResources.logger.bootSubStep('Xi disabled');
+            }
+        });
+    } catch (err) {
+        globalResources.logger.warn(`Xi prepare failed: ${err.message}`);
+    }
 
     // Server is now fully ready
     updateServerStage('ready', true);

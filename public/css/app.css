@@ -3699,6 +3699,15 @@ body.is-window-dragging .modal:not([data-dragging="true"]):not([data-resizing="t
     visibility: hidden;
 }
 
+/* content-visibility:hidden skips #gallery layout and collapses the scroller.
+   --gallery-drag-block-size is the pre-drag border-box height (modalUtils.js). */
+body.is-window-dragging .modal[data-dragging="true"] #gallery,
+body.is-window-dragging #galleryWindow:not([data-dragging="true"]):not([data-resizing="true"]) #gallery {
+    height: var(--gallery-drag-block-size);
+    min-height: var(--gallery-drag-block-size);
+    contain-intrinsic-block-size: var(--gallery-drag-block-size);
+}
+
 /*
  * Desktop: only the focused window(s) pay for backdrop-filter.
  * Inactive windows keep the solid glass fill; active-window / on-top / animating keep blur.
@@ -4021,55 +4030,105 @@ div#bulkMoveToWorkspaceModal:not(.hidden) {
     border-top-right-radius: var(--border-radius-xl);
 }
 
-/* Slider Container (reusable) */
+/* Slider Container (reusable). Track, fill, and thumb use the glass layers
+   (btn-secondary / glass-toast). --glass-bg-* and --radius-sm are not defined,
+   so a background on the input never painted and the native range showed through.
+   --slider-fill is 0% until a caller sets it (media players do). */
 .slider-container {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-xs) var(--spacing-sm);
-    background: var(--glass-bg-2);
+    background: var(--glass-layer-dark-4);
     border: 1px solid var(--glass-border-2);
-    border-radius: var(--radius-sm);
+    border-radius: var(--border-radius-lg);
+    box-shadow: inset 0 1px 0 var(--glass-border-1);
 }
 
 .slider-input {
+    --slider-fill: 0%;
     flex: 1;
-    height: 6px;
-    background: var(--glass-bg-3);
-    border-radius: 3px;
+    width: 100%;
+    height: 16px;
+    margin: 0;
+    background: transparent;
+    border: none;
     outline: none;
     -webkit-appearance: none;
     appearance: none;
+    cursor: pointer;
+}
+
+.slider-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.slider-input::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(to right,
+        var(--primary-glass-color) 0,
+        var(--primary-glass-color) var(--slider-fill),
+        var(--glass-layer-dark-5) var(--slider-fill),
+        var(--glass-layer-dark-5) 100%);
+    border: 1px solid var(--glass-border-3);
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 45%);
 }
 
 .slider-input::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
+    box-sizing: border-box;
     width: 16px;
     height: 16px;
-    background: var(--primary-color);
-    border-radius: 50%;
-    border: 2px solid var(--glass-border-4);
-    transition: transform 0.15s ease;
+    margin-top: -5px;
+    background: var(--glass-layer-3);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--glass-shadow-2), inset 0 0 8px #ffffff2b;
+    cursor: pointer;
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .slider-input::-webkit-slider-thumb:hover:not(:disabled) {
-        transform: scale(1.1);
-    }
+.slider-input:not(:disabled)::-webkit-slider-thumb:hover {
+    background: var(--glass-layer-4);
+    border-color: var(--glass-border-4);
+}
+
+.slider-input::-moz-range-track {
+    height: 6px;
+    border: 1px solid var(--glass-border-3);
+    border-radius: 999px;
+    background: linear-gradient(to right,
+        var(--primary-glass-color) 0,
+        var(--primary-glass-color) var(--slider-fill),
+        var(--glass-layer-dark-5) var(--slider-fill),
+        var(--glass-layer-dark-5) 100%);
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 45%);
+}
+
+.slider-input::-moz-range-progress {
+    background: transparent;
+}
+
+.slider-input::-moz-focus-outer {
+    border: 0;
 }
 
 .slider-input::-moz-range-thumb {
+    box-sizing: border-box;
     width: 16px;
     height: 16px;
-    background: var(--primary-color);
-    border-radius: 50%;
-    border: 2px solid var(--glass-border-4);
-    transition: transform 0.15s ease;
+    background: var(--glass-layer-3);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--glass-shadow-2), inset 0 0 8px #ffffff2b;
+    cursor: pointer;
 }
 
-.slider-input::-moz-range-thumb:hover:not(:disabled) {
-    transform: scale(1.1);
+.slider-input:not(:disabled)::-moz-range-thumb:hover {
+    background: var(--glass-layer-4);
+    border-color: var(--glass-border-4);
 }
 
 .slider-value {

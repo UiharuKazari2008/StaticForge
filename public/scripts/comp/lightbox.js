@@ -817,17 +817,8 @@ async function initializePhotoSwipe() {
                                         if (window.featureLoader) {
                                             await window.featureLoader.loadFeature('chat');
                                         }
-                                        let characterName = imageData.characterName || null;
-                                        if (!characterName) {
-                                            try {
-                                                const metadata = await getImageMetadata(filename);
-                                                characterName = metadata?.character_name || null;
-                                            } catch (_) {
-                                                characterName = null;
-                                            }
-                                        }
                                         if (window.chatSystem) {
-                                            window.chatSystem.openChatModal(filename, characterName);
+                                            window.chatSystem.openChatModal(filename, imageData.characterName || null);
                                         }
                                     }
                                 }
@@ -961,7 +952,7 @@ async function initializePhotoSwipe() {
 
 
 // Function to open standalone PhotoSwipe instances
-async function openStandalonePhotoSwipe(dataSource) {
+async function openStandalonePhotoSwipe(dataSource, index, options) {
     try {
         const PhotoSwipe = await import('/dist/photoswipe/photoswipe.esm.js');
 
@@ -969,8 +960,10 @@ async function openStandalonePhotoSwipe(dataSource) {
         const mount = getPhotoSwipeMount();
 
         const multi = Array.isArray(dataSource) && dataSource.length > 1;
+        const start = Number.isInteger(index) ? Math.max(0, Math.min(index, dataSource.length - 1)) : 0;
         const opts = {
             dataSource: dataSource,
+            index: start,
             showHideAnimationType: 'zoom',
             showAnimationDuration: 300,
             hideAnimationDuration: 300,
@@ -1008,6 +1001,7 @@ async function openStandalonePhotoSwipe(dataSource) {
 
         const pswp = new PhotoSwipe.default(opts);
         window.pswp = pswp;
+        if (options && options.directorPrints) pswp._directorPrints = true;
 
         if (useDesktopShell) {
             pswp.addFilter('thumbBounds', (thumbBounds) => adjustThumbBoundsForPhotoSwipeMount(thumbBounds));

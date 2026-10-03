@@ -501,9 +501,6 @@ function buildCharacterUcTabContainerHtml(characterId, ucValue, promptNegativeVa
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search">
                                             <i class="fas fa-search"></i>
                                         </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
-                                            <i class="fas fa-lightbulb"></i>
-                                        </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip" data-action="emphasis-group-chip" data-state="off" title="Emphasis">
                                             <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
                                         </button>
@@ -635,9 +632,6 @@ function addCharacterPrompt() {
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search">
                                             <i class="fas fa-search"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
-                                            <i class="fas fa-lightbulb"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip" data-action="emphasis-group-chip" data-state="off" title="Emphasis">
                                             <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
@@ -1432,9 +1426,6 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search">
                                             <i class="fas fa-search"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
-                                            <i class="fas fa-lightbulb"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip" data-action="emphasis-group-chip" data-state="off" title="Emphasis">
                                             <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>

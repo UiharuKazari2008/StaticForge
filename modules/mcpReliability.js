@@ -78,12 +78,43 @@ function findPendingApplyGenerate(bindKey, workspaceId) {
     return newest;
 }
 
-function completeApplyGenerateJob(jobId, filename) {
+function completeApplyGenerateJob(jobId, filename, filenames) {
     const row = getApplyGenerateJob(jobId);
     if (!row) return null;
+    const names = [];
+    const push = (name) => {
+        if (!name || typeof name !== 'string' || names.includes(name)) return;
+        names.push(name);
+    };
+    if (Array.isArray(filenames)) filenames.forEach(push);
+    push(filename);
+    if (row.status === 'completed' && Array.isArray(row.filenames) && names.length <= row.filenames.length) {
+        return row;
+    }
     row.status = 'completed';
-    row.filename = filename || null;
+    row.filenames = names;
+    row.filename = names.length ? names[names.length - 1] : (filename || null);
     return row;
+}
+
+function filenameBornMs(filename) {
+    const match = /^(\d{13})_/.exec(String(filename || ''));
+    return match ? Number(match[1]) : null;
+}
+
+function completeApplyGenerateFromWorkspace(workspaceId, filenames) {
+    const names = Array.isArray(filenames) ? filenames.filter((name) => typeof name === 'string' && name) : [];
+    if (!names.length) return null;
+    const job = findPendingApplyGenerate('', workspaceId);
+    if (!job || job.status !== 'running') return null;
+    const since = Number(job.createdAt) || 0;
+    const owned = names.filter((name) => {
+        const born = filenameBornMs(name);
+        if (born == null) return true;
+        return born + 3000 >= since;
+    });
+    if (!owned.length) return null;
+    return completeApplyGenerateJob(job.jobId, owned[owned.length - 1], owned);
 }
 
 function resetApplyGenerateJobs() {
@@ -290,6 +321,7 @@ module.exports = {
     getApplyGenerateJob,
     findPendingApplyGenerate,
     completeApplyGenerateJob,
+    completeApplyGenerateFromWorkspace,
     resetApplyGenerateJobs,
     canonicalizeFranchise,
     qualifyCharacterQuery,

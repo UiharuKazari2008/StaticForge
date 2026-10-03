@@ -62,6 +62,18 @@ const nested = _test.assembleStudioChangeFromToolArgs({
 });
 assert.strictEqual(nested.params.steps, 23);
 assert.strictEqual(nested.params.guidance, 6);
+const modelOnly = _test.assembleStudioChangeFromToolArgs({
+    change: { model: 'v5', sampler: 'k_euler', guidance: 5 }
+});
+assert.ok(modelOnly);
+assert.strictEqual(modelOnly.params.model, 'v5');
+assert.strictEqual(modelOnly.params.sampler, 'k_euler');
+assert.strictEqual(modelOnly.params.guidance, 5);
+assert.strictEqual(modelOnly.model, undefined);
+const modelPrefersParams = _test.assembleStudioChangeFromToolArgs({
+    change: { model: 'v4_5', params: { model: 'v5' } }
+});
+assert.strictEqual(modelPrefersParams.params.model, 'v5');
 assert.strictEqual(_test.assembleStudioChangeFromToolArgs({
     dataset_config: { nsfw: 3 }
 }).params.nsfw, 3);
@@ -86,6 +98,30 @@ const vSliderAssembled = _test.assembleStudioChangeFromToolArgs({
 });
 assert.ok(Array.isArray(vSliderAssembled.vSlider));
 assert.strictEqual(vSliderAssembled.vSlider.length, 1);
+
+const overlaysAssembled = _test.assembleStudioChangeFromToolArgs({
+    text_overlays: [{ text: 'Huh?', type: 'speech', target: 'bubble' }]
+});
+assert.ok(Array.isArray(overlaysAssembled.text_overlays));
+assert.strictEqual(overlaysAssembled.text_overlays[0].text, 'Huh?');
+assert.deepStrictEqual(_test.assembleStudioChangeFromToolArgs({ text_overlays: [] }).text_overlays, []);
+const named = _test.assembleStudioChangeFromToolArgs({ presetName: 'Nazuna Festival Labor' });
+assert.strictEqual(named.presetName, 'Nazuna Festival Labor');
+
+const fromPrompts = _test.assembleStudioChangeFromToolArgs({
+    characterPrompts: [{ prompt: 'girl, gretel (nikke)', uc: 'pregnant', center: { x: 0.4, y: 0.2 }, chara_name: 'Gretel' }],
+    prompt_negative: 'lowres'
+});
+assert.strictEqual(fromPrompts.overwrite, true);
+assert.strictEqual(fromPrompts.characters[0].action, 'replace');
+assert.strictEqual(fromPrompts.characters[0].index, 0);
+assert.strictEqual(fromPrompts.characters[0].name, 'Gretel');
+assert.deepStrictEqual(fromPrompts.characters[0].position, { x: 0.4, y: 0.2 });
+assert.ok(fromPrompts.fields.some((field) => field.id === 'promptNegative'));
+
+const cleared = _test.assembleStudioChangeFromToolArgs({ overwrite: true, characters: [] });
+assert.strictEqual(cleared.overwrite, true);
+assert.deepStrictEqual(cleared.characters, []);
 
 const liftedFlags = _test.assembleStudioChangeFromToolArgs({
     append_transparency: true,

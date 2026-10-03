@@ -199,6 +199,8 @@
     padding: var(--spacing-md);
     line-height: normal; /* undo line-height: 1 crush from pre-#172 header */
     box-sizing: border-box;
+    background: var(--glass-inset-bg-5);
+    border-bottom: 1px solid var(--glass-border-2);
 }
 
 #explorerModal .explorer-actions-header .naxt-search-controls {

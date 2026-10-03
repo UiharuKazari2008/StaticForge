@@ -214,11 +214,12 @@ function grimoireNormalizePseudoDisplayUrl(url) {
     let fullUrl = String(url || '').trim();
     if (!fullUrl) return { displayUrl: 'edtx://en.grimoire.jp/index.dtxt', mode: 'edtx' };
 
-    let mode = 'edtx';
+    const explicitScheme = (fullUrl.match(/^(edtx|rdf|dsap):\/\//i) || [])[1];
+    let mode = explicitScheme ? explicitScheme.toLowerCase() : 'edtx';
     const lower = fullUrl.toLowerCase();
-    if (isDsapPseudoUrl(fullUrl)) {
+    if (!explicitScheme && isDsapPseudoUrl(fullUrl)) {
         mode = 'dsap';
-    } else if (/^rdf:\/\//i.test(fullUrl) || lower.includes('docs.')) {
+    } else if (!explicitScheme && lower.includes('docs.')) {
         mode = 'rdf';
     }
 

@@ -199,8 +199,8 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
 
     const formattedWeight = formatEmphasisWeight(numericWeight);
 
-    const traditionalEmphasisPattern = new RegExp(`^(${EMPHASIS_WEIGHT_PART})::(.+)::$`);
-    const autoTerminatingEmphasisPattern = new RegExp(`^(${EMPHASIS_WEIGHT_PART})::(.+)$`);
+    const traditionalEmphasisPattern = new RegExp(`^(${EMPHASIS_WEIGHT_PART})\\s*::(.+)::$`);
+    const autoTerminatingEmphasisPattern = new RegExp(`^(${EMPHASIS_WEIGHT_PART})\\s*::(.+)$`);
 
     let replaceStart = selectionStart;
     let replaceEnd = selectionEnd;
@@ -484,7 +484,7 @@ function startEmphasisEditing(target) {
                 };
                 emphasisMode = 'group';
             } else {
-                const currentTagEmphasisPattern = new RegExp(`(${EMPHASIS_WEIGHT_PART})::${blockText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}::`);
+                const currentTagEmphasisPattern = new RegExp(`(${EMPHASIS_WEIGHT_PART})\\s*::${blockText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}::`);
                 const currentTagMatch = value.match(currentTagEmphasisPattern);
 
                 if (currentTagMatch) {

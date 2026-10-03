@@ -398,6 +398,29 @@ span.context-menu-item-state {
     text-align: center;
 }
 
+/* MDI and Remix fonts use a ~2em line box. Clip it to one line so the label stays centered. */
+.context-menu-item > i.mdi,
+.context-menu-item > i[class^="ri-"],
+.context-menu-item > i[class*=" ri-"] {
+    font-size: 1.15em;
+    line-height: 1;
+    width: 1.15em;
+    height: 1em;
+    margin: 0;
+    overflow: hidden;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.context-menu-item > i.mdi::before,
+.context-menu-item > i[class^="ri-"]::before,
+.context-menu-item > i[class*=" ri-"]::before {
+    line-height: 1;
+    font-size: 1em;
+}
+
 .context-menu-item i:last-child {
     text-align: end;
 }
@@ -427,14 +450,21 @@ span.context-menu-item-state {
 
 /* Submenu items with subtext - allow wrapping and adjust layout */
 .context-menu-submenu .context-menu-item {
-    align-items: flex-start;
+    align-items: center;
     padding: 0.5em 0.75em;
     min-height: auto;
 }
 
+.context-menu-submenu .context-menu-item:has(.context-menu-item-subtext) {
+    align-items: flex-start;
+}
+
 .context-menu-submenu .context-menu-item>i {
-    margin-top: 2px;
     flex-shrink: 0;
+}
+
+.context-menu-submenu .context-menu-item:has(.context-menu-item-subtext)>i {
+    margin-top: 2px;
     align-self: flex-start;
 }
 
@@ -456,6 +486,21 @@ span.context-menu-item-state {
 .context-menu-submenu .context-menu-item-subtext {
     padding-left: 0;
     margin-top: 2px;
+}
+
+.context-menu-item > .uc-level-dots {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.context-menu-item > .uc-level-dots .uc-level-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 2px;
+}
+
+.context-menu-item > .uc-level-dots + .context-menu-item-indicator {
+    margin-left: 8px;
 }
 
 .context-menu-item-badge {
@@ -522,6 +567,18 @@ span.context-menu-item-state {
     box-shadow: 0 0 13px #51ff51;
 }
 
+.context-menu-item-indicator.indicator-box.checked[data-state="armed"] {
+    background: radial-gradient(#ffe97e, #cd9300);
+    border-color: #cd9300;
+    box-shadow: 0 0 13px rgb(255, 219, 112);
+}
+
+.context-menu-item-indicator.indicator-box.checked[data-state="suspended"] {
+    background: radial-gradient(#7eff7e, #00cd00);
+    border-color: #00cd00;
+    box-shadow: 0 0 13px #00ff22;
+}
+
 .context-menu-item-indicator.indicator-dot.checked {
     background: var(--primary-color, #3aff67);
     box-shadow: 0 0 8px color-mix(in srgb, var(--primary-color, #3aff67) 65%, transparent);
@@ -566,7 +623,7 @@ span.context-menu-item-state {
 
 /* Ensure indicator appears on the right, even with submenu arrow */
 .context-menu-item.has-toggle-indicator.has-submenu .context-menu-item-indicator {
-    margin-right: 1.2em;
+    margin-right: 0.45em;
 }
 
 /* Icons Section Styles */

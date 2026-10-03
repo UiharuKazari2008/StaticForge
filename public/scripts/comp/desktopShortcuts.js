@@ -21,6 +21,7 @@ class DesktopShortcutsManager {
         this.pendingWindowPositionSave = false;
         this._saveTrayState = 'hidden';
         this._layoutHydrationComplete = false;
+        this._shortcutLoadGen = 0;
         
         // Positioning settings
         this.snapThreshold = 50; // pixels to snap to grid
@@ -363,31 +364,36 @@ class DesktopShortcutsManager {
             return;
         }
 
-        await this.loadShortcuts(workspaceId);
+        const loaded = await this.loadShortcuts(workspaceId);
+        if (!loaded) return;
 
         if (this.gridContainer && this.freeformContainer) {
             this.renderShortcuts();
         }
     }
 
-    // Load shortcuts for a workspace (also loads window positions from same file)
+    // Load shortcuts for a workspace (also loads window positions from same file).
+    // Returns false when this load is stale or failed. Callers must not redraw on false —
+    // a failed load keeps the icons already on the desktop.
     async loadShortcuts(workspaceId) {
+        const loadGen = ++this._shortcutLoadGen;
         try {
             if (!wsClient || !wsClient.isConnected()) {
                 console.warn('WebSocket not connected, cannot load shortcuts');
-                return;
+                return false;
             }
 
             const data = await wsClient.getDesktopShortcuts(workspaceId);
-
-            if (data && data.shortcuts) {
-                this.shortcuts = data.shortcuts;
-            } else {
-                this.shortcuts = [];
+            if (loadGen !== this._shortcutLoadGen) return false;
+            if (!data || !Array.isArray(data.shortcuts)) {
+                console.warn('Desktop shortcuts response missing shortcut list; keeping current icons');
+                return false;
             }
+
+            this.shortcuts = data.shortcuts;
             
             // Set global window positions (mutate shared object — modalUtils.js)
-            replaceGlobalWindowPositions(data?.windowPositions);
+            replaceGlobalWindowPositions(data.windowPositions);
             // commitWindowPositionsSnapshot: public/scripts/comp/modalUtils.js
             if (typeof commitWindowPositionsSnapshot === 'function') {
                 commitWindowPositionsSnapshot();
@@ -395,9 +401,11 @@ class DesktopShortcutsManager {
             this.pendingChanges = false;
             this.pendingWindowPositionSave = false;
             this.hideSaveTrayIndicator();
+            return true;
         } catch (error) {
-            console.error('Failed to load desktop shortcuts:', error);
-            this.shortcuts = [];
+            if (loadGen !== this._shortcutLoadGen) return false;
+            console.warn('Failed to load desktop shortcuts; keeping current icons:', error);
+            return false;
         }
     }
 
@@ -1914,11 +1922,20 @@ class DesktopShortcutsManager {
         const manualModal = document.getElementById('manualModal');
         const editorOpen = manualModal && !manualModal.classList.contains('hidden');
         // openBracketGenerationApplet: public/scripts/comp/featureLoader.js
-        void openBracketGenerationApplet({
+        const openOpts = {
             state: shortcut.data.state,
-            autoCompile: editorOpen,
-            desktopShortcut: { id: shortcut.id, name: shortcut.name }
-        });
+            autoCompile: editorOpen
+        };
+        if (shortcut.isVfsShortcutEntry) {
+            openOpts.vfsFile = {
+                id: shortcut.id,
+                name: shortcut.name,
+                path: shortcut.vfsPath || ''
+            };
+        } else {
+            openOpts.desktopShortcut = { id: shortcut.id, name: shortcut.name };
+        }
+        void openBracketGenerationApplet(openOpts);
     }
 
     createFolderIcon() {
@@ -2079,8 +2096,8 @@ class DesktopShortcutsManager {
             const pos = position || this.getNextAvailablePosition();
             await vfsClient.createFolderFromSelection(workspaceId, shortcutIds, pos);
             this.clearSelection();
-            await this.loadShortcuts(workspaceId);
-            this.renderShortcuts();
+            const loaded = await this.loadShortcuts(workspaceId);
+            if (loaded) this.renderShortcuts();
         } catch (err) {
             showGlassToast('error', 'Desktop', err.message || 'Failed to create folder', false, 5000);
         }
@@ -3349,6 +3366,12 @@ class DesktopShortcutsManager {
                             if (element) {
                                 element.dataset.shortcutId = newId;
                             }
+                            // bracketGenerationApplet: public/scripts/comp/bracketGenerationApplet.js
+                            if (typeof bracketGenerationApplet !== 'undefined'
+                                && bracketGenerationApplet._desktopShortcut
+                                && bracketGenerationApplet._desktopShortcut.id === oldId) {
+                                bracketGenerationApplet._desktopShortcut.id = newId;
+                            }
                         }
                         
                         // Clear both flags since new shortcuts might also be modified
@@ -3375,12 +3398,13 @@ class DesktopShortcutsManager {
                     continue;
                 }
 
-                if (shortcut._nameModified) {
+                if (shortcut._dataModified || shortcut._nameModified) {
                     try {
-                        await wsClient.updateDesktopShortcut(this.currentWorkspace, shortcut.id, {
-                            name: shortcut.name,
-                            position: shortcut.position
-                        });
+                        const updates = { name: shortcut.name };
+                        if (shortcut._dataModified) updates.data = shortcut.data;
+                        if (shortcut._nameModified) updates.position = shortcut.position;
+                        await wsClient.updateDesktopShortcut(this.currentWorkspace, shortcut.id, updates);
+                        delete shortcut._dataModified;
                         delete shortcut._nameModified;
                         delete shortcut._isModified;
                     } catch (error) {
@@ -3855,9 +3879,11 @@ wsClient.registerInitStep(18, 'Loading Desktop Shortcuts', async () => {
         // activeWorkspace is set in step 12 (Loading Workspaces)
         if (typeof activeWorkspace !== 'undefined') {
             desktopShortcuts.currentWorkspace = activeWorkspace;
-            await desktopShortcuts.loadShortcuts(activeWorkspace);
-            desktopShortcuts.renderShortcuts();
-            applyDesktopWindowPositionsAfterLoad();
+            const loaded = await desktopShortcuts.loadShortcuts(activeWorkspace);
+            if (loaded) {
+                desktopShortcuts.renderShortcuts();
+                applyDesktopWindowPositionsAfterLoad();
+            }
         }
     }
 });

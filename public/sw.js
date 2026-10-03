@@ -2,7 +2,7 @@ importScripts('/dist/workbox/workbox-sw.js');
 
 // Compile-time: auto-apply CSS-only / apply-safe static cache updates without restart prompt
 const CSS_ONLY_AUTO_APPLY = true;
-const SW_SCRIPT_EPOCH = 3; // bump on breaking SW changes
+const SW_SCRIPT_EPOCH = 13; // bump on breaking SW changes
 
 // Enable Workbox logging in development
 if (workbox) {
@@ -16,14 +16,21 @@ const STATIC_CACHE = 'static-cache-v1';
 const DYNAMIC_CACHE = 'dynamic-cache-v1';
 const INTERNAL_CACHE = 'internal-cache-v1';
 const IMAGE_CACHE = 'image-cache-v1';
+const WALLPAPER_CACHE = 'wallpaper-cache-v1';
 const IMAGE_METADATA_KEY = '/internal/sw-image-cache-metadata-v1';
 
 const IMAGE_CACHE_POLICY = {
   maxEntries: 5000,
   maxSizeBytes: 2 * 1024 * 1024 * 1024, // 2GB
-  maxIdleMs: 24 * 60 * 60 * 1000, // 24 hours since last access
+  // Previews only. Full /images/ responses are not stored.
+  // galleryView.js syncImageCacheRules sends the same week.
+  maxIdleMs: 7 * 24 * 60 * 60 * 1000,
   lockedPreviewCount: 500
 };
+
+// Saved shell and preview hits. The boot-loop fix refused unhashed writes;
+// stamping no-store and a new ETag on every hit made saved files look one-shot.
+const SAVED_ASSET_CACHE_CONTROL = 'public, max-age=604800';
 
 // Enforcing cache policy on every image hit can thrash the cache.
 // Debounce and rate-limit enforcement to keep the cache warm.
@@ -37,6 +44,19 @@ function isLogViewerApiRequest(url) {
   return LOG_VIEWER_API_RE.test(url.pathname);
 }
 
+// Remote browser view, frame stream, input, and downloads. CacheFirst drops
+// them (no x-file-hash) and the HTML navigation route would replace the
+// viewer with the app shell.
+function isGrimoireBrowserRequest(url) {
+  return url.pathname.startsWith('/api/grimoire-browser/');
+}
+
+// Guacamole HTTP tunnel is a long-poll. CacheFirst strips the query and holds
+// the body until the poll ends, so the display stays on Connecting.
+function isDesktopGuacRequest(url) {
+  return url.pathname.startsWith('/api/desktop-guac/');
+}
+
 function shouldReportNetworkActivity(requestData) {
   if (!requestData || requestData.fromNetwork !== true) {
     return false;
@@ -47,7 +67,7 @@ function shouldReportNetworkActivity(requestData) {
   }
   try {
     const parsed = new URL(rawUrl, self.location.origin);
-    if (isLogViewerApiRequest(parsed)) {
+    if (isLogViewerApiRequest(parsed) || isGrimoireBrowserRequest(parsed) || isDesktopGuacRequest(parsed)) {
       return false;
     }
   } catch (error) {
@@ -58,11 +78,46 @@ function shouldReportNetworkActivity(requestData) {
 
 async function matchStrategyCache(cacheName, request) {
   const cache = await caches.open(cacheName);
-  if (cacheName === DYNAMIC_CACHE) {
+  if (cacheName === DYNAMIC_CACHE || cacheName === STATIC_CACHE) {
     const cacheKey = request.url.split('?')[0];
-    return (await cache.match(cacheKey)) || (await cache.match(request));
+    return (await cache.match(cacheKey, { ignoreVary: true }))
+      || (await cache.match(request, { ignoreSearch: true, ignoreVary: true }));
   }
   return cache.match(request);
+}
+
+// Shell rows are stored as the pathname (see CACHE_STATIC_FILES). ?sha= and
+// font ?t= / ?v= requests must use that row. cache.match on the opened cache
+// honors ignoreSearch; Workbox's caches.match() does not, so those GETs were
+// leaving the worker and hitting the server.
+async function matchStaticShell(pathname) {
+  if (!pathname || pathname === '/sw.js' || pathname.startsWith('/dist/workbox/')) {
+    return null;
+  }
+  const cache = await caches.open(STATIC_CACHE);
+  const query = { ignoreSearch: true, ignoreVary: true };
+  const first = await cache.match(pathname, query);
+  if (!first) {
+    return null;
+  }
+  if (first.status === 200 && first.headers.get('x-file-hash')) {
+    return first;
+  }
+  const keys = await cache.keys(pathname, query);
+  let fallback = first.status === 200 ? first : null;
+  for (let i = 0; i < keys.length; i++) {
+    const candidate = await cache.match(keys[i], { ignoreVary: true });
+    if (!candidate || candidate.status !== 200) {
+      continue;
+    }
+    if (candidate.headers.get('x-file-hash')) {
+      return candidate;
+    }
+    if (!fallback) {
+      fallback = candidate;
+    }
+  }
+  return fallback;
 }
 let imagePolicyEnforceTimer = null;
 let imagePolicyLastEnforcedAt = 0;
@@ -98,6 +153,60 @@ let downloadState = {
     silent: false,
     updatedFiles: []
 };
+
+function headersForSavedAsset(response) {
+  const headers = new Headers(response.headers);
+  headers.delete('pragma');
+  headers.delete('expires');
+  headers.delete('surrogate-control');
+  headers.set('Cache-Control', SAVED_ASSET_CACHE_CONTROL);
+  const hash = headers.get('x-file-hash');
+  if (hash) {
+    headers.set('ETag', `"${hash}"`);
+  }
+  return headers;
+}
+
+function savedAssetNotModified(request, response) {
+  const hash = response && response.headers.get('x-file-hash');
+  const inm = request && request.headers.get('if-none-match');
+  if (!hash || !inm) {
+    return null;
+  }
+  const etag = `"${hash}"`;
+  const matched = inm.split(',').some((part) => {
+    const token = part.trim().replace(/^W\//i, '');
+    return token === '*' || token === etag || token === hash;
+  });
+  if (!matched) {
+    return null;
+  }
+  return new Response(null, {
+    status: 304,
+    statusText: 'Not Modified',
+    headers: headersForSavedAsset(response)
+  });
+}
+
+// Return a saved Cache API body without the one-shot stamp.
+function reusableCachedResponse(response) {
+  if (!response || response.status < 200 || response.status > 599 || response.status === 304) {
+    return response;
+  }
+  try {
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: headersForSavedAsset(response)
+    });
+  } catch (error) {
+    return response;
+  }
+}
+
+function respondWithSavedAsset(request, response) {
+  return savedAssetNotModified(request, response) || reusableCachedResponse(response);
+}
 
 // Helper function to add cache-busting headers to responses
 function addCacheBustingHeaders(response) {
@@ -136,15 +245,43 @@ function shouldCacheResponse(response) {
   return true;
 }
 
-// Cache strategies - STATIC_CACHE is permanent and always returned with immediate expiry
+// App shell. CACHE_STATIC_FILES is the only writer, and it stores x-file-hash.
+// A page fetch used to CacheFirst-miss, then store the network response
+// (Vary: Accept-Encoding, no hash) over that row. Boot then saw a mismatch,
+// downloaded, and restarted forever. cacheWillUpdate refuses those writes.
+// Hits are served by matchStaticShell (cache.match on the pathname). Workbox
+// CacheFirst uses caches.match(), which misses ?sha= / ?t= requests and then
+// fetches the network copy. This strategy is only the miss path.
+// maxEntries stays above the manifest (~920). A 1000 cap plus Vary/?sha=
+// siblings evicted hashed shell files.
 const staticStrategy = new strategies.CacheFirst({
   cacheName: STATIC_CACHE,
+  matchOptions: {
+    ignoreSearch: true,
+    ignoreVary: true
+  },
   plugins: [
     new cacheableResponse.CacheableResponsePlugin({
       statuses: [0, 200],
     }),
+    {
+      cacheKeyWillBeUsed: async ({ request }) => {
+        const keyUrl = new URL(request.url);
+        keyUrl.search = '';
+        keyUrl.hash = '';
+        return keyUrl.href;
+      }
+    },
+    {
+      cacheWillUpdate: async ({ response }) => {
+        if (!response || !response.headers.get('x-file-hash')) {
+          return null;
+        }
+        return response;
+      }
+    },
     new expiration.ExpirationPlugin({
-      maxEntries: 1000,
+      maxEntries: 8000,
       maxAgeSeconds: 365 * 24 * 60 * 60, // 1 year
     }),
   ],
@@ -197,8 +334,145 @@ function shouldBypassImageCache(request) {
   return false;
 }
 
+function isFullImageUrl(url) {
+  return String(url || '').includes('/images/');
+}
+
+// Workspace wallpapers. Same path is overwritten on upload, so this set is
+// replaced on change (dropped URLs are deleted). Not the preview cache and
+// not the one-shot full-image path.
+let wallpaperUrlSet = new Set();
+
+function absoluteAssetUrl(input) {
+  const raw = String(input || '').split('?')[0];
+  if (!raw) return '';
+  try {
+    return new URL(raw, self.location.origin).href;
+  } catch (error) {
+    return raw;
+  }
+}
+
+function isWallpaperRequest(url) {
+  if (!url) return false;
+  if (url.pathname.startsWith('/cache/wallpapers/')) return true;
+  return wallpaperUrlSet.has(url.origin + url.pathname);
+}
+
+function wallpaperCachedResponse(response) {
+  if (!response || response.status < 200 || response.status > 599) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.delete('pragma');
+  headers.delete('expires');
+  headers.delete('surrogate-control');
+  // Revalidate with this worker every time. The worker serves the stored
+  // body until a wallpaper change deletes it, so the browser does not keep
+  // a stale copy of /cache/wallpapers/<id>.png.
+  headers.set('Cache-Control', 'private, no-cache');
+  try {
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: headers
+    });
+  } catch (error) {
+    return response;
+  }
+}
+
+async function fetchAndStoreWallpaper(absoluteUrl) {
+  const response = await fetch(absoluteUrl, { cache: 'no-store' });
+  if (!response || !response.ok) {
+    return response;
+  }
+  const cache = await caches.open(WALLPAPER_CACHE);
+  await cache.put(absoluteUrl, response.clone());
+  return response;
+}
+
+async function handleWallpaperRequest(event) {
+  const absoluteUrl = absoluteAssetUrl(event.request.url);
+  const cache = await caches.open(WALLPAPER_CACHE);
+  const hit = await cache.match(absoluteUrl);
+  if (hit) {
+    return wallpaperCachedResponse(hit);
+  }
+  const response = await fetchAndStoreWallpaper(absoluteUrl);
+  notifyClientsOfNetworkActivity('receive', {
+    url: event.request.url,
+    method: event.request.method,
+    status: response ? response.status : 0,
+    fromNetwork: true,
+    timestamp: Date.now()
+  });
+  if (response && response.ok) {
+    return wallpaperCachedResponse(response);
+  }
+  return response;
+}
+
+async function syncWallpaperUrls(urls, refreshUrls, requestId) {
+  const next = new Set((Array.isArray(urls) ? urls : []).map(absoluteAssetUrl).filter(Boolean));
+  const refresh = new Set((Array.isArray(refreshUrls) ? refreshUrls : []).map(absoluteAssetUrl).filter(Boolean));
+  wallpaperUrlSet = next;
+  const cache = await caches.open(WALLPAPER_CACHE);
+  const keys = await cache.keys();
+  for (let i = 0; i < keys.length; i++) {
+    const canonical = absoluteAssetUrl(keys[i].url);
+    if (!next.has(canonical)) {
+      await cache.delete(keys[i]);
+    }
+  }
+  for (const url of refresh) {
+    if (!next.has(url)) continue;
+    await deleteUrlFromCaches(url);
+    await fetchAndStoreWallpaper(url);
+  }
+  for (const url of next) {
+    if (refresh.has(url)) continue;
+    const hit = await cache.match(url);
+    if (!hit) {
+      await fetchAndStoreWallpaper(url);
+    }
+  }
+  if (requestId) {
+    const clients = await self.clients.matchAll();
+    clients.forEach((client) => {
+      client.postMessage({ type: 'SYNC_WALLPAPER_URLS_COMPLETE', requestId: requestId });
+    });
+  }
+}
+
+async function refreshWallpaperUrl(url, requestId) {
+  const absoluteUrl = absoluteAssetUrl(url);
+  if (absoluteUrl) {
+    wallpaperUrlSet.add(absoluteUrl);
+    await deleteUrlFromCaches(absoluteUrl);
+    await fetchAndStoreWallpaper(absoluteUrl);
+  }
+  if (requestId) {
+    const clients = await self.clients.matchAll();
+    clients.forEach((client) => {
+      client.postMessage({
+        type: 'REFRESH_WALLPAPER_COMPLETE',
+        requestId: requestId,
+        url: absoluteUrl
+      });
+    });
+  }
+}
+
 function isManagedImageCacheUrl(url) {
-  return url.includes('/images/') || url.includes('/previews/') || url.includes('/naxCache/');
+  return url.includes('/previews/') || url.includes('/naxCache/');
+}
+
+// Studio Quick Start and Explorer thumbs. Stored in IMAGE_CACHE and not
+// subject to preview eviction, so a second view is a cache hit.
+function isStudioGalleryImageUrl(url) {
+  const path = String(url || '');
+  return path.includes('/cache/quickstart/') || path.includes('/cache/explore_files/');
 }
 
 function getApproximateResponseSize(response) {
@@ -304,6 +578,18 @@ async function enforceImageCachePolicy() {
   const now = Date.now();
   const keySet = new Set(keys.map(key => getCanonicalUrl(key.url)));
 
+  // Full images are one-shot. Drop leftovers so they do not crowd previews.
+  for (const key of keys) {
+    const url = getCanonicalUrl(key.url);
+    if (!isFullImageUrl(url)) {
+      continue;
+    }
+    const deleted = await cache.delete(key);
+    if (deleted) {
+      delete metadata.entries[url];
+    }
+  }
+
   // Cleanup metadata entries no longer present in cache.
   for (const url of Object.keys(metadata.entries)) {
     if (!keySet.has(url)) {
@@ -382,10 +668,43 @@ async function enforceImageCachePolicy() {
 
 async function handleImageRequest(event) {
   const { request } = event;
+  if (isFullImageUrl(request.url)) {
+    const networkResponse = await fetch(request, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
+    notifyClientsOfNetworkActivity('receive', {
+      url: request.url,
+      method: request.method,
+      status: networkResponse.status,
+      fromNetwork: true,
+      timestamp: Date.now()
+    });
+    return addCacheBustingHeaders(networkResponse);
+  }
+
   const canonicalUrl = getCanonicalUrl(request.url);
   const bypassImageCache = shouldBypassImageCache(request);
   const cache = await caches.open(IMAGE_CACHE);
-  const cachedResponse = bypassImageCache ? null : await cache.match(canonicalUrl);
+  let cachedResponse = bypassImageCache ? null : await cache.match(canonicalUrl);
+
+  if (!cachedResponse && !bypassImageCache && isStudioGalleryImageUrl(canonicalUrl)) {
+    const dynamic = await caches.open(DYNAMIC_CACHE);
+    const previous = await dynamic.match(canonicalUrl);
+    if (previous && previous.ok && previous.status === 200) {
+      try {
+        await cache.put(canonicalUrl, previous.clone());
+        await upsertImageMetadata(canonicalUrl, previous);
+        cachedResponse = await cache.match(canonicalUrl);
+      } catch (error) {
+        console.warn('[sw] studio gallery cache promote failed:', canonicalUrl, error);
+      }
+    }
+  }
 
   if (cachedResponse) {
     let discardCached = !cachedResponse.ok;
@@ -407,7 +726,7 @@ async function handleImageRequest(event) {
       event.waitUntil((async () => {
         scheduleImageCachePolicyEnforcement();
       })());
-      return cachedResponse;
+      return respondWithSavedAsset(request, cachedResponse);
     }
     await cache.delete(canonicalUrl);
     await deleteImageMetadata([canonicalUrl]);
@@ -455,7 +774,10 @@ async function handleImageRequest(event) {
     }
   }
 
-  return networkResponse;
+  if (bypassImageCache) {
+    return addCacheBustingHeaders(networkResponse);
+  }
+  return respondWithSavedAsset(request, networkResponse);
 }
 
 // Internal strategy - only return cached data, never fetch from network
@@ -562,7 +884,7 @@ workbox.routing.registerRoute(
     if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
       return false;
     }
-    if (isLogViewerApiRequest(url)) {
+    if (isLogViewerApiRequest(url) || isGrimoireBrowserRequest(url) || isDesktopGuacRequest(url)) {
       return false;
     }
     // Always handle requests that start with /
@@ -632,10 +954,19 @@ workbox.routing.registerRoute(
           }
         }
       }
+      // Workspace wallpapers: stored until the assignment changes, then dropped.
+      else if (isWallpaperRequest(url)) {
+        response = await handleWallpaperRequest(event);
+      }
       // Handle previews with image strategy
       // Note: Image variants (like @blur.webp) are in the path, not query params,
       // so they're naturally cached separately. Query params are stripped for cache-busting.
       else if (url.pathname.startsWith('/previews/')) {
+        response = await createImageStrategy().handle(event);
+      }
+      // Quick Start and Explorer images stay in the image cache. A hit does
+      // not restamp no-store, so the next view is not a second download.
+      else if (isStudioGalleryImageUrl(url.pathname)) {
         response = await createImageStrategy().handle(event);
       }
       // Handle cache with dynamic strategy
@@ -650,9 +981,19 @@ workbox.routing.registerRoute(
       else if (url.pathname.startsWith('/naxCache/')) {
         response = await createImageStrategy().handle(event);
       }
-      // Handle all other static files with static strategy
+      // Handle all other static files with static strategy.
+      // /sw.js must not enter STATIC_CACHE. A cached copy makes registration.update()
+      // compare against old bytes and the new worker never installs.
+      else if (url.pathname === '/sw.js' || url.pathname.startsWith('/dist/workbox/')) {
+        response = await fetch(request, { cache: 'no-store' });
+      }
       else {
-        response = await createCacheBustingStrategy(staticStrategy, STATIC_CACHE).handle(event);
+        const shellHit = await matchStaticShell(url.pathname);
+        if (shellHit) {
+          response = respondWithSavedAsset(request, shellHit);
+        } else {
+          response = await createCacheBustingStrategy(staticStrategy, STATIC_CACHE).handle(event);
+        }
       }
       
       return response;
@@ -679,7 +1020,7 @@ workbox.routing.registerRoute(
     if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
       return false;
     }
-    if (isLogViewerApiRequest(url)) {
+    if (isLogViewerApiRequest(url) || isGrimoireBrowserRequest(url) || isDesktopGuacRequest(url)) {
       return false;
     }
     // Check if this is an HTML request that might be a client-side route
@@ -764,6 +1105,34 @@ self.addEventListener('message', (event) => {
         getCachedFiles(event.data.requestId);
     } else if (event.data && event.data.type === 'DELETE_AND_PRECACHE') {
         deleteAndPrecache(event.data.url, event.data.requestId);
+    } else if (event.data && event.data.type === 'SYNC_WALLPAPER_URLS') {
+        event.waitUntil(syncWallpaperUrls(event.data.urls, event.data.refresh, event.data.requestId).catch((error) => {
+            console.error('Wallpaper sync failed:', error);
+            if (!event.data.requestId) return;
+            self.clients.matchAll().then((clients) => {
+                clients.forEach((client) => {
+                    client.postMessage({
+                        type: 'SYNC_WALLPAPER_URLS_COMPLETE',
+                        requestId: event.data.requestId,
+                        error: error.message
+                    });
+                });
+            });
+        }));
+    } else if (event.data && event.data.type === 'REFRESH_WALLPAPER') {
+        event.waitUntil(refreshWallpaperUrl(event.data.url, event.data.requestId).catch((error) => {
+            console.error('Wallpaper refresh failed:', error);
+            if (!event.data.requestId) return;
+            self.clients.matchAll().then((clients) => {
+                clients.forEach((client) => {
+                    client.postMessage({
+                        type: 'REFRESH_WALLPAPER_COMPLETE',
+                        requestId: event.data.requestId,
+                        error: error.message
+                    });
+                });
+            });
+        }));
     } else if (event.data && event.data.type === 'DELETE_FROM_CACHE') {
         deleteFromCache(event.data.url, event.data.requestId);
     } else if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -1022,7 +1391,7 @@ async function purgeStaticCacheEntries(cache, urlPath) {
         try {
             const keyUrl = new URL(request.url);
             if (keyUrl.origin === target.origin && keyUrl.pathname === target.pathname) {
-                return cache.delete(request);
+                return cache.delete(request, { ignoreVary: true });
             }
         } catch (error) { /* ignore bad key */ }
         return undefined;
@@ -1035,6 +1404,11 @@ function staticCacheResponseWithHash(bodyBuffer, response, hash) {
     headers.delete('content-encoding');
     headers.set('content-length', String(bodyBuffer.byteLength));
     headers.set('x-file-hash', hash);
+    headers.delete('pragma');
+    headers.delete('expires');
+    headers.delete('surrogate-control');
+    headers.set('Cache-Control', SAVED_ASSET_CACHE_CONTROL);
+    headers.set('ETag', `"${hash}"`);
     return new Response(bodyBuffer, {
         status: response.status,
         statusText: response.statusText,
@@ -1292,7 +1666,10 @@ async function cacheStaticFiles(files, silent = false) {
 }
 
 function getSwConfig(requestId) {
-    const payload = { cssOnlyAutoApply: CSS_ONLY_AUTO_APPLY === true };
+    const payload = {
+        cssOnlyAutoApply: CSS_ONLY_AUTO_APPLY === true,
+        epoch: SW_SCRIPT_EPOCH
+    };
     if (!requestId) {
         return payload;
     }
@@ -1301,7 +1678,8 @@ function getSwConfig(requestId) {
             client.postMessage({
                 type: 'SW_CONFIG',
                 requestId,
-                cssOnlyAutoApply: payload.cssOnlyAutoApply
+                cssOnlyAutoApply: payload.cssOnlyAutoApply,
+                epoch: payload.epoch
             });
         });
     });
@@ -1422,15 +1800,22 @@ async function deleteUrlFromCaches(url) {
   const urlWithoutQuery = url.split('?')[0];
   const isImageOrPreview = isManagedImageCacheUrl(urlWithoutQuery);
   const cacheNames = isImageOrPreview ? [IMAGE_CACHE] : [STATIC_CACHE, DYNAMIC_CACHE];
+  if (!cacheNames.includes(WALLPAPER_CACHE)) {
+    cacheNames.push(WALLPAPER_CACHE);
+  }
+  if (isStudioGalleryImageUrl(urlWithoutQuery) && !cacheNames.includes(IMAGE_CACHE)) {
+    cacheNames.push(IMAGE_CACHE);
+  }
   const removedUrls = [];
 
   for (const cacheName of cacheNames) {
     const cache = await caches.open(cacheName);
     const keys = await cache.keys();
 
+    const targetUrl = absoluteAssetUrl(urlWithoutQuery);
     for (const key of keys) {
-      const keyUrl = key.url.split('?')[0];
-      if (keyUrl === urlWithoutQuery) {
+      const keyUrl = absoluteAssetUrl(key.url);
+      if (keyUrl === targetUrl || key.url.split('?')[0] === urlWithoutQuery) {
         const deleted = await cache.delete(key);
         if (deleted) {
           removedUrls.push(keyUrl);
@@ -1479,9 +1864,12 @@ async function deleteFromCache(url, requestId) {
 async function deleteAndPrecache(url, requestId) {
   try {
     const urlWithoutQuery = url.split('?')[0];
-    const isImageOrPreview = isManagedImageCacheUrl(urlWithoutQuery);
+    const isImageOrPreview = isManagedImageCacheUrl(urlWithoutQuery) || isStudioGalleryImageUrl(urlWithoutQuery);
+    const absoluteUrl = absoluteAssetUrl(urlWithoutQuery);
     let targetCacheName = STATIC_CACHE;
-    if (isImageOrPreview) {
+    if (urlWithoutQuery.includes('/cache/wallpapers/') || wallpaperUrlSet.has(absoluteUrl)) {
+      targetCacheName = WALLPAPER_CACHE;
+    } else if (isImageOrPreview) {
       targetCacheName = IMAGE_CACHE;
     } else if (urlWithoutQuery.includes('/cache/')) {
       targetCacheName = DYNAMIC_CACHE;
@@ -1503,7 +1891,8 @@ async function deleteAndPrecache(url, requestId) {
     if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
       const cache = await caches.open(targetCacheName);
       // Cache the file without query parameters (strategies will strip queries)
-      await cache.put(urlWithoutQuery, response.clone());
+      const cacheKey = targetCacheName === WALLPAPER_CACHE ? absoluteUrl : urlWithoutQuery;
+      await cache.put(cacheKey, response.clone());
       if (isImageOrPreview) {
         await upsertImageMetadata(urlWithoutQuery, response);
         await enforceImageCachePolicy();
@@ -1541,6 +1930,47 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+// A hashed shell row and a Vary / ?sha= row can share a pathname. ignoreSearch
+// match returns whichever it finds first, so the unhashed row can hide the hash.
+async function dropUnhashedStaticSiblings() {
+  const cache = await caches.open(STATIC_CACHE);
+  const keys = await cache.keys();
+  const byPath = new Map();
+  for (const request of keys) {
+    let pathname = '';
+    try {
+      pathname = new URL(request.url).pathname;
+    } catch (error) {
+      continue;
+    }
+    let list = byPath.get(pathname);
+    if (!list) {
+      list = [];
+      byPath.set(pathname, list);
+    }
+    const response = await cache.match(request, { ignoreVary: true });
+    const hash = response && response.headers.get('x-file-hash');
+    list.push({ request, hash: hash || '' });
+  }
+  const deletions = [];
+  for (const list of byPath.values()) {
+    if (!list.some((entry) => entry.hash)) {
+      continue;
+    }
+    for (const entry of list) {
+      if (!entry.hash) {
+        deletions.push(cache.delete(entry.request, { ignoreVary: true }));
+      }
+    }
+  }
+  await Promise.all(deletions);
+}
+
+// Install event — SW script only; assets cached via client-initiated CACHE_STATIC_FILES
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
@@ -1556,6 +1986,8 @@ self.addEventListener('activate', (event) => {
         })
       );
     }).then(async () => {
+      await dropUnhashedStaticSiblings();
+      await caches.open(STATIC_CACHE).then((cache) => cache.delete('/sw.js'));
       await enforceImageCachePolicy();
       await self.clients.claim();
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
@@ -1578,7 +2010,7 @@ function maybeNotifyHttpTransmit(request) {
   }
   try {
     const parsed = new URL(request.url, self.location.origin);
-    if (isLogViewerApiRequest(parsed)) {
+    if (isLogViewerApiRequest(parsed) || isGrimoireBrowserRequest(parsed) || isDesktopGuacRequest(parsed)) {
       return;
     }
   } catch (error) {

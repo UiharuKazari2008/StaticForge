@@ -11,7 +11,7 @@ Source of truth for the rules: this file. Keep `STUDIO_CHANGE_AI_SPEC` in `publi
 
 ## How to emit
 
-Reply with JSON only — no markdown unless fenced as `json`. One object. Omit keys you are not changing.
+Reply with JSON only — no markdown unless fenced as `json`. One object. Omit keys you are not changing. A params-only object is a valid change (`model`, `steps`, `guidance`, `sampler`, and the other param keys). Those keys belong in `params`. The apply API also accepts them as siblings on the change object and moves them into `params`.
 
 Discriminators Studio accepts:
 
@@ -21,6 +21,7 @@ Discriminators Studio accepts:
 | `type` / `kind` | alternate | `"dreamscape-change"` or `"studio-change"` |
 | `v` | yes | `1` |
 | `title` | no | short name shown on the apply dialog / desktop shortcut |
+| `presetName` | no | Studio name field (`#manualPresetName`). This is the file label between the timestamp and the seed. Set it when the concept changes. Echoed by `GET /agent/session/state`. |
 
 Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director image uploads, inpaint masks, and raw PNG blobs are **not** in this contract.
 
@@ -40,7 +41,8 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
   "vibes": [],
   "dynamicGeneration": {},
   "director": {},
-  "vSlider": []
+  "vSlider": [],
+  "tokens": {}
 }
 ```
 
@@ -94,6 +96,10 @@ Echoed by `GET /agent/session/state` / `get_studio_state`. `include` **replaces*
 | `bias` | object | Per-dataset bias map (`{ "ds_id": 1.2 }`). |
 | `settings` | object | Nested `{ [datasetValue]: { [settingId]: { enabled, bias, value } } }`. Quality no-text: `settings.__quality__.no_text.enabled` `false` for in-image text; keep `append_quality` on. |
 
+### `text_overlays` — optional array
+
+On-image speech, thought, and captions. Each row is `{text, type, target, stages, disabled}`. When present, including `[]`, it **replaces** the Studio text list (`loadTextOverlays`). Do not also paste `Text:` into the prompt. Several lines on the same target belong in one row, separated by a blank line. They compile to one `Text:` with the type tags written once in front. A second row on that target is joined the same way, so it does not open another `Text:`. Separate bubbles in different places are character slots: the line in double quotes, a blank line, a placement phrase (`on the left,` / `on the right,`), and `position` `{x, y}`. The full script stays in the one overlay. Judge a print against the compiled prompt; edit this array and the input prompt.
+
 ### `fields` — base prompt / UC only
 
 `id` must be one of: `prompt`, `uc`, `promptNegative`.
@@ -133,7 +139,9 @@ Never copy character 0's prompt/uc/name into character 1.
 }
 ```
 
-Optional `promptNegative` on a character. `"action": "remove"` plus `index` deletes that slot.
+Optional `promptNegative` on a character. Optional `enabled: false` turns that slot’s existing enable toggle off. `"action": "remove"` plus `index` deletes that slot.
+
+`overwrite: true` (or sending `characterPrompts` instead of `characters`) treats the list as the full roster: slots that are not in the list are removed, then the list is written, including empty prompt text. `read_image_metadata` sets this. `center` is accepted as `position`. Expander `stages` are kept when present.
 
 Optional `position` maps to the existing Studio slot dataset (`positionX` / `positionY` / `positionCell`) used by the A1–E5 position dialog and the V5 freeform centers tool. No new chrome.
 
@@ -191,7 +199,17 @@ If present, Studio **replaces** the current vibe list with this one. Each entry 
 { "id": "vibe-cache-id", "ie": "v4full", "strength": 0.7, "inject_text": true }
 ```
 
-`ie` is the selected information-extracted encoding. Omit `vibes` to leave current vibes alone. Director **image** references (uploaded pics) are **not** in v1.
+`ie` is the selected information-extracted encoding. Omit `vibes` to leave current vibes alone. A snapshot may add `preview` (`/cache/preview/…`) so the picture can be opened. V5 does not run vibe transfer yet. Do not send `preview` back on apply.
+
+### `preciseReferences` — echoed, not applied
+
+Studio precise references (the character / style pictures on the reference row). V5 does not run them yet. Present only when one is attached.
+
+```json
+{ "source": "cache:hash", "type": 1, "role": "character and style", "strength": 1, "fidelity": 1, "preview": "/cache/preview/hash.webp" }
+```
+
+`role` is `character`, `style`, or `character and style` (`type` 2, 3, or 1). `preview` is a host image URL. Do not send `preciseReferences` back on apply. Look at the picture, then write what it was holding into the prompt.
 
 ### `dynamicGeneration` — optional Enshutsuka dynagen
 
@@ -209,6 +227,20 @@ Enable or configure the **existing** Studio dynamic-generation toggle (no new ch
 ### `director` — optional attached director prompt
 
 `{ sessionId, messageId, prompt }` on the existing Director button + creative directive. Same must-act rule as `dynamicGeneration`. Image chaining is out of scope.
+
+### `tokens` — echoed on read
+
+Studio adds this when it snapshots the editor. Do not send it on apply.
+
+| Key | Notes |
+|-----|--------|
+| `model` / `tokenizer` | Open Studio model and its tokenizer (`qwen` on V5, `t5` on V4) |
+| `limit` | Hard token cap from `config/model-features.json` |
+| `recommended` | Soft budget (`recommendedTokens`, about 75% of `limit`) |
+| `prompt` / `uc` | `editable`, `nonEditable` (quality, UC preset, expanders), `total` |
+| `ofLimit` / `ofRecommended` | Floats. `1` means the whole budget. Percents are `percentOfLimit` / `percentOfRecommended` |
+
+`count_prompt_tokens` counts text that is not in the editor yet. `change.tokens` is the live Studio total.
 
 ---
 
@@ -308,7 +340,8 @@ Dreamscape studio change JSON. Paste into Studio to apply. Reply with JSON only 
  "vSlider":[{"id":"body_weight","kind":"slider","commit":"expander","value":{"weight":0.55},"axes":[{"id":"weight","default":0.55,"target":{"kind":"expander","prefix":"body"},"stops":[{"at":0,"text":"skinny"},{"at":0.55,"text":"slightly chubby"},{"at":1,"text":"fat"}]}]}]}
 
 Rules:
-- characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1.
+- characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1. The key is `characters`. `characterPrompts` is accepted as that same list. `center` is `position`.
+- `overwrite: true`: `characters` is the whole roster. Slots that are not in the list are removed, then the list is written. `read_image_metadata` sets this so applying `change` restores that print. `text_overlays`, `expanders`, `vibes`, and `vSlider` already replace their lists when the key is present, including `[]`.
 - Optional per-character position: {x,y} and/or cell A1–E5 (maps to Studio slot dataset / existing position dialog / V5 freeform tool). Echoed by GET /agent/session/state. Omit if unused. No new chrome.
 - fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.
 - expanders: if present, REPLACE all request expanders and install only this list with full bodies (not an ambiguous append). In text use !prefix. Do not repeat expander values.
@@ -316,7 +349,8 @@ Rules:
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
 - params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field.
 - params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / bake_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
-- dataset_config: include (replace list), bias, settings (e.g. settings.__quality__.no_text.enabled false for in-image text; keep append_quality on), nsfw, nsfw_bias. Echoed on GET /agent/session/state.
+- dataset_config: include (replace list), bias, settings (e.g. settings.__quality__.no_text.enabled false for in-image text; keep append_quality on), nsfw, nsfw_bias. Echoed on GET /agent/session/state. Omit include (do not send include:[]) to leave the current dataset list.
+- text_overlays: replaces the Studio text list. One row per target; blank line between lines; one compiled Text:. Separate bubbles are character slots with a quoted line, a placement phrase, and position. Do not also put Text: in the prompt. Judge compiled output; edit the input prompt and this array.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
 - Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count}. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.

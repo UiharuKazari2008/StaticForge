@@ -99,6 +99,7 @@ class GlobalResources {
         this.naxTagGeneration = null;
         this.naxVibesGallery = null;
         this.novelaiExploreGallery = null;
+        this.quickstartGalleryCache = null;
         this.referenceMetadataDatabase = null;
         this.generationQuipsDatabase = null;
         this.generationQuipsManager = null;
@@ -2203,6 +2204,16 @@ class GlobalResources {
             throw new Error('NovelAI Explore gallery not initialized');
         }
         return this.novelaiExploreGallery;
+    }
+
+    /**
+     * Quick Start preview images cached under .cache/quickstart/
+     */
+    getQuickstartGalleryCache() {
+        if (!this.quickstartGalleryCache) {
+            throw new Error('Quickstart gallery cache not initialized');
+        }
+        return this.quickstartGalleryCache;
     }
 
     /**

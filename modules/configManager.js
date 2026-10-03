@@ -574,7 +574,9 @@ class ConfigManager {
                         remoteAccess: {
                             defaultGenerationMethod: 'studio',
                             autoGenerate: false,
-                            openGeneratedImages: 'lumen'
+                            openGeneratedImages: 'ledge',
+                            minPrintsPerTurn: 1,
+                            maxPrintsPerTurn: 8
                         },
                         imageGeneration: {
                             streamImageGeneration: true,
@@ -617,6 +619,10 @@ class ConfigManager {
                         trustedProxies: DEFAULT_APOCRYPHA_ACCESS.trustedProxies.slice(),
                         localCidrs: DEFAULT_APOCRYPHA_ACCESS.localCidrs.slice(),
                         localGrim: DEFAULT_APOCRYPHA_ACCESS.localGrim
+                    },
+                    xi: {
+                        enabled: false,
+                        workspace: ''
                     }
                 };
             case 'favorites':

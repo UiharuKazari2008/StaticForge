@@ -1263,3 +1263,40 @@ html:not(.disable-blur) .gallery:has(.gallery-item.context-open) .gallery-item:n
         display: none;
     }
 }
+
+#galleryWindow {
+    container-type: inline-size;
+    container-name: gallery-window;
+}
+
+#galleryPageJumps {
+    display: none;
+    position: fixed;
+    top: auto;
+    bottom: var(--spacing-xxl);
+    right: calc(var(--spacing-xxl) + var(--window-inset-right, 0px));
+    left: auto;
+    z-index: var(--z-layer-4);
+    flex-direction: column;
+    margin: 0;
+    transform: none;
+}
+
+#galleryPageJumps .round-button {
+    background: var(--header-bg, var(--glass-layer-dark-5));
+    border-color: var(--header-border, var(--glass-border-2));
+    -webkit-backdrop-filter: var(--glass-blur-2, brightness(0.15)) saturate(0.5);
+    backdrop-filter: var(--glass-blur-2, brightness(0.15)) saturate(0.5);
+}
+
+.gallery-window.windowed #galleryPageJumps {
+    position: absolute;
+    right: var(--spacing-lg);
+    bottom: var(--spacing-lg);
+}
+
+@container gallery-window (min-width: 720px) {
+    #galleryPageJumps {
+        display: flex;
+    }
+}

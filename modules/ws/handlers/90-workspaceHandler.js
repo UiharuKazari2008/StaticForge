@@ -415,6 +415,8 @@ class WorkspaceWebSocketHandlers {
                     break;
             }
 
+            await this.globalResources.getWorkspaceManager().flushGalleryMetadataSync();
+
             this.handlers.sendToClient(ws, {
                 type: 'workspace_move_files_response',
                 requestId: message.requestId,
@@ -1275,6 +1277,8 @@ class WorkspaceWebSocketHandlers {
                 }
             }
 
+            await this.globalResources.getWorkspaceManager().flushGalleryMetadataSync();
+
             this.handlers.sendToClient(ws, {
                 type: 'workspace_bulk_add_scrap_response',
                 requestId: message.requestId,
@@ -1318,6 +1322,8 @@ class WorkspaceWebSocketHandlers {
                     console.error(`Failed to remove ${filename} from scraps:`, error);
                 }
             }
+
+            await this.globalResources.getWorkspaceManager().flushGalleryMetadataSync();
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_bulk_remove_scrap_response',

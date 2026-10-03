@@ -890,6 +890,32 @@ Base path: `/{vfsPathUuid}` from login response.
 
 **Notes:** Read-only sessions allowed. Text/image cache files must use `vfs_read_system_file` preview instead.
 
+### `/{vfsPathUuid}/fs/*` — VFS over HTTP (FUSE client)
+
+**Auth required** (same `authMiddleware` as `/files/:fileId`). Registered by `modules/vfsFuseHttp.js`; the header comment there is the contract the separate FUSE repo matches. Every operation delegates to `vfsManager` / `vfsDatabase` — the same engine as the `vfs_*` WS packets. No second storage engine.
+
+`path` / `from` / `to` are **VFS display paths** (`/`, `/@desktop`, `/System/Director/workspace/AGENTS.md`, `/Workspaces/default/Pictures/foo.png`), not host paths. Segments match by name (exact, then case-insensitive) against the parent listing, so canonical folder-id paths also work. `.` and `..` segments are refused (403): a request cannot leave the VFS root. `/System` is read-only (403 on write).
+
+Responses are JSON `{ "success": true, … }` except `GET /fs/read`, which streams raw bytes. Failures are `{ "success": false, "error" }` with `400` bad request, `403` denied / not writable / escapes root, `404` not found, `413` too large, `415` entry has no byte stream.
+
+| Method | Path | Body / query | Response |
+|--------|------|--------------|----------|
+| GET | `/fs/list` | `path` (default `/`), `offset`, `limit` (default 1000, max 100000), `sortField` (`name`), `sortDirection` (`asc`), `search` | `{ path, canonicalPath, totalCount, totalSizeBytes, hasMore, entries[] }` |
+| GET | `/fs/stat` | `path` | one entry (same fields as `entries[]`) plus `canonicalPath`; `/` answers `kind: "dir"`, `targetKind: "vfs-root"`, `readOnly: true` |
+| GET | `/fs/read` | `path` | raw bytes with the entry's own `Content-Type` / `Content-Length`. Readable kinds: `user-file`, `system-file`, `image`, `scrap`, `note`. `reference` / `vibe` / `shortcut` → `415`. Directory → `403`. |
+| PUT | `/fs/write` | `path` + raw body (≤ 100 MB) | Creates a user file, or replaces the bytes of an existing **user file** (other kinds → `403`). `Content-Type` becomes the stored mime; an existing file keeps its type when the body is `application/octet-stream`. `{ success, file }` |
+| POST | `/fs/mkdir` | `{ path }` | `{ success, folder }` |
+| POST | `/fs/rename` | `{ from, to }` | in-place rename. `to` is a bare name or a path with the **same parent** as `from` (else `400` — use `/fs/move`). `{ success, name }` |
+| POST | `/fs/move` | `{ from, to }` | full FUSE `rename(2)`: `to` is the complete destination path, so it moves and renames. `{ success, path }` |
+| POST | `/fs/copy` | `{ from, to }` | as `/fs/move` but duplicates (user files are copied, not shortcut). `{ success, path }` |
+| POST | `/fs/trash` | `{ path }` | moves to the workspace Trash (restorable). `{ success, results }` |
+
+Entry shape: `{ path, name, kind: "dir" | "file", size, mtime, mimeType, targetKind, targetId, readOnly, systemFileKey }`. `mtime` is unix seconds or an ISO string depending on the backing store. `readOnly` is true for protected / system entries.
+
+Every mutation broadcasts WS `vfs_updated` `{ path: <parent folder> }` to connected clients (best effort; the HTTP result does not depend on a live WS server). User-file access on `/fs/read` and `/fs/write` is gated by the same per-file scope check as `/files/:fileId`. Replacing bytes GCs the old content blob when nothing else references it.
+
+The Director computer mounts this at `~/.cache/dreamscape-director/vfs/` (`/workspace/vfs` in the jail); MCP `get_session_state` reports it as `vfsMount` and `vfs_read` returns `fsPath` when it is live — see [agent-session.md](./agent-session.md) and [ws/director.md](./ws/director.md).
+
 ### `GET /{vfsPathUuid}/previews/:fileId`
 
 **Auth required.** Image preview for VFS file.

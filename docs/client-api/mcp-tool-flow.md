@@ -18,20 +18,60 @@ If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). W
 
 | Group | Limit / 15 min | Tools |
 |---|---|---|
-| `free` | none | lists, bind, note/preset/wiki index reads, `get_linkxi_persona` |
+| `free` | none | lists, bind, note/preset/wiki index reads, `get_linkxi_persona`, `vfs_list`, `vfs_stat`, `offer_director_window`, `get_session_tasks` |
 | `search` | 240 | autofill, NAX (`search_nax`), wiki pages, OmegaSearch, `evaluate_workspace_themes` |
-| `gallery` | 90 | `get_generated_image`, `compare_images`, `vfs_read` (and hidden `get_images` / `get_latest_image`) |
-| `write` | 60 | save note/preset, `save_memory`, upload reference, `delete_images`, `scrap_images`, `toggle_favorite`, `save_linkxi_persona` |
-| `studio` | 60 | `get_studio_state`, `get_open_windows`, `get_client_physics`, `apply_studio_changes`, `apply_preset_to_studio`, `run_client_js`, `inspect_elements`, `update_client`, `restart_client` |
+| `gallery` | 90 | `get_generated_image`, `read_image_metadata`, `compare_images`, `vfs_read` (and hidden `get_images` / `get_latest_image`) |
+| `write` | 60 | save note/preset, `save_memory`, upload reference, `delete_images`, `scrap_images`, `toggle_favorite`, `save_linkxi_persona`, `set_session_title`, `set_session_tasks` / `set_session_task` / `close_session_tasks`, `vfs_mkdir` / `vfs_rename` / `vfs_move` / `vfs_copy` / `vfs_write` / `vfs_delete` |
+| `studio` | 60 | `get_studio_state`, `get_open_windows`, `set_window`, `open_application`, `get_client_physics`, `apply_studio_changes`, `apply_preset_to_studio`, `run_client_js`, `inspect_elements`, `update_client`, `restart_client` |
 | `generate` | 20 | `generate_image`, `generate_preset`, `upscale_image`, `expand_image` |
 
-`generate_image` waits on the shared generation FIFO (Studio uses the same stack). Omit `async` to stall until the webp is ready. `async: true` returns `jobId` — then `await_generation_job` or `get_generation_job`. `generate_image` and `apply_studio_changes` accept the **full Studio settings set** (`docs/studio-change-json.md` `params`, plus characters / expanders / vibes / pipeline / `dynamicGeneration` / `director` / `dataset_config`). Send them as top-level keys or inside `params`. `generate_image` also maps `characters` to `allCharacterPrompts`, `dynamicGeneration` to `dynamic_generation`, and `director` session/message ids onto the generate body. `n` (1–8) is print copies on `generate_image` / `generate_preset` (`filenames[]` when `n` > 1) and the Studio prints input on `apply_studio_changes` / autoGenerate. **Quality / UC / NSFW / transparency:** set `append_quality` / `append_uc` / `append_transparency` / `dataset_config.nsfw` (or `params.nsfw` / top-level `nsfw` on `apply_studio_changes`) and do **not** paste those live strings into prompt/uc — the server prepends them. Auto-apply sets the matching Studio dropdowns and toggles (`dataset_config.include` replaces the selected dataset list; `dataset_config.settings` writes sub-toggles). **If you need to change a tag inside a preset, turn that preset off and put the edited string in prompt/uc.** Never leave the preset on and also paste a variant. In-image text: keep quality on and set `dataset_config.settings.__quality__.no_text.enabled` false (that sub-toggle is default on). `tools/list` and `get_studio_state.settings` list each preset id, name, and true value from `prompt.config`. MCP server-side generate writes `forge_data.mcp_generated` (Properties badge **MCP**), pushes `gallery_updated` `append_top` **only to clients whose active workspace matches the generate workspace**, and lights the generation tray while it runs. `expand_image` takes the same sampler overrides as `overrideParams` or top-level (`steps`, `guidance`, `rescale`, `sampler`, `noiseScheduler`, `noise`, `seed`, `model`).
+`generate_image` waits on the shared generation FIFO (Studio uses the same stack). Omit `async` to stall until the webp is ready. `async: true` returns `jobId` — then `await_generation_job` or `get_generation_job`. `generate_image` and `apply_studio_changes` accept the **full Studio settings set** (`docs/studio-change-json.md` `params`, plus characters / expanders / `text_overlays` / vibes / pipeline / `dynamicGeneration` / `director` / `dataset_config`). `read_image_metadata` returns that same Change-JSON for one image, with `compiled` beside it. Apply `change`. Judge against `compiled`. Do not write the compiled prompt back into the prompt, and do not shell-parse the PNG. Send them as top-level keys or inside `params`. `generate_image` also maps `characters` to `allCharacterPrompts`, `dynamicGeneration` to `dynamic_generation`, and `director` session/message ids onto the generate body. `n` (1–8) is print copies on `generate_image` / `generate_preset` (`filenames[]` when `n` > 1) and the Studio prints input on `apply_studio_changes` / autoGenerate. **Quality / UC / NSFW / transparency:** set `append_quality` / `append_uc` / `append_transparency` / `dataset_config.nsfw` (or `params.nsfw` / top-level `nsfw` on `apply_studio_changes`) and do **not** paste those live strings into prompt/uc — the server prepends them. Auto-apply sets the matching Studio dropdowns and toggles (`dataset_config.include` replaces the selected dataset list; `dataset_config.settings` writes sub-toggles). **If you need to change a tag inside a preset, turn that preset off and put the edited string in prompt/uc.** Never leave the preset on and also paste a variant. In-image text: keep quality on and set `dataset_config.settings.__quality__.no_text.enabled` false (that sub-toggle is default on). `tools/list` and `get_studio_state.settings` list each preset id, name, and true value from `prompt.config`. MCP server-side generate writes `forge_data.mcp_generated` (Properties badge **MCP**), pushes `gallery_updated` `append_top` **only to clients whose active workspace matches the generate workspace**, and lights the generation tray while it runs. `expand_image` takes the same sampler overrides as `overrideParams` or top-level (`steps`, `guidance`, `rescale`, `sampler`, `noiseScheduler`, `noise`, `seed`, `model`).
 `generate_image` also supports `batch_characters: true` to coordinate one generation per character box sequentially. It is incompatible with `n>1`.
 If `mustAct` is present, bake `dynamicGeneration.resolved` and retry with `integrated=true`. `mustAct` is **not** set after a failed compile or after `integrated=true` — do not re-integrate a failed compiler. `dynamicGeneration.resolved` is the live time/weather/season/location capture (Director API is nooped — you compile). Pre-resolve with `get_client_physics` (works unbound; optional tod/weather/season/location; missing location warns and defaults to client IP, no 500) or use the resolved object already on get-state. Passing `dynamicGeneration.enabled: false` (or omitting the key) to `generate_image` does **not** compile and does **not** 500. Passing unintegrated dynagen toggles to `generate_image` / `generate_preset` / `apply_studio_changes` `autoGenerate` returns `needsIntegration` and does **not** enqueue — bake `resolved` into prompt/uc/characters, then retry with `dynamicGeneration.integrated=true`. Paid Anlas/Opus (upscale, expand, large/xlarge/wallpaper) requires `userApprovedPaidRequest` (alias `allow_paid`) or MCP bounces before FIFO. Honor an attached director prompt. LinkXi: `get_linkxi_persona` / `save_linkxi_persona`. Image chaining is out of scope. Grim setup page: `dsap://mcp.dreamscape.jp/`.
 
 What they are looking at: `get_open_windows` (Lumen/Glancewell current file + optional webp, Grimoire `data.text`, gallery `data.selected`). Then `get_generated_image` for metadata or gallery tools on the selected names.
 
-Gallery actions: `delete_images`, `scrap_images` (`remove: true` to unscrap), `toggle_favorite`, `open_in_lumen`, `open_in_glancewell` (pass `filenames` for a group). `compare_images` needs two files (same seed preferred). `evaluate_workspace_themes` samples a workspace and lists overused characters/tags. VFS: `vfs_list` / `vfs_read` (`path: "@desktop"` for the desktop).
+Gallery actions: `delete_images`, `scrap_images` (`remove: true` to unscrap), `toggle_favorite`, `open_in_lumen`, `open_in_glancewell` (pass `filenames` for a group). `compare_images` needs two files (same seed preferred). `evaluate_workspace_themes` samples a workspace and lists overused characters/tags. VFS: `vfs_list` / `vfs_read` (`path: "@desktop"` for the desktop) plus the path tools below.
+
+## Windows: `get_open_windows` / `set_window` / `open_application`
+
+Geometry is **viewport percent**, never pixels. `get_open_windows` returns `geometry: "viewport-percent"` and each window's `left` / `top` / `width` / `height` as 0–100 from the top-left, plus `minimised` and `activeWindowId`.
+
+`set_window` `{ "id", "action" }` — `id` from `get_open_windows`; `action` is `focus` | `minimize` | `close` | `move` | `resize`. `move` takes `left` and/or `top`; `resize` takes `width` and/or `height` (above 0). All four are percent 0–100 (a `"50%"` string is accepted). Pixel fields (`x`, `y`, `leftPx`, `topPx`, `widthPx`, `heightPx`, `px`, `pixels`, `"120px"` strings) and values over 100 are rejected **before** the bound tab is asked; a geometry key on the wrong action (`left` on `resize`) is also rejected. `focus` brings the window to the top. `close` runs the window's own close button. The reply echoes the new percent geometry, `minimised`, and `maximised`. Auto-binds like `get_studio_state`.
+
+`open_application` `{ "launchId" }` — opens one applet on the bound tab by its start-menu launch id (`studio`, `character-db`, `notebook`, `director`, …). It runs that start-menu action and returns `{ launchId, text }`; it does not click inside the applet. Unknown ids return `Unknown launchId`.
+
+`offer_director_window` — notice only. It queues `agent_session_command` `director_long_job_notice` on the bound tab (a toast: "This is a long job. Director is still working.") and returns `notified: true` **immediately**. It does not wait for a reply, open a dialog, or pause the turn. `notified: false` with `reason` `no-client` / `needs-client-choice` when nothing is bound. Call it once on a long job, then keep working.
+
+## Director chat: name and task list
+
+Only useful inside a Dreamscape Director turn. All five default to the chat whose turn is running; `chatId` (in the turn prompt) is the fallback and the only way to call them out of band. They write the chat in the Director `index.json`, so the user sees the result after a reopen, and they broadcast `director_session_renamed` / `director_session_tasks` (see [ws/director.md](ws/director.md)).
+
+`set_session_title` `{ "title" }` — name the chat **once**, after you have reasoned out what the user asked for. Short, under 80 characters, naming the job and not your plan. Do not call it again unless the goal shifted to something else: no renaming every turn and no renaming to report progress. Empty and over-80 titles are rejected (`MISSING_PARAMETERS` / `TITLE_TOO_LONG`).
+
+`set_session_tasks` `{ "tasks": [{ "id", "title", "done" }] }` — register the list when the request has several steps. It **replaces** the list: there is one list per chat, shown above the messages, not a history of lists. `id` defaults to the position; max 40 items. Then `set_session_task` `{ "id", "done" }` checks one off (or reopens it) as each step finishes, `get_session_tasks` reads the list back instead of rebuilding it, and `close_session_tasks` clears it when the request is done. Do not rebuild the list every turn unless the goal shifted, and skip it for a one-step request. Every reply returns the whole list plus `open` (the unchecked count); an unknown `id` returns `TASK_NOT_FOUND` with the list so you can see the real ids.
+
+## VFS path tools
+
+Paths are display paths from the VFS root (`/`, `/@desktop`, `/Workspaces/<id>/Pictures/foo.png`, `/System/…`), not host paths. `.` and `..` segments are refused. Segment match is exact then case-insensitive, so canonical folder-id paths also work.
+
+| Tool | Args | Result |
+|---|---|---|
+| `vfs_stat` | `path` | `entry` (kind, size, mimeType, modifiedAt …) and, for folders, `stats` (itemCount / totalSizeBytes). `/` returns stats only. |
+| `vfs_mkdir` | `path` (new folder) **or** `path` (parent) + `name` | `path` of the new folder |
+| `vfs_rename` | `path`, `name` (a bare name, not a path) | in-place rename; `path` of the renamed entry |
+| `vfs_move` | `path` or `paths[]`, `dest` (folder path) | `dest`, `count` |
+| `vfs_copy` | `path` or `paths[]`, `dest`, optional `mode` `duplicate` (default) / `shortcut` | `dest`, `count` |
+| `vfs_write` | `path` (destination **folder**), `name`, then `fileData` (base64, `data:` prefix allowed) **or** `sourcePath`; optional `mimeType` | `path` of the saved file |
+| `vfs_delete` | `path` or `paths[]` | `trashed`, `results` |
+
+`vfs_write` takes `fileData` or `sourcePath`, not both. `sourcePath` is a file on the Director computer under `~/.cache/dreamscape-director/` (absolute, or relative to that folder; symlinks are resolved before the containment check) so a large file is not pasted through the model. Paths outside that tree, the Director `key`, `.cursor/mcp.json`, directories, and files over 64 MB are refused. `name` defaults to the `sourcePath` basename. Mime falls back from `mimeType` → extension → `application/octet-stream`.
+
+`vfs_delete` moves to the workspace **Trash** (restorable). It is not a permanent delete; nothing in this tool set is.
+
+`vfs_read` on a user file returns `text` inline for text-like mimes up to 64 KB; otherwise `url` (download) and, when the Director `vfs/` mount is live, `fsPath` (`vfs/<path>`) plus `vfsMount`.
+
+`get_session_state` always includes `tagCutoff` (offline tag-suggest date cutoff per model family: `v4_5` / `v5` `through` dates, plus `model` / `active` when Studio has a model — read it, do not assume a date) and `vfsPath` (`vfs`) / `vfsMount` (`mounted` | `absent` | `unknown` for the Director `vfs/` files mount, cached 15s). If `vfsMount` is `mounted`, the Director computer can read `vfs/…` directly; the MCP vfs tools still work either way.
 
 Each `tools/call` also pushes `mcp_activity` (tool, summarized args/result, optional `generating`, `actorName` from the application token). The Remote Access tray icon stays for 2 minutes and quotes the token name (e.g. Your session was accessed by "Grok"); click it to open Periscope source `client:mcp-activity` (Event Viewer). `generate_image` / `expand_image` / `upscale_image` must pass `workspace` (named folder, or the source job's folder). Omitting it is unsafe: the server may fall back to the bound / only connected tab or `default`. Gallery `append_top` is sent to clients whose active workspace matches that save workspace.
 
@@ -78,17 +118,17 @@ User: *take a look at my current prompt in the studio and compare the generated 
 4. Compare image to the Change-JSON: missing tags, extra elements, V5 complexity / guidance / character-box bleed.
 5. Push the rewrite with `apply_studio_changes` (default). Fall back to Change-JSON, then prompt text, if MCP/Studio is unavailable. An unsolved V5 body page is prior art — try, look, `save_memory`.
 
-## Recipe: change the last / open image (shorter, younger, outfit, …)
+## Recipe: change the last / open image (shorter, outfit, …)
 
-User: *can you update the last image to be shorter and younger*
+User: *can you update the last image to be shorter*
 
-Shorter / younger is tag work in the **character box**, not a new generate API. `aged down` with `short` lowers height — it is not an age demographic. Do not refuse it or pad `adult` tags (see the Grok optimiser).
+Shorter is tag work in the **character box**, not a new generate API.
 
 1. `get_studio_state` (every turn — do not reuse last message's snapshot). Diff vs last seen; keep their intervening edits.
 2. Filename: use `state.filename`. If null, `get_generated_image` with no filename (newest in the workspace).
 4. `get_generated_image` with that filename (metadata + webp)
 5. Rewrite boxes/fields per the V5 guide. Keep seed with `params.seed: "last"` + `seedLock: true` if they want the same composition; unlock if they want a variation.
-6. `apply_studio_changes` with the Change-JSON (`autoApply: true`). Set `autoGenerate: true` if they asked to generate now. If Studio bind fails, `generate_image` instead.
+6. `apply_studio_changes` with the Change-JSON (`autoApply: true`). A params-only change (`model`, `steps`, `guidance`, `sampler`) is enough. To print what is already in the open Studio, call `print_studio` instead of resending the prompt. Set `autoGenerate: true` only when the same call should apply and then print. If Studio bind fails, `generate_image` instead.
 
 Example Change-JSON (shape only — fill from the snapshot):
 
@@ -102,7 +142,7 @@ Example Change-JSON (shape only — fill from the snapshot):
     {
       "action": "replace",
       "index": 0,
-      "prompt": "short, aged down, …"
+      "prompt": "short, …"
     }
   ]
 }
@@ -168,7 +208,7 @@ User opens a chat / *what is on screen* / *change Studio*
 3. Several clients → nearest auto-binds. Other tabs get the testing-claim dialog. A same-tab WebSocket reconnect is not a second client. `needsClientChoice` / `bind_session` only if nearest cannot be picked.
 4. Need preset ids: `view=catalog` (slim) or `get_studio_state.settings` / `tools/list` (full per-model strings).
 5. Before any later edit: `get_session_state` `{ "view": "live" }` again. If `studio.diff` / `unchanged`, keep the last snapshot. Apply only this turn's delta.
-6. Trained tags: `search_autofill` with **1–3 terms** (max 8). Pass **`model` from live Studio**; omit is `v5`. Default `exactOnly` (qualifier in parens only). Hits are `{tag, count, confidence, exact, model}`. `untrained: true` / empty means **this model** ranking does not know it — pass `model=v4_5` if Studio is on V4.5, do not treat that as “drop, it is untrained”. Then `get_wiki_page` for that one tag — `text` / `markdown` strings, never `html: {}`. Empty wiki: use aliases or the last Studio character box; do not invent appearance.
+6. Autofill counts: `search_autofill` with **1–3 terms** (max 8). Pass **`model` from live Studio**; omit is `v5`. Default `exactOnly` (qualifier in parens only). `artist:` / `art by` match on the name, same as the Studio box. Hits are `{tag, count, confidence, exact, model}`. `untrained: true` / empty means NovelAI autofill did not expose the tag. It is not proof the model never learned it — a tag can be hidden (NSFW, explicit, copyright) or filed under a different Danbooru name. Do not drop it on that flag. Generate and look. Artist tags: try them before you drop them; if search misses, look the name up. Pass `model=v4_5` if Studio is on V4.5. Then `get_wiki_page` for that one tag — `text` / `markdown` strings, never `html: {}`. Empty wiki: use aliases or the last Studio character box; do not invent appearance.
 7. Artists / NAX: `search_nax` only for this job (`sort=score` = top votes). Use `item.prompt`.
 8. Guide text: `get_prompt_guide` when you want prior art (default `prompt-optimiser-grok`), not a ban list. Not on every chat start. Then try, look, `save_memory`.
 9. Memories: `search_memories` for **this topic**. Apply only high-confidence rows (≥60%; prefer ≥80%). Create or upsert related memories the same turn (`save_memory`).

@@ -2970,6 +2970,71 @@ class ServiceWorkerManager {
             return false;
         }
     }
+
+    async syncWallpaperUrls(urls, refreshUrls) {
+        const worker = this.swRegistration?.active || navigator.serviceWorker?.controller;
+        if (!worker) {
+            return false;
+        }
+        return new Promise((resolve) => {
+            const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            const handler = (event) => {
+                if (!event.data || event.data.type !== 'SYNC_WALLPAPER_URLS_COMPLETE' || event.data.requestId !== requestId) {
+                    return;
+                }
+                this.messageHandlers.delete(requestId);
+                navigator.serviceWorker.removeEventListener('message', handler);
+                resolve(!event.data.error);
+            };
+            this.messageHandlers.set(requestId, handler);
+            navigator.serviceWorker.addEventListener('message', handler);
+            worker.postMessage({
+                type: 'SYNC_WALLPAPER_URLS',
+                urls: Array.isArray(urls) ? urls : [],
+                refresh: Array.isArray(refreshUrls) ? refreshUrls : [],
+                requestId: requestId
+            });
+            setTimeout(() => {
+                if (this.messageHandlers.has(requestId)) {
+                    this.messageHandlers.delete(requestId);
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    resolve(false);
+                }
+            }, 15000);
+        });
+    }
+
+    async refreshWallpaper(url) {
+        const worker = this.swRegistration?.active || navigator.serviceWorker?.controller;
+        if (!worker || !url) {
+            return false;
+        }
+        return new Promise((resolve) => {
+            const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            const handler = (event) => {
+                if (!event.data || event.data.type !== 'REFRESH_WALLPAPER_COMPLETE' || event.data.requestId !== requestId) {
+                    return;
+                }
+                this.messageHandlers.delete(requestId);
+                navigator.serviceWorker.removeEventListener('message', handler);
+                resolve(!event.data.error);
+            };
+            this.messageHandlers.set(requestId, handler);
+            navigator.serviceWorker.addEventListener('message', handler);
+            worker.postMessage({
+                type: 'REFRESH_WALLPAPER',
+                url: url,
+                requestId: requestId
+            });
+            setTimeout(() => {
+                if (this.messageHandlers.has(requestId)) {
+                    this.messageHandlers.delete(requestId);
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    resolve(false);
+                }
+            }, 15000);
+        });
+    }
     
     async checkForWaiting() {
         if (this.swRegistration && this.swRegistration.waiting) {
@@ -3333,7 +3398,7 @@ class ServiceWorkerManager {
                 return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'apply' };
             }
 
-            // Boot init downloads: script updates must reload to execute — same as install wizard finish
+            // Boot init downloads: script updates must reload to execute — same as install wizard finish.
             if (useInitModal) {
                 this._updateInitUpdateModal('Restarting Dreamscape...', 100);
                 this._setPreStartupUpdateStageMessage('Restarting Dreamscape...');

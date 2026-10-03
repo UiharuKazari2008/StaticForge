@@ -27,6 +27,7 @@ let galleryStripGeometryCached = null;
 // filename → gallery cell / pin button (maintained when cells are built/disposed)
 const galleryItemByFilename = new Map();
 const galleryPinBtnByFilename = new Map();
+const galleryDeleteHold = new Set();
 
 function registerGalleryFilenameIndex(item) {
     if (!item || !item.dataset) return;
@@ -1290,8 +1291,8 @@ function releaseGalleryItemImage(img) {
 function disposeGalleryItemElement(item) {
     if (!item) return;
     unregisterGalleryFilenameIndex(item);
-    // contextMenu: public/scripts/comp/contextMenu.js
-    contextMenu.detachFromElement(item);
+    // releaseGalleryItemContextMenu: this file
+    releaseGalleryItemContextMenu(item);
     if (intersectionObserver) {
         intersectionObserver.unobserve(item);
     }
@@ -1341,9 +1342,53 @@ function disposeGalleryContents() {
 }
 
 // public/scripts/comp/galleryView.js — gallery item img with preview/full fallbacks and optional retry
+function galleryDeleteHoldNames(imageOrName) {
+    if (!imageOrName) return [];
+    if (typeof imageOrName === 'string') return [imageOrName];
+    const names = [];
+    const keys = ['filename', 'original', 'upscaled', 'preview', 'base'];
+    for (let i = 0; i < keys.length; i++) {
+        const value = imageOrName[keys[i]];
+        if (value) names.push(value);
+    }
+    return names;
+}
+
+function isGalleryImageDeleteHeld(image) {
+    if (!galleryDeleteHold.size) return false;
+    const names = galleryDeleteHoldNames(image);
+    for (let i = 0; i < names.length; i++) {
+        if (galleryDeleteHold.has(names[i])) return true;
+    }
+    return false;
+}
+
+function holdGalleryImageLoads(names) {
+    const items = new Set();
+    for (let i = 0; i < names.length; i++) {
+        const name = names[i];
+        if (!name) continue;
+        galleryDeleteHold.add(name);
+        // getGalleryItemByFilename: public/scripts/comp/galleryView.js
+        const item = getGalleryItemByFilename(name);
+        if (item) items.add(item);
+    }
+    items.forEach((item) => {
+        abortPendingGalleryItemImage(item);
+        const img = item.querySelector('img');
+        if (img) releaseGalleryItemImage(img);
+    });
+}
+
+function releaseGalleryImageLoads(names) {
+    for (let i = 0; i < names.length; i++) {
+        galleryDeleteHold.delete(names[i]);
+    }
+}
+
 function applyGalleryItemImage(img, image, options = {}) {
     const candidates = getGalleryImageSrcCandidates(image);
-    if (!candidates.length || !img) {
+    if (!candidates.length || !img || isGalleryImageDeleteHeld(image)) {
         if (typeof options.onComplete === 'function') options.onComplete();
         return;
     }
@@ -1383,7 +1428,7 @@ function applyGalleryItemImage(img, image, options = {}) {
     };
 
     const loadCandidate = () => {
-        if (candidateIndex >= candidates.length) {
+        if (isGalleryImageDeleteHeld(image) || candidateIndex >= candidates.length) {
             img.onload = null;
             img.onerror = null;
             finish(false);
@@ -1405,6 +1450,10 @@ function applyGalleryItemImage(img, image, options = {}) {
             previewRetryCount++;
             const baseSrc = failedSrc.split('?')[0];
             setTimeout(() => {
+                if (isGalleryImageDeleteHeld(image)) {
+                    finish(false);
+                    return;
+                }
                 const stillPending = host && pendingGalleryItemImages.get(host)?.img === img;
                 if (img.isConnected || stillPending) {
                     img.src = `${baseSrc}?galleryRetry=${previewRetryCount}`;
@@ -3848,6 +3897,11 @@ function buildGalleryItemContextMenuConfig(image, item) {
                         action: 'copy-lookback'
                     },
                     {
+                        icon: 'fas fa-clapperboard',
+                        text: 'Ask Wren',
+                        action: 'ask-wren'
+                    },
+                    {
                         icon: 'fas fa-globe',
                         text: 'Publish to Explorer',
                         action: 'publish-to-explorer'
@@ -4010,19 +4064,12 @@ function ensureGalleryItemComplete(item, image, index) {
 
     // Ensure Context Menu
     const cm = window.contextMenu || (typeof contextMenu !== 'undefined' ? contextMenu : null);
-    if (cm && !item.dataset.contextMenu) {
+    if (cm && !item.dataset.contextMenu && item.dataset.bulkContextMenuActive !== 'true') {
         const contextMenuConfig = buildGalleryItemContextMenuConfig(image, item);
         cm.attachToElement(item, contextMenuConfig);
     }
-    if (cm && isSelectionMode && !item.dataset.bulkContextMenuActive) {
-        const originalConfigId = item.dataset.contextMenu;
-        if (originalConfigId && cm.configs && cm.configs[originalConfigId]) {
-            item.dataset.originalContextMenuConfig = originalConfigId;
-            item.dataset.originalContextMenuStored = 'true';
-        }
-        const bulkActionsConfig = getBulkActionsContextMenuConfig();
-        cm.attachToElement(item, bulkActionsConfig);
-        item.dataset.bulkContextMenuActive = 'true';
+    if (cm && isSelectionMode && item.dataset.bulkContextMenuActive !== 'true') {
+        suspendGalleryItemContextMenu(item, cm, getBulkActionsContextMenuConfig());
     }
 
     // Ensure Click Listener
@@ -6633,6 +6680,8 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
 
     // Velocity every scroll event; coalesce heavy work to one rAF
     function onGalleryScrollEvent(scrollTarget) {
+        // Collapse from content-visibility:hidden must not look like a scroll-to-top.
+        if (document.body.classList.contains('is-window-dragging')) return;
         updateScrollVelocity(scrollTarget || null);
         if (galleryScrollRaf) return;
         galleryScrollRaf = requestAnimationFrame(() => {
@@ -6946,6 +6995,35 @@ function wireGalleryToolbarListeners() {
             switchGalleryView(view);
         });
     });
+
+    const galleryPageBackBtn = document.getElementById('galleryPageBackBtn');
+    const galleryPageAheadBtn = document.getElementById('galleryPageAheadBtn');
+    if (galleryPageBackBtn && galleryPageBackBtn.dataset.wired !== 'true') {
+        galleryPageBackBtn.dataset.wired = 'true';
+        galleryPageBackBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            jumpGalleryByPageKey(-1, e.shiftKey);
+        });
+    }
+    if (galleryPageAheadBtn && galleryPageAheadBtn.dataset.wired !== 'true') {
+        galleryPageAheadBtn.dataset.wired = 'true';
+        galleryPageAheadBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            jumpGalleryByPageKey(1, e.shiftKey);
+        });
+    }
+}
+
+function jumpGalleryByPageKey(direction, shiftKey) {
+    // jumpToNextGalleryTimeBoundary — public/scripts/comp/galleryJumpIndex.js
+    if (shiftKey) {
+        jumpToNextGalleryTimeBoundary(direction, {
+            thresholdMs: 12 * 60 * 60 * 1000,
+            scanWindow: null
+        });
+        return;
+    }
+    jumpToNextGalleryTimeBoundary(direction);
 }
 
 function wireGalleryKeyboardNav() {
@@ -6977,16 +7055,7 @@ function onGalleryWindowKeydown(e) {
         e.preventDefault();
         e.stopPropagation();
         const direction = e.key === 'PageDown' ? 1 : -1;
-        if (typeof jumpToNextGalleryTimeBoundary === 'function') {
-            if (e.shiftKey) {
-                jumpToNextGalleryTimeBoundary(direction, {
-                    thresholdMs: 12 * 60 * 60 * 1000,
-                    scanWindow: null
-                });
-            } else {
-                jumpToNextGalleryTimeBoundary(direction);
-            }
-        }
+        jumpGalleryByPageKey(direction, e.shiftKey);
         return true;
     }
 
@@ -7992,6 +8061,11 @@ function handleGalleryContextMenuAction(event) {
             copyLookbackImage(filename);
             break;
 
+        case 'ask-wren':
+            // askWrenAboutImage: public/scripts/comp/director.js
+            askWrenAboutImage(filename);
+            break;
+
         case 'publish-to-explorer':
             // openPublishToExplorerDialog — this file
             openPublishToExplorerDialog(image);
@@ -8146,27 +8220,11 @@ function handleGalleryContextMenuAction(event) {
     }
 }
 
-// Expand canvas from gallery
-async function expandCanvasFromGallery(image) {
-    try {
-        const filename = image.upscaled || image.original;
-
-        // Get metadata to determine dimensions
-        let metadata = null;
-        metadata = await getImageMetadata(filename);
-
-        const imageDimensions = metadata ? {
-            width: metadata.actual_width || metadata.width,
-            height: metadata.actual_height || metadata.height,
-            resPreset: metadata.actual_resolution || metadata.resolution || metadata.resPreset
-        } : null;
-
-        // Open the expansion modal
-        openImageExpansionModal(filename, imageDimensions);
-    } catch (error) {
-        console.error('Failed to expand canvas:', error);
-        showGlassToast('error', 'Expansion Failed', error.message, false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
-    }
+// Expand canvas from gallery. The modal opens immediately and loads metadata itself.
+function expandCanvasFromGallery(image) {
+    const filename = image && (image.upscaled || image.original || image.filename);
+    // openImageExpansionModal: public/scripts/comp/imageExpansion.js
+    openImageExpansionModal(filename);
 }
 
 // Create desktop shortcut from image
@@ -8504,8 +8562,10 @@ function createVibeEncodingFromImage(image) {
     void addImageAsVibeTransfer(image);
 }
 
-// Get move workspace options for submenu (works for both single and bulk operations)
-function getMoveWorkspaceOptions(target) {
+// Get move workspace options for submenu (works for both single and bulk operations).
+// action overrides the submenu item action (default move-to-workspace).
+function getMoveWorkspaceOptions(target, action) {
+    const itemAction = action || 'move-to-workspace';
     const workspaceOptions = [];
 
     // Get available workspaces and return submenu items
@@ -8537,7 +8597,7 @@ function getMoveWorkspaceOptions(target) {
                         <span class="context-menu-item-text">${workspaceName}</span>
                     </div>
                 `,
-                action: 'move-to-workspace',
+                action: itemAction,
                 workspaceId: workspaceId,
                 workspaceName: workspaceName,
                 disabled: false
@@ -8716,6 +8776,24 @@ async function handleMoveWorkspaceAction(subItem, target) {
                 }
             }
         }
+    }
+}
+
+// Bulk Scrap to... / Unscrap to... workspace submenu (gallery selection menu only)
+async function handleBulkScrapDestinationAction(subItem, target, event) {
+    const action = subItem && subItem.action;
+    const workspaceId = subItem && subItem.workspaceId;
+    const workspaceName = subItem && subItem.workspaceName;
+    if (!workspaceId || !workspaceName) return;
+
+    if (action === 'scrap-to-workspace') {
+        // handleBulkScrapToWorkspace — public/scripts/comp/bulkOperationsManager.js
+        await handleBulkScrapToWorkspace(workspaceId, workspaceName, event);
+        return;
+    }
+    if (action === 'unscrap-to-workspace') {
+        // handleBulkUnscrapToWorkspace — public/scripts/comp/bulkOperationsManager.js
+        await handleBulkUnscrapToWorkspace(workspaceId, workspaceName, event);
     }
 }
 
@@ -8928,7 +9006,41 @@ function getBulkActionsContextMenuConfig() {
                         icon: 'fas fa-bin-recycle',
                         text: 'Move to Scraps',
                         action: 'bulk-move-scraps',
-                        disabled: currentGalleryView === 'scraps' || currentGalleryView === 'pinned'
+                        hidden: () => currentGalleryView === 'scraps',
+                        loadfn: (menuItem) => {
+                            menuItem.disabled = currentGalleryView === 'pinned' || getSelectedCount() === 0;
+                        }
+                    },
+                    {
+                        icon: 'nai-dot-reset',
+                        text: 'Unscrap',
+                        action: 'bulk-unscrap',
+                        hidden: () => currentGalleryView !== 'scraps',
+                        loadfn: (menuItem) => {
+                            menuItem.disabled = getSelectedCount() === 0;
+                        }
+                    },
+                    {
+                        icon: 'fas fa-bin-recycle',
+                        text: 'Scrap to...',
+                        optionsfn: (target) => getMoveWorkspaceOptions(target, 'scrap-to-workspace'),
+                        handlerfn: handleBulkScrapDestinationAction,
+                        openOnHover: false,
+                        hidden: () => currentGalleryView === 'scraps',
+                        loadfn: (menuItem) => {
+                            menuItem.disabled = currentGalleryView === 'pinned' || getSelectedCount() === 0;
+                        }
+                    },
+                    {
+                        icon: 'nai-dot-reset',
+                        text: 'Unscrap to...',
+                        optionsfn: (target) => getMoveWorkspaceOptions(target, 'unscrap-to-workspace'),
+                        handlerfn: handleBulkScrapDestinationAction,
+                        openOnHover: false,
+                        hidden: () => currentGalleryView !== 'scraps',
+                        loadfn: (menuItem) => {
+                            menuItem.disabled = getSelectedCount() === 0;
+                        }
                     },
                     {
                         icon: 'fa-solid fa-star',
@@ -8990,6 +9102,71 @@ function getBulkActionsContextMenuConfig() {
     };
 }
 
+// attachToElement replaces configs[id] in place. Keep the original id in the map
+// by clearing the attribute before the bulk menu takes a new id.
+function suspendGalleryItemContextMenu(item, cm, bulkConfig) {
+    if (!item || !cm || item.dataset.bulkContextMenuActive === 'true') return;
+
+    const originalId = item.getAttribute('data-context-menu');
+    if (originalId && cm.configs && cm.configs[originalId]) {
+        item.dataset.originalContextMenuConfig = originalId;
+        item.dataset.originalContextMenuStored = 'true';
+        item.removeAttribute('data-context-menu');
+    }
+
+    cm.attachToElement(item, bulkConfig);
+    item.dataset.bulkContextMenuActive = 'true';
+}
+
+function resumeGalleryItemContextMenu(item, cm) {
+    if (!item || !cm) return;
+
+    const wasBulk = item.dataset.bulkContextMenuActive === 'true';
+    const originalId = item.dataset.originalContextMenuConfig;
+    const stored = item.dataset.originalContextMenuStored === 'true';
+    if (!wasBulk && !stored) return;
+
+    if (wasBulk) {
+        cm.detachFromElement(item);
+    }
+    delete item.dataset.bulkContextMenuActive;
+    delete item.dataset.originalContextMenuStored;
+    delete item.dataset.originalContextMenuConfig;
+
+    if (stored && originalId && cm.configs && cm.configs[originalId]) {
+        item.setAttribute('data-context-menu', originalId);
+        return;
+    }
+
+    if (item.getAttribute('data-context-menu')) return;
+
+    const filename = item.dataset.filename || '';
+    const fileIndex = parseInt(item.dataset.fileIndex, 10);
+    let image = null;
+    if (allImages && Number.isFinite(fileIndex) && allImages[fileIndex]) {
+        image = allImages[fileIndex];
+    } else if (filename) {
+        image = findImageByFilename(filename);
+    }
+    if (!image && !filename) return;
+    cm.attachToElement(item, buildGalleryItemContextMenuConfig(image || { filename: filename }, item));
+}
+
+function releaseGalleryItemContextMenu(item) {
+    if (!item) return;
+    // contextMenu: public/scripts/comp/contextMenu.js
+
+    const originalId = item.dataset.originalContextMenuConfig;
+    const bulkId = item.getAttribute('data-context-menu');
+    contextMenu.detachFromElement(item);
+    if (originalId && originalId !== bulkId && contextMenu.configs) {
+        delete contextMenu.configs[originalId];
+    }
+    delete item.dataset.originalContextMenuConfig;
+    delete item.dataset.originalContextMenuStored;
+    delete item.dataset.bulkContextMenuActive;
+}
+
 // Switch to bulk actions context menu
 function switchToBulkContextMenu() {
     if (!contextMenu) return;
@@ -9004,18 +9181,7 @@ function switchToBulkContextMenu() {
 
     const galleryItems = gallery.querySelectorAll('.gallery-item');
     galleryItems.forEach(item => {
-        // Store original context menu config if not already stored
-        if (!item.dataset.originalContextMenuStored) {
-            const originalConfigId = item.dataset.contextMenu;
-            if (originalConfigId && contextMenu.configs && contextMenu.configs[originalConfigId]) {
-                item.dataset.originalContextMenuConfig = originalConfigId;
-                item.dataset.originalContextMenuStored = 'true';
-            }
-        }
-
-        // Attach bulk context menu to override individual menu
-        contextMenu.attachToElement(item, bulkActionsConfig);
-        item.dataset.bulkContextMenuActive = 'true';
+        suspendGalleryItemContextMenu(item, contextMenu, bulkActionsConfig);
     });
 }
 
@@ -9029,23 +9195,9 @@ function switchToOriginalContextMenu() {
     // Detach bulk context menu from gallery
     contextMenu.detachFromElement(gallery);
 
-    // Restore original context menus for all gallery items
     const galleryItems = gallery.querySelectorAll('.gallery-item');
     galleryItems.forEach(item => {
-        if (item.dataset.bulkContextMenuActive) {
-            // Detach bulk context menu
-            contextMenu.detachFromElement(item);
-            item.dataset.bulkContextMenuActive = '';
-
-            // Restore original context menu if it was stored
-            if (item.dataset.originalContextMenuStored && item.dataset.originalContextMenuConfig) {
-                const originalConfigId = item.dataset.originalContextMenuConfig;
-                if (contextMenu.configs && contextMenu.configs[originalConfigId]) {
-                    // Reattach the original context menu
-                    contextMenu.attachToElement(item, contextMenu.configs[originalConfigId]);
-                }
-            }
-        }
+        resumeGalleryItemContextMenu(item, contextMenu);
     });
 }
 
@@ -9073,6 +9225,10 @@ function handleBulkActionsContextMenu(event) {
             break;
         case 'bulk-move-scraps':
             handleBulkMoveToScraps();
+            break;
+        case 'bulk-unscrap':
+            // handleBulkUnscrap — public/scripts/comp/bulkOperationsManager.js
+            handleBulkUnscrap();
             break;
         case 'bulk-pin':
             handleBulkPin();
@@ -9231,6 +9387,7 @@ function sendGalleryPositionHint() {
         }
 
         if (!gallery || isJumpingToPosition) return;
+        if (document.body.classList.contains('is-window-dragging')) return;
         if (suppressGalleryPositionHintUntilInteraction) {
             return;
         }
@@ -9868,21 +10025,34 @@ async function deleteImage(image, event = null) {
             throw new Error('WebSocket not connected');
         }
 
-        const result = await window.wsClient.deleteImagesBulk([filenameToDelete]);
+        const holdNames = galleryDeleteHoldNames(image);
+        if (filenameToDelete && holdNames.indexOf(filenameToDelete) === -1) {
+            holdNames.push(filenameToDelete);
+        }
+        holdGalleryImageLoads(holdNames);
+        window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
 
-        if (result.successful > 0) {
-            showGlassToast('success', null, 'Image deleted!', false, 5000, '<i class="fas fa-trash"></i>');
+        let deleted = false;
+        try {
+            const result = await window.wsClient.deleteImagesBulk([filenameToDelete]);
 
-            // Close lightbox
-            hideLightbox();
+            if (result.successful > 0) {
+                deleted = true;
+                showGlassToast('success', null, 'Image deleted!', false, 5000, '<i class="fas fa-trash"></i>');
 
-            // Remove image from gallery and add placeholder
-            removeImageFromGallery(image);
+                // Close lightbox
+                hideLightbox();
 
-            // Skip the next gallery reload event since we've already updated locally
-            window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
-        } else {
-            throw new Error('Delete failed');
+                // Remove image from gallery and add placeholder
+                removeImageFromGallery(image);
+            } else {
+                throw new Error('Delete failed');
+            }
+        } finally {
+            releaseGalleryImageLoads(holdNames);
+            if (!deleted) {
+                window.skipNextGalleryRefresh = Math.max(0, (window.skipNextGalleryRefresh || 1) - 1);
+            }
         }
 
     } catch (error) {

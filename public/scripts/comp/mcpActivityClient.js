@@ -255,14 +255,8 @@ function openLumenForFilenames(filenames) {
     return { ok: true, target: 'lumen', filename: name };
 }
 
-async function openGlancewellForFilenames(filenames) {
-    if (!filenames.length) return { ok: false, error: 'filename is required' };
-    if (filenames.length === 1) {
-        // showLightbox: public/scripts/comp/lightbox.js
-        await showLightbox({ filename: filenames[0] });
-        return { ok: true, target: 'glancewell', filenames: filenames };
-    }
-    const dataSource = filenames.map((name) => {
+function glancewellSlides(filenames) {
+    return filenames.map((name) => {
         const image = resolveViewerImage(name);
         // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
         const src = resolveGalleryFullImageUrl(image)
@@ -271,12 +265,43 @@ async function openGlancewellForFilenames(filenames) {
         return {
             src: src,
             width: image.width || 1024,
-            height: image.height || 1024
+            height: image.height || 1024,
+            filename: name
         };
     });
+}
+
+function syncDirectorGlancewell(filenames) {
+    const pswp = window.pswp;
+    if (!pswp || !pswp._directorPrints || pswp.isDestroying) return;
+    const names = Array.isArray(filenames) ? filenames.filter(Boolean) : [];
+    if (!names.length) return;
+    const current = pswp.currSlide && pswp.currSlide.data && pswp.currSlide.data.filename;
+    const dataSource = glancewellSlides(names);
+    pswp.options.dataSource = dataSource;
+    let index = current ? dataSource.findIndex((slide) => slide.filename === current) : pswp.currIndex;
+    if (index < 0) index = Math.min(pswp.currIndex || 0, dataSource.length - 1);
+    pswp.goTo(index);
+}
+
+async function openGlancewellForFilenames(filenames, startIndex) {
+    if (!filenames.length) return { ok: false, error: 'filename is required' };
+    const index = Math.max(0, Math.min(Number(startIndex) || 0, filenames.length - 1));
+    const dataSource = glancewellSlides(filenames);
+    const open = window.pswp;
+    if (open && open._directorPrints && !open.isDestroying) {
+        open.options.dataSource = dataSource;
+        open.goTo(index);
+        return { ok: true, target: 'glancewell', filenames: filenames, index: index };
+    }
+    if (filenames.length === 1 && !(open && open._directorPrints)) {
+        // showLightbox: public/scripts/comp/lightbox.js
+        await showLightbox({ filename: filenames[0] });
+        return { ok: true, target: 'glancewell', filenames: filenames, index: 0 };
+    }
     // openStandalonePhotoSwipe: public/scripts/comp/lightbox.js
-    await openStandalonePhotoSwipe(dataSource);
-    return { ok: true, target: 'glancewell', filenames: filenames };
+    await openStandalonePhotoSwipe(dataSource, index, { directorPrints: true });
+    return { ok: true, target: 'glancewell', filenames: filenames, index: index };
 }
 
 async function openMcpViewer(data) {

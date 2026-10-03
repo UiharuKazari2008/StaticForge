@@ -453,33 +453,43 @@ async function handleBulkDelete(event = null) {
             throw new Error('WebSocket not connected');
         }
 
-        responseData = await window.wsClient.deleteImagesBulk(validFilenames);
+        holdGalleryImageLoads(validFilenames);
+        window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
+        let deleted = false;
+        try {
+            responseData = await window.wsClient.deleteImagesBulk(validFilenames);
+            deleted = !!(responseData && responseData.successful > 0);
 
-        // Use server response data for accurate toast message
-        if (responseData) {
-            const { successful, failed, message } = responseData;
-            let toastMessage = message || `Successfully removed ${successful} image(s)`;
+            if (responseData) {
+                const { successful, failed, message } = responseData;
+                let toastMessage = message || `Successfully removed ${successful} image(s)`;
 
-            if (failed > 0) {
-                toastMessage += ` (${failed} failed)`;
+                if (failed > 0) {
+                    toastMessage += ` (${failed} failed)`;
+                }
+
+                showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash"></i>');
+            } else {
+                showGlassToast('success', null, `Successfully removed ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-trash"></i>');
             }
 
-            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash"></i>');
-        } else {
-            showGlassToast('success', null, `Successfully removed ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-trash"></i>');
-        }
-
-        // Apply local removal without a full reload
-        const imagesToRemove = validFilenames
-            .map(fn => findImageByFilename(fn))
-            .filter(Boolean);
-        if (imagesToRemove.length > 0) {
-            removeMultipleImagesFromGallery(imagesToRemove);
-            // Skip the next gallery reload event since we've already updated locally
-            window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
-        } else {
-            // Fallback to reload if we couldn't map filenames
-            switchGalleryView(currentGalleryView, true);
+            const removedNames = new Set(
+                (responseData?.results || []).map((row) => row && row.filename).filter(Boolean)
+            );
+            const imagesToRemove = validFilenames
+                .filter((fn) => removedNames.has(fn))
+                .map(fn => findImageByFilename(fn))
+                .filter(Boolean);
+            if (imagesToRemove.length > 0) {
+                removeMultipleImagesFromGallery(imagesToRemove);
+            } else if (deleted) {
+                switchGalleryView(currentGalleryView, true);
+            }
+        } finally {
+            releaseGalleryImageLoads(validFilenames);
+            if (!deleted) {
+                window.skipNextGalleryRefresh = Math.max(0, (window.skipNextGalleryRefresh || 1) - 1);
+            }
         }
     } catch (error) {
         console.error('Bulk delete error:', error);
@@ -621,6 +631,162 @@ async function handleBulkMoveToScraps(event = null) {
         // Clear selection and remove images from gallery
         clearSelection();
         switchGalleryView(currentGalleryView, true);
+    }
+}
+
+async function handleBulkUnscrap(event = null) {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
+        showGlassToast('error', 'No Selection', 'Please select images to unscrap.');
+        return;
+    }
+
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to unscrap ${selectedCount} selected image(s)?`,
+        [
+            { text: 'Unscrap', value: true, className: 'btn-primary' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        event
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        showManualLoading(true, 'Unscraping images...');
+
+        const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
+
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to unscrap');
+        }
+
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        const responseData = await window.wsClient.removeScrapBulk(activeWorkspace, validFilenames);
+        const removedCount = responseData && responseData.removedCount != null
+            ? responseData.removedCount
+            : validFilenames.length;
+
+        showGlassToast('success', null, `Unscraped ${removedCount} image(s)`, false, 5000, '<i class="fas fa-rotate-left"></i>');
+    } catch (error) {
+        console.error('Bulk unscrap error:', error);
+        showError('Failed to unscrap images: ' + error.message);
+        clearSelection();
+    } finally {
+        showManualLoading(false);
+        clearSelection();
+        switchGalleryView(currentGalleryView, true);
+    }
+}
+
+async function handleBulkScrapToWorkspace(workspaceId, workspaceName, event = null) {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
+        showGlassToast('error', 'No Selection', 'Please select images to scrap.');
+        return;
+    }
+
+    const confirmed = await showConfirmationDialog(
+        `Scrap ${selectedCount} selected image(s) into workspace "${workspaceName}"?`,
+        [
+            { text: 'Scrap', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        event
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        showManualLoading(true, `Scraping images into ${workspaceName}...`);
+
+        const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
+
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to scrap');
+        }
+
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        const responseData = await window.wsClient.addScrapBulk(workspaceId, validFilenames);
+        const addedCount = responseData && responseData.addedCount != null
+            ? responseData.addedCount
+            : validFilenames.length;
+
+        showGlassToast('success', null, `Scrapped ${addedCount} image(s) into ${workspaceName}`, false, 5000, '<i class="fas fa-bin-recycle"></i>');
+    } catch (error) {
+        console.error('Bulk scrap to workspace error:', error);
+        showError('Failed to scrap images: ' + error.message);
+        clearSelection();
+    } finally {
+        showManualLoading(false);
+        clearSelection();
+        switchGalleryView(currentGalleryView, true);
+    }
+}
+
+async function handleBulkUnscrapToWorkspace(workspaceId, workspaceName, event = null) {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
+        showGlassToast('error', 'No Selection', 'Please select images to unscrap.');
+        return;
+    }
+
+    const confirmed = await showConfirmationDialog(
+        `Unscrap ${selectedCount} selected image(s) and move them to workspace "${workspaceName}"?`,
+        [
+            { text: 'Unscrap', value: true, className: 'btn-primary' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        event
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    let unscraped = false;
+    try {
+        showManualLoading(true, `Unscraping images into ${workspaceName}...`);
+
+        const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
+
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to unscrap');
+        }
+
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        await window.wsClient.removeScrapBulk(activeWorkspace, validFilenames);
+        unscraped = true;
+        const response = await window.wsClient.moveFilesToWorkspace(validFilenames, workspaceId, activeWorkspace, 'files');
+        if (response && response.success === false) {
+            throw new Error(response.error || 'Failed to move images');
+        }
+
+        showGlassToast('success', null, `Unscraped ${validFilenames.length} image(s) into ${workspaceName}`, false, 5000, '<i class="fas fa-rotate-left"></i>');
+    } catch (error) {
+        console.error('Bulk unscrap to workspace error:', error);
+        const leftover = unscraped ? ' Images were unscraped into the current workspace.' : '';
+        showError('Failed to unscrap images into ' + workspaceName + ': ' + error.message + leftover);
+        clearSelection();
+    } finally {
+        showManualLoading(false);
+        clearSelection();
+        // invalidateGalleryImagesSyncState — public/scripts/comp/galleryImagesLoad.js
+        invalidateGalleryImagesSyncState();
+        await switchGalleryView(currentGalleryView, true);
     }
 }
 

@@ -1372,6 +1372,20 @@ function getManualModalValues() {
     };
 }
 
+function studioHasRemovableStages() {
+    if (!pipelineStagesContainer) return false;
+    return Array.from(pipelineStagesContainer.querySelectorAll('.pipeline-stage-item'))
+        .some((el) => el.dataset.managed !== 'true');
+}
+
+function studioRemoveAllStages() {
+    if (!pipelineStagesContainer) return;
+    const ids = Array.from(pipelineStagesContainer.querySelectorAll('.pipeline-stage-item'))
+        .filter((el) => el.dataset.managed !== 'true')
+        .map((el) => el.id);
+    ids.forEach((id) => deletePipelineStage(id));
+}
+
 // Clear all pipeline stages
 function clearPipelineStages() {
     if (pipelineStagesContainer) {
@@ -1548,9 +1562,20 @@ function estimateTargetedStageCount(targetStageIndex) {
     return targetStageIndex + 1;
 }
 
+function getManagedStage0MenuName() {
+    // Same name bracketGenGetManagedStep0PhaseName stores on stage-0 expanders.
+    // public/scripts/comp/bracketGenerationApplet.js
+    const stage0Expander = requestBodyReplacements.find(
+        (r) => r.managed && r.phaseStepName && Array.isArray(r.stages) && r.stages[0] === 0
+    );
+    return stage0Expander ? String(stage0Expander.phaseStepName).trim() : '';
+}
+
 function getPipelineStageMenuLabel(stageIndex) {
     if (stageIndex === 0) {
-        return { text: 'Stage 0 — Base', hex: '00', icon: 'nai-sparkles' };
+        const phaseName = getManagedStage0MenuName();
+        const text = phaseName ? `Stage 0 — ${phaseName}` : 'Stage 0 — Base';
+        return { text, hex: '00', icon: 'nai-sparkles' };
     }
     const stageItems = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
     const stageItem = stageItems?.[stageIndex - 1];

@@ -86,6 +86,17 @@
     font-variation-settings: "wght" 700;
 }
 
+#manualModalSplash.splash-about {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+#manualModalSplash.splash-about .splash-status-text {
+    white-space: pre-line;
+    text-align: right;
+    line-height: 1.35;
+}
+
 /* Preview Animation Container */
 .manual-preview-container {
     position: relative;

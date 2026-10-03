@@ -407,7 +407,7 @@
 }
 
 
-/* xAI Logomark Icon */
+/* Director mark — Anysphere Cursor icon */
 .xai-icon {
     font-size: 1.125rem;
     display: inline-block;
@@ -417,8 +417,8 @@
     min-height: 1em;
     vertical-align: middle;
     background: currentColor;
-    -webkit-mask: url('/dist/custom-icons/xAI_Logomark_Icon.svg') no-repeat center/contain;
-    mask: url('/dist/custom-icons/xAI_Logomark_Icon.svg') no-repeat center/contain;
+    -webkit-mask: url('/dist/custom-icons/cursor-icon.svg') no-repeat center/contain;
+    mask: url('/dist/custom-icons/cursor-icon.svg') no-repeat center/contain;
     color: inherit;
 }
 
@@ -1987,15 +1987,18 @@ img.loading {
     }
 }
 
-/* Staged generation results review — scripts/comp/stageResultsReview.js */
-#stageResultsReview {
+/* Staged generation results review — scripts/comp/stageResultsReview.js
+   Ledge clones the same window from #ledgeDeskTemplate (public/scripts/comp/ledgeDesk.js). */
+#stageResultsReview,
+.ledge-desk {
     width: 1100px;
     height: 820px;
     box-sizing: border-box;
     flex-direction: column;
 }
 
-#stageResultsReview > .modal-content {
+#stageResultsReview > .modal-content,
+.ledge-desk > .modal-content {
     overflow: hidden;
     min-height: 0;
     height: auto;
@@ -2005,7 +2008,8 @@ img.loading {
     flex-direction: column;
 }
 
-#stageResultsReview .modal-body {
+#stageResultsReview .modal-body,
+.ledge-desk .modal-body {
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -2014,30 +2018,59 @@ img.loading {
     padding: 0;
 }
 
-#stageResultsReview .stage-results-scroll-shell {
+#stageResultsReview .stage-results-scroll-shell,
+.ledge-desk .stage-results-scroll-shell {
     flex: 1;
     min-height: 0;
     overflow: hidden;
 }
 
-#stageResultsReview .stage-results-scrollable {
+#stageResultsReview .stage-results-scrollable,
+.ledge-desk .stage-results-scrollable {
     height: 100%;
     overflow: auto;
     padding: 2px 4px 4px 0;
 }
 
-#stageResultsReview .gallery {
+#stageResultsReview .gallery,
+.ledge-desk .gallery {
     margin-bottom: 0;
 }
 
-#stageResultsReview .gallery-item-overlay {
+#stageResultsReview .gallery-item-overlay,
+.ledge-desk .gallery-item-overlay {
     opacity: 1;
     justify-content: flex-end;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.72), transparent 55%);
     pointer-events: none;
 }
 
-#stageResultsReview .gallery-item[data-stage-filename] {
+#stageResultsReview .gallery-actions,
+.ledge-desk .gallery-actions {
+    pointer-events: auto;
+}
+
+#stageResultsReview .gallery-item[data-stage-filename],
+.ledge-desk .gallery-item[data-stage-filename] {
     cursor: pointer;
+}
+
+#requestFormWindow {
+    display: flex;
+    flex-direction: column;
+}
+
+#requestFormWindow > .modal-content {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#requestFormWindow .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
 }
 

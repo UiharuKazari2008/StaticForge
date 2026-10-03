@@ -1617,11 +1617,8 @@ function wireInlinePresetListeners() {
         manualPresetToggleBtn.dataset.wired = 'true';
         manualPresetToggleBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            if (manualPresetGroup.classList.contains('hidden')) {
-                manualPresetGroup.classList.remove('hidden');
-            } else {
-                manualPresetGroup.classList.add('hidden');
-            }
+            // Preset row stays closed. File menu owns open, save, and session name.
+            manualPresetGroup.classList.add('hidden');
             // updateManualPresetToggleBtn, updateManualPresetPlaceholder: public/scripts/app.js
             updateManualPresetToggleBtn();
             updateManualPresetPlaceholder();
@@ -2071,8 +2068,10 @@ function updateManualPresetToggleBtn() {
         state = 'open';
     }
 
-    // Update button state
-    manualPresetToggleBtn.setAttribute('data-state', state);
+    // Update button state. The preset row stays hidden; the studio menu carries the dot.
+    if (manualPresetToggleBtn) manualPresetToggleBtn.setAttribute('data-state', state);
+    const studioMenuBtn = document.getElementById('studioImageGenSettingsBtn');
+    if (studioMenuBtn) studioMenuBtn.setAttribute('data-state', state === 'open' ? 'off' : state);
 
     // Update placeholder visibility
     updateManualPresetPlaceholder();

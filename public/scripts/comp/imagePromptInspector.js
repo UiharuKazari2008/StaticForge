@@ -67,17 +67,36 @@ class ImagePromptInspectorManager {
             return existing;
         }
 
-        const metadata = await this.resolveMetadata(source);
-        const key = sourceKey || this.getImageKey(metadata);
-        if (key && this.instancesByKey.has(key)) {
-            const existing = this.instancesByKey.get(key);
-            bringModalToFront(existing.element);
-            return existing;
+        const embedded = source.metadata && typeof source.metadata === 'object' ? source.metadata : {};
+        const preview = { ...source, ...embedded };
+        const filename = source.filename || source.upscaled || source.original || source.base;
+        if (!preview.filename && filename) preview.filename = filename;
+        if (!preview.image_url && source.url) preview.image_url = source.url;
+
+        const needsServer = !!(filename && !this.hasPromptMetadata(preview));
+        if (!needsServer) {
+            const metadata = await this.resolveMetadata(source);
+            const key = sourceKey || this.getImageKey(metadata);
+            if (key && this.instancesByKey.has(key)) {
+                const existing = this.instancesByKey.get(key);
+                bringModalToFront(existing.element);
+                return existing;
+            }
+            return this.createInspector(metadata, key);
         }
-        return this.createInspector(metadata, key);
+
+        const instance = this.createInspector(preview, sourceKey, { loading: true });
+        if (!instance) return null;
+        try {
+            const metadata = await this.resolveMetadata(source);
+            instance.applyMetadata(metadata);
+            return instance;
+        } finally {
+            instance.setLoading(false);
+        }
     }
 
-    createInspector(metadata, key = null) {
+    createInspector(metadata, key = null, options = null) {
         if (!this.template) this.init();
         if (!this.template) return null;
 
@@ -100,7 +119,7 @@ class ImagePromptInspectorManager {
         }
 
         document.body.appendChild(element);
-        const instance = new ImagePromptInspector(id, element, metadata, stableKey, this);
+        const instance = new ImagePromptInspector(id, element, metadata, stableKey, this, options);
         this.instances.set(id, instance);
         if (key) this.instancesByKey.set(key, instance);
         return instance;
@@ -124,7 +143,7 @@ class ImagePromptInspectorManager {
 }
 
 class ImagePromptInspector {
-    constructor(id, element, metadata, key, manager) {
+    constructor(id, element, metadata, key, manager, options) {
         this.id = id;
         this.element = element;
         this.metadata = metadata || {};
@@ -133,6 +152,7 @@ class ImagePromptInspector {
         this.promptType = 'prompt';
         this.promptLane = 'input';
         this.jsonWindow = null;
+        this.startLoading = !!(options && options.loading);
         this.init();
     }
 
@@ -142,12 +162,26 @@ class ImagePromptInspector {
 
     init() {
         this.cacheElements();
+        if (this.startLoading) this.setLoading(true);
         this.renderSummary();
         this.configureDirectorTab();
         this.wireControls();
         this.renderAll();
         openModal(this.element);
         onModalOpened(this.element);
+        setTimeout(() => customScrollbar.forceReinit(this.scrollShell), 0);
+    }
+
+    setLoading(loading) {
+        const cover = this.element.querySelector('.gallery-move-right-panel-cover');
+        if (cover) cover.classList.toggle('show', !!loading);
+    }
+
+    applyMetadata(metadata) {
+        this.metadata = metadata || {};
+        this.renderSummary();
+        this.configureDirectorTab();
+        this.renderAll();
         setTimeout(() => customScrollbar.forceReinit(this.scrollShell), 0);
     }
 
@@ -258,6 +292,14 @@ class ImagePromptInspector {
             container?.classList.remove('textarea-focused');
         });
 
+        this.element.addEventListener('contextmenu', (event) => {
+            const textarea = event.target.closest('textarea');
+            if (!textarea || !textarea.readOnly) return;
+            if (!textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container')) return;
+            event.preventDefault();
+            event.stopPropagation();
+        }, true);
+
         this.element.querySelector('.close-btn').addEventListener('click', () => this.close());
 
         // Copy footer actions
@@ -280,7 +322,7 @@ class ImagePromptInspector {
                 }
                 return;
             }
-            await copyTextToClipboard(text);
+            await copyTextToClipboard(this.promptTextWithVisibleEmphasis(text, 'prompt'));
             if (typeof showGlassToast === 'function') {
                 showGlassToast('success', 'Copied', 'Input prompt copied to clipboard', false, 2500, '<i class="fas fa-align-left"></i>');
             }
@@ -298,7 +340,7 @@ class ImagePromptInspector {
                 }
                 return;
             }
-            await copyTextToClipboard(text);
+            await copyTextToClipboard(this.promptTextWithVisibleEmphasis(text, 'prompt'));
             if (typeof showGlassToast === 'function') {
                 showGlassToast('success', 'Copied', 'Compiled prompt copied to clipboard', false, 2500, '<i class="fas fa-hammer"></i>');
             }
@@ -583,12 +625,15 @@ class ImagePromptInspector {
             characters = fields.characters;
         }
 
-        this.prompt.value = value || 'No prompt data stored for this view.';
-        this.prompt.classList.toggle('image-prompt-inspector-empty', !value);
-        this.resizeReadonlyTextarea(this.prompt);
         const fieldHint = this.promptType === 'prompt'
             ? 'prompt'
             : (this.promptType === 'uc' ? 'uc' : null);
+        const displayValue = value
+            ? this.promptTextWithVisibleEmphasis(value, fieldHint)
+            : 'No prompt data stored for this view.';
+        this.prompt.value = displayValue;
+        this.prompt.classList.toggle('image-prompt-inspector-empty', !value);
+        this.resizeReadonlyTextarea(this.prompt);
         this.renderTextareaEmphasis(this.prompt, fieldHint);
         this.renderCharacters(characters, this.promptType);
         customScrollbar.forceReinit(this.scrollShell);
@@ -622,16 +667,16 @@ class ImagePromptInspector {
             textarea.readOnly = true;
             textarea.tabIndex = -1;
             textarea.spellcheck = false;
-            textarea.value = value;
+            const fieldHint = promptType === 'uc'
+                ? `character_${index}_uc`
+                : `character_${index}_prompt`;
+            textarea.value = this.promptTextWithVisibleEmphasis(value, fieldHint);
             textarea.setAttribute('aria-label', `${name.textContent} ${promptType === 'uc' ? 'undesired content' : 'prompt'}`);
             wrap.appendChild(textarea);
             field.append(background, wrap);
             item.append(name, field);
             this.characters.appendChild(item);
             this.resizeReadonlyTextarea(textarea);
-            const fieldHint = promptType === 'uc'
-                ? `character_${index}_uc`
-                : `character_${index}_prompt`;
             this.renderTextareaEmphasis(textarea, fieldHint);
         });
 
@@ -643,28 +688,39 @@ class ImagePromptInspector {
         autoResizeTextarea(textarea, 80, 0, true);
     }
 
-    renderTextareaEmphasis(textarea, fieldHint) {
-        // coalesceEmphasisWeightSource / ensurePromptEmphasisHighlightOverlay:
-        // public/scripts/comp/emphasisGroupIdCodec.js / emphasisParse.js
+    resolveEmphasisWeightSource(fieldHint) {
+        // coalesceEmphasisWeightSource: public/scripts/comp/emphasisGroupIdCodec.js
         const normalization = this.metadata.emphasis_normalization
             || this.metadata.forge_data?.emphasis_normalization
             || null;
-        let weightSource = null;
-        if (fieldHint && normalization) {
-            const characterMatch = /^character_(\d+)_(prompt|uc)$/.exec(fieldHint);
-            if (characterMatch) {
-                const candidates = characterMatch[2] === 'prompt'
-                    ? [fieldHint, `character_${characterMatch[1]}`]
-                    : [fieldHint];
-                const stored = candidates.map((key) => normalization[key]).find(Boolean);
-                weightSource = stored ? coalesceEmphasisWeightSource(stored, null) : null;
-            } else {
-                weightSource = coalesceEmphasisWeightSource(normalization, fieldHint);
-            }
+        if (!fieldHint || !normalization) return null;
+        const characterMatch = /^character_(\d+)_(prompt|uc)$/.exec(fieldHint);
+        if (characterMatch) {
+            const candidates = characterMatch[2] === 'prompt'
+                ? [fieldHint, `character_${characterMatch[1]}`]
+                : [fieldHint];
+            const stored = candidates.map((key) => normalization[key]).find(Boolean);
+            return stored ? coalesceEmphasisWeightSource(stored, null) : null;
         }
+        return coalesceEmphasisWeightSource(normalization, fieldHint);
+    }
+
+    promptTextWithVisibleEmphasis(text, fieldHint) {
+        const value = text == null ? '' : String(text);
+        // expandEmphasisGroupIds / hasManagedEmphasisGroupIds: public/scripts/comp/emphasisGroupIdCodec.js
+        if (!value || typeof expandEmphasisGroupIds !== 'function' || typeof hasManagedEmphasisGroupIds !== 'function') {
+            return value;
+        }
+        if (!hasManagedEmphasisGroupIds(value)) return value;
+        return expandEmphasisGroupIds(value, this.resolveEmphasisWeightSource(fieldHint)).text;
+    }
+
+    renderTextareaEmphasis(textarea, fieldHint) {
+        // ensurePromptEmphasisHighlightOverlay / highlightEmphasisInText:
+        // public/scripts/comp/emphasisHighlight.js
         const overlay = ensurePromptEmphasisHighlightOverlay(textarea);
         if (!overlay) return;
-        overlay.innerHTML = highlightEmphasisInText(textarea.value, weightSource);
+        overlay.innerHTML = highlightEmphasisInText(textarea.value, this.resolveEmphasisWeightSource(fieldHint));
         overlay.scrollTop = textarea.scrollTop;
         overlay.scrollLeft = textarea.scrollLeft;
     }

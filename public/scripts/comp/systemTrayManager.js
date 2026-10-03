@@ -21,6 +21,7 @@ function prepareSystemTrayBackground() {
         'generationQuipsTrayIcon',
         'naxtBagTrayIcon',
         'phasewalkerTrayIcon',
+        'directorTrayIcon',
         'workspaceTrayIcon',
         'serviceWorkerTrayIcon',
         'pingWarningIndicator',
@@ -59,6 +60,8 @@ async function startBackgroundTrayServices() {
     if (typeof initializePhasewalkerTray === 'function') {
         initializePhasewalkerTray();
     }
+    // initializeDirectorTray: public/scripts/comp/director.js
+    initializeDirectorTray();
     updateImageGenerationIndicator({ reveal: false });
 
     if (window.wsClient) {
@@ -113,6 +116,13 @@ async function startBackgroundTrayServices() {
                 window.bracketGenerationApplet.updateTrayChrome();
             }
             return 'phasewalkerTrayIcon';
+        },
+        () => {
+            // Director.updateTrayChrome: public/scripts/comp/director.js
+            if (window.directorInstance) {
+                window.directorInstance.updateTrayChrome();
+            }
+            return 'directorTrayIcon';
         },
         () => {
             if (window.wsClient && typeof window.wsClient.updatePingWarningIcon === 'function') {

@@ -45,7 +45,8 @@ const SCOPE_WS_PACKETS = {
         'vfs_list_directory', 'vfs_get_path_stats', 'vfs_resolve_path',
         'vfs_read_system_file', 'vfs_download_file', 'vfs_download_system_file',
         'vfs_upload_file', 'vfs_replace_file', 'vfs_delete_entry', 'vfs_delete_file',
-        'vfs_create_folder', 'vfs_create_shortcut', 'vfs_move_items', 'vfs_copy_items',
+        'vfs_rename_file', 'vfs_rename_folder', 'vfs_rename_entry', 'vfs_move_to_trash',
+        'vfs_create_folder', 'vfs_create_shortcut', 'vfs_update_shortcut_entry', 'vfs_move_items', 'vfs_copy_items',
         'desktop_get_shortcuts', 'desktop_get_settings'
     ],
     presets: [

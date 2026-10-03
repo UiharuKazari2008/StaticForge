@@ -61,6 +61,65 @@ function resolveServedHtmlPath(root, name) {
     return null;
 }
 
+function normalizePageAssetPath(raw) {
+    let url = String(raw || '').trim();
+    if (!url || /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(url)) {
+        return null;
+    }
+    url = url.split('#')[0].split('?')[0];
+    if (url.startsWith('./')) {
+        url = url.slice(2);
+    }
+    if (!url.startsWith('/')) {
+        url = `/${url}`;
+    }
+    return url;
+}
+
+const PAGE_ASSET_FILES = {
+    '/protected/fflate.js': ['node_modules', 'fflate', 'umd', 'index.js']
+};
+
+function hashForPageAsset(targetRoot, webPath) {
+    const override = PAGE_ASSET_FILES[webPath];
+    if (override) {
+        const abs = path.join(targetRoot, ...override);
+        if (!fs.existsSync(abs)) {
+            return null;
+        }
+        return hashServedFile(abs);
+    }
+    if (webPath === runtimeAssetCompiler.WORKSPACE_CSS_WEB_PATH) {
+        const workspaceCssService = require('./workspaceCssService');
+        return workspaceCssService.resolveSourceHash(targetRoot);
+    }
+    const servedPath = resolveServedAssetPath(targetRoot, webPath);
+    if (!servedPath || !fs.existsSync(servedPath)) {
+        return null;
+    }
+    return hashServedFile(servedPath);
+}
+
+function rewriteHashedAssetAttr(attrs, attrName, targetRoot) {
+    const match = attrs.match(new RegExp(`\\b${attrName}\\s*=\\s*(["'])([^"']+)\\1`, 'i'));
+    if (!match) {
+        return attrs;
+    }
+    const webPath = normalizePageAssetPath(match[2]);
+    if (!webPath) {
+        return attrs;
+    }
+    const hash = hashForPageAsset(targetRoot, webPath);
+    if (!hash) {
+        return attrs;
+    }
+    const nextUrl = `${webPath}?sha=${hash}`;
+    if (match[2] === nextUrl) {
+        return attrs;
+    }
+    return attrs.replace(match[0], `${attrName}=${match[1]}${nextUrl}${match[1]}`);
+}
+
 function updateHtmlStylesheetShaLinks(root) {
     const targetRoot = root || projectRoot;
     if (!targetRoot) {
@@ -75,42 +134,22 @@ function updateHtmlStylesheetShaLinks(root) {
             continue;
         }
 
-        let content = fs.readFileSync(htmlPath, 'utf8');
-        let changed = false;
-        const updated = content.replace(
-            /<link\b([^>]*?)>/gi,
-            (full, attrs) => {
+        const content = fs.readFileSync(htmlPath, 'utf8');
+        const updated = content
+            .replace(/<link\b([^>]*?)>/gi, (full, attrs) => {
                 if (!/\brel\s*=\s*["']stylesheet["']/i.test(attrs)) {
                     return full;
                 }
-                const hrefMatch = attrs.match(/\bhref\s*=\s*["'](\/css\/[^"']+)["']/i);
-                if (!hrefMatch) {
+                const nextAttrs = rewriteHashedAssetAttr(attrs, 'href', targetRoot);
+                return nextAttrs === attrs ? full : `<link${nextAttrs}>`;
+            })
+            .replace(/<script\b([^>]*?)>/gi, (full, attrs) => {
+                if (!/\bsrc\s*=/i.test(attrs)) {
                     return full;
                 }
-                const cssPath = hrefMatch[1].split('?')[0];
-                let hash;
-                if (cssPath === runtimeAssetCompiler.WORKSPACE_CSS_WEB_PATH) {
-                    const workspaceCssService = require('./workspaceCssService');
-                    hash = workspaceCssService.resolveSourceHash(targetRoot);
-                } else {
-                    const servedPath = resolveServedAssetPath(targetRoot, cssPath);
-                    if (!servedPath || !fs.existsSync(servedPath)) {
-                        return full;
-                    }
-                    hash = hashServedFile(servedPath);
-                }
-                if (!hash) {
-                    return full;
-                }
-                const nextHref = `${cssPath}?sha=${hash}`;
-                const nextAttrs = attrs.replace(/\bhref\s*=\s*["'][^"']+["']/i, `href="${nextHref}"`);
-                if (nextAttrs === attrs) {
-                    return full;
-                }
-                changed = true;
-                return `<link${nextAttrs}>`;
-            }
-        );
+                const nextAttrs = rewriteHashedAssetAttr(attrs, 'src', targetRoot);
+                return nextAttrs === attrs ? full : `<script${nextAttrs}>`;
+            });
 
         // Cache only — never write runtime ?sha= into git-tracked public/*.html
         const cachePath = path.join(outputRoot, name);

@@ -85,6 +85,51 @@ function stripNoTextTag(text) {
     return cleaned + (split.textSuffix || '');
 }
 
+function textOverlayTagEmphasis(textLength) {
+    const length = Number(textLength) || 0;
+    if (length <= 10) return 1.5;
+    if (length >= 200) return 5.5;
+    const scaled = 1.5 + ((length - 10) / 190) * 4.0;
+    return Math.round(scaled * 10) / 10;
+}
+
+/**
+ * Overlays that share a prompt compile to one Text: block.
+ * Type tags are written once, in front of that Text:.
+ * Several lines join with a blank line. One overlay keeps its own newlines.
+ * applyBias(tags, emphasis) is imageGeneration.applyBiasToText.
+ */
+function compileTextOverlayAppend(overlays, textTags, applyBias) {
+    const lines = [];
+    const typeOrder = [];
+    const typeTexts = Object.create(null);
+    const list = Array.isArray(overlays) ? overlays : [];
+    for (let i = 0; i < list.length; i++) {
+        const overlay = list[i] || {};
+        const text = String(overlay.text || '');
+        if (!text) continue;
+        lines.push(text);
+        const type = overlay.type || 'speech';
+        if (!typeTexts[type]) {
+            typeTexts[type] = [];
+            typeOrder.push(type);
+        }
+        typeTexts[type].push(text);
+    }
+    if (!lines.length) return '';
+    const tagsByType = textTags && typeof textTags === 'object' ? textTags : {};
+    const tagParts = [];
+    for (let i = 0; i < typeOrder.length; i++) {
+        const type = typeOrder[i];
+        const spec = tagsByType[type];
+        const tags = (spec && spec.tags) || 'english text, speech bubble';
+        const emphasis = textOverlayTagEmphasis(typeTexts[type].join('\n\n').length);
+        const emphasized = typeof applyBias === 'function' ? applyBias(tags, emphasis) : tags;
+        tagParts.push(emphasized);
+    }
+    return `, ${tagParts.join(', ')}, Text: ${lines.join('\n\n')}`;
+}
+
 function qualityPresetStripCandidates(qualityValue) {
     const base = String(qualityValue || '').trim();
     if (!base) return [];
@@ -108,5 +153,7 @@ module.exports = {
     insertBeforeTextColon,
     insertBeforeTextColonOrFirstGroup,
     stripNoTextTag,
+    textOverlayTagEmphasis,
+    compileTextOverlayAppend,
     qualityPresetStripCandidates
 };

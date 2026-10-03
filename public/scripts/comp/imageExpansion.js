@@ -638,7 +638,19 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         console.error('Image expansion dialog not found');
         return;
     }
-    
+
+    if (expansionModalBootstrapping) {
+        openModal(modal);
+        return;
+    }
+
+    const expansionCover = modal.querySelector('.gallery-move-right-panel-cover');
+    if (expansionCover) expansionCover.classList.add('show');
+    openModal(modal);
+    modal.classList.add('visible');
+    // ensureModalWithinViewport: public/scripts/comp/modalUtils.js
+    ensureModalWithinViewport(modal);
+
     expansionModalBootstrapping = true;
     try {
 
@@ -882,19 +894,15 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
 
     updateExpansionInsetToggleVisibility();
 
-    } finally {
-        expansionModalBootstrapping = false;
-    }
-
-    // Always open — never block the window before the user can pick a ratio/direction.
     ensureExpansionDifferentAspectSelected();
 
-    openModal(modal);
-    modal.classList.add('visible');
-
-    if (typeof ensureModalWithinViewport === 'function') {
-        ensureModalWithinViewport(modal);
+    } finally {
+        expansionModalBootstrapping = false;
+        if (expansionCover) expansionCover.classList.remove('show');
     }
+
+    // ensureModalWithinViewport: public/scripts/comp/modalUtils.js
+    ensureModalWithinViewport(modal);
 
     // Compile after open; failures must not close/hide the modal.
     if (expansionModalData.selectedResolution) {

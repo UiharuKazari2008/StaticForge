@@ -336,6 +336,28 @@
     color: var(--text-secondary);
 }
 
+.custom-dropdown-option > i.mdi,
+.custom-dropdown-option > i[class^="ri-"],
+.custom-dropdown-option > i[class*=" ri-"] {
+    font-size: 1.15em;
+    line-height: 1;
+    width: 1.15em;
+    height: 1em;
+    margin: 0;
+    overflow: hidden;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.custom-dropdown-option > i.mdi::before,
+.custom-dropdown-option > i[class^="ri-"]::before,
+.custom-dropdown-option > i[class*=" ri-"]::before {
+    line-height: 1;
+    font-size: 1em;
+}
+
 .custom-dropdown-option {
     padding: 0.25em 1em;
     background: none;
@@ -568,6 +590,46 @@
 }
 
 /* Ensure bias controls don't interfere with dropdown selection */
+.context-menu-item .dataset-option-content {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+}
+
+.context-menu-item .dataset-name {
+    font-weight: inherit;
+}
+
+.context-menu-item .dataset-option-left > i {
+    min-width: 21px;
+    display: inline-flex;
+    justify-content: center;
+}
+
+.context-menu-item .dataset-bias-decrease,
+.context-menu-item .dataset-bias-increase {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    width: auto;
+    height: auto;
+    padding: 0.35em 0.45em;
+    color: var(--text-accent-tinted, var(--text-secondary));
+    font-size: 0.75em;
+}
+
+.context-menu-item .dataset-bias-value {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    min-width: 2.6em;
+    padding: 0.35em 0.65em;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-accent-tinted, var(--text-secondary));
+}
+
 .dataset-bias-controls button {
     pointer-events: auto;
 }

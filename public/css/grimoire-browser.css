@@ -154,22 +154,9 @@
     cursor: progress;
 }
 
-.wiki-address-bar.nav-loading .address-display-layer {
-    pointer-events: none;
-}
-
 .wiki-address-bar.nav-loading .address-path {
     font-style: italic;
     opacity: 0.65;
-}
-
-/* Loading state: disable interactions on display, keep edit layer hidden (no hover reveal or edit mode while loading). */
-.wiki-address-bar.nav-loading .address-display-layer {
-    pointer-events: none;
-}
-
-.wiki-address-bar.nav-loading .address-edit-layer {
-    display: none !important;
 }
 
 .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown {

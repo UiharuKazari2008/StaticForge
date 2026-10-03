@@ -196,6 +196,7 @@ class BannerManager {
             'get_nax_vibes_gallery': 'Browse Vibes',
             'clear_nax_vibes_gallery_cache': 'Refresh Browse Vibes Cache',
             'get_novelai_explore_gallery': 'Agora Gallery',
+            'get_studio_explore_feed': 'Studio Explorer',
             'clear_novelai_explore_gallery_cache': 'Refresh Agora Cache',
             'ensure_novelai_explore_image': 'Agora Image Cache',
             'generate_nax_custom_tag': 'Create Custom Tag (NAX)',
@@ -278,6 +279,7 @@ class BannerManager {
             'vfs_rename_file': 'Rename File',
             'vfs_rename_entry': 'Rename File',
             'vfs_rename_shortcut_entry': 'Rename File',
+            'vfs_update_shortcut_entry': 'Save File',
             'vfs_delete_folder': 'Delete Folder',
             'vfs_move_items': 'Move Items',
             'vfs_copy_items': 'Copy Items',
@@ -412,6 +414,7 @@ class BannerManager {
             'request_gallery': 'Get Gallery',
             'request_gallery_paginated': 'Get Gallery',
             'request_image_metadata': 'Get Image Metadata',
+            'stage_chain_files': 'Stage Results',
             'request_url_upload_metadata': 'Get Upload Metadata',
             'request_image_by_index': 'Get Image',
             'find_image_index': 'Find Image',
@@ -442,6 +445,8 @@ class BannerManager {
 
             // Director operations
             'director_get_sessions': 'Get Director Sessions',
+            'director_open_workspace': 'Open Director Workspace',
+            'director_get_cursor_usage': 'Get Cursor Usage',
             'director_create_session': 'Create Director Session',
             'director_get_session': 'Get Director Session',
             'director_delete_session': 'Delete Director Session',
@@ -571,6 +576,7 @@ class WebSocketClient {
         'workspace_list',
         'desktop_get_shortcuts',
         'request_image_metadata',
+        'stage_chain_files',
         'fetch_autofill_wiki_previews',
         'get_tag_wiki_page',
         'get_wiki_home',
@@ -612,6 +618,7 @@ class WebSocketClient {
         'workspace_update_settings',
         'workspace_update_window_positions',
         'request_image_metadata',
+        'stage_chain_files',
         'runpod_pods_status',
         'runpod_pod_start',
         'runpod_pod_stop',
@@ -748,6 +755,9 @@ class WebSocketClient {
          * Do not open the connection manager dial or glass toast dial UI.
          */
         this._trayOnlyReconnect = false;
+        /** Background / bfcache / focus resume — do not hold the loading window on dial beats. */
+        this._quietResume = false;
+        this._connectEpoch = 0;
         this.preStartupHandoffCompleted = false;
         this.preStartupAuthBusy = false;
         this.preStartupAuthHandlersSetup = false;
@@ -879,6 +889,7 @@ class WebSocketClient {
         // Clear after render so a transient "connected" beat cannot pop the dial mid-quiet reconnect
         if (phase === 'idle') {
             this._clearTrayOnlyReconnect();
+            this._quietResume = false;
         }
     }
 
@@ -952,20 +963,49 @@ class WebSocketClient {
         this._setConnectionPhase(phase, merged);
     }
 
+    _connectionTheaterSkipped() {
+        return !!(this._quietResume || this._trayOnlyReconnect || document.visibilityState === 'hidden');
+    }
+
+    // Dial beats are a visible first-connect animation. A hidden or resumed tab must not
+    // sit on them — background timer throttling turns a few seconds into a stuck loader.
+    _sleepConnectionBeat(ms) {
+        if (!ms || ms <= 0 || this._connectionTheaterSkipped()) {
+            return Promise.resolve();
+        }
+        const startedHidden = document.visibilityState === 'hidden';
+        return new Promise((resolve) => {
+            let finished = false;
+            const finish = () => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timer);
+                document.removeEventListener('visibilitychange', onVisible);
+                resolve();
+            };
+            const onVisible = () => {
+                if (document.visibilityState !== 'visible') return;
+                if (startedHidden || this._connectionTheaterSkipped()) finish();
+            };
+            document.addEventListener('visibilitychange', onVisible);
+            const timer = setTimeout(finish, ms);
+        });
+    }
+
     async _runConnectionBeat(beat, patch = {}) {
         this._setConnectionBeat(beat, patch);
         const minMs = WebSocketClient.CONNECTION_BEATS[beat]?.minMs || 0;
         if (minMs > 0) {
-            await new Promise(resolve => setTimeout(resolve, minMs));
+            await this._sleepConnectionBeat(minMs);
         }
     }
 
     async _ensureBeatMinDuration(beat, startedAt) {
         const minMs = WebSocketClient.CONNECTION_BEATS[beat]?.minMs || 0;
-        if (minMs <= 0) return;
+        if (minMs <= 0 || this._connectionTheaterSkipped()) return;
         const elapsed = Date.now() - startedAt;
         if (elapsed < minMs) {
-            await new Promise(resolve => setTimeout(resolve, minMs - elapsed));
+            await this._sleepConnectionBeat(minMs - elapsed);
         }
     }
 
@@ -1298,7 +1338,7 @@ class WebSocketClient {
         const glyph = document.getElementById('modemTrayIconGlyph');
         if (!icon || !glyph) return;
 
-        let title = 'Melaton Network Connection';
+        let title = 'MeletonFX Network Connection';
 
         if (this.isConnected()) {
             glyph.className = 'fa-regular fa-globe';
@@ -1306,23 +1346,23 @@ class WebSocketClient {
                 ? Date.now() - this.connectionStats.connectedAt
                 : 0;
             title = uptimeMs > 0
-                ? `Melaton Network: Connected (${this.formatConnectionUptime(uptimeMs)})`
-                : 'Melaton Network: Connected';
+                ? `MeletonFX Network: Connected (${this.formatConnectionUptime(uptimeMs)})`
+                : 'MeletonFX Network: Connected';
         } else {
             if (this.connectionPhase === 'failed') {
                 glyph.className = 'fas fa-phone-slash';
-                title = 'Melaton Network: NO CARRIER';
+                title = 'MeletonFX Network: NO CARRIER';
             } else if (this.connectionPhase === 'dialing' || this.isConnecting) {
                 glyph.className = 'fas fa-sync-alt fa-spin';
                 const bootStatus = this.lastServerStartupStatus;
                 if (bootStatus && !this.serverStartupReady && bootStatus.stageMessage) {
-                    title = `Melaton Network: ${bootStatus.stageMessage}`;
+                    title = `MeletonFX Network: ${bootStatus.stageMessage}`;
                 } else {
-                    title = `Melaton Network: ${this.connectionUi.message || 'Dialing…'}`;
+                    title = `MeletonFX Network: ${this.connectionUi.message || 'Dialing…'}`;
                 }
             } else {
                 glyph.className = 'fas fa-phone-slash';
-                title = 'Melaton Network: Not connected';
+                title = 'MeletonFX Network: Not connected';
             }
         }
 
@@ -1667,7 +1707,7 @@ class WebSocketClient {
         const isTasking = phase !== 'failed'
             && phase !== 'auth'
             && phase !== 'idle'
-            && (!this.preStartupHandoffCompleted || beat !== 'connected' || statusMessage === 'Preparing Melaton...')
+            && (!this.preStartupHandoffCompleted || beat !== 'connected' || statusMessage === 'Preparing MeletonFX...')
             && !this.preStartupAuthBusy;
         const shouldPauseMarquee = !isTasking;
 
@@ -1853,15 +1893,15 @@ class WebSocketClient {
         }
         if (!this._canCompletePreStartupHandoff()) return;
 
-        this.connectionUi.message = 'Preparing Melaton...';
+        this.connectionUi.message = 'Preparing MeletonFX...';
         this._setConnectionPhase('connected', {
             beat: 'connected',
-            message: 'Preparing Melaton...'
+            message: 'Preparing MeletonFX...'
         });
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await this._sleepConnectionBeat(1000);
         if (!this._canCompletePreStartupHandoff()) return;
         await this._hidePreStartupDialog();
-        await new Promise((resolve) => setTimeout(resolve, 750));
+        await this._sleepConnectionBeat(750);
         if (!this._canCompletePreStartupHandoff()) return;
         this.preStartupHandoffCompleted = true;
     }
@@ -3261,9 +3301,11 @@ class WebSocketClient {
         // Handle page visibility changes (covers tab switching, app minimise, screen lock)
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
+                this._quietResume = true;
                 this._refreshWsFlashTargets();
                 this._reconnectOnFocusRegain('visibilitychange');
             } else {
+                this._quietResume = true;
                 this._wsFlashPendingUp = null;
                 this._wsFlashPendingDown = null;
                 this._httpFlashPendingUp = null;
@@ -3284,6 +3326,7 @@ class WebSocketClient {
         window.addEventListener('beforeunload', () => {});
         window.addEventListener('pagehide', (event) => {
             if (event.persisted) {
+                this._quietResume = true;
                 this._beginTrayOnlyReconnect('pagehide-bfcache');
             }
         });
@@ -3343,6 +3386,7 @@ class WebSocketClient {
         this.connectionLock = true;
         this.isConnecting = true;
         this._connectingSince = 0;
+        const connectEpoch = ++this._connectEpoch;
         this._resetSocketAuthState();
         this._resetConnectionStatsSession();
 
@@ -3350,6 +3394,8 @@ class WebSocketClient {
             await this._runConnectionBeat('initializing');
             this._initializingBeatComplete = true;
         }
+
+        if (connectEpoch !== this._connectEpoch) return;
 
         if (this.isManualClose || this._isStartupHaltedForInstall()) {
             this._releaseConnectLock();
@@ -3366,6 +3412,7 @@ class WebSocketClient {
             // Step 1: First ping the host over HTTP to ensure it's responsive
             try {
                 await this.pingHost();
+                if (connectEpoch !== this._connectEpoch) return;
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
                     this._releaseConnectLock();
                     return;
@@ -3375,6 +3422,7 @@ class WebSocketClient {
                     attempt: this.reconnectAttempts,
                     maxAttempts: this.maxReconnectAttempts
                 });
+                if (connectEpoch !== this._connectEpoch) return;
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
                     this._releaseConnectLock();
                     return;
@@ -3420,8 +3468,10 @@ class WebSocketClient {
             this._connectingSince = Date.now();
             this._armConnectingWatchdog();
             this.ws = new WebSocket(wsUrl);
+            const connectedSocket = this.ws;
 
             this.ws.onopen = async () => {
+                if (connectEpoch !== this._connectEpoch || this.ws !== connectedSocket) return;
                 this._resetConnectingWatchdogDelay();
                 this._releaseConnectLock();
                 this._missedPingCount = 0;
@@ -3438,6 +3488,7 @@ class WebSocketClient {
                 this.circuitBreaker = false; // Reset circuit breaker on successful connection
 
                 const sessionAuthenticated = await this._waitForConnectionWelcome();
+                if (connectEpoch !== this._connectEpoch || this.ws !== connectedSocket) return;
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
                     this.disconnect(true);
                     return;
@@ -3458,6 +3509,7 @@ class WebSocketClient {
                     maxAttempts: this.maxReconnectAttempts
                 });
 
+                if (connectEpoch !== this._connectEpoch || this.ws !== connectedSocket) return;
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
                     this.disconnect(true);
                     return;
@@ -3498,6 +3550,8 @@ class WebSocketClient {
                     await window.serviceWorkerManager.ensureBootComplete();
                 }
 
+                if (connectEpoch !== this._connectEpoch || this.ws !== connectedSocket) return;
+
                 // Install wizard reloads the page — never hand off or run init after halt
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
                     return;
@@ -3534,7 +3588,12 @@ class WebSocketClient {
 
             this.ws.onclose = (event) => {
                 console.log('🔌 WebSocket disconnected:', event.code, event.reason);
-                this._releaseConnectLock();
+                // Requests stamped on this socket cannot be answered after close.
+                // Manual recycle replaces this.ws first; only this socket's calls fail.
+                this._failPendingRequestsForSocket(connectedSocket);
+                if (connectedSocket === this.ws && !this.isConnecting) {
+                    this._releaseConnectLock();
+                }
                 this.connectionStats.connectedAt = null;
                 this._resetSocketAuthState();
 
@@ -3572,6 +3631,17 @@ class WebSocketClient {
 
                     // Clear and fail all pending requests when connection is lost
                     this._teardownGenerationUiState();
+                    // A hidden or just-resumed tab already has a connect coming from
+                    // visibility/pageshow. Raising the dial here and reconnecting again
+                    // leaves the loading window up through a second handshake.
+                    if (this._quietResume || document.visibilityState === 'hidden') {
+                        if (connectedSocket === this.ws) this.ws = null;
+                        if (document.visibilityState === 'visible' && !this.isConnecting && !this.connectionLock) {
+                            this.connect();
+                        }
+                        this.triggerEvent('disconnected', event);
+                        return;
+                    }
                     this.clearPendingRequests();
 
                     let disconnectMessage = 'Connection lost';
@@ -3627,8 +3697,15 @@ class WebSocketClient {
                 this.triggerEvent('disconnected', event);
             };
 
-            this.ws.onerror = async (error) => {
+            this.ws.onerror = (error) => {
                 console.error('❌ WebSocket error:', error);
+                const deadSocket = error.target;
+                this._failPendingRequestsForSocket(deadSocket);
+                const quiet = this._quietResume || this._trayOnlyReconnect || document.visibilityState === 'hidden';
+                if (quiet || (deadSocket && deadSocket !== this.ws)) {
+                    return;
+                }
+
                 this._releaseConnectLock();
 
                 // Reset generation button state if generation was interrupted
@@ -3677,6 +3754,56 @@ class WebSocketClient {
             this._setConnectionPhase('failed', {
                 message: 'NO CARRIER — Connection failure'
             });
+        }
+    }
+
+    // Drop one pending call without the success ticker. Used when the socket
+    // that owned it is gone, or the deferred send never left the browser.
+    _rejectPendingRequest(requestId, error) {
+        if (!this.pendingRequests || !this.pendingRequests.has(requestId)) return;
+        const request = this.pendingRequests.get(requestId);
+        this.pendingRequests.delete(requestId);
+        request.timeoutId = this.clearTimeoutSafely(request.timeoutId);
+        if (request.counted) {
+            this.decrementPendingRequests();
+        }
+        if (request.paginationGroupId && this.paginationGroups && this.paginationGroups.has(request.paginationGroupId)) {
+            const group = this.paginationGroups.get(request.paginationGroupId);
+            group.completedRequests = (group.completedRequests || 0) + 1;
+        }
+        const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image', 'reroll_image']);
+        if (generationTypes.has(request.type)) {
+            this.clearStreamingStepQueues(null, true);
+            this.cleanupGenerationProgressState(requestId);
+            this.releaseGenerationCloseGuard(requestId);
+        }
+        if (request.type === 'request_gallery' && this.isGalleryLoadingActive) {
+            this.completeGalleryLoading();
+        }
+        if (typeof request.callback === 'function') {
+            try {
+                request.callback(null, error);
+            } catch (callbackError) {
+                console.error(`❌ Error in request callback for ${requestId}:`, callbackError);
+            }
+        }
+        try {
+            if (request.reject) request.reject(error);
+        } catch (rejectError) {
+            console.error(`❌ Error failing request ${requestId}:`, rejectError);
+        }
+    }
+
+    // Fail calls that were sent on a socket that has closed.
+    // Leaves requests stamped on a replacement socket alone.
+    _failPendingRequestsForSocket(socket) {
+        if (!socket || !this.pendingRequests) return;
+        const error = new Error('Connection lost - request cancelled');
+        error.code = 'CONNECTION_LOST';
+        for (const requestId of [...this.pendingRequests.keys()]) {
+            const request = this.pendingRequests.get(requestId);
+            if (!request || request.socket !== socket) continue;
+            this._rejectPendingRequest(requestId, error);
         }
     }
 
@@ -3918,6 +4045,7 @@ class WebSocketClient {
      * @param {string} source - The event that triggered this call (for logging)
      */
     _reconnectOnFocusRegain(source) {
+        this._quietResume = true;
         if (this.disconnectedDueToInactivity) {
             console.log(`👁️ App regained focus (${source}) after inactivity disconnect — reconnecting WebSocket...`);
             this.disconnectedDueToInactivity = false;
@@ -4172,13 +4300,15 @@ class WebSocketClient {
 
     _probeIdleSocketOnResume(source) {
         if (this._resumeProbeInFlight) return;
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        const probed = this.ws;
+        if (!probed || probed.readyState !== WebSocket.OPEN) return;
         this._resumeProbeInFlight = true;
         Promise.resolve(this.pingWithAuth()).then(() => {
             this._resumeProbeInFlight = false;
+            if (this.ws !== probed) return;
             this._missedPingCount = 0;
             this._lastPongAt = Date.now();
-        }).catch(() => {
+        }).catch((error) => {
             this._resumeProbeInFlight = false;
             if (this._replacingSocket || this.isManualClose || this._isStartupHaltedForInstall()) {
                 return;
@@ -4186,6 +4316,15 @@ class WebSocketClient {
             if (this.isConnecting || this.connectionLock) {
                 return;
             }
+            // The probed socket is already gone. visibility/pageshow owns the new connection.
+            // Replacing here kills that socket and replays the loading window.
+            if (this.ws !== probed || probed.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            if (error && (error.code === 'CONNECTION_LOST' || error.code === 'NOT_CONNECTED')) {
+                return;
+            }
+            this._quietResume = true;
             this._replaceStaleSocket(`${source}-probe`);
         });
     }
@@ -4212,6 +4351,8 @@ class WebSocketClient {
         }
         this._replacingSocket = true;
         console.log(`🔄 Replacing stale socket (${source})`);
+        this._quietResume = true;
+        this._connectEpoch += 1;
         this._clearConnectingWatchdog();
         this._disposeExistingSocket();
         this._connectingSince = 0;
@@ -4228,17 +4369,22 @@ class WebSocketClient {
     }
 
     send(message) {
+        return this._sendOnSocket(this.ws, message);
+    }
+
+    _sendOnSocket(socket, message) {
         if (message && message.type !== 'ping') {
             this.recordUserActivity();
         }
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
             this.logGenerationQuipsWs('out', message);
             this._recordWsMessage('out', message);
-            this.ws.send(JSON.stringify(message));
+            socket.send(JSON.stringify(message));
             this.flashWebSocketArrow('up');
-        } else {
-            console.warn('⚠️ WebSocket not connected, message not sent:', message);
+            return true;
         }
+        console.warn('⚠️ WebSocket not connected, message not sent:', message);
+        return false;
     }
 
     handleMessage(message) {
@@ -6192,6 +6338,15 @@ class WebSocketClient {
         }
     }
 
+    async requestStageChain(filename) {
+        const result = await this.sendMessageWithCallback('stage_chain_files', { filename }, (response, error) => {
+            if (error) {
+                console.error('Stage chain request callback error:', error);
+            }
+        });
+        return result;
+    }
+
     // Method to request URL upload metadata via WebSocket
     async requestUrlUploadMetadata(filename) {
         try {
@@ -6847,7 +7002,9 @@ class WebSocketClient {
                 reject,
                 type: 'ping',
                 showBanner: false,
-                timestamp: pingTimestamp
+                timestamp: pingTimestamp,
+                socket: this.ws,
+                counted: true
             });
 
             // Store ping timestamp for RTT calculation
@@ -7400,6 +7557,8 @@ class WebSocketClient {
                 return;
             }
 
+            const requestSocket = this.ws;
+
             // Store pending request with timestamp
             this.pendingRequests.set(requestId, {
                 resolve,
@@ -7407,7 +7566,9 @@ class WebSocketClient {
                 type,
                 showBanner: effectiveShowBanner,
                 silentTicker,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                socket: requestSocket,
+                counted: !silentTicker
             });
 
             if (!silentTicker) {
@@ -7462,11 +7623,16 @@ class WebSocketClient {
 
             try {
                 // Defer sending until next event loop tick to ensure request is fully registered
-                // before any response can possibly arrive
+                // before any response can possibly arrive. Send on the socket that owns the
+                // request — a recycle may have replaced this.ws already.
                 setTimeout(() => {
-                    if (this.pendingRequests.has(requestId)) {
-                        this.send(message);
-                    }
+                    if (!this.pendingRequests.has(requestId)) return;
+                    if (this._sendOnSocket(requestSocket, message)) return;
+                    const notConnected = new Error('WebSocket not connected');
+                    notConnected.code = 'NOT_CONNECTED';
+                    notConnected.requestId = requestId;
+                    notConnected.requestType = type;
+                    this._rejectPendingRequest(requestId, notConnected);
                 }, 0);
 
                 if (message.type === 'ping') {
@@ -7516,7 +7682,9 @@ class WebSocketClient {
                 showBanner,
                 offset: data.offset || 0,
                 limit: data.limit || 0,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                socket: this.ws,
+                counted: true
             });
 
             // Increment pending requests count
@@ -7561,7 +7729,7 @@ class WebSocketClient {
                 this.pendingRequests = new Map();
             }
 
-            this.pendingRequests.set(requestId, { resolve, reject, type, showBanner, timestamp: Date.now() });
+            this.pendingRequests.set(requestId, { resolve, reject, type, showBanner, timestamp: Date.now(), socket: this.ws, counted: true });
 
             this._acquireGenerationCloseGuardForRequest(type, requestId);
 
@@ -7680,7 +7848,9 @@ class WebSocketClient {
                 paginationGroupId,
                 isGalleryPaginationRequest: true,
                 isPaginationRequest: true,
-                offset: data.offset || 0
+                offset: data.offset || 0,
+                socket: this.ws,
+                counted: !paginationGroupId || this.paginationGroups.get(paginationGroupId).totalRequests === 1
             });
 
             // Only increment pending requests count if not part of pagination group or first request in group

@@ -5,6 +5,99 @@
 window.directorDryrun = false;
 
 const DIRECTOR_MAX_SESSION_MESSAGES = 200;
+const DIRECTOR_ROW_PAGE = 40;
+const DIRECTOR_TRAY_SESSIONS = 3;
+// director_computer_status state -> the words in the tray title and tray menu.
+// The keys double as the classes on #directorTrayIcon (public/css/director.css).
+const DIRECTOR_TRAY_STATES = {
+    idle: 'Dreamspace ready',
+    working: 'Working',
+    interrupted: 'Interrupted',
+    failed: 'Last turn failed',
+    offline: 'Dreamspace offline'
+};
+const DIRECTOR_TRAY_ICONS = {
+    idle: 'fas fa-circle-check',
+    working: 'fas fa-spinner',
+    interrupted: 'fas fa-circle-pause',
+    failed: 'fas fa-circle-exclamation',
+    offline: 'fas fa-plug-circle-xmark'
+};
+
+const DIRECTOR_QUICK_STARTS = [
+    {
+        id: 'high-five',
+        label: 'High Five',
+        v45Only: true,
+        title: 'Rewrite this V4.5 prompt for V5',
+        prompt: 'This session is V4.5. Rewrite the prompt for V5 and set the Studio model to V5. Keep the same subject and scene. Use visual description V5 understands, and drop V4.5-only wording that does not carry over. Update the open Studio. Then call print_studio and wait for the new print. Look at that image and say what changed and whether it matches. Do not stop after the rewrite.'
+    },
+    {
+        id: 'optimise',
+        label: 'Optimise',
+        title: 'Cohesion, duplicates, trained tags, and missing appearance',
+        prompt: 'Optimise this prompt. Do a full pass on the session: make it cohesive, merge and remove duplicate descriptions, and switch vague wording to more direct visual terms when you can. If a character is only a name tag, add the appearance that is missing. Expand descriptions of things that are not showing up or do not match the picture. A low autofill count, or untrained:true, only means NovelAI autofill did not expose the tag. It is not proof the model never learned it. Test it before you drop it. Artist tags: try them before you drop them, and if search misses the name, look it up because the Danbooru tag may differ. Update the open Studio.'
+    },
+    {
+        id: 'throwback',
+        label: 'Throwback',
+        title: 'Bring back an older idea from this workspace',
+        prompt: 'Review previous generations in this workspace from oldest to newest. Find concepts that were used before and have not been done recently, then update the current prompt to try one of those older ideas again. Update the open Studio.'
+    },
+    {
+        id: 'vacation',
+        label: 'Vacation',
+        title: 'Change the place and make the scene more interesting',
+        prompt: 'Creatively change the prompt by changing the environment. Vividly update the scene so it is more interesting. Keep the characters. Update the open Studio.'
+    },
+    {
+        id: 'makeover',
+        label: 'Makeover',
+        title: 'Change hair, clothes, and styling',
+        prompt: 'Creatively change the prompt by updating the characters\' hair, clothes, and styling. Keep who they are and where they are. Update the open Studio.'
+    },
+    {
+        id: 'friend',
+        label: 'Friend',
+        title: 'Add a related character',
+        prompt: 'Add another character who is related to the current character, and update the prompt so they are in the picture together. Update the open Studio.'
+    },
+    {
+        id: 'walk-forward',
+        label: 'Walk Forward',
+        existingOnly: true,
+        title: 'Take the scene to the next moment',
+        prompt: 'Walk the scene forward. Use this chat, the current picture, and what is already in Studio. Decide the next action, event, or scene yourself and make that picture. Do not ask what they want, do not offer choices, and do not wait. Apply the change and generate.'
+    },
+    {
+        id: 'bbq',
+        label: 'BBQ',
+        needsSubject: true,
+        title: 'Grill the prompt for everything this picture still leaves out',
+        prompt: 'Grill this prompt against the picture. Use the open Studio, and if a picture is open or this chat already has one, use that generation too. Read the image and the current prompt. List every part of the picture the prompt does not cover: who is there, body, clothes, pose, expression, props, place, light, time, text, and what the scene is doing. Research what you can settle (character, series, look, tags) and write those into Studio. Do not spend a generation to discover a design. Then ask them the gaps that need their input: context, intent, and anything you cannot tell from the picture or the research. Ask those as direct questions. Do not generate until they answer.'
+    }
+];
+
+const DIRECTOR_WELCOME_QUIPS = [
+    'What are we making?',
+    'Tell me the picture you want.',
+    'A look, a change, or a new idea.',
+    'Show me what to try next.'
+];
+
+function directorModelIsV45() {
+    const selected = typeof getCurrentSelectedModel === 'function' ? getCurrentSelectedModel() : '';
+    // normalizeStudioModelToken / resolveStudioModelKey: public/scripts/comp/utilities.js
+    const known = typeof normalizeStudioModelToken === 'function' ? normalizeStudioModelToken(selected) : '';
+    const meta = window.currentEditMetadata || {};
+    const model = known || (typeof resolveStudioModelKey === 'function'
+        ? resolveStudioModelKey({
+            model: selected,
+            source: meta.source || meta.Source || ''
+        }, '')
+        : String(selected || '').toLowerCase());
+    return model === 'v4_5' || model.startsWith('v4_5');
+}
 
 function trimDirectorSessionMessages(messages, max = DIRECTOR_MAX_SESSION_MESSAGES) {
     if (!Array.isArray(messages) || messages.length <= max) {
@@ -38,9 +131,15 @@ class Director {
         // Director state
         this.directorSessions = [];
         this.currentSession = null;
-        this.currentView = 'newSession';
+        this.currentView = 'sessionChat';
         this.autoGenerateEnabled = false;
-        this.messageFilter = 'all'; // 'all', 'messages', 'quotes'
+        this.messageFilter = 'all'; // 'chat', 'chat-tools', 'all'
+        this._visibleRowCount = DIRECTOR_ROW_PAGE;
+        this._hiddenOlderRows = 0;
+        this._windowSessionId = null;
+        this._expandedTrace = new Set();
+        this._scrollAfterLoad = false;
+        this._stickBottom = true;
 
         // Live search configuration
         this.enableLiveSearch = true; // Enable live search for character/series identification
@@ -60,13 +159,35 @@ class Director {
         // localStorage keys
         this.LAST_SESSION_KEY = 'staticforge_director_last_session';
 
-        // Director actions
-        this.directorActions = [
-            { value: 'change', name: 'Edit', icon: 'fas fa-edit', placeholder: 'Modify aspects of the prompt' },
-            { value: 'efficiency', name: 'Analyse', icon: 'fas fa-chart-line', placeholder: 'Analyse the prompt for effectiveness' },
-            { value: 'dialog', name: 'Dialog', icon: 'fas fa-comments', placeholder: 'Listen in to the image (enter desires)' },
-           /*  { value: 'conversation', name: 'Conversation', icon: 'fas fa-comment-dots', placeholder: 'Start a conversation with the character' }, */
+        this.selectedEffort = 'medium';
+        this.effortLevels = [
+            { value: 'low', name: 'Low' },
+            { value: 'medium', name: 'Medium' },
+            { value: 'high', name: 'High' },
+            { value: 'xhigh', name: 'Extra' }
         ];
+        this.selectedModel = 'grok-4.7';
+        this.modelCatalog = [];
+        this._modelsRequested = 0;
+        this.fast = false;
+        this.sendOnEnter = false;
+        this._running = false;
+        this._runningSessionId = null;
+        this._outgoingQueue = [];
+        this._steer = null;
+        this.SESSION_MODEL_KEY = 'staticforge_director_session_models';
+        // director_computer_status (modules/cursorDirector.js): tray icon state,
+        // tray menu status line, and the computer's CPU / memory
+        this._status = null;
+        this.PREFS_KEY = 'staticforge_director_chat_prefs';
+        this.loadChatPrefs();
+        this.paintChatPrefs();
+        this.loadModelCache();
+        this.pendingAttachments = [];
+        this._openPreferredId = null;
+        this._xiEnabled = false;
+        this.persona = 'wren';
+        this._personaSession = { wren: null, xi: null };
     }
 
     // Cache DOM elements for better performance
@@ -85,7 +206,6 @@ class Director {
 
             // New session elements
             directorMenuBtn: 'directorMenuBtn',
-            directorCloseOverlayBtn: 'directorCloseOverlayBtn',
             directorModeSliderContainer: 'directorModeSliderContainer',
             directorUserIntent: 'directorUserIntent',
             directorImageSelectBtn: 'directorImageSelectBtn',
@@ -97,16 +217,22 @@ class Director {
 
             // Chat elements
             directorSessionTitle: 'directorSessionTitle',
+            directorTaskList: 'directorTaskList',
             directorMessageFilterGroup: 'directorMessageFilterGroup',
+            directorPersonaGroup: 'directorPersonaGroup',
+            directorModelPick: 'directorModelPick',
+            directorModelPickName: 'directorModelPickName',
+            directorModelPickEffort: 'directorModelPickEffort',
             directorAutoGenerateBtn: 'directorAutoGenerateBtn',
             directorChatMessages: 'directorChatMessages',
-            directorActionsDropdown: 'directorActionsDropdown',
-            directorActionsDropdownBtn: 'directorActionsDropdownBtn',
-            directorActionsDropdownMenu: 'directorActionsDropdownMenu',
-            directorActionsSelected: 'directorActionsSelected',
-            directorAddBaseImageToggleBtn: 'directorAddBaseImageToggleBtn',
-            directorHighThinkingToggleBtn: 'directorHighThinkingToggleBtn',
+            directorToolsBtn: 'directorToolsBtn',
+            directorAttachDropdown: 'directorAttachDropdown',
+            directorAttachDropdownBtn: 'directorAttachDropdownBtn',
+            directorAttachDropdownMenu: 'directorAttachDropdownMenu',
+            directorAttachFileInput: 'directorAttachFileInput',
+            directorAttachChips: 'directorAttachChips',
             directorChatInput: 'directorChatInput',
+            directorComposerWelcome: 'directorComposerWelcome',
             directorSendBtn: 'directorSendBtn',
 
             // Preview elements
@@ -121,6 +247,15 @@ class Director {
             directorSessionPreviewContainer: 'directorSessionPreviewContainer',
             directorSessionOverlayActions: 'directorSessionOverlayActions',
 
+            // Desktop window + tray (public/app.html #directorWindow / #directorTrayIcon)
+            directorWindow: 'directorWindow',
+            directorWindowChat: 'directorWindowChat',
+            directorWindowTitle: 'directorWindowTitle',
+            directorBrowserPane: 'directorBrowserPane',
+            directorBrowserPreview: 'directorBrowserPreview',
+            directorSessionImagesPane: 'directorSessionImagesPane',
+            directorSessionImages: 'directorSessionImages',
+            directorTrayIcon: 'directorTrayIcon'
         };
 
         // Cache all elements
@@ -144,96 +279,485 @@ class Director {
         this.setupDirectorDropdowns();
         this.setupDirectorEventListeners();
         this.setupDirectorContextMenus();
-
-        // Set initial action state
-        this.selectDirectorAction('change');
-        this.setupMeasurementsModal();
         this.setupDirectorWebSocketHandlers();
+        this.setupDirectorWindow();
+        initializeDirectorTray();
+        this.requestDirectorModels();
+        // public/scripts/websocket.js — runs after a dropped socket comes back, not on the first connect
+        if (window.wsClient && window.wsClient.registerRefreshCallback) {
+            window.wsClient.registerRefreshCallback('director_resume', 40, async () => {
+                if (!window.directorInstance) return;
+                await window.directorInstance.resumeAfterReconnect();
+            });
+        }
+    }
+
+    chatPrefsKey() {
+        return this.persona === 'xi' ? `${this.PREFS_KEY}_xi` : this.PREFS_KEY;
     }
 
     // Setup dropdowns
+    loadChatPrefs() {
+        this.selectedEffort = 'medium';
+        this.selectedModel = 'grok-4.7';
+        this.selectedContext = '';
+        this.thinking = false;
+        this.fast = false;
+        this.sendOnEnter = false;
+        this.messageFilter = 'all';
+        try {
+            const raw = JSON.parse(localStorage.getItem(this.chatPrefsKey()) || '{}');
+            if (typeof raw.effort === 'string' && raw.effort.trim()) this.selectedEffort = raw.effort.trim();
+            if (typeof raw.model === 'string' && raw.model.trim()) this.selectedModel = raw.model.trim();
+            if (typeof raw.context === 'string') this.selectedContext = raw.context;
+            this.thinking = raw.thinking === true;
+            this.fast = raw.fast === true;
+            this.sendOnEnter = raw.sendOnEnter === true;
+            if (raw.messageFilter === 'chat' || raw.messageFilter === 'chat-tools' || raw.messageFilter === 'all') {
+                this.messageFilter = raw.messageFilter;
+            }
+        } catch (_err) { /* keep defaults */ }
+    }
+
+    saveChatPrefs() {
+        try {
+            localStorage.setItem(this.chatPrefsKey(), JSON.stringify({
+                effort: this.selectedEffort,
+                model: this.selectedModel,
+                context: this.selectedContext || '',
+                thinking: this.thinking === true,
+                fast: this.fast === true,
+                sendOnEnter: this.sendOnEnter === true,
+                messageFilter: this.messageFilter || 'all'
+            }));
+        } catch (_err) { /* storage can be full */ }
+        this.paintModelPick();
+    }
+
+    paintChatPrefs() {
+        this.paintModelPick();
+        this.paintMessageFilter();
+    }
+
+    modelSupportsFast() {
+        return this.fastAvailable();
+    }
+
+    selectedFamily() {
+        return this.modelCatalog.find((item) => item.id === this.selectedModel) || null;
+    }
+
+    effortsForSelected() {
+        const family = this.selectedFamily();
+        if (family) return Array.isArray(family.efforts) ? family.efforts : [];
+        if (!this.modelCatalog.length) {
+            return [
+                { id: 'low', name: 'Low', fast: true },
+                { id: 'medium', name: 'Medium', fast: true },
+                { id: 'high', name: 'High', fast: true },
+                { id: 'xhigh', name: 'Extra', fast: true }
+            ];
+        }
+        return [];
+    }
+
+    contextsForSelected() {
+        const family = this.selectedFamily();
+        return family && Array.isArray(family.contexts) ? family.contexts : [];
+    }
+
+    thinkingToggle() {
+        const family = this.selectedFamily();
+        return !!(family && family.thinkingToggle && !this.effortsForSelected().length);
+    }
+
+    fastAvailable() {
+        const family = this.modelCatalog.find((item) => item.id === this.selectedModel);
+        const efforts = this.effortsForSelected();
+        if (family && efforts.length) {
+            const row = efforts.find((item) => item.id === this.selectedEffort) || efforts[0];
+            return !!(row && row.fast);
+        }
+        if (family) return family.fast === true;
+        return !this.modelCatalog.length;
+    }
+
+    modelProvider(model) {
+        if (model && model.provider) return model.provider;
+        const id = (model && model.id) || '';
+        if (id === 'auto' || id.startsWith('grok') || id.startsWith('cursor-grok') || id.startsWith('composer')) return 'Cursor';
+        if (id.startsWith('claude')) return 'Anthropic';
+        if (id.startsWith('gpt') || id.indexOf('codex') !== -1) return 'OpenAI';
+        if (id.startsWith('gemini')) return 'Google';
+        if (id.startsWith('kimi')) return 'Moonshot';
+        if (id.startsWith('muse')) return 'Meta';
+        if (id.startsWith('glm')) return 'Z.ai';
+        return 'Other';
+    }
+
+    modelMenuItems() {
+        if (this.modelCatalog.length && !this.modelCatalog[0].provider) this._modelsRequested = 0;
+        this.requestDirectorModels();
+        const order = ['Cursor', 'Anthropic', 'OpenAI', 'Google', 'Moonshot', 'Meta', 'Z.ai', 'Other'];
+        const models = (this.modelCatalog.length
+            ? this.modelCatalog.slice()
+            : [{ id: this.selectedModel || 'grok-4.7', name: this.selectedModelName(), provider: 'Cursor', cost: 2, price: '' }]
+        ).sort((a, b) => {
+            const ap = order.indexOf(this.modelProvider(a));
+            const bp = order.indexOf(this.modelProvider(b));
+            const ai = ap < 0 ? order.length : ap;
+            const bi = bp < 0 ? order.length : bp;
+            if (ai !== bi) return ai - bi;
+            const released = (Number(b.released) || 0) - (Number(a.released) || 0);
+            if (released) return released;
+            return String(a.name || '').localeCompare(String(b.name || ''));
+        });
+        const items = [];
+        let provider = '';
+        models.forEach((model) => {
+            const group = this.modelProvider(model);
+            if (group !== provider) {
+                items.push({ separator: true, text: group });
+                provider = group;
+            }
+            items.push({
+                text: model.name,
+                action: `director-tools-model-${model.id}`,
+                dots: model.cost || 0,
+                tooltip: model.price || '',
+                showIndicator: true,
+                loadfn: (item) => { item.checked = this.selectedModel === model.id; }
+            });
+        });
+        return items;
+    }
+
+    selectedModelName() {
+        const family = this.modelCatalog.find((item) => item.id === this.selectedModel);
+        return family ? family.name : (this.selectedModel || 'Grok 4.7');
+    }
+
+    roundModelName(model) {
+        if (!model) return '';
+        const id = typeof model === 'string' ? model : (model.id || model.run || '');
+        if (!id) return '';
+        const family = this.modelCatalog.find((item) => item.id === id);
+        return family ? family.name : id;
+    }
+
+    paintModelPick() {
+        const auto = String(this.selectedModel || '').toLowerCase() === 'auto'
+            || this.selectedModelName().trim().toLowerCase() === 'auto';
+        if (this.directorModelPickName) this.directorModelPickName.textContent = auto ? 'Auto' : this.selectedModelName();
+        const effort = this.directorModelPickEffort;
+        if (!effort) return;
+        effort.className = 'uc-boxes';
+        effort.textContent = '';
+        effort.removeAttribute('data-uc-level');
+        if (auto || this.thinkingToggle() || !this.effortsForSelected().length) {
+            effort.classList.add('hidden');
+            return;
+        }
+        const levels = this.effortsForSelected().filter((level) => level.id !== 'none');
+        if (!levels.length) {
+            effort.classList.add('hidden');
+            return;
+        }
+        effort.classList.remove('hidden');
+        const rank = this.selectedEffort === 'none'
+            ? 0
+            : Math.max(0, levels.findIndex((level) => level.id === this.selectedEffort) + 1);
+        effort.dataset.ucLevel = String(rank);
+        effort.title = this.selectedEffortName();
+        levels.forEach((level, index) => {
+            const dot = document.createElement('span');
+            dot.className = 'uc-box';
+            if (index < rank) dot.classList.add('on');
+            dot.dataset.level = String(index + 1);
+            effort.appendChild(dot);
+        });
+        if (this.fast === true && this.fastAvailable()) {
+            const bolt = document.createElement('i');
+            bolt.className = 'fas fa-bolt';
+            bolt.setAttribute('aria-hidden', 'true');
+            effort.appendChild(bolt);
+        }
+    }
+
+    headerShowsControl(id) {
+        const el = document.getElementById(id);
+        if (!el || el.classList.contains('hidden')) return false;
+        return getComputedStyle(el).display !== 'none';
+    }
+
+    modelPrefItems() {
+        const director = this;
+        return [
+            {
+                icon: 'fas fa-microchip',
+                text: 'Model',
+                valueDisplay: () => director.selectedModelName(),
+                optionsfn: () => director.modelMenuItems()
+            },
+            {
+                icon: 'fas fa-lightbulb',
+                text: 'Thinking',
+                hidden: () => director.effortsForSelected().length === 0,
+                valueDisplay: () => director.selectedEffortName(),
+                optionsfn: () => director.effortsForSelected().map((level) => ({
+                    text: level.name,
+                    action: `director-tools-effort-${level.id}`,
+                    loadfn: (item) => { item.checked = director.selectedEffort === level.id; }
+                }))
+            },
+            {
+                icon: 'fas fa-lightbulb',
+                text: 'Thinking',
+                action: 'director-tools-thinking',
+                keepMenuOpen: true,
+                hidden: () => !director.thinkingToggle(),
+                loadfn: (item) => { item.checked = director.thinking === true; }
+            },
+            {
+                icon: 'fas fa-arrows-left-right',
+                text: 'Context',
+                hidden: () => director.contextsForSelected().length < 2,
+                valueDisplay: () => director.selectedContextLabel(),
+                optionsfn: () => director.contextsForSelected().map((slot) => ({
+                    text: slot.label || slot.id,
+                    action: `director-tools-context-${slot.id}`,
+                    loadfn: (item) => { item.checked = (director.selectedContext || 'default') === slot.id; }
+                }))
+            },
+            {
+                icon: 'fas fa-bolt',
+                text: 'Fast',
+                action: 'director-tools-fast',
+                keepMenuOpen: true,
+                hidden: () => !director.modelSupportsFast(),
+                loadfn: (item) => { item.checked = director.fast === true; }
+            }
+        ];
+    }
+
+    selectedEffortName() {
+        const level = this.effortsForSelected().find((item) => item.id === this.selectedEffort);
+        return level ? level.name : 'Medium';
+    }
+
+    selectedContextLabel() {
+        const slots = this.contextsForSelected();
+        const current = slots.find((slot) => slot.id === (this.selectedContext || 'default'));
+        return current ? (current.label || current.id) : (slots[0] ? (slots[0].label || slots[0].id) : '');
+    }
+
+    composerIsFocused() {
+        return !!(document.activeElement && this.directorChatInput && document.activeElement === this.directorChatInput);
+    }
+
+    stepEffort(direction) {
+        const efforts = this.effortsForSelected();
+        if (!efforts.length) return;
+        let index = efforts.findIndex((level) => level.id === this.selectedEffort);
+        if (index < 0) index = 0;
+        const next = Math.max(0, Math.min(efforts.length - 1, index + direction));
+        if (efforts[next].id === this.selectedEffort) return;
+        this.selectedEffort = efforts[next].id;
+        if (!this.fastAvailable()) this.fast = false;
+        this.saveChatPrefs();
+        this.rememberSessionModel();
+        showGlassToast('info', 'Director', this.selectedEffortName(), false, 900, '<i class="fas fa-lightbulb"></i>');
+    }
+
+    handleComposerHotkey(event) {
+        if (!event || event.isComposing || event.defaultPrevented) return false;
+        if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyN') {
+            const node = event.target;
+            const inDirector = !!(node && node.closest && node.closest('#directorWindow, #directorContainer'));
+            const typingElsewhere = !!(node && (node.tagName === 'TEXTAREA' || node.tagName === 'INPUT' || node.isContentEditable) && !inDirector);
+            if (typingElsewhere || !this.directorSurfaceOpen()) return false;
+            event.preventDefault();
+            event.stopPropagation();
+            void this.openNewSession();
+            return true;
+        }
+        if (!this.composerIsFocused()) return false;
+        const key = event.key;
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && key === 'Enter') {
+            event.preventDefault();
+            event.stopPropagation();
+            this.sendMessage();
+            return true;
+        }
+        if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && (key === 'ArrowUp' || key === 'ArrowDown')) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.stepEffort(key === 'ArrowUp' ? 1 : -1);
+            return true;
+        }
+        return false;
+    }
+
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerComposerHotkeys() {
+        const director = this;
+        const active = () => director.composerIsFocused();
+        registerKeyboardListener({
+            id: 'director.composerHotkeys',
+            handler: (event) => director.handleComposerHotkey(event),
+            type: 'global',
+            priority: 40,
+            showInOverlay: false
+        });
+        [
+            { id: 'director.hotkey.send', label: 'Send', keys: 'Ctrl+Enter', icon: 'fas fa-paper-plane' },
+            { id: 'director.hotkey.newSession', label: 'New session', keys: 'Alt+N', icon: 'fas fa-plus', valid: () => director.directorSurfaceOpen() },
+            { id: 'director.hotkey.reasoningUp', label: 'More reasoning', keys: 'Alt+Up', icon: 'fas fa-lightbulb' },
+            { id: 'director.hotkey.reasoningDown', label: 'Less reasoning', keys: 'Alt+Down', icon: 'fas fa-lightbulb' }
+        ].forEach((item) => {
+            registerKeyboardListener({
+                id: item.id,
+                type: 'global',
+                label: item.label,
+                keys: item.keys,
+                overlayIcon: item.icon,
+                overlayOnly: true,
+                overlayValid: item.valid || active
+            });
+        });
+    }
+
+    loadModelCache() {
+        try {
+            const raw = JSON.parse(localStorage.getItem('staticforge_director_models') || 'null');
+            if (raw && Array.isArray(raw.models) && raw.models.length) this.modelCatalog = raw.models;
+        } catch (_err) { /* keep the empty catalog */ }
+    }
+
+    saveModelCache() {
+        try {
+            localStorage.setItem('staticforge_director_models', JSON.stringify({
+                at: Date.now(),
+                models: this.modelCatalog
+            }));
+        } catch (_err) { /* storage can be full */ }
+    }
+
+    applyModelCatalog(models) {
+        if (!Array.isArray(models) || !models.length) return;
+        this.modelCatalog = models;
+        this.saveModelCache();
+        if (this.selectedModel !== 'auto' && !this.modelCatalog.some((item) => item.id === this.selectedModel)) {
+            const grok = this.modelCatalog.find((item) => item.id === 'grok-4.7');
+            this.selectedModel = grok ? grok.id : this.modelCatalog[0].id;
+        }
+        const efforts = this.effortsForSelected();
+        if (efforts.length && !efforts.some((item) => item.id === this.selectedEffort)) {
+            const medium = efforts.find((item) => item.id === 'medium');
+            this.selectedEffort = medium ? medium.id : efforts[0].id;
+        }
+        if (!this.fastAvailable()) this.fast = false;
+        this.saveChatPrefs();
+    }
+
+    requestDirectorModels() {
+        if (!window.wsClient || !window.wsClient.isConnected()) return;
+        if (this._modelsRequested && (Date.now() - this._modelsRequested) < 60000 && this.modelCatalog.length) return;
+        this._modelsRequested = Date.now();
+        window.wsClient.send({
+            type: 'director_get_models',
+            requestId: Date.now().toString()
+        });
+    }
+
     setupDirectorDropdowns() {
-        // Actions dropdown
         setupDropdown(
-            this.directorActionsDropdown,
-            this.directorActionsDropdownBtn,
-            this.directorActionsDropdownMenu,
-            (selectedValue) => this.renderDirectorActionsDropdown(selectedValue),
-            () => this.getSelectedDirectorAction(),
+            this.directorAttachDropdown,
+            this.directorAttachDropdownBtn,
+            this.directorAttachDropdownMenu,
+            () => this.renderAttachDropdown(),
+            () => null,
             { preventFocusTransfer: true }
         );
+    }
+
+    appendAttachMenuRow(label, iconClass, onRemove, item) {
+        const row = document.createElement('div');
+        row.className = 'custom-dropdown-option';
+        const text = document.createElement('span');
+        if (!item || !this.appendAttachmentPreview(text, item)) {
+            const icon = document.createElement('i');
+            icon.className = iconClass;
+            text.appendChild(icon);
+            text.appendChild(document.createTextNode(' '));
+        }
+        const name = document.createElement('span');
+        name.textContent = label;
+        text.appendChild(name);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn-secondary btn-small';
+        remove.title = 'Remove';
+        remove.innerHTML = '<i class="fas fa-times"></i>';
+        remove.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onRemove();
+        });
+        row.appendChild(text);
+        row.appendChild(remove);
+        this.directorAttachDropdownMenu.appendChild(row);
+    }
+
+    renderAttachDropdown() {
+        if (!this.directorAttachDropdownMenu) return;
+        const options = [
+            { id: 'computer', name: 'This computer', icon: 'fas fa-laptop' },
+            { id: 'studio', name: 'Current image', icon: 'fas fa-image' },
+            { id: 'explorer', name: 'Explorer selection', icon: 'fas fa-folder-open' }
+        ];
+        const lookbacks = this.lookbacksInComposer();
+        this.directorAttachDropdownMenu.innerHTML = '';
+        if (this.pendingAttachments.length || lookbacks.length) {
+            const header = document.createElement('div');
+            header.className = 'custom-dropdown-header';
+            header.textContent = 'On this message';
+            this.directorAttachDropdownMenu.appendChild(header);
+            this.pendingAttachments.forEach((item, index) => {
+                const label = item.name || item.filename || item.hash || 'file';
+                this.appendAttachMenuRow(label, 'fas fa-paperclip', () => {
+                    this.pendingAttachments.splice(index, 1);
+                    this.renderAttachChips();
+                    this.renderAttachDropdown();
+                }, item);
+            });
+            lookbacks.forEach((item) => {
+                this.appendAttachMenuRow(item.label || 'lookback', 'fas fa-link', () => {
+                    this.removeLookback(item.markdown);
+                });
+            });
+            const rule = document.createElement('div');
+            rule.className = 'custom-dropdown-separator';
+            this.directorAttachDropdownMenu.appendChild(rule);
+        }
+        options.forEach((option) => {
+            const optionElement = document.createElement('div');
+            optionElement.className = 'custom-dropdown-option';
+            optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.name}`;
+            optionElement.addEventListener('click', () => {
+                closeDropdown(this.directorAttachDropdownMenu, this.directorAttachDropdownBtn);
+                this.chooseAttachmentSource(option.id);
+            });
+            this.directorAttachDropdownMenu.appendChild(optionElement);
+        });
     }
     
     // Render functions
 
-    renderDirectorActionsDropdown(selectedValue) {
-        this.directorActionsDropdownMenu.innerHTML = '';
-        this.directorActions.forEach(action => {
-            const optionElement = document.createElement('div');
-            optionElement.className = 'custom-dropdown-option' +
-                (selectedValue === action.value ? ' selected' : '');
-            optionElement.dataset.value = action.value;
-            optionElement.innerHTML = `<i class="${action.icon}"></i> ${action.name}`;
-
-            optionElement.addEventListener('click', () => {
-                this.selectDirectorAction(action.value);
-                this.closeDirectorActionsDropdown();
-            });
-
-            this.directorActionsDropdownMenu.appendChild(optionElement);
-        });
-    }
-    
-    // Selection handlers
-
-    selectDirectorAction(value) {
-        const action = this.directorActions.find(a => a.value === value);
-        if (action) {
-            if (this.directorActionsSelected) {
-            this.directorActionsSelected.innerHTML = `<i class="${action.icon}"></i> ${action.name}`;
-            }
-            if (this.directorChatInput) {
-            this.directorChatInput.placeholder = action.placeholder;
-            }
-
-            // Auto-enable base image for efficiency if last response was stale
-            if (value === 'efficiency' && this.currentSession && this.currentSession.messages) {
-                const lastAssistantMessage = this.currentSession.messages
-                    .filter(msg => msg.role === 'assistant')
-                    .pop();
-
-                if (lastAssistantMessage && lastAssistantMessage.data && lastAssistantMessage.data.isStale) {
-                    const isCurrentlyOn = this.directorAddBaseImageToggleBtn.getAttribute('data-state') === 'on';
-                    if (!isCurrentlyOn) {
-                        this.updateIndicator(this.directorAddBaseImageToggleBtn, true);
-                        showGlassToast('info', null, 'Switching to efficiency mode. Base image enabled due to stale data.');
-                    }
-                }
-            }
-        } else {
-            this.directorActionsSelected.innerHTML = '<i class="fas fa-edit"></i> Change';
-            this.directorChatInput.placeholder = 'What changes do you want to make to the prompt?';
-        }
-    }
-
-    // Close handlers
-
-    closeDirectorActionsDropdown() {
-        closeDropdown(this.directorActionsDropdownMenu, this.directorActionsDropdownBtn);
-    }
-
-    // Get selected values
-
-    getSelectedDirectorAction() {
-        if (!this.directorActionsSelected) return 'change';
-        const selectedText = this.directorActionsSelected.textContent.trim();
-        return this.directorActions.find(a => a.name === selectedText)?.value || 'change';
-    }
-    
-    // Setup context menus
     setupDirectorContextMenus() {
-        // Create context menu configuration for director sessions
-        const directorSessionContextConfig = {
+        // Menus dispatch through config.onAction so they work in both hosts
+        // (Studio panel and #directorWindow), not only while manualModal is open.
+        this.directorSessionContextConfig = {
             sections: [
                 {
                     type: 'list',
@@ -242,62 +766,766 @@ class Director {
                             text: 'Delete Session',
                             icon: 'fas fa-trash-alt',
                             action: 'director-delete-session',
-                            className: 'danger'
+                            className: 'text-danger'
+                        }
+                    ]
+                }
+            ],
+            onAction: (action, target) => this.handleSessionContextAction(action, target)
+        };
+
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        if (this.directorToolsBtn) {
+            contextMenu.attachClickMenuToElement(this.directorToolsBtn, this.toolsMenuConfig());
+        }
+        if (this.directorModelPick) {
+            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+            contextMenu.attachClickMenuToElement(this.directorModelPick, {
+                onAction: (action) => this.handleToolsAction(action),
+                sections: [{ type: 'list', items: this.modelPrefItems() }]
+            });
+        }
+        this.paintModelPick();
+    }
+
+    handleSessionContextAction(action, target) {
+        const sessionItem = target && target.closest ? target.closest('.director-session-item') : null;
+        if (!sessionItem) return;
+        const sessionId = sessionItem.dataset.sessionId;
+        let session = this.directorSessions.find(s => s.id === sessionId);
+        if (!session) {
+            const numericSessionId = parseInt(sessionId);
+            session = this.directorSessions.find(s => s.id === numericSessionId);
+        }
+        if (!session) return;
+        this._suppressSessionOpenUntil = Date.now() + 400;
+        if (action === 'director-delete-session') {
+            this.deleteSessionFromContextMenu(session);
+        }
+    }
+
+    // Cleanup / Reinstall / Prompt guide — shared by the session tools menu and the tray menu
+    computerMenuItems() {
+        return [
+            { icon: 'fas fa-broom', text: 'Cleanup', action: 'director-tools-cleanup' },
+            { icon: 'fas fa-arrows-rotate', text: 'Reinstall', action: 'director-tools-reinstall' },
+            {
+                icon: 'fas fa-book',
+                text: 'Prompt guide',
+                submenu: [
+                    { icon: 'fas fa-code-compare', text: 'Review', action: 'director-tools-guide-review' },
+                    { icon: 'fas fa-code-branch', text: 'Extract', action: 'director-tools-guide-extract' },
+                    { icon: 'fas fa-code-commit', text: 'Commit', action: 'director-tools-guide-commit' },
+                    { icon: 'fas fa-cloud-arrow-up', text: 'Push', action: 'director-tools-guide-push' }
+                ]
+            }
+        ];
+    }
+
+    toolsMenuConfig() {
+        const director = this;
+        return {
+            onAction: (action) => director.handleToolsAction(action),
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'fas fa-plus',
+                            text: 'New Session',
+                            action: 'director-tools-new-session'
+                        },
+                        {
+                            icon: 'fas fa-book-open',
+                            text: 'Open Full History',
+                            action: 'director-tools-history',
+                            disabled: () => !director.currentSession
+                        },
+                        {
+                            icon: 'fas fa-clapperboard',
+                            text: 'Open Director',
+                            action: 'director-tools-open-window',
+                            hidden: () => !window.isDesktop || director.directorWindowIsOpen()
+                        },
+                        { separator: true },
+                        ...director.computerMenuItems(),
+                        { separator: true },
+                        ...director.modelPrefItems().map((item) => {
+                            const ownHidden = item.hidden;
+                            return {
+                                ...item,
+                                hidden: () => director.headerShowsControl('directorModelPick') || (typeof ownHidden === 'function' && ownHidden())
+                            };
+                        }),
+                        {
+                            icon: 'fas fa-comments',
+                            text: 'Show',
+                            valueDisplay: () => {
+                                if (director.messageFilter === 'chat') return 'Chat';
+                                if (director.messageFilter === 'chat-tools') return 'Chat and tools';
+                                return 'All';
+                            },
+                            submenu: [
+                                {
+                                    text: 'Chat',
+                                    action: 'director-tools-filter-chat',
+                                    loadfn: (item) => { item.checked = director.messageFilter === 'chat'; }
+                                },
+                                {
+                                    text: 'Chat and tools',
+                                    action: 'director-tools-filter-chat-tools',
+                                    loadfn: (item) => { item.checked = director.messageFilter === 'chat-tools'; }
+                                },
+                                {
+                                    text: 'All',
+                                    action: 'director-tools-filter-all',
+                                    loadfn: (item) => { item.checked = director.messageFilter === 'all'; }
+                                }
+                            ]
+                        },
+                        {
+                            icon: 'fas fa-list',
+                            text: 'Quick Tasks',
+                            submenu: DIRECTOR_QUICK_STARTS.map((task) => ({
+                                text: task.label,
+                                action: `director-tools-task-${task.id}`,
+                                hidden: () => (task.v45Only && !directorModelIsV45()) || (task.existingOnly && !director.sessionHasHistory()) || (task.needsSubject && !director.hasGrillSubject())
+                            }))
+                        },
+                        { separator: true },
+                        {
+                            icon: 'fas fa-level-down-alt',
+                            text: 'Send on Enter',
+                            action: 'director-tools-send-enter',
+                            keepMenuOpen: true,
+                            loadfn: (item) => { item.checked = director.sendOnEnter === true; }
+                        },
+                        { separator: true },
+                        {
+                            icon: 'fas fa-rotate-right',
+                            text: 'Retry',
+                            action: 'director-tools-retry',
+                            disabled: () => director._running || !director.lastUserMessageKey()
+                        },
+                        {
+                            icon: 'fas fa-undo',
+                            text: 'Revert',
+                            action: 'director-tools-revert',
+                            disabled: () => director._running || !director.lastUserMessageKey()
+                        },
+                        {
+                            icon: 'fas fa-stop',
+                            text: 'Abort',
+                            action: 'director-tools-abort',
+                            hidden: () => !director._running
+                        },
+                        {
+                            icon: 'fas fa-trash',
+                            text: 'Delete Chat',
+                            action: 'director-tools-delete',
+                            className: 'text-danger',
+                            disabled: () => !director.currentSession || !director.currentSession.id
                         }
                     ]
                 }
             ]
         };
-
-        // Store context menu configuration for later use
-        this.directorSessionContextConfig = directorSessionContextConfig;
-
-        // Set up action handlers
-        this.setupDirectorContextMenuHandlers();
     }
 
-    // Setup context menu action handlers
-    setupDirectorContextMenuHandlers() {
-        if (this._directorContextMenuWired) {
+    handleToolsAction(action) {
+        if (action.startsWith('director-tools-filter-')) {
+            const filter = action.slice('director-tools-filter-'.length);
+            if (filter === 'chat' || filter === 'chat-tools' || filter === 'all') this.setMessageFilter(filter);
             return;
         }
-        this._directorContextMenuWired = true;
-
-        this._directorContextMenuHandler = (event) => {
-            const { action, target } = event.detail;
-            
-            // Find the session item that was right-clicked
-            const sessionItem = target.closest('.director-session-item');
-            if (!sessionItem) {
+        if (action.startsWith('director-tools-model-')) {
+            const id = action.slice('director-tools-model-'.length);
+            if (!this.modelCatalog.some((model) => model.id === id) && id !== this.selectedModel) return;
+            this.selectedModel = id;
+            const efforts = this.effortsForSelected();
+            if (efforts.length && !efforts.some((level) => level.id === this.selectedEffort)) {
+                const medium = efforts.find((level) => level.id === 'medium') || efforts.find((level) => level.id === 'none');
+                this.selectedEffort = medium ? medium.id : efforts[0].id;
+            }
+            if (!efforts.length) this.selectedEffort = 'medium';
+            const contexts = this.contextsForSelected();
+            if (contexts.length && !contexts.some((slot) => slot.id === this.selectedContext)) {
+                this.selectedContext = contexts[0].id;
+            }
+            if (!contexts.length) this.selectedContext = '';
+            if (!this.thinkingToggle()) this.thinking = this.selectedEffort !== 'none';
+            if (!this.fastAvailable()) this.fast = false;
+            this.saveChatPrefs();
+            this.rememberSessionModel();
+            return;
+        }
+        if (action.startsWith('director-tools-effort-')) {
+            const value = action.slice('director-tools-effort-'.length);
+            if (this.effortsForSelected().some((level) => level.id === value)) {
+                this.selectedEffort = value;
+                this.thinking = value !== 'none';
+                if (!this.fastAvailable()) this.fast = false;
+                this.saveChatPrefs();
+                this.rememberSessionModel();
+            }
+            return;
+        }
+        if (action === 'director-tools-thinking') {
+            this.thinking = this.thinking !== true;
+            this.saveChatPrefs();
+            this.rememberSessionModel();
+            return;
+        }
+        if (action.startsWith('director-tools-context-')) {
+            const value = action.slice('director-tools-context-'.length);
+            if (this.contextsForSelected().some((slot) => slot.id === value)) {
+                this.selectedContext = value;
+                this.saveChatPrefs();
+                this.rememberSessionModel();
+            }
+            return;
+        }
+        if (action.startsWith('director-tools-task-')) {
+            const id = action.slice('director-tools-task-'.length);
+            const task = DIRECTOR_QUICK_STARTS.find((item) => item.id === id);
+            if (!task) return;
+            if (!this.currentSession || this.currentSession.draft) {
+                if (!this.currentSession) this.showNewSessionDraft();
+                this.toggleQuickTask(task.id);
                 return;
             }
-
-            const sessionId = sessionItem.dataset.sessionId;
-            let session = this.directorSessions.find(s => s.id === sessionId);
-            if (!session) {
-                // Try converting sessionId to number
-                const numericSessionId = parseInt(sessionId);
-                session = this.directorSessions.find(s => s.id === numericSessionId);
+            this.sendMessage(task.prompt);
+            return;
+        }
+        if (action.startsWith('director-tray-session-')) {
+            void this.openSessionInWindow(action.slice('director-tray-session-'.length));
+            return;
+        }
+        switch (action) {
+            case 'director-tray-open-running':
+                void this.openSessionInWindow(this._runningSessionId || (this._status && this._status.sessionId));
+                break;
+            case 'director-tools-new-session':
+                void this.openNewSession();
+                break;
+            case 'director-tools-history':
+                this.openFullHistory();
+                break;
+            case 'director-tools-open-window':
+                void this.openDirectorWindow();
+                break;
+            case 'director-tools-cleanup':
+                void this.cleanupComputer();
+                break;
+            case 'director-tools-reinstall':
+                void this.reinstallComputer();
+                break;
+            case 'director-tools-guide-review':
+                void this.promptGuideReview();
+                break;
+            case 'director-tools-guide-extract':
+                void this.promptGuideExtract();
+                break;
+            case 'director-tools-guide-commit':
+                void this.promptGuideCommit();
+                break;
+            case 'director-tools-guide-push':
+                void this.promptGuidePush();
+                break;
+            case 'director-tools-fast':
+                if (!this.modelSupportsFast()) return;
+                this.fast = !this.fast;
+                this.saveChatPrefs();
+                this.rememberSessionModel();
+                break;
+            case 'director-tools-send-enter':
+                this.sendOnEnter = !this.sendOnEnter;
+                this.saveChatPrefs();
+                break;
+            case 'director-tools-retry': {
+                const retryKey = this.lastUserMessageKey();
+                if (retryKey && this.revealMessageKey(retryKey)) this.retryMessage(retryKey);
+                break;
             }
-            
-            if (!session) {
-                return;
+            case 'director-tools-revert': {
+                const revertKey = this.lastUserMessageKey();
+                if (revertKey && this.revealMessageKey(revertKey)) this.rollbackToMessage(revertKey);
+                break;
             }
+            case 'director-tools-abort':
+                this.abortTurn();
+                break;
+            case 'director-tools-delete':
+                this.deleteSession();
+                break;
+            default:
+                break;
+        }
+    }
 
-            switch (action) {
-                case 'director-delete-session':
-                    this.deleteSessionFromContextMenu(session);
-                    break;
-            }
-        };
+    lastUserMessageKey() {
+        const messages = this.currentSession && Array.isArray(this.currentSession.messages) ? this.currentSession.messages : [];
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const message = messages[i];
+            if (message && message.role === 'user') return String(message.id || message.timestamp || '');
+        }
+        return null;
+    }
 
-        const manualModal = document.getElementById('manualModal');
-        if (manualModal) {
-            // attachModalListeners: public/scripts/comp/modalListenerScope.js
-            attachModalListeners(manualModal, (signal) => {
-                document.addEventListener('contextMenuAction', this._directorContextMenuHandler, { signal });
+    revealMessageKey(messageKey) {
+        if (!messageKey || !this.directorChatMessages) return false;
+        if (this.directorChatMessages.querySelector(`[data-message-key="${messageKey}"]`)) return true;
+        this._visibleRowCount = Math.max(this._visibleRowCount, 10000);
+        this._doRenderSessionMessages(this._renderedMessages || (this.currentSession && this.currentSession.messages) || []);
+        return !!this.directorChatMessages.querySelector(`[data-message-key="${messageKey}"]`);
+    }
+
+    abortTurn(keepRunning) {
+        const sessionId = this.currentSession && this.currentSession.id;
+        if (!sessionId || !this._running || this._runningSessionId !== sessionId) return;
+        if (!keepRunning) {
+            this._running = false;
+            this.updateTrayChrome();
+        }
+        if (window.wsClient && window.wsClient.isConnected()) {
+            window.wsClient.send({
+                type: 'director_abort',
+                requestId: Date.now().toString(),
+                sessionId,
+                persona: this.persona || 'wren'
             });
         }
+    }
+
+    readSessionModel(sessionId) {
+        if (!sessionId) return null;
+        try {
+            const all = JSON.parse(localStorage.getItem(this.SESSION_MODEL_KEY) || '{}');
+            const row = all[sessionId];
+            if (!row || typeof row.model !== 'string' || !row.model.trim()) return null;
+            return {
+                id: row.model.trim(),
+                effort: row.effort || 'medium',
+                fast: row.fast === true,
+                context: row.context || '',
+                thinking: row.thinking === true
+            };
+        } catch (_err) {
+            return null;
+        }
+    }
+
+    rememberSessionModel(sessionId) {
+        const id = sessionId || (this.currentSession && this.currentSession.id);
+        if (!id) return;
+        const choice = {
+            id: this.selectedModel || 'auto',
+            effort: this.selectedEffort || 'medium',
+            fast: this.fast === true,
+            context: this.selectedContext || '',
+            thinking: this.thinking === true
+        };
+        if (this.currentSession && this.currentSession.id === id) this.currentSession.choice = choice;
+        try {
+            const all = JSON.parse(localStorage.getItem(this.SESSION_MODEL_KEY) || '{}');
+            all[id] = {
+                model: choice.id,
+                effort: choice.effort,
+                fast: choice.fast,
+                context: choice.context || '',
+                thinking: choice.thinking === true
+            };
+            localStorage.setItem(this.SESSION_MODEL_KEY, JSON.stringify(all));
+        } catch (_err) { /* storage can be full */ }
+    }
+
+    choiceFromMessages(messages) {
+        const list = Array.isArray(messages) ? messages : [];
+        for (let i = list.length - 1; i >= 0; i--) {
+            const model = list[i] && list[i].model;
+            if (model && typeof model === 'object' && model.id) {
+                return {
+                    id: String(model.id),
+                    effort: model.effort || 'medium',
+                    fast: model.fast === true,
+                    context: model.context || '',
+                    thinking: model.thinking === true
+                };
+            }
+        }
+        return null;
+    }
+
+    applySessionModel(session) {
+        if (!session || session.draft || !session.id) {
+            this.selectedModel = 'auto';
+            this.selectedEffort = 'medium';
+            this.selectedContext = '';
+            this.thinking = false;
+            this.fast = false;
+            this.paintModelPick();
+            return;
+        }
+        const choice = this.readSessionModel(session.id) || session.choice || this.choiceFromMessages(session.messages);
+        this.selectedModel = choice && choice.id ? choice.id : 'auto';
+        this.selectedEffort = choice && choice.effort ? choice.effort : 'medium';
+        this.selectedContext = choice && choice.context ? choice.context : '';
+        this.thinking = !!(choice && choice.thinking);
+        this.fast = !!(choice && choice.fast);
+        if (!this.fastAvailable()) this.fast = false;
+        this.paintModelPick();
+    }
+
+    takeComposerAttachments() {
+        const attachments = this.pendingAttachments.map((item) => {
+            const copy = { ...item };
+            delete copy.preview;
+            return copy;
+        });
+        this.pendingAttachments = [];
+        return attachments;
+    }
+
+    clearComposer() {
+        if (this.directorChatInput) {
+            this.directorChatInput.value = '';
+            this.autoExpandTextarea(this.directorChatInput);
+        }
+        this.pendingAttachments = [];
+        this._selectedQuickTaskId = null;
+        this.renderAttachChips();
+    }
+
+    queuedForSession(sessionId) {
+        return (this._outgoingQueue || []).filter((item) => item && item.sessionId === sessionId);
+    }
+
+    renderQueueChip() {
+        if (!this.directorAttachChips) return;
+        this.directorAttachChips.querySelectorAll('[data-queue-chip]').forEach((el) => el.remove());
+        const sessionId = this.currentSession && this.currentSession.id;
+        const rows = sessionId ? this.queuedForSession(sessionId) : [];
+        if (!rows.length) return;
+        const chip = document.createElement('div');
+        chip.className = 'director-attach-chip';
+        chip.dataset.queueChip = '1';
+        chip.title = rows.length === 1 ? 'Queued' : `Queued ${rows.length}`;
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-layer-group';
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn-secondary btn-small';
+        remove.title = 'Clear queued messages';
+        remove.innerHTML = '<i class="fas fa-times"></i>';
+        remove.addEventListener('click', () => {
+            this._outgoingQueue = (this._outgoingQueue || []).filter((item) => item.sessionId !== sessionId);
+            this.renderQueueChip();
+        });
+        chip.appendChild(icon);
+        chip.appendChild(remove);
+        this.directorAttachChips.appendChild(chip);
+    }
+
+    afterTurn(sessionId) {
+        if (!sessionId) return;
+        if (this._steer && this._steer.sessionId === sessionId) {
+            const job = this._steer;
+            this._steer = null;
+            if (this.currentSession && this.currentSession.id === sessionId) this.dispatchOutgoing(job);
+            return;
+        }
+        const next = (this._outgoingQueue || []).find((item) => item && item.sessionId === sessionId);
+        if (!next) return;
+        this._outgoingQueue = this._outgoingQueue.filter((item) => item !== next);
+        this.renderQueueChip();
+        if (this.currentSession && this.currentSession.id === sessionId) this.dispatchOutgoing(next);
+    }
+
+    lastSessionStorageKey() {
+        return this.persona === 'xi' ? 'staticforge_director_last_session_xi' : this.LAST_SESSION_KEY;
+    }
+
+    packetPersona(body) {
+        return (body && body.persona) || 'wren';
+    }
+
+    paintPersonaToggle() {
+        const group = this.directorPersonaGroup;
+        const persona = this.persona === 'xi' ? 'xi' : 'wren';
+        const showXi = this._xiEnabled === true && this.directorWindowIsOpen();
+        if (group) {
+            group.classList.toggle('hidden', !showXi);
+            group.dataset.persona = persona;
+            group.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+                btn.classList.toggle('active', btn.dataset.persona === persona);
+            });
+        }
+        [this.directorCommonHeader, this.directorContainer, this.directorWindow].forEach((el) => {
+            if (el) el.dataset.persona = persona;
+        });
+        if (persona !== 'xi') return;
+        this._selectedQuickTaskId = null;
+        this.removeQuickStart();
+        this.hideBrowserPreview();
+        if (this.directorSessionPreviewExpanded) this.directorSessionPreviewExpanded.classList.add('hidden');
+        if (this.directorSessionPreviewContainer) this.directorSessionPreviewContainer.classList.add('hidden');
+        if (this.directorSessionImagesPane) {
+            this.directorSessionImagesPane.classList.add('hidden');
+            if (this.directorSessionImages) this.directorSessionImages.innerHTML = '';
+        }
+    }
+
+    noteXiEnabled(enabled) {
+        const on = enabled === true;
+        this._xiEnabled = on;
+        if (!on && this.persona === 'xi') this.setPersona('wren');
+        this.paintPersonaToggle();
+        return false;
+    }
+
+    // Studio always opens Wren. Xi is only the desktop Director window.
+    resetToWren() {
+        if (this.persona !== 'xi') {
+            this.paintPersonaToggle();
+            return;
+        }
+        this.saveChatPrefs();
+        if (this.currentSession && !this.currentSession.draft && this.currentSession.id) {
+            this._personaSession.xi = this.currentSession.id;
+        }
+        this.persona = 'wren';
+        this.loadChatPrefs();
+        this.paintChatPrefs();
+        this.currentSession = null;
+        window.currentSession = null;
+        this.paintPersonaToggle();
+    }
+
+    async setPersona(name) {
+        if (name === 'xi' && (!this._xiEnabled || !this.directorWindowIsOpen())) return;
+        const next = name === 'xi' ? 'xi' : 'wren';
+        if (next === this.persona) {
+            this.paintPersonaToggle();
+            return;
+        }
+        this.saveChatPrefs();
+        this._personaSession[this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
+        this.persona = next;
+        this.loadChatPrefs();
+        this.paintChatPrefs();
+        this.paintPersonaToggle();
+        this.currentSession = null;
+        window.currentSession = null;
+        try { await this.loadDirectorSessions(); } catch (_) { /* list refresh is best effort */ }
+        const remembered = this._personaSession[next];
+        const found = remembered && (this.directorSessions || []).find((item) => item.id === remembered);
+        if (found) await this.showSessionChat(found);
+        else this.showNewSessionDraft();
+    }
+
+    async openToolPayload(row) {
+        const title = (row && (row.label || row.name)) || 'Tool';
+        const local = [];
+        if (row && row.args) local.push(`Parameters\n${row.args}`);
+        if (row && row.result) local.push(`Result\n${row.result}`);
+        const id = row && (row.payloadId || row.diffId);
+        const sessionId = this.currentSession && this.currentSession.id;
+        if (id && sessionId) {
+            try {
+                const result = await this.directorRequest('director_tool_payload', { sessionId, payloadId: id, diffId: row.diffId || '' });
+                const parts = [];
+                if (result.args) parts.push(`Parameters\n${result.args}`);
+                if (result.result) parts.push(`Result\n${result.result}`);
+                if (!parts.length && result.text) parts.push(result.text);
+                this.showDirectorText(result.name || title, parts.join('\n\n') || '(empty)', result.detail || 'Read-only');
+                return;
+            } catch (err) {
+                if (!local.length) {
+                    showGlassToast('error', 'Director', err.message || 'Could not open that tool');
+                    return;
+                }
+            }
+        }
+        this.showDirectorText(title, local.join('\n\n') || '(empty)', 'Read-only');
+    }
+
+    async openToolDiff(sessionId, diffId, title) {
+        try {
+            const result = await this.directorRequest('director_tool_diff', { sessionId, diffId });
+            this.showDirectorText(title || 'Change', result.text || '(empty)', result.detail || 'Read-only');
+        } catch (err) {
+            showGlassToast('error', 'Director', err.message || 'Could not open that change');
+        }
+    }
+
+    finishTurn(sessionId) {
+        if (sessionId && this._runningSessionId && sessionId !== this._runningSessionId) return;
+        this._running = false;
+        this._runningSessionId = null;
+        // First-send handoff is over: an empty reload can replace the local bubble.
+        this._skipQuickStart = false;
+        this.updateTrayChrome();
+        this.setImagePending(false);
+        this.afterTurn(sessionId);
+    }
+
+    historyEntries() {
+        const messages = this.currentSession && Array.isArray(this.currentSession.messages) ? this.currentSession.messages : [];
+        const entries = [];
+        messages.forEach((message) => {
+            if (!message) return;
+            if (message.role === 'user') {
+                entries.push({ kind: 'You', text: String(message.user_input || message.content || '') });
+                return;
+            }
+            if (Array.isArray(message.trace) && message.trace.length) {
+                message.trace.forEach((row) => {
+                    if (!row) return;
+                    const kind = row.type === 'thinking' ? 'Thinking' : (row.type === 'tool' ? (row.label || row.name || 'Tool') : 'Director');
+                    const text = row.type === 'tool'
+                        ? [row.label || row.name, row.detail || row.text].filter(Boolean).join('\n')
+                        : String(row.text || '');
+                    if (text) entries.push({ kind, text: String(text) });
+                });
+                return;
+            }
+            const description = message.data && message.data.Description;
+            const text = description || message.content || '';
+            if (text) entries.push({ kind: 'Director', text: String(text) });
+        });
+        const live = this.directorChatMessages && this.directorChatMessages.querySelector('.director-live-turn');
+        if (live) {
+            live.querySelectorAll('.director-message').forEach((row) => {
+                const badge = row.querySelector('.director-request-type-badge');
+                const body = row.querySelector('.director-message-content');
+                const text = body ? body.textContent.trim() : '';
+                if (!text) return;
+                entries.push({ kind: badge ? badge.textContent.trim() : 'Live', text });
+            });
+        }
+        return entries;
+    }
+
+    createHistoryWindow() {
+        const modal = document.createElement('div');
+        modal.id = 'directorHistoryWindow';
+        modal.className = 'modal hidden transient resizeable-window';
+        modal.dataset.windowIdentifier = 'directorHistory';
+        modal.dataset.windowDefaultWidth = '980';
+        modal.dataset.windowDefaultHeight = '720';
+        modal.dataset.windowMinWidth = '640';
+        modal.dataset.windowMinHeight = '420';
+        modal.dataset.windowMaxWidth = '1400';
+        modal.dataset.windowMaxHeight = '1000';
+        // transientWindowsWithPositions: public/scripts/comp/modalUtils.js
+        transientWindowsWithPositions.add('directorHistory');
+        modal.innerHTML = `
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-book-open"></i>
+                    <span class="director-history-title">Director History</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                    <i class="fa-regular fa-window-minimize"></i>
+                </button>
+                <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content dark">
+                <div class="director-history-list form-section-scroll"></div>
+                <div class="director-history-reader form-section-scroll"></div>
+            </div>
+        `;
+        modal.querySelector('.close-btn').addEventListener('click', () => {
+            // closeModal: public/scripts/comp/modalUtils.js
+            closeModal(modal);
+        });
+        modal.querySelector('.minimize-btn').addEventListener('click', () => {
+            // minimizeModalProgrammatically: public/scripts/comp/modalUtils.js
+            minimizeModalProgrammatically(modal);
+        });
+        return modal;
+    }
+
+    historyHost(pane) {
+        return pane.querySelector('.scrollable-content') || pane;
+    }
+
+    showHistoryEntry(modal, entries, index) {
+        const listHost = this.historyHost(modal.querySelector('.director-history-list'));
+        const readHost = this.historyHost(modal.querySelector('.director-history-reader'));
+        const chosen = entries[index] || null;
+        listHost.querySelectorAll('.director-history-item').forEach((button, itemIndex) => {
+            button.dataset.selected = itemIndex === index ? '1' : '0';
+        });
+        readHost.innerHTML = '';
+        if (!chosen) {
+            const empty = document.createElement('div');
+            empty.className = 'director-message-content';
+            empty.textContent = 'This chat has no messages yet.';
+            readHost.appendChild(empty);
+            return;
+        }
+        const badge = document.createElement('span');
+        badge.className = 'director-request-type-badge';
+        badge.textContent = chosen.kind;
+        const body = document.createElement('div');
+        body.className = 'director-message-content director-history-text';
+        body.textContent = chosen.text;
+        readHost.appendChild(badge);
+        readHost.appendChild(body);
+    }
+
+    fillHistoryWindow(modal) {
+        const entries = this.historyEntries();
+        const listHost = this.historyHost(modal.querySelector('.director-history-list'));
+        listHost.innerHTML = '';
+        let selected = Math.max(0, entries.length - 1);
+        for (let i = entries.length - 1; i >= 0; i--) {
+            if (entries[i].kind === 'Thinking') {
+                selected = i;
+                break;
+            }
+        }
+        entries.forEach((entry, index) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn-secondary director-history-item';
+            button.dataset.selected = index === selected ? '1' : '0';
+            const kind = document.createElement('span');
+            kind.className = 'director-request-type-badge';
+            kind.textContent = entry.kind;
+            const preview = document.createElement('span');
+            preview.className = 'director-history-preview';
+            const line = entry.text.replace(/\s+/g, ' ').trim();
+            preview.textContent = line.length > 90 ? `${line.slice(0, 87)}…` : line;
+            button.appendChild(kind);
+            button.appendChild(preview);
+            button.addEventListener('click', () => this.showHistoryEntry(modal, entries, index));
+            listHost.appendChild(button);
+        });
+        this.showHistoryEntry(modal, entries, entries.length ? selected : -1);
+    }
+
+    openFullHistory() {
+        if (!this.currentSession) return;
+        let modal = document.getElementById('directorHistoryWindow');
+        if (!modal) {
+            modal = this.createHistoryWindow();
+            document.body.appendChild(modal);
+        }
+        const title = modal.querySelector('.director-history-title');
+        if (title) title.textContent = this.currentSession.name || 'Director History';
+        this.fillHistoryWindow(modal);
+        // openModal: public/scripts/comp/modalUtils.js
+        openModal(modal);
+        modal.querySelectorAll('.form-section-scroll').forEach((pane) => {
+            // updateScrollbar: public/scripts/comp/customScrollbar.js
+            window.customScrollbar.updateScrollbar(pane);
+        });
     }
 
     // Delete session (context menu version)
@@ -307,6 +1535,7 @@ class Director {
         }
 
         try {
+            const wasCurrent = !!(this.currentSession && this.currentSession.id && this.currentSession.id === session.id);
             const result = await showConfirmationDialog(
                 `Are you sure you want to delete the session "${session.name}"?`,
                 [
@@ -314,19 +1543,19 @@ class Director {
                     { text: 'Cancel', value: false, className: 'btn-secondary' }
                 ]
             );
-            const isCurrentSession = this.currentSession && this.currentSession.id === session.id;
-
             if (result) {
-                if (isCurrentSession) {
-                    this.showNewSession();
+                this._deleteWasCurrent = wasCurrent;
+                this._deleteTargetId = session.id;
+                if (wasCurrent) {
+                    const lastSessionId = localStorage.getItem(this.lastSessionStorageKey());
+                    if (lastSessionId === session.id) localStorage.removeItem(this.lastSessionStorageKey());
                 }
-
-                // Send WebSocket request to delete session
                 if (window.wsClient && window.wsClient.isConnected()) {
                     window.wsClient.send({
                         type: 'director_delete_session',
                         requestId: Date.now().toString(),
-                        sessionId: session.id
+                        sessionId: session.id,
+                        persona: this.persona || 'wren'
                     });
                 }
             }
@@ -338,21 +1567,21 @@ class Director {
     // Set message filter
     setMessageFilter(filter) {
         this.messageFilter = filter;
-        
-        // Update the filter group data attribute
+        this.paintMessageFilter();
+        this.saveChatPrefs();
+    }
+
+    paintMessageFilter() {
+        const filter = this.messageFilter || 'all';
         if (this.directorMessageFilterGroup) {
             this.directorMessageFilterGroup.dataset.filter = filter;
         }
-        
-        // Update active button
         const buttons = this.directorMessageFilterGroup?.querySelectorAll('.gallery-toggle-btn');
         if (buttons) {
             buttons.forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.filter === filter);
             });
         }
-        
-        // Apply filter to current messages
         this.applyMessageFilter();
     }
 
@@ -363,13 +1592,15 @@ class Director {
         
         messages.forEach(message => {
             let shouldShow = true;
-            
+            const isThinking = message.classList.contains('thinking');
+            const isTool = message.classList.contains('tool');
+            const pinned = message.dataset.quickStart === '1' || message.dataset.older === '1';
             switch (this.messageFilter) {
-                case 'messages':
-                    shouldShow = message.classList.contains('director-message');
+                case 'chat':
+                    shouldShow = pinned || (!isThinking && !isTool);
                     break;
-                case 'quotes':
-                    shouldShow = message.classList.contains('director-message-captions') || message.classList.contains('user');
+                case 'chat-tools':
+                    shouldShow = pinned || !isThinking;
                     break;
                 case 'all':
                 default:
@@ -402,29 +1633,33 @@ class Director {
         if (this.directorMenuBtn) {
             this.directorMenuBtn.addEventListener('click', () => this.toggleSessionOverlay());
         }
-
-        // Close overlay button
-        if (this.directorCloseOverlayBtn) {
-            this.directorCloseOverlayBtn.addEventListener('click', () => this.closeSessionOverlay());
+        const printsToggle = document.getElementById('directorSessionImagesToggle');
+        if (printsToggle) {
+            printsToggle.addEventListener('click', () => this.togglePrintsPane());
         }
 
         // New session button in overlay
         if (this.directorNewSessionBtn) {
             this.directorNewSessionBtn.addEventListener('click', () => {
                 this.closeSessionOverlay();
-                this.showNewSession();
+                void this.openNewSession();
             });
         }
-
-        // New session buttons
-        if (this.directorCreateSessionBtn) {
-            this.directorCreateSessionBtn.addEventListener('click', () => this.createSession());
-        }
-
 
         // Chat buttons
         if (this.directorSendBtn) {
             this.directorSendBtn.addEventListener('click', () => this.sendMessage());
+        }
+
+        this.registerComposerHotkeys();
+
+        const workspaceSwitchBtn = document.getElementById('directorWorkspaceSwitchBtn');
+        if (workspaceSwitchBtn) {
+            workspaceSwitchBtn.addEventListener('click', () => {
+                const meta = this.sessionWorkspaceMeta(this.currentSession);
+                if (!meta) return;
+                this.jumpToWorkspace(meta.id).then(() => this.paintWorkspaceBanner());
+            });
         }
 
         // Auto-generate toggle button
@@ -447,6 +1682,7 @@ class Director {
             const isActive = this.directorAddBaseImageToggleBtn.getAttribute('data-state') === 'on';
             this.updateIndicator(this.directorAddBaseImageToggleBtn, !isActive);
         });
+        }
 
         // Add high thinking toggle
         if (this.directorHighThinkingToggleBtn) {
@@ -465,73 +1701,57 @@ class Director {
                 }
             });
         }
+
+        if (this.directorPersonaGroup) {
+            this.directorPersonaGroup.addEventListener('click', (e) => {
+                const button = e.target.closest('.gallery-toggle-btn');
+                if (!button || !button.dataset.persona) return;
+                this.setPersona(button.dataset.persona);
+            });
+            this.paintPersonaToggle();
         }
 
         // Auto-expand textarea
         if (this.directorChatInput) {
-        this.directorChatInput.addEventListener('input', (e) => this.autoExpandTextarea(e.target));
-        this.directorChatInput.addEventListener('focus', (e) => this.autoExpandTextarea(e.target));
-        }
-        if (this.directorUserIntent) {
-            this.directorUserIntent.addEventListener('input', (e) => this.autoExpandTextarea(e.target));
-            this.directorUserIntent.addEventListener('focus', (e) => this.autoExpandTextarea(e.target));
-        }
-
-        // Image selection functionality
-        if (this.directorImageSelectBtn) {
-            this.directorImageSelectBtn.addEventListener('click', () => {
-                this.directorImageFileInput.click();
-            });
-        }
-
-        if (this.directorImageRemoveBtn) {
-            this.directorImageRemoveBtn.addEventListener('click', () => {
-                this.removeSelectedImage();
-            });
-        }
-
-        if (this.directorImageFileInput) {
-            this.directorImageFileInput.addEventListener('change', (e) => {
-                this.handleImageSelection(e);
-            });
-        }
-
-        // Attach mode selection event listeners
-        this.attachModeSelectionListeners();
-    }
-
-    // Set active mode for the slider
-    setActiveMode(mode) {
-        // Find the mode slider container (it might be newly created in welcome message)
-        const modeSliderContainer = this.directorModeSliderContainer ||
-                                   document.getElementById('directorModeSliderContainer');
-
-        if (!modeSliderContainer) return;
-
-        // Update button disabled states based on image selection
-        this.updateModeButtonStates();
-
-        // Update data attribute
-        modeSliderContainer.setAttribute('data-active', mode);
-
-        // Update button active states
-        const buttons = modeSliderContainer.querySelectorAll('.mode-slider-btn');
-        buttons.forEach(button => {
-            if (button.getAttribute('data-mode') === mode) {
-                button.classList.add('active');
-            } else {
-                button.classList.remove('active');
+        this.directorChatInput.addEventListener('input', (e) => {
+            this.autoExpandTextarea(e.target);
+            this.renderAttachChips();
+            if (this.directorAttachDropdownMenu && !this.directorAttachDropdownMenu.classList.contains('hidden')) {
+                this.renderAttachDropdown();
             }
         });
+        this.directorChatInput.addEventListener('focus', (e) => this.autoExpandTextarea(e.target));
+        this.directorChatInput.addEventListener('keydown', (e) => {
+            if (this.handleComposerHotkey(e)) return;
+            if (!this.sendOnEnter || e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+            e.preventDefault();
+            this.sendMessage();
+        });
+        }
+        if (this.directorAttachFileInput) {
+            this.directorAttachFileInput.addEventListener('change', (e) => {
+                this.addComputerFiles(e.target.files);
+                e.target.value = '';
+            });
+        }
 
-        // Show/hide image selection button based on mode
-        this.updateImageSelectionVisibility(mode);
-
-        // Re-render welcome message with updated mode content
-        this.renderWelcomeMessage();
+        // One listener for every compact log row, live and replayed (createTraceRow)
+        if (this.directorChatMessages) {
+            this.directorChatMessages.addEventListener('click', (e) => {
+                const toggle = e.target.closest('.director-compact-toggle');
+                if (!toggle) return;
+                const row = toggle.closest('.director-message');
+                if (!row) return;
+                row.classList.toggle('expanded');
+                row.dataset.autoOpen = '0';
+                const key = row.dataset.expandKey;
+                if (!key) return;
+                if (row.classList.contains('expanded')) this._expandedTrace.add(key);
+                else this._expandedTrace.delete(key);
+            });
+        }
     }
 
-    // Auto-expand textarea as content grows
     autoExpandTextarea(targetTextarea = null) {
         // Handle both directorChatInput and directorUserIntent
         const textareas = [];
@@ -545,163 +1765,24 @@ class Director {
 
         textareas.forEach(textarea => {
             if (!textarea) return;
-
-            // Reset height to auto to get the correct scrollHeight
-            textarea.style.height = 'auto';
-
-            // Set height to scrollHeight to fit all content
+            const chat = textarea.id === 'directorChatInput';
+            // A stretched flex height makes scrollHeight the panel, not the text.
+            textarea.style.height = '0px';
             const scrollHeight = textarea.scrollHeight;
-            const minHeight = 32; // Minimum height in pixels (matches min-height from HTML)
-            const maxHeight = 320; // Maximum height to prevent excessive growth
-
-            let calculatedHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
-            // Round up to even number
-            const newHeight = Math.ceil(calculatedHeight / 2) * 2;
-            textarea.style.height = newHeight + 'px';
+            const minHeight = chat ? 36 : 32;
+            const maxHeight = chat ? 120 : 320;
+            const next = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
+            textarea.style.height = next + 'px';
+            textarea.style.overflowY = next >= maxHeight ? 'auto' : 'hidden';
         });
     }
 
-    // Update image selection button visibility based on mode
-    updateImageSelectionVisibility(mode) {
-        if (this.directorImageSelectBtn) {
-            if (mode === 'analyse') {
-                this.directorImageSelectBtn.classList.remove('hidden');
-            } else {
-                this.directorImageSelectBtn.classList.add('hidden');
-            }
-        }
-        
-        // Only hide remove button if no image is selected
-        if (this.directorImageRemoveBtn && !this.selectedImageData) {
-            this.directorImageRemoveBtn.classList.add('hidden');
-        }
-    }
-
-    // Update mode button disabled states based on image selection
-    updateModeButtonStates() {
-        const modeSliderContainer = this.directorModeSliderContainer ||
-                                   document.getElementById('directorModeSliderContainer');
-        
-        if (!modeSliderContainer) return;
-
-        const buttons = modeSliderContainer.querySelectorAll('.mode-slider-btn');
-        buttons.forEach(button => {
-            const mode = button.getAttribute('data-mode');
-            
-            if (this.selectedImageData) {
-                // When image is selected, disable all buttons except Analyse
-                if (mode === 'analyse') {
-                    button.disabled = false;
-                } else {
-                    button.disabled = true;
-                }
-            } else {
-                // When no image is selected, enable all buttons
-                button.disabled = false;
-            }
-        });
-    }
-
-    // Handle image selection for Create mode
-    async handleImageSelection(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-            showGlassToast('error', null, 'Please select a valid image file.');
-            return;
-        }
-
-        // Validate file size (max 10MB)
-        const maxSize = 10 * 1024 * 1024; // 10MB
-        if (file.size > maxSize) {
-            showGlassToast('error', null, 'Image file is too large. Maximum size is 10MB.');
-            return;
-        }
-
-        try {
-            // Show loading state
-            showGlassToast('info', null, 'Processing image...');
-
-            // Convert to base64
-            const base64 = await this.fileToBase64(file);
-            
-            // Store the selected image data
-            this.selectedImageData = {
-                file: file,
-                base64: base64,
-                filename: file.name,
-                mimeType: file.type
-            };
-
-            // Update button to show image is selected using indicator system
-            if (this.directorImageSelectBtn) {
-                this.updateIndicator(this.directorImageSelectBtn, true);
-                this.directorImageSelectBtn.title = `Selected: ${file.name}`;
-            }
-
-            // Show remove button
-            if (this.directorImageRemoveBtn) {
-                this.directorImageRemoveBtn.classList.remove('hidden');
-                this.directorImageRemoveBtn.title = `Remove: ${file.name}`;
-            }
-
-            // Automatically switch to Analyse mode when image is selected
-            this.setActiveMode('analyse');
-
-            showGlassToast('success', null, `Image "${file.name}" selected. Switched to Analyse mode.`);
-
-        } catch (error) {
-            console.error('Error processing image:', error);
-            showGlassToast('error', null, 'Failed to process image. Please try again.');
-        }
-    }
-
-    // Convert file to base64
-    fileToBase64(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = () => {
-                // Remove the data URL prefix to get just the base64 data
-                const base64 = reader.result.split(',')[1];
-                resolve(base64);
-            };
-            reader.onerror = error => reject(error);
-        });
-    }
-
-    // Remove selected image
-    removeSelectedImage() {
-        // Clear selected image data
-        this.selectedImageData = null;
-
-        // Reset image selection button indicator
-        if (this.directorImageSelectBtn) {
-            this.updateIndicator(this.directorImageSelectBtn, false);
-            this.directorImageSelectBtn.title = '';
-        }
-
-        // Hide remove button
-        if (this.directorImageRemoveBtn) {
-            this.directorImageRemoveBtn.classList.add('hidden');
-            this.directorImageRemoveBtn.title = '';
-        }
-
-        // Clear file input
-        if (this.directorImageFileInput) {
-            this.directorImageFileInput.value = '';
-        }
-
-        // Update mode button states to re-enable all buttons
-        this.updateModeButtonStates();
-
-        showGlassToast('info', null, 'Image removed. You can now switch to other modes.');
-    }
-
-    // View management
+    // Studio Director button: focus the desktop window when it is open, otherwise toggle the panel
     toggleDirector() {
+        if (this.directorWindowIsOpen()) {
+            this.focusDirectorWindow();
+            return;
+        }
         const isVisible = !this.directorContainer.classList.contains('hidden');
         if (isVisible) {
             this.hideDirector();
@@ -710,11 +1791,1044 @@ class Director {
         }
     }
 
-    async showDirector() {
+    // ---- Desktop window host (#directorWindow) ----
+
+    directorWindowIsOpen() {
+        return !!(this.directorWindow
+            && !this.directorWindow.classList.contains('hidden')
+            && !this.directorWindow.classList.contains('closing'));
+    }
+
+    directorDockedInWindow() {
+        return !!(this.directorWindowChat && this.directorContainer
+            && this.directorContainer.parentNode === this.directorWindowChat);
+    }
+
+    // Wide #directorWindow keeps the session list open as a static left panel.
+    // The breakpoint lives in the director-window container query (public/css/director.css).
+    staticSessionPanel() {
+        if (!this.directorContainer || !this.directorDockedInWindow()) return false;
+        return getComputedStyle(this.directorContainer).getPropertyValue('--director-static-sessions').trim() === '1';
+    }
+
+    focusDirectorWindow() {
+        if (!this.directorWindow) return;
+        if (this.directorWindow.classList.contains('minimised')) {
+            // restoreMinimizedModal: public/scripts/comp/modalUtils.js
+            restoreMinimizedModal(this.directorWindow, null);
+        }
+        // bringModalToFront: public/scripts/comp/modalUtils.js
+        bringModalToFront(this.directorWindow);
+    }
+
+    setupDirectorWindow() {
+        if (!this.directorWindow || this._directorWindowWired) return;
+        this._directorWindowWired = true;
+        const closeBtn = this.directorWindow.querySelector('.modal-window-controls .close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.closeDirectorWindow());
+        }
+    }
+
+    mountDirectorInWindow() {
+        if (!this.directorWindowChat || !this.directorContainer || this.directorDockedInWindow()) return;
+        if (this._hideTimer) {
+            clearTimeout(this._hideTimer);
+            this._hideTimer = null;
+        }
+        if (this.directorCommonHeader) {
+            this.directorWindowChat.appendChild(this.directorCommonHeader);
+            this.directorCommonHeader.classList.remove('hidden');
+        }
+        this.directorWindowChat.appendChild(this.directorContainer);
+        this.directorContainer.classList.remove('hidden', 'director-closed');
+        this.directorContainer.classList.add('director-open');
+        this.updateHeaderForView(this.currentView);
+        this.renderSessionImages();
+    }
+
+    mountDirectorInStudio() {
+        if (!this.directorDockedInWindow()) return;
+        // #manualPresetGroup follows the Director block in the Studio form column (public/app.html)
+        const anchor = document.getElementById('manualPresetGroup');
+        if (!anchor || !anchor.parentNode) return;
+        if (this.directorCommonHeader) {
+            anchor.parentNode.insertBefore(this.directorCommonHeader, anchor);
+            this.directorCommonHeader.classList.add('hidden');
+        }
+        anchor.parentNode.insertBefore(this.directorContainer, anchor);
+        // The Studio panel stays closed until the Director button opens it again
+        this.directorContainer.classList.remove('director-open');
+        this.directorContainer.classList.add('director-closed', 'hidden');
+        if (this.directorAutoGenerateBtn) {
+            this.directorAutoGenerateBtn.classList.add('hidden');
+        }
+        this.updateIndicator(this.directorBtn, false);
+        this.hideBrowserPreview();
+        this.renderSessionImages();
+    }
+
+    async openDirectorWindow() {
+        if (!this.directorWindow) return;
+        if (this.directorWindowIsOpen()) {
+            this.focusDirectorWindow();
+            this.paintPersonaToggle();
+            if (this._resumeImage || this._lookupImageChat || this._openPreferredId) await this.openCurrentSession();
+            return;
+        }
+        this.resetToWren();
+        const panelOpen = this.directorContainer && !this.directorContainer.classList.contains('hidden')
+            && !this.directorDockedInWindow();
+        if (panelOpen) {
+            this.hideDirector();
+        }
+        this.mountDirectorInWindow();
+        this._windowOpenedOnce = true;
+        // openModal: public/scripts/comp/modalUtils.js
+        openModal(this.directorWindow);
+        this.paintPersonaToggle();
+        this.requestDirectorModels();
+        this.updateTrayChrome();
+        // The wide layout shows the session list without the hamburger, so it has to be filled
+        this.loadDirectorSessions();
+        await this.openCurrentSession();
+        this.initializeScrollbars();
+        this.scrollToBottom();
+    }
+
+    // Close hides the window only. The agent keeps running and the session stays loaded.
+    closeDirectorWindow() {
+        if (!this.directorWindow) return;
+        // closeModal: public/scripts/comp/modalUtils.js
+        closeModal(this.directorWindow);
+        this.mountDirectorInStudio();
+        this.resetToWren();
+        this.updateTrayChrome();
+    }
+
+    // ---- Tray icon (#directorTrayIcon), same pattern as Phasewalker ----
+
+    // idle | working | interrupted | failed | offline, as the server named it.
+    // A local turn always wins so the icon moves before the push lands.
+    trayState() {
+        if (this._running) return 'working';
+        const state = this._status && this._status.state;
+        return DIRECTOR_TRAY_STATES[state] ? state : 'idle';
+    }
+
+    trayStateLabel() {
+        const state = this.trayState();
+        const words = DIRECTOR_TRAY_STATES[state];
+        if (state === 'working') {
+            const name = (this._status && this._status.sessionName) || this.runningSessionName();
+            return name ? `${words} · ${name}` : words;
+        }
+        if (state === 'offline') {
+            const computer = this._status && this._status.computer;
+            return computer && computer.error ? `${words} · ${computer.error}` : words;
+        }
+        const last = this._status && this._status.last;
+        return last && last.error ? `${words} · ${last.error}` : words;
+    }
+
+    runningSessionName() {
+        const id = this._runningSessionId || (this._status && this._status.sessionId);
+        if (!id) return '';
+        const session = (this.directorSessions || []).find((item) => String(item.id) === String(id));
+        return session ? (session.name || 'Director') : '';
+    }
+
+    // Three most recent chats, server order, with the running one marked
+    trayRecentSessions() {
+        const fromStatus = this._status && Array.isArray(this._status.sessions) ? this._status.sessions : null;
+        const rows = fromStatus && fromStatus.length
+            ? fromStatus
+            : (this.directorSessions || []).slice(0, DIRECTOR_TRAY_SESSIONS);
+        const currentId = this.currentSession && this.currentSession.id;
+        return rows.slice(0, DIRECTOR_TRAY_SESSIONS).map((row) => ({
+            id: row.id,
+            name: row.name || 'Director',
+            current: String(row.id) === String(currentId)
+        }));
+    }
+
+    // formatBytes: public/scripts/comp/systemTrayManager.js
+    trayResourceLine() {
+        const resources = this._status && this._status.resources;
+        if (!resources) return 'Dreamspace idle';
+        const cpu = Number.isFinite(Number(resources.cpu)) ? `${Number(resources.cpu).toFixed(0)}% CPU` : 'CPU unknown';
+        const rss = Number.isFinite(Number(resources.rss)) ? formatBytes(Number(resources.rss)) : 'unknown';
+        return resources.live ? `${cpu} · ${rss}` : `${cpu} · ${rss} (last run)`;
+    }
+
+    trayResourceBreakdown() {
+        const resources = this._status && this._status.resources;
+        const rows = resources && Array.isArray(resources.processes) ? resources.processes : [];
+        if (!rows.length) {
+            return [{ text: 'No agent processes', disabled: true }];
+        }
+        const items = rows.map((row) => ({
+            text: `${row.name || 'process'} · ${Number(row.cpu || 0).toFixed(0)}% · ${formatBytes(Number(row.rss) || 0)}`,
+            disabled: true
+        }));
+        if (Number(resources.count) > rows.length) {
+            items.push({ text: `+${Number(resources.count) - rows.length} more`, disabled: true });
+        }
+        return items;
+    }
+
+    buildTrayMenuItems() {
+        const director = this;
+        const state = this.trayState();
+        const items = [
+            { icon: DIRECTOR_TRAY_ICONS[state], text: this.trayStateLabel(), disabled: true },
+            { separator: true },
+            { icon: 'fas fa-clapperboard', text: 'Open', action: 'director-tools-open-window' }
+        ];
+        if (state === 'working') {
+            items.push({
+                icon: 'fas fa-person-running',
+                text: 'Open current session',
+                action: 'director-tray-open-running'
+            });
+        }
+        const recent = this.trayRecentSessions();
+        if (recent.length) {
+            items.push({ separator: true, text: 'Recent' });
+            recent.forEach((session) => {
+                items.push({
+                    icon: session.current ? 'fas fa-circle-dot' : 'fas fa-comment',
+                    text: session.name,
+                    action: `director-tray-session-${session.id}`,
+                    loadfn: (item) => { item.checked = session.current; }
+                });
+            });
+        }
+        items.push({ separator: true });
+        items.push({
+            icon: 'fas fa-microchip',
+            text: 'Resources',
+            valueDisplay: () => director.trayResourceLine(),
+            submenu: this.trayResourceBreakdown()
+        });
+        items.push({ separator: true });
+        items.push(...this.computerMenuItems());
+        return items;
+    }
+
+    buildTrayMenuConfig() {
+        const director = this;
+        return {
+            maxHeight: 460,
+            beforeShow: () => {
+                director.refreshTrayMenuItems();
+                // One read per open. No interval anywhere.
+                director.requestDirectorStatus();
+            },
+            sections: [{ type: 'list', title: 'Director', items: [] }],
+            onAction: (action) => director.handleToolsAction(action)
+        };
+    }
+
+    refreshTrayMenuItems() {
+        if (!this.trayMenuConfig || !this.trayMenuConfig.sections[0]) return;
+        this.trayMenuConfig.sections[0].items = this.buildTrayMenuItems();
+    }
+
+    reRenderTrayMenuIfOpen() {
+        // contextMenu.renderMenu: public/scripts/comp/contextMenu.js
+        if (!contextMenu || !contextMenu.isOpen || contextMenu.currentTarget !== this.directorTrayIcon) return;
+        this.refreshTrayMenuItems();
+        contextMenu.renderMenu(this.trayMenuConfig, this.directorTrayIcon);
+        contextMenu.executeLoadFunctions(this.trayMenuConfig, this.directorTrayIcon);
+        contextMenu.updateIndicatorDots(this.trayMenuConfig);
+    }
+
+    setupTray() {
+        // contextMenu.attachToElement: public/scripts/comp/contextMenu.js
+        if (!this.directorTrayIcon) return;
+        this.trayMenuConfig = this.buildTrayMenuConfig();
+        contextMenu.attachToElement(this.directorTrayIcon, this.trayMenuConfig);
+        this.directorTrayIcon.addEventListener('click', (e) => {
+            e.preventDefault();
+            void this.openDirectorWindow();
+        });
+        this.directorTrayIcon.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void this.openDirectorWindow();
+        });
+        this.requestDirectorStatus();
+        this.updateTrayChrome();
+    }
+
+    updateTrayChrome() {
+        if (!this.directorTrayIcon || !window.isDesktop) return;
+        // Stays hidden while the Studio panel is the only UI; shows once the window
+        // opened, a run started, or a turn left something for the user to look at.
+        // An offline computer stays hidden — hosts without bubblewrap never use it.
+        const reported = this._status && this._status.state;
+        if (this._windowOpenedOnce || this._running
+            || reported === 'working' || reported === 'interrupted' || reported === 'failed') {
+            this._trayRevealed = true;
+        }
+        // isDesktopTrayBootPending: public/scripts/comp/trayIndicators.js
+        if (this._trayRevealed && !isDesktopTrayBootPending()) {
+            this.directorTrayIcon.classList.remove('hidden');
+        } else if (!this._trayRevealed) {
+            this.directorTrayIcon.classList.add('hidden');
+        }
+        const state = this.trayState();
+        Object.keys(DIRECTOR_TRAY_STATES).forEach((name) => {
+            this.directorTrayIcon.classList.toggle(name, name !== 'idle' && name === state);
+        });
+        this.directorTrayIcon.title = `Director — ${this.trayStateLabel()}`;
+        this.reRenderTrayMenuIfOpen();
+    }
+
+    requestDirectorStatus() {
+        if (!window.wsClient || !window.wsClient.isConnected()) return;
+        window.wsClient.send({
+            type: 'director_computer_status',
+            requestId: Date.now().toString()
+        });
+    }
+
+    // Push (director_computer_status) and read (…_response) land here. It never
+    // clears _running — director_message_response / _error own the local turn.
+    applyDirectorStatus(status) {
+        if (!status || typeof status !== 'object') return;
+        this._status = status;
+        this.updateTrayChrome();
+        this.noteCursorLogin(status.cursorLogin);
+        const personaChanged = !!(status.xi && typeof status.xi.enabled === 'boolean' && this.noteXiEnabled(status.xi.enabled));
+        if (this._resumeFromStatus) {
+            this._resumeFromStatus = false;
+            if (personaChanged) {
+                this.loadDirectorSessions().then(() => this.continueAfterReconnect(status)).catch(() => this.continueAfterReconnect(status));
+            } else {
+                this.continueAfterReconnect(status);
+            }
+            return;
+        }
+        if (personaChanged) {
+            this.currentSession = null;
+            window.currentSession = null;
+            this.loadDirectorSessions().then(() => {
+                const xiRunning = status.xi && status.xi.running && status.xi.sessionId;
+                if (this.persona === 'xi' && xiRunning) {
+                    this.showSessionChat({
+                        id: status.xi.sessionId,
+                        name: status.xi.sessionName || 'Xi',
+                        messages: [],
+                        tasks: []
+                    });
+                    return;
+                }
+                const remembered = this._personaSession[this.persona];
+                const found = remembered && (this.directorSessions || []).find((item) => item.id === remembered);
+                if (found) this.showSessionChat(found);
+                else if (this.directorSurfaceOpen()) this.showNewSessionDraft();
+            }).catch(() => {});
+        }
+        const openId = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
+        const xiRunningId = status.xi && status.xi.running ? status.xi.sessionId : null;
+        const runningHere = (status.running && status.sessionId && openId === status.sessionId)
+            || (xiRunningId && openId === xiRunningId);
+        if (runningHere && !this._running) {
+            this._running = true;
+            this._runningSessionId = xiRunningId && openId === xiRunningId ? xiRunningId : status.sessionId;
+            this.updateTrayChrome();
+            this.showTypingIndicator();
+        }
+    }
+
+    // Dropped socket: the first-send guard would ignore the reload, and a live
+    // turn's completion was sent to the old socket. Pull sessions and messages,
+    // then let the status packet decide whether the turn is still going.
+    async resumeAfterReconnect() {
+        this._skipQuickStart = false;
+        this._resumeFromStatus = true;
+        try {
+            await this.loadDirectorSessions();
+        } catch (_err) { /* list refresh is best effort */ }
+        const openId = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
+        if (openId) this.loadSessionMessages(openId);
+        this.requestDirectorStatus();
+        this.requestCursorUsage();
+    }
+
+    continueAfterReconnect(status) {
+        const useXi = this.persona === 'xi';
+        const xi = status && status.xi;
+        const runningId = useXi
+            ? (xi && xi.running && xi.sessionId ? xi.sessionId : null)
+            : (status && status.running && status.sessionId ? status.sessionId : null);
+        const runningName = useXi ? (xi && xi.sessionName) : (status && status.sessionName);
+        const openId = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
+        const unsentDraft = !!(this._pendingOutgoing && !openId);
+        if (runningId) {
+            this._creatingChat = false;
+            this._running = true;
+            this._runningSessionId = runningId;
+            this.updateTrayChrome();
+            if (unsentDraft || openId === runningId) {
+                this._pendingOutgoing = null;
+                if (openId !== runningId) {
+                    this.showSessionChat({
+                        id: runningId,
+                        name: runningName || (useXi ? 'Xi' : 'Director'),
+                        messages: [],
+                        tasks: []
+                    }, { skipLoad: true });
+                }
+                this.loadSessionMessages(runningId);
+                this.showTypingIndicator();
+            }
+            return;
+        }
+        this._creatingChat = false;
+        if (this._running) this.finishTurn(this._runningSessionId);
+        this.hideTypingIndicator();
+        if (unsentDraft) {
+            this.restorePendingOutgoing();
+            return;
+        }
+        if (openId) this.loadSessionMessages(openId);
+    }
+
+    // The jail copies the host Cursor login at server startup. When that login
+    // is missing or a turn comes back unauthorized, ask them to log in on the host.
+    noteCursorLogin(login) {
+        if (!login || login.ok !== false) {
+            this._loginNotice = null;
+            return;
+        }
+        if (this._loginNotice === login.reason) return;
+        this._loginNotice = login.reason;
+        const text = login.reason === 'expired'
+            ? 'Cursor login expired. On this machine run cursor-agent login, then try again.'
+            : 'Cursor is not logged in. On this machine run cursor-agent login, then try again.';
+        showGlassToast('error', 'Director', text, false, 8000);
+    }
+
+    // Tray session rows and "Open current session" both land in #directorWindow,
+    // never in the Studio panel. openCurrentSession consumes _openPreferredId.
+    async openSessionInWindow(sessionId) {
+        if (!sessionId) return;
+        this._openPreferredId = sessionId;
+        if (this.directorWindowIsOpen()) {
+            this.focusDirectorWindow();
+            await this.openCurrentSession();
+            return;
+        }
+        await this.openDirectorWindow();
+    }
+
+    // ---- Browser pane (desktop window only) ----
+
+    showBrowserPreview(payload) {
+        if (this.persona === 'xi') return;
+        if (!payload || !this.directorBrowserPane || !this.directorBrowserPreview) return;
+        if (!this.directorWindowIsOpen() || !this.directorDockedInWindow()) return;
+        const chatId = payload.chatId || payload.sessionId;
+        if (!chatId || !this.currentSession || String(chatId) !== String(this.currentSession.id)) return;
+        const filename = payload.filename || '';
+        const src = payload.url || `/director/browser/${encodeURIComponent(chatId)}/${encodeURIComponent(filename)}`;
+        this.directorBrowserPreview.src = src;
+        this.directorBrowserPane.classList.remove('hidden');
+    }
+
+    hideBrowserPreview() {
+        if (!this.directorBrowserPane) return;
+        this.directorBrowserPane.classList.add('hidden');
+        if (this.directorBrowserPreview) this.directorBrowserPreview.removeAttribute('src');
+    }
+
+    // ---- Session prints (desktop window only) ----
+
+    // chat.images on the Director session (modules/cursorDirector.js), oldest first
+    sessionImageFilenames() {
+        const images = this.currentSession && this.currentSession.images;
+        return Array.isArray(images) ? images.filter((name) => typeof name === 'string' && name) : [];
+    }
+
+    sessionPrints() {
+        const prints = this.currentSession && this.currentSession.prints;
+        if (Array.isArray(prints) && prints.length) {
+            return prints.map((item) => {
+                if (typeof item === 'string') return { filename: item, messageId: '' };
+                return item && item.filename ? { filename: item.filename, messageId: item.messageId || '' } : null;
+            }).filter(Boolean);
+        }
+        return this.sessionImageFilenames().map((filename) => ({ filename, messageId: '' }));
+    }
+
+    markPrintMessage(messageId, on) {
+        if (!messageId || !this.directorChatMessages) return;
+        this.directorChatMessages.querySelectorAll(`[data-message-key="${CSS.escape(String(messageId))}"]`).forEach((node) => {
+            if (on) node.dataset.linked = '1';
+            else delete node.dataset.linked;
+        });
+    }
+
+    attachPrintToComposer(filename) {
+        if (!filename) return;
+        if (!this.pendingAttachments.some((item) => item && item.filename === filename)) {
+            this.pendingAttachments.push({ source: 'workspace', filename, name: filename });
+            this.renderAttachChips();
+        }
+        if (this.directorChatInput) this.directorChatInput.focus();
+    }
+
+    wirePrintMenu(element, filename, messageId) {
+        if (!element || !filename || !contextMenu) return;
+        const director = this;
+        contextMenu.attachToElement(element, {
+            sections: [{
+                type: 'list',
+                items: [
+                    { text: 'Open', icon: 'fas fa-images', action: 'open-print' },
+                    { text: 'Show on message', icon: 'fas fa-comment', action: 'show-print', disabled: !messageId },
+                    { text: 'Attach to message', icon: 'fas fa-paperclip', action: 'attach-print' }
+                ]
+            }],
+            onAction: (action) => {
+                if (action === 'open-print') director.openSessionImage(filename);
+                if (action === 'attach-print') director.attachPrintToComposer(filename);
+                if (action === 'show-print' && messageId) {
+                    const node = director.directorChatMessages
+                        && director.directorChatMessages.querySelector(`[data-message-key="${CSS.escape(String(messageId))}"]`);
+                    if (node) {
+                        node.scrollIntoView({ block: 'nearest' });
+                        director.markPrintMessage(messageId, true);
+                    }
+                }
+            }
+        });
+    }
+
+    ensurePrintBubble(host, filename, messageId) {
+        if (!host || !filename) return;
+        let row = host.querySelector('.director-message-actions[data-prints]');
+        if (!row) {
+            row = document.createElement('div');
+            row.className = 'director-message-actions';
+            row.dataset.prints = '1';
+            host.appendChild(row);
+        }
+        if (row.querySelector(`[data-filename="${CSS.escape(filename)}"]`)) return;
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'director-attach-chip';
+        chip.dataset.filename = filename;
+        chip.title = filename;
+        const preview = document.createElement('img');
+        preview.className = 'director-session-preview';
+        preview.alt = filename;
+        preview.src = this.getSessionPreviewImage({ filename, image_type: 'generated' });
+        preview.addEventListener('error', () => {
+            // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            const full = localGalleryImageUrl(filename);
+            if (preview.dataset.fullTried === '1' || !full) return;
+            preview.dataset.fullTried = '1';
+            preview.src = full;
+        });
+        chip.appendChild(preview);
+        chip.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this.openSessionImage(filename);
+        });
+        this.wirePrintMenu(chip, filename, messageId);
+        row.appendChild(chip);
+    }
+
+    mountPrintBubble(messageId, filename) {
+        if (!this.directorChatMessages || !filename) return;
+        let host = null;
+        if (messageId) {
+            const nodes = this.directorChatMessages.querySelectorAll(`[data-message-key="${CSS.escape(String(messageId))}"]`);
+            host = nodes.length ? nodes[nodes.length - 1] : null;
+        }
+        if (!host) host = this.directorChatMessages.querySelector('.director-live-turn');
+        if (!host) return;
+        if (messageId && host.classList.contains('director-live-turn')) host.dataset.messageKey = messageId;
+        this.ensurePrintBubble(host, filename, messageId);
+    }
+
+    paintMessagePrints(messages) {
+        const groups = new Map();
+        (messages || []).forEach((message) => {
+            if (!message || !message.id || !Array.isArray(message.prints)) return;
+            groups.set(String(message.id), message.prints.filter((name) => typeof name === 'string' && name));
+        });
+        this.sessionPrints().forEach((print) => {
+            if (!print.messageId) return;
+            const list = groups.get(String(print.messageId)) || [];
+            if (!list.includes(print.filename)) list.push(print.filename);
+            groups.set(String(print.messageId), list);
+        });
+        groups.forEach((files, id) => {
+            files.forEach((filename) => this.mountPrintBubble(id, filename));
+        });
+    }
+
+    mountInlineForm(spec) {
+        if (!this.directorChatMessages || !spec || !spec.id) return null;
+        if (this.directorChatMessages.querySelector(`[data-form-id="${CSS.escape(spec.id)}"]`)) {
+            return this.directorChatMessages.querySelector(`[data-form-id="${CSS.escape(spec.id)}"]`);
+        }
+        const host = document.createElement('div');
+        host.className = 'director-message director-row-arrive';
+        host.dataset.formId = spec.id;
+        const live = this.directorChatMessages.querySelector('.director-live-turn');
+        const typing = this.directorChatMessages.querySelector('.director-typing-indicator');
+        const before = typing || live;
+        if (before) this.directorChatMessages.insertBefore(host, before);
+        else this.directorChatMessages.appendChild(host);
+        this.scrollToBottom();
+        return host;
+    }
+
+    setImagePending(pending) {
+        const next = pending === true;
+        if (this._imagePending === next) return;
+        this._imagePending = next;
+        this.renderSessionImages();
+    }
+
+    togglePrintsPane() {
+        if (!this.directorSessionImagesPane) return;
+        this.directorSessionImagesPane.classList.toggle('is-collapsed');
+        this.paintPrintsToggle();
+    }
+
+    paintPrintsToggle() {
+        const btn = document.getElementById('directorSessionImagesToggle');
+        const pane = this.directorSessionImagesPane;
+        if (!btn || !pane) return;
+        const collapsed = pane.classList.contains('is-collapsed');
+        const icon = btn.querySelector('i');
+        if (icon) icon.className = collapsed ? 'fas fa-chevron-left' : 'fas fa-chevron-right';
+        btn.title = collapsed ? 'Show prints' : 'Hide prints';
+    }
+
+    renderSessionImages() {
+        if (this.persona === 'xi') {
+            if (this.directorSessionImagesPane) this.directorSessionImagesPane.classList.add('hidden');
+            if (this.directorSessionImages) this.directorSessionImages.innerHTML = '';
+            return;
+        }
+        if (!this.directorSessionImagesPane || !this.directorSessionImages) return;
+        if (window.customScrollbar && window.customScrollbar.scrollbars && window.customScrollbar.scrollbars.has(this.directorSessionImages)) {
+            window.customScrollbar.destroy(this.directorSessionImages);
+        }
+        const filenames = this.directorDockedInWindow() ? this.sessionImageFilenames() : [];
+        const pending = this._imagePending === true && this.directorDockedInWindow();
+        if (!filenames.length && !pending) {
+            this.directorSessionImagesPane.classList.add('hidden');
+            this.directorSessionImages.innerHTML = '';
+            return;
+        }
+        this.directorSessionImagesPane.classList.remove('hidden');
+        this.directorSessionImages.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+        if (pending) {
+            const waiting = document.createElement('div');
+            waiting.className = 'director-session-preview pending';
+            waiting.title = 'Waiting for the print';
+            waiting.innerHTML = '<i class="fas fa-spinner-third fa-spin"></i>';
+            fragment.appendChild(waiting);
+        }
+        const prints = this.sessionPrints().slice().reverse();
+        prints.forEach((print) => {
+            const filename = print.filename;
+            const thumb = document.createElement('img');
+            thumb.className = 'director-session-preview';
+            thumb.alt = filename;
+            thumb.title = filename;
+            if (print.messageId) thumb.dataset.messageKey = print.messageId;
+            thumb.src = this.getSessionPreviewImage({ filename, image_type: 'generated' });
+            // The preview webp is written after the print, so fall back to the full file
+            thumb.addEventListener('error', () => {
+                // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+                const full = localGalleryImageUrl(filename);
+                if (thumb.dataset.fullTried === '1' || !full) return;
+                thumb.dataset.fullTried = '1';
+                thumb.src = full;
+            });
+            thumb.addEventListener('click', () => this.openSessionImage(filename));
+            thumb.addEventListener('mouseenter', () => this.markPrintMessage(print.messageId, true));
+            thumb.addEventListener('mouseleave', () => this.markPrintMessage(print.messageId, false));
+            this.wirePrintMenu(thumb, filename, print.messageId);
+            fragment.appendChild(thumb);
+        });
+        this.directorSessionImages.appendChild(fragment);
+        this.paintPrintsToggle();
+        this.initializeScrollbars();
+    }
+
+    openSessionImage(filename) {
+        if (!filename) return;
+        const names = this.sessionImageFilenames();
+        const list = names.indexOf(filename) >= 0 ? names.slice() : names.concat(filename);
+        const index = Math.max(0, list.indexOf(filename));
+        // openGlancewellForFilenames: public/scripts/comp/mcpActivityClient.js
+        openGlancewellForFilenames(list, index);
+    }
+
+    // director_session_image: the turn saved a print (modules/cursorDirector.js)
+    noteSessionImage(payload) {
+        const chatId = payload && (payload.chatId || payload.sessionId);
+        const filename = payload && payload.filename;
+        if (!chatId || !filename || !this.currentSession || String(chatId) !== String(this.currentSession.id)) return;
+        const images = this.sessionImageFilenames();
+        if (!images.includes(filename)) images.push(filename);
+        this.currentSession.images = images;
+        const messageId = payload.messageId || '';
+        const prints = Array.isArray(this.currentSession.prints) ? this.currentSession.prints : [];
+        if (!prints.some((item) => item && item.filename === filename)) {
+            prints.push({ filename, messageId });
+        }
+        this.currentSession.prints = prints;
+        if (messageId && Array.isArray(this.currentSession.messages)) {
+            const message = this.currentSession.messages.find((item) => item && String(item.id) === String(messageId));
+            if (message) {
+                const list = Array.isArray(message.prints) ? message.prints : [];
+                if (!list.includes(filename)) message.prints = list.concat(filename);
+            }
+        }
+        this.currentSession.filename = filename;
+        this.currentSession.image_type = 'generated';
+        const sessionIdx = this.directorSessions.findIndex((s) => s.id === this.currentSession.id);
+        if (sessionIdx !== -1) {
+            this.directorSessions[sessionIdx].images = images;
+            this.directorSessions[sessionIdx].filename = filename;
+            this.directorSessions[sessionIdx].image_type = 'generated';
+        }
+        this.paintSessionPreview(this.currentSession);
+        this.renderDirectorSessions();
+        this.setImagePending(false);
+        this.renderSessionImages();
+        this.mountPrintBubble(payload.messageId || '', filename);
+        // syncDirectorGlancewell: public/scripts/comp/mcpActivityClient.js
+        if (typeof syncDirectorGlancewell === 'function') syncDirectorGlancewell(this.sessionImageFilenames());
+    }
+
+    // ---- Agent task list (#directorTaskList, above the messages in both hosts) ----
+
+    sessionTasks() {
+        const tasks = this.currentSession && this.currentSession.tasks;
+        return Array.isArray(tasks) ? tasks : [];
+    }
+
+    renderSessionTasks() {
+        if (!this.directorTaskList) return;
+        const tasks = this.sessionTasks();
+        this.directorTaskList.classList.toggle('hidden', tasks.length === 0);
+        this.directorTaskList.innerHTML = '';
+        if (!tasks.length) return;
+        const fragment = document.createDocumentFragment();
+        tasks.forEach((task) => {
+            const row = document.createElement('div');
+            row.className = 'director-task-row';
+            row.dataset.done = task.done ? '1' : '0';
+            const mark = document.createElement('i');
+            mark.className = task.done ? 'fas fa-check' : 'fa-regular fa-square';
+            const text = document.createElement('span');
+            text.textContent = task.title || '';
+            row.appendChild(mark);
+            row.appendChild(text);
+            fragment.appendChild(row);
+        });
+        this.directorTaskList.appendChild(fragment);
+    }
+
+    // director_session_tasks, plus the tasks that ride along on a session read
+    applySessionTasks(sessionId, tasks) {
+        if (!Array.isArray(tasks)) return;
+        const rows = tasks.slice();
+        const at = this.directorSessions.findIndex((item) => String(item.id) === String(sessionId));
+        if (at !== -1) this.directorSessions[at].tasks = rows;
+        if (!this.currentSession || String(this.currentSession.id) !== String(sessionId)) return;
+        this.currentSession.tasks = rows;
+        this.renderSessionTasks();
+    }
+
+    // set_session_title renamed the chat: header, window title, and the list row
+    applySessionName(sessionId, name) {
+        if (!sessionId || !name) return;
+        const at = this.directorSessions.findIndex((item) => String(item.id) === String(sessionId));
+        if (at !== -1) this.directorSessions[at].name = name;
+        if (this.currentSession && String(this.currentSession.id) === String(sessionId)) {
+            this.currentSession.name = name;
+            if (this.directorSessionTitle) {
+                const titleText = this.directorSessionTitle.querySelector('.director-title-text');
+                if (titleText) titleText.textContent = name;
+                else this.directorSessionTitle.textContent = name;
+            }
+            if (this.directorWindowTitle) this.directorWindowTitle.textContent = `Director — ${name}`;
+        }
+        this.renderDirectorSessions();
+        this.updateTrayChrome();
+    }
+
+    // Header thumbnail plus its expanded copy — the latest print is the session image
+    bindSessionPreviewFallback(img, filename) {
+        if (!img) return;
+        img.dataset.fullTried = '';
+        img.onerror = () => {
+            // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            const full = filename ? localGalleryImageUrl(filename) : '';
+            if (!full || img.dataset.fullTried === '1') {
+                img.onerror = null;
+                img.src = '/static_images/background.jpg';
+                return;
+            }
+            img.dataset.fullTried = '1';
+            img.src = full;
+        };
+    }
+
+    paintSessionPreview(session) {
+        if (this.persona === 'xi') {
+            if (this.directorSessionPreviewContainer) this.directorSessionPreviewContainer.classList.add('hidden');
+            return;
+        }
+        if (!session || !this.directorSessionPreview || !this.directorSessionPreviewLarge) return;
+        const previewImageSrc = this.getSessionPreviewImage(session);
+        const filename = session.filename || '';
+        this.bindSessionPreviewFallback(this.directorSessionPreview, filename);
+        this.bindSessionPreviewFallback(this.directorSessionPreviewLarge, filename);
+        this.directorSessionPreview.src = previewImageSrc;
+        this.directorSessionPreviewLarge.src = previewImageSrc;
+    }
+
+    // ---- Computer maintenance and prompt guide (WS to modules/, confirmed by the user) ----
+
+    // wsClient.sendMessage (public/scripts/websocket.js) resolves director_*_response with the whole
+    // packet and rejects on the server's `error` packet for the same requestId.
+    async directorRequest(type, payload) {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        const message = await window.wsClient.sendMessage(type, Object.assign({ persona: this.persona || 'wren' }, payload || {}), false);
+        const body = message && message.data ? message.data : {};
+        if (body.success === false || body.error) {
+            throw new Error(body.error || `${type} failed`);
+        }
+        return body;
+    }
+
+    // director_computer_size_response: { computer: { bytes, home, path }, promptGuide } (modules/cursorDirector.js)
+    formatComputerSize(size) {
+        const computer = size && size.computer ? size.computer : size;
+        const bytes = Number(computer && computer.bytes);
+        // formatBytes: public/scripts/comp/systemTrayManager.js
+        return Number.isFinite(bytes) ? formatBytes(bytes) : 'unknown';
+    }
+
+    async requestComputerSize() {
+        try {
+            return await this.directorRequest('director_computer_size', {});
+        } catch (err) {
+            showGlassToast('error', 'Director', err.message || 'Could not read the Dreamspace size');
+            return null;
+        }
+    }
+
+    async cleanupComputer() {
+        const size = await this.requestComputerSize();
+        if (!size) return;
+        const ok = await showConfirmationDialog(
+            `Clean up Dreamspace?\n\nRemoves temp files, pip and npm caches, __pycache__, and incomplete downloads. Installed tools, chats, and the prompt guide clone stay.\n\nCurrent size: ${this.formatComputerSize(size)}`,
+            [
+                { text: 'Cancel', value: false, className: 'btn-secondary' },
+                { text: 'Cleanup', value: true, className: 'btn-primary', icon: 'fas fa-broom' }
+            ],
+            null,
+            { title: 'Director', icon: 'fas fa-clapperboard' }
+        );
+        if (!ok) return;
+        try {
+            // { freed, size }
+            const result = await this.directorRequest('director_cleanup', {});
+            const freed = Number(result.freed);
+            showGlassToast('success', 'Director', Number.isFinite(freed) ? `Freed ${formatBytes(freed)}` : 'Cleanup finished');
+        } catch (err) {
+            showGlassToast('error', 'Director', err.message || 'Cleanup failed');
+        }
+    }
+
+    async reinstallComputer() {
+        const size = await this.requestComputerSize();
+        if (!size) return;
+        const ok = await showConfirmationDialog(
+            `Reinstall Dreamspace?\n\nThis aborts a running turn and deletes the whole of Dreamspace, including installed tools and the browser profile. Chats, sessions, the MCP key, and the prompt guide clone stay.\n\nCurrent size: ${this.formatComputerSize(size)}`,
+            [
+                { text: 'Cancel', value: false, className: 'btn-secondary' },
+                { text: 'Reinstall', value: true, className: 'btn-danger', icon: 'fas fa-arrows-rotate' }
+            ],
+            null,
+            { title: 'Director', icon: 'fas fa-clapperboard' }
+        );
+        if (!ok) return;
+        showGlassToast('info', 'Director', 'Reinstalling Dreamspace…', false, 6000);
+        try {
+            await this.directorRequest('director_reinstall', {});
+            showGlassToast('success', 'Director', 'Dreamspace reinstalled');
+        } catch (err) {
+            showGlassToast('error', 'Director', err.message || 'Reinstall failed');
+        }
+    }
+
+    showDirectorText(title, text, status) {
+        // Existing read-only system text viewer: public/scripts/comp/vfsSystemOpenRouter.js
+        vfsSystemOpenRouter._ensureTextModal();
+        vfsSystemOpenRouter._textTitleEl.textContent = title;
+        vfsSystemOpenRouter._textContentEl.textContent = text;
+        vfsSystemOpenRouter._textStatusEl.textContent = status || 'Read-only';
+        // openModal: public/scripts/comp/modalUtils.js
+        openModal(vfsSystemOpenRouter._textModal);
+        setTimeout(() => {
+            const wrap = vfsSystemOpenRouter._textModal.querySelector('.log-viewer-body-scroll');
+            // customScrollbar.forceReinit: public/scripts/comp/customScrollbar.js
+            if (wrap) customScrollbar.forceReinit(wrap);
+        }, 80);
+    }
+
+    async promptGuideReview() {
+        try {
+            // { base, baseSha, diff, truncated, empty }
+            const result = await this.directorRequest('director_prompt_guide_diff', {});
+            const status = ['Read-only', `prompt-guide-work vs ${result.base || 'origin/main'}`];
+            if (result.truncated) status.push('diff truncated');
+            this.showDirectorText(
+                'Prompt guide review',
+                result.empty ? `No changes against ${result.base || 'origin/main'}.` : String(result.diff || ''),
+                status.join(' · ')
+            );
+        } catch (err) {
+            showGlassToast('error', 'Prompt guide', err.message || 'Review failed');
+        }
+    }
+
+    async promptGuideExtract() {
+        try {
+            // { tree, parent, branch, files, extractedAt, changed }
+            const result = await this.directorRequest('director_prompt_guide_extract', {});
+            const count = Array.isArray(result.files) ? result.files.length : 0;
+            showGlassToast(
+                result.changed === false ? 'info' : 'success',
+                'Prompt guide',
+                result.changed === false
+                    ? 'No changes to extract'
+                    : `${count} file${count === 1 ? '' : 's'} staged onto ${result.branch || 'director-draft'}`
+            );
+        } catch (err) {
+            showGlassToast('error', 'Prompt guide', err.message || 'Extract failed');
+        }
+    }
+
+    async promptGuideCommit() {
+        // showInputDialog: public/scripts/comp/confirmationDialog.js
+        const message = await showInputDialog(
+            'Commit the director-draft branch of the prompt guide.\n\nCommit message:',
+            '',
+            'Describe the change',
+            [
+                { text: 'Cancel', value: null, className: 'btn-secondary' },
+                { text: 'Commit', value: true, className: 'btn-primary', icon: 'fas fa-code-commit' }
+            ],
+            null,
+            { title: 'Prompt guide', icon: 'fas fa-book' }
+        );
+        if (message == null) return;
+        if (!message) {
+            showGlassToast('error', 'Prompt guide', 'A commit message is required');
+            return;
+        }
+        try {
+            // { commit, branch, files, message }
+            const result = await this.directorRequest('director_prompt_guide_commit', { message });
+            const sha = result.commit ? ` ${String(result.commit).slice(0, 8)}` : '';
+            showGlassToast('success', 'Prompt guide', `Committed${sha} on ${result.branch || 'director-draft'}`);
+        } catch (err) {
+            showGlassToast('error', 'Prompt guide', err.message || 'Commit failed');
+        }
+    }
+
+    async promptGuidePush() {
+        const ok = await showConfirmationDialog(
+            'Push director-draft to DreamScape/nai-prompt-guide?\n\nUntil this push the draft is only local.',
+            [
+                { text: 'Cancel', value: false, className: 'btn-secondary' },
+                { text: 'Push', value: true, className: 'btn-primary', icon: 'fas fa-cloud-arrow-up' }
+            ],
+            null,
+            { title: 'Prompt guide', icon: 'fas fa-book' }
+        );
+        if (!ok) return;
+        try {
+            // { branch, commit, output }
+            const result = await this.directorRequest('director_prompt_guide_push', {});
+            showGlassToast('success', 'Prompt guide', `Pushed ${result.branch || 'director-draft'}`);
+        } catch (err) {
+            showGlassToast('error', 'Prompt guide', err.message || 'Push failed');
+        }
+    }
+
+    // Load the current chat (or the picture's chat) into whichever host is showing.
+    // An empty draft is not written until the first message starts the agent.
+    async openCurrentSession() {
+        const lookup = !!(this._lookupImageChat || this._resumeImage);
+        this._lookupImageChat = false;
+        const resumeName = this._resumeImage && this._resumeImage.filename;
+        let previewFilename = resumeName || this.openImageFilename();
+        this.requestCursorUsage();
+        const preferredChatId = this._openPreferredId || null;
+        this._openPreferredId = null;
+        // Reopening the panel, or a chat the user already picked, must not snap back to the latest chat.
+        if (!lookup && !preferredChatId && this.currentSession && (this.currentSession.draft || this.currentSession.id)) {
+            if (!previewFilename || this.sessionOwnsFilename(this.currentSession, previewFilename)) {
+                this._pendingWorkspaceToken = null;
+                return;
+            }
+        }
+        if (preferredChatId) previewFilename = null;
+        if (window.wsClient && window.wsClient.isConnected()) {
+            this._navToken = (this._navToken || 0) + 1;
+            this._pendingWorkspaceToken = this._navToken;
+            window.wsClient.send({
+                type: 'director_open_workspace',
+                requestId: Date.now().toString(),
+                persona: this.persona || 'wren',
+                workspaceId: window.currentWorkspace || null,
+                previewFilename: previewFilename,
+                directorSessionId: previewFilename ? this.openImageSessionId(previewFilename) : null,
+                preferredChatId: preferredChatId
+            });
+        } else {
+            showGlassToast('error', null, 'WebSocket not connected');
+        }
+    }
+
+    async showDirector(options) {
+        const skipSession = !!(options && options.skipSession);
+        if (this.directorWindowIsOpen()) {
+            this.focusDirectorWindow();
+            if (!skipSession) await this.openCurrentSession();
+            return;
+        }
+        // Studio has no Xi. The desktop window is the only place that toggle exists.
+        this.resetToWren();
+        // Window was hidden without its close button (e.g. a close-all sweep): take the chat back first
+        this.mountDirectorInStudio();
         if (this.directorContainer) {
             // First remove hidden class to make element visible
             this.directorContainer.classList.remove('hidden');
             this.directorContainer.classList.remove('director-closed');
+            this.requestDirectorModels();
 
             // Show common header
             if (this.directorCommonHeader) {
@@ -732,78 +2846,42 @@ class Director {
             // Then add open class to start animation
             this.directorContainer.classList.add('director-open');
         }
+        this.currentView = 'sessionChat';
+        this.updateHeaderForView('sessionChat');
         this.updateIndicator(this.directorBtn, true);
-
-        // Check for director session ID in button dataset first
-        const directorBtn = document.getElementById('directorBtn');
-        if (directorBtn && directorBtn.dataset.directorSessionId) {
-            const directorSessionId = directorBtn.dataset.directorSessionId;
-            
-            // Try to find the session in current sessions list first
-            let targetSession = this.directorSessions.find(session => session.id === directorSessionId);
-            
-            if (targetSession) {
-                await this.showSessionChat(targetSession);
-                return;
-            } else {
-                // Session not in current list, try to load it from server
-                try {
-                    // Send WebSocket request to get the director session
-                    if (window.wsClient && window.wsClient.isConnected()) {
-                        const requestId = Date.now().toString();
-                        window.wsClient.send({
-                            type: 'director_get_session',
-                            requestId: requestId,
-                            sessionId: directorSessionId
-                        });
-
-                        // Set up a one-time listener for the response
-                        const handleResponse = (responseData) => {
-                            if (responseData.data && responseData.data.success) {
-                                const session = responseData.data.session;
-                                // Show the director interface with the session
-                                this.showSessionChat(session);
-                            } else {
-                                // Fallback to new session
-                                this.showNewSession();
-                            }
-                            // Remove the listener after handling the response
-                            window.wsClient.off('director_get_session_response', handleResponse);
-                        };
-
-                        // Listen for the response
-                        window.wsClient.on('director_get_session_response', handleResponse);
-                        return;
-                    }
-                } catch (error) {
-                    console.error('❌ Error loading director session from server:', error);
-                }
-            }
-        }
-
-        // Try to load the last opened session, fallback to new session
-        const lastSessionId = localStorage.getItem(this.LAST_SESSION_KEY);
-        if (lastSessionId) {
-            const lastSession = this.directorSessions.find(session => session.id === lastSessionId);
-            if (lastSession) {
-                await this.showSessionChat(lastSession);
-                return;
-            }
-        }
-
-        // Fallback to new session if no valid last session found
-        await this.showNewSession();
+        this.paintPersonaToggle();
+        if (!skipSession) await this.openCurrentSession();
     }
 
     hideDirector() {
+        // Studio close used to collapse the shared chat even while it was hosted
+        // in #directorWindow, which left that window blank.
+        if (this.directorDockedInWindow()) {
+            if (this._hideTimer) {
+                clearTimeout(this._hideTimer);
+                this._hideTimer = null;
+            }
+            if (this.directorContainer) {
+                this.directorContainer.classList.remove('director-closed', 'hidden');
+                this.directorContainer.classList.add('director-open');
+            }
+            if (this.directorCommonHeader) this.directorCommonHeader.classList.remove('hidden');
+            this.updateIndicator(this.directorBtn, false);
+            this.paintPersonaToggle();
+            return;
+        }
         if (this.directorContainer) {
             // Start the closing animation
             this.directorContainer.classList.remove('director-open');
             this.directorContainer.classList.add('director-closed');
 
-            // Add hidden class after animation completes
-            setTimeout(() => {
-                this.directorContainer.classList.add('hidden');
+            // Add hidden class after animation completes (mountDirectorInWindow cancels this)
+            if (this._hideTimer) clearTimeout(this._hideTimer);
+            this._hideTimer = setTimeout(() => {
+                this._hideTimer = null;
+                if (!this.directorDockedInWindow()) {
+                    this.directorContainer.classList.add('hidden');
+                }
             }, 400); // Match the CSS transition duration
         }
         
@@ -821,6 +2899,12 @@ class Director {
     }
     
     async showSessionList() {
+        // The static left panel is already the session list, so the chat view stays put
+        if (this.staticSessionPanel()) {
+            await this.loadDirectorSessions();
+            this.initializeScrollbars();
+            return;
+        }
         this.currentView = 'sessionList';
         // Show overlay instead of switching views
         if (this.directorSessionList) {
@@ -830,22 +2914,8 @@ class Director {
         this.initializeScrollbars();
     }
     
-    showNewSession() {
-        this.currentView = 'newSession';
-        this.hideAllViews();
-        this.closeSessionOverlay(); // Close overlay when switching views
-        if (this.directorNewSession) {
-            this.directorNewSession.classList.remove('hidden');
-        }
-        this.updateHeaderForView('newSession');
-        this.updateIndicator(this.directorMaxResolutionBtn, false);
-        this.updateIndicator(this.directorAddBaseImageToggleBtn, true);
-        this.updateIndicator(this.directorHighThinkingToggleBtn, true);
-        this.renderWelcomeMessage();
-        this.initializeScrollbars();
-    }
-    
-    async showSessionChat(session) {
+    async showSessionChat(session, options) {
+        this._pendingWorkspaceToken = null;
         if (this.currentSession && this.currentSession !== session && Array.isArray(this.currentSession.messages)) {
             assignTrimmedDirectorSessionMessages(this.currentSession, this.currentSession.messages);
             const prevIdx = this.directorSessions.findIndex(s => s.id === this.currentSession.id);
@@ -854,13 +2924,17 @@ class Director {
             }
         }
 
+        if (!this.currentSession || !session || this.currentSession.id !== session.id) {
+            this.hideBrowserPreview();
+        }
         this.currentView = 'sessionChat';
         this.currentSession = session;
         window.currentSession = session; // Keep global reference for compatibility
+        if (session && session.id) this._welcomeQuip = null;
 
         // Store the last opened session in localStorage
         if (session && session.id) {
-            localStorage.setItem(this.LAST_SESSION_KEY, session.id);
+            localStorage.setItem(this.lastSessionStorageKey(), session.id);
         }
 
         this.hideAllViews();
@@ -868,6 +2942,13 @@ class Director {
         if (this.directorSessionChat) {
             this.directorSessionChat.classList.remove('hidden');
         }
+        this.placeComposer(false, false);
+        this._scrollAfterLoad = true;
+        const liveKeys = [];
+        this._expandedTrace.forEach((key) => {
+            if (String(key).startsWith('live:')) liveKeys.push(key);
+        });
+        liveKeys.forEach((key) => this._expandedTrace.delete(key));
         this.updateHeaderForView('sessionChat');
         if (this.directorSessionTitle) {
             const titleText = this.directorSessionTitle.querySelector('.director-title-text');
@@ -877,24 +2958,44 @@ class Director {
                 this.directorSessionTitle.textContent = session.name;
             }
         }
-
-        // Set the preview images
-        if (this.directorSessionPreview && this.directorSessionPreviewLarge) {
-            const previewImageSrc = this.getSessionPreviewImage(session);
-            this.directorSessionPreview.src = previewImageSrc;
-            this.directorSessionPreviewLarge.src = previewImageSrc;
+        if (this.directorWindowTitle) {
+            this.directorWindowTitle.textContent = session.name ? `Director — ${session.name}` : 'Director';
         }
 
-        await this.loadSessionMessages(session.id);
+        // Set the preview images
+        this.paintSessionPreview(session);
+        this._imagePending = false;
+        this.renderSessionImages();
+        this.renderSessionTasks();
+
+        if (!(options && options.skipLoad)) {
+            if (Array.isArray(session.messages)) {
+                this.renderSessionMessages(session.messages);
+            }
+            await this.loadSessionMessages(session.id);
+        } else {
+            if (this._renderMessagesTimeout) {
+                clearTimeout(this._renderMessagesTimeout);
+                this._renderMessagesTimeout = null;
+            }
+            this._doRenderSessionMessages(session.messages || []);
+        }
         this.initializeScrollbars();
 
         // Ensure scroll to bottom after loading messages
         this.scrollToBottom();
+        this.paintWorkspaceBanner();
+        this.applySessionModel(session);
+        if (this._focusComposer && this.directorChatInput) {
+            this.directorChatInput.focus();
+            this._focusComposer = false;
+            this._askWrenOpening = false;
+        }
     }
 
 
     toggleSessionOverlay() {
-        if (!this.directorSessionList) return;
+        if (!this.directorSessionList || this.staticSessionPanel()) return;
 
         const isVisible = !this.directorSessionList.classList.contains('hidden');
         if (isVisible) {
@@ -912,6 +3013,9 @@ class Director {
         // Always load fresh sessions from server when opening overlay
         // This ensures the session list is fully up-to-date
         this.loadDirectorSessions();
+
+        // A static left panel is never dismissed by a click elsewhere
+        if (this.staticSessionPanel()) return;
 
         // Add click-outside listener
         this.addClickOutsideListener();
@@ -996,183 +3100,57 @@ class Director {
         viewElements.forEach(element => {
             element.classList.remove('hidden');
         });
+        if (this.persona === 'xi') {
+            if (this.directorSessionPreviewContainer) this.directorSessionPreviewContainer.classList.add('hidden');
+            const fresh = document.getElementById('directorHeaderActionsNewSession');
+            if (fresh) fresh.classList.add('hidden');
+        }
     }
 
-    renderWelcomeMessage() {
-        if (!this.directorNewSessionMessages) return;
-
-        // Get current mode for dynamic content (find container dynamically if cached one doesn't exist)
-        const modeSliderContainer = this.directorModeSliderContainer ||
-                                   document.getElementById('directorModeSliderContainer');
-        const currentMode = modeSliderContainer?.getAttribute('data-active') || 'analyse';
-
-        // Define mode-specific content
-        const modeContent = {
-            analyse: {
-                title: 'Welcome to Enshutsuka!',
-                description: 'I\'ll analyze this image to craft the perfect prompt.',
-                tips: [
-                    'Be specific about the subject, style, and mood you want',
-                    'Mention any important details like lighting, composition, or colors',
-                    'Describe the overall atmosphere or feeling you want to achieve',
-                    'I\'ll extract comprehensive visual details to create an effective prompt'
-                ]
-            },
-            efficiency: {
-                title: 'Welcome to Enshutsuka!',
-                description: 'I\'ll analyze this image and your existing prompt to optimize accuracy.',
-                tips: [
-                    'Describe what aspects of the current result you want improved',
-                    'Mention any specific elements that aren\'t working as expected',
-                    'Specify the mood or style changes you want to achieve',
-                    'I\'ll identify gaps, optimize weights, and enhance prompt effectiveness'
-                ]
-            },
-            create: {
-                title: 'Welcome to Enshutsuka!',
-                description: 'I\'ll help you create a creative prompt from your text input.',
-                tips: [
-                    'Just enter your ideas or concepts in text form',
-                    'I\'ll expand and enhance your input with creative details',
-                    'I\'ll fill in missing information to create a complete prompt',
-                    'I\'ll generate an optimized prompt ready for image generation'
-                ]
-            }
-        };
-
-        const content = modeContent[currentMode] || modeContent.analyse;
-
-        // Check if welcome message already exists
-        let welcomeMessage = this.directorNewSessionMessages.querySelector('.director-message.assistant.welcome');
-
-        if (!welcomeMessage) {
-            // Create new message if it doesn't exist
-            welcomeMessage = document.createElement('div');
-            welcomeMessage.className = 'director-message assistant welcome';
-        welcomeMessage.innerHTML = `
-                <div class="director-message-content">
-                    <div class="director-welcome-message">
-                        <h3></h3>
-                        <p></p>
-
-                        <!-- Mode Selection inside welcome message -->
-                        <div class="director-welcome-mode-selection">
-                            <div class="mode-slider-container" id="directorModeSliderContainer" data-active="${currentMode}">
-                                <button type="button" class="mode-slider-btn ${currentMode === 'create' ? 'active' : ''}" data-mode="create">
-                                    <i class="fas fa-pen-alt"></i> Create
-                                </button>
-                                <button type="button" class="mode-slider-btn ${currentMode === 'analyse' ? 'active' : ''}" data-mode="analyse">
-                                    <i class="fas fa-search"></i> Analyse
-                                </button>
-                                <button type="button" class="mode-slider-btn ${currentMode === 'efficiency' ? 'active' : ''}" data-mode="efficiency">
-                                    <i class="fas fa-bolt"></i> Efficiency
-                                </button>
-                                <div class="mode-slider-track"></div>
-                            </div>
-                        </div>
-
-                        <div class="director-welcome-tips">
-                            <p><strong>Tips:</strong></p>
-                            <ul></ul>
-                        </div>
-                    </div>
-            </div>
-        `;
-
-            this.directorNewSessionMessages.appendChild(welcomeMessage);
-        }
-
-        // Update content dynamically (preserves animations)
-        const titleElement = welcomeMessage.querySelector('h3');
-        const descriptionElement = welcomeMessage.querySelector('p');
-        const tipsList = welcomeMessage.querySelector('ul');
-
-        if (titleElement) titleElement.textContent = content.title;
-        if (descriptionElement) descriptionElement.textContent = content.description;
-
-        if (tipsList) {
-            tipsList.innerHTML = content.tips.map(tip => `<li>${tip}</li>`).join('');
-        }
-
-        // Update mode selection state
-        if (modeSliderContainer) {
-            modeSliderContainer.setAttribute('data-active', currentMode);
-
-            const modeButtons = modeSliderContainer.querySelectorAll('.mode-slider-btn');
-            modeButtons.forEach(button => {
-                const buttonMode = button.getAttribute('data-mode');
-                if (buttonMode === currentMode) {
-                    button.classList.add('active');
-        } else {
-                    button.classList.remove('active');
-                }
-            });
-        }
-
-        // Update image selection visibility and button states based on current mode
-        this.updateImageSelectionVisibility(currentMode);
-        this.updateModeButtonStates();
-
-        // Re-attach mode selection event listeners after rendering
-        this.attachModeSelectionListeners();
-    }
-
-    // Attach mode selection event listeners
-    attachModeSelectionListeners() {
-        // Find the mode slider container (it might be newly created in welcome message)
-        const modeSliderContainer = this.directorModeSliderContainer ||
-                                   document.getElementById('directorModeSliderContainer');
-
-        if (!modeSliderContainer) return;
-
-        const modeButtons = modeSliderContainer.querySelectorAll('.mode-slider-btn');
-        modeButtons.forEach(button => {
-            // Remove existing listeners to avoid duplicates
-            button.removeEventListener('click', this._modeClickHandler);
-        });
-
-        // Create the click handler
-        this._modeClickHandler = (e) => {
-            const mode = e.target.closest('.mode-slider-btn').getAttribute('data-mode');
-            this.setActiveMode(mode);
-        };
-
-        // Add new listeners
-        modeButtons.forEach(button => {
-            button.addEventListener('click', this._modeClickHandler);
-        });
-    }
-    
-    // Session management
     async loadDirectorSessions() {
         return new Promise((resolve, reject) => {
             // Send WebSocket request to load sessions
             if (window.wsClient && window.wsClient.isConnected()) {
+                const asked = this.persona || 'wren';
                 window.wsClient.send({
                     type: 'director_get_sessions',
-                    requestId: Date.now().toString()
+                    requestId: Date.now().toString(),
+                    persona: asked
                 });
 
                 // Set up a one-time listener for the response
+                let settled = false;
+                const timer = setTimeout(() => {
+                    if (settled) return;
+                    settled = true;
+                    window.wsClient.off('director_get_sessions_response', handleResponse);
+                    reject(new Error('Timeout loading director sessions'));
+                }, 10000);
                 const handleResponse = (data) => {
-                    if (data.data && data.data.success) {
-                        this.directorSessions = data.data.sessions || [];
+                    const body = data && data.data;
+                    if (body && this.packetPersona(body) !== asked) return;
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    window.wsClient.off('director_get_sessions_response', handleResponse);
+                    if (body && typeof body.xiEnabled === 'boolean' && this.noteXiEnabled(body.xiEnabled)) {
+                        this.loadDirectorSessions().then(resolve).catch(reject);
+                        return;
+                    }
+                    if (this.persona !== asked) {
+                        resolve();
+                        return;
+                    }
+                    if (body && body.success) {
+                        this.directorSessions = body.sessions || [];
                         this.renderDirectorSessions();
                         resolve();
                     } else {
                         reject(new Error('Failed to load director sessions'));
                     }
-                    // Remove the listener after handling the response
-                    window.wsClient.off('director_get_sessions_response', handleResponse);
                 };
 
                 window.wsClient.on('director_get_sessions_response', handleResponse);
-
-                // Timeout after 10 seconds
-                setTimeout(() => {
-                    window.wsClient.off('director_get_sessions_response', handleResponse);
-                    reject(new Error('Timeout loading director sessions'));
-                }, 10000);
             } else {
                 console.warn('WebSocket not connected, using mock data');
                 this.directorSessions = [];
@@ -1207,17 +3185,28 @@ class Director {
         const sessions = this.directorSessions || [];
 
         if (sessions.length === 0) {
-            const noSessionsItem = this.createNoSessionsItem();
-            this.addSessionItemToList(noSessionsItem);
+            const fragment = document.createDocumentFragment();
+            fragment.appendChild(this.createNoSessionsItem());
+            this.addSessionItemsBatch(fragment);
         } else {
             // Use document fragment for batch DOM operations
             const fragment = document.createDocumentFragment();
             const eventListeners = [];
 
-            sessions.forEach(session => {
+            const active = sessions.filter((session) => !session.archived);
+            const archived = sessions.filter((session) => session.archived);
+            active.forEach(session => {
                 const sessionItem = this.createSessionItem(session, eventListeners);
                 fragment.appendChild(sessionItem);
             });
+            if (!active.length && !archived.length) fragment.appendChild(this.createNoSessionsItem());
+            if (archived.length) {
+                fragment.appendChild(this.createArchiveHeader());
+                archived.forEach(session => {
+                    const sessionItem = this.createSessionItem(session, eventListeners);
+                    fragment.appendChild(sessionItem);
+                });
+            }
 
             // Batch add all items at once
             this.addSessionItemsBatch(fragment);
@@ -1237,22 +3226,34 @@ class Director {
         return item;
     }
 
+    createArchiveHeader() {
+        const item = document.createElement('div');
+        item.className = 'director-session-item';
+        item.innerHTML = '<div class="director-session-info"><div class="director-session-name">Archives</div></div>';
+        return item;
+    }
+
     createSessionItem(session, eventListeners) {
         const item = document.createElement('div');
         item.className = 'director-session-item';
         item.dataset.sessionId = session.id; // Add data attribute for easier identification
+        if (session.archived) item.dataset.archived = '1';
 
-        // Cache expensive computations
-        const previewSrc = this.getSessionPreviewImage(session);
-        const formattedDate = this.formatSessionDate(session.created_at);
+        const formattedDate = session.archived
+            ? `Archived ${this.formatSessionDate(session.archived_at || session.updated_at || session.created_at)}`
+            : this.formatSessionDate(session.updated_at || session.created_at);
 
+        const preview = this.persona === 'xi'
+            ? ''
+            : `<img class="director-session-preview" src="${this.getSessionPreviewImage(session)}" alt="Session preview" loading="lazy">`;
         item.innerHTML = `
-            <img class="director-session-preview" src="${previewSrc}" alt="Session preview" loading="lazy">
+            ${preview}
             <div class="director-session-info">
-                <div class="director-session-name">${this.escapeHtml(session.name)}</div>
+                <div class="director-session-name"><span>${this.escapeHtml(session.name)}</span>${this.workspaceDot(session)}</div>
                 <div class="director-session-date">${formattedDate}</div>
             </div>
         `;
+        if (this.persona !== 'xi') this.bindSessionPreviewFallback(item.querySelector('.director-session-preview'), session.filename || '');
 
         // Attach context menu to this session item
         if (contextMenu && this.directorSessionContextConfig) {
@@ -1263,14 +3264,17 @@ class Director {
         eventListeners.push({
             element: item,
             type: 'click',
-            handler: () => this.showSessionChat(session)
+            handler: (event) => {
+                if (Date.now() < (this._suppressSessionOpenUntil || 0)) return;
+                if (event && event.button) return;
+                this.showSessionChat(session);
+            }
         });
 
         return item;
     }
 
     formatSessionDate(timestamp) {
-        // Cache date formatting to avoid repeated computations
         if (!this._dateFormatter) {
             this._dateFormatter = new Intl.DateTimeFormat('en-US', {
                 year: 'numeric',
@@ -1278,7 +3282,19 @@ class Director {
                 day: 'numeric'
             });
         }
-        return this._dateFormatter.format(new Date(timestamp * 1000));
+        let ms = NaN;
+        if (typeof timestamp === 'number' && Number.isFinite(timestamp)) {
+            ms = timestamp < 1e12 ? timestamp * 1000 : timestamp;
+        } else if (typeof timestamp === 'string' && timestamp) {
+            if (/^\d+$/.test(timestamp)) {
+                const asNum = Number(timestamp);
+                ms = asNum < 1e12 ? asNum * 1000 : asNum;
+            } else {
+                ms = Date.parse(timestamp);
+            }
+        }
+        if (!Number.isFinite(ms)) return '';
+        return this._dateFormatter.format(new Date(ms));
     }
 
     escapeHtml(text) {
@@ -1374,64 +3390,8 @@ class Director {
         this.directorSessions = [];
     }
     
-    async createSession() {
-        const maxResolution = this.directorMaxResolutionBtn.getAttribute('data-state') === 'on';
-        const modeSliderContainer = this.directorModeSliderContainer ||
-                                   document.getElementById('directorModeSliderContainer');
-        const sessionMode = modeSliderContainer?.getAttribute('data-active') || 'analyse';
-        let imageFilename = null;
-
-        if (window.currentManualPreviewImage) {
-            imageFilename = window.currentManualPreviewImage.filename ||
-                           window.currentManualPreviewImage.original ||
-                           window.currentManualPreviewImage.upscaled;
-        }
-
-        // Check if we have an image for session creation
-        if (!imageFilename && !this.selectedImageData && sessionMode !== 'create') {
-            showGlassToast('error', null, 'No image available for session creation');
-            return;
-        }
-
-        // Send WebSocket request to create session
-        if (window.wsClient && window.wsClient.isConnected()) {
-            const message = {
-                type: 'director_create_session',
-                requestId: Date.now().toString(),
-                model: (sessionMode !== 'create' && maxResolution) ? 'grok-4' : (window.optionsData?.defaultGrokModel || 'grok-4-fast-reasoning'),
-                highReason: maxResolution,
-                maxResolution: (sessionMode === 'create') ? false : maxResolution,
-                sessionMode: sessionMode,
-                description: this.directorUserIntent ? this.directorUserIntent.value.trim() : '',
-                inputPrompt: (sessionMode === 'create' || this.selectedImageData) ? false : this.getInputPrompt(),
-                imageFilename: (sessionMode === 'create' || this.selectedImageData) ? false : imageFilename, // Get actual filename
-                vibeTransfers: (sessionMode === 'create' || this.selectedImageData) ? false : this.getVibeTransfers(),
-                baseImageData: (sessionMode === 'create' || this.selectedImageData) ? false : this.getBaseImageData(),
-                characterReference: (sessionMode === 'create' || this.selectedImageData) ? false : this.getCharacterReferenceData(),
-                dryrun: window.directorDryrun
-            };
-
-            // Add selected image data for Analyse mode
-            if (sessionMode === 'analyse' && this.selectedImageData) {
-                message.selectedImageData = this.selectedImageData;
-            }
-
-            window.wsClient.send(message);
-        }
-        // Reset input after successful session creation
-        if (this.directorUserIntent) {
-            this.directorUserIntent.value = '';
-            this.autoExpandTextarea(this.directorUserIntent); // Reset to minimum height
-        }
-
-        // Reset selected image data
-        if (this.selectedImageData) {
-            this.removeSelectedImage();
-        }
-    }
-    
     async deleteSession() {
-        if (!this.currentSession) return;        
+        if (!this.currentSession || !this.currentSession.id) return;        
         // Check if showConfirmationDialog is available
         if (typeof showConfirmationDialog !== 'function') {
             return;
@@ -1446,43 +3406,46 @@ class Director {
         );
 
         if (result) {
-            // Clear localStorage if this is the stored last session
-            const lastSessionId = localStorage.getItem(this.LAST_SESSION_KEY);
-            if (lastSessionId === this.currentSession.id) {
-                localStorage.removeItem(this.LAST_SESSION_KEY);
+            const sessionId = this.currentSession.id;
+            this._deleteWasCurrent = true;
+            this._deleteTargetId = sessionId;
+            const lastSessionId = localStorage.getItem(this.lastSessionStorageKey());
+            if (lastSessionId === sessionId) {
+                localStorage.removeItem(this.lastSessionStorageKey());
             }
 
-            // Send WebSocket request to delete session
             if (window.wsClient && window.wsClient.isConnected()) {
                 window.wsClient.send({
                     type: 'director_delete_session',
                     requestId: Date.now().toString(),
-                    sessionId: this.currentSession.id
+                    sessionId,
+                    persona: this.persona || 'wren'
                 });
             } else {
-                console.warn('WebSocket not connected, using mock data');
-                this.directorSessions = this.directorSessions.filter(s => s.id !== this.currentSession.id);
+                this.directorSessions = this.directorSessions.filter(s => s.id !== sessionId);
                 window.directorSessions = this.directorSessions;
                 this.renderDirectorSessions();
-                this.showSessionList();
+                this.showNewSessionDraft();
             }
         }
     }
     
     loadSessionMessages(sessionId) {
+        this._messagesSessionId = sessionId;
         // Send WebSocket request to load messages
         if (window.wsClient && window.wsClient.isConnected()) {
             window.wsClient.send({
                 type: 'director_get_messages',
                 requestId: Date.now().toString(),
                 sessionId: sessionId,
-                limit: DIRECTOR_MAX_SESSION_MESSAGES
+                limit: DIRECTOR_MAX_SESSION_MESSAGES,
+                persona: this.persona || 'wren'
             });
         } else {
             console.warn('WebSocket not connected, using mock data');
-            const session = directorSessions.find(s => s.id === sessionId);
+            const session = (this.directorSessions || []).find(s => s.id === sessionId);
             if (session) {
-                renderSessionMessages(session.messages || []);
+                this.renderSessionMessages(session.messages || []);
             }
         }
     }
@@ -1498,59 +3461,234 @@ class Director {
         }, 16); // ~60fps
     }
 
-    _doRenderSessionMessages(messages) {
+    directorScrollEl() {
+        if (!this.directorChatMessages) return null;
+        return this.directorChatMessages.closest('.scrollable-content') || this.directorChatMessages.parentElement;
+    }
+
+    wireDirectorRowScroll() {
+        if (this._rowScrollWired || !this.directorChatMessages) return;
+        const root = this.directorChatMessages.closest('.director-chat-messages-container');
+        if (!root) return;
+        this._rowScrollWired = true;
+        root.addEventListener('scroll', (event) => this.onDirectorRowsScroll(event.target), true);
+        new ResizeObserver(() => {
+            if (!this._stickBottom) return;
+            const el = this.directorScrollEl();
+            if (el) el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+        }).observe(this.directorChatMessages);
+    }
+
+    onDirectorRowsScroll(target) {
+        const scroller = this.directorScrollEl();
+        if (target === scroller) {
+            this._stickBottom = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 64;
+        }
+        if (this._expandingRows || !this._hiddenOlderRows) return;
+        const el = target && target.classList && target.classList.contains('scrollable-content')
+            ? target
+            : this.directorScrollEl();
+        if (!el) return;
+        const max = Math.max(0, el.scrollHeight - el.clientHeight);
+        if (max < 48) return;
+        if (el.scrollTop > 80) return;
+        this._expandingRows = true;
+        this._visibleRowCount += DIRECTOR_ROW_PAGE;
+        this._doRenderSessionMessages(this._renderedMessages || [], { keepPlace: true });
+        this._expandingRows = false;
+    }
+
+    flattenDirectorUnits(messages) {
+        const units = [];
+        messages.forEach((message) => {
+            // appendSessionCard rows (modules/cursorDirector.js): a workspace jump or a picture
+            if (message.role === 'event') {
+                units.push({ type: 'card', message });
+                return;
+            }
+            const structuredData = message.data || null;
+            const captions = structuredData && Array.isArray(structuredData.Caption) ? structuredData.Caption : [];
+            captions.forEach((caption) => units.push({ type: 'caption', caption }));
+            if (Array.isArray(message.trace) && message.trace.length) {
+                message.trace.forEach((row, index) => {
+                    units.push({
+                        type: 'trace',
+                        row,
+                        expandKey: `${message.id || message.timestamp}:${index}`,
+                        model: message.model || null
+                    });
+                });
+            } else {
+                units.push({ type: 'message', message });
+            }
+        });
+        return units;
+    }
+
+    _unitPlain(unit) {
+        if (!unit) return '';
+        if (unit.type === 'trace') {
+            const row = unit.row || {};
+            return String(row.text || row.detail || row.label || row.name || '').replace(/\s+/g, ' ').trim();
+        }
+        if (unit.type === 'caption') return String(unit.caption || '').replace(/\s+/g, ' ').trim();
+        const message = unit.message || {};
+        return String(message.user_input || message.content || '').replace(/\s+/g, ' ').trim();
+    }
+
+    _extendRenderedRows(visible) {
+        const chat = this.directorChatMessages;
+        if (!chat) return false;
+        const nodes = [...chat.children].filter((node) => {
+            return !node.classList.contains('director-live-turn')
+                && !node.classList.contains('director-typing-indicator')
+                && !node.dataset.older
+                && !node.dataset.quickStart;
+        });
+        if (!nodes.length || nodes.length > visible.length) return false;
+        for (let i = 0; i < nodes.length; i++) {
+            const have = (nodes[i].innerText || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+            const want = this._unitPlain(visible[i]).slice(0, 180);
+            if (have && want && have !== want) return false;
+        }
+        const live = chat.querySelector('.director-live-turn');
+        // Rows the live turn already showed come back without the arrive animation
+        const shown = live ? [...live.children] : [];
+        let carry = 0;
+        for (let i = nodes.length; i < visible.length; i++) {
+            const unit = visible[i];
+            let el = null;
+            const held = unit.type === 'trace' ? shown[carry] : null;
+            const seen = !!held && held.dataset.traceKind === this.traceKind(unit.row);
+            if (seen) carry++;
+            this._animateRows = !seen;
+            if (unit.type === 'caption') el = this.createQuoteMessageElement(unit.caption);
+            else if (unit.type === 'card') el = this.createDirectorCardElement(unit.message);
+            else if (unit.type === 'trace') el = this.createTraceRow(unit.row, unit.expandKey, unit.model);
+            else el = this.createMessageElement(unit.message);
+            if (!el) continue;
+            if (live) chat.insertBefore(el, live);
+            else chat.appendChild(el);
+        }
+        this._animateRows = false;
+        if (live) live.remove();
+        const typing = chat.querySelector('.director-typing-indicator');
+        if (typing) typing.remove();
+        return true;
+    }
+
+    _doRenderSessionMessages(messages, options) {
+        if (!this.directorChatMessages || !Array.isArray(messages)) return;
+        const keepPlace = options && options.keepPlace;
+        const follow = !keepPlace && ((options && options.scroll) || this._scrollAfterLoad || this._stickBottom);
+        if (!keepPlace) this._scrollAfterLoad = false;
+        this.promoteLiveTraceKeys(messages);
         const cappedMessages = this.currentSession
             ? assignTrimmedDirectorSessionMessages(this.currentSession, messages)
             : trimDirectorSessionMessages(messages);
         messages = cappedMessages;
+        this._renderedMessages = messages;
 
         if (this.currentSession) {
             const sessionIdx = this.directorSessions.findIndex(s => s.id === this.currentSession.id);
             if (sessionIdx !== -1) {
                 this.directorSessions[sessionIdx].messages = this.currentSession.messages;
             }
+            if (this._windowSessionId !== this.currentSession.id) {
+                this._windowSessionId = this.currentSession.id;
+                this._visibleRowCount = DIRECTOR_ROW_PAGE;
+            }
         }
 
-        this.directorChatMessages.innerHTML = '';
+        const units = this.flattenDirectorUnits(messages);
+        const start = Math.max(0, units.length - this._visibleRowCount);
+        this._hiddenOlderRows = start;
+        const visible = units.slice(start);
+        const scroller = this.directorScrollEl();
+        const place = scroller ? scroller.scrollTop : 0;
+        if (this._settleTurn && this._extendRenderedRows(visible)) {
+            this._settleTurn = false;
+            this.applyMessageFilter();
+            this.paintMessagePrints(messages);
+            this.paintContext();
+            this.wireDirectorRowScroll();
+            if (follow) this.scrollToBottom();
+            return;
+        }
+        this._settleTurn = false;
 
-        // Use document fragment for batch DOM operations
         const fragment = document.createDocumentFragment();
-
-        messages.forEach(message => {
-            // Check if this message has captions/quotes that should be separated
-            const structuredData = message.data || null;
-            const hasCaptions = structuredData && structuredData.Caption &&
-                              Array.isArray(structuredData.Caption) &&
-                              structuredData.Caption.length > 0;
-
-            if (hasCaptions) {
-                // Create separate quote messages for each caption
-                structuredData.Caption.forEach((caption, index) => {
-                    const quoteMessage = this.createQuoteMessageElement(caption, message, index);
-                    if (quoteMessage) {
-                        fragment.appendChild(quoteMessage);
-                    }
-                });
-            }
-
-            // Create the main message element
-            const messageElement = this.createMessageElement(message);
-            if (messageElement) {
-                fragment.appendChild(messageElement);
-            }
+        if (start > 0) {
+            const older = document.createElement('div');
+            older.className = 'director-message';
+            older.dataset.older = '1';
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn-secondary';
+            button.textContent = 'Older';
+            button.addEventListener('click', () => {
+                this._visibleRowCount += DIRECTOR_ROW_PAGE;
+                this._doRenderSessionMessages(this._renderedMessages || [], { keepPlace: true });
+            });
+            older.appendChild(button);
+            fragment.appendChild(older);
+        }
+        visible.forEach((unit) => {
+            let el = null;
+            if (unit.type === 'caption') el = this.createQuoteMessageElement(unit.caption);
+            else if (unit.type === 'card') el = this.createDirectorCardElement(unit.message);
+            else if (unit.type === 'trace') el = this.createTraceRow(unit.row, unit.expandKey, unit.model);
+            else el = this.createMessageElement(unit.message);
+            if (el) fragment.appendChild(el);
         });
-
-        // Batch add all messages at once
-        this.directorChatMessages.appendChild(fragment);
-        
-        // Apply current message filter
+        if (!messages.length && !this._skipQuickStart) this.paintComposerWelcome();
+        else this.clearComposerWelcome();
+        this.directorChatMessages.replaceChildren(fragment);
         this.applyMessageFilter();
-
-        // Scroll to bottom
-        this.scrollToBottom();
-
-        // Update scrollbars after content changes
+        this.paintMessagePrints(messages);
+        this.paintContext();
+        this.wireDirectorRowScroll();
+        if (follow) {
+            this.scrollToBottom();
+        } else if (scroller) {
+            scroller.scrollTop = place;
+            setTimeout(() => {
+                const again = this.directorScrollEl();
+                if (again) again.scrollTop = place;
+            }, 30);
+        }
         this.initializeScrollbars();
+    }
+
+    // Live rows use live:N. Once that turn is saved, the same index belongs to the message.
+    promoteLiveTraceKeys(messages) {
+        if (!this._expandedTrace.size) return;
+        let live = false;
+        this._expandedTrace.forEach((key) => {
+            if (String(key).startsWith('live:')) live = true;
+        });
+        if (!live) return;
+        let messageId = '';
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const message = messages[i];
+            if (message && Array.isArray(message.trace) && message.trace.length && (message.id || message.timestamp)) {
+                messageId = message.id || message.timestamp;
+                break;
+            }
+        }
+        if (!messageId) return;
+        const next = new Set();
+        this._expandedTrace.forEach((key) => {
+            const text = String(key);
+            if (!text.startsWith('live:')) {
+                next.add(text);
+                return;
+            }
+            const index = text.slice(5);
+            if (index === 'open') return;
+            next.add(`${messageId}:${index}`);
+        });
+        this._expandedTrace = next;
     }
 
     createQuoteMessageElement(caption) {
@@ -1600,6 +3738,7 @@ class Director {
     createMessageElement(message) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `director-message ${message.role || message.message_type}`;
+        if (this._animateRows) messageDiv.classList.add('director-row-arrive');
         
         // Add message key for button functionality
         const messageKey = message.id || message.timestamp || Date.now();
@@ -1722,11 +3861,12 @@ class Director {
                             </button>
                             <div class="director-expandable-content hidden">
                                 <div class="director-message-suggestions">
-                                    ${structuredData.Suggested.map((suggestion, index) =>
-                                        `<div class="director-suggestion-item clickable" onclick="window.directorInstance.useSuggestion('${suggestion.replace(/'/g, "\\'")}')">
-                                            <i class="fas fa-arrow-right"></i> ${suggestion}
-                                        </div>`
-                                    ).join('')}
+                                    ${structuredData.Suggested.map((suggestion) => {
+                                        const text = typeof suggestion === 'string' ? suggestion : '';
+                                        return `<div class="director-suggestion-item clickable" onclick="window.directorInstance.useSuggestion('${text.replace(/'/g, "\\'")}')">
+                                            <i class="fas fa-arrow-right"></i> ${text}
+                                        </div>`;
+                                    }).join('')}
                                 </div>
                             </div>
                         </div>
@@ -1783,6 +3923,9 @@ class Director {
             content = `<div class="director-message-content">
                 <div class="director-user-message-header">
                     <span class="director-request-type-badge">${requestType}</span>
+                    <button type="button" class="director-rollback-btn" onclick="window.directorInstance.retryMessage('${messageKey}')">
+                        <i class="fas fa-rotate-right"></i> Retry
+                    </button>
                     <button type="button" class="director-rollback-btn" onclick="window.directorInstance.rollbackToMessage('${messageKey}')">
                         <i class="nai-dot-reset"></i> Rollback
                     </button>
@@ -1824,18 +3967,6 @@ class Director {
                 content += `<div class="director-message-actions">${buttonsHtml}</div>`;
             }
             
-            // Add measurements button if measurements are available
-            // Check both preprocessed parsed fields and on-the-fly parsed fields
-            let hasMeasurements = false;
-            if (message.data && message.data.Measurements) {
-                // Handle both old single object format and new array format
-                if (Array.isArray(message.data.Measurements)) {
-                    hasMeasurements = message.data.Measurements.length > 0;
-                } else {
-                    hasMeasurements = true;
-                }
-            }
-            
             // Create action buttons and indicators
             const actionButtons = [];
             const indicators = [];
@@ -1866,16 +3997,6 @@ class Director {
                 indicators.push(`<span class="director-stale-indicator">Stale</span>`);
             }
             
-            // Add measurements button if measurements are available
-            if (hasMeasurements) {
-                actionButtons.push(`<button type="button" class="btn-secondary btn-small" onclick="window.directorInstance.showMeasurements(this)"><i class="fas fa-ruler-triangle"></i></button>`);
-            }
-            
-            // Add prompt button if prompt is available
-            if (structuredData && structuredData.Prompt) {
-                actionButtons.push(`<button type="button" class="btn-danger btn-small" onclick="window.directorInstance.applyPrompt(this)">Apply Prompt</button>`);
-            }
-            
             // Add action buttons and indicators if any exist
             if (actionButtons.length > 0 || indicators.length > 0) {
                 const actionButtonsHtml = actionButtons.join('');
@@ -1898,123 +4019,1254 @@ class Director {
         return messageDiv;
     }
     
-    // MIGRATE-ENSHUTSUKA-MCP: in-app chat is the old API requester. Requests now happen
-    // on grok.com; this send path can be removed with the Director API loop.
-    async sendMessage() {
-        const content = this.directorChatInput.value.trim();
-        if (!this.currentSession) return;
+    placeComposer(centered, animate) {
+        const chat = this.directorSessionChat;
+        if (!chat) return;
+        const want = centered === true;
+        if (chat.classList.contains('director-composer-center') === want) return;
+        if (!animate) chat.classList.add('director-composer-instant');
+        chat.classList.toggle('director-composer-center', centered === true);
+        if (!animate) {
+            void chat.offsetWidth;
+            chat.classList.remove('director-composer-instant');
+        }
+    }
 
-        const action = this.getSelectedDirectorAction();
-        const includeBaseImage = this.directorAddBaseImageToggleBtn.getAttribute('data-state') === 'on';
-        const fastResponse = this.directorHighThinkingToggleBtn.getAttribute('data-state') === 'on';
-        const highThinking = !fastResponse; // When fast response is OFF, use grok-4 (highReason = true)
+    showNewSessionDraft() {
+        if (!this._welcomeQuip) {
+            this._welcomeQuip = DIRECTOR_WELCOME_QUIPS[Math.floor(Math.random() * DIRECTOR_WELCOME_QUIPS.length)];
+        }
+        // A workspace open already in flight must not replace this draft with a server chat.
+        this._pendingWorkspaceToken = null;
+        const draft = {
+            draft: true,
+            id: null,
+            name: 'New session',
+            messages: []
+        };
+        this.currentSession = draft;
+        window.currentSession = draft;
+        this._windowSessionId = null;
+        this.currentView = 'sessionChat';
+        this.hideAllViews();
+        this.closeSessionOverlay();
+        if (this.directorSessionChat) this.directorSessionChat.classList.remove('hidden');
+        this.placeComposer(true, false);
+        this.updateHeaderForView('sessionChat');
+        if (this.directorSessionTitle) {
+            const titleText = this.directorSessionTitle.querySelector('.director-title-text');
+            if (titleText) titleText.textContent = 'New session';
+            else this.directorSessionTitle.textContent = 'New session';
+        }
+        if (this.directorWindowTitle) this.directorWindowTitle.textContent = 'Director';
+        this._imagePending = false;
+        this.renderSessionImages();
+        this.renderSessionTasks();
+        if (this._renderMessagesTimeout) {
+            clearTimeout(this._renderMessagesTimeout);
+            this._renderMessagesTimeout = null;
+        }
+        this._doRenderSessionMessages([]);
+        this.paintContext();
+        this.paintWorkspaceBanner();
+        this.applySessionModel(draft);
+        this.requestDirectorModels();
+        return true;
+    }
 
-        // Add user message
+    async openNewSession() {
+        this._selectedQuickTaskId = null;
+        this._welcomeQuip = null;
+        this._pendingWorkspaceToken = null;
+        if (this.directorWindowIsOpen()) {
+            this.showNewSessionDraft();
+            if (this.directorChatInput) this.directorChatInput.focus();
+            return;
+        }
+        if (!this.studioIsOpen()) {
+            await openManualModalWithContent({ type: 'none', skipPreviewRestore: true });
+        }
+        if (this.directorBtn && this.directorBtn.disabled) {
+            this.directorBtn.disabled = false;
+            this.directorBtn.classList.remove('disabled');
+        }
+        await this.showDirector({ skipSession: true });
+        this.showNewSessionDraft();
+        if (this.directorChatInput) this.directorChatInput.focus();
+    }
+
+    beginServerChat() {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            showGlassToast('error', null, 'WebSocket not connected');
+            return false;
+        }
+        window.wsClient.send({
+            type: 'director_create_session',
+            requestId: Date.now().toString(),
+            workspaceId: window.currentWorkspace || null,
+            persona: this.persona || 'wren'
+        });
+        return true;
+    }
+
+    directorSurfaceOpen() {
+        if (this.directorWindowIsOpen()) return true;
+        return !!(this.directorContainer
+            && !this.directorContainer.classList.contains('hidden')
+            && !this.directorContainer.classList.contains('director-closed'));
+    }
+
+    hasGrillSubject() {
+        if (this.studioIsOpen()) return true;
+        if (this.openImageFilename()) return true;
+        return this.sessionHasHistory();
+    }
+
+    studioIsOpen() {
+        const studioModal = document.getElementById('manualModal');
+        return !!(studioModal
+            && !studioModal.classList.contains('hidden')
+            && !studioModal.classList.contains('hidden-alt'));
+    }
+
+    // Gallery, Studio preview, image viewer, and Explorer call this.
+    async askWrenAboutImage(filename, name) {
+        const base = String(filename || '').trim().replace(/\\/g, '/').split('/').pop();
+        if (!base || base === '.' || base === '..' || base.indexOf('..') !== -1) {
+            showGlassToast('error', null, 'No image to attach');
+            return;
+        }
+        const wrenLive = this.directorSurfaceOpen()
+            && this.persona === 'wren'
+            && this.currentSession
+            && this.currentSession.id
+            && !this.currentSession.draft;
+        if (wrenLive) {
+            if (!this.pendingAttachments.some((item) => item && item.filename === base)) {
+                this.pendingAttachments.push({ source: 'workspace', filename: base, name: name || base });
+                this.renderAttachChips();
+            }
+            if (this.directorWindowIsOpen()) this.focusDirectorWindow();
+            if (this.directorChatInput) this.directorChatInput.focus();
+            return;
+        }
+        if (this.persona !== 'wren') await this.setPersona('wren');
+        if (this.sessionOwnsFilename(this.currentSession, base)) {
+            if (this.directorWindowIsOpen()) this.focusDirectorWindow();
+            else this.openDirectorWindow();
+            if (this.directorChatInput) this.directorChatInput.focus();
+            return;
+        }
+        const known = (this.directorSessions || []).find((session) => this.sessionOwnsFilename(session, base));
+        if (known && known.id) {
+            this._resumeImage = null;
+            this._openPreferredId = known.id;
+            const reveal = this.directorWindowIsOpen() ? this.showSessionChat(known) : this.openDirectorWindow();
+            Promise.resolve(reveal).then(() => {
+                if (this.directorChatInput) this.directorChatInput.focus();
+            });
+            return;
+        }
+        this._resumeImage = { filename: base, name: name || base };
+        this._lookupImageChat = true;
+        this._openPreferredId = null;
+        const reveal = this.directorWindowIsOpen() ? this.openCurrentSession() : this.openDirectorWindow();
+        Promise.resolve(reveal).then(() => {
+            if (this.directorChatInput) this.directorChatInput.focus();
+        });
+    }
+
+    lookbacksInComposer() {
+        const text = this.directorChatInput ? this.directorChatInput.value : '';
+        const found = [];
+        const seen = new Set();
+        const linked = /\[([^\]]*)\]\((dsap:\/\/lookback\/[^)\s]+)\)/gi;
+        let match;
+        while ((match = linked.exec(text))) {
+            const href = match[2];
+            if (seen.has(href)) continue;
+            seen.add(href);
+            found.push({ label: match[1] || 'lookback', href: href, markdown: match[0] });
+        }
+        const bare = /dsap:\/\/lookback\/[^\s)]+/gi;
+        while ((match = bare.exec(text))) {
+            const href = match[0];
+            if (seen.has(href)) continue;
+            seen.add(href);
+            const type = href.split('/')[3] || 'lookback';
+            found.push({ label: type, href: href, markdown: href });
+        }
+        return found;
+    }
+
+    removeLookback(markdown) {
+        if (!this.directorChatInput || !markdown) return;
+        const text = this.directorChatInput.value;
+        const at = text.indexOf(markdown);
+        if (at < 0) return;
+        const next = (text.slice(0, at) + text.slice(at + markdown.length)).replace(/[ \t]{2,}/, ' ');
+        this.directorChatInput.value = next;
+        this.autoExpandTextarea(this.directorChatInput);
+        this.renderAttachChips();
+        if (this.directorAttachDropdownMenu && !this.directorAttachDropdownMenu.classList.contains('hidden')) {
+            this.renderAttachDropdown();
+        }
+    }
+
+    chooseAttachmentSource(source) {
+        if (source === 'computer') {
+            if (this.directorAttachFileInput) this.directorAttachFileInput.click();
+            return;
+        }
+        if (source === 'studio') {
+            const image = window.currentManualPreviewImage;
+            const filename = image && (image.filename || image.original || image.upscaled);
+            if (!filename) {
+                showGlassToast('error', null, 'No studio image is open');
+                return;
+            }
+            this.pendingAttachments.push({ source: 'workspace', filename, name: filename });
+            this.renderAttachChips();
+            return;
+        }
+        if (source === 'explorer') {
+            const found = this.collectExplorerAttachments();
+            if (!found.length) {
+                showGlassToast('error', null, 'Select a file in Explorer first');
+                return;
+            }
+            found.forEach((item) => this.pendingAttachments.push(item));
+            this.renderAttachChips();
+        }
+    }
+
+    collectExplorerAttachments() {
+        if (typeof explorerApplet === 'undefined' || !explorerApplet || !explorerApplet.grid) return [];
+        const grid = explorerApplet.grid;
+        let items = [];
+        if (typeof grid.getSelectedItems === 'function') items = grid.getSelectedItems() || [];
+        else if (grid.selectedIds && grid.items) {
+            items = grid.items.filter((row) => grid.selectedIds.has(row.id));
+        }
+        const out = [];
+        items.forEach((item) => {
+            if (!item) return;
+            if (item.targetKind === 'image' || item.targetKind === 'scrap') {
+                const filename = item.previewImageFilename || item.targetId;
+                if (filename) out.push({ source: 'workspace', filename, name: item.name || filename });
+            } else if (item.targetKind === 'reference') {
+                const hash = item.targetId || item.previewHash;
+                if (hash) out.push({ source: 'reference', hash, name: item.name || hash });
+            } else if (item.targetKind === 'user-file') {
+                const fileId = item.targetId || item.id;
+                if (fileId) out.push({ source: 'vfs', fileId, name: item.name || 'file' });
+            }
+        });
+        return out;
+    }
+
+    addComputerFiles(fileList) {
+        const files = Array.from(fileList || []);
+        files.forEach((file) => {
+            if (file.size > 8 * 1024 * 1024) {
+                showGlassToast('error', null, `${file.name} is too large`);
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                const raw = String(reader.result || '');
+                const data = raw.includes(',') ? raw.split(',')[1] : raw;
+                const image = (file.type || '').startsWith('image/');
+                this.pendingAttachments.push({
+                    source: 'client',
+                    name: file.name,
+                    data,
+                    preview: image ? raw : ''
+                });
+                this.renderAttachChips();
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    isImageAttachment(item) {
+        if (!item) return false;
+        if (item.source === 'workspace' || item.source === 'reference') return true;
+        const name = item.name || item.filename || '';
+        return /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(name);
+    }
+
+    // Gallery and cache previews, or the data URL kept on a file picked from this computer.
+    attachmentPreviewUrl(item) {
+        if (!item) return '';
+        if (item.preview) return item.preview;
+        if (!this.isImageAttachment(item)) return '';
+        if (item.source === 'workspace' && item.filename) {
+            // getGalleryPreviewUrl: public/scripts/utils/deviceUtils.js
+            // localGalleryPreviewUrl: public/scripts/comp/assetUrlResolver.js
+            return localGalleryPreviewUrl(getGalleryPreviewUrl(item.filename));
+        }
+        if (item.source === 'reference' && item.hash) {
+            // localCachePreviewUrl: public/scripts/comp/assetUrlResolver.js
+            return localCachePreviewUrl(`${item.hash}.webp`);
+        }
+        return '';
+    }
+
+    // Thumbnail in the composer chip and the attachments menu. Gallery previews
+    // fall back to the full file if the preview name does not match.
+    appendAttachmentPreview(parent, item) {
+        const url = this.attachmentPreviewUrl(item);
+        if (!url) return null;
+        const caption = item.name || item.filename || item.hash || 'file';
+        const preview = document.createElement('img');
+        preview.className = 'director-session-preview';
+        preview.alt = caption;
+        preview.title = caption;
+        preview.src = url;
+        preview.addEventListener('error', () => {
+            if (item.source === 'workspace' && item.filename && preview.dataset.full !== '1') {
+                preview.dataset.full = '1';
+                // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+                preview.src = localGalleryImageUrl(item.filename);
+                return;
+            }
+            preview.remove();
+            if (!parent.querySelector('span')) {
+                const label = document.createElement('span');
+                label.textContent = caption;
+                parent.insertBefore(label, parent.firstChild);
+            }
+        });
+        parent.appendChild(preview);
+        return preview;
+    }
+
+    renderAttachChips() {
+        if (!this.directorAttachChips) return;
+        this.directorAttachChips.innerHTML = '';
+        this.pendingAttachments.forEach((item, index) => {
+            const caption = item.name || item.filename || item.hash || 'file';
+            const chip = document.createElement('div');
+            chip.className = 'director-attach-chip';
+            chip.title = caption;
+            if (!this.appendAttachmentPreview(chip, item)) {
+                const icon = document.createElement('i');
+                icon.className = this.attachmentIconClass(item);
+                chip.appendChild(icon);
+            }
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'btn-secondary btn-small';
+            remove.title = 'Remove';
+            remove.innerHTML = '<i class="fas fa-times"></i>';
+            remove.addEventListener('click', () => {
+                this.pendingAttachments.splice(index, 1);
+                this.renderAttachChips();
+            });
+            chip.appendChild(remove);
+            this.directorAttachChips.appendChild(chip);
+        });
+        this.lookbacksInComposer().forEach((item) => {
+            const chip = document.createElement('div');
+            chip.className = 'director-attach-chip';
+            chip.title = item.label || 'lookback';
+            const icon = document.createElement('i');
+            icon.className = this.attachmentIconClass(item);
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'btn-secondary btn-small';
+            remove.title = 'Remove';
+            remove.innerHTML = '<i class="fas fa-times"></i>';
+            remove.addEventListener('click', () => this.removeLookback(item.markdown));
+            chip.appendChild(icon);
+            chip.appendChild(remove);
+            this.directorAttachChips.appendChild(chip);
+        });
+        this.renderQueueChip();
+    }
+
+    attachmentIconClass(item) {
+        const href = item && item.href ? String(item.href) : '';
+        if (href.indexOf('dsap://lookback/') === 0) {
+            const type = href.split('/')[3] || '';
+            if (type === 'wiki' || type === 'page') return 'fas fa-book';
+            if (type === 'note') return 'fas fa-note-sticky';
+            if (type === 'nax' || type === 'tag') return 'fas fa-tags';
+            if (type === 'preset') return 'fas fa-bookmark';
+            return 'fas fa-link';
+        }
+        const name = (item && (item.name || item.filename)) || '';
+        const ext = name.indexOf('.') >= 0 ? name.split('.').pop().toLowerCase() : '';
+        if (ext === 'pdf') return 'fas fa-file-pdf';
+        if (ext === 'zip' || ext === '7z' || ext === 'rar') return 'fas fa-file-zipper';
+        if (ext === 'mp3' || ext === 'wav' || ext === 'ogg' || ext === 'flac') return 'fas fa-file-audio';
+        if (ext === 'mp4' || ext === 'webm' || ext === 'mov') return 'fas fa-file-video';
+        if (ext === 'json' || ext === 'js' || ext === 'txt' || ext === 'md' || ext === 'csv') return 'fas fa-file-lines';
+        return 'fas fa-file';
+    }
+
+    createTraceRow(row, expandKey, model) {
+        if (!row) return null;
+        const messageDiv = document.createElement('div');
+        const kind = row.type === 'thinking' || row.type === 'tool' || row.type === 'assistant' ? row.type : 'assistant';
+        messageDiv.className = `director-message ${kind}`;
+        messageDiv.dataset.traceKind = kind;
+        if (this._animateRows) messageDiv.classList.add('director-row-arrive');
+        if (expandKey) {
+            messageDiv.dataset.expandKey = expandKey;
+            if (!String(expandKey).startsWith('live:')) {
+                const key = String(expandKey).split(':')[0];
+                if (key) messageDiv.dataset.messageKey = key;
+            }
+            if (this._expandedTrace.has(expandKey)) messageDiv.classList.add('expanded');
+        }
+        messageDiv.dataset.traceExtras = this.traceExtras(row);
+        const header = document.createElement('div');
+        header.className = 'director-user-message-header';
+        const label = document.createElement('span');
+        label.className = 'director-request-type-badge';
+        const toolLabel = this.prettyToolLabel(row);
+        label.textContent = kind === 'thinking' ? 'Thinking' : (kind === 'tool' ? toolLabel : 'Director');
+        header.appendChild(label);
+        if (messageDiv.dataset.traceExtras.includes('g')) {
+            const glasses = document.createElement('button');
+            glasses.type = 'button';
+            glasses.className = 'btn-secondary btn-small';
+            glasses.title = 'Parameters and result';
+            glasses.innerHTML = '<i class="fas fa-glasses"></i>';
+            glasses.addEventListener('click', (event) => {
+                event.stopPropagation();
+                this.openToolPayload(row);
+            });
+            header.appendChild(glasses);
+        }
+        if (messageDiv.dataset.traceExtras.includes('a')) {
+            const applyBtn = document.createElement('button');
+            applyBtn.type = 'button';
+            applyBtn.className = 'btn-secondary btn-small';
+            applyBtn.textContent = 'Apply';
+            applyBtn.title = 'Apply these Studio changes again';
+            applyBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                this.reapplyStudioChange(row.replay);
+            });
+            header.appendChild(applyBtn);
+        }
+        const body = document.createElement('div');
+        body.className = 'director-message-content';
+        if (kind === 'assistant') {
+            body.dataset.raw = row.text || '';
+            body.innerHTML = this.processMarkdown(row.text || '');
+        } else if (kind === 'tool') {
+            const detail = row.detail || (row.text && row.text !== 'tool' && row.text !== toolLabel ? row.text : '');
+            const line = document.createElement('div');
+            line.className = 'director-tool-detail';
+            line.textContent = detail;
+            body.appendChild(line);
+            if (!detail) body.classList.add('hidden');
+        } else {
+            const text = row.text || row.name || '';
+            const line = document.createElement('div');
+            line.className = 'director-thinking-line';
+            line.textContent = text;
+            const full = document.createElement('div');
+            full.className = 'director-thinking-full';
+            full.dataset.raw = text;
+            full.innerHTML = this.processMarkdown(text);
+            body.append(line, full);
+        }
+        const plain = kind === 'thinking' ? (row.text || '') : (body.textContent || '');
+        const expandable = kind === 'thinking' ? plain.length > 0 : (kind === 'tool' && plain.length > 0);
+        if (expandable) {
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'director-expand-button director-compact-toggle';
+            toggle.title = 'Show all of this row';
+            toggle.innerHTML = '<i class="fas fa-chevron-down"></i>';
+            header.appendChild(toggle);
+        }
+        if (kind === 'assistant') {
+            const used = this.roundModelName(model);
+            if (used) {
+                const badge = document.createElement('span');
+                badge.className = 'director-request-type-badge';
+                badge.textContent = used;
+                header.appendChild(badge);
+            }
+        }
+        messageDiv.appendChild(header);
+        messageDiv.appendChild(body);
+        return messageDiv;
+    }
+
+    appendToolTracePayload(body, row) {
+        const args = row && row.args ? String(row.args) : '';
+        const result = row && row.result ? String(row.result) : '';
+        let replay = '';
+        if (!args && row && row.replay) {
+            try {
+                replay = JSON.stringify(row.replay, null, 2);
+            } catch (_) {
+                replay = '';
+            }
+        }
+        let added = false;
+        const add = (title, text) => {
+            if (!text) return;
+            added = true;
+            const heading = document.createElement('div');
+            heading.textContent = title;
+            const pre = document.createElement('pre');
+            const code = document.createElement('code');
+            code.textContent = text;
+            pre.appendChild(code);
+            body.appendChild(heading);
+            body.appendChild(pre);
+        };
+        add('Parameters', args || replay);
+        add('Result', result);
+        return added;
+    }
+
+    // show_chat_image / offer_workspace_switch cards, live and replayed. Same markup as
+    // a trace row so the message filter and the compact styling already cover them.
+    createDirectorCardElement(message) {
+        const data = (message && message.data) || {};
+        const kind = message && message.message_type;
+        if (kind !== 'chat-image' && kind !== 'workspace-offer') return null;
+        const card = document.createElement('div');
+        card.className = 'director-message event';
+        card.dataset.messageKey = String(message.id || message.timestamp || Date.now());
+        const header = document.createElement('div');
+        header.className = 'director-user-message-header';
+        const badge = document.createElement('span');
+        badge.className = 'director-request-type-badge';
+        header.appendChild(badge);
+        const body = document.createElement('div');
+        body.className = 'director-message-content';
+        if (kind === 'chat-image') {
+            badge.textContent = 'Image';
+            const picture = document.createElement('img');
+            picture.className = 'director-chat-image';
+            picture.src = data.src || '';
+            picture.alt = data.caption || data.filename || 'Image';
+            if (data.filename) {
+                picture.title = data.filename;
+                picture.addEventListener('click', () => this.openSessionImage(data.filename));
+            }
+            body.appendChild(picture);
+            if (data.caption) {
+                const caption = document.createElement('span');
+                caption.textContent = data.caption;
+                body.appendChild(caption);
+            }
+        } else {
+            badge.textContent = 'Workspace';
+            const open = document.createElement('button');
+            open.type = 'button';
+            open.className = 'btn-secondary btn-small';
+            open.innerHTML = '<i class="fas fa-folder-open"></i>';
+            const label = document.createElement('span');
+            label.textContent = `Open ${this.workspaceCardName(data)}`;
+            open.appendChild(label);
+            open.addEventListener('click', () => this.jumpToWorkspace(data.workspaceId));
+            header.appendChild(open);
+            body.textContent = data.reason || '';
+            if (!data.reason) body.classList.add('hidden');
+        }
+        card.appendChild(header);
+        card.appendChild(body);
+        return card;
+    }
+
+    // workspaces / activeWorkspace: public/scripts/comp/workspaceUtils.js
+    currentWorkspaceId() {
+        return (typeof activeWorkspace !== 'undefined' && activeWorkspace) || window.currentWorkspace || '';
+    }
+
+    sessionWorkspaceMeta(session) {
+        const id = session && session.workspaceId;
+        if (!id) return null;
+        const live = (typeof workspaces !== 'undefined' && workspaces) ? workspaces[id] : null;
+        const color = live && typeof live.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(live.color)
+            ? live.color
+            : '#6366f1';
+        return { id, name: (live && live.name) || id, color };
+    }
+
+    workspaceDot(session) {
+        const meta = this.sessionWorkspaceMeta(session);
+        if (!meta) return '';
+        return `<div class="workspace-color-indicator" style="background-color: ${meta.color}" title="${this.escapeHtml(meta.name)}"></div>`;
+    }
+
+    paintWorkspaceBanner() {
+        const banner = document.getElementById('directorWorkspaceBanner');
+        const text = document.getElementById('directorWorkspaceBannerText');
+        if (!banner || !text) return;
+        const session = this.currentSession;
+        const meta = session && !session.draft ? this.sessionWorkspaceMeta(session) : null;
+        if (!meta || meta.id === this.currentWorkspaceId()) {
+            banner.classList.add('hidden');
+            return;
+        }
+        text.textContent = `The session was being used in ${meta.name} planet`;
+        banner.classList.remove('hidden');
+    }
+
+    // Sending while the banner is up keeps the chat in the workspace you are in.
+    claimSessionWorkspace() {
+        const here = this.currentWorkspaceId();
+        const session = this.currentSession;
+        if (!here || !session || session.draft || (session.workspaceId || '') === here) return here;
+        session.workspaceId = here;
+        const listed = (this.directorSessions || []).find((item) => item.id === session.id);
+        if (listed && listed !== session) listed.workspaceId = here;
+        this.paintWorkspaceBanner();
+        this.renderDirectorSessions();
+        return here;
+    }
+
+    // workspaces: public/scripts/comp/workspaceUtils.js — the card carries the name the
+    // server saw, and the live map covers a rename since then.
+    workspaceCardName(data) {
+        const id = data && data.workspaceId;
+        const live = id && workspaces ? workspaces[id] : null;
+        return (live && live.name) || (data && data.workspaceName) || id || 'workspace';
+    }
+
+    async jumpToWorkspace(workspaceId) {
+        if (!workspaceId) return;
+        if (activeWorkspace === workspaceId) {
+            showGlassToast('info', 'Director', `Already in ${this.workspaceCardName({ workspaceId })}`);
+            return;
+        }
+        // setActiveWorkspace: public/scripts/comp/workspaceUtils.js
+        await setActiveWorkspace(workspaceId);
+    }
+
+    // director_chat_image / director_workspace_offer arrive mid-turn; the card is already
+    // saved on the chat, so a later reload renders the same row from the messages.
+    appendChatCard(kind, payload) {
+        const chatId = payload && (payload.chatId || payload.sessionId);
+        if (!chatId || !this.directorChatMessages) return;
+        if (!this.currentSession || String(chatId) !== String(this.currentSession.id)) return;
+        const el = this.createDirectorCardElement({
+            id: payload.cardId,
+            role: 'event',
+            message_type: kind,
+            timestamp: new Date().toISOString(),
+            data: payload
+        });
+        if (!el) return;
+        this.directorChatMessages.appendChild(el);
+        this.applyMessageFilter();
+    }
+
+    async reapplyStudioChange(payload) {
+        // applyStudioChangePayloadSilent: public/scripts/comp/studioChangeJson.js
+        try {
+            const applied = await applyStudioChangePayloadSilent(payload);
+            showGlassToast(applied ? 'success' : 'error', null, applied ? 'Studio changes applied' : 'Studio changes were not applied');
+        } catch (err) {
+            showGlassToast('error', null, err && err.message ? err.message : 'Studio changes were not applied');
+        }
+    }
+
+    traceKind(row) {
+        if (!row) return 'assistant';
+        return row.type === 'thinking' || row.type === 'tool' || row.type === 'assistant' ? row.type : 'assistant';
+    }
+
+    // Header buttons patchTraceRow cannot add: g glasses, a apply, t expand toggle
+    traceExtras(row) {
+        const kind = this.traceKind(row);
+        if (kind === 'thinking') return row.text ? 't' : '';
+        if (kind !== 'tool') return '';
+        let extras = '';
+        if (row.hasPayload || row.hasDiff || row.args || row.result || row.payloadId || row.diffId) extras += 'g';
+        if (row.name === 'apply_studio_changes' && row.replay) extras += 'a';
+        if (row.detail || (row.text && row.text !== 'tool')) extras += 't';
+        return extras;
+    }
+
+    patchTraceRow(el, row) {
+        if (!el || !row || el.dataset.traceKind !== this.traceKind(row)) return false;
+        const kind = el.dataset.traceKind;
+        if (kind === 'thinking') {
+            const text = row.text || '';
+            const line = el.querySelector('.director-thinking-line');
+            const full = el.querySelector('.director-thinking-full');
+            if (line && line.textContent !== text) line.textContent = text;
+            if (full && full.dataset.raw !== text) {
+                full.dataset.raw = text;
+                full.innerHTML = this.processMarkdown(text);
+            }
+            return true;
+        }
+        if (kind === 'assistant') {
+            const body = el.querySelector('.director-message-content');
+            const text = row.text || '';
+            if (body && body.dataset.raw !== text) {
+                body.dataset.raw = text;
+                body.innerHTML = this.processMarkdown(text);
+            }
+            return true;
+        }
+        if (kind === 'tool') {
+            const badge = el.querySelector('.director-request-type-badge');
+            const labelText = this.prettyToolLabel(row);
+            if (badge && badge.textContent !== labelText) badge.textContent = labelText;
+            const detail = el.querySelector('.director-tool-detail');
+            const text = row.detail || '';
+            if (detail && detail.textContent !== text) detail.textContent = text;
+            return true;
+        }
+        return false;
+    }
+
+    renderLiveTrace(payload) {
+        if (!this.directorChatMessages) return;
+        let host = this.directorChatMessages.querySelector('.director-live-turn');
+        if (!host) {
+            host = document.createElement('div');
+            host.className = 'director-live-turn';
+            this.directorChatMessages.appendChild(host);
+        }
+        const roundModel = (payload && payload.model) || this._turnModel || null;
+        const rows = (payload.rows || []).slice();
+        const streaming = !!(payload.live && (payload.live.text || payload.live.name));
+        if (streaming) rows.push(payload.live);
+        const existing = [...host.children];
+        rows.forEach((row, index) => {
+            const held = existing[index];
+            const sameKind = held && held.dataset.traceKind === this.traceKind(row);
+            if (sameKind && held.dataset.traceExtras === this.traceExtras(row)) {
+                this.patchTraceRow(held, row);
+                return;
+            }
+            this._animateRows = !sameKind;
+            const el = this.createTraceRow(row, `live:${index}`, roundModel);
+            this._animateRows = false;
+            if (!el) return;
+            if (sameKind) {
+                if (held.classList.contains('expanded')) el.classList.add('expanded');
+                if (held.dataset.autoOpen) el.dataset.autoOpen = held.dataset.autoOpen;
+                held.replaceWith(el);
+            } else if (held) {
+                held.replaceWith(el);
+            } else {
+                host.appendChild(el);
+            }
+        });
+        existing.slice(rows.length).forEach((el) => el.remove());
+        // The streaming thinking row stays open; it folds once the next row takes over unless the user toggled it
+        const last = streaming ? rows.length - 1 : -1;
+        [...host.children].forEach((el, index) => {
+            if (index === last && el.dataset.traceKind === 'thinking') {
+                if (!el.dataset.autoOpen) {
+                    el.dataset.autoOpen = '1';
+                    el.classList.add('expanded');
+                }
+            } else if (el.dataset.autoOpen === '1') {
+                el.dataset.autoOpen = '';
+                if (!this._expandedTrace.has(el.dataset.expandKey)) el.classList.remove('expanded');
+            }
+        });
+        this.applyMessageFilter();
+        this.notePendingPrint(payload.rows, payload.live);
+        this.showTypingIndicator();
+    }
+
+    // A generation tool in the live trace means a print is on the way
+    notePendingPrint(rows, live) {
+        if (this._imagePending === true) return;
+        const generators = ['print_studio', 'generate_image', 'generate_preset'];
+        const rowGenerates = (row) => {
+            if (!row || row.type !== 'tool') return false;
+            if (generators.includes(row.name)) return true;
+            return row.name === 'apply_studio_changes' && String(row.detail || '').includes('generate');
+        };
+        if ((rows || []).some(rowGenerates) || rowGenerates(live)) this.setImagePending(true);
+    }
+
+    requestCursorUsage() {
+        if (!window.wsClient || !window.wsClient.isConnected()) return;
+        window.wsClient.send({
+            type: 'director_get_cursor_usage',
+            requestId: Date.now().toString()
+        });
+    }
+
+    estimateContextTokens(session) {
+        const messages = session && Array.isArray(session.messages) ? session.messages : [];
+        let chars = 0;
+        messages.forEach((message) => {
+            chars += String(message.user_input || message.content || '').length;
+            const description = message.data && message.data.Description;
+            if (description) chars += String(description).length;
+            (message.trace || []).forEach((row) => {
+                chars += String(row && row.text || '').length;
+            });
+        });
+        return Math.round(chars / 4);
+    }
+
+    paintContext(source, approximate) {
+        const host = document.getElementById('directorContextDisplay');
+        const valueEl = document.getElementById('directorContextPercent');
+        if (!host || !valueEl) return;
+        const windowSize = 256000;
+        const pastWindow = (pct, count) => (pct != null && pct > 100) || (count != null && count > windowSize);
+        let percent = source && Number.isFinite(Number(source.percent)) ? Math.round(Number(source.percent)) : null;
+        let tokens = source && Number.isFinite(Number(source.tokens)) ? Math.round(Number(source.tokens)) : null;
+        let approx = approximate === true;
+        if (pastWindow(percent, tokens)) {
+            percent = null;
+            tokens = null;
+            approx = false;
+        }
+        if (percent == null && this.currentSession && Number.isFinite(Number(this.currentSession.contextPercent))) {
+            percent = Math.round(Number(this.currentSession.contextPercent));
+            tokens = Number.isFinite(Number(this.currentSession.contextTokens)) ? Math.round(Number(this.currentSession.contextTokens)) : null;
+            approx = false;
+            if (pastWindow(percent, tokens)) {
+                percent = null;
+                tokens = null;
+            }
+        }
+        if ((percent == null || (percent === 0 && (tokens == null || tokens < 1000))) && this.currentSession) {
+            tokens = this.estimateContextTokens(this.currentSession);
+            if (!tokens) {
+                valueEl.textContent = '—';
+                host.title = 'Context window';
+                return;
+            }
+            percent = Math.min(100, Math.round((tokens / windowSize) * 100));
+            approx = true;
+        }
+        if (percent == null) {
+            valueEl.textContent = '—';
+            host.title = 'Context window';
+            return;
+        }
+        valueEl.textContent = `${Math.min(100, percent)}%`;
+        const tokenLabel = tokens != null ? `${tokens.toLocaleString()} tokens of 256k` : '256k window';
+        host.title = approx ? `About ${tokenLabel}, estimated from this chat` : tokenLabel;
+    }
+
+    paintCursorUsage(usage) {
+        const host = document.getElementById('directorUsageDisplay');
+        const autoEl = document.getElementById('directorUsageAuto');
+        const iconEl = document.getElementById('directorUsageIcon');
+        if (!host || !autoEl) return;
+        const data = usage || {};
+        const auto = Number.isFinite(Number(data.autoPercent)) ? Math.round(Number(data.autoPercent)) : null;
+        const other = Number.isFinite(Number(data.apiPercent)) ? Math.round(Number(data.apiPercent)) : null;
+        const split = document.getElementById('directorUsageSplit');
+        const otherEl = document.getElementById('directorUsageOther');
+        const showSplit = auto != null || other != null;
+        if (split) split.classList.toggle('hidden', !showSplit);
+        autoEl.textContent = auto == null ? '—' : `${auto}%`;
+        if (otherEl) otherEl.textContent = other == null ? '—' : `${other}%`;
+        host.title = data.title || 'Cursor usage';
+        host.classList.toggle('low-credits', data.limited === true);
+        if (iconEl) {
+            iconEl.className = data.limited ? 'fas fa-battery-empty' : 'fas fa-battery-three-quarters';
+        }
+    }
+
+    sessionIsListed(session) {
+        if (!session) return false;
+        if (session.cursorId) return true;
+        const messages = session.messages;
+        return Array.isArray(messages) && messages.some((item) => item && item.role === 'user' && item.message_type !== 'Attachment');
+    }
+
+    rememberListedSession(session) {
+        if (!this.sessionIsListed(session)) return;
+        this.directorSessions = [session].concat(
+            (this.directorSessions || []).filter((item) => item.id !== session.id)
+        );
+        window.directorSessions = this.directorSessions;
+        this.renderDirectorSessions();
+    }
+
+    sessionHasHistory() {
+        const messages = this.currentSession && this.currentSession.messages;
+        if (!Array.isArray(messages)) return false;
+        return messages.some((item) => item && (item.role === 'user' || item.role === 'assistant') && item.message_type !== 'Attachment');
+    }
+
+    sessionOwnsFilename(session, filename) {
+        const base = String(filename || '').trim().replace(/\\/g, '/').split('/').pop();
+        if (!base || !session) return false;
+        const names = [session.filename].concat(Array.isArray(session.images) ? session.images : []);
+        return names.some((name) => String(name || '').replace(/\\/g, '/').split('/').pop() === base);
+    }
+
+    // The picture on screen: the top image viewer, otherwise the Studio preview.
+    openImageFilename() {
+        // imageViewerManager: public/scripts/comp/imageViewer.js
+        let best = null;
+        let bestZ = -1;
+        if (typeof imageViewerManager !== 'undefined' && imageViewerManager.viewers) {
+            imageViewerManager.viewers.forEach((viewer) => {
+                const el = viewer && viewer.element;
+                if (!el || el.classList.contains('hidden')) return;
+                const z = parseInt(el.style.zIndex, 10) || 0;
+                if (z < bestZ) return;
+                const name = viewer.getImageFilename && viewer.getImageFilename();
+                if (!name) return;
+                bestZ = z;
+                best = name;
+            });
+        }
+        if (best) return best;
+        const img = window.currentManualPreviewImage;
+        if (!img) return null;
+        return img.filename || img.original || img.upscaled || null;
+    }
+
+    openImageSessionId(filename) {
+        const preview = window.currentManualPreviewImage;
+        const previewName = preview && (preview.filename || preview.original || preview.upscaled);
+        if (filename && previewName && previewName !== filename) return null;
+        const meta = window.currentEditMetadata;
+        if (meta && meta.director_session_id) return meta.director_session_id;
+        const forge = preview && preview.metadata && preview.metadata.forge_data;
+        if (forge && forge.director_session_id) return forge.director_session_id;
+        return null;
+    }
+
+    snapshotStudioChange() {
+        // buildStudioChangeSnapshot: public/scripts/comp/studioChangeJson.js
+        if (typeof buildStudioChangeSnapshot !== 'function') return null;
+        try {
+            return buildStudioChangeSnapshot();
+        } catch (_err) {
+            return null;
+        }
+    }
+
+    prettyToolLabel(row) {
+        const given = row && typeof row === 'object' ? (row.label || row.name) : row;
+        const raw = String(given || 'Tool').trim();
+        const key = raw
+            .replace(/^mcp__/i, '')
+            .split('__')
+            .pop()
+            .replace(/[-\s]+/g, '_')
+            .replace(/_+/g, '_')
+            .toLowerCase();
+        const named = {
+            await_generation_job: 'Wait for print',
+            get_generation_job: 'Print job',
+            expand_image: 'Expand',
+            expand: 'Expand',
+            upscale_image: 'Upscale',
+            generate_image: 'Generate',
+            apply_studio_changes: 'Update Studio',
+            print_studio: 'Print',
+            get_session_state: 'Session',
+            get_studio_state: 'Studio',
+            search_explore: 'Explore',
+            get_explore_post: 'Explore post',
+            request_form: 'Form',
+            AskQuestion: 'Form',
+            ledge: 'Ledge',
+            show_chat_image: 'Show image',
+            open_in_studio: 'Open in Studio',
+            open_in_lumen: 'Lumen',
+            open_in_glancewell: 'Glancewell',
+            read_image_metadata: 'Metadata',
+            count_prompt_tokens: 'Tokens',
+            search_autofill: 'Tags',
+            search_wiki: 'Wiki search',
+            search_nax: 'NAX',
+            omegasearch: 'Search',
+            ensure_artifact: 'Artifact',
+            resolve_lookback: 'Lookback'
+        };
+        if (named[key]) return named[key];
+        if (row && row.label && row.label !== row.name && row.label.indexOf('_') === -1) return row.label;
+        if (!key || key === 'tool') return 'Tool';
+        return key.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
+    }
+
+    paintComposerWelcome() {
+        const host = this.directorComposerWelcome;
+        if (!host) return;
+        if (this.persona === 'xi') {
+            host.replaceChildren();
+            return;
+        }
+        const tasks = DIRECTOR_QUICK_STARTS.filter((task) => !task.existingOnly && (!task.needsSubject || this.hasGrillSubject()) && (!task.v45Only || directorModelIsV45()));
+        host.replaceChildren();
+        const logo = document.createElement('img');
+        logo.src = '/static_images/logo_icon.png';
+        logo.alt = '';
+        const quip = document.createElement('h3');
+        quip.textContent = this._welcomeQuip || DIRECTOR_WELCOME_QUIPS[0];
+        const group = document.createElement('div');
+        group.className = 'btn-group-compact';
+        tasks.forEach((task) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn-secondary btn-toggle';
+            button.dataset.task = task.id;
+            button.dataset.state = this._selectedQuickTaskId === task.id ? 'on' : 'off';
+            button.textContent = task.label;
+            button.addEventListener('click', () => this.toggleQuickTask(task.id));
+            group.appendChild(button);
+        });
+        const note = document.createElement('p');
+        note.dataset.quickNote = '1';
+        const selected = DIRECTOR_QUICK_STARTS.find((task) => task.id === this._selectedQuickTaskId);
+        note.textContent = selected ? selected.title : '';
+        host.append(logo, quip, group, note);
+    }
+
+    clearComposerWelcome() {
+        if (this.directorComposerWelcome) this.directorComposerWelcome.replaceChildren();
+    }
+
+    createQuickStartRow() {
+        this.paintComposerWelcome();
+        return null;
+    }
+
+    toggleQuickTask(id) {
+        this._selectedQuickTaskId = this._selectedQuickTaskId === id ? null : id;
+        const row = this.directorComposerWelcome;
+        if (!row) return;
+        row.querySelectorAll('button[data-task]').forEach((button) => {
+            button.dataset.state = button.dataset.task === this._selectedQuickTaskId ? 'on' : 'off';
+        });
+        const note = row.querySelector('[data-quick-note]');
+        const task = DIRECTOR_QUICK_STARTS.find((item) => item.id === this._selectedQuickTaskId);
+        if (note) note.textContent = task ? task.title : '';
+    }
+
+    outgoingText(presetContent) {
+        if (typeof presetContent === 'string') return presetContent.trim();
+        const typed = (this.directorChatInput ? this.directorChatInput.value : '').trim();
+        const task = DIRECTOR_QUICK_STARTS.find((item) => item.id === this._selectedQuickTaskId);
+        if (!task) return typed;
+        if (!typed) return task.prompt;
+        return `${task.prompt}\n\n${typed}`;
+    }
+
+    removeQuickStart() {
+        if (!this.directorChatMessages) return;
+        const row = this.directorChatMessages.querySelector('[data-quick-start]');
+        if (row) row.remove();
+    }
+
+    async sendMessage(presetContent) {
+        const fromPreset = typeof presetContent === 'string';
+        const typed = fromPreset ? '' : (this.directorChatInput ? this.directorChatInput.value : '').trim();
+        const content = this.outgoingText(presetContent);
+        const busyHere = this._running && this.currentSession && this._runningSessionId === this.currentSession.id;
+        if (this._creatingChat) {
+            showGlassToast('error', null, 'Director is still starting this chat');
+            return;
+        }
+        if (!content && !this.pendingAttachments.length) return;
+        if (busyHere && this.currentSession && this.currentSession.id) {
+            const choice = await showConfirmationDialog(
+                'Director is still working on this chat.',
+                [
+                    { text: 'Steer', value: 'steer', className: 'btn-primary', icon: 'fas fa-hand' },
+                    { text: 'Queue', value: 'queue', className: 'btn-secondary', icon: 'fas fa-list' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ],
+                null,
+                { title: 'Director', icon: 'fas fa-clapperboard' }
+            );
+            if (choice !== 'steer' && choice !== 'queue') return;
+            const sessionId = this.currentSession.id;
+            const attachments = this.takeComposerAttachments();
+            const job = { content, attachments, steer: choice === 'steer' };
+            this.clearComposer();
+            if (choice === 'steer') {
+                this._outgoingQueue = (this._outgoingQueue || []).filter((item) => item.sessionId !== sessionId);
+                this._steer = Object.assign({ sessionId }, job);
+                this.renderQueueChip();
+                this.abortTurn(true);
+                return;
+            }
+            this._outgoingQueue = this._outgoingQueue || [];
+            this._outgoingQueue.push(Object.assign({ sessionId }, job));
+            this.renderQueueChip();
+            showGlassToast('info', 'Director', 'Queued. It sends when this turn finishes.');
+            return;
+        }
+        const needsChat = !this.currentSession || this.currentSession.draft || !this.currentSession.id;
+        if (needsChat) {
+            const attachments = this.pendingAttachments.map((item) => {
+                const copy = { ...item };
+                delete copy.preview;
+                return copy;
+            });
+            this._pendingOutgoing = {
+                content,
+                typed,
+                quickTaskId: fromPreset ? null : this._selectedQuickTaskId,
+                attachments,
+                handoff: true
+            };
+            this.pendingAttachments = [];
+            this.renderAttachChips();
+            this._selectedQuickTaskId = null;
+            if (this.directorChatInput) {
+                this.directorChatInput.value = '';
+                this.autoExpandTextarea(this.directorChatInput);
+            }
+            this._skipQuickStart = true;
+            this.removeQuickStart();
+            this.showTypingIndicator();
+            this._creatingChat = true;
+            if (!this.beginServerChat()) {
+                this._creatingChat = false;
+                this.restorePendingOutgoing();
+            }
+            return;
+        }
+        this.dispatchOutgoing({
+            content,
+            attachments: null
+        });
+    }
+
+    restorePendingOutgoing() {
+        const pending = this._pendingOutgoing;
+        this._pendingOutgoing = null;
+        this._skipQuickStart = false;
+        this.hideTypingIndicator();
+        if (!pending) return;
+        this.pendingAttachments = pending.attachments || [];
+        this._selectedQuickTaskId = pending.quickTaskId || null;
+        if (this.directorChatInput) {
+            this.directorChatInput.value = pending.typed || '';
+            this.autoExpandTextarea(this.directorChatInput);
+        }
+        this.renderAttachChips();
+        if (!this.currentSession || this.currentSession.draft) this.showNewSessionDraft();
+    }
+
+    dispatchOutgoing(pending) {
+        const content = (pending && pending.content ? pending.content : '').trim();
+        const attachments = pending && pending.attachments
+            ? pending.attachments
+            : this.pendingAttachments.map((item) => {
+                const copy = { ...item };
+                delete copy.preview;
+                return copy;
+            });
+        const handoff = !!(pending && pending.handoff);
+        if (!this.currentSession || !this.currentSession.id || (!content && !attachments.length)) {
+            if (handoff) this._skipQuickStart = false;
+            return;
+        }
+        // Keep the first-send flag until the turn ends so a late empty
+        // get_messages does not wipe the optimistic bubble. A normal send clears it.
+        if (!handoff) this._skipQuickStart = false;
+        if (this._renderMessagesTimeout) {
+            clearTimeout(this._renderMessagesTimeout);
+            this._renderMessagesTimeout = null;
+        }
+        this._selectedQuickTaskId = null;
+        this.removeQuickStart();
+        if (this.directorSessionChat && this.directorSessionChat.classList.contains('director-composer-center')) {
+            this.placeComposer(false, true);
+        }
+
         const userMessage = {
             role: 'user',
+            content: content,
+            user_input: content,
+            message_type: 'Ask',
             timestamp: new Date().toISOString()
         };
-        if (content) {
-            userMessage.content = content;
-        }
-
         this.currentSession.messages = this.currentSession.messages || [];
         this.currentSession.messages.push(userMessage);
-        assignTrimmedDirectorSessionMessages(this.currentSession, this.currentSession.messages);
-
-        // Update UI with optimized DOM operations
+        this._animateRows = true;
         const messageElement = this.createMessageElement(userMessage);
-        if (messageElement) {
-            // Use document fragment for better performance
-            const fragment = document.createDocumentFragment();
-            fragment.appendChild(messageElement);
-            this.directorChatMessages.appendChild(fragment);
+        this._animateRows = false;
+        if (messageElement && this.directorChatMessages) {
+            this.directorChatMessages.appendChild(messageElement);
         }
-        this.directorChatInput.value = '';
-
-        // Auto-expand textarea to reset to minimum height
-        this.autoExpandTextarea(this.directorUserInput);
-
-        // Scroll to bottom after adding user message
+        if (!pending || !pending.attachments) {
+            if (this.directorChatInput) this.directorChatInput.value = '';
+            this.autoExpandTextarea(this.directorChatInput);
+            this.pendingAttachments = [];
+            this.renderAttachChips();
+        }
         this.scrollToBottom();
-
-        // Show typing indicator
         this.showTypingIndicator();
 
-        const prompts = this.getInputPrompt();
-
-        // Get last generated image filename for efficiency requests only when includeBaseImage is set
-        let lastGeneratedImageFilename = undefined;
-        if (includeBaseImage && window.currentManualPreviewImage) {
-            lastGeneratedImageFilename = window.currentManualPreviewImage.filename ||
-                                       window.currentManualPreviewImage.original ||
-                                       window.currentManualPreviewImage.upscaled;
-        }
-
-        // Send WebSocket request
+        const changeJson = this.snapshotStudioChange();
         if (window.wsClient && window.wsClient.isConnected()) {
-            const message = {
+            this._running = true;
+            this._runningSessionId = this.currentSession.id;
+            this._turnModel = {
+                id: this.selectedModel || 'grok-4.7',
+                effort: this.selectedEffort || 'medium',
+                fast: this.fast === true
+            };
+            this.updateTrayChrome();
+            const stayWorkspace = this.claimSessionWorkspace();
+            window.wsClient.send({
                 type: 'director_send_message',
                 requestId: Date.now().toString(),
+                persona: this.persona || 'wren',
                 sessionId: this.currentSession.id,
                 content: content,
-                messageType: action,
-                vibeTransfers: includeBaseImage ? this.getVibeTransfers() : null,
-                baseImageData: includeBaseImage ? this.getBaseImageData() : null,
-                lastGeneratedImageFilename: lastGeneratedImageFilename,
-                inputPrompt: prompts,
-                highReason: highThinking,
-                characterReference: includeBaseImage ? this.getCharacterReferenceData() : null,
-                dryrun: window.directorDryrun,
-                enableLiveSearch: this.enableLiveSearch
-            };
-
-            window.wsClient.send(message);
+                effort: this.selectedEffort || 'medium',
+                fast: this.fast === true,
+                model: this.selectedModel || 'grok-4.7',
+                context: this.selectedContext || '',
+                thinking: this.thinkingToggle() ? this.thinking === true : this.selectedEffort !== 'none',
+                attachments: attachments,
+                changeJson: changeJson,
+                workspaceId: stayWorkspace,
+                steer: !!(pending && pending.steer),
+                // WebSocketClient: public/scripts/websocket.js
+                clientId: WebSocketClient.readStoredAgentClientId()
+            });
+        } else if (handoff) {
+            this._skipQuickStart = false;
         }
     }
 
     // Get precise reference data for director messages
-    getCharacterReferenceData() {
-        // collectPreciseReferenceData: referenceManager.js
-        if (typeof collectPreciseReferenceData === 'function') {
-            const data = collectPreciseReferenceData();
-            if (data && data.chara_reference_source && data.chara_reference_source.length) {
-                const first = data.chara_reference_source[0];
-                const [type, id] = first.split(':', 2);
-                return {
-                    type,
-                    id,
-                    with_style: data.chara_reference_type ? data.chara_reference_type[0] === 1 : true
-                };
-            }
-        }
-        return null;
-    }
-
     showTypingIndicator(content = null) {
-        const typingDiv = document.createElement('div');
-        typingDiv.className = 'director-typing-indicator';
-        // Show only the last 200 characters of the content
-        const displayContent = content && content.length > 200 ? content.slice(-200) : content;
-        typingDiv.innerHTML = `
-            <div class="director-typing-dots">
-                <div class="director-typing-dot"></div>
-                <div class="director-typing-dot"></div>
-                <div class="director-typing-dot"></div>
-            </div>
-            <div class="director-streaming-content">
-                ${displayContent ? `<div class="director-streaming-text">${this.formatStreamingContent(displayContent)}</div>` : ''}
-            </div>
-        `;
-        this.directorChatMessages.appendChild(typingDiv);
-        this.scrollToBottom();
+        if (!this.directorChatMessages) return;
+        let typingDiv = this.directorChatMessages.querySelector('.director-typing-indicator');
+        if (!typingDiv) {
+            typingDiv = document.createElement('div');
+            typingDiv.className = 'director-typing-indicator';
+            typingDiv.innerHTML = `
+                <div class="director-typing-dots" title="Working">
+                    <div class="director-typing-dot"></div>
+                    <div class="director-typing-dot"></div>
+                    <div class="director-typing-dot"></div>
+                </div>
+                <div class="director-streaming-content"></div>
+            `;
+        }
+        if (typingDiv.parentNode !== this.directorChatMessages || typingDiv !== this.directorChatMessages.lastElementChild) {
+            this.directorChatMessages.appendChild(typingDiv);
+        }
+        if (content) this.updateTypingIndicator(content);
     }
     
     hideTypingIndicator() {
+        if (!this.directorChatMessages) return;
         const typingIndicator = this.directorChatMessages.querySelector('.director-typing-indicator');
-        if (typingIndicator) {
-            typingIndicator.remove();
-        }
+        if (typingIndicator) typingIndicator.remove();
     }
 
     updateTypingIndicator(content) {
@@ -2095,405 +5347,9 @@ class Director {
         this.scrollToBottom();
 
         // Auto-apply prompt if auto-generate is enabled and message contains a prompt
-        this.checkAndAutoApplyPrompt(message);
     }
 
     // Check and auto-apply prompt if conditions are met
-    checkAndAutoApplyPrompt(message) {
-        // Check if auto-generate is enabled
-        if (!this.autoGenerateEnabled) {
-            return;
-        }
-
-        // Check if manual model is open
-        const manualModal = document.getElementById('manualModal');
-        if (!manualModal || manualModal.classList.contains('hidden')) {
-            return;
-        }
-
-        // Check if director session is open (we're in sessionChat view)
-        if (this.currentView !== 'sessionChat') {
-            return;
-        }
-
-        // Check if message contains a Prompt
-        let prompt = null;
-        if (message.data && message.data.Prompt) {
-            prompt = message.data.Prompt;
-        }
-
-        if (!prompt) {
-            return;
-        }
-
-        this.applyPromptFromMessage(prompt, message.id);
-    }
-
-    // Apply prompt from message data
-    applyPromptFromMessage(prompt, messageId = null) {
-        // Store director session and message IDs for tracking on director button
-        if (this.currentSession && messageId) {
-            // Store the IDs as dataset values on the director button
-            const directorBtn = document.getElementById('directorBtn');
-            if (directorBtn) {
-                directorBtn.dataset.directorSessionId = this.currentSession.id;
-                directorBtn.dataset.directorMessageId = messageId;
-            }
-        }
-
-        // Handle different prompt formats (same logic as applyPrompt method)
-
-        // Handle new JSON format with base_input, base_uc, and chara
-        if (prompt && typeof prompt === 'object' && !Array.isArray(prompt)) {
-            if (prompt.base_input !== undefined || prompt.base_uc !== undefined || prompt.chara) {
-                // Apply base prompt
-                const manualPrompt = document.getElementById('manualPrompt');
-                if (manualPrompt && prompt.base_input) {
-                    manualPrompt.value = prompt.base_input;
-
-                    // Call normal update functions that handle reflow and highlighting
-                    applyFormattedText(manualPrompt, true);
-                    updateEmphasisHighlighting(manualPrompt);
-                    stopEmphasisHighlighting();
-                    autoResizeTextarea(manualPrompt);
-                }
-
-                // Apply base UC
-                const manualUc = document.getElementById('manualUc');
-                if (manualUc && prompt.base_uc) {
-                    manualUc.value = prompt.base_uc;
-
-                    // Call normal update functions that handle reflow and highlighting
-                    applyFormattedText(manualUc, true);
-                    updateEmphasisHighlighting(manualUc);
-                    stopEmphasisHighlighting();
-                    autoResizeTextarea(manualUc);
-                }
-
-                const manualPromptNegativeDir = document.getElementById('manualPromptNegative');
-                const pn = prompt.input_prompt_negative ?? prompt.base_prompt_negative;
-                if (manualPromptNegativeDir && pn) {
-                    manualPromptNegativeDir.value = pn;
-                    applyFormattedText(manualPromptNegativeDir, true);
-                    updateEmphasisHighlighting(manualPromptNegativeDir);
-                    stopEmphasisHighlighting();
-                    autoResizeTextarea(manualPromptNegativeDir);
-                }
-
-                // Apply quality preset setting
-                if (prompt.apply_quality_preset !== undefined) {
-                    appendQuality = prompt.apply_quality_preset;
-                }
-
-                // Apply UC preset setting
-                if (prompt.apply_uc_preset !== undefined) {
-                    selectUcPreset(prompt.apply_uc_preset);
-                }
-
-                // Smart character management - update existing, remove unused, add new
-                if (prompt.chara && Array.isArray(prompt.chara)) {
-                    const characterItems = document.querySelectorAll('.character-prompt-item');
-                    const newCharacterCount = prompt.chara.length;
-
-                    // Remove characters beyond the new count
-                    if (characterItems.length > newCharacterCount) {
-                        for (let i = characterItems.length - 1; i >= newCharacterCount; i--) {
-                            characterItems[i].remove();
-                        }
-                    }
-
-                    // Add/update character prompts from JSON structure
-                    prompt.chara.forEach((character, index) => {
-                        if (character && (character.name || character.input || character.uc)) {
-                            this.addCharacterPromptFromData(character, index);
-                        }
-                    });
-                } else {
-                    // No characters in new prompt, remove all existing
-                    document.querySelectorAll('.character-prompt-item').forEach(item => {
-                        item.remove();
-                    });
-                }
-
-                const characterCount = prompt.chara ? prompt.chara.length : 0;
-                showGlassToast('success', null, `Prompt${characterCount > 0 ? ` and ${characterCount} character(s)` : ''} Auto-Applied`);
-                return;
-            }
-        }
-
-        if (Array.isArray(prompt)) {
-            if (prompt.length === 1) {
-                // Single prompt: replace base prompt
-                const manualPrompt = document.getElementById('manualPrompt');
-                if (manualPrompt) {
-                    manualPrompt.value = prompt[0];
-
-                    // Call normal update functions that handle reflow and highlighting
-                    applyFormattedText(manualPrompt, true);
-                    updateEmphasisHighlighting(manualPrompt);
-                    stopEmphasisHighlighting();
-                    autoResizeTextarea(manualPrompt);
-                }
-
-                // Remove all character prompts
-                const characterItems = document.querySelectorAll('.character-prompt-item');
-                characterItems.forEach(item => {
-                    item.remove();
-                });
-
-                showGlassToast('success', null, 'Prompt Auto-Applied');
-            } else if (prompt.length > 1) {
-                // Multiple prompts: first is base, rest are character prompts
-                const manualPrompt = document.getElementById('manualPrompt');
-                if (manualPrompt) {
-                    manualPrompt.value = prompt[0];
-
-                    // Call normal update functions that handle reflow and highlighting
-                    applyFormattedText(manualPrompt, true);
-                    updateEmphasisHighlighting(manualPrompt);
-                    stopEmphasisHighlighting();
-                    autoResizeTextarea(manualPrompt);
-                }
-
-                // Remove existing character prompts
-                document.querySelectorAll('.character-prompt-item').forEach(item => {
-                    item.remove();
-                });
-
-                // Add character prompts (skip first one as it's the base)
-                for (let i = 1; i < prompt.length; i++) {
-                    this.addCharacterPromptFromData({ input: prompt[i] }, i - 1);
-                }
-
-                showGlassToast('success', null, `Prompt and ${prompt.length - 1} character(s) Auto-Applied`);
-            }
-        } else if (typeof prompt === 'string') {
-            // Single string prompt: replace base prompt
-            const manualPrompt = document.getElementById('manualPrompt');
-            if (manualPrompt) {
-                manualPrompt.value = prompt;
-
-                // Call normal update functions that handle reflow and highlighting
-                applyFormattedText(manualPrompt, true);
-                updateEmphasisHighlighting(manualPrompt);
-                stopEmphasisHighlighting();
-                autoResizeTextarea(manualPrompt);
-            }
-
-            // Remove all character prompts
-            document.querySelectorAll('.character-prompt-item').forEach(item => {
-                item.remove();
-            });
-
-            showGlassToast('success', null, 'Prompt Auto-Applied');
-        }
-    }
-
-    // Add character prompt from data object with index-based matching
-    addCharacterPromptFromData(characterData, characterIndex = -1) {
-        if (!characterData || (!characterData.name && !characterData.input && !characterData.uc)) {
-            return;
-        }
-
-        // Get all existing character items
-        const characterItems = document.querySelectorAll('.character-prompt-item');
-
-        // Use index to match existing character, or create new if index is beyond existing items
-        let targetCharacterItem = null;
-        let targetCharacterId = null;
-
-        if (characterIndex >= 0 && characterIndex < characterItems.length) {
-            // Update existing character at the specified index
-            targetCharacterItem = characterItems[characterIndex];
-            targetCharacterId = targetCharacterItem.id;
-        } else {
-            // Index is beyond existing items, create new character
-            addCharacterPrompt();
-
-            // Get the newly created character prompt element
-            const updatedCharacterItems = document.querySelectorAll('.character-prompt-item');
-            targetCharacterItem = updatedCharacterItems[updatedCharacterItems.length - 1];
-            targetCharacterId = targetCharacterItem.id;
-        }
-
-        if (targetCharacterItem && targetCharacterId) {
-            // Update character name if provided
-            if (characterData.name) {
-                const nameInput = targetCharacterItem.querySelector('.character-name-input');
-                if (nameInput) {
-                    nameInput.value = characterData.name;
-                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
-                }
-                const placeholderElement = targetCharacterItem.querySelector('.character-name-input-placeholder');
-                if (placeholderElement) {
-                    placeholderElement.textContent = characterData.name;
-                }
-                targetCharacterItem.dataset.charaName = characterData.name;
-            }
-
-            // Update character prompt if provided
-            if (characterData.input) {
-                const promptTextarea = document.getElementById(`${targetCharacterId}_prompt`);
-                if (promptTextarea) {
-                    promptTextarea.value = characterData.input;
-                    // Apply formatting
-                    applyFormattedText(promptTextarea, true);
-                    updateEmphasisHighlighting(promptTextarea);
-                }
-            }
-
-            // Update character UC if provided
-            if (characterData.uc) {
-                const ucTextarea = document.getElementById(`${targetCharacterId}_uc`);
-                if (ucTextarea) {
-                    ucTextarea.value = characterData.uc;
-                    // Apply formatting
-                    applyFormattedText(ucTextarea, true);
-                    updateEmphasisHighlighting(ucTextarea);
-                }
-            }
-
-            // Update preview
-            const previewInput = document.getElementById(`${targetCharacterId}_preview`);
-            if (previewInput) {
-                const promptValue = characterData.input || '';
-                previewInput.value = promptValue.length > 50 ? promptValue.substring(0, 50) : promptValue;
-            }
-        }
-    }
-
-    getVibeTransfers() {
-        // Get vibe transfer settings from the current generation data
-        if (window.lastGeneration && window.lastGeneration.vibe_transfers) {
-            return window.lastGeneration.vibe_transfers;
-        }
-        
-        // Check if there are any active vibe transfers in the UI
-        const vibeElements = document.querySelectorAll('[data-vibe-id]');
-        if (vibeElements.length > 0) {
-            const vibeTransfers = Array.from(vibeElements)
-                .filter(el => {
-                    // Only include enabled vibe transfers
-                    const enabledButton = el.querySelector('.vibe-reference-controls button[data-state="on"]');
-                    return enabledButton !== null;
-                })
-                .map(el => {
-                    const settings = el.getAttribute('data-vibe-settings') ? 
-                        JSON.parse(el.getAttribute('data-vibe-settings')) : null;
-                    
-                    return {
-                        id: el.getAttribute('data-vibe-id'),
-                        strength: settings?.strength || 0.5,
-                        ie: settings?.ie || 50
-                    };
-                });
-            
-            return vibeTransfers.length > 0 ? vibeTransfers : null;
-        }
-        
-        return null;
-    }
-    
-    getBaseImageData() {
-        // Get base image data from the current generation
-        if (window.lastGeneration && window.lastGeneration.image_source) {
-            return {
-                image_source: window.lastGeneration.image_source,
-                mask_compressed: window.lastGeneration.mask_compressed || null,
-                isBiasMode: window.lastGeneration.isBiasMode || false,
-                bias_settings: window.lastGeneration.bias_settings || null
-            };
-        }
-        
-        // Check if there's uploaded image data
-        if (window.uploadedImageData && window.uploadedImageData.image_source) {
-            return {
-                image_source: window.uploadedImageData.image_source,
-                mask_compressed: window.uploadedImageData.mask_compressed || null,
-                isBiasMode: window.uploadedImageData.isBiasMode || false,
-                bias_settings: window.uploadedImageData.bias_settings || null
-            };
-        }
-        
-        return null;
-    }
-    
-    getInputPrompt() {
-        // Get prompts in new JSON structure
-        let baseInput = '';
-        let baseUc = '';
-        let basePromptNegative = '';
-        const chara = [];
-
-        // Add main/base prompt if available
-        const manualPrompt = document.getElementById('manualPrompt');
-        if (manualPrompt && manualPrompt.value.trim()) {
-            baseInput = normalizePromptNewlines(manualPrompt.value).trim();
-        }
-
-        // Add main/base UC if available
-        const manualUc = document.getElementById('manualUc');
-        if (manualUc && manualUc.value.trim()) {
-            baseUc = normalizePromptNewlines(manualUc.value).trim();
-        }
-
-        const manualPromptNegativeCollect = document.getElementById('manualPromptNegative');
-        if (manualPromptNegativeCollect && manualPromptNegativeCollect.value.trim()) {
-            basePromptNegative = normalizePromptNewlines(manualPromptNegativeCollect.value).trim();
-        }
-
-        // Add character prompts if available
-        const characterItems = document.querySelectorAll('.character-prompt-item');
-        characterItems.forEach(characterItem => {
-            const characterId = characterItem.id;
-
-            // Get character name
-            const characterNameElement = document.getElementById(`${characterId}_name`);
-            let characterName = '';
-            if (characterNameElement && characterNameElement.value.trim()) {
-                characterName = characterNameElement.value.trim();
-            }
-
-            // Get character prompt
-            const characterPrompt = document.getElementById(`${characterId}_prompt`);
-            let characterInput = '';
-            if (characterPrompt && characterPrompt.value.trim()) {
-                characterInput = normalizePromptNewlines(characterPrompt.value).trim();
-            }
-
-            // Get character UC
-            const characterUc = document.getElementById(`${characterId}_uc`);
-            let characterUcValue = '';
-            if (characterUc && characterUc.value.trim()) {
-                characterUcValue = normalizePromptNewlines(characterUc.value).trim();
-            }
-
-            // Only add character if they have some content
-            if (characterName || characterInput || characterUcValue) {
-                chara.push({
-                    name: characterName,
-                    input: characterInput,
-                    uc: characterUcValue
-                });
-            }
-        });
-
-        // Return raw prompts with compilation flags for server-side processing
-        return {
-            base_input: baseInput,
-            base_uc: baseUc,
-            input_prompt_negative: basePromptNegative,
-            chara: chara,
-            // Include compilation flags so server knows to compile using buildOptions logic
-            append_quality: appendQuality || false,
-            quality_preset_bias: (typeof qualityPresetBias !== 'undefined' && qualityPresetBias !== 1.0) ? qualityPresetBias : undefined,
-            append_transparency: appendTransparency || false,
-            transparency_bias: transparencyBias !== 1.0 ? transparencyBias : undefined,
-            append_uc: selectedUcPreset || 0,
-            model: window.manualSelectedModel || 'v5'
-        };
-    }
-    
     getSessionPreviewImage(session) {
         // Generate preview image path based on image type
         if (session.filename) {
@@ -2511,6 +5367,7 @@ class Director {
     }
     
     updateIndicator(button, isActive) {
+        if (!button) return;
         if (isActive) {
             button.setAttribute('data-state', 'on');
         } else {
@@ -2577,56 +5434,189 @@ class Director {
         this._directorWsHandlersWired = true;
 
         // Handle Director sessions response
-        window.wsClient.on('director_get_sessions_response', (data) => {
-            if (data.data && data.data.success) {
-                window.directorInstance.directorSessions = data.data.sessions || [];
-                window.directorSessions = window.directorInstance.directorSessions;
-                window.directorInstance.renderDirectorSessions();
+        window.wsClient.on('director_get_models_response', (data) => {
+            if (window.directorInstance && data.data && Array.isArray(data.data.models)) {
+                window.directorInstance.applyModelCatalog(data.data.models);
             }
+        });
+
+        window.wsClient.on('director_get_cursor_usage_response', (data) => {
+            if (window.directorInstance) {
+                window.directorInstance.paintCursorUsage(data.data || {});
+            }
+        });
+
+        // Tray state + the computer's CPU / memory. Pushed on turn start, turn
+        // end, abort and error; the response is the tray menu's own read.
+        const applyStatus = (data) => {
+            if (window.directorInstance) {
+                window.directorInstance.applyDirectorStatus(data.data || data);
+            }
+        };
+        window.wsClient.on('director_computer_status', applyStatus);
+        window.wsClient.on('director_computer_status_response', applyStatus);
+
+        // set_session_tasks / set_session_task / close_session_tasks saved the list
+        window.wsClient.on('director_session_tasks', (data) => {
+            const body = data.data || data;
+            if (window.directorInstance) {
+                window.directorInstance.applySessionTasks(body.sessionId, body.tasks);
+            }
+        });
+
+        // set_session_title named the chat
+        window.wsClient.on('director_session_renamed', (data) => {
+            const body = data.data || data;
+            if (window.directorInstance) {
+                window.directorInstance.applySessionName(body.sessionId, body.name);
+            }
+        });
+
+        window.wsClient.on('director_open_workspace_response', (data) => {
+            const director = window.directorInstance;
+            if (!director || director._pendingWorkspaceToken == null) return;
+            if (data.data && director.packetPersona(data.data) !== director.persona) {
+                director._pendingWorkspaceToken = null;
+                return;
+            }
+            director._pendingWorkspaceToken = null;
+            const resume = director._resumeImage;
+            director._resumeImage = null;
+            if (data.data && data.data.success && data.data.session) {
+                director.showSessionChat(data.data.session);
+                return;
+            }
+            director.showNewSessionDraft();
+            if (resume && resume.filename) {
+                const already = director.pendingAttachments.some((item) => item.source === 'workspace' && item.filename === resume.filename);
+                if (!already) {
+                    director.pendingAttachments.push({ source: 'workspace', filename: resume.filename, name: resume.name || resume.filename });
+                    director.renderAttachChips();
+                }
+            }
+        });
+
+        window.wsClient.on('director_get_sessions_response', (data) => {
+            const director = window.directorInstance;
+            if (!director || !data.data || !data.data.success) return;
+            if (director.packetPersona(data.data) !== director.persona) return;
+            director.directorSessions = data.data.sessions || [];
+            window.directorSessions = director.directorSessions;
+            director.renderDirectorSessions();
         });
 
         // Handle Director create session response
         window.wsClient.on('director_create_session_response', async (data) => {
-            if (data.data && data.data.success) {
-                const newSession = data.data.session;
-                // Note: Don't manually add session here - loadDirectorSessions() will get all sessions including the new one
-
-                // Open manual modal if not already open
-                await openManualModalWithContent();
-
-                // Enable director button if disabled
-                if (window.directorInstance.directorBtn && window.directorInstance.directorBtn.disabled) {
-                    window.directorInstance.directorBtn.disabled = false;
-                    window.directorInstance.directorBtn.classList.remove('disabled');
-                }
-
-                // Show director interface and wait for it to complete
-                await window.directorInstance.showDirector();
-
-                // Reload all sessions from server to ensure session list is fully up-to-date
-                await window.directorInstance.loadDirectorSessions();
-
-                await window.directorInstance.loadSessionMessages(newSession);
+            const director = window.directorInstance;
+            if (!director) return;
+            const body = data && data.data;
+            if (body && director.packetPersona(body) !== director.persona) {
+                director._creatingChat = false;
+                return;
             }
+            if (!body || !body.success || !body.session) {
+                director._creatingChat = false;
+                director._askWrenOpening = false;
+                director._focusComposer = false;
+                director._askWrenApplet = false;
+                if (director._pendingOutgoing) director.restorePendingOutgoing();
+                showGlassToast('error', null, (data && data.message) || 'Could not start a new session');
+                return;
+            }
+            const newSession = body.session;
+            director.rememberSessionModel(newSession.id);
+            const pending = director._pendingOutgoing;
+            director._pendingOutgoing = null;
+            director._creatingChat = false;
+            if (!pending) {
+                const keepDraft = director._focusComposer === true;
+                if (!keepDraft) {
+                    director.pendingAttachments = [];
+                    if (director.directorChatInput) {
+                        director.directorChatInput.value = '';
+                        director.autoExpandTextarea(director.directorChatInput);
+                    }
+                    director.renderAttachChips();
+                }
+            }
+            if (pending) {
+                director._skipQuickStart = true;
+                await director.showSessionChat(newSession, { skipLoad: true });
+                director.dispatchOutgoing(pending);
+                director.rememberListedSession(newSession);
+                return;
+            }
+            if (director.sessionIsListed(newSession)) director.rememberListedSession(newSession);
+            const askApplet = director._askWrenApplet === true;
+            director._askWrenApplet = false;
+            const studioAlreadyOpen = director.studioIsOpen();
+            if (askApplet && !studioAlreadyOpen) {
+                director._openPreferredId = newSession.id;
+                await director.openDirectorWindow();
+                await director.showSessionChat(newSession);
+                director.loadDirectorSessions();
+                return;
+            }
+            if (!studioAlreadyOpen && !director.directorWindowIsOpen()) {
+                await openManualModalWithContent({ type: 'none', skipPreviewRestore: true });
+            }
+            if (director.directorBtn && director.directorBtn.disabled) {
+                director.directorBtn.disabled = false;
+                director.directorBtn.classList.remove('disabled');
+            }
+            await director.showDirector({ skipSession: true });
+            await director.showSessionChat(newSession);
+            director.loadDirectorSessions();
         });
 
         // Handle Director send message response
         window.wsClient.on('director_send_message_response', (data) => {
-            if (window.directorInstance) {
-                window.directorInstance.hideTypingIndicator();
-            }
-
-            if (window.directorInstance && window.currentSession) {
-                setTimeout(() => {window.directorInstance.loadSessionMessages(window.currentSession.id);}, 100);
+            const director = window.directorInstance;
+            const sessionId = data && data.data && data.data.sessionId;
+            if (sessionId && window.currentSession && sessionId !== window.currentSession.id) return;
+            if (director && window.currentSession && window.currentSession.id) {
+                director.requestCursorUsage();
             }
         });
         
         // Handle Director get messages response
         window.wsClient.on('director_get_messages_response', (data) => {
             if (data.data && data.data.success) {
+                const director = window.directorInstance;
+                const sessionId = data.data.sessionId;
+                if (director && sessionId && director.currentSession && sessionId !== director.currentSession.id) {
+                    return;
+                }
+                if (director && sessionId && director._messagesSessionId && sessionId !== director._messagesSessionId) {
+                    return;
+                }
                 const messages = data.data.messages || [];
-                if (window.directorInstance) {
-                    window.directorInstance.renderSessionMessages(messages);
+                if (director) {
+                    // Only while the first send is still handing off. A later empty
+                    // list is a real reload (failed send, or the chat is empty).
+                    if (!messages.length && (director._creatingChat || director._pendingOutgoing || director._skipQuickStart)) {
+                        return;
+                    }
+                    // chat.images is authoritative on the server; a reopen resyncs the strip
+                    if (director.currentSession && Array.isArray(data.data.prints)) {
+                        director.currentSession.prints = data.data.prints;
+                    }
+                    if (Array.isArray(data.data.images) && director.currentSession) {
+                        director.currentSession.images = data.data.images;
+                        director.renderSessionImages();
+                    }
+                    // Same for chat.tasks, so a reopened chat shows the saved list
+                    if (data.data.name) director.applySessionName(sessionId, data.data.name);
+                    director.applySessionTasks(sessionId, data.data.tasks);
+                    if (director.currentSession) director.currentSession.messages = messages;
+                    if (director._expectSettle) {
+                        director._settleTurn = true;
+                        director._expectSettle = false;
+                    }
+                    director.renderSessionMessages(messages);
+                    if (director.currentSession && director.currentSession.id === sessionId) {
+                        director.applySessionModel(director.currentSession);
+                    }
                 }
             } else {
                 console.warn('❌ director_get_messages_response failed:', data);
@@ -2635,12 +5625,19 @@ class Director {
         
         // Handle Director delete session response
         window.wsClient.on('director_delete_session_response', async (data) => {
-            if (data.data && data.data.success) {
-                if (window.directorInstance) {
-                    await window.directorInstance.loadDirectorSessions();
-                    window.directorInstance.showSessionList();
-                }
+            const director = window.directorInstance;
+            if (!director || !data.data || !data.data.success) return;
+            const wasCurrent = director._deleteWasCurrent === true;
+            director._deleteWasCurrent = false;
+            try {
+                await director.loadDirectorSessions();
+            } catch (_err) {
+                director.renderDirectorSessions();
             }
+            if (!wasCurrent) return;
+            director._selectedQuickTaskId = null;
+            director._welcomeQuip = null;
+            director.showNewSessionDraft();
         });
         
         // Handle Director typing start
@@ -2663,49 +5660,53 @@ class Director {
 
         // Handle Director streaming updates
         window.wsClient.on('director_streaming_update', (data) => {
-            if (data.data && data.data.sessionId === window.currentSession?.id) {
-                if (window.directorInstance) {
-                    window.directorInstance.updateTypingIndicator(data.data.fullContent);
+            const payload = data && data.data;
+            if (payload && payload.seq != null && window.wsClient.isConnected()) {
+                window.wsClient.send({
+                    type: 'director_streaming_ack',
+                    sessionId: payload.sessionId,
+                    seq: payload.seq
+                });
+            }
+            if (payload && payload.sessionId === window.currentSession?.id && window.directorInstance) {
+                if (!window.directorInstance._running || window.directorInstance._runningSessionId !== payload.sessionId) {
+                    window.directorInstance._running = true;
+                    window.directorInstance._runningSessionId = payload.sessionId;
+                    window.directorInstance.updateTrayChrome();
+                }
+                if (payload.context && window.currentSession) {
+                    window.currentSession.contextTokens = payload.context.tokens;
+                    window.currentSession.contextPercent = payload.context.percent;
+                    window.directorInstance.paintContext(payload.context, false);
+                }
+                if (payload.rows || payload.live) {
+                    window.directorInstance.renderLiveTrace(payload);
+                } else {
+                    window.directorInstance.updateTypingIndicator(payload.fullContent);
                 }
             }
         });
         
         // Handle Director message response
         window.wsClient.on('director_message_response', (data) => {
+            if (data.data && window.directorInstance) {
+                window.directorInstance.finishTurn(data.data.sessionId);
+                if (data.data.context && window.currentSession && data.data.sessionId === window.currentSession.id) {
+                    window.currentSession.contextTokens = data.data.context.tokens;
+                    window.currentSession.contextPercent = data.data.context.percent;
+                    window.directorInstance.paintContext(data.data.context, false);
+                }
+            }
             if (data.data && data.data.success && data.data.sessionId === window.currentSession?.id) {
-                if (window.directorInstance) {
-                    window.directorInstance.addMessageToChat(data.data, 'assistant');
+                if (window.directorInstance && window.currentSession) {
+                    window.directorInstance._expectSettle = true;
+                    window.directorInstance.hideTypingIndicator();
+                    window.directorInstance.loadSessionMessages(window.currentSession.id);
                 }
                 
-                // Check if response contains SuggestedName and update session title
-                if (data.data.response && data.data.response.SuggestedName) {
-                    const suggestedName = data.data.response.SuggestedName;
-                    
-                    // Update current session name
-                    if (window.currentSession) {
-                        window.currentSession.name = suggestedName;
-                    }
-                    
-                    // Update session in the sessions list
-                    const sessionIndex = window.directorSessions.findIndex(s => s.id === data.data.sessionId);
-                    if (sessionIndex !== -1) {
-                        window.directorSessions[sessionIndex].name = suggestedName;
-                    }
-                    
-                    // Update the session title in the UI
-                    if (window.directorInstance && window.directorInstance.directorSessionTitle) {
-                        const titleText = window.directorInstance.directorSessionTitle.querySelector('.director-title-text');
-                        if (titleText) {
-                            titleText.textContent = suggestedName;
-                        } else {
-                            window.directorInstance.directorSessionTitle.textContent = suggestedName;
-                        }
-                    }
-                    
-                    // Re-render the sessions list to show updated name
-                    if (window.directorInstance) {
-                        window.directorInstance.renderDirectorSessions();
-                    }
+                // Same rename path as set_session_title (director_session_renamed)
+                if (data.data.response && data.data.response.SuggestedName && window.directorInstance) {
+                    window.directorInstance.applySessionName(data.data.sessionId, data.data.response.SuggestedName);
                 }
                 
                 if (window.directorInstance) {
@@ -2722,25 +5723,74 @@ class Director {
         
         // Handle Director message error
         window.wsClient.on('director_message_error', (data) => {
+            const director = window.directorInstance;
+            const steering = !!(director && director._steer && data.data && director._steer.sessionId === data.data.sessionId);
+            if (data.data && director) {
+                director.finishTurn(data.data.sessionId);
+                if (steering) return;
+                if (data.data.context && window.currentSession && data.data.sessionId === window.currentSession.id) {
+                    window.currentSession.contextTokens = data.data.context.tokens;
+                    window.currentSession.contextPercent = data.data.context.percent;
+                    window.directorInstance.paintContext(data.data.context, false);
+                }
+            }
             if (data.data && data.data.sessionId === window.currentSession?.id) {
                 console.error('Director message error:', data.data.error);
                 if (window.directorInstance) {
+                    window.directorInstance._skipQuickStart = false;
                     window.directorInstance.hideTypingIndicator();
+                    if (window.currentSession) {
+                        window.directorInstance.loadSessionMessages(window.currentSession.id);
+                    }
                 }
                 showGlassToast('error', null, data.data.error || 'Failed to send message');
             }
         });
 
         // Handle Director rollback message response
-        window.wsClient.on('director_rollback_message_response', (data) => {
+        window.wsClient.on('director_rollback_message_response', async (data) => {
             if (data.data && data.data.success) {
                 showGlassToast('success', null, data.data.message || 'Messages rolled back successfully');
-                
+                if (data.data.changeJson && typeof applyStudioChangePayloadSilent === 'function') {
+                    // applyStudioChangePayloadSilent: public/scripts/comp/studioChangeJson.js
+                    await applyStudioChangePayloadSilent(data.data.changeJson);
+                }
                 if (window.directorInstance && window.currentSession) {
                     window.directorInstance.loadSessionMessages(window.currentSession.id);
-                    // Ensure scroll to bottom after rollback
                     setTimeout(() => window.directorInstance.scrollToBottom(), 100);
                 }
+                if (data.data.retryText && window.directorInstance) {
+                    window.directorInstance.directorChatInput.value = data.data.retryText;
+                    window.directorInstance.sendMessage();
+                }
+            }
+        });
+
+        // Latest headless-browser screenshot for a chat — shown only in #directorWindow for the current session
+        window.wsClient.on('director_browser_preview', (data) => {
+            if (window.directorInstance) {
+                window.directorInstance.showBrowserPreview(data.data || data);
+            }
+        });
+
+        // show_chat_image put a picture in the thread (modules/mcpAgentFacade.js)
+        window.wsClient.on('director_chat_image', (data) => {
+            if (window.directorInstance) {
+                window.directorInstance.appendChatCard('chat-image', data.data || data);
+            }
+        });
+
+        // offer_workspace_switch offered a jump; the button uses setActiveWorkspace
+        window.wsClient.on('director_workspace_offer', (data) => {
+            if (window.directorInstance) {
+                window.directorInstance.appendChatCard('workspace-offer', data.data || data);
+            }
+        });
+
+        // A print this turn saved — becomes the session thumbnail and joins the session strip
+        window.wsClient.on('director_session_image', (data) => {
+            if (window.directorInstance) {
+                window.directorInstance.noteSessionImage(data.data || data);
             }
         });
 
@@ -2756,3108 +5806,12 @@ class Director {
         });
     }
 
-    // Measurements modal functions
-    showMeasurements(buttonElement) {
-        // Find the message element by traversing up the DOM
-        const messageElement = buttonElement.closest('.director-message');
-        if (!messageElement) {
-            console.warn('❌ No message element found');
-            return;
-        }
-        
-        // Get message data from the HTML element
-        const messageData = messageElement.dataset.messageData;
-        if (!messageData) {
-            console.warn('❌ No message data found in element');
-            return;
-        }
-        
-        let message;
-        try {
-            message = JSON.parse(messageData);
-        } catch (e) {
-            console.warn('❌ Failed to parse message data from DOM:', e);
-            return;
-        }
-        
-        // Get measurements from server-processed data
-        let measurements = null;
-        if (message.data && message.data.Measurements) {
-            measurements = message.data.Measurements;
-        }
-
-        if (!measurements || (Array.isArray(measurements) && measurements.length === 0)) {
-            console.warn('No measurements found for message:', message.id);
-            return;
-        }
-
-        const measurementsContent = document.getElementById('measurementsContent');
-
-        // Handle array of character measurements
-        let characterMeasurements = measurements;
-        let allMeasurements = measurements;
-        let selectedCharacterIndex = 0;
-
-        if (Array.isArray(measurements)) {
-            // Create tabs for multiple characters
-            this.createCharacterTabs(measurements, message.data);
-            characterMeasurements = measurements[0];
-            selectedCharacterIndex = 0;
-            console.log(`📏 Showing measurements for character 0 of ${measurements.length} total characters`);
-        } else {
-            // Single character - hide tabs
-            const tabsContainer = document.getElementById('measurementsTabs');
-            if (tabsContainer) {
-                tabsContainer.classList.add('hidden');
-            }
-        }
-
-        // Check if we should use advanced handling (EmotionState present)
-        const useAdvancedHandling = characterMeasurements.EmotionState !== undefined;
-
-        if (useAdvancedHandling) {
-            // Clear previous content for advanced layout
-            measurementsContent.innerHTML = '';
-            // Use new advanced handling with sections
-            this.renderAdvancedMeasurements(characterMeasurements, message.data, measurementsContent, selectedCharacterIndex, allMeasurements);
-        } else {
-            // Legacy path reuses measurement cells — do not wipe the grid
-            this.renderLegacyMeasurements(characterMeasurements, measurementsContent);
-        }
-
-        // Show modal
-        const measurementsModal = document.getElementById('measurementsModal');
-        openModal(measurementsModal);
+    toggleExpandable(button) {
+        const content = button && button.nextElementSibling;
+        if (!content) return;
+        content.classList.toggle('hidden');
     }
 
-    // Create character tabs for multiple character measurements
-    createCharacterTabs(measurementsArray, fullData) {
-        const tabsContainer = document.getElementById('measurementsTabs');
-        if (!tabsContainer) return;
-
-        // Clear existing tabs
-        tabsContainer.innerHTML = '';
-
-        // Show tabs if we have multiple characters
-        if (measurementsArray.length > 1) {
-            tabsContainer.classList.remove('hidden');
-
-            measurementsArray.forEach((characterMeasurements, index) => {
-                const tab = document.createElement('div');
-                tab.className = 'measurements-tab';
-                tab.dataset.characterIndex = index;
-
-                // Try to get character name from full data or measurements
-                let characterLabel = `Character ${index + 1}`;
-
-                // Check if full data has Character field (could be array or string)
-                if (fullData && fullData.Character) {
-                    if (Array.isArray(fullData.Character)) {
-                        characterLabel = fullData.Character[index] || characterLabel;
-                    } else if (index === 0) {
-                        characterLabel = fullData.Character;
-                    }
-                }
-
-                // Fallback: try to extract from character name if it contains series info
-                if (characterLabel === `Character ${index + 1}` && characterMeasurements.Character) {
-                    characterLabel = characterMeasurements.Character.split(' (')[0]; // Remove series info
-                }
-
-                tab.textContent = characterLabel;
-                tab.addEventListener('click', () => this.switchToCharacter(index, measurementsArray, fullData));
-
-                // Set first tab as active
-                if (index === 0) {
-                    tab.classList.add('active');
-                }
-
-                tabsContainer.appendChild(tab);
-            });
-        } else {
-            tabsContainer.classList.add('hidden');
-        }
-    }
-
-    // Switch to display measurements for a specific character
-    switchToCharacter(characterIndex, measurementsArray, fullData) {
-        // Update active tab
-        const tabs = document.querySelectorAll('.measurements-tab');
-        tabs.forEach((tab, index) => {
-            if (index === characterIndex) {
-                tab.classList.add('active');
-            } else {
-                tab.classList.remove('active');
-            }
-        });
-
-        // Get the measurements for the selected character
-        const characterMeasurements = measurementsArray[characterIndex];
-        const measurementsContent = document.getElementById('measurementsContent');
-
-        // Check if we should use advanced handling
-        const useAdvancedHandling = characterMeasurements.EmotionState !== undefined;
-
-        if (useAdvancedHandling) {
-            // Clear previous content for advanced layout
-            measurementsContent.innerHTML = '';
-            // Re-render measurements for the selected character
-            this.renderAdvancedMeasurements(characterMeasurements, fullData, measurementsContent, characterIndex, measurementsArray);
-        } else {
-            // Legacy path reuses measurement cells
-            this.renderLegacyMeasurements(characterMeasurements, measurementsContent);
-        }
-    }
-
-    // Format a legacy measurement value without JSON.stringify for known shapes
-    formatLegacyMeasurementValue(value) {
-        let displayValue = value;
-        let dataType = 'default';
-
-        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-            if (value.imperial && value.metric) {
-                displayValue = `${value.imperial} / ${value.metric}`;
-                dataType = 'measurement';
-            } else if (value.cup && value.size) {
-                displayValue = `${value.cup} (${value.size})`;
-                dataType = 'measurement';
-            } else if (value.us && value.eu) {
-                displayValue = `${value.us.join('x')} / ${value.eu.join('x')}`;
-                dataType = 'measurement';
-            } else {
-                // Other objects - stringify
-                displayValue = JSON.stringify(value, null, 2);
-                dataType = 'object';
-            }
-        } else if (Array.isArray(value)) {
-            if (value.length === 0) {
-                displayValue = 'None detected';
-            } else {
-                displayValue = value.join(', ');
-            }
-            dataType = 'array';
-        } else if (typeof value === 'number') {
-            displayValue = value.toFixed(2);
-            dataType = 'ratio';
-        } else if (typeof value === 'string') {
-            displayValue = value;
-            dataType = 'string';
-        }
-
-        return { displayValue, dataType };
-    }
-
-    // Legacy measurements rendering for backwards compatibility
-    renderLegacyMeasurements(measurements, container) {
-        // Drop non-grid siblings so we can reuse the measurements grid across tab switches
-        Array.from(container.children).forEach(child => {
-            if (!child.classList.contains('measurements-grid')) {
-                child.remove();
-            }
-        });
-
-        let measurementsGrid = container.querySelector(':scope > .measurements-grid');
-        if (!measurementsGrid) {
-            measurementsGrid = document.createElement('div');
-            measurementsGrid.className = 'measurements-grid';
-            container.appendChild(measurementsGrid);
-        }
-
-        const existingByKey = new Map();
-        measurementsGrid.querySelectorAll('.measurement-item').forEach(el => {
-            if (el.dataset.key) {
-                existingByKey.set(el.dataset.key, el);
-            }
-        });
-
-        const usedKeys = new Set();
-
-        Object.entries(measurements).forEach(([key, value]) => {
-            const formatted = this.formatLegacyMeasurementValue(value);
-            let displayValue = formatted.displayValue;
-            let dataType = formatted.dataType;
-
-            // Special handling for specific keys
-            if (key === 'Medical Conditions') {
-                dataType = 'medical';
-            } else if (key === 'Species') {
-                dataType = 'species';
-            } else if (key.includes('Ratio')) {
-                dataType = 'ratio';
-            } else if (key === 'Age') {
-                dataType = 'age';
-            } else if (key === 'Height' || key === 'Weight') {
-                dataType = 'measurement';
-            } else if (key === 'Breast') {
-                dataType = 'measurement';
-            } else if (key === 'Humanoid Ratio') {
-                dataType = 'ratio';
-            }
-
-            let measurementItem = existingByKey.get(key);
-            let labelEl;
-            let valueEl;
-            if (measurementItem) {
-                labelEl = measurementItem.querySelector('.measurement-label');
-                valueEl = measurementItem.querySelector('.measurement-value');
-                existingByKey.delete(key);
-            } else {
-                measurementItem = document.createElement('div');
-                measurementItem.className = 'measurement-item';
-                measurementItem.dataset.key = key;
-                labelEl = document.createElement('div');
-                labelEl.className = 'measurement-label';
-                valueEl = document.createElement('div');
-                valueEl.className = 'measurement-value';
-                measurementItem.appendChild(labelEl);
-                measurementItem.appendChild(valueEl);
-                measurementsGrid.appendChild(measurementItem);
-            }
-
-            measurementItem.setAttribute('data-type', dataType);
-            if (labelEl) labelEl.textContent = key;
-            if (valueEl) valueEl.textContent = displayValue;
-            usedKeys.add(key);
-        });
-
-        // Remove cells for keys no longer present
-        existingByKey.forEach(el => el.remove());
-    }
-
-    // Advanced measurements rendering with sections and scale badges
-    renderAdvancedMeasurements(measurements, fullData, container, characterIndex = 0, allMeasurements = null) {
-        // Define measurement sections/groups
-        const sections = {
-            'Patient Information': {
-                items: ['Character', 'Age', 'Height', 'Weight', 'Species', 'HumanoidRatio'],
-                renderFunction: (data) => this.renderBasicMeasurementsSection(data)
-            },
-            'Mental State': {
-                items: ['EmotionState'],
-                renderFunction: (data) => this.renderMentalStateSection(data)
-            },
-            'Emotions': {
-                items: ['EmotionState'],
-                renderFunction: (data) => this.renderEmotionsSection(data)
-            },
-            'Physical State': {
-                items: ['Posture'],
-                renderFunction: (data) => this.renderPhysicalStateSection(data)
-            },
-            'Clothing': {
-                items: ['Clothing'],
-                renderFunction: (data) => this.renderClothingSection(data)
-            },
-            'Breasts': {
-                items: ['Breast'],
-                renderFunction: (data) => this.renderBreastsSection(data)
-            },
-            'Arms': {
-                items: ['Arm'],
-                renderFunction: (data) => this.renderArmsSection(data)
-            },
-            'Torso': {
-                items: ['Torso'],
-                renderFunction: (data) => this.renderTorsoSection(data)
-            },
-            'Head': {
-                items: ['Head'],
-                renderFunction: (data) => this.renderHeadSection(data)
-            },
-            'Hips': {
-                items: ['Hips'],
-                renderFunction: (data) => this.renderHipsSection(data)
-            },
-            'Legs': {
-                items: ['Legs'],
-                renderFunction: (data) => this.renderLegsSection(data)
-            },
-            'Stomach': {
-                items: ['Weight'], // Stomach data is nested in Weight
-                renderFunction: (data) => this.renderStomachSection(data)
-            },
-            'Reproductive System': {
-                items: ['ReproductiveSystem'],
-                renderFunction: (data) => this.renderReproductiveSystemSection(data)
-            },
-            'Pregnancy': {
-                items: ['ReproductiveSystem'], // Pregnancy data is nested in ReproductiveSystem
-                renderFunction: (data) => this.renderPregnancySection(data)
-            },
-            'Medical Conditions': {
-                items: ['MedicalConditions'],
-                renderFunction: (data) => this.renderMedicalConditionsSection(data)
-            },
-            'Progression': {
-                items: ['Progression'],
-                renderFunction: (data) => this.renderProgressionSection(data)
-            }
-        };
-
-        // Render each section
-        Object.entries(sections).forEach(([sectionName, sectionConfig]) => {
-            const sectionData = {};
-            sectionConfig.items.forEach(item => {
-                // Special handling for Character field which is at the top level
-                if (item === 'Character') {
-                    if (fullData && fullData[item]) {
-                        sectionData[item] = fullData[item];
-                    }
-                } else if (measurements[item]) {
-                    sectionData[item] = measurements[item];
-                }
-            });
-
-            // Only render section if it has data
-            if (Object.keys(sectionData).length > 0) {
-                const sectionElement = sectionConfig.renderFunction(sectionData);
-                if (sectionElement) {
-                    container.appendChild(sectionElement);
-                }
-            }
-        });
-    }
-
-    // Helper function to create scale badge with background color/opacity
-    createScaleBadge(scale, label = 'Scale') {
-        if (scale === undefined || scale === null) return '';
-
-        // Scale ranges from 0 to some max (typically 1.0 for "largest realistic")
-        // Convert to opacity: higher scale = more opaque/red
-        const opacity = Math.min(scale, 1.0);
-        const backgroundColor = `rgba(220, 53, 69, ${opacity * 0.6})`; // Red with opacity based on scale
-
-        return `<span class="measurement-scale-badge" style="background-color: ${backgroundColor};" title="${label}: ${scale.toFixed(2)}">${scale.toFixed(2)}</span>`;
-    }
-
-    // Helper function to format measurement values with unit conversion
-    formatMeasurementValue(value, unit, scale = null, label = '') {
-        // Handle undefined/null values
-        if (value === undefined || value === null || isNaN(value)) {
-            return 'N/A';
-        }
-
-        let imperialValue = '';
-        let metricValue = '';
-
-        if (unit === 'cm') {
-            metricValue = `${value.toFixed(1)} cm`;
-            // Convert cm to feet and inches
-            const totalInches = value / 2.54;
-            const feet = Math.floor(totalInches / 12);
-            const inches = Math.round(totalInches % 12);
-            imperialValue = `${feet}'${inches}"`;
-        } else if (unit === 'kg') {
-            metricValue = `${value.toFixed(1)} kg`;
-            // Convert kg to lbs
-            const lbs = value * 2.20462;
-            imperialValue = `${lbs.toFixed(1)} lbs`;
-        } else {
-            return `${value} ${unit}`;
-        }
-
-        const scaleBadge = scale !== null ? this.createScaleBadge(scale, label) : '';
-
-        return `<span class="measurement-value-toggle" data-unit="imperial" data-imperial="${imperialValue}" data-metric="${metricValue}">${imperialValue}</span>${scaleBadge}`;
-    }
-
-    // Individual section renderers
-    renderEmotionsSection(data) {
-        if (!data.EmotionState || !data.EmotionState.emotions || data.EmotionState.emotions.length === 0) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-smile"></i> Emotions</h3>';
-
-        const emotions = data.EmotionState.emotions;
-        const intensities = data.EmotionState.emotion_scale || [];
-
-        emotions.forEach((emotion, index) => {
-            const intensity = intensities[index] || 0;
-            const intensityPercent = (intensity / 10) * 100;
-
-            const emotionItem = document.createElement('div');
-            emotionItem.className = 'measurement-emotion-item';
-            emotionItem.innerHTML = `
-                <div class="emotion-label">${emotion}</div>
-                <div class="emotion-bar-container">
-                    <div class="emotion-bar" style="width: ${intensityPercent}%"></div>
-                </div>
-                <div class="emotion-value">${intensity}/10</div>
-            `;
-            section.appendChild(emotionItem);
-        });
-
-        return section;
-    }
-
-    renderMentalStateSection(data) {
-        if (!data.EmotionState) return null;
-
-        const sanity = data.EmotionState.sanity_level;
-        const willpower = data.EmotionState.willpower_level;
-        const pain = data.EmotionState.pain_level;
-        const libido = data.EmotionState.libido_level;
-        const arousalFactors = data.EmotionState.arousal_factors;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-brain"></i> Mental State</h3>';
-
-        // Mental state items with small inline gauges
-        if (sanity !== undefined) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">
-                        <i class="fas fa-brain"></i> Sanity Level
-                    </div>
-                    <div class="measurement-value">
-                        ${sanity.toFixed(1)}/10 ${this.createSmallGauge(sanity, 10, 'gauge-success')}
-                    </div>
-                </div>
-            `;
-        }
-
-        if (willpower !== undefined) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">
-                        <i class="fas fa-fist-raised"></i> Willpower Level
-                    </div>
-                    <div class="measurement-value">
-                        ${willpower.toFixed(1)}/10 ${this.createSmallGauge(willpower, 10, 'gauge-primary')}
-                    </div>
-                </div>
-            `;
-        }
-
-        if (pain !== undefined) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">
-                        <i class="fas fa-exclamation-triangle"></i> Pain Level
-                    </div>
-                    <div class="measurement-value">
-                        ${pain.toFixed(1)}/10 ${this.createSmallGauge(pain, 10, 'gauge-danger')}
-                    </div>
-                </div>
-            `;
-        }
-
-        if (libido !== undefined) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">
-                        <i class="fas fa-heart"></i> Libido Level
-                    </div>
-                    <div class="measurement-value">
-                        ${libido.toFixed(1)}/10 ${this.createSmallGauge(libido, 10, 'gauge-warning')}
-                    </div>
-                </div>
-            `;
-        }
-
-        // Arousal factors
-        if (arousalFactors && arousalFactors.length > 0) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">
-                        <i class="fas fa-fire"></i> Arousal Factors
-                    </div>
-                    <div class="measurement-value">
-                        ${arousalFactors.join(', ')}
-                    </div>
-                </div>
-            `;
-        }
-
-        return section;
-    }
-
-    renderBasicMeasurementsSection(data) {
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-user"></i> Patient Information</h3>';
-
-        let hasContent = false;
-
-        // Character Name
-        if (data.Character) {
-            section.innerHTML += `
-                <div class="measurement-character-name">${data.Character}</div>
-            `;
-            hasContent = true;
-        }
-
-        // Age
-        if (data.Age) {
-            const ageYears = data.Age.years;
-            const ageQuestionable = data.Age.questionable;
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Age</div>
-                    <div class="measurement-value">${ageYears} years${ageQuestionable ? ' (estimated)' : ''}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Species
-        if (data.Species) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Species</div>
-                    <div class="measurement-value">${data.Species}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Humanoid Ratio
-        if (data.HumanoidRatio !== undefined) {
-            const humanoidPercent = (data.HumanoidRatio * 100).toFixed(1);
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Humanoid Ratio</div>
-                    <div class="measurement-value">${humanoidPercent}% ${this.createSmallGauge(data.HumanoidRatio * 10, 10, 'gauge-info')}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Height
-        if (data.Height) {
-            const heightCm = data.Height.cm;
-            const heightScale = data.Height.scale;
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Height</div>
-                    <div class="measurement-value">${this.formatMeasurementValue(heightCm, 'cm', heightScale, 'Height Scale')}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Body Weight
-        if (data.Weight && data.Weight.body_kg !== undefined) {
-            const bodyKg = data.Weight.body_kg;
-            const bodyScale = data.Weight.body_scale;
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Weight</div>
-                    <div class="measurement-value">${this.formatMeasurementValue(bodyKg, 'kg', bodyScale, 'Body Scale')}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderPhysicalStateSection(data) {
-        let section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-running"></i> Physical State</h3>';
-
-        let hasContent = false;
-
-        // Posture
-        if (data.Posture) {
-            const posture = data.Posture;
-            
-            // Posture description
-            if (posture.description) {
-                section.innerHTML += `
-                    <div class="measurement-description-row">
-                        <div class="measurement-description-label">Posture</div>
-                        <div class="measurement-description-text">${posture.description}</div>
-                    </div>
-                `;
-                hasContent = true;
-            }
-            
-            // Posture measurements in column layout
-            const postureContainer = document.createElement('div');
-            postureContainer.className = 'measurement-column-container';
-
-            const postureHeader = document.createElement('div');
-            postureHeader.className = 'measurement-group-header';
-            postureHeader.innerHTML = '<i class="fas fa-user"></i> Posture Details';
-            postureContainer.appendChild(postureHeader);
-
-            const postureRow = document.createElement('div');
-            postureRow.className = 'measurement-column-row';
-
-            const postureColumns = document.createElement('div');
-            postureColumns.className = 'measurement-column-items';
-
-            // Spine Curvature Column
-            if (posture.spine_curvature_degrees !== undefined && posture.spine_curvature_degrees !== null) {
-                const spineColumn = document.createElement('div');
-                spineColumn.className = 'measurement-column-item';
-                spineColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-arrow-up" title="Spine Curvature"></i>
-                        <span>Spine Curvature</span>
-                    </div>
-                    <div class="measurement-column-value">${posture.spine_curvature_degrees.toFixed(1)}°</div>
-                `;
-                postureColumns.appendChild(spineColumn);
-            }
-            
-            // Balance Level Column
-            if (posture.balance_level !== undefined && posture.balance_level !== null) {
-                const balanceColumn = document.createElement('div');
-                balanceColumn.className = 'measurement-column-item';
-                balanceColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-balance-scale" title="Balance Level"></i>
-                        <span>Balance Level</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${posture.balance_level.toFixed(1)}/10 ${this.createSmallGauge(posture.balance_level, 10, 'gauge-info')}
-                    </div>
-                `;
-                postureColumns.appendChild(balanceColumn);
-            }
-
-            if (postureColumns.children.length > 0) {
-                postureRow.appendChild(postureColumns);
-                postureContainer.appendChild(postureRow);
-                section.appendChild(postureContainer);
-                hasContent = true;
-            }
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderClothingSection(data) {
-        if (!data.Clothing) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-tshirt"></i> Clothing</h3>';
-
-        let hasContent = false;
-        const clothing = data.Clothing;
-        
-        // Clothing state description
-        if (clothing.state) {
-            section.innerHTML += `
-                <div class="measurement-description-row">
-                    <div class="measurement-description-label">Clothing State</div>
-                    <div class="measurement-description-text">${clothing.state}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-        
-        // Clothing details in column layout
-        const clothingContainer = document.createElement('div');
-        clothingContainer.className = 'measurement-column-container';
-
-        const clothingHeader = document.createElement('div');
-        clothingHeader.className = 'measurement-group-header';
-        clothingHeader.innerHTML = '<i class="fas fa-tshirt"></i> Clothing Details';
-        clothingContainer.appendChild(clothingHeader);
-
-        const clothingRow = document.createElement('div');
-        clothingRow.className = 'measurement-column-row';
-
-        const clothingColumns = document.createElement('div');
-        clothingColumns.className = 'measurement-column-items';
-
-        // Coverage Level Column
-        if (clothing.coverage_level !== undefined && clothing.coverage_level !== null) {
-            const coveragePercent = (clothing.coverage_level * 100).toFixed(1);
-            const coverageColumn = document.createElement('div');
-            coverageColumn.className = 'measurement-column-item';
-            coverageColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-percentage" title="Coverage Level"></i>
-                    <span>Coverage Level</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${coveragePercent}% ${this.createSmallGauge(clothing.coverage_level * 10, 10, 'gauge-secondary')}
-                </div>
-            `;
-            clothingColumns.appendChild(coverageColumn);
-        }
-        
-        // Items Column
-        if (clothing.items && clothing.items.length > 0) {
-            const itemsColumn = document.createElement('div');
-            itemsColumn.className = 'measurement-column-item';
-            itemsColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-list" title="Clothing Items"></i>
-                    <span>Items</span>
-                </div>
-                <div class="measurement-column-value">${clothing.items.join(', ')}</div>
-            `;
-            clothingColumns.appendChild(itemsColumn);
-        }
-
-        if (clothingColumns.children.length > 0) {
-            clothingRow.appendChild(clothingColumns);
-            clothingContainer.appendChild(clothingRow);
-            section.appendChild(clothingContainer);
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderBreastsSection(data) {
-        if (!data.Breast || data.Breast === null) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-female"></i> Breasts</h3>';
-
-        let hasContent = false;
-        const breast = data.Breast;
-
-        // Breast description (full width row)
-        if (breast.description) {
-            section.innerHTML += `
-                <div class="measurement-description-row">
-                    <div class="measurement-description-label">Breast Description</div>
-                    <div class="measurement-description-text">${breast.description}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Breast measurements (column layout)
-        const breastContainer = document.createElement('div');
-        breastContainer.className = 'measurement-column-container';
-
-        // Add header for breast group
-        const breastHeader = document.createElement('div');
-        breastHeader.className = 'measurement-group-header';
-        breastHeader.innerHTML = '<i class="fas fa-female"></i> Breasts';
-        breastContainer.appendChild(breastHeader);
-
-        // Create breast row with column layout
-        const breastRow = document.createElement('div');
-        breastRow.className = 'measurement-column-row';
-
-        const breastColumns = document.createElement('div');
-        breastColumns.className = 'measurement-column-items';
-
-        // Cup Size Column
-        if (breast.cup_size) {
-            const cupColumn = document.createElement('div');
-            cupColumn.className = 'measurement-column-item';
-            cupColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-tag" title="Cup Size"></i>
-                    <span>Cup Size</span>
-                </div>
-                <div class="measurement-column-value">${breast.cup_size}</div>
-            `;
-            breastColumns.appendChild(cupColumn);
-        }
-
-        // Protrusion Column
-        if (breast.protrusion_cm !== undefined && breast.protrusion_cm !== null) {
-            const protrusionColumn = document.createElement('div');
-            protrusionColumn.className = 'measurement-column-item';
-            protrusionColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-arrow-up-to-arc" title="Protrusion"></i>
-                    <span>Protrusion</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(breast.protrusion_cm, 'cm')}
-                    ${breast.scale !== undefined && breast.scale !== null ? this.createScaleBadge(breast.scale, 'Breast Scale') : ''}
-                </div>
-            `;
-            breastColumns.appendChild(protrusionColumn);
-        }
-
-        if (breastColumns.children.length > 0) {
-            breastRow.appendChild(breastColumns);
-            breastContainer.appendChild(breastRow);
-            section.appendChild(breastContainer);
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderArmsSection(data) {
-        if (!data.Arm) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-hand-paper"></i> Arms</h3>';
-
-        let hasContent = false;
-        const arm = data.Arm;
-
-        // Arm measurements (column layout)
-        const armContainer = document.createElement('div');
-        armContainer.className = 'measurement-column-container';
-
-        // Add header for arm group
-        const armHeader = document.createElement('div');
-        armHeader.className = 'measurement-group-header';
-        armHeader.innerHTML = '<i class="fas fa-hand-paper"></i> Arms';
-        armContainer.appendChild(armHeader);
-
-        const armRow = document.createElement('div');
-        armRow.className = 'measurement-column-row';
-
-        const armColumns = document.createElement('div');
-        armColumns.className = 'measurement-column-items';
-
-        // Circumference Column
-        if (arm.circumference_cm !== undefined && arm.circumference_cm !== null) {
-            const circColumn = document.createElement('div');
-            circColumn.className = 'measurement-column-item';
-            circColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fa-regular fa-circle" title="Circumference"></i>
-                    <span>Arm</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(arm.circumference_cm, 'cm')}
-                    ${arm.scale !== undefined && arm.scale !== null ? this.createScaleBadge(arm.scale, 'Arm Scale') : ''}
-                </div>
-            `;
-            armColumns.appendChild(circColumn);
-        }
-
-        // Length Column
-        if (arm.length_cm !== undefined && arm.length_cm !== null) {
-            const lengthColumn = document.createElement('div');
-            lengthColumn.className = 'measurement-column-item';
-            lengthColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-ruler-vertical" title="Length"></i>
-                    <span>Length</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(arm.length_cm, 'cm')}
-                </div>
-            `;
-            armColumns.appendChild(lengthColumn);
-        }
-
-        // Shoulder Width Column
-        if (arm.shoulder_width_cm !== undefined && arm.shoulder_width_cm !== null) {
-            const shoulderColumn = document.createElement('div');
-            shoulderColumn.className = 'measurement-column-item';
-            shoulderColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-ruler-horizontal" title="Shoulder Width"></i>
-                    <span>Shoulders</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(arm.shoulder_width_cm, 'cm')}
-                </div>
-            `;
-            armColumns.appendChild(shoulderColumn);
-        }
-
-        if (armColumns.children.length > 0) {
-            armRow.appendChild(armColumns);
-            armContainer.appendChild(armRow);
-            section.appendChild(armContainer);
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderTorsoSection(data) {
-        if (!data.Torso) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-ribbon"></i> Torso</h3>';
-
-        let hasContent = false;
-        const torso = data.Torso;
-
-        const torsoContainer = document.createElement('div');
-        torsoContainer.className = 'measurement-column-container';
-
-        const torsoHeader = document.createElement('div');
-        torsoHeader.className = 'measurement-group-header';
-        torsoHeader.innerHTML = '<i class="fas fa-ribbon"></i> Torso';
-        torsoContainer.appendChild(torsoHeader);
-
-        const torsoRow = document.createElement('div');
-        torsoRow.className = 'measurement-column-row';
-
-        const torsoColumns = document.createElement('div');
-        torsoColumns.className = 'measurement-column-items';
-
-        // Length Column
-        if (torso.length_cm !== undefined && torso.length_cm !== null) {
-            const lengthColumn = document.createElement('div');
-            lengthColumn.className = 'measurement-column-item';
-            lengthColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-ruler-vertical" title="Length"></i>
-                    <span>Length</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(torso.length_cm, 'cm')}
-                </div>
-            `;
-            torsoColumns.appendChild(lengthColumn);
-        }
-
-        // Width Column
-        if (torso.width_cm !== undefined && torso.width_cm !== null) {
-            const widthColumn = document.createElement('div');
-            widthColumn.className = 'measurement-column-item';
-            widthColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-ruler-horizontal" title="Width"></i>
-                    <span>Width</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(torso.width_cm, 'cm')}
-                </div>
-            `;
-            torsoColumns.appendChild(widthColumn);
-        }
-
-        // Depth Column
-        if (torso.depth_cm !== undefined && torso.depth_cm !== null) {
-            const depthColumn = document.createElement('div');
-            depthColumn.className = 'measurement-column-item';
-            depthColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-arrows-alt" title="Depth"></i>
-                    <span>Depth</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(torso.depth_cm, 'cm')}
-                    ${torso.scale !== undefined && torso.scale !== null ? this.createScaleBadge(torso.scale, 'Torso Scale') : ''}
-                </div>
-            `;
-            torsoColumns.appendChild(depthColumn);
-        }
-
-        if (torsoColumns.children.length > 0) {
-            torsoRow.appendChild(torsoColumns);
-            torsoContainer.appendChild(torsoRow);
-            section.appendChild(torsoContainer);
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderHeadSection(data) {
-        if (!data.Head) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-head-side-brain"></i> Head</h3>';
-
-        let hasContent = false;
-        const head = data.Head;
-
-        const headContainer = document.createElement('div');
-        headContainer.className = 'measurement-column-container';
-
-        const headHeader = document.createElement('div');
-        headHeader.className = 'measurement-group-header';
-        headHeader.innerHTML = '<i class="fas fa-head-side-brain"></i> Head';
-        headContainer.appendChild(headHeader);
-
-        const headRow = document.createElement('div');
-        headRow.className = 'measurement-column-row';
-
-        const headColumns = document.createElement('div');
-        headColumns.className = 'measurement-column-items';
-
-        // Ear Type Column
-        if (head.ear_type) {
-            const earTypeColumn = document.createElement('div');
-            earTypeColumn.className = 'measurement-column-item';
-            earTypeColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-ear-listen" title="Ear Type"></i>
-                    <span>Ear Type</span>
-                </div>
-                <div class="measurement-column-value">${head.ear_type}</div>
-            `;
-            headColumns.appendChild(earTypeColumn);
-        }
-
-        // Hair Color Column
-        if (head.hair_color) {
-            const hairColorColumn = document.createElement('div');
-            hairColorColumn.className = 'measurement-column-item';
-            hairColorColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-palette" title="Hair Color"></i>
-                    <span>Hair Color</span>
-                </div>
-                <div class="measurement-column-value">${head.hair_color}</div>
-            `;
-            headColumns.appendChild(hairColorColumn);
-        }
-
-        // Eye Color Column
-        if (head.eye_color) {
-            const eyeColorColumn = document.createElement('div');
-            eyeColorColumn.className = 'measurement-column-item';
-            eyeColorColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-eye" title="Eye Color"></i>
-                    <span>Eye Color</span>
-                </div>
-                <div class="measurement-column-value">${head.eye_color}</div>
-            `;
-            headColumns.appendChild(eyeColorColumn);
-        }
-
-        // Face Shape Column
-        if (head.face_shape) {
-            const faceShapeColumn = document.createElement('div');
-            faceShapeColumn.className = 'measurement-column-item';
-            faceShapeColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-user-circle" title="Face Shape"></i>
-                    <span>Face Shape</span>
-                </div>
-                <div class="measurement-column-value">${head.face_shape}</div>
-            `;
-            headColumns.appendChild(faceShapeColumn);
-        }
-
-        // Hair Length Column
-        if (head.hair_length_cm !== undefined && head.hair_length_cm !== null) {
-            const hairLengthColumn = document.createElement('div');
-            hairLengthColumn.className = 'measurement-column-item';
-            hairLengthColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-ruler-vertical" title="Hair Length"></i>
-                    <span>Hair Length</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(head.hair_length_cm, 'cm')}
-                </div>
-            `;
-            headColumns.appendChild(hairLengthColumn);
-        }
-
-        // Ear Length Column
-        if (head.ear_length_cm !== undefined && head.ear_length_cm !== null) {
-            const earLengthColumn = document.createElement('div');
-            earLengthColumn.className = 'measurement-column-item';
-            earLengthColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-ruler-vertical" title="Ear Length"></i>
-                    <span>Ear Length</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(head.ear_length_cm, 'cm')}
-                </div>
-            `;
-            headColumns.appendChild(earLengthColumn);
-        }
-
-        // Neck Length Column
-        if (head.neck_length_cm !== undefined && head.neck_length_cm !== null) {
-            const neckLengthColumn = document.createElement('div');
-            neckLengthColumn.className = 'measurement-column-item';
-            neckLengthColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-ruler-vertical" title="Neck Length"></i>
-                    <span>Neck Length</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(head.neck_length_cm, 'cm')}
-                </div>
-            `;
-            headColumns.appendChild(neckLengthColumn);
-        }
-
-        if (headColumns.children.length > 0) {
-            headRow.appendChild(headColumns);
-            headContainer.appendChild(headRow);
-            section.appendChild(headContainer);
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderHeightSection(data) {
-        if (!data.Height) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title">Height</h3>';
-
-        const heightCm = data.Height.cm;
-        const heightScale = data.Height.scale;
-
-        section.innerHTML += `
-            <div class="measurement-item">
-                <div class="measurement-label">Height</div>
-                <div class="measurement-value">${this.formatMeasurementValue(heightCm, 'cm', heightScale, 'Height Scale')}</div>
-            </div>
-        `;
-
-        return section;
-    }
-
-    renderBodyWeightSection(data) {
-        if (!data.Weight) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title">Body Weight</h3>';
-
-        const weight = data.Weight;
-        let hasContent = false;
-
-        // Body weight
-        if (weight.body_kg !== undefined) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Body Weight</div>
-                    <div class="measurement-value">${this.formatMeasurementValue(weight.body_kg, 'kg', weight.body_scale, 'Body Scale')}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Body description
-        if (weight.body_description) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Body Description</div>
-                    <div class="measurement-value">${weight.body_description}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderStomachSection(data) {
-        if (!data.Weight) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-utensils"></i> Stomach</h3>';
-
-        const weight = data.Weight;
-        let hasContent = false;
-
-        // Stomach weight
-        if (weight.stomach_kg !== undefined) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Stomach Weight</div>
-                    <div class="measurement-value">${this.formatMeasurementValue(weight.stomach_kg, 'kg', weight.stomach_scale, 'Stomach Scale')}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Stomach fullness
-        if (weight.stomach_fullness_level !== undefined) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Stomach Fullness</div>
-                    <div class="measurement-value">${(weight.stomach_fullness_level * 100).toFixed(0)}%</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Stomach contents
-        if (weight.stomach_contents) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Stomach Contents</div>
-                    <div class="measurement-value">${weight.stomach_contents}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderBreastSection(data) {
-        // Handle nullable Breast field
-        if (!data.Breast || data.Breast === null) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-female"></i> Breast</h3>';
-
-        const cupSize = data.Breast.cup_size;
-        const protrusion = data.Breast.protrusion_cm;
-        const scale = data.Breast.scale;
-        const description = data.Breast.description;
-
-        let hasContent = false;
-
-        // Only show cup size if it exists
-        if (cupSize !== undefined && cupSize !== null) {
-        section.innerHTML += `
-            <div class="measurement-item">
-                    <div class="measurement-label">Breast Size</div>
-                    <div class="measurement-value">${cupSize}</div>
-            </div>
-            `;
-            hasContent = true;
-        }
-
-        // Only show protrusion if it exists
-        if (protrusion !== undefined && protrusion !== null) {
-            section.innerHTML += `
-            <div class="measurement-item">
-                <div class="measurement-label">Protrusion</div>
-                <div class="measurement-value">${this.formatMeasurementValue(protrusion, 'cm', scale, 'Breast Scale')}</div>
-            </div>
-            `;
-            hasContent = true;
-        }
-
-        // Show description if it exists
-        if (description) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                <div class="measurement-label">Description</div>
-                <div class="measurement-value">${description}</div>
-                </div>
-        `;
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderArmsSection(data) {
-        if (!data.Arm) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-hand-paper"></i> Arms</h3>';
-
-        const arm = data.Arm;
-
-        // Create compact measurement row
-        const measurementRow = document.createElement('div');
-        measurementRow.className = 'measurement-compact-row';
-
-        // Arm circumference
-        if (arm.circumference_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-circle" title="Arm"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(arm.circumference_cm, 'cm')}</span>
-                ${arm.scale !== undefined ? this.createScaleBadge(arm.scale, 'Arm Scale') : ''}
-            `;
-            measurementRow.appendChild(item);
-        }
-
-        // Arm length
-        if (arm.length_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-ruler-vertical" title="Length"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(arm.length_cm, 'cm')}</span>
-            `;
-            measurementRow.appendChild(item);
-        }
-
-        // Shoulder width
-        if (arm.shoulder_width_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-ruler-horizontal" title="Shoulders"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(arm.shoulder_width_cm, 'cm')}</span>
-            `;
-            measurementRow.appendChild(item);
-        }
-
-        if (measurementRow.children.length > 0) {
-            section.appendChild(measurementRow);
-            return section;
-        }
-
-        return null;
-    }
-
-    renderIndividualHipsSection(data) {
-        if (!data.Hips) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-bone"></i> Hips</h3>';
-
-        const hips = data.Hips;
-
-        // Create compact measurement row
-        const measurementRow = document.createElement('div');
-        measurementRow.className = 'measurement-compact-row';
-
-        // Hips measurements
-        if (hips.hips_circumference_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-circle" title="Circumference"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(hips.hips_circumference_cm, 'cm')}</span>
-                ${hips.hips_scale !== undefined ? this.createScaleBadge(hips.hips_scale, 'Hips Scale') : ''}
-            `;
-            measurementRow.appendChild(item);
-        }
-
-        if (hips.hips_width_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-ruler-horizontal" title="Width"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(hips.hips_width_cm, 'cm')}</span>
-            `;
-            measurementRow.appendChild(item);
-        }
-
-        if (hips.hips_depth_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-arrow-up-to-line" title="Depth"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(hips.hips_depth_cm, 'cm')}</span>
-            `;
-            measurementRow.appendChild(item);
-        }
-
-        // Waist measurements
-        if (hips.waist_circumference_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-circle" title="Waist"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(hips.waist_circumference_cm, 'cm')}</span>
-                ${hips.waist_scale !== undefined ? this.createScaleBadge(hips.waist_scale, 'Waist Scale') : ''}
-            `;
-            measurementRow.appendChild(item);
-        }
-
-        // Ass measurements
-        if (hips.ass_circumference_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-circle" title="Ass"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(hips.ass_circumference_cm, 'cm')}</span>
-                ${hips.ass_scale !== undefined ? this.createScaleBadge(hips.ass_scale, 'Ass Scale') : ''}
-            `;
-            measurementRow.appendChild(item);
-        }
-
-        // Ratios
-        if (hips.chest_to_waist_ratio !== undefined || hips.waist_to_hip_ratio !== undefined) {
-            const ratioItem = document.createElement('div');
-            ratioItem.className = 'measurement-ratio-item';
-            let ratioText = '';
-            if (hips.chest_to_waist_ratio !== undefined) {
-                ratioText += `C/W: ${hips.chest_to_waist_ratio.toFixed(2)}`;
-            }
-            if (hips.waist_to_hip_ratio !== undefined) {
-                if (ratioText) ratioText += ' | ';
-                ratioText += `W/H: ${hips.waist_to_hip_ratio.toFixed(2)}`;
-            }
-            ratioItem.innerHTML = `<i class="fas fa-balance-scale" title="Ratios"></i> <span>${ratioText}</span>`;
-            measurementRow.appendChild(ratioItem);
-        }
-
-        if (measurementRow.children.length > 0) {
-            section.appendChild(measurementRow);
-            return section;
-        }
-
-        return null;
-    }
-
-    renderIndividualLegsSection(data) {
-        if (!data.Legs) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-running"></i> Legs</h3>';
-
-        const legs = data.Legs;
-
-        // Create compact measurement row
-        const measurementRow = document.createElement('div');
-        measurementRow.className = 'measurement-compact-row';
-
-        // Leg measurements
-        if (legs.leg_length_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-ruler-vertical" title="Length"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(legs.leg_length_cm, 'cm')}</span>
-            `;
-            measurementRow.appendChild(item);
-        }
-
-        // Thigh measurements
-        if (legs.thigh_circumference_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-circle" title="Thigh"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(legs.thigh_circumference_cm, 'cm')}</span>
-                ${legs.thigh_scale !== undefined ? this.createScaleBadge(legs.thigh_scale, 'Thigh Scale') : ''}
-            `;
-            measurementRow.appendChild(item);
-        }
-
-        // Calf measurements
-        if (legs.calf_circumference_cm !== undefined) {
-            const item = document.createElement('div');
-            item.className = 'measurement-compact-item';
-            item.innerHTML = `
-                <i class="fas fa-circle" title="Calf"></i>
-                <span class="measurement-compact-value">${this.formatMeasurementValue(legs.calf_circumference_cm, 'cm')}</span>
-                ${legs.calf_scale !== undefined ? this.createScaleBadge(legs.calf_scale, 'Calf Scale') : ''}
-            `;
-            measurementRow.appendChild(item);
-        }
-
-
-        if (measurementRow.children.length > 0) {
-            section.appendChild(measurementRow);
-            return section;
-        }
-
-        return null;
-    }
-
-    renderUpperBodySection(data) {
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-skeleton-ribs"></i> Upper Body</h3>';
-
-        let hasContent = false;
-
-        // Arm data
-        if (data.Arm) {
-            const arm = data.Arm;
-
-            // Arm measurements (column layout)
-            const armContainer = document.createElement('div');
-            armContainer.className = 'measurement-column-container';
-
-            // Add header for arm group
-            const armHeader = document.createElement('div');
-            armHeader.className = 'measurement-group-header';
-            armHeader.innerHTML = '<i class="fas fa-hand-paper"></i> Arms';
-            armContainer.appendChild(armHeader);
-
-            const armRow = document.createElement('div');
-            armRow.className = 'measurement-column-row';
-
-            const armColumns = document.createElement('div');
-            armColumns.className = 'measurement-column-items';
-
-            // Circumference Column
-            if (arm.circumference_cm !== undefined && arm.circumference_cm !== null) {
-                const circColumn = document.createElement('div');
-                circColumn.className = 'measurement-column-item';
-                circColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fa-regular fa-circle" title="Circumference"></i>
-                        <span>Arm</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(arm.circumference_cm, 'cm')}
-                        ${arm.scale !== undefined && arm.scale !== null ? this.createScaleBadge(arm.scale, 'Arm Scale') : ''}
-                    </div>
-                `;
-                armColumns.appendChild(circColumn);
-            }
-
-            // Length Column
-            if (arm.length_cm !== undefined && arm.length_cm !== null) {
-                const lengthColumn = document.createElement('div');
-                lengthColumn.className = 'measurement-column-item';
-                lengthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-vertical" title="Length"></i>
-                        <span>Length</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(arm.length_cm, 'cm')}
-                    </div>
-                `;
-                armColumns.appendChild(lengthColumn);
-            }
-
-            // Shoulder Width Column
-            if (arm.shoulder_width_cm !== undefined && arm.shoulder_width_cm !== null) {
-                const shoulderColumn = document.createElement('div');
-                shoulderColumn.className = 'measurement-column-item';
-                shoulderColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-horizontal" title="Shoulder Width"></i>
-                        <span>Shoulders</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(arm.shoulder_width_cm, 'cm')}
-                    </div>
-                `;
-                armColumns.appendChild(shoulderColumn);
-            }
-
-            if (armColumns.children.length > 0) {
-                armRow.appendChild(armColumns);
-                armContainer.appendChild(armRow);
-                section.appendChild(armContainer);
-                hasContent = true;
-            }
-        }
-
-        // Torso data
-        if (data.Torso) {
-            const torso = data.Torso;
-
-            const torsoContainer = document.createElement('div');
-            torsoContainer.className = 'measurement-column-container';
-
-            const torsoHeader = document.createElement('div');
-            torsoHeader.className = 'measurement-group-header';
-            torsoHeader.innerHTML = '<i class="fas fa-ribbon"></i> Torso';
-            torsoContainer.appendChild(torsoHeader);
-
-            const torsoRow = document.createElement('div');
-            torsoRow.className = 'measurement-column-row';
-
-            const torsoColumns = document.createElement('div');
-            torsoColumns.className = 'measurement-column-items';
-
-            // Length Column
-            if (torso.length_cm !== undefined && torso.length_cm !== null) {
-                const lengthColumn = document.createElement('div');
-                lengthColumn.className = 'measurement-column-item';
-                lengthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-vertical" title="Length"></i>
-                        <span>Length</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(torso.length_cm, 'cm')}
-                    </div>
-                `;
-                torsoColumns.appendChild(lengthColumn);
-            }
-
-            // Width Column
-            if (torso.width_cm !== undefined && torso.width_cm !== null) {
-                const widthColumn = document.createElement('div');
-                widthColumn.className = 'measurement-column-item';
-                widthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-horizontal" title="Width"></i>
-                        <span>Width</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(torso.width_cm, 'cm')}
-                    </div>
-                `;
-                torsoColumns.appendChild(widthColumn);
-            }
-
-            // Depth Column
-            if (torso.depth_cm !== undefined && torso.depth_cm !== null) {
-                const depthColumn = document.createElement('div');
-                depthColumn.className = 'measurement-column-item';
-                depthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-arrows-alt" title="Depth"></i>
-                        <span>Depth</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(torso.depth_cm, 'cm')}
-                        ${torso.scale !== undefined && torso.scale !== null ? this.createScaleBadge(torso.scale, 'Torso Scale') : ''}
-                    </div>
-                `;
-                torsoColumns.appendChild(depthColumn);
-            }
-
-            if (torsoColumns.children.length > 0) {
-                torsoRow.appendChild(torsoColumns);
-                torsoContainer.appendChild(torsoRow);
-                section.appendChild(torsoContainer);
-                hasContent = true;
-            }
-        }
-
-        // Head data
-        if (data.Head) {
-            const head = data.Head;
-
-            const headContainer = document.createElement('div');
-            headContainer.className = 'measurement-column-container';
-
-            const headHeader = document.createElement('div');
-            headHeader.className = 'measurement-group-header';
-            headHeader.innerHTML = '<i class="fas fa-head-side-brain"></i> Head';
-            headContainer.appendChild(headHeader);
-
-            const headRow = document.createElement('div');
-            headRow.className = 'measurement-column-row';
-
-            const headColumns = document.createElement('div');
-            headColumns.className = 'measurement-column-items';
-
-            // Ear Type Column
-            if (head.ear_type) {
-                const earTypeColumn = document.createElement('div');
-                earTypeColumn.className = 'measurement-column-item';
-                earTypeColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ear-listen" title="Ear Type"></i>
-                        <span>Ear Type</span>
-                    </div>
-                    <div class="measurement-column-value">${head.ear_type}</div>
-                `;
-                headColumns.appendChild(earTypeColumn);
-            }
-
-            // Hair Color Column
-            if (head.hair_color) {
-                const hairColorColumn = document.createElement('div');
-                hairColorColumn.className = 'measurement-column-item';
-                hairColorColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-palette" title="Hair Color"></i>
-                        <span>Hair Color</span>
-                    </div>
-                    <div class="measurement-column-value">${head.hair_color}</div>
-                `;
-                headColumns.appendChild(hairColorColumn);
-            }
-
-            // Eye Color Column
-            if (head.eye_color) {
-                const eyeColorColumn = document.createElement('div');
-                eyeColorColumn.className = 'measurement-column-item';
-                eyeColorColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-eye" title="Eye Color"></i>
-                        <span>Eye Color</span>
-                    </div>
-                    <div class="measurement-column-value">${head.eye_color}</div>
-                `;
-                headColumns.appendChild(eyeColorColumn);
-            }
-
-            // Face Shape Column
-            if (head.face_shape) {
-                const faceShapeColumn = document.createElement('div');
-                faceShapeColumn.className = 'measurement-column-item';
-                faceShapeColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-user-circle" title="Face Shape"></i>
-                        <span>Face Shape</span>
-                    </div>
-                    <div class="measurement-column-value">${head.face_shape}</div>
-                `;
-                headColumns.appendChild(faceShapeColumn);
-            }
-
-            // Hair Length Column
-            if (head.hair_length_cm !== undefined) {
-                const hairLengthColumn = document.createElement('div');
-                hairLengthColumn.className = 'measurement-column-item';
-                hairLengthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-vertical" title="Hair Length"></i>
-                        <span>Hair Length</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(head.hair_length_cm, 'cm')}
-                    </div>
-                `;
-                headColumns.appendChild(hairLengthColumn);
-            }
-
-            // Ear Length Column
-            if (head.ear_length_cm !== undefined) {
-                const earLengthColumn = document.createElement('div');
-                earLengthColumn.className = 'measurement-column-item';
-                earLengthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-vertical" title="Ear Length"></i>
-                        <span>Ear Length</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(head.ear_length_cm, 'cm')}
-                    </div>
-                `;
-                headColumns.appendChild(earLengthColumn);
-            }
-
-            // Neck Length Column
-            if (head.neck_length_cm !== undefined) {
-                const neckLengthColumn = document.createElement('div');
-                neckLengthColumn.className = 'measurement-column-item';
-                neckLengthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-vertical" title="Neck Length"></i>
-                        <span>Neck Length</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(head.neck_length_cm, 'cm')}
-                    </div>
-                `;
-                headColumns.appendChild(neckLengthColumn);
-            }
-
-            if (headColumns.children.length > 0) {
-                headRow.appendChild(headColumns);
-                headContainer.appendChild(headRow);
-                section.appendChild(headContainer);
-                hasContent = true;
-            }
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderHipsSection(data) {
-        if (!data.Hips) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-bone"></i> Hips</h3>';
-
-        let hasContent = false;
-
-        // Individual body part measurements
-        if (data.Hips) {
-            const hips = data.Hips;
-
-            // Hips measurements - column layout
-            const hipsContainer = document.createElement('div');
-            hipsContainer.className = 'measurement-column-container';
-
-            // Add header for hips group
-            const hipsHeader = document.createElement('div');
-            hipsHeader.className = 'measurement-group-header';
-            hipsHeader.innerHTML = '<i class="fas fa-bone" title="Hips"></i> Hips';
-            hipsContainer.appendChild(hipsHeader);
-
-                const hipsRow = document.createElement('div');
-            hipsRow.className = 'measurement-column-row';
-
-            const hipsColumns = document.createElement('div');
-            hipsColumns.className = 'measurement-column-items';
-
-            // Circumference Column
-            if (hips.hips_circumference_cm !== undefined && hips.hips_circumference_cm !== null) {
-                const circColumn = document.createElement('div');
-                circColumn.className = 'measurement-column-item';
-                circColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fa-regular fa-circle" title="Circumference"></i>
-                        <span>Hips</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(hips.hips_circumference_cm, 'cm')}
-                        ${hips.hips_scale !== undefined && hips.hips_scale !== null ? this.createScaleBadge(hips.hips_scale, 'Hips Scale') : ''}
-                    </div>
-                `;
-                hipsColumns.appendChild(circColumn);
-            }
-
-            // Width Column
-            if (hips.hips_width_cm !== undefined && hips.hips_width_cm !== null) {
-                const widthColumn = document.createElement('div');
-                widthColumn.className = 'measurement-column-item';
-                widthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-horizontal" title="Width"></i>
-                        <span>Width</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(hips.hips_width_cm, 'cm')}
-                    </div>
-                `;
-                hipsColumns.appendChild(widthColumn);
-            }
-
-            // Depth Column
-            if (hips.hips_depth_cm !== undefined && hips.hips_depth_cm !== null) {
-                const depthColumn = document.createElement('div');
-                depthColumn.className = 'measurement-column-item';
-                depthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-arrow-up-to-line" title="Depth"></i>
-                        <span>Depth</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(hips.hips_depth_cm, 'cm')}
-                    </div>
-                `;
-                hipsColumns.appendChild(depthColumn);
-            }
-
-            if (hipsColumns.children.length > 0) {
-                hipsRow.appendChild(hipsColumns);
-                hipsContainer.appendChild(hipsRow);
-                section.appendChild(hipsContainer);
-                hasContent = true;
-            }
-
-            // Waist measurements - column layout
-            const waistContainer = document.createElement('div');
-            waistContainer.className = 'measurement-column-container';
-
-            // Add header for waist group
-            const waistHeader = document.createElement('div');
-            waistHeader.className = 'measurement-group-header';
-            waistHeader.innerHTML = '<i class="fas fa-circle" title="Waist"></i> Waist';
-            waistContainer.appendChild(waistHeader);
-
-                const waistRow = document.createElement('div');
-            waistRow.className = 'measurement-column-row';
-
-            const waistColumns = document.createElement('div');
-            waistColumns.className = 'measurement-column-items';
-
-            // Circumference Column
-            if (hips.waist_circumference_cm !== undefined && hips.waist_circumference_cm !== null) {
-                const circColumn = document.createElement('div');
-                circColumn.className = 'measurement-column-item';
-                circColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fa-regular fa-circle" title="Circumference"></i>
-                        <span>Size</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(hips.waist_circumference_cm, 'cm')}
-                        ${hips.waist_scale !== undefined && hips.waist_scale !== null ? this.createScaleBadge(hips.waist_scale, 'Waist Scale') : ''}
-                    </div>
-                `;
-                waistColumns.appendChild(circColumn);
-            }
-
-            // Width Column
-            if (hips.waist_width_cm !== undefined && hips.waist_width_cm !== null) {
-                const widthColumn = document.createElement('div');
-                widthColumn.className = 'measurement-column-item';
-                widthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-horizontal" title="Width"></i>
-                        <span>Width</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(hips.waist_width_cm, 'cm')}
-                    </div>
-                `;
-                waistColumns.appendChild(widthColumn);
-            }
-
-            // Depth Column
-            if (hips.waist_depth_cm !== undefined && hips.waist_depth_cm !== null) {
-                const depthColumn = document.createElement('div');
-                depthColumn.className = 'measurement-column-item';
-                depthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-arrow-up-to-line" title="Depth"></i>
-                        <span>Depth</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(hips.waist_depth_cm, 'cm')}
-                    </div>
-                `;
-                waistColumns.appendChild(depthColumn);
-            }
-
-            if (waistColumns.children.length > 0) {
-                waistRow.appendChild(waistColumns);
-                waistContainer.appendChild(waistRow);
-                section.appendChild(waistContainer);
-                hasContent = true;
-            }
-
-            // Ass measurements - column layout
-            const assContainer = document.createElement('div');
-            assContainer.className = 'measurement-column-container';
-
-            // Add header for ass group
-            const assHeader = document.createElement('div');
-            assHeader.className = 'measurement-group-header';
-            assHeader.innerHTML = '<i class="fas fa-circle" title="Ass"></i> Ass';
-            assContainer.appendChild(assHeader);
-
-                const assRow = document.createElement('div');
-            assRow.className = 'measurement-column-row';
-
-            const assColumns = document.createElement('div');
-            assColumns.className = 'measurement-column-items';
-
-            // Circumference Column
-            if (hips.ass_circumference_cm !== undefined && hips.ass_circumference_cm !== null) {
-                const circColumn = document.createElement('div');
-                circColumn.className = 'measurement-column-item';
-                circColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fa-regular fa-circle" title="Circumference"></i>
-                        <span>Size</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(hips.ass_circumference_cm, 'cm')}
-                        ${hips.ass_scale !== undefined && hips.ass_scale !== null ? this.createScaleBadge(hips.ass_scale, 'Ass Scale') : ''}
-                    </div>
-                `;
-                assColumns.appendChild(circColumn);
-            }
-
-            // Width Column
-            if (hips.ass_width_cm !== undefined && hips.ass_width_cm !== null) {
-                const widthColumn = document.createElement('div');
-                widthColumn.className = 'measurement-column-item';
-                widthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-horizontal" title="Width"></i>
-                        <span>Width</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(hips.ass_width_cm, 'cm')}
-                    </div>
-                `;
-                assColumns.appendChild(widthColumn);
-            }
-
-            // Depth Column
-            if (hips.ass_depth_cm !== undefined && hips.ass_depth_cm !== null) {
-                const depthColumn = document.createElement('div');
-                depthColumn.className = 'measurement-column-item';
-                depthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-arrow-up-to-line" title="Depth"></i>
-                        <span>Depth</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(hips.ass_depth_cm, 'cm')}
-                    </div>
-                `;
-                assColumns.appendChild(depthColumn);
-            }
-
-            if (assColumns.children.length > 0) {
-                assRow.appendChild(assColumns);
-                assContainer.appendChild(assRow);
-                section.appendChild(assContainer);
-                hasContent = true;
-            }
-
-            // Ratios row
-            if ((hips.chest_to_waist_ratio !== undefined && hips.chest_to_waist_ratio !== null) || 
-                (hips.waist_to_hip_ratio !== undefined && hips.waist_to_hip_ratio !== null)) {
-                const ratioRow = document.createElement('div');
-                ratioRow.className = 'measurement-compact-row';
-                ratioRow.innerHTML = '<div class="measurement-row-header">Ratios</div>';
-
-                const ratioItems = document.createElement('div');
-                ratioItems.className = 'measurement-row-items';
-
-                let ratioText = '';
-                if (hips.chest_to_waist_ratio !== undefined && hips.chest_to_waist_ratio !== null) {
-                    ratioText += `C/W: ${hips.chest_to_waist_ratio.toFixed(2)}`;
-                }
-                if (hips.waist_to_hip_ratio !== undefined && hips.waist_to_hip_ratio !== null) {
-                    if (ratioText) ratioText += ' | ';
-                    ratioText += `W/H: ${hips.waist_to_hip_ratio.toFixed(2)}`;
-                }
-
-                const ratioItem = document.createElement('div');
-                ratioItem.className = 'measurement-compact-item';
-                ratioItem.innerHTML = `
-                    <i class="fas fa-balance-scale" title="Body Ratios"></i>
-                    <span class="measurement-compact-value">${ratioText}</span>
-                `;
-                ratioItems.appendChild(ratioItem);
-
-                ratioRow.appendChild(ratioItems);
-                section.appendChild(ratioRow);
-                hasContent = true;
-            }
-        }
-
-        // Legs data
-        if (data.Legs) {
-            const legs = data.Legs;
-
-            // Combined Leg measurements - single row with all measurements
-            const legContainer = document.createElement('div');
-            legContainer.className = 'measurement-column-container';
-
-            // Add header for legs group
-            const legHeader = document.createElement('div');
-            legHeader.className = 'measurement-group-header';
-            legHeader.innerHTML = '<i class="fas fa-running"></i> Legs';
-            legContainer.appendChild(legHeader);
-
-                const legRow = document.createElement('div');
-            legRow.className = 'measurement-column-row';
-
-            const legColumns = document.createElement('div');
-            legColumns.className = 'measurement-column-items';
-
-            // Leg Length Column
-            if (legs.leg_length_cm !== undefined) {
-                const lengthColumn = document.createElement('div');
-                lengthColumn.className = 'measurement-column-item';
-                lengthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                    <i class="fas fa-ruler-vertical" title="Length"></i>
-                        <span>Length</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(legs.leg_length_cm, 'cm')}
-                    </div>
-                `;
-                legColumns.appendChild(lengthColumn);
-            }
-
-            // Thigh Circumference Column
-            if (legs.thigh_circumference_cm !== undefined) {
-                const thighCircColumn = document.createElement('div');
-                thighCircColumn.className = 'measurement-column-item';
-                thighCircColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fa-regular fa-circle" title="Thigh Circumference"></i>
-                        <span>Thigh</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(legs.thigh_circumference_cm, 'cm')}
-                        ${legs.thigh_scale !== undefined ? this.createScaleBadge(legs.thigh_scale, 'Thigh Scale') : ''}
-                    </div>
-                `;
-                legColumns.appendChild(thighCircColumn);
-            }
-
-            // Calf Circumference Column
-            if (legs.calf_circumference_cm !== undefined) {
-                const calfCircColumn = document.createElement('div');
-                calfCircColumn.className = 'measurement-column-item';
-                calfCircColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fa-regular fa-circle" title="Calf Circumference"></i>
-                        <span>Calf</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(legs.calf_circumference_cm, 'cm')}
-                        ${legs.calf_scale !== undefined ? this.createScaleBadge(legs.calf_scale, 'Calf Scale') : ''}
-                    </div>
-                `;
-                legColumns.appendChild(calfCircColumn);
-            }
-
-            // Thigh Separation Column
-            if (legs.thigh_separation_cm !== undefined) {
-                const sepColumn = document.createElement('div');
-                sepColumn.className = 'measurement-column-item';
-                sepColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-ruler-horizontal" title="Separation"></i>
-                        <span>Separation</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(legs.thigh_separation_cm, 'cm')}
-                    </div>
-                `;
-                legColumns.appendChild(sepColumn);
-            }
-
-            if (legColumns.children.length > 0) {
-                legRow.appendChild(legColumns);
-                legContainer.appendChild(legRow);
-                section.appendChild(legContainer);
-                hasContent = true;
-            }
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderLegsSection(data) {
-        if (!data.Legs) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-running"></i> Legs</h3>';
-
-        let hasContent = false;
-        const legs = data.Legs;
-
-        // Leg measurements - column layout
-        const legContainer = document.createElement('div');
-        legContainer.className = 'measurement-column-container';
-
-        // Add header for leg group
-        const legHeader = document.createElement('div');
-        legHeader.className = 'measurement-group-header';
-        legHeader.innerHTML = '<i class="fas fa-running" title="Legs"></i> Legs';
-        legContainer.appendChild(legHeader);
-
-        const legRow = document.createElement('div');
-        legRow.className = 'measurement-column-row';
-
-        const legColumns = document.createElement('div');
-        legColumns.className = 'measurement-column-items';
-
-        // Leg Length Column
-        if (legs.leg_length_cm !== undefined && legs.leg_length_cm !== null) {
-            const lengthColumn = document.createElement('div');
-            lengthColumn.className = 'measurement-column-item';
-            lengthColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-ruler-vertical" title="Leg Length"></i>
-                    <span>Length</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(legs.leg_length_cm, 'cm')}
-                    ${legs.leg_scale !== undefined && legs.leg_scale !== null ? this.createScaleBadge(legs.leg_scale, 'Leg Scale') : ''}
-                </div>
-            `;
-            legColumns.appendChild(lengthColumn);
-        }
-
-        // Thigh Circumference Column
-        if (legs.thigh_circumference_cm !== undefined && legs.thigh_circumference_cm !== null) {
-            const thighColumn = document.createElement('div');
-            thighColumn.className = 'measurement-column-item';
-            thighColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fa-regular fa-circle" title="Thigh Circumference"></i>
-                    <span>Thigh</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(legs.thigh_circumference_cm, 'cm')}
-                    ${legs.thigh_scale !== undefined && legs.thigh_scale !== null ? this.createScaleBadge(legs.thigh_scale, 'Thigh Scale') : ''}
-                </div>
-            `;
-            legColumns.appendChild(thighColumn);
-        }
-
-        // Thigh Separation Column
-        if (legs.thigh_separation_cm !== undefined && legs.thigh_separation_cm !== null) {
-            const separationColumn = document.createElement('div');
-            separationColumn.className = 'measurement-column-item';
-            separationColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-arrows-alt-h" title="Thigh Separation"></i>
-                    <span>Separation</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(legs.thigh_separation_cm, 'cm')}
-                </div>
-            `;
-            legColumns.appendChild(separationColumn);
-        }
-
-        // Calf Circumference Column
-        if (legs.calf_circumference_cm !== undefined && legs.calf_circumference_cm !== null) {
-            const calfColumn = document.createElement('div');
-            calfColumn.className = 'measurement-column-item';
-            calfColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fa-regular fa-circle" title="Calf Circumference"></i>
-                    <span>Calf</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${this.formatMeasurementValue(legs.calf_circumference_cm, 'cm')}
-                    ${legs.calf_scale !== undefined && legs.calf_scale !== null ? this.createScaleBadge(legs.calf_scale, 'Calf Scale') : ''}
-                </div>
-            `;
-            legColumns.appendChild(calfColumn);
-        }
-
-        if (legColumns.children.length > 0) {
-            legRow.appendChild(legColumns);
-            legContainer.appendChild(legRow);
-            section.appendChild(legContainer);
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderPregnancySection(data) {
-        if (!data.ReproductiveSystem || !data.ReproductiveSystem.reproductive_state) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section pregnancy-section';
-        section.innerHTML = '<h3 class="measurement-section-title pregnancy-title"><i class="fas fa-baby-carriage"></i> Pregnancy</h3>';
-
-        const repro = data.ReproductiveSystem;
-        const state = repro.reproductive_state;
-        let hasContent = false;
-
-        // Check if this is a pregnancy-related state
-        const pregnancyStates = [
-            'early_trimester_pregnancy',
-            'active_pregnancy',
-            'final_trimester_pregnancy',
-            'impending_labor',
-            'active_labor',
-            'active_birthing',
-            'blocked_birthing',
-            'postpartum',
-            'unbirthing',
-            'vore_pregnancy'
-        ];
-
-        const isPregnancyState = pregnancyStates.includes(state.state) ||
-                                state.pregnancy_count > 0 ||
-                                state.pregnancy_scale > 0;
-
-        if (!isPregnancyState) return null;
-
-        // Reproductive state description
-        if (state.description) {
-            section.innerHTML += `
-                <div class="measurement-description-row">
-                    <div class="measurement-description-label">Reproductive State</div>
-                    <div class="measurement-description-text">${state.description}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Pregnancy details in column layout
-        const pregnancyContainer = document.createElement('div');
-        pregnancyContainer.className = 'measurement-column-container';
-
-        // Add header for pregnancy details
-        const pregnancyHeader = document.createElement('div');
-        pregnancyHeader.className = 'measurement-group-header';
-        pregnancyHeader.innerHTML = '<i class="fas fa-info-circle"></i> Pregnancy Details';
-        pregnancyContainer.appendChild(pregnancyHeader);
-
-        const pregnancyRow = document.createElement('div');
-        pregnancyRow.className = 'measurement-column-row';
-
-        const pregnancyColumns = document.createElement('div');
-        pregnancyColumns.className = 'measurement-column-items';
-
-        // Pregnancy State Column
-        const stateDescriptions = {
-            'early_trimester_pregnancy': 'Early Pregnancy',
-            'active_pregnancy': 'Active Pregnancy',
-            'final_trimester_pregnancy': 'Final Trimester',
-            'impending_labor': 'Impending Labor',
-            'active_labor': 'Active Labor',
-            'active_birthing': 'Active Birthing',
-            'blocked_birthing': 'Blocked Birthing',
-            'postpartum': 'Postpartum',
-            'unbirthing': 'Unbirthing',
-            'vore_pregnancy': 'Vore Pregnancy'
-        };
-
-        if (state.state && pregnancyStates.includes(state.state)) {
-            const stateColumn = document.createElement('div');
-            stateColumn.className = 'measurement-column-item';
-            stateColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-heartbeat" title="Pregnancy State"></i>
-                    <span>State</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${stateDescriptions[state.state] || state.state}
-                </div>
-            `;
-            pregnancyColumns.appendChild(stateColumn);
-        }
-
-        // Baby Count Column (with womb scale)
-        if (state.pregnancy_count !== undefined && state.pregnancy_count !== null) {
-            const countColumn = document.createElement('div');
-            countColumn.className = 'measurement-column-item';
-            const wombScaleHtml = state.pregnancy_scale !== undefined && state.pregnancy_scale !== null
-                ? ` <span class="measurement-scale-badge" style="background-color: rgba(220, 53, 69, ${Math.min(state.pregnancy_scale, 1.0) * 0.6});" title="Womb Scale: ${state.pregnancy_scale.toFixed(2)}">${state.pregnancy_scale.toFixed(2)}</span>`
-                : '';
-            countColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-baby" title="Baby Count"></i>
-                    <span>Babies</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${state.pregnancy_count}${wombScaleHtml}
-                </div>
-            `;
-            pregnancyColumns.appendChild(countColumn);
-        }
-
-        // Pregnancy Scale is now shown next to baby count (above)
-
-        // Trimester Column
-        if (state.pregnancy_trimester !== undefined && state.pregnancy_trimester !== null) {
-            const trimesterColumn = document.createElement('div');
-            trimesterColumn.className = 'measurement-column-item';
-            trimesterColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-calendar-alt" title="Trimester"></i>
-                    <span>Trimester</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${state.pregnancy_trimester}${state.pregnancy_trimester === 1 ? 'st' : state.pregnancy_trimester === 2 ? 'nd' : state.pregnancy_trimester === 3 ? 'rd' : 'th'}
-                </div>
-            `;
-            pregnancyColumns.appendChild(trimesterColumn);
-        }
-
-        // Weeks Column
-        if (state.pregnancy_weeks !== undefined && state.pregnancy_weeks !== null) {
-            const weeksColumn = document.createElement('div');
-            weeksColumn.className = 'measurement-column-item';
-            weeksColumn.innerHTML = `
-                <div class="measurement-column-label">
-                    <i class="fas fa-clock" title="Weeks"></i>
-                    <span>Weeks</span>
-                </div>
-                <div class="measurement-column-value">
-                    ${state.pregnancy_weeks}
-                </div>
-            `;
-            pregnancyColumns.appendChild(weeksColumn);
-        }
-
-        if (pregnancyColumns.children.length > 0) {
-            pregnancyRow.appendChild(pregnancyColumns);
-            pregnancyContainer.appendChild(pregnancyRow);
-            section.appendChild(pregnancyContainer);
-                hasContent = true;
-            }
-
-        // Baby details as badges
-        if (state.pregnancy_names && state.pregnancy_names.length > 0) {
-            const babyContainer = document.createElement('div');
-            babyContainer.className = 'measurement-description-row';
-
-            const babyLabel = document.createElement('div');
-            babyLabel.className = 'measurement-description-label';
-            babyLabel.textContent = 'Baby Names';
-            babyContainer.appendChild(babyLabel);
-
-            const babyBadges = document.createElement('div');
-            babyBadges.className = 'baby-badges-container';
-
-            state.pregnancy_names.forEach((name, index) => {
-                const gender = state.pregnancy_genders && state.pregnancy_genders[index] ? state.pregnancy_genders[index] : 'other';
-
-                let genderIcon = 'fas fa-genderless';
-                let badgeClass = 'baby-badge-neutral';
-
-                if (gender === 'female') {
-                    genderIcon = 'fas fa-venus';
-                    badgeClass = 'baby-badge-female';
-                } else if (gender === 'male') {
-                    genderIcon = 'fas fa-mars';
-                    badgeClass = 'baby-badge-male';
-                }
-
-                const badge = document.createElement('div');
-                badge.className = `baby-badge ${badgeClass}`;
-                badge.innerHTML = `
-                    <i class="${genderIcon}"></i>
-                    <span class="baby-name">${name}</span>
-                `;
-                babyBadges.appendChild(badge);
-            });
-
-            babyContainer.appendChild(babyBadges);
-            section.appendChild(babyContainer);
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderReproductiveSystemSection(data) {
-        if (!data.ReproductiveSystem) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section reproductive-section';
-        section.innerHTML = '<h3 class="measurement-section-title reproductive-title"><i class="fas fa-venus-mars"></i> Reproductive System</h3>';
-
-        const repro = data.ReproductiveSystem;
-        let hasContent = false;
-
-        // General description (full width row)
-        if (repro.description) {
-            section.innerHTML += `
-                <div class="measurement-description-row">
-                    <div class="measurement-description-label">Description</div>
-                    <div class="measurement-description-text">${repro.description}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Biological sex type
-        if (repro.type) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">Biological Sex</div>
-                    <div class="measurement-value">${repro.type.charAt(0).toUpperCase() + repro.type.slice(1)}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Fetish names
-        if (repro.fetish_names && Array.isArray(repro.fetish_names) && repro.fetish_names.length > 0) {
-            section.innerHTML += `
-                <div class="measurement-description-row">
-                    <div class="measurement-description-label">Fetishes</div>
-                    <div class="measurement-description-text">${repro.fetish_names.join(', ')}</div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Pleasure level with small inline gauge
-        if (repro.pleaseure_level !== undefined && repro.pleaseure_level !== null) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">
-                        <i class="fas fa-heart"></i> Pleasure Level
-                    </div>
-                    <div class="measurement-value">
-                        ${repro.pleaseure_level.toFixed(1)}/10 ${this.createSmallGauge(repro.pleaseure_level, 10, 'gauge-pleasure')}
-                    </div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Male Anatomy - column layout (show if has values)
-        if (repro.penis_length_cm !== undefined || repro.penis_erectness !== undefined || repro.genital_size !== undefined || repro.genital_scale !== undefined) {
-            const maleContainer = document.createElement('div');
-            maleContainer.className = 'measurement-column-container';
-
-            // Add header for male anatomy group
-            const maleHeader = document.createElement('div');
-            maleHeader.className = 'measurement-group-header';
-            maleHeader.innerHTML = '<i class="fas fa-mars"></i> Male Anatomy';
-            maleContainer.appendChild(maleHeader);
-
-            const maleRow = document.createElement('div');
-            maleRow.className = 'measurement-column-row';
-
-            const maleColumns = document.createElement('div');
-            maleColumns.className = 'measurement-column-items';
-
-            // Penis Length Column
-            if (repro.penis_length_cm !== undefined) {
-                const lengthColumn = document.createElement('div');
-                lengthColumn.className = 'measurement-column-item';
-                lengthColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                    <i class="fas fa-ruler-vertical" title="Penis Length"></i>
-                        <span>Length</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${this.formatMeasurementValue(repro.penis_length_cm, 'cm')}
-                    </div>
-                `;
-                maleColumns.appendChild(lengthColumn);
-            }
-
-            // Erection Level Column
-            if (repro.penis_erectness !== undefined && repro.penis_erectness !== null) {
-                const erectionColumn = document.createElement('div');
-                erectionColumn.className = 'measurement-column-item';
-                erectionColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                    <i class="fas fa-thermometer-half" title="Erection Level"></i>
-                        <span>Erection</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${(repro.penis_erectness * 100).toFixed(0)}%
-                    </div>
-                `;
-                maleColumns.appendChild(erectionColumn);
-            }
-
-            // Genital Size Column
-            if (repro.genital_size !== undefined && repro.genital_size !== null) {
-                const sizeColumn = document.createElement('div');
-                sizeColumn.className = 'measurement-column-item';
-                sizeColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-info-circle" title="Genital Size"></i>
-                        <span>Genital Size</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${repro.genital_size}
-                    </div>
-                `;
-                maleColumns.appendChild(sizeColumn);
-            }
-
-            // Genital Scale Column
-            if (repro.genital_scale !== undefined && repro.genital_scale !== null) {
-                const scaleColumn = document.createElement('div');
-                scaleColumn.className = 'measurement-column-item';
-                scaleColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-circle" title="Genital Scale"></i>
-                        <span>Genital Scale</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        <span class="measurement-scale-badge" style="background-color: rgba(220, 53, 69, ${Math.min(repro.genital_scale, 1.0) * 0.6});" title="Genital Scale: ${repro.genital_scale.toFixed(2)}">${repro.genital_scale.toFixed(2)}</span>
-                    </div>
-                `;
-                maleColumns.appendChild(scaleColumn);
-            }
-
-            if (maleColumns.children.length > 0) {
-                maleRow.appendChild(maleColumns);
-                maleContainer.appendChild(maleRow);
-                section.appendChild(maleContainer);
-                hasContent = true;
-            }
-        }
-
-        // Female Anatomy - column layout (show if has values)
-        if (repro.vagina_size || repro.vagina_scale !== undefined || repro.vaginal_openness !== undefined || (repro.genital_size !== undefined && repro.genital_size !== null) || (repro.genital_scale !== undefined && repro.genital_scale !== null)) {
-            const femaleContainer = document.createElement('div');
-            femaleContainer.className = 'measurement-column-container';
-
-            // Add header for female anatomy group
-            const femaleHeader = document.createElement('div');
-            femaleHeader.className = 'measurement-group-header';
-            femaleHeader.innerHTML = '<i class="fas fa-venus"></i> Female Anatomy';
-            femaleContainer.appendChild(femaleHeader);
-
-            const femaleRow = document.createElement('div');
-            femaleRow.className = 'measurement-column-row';
-
-            const femaleColumns = document.createElement('div');
-            femaleColumns.className = 'measurement-column-items';
-
-            // Vagina Size Column
-            if (repro.vagina_size) {
-                const vaginaSizeColumn = document.createElement('div');
-                vaginaSizeColumn.className = 'measurement-column-item';
-                vaginaSizeColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                    <i class="fas fa-info-circle" title="Vagina Size"></i>
-                        <span>Vagina Size</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${repro.vagina_size}
-                    </div>
-                `;
-                femaleColumns.appendChild(vaginaSizeColumn);
-            }
-
-            // Vagina Scale Column
-            if (repro.vagina_scale !== undefined && repro.vagina_scale !== null) {
-                const vaginaScaleColumn = document.createElement('div');
-                vaginaScaleColumn.className = 'measurement-column-item';
-                vaginaScaleColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                    <i class="fas fa-circle" title="Vagina Scale"></i>
-                        <span>Vagina Scale</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        <span class="measurement-scale-badge" style="background-color: rgba(220, 53, 69, ${Math.min(repro.vagina_scale, 1.0) * 0.6});" title="Vagina Scale: ${repro.vagina_scale.toFixed(2)}">${repro.vagina_scale.toFixed(2)}</span>
-                    </div>
-                `;
-                femaleColumns.appendChild(vaginaScaleColumn);
-            }
-
-            // Vaginal Openness Column
-            if (repro.vaginal_openness !== undefined && repro.vaginal_openness !== null) {
-                const opennessColumn = document.createElement('div');
-                opennessColumn.className = 'measurement-column-item';
-                opennessColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                    <i class="fas fa-expand-arrows-alt" title="Vaginal Openness"></i>
-                        <span>Vaginal Openness</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${(repro.vaginal_openness * 100).toFixed(0)}%
-                    </div>
-                `;
-                femaleColumns.appendChild(opennessColumn);
-            }
-
-            // Genital Size Column
-            if (repro.genital_size !== undefined && repro.genital_size !== null) {
-                const genitalSizeColumn = document.createElement('div');
-                genitalSizeColumn.className = 'measurement-column-item';
-                genitalSizeColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-info-circle" title="Genital Size"></i>
-                        <span>Genital Size</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        ${repro.genital_size}
-                    </div>
-                `;
-                femaleColumns.appendChild(genitalSizeColumn);
-            }
-
-            // Genital Scale Column
-            if (repro.genital_scale !== undefined && repro.genital_scale !== null) {
-                const genitalScaleColumn = document.createElement('div');
-                genitalScaleColumn.className = 'measurement-column-item';
-                genitalScaleColumn.innerHTML = `
-                    <div class="measurement-column-label">
-                        <i class="fas fa-circle" title="Genital Scale"></i>
-                        <span>Genital Scale</span>
-                    </div>
-                    <div class="measurement-column-value">
-                        <span class="measurement-scale-badge" style="background-color: rgba(220, 53, 69, ${Math.min(repro.genital_scale, 1.0) * 0.6});" title="Genital Scale: ${repro.genital_scale.toFixed(2)}">${repro.genital_scale.toFixed(2)}</span>
-                    </div>
-                `;
-                femaleColumns.appendChild(genitalScaleColumn);
-            }
-
-            if (femaleColumns.children.length > 0) {
-                femaleRow.appendChild(femaleColumns);
-                femaleContainer.appendChild(femaleRow);
-                section.appendChild(femaleContainer);
-                hasContent = true;
-            }
-        }
-
-        // Reproductive State (non-pregnancy states only)
-        if (repro.reproductive_state) {
-            const state = repro.reproductive_state;
-            const stateDescriptions = {
-                'inactive': 'Inactive',
-                'masturbating': 'Masturbating',
-                'active_sexual_intercourse': 'Active Sexual Intercourse',
-                'fertilized': 'Fertilized'
-            };
-
-            // Only show non-pregnancy states here
-            if (state.state && stateDescriptions[state.state]) {
-                section.innerHTML += `
-                    <div class="measurement-item">
-                        <div class="measurement-label">Reproductive State</div>
-                        <div class="measurement-value">${stateDescriptions[state.state] || state.state}</div>
-                    </div>
-                `;
-                hasContent = true;
-            }
-        }
-
-        return hasContent ? section : null;
-    }
-
-    renderMedicalConditionsSection(data) {
-        if (!data.MedicalConditions || data.MedicalConditions.length === 0) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-stethoscope"></i> Medical Conditions</h3>';
-
-        let hasContent = false;
-
-        data.MedicalConditions.forEach((condition, index) => {
-            const conditionItem = document.createElement('div');
-            conditionItem.className = 'measurement-item medical-condition-item';
-            
-            const severityGauge = this.createSmallGauge(condition.severity, 10, 'gauge-danger');
-            
-            conditionItem.innerHTML = `
-                <div class="measurement-label">
-                    <i class="fas fa-exclamation-triangle"></i> ${condition.name}
-                </div>
-                <div class="measurement-value">
-                    ${condition.severity.toFixed(1)}/10 ${severityGauge}
-                </div>
-                <div class="measurement-description">
-                    ${condition.description}
-                </div>
-            `;
-            
-            section.appendChild(conditionItem);
-            hasContent = true;
-        });
-
-        return hasContent ? section : null;
-    }
-
-    renderProgressionSection(data) {
-        if (!data.Progression) return null;
-
-        const section = document.createElement('div');
-        section.className = 'measurement-section';
-        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-chart-line"></i> Progression</h3>';
-
-        let hasContent = false;
-
-        // Changes from previous
-        if (data.Progression.changes_from_previous && data.Progression.changes_from_previous.length > 0) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">
-                        <i class="fas fa-history"></i> Changes from Previous
-                    </div>
-                    <div class="measurement-value">
-                        <ul class="progression-list">
-                            ${data.Progression.changes_from_previous.map(change => `<li>${change}</li>`).join('')}
-                        </ul>
-                    </div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        // Progression indicators
-        if (data.Progression.progression_indicators && data.Progression.progression_indicators.length > 0) {
-            section.innerHTML += `
-                <div class="measurement-item">
-                    <div class="measurement-label">
-                        <i class="fas fa-trending-up"></i> Progression Indicators
-                    </div>
-                    <div class="measurement-value">
-                        <ul class="progression-list">
-                            ${data.Progression.progression_indicators.map(indicator => `<li>${indicator}</li>`).join('')}
-                        </ul>
-                    </div>
-                </div>
-            `;
-            hasContent = true;
-        }
-
-        return hasContent ? section : null;
-    }
-    
-    hideMeasurements() {
-        const measurementsModal = document.getElementById('measurementsModal');
-        closeModal(measurementsModal);
-    }
-    
-    // Setup measurements modal event listeners
-    setupMeasurementsModal() {
-        const closeMeasurementsBtn = document.getElementById('closeMeasurementsBtn');
-        const measurementsModal = document.getElementById('measurementsModal');
-        
-        if (closeMeasurementsBtn) {
-            closeMeasurementsBtn.addEventListener('click', () => this.hideMeasurements());
-        }
-        
-        if (measurementsModal) {
-            measurementsModal.addEventListener('click', (e) => {
-                if (e.target === measurementsModal) {
-                    this.hideMeasurements();
-                }
-            });
-
-            // Add unit toggle functionality
-            measurementsModal.addEventListener('click', (e) => {
-                if (e.target.classList.contains('measurement-value-toggle')) {
-                    this.toggleMeasurementUnit(e.target);
-                }
-            });
-        }
-
-        wireMeasurementsModalKeyboard(this);
-    }
-
-    // Create a small inline bar gauge for 0-10 values
-    createSmallGauge(value, maxValue = 10, colorClass = 'gauge-primary') {
-        const percentage = Math.min((value / maxValue) * 100, 100);
-
-        return `
-            <div class="small-gauge ${colorClass}" title="${value.toFixed(1)}/${maxValue}">
-                <div class="small-gauge-bar" style="width: ${percentage}%"></div>
-            </div>
-        `;
-    }
-
-    // Toggle between imperial and metric units for measurement values
-    toggleMeasurementUnit(element) {
-        const currentUnit = element.dataset.unit;
-        const imperialValue = element.dataset.imperial;
-        const metricValue = element.dataset.metric;
-
-        if (currentUnit === 'imperial') {
-            element.textContent = metricValue;
-            element.dataset.unit = 'metric';
-        } else {
-            element.textContent = imperialValue;
-            element.dataset.unit = 'imperial';
-        }
-    }
-                
-    // Toggle expandable content function
-    toggleExpandable(buttonElement, type = 'description') {
-        // Find the expandable content within the same parent container
-        const parent = buttonElement.parentElement;
-        const content = parent.querySelector('.director-expandable-content');
-        
-        if (!content) {
-            console.warn('Expandable content not found for button:', buttonElement);
-            return;
-        }
-        
-        // Define button content for different types
-        const buttonConfigs = {
-            'description': {
-                show: '<i class="fas fa-chevron-down"></i> Show Description',
-                hide: '<i class="fas fa-chevron-up"></i> Hide Description',
-                icon: 'chevron-down'
-            },
-            'imageDescription': {
-                show: '<i class="fas fa-chevron-down"></i> Show Image Description',
-                hide: '<i class="fas fa-chevron-up"></i> Hide Image Description',
-                icon: 'chevron-down'
-            },
-            'issues': {
-                show: '<i class="fas fa-exclamation-triangle"></i> Show Issues',
-                hide: '<i class="fas fa-exclamation-triangle"></i> Hide Issues',
-                icon: 'exclamation-triangle'
-            },
-            'suggestions': {
-                show: '<i class="fas fa-lightbulb"></i> Show Suggestions',
-                hide: '<i class="fas fa-lightbulb"></i> Hide Suggestions',
-                icon: 'lightbulb'
-            }
-        };
-        
-        const config = buttonConfigs[type] || buttonConfigs['description'];
-        
-        if (content.classList.contains('hidden')) {
-            content.classList.remove('hidden');
-            buttonElement.innerHTML = config.hide;
-        } else {
-            content.classList.add('hidden');
-            buttonElement.innerHTML = config.show;
-        }
-    }
-    
-    // Copy prompt function
-    applyPrompt(buttonElement) {
-        // Find the message element by traversing up the DOM
-        const messageElement = buttonElement.closest('.director-message');
-        if (!messageElement) {
-            console.warn('❌ No message element found');
-            return;
-        }
-        
-        // Get message data from the HTML element
-        const messageData = messageElement.dataset.messageData;
-        if (!messageData) {
-            console.warn('❌ No message data found in element');
-            return;
-        }
-        
-        let message;
-        try {
-            message = JSON.parse(messageData);
-        } catch (e) {
-            console.warn('❌ Failed to parse message data from DOM:', e);
-            return;
-        }
-
-        // Use server-processed prompt directly
-        let prompt = null;
-        if (message.data && message.data.Prompt) {
-            prompt = message.data.Prompt;
-        }
-        
-        if (!prompt) {
-            console.warn('No prompt found for message:', message.id);
-            showGlassToast('error', null, 'No prompt found in this message');
-            return;
-        }
-        
-        // Handle different prompt formats
-
-        // Handle new JSON format with base_input, base_uc, and chara
-        if (prompt && typeof prompt === 'object' && !Array.isArray(prompt)) {
-            if (prompt.base_input !== undefined || prompt.base_uc !== undefined || prompt.chara) {
-                // Apply base prompt
-                const manualPrompt = document.getElementById('manualPrompt');
-                if (manualPrompt && prompt.base_input) {
-                    manualPrompt.value = prompt.base_input;
-
-                    // Call normal update functions that handle reflow and highlighting
-                    applyFormattedText(manualPrompt, true);
-                    updateEmphasisHighlighting(manualPrompt);
-                    stopEmphasisHighlighting();
-                    setTimeout(() => autoResizeTextarea(manualPrompt), 10);
-                }
-
-                // Apply base UC
-                const manualUc = document.getElementById('manualUc');
-                if (manualUc && prompt.base_uc) {
-                    manualUc.value = prompt.base_uc;
-
-                    // Call normal update functions that handle reflow and highlighting
-                    applyFormattedText(manualUc, true);
-                    updateEmphasisHighlighting(manualUc);
-                    stopEmphasisHighlighting();
-                }
-
-                const manualPromptNegativeMsg2 = document.getElementById('manualPromptNegative');
-                const pnMsg = prompt.input_prompt_negative ?? prompt.base_prompt_negative;
-                if (manualPromptNegativeMsg2 && pnMsg) {
-                    manualPromptNegativeMsg2.value = pnMsg;
-                    applyFormattedText(manualPromptNegativeMsg2, true);
-                    updateEmphasisHighlighting(manualPromptNegativeMsg2);
-                    stopEmphasisHighlighting();
-                    setTimeout(() => autoResizeTextarea(manualPromptNegativeMsg2), 10);
-                }
-
-                // Apply quality preset setting
-                if (prompt.apply_quality_preset !== undefined) {
-                    appendQuality = prompt.apply_quality_preset;
-                }
-
-                // Apply UC preset setting
-                if (prompt.apply_uc_preset !== undefined) {
-                    selectUcPreset(prompt.apply_uc_preset);
-                }
-
-                // Smart character management - update existing, remove unused, add new
-                if (prompt.chara && Array.isArray(prompt.chara)) {
-                    const characterItems = document.querySelectorAll('.character-prompt-item');
-                    const newCharacterCount = prompt.chara.length;
-
-                    // Remove characters beyond the new count
-                    if (characterItems.length > newCharacterCount) {
-                        for (let i = characterItems.length - 1; i >= newCharacterCount; i--) {
-                            characterItems[i].remove();
-                        }
-                    }
-
-                    // Add/update character prompts from JSON structure
-                    prompt.chara.forEach((character, index) => {
-                        if (character && (character.name || character.input || character.uc)) {
-                            this.addCharacterPromptFromData(character, index);
-                        }
-                    });
-                } else {
-                    // No characters in new prompt, remove all existing
-                    document.querySelectorAll('.character-prompt-item').forEach(item => {
-                        item.remove();
-                    });
-                }
-
-                if (this.currentSession && message.id) {
-                    const directorBtn = document.getElementById('directorBtn');
-                    if (directorBtn) {
-                        directorBtn.dataset.directorSessionId = this.currentSession.id;
-                        directorBtn.dataset.directorMessageId = message.id;
-                    }
-                }
-
-                const characterCount = prompt.chara ? prompt.chara.length : 0;
-                showGlassToast('success', null, `Prompt${characterCount > 0 ? ` and ${characterCount} character(s)` : ''} Updated`);                
-                return;
-            }
-        }
-
-        if (Array.isArray(prompt)) {
-            if (prompt.length === 1) {
-                // Single prompt: replace base prompt
-                const manualPrompt = document.getElementById('manualPrompt');
-                if (manualPrompt) {
-                    manualPrompt.value = prompt[0];
-
-                    // Call normal update functions that handle reflow and highlighting
-                    applyFormattedText(manualPrompt, true);
-                    updateEmphasisHighlighting(manualPrompt);
-                    stopEmphasisHighlighting();
-                    setTimeout(() => autoResizeTextarea(manualPrompt), 10);
-                }
-
-                // Remove all character prompts
-                const characterItems = document.querySelectorAll('.character-prompt-item');
-                characterItems.forEach(item => {
-                    item.remove();
-                });
-
-                showGlassToast('success', null, 'Prompt Updated');
-            } else if (prompt.length > 1) {
-                // Multiple prompts: first is base, rest are character prompts
-                const manualPrompt = document.getElementById('manualPrompt');
-                if (manualPrompt) {
-                    manualPrompt.value = prompt[0];
-
-                    // Call normal update functions that handle reflow and highlighting
-                    applyFormattedText(manualPrompt, true);
-                    updateEmphasisHighlighting(manualPrompt);
-                    stopEmphasisHighlighting();
-                    setTimeout(() => autoResizeTextarea(manualPrompt), 10);
-                }
-                
-                // Remove existing character prompts
-                document.querySelectorAll('.character-prompt-item').forEach(item => {
-                    item.remove();
-                });
-                
-                // Add character prompts (skip first one as it's the base)
-                for (let i = 1; i < prompt.length; i++) {
-                    this.addCharacterPromptFromData({ input: prompt[i] }, i - 1);
-                }
-                
-                showGlassToast('success', null, `Prompt and ${prompt.length - 1} character(s) Updated`);
-            }
-        } else if (typeof prompt === 'string') {
-            // Single string prompt: replace base prompt
-            const manualPrompt = document.getElementById('manualPrompt');
-            if (manualPrompt) {
-                manualPrompt.value = prompt;
-
-                // Call normal update functions that handle reflow and highlighting
-                applyFormattedText(manualPrompt, true);
-                updateEmphasisHighlighting(manualPrompt);
-                stopEmphasisHighlighting();
-            }
-
-            // Remove all character prompts
-            document.querySelectorAll('.character-prompt-item').forEach(item => {
-                item.remove();
-            });
-
-            showGlassToast('success', null, 'Prompt Updated');
-        }
-        
-        // Only auto-run if auto-generate is enabled
-        if (this.autoGenerateEnabled) {
-            setTimeout(() => {
-                const manualGenerateBtn = document.getElementById('manualGenerateBtn');
-                if (manualGenerateBtn && !manualGenerateBtn.disabled) {
-                    manualGenerateBtn.click();
-                }
-            }, 1000);
-        }
-    }
-        
-    // Use suggestion function
     useSuggestion(suggestionText) {
         // Get the chat input and send button
         const directorChatInput = this.directorChatInput;
@@ -5866,18 +5820,6 @@ class Director {
         if (!directorChatInput || !directorSendBtn) {
             console.warn('❌ Chat input or send button not found');
             return;
-        }
-        
-        // Set the action to 'change' if not already
-        const directorActionsSelected = this.directorActionsSelected;
-        if (directorActionsSelected) {
-            const currentAction = this.getSelectedDirectorAction();
-            if (currentAction !== 'change') {
-                // Switch to change action
-                const changeAction = { value: 'change', name: 'Change', icon: 'fas fa-edit' };
-                this.directorActionsSelected.innerHTML = `<i class="${changeAction.icon}"></i> ${changeAction.name}`;
-                this.directorChatInput.placeholder = 'Modify aspects of the prompt';
-            }
         }
         
         // Set the input text with the suggestion
@@ -5928,7 +5870,31 @@ class Director {
     }
 
     // Rollback to a specific message
+    dropFromMessage(messageKey) {
+        const root = this.directorChatMessages;
+        const node = root && root.querySelector(`[data-message-key="${CSS.escape(String(messageKey))}"]`);
+        if (node) {
+            let el = node;
+            while (el) {
+                const next = el.nextElementSibling;
+                el.remove();
+                el = next;
+            }
+        }
+        const messages = this.currentSession && this.currentSession.messages;
+        if (!Array.isArray(messages)) return;
+        const index = messages.findIndex((item) => String(item && (item.id || item.timestamp)) === String(messageKey));
+        if (index >= 0) messages.splice(index);
+    }
+
+    retryMessage(messageKey) {
+        this._rollbackRetry = true;
+        this.rollbackToMessage(messageKey);
+    }
+
     async rollbackToMessage(messageKey) {
+        const retry = this._rollbackRetry === true;
+        this._rollbackRetry = false;
         if (!this.currentSession) return;
 
         // Find the message element
@@ -5953,24 +5919,31 @@ class Director {
             return;
         }
 
-        // Show confirmation dialog
-        const confirmed = await showConfirmationDialog(
-            'This will permanently delete this message and all messages after it. This action cannot be undone.',
+        const choice = await showConfirmationDialog(
+            retry
+                ? 'Keep this reply, revert to this message and ask again, or cancel.'
+                : 'Keep this reply, revert to this message, or cancel.',
             [
-                { text: 'Cancel', value: false, className: 'btn-secondary' },
-                { text: 'Rollback', value: true, className: 'btn-danger' }
-            ]
+                { text: 'Keep', value: 'keep', className: 'btn-primary' },
+                { text: 'Revert', value: 'revert', className: 'btn-danger' },
+                { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
+            ],
+            null,
+            { title: retry ? 'Restart message' : 'Revert message', icon: 'fas fa-undo' }
         );
 
-        if (!confirmed) return;
+        if (choice !== 'revert') return;
+        this.dropFromMessage(messageKey);
 
         // Send rollback request
         if (window.wsClient && window.wsClient.isConnected()) {
             window.wsClient.send({
                 type: 'director_rollback_message',
                 requestId: Date.now().toString(),
+                persona: this.persona || 'wren',
                 sessionId: this.currentSession.id,
-                messageId: message.id || message.timestamp
+                messageId: message.id || message.timestamp,
+                retry: retry
             });
 
             showGlassToast('info', null, 'Rolling back messages...');
@@ -5980,81 +5953,114 @@ class Director {
     }
 
     // Scroll to bottom of chat messages
-    scrollToBottom() {
-        if (this.directorChatMessages) {
-            // Use setTimeout to ensure DOM has been updated
-            setTimeout(() => {
-                this.directorChatMessages.scrollTop = 0;
-            }, 10);
-        }
+    scrollToBottom(onlyIfNear) {
+        const el = this.directorScrollEl();
+        if (!el) return;
+        const max = Math.max(0, el.scrollHeight - el.clientHeight);
+        if (onlyIfNear && max - el.scrollTop > 64) return;
+        setTimeout(() => {
+            const scroller = this.directorScrollEl();
+            if (!scroller) return;
+            scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        }, 10);
     }
 
-    // Markdown to HTML processor
+    // Markdown to HTML. Code is pulled out before italics so underscores inside snippets stay.
     processMarkdown(markdownText) {
         if (!markdownText || typeof markdownText !== 'string') {
             return markdownText;
         }
-
-        return markdownText
-            // Headers
-            .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-            .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-            .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-            // Bold
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/__(.*?)__/g, '<strong>$1</strong>')
-            // Italic
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/_(.*?)_/g, '<em>$1</em>')
-            // Code
-            .replace(/`(.*?)`/g, '<code>$1</code>')
-            // Links
-            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-            // Line breaks
-            .replace(/\n/g, '<br>')
-            // Lists
-            .replace(/^\* (.*$)/gim, '<li>$1</li>')
-            .replace(/^- (.*$)/gim, '<li>$1</li>')
-            .replace(/^(\d+)\. (.*$)/gim, '<li>$1. $2</li>')
-            // Wrap consecutive list items in ul/ol
-            .replace(/(<li>.*<\/li>)/gs, (match) => {
-                const listItems = match.match(/<li>.*?<\/li>/g);
-                if (listItems && listItems.length > 0) {
-                    return `<ul>${match}</ul>`;
+        const stash = [];
+        const hold = (html) => {
+            const mark = `\uE000${stash.length}\uE001`;
+            stash.push(html);
+            return mark;
+        };
+        let text = markdownText.replace(/\r\n/g, '\n');
+        text = text.replace(/```([\s\S]*?)```/g, (_, code) => {
+            const body = this.escapeHtml(String(code).replace(/^\n|\n$/g, ''));
+            return hold(`<pre><code>${body}</code></pre>`);
+        });
+        text = text.replace(/`([^`\n]+)`/g, (_, code) => hold(`<code>${this.escapeHtml(code)}</code>`));
+        text = this.escapeHtml(text);
+        text = text.replace(/^### (.*)$/gim, '<h3>$1</h3>');
+        text = text.replace(/^## (.*)$/gim, '<h2>$1</h2>');
+        text = text.replace(/^# (.*)$/gim, '<h1>$1</h1>');
+        text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+        text = text.replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
+        text = text.replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
+        text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+        const lines = text.split('\n');
+        const out = [];
+        let list = null;
+        const closeList = () => {
+            if (!list) return;
+            out.push(list === 'ol' ? '</ol>' : '</ul>');
+            list = null;
+        };
+        lines.forEach((line, index) => {
+            const bullet = /^(?:[-*])\s+(.*)$/.exec(line);
+            const numbered = /^\d+\.\s+(.*)$/.exec(line);
+            if (bullet || numbered) {
+                const kind = numbered ? 'ol' : 'ul';
+                if (list !== kind) {
+                    closeList();
+                    out.push(kind === 'ol' ? '<ol>' : '<ul>');
+                    list = kind;
                 }
-                return match;
-            });
+                out.push(`<li>${(numbered || bullet)[1]}</li>`);
+                return;
+            }
+            closeList();
+            if (index > 0) out.push('<br>');
+            out.push(line);
+        });
+        closeList();
+        let html = out.join('');
+        stash.forEach((chunk, index) => {
+            html = html.split(`\uE000${index}\uE001`).join(chunk);
+        });
+        return html;
     }
+}
+
+function askWrenAboutImage(filename, name) {
+    // Director.askWrenAboutImage: this file
+    if (!directorInstance) return;
+    directorInstance.askWrenAboutImage(filename, name);
 }
 
 // Global Director instance
 window.directorInstance = null;
 
 // Initialize the Director
-let measurementsModalKeyboardWired = false;
-
-function wireMeasurementsModalKeyboard(director) {
-    if (measurementsModalKeyboardWired) return;
-    measurementsModalKeyboardWired = true;
-    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
-    registerKeyboardListener({
-        id: 'overlay.measurementsModal.close',
-        type: 'whenFocused',
-        modalId: 'measurementsModal',
-        label: 'Close',
-        keys: 'Alt+Q',
-        overlayIcon: 'fas fa-times',
-        overlayGroup: 'Director',
-        overlayOnly: true,
-        priority: -10
-    });
-}
 
 function initializeDirector() {
     if (!window.directorInstance) {
         window.directorInstance = new Director();
     }
     return window.directorInstance.init();
+}
+
+// Start menu launchId `director` (modalUtils.js), tray Open, and agent open_application land here
+async function openDirectorWindow() {
+    if (!window.directorInstance) {
+        await initializeDirector();
+    }
+    return window.directorInstance.openDirectorWindow();
+}
+
+// Called from startBackgroundTrayServices (systemTrayManager.js) and Director.init
+function initializeDirectorTray() {
+    const director = window.directorInstance;
+    if (!director || !director.directorTrayIcon || director._trayInitialized) return;
+    if (!window.isDesktop) {
+        director.directorTrayIcon.classList.add('hidden');
+        return;
+    }
+    director.setupTray();
+    director._trayInitialized = true;
 }
 
 // Try to register immediately, or wait for wsClient to be available

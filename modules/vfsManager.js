@@ -2858,6 +2858,24 @@ class VfsManager {
         return results;
     }
 
+    async updateShortcutEntry(entryId, updates = {}) {
+        const entry = await vfsDatabase.getEntryById(entryId);
+        if (!entry || entry.target_kind !== 'desktop-shortcut') {
+            throw new Error('Shortcut entry not found');
+        }
+        const meta = this._parseEntryMetaJson(entry.entry_meta) || {};
+        const name = updates.name != null ? String(updates.name).trim() : '';
+        if (name) meta.name = name;
+        if (updates.data && typeof updates.data === 'object' && !Array.isArray(updates.data)) {
+            meta.data = updates.data;
+        }
+        const display = name || entry.display_name || meta.name || 'Shortcut';
+        return vfsDatabase.updateEntry(entryId, {
+            display_name: display,
+            entry_meta: JSON.stringify(meta)
+        });
+    }
+
     async renameShortcutEntry(entryId, name) {
         const trimmed = (name || '').trim();
         if (!trimmed) throw new Error('Name is required');

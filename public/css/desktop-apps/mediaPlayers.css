@@ -1,0 +1,177 @@
+/* MeletonFX streamable music and video windows.
+   Glass track/thumb live on .slider-input in public/css/app.css.
+   These rules hold the one-line transport, the video frame, and the library window.
+   Link before hidden.css in public/app.html:
+   <link rel="stylesheet" href="/css/desktop-apps/mediaPlayers.css">
+   Script after vfsClient.js:
+   <script src="scripts/comp/desktop-apps/mediaPlayers.js"></script>
+*/
+
+#desktopMusicPlayer .modal-content,
+#desktopVideoPlayer .modal-content {
+    min-height: 0;
+    overflow: hidden;
+}
+
+#desktopVideoPlayer .modal-content {
+    position: relative;
+    padding: 0;
+}
+
+#desktopMusicPlayer audio {
+    flex: 0 0 0;
+    width: 0;
+    height: 0;
+    min-height: 0;
+    opacity: 0;
+}
+
+#desktopVideoPlayer video {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+
+#desktopMusicPlayer [data-media-role="status"] {
+    flex-shrink: 0;
+    margin-bottom: var(--spacing-sm);
+}
+
+#desktopVideoPlayer [data-media-role="status"]:not(.hidden) {
+    position: absolute;
+    top: var(--spacing-sm);
+    left: var(--spacing-sm);
+    right: var(--spacing-sm);
+    z-index: 3;
+    margin: 0;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--glass-layer-dark-5);
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-lg);
+    pointer-events: none;
+}
+
+#desktopMusicPlayer [data-media-role="transport"],
+#desktopVideoPlayer [data-media-role="transport"] {
+    flex-wrap: nowrap;
+    align-items: center;
+    min-width: 0;
+    gap: var(--spacing-sm);
+    margin-bottom: 0;
+}
+
+#desktopMusicPlayer [data-media-role="transport"] {
+    flex-shrink: 0;
+    margin-top: auto;
+}
+
+#desktopVideoPlayer [data-media-role="transport-clip"] {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+#desktopVideoPlayer [data-media-role="transport"] {
+    padding: var(--spacing-md);
+    background: var(--glass-layer-dark-4);
+    border-top: 1px solid var(--glass-border-3);
+    -webkit-backdrop-filter: var(--glass-blur-1, none);
+    backdrop-filter: var(--glass-blur-1, none);
+    transform: translateY(-100%);
+    pointer-events: none;
+    transition: transform 0.22s ease;
+    transition-delay: 0.55s;
+}
+
+#desktopVideoPlayer:hover [data-media-role="transport"],
+#desktopVideoPlayer [data-media-role="transport"]:focus-within {
+    transform: translateY(0);
+    pointer-events: auto;
+    transition-delay: 0s;
+}
+
+#desktopMusicPlayer [data-media-role="transport"] > .btn-secondary,
+#desktopVideoPlayer [data-media-role="transport"] > .btn-secondary,
+#desktopMusicPlayer [data-media-role="time"],
+#desktopVideoPlayer [data-media-role="time"] {
+    flex: 0 0 auto;
+}
+
+#desktopMusicPlayer [data-media-role="time"],
+#desktopVideoPlayer [data-media-role="time"] {
+    white-space: nowrap;
+}
+
+#desktopMusicPlayer [data-media-role="seek"],
+#desktopVideoPlayer [data-media-role="seek"] {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#desktopMusicPlayer [data-media-role="volume"],
+#desktopVideoPlayer [data-media-role="volume"] {
+    flex: 0 0 6.5rem;
+    min-width: 5.5rem;
+}
+
+.modal[data-media-tool] {
+    width: max-content;
+    height: auto;
+    max-width: min(24rem, calc(100vw - 2rem));
+}
+
+.modal[data-media-tool] .modal-content {
+    width: 20rem;
+    max-width: calc(100vw - 3rem);
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.modal[data-media-tool="url"] .modal-content {
+    width: 22rem;
+}
+
+.modal[data-media-tool="url"] .button-group {
+    width: 100%;
+}
+
+.modal[data-media-tool="url"] .form-control {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.scrollable-content[data-media-role="vfs-list"] {
+    height: auto;
+    max-height: 14rem;
+    min-height: 0;
+}
+
+.scrollable-content[data-media-role="vfs-list"] > .btn-secondary {
+    width: 100%;
+    justify-content: flex-start;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.scrollable-content[data-media-role="vfs-list"] > .btn-secondary span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.form-hint[data-media-role="vfs-path"] {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

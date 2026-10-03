@@ -463,6 +463,129 @@
         return {};
     }
 
+    // Window geometry on the wire is viewport percent only (0-100). Pixels stay inside the client.
+    function percentToPixels(value, total) {
+        return Math.round((Number(value) / 100) * total);
+    }
+
+    function pixelsToPercent(value, total) {
+        if (!total) return 0;
+        return Math.round((value / total) * 1000) / 10;
+    }
+
+    function windowGeometryPercent(modal) {
+        const rect = modal.getBoundingClientRect();
+        return {
+            left: pixelsToPercent(rect.left, window.innerWidth),
+            top: pixelsToPercent(rect.top, window.innerHeight),
+            width: pixelsToPercent(rect.width, window.innerWidth),
+            height: pixelsToPercent(rect.height, window.innerHeight)
+        };
+    }
+
+    function windowIsMinimised(modal) {
+        return modal.classList.contains('minimised') || modal.classList.contains('minimising');
+    }
+
+    const SET_WINDOW_ACTIONS = ['focus', 'minimize', 'close', 'move', 'resize'];
+    const SET_WINDOW_GEOMETRY_KEYS = ['left', 'top', 'width', 'height'];
+    const SET_WINDOW_PIXEL_KEYS = ['x', 'y', 'px', 'pixels', 'unit', 'right', 'bottom'];
+
+    function setWindowFromCommand(data) {
+        const action = String(data && data.action || '').toLowerCase();
+        if (SET_WINDOW_ACTIONS.indexOf(action) === -1) {
+            return { ok: false, error: `action must be one of ${SET_WINDOW_ACTIONS.join(', ')}` };
+        }
+        const pixelKey = SET_WINDOW_PIXEL_KEYS.find((key) => data[key] !== undefined);
+        if (pixelKey) {
+            return { ok: false, error: `${pixelKey} is not accepted; use left, top, width, height as viewport percent (0-100)` };
+        }
+        for (let i = 0; i < SET_WINDOW_GEOMETRY_KEYS.length; i += 1) {
+            const key = SET_WINDOW_GEOMETRY_KEYS[i];
+            if (data[key] === undefined) continue;
+            const n = Number(data[key]);
+            if (!Number.isFinite(n) || n < 0 || n > 100) {
+                return { ok: false, error: `${key} must be a viewport percent between 0 and 100` };
+            }
+        }
+        const modal = data && data.id ? document.getElementById(String(data.id)) : null;
+        if (!modal || !modal.classList.contains('modal') || modal.classList.contains('hidden')) {
+            return { ok: false, error: 'No open window with that id' };
+        }
+        // bringModalToFront / restoreMinimizedModal / minimizeModalProgrammatically / closeModal /
+        // isModalMaximized / restoreModalFromMaximize / setModalPositionFromViewportRect: public/scripts/comp/modalUtils.js
+        if (action === 'close') {
+            // Same path as the taskbar close: the window's own close button runs its close hooks
+            const closeBtn = modal.querySelector('.modal-window-controls .close-btn');
+            if (closeBtn) closeBtn.click();
+            else closeModal(modal);
+            return { ok: true, id: modal.id, action, closed: true };
+        }
+        if (action === 'minimize') {
+            minimizeModalProgrammatically(modal);
+            return { ok: true, id: modal.id, action, minimised: true, ...windowGeometryPercent(modal) };
+        }
+        if (modal.classList.contains('minimised')) {
+            restoreMinimizedModal(modal, null);
+        }
+        if (action === 'move' || action === 'resize') {
+            if (action === 'move' && data.left === undefined && data.top === undefined) {
+                return { ok: false, error: 'move needs left and/or top' };
+            }
+            if (action === 'resize' && data.width === undefined && data.height === undefined) {
+                return { ok: false, error: 'resize needs width and/or height' };
+            }
+            if (isModalMaximized(modal)) {
+                restoreModalFromMaximize(modal);
+            }
+            const rect = modal.getBoundingClientRect();
+            const next = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+            if (action === 'move') {
+                if (data.left !== undefined) next.left = percentToPixels(data.left, window.innerWidth);
+                if (data.top !== undefined) next.top = percentToPixels(data.top, window.innerHeight);
+            } else {
+                if (data.width !== undefined) next.width = percentToPixels(data.width, window.innerWidth);
+                if (data.height !== undefined) next.height = percentToPixels(data.height, window.innerHeight);
+            }
+            setModalPositionFromViewportRect(modal, next);
+        }
+        bringModalToFront(modal);
+        return {
+            ok: true,
+            id: modal.id,
+            action,
+            minimised: windowIsMinimised(modal),
+            maximised: isModalMaximized(modal),
+            ...windowGeometryPercent(modal)
+        };
+    }
+
+    async function openApplicationFromCommand(data) {
+        const launchId = data && data.launchId ? String(data.launchId).trim() : '';
+        if (!launchId) return { ok: false, error: 'launchId is required' };
+        // findStartMenuLaunchableById / startMenuLaunchables / buildToolsSubmenuItems / flattenToolsSubmenuItems: public/scripts/comp/modalUtils.js
+        let item = findStartMenuLaunchableById(launchId);
+        if (!item) item = startMenuLaunchables.find((entry) => entry.launchId === launchId) || null;
+        if (!item) item = flattenToolsSubmenuItems(buildToolsSubmenuItems()).find((entry) => entry.launchId === launchId) || null;
+        if (!item || typeof item.action !== 'function') {
+            return { ok: false, error: `Unknown launchId: ${launchId}` };
+        }
+        if (launchId === 'studio') {
+            const wasOpen = studioEditorIsOpen();
+            if (wasOpen) {
+                const modal = document.getElementById('manualModal');
+                if (modal) openModal(modal);
+                return { ok: true, launchId, text: item.text || launchId, fresh: false };
+            }
+            await openManualModalWithContent({ type: 'none', skipPreviewRestore: true }, null);
+            // startStudioNewSession: public/scripts/comp/studioSession.js
+            startStudioNewSession({ keepHistory: true, quiet: true });
+            return { ok: true, launchId, text: item.text || launchId, fresh: true };
+        }
+        await item.action();
+        return { ok: true, launchId, text: item.text || launchId };
+    }
+
     function collectOpenWindowsSnapshot() {
         // getOpenTaskbarModals / getModalTitle / currentActiveWindowId: public/scripts/comp/modalUtils.js
         const seen = new Set();
@@ -489,7 +612,10 @@
                 kind,
                 title: getModalTitle(modal) || modal.id,
                 active: modal.id === currentActiveWindowId,
-                minimised: modal.classList.contains('minimised'),
+                minimised: windowIsMinimised(modal),
+                // isModalMaximized: public/scripts/comp/modalUtils.js
+                maximised: isModalMaximized(modal),
+                ...windowGeometryPercent(modal),
                 data: collectWindowData(kind, modal)
             });
         });
@@ -627,6 +753,160 @@
         };
     }
 
+    function studioEditorIsOpen() {
+        const manualModal = document.getElementById('manualModal');
+        return !!(manualModal && !manualModal.classList.contains('hidden'));
+    }
+
+    async function openPhasewalkerFromCommand(data) {
+        const state = data && data.state;
+        if (!state || !Array.isArray(state.keywords) || state.keywords.length === 0) {
+            return { ok: false, error: 'Phasewalker state requires at least one keyword' };
+        }
+        if (!studioEditorIsOpen()) {
+            // openManualModalWithContent: public/scripts/comp/manualModalManager.js
+            if (typeof openManualModalWithContent !== 'function') {
+                return { ok: false, error: 'Studio is not available' };
+            }
+            await openManualModalWithContent({ type: 'none' }, null);
+        }
+        // openBracketGenerationApplet: public/scripts/comp/featureLoader.js
+        if (typeof openBracketGenerationApplet !== 'function') {
+            return { ok: false, error: 'Phasewalker is not available' };
+        }
+        const compile = data.compile !== false && studioEditorIsOpen();
+        await openBracketGenerationApplet({ state, autoCompile: compile });
+        // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
+        showAgentSessionTrayNotice('update', data);
+        const applet = bracketGenerationApplet;
+        const snapshot = applet && typeof applet.getSnapshot === 'function' ? applet.getSnapshot() : state;
+        const keywords = snapshot && Array.isArray(snapshot.keywords) ? snapshot.keywords : state.keywords;
+        let stepCount = 0;
+        keywords.forEach((keyword) => {
+            const rows = snapshot && snapshot.keywordSteps ? snapshot.keywordSteps[keyword] : null;
+            if (Array.isArray(rows) && rows.length > stepCount) stepCount = rows.length;
+        });
+        return {
+            ok: true,
+            compiled: compile,
+            editorOpen: studioEditorIsOpen(),
+            keywords,
+            stepCount,
+            change: readStudioChangeSnapshot()
+        };
+    }
+
+    function phasewalkerSnapshot() {
+        try {
+            // bracketGenerationApplet.getSnapshot: public/scripts/comp/bracketGenerationApplet.js
+            const live = bracketGenerationApplet.getSnapshot();
+            if (live && Array.isArray(live.keywords) && live.keywords.length) return live;
+        } catch (_err) { /* editor not mounted; rebuild from the prompt */ }
+        // rebuildToolStateFromEditor: public/scripts/comp/bracketGenerationApplet.js
+        return rebuildToolStateFromEditor();
+    }
+
+    function phasewalkerPhases(snapshot) {
+        if (!snapshot || !Array.isArray(snapshot.keywords) || !snapshot.keywords.length) return [];
+        const keyword = snapshot.keywords[0];
+        const steps = (snapshot.keywordSteps && snapshot.keywordSteps[keyword]) || [];
+        const names = snapshot.stepNames || [];
+        return steps.map((step, index) => ({
+            index,
+            name: names[index] || '',
+            prompt: String((step && step.prompt) || '').slice(0, 180)
+        }));
+    }
+
+    function phasewalkerPhaseIndex(snapshot, phase) {
+        const phases = phasewalkerPhases(snapshot);
+        const query = String(phase || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+        if (!query) return -1;
+        return phases.findIndex((row) => {
+            const blob = `${row.name} ${row.prompt} ${row.index}`.toLowerCase().replace(/[^a-z0-9]+/g, '');
+            return blob.includes(query) || String(row.index) === String(phase).trim();
+        });
+    }
+
+    function bakePhasewalkerToken(textarea, token, text) {
+        if (!textarea || !token) return;
+        const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('!' + escaped + '\\b', 'g');
+        if (!re.test(textarea.value)) return;
+        const baked = textarea.value.replace(re, text || '')
+            .replace(/[ \t]{2,}/g, ' ')
+            .replace(/\s*,\s*,/g, ',')
+            .replace(/^\s*,\s*/, '')
+            .replace(/\s*,\s*$/, '');
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(textarea, baked);
+        // bracketGenRefreshPromptTextarea: public/scripts/comp/bracketGenerationApplet.js
+        bracketGenRefreshPromptTextarea(textarea);
+    }
+
+    function phasewalkerIsCompiled() {
+        try {
+            // hasManagedBracketArtifacts: public/scripts/comp/bracketGenerationApplet.js
+            // Loaded by featureLoader.js only after Phasewalker has been opened.
+            return hasManagedBracketArtifacts();
+        } catch (err) {
+            if (err && err.name === 'ReferenceError') return false;
+            throw err;
+        }
+    }
+
+    function phasewalkerBlocksGenerate(data) {
+        if (data && data.walk === true) return null;
+        if (!phasewalkerIsCompiled()) return null;
+        const snapshot = phasewalkerSnapshot();
+        return {
+            ok: false,
+            generateStarted: false,
+            needsDecompile: true,
+            phases: phasewalkerPhases(snapshot),
+            error: 'Phasewalker is still compiled. decompile_phasewalker the chosen phase before generating, or pass walk:true to run every phase again.'
+        };
+    }
+
+    async function decompilePhasewalkerFromCommand(data) {
+        if (!studioEditorIsOpen()) {
+            // openManualModalWithContent: public/scripts/comp/manualModalManager.js
+            await openManualModalWithContent({ type: 'none' }, null);
+        }
+        const snapshot = phasewalkerSnapshot();
+        const phases = phasewalkerPhases(snapshot);
+        if (!snapshot || !phases.length) {
+            return { ok: false, error: 'Phasewalker has no compiled phases' };
+        }
+        const phase = data && (data.phase != null ? data.phase : data.name);
+        const index = phasewalkerPhaseIndex(snapshot, phase);
+        if (index < 0) {
+            return { ok: false, error: 'Name the phase to keep', phases };
+        }
+        snapshot.keywords.forEach((keyword) => {
+            const step = (snapshot.keywordSteps[keyword] || [])[index] || {};
+            bakePhasewalkerToken(document.getElementById('manualPrompt'), `${keyword}_P`, step.prompt || '');
+            bakePhasewalkerToken(document.getElementById('manualUc'), `${keyword}_N`, step.uc || '');
+        });
+        // deleteAllManagedBracketArtifacts: public/scripts/comp/bracketGenerationApplet.js
+        deleteAllManagedBracketArtifacts();
+        try {
+            // bracketGenerationApplet.updateChrome: public/scripts/comp/bracketGenerationApplet.js
+            bracketGenerationApplet.updateChrome();
+        } catch (_err) { /* stages are already gone */ }
+        const kept = phases[index];
+        const result = {
+            ok: true,
+            decompiled: true,
+            phaseIndex: index,
+            phase: kept && (kept.name || kept.prompt),
+            change: readStudioChangeSnapshot()
+        };
+        if (!data || data.autoGenerate !== true) return result;
+        const gen = fireBoundTabGenerate({ n: 1 });
+        return { ...result, autoGenerate: true, ...gen };
+    }
+
     async function applyStudioFromCommand(data) {
         const autoApply = readBoolFlag(data && data.autoApply, true);
         const autoGenerate = readBoolFlag(data && data.autoGenerate, false);
@@ -679,6 +959,7 @@
             applied: true,
             autoApply: true,
             opened: studioWasClosed,
+            workspaceId: readWorkspaceId(),
             checkpointId,
             ...hydration,
             ...(partialVSlider ? {
@@ -689,6 +970,8 @@
         if (!autoGenerate) {
             return { ...baseResult, autoGenerate: false };
         }
+        const blocked = phasewalkerBlocksGenerate(data);
+        if (blocked) return { ...baseResult, ...blocked, applied: true };
         const nHint = payload && payload.params && payload.params.n != null
             ? payload.params.n
             : (data && data.n);
@@ -830,7 +1113,11 @@
         sessionBound = true;
         if (data.clientId) sessionClientId = data.clientId;
         const command = data.command;
+        let keptTop = null;
         try {
+            // pushMcpKeepTopWindow / getTopOpenModal / bringModalToFront: public/scripts/comp/modalUtils.js
+            if (typeof pushMcpKeepTopWindow === 'function') pushMcpKeepTopWindow();
+            keptTop = typeof getTopOpenModal === 'function' ? getTopOpenModal() : null;
             if (command === 'get_state' || command === 'get_editor') {
                 // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
                 showAgentSessionTrayNotice('read', data);
@@ -856,6 +1143,26 @@
                 });
                 return;
             }
+            if (command === 'set_window') {
+                // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
+                showAgentSessionTrayNotice('windows', data);
+                replyAgentSessionResult(requestId, setWindowFromCommand(data));
+                return;
+            }
+            if (command === 'open_application') {
+                // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
+                showAgentSessionTrayNotice('open', data);
+                replyAgentSessionResult(requestId, await openApplicationFromCommand(data));
+                return;
+            }
+            if (command === 'director_long_job_notice') {
+                // Async void notice: toast only, no dialog, ack as soon as it is queued
+                const text = data && data.text ? String(data.text) : 'This is a long job. Director is still working.';
+                // showGlassToast: public/scripts/comp/toastManager.js
+                showGlassToast('info', 'Director', text, false, 8000, '<i class="fas fa-clapperboard"></i>');
+                replyAgentSessionResult(requestId, { ok: true, queued: true });
+                return;
+            }
             if (command === 'open_image') {
                 const result = await openImageFromCommand(data.filename, data);
                 replyAgentSessionResult(requestId, result);
@@ -872,6 +1179,38 @@
             }
             if (command === 'apply_studio') {
                 const result = await applyStudioFromCommand(data);
+                replyAgentSessionResult(requestId, result);
+                return;
+            }
+            if (command === 'print_studio') {
+                if (!studioEditorIsOpen()) {
+                    replyAgentSessionResult(requestId, {
+                        ok: false,
+                        generateStarted: false,
+                        error: 'Studio is not open'
+                    });
+                    return;
+                }
+                const blocked = phasewalkerBlocksGenerate(data);
+                if (blocked) {
+                    replyAgentSessionResult(requestId, blocked);
+                    return;
+                }
+                const gen = fireBoundTabGenerate({ n: data && data.n });
+                replyAgentSessionResult(requestId, {
+                    ok: gen.generateStarted === true,
+                    workspaceId: readWorkspaceId(),
+                    ...gen
+                });
+                return;
+            }
+            if (command === 'open_phasewalker') {
+                const result = await openPhasewalkerFromCommand(data);
+                replyAgentSessionResult(requestId, result);
+                return;
+            }
+            if (command === 'decompile_phasewalker') {
+                const result = await decompilePhasewalkerFromCommand(data);
                 replyAgentSessionResult(requestId, result);
                 return;
             }
@@ -916,6 +1255,15 @@
                 ok: false,
                 error: (err && err.message) || 'Command failed'
             });
+        } finally {
+            if (typeof popMcpKeepTopWindow === 'function') popMcpKeepTopWindow();
+            if (!keptTop || keptTop.classList.contains('hidden') || keptTop.classList.contains('closing')) return;
+            if (typeof getTopOpenModal !== 'function' || typeof bringModalToFront !== 'function') return;
+            const now = getTopOpenModal();
+            if (!now || now === keptTop) return;
+            // mcpLaunchShouldLeaveOnTop: public/scripts/comp/modalUtils.js
+            if (typeof mcpLaunchShouldLeaveOnTop === 'function' && mcpLaunchShouldLeaveOnTop(now)) return;
+            bringModalToFront(keptTop);
         }
     }
 

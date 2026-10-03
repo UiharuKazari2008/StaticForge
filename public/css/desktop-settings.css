@@ -165,9 +165,52 @@
     transform: translateX(calc(100% + 1px));
 }
 
-#desktopSettingsModal .desktop-settings-start-menu-style-toggle[data-active="orb"] .gallery-toggle-slider,
-#remoteAccessSettingsModal .desktop-settings-start-menu-style-toggle[data-active="disabled"] .gallery-toggle-slider {
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle[data-active="orb"] .gallery-toggle-slider {
     transform: translateX(calc(200% + 2px));
+}
+
+#remoteAccessSettingsModal #remoteAccessDefaultGenerationToggle.gallery-toggle-group {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+#remoteAccessSettingsModal #remoteAccessDefaultGenerationToggle .gallery-toggle-slider {
+    width: calc(100% / 3 - 2px);
+}
+
+#remoteAccessSettingsModal #remoteAccessDefaultGenerationToggle[data-active="detached"] .gallery-toggle-slider {
+    transform: none;
+}
+
+#remoteAccessSettingsModal #remoteAccessDefaultGenerationToggle[data-active="studio"] .gallery-toggle-slider {
+    transform: translateX(calc(100% + 1px));
+}
+
+#remoteAccessSettingsModal #remoteAccessDefaultGenerationToggle[data-active="auto"] .gallery-toggle-slider {
+    transform: translateX(calc(200% + 2px));
+}
+
+#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle.gallery-toggle-group {
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+
+#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle .gallery-toggle-slider {
+    width: calc(100% / 4 - 2px);
+}
+
+#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle[data-active="ledge"] .gallery-toggle-slider {
+    transform: none;
+}
+
+#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle[data-active="lumen"] .gallery-toggle-slider {
+    transform: translateX(calc(100% + 1px));
+}
+
+#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle[data-active="glancewell"] .gallery-toggle-slider {
+    transform: translateX(calc(200% + 2px));
+}
+
+#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle[data-active="disabled"] .gallery-toggle-slider {
+    transform: translateX(calc(300% + 3px));
 }
 
 #desktopSettingsModal .desktop-settings-start-menu-style-toggle .gallery-toggle-btn .tab-text {

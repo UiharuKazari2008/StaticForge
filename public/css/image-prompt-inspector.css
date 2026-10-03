@@ -19,6 +19,7 @@ body.desktop-mode .image-prompt-inspector.modal {
     overflow: hidden;
     padding: 0;
     box-sizing: border-box;
+    position: relative;
 }
 
 .image-prompt-inspector-summary {

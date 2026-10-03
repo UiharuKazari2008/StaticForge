@@ -14,6 +14,13 @@
 #bracketGenerationModal .bracket-gen-step-item .left-controls {
     flex: 1 1 auto;
     min-width: 0;
+    align-items: center;
+}
+
+#bracketGenerationModal .bracket-gen-step-item .stage-hex-id {
+    line-height: 1;
+    flex: 0 0 auto;
+    align-self: center;
 }
 
 #bracketGenerationModal .bracket-gen-step-item .character-name-editable.inline-name-edit.editing-name .character-name-input {

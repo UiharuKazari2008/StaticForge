@@ -36,16 +36,21 @@ const STUDIO_CHANGE_AI_SPEC = `Dreamscape studio change JSON. Paste into Studio 
  "vibes":[{"id":"vibe-id","ie":"v4full","strength":0.7,"inject_text":true}],
  "vSlider":[{"id":"body_weight","kind":"slider","commit":"expander","value":{"weight":0.55},"axes":[{"id":"weight","default":0.55,"target":{"kind":"expander","prefix":"body"},"stops":[{"at":0,"text":"skinny"},{"at":0.55,"text":"slightly chubby"},{"at":1,"text":"fat"}]}]}]}
 
+tokens is echoed on read (prompt/uc totals, ofLimit, ofRecommended). Do not send tokens when writing a change.
+
 Rules:
-- characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1.
+- characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1. Key is characters, not characterPrompts. center maps to position.
+- overwrite true: characters is the whole roster. Slots not in that list are removed, then the list is written. text_overlays, expanders, vibes, and vSlider already replace their lists when the key is present, including []. read_image_metadata sets overwrite so applying change restores that print.
 - Optional per-character position: {x,y} and/or cell A1–E5 (maps to Studio slot dataset / existing position dialog / V5 freeform tool). Echoed by GET /agent/session/state. Omit if unused. No new chrome.
 - fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.
 - expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
-- params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field.
+- params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field. If the picture needs a different level than Studio has, set it. Do not ask.
+- presetName: the Studio name field. It is the file label. Set it when the concept changes. Do not ask them to rename.
 - params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / bake_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
 - dataset_config: include (replace list), bias, settings (e.g. settings.__quality__.no_text.enabled false for in-image text; keep append_quality on), nsfw, nsfw_bias. Echoed on GET /agent/session/state.
+- text_overlays: array of {text, type, target, stages, disabled}. On-image speech, thought, and captions. Replaces the Studio text list. One row per target. Several lines in that row are separated by a blank line and compile to one Text: with the type tags written once in front. Do not add a row per line and do not paste "Text:" into the prompt. Separate bubbles in different places are character slots: the line in double quotes, a blank line, a placement phrase (on the left, / on the right,), and position {x, y}. The full script stays in the one overlay. Judge the print against the compiled prompt; edit this array and the input prompt, not the compiled string.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
 - Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count}. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
@@ -681,11 +686,13 @@ function normalizeStudioChangeExpander(entry) {
     const prefix = studioChangeNormalizeExpanderPrefix(entry.prefix || entry.name || entry.key || '');
     const value = entry.value != null ? entry.value : entry.text;
     if (!prefix || value == null || value === '') return null;
-    return {
+    const row = {
         prefix,
         value,
         extend: Boolean(entry.extend)
     };
+    if (entry.stages != null) row.stages = entry.stages;
+    return row;
 }
 
 function collectStudioChangeVSliderList(payload) {
@@ -757,6 +764,7 @@ function buildStudioChangeExpanderOps(payload) {
             prefix: expander.prefix,
             value: expander.value,
             extend: expander.extend,
+            stages: expander.stages,
             name: `!${expander.prefix}`,
             enabled: true
         });
@@ -883,6 +891,23 @@ function buildOpsFromPayload(payload) {
             unchanged: studioChangeValuesEqual('seedLock', currentParams.seedLock, true)
         });
     }
+    const presetName = typeof payload.presetName === 'string' ? payload.presetName.trim()
+        : (typeof payload.preset === 'string' ? payload.preset.trim() : '');
+    if (presetName) {
+        const nameInput = document.getElementById('manualPresetName');
+        const currentName = nameInput && nameInput.value ? nameInput.value.trim() : '';
+        ops.push({
+            key: 'presetName',
+            group: 'Parameters',
+            kind: 'presetName',
+            action: 'set',
+            label: 'Preset name',
+            fromValue: currentName,
+            toValue: presetName,
+            enabled: true,
+            unchanged: currentName === presetName
+        });
+    }
     if (studioDatasetConfigHasWork(datasetConfig)) {
         ops.push({
             key: 'dataset_config',
@@ -892,6 +917,19 @@ function buildOpsFromPayload(payload) {
             label: 'Dataset config',
             fromValue: null,
             toValue: datasetConfig,
+            enabled: true,
+            unchanged: false
+        });
+    }
+    if (Array.isArray(payload.text_overlays)) {
+        ops.push({
+            key: 'text_overlays',
+            group: 'Text',
+            kind: 'text_overlays',
+            action: 'set',
+            label: 'Text overlays',
+            fromValue: null,
+            toValue: payload.text_overlays,
             enabled: true,
             unchanged: false
         });
@@ -911,7 +949,12 @@ function buildOpsFromPayload(payload) {
         if (spec) fieldSpecs.push({ id, spec });
     });
 
-    const characters = Array.isArray(payload.characters) ? payload.characters : [];
+    const characters = Array.isArray(payload.characters)
+        ? payload.characters
+        : (Array.isArray(payload.characterPrompts) ? payload.characterPrompts : []);
+    if (!Array.isArray(payload.characters) && Array.isArray(payload.characterPrompts)) {
+        payload.overwrite = true;
+    }
     const coveredCharacterFields = new Set();
     characters.forEach((entry, index) => {
         if (!entry || typeof entry !== 'object') return;
@@ -971,6 +1014,8 @@ function buildOpsFromPayload(payload) {
                 uc: ucText,
                 promptNegative: promptNegativeText,
                 position: position || undefined,
+                writeEmpty: payload.overwrite === true,
+                characterEnabled: typeof entry.enabled === 'boolean' ? entry.enabled : undefined,
                 enabled: true
             });
             ['prompt', 'uc', 'promptNegative'].forEach((part) => {
@@ -992,6 +1037,29 @@ function buildOpsFromPayload(payload) {
             });
         }
     });
+
+    if (payload.overwrite === true) {
+        const written = new Set();
+        characters.forEach((entry, index) => {
+            if (!entry || typeof entry !== 'object') return;
+            const action = resolveStudioChangeCharacterAction(entry);
+            if (action === 'add') return;
+            written.add(resolveStudioChangeCharIndex(entry, action, index));
+        });
+        const existing = getStudioCharacterItems().length;
+        for (let i = 0; i < existing; i++) {
+            if (written.has(i)) continue;
+            ops.push({
+                key: `character:remove:${i}:overwrite`,
+                group: 'Characters',
+                kind: 'character',
+                action: 'remove',
+                charIndex: i,
+                name: `Character ${i + 1}`,
+                enabled: true
+            });
+        }
+    }
 
     return ops;
 }
@@ -1018,6 +1086,10 @@ function buildPayloadFromOps(ops, title) {
             params[op.paramId] = op.toValue;
             return;
         }
+        if (op.kind === 'presetName' && op.toValue) {
+            payload.presetName = op.toValue;
+            return;
+        }
         if (op.kind === 'dataset_config') {
             payload.dataset_config = op.toValue;
             params.dataset_config = op.toValue;
@@ -1030,6 +1102,7 @@ function buildPayloadFromOps(ops, title) {
         if (op.kind === 'expander') {
             const entry = { prefix: op.prefix, value: op.value };
             if (op.extend) entry.extend = true;
+            if (op.stages != null) entry.stages = op.stages;
             expanders.push(entry);
             return;
         }
@@ -1229,6 +1302,7 @@ function buildExportOpsFromStudio() {
                 prefix: expander.prefix,
                 value: expander.value,
                 extend: expander.extend,
+                stages: expander.stages,
                 name: `!${expander.prefix}`,
                 enabled: true
             });
@@ -1267,7 +1341,10 @@ function renderStudioChangeOpRow(op) {
     const icon = on ? 'fas fa-check' : 'far fa-square';
     let title = '';
     let detail = '';
-    if (op.kind === 'param') {
+    if (op.kind === 'presetName') {
+        title = op.label || 'Preset name';
+        detail = op.fromValue ? `${op.fromValue} → ${op.toValue}` : String(op.toValue || '');
+    } else if (op.kind === 'param') {
         title = op.label;
         detail = op.unchanged
             ? studioChangeFormatValue(op.paramId, op.toValue)
@@ -1467,10 +1544,16 @@ function wireStudioChangeDialog(dialog, ops, signal, options) {
     }
 }
 
-async function ensureStudioOpenForChange() {
+async function ensureStudioOpenForChange(options) {
     if (typeof openManualModalWithContent !== 'function') return;
     const modal = document.getElementById('manualModal');
     if (modal && !modal.classList.contains('hidden')) return;
+    if (options && options.fresh) {
+        await openManualModalWithContent({ type: 'none', skipPreviewRestore: true }, null);
+        // startStudioNewSession: public/scripts/comp/studioSession.js
+        startStudioNewSession({ keepHistory: true, quiet: true });
+        return;
+    }
     // Same path as open-image / openManualModalWithContent (manualModalManager.js).
     // Empty editor is valid when filename is null.
     const imageLike = window.currentManualPreviewImage || window.currentEditImage;
@@ -1805,6 +1888,13 @@ async function applyStudioChangeOps(ops) {
     if (hasCustomSize && !hasResolution && !hasResolutionPreset) {
         await applyStudioParam('resolution', 'custom');
     }
+    enabled.filter((op) => op.kind === 'presetName').forEach((op) => {
+        const nameInput = document.getElementById('manualPresetName');
+        if (!nameInput || op.toValue == null) return;
+        nameInput.value = String(op.toValue);
+        // updateManualPresetToggleBtn: public/scripts/comp/presetManager.js
+        updateManualPresetToggleBtn();
+    });
     for (const op of enabled.filter((item) => item.kind === 'param')) {
         if (hasResolutionPreset && (op.paramId === 'width' || op.paramId === 'height')) continue;
         await applyStudioParam(op.paramId, op.toValue);
@@ -1817,7 +1907,8 @@ async function applyStudioChangeOps(ops) {
         const nextExpanders = enabled.filter((op) => op.kind === 'expander').map((op) => ({
             name: op.prefix,
             value: op.value,
-            extend: Boolean(op.extend)
+            extend: Boolean(op.extend),
+            stages: op.stages
         }));
         // requestBodyReplacements / renderRequestBodyReplacementsList: public/scripts/comp/requestBodyReplacementsModal.js
         if (typeof requestBodyReplacements !== 'undefined') {
@@ -1873,19 +1964,27 @@ async function applyStudioChangeOps(ops) {
     enabled.filter((op) => op.kind === 'character' && op.action === 'replace').forEach((op) => {
         ensureStudioCharacterCount(op.charIndex + 1);
         if (op.name) setStudioCharacterName(op.charIndex, op.name);
-        if (op.prompt) {
-            writeStudioFieldValue(`character:${op.charIndex}:prompt`, op.prompt);
+        if (op.prompt || op.writeEmpty) {
+            writeStudioFieldValue(`character:${op.charIndex}:prompt`, op.prompt || '');
             writtenCharacterFields.add(`character:${op.charIndex}:prompt`);
         }
-        if (op.uc) {
-            writeStudioFieldValue(`character:${op.charIndex}:uc`, op.uc);
+        if (op.uc || op.writeEmpty) {
+            writeStudioFieldValue(`character:${op.charIndex}:uc`, op.uc || '');
             writtenCharacterFields.add(`character:${op.charIndex}:uc`);
         }
-        if (op.promptNegative) {
-            writeStudioFieldValue(`character:${op.charIndex}:promptNegative`, op.promptNegative);
+        if (op.promptNegative || op.writeEmpty) {
+            writeStudioFieldValue(`character:${op.charIndex}:promptNegative`, op.promptNegative || '');
             writtenCharacterFields.add(`character:${op.charIndex}:promptNegative`);
         }
         if (op.position) applyStudioCharacterPosition(op.charIndex, op.position);
+        if (typeof op.characterEnabled === 'boolean') {
+            const item = getStudioCharacterItems()[op.charIndex];
+            const toggleBtn = item && document.getElementById(`${item.id}_enabled`);
+            if (item && toggleBtn) {
+                toggleBtn.setAttribute('data-state', op.characterEnabled ? 'on' : 'off');
+                item.classList.toggle('character-prompt-disabled', !op.characterEnabled);
+            }
+        }
     });
 
     if (enabled.some((op) => op.kind === 'character' && op.position && op.action !== 'remove')) {
@@ -1937,6 +2036,11 @@ async function applyStudioChangeOps(ops) {
             });
         }
         writeStudioFieldValue(fieldId, next);
+    });
+
+    enabled.filter((op) => op.kind === 'text_overlays').forEach((op) => {
+        // loadTextOverlays: public/scripts/comp/textOverlayManager.js
+        loadTextOverlays(Array.isArray(op.toValue) ? op.toValue : []);
     });
 
     enabled.filter((op) => op.kind === 'vslider').forEach((op) => {
@@ -2037,7 +2141,7 @@ async function applyStudioChangePayloadSilent(payload) {
     if (studioChangeDialogBusy) return false;
     studioChangeDialogBusy = true;
     try {
-        await ensureStudioOpenForChange();
+        await ensureStudioOpenForChange({ fresh: true });
         const ops = buildOpsFromPayload(payload);
         const enabledOps = ops.filter((op) => op.enabled !== false);
         let extras = false;
@@ -2240,6 +2344,14 @@ function buildStudioChangeSnapshot() {
     }
 
     try {
+        const nameInput = document.getElementById('manualPresetName');
+        const presetName = nameInput && nameInput.value ? nameInput.value.trim() : '';
+        if (presetName) payload.presetName = presetName;
+    } catch (_err) {
+        // prompt snapshot still valid without the name field
+    }
+
+    try {
         // collectManualFormValues: public/scripts/comp/manualModalManager.js
         const values = collectManualFormValues();
         if (values && values.dataset_config) payload.dataset_config = values.dataset_config;
@@ -2255,7 +2367,72 @@ function buildStudioChangeSnapshot() {
         // prompt/params snapshot still valid without vSlider
     }
 
-    return attachStudioSeedEcho(payload);
+    try {
+        // promptTextareaToolbar.getTokenUsageSnapshot: public/scripts/comp/promptTextareaToolbar.js
+        if (promptTextareaToolbar && typeof promptTextareaToolbar.getTokenUsageSnapshot === 'function') {
+            const tokens = promptTextareaToolbar.getTokenUsageSnapshot();
+            if (tokens) payload.tokens = tokens;
+        }
+    } catch (_err) {
+        // prompt/params snapshot still valid without a token reading
+    }
+
+    return attachStudioSeedEcho(attachStudioReferenceEcho(payload));
+}
+
+function studioReferencePreviewSrc(img) {
+    if (!img) return '';
+    const src = img.getAttribute('src') || '';
+    if (!src || src.indexOf('data:') === 0 || src.indexOf('/static_images/') === 0) return '';
+    return src;
+}
+
+// Precise references and vibe previews live in #vibeReferencesContainer (public/scripts/comp/referenceManager.js).
+function readPreciseReferenceSnapshot() {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return [];
+    const rows = [];
+    container.querySelectorAll('.precise-reference-item').forEach((item) => {
+        const toggle = item.querySelector('.vibe-reference-controls .indicator');
+        if (toggle && toggle.getAttribute('data-state') === 'off') return;
+        const source = item.dataset.preciseRefKey || '';
+        if (!source) return;
+        const type = Number(item.dataset.preciseType) || 1;
+        const strengthInput = item.querySelector('input[data-precise-field="strength"]');
+        const fidelityInput = item.querySelector('input[data-precise-field="fidelity"]');
+        const row = {
+            source,
+            type,
+            role: type === 2 ? 'character' : (type === 3 ? 'style' : 'character and style'),
+            strength: strengthInput ? (Number(strengthInput.value) || 1) : 1,
+            fidelity: fidelityInput ? (Number(fidelityInput.value) || 1) : 1
+        };
+        const preview = studioReferencePreviewSrc(item.querySelector('img.vibe-reference-preview'));
+        if (preview) row.preview = preview;
+        rows.push(row);
+    });
+    return rows;
+}
+
+function attachStudioReferenceEcho(payload) {
+    if (!payload || typeof payload !== 'object') return payload;
+    try {
+        const precise = readPreciseReferenceSnapshot();
+        if (precise.length) payload.preciseReferences = precise;
+        if (Array.isArray(payload.vibes) && payload.vibes.length) {
+            const container = document.getElementById('vibeReferencesContainer');
+            payload.vibes = payload.vibes.map((vibe) => {
+                if (!vibe || !vibe.id || !container) return vibe;
+                const item = container.querySelector(`.vibe-reference-item[data-vibe-id="${CSS.escape(vibe.id)}"]:not(.precise-reference-item)`);
+                const preview = studioReferencePreviewSrc(item && item.querySelector('img.vibe-reference-preview'));
+                if (!preview) return vibe;
+                return Object.assign({}, vibe, { preview });
+            });
+        }
+    } catch (_err) {
+        // prompt snapshot still valid without the reference echo
+    }
+    return payload;
 }
 
 if (typeof window !== 'undefined') {

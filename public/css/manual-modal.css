@@ -497,13 +497,13 @@ div#manualModal:not(.windowed) {
     transform: none;
     width: 100%;
     height: 100%;
-    padding: var(--spacing-md);
+    padding: 0;
     justify-content: flex-start;
     align-items: stretch;
     overflow: hidden;
 }
 
-.manual-preview-placeholder i {
+.manual-quickstart-fallback i {
     font-size: 5em;
     opacity: 0.5;
 }
@@ -522,94 +522,370 @@ div#manualModal:not(.windowed) {
 }
 
 .manual-quickstart-gallery {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     min-height: 0;
+    overflow: hidden;
+}
+
+.manual-quickstart-gallery.has-custom-scrollbar {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
 }
 
 .manual-quickstart-header {
+    height: 50%;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-sm);
+    justify-content: center;
     flex-shrink: 0;
+    pointer-events: none;
 }
 
 .manual-quickstart-title {
-    font-size: 0.85rem;
-    font-weight: 600;
-    font-variation-settings: "wght" 600;
-    color: var(--text-accent-tinted);
-    opacity: 0.8;
+    font-family: 'Mozilla Headline', sans-serif;
+    font-size: clamp(2.4rem, 6vw, 4.5rem);
+    font-weight: 500;
+    line-height: 1;
+    color: var(--text-primary);
 }
 
-#manualQuickstartHideBtn {
+.manual-quickstart-modebar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    flex-shrink: 0;
+    margin-top: -64px;
+    padding: 0 12px 2px;
+    background: transparent;
+}
+
+.manual-quickstart-modebar-fill {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    background: var(--glass-windows-semi-bg, var(--glass-layer-dark-5));
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.manual-quickstart-modebar.is-stuck .manual-quickstart-modebar-fill {
+    opacity: 1;
+}
+
+.manual-quickstart-switch {
+    position: relative;
+    grid-column: 2;
+    justify-self: center;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: min(280px, 100%);
+    margin: 0;
+    padding: 0 0 5px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+.manual-quickstart-switch-btn {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    margin: 0;
+    padding: 2px 10px 1px;
+    color: var(--text-muted, rgba(255, 255, 255, 0.55));
+    font-family: inherit;
+    font-size: 0.92rem;
+    line-height: 1.2;
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+    opacity: 0.38;
+    text-shadow: none;
+    transition: opacity 0.2s ease, color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.manual-quickstart-switch-btn.active {
+    opacity: 1;
+    color: var(--text-primary);
+    text-shadow:
+        0 0 6px rgba(255, 255, 255, 0.16),
+        0 0 14px rgba(186, 214, 255, 0.1);
+}
+
+html.can-hover .manual-quickstart-switch:hover .manual-quickstart-switch-btn.active,
+.manual-quickstart-switch:focus-within .manual-quickstart-switch-btn.active {
+    text-shadow:
+        0 0 6px rgba(255, 255, 255, 0.9),
+        0 0 16px rgba(186, 214, 255, 0.75);
+}
+
+html.can-hover .manual-quickstart-switch:hover .manual-quickstart-switch-btn:hover:not(.active) {
+    opacity: 0.72;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+}
+
+.manual-quickstart-launch {
+    grid-column: 3;
+    justify-self: start;
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: 0 0 5px 4px;
+    padding: 0;
+    appearance: none;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    color: var(--text-muted, rgba(255, 255, 255, 0.55));
+    cursor: pointer;
+    opacity: 0.55;
+}
+
+.manual-quickstart-launch.hidden {
+    display: none;
+}
+
+html.can-hover .manual-quickstart-launch:hover {
+    opacity: 1;
+    color: var(--text-primary);
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+}
+
+.manual-quickstart-switch-underline {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 50%;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--text-primary);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.12);
+    transform: translateX(0);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+    pointer-events: none;
+}
+
+html.can-hover .manual-quickstart-switch:hover .manual-quickstart-switch-underline,
+.manual-quickstart-switch:focus-within .manual-quickstart-switch-underline {
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.7);
+}
+
+.manual-quickstart-switch[data-active="explorer"] .manual-quickstart-switch-underline {
+    transform: translateX(100%);
+}
+
+.manual-quickstart-grid > p {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 24px 12px;
+    color: var(--text-muted);
+}
+
+.manual-quickstart-grid > p[data-explorer-section] {
+    padding-bottom: 52px;
+}
+
+/* List reveal: slide up into home over 2.5s, fade over 2s.
+   First two rows (3 columns): center top, bottom left, bottom right, top left, bottom center, top right. */
+@keyframes manual-quickstart-title-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes manual-quickstart-list-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes manual-quickstart-list-slide {
+    from { transform: translateY(64vh); }
+    to { transform: translateY(0); }
+}
+
+@keyframes manual-quickstart-card-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.manual-quickstart-gallery.is-reveal-from .manual-quickstart-grid,
+.manual-quickstart-gallery.is-reveal-from .manual-quickstart-card:nth-child(-n + 6 of .manual-quickstart-card) {
+    opacity: 0;
+}
+
+.manual-quickstart-gallery.is-reveal-from .manual-quickstart-grid {
+    transform: translateY(64vh);
+}
+
+.manual-quickstart-gallery.is-title-from .manual-quickstart-title {
+    opacity: 0;
+}
+
+.manual-quickstart-gallery.is-title-in .manual-quickstart-title {
+    animation: manual-quickstart-title-in 3s ease both;
+}
+
+.manual-quickstart-gallery.is-revealing .manual-quickstart-grid {
+    animation:
+        manual-quickstart-list-slide 2.5s cubic-bezier(0.16, 1, 0.3, 1) both,
+        manual-quickstart-list-fade 2s ease both;
+}
+
+.manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(-n + 6 of .manual-quickstart-card) {
+    animation: manual-quickstart-card-in 0.55s ease both;
+}
+
+.manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(2 of .manual-quickstart-card) { animation-delay: 0s; }
+.manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(4 of .manual-quickstart-card) { animation-delay: 0.38s; }
+.manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(6 of .manual-quickstart-card) { animation-delay: 0.76s; }
+.manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(1 of .manual-quickstart-card) { animation-delay: 1.14s; }
+.manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(5 of .manual-quickstart-card) { animation-delay: 1.52s; }
+.manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(3 of .manual-quickstart-card) { animation-delay: 1.9s; }
+
+.manual-preview-placeholder.has-quickstart #manualQuickstartHideBtn {
+    position: absolute;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
+    z-index: 4;
     min-height: 28px;
     padding: 0 var(--spacing-sm);
     font-size: 0.75rem;
 }
 
+.manual-preview-content:has(#manualPreviewPlaceholder.has-quickstart:not(.hidden)) #manualPreviewPrevBtn,
+.manual-preview-content:has(#manualPreviewPlaceholder.has-quickstart:not(.hidden)) #manualPreviewNextBtn,
+.manual-preview-content:has(#manualPreviewPlaceholder.has-quickstart:not(.hidden)) #manualPreviewUseAsSourceBtn {
+    display: none;
+}
+
 .manual-quickstart-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: var(--spacing-sm);
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-    padding-bottom: var(--spacing-sm);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    width: 100%;
+    max-width: 840px;
+    margin: 0 auto;
+    padding: 76px 40px 24px;
+    box-sizing: border-box;
 }
 
 .manual-quickstart-card {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    text-align: left;
-    padding: var(--spacing-sm);
-    min-height: 88px;
-    border-radius: var(--border-radius-md);
-    background: var(--glass-layer-2);
-    border: 1px solid var(--glass-border-3);
+    position: relative;
+    top: 0;
+    z-index: 0;
+    display: block;
+    width: 100%;
+    aspect-ratio: 832 / 1216;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    overflow: visible;
+    background: transparent;
     color: var(--text-primary);
     cursor: pointer;
 }
 
+.manual-quickstart-card::before {
+    content: "";
+    position: absolute;
+    inset: -12px;
+    border-radius: 16px;
+    background: var(--glass-windows-semi-bg, var(--glass-layer-dark-5));
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    transform: scale(0.86);
+    transform-origin: center;
+    transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.manual-quickstart-card > .round-button {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    z-index: 2;
+    opacity: 0;
+    transform: scale(0.72);
+    transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.manual-quickstart-card:nth-child(3n + 2 of .manual-quickstart-card) {
+    top: -48px;
+}
+
+.manual-quickstart-card:nth-child(3n + 3 of .manual-quickstart-card) {
+    top: -24px;
+}
+
+.manual-preview-image-container .manual-quickstart-card img {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    object-fit: cover;
+    display: block;
+    border-radius: 8px;
+    pointer-events: none;
+}
+
 html.can-hover .manual-quickstart-card:hover {
-    border-color: var(--primary-color);
-    box-shadow: var(--glass-shadow-3);
+    z-index: 2;
 }
 
-.manual-quickstart-card-name {
-    font-size: 0.82rem;
-    font-weight: 600;
-    font-variation-settings: "wght" 600;
-    line-height: 1.25;
+html.can-hover .manual-quickstart-card:hover::before,
+html.can-hover .manual-quickstart-card:hover > .round-button {
+    opacity: 1;
+    transform: scale(1);
 }
 
-.manual-quickstart-card-prompt {
-    font-size: 0.72rem;
-    line-height: 1.3;
-    color: var(--text-accent-tinted);
-    opacity: 0.75;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+html:not(.can-hover) .manual-quickstart-card > .round-button {
+    opacity: 1;
+    transform: none;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
     .manual-quickstart-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--spacing-xs);
+        padding: 52px 12px 24px;
     }
 
-    .manual-quickstart-card {
-        min-height: 76px;
-        padding: var(--spacing-xs);
+    .manual-quickstart-card:nth-child(3n + 2 of .manual-quickstart-card),
+    .manual-quickstart-card:nth-child(3n + 3 of .manual-quickstart-card) {
+        top: 0;
     }
+
+    .manual-quickstart-card:nth-child(2n + 2 of .manual-quickstart-card) {
+        top: -24px;
+    }
+
+    .manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(-n + 6 of .manual-quickstart-card) {
+        animation-delay: 0s;
+    }
+
+    .manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(n + 5 of .manual-quickstart-card) {
+        animation: none;
+    }
+
+    .manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(2 of .manual-quickstart-card) { animation-delay: 0s; }
+    .manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(3 of .manual-quickstart-card) { animation-delay: 0.38s; }
+    .manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(1 of .manual-quickstart-card) { animation-delay: 0.76s; }
+    .manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(4 of .manual-quickstart-card) { animation-delay: 1.14s; }
 }
 
 html.studio-simple-output .manual-preview-blur-background,
@@ -622,10 +898,37 @@ html.studio-lock-viewer-camera .manual-preview-image-container {
 }
 
 html.studio-reduced-preview .manual-preview-blur-background,
+html.studio-reduced-preview .manual-quickstart-gallery.is-title-in .manual-quickstart-title,
+html.studio-reduced-preview .manual-quickstart-gallery.is-revealing .manual-quickstart-grid,
+html.studio-reduced-preview .manual-quickstart-gallery.is-revealing .manual-quickstart-card,
 html.studio-reduced-preview .manual-quickstart-card,
-html.studio-reduced-preview .workspace-image-item {
+html.studio-reduced-preview .manual-quickstart-card::before,
+html.studio-reduced-preview .manual-quickstart-card > .round-button,
+html.studio-reduced-preview .workspace-image-item,
+html.studio-reduced-preview .manual-quickstart-switch-underline,
+html.studio-reduced-preview .manual-quickstart-switch-btn,
+html.studio-reduced-preview .manual-quickstart-launch {
     transition: none;
     animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .manual-quickstart-gallery.is-title-in .manual-quickstart-title,
+    .manual-quickstart-gallery.is-revealing .manual-quickstart-grid,
+    .manual-quickstart-gallery.is-revealing .manual-quickstart-card,
+    .manual-quickstart-gallery.is-revealing .manual-quickstart-card:nth-child(-n + 6 of .manual-quickstart-card),
+    .manual-quickstart-card::before,
+    .manual-quickstart-card > .round-button,
+    .manual-quickstart-switch-underline,
+    .manual-quickstart-switch-btn,
+    .manual-quickstart-launch {
+        animation: none;
+        transition: none;
+    }
+}
+
+html.studio-reduced-preview .manual-quickstart-card:hover {
+    transform: none;
 }
 
 html[data-studio-transparency-bg="checker-dark"] .manual-preview-image-container-inner {

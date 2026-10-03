@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #111;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: default;
+    touch-action: none;
+  }
+  #tabStatus {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px;
+    text-align: center;
+    background: #1a1d24;
+    color: #e8eaed;
+    font: 16px/1.4 sans-serif;
+  }
+  #tabStatus[hidden] { display: none; }
+  #tabStatus p { margin: 0; max-width: 36rem; }
+  #tabStatusUrl { color: #9aa0a6; font-size: 13px; word-break: break-all; }
+  #tabStatus button {
+    margin-top: 8px;
+    padding: 6px 12px;
+    border: 1px solid #5f6368;
+    border-radius: 4px;
+    background: #2a2f38;
+    color: inherit;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<canvas id="view" tabindex="0"></canvas>
+<div id="tabStatus" hidden>
+  <p id="tabStatusTitle"></p>
+  <p id="tabStatusUrl"></p>
+  <p id="tabStatusDetail"></p>
+  <button type="button" id="tabStatusReload">Reload</button>
+</div>
+<script>
+(function () {
+  var canvas = document.getElementById('view');
+  var ctx = canvas.getContext('2d', { alpha: false });
+  var meta = { deviceWidth: 1280, deviceHeight: 800 };
+  var params = new URLSearchParams(location.search);
+  var token = params.get('t') || '';
+  var parts = location.pathname.split('/');
+  var sessionId = parts[parts.length - 1] || '';
+  var relay = location.pathname.indexOf('/api/grimoire-browser/view/') !== -1;
+  var socket = null;
+  var pendingClipboard = null;
+  var pendingMenu = null;
+  var inputUrl = relay
+    ? '/api/grimoire-browser/sessions/' + encodeURIComponent(sessionId) + '/input?t=' + encodeURIComponent(token)
+    : '';
+  var outbound = [];
+  var sending = false;
+  var pendingMove = null;
+  var moveTimer = 0;
+
+  function isGesture(obj) {
+    return obj && obj.type === 'mouse' && (obj.kind === 'down' || obj.kind === 'up' || obj.kind === 'click');
+  }
+
+  function dropQueuedMoves() {
+    var kept = [];
+    for (var i = 0; i < outbound.length; i++) {
+      if (!(outbound[i].type === 'mouse' && outbound[i].kind === 'move')) kept.push(outbound[i]);
+    }
+    outbound = kept;
+  }
+
+  function pumpOutbound() {
+    if (!relay || sending || !outbound.length) return;
+    sending = true;
+    var obj = outbound.shift();
+    fetch(inputUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      priority: isGesture(obj) ? 'high' : 'auto',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(obj)
+    }).then(function (res) {
+      if (!res.ok) throw new Error('input');
+    }).catch(function () {
+      if (isGesture(obj) && (obj.tries || 0) < 2) {
+        obj.tries = (obj.tries || 0) + 1;
+        outbound.unshift(obj);
+      }
+    }).then(function () {
+      sending = false;
+      pumpOutbound();
+    });
+  }
+
+  function enqueueInput(obj) {
+    if (!relay) {
+      if (socket && socket.readyState === 1) socket.send(JSON.stringify(obj));
+      return;
+    }
+    if (obj.type === 'mouse' && obj.kind === 'move') {
+      for (var i = outbound.length - 1; i >= 0; i--) {
+        if (outbound[i].type === 'mouse' && outbound[i].kind === 'move') {
+          outbound[i] = obj;
+          pumpOutbound();
+          return;
+        }
+      }
+    }
+    if (isGesture(obj) || obj.type === 'key' || obj.type === 'wheel') dropQueuedMoves();
+    outbound.push(obj);
+    pumpOutbound();
+  }
+
+  function sendMove(obj) {
+    pendingMove = obj;
+    if (moveTimer) return;
+    moveTimer = setTimeout(function () {
+      moveTimer = 0;
+      var move = pendingMove;
+      pendingMove = null;
+      if (move) enqueueInput(move);
+    }, 30);
+  }
+
+  function send(obj) {
+    if (obj.type === 'mouse' && obj.kind === 'move') {
+      sendMove(obj);
+      return;
+    }
+    if (isGesture(obj) || obj.type === 'key' || obj.type === 'wheel') {
+      pendingMove = null;
+      if (moveTimer) {
+        clearTimeout(moveTimer);
+        moveTimer = 0;
+      }
+    }
+    enqueueInput(obj);
+  }
+
+  var queuedBytes = null;
+  var drawing = false;
+  var paintGen = 0;
+  var regionQueue = [];
+
+  function flushRegions() {
+    var queued = regionQueue;
+    regionQueue = [];
+    for (var q = 0; q < queued.length; q++) paintRegions(queued[q]);
+  }
+
+  function drawBytes(bytes) {
+    queuedBytes = bytes;
+    if (drawing) return;
+    drawing = true;
+    var gen = ++paintGen;
+    var blob = new Blob([queuedBytes], { type: 'image/jpeg' });
+    queuedBytes = null;
+    var img = new Image();
+    var url = URL.createObjectURL(blob);
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      drawing = false;
+      if (gen === paintGen) {
+        if (canvas.width !== img.width || canvas.height !== img.height) {
+          canvas.width = img.width;
+          canvas.height = img.height;
+        }
+        ctx.drawImage(img, 0, 0);
+        flushRegions();
+        if (tabState === 'unresponsive') showTabStatus('ok');
+      }
+      if (queuedBytes) drawBytes(queuedBytes);
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      drawing = false;
+      if (gen === paintGen) flushRegions();
+      if (queuedBytes) drawBytes(queuedBytes);
+    };
+    img.src = url;
+  }
+
+  function paintRegions(msg) {
+    if (!msg || !msg.rects || !msg.rects.length) return;
+    if (canvas.width !== msg.width || canvas.height !== msg.height) {
+      if (!canvas.width || !canvas.height) {
+        canvas.width = msg.width;
+        canvas.height = msg.height;
+      }
+    }
+    var gen = paintGen;
+    for (var r = 0; r < msg.rects.length; r++) {
+      (function (rect) {
+        var bin = atob(rect.data);
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        var blob = new Blob([bytes], { type: 'image/jpeg' });
+        var tile = new Image();
+        var url = URL.createObjectURL(blob);
+        tile.onload = function () {
+          URL.revokeObjectURL(url);
+          if (gen !== paintGen) return;
+          ctx.drawImage(tile, rect.x, rect.y, rect.w, rect.h);
+          if (tabState === 'unresponsive') showTabStatus('ok');
+        };
+        tile.onerror = function () { URL.revokeObjectURL(url); };
+        tile.src = url;
+      })(msg.rects[r]);
+    }
+  }
+
+  function drawRegions(msg) {
+    if (drawing) {
+      regionQueue.push(msg);
+      return;
+    }
+    paintRegions(msg);
+  }
+
+  function postParent(payload) {
+    if (window.parent && window.parent !== window) window.parent.postMessage(payload, '*');
+  }
+
+  function handleControl(msg) {
+    if (!msg) return;
+    if (msg.type === 'meta' && msg.metadata) {
+      meta = msg.metadata;
+    } else if (msg.type === 'regions') {
+      drawRegions(msg);
+    } else if (msg.type === 'frame' && msg.data) {
+      var bin = atob(msg.data);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      drawBytes(bytes);
+    } else if (msg.type === 'pong' && typeof msg.t === 'number') {
+      var rtt = performance.now() - msg.t;
+      if (rtt > 0 && rtt < 10000) {
+        rttMs = rttMs ? (rttMs * 0.4 + rtt * 0.6) : rtt;
+        send({ type: 'rtt', ms: Math.round(rttMs) });
+      }
+    } else if (msg.type === 'popup' && msg.url) {
+      postParent({ type: 'grimoire-browser-popup', url: msg.url });
+    } else if (msg.type === 'status') {
+      showTabStatus(msg.state || 'failed', msg.url || lastUrl);
+    } else if (msg.type === 'navigating' || msg.type === 'location') {
+      if (msg.url) lastUrl = msg.url;
+      if (tabState === 'unresponsive') showTabStatus('ok');
+      postParent({
+        type: msg.navigating ? 'grimoire-browser-navigating' : 'grimoire-browser-location',
+        url: msg.url || '',
+        title: msg.title || '',
+        navigating: !!msg.navigating
+      });
+    } else if (msg.type === 'error') {
+      postParent({ type: 'grimoire-browser-navigation-failed' });
+    } else if (msg.type === 'inspect' && pendingMenu && window.parent && window.parent !== window) {
+      var menu = pendingMenu;
+      pendingMenu = null;
+      window.parent.postMessage({
+        type: 'grimoire-browser-menu',
+        clientX: menu.clientX,
+        clientY: menu.clientY,
+        selection: msg.selection || '',
+        text: msg.text || '',
+        href: msg.href || '',
+        src: msg.src || '',
+        alt: msg.alt || ''
+      }, '*');
+    } else if (msg.type === 'clipboard') {
+      var text = msg.text || '';
+      if (pendingClipboard) {
+        var resolveClipboard = pendingClipboard;
+        pendingClipboard = null;
+        resolveClipboard(text);
+      }
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'grimoire-browser-clipboard', text: text }, '*');
+      }
+    } else if (msg.type === 'download' && window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'grimoire-browser-download',
+        id: msg.id || '',
+        filename: msg.filename || 'download'
+      }, '*');
+    }
+  }
+
+  function requestClipboardCopy() {
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        var textPromise = new Promise(function (resolve) { pendingClipboard = resolve; });
+        navigator.clipboard.write([
+          new ClipboardItem({
+            'text/plain': textPromise.then(function (text) {
+              return new Blob([text || ''], { type: 'text/plain' });
+            })
+          })
+        ]).catch(function () {});
+      }
+    } catch (e) {}
+    send({ type: 'copy' });
+  }
+
+  function readLocalClipboard() {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      navigator.clipboard.readText().then(function (text) {
+        if (text) send({ type: 'paste', text: text });
+      }).catch(function () {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'grimoire-browser-paste-request' }, '*');
+        }
+      });
+      return;
+    }
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'grimoire-browser-paste-request' }, '*');
+    }
+  }
+
+  function viewportSize() {
+    var rect = canvas.getBoundingClientRect();
+    var width = Math.max(320, Math.round(rect.width));
+    var height = Math.max(240, Math.round(rect.height));
+    return { width: width, height: height };
+  }
+
+  function mapPoint(ev) {
+    var rect = canvas.getBoundingClientRect();
+    var dw = meta.deviceWidth || rect.width || 1;
+    var dh = meta.deviceHeight || rect.height || 1;
+    var x = (ev.clientX - rect.left) * (dw / (rect.width || 1));
+    var y = (ev.clientY - rect.top) * (dh / (rect.height || 1));
+    return { x: x, y: y };
+  }
+
+  function buttonName(button) {
+    if (button === 2) return 'right';
+    if (button === 1) return 'middle';
+    return 'left';
+  }
+
+  var rttProbe = 0;
+  var rttMs = 0;
+  var lastUrl = '';
+  var connected = false;
+  var tabState = 'ok';
+  var statusEl = document.getElementById('tabStatus');
+
+  function showTabStatus(state, url) {
+    if (url) lastUrl = url;
+    tabState = state || 'failed';
+    if (tabState === 'ok') {
+      statusEl.hidden = true;
+      postParent({ type: 'grimoire-browser-status', state: 'ok', url: lastUrl });
+      return;
+    }
+    var failed = tabState === 'failed';
+    document.getElementById('tabStatusTitle').textContent = failed
+      ? 'This page has failed'
+      : "This page isn't responding";
+    document.getElementById('tabStatusUrl').textContent = lastUrl;
+    document.getElementById('tabStatusDetail').textContent = failed
+      ? 'The remote browser tab is no longer running.'
+      : 'The remote tab has stopped answering. You can wait, or reload it.';
+    statusEl.hidden = false;
+    postParent({ type: 'grimoire-browser-status', state: tabState, url: lastUrl });
+  }
+
+  document.getElementById('tabStatusReload').addEventListener('click', function () {
+    if (connected && tabState === 'unresponsive') {
+      showTabStatus('ok');
+      send({ type: 'reload' });
+      return;
+    }
+    postParent({ type: 'grimoire-browser-reopen', url: lastUrl });
+  });
+  function probeRtt() {
+    send({ type: 'ping', t: performance.now() });
+  }
+  function startRttProbe() {
+    if (rttProbe) return;
+    probeRtt();
+    rttProbe = setInterval(probeRtt, 2000);
+  }
+
+  function announceReady() {
+    connected = true;
+    var size = viewportSize();
+    canvas.focus();
+    startRttProbe();
+    send({ type: 'resize', width: size.width, height: size.height });
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'grimoire-browser-ready' }, '*');
+    }
+  }
+
+  function keyPayload(ev, kind) {
+    var text = '';
+    if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.key && ev.key.length === 1) text = ev.key;
+    return {
+      type: 'key',
+      kind: kind,
+      key: ev.key,
+      code: ev.code || '',
+      text: text,
+      shift: !!ev.shiftKey,
+      ctrl: !!(ev.ctrlKey || ev.metaKey),
+      alt: !!ev.altKey
+    };
+  }
+
+  if (relay) {
+    var framesUrl = '/api/grimoire-browser/sessions/' + encodeURIComponent(sessionId) + '/frames?t=' + encodeURIComponent(token);
+    fetch(framesUrl, { credentials: 'same-origin', headers: { 'X-No-Compression': '1' } }).then(function (res) {
+      if (!res.ok || !res.body) {
+        showTabStatus('failed');
+        return;
+      }
+      announceReady();
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      var buf = '';
+      function pump() {
+        return reader.read().then(function (result) {
+          if (result.done) {
+            connected = false;
+            showTabStatus('failed', lastUrl);
+            return;
+          }
+          buf += decoder.decode(result.value, { stream: true });
+          var lines = buf.split('\n');
+          buf = lines.pop();
+          var lastFrame = null;
+          for (var n = 0; n < lines.length; n++) {
+            if (!lines[n]) continue;
+            var parsed = null;
+            try { parsed = JSON.parse(lines[n]); } catch (e) { parsed = null; }
+            if (!parsed) continue;
+            if (parsed.type === 'frame') lastFrame = parsed;
+            else handleControl(parsed);
+          }
+          if (lastFrame) handleControl(lastFrame);
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function () {
+      connected = false;
+      showTabStatus('failed', lastUrl);
+    });
+  } else {
+    var wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    socket = new WebSocket(
+      wsProto + '//' + location.host + '/sessions/' + encodeURIComponent(sessionId) + '/stream?t=' + encodeURIComponent(token)
+    );
+    socket.binaryType = 'arraybuffer';
+    socket.onopen = announceReady;
+    socket.onclose = function () {
+      connected = false;
+      showTabStatus('failed', lastUrl);
+    };
+    socket.onmessage = function (ev) {
+      if (typeof ev.data === 'string') {
+        try { handleControl(JSON.parse(ev.data)); } catch (e) {}
+        return;
+      }
+      drawBytes(ev.data);
+    };
+  }
+
+  var press = null;
+
+  function mouseBody(ev, point) {
+    return {
+      type: 'mouse',
+      x: point.x,
+      y: point.y,
+      button: buttonName(ev.button),
+      ctrl: !!(ev.ctrlKey || ev.metaKey),
+      shift: !!ev.shiftKey,
+      alt: !!ev.altKey
+    };
+  }
+
+  canvas.addEventListener('pointerdown', function (ev) {
+    if (ev.button === 2) return;
+    canvas.focus();
+    try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'grimoire-browser-focus' }, '*');
+    }
+    ev.preventDefault();
+    var p = mapPoint(ev);
+    press = { x: p.x, y: p.y, button: buttonName(ev.button), pointerId: ev.pointerId };
+    var body = mouseBody(ev, p);
+    body.kind = 'down';
+    send(body);
+  });
+  canvas.addEventListener('pointerup', function (ev) {
+    if (ev.button === 2) return;
+    ev.preventDefault();
+    var p = mapPoint(ev);
+    var tap = press && press.pointerId === ev.pointerId && press.button === buttonName(ev.button)
+      && Math.hypot(p.x - press.x, p.y - press.y) < 6;
+    var origin = press ? { x: press.x, y: press.y } : p;
+    var replaced = false;
+    if (tap) {
+      for (var i = outbound.length - 1; i >= 0; i--) {
+        if (outbound[i].type === 'mouse' && outbound[i].kind === 'down' && outbound[i].button === press.button) {
+          outbound[i] = mouseBody(ev, origin);
+          outbound[i].kind = 'click';
+          replaced = true;
+          break;
+        }
+      }
+    }
+    press = null;
+    if (replaced) {
+      pumpOutbound();
+      return;
+    }
+    var body = mouseBody(ev, tap ? origin : p);
+    body.kind = 'up';
+    send(body);
+  });
+  canvas.addEventListener('pointermove', function (ev) {
+    if (!relay && (!socket || socket.readyState !== 1)) return;
+    var p = mapPoint(ev);
+    send({ type: 'mouse', kind: 'move', x: p.x, y: p.y });
+  });
+  canvas.addEventListener('wheel', function (ev) {
+    ev.preventDefault();
+    send({ type: 'wheel', deltaX: ev.deltaX, deltaY: ev.deltaY });
+  }, { passive: false });
+  canvas.addEventListener('contextmenu', function (ev) {
+    ev.preventDefault();
+    var p = mapPoint(ev);
+    pendingMenu = { clientX: ev.clientX, clientY: ev.clientY };
+    send({ type: 'inspect', x: p.x, y: p.y });
+  });
+
+  window.addEventListener('keydown', function (ev) {
+    var mod = ev.ctrlKey || ev.metaKey;
+    if (mod && (ev.key === 'c' || ev.key === 'C')) {
+      ev.preventDefault();
+      requestClipboardCopy();
+      return;
+    }
+    if (mod && (ev.key === 'v' || ev.key === 'V' || ev.key === 'Insert')) {
+      ev.preventDefault();
+      readLocalClipboard();
+      return;
+    }
+    if (mod && (ev.key === 'x' || ev.key === 'X')) {
+      ev.preventDefault();
+      requestClipboardCopy();
+      send({ type: 'key', kind: 'down', key: 'Backspace' });
+      send({ type: 'key', kind: 'up', key: 'Backspace' });
+      return;
+    }
+    ev.preventDefault();
+    send(keyPayload(ev, 'down'));
+  });
+  window.addEventListener('keyup', function (ev) {
+    ev.preventDefault();
+    send(keyPayload(ev, 'up'));
+  });
+
+  window.addEventListener('message', function (ev) {
+    var data = ev.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'grimoire-browser-navigate' && typeof data.url === 'string') {
+      send({ type: 'navigate', url: data.url });
+    } else if (data.type === 'grimoire-browser-reload') {
+      send({ type: 'reload' });
+    } else if (data.type === 'grimoire-browser-paste' && typeof data.text === 'string' && data.text) {
+      send({ type: 'paste', text: data.text });
+    } else if (data.type === 'grimoire-browser-key' && data.kind) {
+      canvas.focus();
+      send({
+        type: 'key',
+        kind: data.kind,
+        key: data.key || '',
+        code: data.code || '',
+        text: data.text || '',
+        shift: !!data.shift,
+        ctrl: !!data.ctrl,
+        alt: !!data.alt
+      });
+    }
+  });
+
+  if (typeof ResizeObserver === 'function') {
+    var resizeTimer = 0;
+    var observer = new ResizeObserver(function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () {
+        var size = viewportSize();
+        send({ type: 'resize', width: size.width, height: size.height });
+      }, 80);
+    });
+    observer.observe(document.body);
+  }
+})();
+</script>
+</body>
+</html>

@@ -26,13 +26,11 @@
     opacity: 1;
     transform: translate3d(-50%, -50%, 0);
     backface-visibility: hidden;
+    /* Position is set every pointer move. Do not ease left/top/transform here. */
     transition:
         opacity 0.35s ease-in-out,
         width 0.24s ease-out,
         height 0.24s ease-out,
-        left 0.28s ease-out,
-        top 0.28s ease-out,
-        transform 0.22s ease-out,
         -webkit-filter 0.22s ease-out,
         filter 0.22s ease-out;
     -webkit-filter: drop-shadow(2px 4px 10px hsl(0deg 0% 0% / 42%))
@@ -41,7 +39,7 @@
         drop-shadow(0 1px 0 hsl(0deg 0% 100% / 10%));
 }
 
-.image-loupe:not(.is-dragging):not(.is-resize-snapping) {
+.image-loupe[data-state="idle"]:not(.is-dragging) {
     transition:
         opacity 0.35s ease-in-out,
         width 0.24s ease-out,
@@ -56,14 +54,11 @@
 .image-loupe.is-dragging {
     transition:
         opacity 0.35s ease-in-out,
-        width 0.24s ease-out,
-        height 0.24s ease-out,
-        transform 0.18s ease-out,
         -webkit-filter 0.18s ease-out,
         filter 0.18s ease-out;
 }
 
-.image-loupe.is-resize-snapping {
+.image-loupe.is-resize-snapping:not(.is-dragging) {
     transition:
         opacity 0.35s ease-in-out,
         width 0.24s ease-out,

@@ -246,6 +246,54 @@ function cycleManualResolutionSizeTier() {
     return null;
 }
 
+function applyStudioFreeLimits() {
+    const stepsVal = parseInt(manualSteps.value);
+    if (stepsVal > 28) {
+        manualSteps.value = 28;
+        manualSteps.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    const resVal = manualResolutionHidden ? manualResolutionHidden.value : '';
+    if (resVal && (resVal.startsWith('large_') || resVal.startsWith('xlarge_') || resVal.startsWith('wallpaper_'))) {
+        const parts = resVal.split('_');
+        if (parts.length >= 2) {
+            const aspect = parts[1];
+            const newRes = 'normal_' + aspect;
+            // selectManualResolution: public/scripts/comp/manualDropdownManager.js
+            if (RESOLUTIONS.find(r => r.value === newRes)) {
+                selectManualResolution(newRes, 'Normal');
+            }
+        }
+    }
+    forcePaidRequest = false;
+    paidRequestToggle.setAttribute('data-state', 'off');
+    manualUpscale.setAttribute('data-state', 'off');
+    showShortcutActionToast('Reset to Free Limits');
+}
+
+function applyStudioMaximumQuality() {
+    manualSteps.value = 50;
+    manualSteps.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const inputResVal = manualResolutionHidden ? manualResolutionHidden.value : '';
+    if (inputResVal && !(inputResVal.startsWith('large_') || inputResVal.startsWith('xlarge_') || inputResVal.startsWith('wallpaper_'))) {
+        const parts = inputResVal.split('_');
+        if (parts.length >= 2) {
+            const aspect = parts[1];
+            const newRes = 'large_' + aspect;
+            // selectManualResolution: public/scripts/comp/manualDropdownManager.js
+            if (RESOLUTIONS.find(r => r.value === newRes)) {
+                selectManualResolution(newRes, 'Large');
+            }
+        }
+    }
+    forcePaidRequest = true;
+    paidRequestToggle.setAttribute('data-state', 'on');
+    if (windowPaidToggle) windowPaidToggle.setAttribute('data-state', 'on');
+    manualUpscale.setAttribute('data-state', 'off');
+    showShortcutActionToast('Switched to Maximum Quality');
+}
+
 function shortcutListItem(key, label, icon, alt, overlayValid) {
     const item = { key, label, icon: icon || '', alt: !!alt };
     if (typeof overlayValid === 'function') item.overlayValid = overlayValid;
@@ -1137,61 +1185,13 @@ function handleKeyDown(event) {
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
-            // Reset steps if over 28
-            const stepsVal = parseInt(manualSteps.value);
-            if (stepsVal > 28) {
-                manualSteps.value = 28;
-                manualSteps.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-            
-            // Reset resolution to normal if large or wallpaper
-            const resVal = manualResolutionHidden ? manualResolutionHidden.value : '';
-            if (resVal && (resVal.startsWith('large_') || resVal.startsWith('xlarge_') || resVal.startsWith('wallpaper_'))) {
-                const parts = resVal.split('_');
-                if (parts.length >= 2) {
-                    const aspect = parts[1];
-                    const newRes = 'normal_' + aspect;
-                    // Check if normal version exists
-                    if (typeof RESOLUTIONS !== 'undefined' && RESOLUTIONS.find(r => r.value === newRes)) {
-                        if (typeof selectManualResolution === 'function') {
-                            selectManualResolution(newRes, 'Normal');
-                        }
-                    }
-                }
-            }
-            forcePaidRequest = false;
-            paidRequestToggle.setAttribute('data-state', 'off');
-            manualUpscale.setAttribute('data-state', 'off');
-            showShortcutActionToast('Reset to Free Limits');
+            applyStudioFreeLimits();
             break;
         case 'ALT+F7':
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
-            // Set Max Steps
-            manualSteps.value = 50;
-            manualSteps.dispatchEvent(new Event('input', { bubbles: true }));
-            
-            // Set Max Resolution
-            const inputResVal = manualResolutionHidden ? manualResolutionHidden.value : '';
-            if (inputResVal && !(inputResVal.startsWith('large_') || inputResVal.startsWith('xlarge_') || inputResVal.startsWith('wallpaper_'))) {
-                const parts = inputResVal.split('_');
-                if (parts.length >= 2) {
-                    const aspect = parts[1];
-                    const newRes = 'large_' + aspect;
-                    // Check if normal version exists
-                    if (typeof RESOLUTIONS !== 'undefined' && RESOLUTIONS.find(r => r.value === newRes)) {
-                        if (typeof selectManualResolution === 'function') {
-                            selectManualResolution(newRes, 'Large');
-                        }
-                    }
-                }
-            }
-            forcePaidRequest = true;
-            paidRequestToggle.setAttribute('data-state', 'on');
-            if (windowPaidToggle) windowPaidToggle.setAttribute('data-state', 'on');
-            manualUpscale.setAttribute('data-state', 'off');
-            showShortcutActionToast('Switched to Maximum Quality');
+            applyStudioMaximumQuality();
             break;
         case 'ALT+F8':
             if (!shouldHandleManualModalActions) break;

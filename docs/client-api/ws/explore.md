@@ -4,6 +4,8 @@ Server handler: `modules/ws/handlers/105-exploreHandler.js`
 
 Hosted DSAP domain: `explore.novelai.net` (start menu: **Agora**). Search pages are cached server-side for 1 hour; thumbnails/blobs are proxied under `.cache/explore_files/` and served as `/cache/explore_files/...`.
 
+The Studio empty-state Explorer list uses `get_studio_explore_feed`. The server pulls the first 3 pages of latest posts at boot and every 12 hours into `.cache/novelai_explore_gallery/studio_explore_feed.json`, and prefetches thumbnails. Quick Start images are a separate cache under `.cache/quickstart/` (`modules/quickstartGalleryCache.js`); the client only requests `/cache/quickstart/{id}.webp`.
+
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 
 ## Packet index
@@ -16,6 +18,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `downvote_novelai_explore_post` | `downvote_novelai_explore_post_response` | session | Handler: handleDownvoteNovelaiExplorePost |
 | `ensure_novelai_explore_image` | `ensure_novelai_explore_image_response` | session | Handler: handleEnsureNovelaiExploreImage |
 | `get_novelai_explore_gallery` | `get_novelai_explore_gallery_response` | session | Handler: handleGetNovelaiExploreGallery |
+| `get_studio_explore_feed` | `get_studio_explore_feed_response` | session | Handler: handleGetStudioExploreFeed. Studio empty-state Explorer list. Snapshot of the latest 3 search pages, refreshed at boot and every 12h. |
 | `get_novelai_explore_post` | `get_novelai_explore_post_response` | session | Handler: handleGetNovelaiExplorePost |
 | `get_novelai_explore_user` | `get_novelai_explore_user_response` | session | Handler: handleGetNovelaiExploreUser |
 | `list_novelai_explore_blocked_creators` | `list_novelai_explore_blocked_creators_response` | session | Handler: handleListNovelaiExploreBlockedCreators |

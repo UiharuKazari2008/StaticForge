@@ -80,16 +80,7 @@ class CharactersDatabase {
     }
 
     parseEnhancers(raw) {
-        if (!Array.isArray(raw)) return [];
-        return raw
-            .map((group) => {
-                if (!Array.isArray(group)) return null;
-                const tags = group
-                    .filter((t) => typeof t === 'string' && t.trim())
-                    .map((t) => t.trim());
-                return tags.length ? tags : null;
-            })
-            .filter(Boolean);
+        return normalizeEnhancerGroups(raw);
     }
 
     setEnhancers(characterId, enhancers) {
@@ -152,6 +143,53 @@ class CharactersDatabase {
         }));
     }
 
+    searchCharacters(options = {}) {
+        const query = typeof options.query === 'string' ? options.query.trim() : '';
+        const copyright = typeof options.copyright === 'string' ? options.copyright.trim() : '';
+        const limit = Math.max(1, Math.min(50, Number(options.limit) || 20));
+        if (!query && !copyright) {
+            return {
+                characterCount: this.countCharacters(),
+                copyrights: this.listCopyrights(),
+                characters: []
+            };
+        }
+        let sql = `
+            SELECT c.id, c.name, c.prompt, cp.name AS copyright_name,
+                (SELECT COUNT(*) FROM enhancers e WHERE e.character_id = c.id) AS enhancer_count
+            FROM characters c
+            JOIN copyrights cp ON cp.id = c.copyright_id
+            WHERE 1 = 1
+        `;
+        const params = [];
+        if (query) {
+            const like = `%${query.replace(/[\\%_]/g, '\\$&')}%`;
+            sql += ` AND (
+                c.name LIKE ? ESCAPE '\\'
+                OR cp.name LIKE ? ESCAPE '\\'
+                OR c.prompt LIKE ? ESCAPE '\\'
+            )`;
+            params.push(like, like, like);
+        }
+        if (copyright) {
+            sql += ' AND cp.name = ? COLLATE NOCASE';
+            params.push(copyright);
+        }
+        sql += ' ORDER BY c.name COLLATE NOCASE ASC LIMIT ?';
+        params.push(limit);
+        const characters = this.db.prepare(sql).all(...params).map((row) => {
+            const prompt = row.prompt || '';
+            return {
+                name: row.name,
+                copyright: row.copyright_name || 'Original',
+                promptPreview: prompt.length > 160 ? `${prompt.slice(0, 160)}…` : prompt,
+                promptLength: prompt.length,
+                enhancerCount: row.enhancer_count || 0
+            };
+        });
+        return { characterCount: characters.length, characters };
+    }
+
     getCharacterByName(name) {
         if (!name || typeof name !== 'string') return null;
         const row = this.db.prepare(`
@@ -196,7 +234,7 @@ class CharactersDatabase {
                 this.db.prepare(
                     'UPDATE characters SET copyright_id = ?, name = ?, prompt = ? WHERE id = ?'
                 ).run(copyrightId, name, prompt, existing.id);
-                this.setEnhancers(existing.id, character.enhancers);
+                if (character.enhancers !== undefined) this.setEnhancers(existing.id, character.enhancers);
                 this.pruneEmptyCopyrights();
                 return this.getCharacterByName(name);
             }
@@ -206,7 +244,7 @@ class CharactersDatabase {
                 this.db.prepare(
                     'UPDATE characters SET copyright_id = ?, name = ?, prompt = ? WHERE id = ?'
                 ).run(copyrightId, name, prompt, existing.id);
-                this.setEnhancers(existing.id, character.enhancers);
+                if (character.enhancers !== undefined) this.setEnhancers(existing.id, character.enhancers);
                 this.pruneEmptyCopyrights();
                 return this.getCharacterByName(name);
             }
@@ -214,7 +252,7 @@ class CharactersDatabase {
             const info = this.db.prepare(
                 'INSERT INTO characters (copyright_id, name, prompt) VALUES (?, ?, ?)'
             ).run(copyrightId, name, prompt);
-            this.setEnhancers(Number(info.lastInsertRowid), character.enhancers);
+            if (character.enhancers !== undefined) this.setEnhancers(Number(info.lastInsertRowid), character.enhancers);
             return this.getCharacterByName(name);
         });
 
@@ -390,4 +428,61 @@ class CharactersDatabase {
     }
 }
 
+function splitEnhancerTags(text) {
+    return String(text).split(',').map((tag) => tag.trim()).filter(Boolean);
+}
+
+// A comma-separated string is one overload group. A list of tags is one group.
+// A list of those (strings or arrays) is several groups.
+function normalizeEnhancerGroups(raw) {
+    if (raw == null) return [];
+    if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        if (!trimmed) return [];
+        if (trimmed.charAt(0) === '[') {
+            try {
+                const parsed = JSON.parse(trimmed);
+                if (Array.isArray(parsed)) return normalizeEnhancerGroups(parsed);
+            } catch (_err) {
+                // plain comma list
+            }
+        }
+        const tags = splitEnhancerTags(trimmed);
+        return tags.length ? [tags] : [];
+    }
+    if (!Array.isArray(raw)) return [];
+    const groups = [];
+    const loose = [];
+    const flushLoose = () => {
+        if (!loose.length) return;
+        groups.push(loose.splice(0, loose.length));
+    };
+    raw.forEach((item) => {
+        if (Array.isArray(item)) {
+            flushLoose();
+            const tags = item
+                .filter((tag) => typeof tag === 'string' && tag.trim())
+                .map((tag) => tag.trim());
+            if (tags.length === 1 && tags[0].indexOf(',') !== -1) {
+                const split = splitEnhancerTags(tags[0]);
+                if (split.length) groups.push(split);
+            } else if (tags.length) {
+                groups.push(tags);
+            }
+            return;
+        }
+        if (typeof item !== 'string' || !item.trim()) return;
+        if (item.indexOf(',') !== -1) {
+            flushLoose();
+            const split = splitEnhancerTags(item);
+            if (split.length) groups.push(split);
+            return;
+        }
+        loose.push(item.trim());
+    });
+    flushLoose();
+    return groups;
+}
+
+CharactersDatabase.normalizeEnhancerGroups = normalizeEnhancerGroups;
 module.exports = CharactersDatabase;

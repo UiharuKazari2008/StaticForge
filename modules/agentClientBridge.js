@@ -322,7 +322,7 @@ const STUDIO_CHANGE_PARAM_KEYS = [
     'strength', 'noise', 'append_quality', 'append_uc', 'append_transparency', 'nsfw',
     'n', 'normalize_vibes', 'use_coords', 'save_base_output', 'skip_pipeline_stages',
     'nsfw_bias', 'quality_preset_bias', 'transparency_bias',
-    'keep_newlines', 'auto_char_numerize', 'prompt_normalize', 'deduplicate_tags', 'auto_clean_uc'
+    'keep_newlines', 'bake_newlines', 'auto_char_numerize', 'prompt_normalize', 'deduplicate_tags', 'auto_clean_uc'
 ];
 
 function coerceStudioNsfwLevel(value) {
@@ -373,6 +373,22 @@ function upsertStudioChangeField(fields, id, text) {
     else fields.push(next);
 }
 
+function normalizeStudioChangeCharacters(list) {
+    return list.map((ch, index) => {
+        if (!ch || typeof ch !== 'object' || Array.isArray(ch)) {
+            return { index, action: 'replace' };
+        }
+        const row = { ...ch };
+        if (row.index == null || row.index === '') row.index = index;
+        if (!row.action) row.action = 'replace';
+        if (!row.name && (row.chara_name || row.promptName)) row.name = row.chara_name || row.promptName;
+        if (row.promptNegative == null && row.input_prompt_negative != null) row.promptNegative = row.input_prompt_negative;
+        if (row.promptNegative == null && row.negative_prompt != null) row.promptNegative = row.negative_prompt;
+        if (row.position == null && row.center != null) row.position = row.center;
+        return row;
+    });
+}
+
 function assembleStudioChangeFromToolArgs(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
     let base = coerceStudioChangeObject(body.change);
@@ -401,6 +417,9 @@ function assembleStudioChangeFromToolArgs(body) {
         if (body[key] !== undefined && params[key] === undefined) {
             params[key] = body[key];
         }
+        if (base && base[key] !== undefined && params[key] === undefined) {
+            params[key] = base[key];
+        }
     });
     const nsfwLevel = pickNsfwFromStudioArgs(body, params);
     if (nsfwLevel !== undefined) params.nsfw = nsfwLevel;
@@ -410,6 +429,11 @@ function assembleStudioChangeFromToolArgs(body) {
         out.dataset_config = datasetConfig;
     }
     if (Object.keys(params).length) out.params = params;
+    if (out.params) {
+        STUDIO_CHANGE_PARAM_KEYS.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(out.params, key)) delete out[key];
+        });
+    }
 
     const fields = Array.isArray(out.fields) ? out.fields.slice() : [];
     if (Array.isArray(body.fields) && !(base && Array.isArray(base.fields))) {
@@ -417,16 +441,32 @@ function assembleStudioChangeFromToolArgs(body) {
     }
     upsertStudioChangeField(fields, 'prompt', body.prompt);
     upsertStudioChangeField(fields, 'uc', body.uc);
-    const promptNegative = body.promptNegative != null ? body.promptNegative : body.input_prompt_negative;
+    const promptNegative = body.promptNegative != null ? body.promptNegative
+        : (body.prompt_negative != null ? body.prompt_negative : body.input_prompt_negative);
     upsertStudioChangeField(fields, 'promptNegative', promptNegative);
     if (fields.length) out.fields = fields;
 
-    if (Array.isArray(body.characters) && !out.characters) out.characters = body.characters;
+    const fromPromptsKey = !Array.isArray(body.characters)
+        && !Array.isArray(out.characters)
+        && (Array.isArray(body.characterPrompts) || (base && Array.isArray(base.characterPrompts)));
+    const rawCharacters = Array.isArray(body.characters) ? body.characters
+        : (Array.isArray(body.characterPrompts) ? body.characterPrompts
+            : (Array.isArray(out.characters) ? out.characters
+                : (base && Array.isArray(base.characterPrompts) ? base.characterPrompts : null)));
+    if (rawCharacters) out.characters = normalizeStudioChangeCharacters(rawCharacters);
+    if (body.overwrite === true || body.mode === 'overwrite' || (base && (base.overwrite === true || base.mode === 'overwrite')) || fromPromptsKey) {
+        out.overwrite = true;
+    }
     if (out.expanders === undefined && Array.isArray(body.expanders)) out.expanders = body.expanders;
     if (out.expanders === undefined && Array.isArray(body.text_replacements)) out.expanders = body.text_replacements;
     if (out.vibes === undefined && Array.isArray(body.vibes)) out.vibes = body.vibes;
     if (out.vibes === undefined && Array.isArray(body.vibe_transfer)) out.vibes = body.vibe_transfer;
     if (out.vSlider === undefined && Array.isArray(body.vSlider)) out.vSlider = body.vSlider;
+    if (out.text_overlays === undefined && Array.isArray(body.text_overlays)) out.text_overlays = body.text_overlays;
+    const presetName = typeof body.presetName === 'string' ? body.presetName
+        : (typeof body.preset === 'string' ? body.preset
+            : (base && typeof base.presetName === 'string' ? base.presetName : ''));
+    if (presetName.trim()) out.presetName = presetName.trim();
 
     const dyn = body.dynamicGeneration || body.dynamic_generation
         || (base && (base.dynamicGeneration || base.dynamic_generation));
@@ -441,12 +481,14 @@ function assembleStudioChangeFromToolArgs(body) {
     const hasContent = !!(
         (out.params && Object.keys(out.params).length)
         || (Array.isArray(out.fields) && out.fields.length)
-        || (Array.isArray(out.characters) && out.characters.length)
+        || (Array.isArray(out.characters) && (out.characters.length > 0 || out.overwrite === true))
         || Array.isArray(out.expanders)
         || Array.isArray(out.vibes)
         || Array.isArray(out.vSlider)
+        || Array.isArray(out.text_overlays)
         || out.dynamicGeneration
         || out.director
+        || out.presetName
     );
     if (!hasContent) return null;
     return stripStudioAutoFlagsDeep(out);
