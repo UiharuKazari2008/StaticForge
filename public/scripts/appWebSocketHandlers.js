@@ -19,17 +19,6 @@ if (window.wsClient) {
         }
     });
 
-    // Helper function to check if message is update-related
-    function isUpdateRelatedMessage(message) {
-        if (!message) return false;
-        const lowerMessage = message.toLowerCase();
-        return lowerMessage.includes('update') ||
-            lowerMessage.includes('available') ||
-            lowerMessage.includes('download') ||
-            lowerMessage.includes('install') ||
-            lowerMessage.includes('upgrade');
-    }
-
     // Handle system messages
     wsClient.on('system_message', (data) => {
         console.log('📢 System message received:', data);
