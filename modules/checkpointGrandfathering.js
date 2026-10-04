@@ -16,6 +16,9 @@ const DEFAULT_GRANDFATHERING = {
 };
 
 const CHECKPOINT_FILE_EXT_PATTERN = /^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3})(\..+)$/;
+// SQLite companions copied next to a checkpoint (`<ts>.db-wal`, `<ts>.db-shm`, `<ts>.db-journal`).
+// They are not checkpoints themselves and must never decide a directory's checkpoint extension.
+const CHECKPOINT_SIDECAR_PATTERN = /-(wal|shm|journal)$/;
 
 let _globalResourcesRef = null;
 
@@ -394,6 +397,7 @@ function detectCheckpointExt(checkpointDir) {
         if (!fs.existsSync(dir)) return null;
         for (const name of fs.readdirSync(dir)) {
             if (name.startsWith('branch_')) continue;
+            if (CHECKPOINT_SIDECAR_PATTERN.test(name)) continue;
             const match = name.match(CHECKPOINT_FILE_EXT_PATTERN);
             if (match) return match[2];
         }
