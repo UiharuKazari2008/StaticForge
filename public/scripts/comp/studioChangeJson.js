@@ -43,6 +43,7 @@ Rules:
 - overwrite true: characters is the whole roster. Slots not in that list are removed, then the list is written. text_overlays, expanders, vibes, and vSlider already replace their lists when the key is present, including []. read_image_metadata sets overwrite so applying change restores that print.
 - Optional per-character position: {x,y} and/or cell A1–E5 (maps to Studio slot dataset / existing position dialog / V5 freeform tool). Echoed by GET /agent/session/state. Omit if unused. No new chrome.
 - fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.
+- Clearing: "" on a base prompt / uc / promptNegative, or on a character's prompt / uc / promptNegative, empties that field. Omit the key to leave it.
 - expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
@@ -53,8 +54,12 @@ Rules:
 - text_overlays: array of {text, type, target, stages, disabled}. On-image speech, thought, and captions. Replaces the Studio text list. One row per target. Several lines in that row are separated by a blank line and compile to one Text: with the type tags written once in front. Do not add a row per line and do not paste "Text:" into the prompt. Separate bubbles in different places are character slots: the line in double quotes, a blank line, a placement phrase (on the left, / on the right,), and position {x, y}. The full script stays in the one overlay. Judge the print against the compiled prompt; edit this array and the input prompt, not the compiled string.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
-- Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count}. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
+- Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count, creative, creative_clothing, creative_action, novel}. novel is true/false or {enabled, tone, style, explicitness, persuasiveness, auto_generate}; enabling needs a directive. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
 - Optional director: {sessionId, messageId, prompt}. Attached director prompt / session on the existing Director button + creative directive. Same must-act rule.
+- Optional params.image_bias: 0–4 preset (0 top/left, 2 center, 4 bottom/right) or {x, y, scale, rotate}. Only with a base image; skipped while a mask exists.
+- Optional preciseReferences: [{source, type|role, strength, fidelity, enabled}] tunes references already attached (match source, else index). Never attaches new ones.
+- Optional workspace: id or name. Switches the active workspace first.
+- Optional gensoLocks: true (lock all), false (unlock all), or [keys] (lock exactly those). Echoed with gensoAvailable.
 - Optional vSlider: array of widgets; Studio shows one scrolling tool. kind: slider (1 axis) | xypad (2) | star (2+) | dropdown (named presets). Axes: stops[{at,text}] + required default (median stop unless the request justifies a bias). Between stops: emit BOTH adjacent texts as NovelAI emphasis — leaving/start stop de-emphasised N=1−t·0.5 (1.0→0.5), approaching/end stop over-emphasised N=1+t·0.5 (1.0→1.5). Exact stop = that text only, no wrapper. This is how intensity slides. dropdown: options[{id,label,text}] fill the target expander. Use for scenes/presets to evaluate. No blend. commit expander (default) or prompt. Generate/compile applies live slider values into expanders without removing widgets. Finalise bakes resolved text into the prompt (replaces !prefix), removes that expander, and deletes the widget from the catalog. Studio can author widgets via the vSlider editor. Echoed in forge_data.vSlider and GET /agent/session/state.`;
 
 const STUDIO_CHANGE_PARAM_DEFS = [
@@ -73,6 +78,7 @@ const STUDIO_CHANGE_PARAM_DEFS = [
     { id: 'upscale', label: 'Upscale' },
     { id: 'strength', label: 'Strength' },
     { id: 'noise', label: 'Noise' },
+    { id: 'image_bias', label: 'Image bias' },
     { id: 'append_quality', label: 'Quality preset' },
     { id: 'append_uc', label: 'UC preset' },
     { id: 'append_transparency', label: 'Transparency preset' },
@@ -101,6 +107,8 @@ const STUDIO_CHANGE_NSFW_NAMES = {
     '-1': 'Remove',
     '-2': 'Clense'
 };
+
+const STUDIO_CHANGE_IMAGE_BIAS_NAMES = ['Start', '⅖', 'Center', '⅘', 'End'];
 
 const STUDIO_CHANGE_FIELD_DEFS = [
     { id: 'prompt', label: 'Prompt' },
@@ -280,6 +288,10 @@ function studioChangeFormatValue(id, value) {
         const n = Number(value);
         return STUDIO_CHANGE_NSFW_NAMES[String(n)] || String(value);
     }
+    if (id === 'image_bias') {
+        if (typeof value === 'object') return `Custom ${value.x || 0},${value.y || 0} ×${value.scale ?? 1} ${value.rotate || 0}°`;
+        return STUDIO_CHANGE_IMAGE_BIAS_NAMES[Number(value)] || String(value);
+    }
     if (id === 'variety' || id === 'upscale' || id === 'append_quality' || id === 'append_transparency'
         || id === 'seedLock' || id === 'normalize_vibes' || id === 'use_coords' || id === 'save_base_output'
         || id === 'skip_pipeline_stages' || id === 'keep_newlines' || id === 'bake_newlines'
@@ -309,6 +321,7 @@ function studioChangeValuesEqual(id, a, b) {
     if (id === 'guidance' || id === 'rescale' || id === 'strength' || id === 'noise') {
         return Number(a) === Number(b);
     }
+    if (id === 'image_bias') return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
     return String(a ?? '') === String(b ?? '');
 }
 
@@ -428,6 +441,11 @@ function attachStudioSeedEcho(payload) {
     return payload;
 }
 
+// Must read window.uploadedImageData: the bare `let uploadedImageData` in imageBias.js is never assigned.
+function studioChangeHasBaseImage() {
+    return Boolean(window.uploadedImageData && !window.uploadedImageData.isPlaceholder);
+}
+
 function getStudioParamSnapshot() {
     // collectManualFormValues: public/scripts/comp/manualModalManager.js
     const values = collectManualFormValues();
@@ -455,6 +473,7 @@ function getStudioParamSnapshot() {
         upscale: values.upscale === true || values.upscale === 2,
         strength: strengthEl ? parseFloat(strengthEl.value) : undefined,
         noise: noiseEl ? parseFloat(noiseEl.value) : undefined,
+        image_bias: studioChangeHasBaseImage() ? values.image_bias : undefined,
         append_quality: values.append_quality,
         append_uc: values.append_uc,
         append_transparency: values.append_transparency,
@@ -511,7 +530,7 @@ function normalizeChunkEntry(entry, fallbackAction) {
 function normalizeFieldSpec(spec, fallbackAction) {
     if (spec == null) return null;
     if (typeof spec === 'string') {
-        return { action: 'replace', text: spec, chunks: [] };
+        return { action: 'replace', text: spec, chunks: [], clear: !spec.trim() };
     }
     if (Array.isArray(spec)) {
         const chunks = spec.map((c) => normalizeChunkEntry(c, fallbackAction || 'replace')).filter(Boolean);
@@ -540,7 +559,9 @@ function normalizeFieldSpec(spec, fallbackAction) {
         pushList(spec.replace, 'replace');
     }
     const text = String(spec.text || (typeof spec.replace === 'string' ? spec.replace : '') || '').trim();
-    return { action, text, chunks };
+    const clear = action === 'replace' && !chunks.length && !text
+        && (typeof spec.text === 'string' || typeof spec.replace === 'string' || Array.isArray(spec.chunks));
+    return { action, text, chunks, clear };
 }
 
 function studioChangeNormalizeExpanderPrefix(raw) {
@@ -782,6 +803,8 @@ function expandFieldChunks(fieldId, spec) {
             from: '',
             action: spec.action || 'replace'
         }];
+    } else if (!chunks.length && spec.clear) {
+        chunks = [{ name: 'Clear', text: '', from: '', action: 'replace' }];
     }
     return chunks.map((chunk, index) => ({
         key: `field:${fieldId}:${index}:${chunk.action}`,
@@ -928,10 +951,52 @@ function buildOpsFromPayload(payload) {
             kind: 'text_overlays',
             action: 'set',
             label: 'Text overlays',
+            detail: payload.text_overlays.length ? `${payload.text_overlays.length} row${payload.text_overlays.length === 1 ? '' : 's'}` : 'Clear text overlays',
             fromValue: null,
             toValue: payload.text_overlays,
             enabled: true,
             unchanged: false
+        });
+    }
+    if (Array.isArray(payload.preciseReferences) && payload.preciseReferences.length) {
+        ops.push({
+            key: 'preciseReferences',
+            group: 'References',
+            kind: 'precise-references',
+            action: 'set',
+            label: 'Precise references',
+            detail: `${payload.preciseReferences.length} attached reference${payload.preciseReferences.length === 1 ? '' : 's'}`,
+            toValue: payload.preciseReferences,
+            enabled: true
+        });
+    }
+    if (typeof payload.workspace === 'string' && payload.workspace.trim()) {
+        const workspaceId = resolveStudioChangeWorkspaceId(payload.workspace);
+        const currentWorkspace = manualSelectedWorkspace || activeWorkspace;
+        ops.push({
+            key: 'workspace',
+            group: 'Parameters',
+            kind: 'workspace',
+            action: 'set',
+            label: 'Workspace',
+            detail: workspaceId ? (workspaces[workspaceId].name || workspaceId) : `Unknown workspace "${payload.workspace.trim()}"`,
+            toValue: workspaceId,
+            enabled: Boolean(workspaceId),
+            unchanged: workspaceId === currentWorkspace && workspaceId === activeWorkspace
+        });
+    }
+    if (typeof payload.gensoLocks === 'boolean' || Array.isArray(payload.gensoLocks)) {
+        ops.push({
+            key: 'gensoLocks',
+            group: 'Text',
+            kind: 'genso-locks',
+            action: 'set',
+            label: 'Genso locks',
+            detail: Array.isArray(payload.gensoLocks)
+                ? (payload.gensoLocks.length ? payload.gensoLocks.map((name) => `!${String(name).replace(/^!/, '')}`).join(', ') : 'Unlock all')
+                : (payload.gensoLocks ? 'Lock all' : 'Unlock all'),
+            toValue: payload.gensoLocks,
+            enabled: true
         });
     }
 
@@ -1010,11 +1075,16 @@ function buildOpsFromPayload(payload) {
                 charIndex,
                 payloadIndex: index,
                 name: name || (action === 'add' ? 'New character' : `Character ${charIndex + 1}`),
+                rename: !!name,
                 prompt: promptText,
                 uc: ucText,
                 promptNegative: promptNegativeText,
                 position: position || undefined,
                 writeEmpty: payload.overwrite === true,
+                clearParts: ['prompt', 'uc', 'promptNegative'].filter((part) => {
+                    const raw = studioChangeCharacterPartRaw(entry, part);
+                    return typeof raw === 'string' && !raw.trim();
+                }),
                 characterEnabled: typeof entry.enabled === 'boolean' ? entry.enabled : undefined,
                 enabled: true
             });
@@ -1122,14 +1192,31 @@ function buildPayloadFromOps(ops, title) {
             vSlider = Array.isArray(op.widgets) ? op.widgets : [];
             return;
         }
+        if (op.kind === 'text_overlays') {
+            payload.text_overlays = Array.isArray(op.toValue) ? op.toValue : [];
+            return;
+        }
+        if (op.kind === 'precise-references') {
+            payload.preciseReferences = op.toValue;
+            return;
+        }
+        if (op.kind === 'workspace') {
+            payload.workspace = op.toValue;
+            return;
+        }
+        if (op.kind === 'genso-locks') {
+            payload.gensoLocks = op.toValue;
+            return;
+        }
         if (op.kind === 'character') {
             const entry = { action: op.action };
             if (op.charIndex >= 0) entry.index = op.charIndex;
-            if (op.name) entry.name = op.name;
+            if (op.name && op.rename !== false) entry.name = op.name;
             if (op.prompt) entry.prompt = op.prompt;
             if (op.uc) entry.uc = op.uc;
             if (op.promptNegative) entry.promptNegative = op.promptNegative;
             if (op.position) entry.position = op.position;
+            if (op.characterEnabled === false) entry.enabled = false;
             characters.push(entry);
             return;
         }
@@ -1234,6 +1321,7 @@ function buildExportOpsFromStudio() {
         const promptNegative = getStudioFieldValue(`character:${index}:promptNegative`);
         const position = readStudioCharacterPosition(item);
         if (!name && !prompt && !uc && !promptNegative && !position) return;
+        const toggleBtn = document.getElementById(`${item.id}_enabled`);
         ops.push({
             key: `character:replace:${index}`,
             group: 'Characters',
@@ -1246,6 +1334,7 @@ function buildExportOpsFromStudio() {
             uc,
             promptNegative,
             position: position || undefined,
+            characterEnabled: toggleBtn ? toggleBtn.getAttribute('data-state') !== 'off' : undefined,
             enabled: true
         });
     });
@@ -1323,6 +1412,22 @@ function buildExportOpsFromStudio() {
         });
     }
 
+    // getTextOverlayData: public/scripts/comp/textOverlayManager.js
+    const currentOverlays = getTextOverlayData();
+    if (currentOverlays.length) {
+        ops.push({
+            key: 'text_overlays',
+            group: 'Text',
+            kind: 'text_overlays',
+            action: 'set',
+            label: 'Text overlays',
+            fromValue: null,
+            toValue: currentOverlays,
+            enabled: true,
+            unchanged: true
+        });
+    }
+
     return ops;
 }
 
@@ -1383,6 +1488,9 @@ function renderStudioChangeOpRow(op) {
         title = op.label || 'Install vSlider widgets';
         const count = Array.isArray(op.widgets) ? op.widgets.length : 0;
         detail = count ? `${count} widget${count === 1 ? '' : 's'}` : 'Clear vSlider widgets';
+    } else if (op.kind !== 'chunk' && op.label) {
+        title = op.label;
+        detail = op.detail || '';
     } else {
         title = op.name || 'Chunk';
         detail = studioChangeTruncate(op.from && op.action === 'replace'
@@ -1848,6 +1956,21 @@ async function applyStudioParam(paramId, value) {
             renderDatasetDropdown();
             break;
         }
+        case 'image_bias': {
+            // A bias change would discard the mask; the editor asks first (imageBias.js selectImageBias).
+            if (!studioChangeHasBaseImage() || window.currentMaskData) break;
+            if (value && typeof value === 'object') {
+                const bias = { x: Number(value.x) || 0, y: Number(value.y) || 0, scale: Number(value.scale) || 1, rotate: Number(value.rotate) || 0 };
+                // applyCustomImageBias: public/scripts/comp/imageBias.js
+                applyCustomImageBias(bias);
+                break;
+            }
+            const n = parseInt(value, 10);
+            if (n < 0 || n > 4 || !Number.isFinite(n)) break;
+            // applyImageBiasChange: public/scripts/comp/imageBias.js
+            await applyImageBiasChange(n);
+            break;
+        }
         case 'keep_newlines':
             keepPromptNewlines = studioChangeFlagOn(value);
             if (!keepPromptNewlines) bakePromptNewlines = false;
@@ -1880,6 +2003,11 @@ async function applyStudioParam(paramId, value) {
 
 async function applyStudioChangeOps(ops) {
     const enabled = ops.filter((op) => op.enabled !== false);
+    for (const op of enabled.filter((item) => item.kind === 'workspace')) {
+        if (op.toValue === activeWorkspace && op.toValue === manualSelectedWorkspace) continue;
+        // selectManualWorkspace: public/scripts/comp/manualDropdownManager.js
+        await selectManualWorkspace(op.toValue);
+    }
     const hasResolutionPreset = enabled.some((op) => (
         op.kind === 'param' && op.paramId === 'resolution' && resolveStudioChangeResolutionPreset(op.toValue)
     ));
@@ -1963,16 +2091,17 @@ async function applyStudioChangeOps(ops) {
 
     enabled.filter((op) => op.kind === 'character' && op.action === 'replace').forEach((op) => {
         ensureStudioCharacterCount(op.charIndex + 1);
-        if (op.name) setStudioCharacterName(op.charIndex, op.name);
-        if (op.prompt || op.writeEmpty) {
+        if (op.name && op.rename !== false) setStudioCharacterName(op.charIndex, op.name);
+        const clearParts = op.clearParts || [];
+        if (op.prompt || op.writeEmpty || clearParts.includes('prompt')) {
             writeStudioFieldValue(`character:${op.charIndex}:prompt`, op.prompt || '');
             writtenCharacterFields.add(`character:${op.charIndex}:prompt`);
         }
-        if (op.uc || op.writeEmpty) {
+        if (op.uc || op.writeEmpty || clearParts.includes('uc')) {
             writeStudioFieldValue(`character:${op.charIndex}:uc`, op.uc || '');
             writtenCharacterFields.add(`character:${op.charIndex}:uc`);
         }
-        if (op.promptNegative || op.writeEmpty) {
+        if (op.promptNegative || op.writeEmpty || clearParts.includes('promptNegative')) {
             writeStudioFieldValue(`character:${op.charIndex}:promptNegative`, op.promptNegative || '');
             writtenCharacterFields.add(`character:${op.charIndex}:promptNegative`);
         }
@@ -2038,6 +2167,10 @@ async function applyStudioChangeOps(ops) {
         writeStudioFieldValue(fieldId, next);
     });
 
+    enabled.filter((op) => op.kind === 'precise-references').forEach((op) => {
+        applyStudioPreciseReferences(op.toValue);
+    });
+
     enabled.filter((op) => op.kind === 'text_overlays').forEach((op) => {
         // loadTextOverlays: public/scripts/comp/textOverlayManager.js
         loadTextOverlays(Array.isArray(op.toValue) ? op.toValue : []);
@@ -2046,6 +2179,10 @@ async function applyStudioChangeOps(ops) {
     enabled.filter((op) => op.kind === 'vslider').forEach((op) => {
         // installStudioVSliderWidgets: public/scripts/comp/studioVSlider.js
         installStudioVSliderWidgets(op.widgets || [], { open: true });
+    });
+
+    enabled.filter((op) => op.kind === 'genso-locks').forEach((op) => {
+        applyStudioGensoLocks(op.toValue);
     });
 
     return enabled.length;
@@ -2352,6 +2489,14 @@ function buildStudioChangeSnapshot() {
     }
 
     try {
+        payload.workspace = manualSelectedWorkspace || activeWorkspace;
+        const genso = readStudioGensoSnapshot();
+        if (genso) Object.assign(payload, genso);
+    } catch (_err) {
+        // prompt snapshot still valid without workspace / Genso echo
+    }
+
+    try {
         // collectManualFormValues: public/scripts/comp/manualModalManager.js
         const values = collectManualFormValues();
         if (values && values.dataset_config) payload.dataset_config = values.dataset_config;
@@ -2394,24 +2539,108 @@ function readPreciseReferenceSnapshot() {
     const rows = [];
     container.querySelectorAll('.precise-reference-item').forEach((item) => {
         const toggle = item.querySelector('.vibe-reference-controls .indicator');
-        if (toggle && toggle.getAttribute('data-state') === 'off') return;
         const source = item.dataset.preciseRefKey || '';
         if (!source) return;
         const type = Number(item.dataset.preciseType) || 1;
-        const strengthInput = item.querySelector('input[data-precise-field="strength"]');
-        const fidelityInput = item.querySelector('input[data-precise-field="fidelity"]');
+        const readField = (field) => {
+            const input = item.querySelector(`input[data-precise-field="${field}"]`);
+            const n = input && input.value !== '' ? Number(input.value) : NaN;
+            return Number.isFinite(n) ? n : 1;
+        };
         const row = {
             source,
             type,
             role: type === 2 ? 'character' : (type === 3 ? 'style' : 'character and style'),
-            strength: strengthInput ? (Number(strengthInput.value) || 1) : 1,
-            fidelity: fidelityInput ? (Number(fidelityInput.value) || 1) : 1
+            strength: readField('strength'),
+            fidelity: readField('fidelity')
         };
+        if (toggle && toggle.getAttribute('data-state') === 'off') row.enabled = false;
         const preview = studioReferencePreviewSrc(item.querySelector('img.vibe-reference-preview'));
         if (preview) row.preview = preview;
         rows.push(row);
     });
     return rows;
+}
+
+function studioPreciseReferenceType(entry) {
+    const type = Number(entry.type);
+    if (type === 1 || type === 2 || type === 3) return type;
+    const role = String(entry.role || '').trim().toLowerCase();
+    if (role === 'character') return 2;
+    if (role === 'style') return 3;
+    return role ? 1 : 0;
+}
+
+// Updates references already attached; never adds one. Match by source, else by list index.
+function applyStudioPreciseReferences(list) {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container || !Array.isArray(list)) return 0;
+    const items = Array.from(container.querySelectorAll('.precise-reference-item'));
+    let changed = 0;
+    list.forEach((entry, index) => {
+        if (!entry || typeof entry !== 'object') return;
+        const item = entry.source
+            ? items.find((el) => el.dataset.preciseRefKey === String(entry.source))
+            : items[index];
+        if (!item) return;
+        ['strength', 'fidelity'].forEach((field) => {
+            const n = Number(entry[field]);
+            if (entry[field] == null || !Number.isFinite(n)) return;
+            const input = item.querySelector(`input[data-precise-field="${field}"]`);
+            if (!input) return;
+            input.value = Math.max(0, Math.min(1, n)).toFixed(2);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        const type = studioPreciseReferenceType(entry);
+        // syncPreciseTypeToggles: public/scripts/comp/referenceManager.js
+        if (type) syncPreciseTypeToggles(item, type);
+        if (typeof entry.enabled === 'boolean') {
+            const toggle = item.querySelector('.vibe-reference-controls .indicator');
+            if (toggle && (toggle.getAttribute('data-state') === 'on') !== entry.enabled) toggle.click();
+        }
+        changed++;
+    });
+    if (changed) updateManualPriceDisplay();
+    return changed;
+}
+
+// Workspace id or name (case-insensitive). workspaces: public/scripts/comp/workspaceUtils.js
+function resolveStudioChangeWorkspaceId(ref) {
+    const raw = String(ref || '').trim();
+    if (!raw) return '';
+    if (workspaces[raw]) return raw;
+    const lower = raw.toLowerCase();
+    const hit = Object.values(workspaces).find((ws) => (
+        String(ws.id || '').toLowerCase() === lower || String(ws.name || '').trim().toLowerCase() === lower
+    ));
+    return hit ? hit.id : '';
+}
+
+// true locks every lockable Genso seed, false unlocks all, an array locks exactly those keys (with or without "!").
+function applyStudioGensoLocks(spec) {
+    // getInspectorAppliedTextReplacementSeeds / syncInspectorTextReplacementsToLoadedMetadata / refreshTextReplacementLockModalIfOpen: public/scripts/comp/textReplacementManager.js
+    const seeds = getInspectorAppliedTextReplacementSeeds();
+    if (!seeds.length) return 0;
+    const names = Array.isArray(spec)
+        ? new Set(spec.map((name) => String(name).replace(/^!/, '').trim().toLowerCase()))
+        : null;
+    const next = seeds.map((seed) => {
+        const want = names ? names.has(String(seed.key || '').toLowerCase()) : spec === true;
+        return { ...seed, locked: want && seed.can_lock !== false };
+    });
+    syncInspectorTextReplacementsToLoadedMetadata(next);
+    refreshTextReplacementLockModalIfOpen();
+    return next.filter((seed) => seed.locked).length;
+}
+
+function readStudioGensoSnapshot() {
+    const seeds = getInspectorAppliedTextReplacementSeeds();
+    if (!seeds.length) return null;
+    const keys = (list) => Array.from(new Set(list.map((seed) => seed.key).filter(Boolean)));
+    return {
+        gensoLocks: keys(seeds.filter((seed) => seed.locked === true)),
+        gensoAvailable: keys(seeds.filter((seed) => seed.can_lock !== false))
+    };
 }
 
 function attachStudioReferenceEcho(payload) {

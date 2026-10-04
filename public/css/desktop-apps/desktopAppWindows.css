@@ -1,11 +1,11 @@
 /* MeletonFX calculator, alarm, pomodoro, and remote desktop sessions.
-   Shared modal classes draw the chrome. These rules only make the three
-   windows fill extra height: keypad rows on the calculator, the clock
-   on alarm and pomodoro.
+   Shared modal classes draw the chrome. These rules make the windows fill
+   extra height (keypad rows on the calculator, the clock on alarm and
+   pomodoro) and lay out the calculator's keypads and history tape.
    Link before hidden.css in public/app.html:
    <link rel="stylesheet" href="/css/desktop-apps/desktopAppWindows.css">
-   The same flex is also set inline in calculator.js and alarmPomodoro.js
-   so the windows still grow if this file is not linked yet.
+   alarmPomodoro.js also sets its flex inline; calculator.js relies on
+   this file.
 */
 
 #desktopCalculatorModal,
@@ -13,6 +13,12 @@
 #desktopPomodoroModal {
     flex-direction: column;
     width: 280px;
+}
+
+#desktopCalculatorModal {
+    width: 360px;
+    container-type: inline-size;
+    container-name: desktop-calculator;
 }
 
 #desktopAlarmModal,
@@ -30,6 +36,7 @@
 
 #desktopCalculatorModal .modal-body,
 #desktopCalculatorModal #desktopCalculatorPad,
+#desktopCalculatorModal [data-calc-pad],
 #desktopAlarmModal .form-section,
 #desktopPomodoroModal .form-section {
     flex: 1 1 auto;
@@ -38,27 +45,153 @@
 
 #desktopCalculatorModal .modal-body {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    gap: var(--spacing-md);
 }
 
-#desktopCalculatorModal #desktopCalculatorDisplay {
+#desktopCalculatorModal #desktopCalculatorPad {
+    min-width: 0;
+}
+
+#desktopCalculatorModal #desktopCalculatorExpression,
+#desktopCalculatorModal #desktopCalculatorDisplay,
+#desktopCalculatorModal #desktopCalculatorBases {
     flex: 0 0 auto;
 }
 
-#desktopCalculatorModal #desktopCalculatorPad > .form-row {
+#desktopCalculatorModal #desktopCalculatorExpression {
+    justify-content: flex-end;
+    margin: 0;
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+#desktopCalculatorModal #desktopCalculatorDisplay {
+    font-size: 2rem;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+/* One keypad per mode; the base rows only in programmer */
+#desktopCalculatorModal:not([data-calc-mode="standard"]) [data-calc-pad="standard"],
+#desktopCalculatorModal:not([data-calc-mode="scientific"]) [data-calc-pad="scientific"],
+#desktopCalculatorModal:not([data-calc-mode="programmer"]) [data-calc-pad="programmer"],
+#desktopCalculatorModal:not([data-calc-mode="programmer"]) #desktopCalculatorBases {
+    display: none;
+}
+
+#desktopCalculatorModal [data-calc-pad] > .form-row {
     flex: 1 1 auto;
     align-items: stretch;
     min-height: 32px;
 }
 
-#desktopCalculatorModal #desktopCalculatorPad > .form-row > .form-group {
+#desktopCalculatorModal [data-calc-pad] > .form-row > .form-group {
     min-height: 0;
+    min-width: 0;
 }
 
-#desktopCalculatorModal #desktopCalculatorPad > .form-row > .form-group > button {
+#desktopCalculatorModal [data-calc-pad] > .form-row > .form-group > button {
     flex: 1 1 auto;
     width: 100%;
     min-height: 32px;
+    padding-inline: 0;
+}
+
+/* Programmer: F and a wide equals */
+#desktopCalculatorModal [data-calc-pad="programmer"] > .form-row:last-child > .form-group:last-child {
+    flex-grow: 4;
+}
+
+/* 2nd shows the second label on keys that have one */
+#desktopCalculatorModal [data-calc-key2] > span + span,
+#desktopCalculatorModal[data-calc-second] [data-calc-key2] > span:first-child {
+    display: none;
+}
+
+#desktopCalculatorModal[data-calc-second] [data-calc-key2] > span + span {
+    display: inline;
+}
+
+#desktopCalculatorModal #desktopCalculatorBases {
+    gap: var(--spacing-xs);
+}
+
+#desktopCalculatorModal #desktopCalculatorBases > button {
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    width: 100%;
+}
+
+#desktopCalculatorModal #desktopCalculatorBases > button > span + span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+/* History tape: a side column when the window is wide. When narrow,
+   the title-bar toggle swaps it in for the keypad. */
+#desktopCalculatorModal #desktopCalculatorTape {
+    display: none;
+    flex: 0 0 240px;
+    min-height: 0;
+    min-width: 0;
+}
+
+#desktopCalculatorModal #desktopCalculatorTape > .form-row {
+    flex: 0 0 auto;
+    justify-content: space-between;
+}
+
+#desktopCalculatorModal #desktopCalculatorTapeList {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    min-height: 0;
+    overflow-y: auto;
+}
+
+#desktopCalculatorModal #desktopCalculatorTapeList:empty::before {
+    content: 'No history yet';
+    padding: var(--spacing-md);
+    color: var(--text-muted);
+    text-align: center;
+}
+
+#desktopCalculatorModal #desktopCalculatorTapeList > button {
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: flex-end;
+    width: 100%;
+    text-align: right;
+}
+
+#desktopCalculatorModal #desktopCalculatorTapeList > button > .form-hint {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+@container desktop-calculator (min-width: 600px) {
+    #desktopCalculatorModal #desktopCalculatorTape {
+        display: flex;
+    }
+
+    #desktopCalculatorModal #desktopCalculatorTapeBtn {
+        display: none;
+    }
+}
+
+@container desktop-calculator (max-width: 599.98px) {
+    #desktopCalculatorModal[data-calc-tape] #desktopCalculatorTape {
+        display: flex;
+        flex: 1 1 auto;
+    }
+
+    #desktopCalculatorModal[data-calc-tape] #desktopCalculatorPad {
+        display: none;
+    }
 }
 
 #desktopAlarmRemain,

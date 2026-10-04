@@ -1344,6 +1344,15 @@ function acceptBiasAdjustment() {
 
 // Apply bias adjustment (helper function)
 function applyBiasAdjustment() {
+    // Close both dialogs
+    hideBiasAdjustmentConfirmDialog();
+    hideImageBiasAdjustmentModal();
+
+    applyCustomImageBias(imageBiasAdjustmentData.currentBias);
+}
+
+// Custom {x, y, scale, rotate} bias without the adjustment dialogs (also Change JSON image_bias: studioChangeJson.js)
+function applyCustomImageBias(bias) {
     // Store the bias adjustment data
     if (!window.uploadedImageData) {
         window.uploadedImageData = {};
@@ -1352,17 +1361,14 @@ function applyBiasAdjustment() {
     // Store the previous bias before applying the new one
     window.uploadedImageData.previousBias = window.uploadedImageData.image_bias || window.uploadedImageData.bias || 2;
 
-    window.uploadedImageData.image_bias = imageBiasAdjustmentData.currentBias;
+    window.uploadedImageData.image_bias = bias;
+    imageBiasAdjustmentData.currentBias = bias;
 
     // Update the hidden input for form submission
     const imageBiasHidden = document.getElementById('imageBias');
     if (imageBiasHidden) {
-        imageBiasHidden.value = JSON.stringify(imageBiasAdjustmentData.currentBias);
+        imageBiasHidden.value = JSON.stringify(bias);
     }
-
-    // Close both dialogs
-    hideBiasAdjustmentConfirmDialog();
-    hideImageBiasAdjustmentModal();
 
     // Update the main preview
     cropImageToResolution();

@@ -685,10 +685,11 @@ function selectManualWorkspace(workspaceId) {
     manualSelectedWorkspace = workspaceId;
 
     // Set the active workspace
-    setActiveWorkspace(workspaceId);
+    const switching = setActiveWorkspace(workspaceId);
 
     // Update the display
     updateManualWorkspaceDisplay();
+    return switching;
 }
 
 

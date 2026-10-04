@@ -1168,6 +1168,8 @@ class ContextMenuController {
 
         // Add context-open class to target element
         target.classList.add('context-open');
+        // revealPreviewMetaOverlay: public/scripts/comp/referenceManager.js
+        revealPreviewMetaOverlay(target);
 
         // Show the overlay
         this.overlay.classList.remove('hidden');

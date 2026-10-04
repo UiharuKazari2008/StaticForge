@@ -24,6 +24,7 @@ const MODULE_DEFS = {
         tools: [
             'generate_image', 'get_generation_job', 'await_generation_job', 'ensure_artifact',
             'get_session_state', 'get_studio_state', 'get_open_windows', 'set_window', 'open_application',
+            'get_calculator', 'set_calculator',
             'offer_director_window', 'get_client_physics',
             'set_session_title', 'set_session_tasks', 'set_session_task', 'get_session_tasks', 'close_session_tasks',
             'offer_workspace_switch', 'show_chat_image', 'request_form',

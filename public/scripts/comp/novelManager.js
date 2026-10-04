@@ -154,6 +154,34 @@ function novelApplySettingsToBtn(settings) {
     btn.dataset.autoGenerate = settings.auto_generate === false ? 'false' : 'true';
 }
 
+/** Change JSON dynamicGeneration.novel: true/false or {enabled, tone, style, explicitness, persuasiveness, auto_generate}. Enable is refused while novelCanEnable() is false. */
+function applyStudioNovelConfig(config) {
+    const btn = novelGetBtn();
+    const spec = typeof config === 'boolean' ? { enabled: config }
+        : (config && typeof config === 'object' && !Array.isArray(config) ? config : null);
+    if (!btn || !spec) return false;
+    const hasSettings = ['tone', 'style', 'explicitness', 'persuasiveness', 'auto_generate'].some((key) => spec[key] !== undefined);
+    if (hasSettings) novelApplySettingsToBtn({ ...novelGetSessionSettings(), ...spec });
+    if (spec.enabled === false) {
+        btn.dataset.state = 'off';
+        btn.classList.remove('active');
+        return true;
+    }
+    if (spec.enabled === true && btn.dataset.state !== 'on') {
+        novelRefreshEnableState();
+        if (btn.disabled) return hasSettings;
+        btn.dataset.state = 'on';
+        btn.classList.add('active');
+        novelEnsureNote(activeWorkspace).then(() => novelPersistSettings())
+            .catch((err) => console.warn('Change JSON novel enable:', err));
+        return true;
+    }
+    if (hasSettings && btn.dataset.state === 'on') {
+        novelPersistSettings().catch((err) => console.warn('Change JSON novel settings:', err));
+    }
+    return hasSettings;
+}
+
 async function novelEnsureNote(workspaceId) {
     if (!wsClient || !wsClient.isConnected()) return null;
     if (window.novelSession?.noteId && window.novelSession.note) {

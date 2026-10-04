@@ -58,8 +58,9 @@
     left: 0;
     width: 320px;
     height: 100%;
-    background: var(--glass-windows-bg, var(--glass-layer-dark-menu));
-    border-right: 5px solid var(--glass-border-2);
+    background: rgb(0 0 0 / 28%);
+    backdrop-filter: blur(18px);
+    border-right: 1px solid var(--glass-border-3);
     z-index: var(--z-layer-10);
     display: flex;
     flex-direction: column;
@@ -71,6 +72,10 @@
 
 .director-session-overlay:not(.hidden) {
     transform: translateX(0);
+}
+
+html.disable-blur .director-session-overlay {
+    background: var(--glass-windows-bg, var(--glass-layer-dark-menu));
 }
 
 .director-session-overlay-header {
@@ -373,6 +378,7 @@
     min-height: 30px;
     min-width: 52px;
     padding: 0 8px;
+    font-size: 0.8rem;
 }
 
 #directorPersonaGroup[data-persona="xi"] .gallery-toggle-slider {
@@ -918,6 +924,21 @@
     transition: none;
 }
 
+/* Director.fadeInComposer (public/scripts/comp/director.js) when the window or Studio panel opens */
+#directorSessionChat.director-composer-fade #directorComposer {
+    animation: director-composer-fade-in 0.35s ease 0.1s both;
+}
+
+@keyframes director-composer-fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
 .director-chat-input {
     width: 100%;
     flex: 0 0 auto;
@@ -952,9 +973,8 @@
     padding: 10px 12px 6px;
 }
 
-#directorComposer .director-welcome-message img {
-    width: 48px;
-    height: 48px;
+#directorComposer .director-welcome-message .logo-text {
+    font-size: 2.25rem;
     margin: 0 auto 6px;
 }
 
@@ -966,7 +986,7 @@
 #directorComposer .btn-group-compact {
     justify-content: center;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--spacing-sm);
 }
 
 #directorComposer [data-task] {
@@ -1015,15 +1035,16 @@
     border-color: #d3483f;
 }
 
+/* Fixed one-line height so picking a quick task does not move the composer */
 #directorComposer [data-quick-note] {
     text-align: center;
     color: var(--text-muted);
     margin: 8px 0 0;
-    min-height: 1.2em;
-}
-
-#directorComposer [data-quick-note]:empty {
-    display: none;
+    height: 1.5em;
+    line-height: 1.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 html.disable-blur .director-chat-input {
@@ -2964,6 +2985,7 @@ html.disable-blur .director-attach-chip {
 
 #directorWindow #directorModelPick {
     display: flex;
+    flex-shrink: 0;
 }
 
 @container director-header (max-width: 860px) {
@@ -3041,7 +3063,8 @@ html.disable-blur .director-attach-chip {
         flex: 0 0 260px;
         width: 260px;
         height: auto;
-        border-right-width: 1px;
+        background: rgb(0 0 0 / 28%);
+        backdrop-filter: none;
         box-shadow: none;
         z-index: auto;
         transition: none;

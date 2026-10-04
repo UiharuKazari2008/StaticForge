@@ -271,7 +271,8 @@ function slimGalleryListItem(item) {
         storage: item.storage || 'local',
         hasFullImage: item.hasFullImage !== false,
         hasMetadata: item.hasMetadata !== false,
-        reachable: item.reachable !== false
+        reachable: item.reachable !== false,
+        display: item.display && typeof item.display === 'object' ? item.display : null
     };
     if (slim.preview == null && slim.base) {
         slim.preview = `${slim.base}.webp`;

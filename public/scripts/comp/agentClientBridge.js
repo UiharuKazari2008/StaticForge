@@ -1155,6 +1155,15 @@
                 replyAgentSessionResult(requestId, await openApplicationFromCommand(data));
                 return;
             }
+            if (command === 'get_calculator' || command === 'set_calculator') {
+                // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
+                showAgentSessionTrayNotice('windows', data);
+                // readDesktopCalculatorForAgent / applyDesktopCalculatorAgentAction: public/scripts/comp/desktop-apps/calculator.js
+                replyAgentSessionResult(requestId, command === 'get_calculator'
+                    ? readDesktopCalculatorForAgent(data)
+                    : applyDesktopCalculatorAgentAction(data));
+                return;
+            }
             if (command === 'director_long_job_notice') {
                 // Async void notice: toast only, no dialog, ack as soon as it is queued
                 const text = data && data.text ? String(data.text) : 'This is a long job. Director is still working.';

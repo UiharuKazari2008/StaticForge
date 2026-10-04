@@ -5934,6 +5934,457 @@ async function handleImageFile(file, backgroundImage) {
     assignImagePreviewObjectUrl(backgroundImage, file);
 }
 
+function forgeDataBadgeHtml(iconClass, text) {
+    const safe = String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    return `<div class="forgedata-badge"><i class="${iconClass}"></i><span>${safe}</span></div>`;
+}
+
+function forgeBagPresent(value) {
+    if (value == null || value === false) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    if (typeof value === 'string') return value.trim().length > 0;
+    return true;
+}
+
+// Available-data chips shared by Properties and the context-menu preview overlay.
+function collectForgeDataBadges(metadata) {
+    const badges = [];
+    if (!metadata || typeof metadata !== 'object') return badges;
+
+    if (metadata._encoding) {
+        const encIcon = String(metadata._encoding).startsWith('LSB') ? 'fa-light fa-eye-slash' : 'fa-light fa-file-code';
+        badges.push({ icon: encIcon, text: String(metadata._encoding) });
+    }
+
+    const fd = metadata.forge_data;
+    if (!fd || typeof fd !== 'object') return badges;
+
+    let icon = 'nai-sakura';
+    let text = 'Anime';
+    if (fd.dataset_config !== undefined && fd.dataset_config?.include?.length > 0) {
+        if (fd.dataset_config.include.includes('furry')) {
+            icon = 'nai-paw';
+            text = 'Furry';
+        } else if (fd.dataset_config.include.includes('background')) {
+            icon = 'fa-solid fa-mountain-city';
+            text = 'Background';
+        } else if (fd.dataset_config.include.includes('danbooru')) {
+            text = 'Danbooru';
+        }
+        if (fd.dataset_config.include.length > 1) {
+            text = `${fd.dataset_config.include.length} Datasets`;
+        }
+    }
+    badges.push({ icon, text });
+
+    if (fd.input_prompt !== undefined) {
+        badges.push({ icon: 'fa-light fa-pen-nib', text: 'Prompt' });
+    }
+
+    if (fd.allCharacters !== undefined) {
+        const chars = Array.isArray(fd.allCharacters) ? fd.allCharacters : [];
+        const charUc = fd.input_uc !== undefined
+            && chars.length > 0
+            && chars.some((character) => character && character.uc && String(character.uc).trim().length > 0);
+        if (charUc) {
+            badges.push({ icon: 'fa-light fa-ban', text: 'Multi-UC' });
+        }
+        if (fd.append_uc !== undefined) {
+            badges.push({ icon: 'fa-light fa-soap', text: 'UC' });
+        } else if (!charUc && fd.input_uc !== undefined) {
+            badges.push({ icon: 'fa-light fa-soap', text: 'UC' });
+        }
+        badges.push({
+            icon: chars.length > 1 ? 'fa-light fa-user-group' : 'fa-light fa-child',
+            text: chars.length > 1 ? `${chars.length} Characters` : 'Character'
+        });
+    } else {
+        if (fd.input_uc !== undefined) {
+            badges.push({ icon: 'fa-light fa-ban', text: 'UC' });
+        }
+        if (fd.append_uc !== undefined) {
+            badges.push({ icon: 'fa-light fa-soap', text: 'UC' });
+        }
+    }
+
+    if (fd.append_quality !== undefined) {
+        badges.push({ icon: 'fa-light fa-crown', text: 'Quality' });
+    }
+    if (fd.image_source !== undefined || (metadata.reference_image_multiple > 0)) {
+        const count = Number(metadata.reference_image_multiple) || 0;
+        badges.push({
+            icon: 'fa-light fa-scanner-image',
+            text: count > 1 ? `${count} References` : 'Reference Image'
+        });
+    }
+    if (fd.image_bias !== undefined) {
+        badges.push({ icon: 'fa-light fa-crop', text: 'NDRB' });
+    }
+    if (fd.chara_reference_source !== undefined) {
+        badges.push({ icon: 'nai-precise-reference', text: 'Precise Reference' });
+    }
+    if (fd.mask_compressed !== undefined || fd.mask !== undefined) {
+        badges.push({ icon: 'nai-inpaint', text: 'InPaint' });
+    }
+    if (Array.isArray(fd.vibe_transfer) && fd.vibe_transfer.length > 0) {
+        badges.push({
+            icon: 'nai-vibe-transfer',
+            text: fd.vibe_transfer.length > 1 ? `${fd.vibe_transfer.length} Encodings` : 'Vibe Encoding'
+        });
+    }
+    if (fd.mcp_generated) {
+        badges.push({ icon: 'fa-light fa-plug', text: 'MCP' });
+    }
+    if (fd.use_coords === true || metadata.use_coords === true) {
+        badges.push({ icon: 'fas fa-location-crosshairs', text: 'Positions' });
+    }
+    if (forgeBagPresent(fd.text_replacements) || forgeBagPresent(metadata.text_replacements)) {
+        badges.push({ icon: 'fas fa-book-font', text: 'Expanders' });
+    }
+    if (forgeBagPresent(fd.text_overlays) || forgeBagPresent(metadata.text_overlays)) {
+        badges.push({ icon: 'fas fa-text', text: 'Text' });
+    }
+    if (forgeBagPresent(fd.vSlider) || forgeBagPresent(metadata.vSlider)) {
+        badges.push({ icon: 'fas fa-sliders', text: 'vSlider' });
+    }
+    const stageSeeds = Array.isArray(fd.stage_seeds) ? fd.stage_seeds : [];
+    if (forgeBagPresent(fd.pipeline) || forgeBagPresent(metadata.pipeline) || stageSeeds.length > 1) {
+        badges.push({ icon: 'fas fa-layer-group', text: 'Pipeline' });
+    }
+    if (forgeBagPresent(fd.emphasis_normalization) || forgeBagPresent(metadata.emphasis_normalization)) {
+        badges.push({ icon: 'fas fa-weight-scale', text: 'Emphasis' });
+    }
+    if (forgeBagPresent(fd.dynamic_generation) || forgeBagPresent(metadata.dynamic_generation)) {
+        badges.push({ icon: 'ri-pencil-ai-2-fill', text: 'Rentan' });
+    }
+    if (fd.director_session_id) {
+        badges.push({ icon: 'fas fa-clapperboard', text: 'Director' });
+    }
+    if (fd.novel_note_id) {
+        badges.push({ icon: 'fas fa-book-open', text: 'Novel' });
+    }
+    if (fd.append_transparency === true || fd.append_transparency === 1) {
+        badges.push({ icon: 'fa-regular fa-chess-board', text: 'Transparent' });
+    }
+
+    return badges;
+}
+
+const PREVIEW_META_HOST = '.gallery-item, .manual-preview-image-container, .image-viewer-modal .image-container, #spellbookGenerationModal .spellbook-preview-image-container';
+
+const PREVIEW_META_MODELS = {
+    V5: { label: 'v5', tone: 'v5', feature: 'v5' },
+    V5_CUR: { label: 'v5C', tone: 'v5', feature: 'v5_cur' },
+    V4_5: { label: 'v4.5', tone: 'v45', feature: 'v4_5' },
+    V4_5_CUR: { label: 'v4.5C', tone: 'v45', feature: 'v4_5_cur' },
+    V4: { label: 'v4', tone: 'v4', feature: 'v4' },
+    V4_CUR: { label: 'v4C', tone: 'v4', feature: 'v4_cur' },
+    V3: { label: 'v3', tone: 'v3', feature: 'v3' },
+    FURRY: { label: 'v3F', tone: 'v3f', feature: 'v3_furry' }
+};
+
+function previewMetaModelChip(metadata) {
+    if (!metadata) return null;
+    // determineModelFromMetadata: public/scripts/comp/reference/pngMetadata.js
+    const fromSource = (metadata.source || metadata.Source) ? determineModelFromMetadata(metadata) : '';
+    if (PREVIEW_META_MODELS[fromSource]) return PREVIEW_META_MODELS[fromSource];
+
+    const raw = metadata.model || (metadata.forge_data && metadata.forge_data.model);
+    // modelBadges: public/scripts/comp/utilities.js
+    if (raw && modelBadges[raw]) {
+        const badge = modelBadges[raw];
+        const curated = badge.badge === 'C';
+        const furry = badge.badge_class === 'legacy-furry-badge';
+        const key = String(raw);
+        const tone = key.startsWith('v5') ? 'v5'
+            : key.startsWith('v4_5') ? 'v45'
+            : key.startsWith('v4') ? 'v4'
+            : furry ? 'v3f'
+            : 'v3';
+        let label = badge.display || key;
+        if (curated) label += 'C';
+        else if (furry && !String(label).endsWith('F')) label += 'F';
+        return { label, tone, feature: key };
+    }
+    return null;
+}
+
+function previewMetaKind(meta) {
+    if (!meta || typeof meta !== 'object') return '';
+    const fd = meta.forge_data && typeof meta.forge_data === 'object' ? meta.forge_data : null;
+    const markers = [];
+    if (fd && fd.generation_type) markers.push(fd.generation_type);
+    if (fd && Array.isArray(fd.history)) {
+        fd.history.forEach((entry) => {
+            if (entry && entry.generation_type) markers.push(entry.generation_type);
+        });
+    }
+    const blob = markers.join(' ').toLowerCase();
+    if ((fd && fd.expansion_source) || blob.includes('expanded')) return 'expanded';
+    if ((fd && (fd.enhance_source || fd.max_enhance || fd.max_enhance_source)) || blob.includes('enhance')) return 'enhanced';
+    if (fd && (fd.generation_type || fd.software)) return 'gen';
+    if (meta.steps || meta.sampler || meta.seed !== undefined || meta.source) return 'gen';
+    return '';
+}
+
+function previewMetaDateLabel(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const opts = { month: 'short', day: 'numeric' };
+    if (date.getFullYear() !== new Date().getFullYear()) opts.year = '2-digit';
+    return date.toLocaleDateString(undefined, opts);
+}
+
+function previewMetaIsFavorite(image) {
+    if (!image) return false;
+    const filename = image.filename || image.original || image.upscaled;
+    if (filename) {
+        // findImageByFilename: public/scripts/comp/galleryView.js
+        const known = findImageByFilename(filename);
+        if (known) return !!known.isPinned;
+    }
+    return !!image.isPinned;
+}
+
+function previewMetaNoiseIsDefault(sampler, noise, featureKey) {
+    const sched = String(noise || '').toLowerCase();
+    if (!sched) return true;
+    // getForgeModelFeatures: public/scripts/comp/utilities.js
+    const features = featureKey ? getForgeModelFeatures(featureKey) : null;
+    if (features && features.noiseScheduleUi === false) return true;
+    if (String(sampler || '').toLowerCase() === 'k_dpmpp_2m') return sched === 'exponential';
+    return sched === 'karras';
+}
+
+function previewMetaNoiseShort(noise) {
+    const key = String(noise || '').toLowerCase();
+    if (key === 'karras') return 'Karras';
+    if (key === 'exponential') return 'Expo';
+    if (key === 'polyexponential') return 'PolyEx';
+    // getNoiseMeta: public/scripts/comp/utilities.js
+    const noiseObj = getNoiseMeta(key);
+    return noiseObj ? noiseObj.display : key;
+}
+
+function previewMetaParsePair(text) {
+    const match = String(text || '').match(/(\d+)\s*[×x]\s*(\d+)/i);
+    if (!match) return null;
+    return { w: Number(match[1]), h: Number(match[2]) };
+}
+
+function previewMetaResolutions(meta, image) {
+    const currentW = Number((meta && meta.actual_width) || (image && image.width) || 0);
+    const currentH = Number((meta && meta.actual_height) || (image && image.height) || 0);
+    const embeddedW = Number(meta && meta.width) || 0;
+    const embeddedH = Number(meta && meta.height) || 0;
+    const showW = currentW || embeddedW;
+    const showH = currentH || embeddedH;
+    const fd = (meta && meta.forge_data) || {};
+    const kind = previewMetaKind(meta);
+    const derived = kind === 'enhanced' || kind === 'expanded'
+        || fd.generation_type === 'upscaled'
+        || !!(image && image.upscaled)
+        || !!fd.upscale_ratio;
+    let original = null;
+    if (derived && showW && showH) {
+        const scaled = meta && meta.scale_ratio && previewMetaParsePair(meta.scale_ratio.original_dimensions);
+        const sourceW = Number((meta && meta.image_source_width) || fd.image_source_width) || 0;
+        const sourceH = Number((meta && meta.image_source_height) || fd.image_source_height) || 0;
+        if (scaled && (scaled.w !== showW || scaled.h !== showH)) original = scaled;
+        else if (embeddedW && embeddedH && (embeddedW !== showW || embeddedH !== showH)) original = { w: embeddedW, h: embeddedH };
+        else if (sourceW && sourceH && (sourceW !== showW || sourceH !== showH)) original = { w: sourceW, h: sourceH };
+        else if (Number(fd.upscale_ratio) > 1) {
+            const ratio = Number(fd.upscale_ratio);
+            const ow = Math.round(showW / ratio);
+            const oh = Math.round(showH / ratio);
+            if (ow > 0 && oh > 0 && (ow !== showW || oh !== showH)) original = { w: ow, h: oh };
+        }
+    }
+    return {
+        current: showW && showH ? `${showW}×${showH}` : '',
+        original: original ? `${original.w}×${original.h}` : ''
+    };
+}
+
+function previewMetaImageForHost(host) {
+    if (!host) return null;
+    if (host.classList.contains('gallery-item')) {
+        const fileIndex = parseInt(host.dataset.fileIndex, 10);
+        // allImages: public/scripts/comp/galleryView.js
+        if (allImages && Number.isFinite(fileIndex) && allImages[fileIndex]) {
+            return allImages[fileIndex];
+        }
+        const filename = host.dataset.filename || host.dataset.stageFilename || '';
+        if (!filename) return null;
+        // findImageByFilename: public/scripts/comp/galleryView.js
+        const known = findImageByFilename(filename);
+        return known || { filename, original: filename };
+    }
+    if (host.classList.contains('manual-preview-image-container')) {
+        return window.currentManualPreviewImage || null;
+    }
+    if (host.classList.contains('image-container')) {
+        const modal = host.closest('.image-viewer-modal');
+        if (!modal) return null;
+        // imageViewerManager: public/scripts/comp/imageViewer.js
+        const viewer = imageViewerManager.getViewer(modal.id);
+        return viewer ? (viewer.metadata || null) : null;
+    }
+    if (host.classList.contains('spellbook-preview-image-container') && host.closest('#spellbookGenerationModal')) {
+        // spellbookModalManager.getPreviewImageMetadata: public/scripts/comp/spellbookModal.js
+        return spellbookModalManager.getPreviewImageMetadata();
+    }
+    return null;
+}
+
+function previewMetaRecord(image) {
+    if (!image || typeof image !== 'object') return null;
+    const embedded = image.metadata && typeof image.metadata === 'object' ? image.metadata : null;
+    if (embedded && (embedded.forge_data || embedded.source || embedded.steps || embedded.seed !== undefined || embedded.sampler)) {
+        return Object.assign({}, image, embedded);
+    }
+    const display = image.display && typeof image.display === 'object' ? image.display : null;
+    if (display) return Object.assign({}, image, display);
+    if (embedded) return Object.assign({}, image, embedded);
+    return image;
+}
+
+function previewMetaValueChip(text, title) {
+    const chip = document.createElement('div');
+    chip.className = 'forgedata-badge';
+    chip.title = title;
+    chip.textContent = text;
+    return chip;
+}
+
+function paintPreviewMetaOverlay(host, image, meta) {
+    if (!host) return;
+    const record = meta || previewMetaRecord(image) || {};
+    const kind = previewMetaKind(record);
+    const model = previewMetaModelChip(record);
+    const dateValue = (record.forge_data && record.forge_data.date_generated) || record.date || (image && image.mtime);
+    const dateLabel = dateValue ? previewMetaDateLabel(dateValue) : '';
+    const favorite = previewMetaIsFavorite(image);
+    const resolutions = previewMetaResolutions(record, image);
+    const badges = collectForgeDataBadges(record);
+
+    const params = [];
+    if (record.steps) params.push(previewMetaValueChip(String(record.steps), 'Steps'));
+    if (record.scale !== undefined && record.scale !== null && record.scale !== '') {
+        const guidance = Number(record.scale);
+        params.push(previewMetaValueChip(Number.isFinite(guidance) ? guidance.toFixed(1) : String(record.scale), 'Guidance'));
+    }
+    if (record.cfg_rescale !== undefined && record.cfg_rescale !== null && record.cfg_rescale !== '') {
+        const rescale = Number(record.cfg_rescale);
+        const label = Number.isFinite(rescale) ? `${Math.round(rescale * 100)}%` : String(record.cfg_rescale);
+        params.push(previewMetaValueChip(label, 'Rescale'));
+    }
+    if (record.sampler) {
+        // getSamplerMeta: public/scripts/comp/utilities.js
+        const sampler = getSamplerMeta(String(record.sampler));
+        params.push(previewMetaValueChip(sampler ? (sampler.display_short || sampler.display) : String(record.sampler), 'Sampler'));
+    }
+    if (record.noise_schedule && !previewMetaNoiseIsDefault(record.sampler, record.noise_schedule, model && model.feature)) {
+        params.push(previewMetaValueChip(previewMetaNoiseShort(record.noise_schedule), 'Noise scheduler'));
+    }
+
+    const hasContent = kind || dateLabel || favorite || model || params.length || badges.length || record.seed !== undefined || resolutions.current;
+    let overlay = host.querySelector(':scope > .preview-meta-overlay');
+    if (!hasContent) {
+        if (overlay) overlay.remove();
+        return;
+    }
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'preview-meta-overlay';
+        host.appendChild(overlay);
+    }
+    overlay.replaceChildren();
+
+    const identity = document.createElement('div');
+    if (kind) {
+        const type = document.createElement('span');
+        type.className = 'custom-dropdown-badge';
+        type.dataset.metaType = kind;
+        type.textContent = kind === 'enhanced' ? 'Enhanced' : kind === 'expanded' ? 'Expanded' : 'Gen';
+        identity.appendChild(type);
+    }
+    if (dateLabel) identity.appendChild(previewMetaValueChip(dateLabel, 'Date'));
+    if (favorite) {
+        const star = document.createElement('i');
+        star.className = 'fa-solid fa-star';
+        star.title = 'Favorite';
+        identity.appendChild(star);
+    }
+    if (model) {
+        const chip = document.createElement('span');
+        chip.className = 'custom-dropdown-badge';
+        chip.dataset.metaModel = model.tone;
+        chip.textContent = model.label;
+        chip.title = 'Model';
+        identity.appendChild(chip);
+    }
+    if (identity.childNodes.length) overlay.appendChild(identity);
+
+    if (params.length) {
+        const row = document.createElement('div');
+        params.forEach((chip) => row.appendChild(chip));
+        overlay.appendChild(row);
+    }
+
+    if (badges.length) {
+        const row = document.createElement('div');
+        badges.forEach((badge) => {
+            const chip = document.createElement('div');
+            chip.className = 'forgedata-badge';
+            const icon = document.createElement('i');
+            icon.className = badge.icon;
+            const label = document.createElement('span');
+            label.textContent = badge.text;
+            chip.append(icon, label);
+            row.appendChild(chip);
+        });
+        overlay.appendChild(row);
+    }
+
+    if (record.seed !== undefined && record.seed !== null && record.seed !== '') {
+        const row = document.createElement('div');
+        row.appendChild(previewMetaValueChip(String(record.seed), 'Seed'));
+        overlay.appendChild(row);
+    }
+
+    if (resolutions.current) {
+        const row = document.createElement('div');
+        row.appendChild(previewMetaValueChip(resolutions.current, 'Resolution'));
+        if (resolutions.original) {
+            const original = document.createElement('span');
+            original.className = 'custom-dropdown-badge scale-ratio-badge';
+            original.title = 'Original resolution';
+            original.textContent = resolutions.original;
+            row.appendChild(original);
+        }
+        overlay.appendChild(row);
+    }
+}
+
+function revealPreviewMetaOverlay(target) {
+    try {
+        if (!target || !target.closest) return;
+        const host = target.closest(PREVIEW_META_HOST);
+        if (!host) return;
+        const image = previewMetaImageForHost(host);
+        if (!image) return;
+        paintPreviewMetaOverlay(host, image, previewMetaRecord(image));
+    } catch (error) {
+        console.warn('Preview metadata overlay failed:', error);
+    }
+}
+
 // Build blueprint / forge metadata HTML (shared by unified upload + image prompt inspector)
 function buildBlueprintInfoHtml(metadata) {
     if (!metadata || typeof metadata !== 'object') {
@@ -6000,78 +6451,9 @@ function buildBlueprintInfoHtml(metadata) {
         infoRows[2].push(`<div class="form-group"><label for="modelName">Noise Scheduler</label><div class="meta-value">${noiseText}</div></div>`);
     }
 
-    const infoBadges = [];
-    if (metadata._encoding) {
-        const encIcon = metadata._encoding.startsWith('LSB') ? 'fa-eye-slash' : 'fa-file-code';
-        infoBadges.push(`<div class="forgedata-badge"><i class="fa-light ${encIcon}"></i><span>${metadata._encoding}</span></div>`);
-    }
-
     if (metadata.forge_data) {
         infoRows[0].unshift(`<div class="form-group"><label for="modelName">Software</label><div class="meta-value"><i class="fa-light fa-sparkles"></i><span>${metadata.forge_data.software}</span></div></div>`);
         infoRows[3].push(`<div class="form-group"><label for="modelName">Preset Name</label><div class="meta-value">${metadata.forge_data.preset_name || 'Manual'}</div></div>`);
-        let icon = '<i class="nai-sakura"></i>';
-        let text = 'Anime';
-        if (metadata.forge_data.dataset_config !== undefined && metadata.forge_data.dataset_config?.include?.length > 0) {
-            if (metadata.forge_data.dataset_config?.include?.includes('furry')) {
-                icon = '<i class="nai-paw"></i>';
-                text = 'Furry';
-            } else if (metadata.forge_data.dataset_config?.include?.includes('background')) {
-                icon = '<i class="fa-solid fa-mountain-city"></i>';
-                text = 'Background';
-            } else if (metadata.forge_data.dataset_config?.include?.includes('danbooru')) {
-                text = 'Danbooru';
-            }
-
-            if (metadata.forge_data.dataset_config?.include?.length > 1) {
-                text = `${metadata.forge_data.dataset_config?.include?.length} Dataset${metadata.forge_data.dataset_config?.include?.length > 1 ? 's' : ''}`;
-            }
-        }
-        infoBadges.push(`<div class="forgedata-badge">${icon}<span>${text}</span></div>`);
-
-        if (metadata.forge_data.input_prompt !== undefined) {
-            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-pen-nib"></i><span>Prompt</span></div>`);
-        }
-        if (metadata.forge_data.allCharacters !== undefined) {
-            if (metadata.forge_data.input_uc !== undefined
-                && metadata.forge_data.allCharacters.length > 0
-                && metadata.forge_data.allCharacters.some(character => character.uc && character.uc.trim().length > 0)) {
-                infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-ban"></i><span>Multi-UC</span></div>`);
-            } else if (metadata.forge_data.append_uc !== undefined) {
-                infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);
-            }
-            if (metadata.forge_data.append_uc !== undefined) {
-                infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);
-            }
-            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light ${metadata.forge_data.allCharacters.length > 1 ? 'fa-user-group' : 'fa-child'}"></i><span>${metadata.forge_data.allCharacters.length > 1 ? metadata.forge_data.allCharacters.length + ' Characters' : 'Character'}</span></div>`);
-        } else {
-            if (metadata.forge_data.input_uc !== undefined) {
-                infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-ban"></i><span>UC</span></div>`);
-            }
-            if (metadata.forge_data.append_uc !== undefined) {
-                infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);
-            }
-        }
-        if (metadata.forge_data.append_quality !== undefined) {
-            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-crown"></i><span>Quality</span></div>`);
-        }
-        if (metadata.forge_data.image_source !== undefined) {
-            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-scanner-image"></i><span>Reference Image</span></div>`);
-        }
-        if (metadata.forge_data.image_bias !== undefined) {
-            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-crop"></i><span>NDRB</span></div>`);
-        }
-        if (metadata.forge_data.chara_reference_source !== undefined) {
-            infoBadges.push(`<div class="forgedata-badge"><i class="nai-precise-reference"></i><span>Precise Reference</span></div>`);
-        }
-        if (metadata.forge_data.mask_compressed !== undefined) {
-            infoBadges.push(`<div class="forgedata-badge"><i class="nai-inpaint"></i><span>InPaint</span></div>`);
-        }
-        if (metadata.forge_data.vibe_transfer !== undefined && metadata.forge_data.vibe_transfer.length > 0) {
-            infoBadges.push(`<div class="forgedata-badge"><i class="nai-vibe-transfer"></i><span>${metadata.forge_data.vibe_transfer.length > 1 ? metadata.forge_data.vibe_transfer.length + ' Encodings' : 'Vibe Encoding'}</span></div>`);
-        }
-        if (metadata.forge_data.mcp_generated) {
-            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-plug"></i><span>MCP</span></div>`);
-        }
         if (metadata.forge_data.date_generated) {
             const date = new Date(metadata.forge_data.date_generated);
             infoRows[0].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Date</label><div class="meta-value justify-end">${date.toLocaleDateString()}</div></div>`);
@@ -6095,6 +6477,8 @@ function buildBlueprintInfoHtml(metadata) {
         infoRows[0].unshift(`<div class="form-group"><label for="modelName">Software</label><div class="meta-value"><i class="nai-pen-tip-light"></i><span>${softwareName}</span></div></div>`);
     }
 
+    // collectForgeDataBadges — this file
+    const infoBadges = collectForgeDataBadges(metadata).map((badge) => forgeDataBadgeHtml(badge.icon, badge.text));
     if (infoBadges.length > 0) {
         infoRows[4].push(`<div class="form-group"><label for="modelName">Available Data</label><div class="meta-value badge-list">${infoBadges.join('')}</div></div>`);
     }

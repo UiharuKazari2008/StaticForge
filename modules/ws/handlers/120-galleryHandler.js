@@ -66,6 +66,27 @@ function buildGalleryOwnershipEntries(baseArray) {
     return entries;
 }
 
+async function attachGalleryDisplay(metadataDb, rows) {
+    if (!metadataDb || !rows || !rows.length) return;
+    const names = [];
+    for (const row of rows) {
+        const file = row && (row.filename || row.upscaled || row.original);
+        if (file) names.push(file);
+    }
+    if (!names.length) return;
+    let map = {};
+    try {
+        map = await metadataDb.getGalleryDisplayMap(names);
+    } catch (error) {
+        console.warn('Gallery display attach failed:', error.message);
+        return;
+    }
+    for (const row of rows) {
+        const file = row && (row.filename || row.upscaled || row.original);
+        if (file && map[file]) row.display = map[file];
+    }
+}
+
 function mapMaterializedItemToGalleryRow(item) {
     const { base, original, upscaled, mtime, width, height, size, blurhash } = item;
     const file = upscaled || original;
@@ -232,6 +253,7 @@ async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options 
                 newItems.push(newItem);
             }
         }
+        await attachGalleryDisplay(metadataDb, newItems);
         const probeMeta = await metadataDb.getGalleryWorkspaceProbeMeta(workspaceId, viewType);
         wsServer.broadcast({
             type: 'gallery_updated',
@@ -433,6 +455,8 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
 
         gallery.push(row);
     }
+
+    await attachGalleryDisplay(metadataDb, gallery);
 
     let replicationContext = null;
     if (galleryClient && !isGalleryBlockFetch) {

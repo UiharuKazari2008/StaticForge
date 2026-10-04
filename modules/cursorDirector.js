@@ -675,6 +675,7 @@ function groupCursorModels(rows) {
 
 // Published Cursor list rates, per million tokens. cost is 1–3 dots from input+output.
 // released is newest-first within a provider, not a calendar date.
+// short is the single-line #directorModelPick label for names that do not fit.
 const DIRECTOR_PROVIDERS = ['Cursor', 'Anthropic', 'OpenAI', 'Google', 'Moonshot', 'Meta', 'Z.ai', 'Other'];
 const DIRECTOR_MODEL_INFO = {
     auto: { provider: 'Cursor', released: 10000, cost: 2, price: 'Billed at the model Auto picks' },
@@ -682,51 +683,51 @@ const DIRECTOR_MODEL_INFO = {
     'cursor-grok-4.6': { provider: 'Cursor', released: 460, input: 2, output: 6 },
     'cursor-grok-4.5': { provider: 'Cursor', released: 450, input: 2, output: 6 },
     'composer-2.5': { provider: 'Cursor', released: 250, input: 0.5, output: 2.5 },
-    'claude-fable-5-1': { provider: 'Anthropic', released: 561, input: 10, output: 50 },
-    'claude-fable-5-1-thinking': { provider: 'Anthropic', released: 560, input: 10, output: 50 },
-    'claude-fable-5': { provider: 'Anthropic', released: 548, input: 10, output: 50 },
-    'claude-fable-5-thinking': { provider: 'Anthropic', released: 547, input: 10, output: 50 },
-    'claude-opus-5-5': { provider: 'Anthropic', released: 555, input: 5, output: 25 },
-    'claude-opus-5': { provider: 'Anthropic', released: 540, input: 5, output: 25 },
-    'claude-opus-5-thinking': { provider: 'Anthropic', released: 539, input: 5, output: 25 },
-    'claude-sonnet-5-5': { provider: 'Anthropic', released: 535, input: 2, output: 10 },
-    'claude-sonnet-5': { provider: 'Anthropic', released: 520, input: 2, output: 10 },
-    'claude-sonnet-5-thinking': { provider: 'Anthropic', released: 519, input: 2, output: 10 },
-    'claude-opus-4-8': { provider: 'Anthropic', released: 481, input: 5, output: 25 },
-    'claude-opus-4-8-thinking': { provider: 'Anthropic', released: 480, input: 5, output: 25 },
-    'claude-opus-4-7': { provider: 'Anthropic', released: 471, input: 5, output: 25 },
-    'claude-opus-4-7-thinking': { provider: 'Anthropic', released: 470, input: 5, output: 25 },
-    'claude-4.6-sonnet': { provider: 'Anthropic', released: 461, input: 3, output: 15 },
-    'claude-4.6-sonnet-medium-thinking': { provider: 'Anthropic', released: 460, input: 3, output: 15 },
-    'claude-4.6-opus': { provider: 'Anthropic', released: 463, input: 5, output: 25 },
-    'claude-4.6-opus-high-thinking': { provider: 'Anthropic', released: 462, input: 5, output: 25 },
-    'claude-4.6-opus-max-thinking': { provider: 'Anthropic', released: 461.5, input: 5, output: 25 },
-    'claude-4.5-opus': { provider: 'Anthropic', released: 451, input: 5, output: 25 },
-    'claude-4.5-opus-high-thinking': { provider: 'Anthropic', released: 450, input: 5, output: 25 },
-    'claude-4.5-sonnet': { provider: 'Anthropic', released: 441, input: 3, output: 15 },
-    'claude-4.5-sonnet-thinking': { provider: 'Anthropic', released: 440, input: 3, output: 15 },
-    'claude-4-sonnet': { provider: 'Anthropic', released: 401, input: 3, output: 15 },
-    'claude-4-sonnet-thinking': { provider: 'Anthropic', released: 400, input: 3, output: 15 },
-    'gpt-5.6-sol': { provider: 'OpenAI', released: 563, input: 4, output: 20 },
-    'gpt-5.6-terra': { provider: 'OpenAI', released: 562, input: 2, output: 12 },
-    'gpt-5.6-luna': { provider: 'OpenAI', released: 561, input: 0.2, output: 1.2 },
+    'claude-fable-5-1': { provider: 'Anthropic', released: 561, input: 10, output: 50, short: 'Fable 5.1' },
+    'claude-fable-5-1-thinking': { provider: 'Anthropic', released: 560, input: 10, output: 50, short: 'Fable 5.1' },
+    'claude-fable-5': { provider: 'Anthropic', released: 548, input: 10, output: 50, short: 'Fable 5' },
+    'claude-fable-5-thinking': { provider: 'Anthropic', released: 547, input: 10, output: 50, short: 'Fable 5' },
+    'claude-opus-5-5': { provider: 'Anthropic', released: 555, input: 5, output: 25, short: 'Opus 5.5' },
+    'claude-opus-5': { provider: 'Anthropic', released: 540, input: 5, output: 25, short: 'Opus 5' },
+    'claude-opus-5-thinking': { provider: 'Anthropic', released: 539, input: 5, output: 25, short: 'Opus 5' },
+    'claude-sonnet-5-5': { provider: 'Anthropic', released: 535, input: 2, output: 10, short: 'Sonnet 5.5' },
+    'claude-sonnet-5': { provider: 'Anthropic', released: 520, input: 2, output: 10, short: 'Sonnet 5' },
+    'claude-sonnet-5-thinking': { provider: 'Anthropic', released: 519, input: 2, output: 10, short: 'Sonnet 5' },
+    'claude-opus-4-8': { provider: 'Anthropic', released: 481, input: 5, output: 25, short: 'Opus 4.8' },
+    'claude-opus-4-8-thinking': { provider: 'Anthropic', released: 480, input: 5, output: 25, short: 'Opus 4.8' },
+    'claude-opus-4-7': { provider: 'Anthropic', released: 471, input: 5, output: 25, short: 'Opus 4.7' },
+    'claude-opus-4-7-thinking': { provider: 'Anthropic', released: 470, input: 5, output: 25, short: 'Opus 4.7' },
+    'claude-4.6-sonnet': { provider: 'Anthropic', released: 461, input: 3, output: 15, short: 'Sonnet 4.6' },
+    'claude-4.6-sonnet-medium-thinking': { provider: 'Anthropic', released: 460, input: 3, output: 15, short: 'Sonnet 4.6' },
+    'claude-4.6-opus': { provider: 'Anthropic', released: 463, input: 5, output: 25, short: 'Opus 4.6' },
+    'claude-4.6-opus-high-thinking': { provider: 'Anthropic', released: 462, input: 5, output: 25, short: 'Opus 4.6' },
+    'claude-4.6-opus-max-thinking': { provider: 'Anthropic', released: 461.5, input: 5, output: 25, short: 'Opus 4.6' },
+    'claude-4.5-opus': { provider: 'Anthropic', released: 451, input: 5, output: 25, short: 'Opus 4.5' },
+    'claude-4.5-opus-high-thinking': { provider: 'Anthropic', released: 450, input: 5, output: 25, short: 'Opus 4.5' },
+    'claude-4.5-sonnet': { provider: 'Anthropic', released: 441, input: 3, output: 15, short: 'Sonnet 4.5' },
+    'claude-4.5-sonnet-thinking': { provider: 'Anthropic', released: 440, input: 3, output: 15, short: 'Sonnet 4.5' },
+    'claude-4-sonnet': { provider: 'Anthropic', released: 401, input: 3, output: 15, short: 'Sonnet 4' },
+    'claude-4-sonnet-thinking': { provider: 'Anthropic', released: 400, input: 3, output: 15, short: 'Sonnet 4' },
+    'gpt-5.6-sol': { provider: 'OpenAI', released: 563, input: 4, output: 20, short: 'Sol 5.6' },
+    'gpt-5.6-terra': { provider: 'OpenAI', released: 562, input: 2, output: 12, short: 'Terra 5.6' },
+    'gpt-5.6-luna': { provider: 'OpenAI', released: 561, input: 0.2, output: 1.2, short: 'Luna 5.6' },
     'gpt-5.5': { provider: 'OpenAI', released: 550, input: 5, output: 30 },
     'gpt-5.4': { provider: 'OpenAI', released: 543, input: 2.5, output: 15 },
-    'gpt-5.4-mini': { provider: 'OpenAI', released: 542, input: 0.75, output: 4.5 },
-    'gpt-5.4-nano': { provider: 'OpenAI', released: 541, input: 0.2, output: 1.25 },
+    'gpt-5.4-mini': { provider: 'OpenAI', released: 542, input: 0.75, output: 4.5, short: 'Mini 5.4' },
+    'gpt-5.4-nano': { provider: 'OpenAI', released: 541, input: 0.2, output: 1.25, short: 'Nano 5.4' },
     'gpt-5.3-codex': { provider: 'OpenAI', released: 530, input: 1.75, output: 14 },
     'gpt-5.2': { provider: 'OpenAI', released: 520, input: 1.75, output: 14 },
     'gpt-5.1': { provider: 'OpenAI', released: 510, input: 1.25, output: 10 },
     'gpt-5-mini': { provider: 'OpenAI', released: 500, input: 0.25, output: 2 },
-    'gemini-3.8-flash': { provider: 'Google', released: 380, input: 0.75, output: 3.5 },
-    'gemini-3.7-flash': { provider: 'Google', released: 370, input: 0.75, output: 3.5 },
-    'gemini-3.6-flash': { provider: 'Google', released: 360, input: 1.5, output: 7.5 },
-    'gemini-3.5-flash': { provider: 'Google', released: 350, input: 1.5, output: 9 },
-    'gemini-3.1-pro': { provider: 'Google', released: 310, input: 2, output: 12 },
-    'gemini-3-flash': { provider: 'Google', released: 300, input: 0.5, output: 3 },
+    'gemini-3.8-flash': { provider: 'Google', released: 380, input: 0.75, output: 3.5, short: 'Flash 3.8' },
+    'gemini-3.7-flash': { provider: 'Google', released: 370, input: 0.75, output: 3.5, short: 'Flash 3.7' },
+    'gemini-3.6-flash': { provider: 'Google', released: 360, input: 1.5, output: 7.5, short: 'Flash 3.6' },
+    'gemini-3.5-flash': { provider: 'Google', released: 350, input: 1.5, output: 9, short: 'Flash 3.5' },
+    'gemini-3.1-pro': { provider: 'Google', released: 310, input: 2, output: 12, short: 'Gemini Pro' },
+    'gemini-3-flash': { provider: 'Google', released: 300, input: 0.5, output: 3, short: 'Flash 3' },
     'kimi-k3': { provider: 'Moonshot', released: 300, input: 3, output: 15 },
-    'kimi-k2.7-code': { provider: 'Moonshot', released: 270, input: 0.95, output: 4 },
-    'muse-spark-1.3': { provider: 'Meta', released: 130, input: 1.25, output: 4.25 },
+    'kimi-k2.7-code': { provider: 'Moonshot', released: 270, input: 0.95, output: 4, short: 'K2.7 Code' },
+    'muse-spark-1.3': { provider: 'Meta', released: 130, input: 1.25, output: 4.25, short: 'Spark 1.3' },
     'glm-5.2': { provider: 'Z.ai', released: 520, input: 1.4, output: 4.4 }
 };
 
@@ -760,7 +761,7 @@ function describeDirectorModel(id) {
     if (!known) return { provider: inferDirectorProvider(id), released: 0, cost: null, price: '' };
     const cost = known.cost != null ? known.cost : directorModelCost(known.input, known.output);
     const price = known.price || (known.input != null ? directorModelPrice(known.input, known.output) : '');
-    return { provider: known.provider, released: known.released || 0, cost, price };
+    return { provider: known.provider, released: known.released || 0, cost, price, short: known.short || '' };
 }
 
 function publicModelCatalog(families) {
@@ -770,6 +771,7 @@ function publicModelCatalog(families) {
         return {
             id: family.id,
             name: family.id === 'auto' ? 'Auto' : family.name,
+            short: meta.short,
             provider: meta.provider,
             released: meta.released,
             cost: meta.cost,
@@ -2840,6 +2842,15 @@ function flushDirectorStream(sessionId) {
     else if (gate.handler && gate.ws) gate.handler.sendToClient(gate.ws, payload);
 }
 
+// Turn over: a throttled flush after the completion packet re-arms "running" in the client.
+function dropDirectorStream(sessionId) {
+    const key = String(sessionId || '');
+    const gate = streamGates.get(key);
+    if (!gate) return;
+    if (gate.timer) clearTimeout(gate.timer);
+    streamGates.delete(key);
+}
+
 function queueDirectorStream(gr, data, handler, ws) {
     const sessionId = String((data && data.sessionId) || '');
     if (!sessionId) return;
@@ -3693,6 +3704,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             stopBrowserWatch();
             stopPrintWatch();
             runs.delete(sessionId);
+            dropDirectorStream(sessionId);
             try {
                 require('./cursorUsage').invalidateCursorUsage();
             } catch (_) { /* usage refresh is optional */ }
@@ -3721,6 +3733,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
         }, message.requestId);
     } catch (error) {
         runs.delete(sessionId);
+        dropDirectorStream(sessionId);
         if (sessionId && !(marker && marker.cancelled) && isLinkDrop(error) && await inflightCanResume(sessionId)) {
             if (draftId && Array.isArray(error.rows) && error.rows.length) {
                 try {

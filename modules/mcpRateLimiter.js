@@ -79,6 +79,8 @@ const TOOL_RATE_GROUPS = {
     get_open_windows: 'studio',
     set_window: 'studio',
     open_application: 'studio',
+    get_calculator: 'studio',
+    set_calculator: 'studio',
     offer_director_window: 'free',
     set_session_title: 'write',
     set_session_tasks: 'write',

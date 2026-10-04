@@ -173,6 +173,7 @@ class Director {
         this.sendOnEnter = false;
         this._running = false;
         this._runningSessionId = null;
+        this._settledSessionId = null;
         this._outgoingQueue = [];
         this._steer = null;
         this.SESSION_MODEL_KEY = 'staticforge_director_session_models';
@@ -448,7 +449,11 @@ class Director {
     paintModelPick() {
         const auto = String(this.selectedModel || '').toLowerCase() === 'auto'
             || this.selectedModelName().trim().toLowerCase() === 'auto';
-        if (this.directorModelPickName) this.directorModelPickName.textContent = auto ? 'Auto' : this.selectedModelName();
+        if (this.directorModelPickName) {
+            const family = this.modelCatalog.find((item) => item.id === this.selectedModel);
+            this.directorModelPickName.textContent = auto ? 'Auto' : ((family && family.short) || this.selectedModelName());
+            if (this.directorModelPick) this.directorModelPick.title = auto ? 'Model' : this.selectedModelName();
+        }
         const effort = this.directorModelPickEffort;
         if (!effort) return;
         effort.className = 'uc-boxes';
@@ -1087,14 +1092,11 @@ class Director {
             this._running = false;
             this.updateTrayChrome();
         }
-        if (window.wsClient && window.wsClient.isConnected()) {
-            window.wsClient.send({
-                type: 'director_abort',
-                requestId: Date.now().toString(),
-                sessionId,
-                persona: this.persona || 'wren'
-            });
-        }
+        if (!window.wsClient || !window.wsClient.isConnected()) return;
+        // Server had no live run (director_abort_response aborted:false): nothing will end the turn, so end it here.
+        this.directorRequest('director_abort', { sessionId }).then((result) => {
+            if (result && result.aborted === false) this.finishTurn(sessionId);
+        }).catch(() => this.finishTurn(sessionId));
     }
 
     readSessionModel(sessionId) {
@@ -1360,6 +1362,8 @@ class Director {
 
     finishTurn(sessionId) {
         if (sessionId && this._runningSessionId && sessionId !== this._runningSessionId) return;
+        this._settledSessionId = sessionId || this._runningSessionId;
+        this._turnPrints = 0;
         this._running = false;
         this._runningSessionId = null;
         // First-send handoff is over: an empty reload can replace the local bubble.
@@ -1711,6 +1715,12 @@ class Director {
             this.paintPersonaToggle();
         }
 
+        if (this.directorSessionChat) {
+            this.directorSessionChat.addEventListener('animationend', (e) => {
+                if (e.animationName === 'director-composer-fade-in') this.directorSessionChat.classList.remove('director-composer-fade');
+            });
+        }
+
         // Auto-expand textarea
         if (this.directorChatInput) {
         this.directorChatInput.addEventListener('input', (e) => {
@@ -1884,6 +1894,7 @@ class Director {
         }
         this.mountDirectorInWindow();
         this._windowOpenedOnce = true;
+        this.fadeInComposer();
         // openModal: public/scripts/comp/modalUtils.js
         openModal(this.directorWindow);
         this.paintPersonaToggle();
@@ -2135,6 +2146,7 @@ class Director {
         const xiRunningId = status.xi && status.xi.running ? status.xi.sessionId : null;
         const runningHere = (status.running && status.sessionId && openId === status.sessionId)
             || (xiRunningId && openId === xiRunningId);
+        if (runningHere) this._settledSessionId = null;
         if (runningHere && !this._running) {
             this._running = true;
             this._runningSessionId = xiRunningId && openId === xiRunningId ? xiRunningId : status.sessionId;
@@ -2171,6 +2183,7 @@ class Director {
             this._creatingChat = false;
             this._running = true;
             this._runningSessionId = runningId;
+            this._settledSessionId = null;
             this.updateTrayChrome();
             if (unsentDraft || openId === runningId) {
                 this._pendingOutgoing = null;
@@ -2508,6 +2521,7 @@ class Director {
         }
         this.paintSessionPreview(this.currentSession);
         this.renderDirectorSessions();
+        this._turnPrints = (this._turnPrints || 0) + 1;
         this.setImagePending(false);
         this.renderSessionImages();
         this.mountPrintBubble(payload.messageId || '', filename);
@@ -2825,6 +2839,7 @@ class Director {
         // Window was hidden without its close button (e.g. a close-all sweep): take the chat back first
         this.mountDirectorInStudio();
         if (this.directorContainer) {
+            if (!this.directorContainer.classList.contains('director-open')) this.fadeInComposer();
             // First remove hidden class to make element visible
             this.directorContainer.classList.remove('hidden');
             this.directorContainer.classList.remove('director-closed');
@@ -2942,7 +2957,7 @@ class Director {
         if (this.directorSessionChat) {
             this.directorSessionChat.classList.remove('hidden');
         }
-        this.placeComposer(false, false);
+        this.placeComposer(false, true);
         this._scrollAfterLoad = true;
         const liveKeys = [];
         this._expandedTrace.forEach((key) => {
@@ -4019,17 +4034,27 @@ class Director {
         return messageDiv;
     }
     
+    // While the open fade runs, a placement jumps instead of sliding.
     placeComposer(centered, animate) {
         const chat = this.directorSessionChat;
         if (!chat) return;
         const want = centered === true;
         if (chat.classList.contains('director-composer-center') === want) return;
-        if (!animate) chat.classList.add('director-composer-instant');
-        chat.classList.toggle('director-composer-center', centered === true);
-        if (!animate) {
+        const slide = animate && !chat.classList.contains('director-composer-fade');
+        if (!slide) chat.classList.add('director-composer-instant');
+        chat.classList.toggle('director-composer-center', want);
+        if (!slide) {
             void chat.offsetWidth;
             chat.classList.remove('director-composer-instant');
         }
+    }
+
+    fadeInComposer() {
+        const chat = this.directorSessionChat;
+        if (!chat) return;
+        chat.classList.remove('director-composer-fade');
+        void chat.offsetWidth;
+        chat.classList.add('director-composer-fade');
     }
 
     showNewSessionDraft() {
@@ -4051,7 +4076,7 @@ class Director {
         this.hideAllViews();
         this.closeSessionOverlay();
         if (this.directorSessionChat) this.directorSessionChat.classList.remove('hidden');
-        this.placeComposer(true, false);
+        this.placeComposer(true, true);
         this.updateHeaderForView('sessionChat');
         if (this.directorSessionTitle) {
             const titleText = this.directorSessionTitle.querySelector('.director-title-text');
@@ -4779,7 +4804,8 @@ class Director {
         this.showTypingIndicator();
     }
 
-    // A generation tool in the live trace means a print is on the way
+    // A generation tool in the live trace means a print is on the way, until that many prints have landed this turn.
+    // The trace is cumulative, so a finished generate row is still in it after its print arrives.
     notePendingPrint(rows, live) {
         if (this._imagePending === true) return;
         const generators = ['print_studio', 'generate_image', 'generate_preset'];
@@ -4788,7 +4814,8 @@ class Director {
             if (generators.includes(row.name)) return true;
             return row.name === 'apply_studio_changes' && String(row.detail || '').includes('generate');
         };
-        if ((rows || []).some(rowGenerates) || rowGenerates(live)) this.setImagePending(true);
+        const asked = (rows || []).filter(rowGenerates).length + (rowGenerates(live) ? 1 : 0);
+        if (asked > (this._turnPrints || 0)) this.setImagePending(true);
     }
 
     requestCursorUsage() {
@@ -5004,9 +5031,9 @@ class Director {
         }
         const tasks = DIRECTOR_QUICK_STARTS.filter((task) => !task.existingOnly && (!task.needsSubject || this.hasGrillSubject()) && (!task.v45Only || directorModelIsV45()));
         host.replaceChildren();
-        const logo = document.createElement('img');
-        logo.src = '/static_images/logo_icon.png';
-        logo.alt = '';
+        const logo = document.createElement('div');
+        logo.className = 'logo-text';
+        logo.textContent = 'Director';
         const quip = document.createElement('h3');
         quip.textContent = this._welcomeQuip || DIRECTOR_WELCOME_QUIPS[0];
         const group = document.createElement('div');
@@ -5028,8 +5055,10 @@ class Director {
         host.append(logo, quip, group, note);
     }
 
+    // Off-center, director.css fades the welcome out. Emptying it there would cut the fade.
     clearComposerWelcome() {
-        if (this.directorComposerWelcome) this.directorComposerWelcome.replaceChildren();
+        if (!this.directorComposerWelcome || !this.directorSessionChat) return;
+        if (this.directorSessionChat.classList.contains('director-composer-center')) this.directorComposerWelcome.replaceChildren();
     }
 
     createQuickStartRow() {
@@ -5094,6 +5123,7 @@ class Director {
                 this._outgoingQueue = (this._outgoingQueue || []).filter((item) => item.sessionId !== sessionId);
                 this._steer = Object.assign({ sessionId }, job);
                 this.renderQueueChip();
+                showGlassToast('info', 'Director', 'Steering. Stopping this turn, then sending your message.');
                 this.abortTurn(true);
                 return;
             }
@@ -5126,6 +5156,7 @@ class Director {
             }
             this._skipQuickStart = true;
             this.removeQuickStart();
+            this.placeComposer(false, true);
             this.showTypingIndicator();
             this._creatingChat = true;
             if (!this.beginServerChat()) {
@@ -5211,6 +5242,8 @@ class Director {
         if (window.wsClient && window.wsClient.isConnected()) {
             this._running = true;
             this._runningSessionId = this.currentSession.id;
+            this._settledSessionId = null;
+            this._turnPrints = 0;
             this._turnModel = {
                 id: this.selectedModel || 'grok-4.7',
                 effort: this.selectedEffort || 'medium',
@@ -5668,6 +5701,8 @@ class Director {
                     seq: payload.seq
                 });
             }
+            // A late flush for a turn that already ended must not re-arm "running".
+            if (payload && window.directorInstance && payload.sessionId === window.directorInstance._settledSessionId) return;
             if (payload && payload.sessionId === window.currentSession?.id && window.directorInstance) {
                 if (!window.directorInstance._running || window.directorInstance._runningSessionId !== payload.sessionId) {
                     window.directorInstance._running = true;

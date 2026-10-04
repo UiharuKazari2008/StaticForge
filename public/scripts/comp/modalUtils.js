@@ -6388,16 +6388,37 @@ function getModalsForShutdownClose() {
     return ordered;
 }
 
+const SHUTDOWN_CLOSE_SEQUENTIAL_COUNT = 2;
+const SHUTDOWN_CLOSE_BUDGET_MS = 6000;
+// closeMainModal fallback timeout — the last overlapped close must start this long before the budget ends
+const SHUTDOWN_CLOSE_MAX_MS = 600;
+
 async function closeAllModalsForShutdown() {
+    const deadline = Date.now() + SHUTDOWN_CLOSE_BUDGET_MS - SHUTDOWN_CLOSE_MAX_MS;
     let modals = getModalsForShutdownClose();
     let safety = 0;
 
-    while (modals.length > 0 && safety < 64) {
+    while (modals.length > 0 && safety < SHUTDOWN_CLOSE_SEQUENTIAL_COUNT) {
         safety += 1;
         await closeModal(modals[0]);
         await delayForClientShutdown(120);
         modals = getModalsForShutdownClose();
     }
+
+    const pending = [];
+    let stagger = 90;
+    while (modals.length > 0 && safety < 64) {
+        safety += 1;
+        pending.push(closeModal(modals[0]));
+        const left = modals.length - 1;
+        if (left > 0) {
+            const wait = Math.min(stagger, Math.max(0, deadline - Date.now()) / left);
+            if (wait > 0) await delayForClientShutdown(wait);
+            stagger = Math.max(20, stagger * 0.75);
+        }
+        modals = getModalsForShutdownClose();
+    }
+    await Promise.all(pending);
 }
 
 let clientShutdownSequenceRunning = false;

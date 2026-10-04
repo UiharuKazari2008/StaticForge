@@ -1449,6 +1449,9 @@ async function removeImageMetadata(filenames, options = {}) {
     if (!valid.length) {
         return 0;
     }
+    for (const filename of valid) {
+        dropGalleryDisplayCache(filename);
+    }
 
     if (options.keepPins !== true) {
         await removeGalleryPinsForBases(valid);
@@ -2019,6 +2022,397 @@ async function removeGalleryOwnershipForFilenames(filenames) {
  * Get lightweight metadata for sorting (filename, mtime, width, height only)
  * Much faster than full metadata for sorting operations
  */
+const GALLERY_DISPLAY_CACHE_MAX = 5000;
+const galleryDisplayCache = new Map();
+
+function rememberGalleryDisplay(filename, display) {
+    if (!filename || !display) return;
+    if (galleryDisplayCache.has(filename)) galleryDisplayCache.delete(filename);
+    galleryDisplayCache.set(filename, display);
+    while (galleryDisplayCache.size > GALLERY_DISPLAY_CACHE_MAX) {
+        const oldest = galleryDisplayCache.keys().next().value;
+        galleryDisplayCache.delete(oldest);
+    }
+}
+
+function dropGalleryDisplayCache(filename) {
+    if (filename) galleryDisplayCache.delete(filename);
+}
+
+function galleryDisplayFlag(value) {
+    return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+function galleryBagOn(value) {
+    if (value == null || value === false) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    if (typeof value === 'string') return value.trim().length > 0;
+    return true;
+}
+
+function buildGalleryDisplayFromParts(parts) {
+    if (!parts) return null;
+    const fd = {};
+    const genType = parts.generationType ? String(parts.generationType) : '';
+    if (genType) fd.generation_type = genType;
+    if (galleryDisplayFlag(parts.expanded) || genType === 'expanded') fd.expansion_source = true;
+    if (galleryDisplayFlag(parts.enhanced) || genType.includes('enhance')) fd.enhance_source = true;
+    if (parts.dateMs != null && parts.dateMs !== '') {
+        const dateMs = Number(parts.dateMs);
+        if (Number.isFinite(dateMs)) fd.date_generated = dateMs;
+    }
+
+    let include = null;
+    if (Array.isArray(parts.datasetInclude)) {
+        include = parts.datasetInclude;
+    } else if (typeof parts.datasetInclude === 'string' && parts.datasetInclude) {
+        try {
+            const parsed = JSON.parse(parts.datasetInclude);
+            if (Array.isArray(parsed)) include = parsed;
+        } catch (_err) { /* leave dataset badge as Anime */ }
+    }
+    if (include && include.length) fd.dataset_config = { include };
+
+    if (galleryDisplayFlag(parts.hasPrompt)) fd.input_prompt = true;
+    if (parts.characterCount != null && parts.characterCount !== '') {
+        const count = Number(parts.characterCount);
+        if (Number.isFinite(count) && count >= 0) {
+            const stub = galleryDisplayFlag(parts.hasCharacterUc) ? { uc: '1' } : {};
+            fd.allCharacters = Array.from({ length: Math.min(count, 200) }, () => stub);
+        }
+    }
+    if (galleryDisplayFlag(parts.hasAppendUc)) fd.append_uc = true;
+    if (galleryDisplayFlag(parts.hasInputUc)) fd.input_uc = true;
+    if (galleryDisplayFlag(parts.hasQuality) || parts.qualityPreset === 1) fd.append_quality = true;
+    if (galleryDisplayFlag(parts.hasImageSource)) fd.image_source = true;
+    if (galleryDisplayFlag(parts.hasImageBias)) fd.image_bias = true;
+    if (galleryDisplayFlag(parts.hasPrecise)) fd.chara_reference_source = true;
+    if (galleryDisplayFlag(parts.hasMask)) fd.mask = true;
+    const vibeCount = Number(parts.vibeCount);
+    if (Number.isFinite(vibeCount) && vibeCount > 0) {
+        fd.vibe_transfer = Array.from({ length: Math.min(vibeCount, 32) }, () => 1);
+    }
+    if (galleryDisplayFlag(parts.mcp)) fd.mcp_generated = true;
+    if (galleryDisplayFlag(parts.useCoords)) fd.use_coords = true;
+    if (galleryDisplayFlag(parts.hasTextReplacements) || parts.hasDynamicReplacements === 1) fd.text_replacements = true;
+    if (galleryDisplayFlag(parts.hasTextOverlays)) fd.text_overlays = true;
+    if (galleryDisplayFlag(parts.hasVSlider)) fd.vSlider = true;
+    const pipelineCount = Number(parts.pipelineCount);
+    if (Number.isFinite(pipelineCount) && pipelineCount > 0) {
+        fd.pipeline = Array.from({ length: Math.min(pipelineCount, 32) }, () => 1);
+    }
+    const stageSeedCount = Number(parts.stageSeedCount);
+    if (Number.isFinite(stageSeedCount) && stageSeedCount > 1) {
+        fd.stage_seeds = Array.from({ length: Math.min(stageSeedCount, 32) }, () => 1);
+    }
+    if (galleryDisplayFlag(parts.hasEmphasis)) fd.emphasis_normalization = true;
+    if (galleryDisplayFlag(parts.hasDynamic)) fd.dynamic_generation = true;
+    if (galleryDisplayFlag(parts.hasDirector)) fd.director_session_id = true;
+    if (galleryDisplayFlag(parts.hasNovel)) fd.novel_note_id = true;
+    if (galleryDisplayFlag(parts.transparency)) fd.append_transparency = true;
+    const upscaleRatio = Number(parts.upscaleRatio);
+    if (Number.isFinite(upscaleRatio) && upscaleRatio > 1) fd.upscale_ratio = upscaleRatio;
+    const sourceW = Number(parts.imageSourceWidth);
+    const sourceH = Number(parts.imageSourceHeight);
+    if (sourceW > 0) fd.image_source_width = sourceW;
+    if (sourceH > 0) fd.image_source_height = sourceH;
+
+    const display = {};
+    if (parts.source) display.source = String(parts.source);
+    if (parts.modelNorm) display.model = String(parts.modelNorm);
+    if (parts.steps != null && parts.steps !== '') {
+        const steps = Number(parts.steps);
+        if (Number.isFinite(steps)) display.steps = steps;
+    }
+    if (parts.guidance != null && parts.guidance !== '') {
+        const guidance = Number(parts.guidance);
+        if (Number.isFinite(guidance)) display.scale = guidance;
+    }
+    if (parts.rescale != null && parts.rescale !== '') {
+        const rescale = Number(parts.rescale);
+        if (Number.isFinite(rescale)) display.cfg_rescale = rescale;
+    }
+    if (parts.sampler) display.sampler = String(parts.sampler);
+    if (parts.scheduler) display.noise_schedule = String(parts.scheduler);
+    if (parts.seed != null && parts.seed !== '') display.seed = parts.seed;
+    if (fd.date_generated) display.date = fd.date_generated;
+
+    const fileW = Number(parts.fileWidth) || 0;
+    const fileH = Number(parts.fileHeight) || 0;
+    const embeddedW = Number(parts.embeddedWidth) || 0;
+    const embeddedH = Number(parts.embeddedHeight) || 0;
+    if (fileW && fileH) {
+        display.actual_width = fileW;
+        display.actual_height = fileH;
+    }
+    if (embeddedW && embeddedH) {
+        display.width = embeddedW;
+        display.height = embeddedH;
+    } else if (fileW && fileH) {
+        display.width = fileW;
+        display.height = fileH;
+    }
+    if (parts.originalDimensions) {
+        display.scale_ratio = { original_dimensions: String(parts.originalDimensions) };
+    }
+    const referenceCount = Number(parts.referenceCount);
+    if (Number.isFinite(referenceCount) && referenceCount > 0) {
+        display.reference_image_multiple = referenceCount;
+    }
+    if (Object.keys(fd).length) display.forge_data = fd;
+
+    if (!display.source && display.steps == null && display.seed == null && !display.forge_data && !display.width) {
+        return null;
+    }
+    return display;
+}
+
+function galleryDisplayPartsFromRow(row) {
+    return {
+        source: row.source,
+        modelNorm: row.model_norm,
+        steps: row.steps,
+        guidance: row.guidance,
+        rescale: row.rescale,
+        sampler: row.sampler,
+        scheduler: row.scheduler,
+        seed: row.seed,
+        dateMs: row.date_ms,
+        fileWidth: row.file_width,
+        fileHeight: row.file_height,
+        embeddedWidth: row.embedded_width,
+        embeddedHeight: row.embedded_height,
+        originalDimensions: row.original_dimensions,
+        upscaleRatio: row.upscale_ratio,
+        generationType: row.generation_type,
+        expanded: row.expanded,
+        enhanced: row.enhanced,
+        datasetInclude: row.dataset_include,
+        hasPrompt: row.has_prompt,
+        characterCount: row.character_count,
+        hasAppendUc: row.has_append_uc,
+        hasInputUc: row.has_input_uc,
+        hasQuality: row.has_quality,
+        qualityPreset: row.quality_preset,
+        hasImageSource: row.has_image_source,
+        referenceCount: row.reference_count,
+        hasImageBias: row.has_image_bias,
+        hasPrecise: row.has_precise,
+        hasMask: row.has_mask,
+        vibeCount: row.vibe_count,
+        mcp: row.mcp,
+        useCoords: row.use_coords,
+        hasTextReplacements: row.has_text_replacements,
+        hasDynamicReplacements: row.has_dynamic_replacements,
+        hasTextOverlays: row.has_text_overlays,
+        hasVSlider: row.has_vslider,
+        pipelineCount: row.pipeline_count,
+        stageSeedCount: row.stage_seed_count,
+        hasEmphasis: row.has_emphasis,
+        hasDynamic: row.has_dynamic,
+        hasDirector: row.has_director,
+        hasNovel: row.has_novel,
+        transparency: row.transparency,
+        imageSourceWidth: row.image_source_width,
+        imageSourceHeight: row.image_source_height
+    };
+}
+
+function galleryDisplayFromStoredRecord(record) {
+    const png = record && record.metadata && typeof record.metadata === 'object' ? record.metadata : null;
+    if (!png) return null;
+    const fd = png.forge_data && typeof png.forge_data === 'object' ? png.forge_data : {};
+    const chars = Array.isArray(fd.allCharacters) ? fd.allCharacters : null;
+    const include = fd.dataset_config && Array.isArray(fd.dataset_config.include) ? fd.dataset_config.include : null;
+    return buildGalleryDisplayFromParts({
+        source: png.source || png.Source || null,
+        steps: png.steps,
+        guidance: png.scale,
+        rescale: png.cfg_rescale,
+        sampler: png.sampler,
+        scheduler: png.noise_schedule,
+        seed: png.seed,
+        dateMs: fd.date_generated,
+        fileWidth: record.width,
+        fileHeight: record.height,
+        embeddedWidth: png.width,
+        embeddedHeight: png.height,
+        originalDimensions: png.scale_ratio && png.scale_ratio.original_dimensions,
+        upscaleRatio: fd.upscale_ratio,
+        generationType: fd.generation_type,
+        expanded: fd.expansion_source != null && fd.expansion_source !== false && fd.expansion_source !== '',
+        enhanced: !!(fd.enhance_source || fd.max_enhance || fd.max_enhance_source),
+        datasetInclude: include,
+        hasPrompt: fd.input_prompt !== undefined,
+        characterCount: chars ? chars.length : null,
+        hasCharacterUc: chars ? chars.some((character) => character && character.uc && String(character.uc).trim()) : false,
+        hasAppendUc: fd.append_uc !== undefined,
+        hasInputUc: fd.input_uc !== undefined,
+        hasQuality: fd.append_quality !== undefined,
+        hasImageSource: fd.image_source !== undefined,
+        referenceCount: png.reference_image_multiple,
+        hasImageBias: fd.image_bias !== undefined,
+        hasPrecise: fd.chara_reference_source !== undefined,
+        hasMask: fd.mask !== undefined || fd.mask_compressed !== undefined,
+        vibeCount: Array.isArray(fd.vibe_transfer) ? fd.vibe_transfer.length : 0,
+        mcp: !!fd.mcp_generated,
+        useCoords: fd.use_coords === true || png.use_coords === true,
+        hasTextReplacements: galleryBagOn(fd.text_replacements) || galleryBagOn(png.text_replacements),
+        hasTextOverlays: galleryBagOn(fd.text_overlays) || galleryBagOn(png.text_overlays),
+        hasVSlider: galleryBagOn(fd.vSlider) || galleryBagOn(png.vSlider),
+        pipelineCount: Array.isArray(fd.pipeline) ? fd.pipeline.length : (galleryBagOn(fd.pipeline) ? 1 : 0),
+        stageSeedCount: Array.isArray(fd.stage_seeds) ? fd.stage_seeds.length : 0,
+        hasEmphasis: galleryBagOn(fd.emphasis_normalization) || galleryBagOn(png.emphasis_normalization),
+        hasDynamic: galleryBagOn(fd.dynamic_generation) || galleryBagOn(png.dynamic_generation),
+        hasDirector: !!fd.director_session_id,
+        hasNovel: !!fd.novel_note_id,
+        transparency: fd.append_transparency,
+        imageSourceWidth: fd.image_source_width || png.image_source_width,
+        imageSourceHeight: fd.image_source_height || png.image_source_height
+    });
+}
+
+function galleryDisplaySelectSql(placeholders) {
+    return `
+        SELECT
+            i.filename AS filename,
+            COALESCE(f.model, json_extract(i.metadata, '$.source')) AS source,
+            f.model_norm AS model_norm,
+            COALESCE(f.steps, json_extract(i.metadata, '$.steps')) AS steps,
+            COALESCE(f.guidance, json_extract(i.metadata, '$.scale')) AS guidance,
+            COALESCE(f.rescale, json_extract(i.metadata, '$.cfg_rescale')) AS rescale,
+            COALESCE(f.sampler, json_extract(i.metadata, '$.sampler')) AS sampler,
+            COALESCE(f.scheduler, json_extract(i.metadata, '$.noise_schedule')) AS scheduler,
+            COALESCE(f.seed, json_extract(i.metadata, '$.seed')) AS seed,
+            COALESCE(f.date_generated_ms, json_extract(i.metadata, '$.forge_data.date_generated')) AS date_ms,
+            i.width AS file_width,
+            i.height AS file_height,
+            json_extract(i.metadata, '$.width') AS embedded_width,
+            json_extract(i.metadata, '$.height') AS embedded_height,
+            json_extract(i.metadata, '$.scale_ratio.original_dimensions') AS original_dimensions,
+            json_extract(i.metadata, '$.forge_data.upscale_ratio') AS upscale_ratio,
+            json_extract(i.metadata, '$.forge_data.generation_type') AS generation_type,
+            json_extract(i.metadata, '$.forge_data.expansion_source') IS NOT NULL AS expanded,
+            (
+                json_extract(i.metadata, '$.forge_data.enhance_source') IS NOT NULL
+                OR json_extract(i.metadata, '$.forge_data.max_enhance') IS NOT NULL
+                OR json_extract(i.metadata, '$.forge_data.max_enhance_source') IS NOT NULL
+            ) AS enhanced,
+            json_extract(i.metadata, '$.forge_data.dataset_config.include') AS dataset_include,
+            json_extract(i.metadata, '$.forge_data.input_prompt') IS NOT NULL AS has_prompt,
+            json_array_length(i.metadata, '$.forge_data.allCharacters') AS character_count,
+            json_extract(i.metadata, '$.forge_data.append_uc') IS NOT NULL AS has_append_uc,
+            json_extract(i.metadata, '$.forge_data.input_uc') IS NOT NULL AS has_input_uc,
+            json_extract(i.metadata, '$.forge_data.append_quality') IS NOT NULL AS has_quality,
+            f.quality_preset AS quality_preset,
+            json_extract(i.metadata, '$.forge_data.image_source') IS NOT NULL AS has_image_source,
+            json_extract(i.metadata, '$.reference_image_multiple') AS reference_count,
+            json_extract(i.metadata, '$.forge_data.image_bias') IS NOT NULL AS has_image_bias,
+            json_extract(i.metadata, '$.forge_data.chara_reference_source') IS NOT NULL AS has_precise,
+            (
+                json_extract(i.metadata, '$.forge_data.mask') IS NOT NULL
+                OR json_extract(i.metadata, '$.forge_data.mask_compressed') IS NOT NULL
+            ) AS has_mask,
+            json_array_length(i.metadata, '$.forge_data.vibe_transfer') AS vibe_count,
+            json_extract(i.metadata, '$.forge_data.mcp_generated') AS mcp,
+            json_extract(i.metadata, '$.forge_data.use_coords') AS use_coords,
+            CASE
+                WHEN json_type(i.metadata, '$.forge_data.text_replacements') IN ('object', 'array', 'text')
+                    AND length(json_extract(i.metadata, '$.forge_data.text_replacements')) > 2 THEN 1
+                ELSE 0
+            END AS has_text_replacements,
+            f.has_dynamic_replacements AS has_dynamic_replacements,
+            CASE
+                WHEN json_type(i.metadata, '$.forge_data.text_overlays') IN ('object', 'array', 'text')
+                    AND length(json_extract(i.metadata, '$.forge_data.text_overlays')) > 2 THEN 1
+                ELSE 0
+            END AS has_text_overlays,
+            CASE
+                WHEN json_type(i.metadata, '$.forge_data.vSlider') IN ('object', 'array', 'text')
+                    AND length(json_extract(i.metadata, '$.forge_data.vSlider')) > 2 THEN 1
+                ELSE 0
+            END AS has_vslider,
+            json_array_length(i.metadata, '$.forge_data.pipeline') AS pipeline_count,
+            json_array_length(i.metadata, '$.forge_data.stage_seeds') AS stage_seed_count,
+            CASE
+                WHEN json_type(i.metadata, '$.forge_data.emphasis_normalization') IN ('object', 'array', 'text')
+                    AND length(json_extract(i.metadata, '$.forge_data.emphasis_normalization')) > 2 THEN 1
+                ELSE 0
+            END AS has_emphasis,
+            CASE
+                WHEN json_type(i.metadata, '$.forge_data.dynamic_generation') = 'object'
+                    AND length(json_extract(i.metadata, '$.forge_data.dynamic_generation')) > 2 THEN 1
+                ELSE 0
+            END AS has_dynamic,
+            json_extract(i.metadata, '$.forge_data.director_session_id') IS NOT NULL AS has_director,
+            json_extract(i.metadata, '$.forge_data.novel_note_id') IS NOT NULL AS has_novel,
+            json_extract(i.metadata, '$.forge_data.append_transparency') AS transparency,
+            json_extract(i.metadata, '$.forge_data.image_source_width') AS image_source_width,
+            json_extract(i.metadata, '$.forge_data.image_source_height') AS image_source_height
+        FROM images i
+        LEFT JOIN image_search_facets f ON f.filename = i.filename
+        WHERE i.filename IN (${placeholders})
+    `;
+}
+
+async function getGalleryDisplayMap(filenames) {
+    const unique = [];
+    const seen = new Set();
+    for (const name of filenames || []) {
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        unique.push(name);
+    }
+    const map = {};
+    if (!unique.length) return map;
+
+    const hot = metadataWriteQueue.getHotImagesBatch(unique);
+    for (const filename of Object.keys(hot)) {
+        const display = galleryDisplayFromStoredRecord(hot[filename]);
+        if (!display) continue;
+        map[filename] = display;
+        rememberGalleryDisplay(filename, display);
+    }
+
+    const need = [];
+    for (const filename of unique) {
+        if (map[filename]) continue;
+        if (galleryDisplayCache.has(filename)) {
+            map[filename] = galleryDisplayCache.get(filename);
+            continue;
+        }
+        need.push(filename);
+    }
+    if (!need.length || !dbInitialized || !db) return map;
+
+    let reader = db;
+    try {
+        const metaReader = await getMetadataReadDatabase();
+        if (metaReader) reader = metaReader;
+    } catch (_err) { /* fall back to the primary handle */ }
+
+    const chunkSize = 300;
+    for (let i = 0; i < need.length; i += chunkSize) {
+        const batch = need.slice(i, i + chunkSize);
+        const placeholders = batch.map(() => '?').join(',');
+        let rows = [];
+        try {
+            rows = await reader.all(galleryDisplaySelectSql(placeholders), batch);
+        } catch (error) {
+            logger.warn('Gallery display lookup failed:', error.message);
+            continue;
+        }
+        for (const row of rows) {
+            const display = buildGalleryDisplayFromParts(galleryDisplayPartsFromRow(row));
+            if (!display || !row.filename) continue;
+            map[row.filename] = display;
+            rememberGalleryDisplay(row.filename, display);
+        }
+    }
+    return map;
+}
+
 async function getLightweightMetadata(filenames) {
     if (!filenames || filenames.length === 0) {
         return {};
@@ -3221,6 +3615,7 @@ function extractSearchFacetsFromMetadata(pngMeta, imageRow = {}) {
 }
 
 async function upsertSearchFacets(filename, facets) {
+    dropGalleryDisplayCache(filename);
     if (!dbInitialized || !db || !filename || !facets) return;
 
     const modelExtractAttempted = facets.model_extract_attempted != null ? facets.model_extract_attempted : 1;
@@ -7566,6 +7961,7 @@ module.exports = {
     removeImageMetadata,
     getCachedMetadata,
     getLightweightMetadata,
+    getGalleryDisplayMap,
     viewTypeToGalleryBucket,
     listWorkspaceGalleryFilenames,
     countWorkspaceGalleryFilenames,

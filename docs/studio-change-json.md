@@ -42,6 +42,9 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
   "dynamicGeneration": {},
   "director": {},
   "vSlider": [],
+  "preciseReferences": [],
+  "workspace": "default",
+  "gensoLocks": [],
   "tokens": {}
 }
 ```
@@ -65,6 +68,7 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
 | `upscale` | boolean | Request 2× upscale after generate |
 | `strength` | number | img2img strength 0–1 (only if Studio is already in a strength-capable mode) |
 | `noise` | number | img2img noise 0–1 |
+| `image_bias` | number or object | Base-image crop bias. `0`–`4` preset (`0` top/left, `2` center, `4` bottom/right) or custom `{x, y, scale, rotate}` (same as the bias adjustment dialog). Applies only with a base image loaded, and is skipped while a mask exists (the editor would ask before discarding it). Echoed only when a base image is loaded. |
 | `append_quality` | boolean | Quality preset on/off. **Prefer this over pasting the quality string.** If you need to edit those tags, set false and put the edited string in `prompt`. Live text (per model) is in MCP `get_studio_state.settings.quality` / `tools/list`. |
 | `append_uc` | number | `0` None, `1` Human Focus, `2` Light, `3` Heavy, `4` Curated, `5` Furry Focus. **Prefer the id.** If you need to edit that UC, set `0` and put the edited string in `uc`. Live text is in `settings.uc`. |
 | `append_transparency` | boolean | Transparency preset on/off. Server prepends "transparent background". Do not also add that tag by hand. |
@@ -98,7 +102,7 @@ Echoed by `GET /agent/session/state` / `get_studio_state`. `include` **replaces*
 
 ### `text_overlays` — optional array
 
-On-image speech, thought, and captions. Each row is `{text, type, target, stages, disabled}`. When present, including `[]`, it **replaces** the Studio text list (`loadTextOverlays`). Do not also paste `Text:` into the prompt. Several lines on the same target belong in one row, separated by a blank line. They compile to one `Text:` with the type tags written once in front. A second row on that target is joined the same way, so it does not open another `Text:`. Separate bubbles in different places are character slots: the line in double quotes, a blank line, a placement phrase (`on the left,` / `on the right,`), and `position` `{x, y}`. The full script stays in the one overlay. Judge a print against the compiled prompt; edit this array and the input prompt.
+On-image speech, thought, and captions. Each row is `{text, type, target, stages, disabled}`. When present, including `[]`, it **replaces** the Studio text list (`loadTextOverlays`). Snapshots (Copy change JSON, `GET /agent/session/state`) echo the current list. Do not also paste `Text:` into the prompt. Several lines on the same target belong in one row, separated by a blank line. They compile to one `Text:` with the type tags written once in front. A second row on that target is joined the same way, so it does not open another `Text:`. Separate bubbles in different places are character slots: the line in double quotes, a blank line, a placement phrase (`on the left,` / `on the right,`), and `position` `{x, y}`. The full script stays in the one overlay. Judge a print against the compiled prompt; edit this array and the input prompt.
 
 ### `fields` — base prompt / UC only
 
@@ -117,7 +121,7 @@ Always `"action": "replace"`. Named `chunks` are **your** groups (Scene, Lightin
 }
 ```
 
-Shorthand also accepted: top-level `"prompt"` / `"uc"` / `"promptNegative"` as a string (treated as full replace).
+Shorthand also accepted: top-level `"prompt"` / `"uc"` / `"promptNegative"` as a string (treated as full replace). An empty string (`"promptNegative": ""`), or a replace whose only chunk text is empty, clears that field. Omit the key to leave it alone.
 
 `remove` deletes a span that already exists. Default is replace (overwrite). Omit unused keys.
 
@@ -139,7 +143,7 @@ Never copy character 0's prompt/uc/name into character 1.
 }
 ```
 
-Optional `promptNegative` on a character. Optional `enabled: false` turns that slot’s existing enable toggle off. `"action": "remove"` plus `index` deletes that slot.
+Optional `promptNegative` on a character. An empty string on `prompt`, `uc`, or `promptNegative` clears that part of the slot; omit the key to leave it. Optional `enabled: false` turns that slot’s existing enable toggle off, and snapshots echo `enabled: false` for a slot that is off. `"action": "remove"` plus `index` deletes that slot.
 
 `overwrite: true` (or sending `characterPrompts` instead of `characters`) treats the list as the full roster: slots that are not in the list are removed, then the list is written, including empty prompt text. `read_image_metadata` sets this. `center` is accepted as `position`. Expander `stages` are kept when present.
 
@@ -201,15 +205,17 @@ If present, Studio **replaces** the current vibe list with this one. Each entry 
 
 `ie` is the selected information-extracted encoding. Omit `vibes` to leave current vibes alone. A snapshot may add `preview` (`/cache/preview/…`) so the picture can be opened. V5 does not run vibe transfer yet. Do not send `preview` back on apply.
 
-### `preciseReferences` — echoed, not applied
+### `preciseReferences` — tune attached references
 
-Studio precise references (the character / style pictures on the reference row). V5 does not run them yet. Present only when one is attached.
+Studio precise references (the character / style pictures on the reference row). Echoed only when one is attached; a disabled row echoes `enabled: false`.
 
 ```json
-{ "source": "cache:hash", "type": 1, "role": "character and style", "strength": 1, "fidelity": 1, "preview": "/cache/preview/hash.webp" }
+{ "source": "cache:hash", "type": 1, "role": "character and style", "strength": 1, "fidelity": 1, "enabled": true, "preview": "/cache/preview/hash.webp" }
 ```
 
-`role` is `character`, `style`, or `character and style` (`type` 2, 3, or 1). `preview` is a host image URL. Do not send `preciseReferences` back on apply. Look at the picture, then write what it was holding into the prompt.
+`role` is `character`, `style`, or `character and style` (`type` 2, 3, or 1). `preview` is a host image URL and is ignored on apply.
+
+On apply, each entry updates a reference **already attached** in Studio: matched by `source`, else by list index. `strength` / `fidelity` (0–1), `type` or `role`, and `enabled` are written to the existing row controls. It never attaches a new reference; an entry with no match is skipped. Look at the picture, then write what it was holding into the prompt.
 
 ### `dynamicGeneration` — optional Enshutsuka dynagen
 
@@ -223,10 +229,21 @@ Enable or configure the **existing** Studio dynamic-generation toggle (no new ch
 | `location` | string | Weather button `data-location` |
 | `directive` | string | Creative directive textarea |
 | `force_strategy` / `tool_passes` / `dialogs_count` | string / number | Existing carousel dataset |
+| `creative` | boolean | Rentan creative button (`#creativeBtn`) on/off, with the same side effects as clicking it |
+| `creative_clothing` / `creative_action` | boolean | Creative button context-menu toggles (clothing / action) |
+| `novel` | boolean or object | Novel button. `true`/`false`, or `{ enabled, tone, style, explicitness, persuasiveness, auto_generate }`. Enable is refused (left off) until there is a creative directive or a loaded novel — send `directive` in the same object. Does not open the Novel editor window. |
 
 ### `director` — optional attached director prompt
 
 `{ sessionId, messageId, prompt }` on the existing Director button + creative directive. Same must-act rule as `dynamicGeneration`. Image chaining is out of scope.
+
+### `workspace` — optional string
+
+Studio workspace by id or name (case-insensitive). Applied **first**, then the rest of the change. Same as picking it in the Studio workspace dropdown: it switches the app's active workspace. An unknown name is skipped. `GET /agent/session/state` echoes the current workspace id. Copy JSON does not include it, so pasting a copy never switches workspaces.
+
+### `gensoLocks` — optional boolean or string[]
+
+Genso (expander seed) locks from the previous generation or loaded image. `true` locks every lockable seed, `false` unlocks all, and an array of keys (`["outfit"]` or `["!outfit"]`) locks exactly those and unlocks the rest. No seeds means nothing to lock. `GET /agent/session/state` echoes `gensoLocks` (locked keys) and `gensoAvailable` (lockable keys) when seeds exist; do not send `gensoAvailable` back.
 
 ### `tokens` — echoed on read
 
@@ -344,6 +361,7 @@ Rules:
 - `overwrite: true`: `characters` is the whole roster. Slots that are not in the list are removed, then the list is written. `read_image_metadata` sets this so applying `change` restores that print. `text_overlays`, `expanders`, `vibes`, and `vSlider` already replace their lists when the key is present, including `[]`.
 - Optional per-character position: {x,y} and/or cell A1–E5 (maps to Studio slot dataset / existing position dialog / V5 freeform tool). Echoed by GET /agent/session/state. Omit if unused. No new chrome.
 - fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.
+- Clearing: "" on a base prompt / uc / promptNegative, or on a character's prompt / uc / promptNegative, empties that field. Omit the key to leave it.
 - expanders: if present, REPLACE all request expanders and install only this list with full bodies (not an ambiguous append). In text use !prefix. Do not repeat expander values.
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
@@ -353,7 +371,11 @@ Rules:
 - text_overlays: replaces the Studio text list. One row per target; blank line between lines; one compiled Text:. Separate bubbles are character slots with a quoted line, a placement phrase, and position. Do not also put Text: in the prompt. Judge compiled output; edit the input prompt and this array.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
-- Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count}. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
+- Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count, creative, creative_clothing, creative_action, novel}. novel is true/false or {enabled, tone, style, explicitness, persuasiveness, auto_generate}; enabling needs a directive. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
 - Optional director: {sessionId, messageId, prompt}. Attached director prompt / session on the existing Director button + creative directive. Same must-act rule.
+- Optional params.image_bias: 0–4 preset (0 top/left, 2 center, 4 bottom/right) or {x, y, scale, rotate}. Only with a base image; skipped while a mask exists.
+- Optional preciseReferences: [{source, type|role, strength, fidelity, enabled}] tunes references already attached (match source, else index). Never attaches new ones.
+- Optional workspace: id or name. Switches the active workspace first.
+- Optional gensoLocks: true (lock all), false (unlock all), or [keys] (lock exactly those). Echoed with gensoAvailable.
 - Optional vSlider: array of widgets; Studio shows one scrolling tool. kind: slider (1 axis) | xypad (2) | star (2+) | dropdown (named presets). Axes: stops[{at,text}] + required default (median stop unless the request justifies a bias). Between stops: emit BOTH adjacent texts as NovelAI emphasis — leaving/start stop de-emphasised N=1−t·0.5 (1.0→0.5), approaching/end stop over-emphasised N=1+t·0.5 (1.0→1.5). Exact stop = that text only, no wrapper. This is how intensity slides. dropdown: options[{id,label,text}] fill the target expander. Use for scenes/presets to evaluate. No blend. commit expander (default) or prompt. Generate/compile applies live slider values into expanders without removing widgets. Finalise bakes resolved text into the prompt (replaces !prefix), removes that expander, and deletes the widget from the catalog. Studio can author widgets via the vSlider editor. Echoed in forge_data.vSlider and GET /agent/session/state.
 ```

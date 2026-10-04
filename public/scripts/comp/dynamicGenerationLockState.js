@@ -165,6 +165,14 @@ function readDynamicGenerationSnapshot() {
             snapshot.dialogs_count = parseInt(carousel.dataset.creativeDirectiveDialogs, 10);
         }
     }
+    const creativeBtn = document.getElementById('creativeBtn');
+    if (creativeBtn) {
+        snapshot.creative = creativeBtn.dataset.state === 'on';
+        snapshot.creative_clothing = creativeBtn.dataset.toggleClothing === 'true';
+        snapshot.creative_action = creativeBtn.dataset.toggleAction === 'true';
+    }
+    // novelIsEnabled / novelGetSessionSettings: public/scripts/comp/novelManager.js
+    if (novelGetBtn()) snapshot.novel = { enabled: !!novelIsEnabled(), ...novelGetSessionSettings() };
     if (compiled && compiled.context) snapshot.hasCompiledContext = true;
     if (compiled && compiled.previousResponseId) snapshot.hasPreviousResponse = true;
     return snapshot;
@@ -236,6 +244,26 @@ function applyStudioDynamicGenerationConfig(config) {
             carousel.dataset.creativeDirectiveDialogs = String(config.dialogs_count);
             changed = true;
         }
+    }
+    const creativeBtn = document.getElementById('creativeBtn');
+    if (creativeBtn) {
+        if (config.creative_clothing !== undefined) {
+            creativeBtn.dataset.toggleClothing = config.creative_clothing ? 'true' : 'false';
+            changed = true;
+        }
+        if (config.creative_action !== undefined) {
+            creativeBtn.dataset.toggleAction = config.creative_action ? 'true' : 'false';
+            changed = true;
+        }
+        // Click runs the Rentan toggle side effects (dynamicGenerationManager.js)
+        if (config.creative !== undefined && (creativeBtn.dataset.state === 'on') !== !!config.creative) {
+            creativeBtn.click();
+            changed = true;
+        }
+    }
+    if (config.novel !== undefined) {
+        // applyStudioNovelConfig: public/scripts/comp/novelManager.js
+        changed = applyStudioNovelConfig(config.novel) || changed;
     }
     return changed;
 }

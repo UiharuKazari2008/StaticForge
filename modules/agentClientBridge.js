@@ -321,7 +321,7 @@ const STUDIO_CHANGE_PARAM_KEYS = [
     'seed', 'seedLock', 'resolution', 'width', 'height', 'variety', 'upscale',
     'strength', 'noise', 'append_quality', 'append_uc', 'append_transparency', 'nsfw',
     'n', 'normalize_vibes', 'use_coords', 'save_base_output', 'skip_pipeline_stages',
-    'nsfw_bias', 'quality_preset_bias', 'transparency_bias',
+    'nsfw_bias', 'quality_preset_bias', 'transparency_bias', 'image_bias',
     'keep_newlines', 'bake_newlines', 'auto_char_numerize', 'prompt_normalize', 'deduplicate_tags', 'auto_clean_uc'
 ];
 
@@ -463,6 +463,10 @@ function assembleStudioChangeFromToolArgs(body) {
     if (out.vibes === undefined && Array.isArray(body.vibe_transfer)) out.vibes = body.vibe_transfer;
     if (out.vSlider === undefined && Array.isArray(body.vSlider)) out.vSlider = body.vSlider;
     if (out.text_overlays === undefined && Array.isArray(body.text_overlays)) out.text_overlays = body.text_overlays;
+    if (out.preciseReferences === undefined && Array.isArray(body.preciseReferences)) out.preciseReferences = body.preciseReferences;
+    if (out.preciseReferences === undefined && Array.isArray(body.precise_references)) out.preciseReferences = body.precise_references;
+    if (out.workspace === undefined && typeof body.workspace === 'string' && body.workspace.trim()) out.workspace = body.workspace.trim();
+    if (out.gensoLocks === undefined && (typeof body.gensoLocks === 'boolean' || Array.isArray(body.gensoLocks))) out.gensoLocks = body.gensoLocks;
     const presetName = typeof body.presetName === 'string' ? body.presetName
         : (typeof body.preset === 'string' ? body.preset
             : (base && typeof base.presetName === 'string' ? base.presetName : ''));
@@ -486,6 +490,9 @@ function assembleStudioChangeFromToolArgs(body) {
         || Array.isArray(out.vibes)
         || Array.isArray(out.vSlider)
         || Array.isArray(out.text_overlays)
+        || (Array.isArray(out.preciseReferences) && out.preciseReferences.length)
+        || out.workspace
+        || out.gensoLocks !== undefined
         || out.dynamicGeneration
         || out.director
         || out.presetName

@@ -52,6 +52,120 @@ input:disabled[data-context-menu],
     box-shadow: inset 0 0 8px 0px var(--header-border);
 }
 
+.preview-meta-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    align-content: flex-start;
+    gap: 4px;
+    padding: 8px;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    color: #fff;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0.5) 46%, rgba(0, 0, 0, 0.12) 78%, transparent 100%);
+}
+
+.context-open > .preview-meta-overlay {
+    opacity: 1;
+    visibility: visible;
+}
+
+.gallery-item > .preview-meta-overlay {
+    padding-right: 58px;
+}
+
+.manual-preview-image-container > .preview-meta-overlay,
+.image-viewer-modal .preview-meta-overlay,
+#spellbookGenerationModal .preview-meta-overlay {
+    padding: 14px;
+}
+
+.manual-preview-image-container > .preview-meta-overlay .forgedata-badge,
+.manual-preview-image-container > .preview-meta-overlay .custom-dropdown-badge,
+.image-viewer-modal .preview-meta-overlay .forgedata-badge,
+.image-viewer-modal .preview-meta-overlay .custom-dropdown-badge,
+#spellbookGenerationModal .preview-meta-overlay .forgedata-badge,
+#spellbookGenerationModal .preview-meta-overlay .custom-dropdown-badge {
+    font-size: 18px;
+    padding: 3px 8px;
+}
+
+.manual-preview-image-container > .preview-meta-overlay .fa-star,
+.image-viewer-modal .preview-meta-overlay .fa-star,
+#spellbookGenerationModal .preview-meta-overlay .fa-star {
+    font-size: 22px;
+}
+
+.preview-meta-overlay > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+}
+
+.preview-meta-overlay .forgedata-badge,
+.preview-meta-overlay .custom-dropdown-badge {
+    font-size: 15px;
+    line-height: 1.25;
+    padding: 2px 6px;
+    max-width: 100%;
+    color: #fff;
+}
+
+.preview-meta-overlay .custom-dropdown-badge {
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.preview-meta-overlay .fa-star {
+    color: #ffd700;
+    font-size: 17px;
+    flex: 0 0 auto;
+}
+
+.preview-meta-overlay [data-meta-model] {
+    margin-left: auto;
+}
+
+.preview-meta-overlay [data-meta-type="gen"] {
+    background: linear-gradient(45deg, #1d4e89, #2f6fed);
+}
+
+.preview-meta-overlay [data-meta-type="enhanced"] {
+    background: linear-gradient(45deg, #6b2fa0, #b45cff);
+}
+
+.preview-meta-overlay [data-meta-type="expanded"] {
+    background: linear-gradient(45deg, #0a6b62, #14b8a6);
+}
+
+.preview-meta-overlay [data-meta-model="v5"] {
+    background: linear-gradient(45deg, #bd6300, #d85a00);
+}
+
+.preview-meta-overlay [data-meta-model="v45"] {
+    background: linear-gradient(45deg, #6a2ca8, #c45cff);
+}
+
+.preview-meta-overlay [data-meta-model="v4"] {
+    background: linear-gradient(45deg, #1e4d8c, #3d7dd6);
+}
+
+.preview-meta-overlay [data-meta-model="v3"] {
+    background: linear-gradient(45deg, #323232, #000000);
+}
+
+.preview-meta-overlay [data-meta-model="v3f"] {
+    background: linear-gradient(45deg, #46005a, #63004e);
+}
+
 .context-menu {
     position: fixed;
     z-index: var(--z-context-menu);

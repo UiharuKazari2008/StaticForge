@@ -22,7 +22,7 @@ If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). W
 | `search` | 240 | autofill, NAX (`search_nax`), wiki pages, OmegaSearch, `evaluate_workspace_themes` |
 | `gallery` | 90 | `get_generated_image`, `read_image_metadata`, `compare_images`, `vfs_read` (and hidden `get_images` / `get_latest_image`) |
 | `write` | 60 | save note/preset, `save_memory`, upload reference, `delete_images`, `scrap_images`, `toggle_favorite`, `save_linkxi_persona`, `set_session_title`, `set_session_tasks` / `set_session_task` / `close_session_tasks`, `vfs_mkdir` / `vfs_rename` / `vfs_move` / `vfs_copy` / `vfs_write` / `vfs_delete` |
-| `studio` | 60 | `get_studio_state`, `get_open_windows`, `set_window`, `open_application`, `get_client_physics`, `apply_studio_changes`, `apply_preset_to_studio`, `run_client_js`, `inspect_elements`, `update_client`, `restart_client` |
+| `studio` | 60 | `get_studio_state`, `get_open_windows`, `set_window`, `open_application`, `get_client_physics`, `apply_studio_changes`, `apply_preset_to_studio`, `run_client_js`, `inspect_elements`, `update_client`, `restart_client` (and hidden `get_calculator` / `set_calculator`) |
 | `generate` | 20 | `generate_image`, `generate_preset`, `upscale_image`, `expand_image` |
 
 `generate_image` waits on the shared generation FIFO (Studio uses the same stack). Omit `async` to stall until the webp is ready. `async: true` returns `jobId` — then `await_generation_job` or `get_generation_job`. `generate_image` and `apply_studio_changes` accept the **full Studio settings set** (`docs/studio-change-json.md` `params`, plus characters / expanders / `text_overlays` / vibes / pipeline / `dynamicGeneration` / `director` / `dataset_config`). `read_image_metadata` returns that same Change-JSON for one image, with `compiled` beside it. Apply `change`. Judge against `compiled`. Do not write the compiled prompt back into the prompt, and do not shell-parse the PNG. Send them as top-level keys or inside `params`. `generate_image` also maps `characters` to `allCharacterPrompts`, `dynamicGeneration` to `dynamic_generation`, and `director` session/message ids onto the generate body. `n` (1–8) is print copies on `generate_image` / `generate_preset` (`filenames[]` when `n` > 1) and the Studio prints input on `apply_studio_changes` / autoGenerate. **Quality / UC / NSFW / transparency:** set `append_quality` / `append_uc` / `append_transparency` / `dataset_config.nsfw` (or `params.nsfw` / top-level `nsfw` on `apply_studio_changes`) and do **not** paste those live strings into prompt/uc — the server prepends them. Auto-apply sets the matching Studio dropdowns and toggles (`dataset_config.include` replaces the selected dataset list; `dataset_config.settings` writes sub-toggles). **If you need to change a tag inside a preset, turn that preset off and put the edited string in prompt/uc.** Never leave the preset on and also paste a variant. In-image text: keep quality on and set `dataset_config.settings.__quality__.no_text.enabled` false (that sub-toggle is default on). `tools/list` and `get_studio_state.settings` list each preset id, name, and true value from `prompt.config`. MCP server-side generate writes `forge_data.mcp_generated` (Properties badge **MCP**), pushes `gallery_updated` `append_top` **only to clients whose active workspace matches the generate workspace**, and lights the generation tray while it runs. `expand_image` takes the same sampler overrides as `overrideParams` or top-level (`steps`, `guidance`, `rescale`, `sampler`, `noiseScheduler`, `noise`, `seed`, `model`).
@@ -42,6 +42,29 @@ Geometry is **viewport percent**, never pixels. `get_open_windows` returns `geom
 `open_application` `{ "launchId" }` — opens one applet on the bound tab by its start-menu launch id (`studio`, `character-db`, `notebook`, `director`, …). It runs that start-menu action and returns `{ launchId, text }`; it does not click inside the applet. Unknown ids return `Unknown launchId`.
 
 `offer_director_window` — notice only. It queues `agent_session_command` `director_long_job_notice` on the bound tab (a toast: "This is a long job. Director is still working.") and returns `notified: true` **immediately**. It does not wait for a reply, open a dialog, or pause the turn. `notified: false` with `reason` `no-client` / `needs-client-choice` when nothing is bound. Call it once on a long job, then keep working.
+
+## Calculator: `get_calculator` / `set_calculator`
+
+Hidden tools (`advanced_tools` `query: "calculator"`, then `name` + `arguments`). Both auto-bind and send the same command name to the bound tab (`agent_session_command`), where `public/scripts/comp/desktop-apps/calculator.js` answers. The server only validates. The calculator state and its history tape live in that browser's `localStorage` (`desktopCalculator`, last 200 entries), so both work while the window is closed.
+
+`get_calculator` `{ "tapeLimit"? }` (0–200, default 50) returns `mode` (`standard` | `scientific` | `programmer`), `display`, `value`, `expression` (pending, or the last `… =`), `error`, `memory` (number or null), `angle` (`deg` | `rad` | `grad`), `open`, `tapeCount`, and `tape` newest first. In programmer mode it also returns `base` (16/10/8/2), `wordSize` (`QWORD` | `DWORD` | `WORD` | `BYTE`), and `bases` `{ hex, dec, oct, bin }`.
+
+Tape entry: `{ id, at, kind: "calc" | "note", mode, source: "user" | "mcp", expr?, result?, value?, note?, angle?, base?, bits? }`. `value` is a number, or a signed decimal string for programmer results. `result` is the display text (`0x` / `0o` / `0b` prefix for non-decimal programmer results).
+
+`set_calculator` `{ "action", … , "open"? }`:
+
+| action | Args | Result |
+|---|---|---|
+| `evaluate` | `expression` (≤500 chars), `mode`? (default `scientific`), `angle`?, `wordBits`? (8/16/32/64, programmer, default 64), `note`?, `display`? | Adds a `calc` tape entry. Returns `expression` (normalized), `result`, `value`, `entry`, and `bases` for programmer. `display: true` also loads the result into the keypad display. |
+| `note` | `note` (≤200 chars), `value`? | Adds a `note` tape entry. With `value`, clicking it recalls that number. |
+| `delete_entries` | `ids` (1–200) | `removed`, `missing` |
+| `clear_tape` | none | `removed` |
+| `set_memory` | `value` | Sets the memory register (MR on the keypad). |
+| `clear_memory` | none | |
+
+Every reply also carries `memory` and `tapeCount`. A bad expression returns `success: false` with the calculator's message (`Cannot divide by zero`, `Invalid input`, `Overflow`, `Unknown name: …`) and adds nothing to the tape. `open: true` opens the Calculator window after the write; it does not take focus from the window on top.
+
+Expressions are tokenized and evaluated by the calculator, never run as code. Operators `+ - * / ^` (power; `**` also works) `mod`, parentheses, unary minus, postfix `!` (factorial) and `%` (divide by 100), constants `pi` / `π` / `e`, functions `sqrt cbrt abs ln log log2 exp sin cos tan asin acos atan sinh cosh tanh floor ceil round` (`√` and `∛` prefixes too), and implicit multiplication (`2pi`, `3(4+1)`). Thousands commas in numbers are ignored. `mode: "standard"` applies operators left to right like the keypad (`12 + 3 * 4` is 60); `scientific` uses precedence (24). `programmer` is two's-complement integers at `wordBits`: `+ - * /` (truncating) `mod`, `&` / `and`, `|` / `or`, `^` / `xor`, `nand`, `nor`, `~` / `not`, `<<`, `>>` (arithmetic), and `0x` / `0b` / `0o` literals.
 
 ## Director chat: name and task list
 

@@ -361,6 +361,11 @@ const GENERATE_IMAGE_PROPERTIES = {
     ...STUDIO_PARAM_SCHEMA
 };
 
+// Desktop calculator (public/scripts/comp/desktop-apps/calculator.js evaluates; the server only validates).
+const CALCULATOR_ACTIONS = ['evaluate', 'note', 'delete_entries', 'clear_tape', 'set_memory', 'clear_memory'];
+const CALCULATOR_EXPRESSION_MAX = 500;
+const CALCULATOR_NOTE_MAX = 200;
+
 const TOOL_DEFS = [
     {
         name: 'generate_image',
@@ -591,6 +596,40 @@ const TOOL_DEFS = [
             required: ['launchId'],
             properties: {
                 launchId: { type: 'string', description: 'Start-menu launch id. director opens the Director window.' }
+            }
+        }
+    },
+    {
+        name: 'get_calculator',
+        description: 'Read the desktop Calculator on the bound tab: mode (standard / scientific / programmer), display, pending expression, memory, angle unit, programmer base + word size + hex/dec/oct/bin, and the history tape (newest first). Works with the window closed; the tape lives in that browser. Write with set_calculator.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                tapeLimit: { type: 'integer', minimum: 0, maximum: 200, description: 'Tape entries to return, newest first. Default 50.' }
+            }
+        }
+    },
+    {
+        name: 'set_calculator',
+        description: 'Write to the desktop Calculator on the bound tab. evaluate: compute expression and add it to the history tape (returns result). note: add a labelled tape entry, optional value. delete_entries: remove tape entries by id (ids from get_calculator). clear_tape. set_memory / clear_memory. Expressions: + - * / ^ (power) mod, parentheses, % (divide by 100), ! (factorial), pi, e, sqrt cbrt abs ln log log2 exp sin cos tan asin acos atan sinh cosh tanh floor ceil round, implicit multiply (2pi). mode standard is left-to-right like the keypad; scientific (default) uses precedence; programmer is 64-bit integer with & | ^ (xor) ~ and or xor nand nor not << >> and 0x / 0b / 0o literals. Never evaluated as code.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['action'],
+            properties: {
+                action: { type: 'string', enum: CALCULATOR_ACTIONS },
+                expression: { type: 'string', maxLength: CALCULATOR_EXPRESSION_MAX, description: 'evaluate: the expression' },
+                mode: { type: 'string', enum: ['standard', 'scientific', 'programmer'], description: 'evaluate: rules to use. Default scientific.' },
+                angle: { type: 'string', enum: ['deg', 'rad', 'grad'], description: 'evaluate: trig unit. Default the calculator\'s setting.' },
+                wordBits: { type: 'integer', enum: [8, 16, 32, 64], description: 'evaluate in programmer mode: word size. Default 64.' },
+                note: { type: 'string', maxLength: CALCULATOR_NOTE_MAX, description: 'note: the label (required). evaluate: optional label on the entry.' },
+                value: { type: ['number', 'string'], description: 'note: optional number to recall from the tape. set_memory: the number (required).' },
+                ids: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 200, description: 'delete_entries: tape entry ids' },
+                display: { type: 'boolean', description: 'evaluate: also load the result into the calculator display' },
+                open: { type: 'boolean', description: 'Open the Calculator window on the bound tab after the write' }
             }
         }
     },
@@ -862,12 +901,28 @@ const TOOL_DEFS = [
                 fields: { type: 'array' },
                 dynamicGeneration: {
                     type: 'object',
-                    description: 'Studio dynagen toggles. Writing settings alone is fine. autoGenerate with unintegrated toggles returns needsIntegration + resolved — bake that into prompt/uc/characters, then retry with integrated=true. The server does not compile.'
+                    description: 'Studio dynagen toggles. Writing settings alone is fine. Also creative / creative_clothing / creative_action (Rentan creative button) and novel (true/false or {enabled, tone, style, explicitness, persuasiveness, auto_generate}; enable needs a creative directive or a loaded novel). autoGenerate with unintegrated toggles returns needsIntegration + resolved — bake that into prompt/uc/characters, then retry with integrated=true. The server does not compile.'
                 },
                 dynamic_generation: { type: 'object' },
                 director: {
                     type: 'object',
                     description: 'Attached director prompt / session (sessionId, messageId, prompt). Must-act if present on a read.'
+                },
+                preciseReferences: {
+                    type: 'array',
+                    description: 'Tune precise references already attached in Studio ({source, type 1 both / 2 character / 3 style or role, strength 0–1, fidelity 0–1, enabled}). Matches by source, else list index. Never attaches a new reference. Echoed by get_studio_state.'
+                },
+                image_bias: {
+                    type: ['number', 'object'],
+                    description: 'Base-image crop bias. 0–4 preset (0 top/left, 2 center, 4 bottom/right) or custom {x, y, scale, rotate}. Only with a base image loaded; skipped while a mask exists. Also accepted in params.'
+                },
+                workspace: {
+                    type: 'string',
+                    description: 'Studio workspace (id or name). Switches the active workspace like the Studio workspace dropdown, before the rest of the change applies.'
+                },
+                gensoLocks: {
+                    type: ['boolean', 'array'],
+                    description: 'Genso (expander seed) locks. true locks every lockable seed, false unlocks all, an array of keys (e.g. ["outfit"] or ["!outfit"]) locks exactly those. Needs seeds from a previous generation / loaded image; get_studio_state echoes gensoLocks + gensoAvailable.'
                 },
                 dataset_config: {
                     type: 'object',
@@ -4141,6 +4196,84 @@ function validateOpenApplicationArgs(input) {
     return { payload: { launchId } };
 }
 
+function validateGetCalculatorArgs(input) {
+    if (!input || input.tapeLimit == null) return { payload: {} };
+    const tapeLimit = Number(input.tapeLimit);
+    if (!Number.isInteger(tapeLimit) || tapeLimit < 0 || tapeLimit > 200) {
+        return { error: 'tapeLimit must be an integer 0–200' };
+    }
+    return { payload: { tapeLimit } };
+}
+
+function calculatorNumberArg(value) {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value !== 'string' || value.length > 64) return null;
+    const n = Number(value.replace(/,/g, '').trim());
+    return value.trim() && Number.isFinite(n) ? n : null;
+}
+
+function validateSetCalculatorArgs(input) {
+    const args = input || {};
+    const action = String(args.action || '').trim();
+    if (!CALCULATOR_ACTIONS.includes(action)) {
+        return { error: `action must be one of ${CALCULATOR_ACTIONS.join(', ')}` };
+    }
+    const payload = { action };
+    if (args.open === true) payload.open = true;
+    if (action === 'evaluate') {
+        const expression = typeof args.expression === 'string' ? args.expression.trim() : '';
+        if (!expression) return { error: 'evaluate needs expression' };
+        if (expression.length > CALCULATOR_EXPRESSION_MAX) return { error: `expression is over ${CALCULATOR_EXPRESSION_MAX} characters` };
+        payload.expression = expression;
+        if (args.mode != null) {
+            if (!['standard', 'scientific', 'programmer'].includes(args.mode)) return { error: 'mode must be standard, scientific, or programmer' };
+            payload.mode = args.mode;
+        }
+        if (args.angle != null) {
+            if (!['deg', 'rad', 'grad'].includes(args.angle)) return { error: 'angle must be deg, rad, or grad' };
+            payload.angle = args.angle;
+        }
+        if (args.wordBits != null) {
+            if (![8, 16, 32, 64].includes(Number(args.wordBits))) return { error: 'wordBits must be 8, 16, 32, or 64' };
+            payload.wordBits = Number(args.wordBits);
+        }
+        if (args.display === true) payload.display = true;
+    }
+    if (action === 'evaluate' || action === 'note') {
+        const note = typeof args.note === 'string' ? args.note.trim() : '';
+        if (note.length > CALCULATOR_NOTE_MAX) return { error: `note is over ${CALCULATOR_NOTE_MAX} characters` };
+        if (action === 'note' && !note) return { error: 'note needs note text' };
+        if (note) payload.note = note;
+    }
+    if (action === 'note' && args.value != null) {
+        const value = calculatorNumberArg(args.value);
+        if (value === null) return { error: 'value must be a finite number' };
+        payload.value = value;
+    }
+    if (action === 'set_memory') {
+        const value = calculatorNumberArg(args.value);
+        if (value === null) return { error: 'set_memory needs value (a finite number)' };
+        payload.value = value;
+    }
+    if (action === 'delete_entries') {
+        const ids = Array.isArray(args.ids) ? args.ids.map(Number) : [];
+        if (!ids.length || ids.length > 200 || !ids.every((id) => Number.isInteger(id) && id > 0)) {
+            return { error: 'delete_entries needs ids: 1–200 tape entry ids from get_calculator' };
+        }
+        payload.ids = ids;
+    }
+    return { payload };
+}
+
+// Tools that validate, then forward the same command name to the bound tab
+// (public/scripts/comp/agentClientBridge.js handleAgentSessionCommand).
+const BOUND_TAB_TOOL_VALIDATORS = new Map([
+    ['set_window', validateSetWindowArgs],
+    ['open_application', validateOpenApplicationArgs],
+    ['get_calculator', validateGetCalculatorArgs],
+    ['set_calculator', validateSetCalculatorArgs]
+]);
+
 const DIRECTOR_LONG_JOB_NOTICE = 'This is a long job. Director is still working.';
 
 // sendBoundCommand waits for a reply and rebinds on 504; a notice must not do either.
@@ -6691,8 +6824,8 @@ async function callTool(globalResources, req, name, args) {
         return mcpTextResult(body);
     }
 
-    if (name === 'set_window' || name === 'open_application') {
-        const checked = name === 'set_window' ? validateSetWindowArgs(input) : validateOpenApplicationArgs(input);
+    if (BOUND_TAB_TOOL_VALIDATORS.has(name)) {
+        const checked = BOUND_TAB_TOOL_VALIDATORS.get(name)(input);
         if (checked.error) {
             return mcpTextResult({ success: false, error: checked.error }, true);
         }
@@ -7869,6 +8002,8 @@ module.exports = {
         applyPrintWait,
         validateSetWindowArgs,
         validateOpenApplicationArgs,
+        validateGetCalculatorArgs,
+        validateSetCalculatorArgs,
         queueDirectorLongJobNotice,
         runDirectorSessionTool,
         resolveDirectorChatId,

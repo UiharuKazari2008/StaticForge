@@ -16,7 +16,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `director_delete_feedback` | `director_delete_feedback_response` | admin/destructive | Handler: handleDirectorDeleteFeedback |
 | `director_delete_session` | `director_delete_session_response` | admin/destructive | Handler: handleDirectorDeleteSession |
 | `director_get_messages` | `director_get_messages_response` | session | Handler: handleDirectorGetMessages |
-| `director_get_models` | `director_get_models_response` | session | Live Cursor model list, grouped by family. `models[]` has `id`, `name`, `fast`, and `efforts`. |
+| `director_get_models` | `director_get_models_response` | session | Live Cursor model list, grouped by family. `models[]` has `id`, `name`, `short` (single-line picker label, empty when `name` already fits), `fast`, and `efforts`. |
 | `director_get_session` | `director_get_session_response` | session | Handler: handleDirectorGetSession |
 | `director_get_sessions` | `director_get_sessions_response` | session | Handler: handleDirectorGetSessions |
 | `director_open_workspace` | `director_open_workspace_response` | admin/destructive | Opens the Cursor chat for the current workspace, or creates one. |

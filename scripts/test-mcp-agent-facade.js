@@ -1963,6 +1963,54 @@ async function runDirectorMcpTests() {
     assert.strictEqual(windowCommands[0].left, 10);
     assert.strictEqual(windowCommands[1].launchId, 'notebook');
 
+    // Desktop calculator: hidden tools, validated here, evaluated on the bound tab (calculator.js)
+    for (const name of ['get_calculator', 'set_calculator']) {
+        assert.ok(!coreNames.includes(name), `${name} stays behind advanced_tools`);
+        assert.strictEqual(_test.rateGroupForTool(name), 'studio');
+        assert.ok(require('../modules/mcpModuleRegistry').toolInModule(name, 'core_generation'), `core_generation missing ${name}`);
+    }
+    assert.deepStrictEqual(_test.validateGetCalculatorArgs({}).payload, {});
+    assert.deepStrictEqual(_test.validateGetCalculatorArgs({ tapeLimit: 5 }).payload, { tapeLimit: 5 });
+    assert.ok(_test.validateGetCalculatorArgs({ tapeLimit: 500 }).error);
+    assert.deepStrictEqual(_test.validateSetCalculatorArgs({ action: 'evaluate', expression: ' (12+3)*4 ', mode: 'programmer', wordBits: '32', display: true }).payload,
+        { action: 'evaluate', expression: '(12+3)*4', mode: 'programmer', wordBits: 32, display: true });
+    assert.deepStrictEqual(_test.validateSetCalculatorArgs({ action: 'note', note: 'Rent', value: '1,250.50' }).payload, { action: 'note', note: 'Rent', value: 1250.5 });
+    assert.deepStrictEqual(_test.validateSetCalculatorArgs({ action: 'set_memory', value: 0 }).payload, { action: 'set_memory', value: 0 });
+    assert.deepStrictEqual(_test.validateSetCalculatorArgs({ action: 'delete_entries', ids: [3, '4'], open: true }).payload, { action: 'delete_entries', open: true, ids: [3, 4] });
+    for (const bad of [
+        {},
+        { action: 'press' },
+        { action: 'evaluate' },
+        { action: 'evaluate', expression: 'x'.repeat(501) },
+        { action: 'evaluate', expression: '1+1', mode: 'hex' },
+        { action: 'evaluate', expression: '1+1', angle: 'turns' },
+        { action: 'evaluate', expression: '1+1', wordBits: 12 },
+        { action: 'note' },
+        { action: 'note', note: 'n'.repeat(201) },
+        { action: 'note', note: 'Rent', value: 'abc' },
+        { action: 'set_memory' },
+        { action: 'set_memory', value: Infinity },
+        { action: 'delete_entries', ids: [] },
+        { action: 'delete_entries', ids: [0] }
+    ]) {
+        assert.ok(_test.validateSetCalculatorArgs(bad).error, JSON.stringify(bad));
+    }
+    const calcRejected = await _test.callTool(windowStudio.globalResources, windowReq, 'set_calculator', { action: 'evaluate' });
+    assert.strictEqual(calcRejected.isError, true);
+    const calcStudio = fakeBoundStudio('d1b2c3d4e5f6', (data) => (data.command === 'set_calculator'
+        ? { ok: true, result: '60', tapeCount: 1 }
+        : { ok: true, mode: 'standard', tape: [], tapeCount: 0 }));
+    const calcReq = { applicationAuth: { applicationKeyId: 'director-mcp-calc', applicationScopes: ['generation'] } };
+    const evaluated = JSON.parse((await _test.callTool(calcStudio.globalResources, calcReq, 'set_calculator', { action: 'evaluate', expression: '(12+3)*4' })).content[0].text);
+    assert.strictEqual(evaluated.success, true);
+    assert.strictEqual(evaluated.result, '60');
+    const calcRead = JSON.parse((await _test.callTool(calcStudio.globalResources, calcReq, 'get_calculator', { tapeLimit: 10 })).content[0].text);
+    assert.strictEqual(calcRead.mode, 'standard');
+    const calcCommands = calcStudio.sent.filter((msg) => msg.type === 'agent_session_command').map((msg) => msg.data);
+    assert.deepStrictEqual(calcCommands.map((row) => row.command), ['set_calculator', 'get_calculator']);
+    assert.strictEqual(calcCommands[0].expression, '(12+3)*4');
+    assert.strictEqual(calcCommands[1].tapeLimit, 10);
+
     // offer_director_window: fire and forget — the fake tab never replies.
     const deafStudio = fakeBoundStudio('c1b2c3d4e5f6', () => undefined);
     const noticeReq = { applicationAuth: { applicationKeyId: 'director-mcp-notice', applicationScopes: ['generation'] } };

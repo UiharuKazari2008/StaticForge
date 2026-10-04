@@ -5286,13 +5286,6 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
         addSeedToHistory(seed);
     }
 
-    if (response && response.headers) {
-        const filename = response.headers.get('X-Generated-Filename');
-        if (filename) {
-            window.lastGeneration.filename = filename;
-        }
-    }
-
     if (metadata) {
         window.lastGeneration = metadata;
         manualPreviewOriginalImage.classList.remove('hidden');
@@ -5330,7 +5323,6 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
     const img = new Image();
     img.onload = async function () {
         createConfetti();
-        clearContextFn();
         setTimeout(async () => {
             if (allImages.length > 0) {
                 const newImage = allImages[0];

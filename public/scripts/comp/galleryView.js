@@ -1131,7 +1131,8 @@ function mergeSlimGalleryListItems(existing, incoming) {
         mtime: Math.max(Number(slimIncoming.mtime) || 0, Number(existing && existing.mtime) || 0) || slimIncoming.mtime,
         width: slimIncoming.width != null ? slimIncoming.width : (existing && existing.width),
         height: slimIncoming.height != null ? slimIncoming.height : (existing && existing.height),
-        size: slimIncoming.size || (existing && existing.size) || 0
+        size: slimIncoming.size || (existing && existing.size) || 0,
+        display: slimIncoming.display || (existing && existing.display) || null
     });
     merged.filename = merged.upscaled || merged.original || merged.filename;
     return merged;
@@ -3851,6 +3852,7 @@ function buildGalleryItemContextMenuConfig(image, item) {
                     {
                         icon: 'nai-upscale',
                         text: 'Upscale',
+                        action: 'upscale',
                         disabled: !!(image && image.upscaled),
                         loadfn: (menuItem, target) => {
                             const fileIndex = parseInt(target.dataset.fileIndex, 10);
@@ -9664,6 +9666,14 @@ async function togglePinImage(image, pinBtn = null) {
 
         // Update all pin buttons in the gallery for this image
         updateGalleryPinButtons(filename, !isPinned);
+        // paintPreviewMetaOverlay: public/scripts/comp/referenceManager.js
+        document.querySelectorAll('.context-open > .preview-meta-overlay').forEach((overlay) => {
+            const host = overlay.parentElement;
+            const current = previewMetaImageForHost(host);
+            const name = current && (current.filename || current.original || current.upscaled);
+            if (name !== filename) return;
+            paintPreviewMetaOverlay(host, current, current.metadata || current);
+        });
         syncServiceWorkerImageCacheRules();
     } catch (error) {
         console.error('Error toggling pin status:', error);
@@ -9794,7 +9804,7 @@ function overlayListBlurhashOnMetadata(filename, metadata) {
 }
 
 // Get image metadata via WebSocket with optional IndexedDB cache (never block editor on gallery DB init)
-async function getImageMetadata(filename) {
+async function getImageMetadata(filename, options) {
     try {
         const previewImage = window.currentManualPreviewImage;
         if (previewImage && previewImage.metadata) {
@@ -9858,7 +9868,9 @@ async function getImageMetadata(filename) {
         return metadata;
     } catch (error) {
         console.error('Error getting image metadata:', error);
-        showGlassToast('error', 'Image metadata request error', error.message, false);
+        if (!options || !options.quiet) {
+            showGlassToast('error', 'Image metadata request error', error.message, false);
+        }
         throw error;
     }
 }
