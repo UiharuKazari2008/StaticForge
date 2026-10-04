@@ -7,7 +7,8 @@
       "type": "object",
       "label": "Application Config",
       "closed": true,
-      "required": true
+      "required": true,
+      "description": "Informational only: the editor never matches an empty rule path (configEditorService _matchRuleScore), so closed/required/label here do not apply. The root label comes from the map's top-level label."
     },
     {
       "path": [
@@ -26,8 +27,7 @@
       "type": "boolean",
       "label": "Developer Access",
       "editMode": "inline",
-      "restartRequired": true,
-      "description": "Enable routes protected by the development login key"
+      "description": "Enable loopback-only development routes authenticated by secure.config.json devLoginKey. Read per request; no restart needed. Default off (unset)."
     },
     {
       "path": [
@@ -36,7 +36,7 @@
       "type": "string",
       "label": "Default Grok Model",
       "editorType": "input",
-      "description": "Default model ID for Grok chat requests"
+      "description": "Default model ID for Grok chat requests. When empty, grokService falls back to grok-4-fast-reasoning and the native xAI path / quips fall back to grok-4.3."
     },
     {
       "path": [
@@ -52,7 +52,9 @@
       ],
       "type": "boolean",
       "label": "Debug NovelAI",
-      "editMode": "inline"
+      "editMode": "inline",
+      "restartRequired": true,
+      "description": "Verbose logging in the NovelAI client. Applied when the client is created (startup). Default off."
     },
     {
       "path": [
@@ -80,13 +82,14 @@
       ],
       "type": "string",
       "label": "Log Verbosity",
+      "restartRequired": true,
       "enum": [
         "MINIMAL",
         "NORMAL",
         "DETAILED",
         "VERBOSE"
       ],
-      "description": "Console log detail level (see modules/logger.js VERBOSITY_LEVELS)"
+      "description": "Console log detail level (modules/logger.js VERBOSITY_LEVELS). Default NORMAL. Read once at startup. The LOG_VERBOSITY environment variable is also consulted."
     },
     {
       "path": [
@@ -94,7 +97,9 @@
       ],
       "type": "boolean",
       "label": "Preload Tags",
-      "editMode": "inline"
+      "editMode": "inline",
+      "restartRequired": true,
+      "description": "Load tag search services during boot instead of lazily. Read once at startup. Default off."
     },
     {
       "path": [
@@ -112,16 +117,16 @@
       "type": "string",
       "label": "User-Agent",
       "editorType": "input",
-      "description": "HTTP User-Agent string sent with outbound requests"
+      "description": "User-Agent for some outbound HTTP calls (Grok service and dynamic-generation fetches). When empty, each call site uses its own fallback (StaticForge/1.1a or a browser UA)."
     },
     {
       "path": [
         "pm2_process_name"
       ],
       "type": "string",
-      "label": "PM2 Process Name",
+      "label": "PM2 Log Name",
       "editorType": "input",
-      "description": "Process name used when running under PM2"
+      "description": "Fallback name used to locate PM2 log files (<name>-out.log / <name>-error.log) for the log viewer. Does not rename the PM2 process; under PM2 the process's own name (ecosystem.config.js: Dreamscape) wins. Fallbacks: Dreamscape, staticforge."
     },
     {
       "path": [
@@ -130,8 +135,7 @@
       "type": "string",
       "label": "Public Hostname",
       "editorType": "input",
-      "restartRequired": true,
-      "description": "Host without scheme for MCP OAuth issuer (example: staticforge.737.jp.net)"
+      "description": "Host[:port] WITHOUT scheme (example: staticforge.737.jp.net). Used for the MCP base URL and OAuth issuer; localhost/127.0.0.1 select http, anything else https. Default localhost:9220. Read per call."
     },
     {
       "path": [
@@ -149,7 +153,7 @@
       "type": "string",
       "label": "MCP Local Sandbox Root",
       "editorType": "input",
-      "description": "If set, MCP dest_path writes go under this directory. Leave empty on production so callers download the artifact URL onto their own machine."
+      "description": "If set, MCP dest_path writes go under this directory. Empty (default) disables local writes so callers download the artifact URL onto their own machine."
     },
     {
       "path": [
@@ -159,6 +163,58 @@
       "label": "LRU Cache",
       "closed": true,
       "required": true
+    },
+    {
+      "path": [
+        "lruCache",
+        "weatherSize"
+      ],
+      "type": "number",
+      "label": "Weather Cache Size",
+      "required": true,
+      "restartRequired": true,
+      "description": "Max entries. Seeded default 100 (code fallback 500 if 0/unset)."
+    },
+    {
+      "path": [
+        "lruCache",
+        "locationSize"
+      ],
+      "type": "number",
+      "label": "Location Cache Size",
+      "required": true,
+      "restartRequired": true,
+      "description": "Max entries. Seeded default 100 (code fallback 50 if 0/unset)."
+    },
+    {
+      "path": [
+        "lruCache",
+        "weatherDuration"
+      ],
+      "type": "number",
+      "label": "Weather TTL (ms)",
+      "required": true,
+      "description": "Milliseconds. Seeded default 300000 (code fallback 180000)."
+    },
+    {
+      "path": [
+        "lruCache",
+        "locationDuration"
+      ],
+      "type": "number",
+      "label": "Location TTL (ms)",
+      "required": true,
+      "description": "Milliseconds. Seeded default 300000 (code fallback 86400000)."
+    },
+    {
+      "path": [
+        "lruCache",
+        "weatherFailureDuration"
+      ],
+      "type": "number",
+      "label": "Weather Failure TTL (ms)",
+      "required": true,
+      "description": "Milliseconds. Seeded default 150000 (code fallback 900000)."
     },
     {
       "path": [
@@ -519,6 +575,265 @@
     },
     {
       "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "resultTypeFilter"
+      ],
+      "type": "auto",
+      "label": "Result Type Filter",
+      "enum": [
+        null,
+        "characters",
+        "tags",
+        "expanders",
+        "dynamic",
+        "novelai"
+      ],
+      "description": "Restrict autofill results to one type; null (default) shows all."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "artistSearch"
+      ],
+      "type": "boolean",
+      "label": "Artist Search",
+      "editMode": "inline",
+      "description": "Default false."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "remoteAccess"
+      ],
+      "type": "object",
+      "label": "Remote Access (MCP)",
+      "closed": true,
+      "description": "MCP generation defaults (modules/remoteAccessSettings.js)."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "remoteAccess",
+        "defaultGenerationMethod"
+      ],
+      "type": "string",
+      "label": "Default Generation Method",
+      "enum": [
+        "studio",
+        "auto",
+        "detached"
+      ],
+      "description": "Default studio."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "remoteAccess",
+        "autoGenerate"
+      ],
+      "type": "boolean",
+      "label": "Auto Generate",
+      "editMode": "inline",
+      "description": "Default false."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "remoteAccess",
+        "openGeneratedImages"
+      ],
+      "type": "string",
+      "label": "Open Generated Images In",
+      "enum": [
+        "ledge",
+        "glancewell",
+        "lumen",
+        "disabled"
+      ],
+      "description": "Default ledge."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "remoteAccess",
+        "minPrintsPerTurn"
+      ],
+      "type": "number",
+      "label": "Min Prints per Turn",
+      "description": "1-8, default 1."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "remoteAccess",
+        "maxPrintsPerTurn"
+      ],
+      "type": "number",
+      "label": "Max Prints per Turn",
+      "description": "1-8, default 8; raised to min if lower."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration"
+      ],
+      "type": "object",
+      "label": "Image Generation",
+      "closed": true,
+      "description": "Studio output prefs (modules/imageGenerationSettings.js)."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "streamImageGeneration"
+      ],
+      "type": "boolean",
+      "label": "Stream Image Generation",
+      "editMode": "inline",
+      "description": "Default true."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "showStreamedImagesUnprocessed"
+      ],
+      "type": "boolean",
+      "label": "Show Streamed Images Unprocessed",
+      "editMode": "inline",
+      "description": "Default true."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "simpleOutputViewer"
+      ],
+      "type": "boolean",
+      "label": "Simple Output Viewer",
+      "editMode": "inline",
+      "description": "Default false."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "lockOutputViewerCamera"
+      ],
+      "type": "boolean",
+      "label": "Lock Output Viewer Camera",
+      "editMode": "inline",
+      "description": "Default false."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "reducedMotion"
+      ],
+      "type": "boolean",
+      "label": "Reduced Motion",
+      "editMode": "inline",
+      "description": "Default false."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "transparencyBackground"
+      ],
+      "type": "string",
+      "label": "Transparency Background",
+      "enum": [
+        "checker-dark",
+        "checker-light",
+        "white",
+        "black",
+        "gray",
+        "red",
+        "green",
+        "blue",
+        "custom"
+      ],
+      "description": "Default checker-dark."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "transparencyCustomColor"
+      ],
+      "type": "string",
+      "label": "Transparency Custom Color",
+      "editorType": "input",
+      "description": "#rrggbb or #rgb; default #808080."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "hideQuickstartGallery"
+      ],
+      "type": "boolean",
+      "label": "Hide Quickstart Gallery",
+      "editMode": "inline",
+      "description": "Default false."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "persistHistory"
+      ],
+      "type": "boolean",
+      "label": "Persist History",
+      "editMode": "inline",
+      "description": "Default true."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "imageFormat"
+      ],
+      "type": "string",
+      "label": "Image Format",
+      "enum": [
+        "png",
+        "webp"
+      ],
+      "description": "Default png."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "automaticDownload"
+      ],
+      "type": "boolean",
+      "label": "Automatic Download",
+      "editMode": "inline",
+      "description": "Default false."
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "imageGeneration",
+        "alphaMode"
+      ],
+      "type": "string",
+      "label": "Alpha Mode",
+      "enum": [
+        "straight",
+        "premultiplied"
+      ],
+      "description": "Default straight."
+    },
+    {
+      "path": [
         "generationQuips"
       ],
       "type": "object",
@@ -535,7 +850,7 @@
       "type": "number",
       "label": "Daily Check Hour",
       "required": true,
-      "description": "Local hour (0\u201323) for time-based quip auto-update checks"
+      "description": "Local hour (0\u201323) for time-based quip auto-update checks. Default 8."
     },
     {
       "path": [
@@ -545,7 +860,7 @@
       "type": "number",
       "label": "Daily Check Minute",
       "required": true,
-      "description": "Local minute (0\u201359) for time-based quip auto-update checks"
+      "description": "Local minute (0\u201359) for time-based quip auto-update checks. Default 0."
     },
     {
       "path": [
@@ -555,19 +870,7 @@
       "type": "number",
       "label": "Count Check Interval (hours)",
       "required": true,
-      "description": "Hours between count-based auto-update evaluations (1\u201324)"
-    },
-    {
-      "path": [
-        "generationQuips",
-        "// Session continuity for quip generation (native xai path)"
-      ],
-      "type": "string",
-      "label": "Comment (documentation)",
-      "readOnly": true,
-      "readOnlyReason": "JSON comment key \u2014 not used at runtime; remove manually if desired",
-      "skip": true,
-      "description": "Inline documentation copied from generationQuipsManager.js; ignored by the server"
+      "description": "Hours between count-based auto-update evaluations (1\u201324). Default 4."
     },
     {
       "path": [
@@ -577,7 +880,7 @@
       "type": "boolean",
       "label": "Maintain Quip Session",
       "editMode": "inline",
-      "description": "Reuse the same Grok session across quip generation runs"
+      "description": "Reuse the same Grok session across quip generation runs. Default true."
     },
     {
       "path": [
@@ -587,7 +890,7 @@
       "type": "boolean",
       "label": "Break Session at 128k",
       "editMode": "inline",
-      "description": "Start a fresh session when context nears 128k tokens"
+      "description": "Start a fresh session when context nears 128k tokens. Default true."
     },
     {
       "path": [
@@ -597,7 +900,7 @@
       "type": "boolean",
       "label": "Log Full Prompts",
       "editMode": "inline",
-      "description": "Log full sent messages and model output to console during quip runs"
+      "description": "Log full sent messages and model output to console during quip runs. Default false."
     },
     {
       "path": [
@@ -615,9 +918,10 @@
         "enabled"
       ],
       "type": "boolean",
-      "label": "Checkpoints Enabled",
+      "label": "Tiered Retention (Grandfathering)",
       "editMode": "inline",
-      "required": true
+      "required": true,
+      "description": "When true (default), checkpoint cleanup uses the hour/day/month grandfathering tiers below. When false, checkpoints are still created but cleanup falls back to a fixed newest-N cap."
     },
     {
       "path": [
@@ -650,7 +954,7 @@
       "type": "number",
       "label": "Hour Tier Max",
       "required": true,
-      "description": "Recent snapshots kept (default tier); excess deleted when rollover is null"
+      "description": "Number of hourly buckets kept (default 4); older buckets roll over or are deleted. 0 purges ALL hour-tier checkpoints."
     },
     {
       "path": [
@@ -659,10 +963,15 @@
         "hour",
         "rollover"
       ],
-      "type": "string",
+      "type": "auto",
       "label": "Hour Rollover Target",
       "required": false,
-      "description": "Optional tier to promote into (day); null deletes excess"
+      "enum": [
+        null,
+        "day",
+        "month"
+      ],
+      "description": "Tier that receives excess hour checkpoints. null (default) deletes them."
     },
     {
       "path": [
@@ -697,7 +1006,7 @@
       "type": "number",
       "label": "Day Tier Max",
       "required": true,
-      "description": "Set 0 to disable day-tier storage"
+      "description": "Number of daily buckets kept. Default 0 = day tier disabled (its checkpoints are purged)."
     },
     {
       "path": [
@@ -706,10 +1015,14 @@
         "day",
         "rollover"
       ],
-      "type": "string",
+      "type": "auto",
       "label": "Day Rollover Target",
       "required": false,
-      "description": "Optional tier to promote into (month); null deletes excess"
+      "enum": [
+        null,
+        "month"
+      ],
+      "description": "Tier that receives excess day checkpoints. null (default) deletes them."
     },
     {
       "path": [
@@ -744,7 +1057,7 @@
       "type": "number",
       "label": "Month Tier Max",
       "required": true,
-      "description": "Set 0 to disable month-tier storage"
+      "description": "Number of monthly buckets kept. Default 0 = month tier disabled (its checkpoints are purged)."
     },
     {
       "path": [
@@ -753,10 +1066,25 @@
         "month",
         "rollover"
       ],
-      "type": "string",
+      "type": "auto",
       "label": "Month Rollover Target",
       "required": false,
-      "description": "null \u2014 oldest at month tier are deleted"
+      "enum": [
+        null
+      ],
+      "description": "Last tier: null (default) deletes the oldest month checkpoints."
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "month",
+        "perBucketMax"
+      ],
+      "type": "number",
+      "label": "Month Per-Bucket Max",
+      "required": false,
+      "description": "Newest snapshots kept within the same month bucket (default 1, minimum 1)"
     },
     {
       "path": [
@@ -765,15 +1093,81 @@
       ],
       "type": "object",
       "label": "Per-Resource Overrides",
-      "closed": true,
-      "description": "Checkpoint retention overrides keyed by resource name (e.g. metadata, tag_wiki)"
+      "allowAdd": true,
+      "description": "Retention overrides merged over grandfathering, keyed by resource: JSON config file stem (e.g. config, prompt.config), database checkpoint name, or bundles."
+    },
+    {
+      "path": [
+        "checkpoints",
+        "overrides",
+        "*"
+      ],
+      "type": "object",
+      "label": "Resource Override",
+      "allowAdd": true,
+      "defaultSkeleton": {}
+    },
+    {
+      "path": [
+        "checkpoints",
+        "overrides",
+        "*",
+        "*"
+      ],
+      "type": "object",
+      "label": "Tier Override",
+      "defaultSkeleton": {
+        "max": 0,
+        "rollover": null,
+        "perBucketMax": 1
+      }
+    },
+    {
+      "path": [
+        "checkpoints",
+        "overrides",
+        "*",
+        "*",
+        "max"
+      ],
+      "type": "number",
+      "label": "Max Buckets"
+    },
+    {
+      "path": [
+        "checkpoints",
+        "overrides",
+        "*",
+        "*",
+        "rollover"
+      ],
+      "type": "auto",
+      "label": "Rollover Target",
+      "enum": [
+        null,
+        "day",
+        "month"
+      ]
+    },
+    {
+      "path": [
+        "checkpoints",
+        "overrides",
+        "*",
+        "*",
+        "perBucketMax"
+      ],
+      "type": "number",
+      "label": "Per-Bucket Max"
     },
     {
       "path": [
         "userPinLoginEnabled"
       ],
       "type": "boolean",
-      "label": "User PIN Login Enabled"
+      "label": "User PIN Login Enabled",
+      "editMode": "inline",
+      "description": "Allow the read-only user PIN to log in and approve MCP OAuth consent. Default true (only an explicit false disables). Admin PIN is unaffected."
     },
     {
       "path": [
@@ -819,14 +1213,19 @@
       "description": "When true (default), Grim is shown to local CIDRs as well as logged-in sessions. When false, Grim is session-only."
     },
     {
-      "path": ["xi"],
+      "path": [
+        "xi"
+      ],
       "type": "object",
       "label": "Xi",
       "closed": true,
       "description": "Host-side Director persona. Stays off until enabled on this instance."
     },
     {
-      "path": ["xi", "enabled"],
+      "path": [
+        "xi",
+        "enabled"
+      ],
       "type": "boolean",
       "label": "Enable Xi",
       "editMode": "inline",
@@ -834,11 +1233,105 @@
       "description": "Show the Wren / Xi switch and run Xi on the host. A server start is required."
     },
     {
-      "path": ["xi", "workspace"],
+      "path": [
+        "xi",
+        "workspace"
+      ],
       "type": "string",
       "label": "Xi Workspace",
       "editorType": "input",
-      "description": "Folder Xi edits. Empty uses this repo."
+      "description": "Folder Xi edits. Empty, or a path that does not exist, falls back to this repo."
+    },
+    {
+      "path": [
+        "autofillRanking"
+      ],
+      "type": "object",
+      "label": "Autofill Ranking",
+      "restartRequired": true,
+      "description": "Autofill scoring constants (modules/autofillRankingSettings.js). Prefer the Autofill Ranking applet: it bumps rankingVersion and applies live. Edits here only take effect at next start."
+    },
+    {
+      "path": [
+        "MAX_SUSPICIOUS_IPS"
+      ],
+      "type": "number",
+      "label": "Max Tracked Suspicious IPs",
+      "description": "Cap on the in-memory suspicious-IP table; oldest 10% pruned when exceeded. Default 5000."
+    },
+    {
+      "path": [
+        "guacRemote"
+      ],
+      "type": "object",
+      "label": "Guacamole Remote",
+      "closed": true,
+      "description": "Fallback only. Precedence: GUAC_* env, then secure.config guacUsername/guacPassword, then this block, then the Komaki console config. Prefer secure.config for credentials."
+    },
+    {
+      "path": [
+        "guacRemote",
+        "origin"
+      ],
+      "type": "string",
+      "label": "Guacamole Origin",
+      "editorType": "input"
+    },
+    {
+      "path": [
+        "guacRemote",
+        "username"
+      ],
+      "type": "string",
+      "label": "Guacamole Username",
+      "editorType": "input"
+    },
+    {
+      "path": [
+        "guacRemote",
+        "password"
+      ],
+      "type": "string",
+      "label": "Guacamole Password",
+      "secret": true,
+      "description": "Credential. Prefer secure.config.json guacPassword."
+    },
+    {
+      "path": [
+        "grimoireBrowser"
+      ],
+      "type": "object",
+      "label": "Grimoire Browser",
+      "closed": true,
+      "description": "Enabled only when origin and token are both set. Env GRIMOIRE_BROWSER_* and secure.config grimoireBrowserToken take precedence."
+    },
+    {
+      "path": [
+        "grimoireBrowser",
+        "origin"
+      ],
+      "type": "string",
+      "label": "Grimoire Browser Origin",
+      "editorType": "input"
+    },
+    {
+      "path": [
+        "grimoireBrowser",
+        "token"
+      ],
+      "type": "string",
+      "label": "Grimoire Browser Token",
+      "secret": true,
+      "description": "Bearer credential. Prefer secure.config.json grimoireBrowserToken."
+    },
+    {
+      "path": [
+        "apiKey"
+      ],
+      "type": "string",
+      "label": "NovelAI API Key (legacy)",
+      "secret": true,
+      "description": "Legacy fallback read by searchService when no managed key is available. Prefer secure.config.json key lists."
     }
   ]
 }

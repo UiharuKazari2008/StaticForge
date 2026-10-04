@@ -278,6 +278,48 @@
       ],
       "type": "number",
       "label": "Idle minutes"
+    },
+    {
+      "path": [
+        "guacUsername"
+      ],
+      "type": "string",
+      "label": "Guacamole Username",
+      "editorType": "input"
+    },
+    {
+      "path": [
+        "guacPassword"
+      ],
+      "type": "string",
+      "label": "Guacamole Password",
+      "secret": true
+    },
+    {
+      "path": [
+        "grimoireBrowserToken"
+      ],
+      "type": "string",
+      "label": "Grimoire Browser Token",
+      "secret": true
+    },
+    {
+      "path": [
+        "replication",
+        "replicationToken"
+      ],
+      "type": "string",
+      "label": "Replication Token",
+      "secret": true
+    },
+    {
+      "path": [
+        "replication",
+        "replicationReadToken"
+      ],
+      "type": "string",
+      "label": "Replication Read Token",
+      "secret": true
     }
   ]
 }
