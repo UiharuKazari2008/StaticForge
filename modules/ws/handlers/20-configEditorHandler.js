@@ -53,7 +53,8 @@ async function handleConfigEditorGetNode(handlersCtx, ws, message, clientInfo, w
 
 async function handleConfigEditorRevealSecret(handlersCtx, ws, message, clientInfo, wsServer) {
     if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
-    const { configId, path } = message;
+    const configId = message.configId || message.file;
+    const path = message.path;
     if (!configId) {
         handlersCtx.sendError(ws, 'Missing configId', 'config_editor_reveal_secret', message.requestId);
         return;
@@ -64,6 +65,7 @@ async function handleConfigEditorRevealSecret(handlersCtx, ws, message, clientIn
     }
     try {
         const data = handlersCtx.globalResources.getConfigEditorService().revealSecretValue(configId, path);
+        console.info('[config_editor] reveal', configId, path.join('.'));
         handlersCtx.sendToClient(ws, {
             type: 'config_editor_reveal_secret_response',
             requestId: message.requestId,
