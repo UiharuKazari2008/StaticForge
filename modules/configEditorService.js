@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const NaxTagGenerationService = require('./naxTagGeneration');
 const SECRET_MASK = '••••••••';
+const SECRET_NAME_RE = /^(apiKey|api_key|password|secret|token|sessionSecret|loginKey|loginPin|devLoginKey|readOnlyPin)$/i;
 
 const CONFIG_GETTERS = {
     config: (gr) => gr.getConfig({ clone: true }),
@@ -56,7 +57,7 @@ class ConfigEditorService {
         }
 
         const nodeRule = this.resolveMapRule(configId, path);
-        const nodeMeta = this._nodeMeta(value, nodeRule, map?.label || entry.label, path);
+        const nodeMeta = this._nodeMeta(value, nodeRule, map?.label || entry.label, path, configId);
         const childItemRule = this._findWildcardChildRule(configId, path);
         if (childItemRule) {
             nodeMeta.childDisplay = this._childDisplayMeta(childItemRule);
@@ -70,12 +71,13 @@ class ConfigEditorService {
                 const childPath = [...path, key];
                 const childVal = value[key];
                 const childRule = this.resolveMapRule(configId, childPath);
-                const childMeta = this._nodeMeta(childVal, childRule, key, childPath);
+                const childMeta = this._nodeMeta(childVal, childRule, key, childPath, configId);
                 const displayLabel = this._resolveChildLabel(childVal, childRule, childItemRule, key);
                 const icon = (childRule?.iconField || childItemRule?.iconField) && childVal && typeof childVal === 'object'
                     ? (childVal[(childRule?.iconField || childItemRule?.iconField)] || null)
                     : null;
-                const isSecret = this._isSecretPath(childPath, childRule);
+                const isSecret = !childMeta.expandable
+                    && this._isSecretPath(childPath, childRule, configId);
                 const isReadOnly = this._resolveReadOnly(childRule, childPath);
                 const isRequired = this._resolveRequired(childRule, childPath);
                 const stub = {
@@ -105,7 +107,7 @@ class ConfigEditorService {
                 }
                 if (childMeta.types) stub.types = childMeta.types;
                 if (!childMeta.expandable) {
-                    stub.value = this._formatValueForClient(childVal, childRule, isSecret);
+                    stub.value = this._formatValueForClient(childVal, isSecret);
                 }
                 children.push(stub);
             }
@@ -117,10 +119,9 @@ class ConfigEditorService {
             nodeMeta.hasExpandableChildren = false;
         }
 
-        const nodeIsSecret = path.length > 0 && this._isSecretPath(path, nodeRule);
         let nodeValue;
         if (value !== undefined) {
-            nodeValue = nodeIsSecret ? SECRET_MASK : JSON.parse(JSON.stringify(value));
+            nodeValue = this._maskValueTree(value, configId, path);
         }
 
         return {
@@ -130,6 +131,14 @@ class ConfigEditorService {
             children,
             nodeValue
         };
+    }
+
+    /**
+     * Recursively mask secret leaves for any client-bound snapshot
+     * (root / object / leaf / raw JSON / search / future diff or export).
+     */
+    maskValueForClient(configId, value, pathInput = []) {
+        return this._maskValueTree(value, configId, this._normalizePath(pathInput));
     }
 
     revealSecretValue(configId, pathInput = []) {
@@ -142,12 +151,12 @@ class ConfigEditorService {
         if (value === undefined) {
             throw new Error(`Path not found: ${path.join('.')}`);
         }
-        const rule = this.resolveMapRule(configId, path);
-        if (!this._isSecretPath(path, rule)) {
-            throw new Error('Path is not a secret value');
+        if (value !== null && typeof value === 'object') {
+            throw new Error('Path is not a leaf value');
         }
-        if (typeof value !== 'string') {
-            return { value: value == null ? '' : String(value) };
+        const rule = this.resolveMapRule(configId, path);
+        if (!this._isSecretPath(path, rule, configId)) {
+            throw new Error('Path is not a secret value');
         }
         return { value };
     }
@@ -210,10 +219,9 @@ class ConfigEditorService {
                             });
                             continue;
                         }
-                        let val = patch.value;
-                        if (rule?.secret || this._isSecretPath(p, rule)) {
-                            if (val === SECRET_MASK) continue;
-                        }
+                        const stored = this._getAtPath(data, p);
+                        let val = this._rehydrateMaskedValue(patch.value, stored, configId, p);
+                        if (val === SECRET_MASK) continue;
                         if (rule) {
                             val = this._coerceValue(val, rule);
                         }
@@ -368,12 +376,13 @@ class ConfigEditorService {
                 value,
                 rule,
                 keyLabel || (path.length ? path[path.length - 1] : entry.label),
-                path
+                path,
+                configId
             );
             const displayLabel = wildChildRule && !wildChildRule.displayTemplate && !rule?.displayTemplate
                 ? String(path[path.length - 1])
                 : meta.label;
-            const isSecret = this._isSecretPath(path, rule);
+            const isSecret = this._isSecretPath(path, rule, configId);
             let bestScore = 0;
             let matchReason = null;
             let valuePreview = null;
@@ -532,7 +541,7 @@ class ConfigEditorService {
     _resolveEditMode(rule, meta, isSecret, isReadOnly) {
         if (isReadOnly) return 'readonly';
         if (rule?.editMode) return rule.editMode;
-        if (isSecret || rule?.secret) return 'secret';
+        if (isSecret) return 'secret';
         if (meta.expandable) return 'modal';
         if (meta.type === 'boolean' && !meta.types?.length) return 'inline';
         if (rule?.enum?.length) return 'inline';
@@ -541,7 +550,7 @@ class ConfigEditorService {
         return 'modal';
     }
 
-    _nodeMeta(value, rule, fallbackLabel, pathInput = []) {
+    _nodeMeta(value, rule, fallbackLabel, pathInput = [], configId = null) {
         const inferred = this._inferType(value);
         let type = inferred;
         if (rule?.type && rule.type !== 'auto') {
@@ -567,7 +576,7 @@ class ConfigEditorService {
             label: rule?.label || fallbackLabel || '(root)',
             expandable,
             restartRequired: !!rule?.restartRequired,
-            secret: !!rule?.secret,
+            secret: !expandable && this._isSecretPath(path, rule, configId),
             enum: rule?.enum || null,
             types: rule?.types?.length ? rule.types.slice() : null,
             description: rule?.description || null,
@@ -795,18 +804,84 @@ class ConfigEditorService {
         return 'string';
     }
 
-    _isSecretPath(path, rule) {
-        if (rule?.secret) return true;
-        const key = path?.length ? path[path.length - 1] : '';
-        if (!key) return false;
-        return /^(apiKey|api_key|password|secret|token|sessionSecret|loginKey|loginPin|devLoginKey|readOnlyPin)$/i.test(String(key));
+    _isSecureConfig(configId) {
+        if (!configId) return false;
+        try {
+            return this._getIndexEntry(configId).configType === 'secureConfig';
+        } catch {
+            return configId === 'secureConfig';
+        }
     }
 
-    _formatValueForClient(value, rule, isSecret) {
-        const secret = isSecret ?? this._isSecretPath([], rule);
-        if (secret && typeof value === 'string' && value.length) {
-            return SECRET_MASK;
+    _ruleSecretFlag(rule) {
+        if (!rule || !Object.prototype.hasOwnProperty.call(rule, 'secret')) return null;
+        return rule.secret === true;
+    }
+
+    _isSecretPath(path, rule, configId) {
+        const normalized = this._normalizePath(path);
+        if (rule === undefined && configId) {
+            rule = this.resolveMapRule(configId, normalized);
         }
+        const ownFlag = this._ruleSecretFlag(rule);
+        if (ownFlag !== null) return ownFlag;
+        if (configId && normalized.length) {
+            for (let i = normalized.length - 1; i >= 0; i--) {
+                const ancestor = this.resolveMapRule(configId, normalized.slice(0, i));
+                const ancestorFlag = this._ruleSecretFlag(ancestor);
+                if (ancestorFlag === true) return true;
+                if (ancestorFlag === false) break;
+            }
+        }
+        if (this._isSecureConfig(configId) && normalized.length) return true;
+        const key = normalized.length ? normalized[normalized.length - 1] : '';
+        if (!key) return false;
+        return SECRET_NAME_RE.test(String(key));
+    }
+
+    _maskValueTree(value, configId, path) {
+        if (value === undefined) return undefined;
+        if (Array.isArray(value)) {
+            return value.map((item, i) => this._maskValueTree(item, configId, [...path, String(i)]));
+        }
+        if (value && typeof value === 'object') {
+            const out = {};
+            for (const key of Object.keys(value)) {
+                out[key] = this._maskValueTree(value[key], configId, [...path, key]);
+            }
+            return out;
+        }
+        const rule = this.resolveMapRule(configId, path);
+        if (this._isSecretPath(path, rule, configId)) return SECRET_MASK;
+        return value;
+    }
+
+    _rehydrateMaskedValue(incoming, stored, configId, path) {
+        if (incoming === SECRET_MASK) return stored;
+        if (incoming && typeof incoming === 'object' && stored && typeof stored === 'object') {
+            if (Array.isArray(incoming) && Array.isArray(stored)) {
+                return incoming.map((item, i) => (
+                    this._rehydrateMaskedValue(item, stored[i], configId, [...path, String(i)])
+                ));
+            }
+            if (!Array.isArray(incoming) && !Array.isArray(stored)) {
+                const out = {};
+                for (const key of Object.keys(incoming)) {
+                    out[key] = this._rehydrateMaskedValue(
+                        incoming[key],
+                        stored[key],
+                        configId,
+                        [...path, key]
+                    );
+                }
+                return out;
+            }
+        }
+        return incoming;
+    }
+
+    _formatValueForClient(value, isSecret) {
+        if (isSecret) return SECRET_MASK;
         return value;
     }
 
@@ -821,6 +896,8 @@ class ConfigEditorService {
             if (!allowCustom && !inEnum) {
                 throw new Error(`Value must be one of: ${rule.enum.map((v) => v === null ? 'null' : String(v)).join(', ')}`);
             }
+            if (normalized === null && inEnum) return null;
+            value = normalized;
         }
         if (rule.types?.length) {
             const inferred = Array.isArray(value) ? 'array' : typeof value === 'object' && value !== null
@@ -866,7 +943,7 @@ class ConfigEditorService {
             const childPath = [...path, key];
             const childVal = value[key];
             const childRule = this.resolveMapRule(configId, childPath);
-            const childMeta = this._nodeMeta(childVal, childRule, key, childPath);
+            const childMeta = this._nodeMeta(childVal, childRule, key, childPath, configId);
             if (childMeta.expandable) return true;
         }
         return false;

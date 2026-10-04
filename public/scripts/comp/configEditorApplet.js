@@ -30,9 +30,12 @@ function configEditorFormatDisplayValue(val) {
     return String(val);
 }
 
-function configEditorIsSecret(stub) {
+function configEditorIsSecret(stub, configId) {
     if (!stub) return false;
+    if (stub.secret === false) return false;
     if (stub.secret) return true;
+    const id = configId || stub.configId;
+    if (id === 'secureConfig' && stub.path?.length) return true;
     const key = stub.path?.length ? stub.path[stub.path.length - 1] : stub.key;
     return /^(apiKey|api_key|password|secret|token|sessionSecret|loginKey|loginPin|devLoginKey|readOnlyPin)$/i.test(String(key || ''));
 }
@@ -997,7 +1000,7 @@ class ConfigEditorApplet {
                 types,
                 expandable,
                 hasExpandableChildren: expandable,
-                secret: configEditorIsSecret({ path: childPath, key }),
+                secret: configEditorIsSecret({ path: childPath, key, configId }),
                 value: expandable ? undefined : childVal,
                 mapped: false
             };
@@ -1226,7 +1229,7 @@ class ConfigEditorApplet {
                         icon,
                         types,
                         expandable,
-                        secret: configEditorIsSecret({ path: edit.path, key }),
+                        secret: configEditorIsSecret({ path: edit.path, key, configId }),
                         value: expandable ? undefined : val,
                         isPendingNew: !!edit.isNew
                     });
@@ -1368,7 +1371,7 @@ class ConfigEditorApplet {
             isNew: true,
             previousValue: undefined,
             restartRequired: false,
-            secret: configEditorIsSecret({ path: newPath, key }),
+            secret: configEditorIsSecret({ path: newPath, key, configId }),
             label
         });
         this.invalidateCacheFrom(configId, containerPath);
@@ -1475,7 +1478,7 @@ class ConfigEditorApplet {
                 deleted: true,
                 previousValue: stub?.value,
                 restartRequired: !!stub?.restartRequired,
-                secret: configEditorIsSecret(stub || { path }),
+                secret: configEditorIsSecret(stub || { path, configId }, configId),
                 label: path[path.length - 1]
             });
         }
@@ -2389,6 +2392,21 @@ class ConfigEditorApplet {
             return pending.value;
         }
         const data = await this.fetchNode(configId, path);
+        const secretLeaf = data?.node
+            && !data.node.expandable
+            && configEditorIsSecret({
+                secret: data.node.secret,
+                path,
+                configId,
+                key: path?.length ? path[path.length - 1] : undefined
+            }, configId);
+        if (secretLeaf) {
+            const revealed = await window.wsClient.sendMessage('config_editor_reveal_secret', {
+                configId,
+                path
+            }, false);
+            return revealed?.value;
+        }
         if (data && Object.prototype.hasOwnProperty.call(data, 'nodeValue')) {
             return data.nodeValue;
         }
@@ -2754,7 +2772,7 @@ class ConfigEditorApplet {
             deleted: false,
             previousValue,
             restartRequired: !!(mergedStub?.restartRequired ?? stub?.restartRequired),
-            secret: configEditorIsSecret(mergedStub || stub || { path, key: path[path.length - 1] }),
+            secret: configEditorIsSecret(mergedStub || stub || { path, key: path[path.length - 1], configId }, configId),
             label: mergedStub?.label || mergedStub?.key || path[path.length - 1]
         });
         if (rowEl) {
