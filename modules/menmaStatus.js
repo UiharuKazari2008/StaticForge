@@ -90,7 +90,7 @@ function composeCakeLogEntry(row) {
     if (!row || typeof row !== 'object') return null;
     const extraRaw = parseJsonField(row.extra_data, {});
     const extra = extraRaw && typeof extraRaw === 'object' && !Array.isArray(extraRaw) ? extraRaw : {};
-    return {
+    const composed = {
         ...extra,
         at: row.at,
         loop: row.loop,
@@ -119,6 +119,13 @@ function composeCakeLogEntry(row) {
             extra_after: extra.after
         }, ['after', 'after_image', 'after_img', 'extra_after'])
     };
+    // Stable meal_id: SQLite row id wins; extra.meal_id is a backfill for file-era rows.
+    if (row.id != null && row.id !== '') {
+        composed.meal_id = String(row.id);
+    } else if (composed.meal_id != null && String(composed.meal_id).trim() !== '') {
+        composed.meal_id = String(composed.meal_id);
+    }
+    return composed;
 }
 
 function pickLogEntry(entry) {
@@ -520,6 +527,79 @@ async function getCakeLogFromDb(db, accountId, limit = 50) {
     rows.reverse();
 
     return rows.map(composeCakeLogEntry).filter(Boolean);
+}
+
+/**
+ * Find one cake_pantry_log row by inspect_pantry meal_id (row id or extra.meal_id).
+ */
+async function findCakeLogRowByMealId(db, accountId, mealId) {
+    const wanted = String(mealId == null ? '' : mealId).trim();
+    if (!wanted) return null;
+
+    if (/^\d+$/.test(wanted)) {
+        const byPk = await db.get(
+            'SELECT * FROM cake_pantry_log WHERE account_id = ? AND id = ?',
+            [accountId, Number(wanted)]
+        );
+        if (byPk) return byPk;
+    }
+
+    const rows = await db.all(
+        'SELECT * FROM cake_pantry_log WHERE account_id = ? ORDER BY id ASC',
+        [accountId]
+    );
+    for (const row of rows) {
+        const entry = composeCakeLogEntry(row);
+        if (entry && String(entry.meal_id) === wanted) return row;
+        const extra = parseJsonField(row.extra_data, {});
+        if (extra && extra.meal_id != null && String(extra.meal_id) === wanted) return row;
+    }
+    return null;
+}
+
+/**
+ * Re-point before/after image ids on one cake_log row.
+ * Updates ONLY before_img, after_img, extra_data (image_history / meal_id / existing aliases).
+ * Never touches kg, slices, timestamps, or totals columns.
+ */
+async function updateCakeLogImagesToDb(db, accountId, row, patch = {}) {
+    if (!db || !row || row.id == null) return false;
+    const extraRaw = parseJsonField(row.extra_data, {});
+    const nextExtra = extraRaw && typeof extraRaw === 'object' && !Array.isArray(extraRaw)
+        ? { ...extraRaw }
+        : {};
+
+    if (Array.isArray(patch.image_history)) {
+        nextExtra.image_history = patch.image_history;
+    }
+    if (patch.meal_id != null && String(patch.meal_id).trim() !== ''
+        && (nextExtra.meal_id == null || String(nextExtra.meal_id).trim() === '')) {
+        nextExtra.meal_id = String(patch.meal_id);
+    }
+
+    const syncAlias = (key, value) => {
+        if (key in nextExtra) nextExtra[key] = value;
+    };
+    syncAlias('before', patch.before);
+    syncAlias('before_image', patch.before);
+    syncAlias('before_img', patch.before);
+    syncAlias('after', patch.after);
+    syncAlias('after_image', patch.after);
+    syncAlias('after_img', patch.after);
+
+    await db.run(
+        `UPDATE cake_pantry_log
+         SET before_img = ?, after_img = ?, extra_data = ?
+         WHERE id = ? AND account_id = ?`,
+        [
+            patch.before != null ? patch.before : null,
+            patch.after != null ? patch.after : null,
+            JSON.stringify(nextExtra),
+            row.id,
+            accountId
+        ]
+    );
+    return true;
 }
 
 /**
@@ -936,6 +1016,8 @@ module.exports = {
     saveAccountStateToDb,
     appendCakeLogToDb,
     getCakeLogFromDb,
+    findCakeLogRowByMealId,
+    updateCakeLogImagesToDb,
     hasAccountStateInDb,
     getWorkPileFromDb,
     saveWorkPileToDb,
