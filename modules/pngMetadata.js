@@ -845,8 +845,8 @@ class PngMetadata {
                     (char.center.x !== 0.5 || char.center.y !== 0.5)
                 )
             ) : forgeData.use_coords || false,
-            strength: meta.strength || forgeData.img2img_strength,
-            noise: meta.noise || forgeData.img2img_noise,
+            strength: meta.strength ?? forgeData.img2img_strength,
+            noise: meta.noise ?? forgeData.img2img_noise,
             dynamic_generation: forgeData.dynamic_generation,
             // Store the final compiled prompts (what was actually sent to generation)
             compiled_prompt: meta.prompt || '',

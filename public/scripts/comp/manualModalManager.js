@@ -4823,8 +4823,8 @@ async function handleManualGeneration(e, options = {}) {
 
     // Add img2img specific parameters if applicable
     if (isImg2Img) {
-        requestBody.strength = parseFloat(manualStrengthValue.value) || 0.8;
-        requestBody.noise = parseFloat(manualNoiseValue.value) || 0.1;
+        requestBody.strength = (Number.isFinite(parseFloat(manualStrengthValue.value)) ? parseFloat(manualStrengthValue.value) : 0.8);
+        requestBody.noise = (Number.isFinite(parseFloat(manualNoiseValue.value)) ? parseFloat(manualNoiseValue.value) : 0.1);
 
         // Handle uploaded image data
         if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
@@ -6427,8 +6427,8 @@ async function saveRequestAsDesktopShortcut(options = {}) {
         }
 
         if (isImg2Img) {
-            requestBody.strength = parseFloat(manualStrengthValue.value) || 0.8;
-            requestBody.noise = parseFloat(manualNoiseValue.value) || 0.1;
+            requestBody.strength = (Number.isFinite(parseFloat(manualStrengthValue.value)) ? parseFloat(manualStrengthValue.value) : 0.8);
+            requestBody.noise = (Number.isFinite(parseFloat(manualNoiseValue.value)) ? parseFloat(manualNoiseValue.value) : 0.1);
 
             if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
                 requestBody.image = window.uploadedImageData.image_source;

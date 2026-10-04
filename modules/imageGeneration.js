@@ -16,6 +16,16 @@ const { resolveNekoEnumValue } = require('./nekoEnumResolve');
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
 
+/** First finite number among values (explicit 0 kept; undefined/null/''/NaN skipped), else fallback. */
+function img2imgNumber(fallback, ...values) {
+    for (const v of values) {
+        if (v === undefined || v === null || v === '') continue;
+        const n = parseFloat(String(v));
+        if (Number.isFinite(n)) return n;
+    }
+    return fallback;
+}
+
 // modules/replicationJournal.js
 async function recordReplicationGalleryJournal(filename, workspaceId) {
     if (!filename) return;
@@ -3904,11 +3914,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             if (body.mask) {
                 // Process compressed mask if available, otherwise use regular mask
                 baseOptions.mask = body.mask;
-                baseOptions.strength = parseFloat((body.inpainting_strength || body.strength || "1").toString());
+                baseOptions.strength = img2imgNumber(1, body.inpainting_strength, body.strength);
                 baseOptions.noise = 0.0;
             } else {
-                baseOptions.strength = parseFloat((body.strength || 0.8).toString());
-                baseOptions.noise = parseFloat((body.noise || 0.1).toString());
+                baseOptions.strength = img2imgNumber(0.8, body.strength);
+                baseOptions.noise = img2imgNumber(0.1, body.noise);
             }
 
             baseOptions.image = imageBuffer.toString('base64');
@@ -5949,8 +5959,8 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 } else if (stage.type === 'enhance' || stage.type === 'variation') {
                     const needsImg2Img = stage.type === 'enhance' || stage.useBaseImage === true;
                     if (needsImg2Img) {
-                        if (stage.strength !== undefined) stageRequestBody.strength = stage.strength || 0.5;
-                        if (stage.noise !== undefined) stageRequestBody.noise = stage.noise || 0;
+                        if (stage.strength !== undefined) stageRequestBody.strength = stage.strength ?? 0.5;
+                        if (stage.noise !== undefined) stageRequestBody.noise = stage.noise ?? 0;
                     }
 
                     // Handle resolution modifier (e.g., 'normal', 'large', 'xlarge')
@@ -8656,6 +8666,7 @@ async function maxEnhanceImage(globalResources, filename, sessionId, workspaceId
 }
 
 module.exports = {
+    img2imgNumber,
     generateImageWebSocket,
     buildOptions,
     handleGeneration,
