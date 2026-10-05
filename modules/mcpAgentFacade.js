@@ -792,7 +792,7 @@ const TOOL_DEFS = [
     {
         name: 'ledge',
         core: true,
-        description: 'Ledge is one desk you throw images onto, instead of opening a Lumen window per file. op: open (returns sessionId; list if you forgot it), add (items array of {filename|src, text}; prepends unless index is set), remove(index), get(index), clear, list, dispose, save(vfs_path, workspace), save_file(items, vfs_path, workspace). Each item can carry text. The user can check items; list and get return checked. save writes the desk so it can be opened later. Default openGeneratedImages is ledge.',
+        description: 'Ledge is one desk you throw images onto, instead of opening a Lumen window per file. op: open (name is required when it creates a session; the window title is "Ledge [name]". Returns sessionId; pass an existing sessionId to reopen without a name, or list if you forgot it), add (items array of {filename|src, text}; prepends unless index is set), remove(index), get(index), clear, list, dispose, save(vfs_path, workspace), save_file(items, vfs_path, workspace). Each item can carry text. The user can check items; list and get return checked. save writes the desk so it can be opened later. Default openGeneratedImages is ledge.',
         scope: 'gallery',
         inputSchema: {
             type: 'object',
@@ -800,7 +800,7 @@ const TOOL_DEFS = [
             properties: {
                 op: { type: 'string', enum: ['open', 'add', 'remove', 'get', 'clear', 'list', 'dispose', 'save', 'save_file'] },
                 sessionId: { type: 'string' },
-                title: { type: 'string' },
+                name: { type: 'string', description: 'Session name. Required when op open creates a session. Shown as "Ledge [name]". On an existing sessionId it renames.' },
                 index: { type: 'number' },
                 items: { type: 'array' },
                 item: { type: 'object' },

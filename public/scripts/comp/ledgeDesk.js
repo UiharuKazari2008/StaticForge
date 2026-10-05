@@ -92,7 +92,6 @@ function ledgeEncodeJson(obj) {
 
 async function ledgeSave(host) {
     const sessionId = host.dataset.sessionId || 'ledge';
-    const titleEl = host.querySelector('.ledge-desk-title');
     const items = [];
     host.querySelectorAll('.gallery-item').forEach((card, index) => {
         const box = card.querySelector('.gallery-item-checkbox');
@@ -111,7 +110,7 @@ async function ledgeSave(host) {
         const saved = await vfsClient.uploadFile(folder, ledgeEncodeJson({
             kind: 'ledge-session',
             sessionId,
-            title: titleEl ? titleEl.textContent : 'Ledge',
+            name: host.dataset.sessionName || '',
             items
         }), name, 'application/json');
         if (saved && saved.success === false) throw new Error(saved.error || 'Save failed');
@@ -154,7 +153,8 @@ function ledgeReflow(host) {
 
 function ledgeRender(host, session) {
     const title = host.querySelector('.ledge-desk-title');
-    if (title) title.textContent = session.title || 'Ledge';
+    host.dataset.sessionName = session.name || '';
+    if (title) title.textContent = session.name ? `Ledge [${session.name}]` : 'Ledge';
     const gallery = host.querySelector('.gallery');
     if (!gallery) return;
     gallery.replaceChildren();

@@ -19,7 +19,7 @@ function publicSession(session, includeItems) {
     const items = session.items || [];
     const out = {
         sessionId: session.id,
-        title: session.title || 'Ledge',
+        name: session.name,
         count: items.length,
         checked: items.filter((item) => item.checked).map((item) => item.id)
     };
@@ -36,19 +36,21 @@ function getSession(sessionId) {
     return id && sessions.has(id) ? sessions.get(id) : null;
 }
 
+function sessionName(input) {
+    return String((input && (input.name || input.title)) || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
 function openSession(input) {
     const asked = String((input && (input.sessionId || input.id)) || '').trim();
+    const name = sessionName(input);
     if (asked && sessions.has(asked)) {
         const session = sessions.get(asked);
-        if (input && input.title) session.title = String(input.title).slice(0, 80);
+        if (name) session.name = name;
         return { created: false, session };
     }
+    if (!name) return { created: false, session: null };
     const id = asked || `ledge_${crypto.randomBytes(6).toString('hex')}`;
-    const session = {
-        id,
-        title: String((input && input.title) || 'Ledge').slice(0, 80) || 'Ledge',
-        items: []
-    };
+    const session = { id, name, items: [] };
     sessions.set(id, session);
     return { created: true, session };
 }
@@ -111,7 +113,7 @@ function snapshot(session) {
     return {
         kind: 'ledge-session',
         sessionId: session.id,
-        title: session.title,
+        name: session.name,
         items: session.items.map((item, index) => publicItem(item, index))
     };
 }
@@ -119,7 +121,7 @@ function snapshot(session) {
 function ingestGenerated(filenames) {
     const names = (Array.isArray(filenames) ? filenames : [filenames]).filter(Boolean);
     if (!names.length) return null;
-    const { session } = openSession({ sessionId: 'ledge-prints', title: 'Prints' });
+    const { session } = openSession({ sessionId: 'ledge-prints', name: 'Prints' });
     addItems(session, names.map((filename) => ({ filename, text: '' })), 0);
     return session;
 }
@@ -154,6 +156,16 @@ function applyLedge(input) {
     }
     if (op === 'open' || op === 'create') {
         const opened = openSession(src);
+        if (!opened.session) {
+            return {
+                ok: false,
+                body: {
+                    success: false,
+                    error: 'name is required when op open creates a Ledge session. The window shows "Ledge [name]". Pass an existing sessionId to reopen without a name.',
+                    sessions: listSessions()
+                }
+            };
+        }
         const state = publicSession(opened.session, true);
         return {
             ok: true,
