@@ -336,8 +336,9 @@ async function handleSavePresetGroup(handlers, ws, message, clientInfo, wsServer
             groupData.presets = [];
         }
 
+        const existingUuids = new Set(Object.values(currentPromptConfig.presets || {}).map(p => p.uuid));
         const validPresets = groupData.presets.filter(presetUuid => {
-            const presetExists = Object.values(currentPromptConfig.presets || {}).some(preset => preset.uuid === presetUuid);
+            const presetExists = existingUuids.has(presetUuid);
             if (!presetExists) {
                 console.warn(`⚠️ Preset group "${groupName}" references non-existent preset UUID: ${presetUuid}`);
             }
