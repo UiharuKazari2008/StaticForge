@@ -43,15 +43,28 @@ assert(normalizeKeyboardPromptChars('') === '', 'empty');
 assert(normalizeKeyboardPromptChars(null) === null, 'null passthrough');
 
 // Fullwidth brackets / colon stay as text (never NAI emphasis syntax)
-const keep = '\uFF08\uFF09\uFF3B\uFF3D\uFF5B\uFF5D\uFF1A';
-assert(normalizeKeyboardPromptChars(keep) === keep, 'fullwidth ( ) [ ] { } : unchanged');
-assert(normalizeKeyboardPromptChars('\uFF11\uFF0E\uFF15\uFF1A\uFF1A\uFF43\uFF41\uFF54\uFF1A\uFF1A')
-    === '1.5\uFF1A\uFF1Acat\uFF1A\uFF1A', 'fullwidth :: stays, digits/letters fold (no 1.5::cat::)');
+// reversed order: no complete block, so every syntax char stays as text
+const keep = '\uFF09\uFF08\uFF3D\uFF3B\uFF5D\uFF5B\uFF1A';
+assert(normalizeKeyboardPromptChars(keep) === keep, 'lone fullwidth ( ) [ ] { } : unchanged');
+// Complete fullwidth blocks → ASCII syntax; inner spacing kept; only weight/opener + split fixes
+assert(normalizeKeyboardPromptChars('\uFF11\uFF0E\uFF15\uFF1A\uFF1A\uFF43\uFF41\uFF54\uFF1A\uFF1A') === '1.5::cat::', 'fullwidth weight block → ASCII');
+assert(normalizeKeyboardPromptChars('1.5\uFF1A\uFF1A cat \uFF1A\uFF1A') === '1.5:: cat ::', 'fullwidth block keeps inner spacing');
+assert(normalizeKeyboardPromptChars('1.5 \uFF1A\uFF1Acat\uFF1A\uFF1A') === '1.5::cat::', 'fullwidth block: weight space removed');
+assert(normalizeKeyboardPromptChars('-1 \uFF1A \uFF1A cat \uFF1A \uFF1A') === '-1:: cat ::', 'fullwidth block: split delims joined, inner kept');
+assert(normalizeKeyboardPromptChars('\uFF5B cat \uFF5D') === '{ cat }', 'fullwidth {} block → ASCII, inner kept');
+assert(normalizeKeyboardPromptChars('\uFF3B dog \uFF3D') === '[ dog ]', 'fullwidth [] block → ASCII, inner kept');
+assert(normalizeKeyboardPromptChars('\uFF5B\uFF3Bhat\uFF3D\uFF5D') === '{[hat]}', 'nested fullwidth blocks');
+assert(normalizeKeyboardPromptChars('\uFF5Bblue\u3000eyes\uFF5D') === '{blue eyes}', 'ideographic space folds inside block');
 assert(normalizeKeyboardPromptChars('\u201C\uFF08smile\uFF09\u201D\u2013\uFF3Bhat\uFF3D')
-    === '"\uFF08smile\uFF09"-\uFF3Bhat\uFF3D', 'quotes/dash fold, brackets kept');
-assert(normalizeKeyboardPromptChars('\uFF5Bblue\u3000eyes\uFF5D') === '\uFF5Bblue eyes\uFF5D', 'ideographic space folds, braces kept');
+    === '"\uFF08smile\uFF09"-[hat]', 'quotes/dash fold, （） stay text, ［］ block converts');
+// Lone / incomplete fullwidth syntax chars stay as display text
+assert(normalizeKeyboardPromptChars('ratio \uFF11\uFF16\uFF1A\uFF19') === 'ratio 16\uFF1A9', 'lone fullwidth colon stays');
+assert(normalizeKeyboardPromptChars('\uFF3Bdraft') === '\uFF3Bdraft', 'unpaired fullwidth [ stays');
+assert(normalizeKeyboardPromptChars('note\uFF5D') === 'note\uFF5D', 'unpaired fullwidth } stays');
+assert(normalizeKeyboardPromptChars('cat\uFF1A\uFF1A') === 'cat\uFF1A\uFF1A', 'fullwidth :: without weight block stays');
+assert(normalizeKeyboardPromptChars('\uFF08solo\uFF09') === '\uFF08solo\uFF09', 'fullwidth () pair stays (not NAI syntax)');
 assert(KEYBOARD_PROMPT_KEEP_FULLWIDTH.size === 7, 'keep set is the 7 syntax chars');
-// every other fullwidth ASCII char that would fold must not produce ( ) [ ] { } :
+// no single fullwidth ASCII char folds into ( ) [ ] { } : on its own
 for (let cp = 0xFF01; cp <= 0xFF5E; cp++) {
     const out = normalizeKeyboardPromptChars(String.fromCharCode(cp));
     if (/[()[\]{}:]/.test(out)) assert(false, 'fullwidth U+' + cp.toString(16) + ' folded into NAI syntax ' + out);

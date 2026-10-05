@@ -606,16 +606,24 @@ function trimManagedEmphasisInnerEdges(text) {
 }
 
 /**
- * Trim leading/trailing spaces and commas inside classic N::…:: bodies (same blur cleanup as managed).
- * Trailing inner commas/spaces move outside when no adjacent outside separator follows the group.
+ * Clean leading/trailing COMMAS inside classic N::…:: bodies on blur.
+ * Inner spacing — including a space before the closing "::" — is valid and kept
+ * (Yukimi 2026-10-05: "1.5:: cat ::" stays as typed). A trailing inner comma
+ * moves outside when no adjacent outside comma follows the group.
  */
 function trimClassicEmphasisInnerEdges(text) {
     if (!text || !text.includes('::')) return text;
     return text.replace(/(-?\d+\.?\d*)::([^:]*?)::/g, (match, weight, inner, offset, full) => {
-        const resolved = resolveTrimmedEmphasisInner(inner, full, offset + match.length);
-        if (resolved.trimmed === inner && !resolved.outsideSuffix) return match;
+        const lead = inner.match(/^[ \t,]*/)[0];
+        if (lead.length === inner.length) return match; // empty: removeEmptyClassicEmphasisGroups
+        const trail = inner.match(/[ \t,]*$/)[0];
+        if (!lead.includes(',') && !trail.includes(',')) return match;
+        const core = inner.slice(lead.length, inner.length - trail.length);
+        const leadSpace = /[ \t]/.test(lead) ? ' ' : '';
+        const trailSpace = /[ \t]/.test(trail.split(',')[0]) || (!trail.includes(',') && /[ \t]/.test(trail)) ? ' ' : '';
+        const outsideSuffix = trail.includes(',') && !hasAdjacentCommaAt(full, offset + match.length) ? ', ' : '';
         // formatClassicClosedEmphasisGroup: public/scripts/comp/emphasisGroupIdCodec.js
-        return formatClassicClosedEmphasisGroup(weight, resolved.trimmed) + resolved.outsideSuffix;
+        return formatClassicClosedEmphasisGroup(weight, leadSpace + core + trailSpace) + outsideSuffix;
     });
 }
 
@@ -3723,8 +3731,8 @@ function debugVerifyManagedEmphasisCorrections() {
 
         const classicSpace = trimClassicEmphasisInnerEdges('1.2::alpha ::1.3::beta::');
         checks.push(pass(
-            'fx.classicEdgeSpaceMovedOutside',
-            classicSpace === '1.2::alpha:: 1.3::beta::',
+            'fx.classicInnerSpaceKept',
+            classicSpace === '1.2::alpha ::1.3::beta::',
             classicSpace
         ));
     }

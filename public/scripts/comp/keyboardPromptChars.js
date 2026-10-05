@@ -2,8 +2,8 @@
  * Fold typographic lookalikes to keyboard ASCII before NovelAI.
  *
  * Keeps CJK, emoji, danbooru symbols (stars, hearts, katakana middle dot),
- * wave dash, fullwidth brackets/colon (text, never NAI syntax), and managed
- * emphasis invisibles
+ * wave dash, lone fullwidth brackets/colon (text, never NAI syntax), and
+ * managed emphasis invisibles
  * (modules/emphasisGroupIdSyntax.js: WJ, invisible separator/plus, ZWSP, ZWNJ).
  *
  * Client: loaded before utilities.js. Server: require() this same file.
@@ -103,6 +103,32 @@ const KEYBOARD_PROMPT_KEEP_FULLWIDTH = new Set([
     0xFF5D  // fullwidth }
 ]);
 
+const KEYBOARD_EMPHASIS_WEIGHT_RE = /^-?(?:0(?:\.\d+)?|[1-9]\d*(?:\.\d+)?|\.\d+)$/;
+
+/**
+ * COMPLETE fullwidth blocks become ASCII NovelAI syntax (Yukimi 2026-10-05):
+ * ｛…｝ → {…}, ［…］ → […], W：：…：： → W::…::. Inner spacing is kept; only
+ * the syntax-breaking spaces go (weight→opening delimiter, "： ：" splits).
+ * Lone fullwidth brackets/colons and （…） stay as display text.
+ */
+function convertFullwidthEmphasisBlocks(text) {
+    if (!/[\uFF1A\uFF3B\uFF3D\uFF5B\uFF5D]/.test(text)) return text;
+    let out = text.replace(
+        /(^|[\s,(\[{|]|::)(-?(?:\d+(?:\.\d+)?|\.\d+))[ \t]*\uFF1A[ \t]*\uFF1A([^\uFF1A]*?)\uFF1A[ \t]*\uFF1A/g,
+        (match, lead, weight, body) => (KEYBOARD_EMPHASIS_WEIGHT_RE.test(weight)
+            ? `${lead}${weight}::${body}::`
+            : match)
+    );
+    for (let guard = 0; guard < 64; guard++) {
+        const next = out
+            .replace(/\uFF5B([^\uFF5B\uFF5D]*)\uFF5D/g, '{$1}')
+            .replace(/\uFF3B([^\uFF3B\uFF3D]*)\uFF3D/g, '[$1]');
+        if (next === out) break;
+        out = next;
+    }
+    return out;
+}
+
 /**
  * @param {string} text
  * @returns {string}
@@ -124,7 +150,7 @@ function normalizeKeyboardPromptChars(text) {
         }
         i += width;
     }
-    return out;
+    return convertFullwidthEmphasisBlocks(out);
 }
 
 if (typeof module !== 'undefined' && module.exports) {

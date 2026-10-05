@@ -60,11 +60,54 @@ function fixEmphasisDigitBeforeDoubleColon(text) {
     return text;
 }
 
+/**
+ * Yukimi 2026-10-05: a delimiter split by spaces is broken syntax — ": :" → "::".
+ * Only lone colons on both sides (never touches ":::" runs).
+ */
+function fixEmphasisSplitDelimiters(text) {
+    if (!text || text.indexOf(':') === -1) return text;
+    return text.replace(/(^|[^:]):[ \t]+:(?!:)/g, '$1::');
+}
+
+/**
+ * Yukimi 2026-10-05: spaces between a weight and its OPENING "::" break the
+ * syntax — "1.5 ::cat::" → "1.5::cat::", "-1 ::x::" → "-1::x::".
+ * Tracks open/close so a closer after a number ("year 2025 ::") is untouched.
+ * Inner spacing ("1.5:: cat ::") is valid and kept.
+ */
+function fixEmphasisWeightOpenerSpacing(text) {
+    if (!text || !text.includes('::')) return text;
+    let open = false;
+    let out = '';
+    let last = 0;
+    const re = /::/g;
+    let m;
+    while ((m = re.exec(text))) {
+        const i = m.index;
+        if (open) {
+            open = false;
+            continue;
+        }
+        const before = text.slice(0, i);
+        const spaced = before.match(/(^|[\s,(\[{|]|::)(-?(?:\d+(?:\.\d+)?|\.\d+))([ \t]+)$/);
+        if (spaced && isValidEmphasisWeightBeforeDelimiter(spaced[2])) {
+            out += text.slice(last, i - spaced[3].length);
+            last = i;
+            open = true;
+            continue;
+        }
+        const glued = before.match(/(^|[\s,(\[{|]|::)(-?(?:\d+(?:\.\d+)?|\.\d+))$/);
+        open = !!(glued && isValidEmphasisWeightBeforeDelimiter(glued[2]));
+    }
+    return out + text.slice(last);
+}
+
 function fixEmphasisGroupCommaViolations(text) {
     if (!text || !text.includes('::')) return text;
 
     // Comma before any "::": "movements, ::" → "movements::", "foo, ::bar" → "foo::bar"
-    text = text.replace(/([^:\d])\s*,\s*(?=::)/g, '$1');
+    // Inner spacing before the comma is kept ("cat , ::" → "cat ::") — Yukimi 2026-10-05.
+    text = text.replace(/([^:\d])([ \t]*),\s*(?=::)/g, '$1$2');
 
     // Misplaced comma after next-group opener: "end:: 1.0::, start" → "end::, 1.0::start"
     text = text.replace(/(::)\s*(-?\d+(?:\.\d+)?)::\s*,\s*/g, '$1, $2::');
@@ -75,28 +118,17 @@ function fixEmphasisGroupCommaViolations(text) {
     // After outer comma, inner "::, " is duplicate: ", 3.54::, unborn" → ", 3.54::unborn"
     text = text.replace(/(,\s*)(-?\d+(?:\.\d+)?)::,\s*/g, '$1$2::');
 
-    // Closing terminator inside a weight group: "kicking ::" → "kicking::"
-    // Also: next group without comma ("kicking :: 1.1::"), comma after close ("clothed ::,"), disable close ("womb::/")
-    // Never glue onto a digit — "2025 ::" must stay spaced (years / numbers are not closers to absorb).
-    text = text.replace(
-        /([^:,\s])\s+(::)(?=\s*(?:,\s*|\/|-?\d+(?:\.\d+)?::|\s*$))/g,
-        (match, before, delim, offset, whole) => {
-            if (/\d/.test(before)) return match;
-            const closeIndex = offset + before.length;
-            const ifStripped = whole.slice(0, closeIndex) + '::' + whole.slice(offset + match.length);
-            if (needsSpaceBeforeDoubleColon(ifStripped, closeIndex)) {
-                return match;
-            }
-            return before + delim;
-        }
-    );
+    // A space before the closing "::" ("kicking ::") is valid NovelAI syntax and
+    // is kept (Yukimi 2026-10-05) — the old closer-glue rule was removed.
 
     return text;
 }
 
 function normalizeEmphasisPromptSyntax(text, options = {}) {
     if (!text || typeof text !== 'string') return text;
-    let out = fixEmphasisDigitBeforeDoubleColon(text);
+    let out = fixEmphasisSplitDelimiters(text);
+    out = fixEmphasisWeightOpenerSpacing(out);
+    out = fixEmphasisDigitBeforeDoubleColon(out);
     if (options.fixCommas !== false) {
         out = fixEmphasisGroupCommaViolations(out);
     }
@@ -107,6 +139,8 @@ module.exports = {
     isValidEmphasisWeightBeforeDelimiter,
     needsSpaceBeforeDoubleColon,
     fixEmphasisDigitBeforeDoubleColon,
+    fixEmphasisSplitDelimiters,
+    fixEmphasisWeightOpenerSpacing,
     fixEmphasisGroupCommaViolations,
     normalizeEmphasisPromptSyntax
 };
