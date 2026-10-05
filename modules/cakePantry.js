@@ -1275,15 +1275,39 @@ async function syncShipCake(accountId, params) {
 
     // JULES: perf sweep - pre-build Set for O(1) reason lookups instead of O(P + L * N) linear searches per issue
     const deliveredReasons = new Set();
+    const bankedPrNumbers = new Set();
+    const bankedShas = new Set();
+
+    const parseReason = (reasonStr) => {
+        if (!reasonStr) return;
+        deliveredReasons.add(reasonStr);
+        // Yozora PR number: ship:<num>:... / ship:<num> ... (numeric token only).
+        // Banks labelled as a GitHub mirror PR ("GH #<num>" / "GH#<num>") use GitHub
+        // numbering, which overlaps Yozora's, so they dedup by sha only.
+        const numMatch = reasonStr.match(/^ship:(\d+)(?=[:\s]|$)/);
+        if (numMatch) {
+            const num = parseInt(numMatch[1], 10);
+            const ghLabel = new RegExp(`\\bGH\\s*#${num}(?!\\d)`, 'i');
+            if (!ghLabel.test(reasonStr)) bankedPrNumbers.add(num);
+        }
+        // Match ship:<num>:<sha> or ship:<shortsha>:<sha> or ship:snapshot:<sha>
+        const match = reasonStr.match(/^ship:([^:]+):([a-f0-9]+)/);
+        if (match) {
+            const sha = match[2];
+            bankedShas.add(sha);
+            if (sha.length >= 7) bankedShas.add(sha.substring(0, 7));
+        }
+    };
+
     for (const d of pendingDeliveries) {
-        if (d?.reason) deliveredReasons.add(d.reason);
+        if (d?.reason) parseReason(d.reason);
     }
     for (const l of cakeLog) {
         if (l) {
-            if (l.reason) deliveredReasons.add(l.reason);
+            if (l.reason) parseReason(l.reason);
             if (Array.isArray(l.named_for)) {
                 for (const name of l.named_for) {
-                    if (name) deliveredReasons.add(name);
+                    if (name) parseReason(name);
                 }
             }
         }
@@ -1308,11 +1332,14 @@ async function syncShipCake(accountId, params) {
 
         if (issue.pull_request) {
             let pr = null;
+            let commits = null;
             let fetchError = null;
             for (let attempt = 1; attempt <= 2; attempt++) {
                 try {
                     const prRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}`);
                     pr = await prRes.json();
+                    const commitsRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}/commits`);
+                    commits = await commitsRes.json();
                     fetchError = null;
                     break;
                 } catch (e) {
@@ -1331,7 +1358,25 @@ async function syncShipCake(accountId, params) {
                 const sha = pr.merge_commit_sha || pr.head?.sha || 'unknown';
                 const reasonKey = `ship:${issue.number}:${sha}`;
 
-                const alreadyDelivered = deliveredReasons.has(reasonKey);
+                // Collect all known SHAs for this PR
+                const prShas = new Set();
+                if (pr.merge_commit_sha) prShas.add(pr.merge_commit_sha);
+                if (pr.head && pr.head.sha) prShas.add(pr.head.sha);
+                if (Array.isArray(commits)) {
+                    for (const c of commits) {
+                        if (c && c.sha) prShas.add(c.sha);
+                    }
+                }
+
+                let alreadyDelivered = bankedPrNumbers.has(issue.number);
+                if (!alreadyDelivered) {
+                    for (const s of prShas) {
+                        if (bankedShas.has(s) || (s.length >= 7 && bankedShas.has(s.substring(0, 7)))) {
+                            alreadyDelivered = true;
+                            break;
+                        }
+                    }
+                }
 
                 if (alreadyDelivered) continue;
 
