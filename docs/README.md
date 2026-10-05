@@ -11,6 +11,7 @@
 | [client-api/melaton-packages.md](./client-api/melaton-packages.md) | Melaton `.mapz` / `.msaz` store + manifest |
 | [ANDROID_BRIDGE.md](./ANDROID_BRIDGE.md) | WebView native bridges (not server API) |
 | [LOGGING_SYSTEM.md](./LOGGING_SYSTEM.md) | Server logging |
+| [DATABASE_CHECKPOINTS.md](./DATABASE_CHECKPOINTS.md) | Config/database checkpoint retention and restore runbook |
 | [../README-CHILD.md](../README-CHILD.md) | Child / ephemeral replication ops |
 
 Domain WS packets live under [client-api/ws/](./client-api/ws/). MCP tools: [client-api/mcp-connector.md](./client-api/mcp-connector.md) and [client-api/mcp-tool-flow.md](./client-api/mcp-tool-flow.md).
@@ -52,3 +53,4 @@ Plans, migrations, and superseded guides. Prefer `client-api/` for anything a cl
 | WS packets | `modules/ws/handlers/*.js`, `modules/vfsWebSocketHandlers.js`, `modules/referencesWebSocketHandlers.js` |
 | MCP tools | `modules/mcpAgentFacade.js` |
 | Change JSON | `docs/studio-change-json.md` + `public/scripts/comp/studioChangeJson.js` |
+| Checkpoints | `modules/checkpointGrandfathering.js`, `modules/jsonCheckpoint.js`, `modules/databaseCheckpoint.js`, `modules/checkpointManagementService.js` |
