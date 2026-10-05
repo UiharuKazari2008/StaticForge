@@ -14,7 +14,8 @@
  * Cake math:
  * - 0.12kg per slice
  * - Cleanup: 1 slice per 40 lines or 10KB removed (min 1, cap 16)
- * - 1.25x multiplier for grok.menma (Jules/Cursor Lead)
+ * - 4x multiplier for grok.menma (Jules/Cursor Lead); Yukimi 2026-10-05 (was 1.25x)
+ * - Menma current_kg never decreases (monotonic clamp on every state save)
  * - Soft sitting cap default 8; override via slices/max_slices up to all eligible; remainder carries
  * - Skip dry-verify forever via cake_type=dry-verify and/or do_not_eat flag
  *   (not reason substring; legacy reason must *start with* marker)
@@ -41,6 +42,8 @@ const {
     updateCakeLogImagesToDb,
     composeCakeLogEntry,
     latestMealImagesFromLog,
+    clampMonotonicKg,
+    isMonotonicKgAccount,
     hasAccountStateInDb,
     getWorkPileFromDb,
     saveWorkPileToDb,
@@ -55,7 +58,8 @@ const CLEANUP_LINES_PER_SLICE = 40;
 const CLEANUP_BYTES_PER_SLICE = 10240; // 10KB
 const CLEANUP_SLICE_MIN = 1;
 const CLEANUP_SLICE_CAP = 16;
-const LEAD_MULTIPLIER = 1.25;
+/** grok.menma / Lead credit multiplier. Yukimi 2026-10-05 7:28pm ET: 1.25 → 4. */
+const LEAD_MULTIPLIER = 4;
 const MAX_VISUAL_QA_GENS = 10;
 /** Soft default sitting cap (8). Override via slices and/or max_slices up to all eligible pending. */
 const MAX_SLICES_PER_SITTING = 8;
@@ -646,7 +650,13 @@ async function saveAccountState(accountId, state) {
         // Before import: use files
         const dir = ensureAccountDir(accountId);
         if (!dir) return false;
-        writeJsonFile(path.join(dir, 'state.json'), state);
+        const statePath = path.join(dir, 'state.json');
+        if (isMonotonicKgAccount(accountId) && Object.prototype.hasOwnProperty.call(state, 'current_kg')) {
+            let prev = null;
+            try { prev = JSON.parse(fs.readFileSync(statePath, 'utf8')).current_kg; } catch (_) { /* no file yet */ }
+            state.current_kg = clampMonotonicKg(accountId, prev, state.current_kg);
+        }
+        writeJsonFile(statePath, state);
         return true;
     } else {
         // Unknown import status: fail-closed, do NOT write to files
@@ -737,7 +747,7 @@ function calculateCleanupSlices(linesDeleted, bytesRemoved, roundUp = false) {
 }
 
 /**
- * Apply multiplier for credit roles (1.25x for Lead/grok.menma)
+ * Apply multiplier for credit roles (LEAD_MULTIPLIER = 4x for Lead/grok.menma; others 1x)
  */
 function applyMultiplier(slices, credit) {
     if (credit === 'grok.menma' || credit === 'Lead') {

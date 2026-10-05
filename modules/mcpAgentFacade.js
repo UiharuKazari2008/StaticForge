@@ -2356,7 +2356,7 @@ const TOOL_DEFS = [
     {
         name: 'deliver_cake',
         core: true,
-        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren, Rook, Sala) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, optional do_not_eat (or cake_type=dry-verify) for forever-skip dry verifies, credit (grok.menma for 1.25x Lead multiplier).',
+        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren, Rook, Sala) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, optional do_not_eat (or cake_type=dry-verify) for forever-skip dry verifies, credit (grok.menma for 4x Lead multiplier).',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -2368,7 +2368,7 @@ const TOOL_DEFS = [
                 reason: { type: 'string', description: 'Why: reward for which ship/work' },
                 cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.). Use dry-verify for forever-skip dry verifies (sets do_not_eat).' },
                 do_not_eat: { type: 'boolean', description: 'If true, forever-skip this delivery (also set when cake_type=dry-verify). Prefer over reason text (Yozora #154).' },
-                credit: { type: 'string', description: 'Credit attribution. grok.menma or Lead = 1.25x multiplier' },
+                credit: { type: 'string', description: 'Credit attribution. grok.menma or Lead = 4x multiplier' },
                 line_counts: {
                     type: 'object',
                     description: 'For cleanup calc: { deleted: lines, bytes_removed }. 1 slice per 40 lines or 10KB, min 1, cap 16.',

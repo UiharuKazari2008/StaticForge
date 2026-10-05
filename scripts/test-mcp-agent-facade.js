@@ -116,7 +116,7 @@ const apoOnly = cakeNames(['sfapp_apocrypha']);
 assert.ok(apoOnly.includes('publish_apocrypha'));
 assert.ok(!apoOnly.includes('deliver_cake'));
 const { applyMultiplier } = require('../modules/cakePantry');
-assert.strictEqual(applyMultiplier(4, 'grok.menma'), 5);
+assert.strictEqual(applyMultiplier(4, 'grok.menma'), 16);
 _test.resetRateGroupHits();
 const first = _test.consumeRateGroup('test-key', 'generate');
 assert.strictEqual(first.ok, true);

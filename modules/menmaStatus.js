@@ -512,10 +512,48 @@ async function getAccountStateFromDb(db, accountId) {
 }
 
 /**
+ * Accounts whose current_kg may never go down (Yukimi 2026-10-05: Menma's
+ * gain is permanent). Every other eater keeps normal behavior.
+ */
+const MONOTONIC_KG_ACCOUNTS = new Set(['menma']);
+
+function isMonotonicKgAccount(accountId) {
+    return MONOTONIC_KG_ACCOUNTS.has(accountId);
+}
+
+/**
+ * Resolve the kg to persist. For monotonic accounts returns max(prev, next);
+ * a null/blank/non-numeric next keeps prev. Other accounts: next unchanged.
+ */
+function clampMonotonicKg(accountId, prevKg, nextKg) {
+    if (!isMonotonicKgAccount(accountId)) return nextKg;
+    const prev = prevKg == null || prevKg === '' ? NaN : Number(prevKg);
+    const next = nextKg == null || nextKg === '' ? NaN : Number(nextKg);
+    if (!Number.isFinite(prev)) return nextKg;
+    if (!Number.isFinite(next)) return prev;
+    return next < prev ? prev : nextKg;
+}
+
+/**
  * Save account state to SQLite
  */
 async function saveAccountStateToDb(db, accountId, state) {
     const now = new Date().toISOString();
+    if (isMonotonicKgAccount(accountId) && state && Object.prototype.hasOwnProperty.call(state, 'current_kg')) {
+        let prevKg = null;
+        try {
+            const row = await db.get(
+                'SELECT value FROM cake_pantry_state WHERE account_id = ? AND key = ?',
+                [accountId, 'current_kg']
+            );
+            if (row && row.value != null) prevKg = JSON.parse(row.value);
+        } catch (_) { /* no prior row: nothing to clamp against */ }
+        const clamped = clampMonotonicKg(accountId, prevKg, state.current_kg);
+        if (clamped !== state.current_kg) {
+            console.warn(`[CakePantry] ${accountId} current_kg decrease blocked (${state.current_kg} → kept ${clamped})`);
+            state.current_kg = clamped;
+        }
+    }
     for (const [key, value] of Object.entries(state)) {
         await db.run(
             'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
@@ -1093,5 +1131,8 @@ module.exports = {
     LOG_TAIL,
     firstSafeImage,
     safeImageName,
-    latestMealImagesFromLog
+    latestMealImagesFromLog,
+    MONOTONIC_KG_ACCOUNTS,
+    isMonotonicKgAccount,
+    clampMonotonicKg
 };
