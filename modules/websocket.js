@@ -13,7 +13,7 @@ class WebSocketServer {
         
         this.wss = new WebSocket.Server({ server });
         this.clients = new Map(); // Map to store client connections with user info
-        this.pingInterval = null;
+        this.heartbeatInterval = null;
         this.queueStatusInterval = null;
         this.indexingSyncInterval = null;
         this.isIndexing = false;
@@ -901,21 +901,21 @@ class WebSocketServer {
 
     startPingInterval(pingCallback = null) {
         // Clear any existing interval
-        if (this.pingInterval) {
-            clearInterval(this.pingInterval);
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
         }
 
         // Send ping every 10 seconds
-        this.pingInterval = setInterval(() => {
+        this.heartbeatInterval = setInterval(() => {
             const serverData = pingCallback ? pingCallback() : null;
             this.broadcastPing(serverData);
         }, 10000);
     }
 
     stopPingInterval() {
-        if (this.pingInterval) {
-            clearInterval(this.pingInterval);
-            this.pingInterval = null;
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
         }
     }
 

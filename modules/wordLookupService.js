@@ -29,6 +29,20 @@ class WordLookupService {
         this.globalResources = globalResources;
         this.wordnet = null;
         this.cache = new Map();
+        setInterval(() => {
+            const now = Date.now();
+            for (const [k, v] of this.cache.entries()) {
+                if (now - (v.timestamp || 0) > 30 * 60 * 1000) {
+                    this.cache.delete(k);
+                }
+            }
+            if (this.cache.size > 2000) {
+                const sorted = Array.from(this.cache.entries()).sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0));
+                for (let i = 0; i < sorted.length - 1000; i++) {
+                    this.cache.delete(sorted[i][0]);
+                }
+            }
+        }, 15 * 60 * 1000);
     }
 
     getWordNet() {
@@ -327,6 +341,7 @@ class WordLookupService {
         };
 
         this.cache.set(lookupKey, {
+            timestamp: Date.now(),
             word: display,
             lookupWord: word,
             definitions,

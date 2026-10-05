@@ -33,7 +33,7 @@ function initializeKnowledgeMemoryDatabase(databasesPath) {
         // Enable WAL mode for better concurrency
         db.pragma('journal_mode = WAL');
         db.pragma('synchronous = NORMAL');
-        db.pragma('cache_size = 10000');
+        db.pragma('cache_size = -16000');
         db.pragma('temp_store = MEMORY');
 
         checkpointHost = { checkpointManager: null };

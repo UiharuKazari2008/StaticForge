@@ -8368,36 +8368,38 @@ async function compileDynamicGenerationWebSocket(globalResources, body, ws, hand
         __runtimeGr.getTracing().startTrace(body.requestId, { type: 'compile_dynamic_generation', workspace: body.workspace || null });
     } catch { }
 
-    await buildOptions(globalResources, body, null, {}, ws, handler, wsServer);
-
-    const compiled_prompt = body.dynamic_generation?.compiled_prompt;
-    if (!compiled_prompt) {
-        throw new Error('Dynamic generation compile produced no compiled_prompt');
-    }
-
-    const application_context = buildPromptApplicationContext(body._promptApplicationBaseline);
-
-    if (!compiled_prompt.applied_preset_controls && application_context.applied_preset_controls) {
-        compiled_prompt.applied_preset_controls = application_context.applied_preset_controls;
-    }
-    compiled_prompt.application_context = application_context;
-
-    if (ws && handler) {
-        handler.sendGenerationProgress(ws, body.requestId, {
-            phase: 'completion',
-            hasDynamicGen: true
-        });
-    }
-
     try {
-        __runtimeGr.getTracing().finalizeTrace(body.requestId, 'completed', { compileOnly: true });
-    } catch { }
+        await buildOptions(globalResources, body, null, {}, ws, handler, wsServer);
 
-    return {
-        success: compiled_prompt.success !== false,
-        compiled_prompt,
-        application_context
-    };
+        const compiled_prompt = body.dynamic_generation?.compiled_prompt;
+        if (!compiled_prompt) {
+            throw new Error('Dynamic generation compile produced no compiled_prompt');
+        }
+
+        const application_context = buildPromptApplicationContext(body._promptApplicationBaseline);
+
+        if (!compiled_prompt.applied_preset_controls && application_context.applied_preset_controls) {
+            compiled_prompt.applied_preset_controls = application_context.applied_preset_controls;
+        }
+        compiled_prompt.application_context = application_context;
+
+        if (ws && handler) {
+            handler.sendGenerationProgress(ws, body.requestId, {
+                phase: 'completion',
+                hasDynamicGen: true
+            });
+        }
+
+        return {
+            success: compiled_prompt.success !== false,
+            compiled_prompt,
+            application_context
+        };
+    } finally {
+        try {
+            __runtimeGr.getTracing().finalizeTrace(body.requestId, 'completed', { compileOnly: true });
+        } catch { }
+    }
 }
 
 async function applyTendaiPreviewWebSocket(globalResources, body, ws, handler, wsServer) {

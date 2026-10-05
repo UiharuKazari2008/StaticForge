@@ -31,7 +31,7 @@ function ensureTagSearchDatabase() {
         db = new Database(dbPath);
         db.pragma('journal_mode = DELETE');
         db.pragma('synchronous = NORMAL');
-        db.pragma('cache_size = 1000');
+        db.pragma('cache_size = -16000');
         db.pragma('temp_store = MEMORY');
         db.pragma('foreign_keys = ON');
         return true;
@@ -70,7 +70,7 @@ function initializeTagSearchDatabase(databasesPath) {
         // Set pragmas for reliability
         db.pragma('journal_mode = DELETE'); // Simpler than WAL for single-writer
         db.pragma('synchronous = NORMAL');
-        db.pragma('cache_size = 1000'); // Smaller cache
+        db.pragma('cache_size = -16000'); // Smaller cache
         db.pragma('temp_store = MEMORY');
         db.pragma('foreign_keys = ON');
 

@@ -218,7 +218,7 @@ class WebSocketMessageHandlers {
             throw new Error('WebSocketMessageHandlers requires globalResources instance and shoudl only be instantiated by globalResources.js');
         }
         this.keepAliveIntervals = new Map(); // Store keep-alive intervals by requestId
-        this.cancelledGenerationRequestIds = new Set(); // Client-cancelled image generation request IDs
+        this.cancelledGenerationRequestIds = new Map(); // Client-cancelled image generation request IDs -> timestamp
         this.activeGenerationByClient = new WeakMap(); // ws -> Set<requestId>
         this.metadataCache = new MetadataCache(1000); // LRU cache with 1000 items
         this.metadataCache.startCleanup(); // Start periodic cleanup
@@ -242,6 +242,12 @@ class WebSocketMessageHandlers {
         if (this.metadataCache) {
             this.metadataCache.removeClient(sessionId);
         }
+        try {
+            const searchHandler = require('./ws/handlers/70-searchHandler.js');
+            if (searchHandler && searchHandler.cleanupSearchCache) {
+                searchHandler.cleanupSearchCache(sessionId);
+            }
+        } catch(e) {}
         wsMessageDispatcher.clearFifoChainForSession(sessionId);
         try {
             const searchService = this.globalResources && this.globalResources.getSearchService
@@ -1354,7 +1360,19 @@ class WebSocketMessageHandlers {
 
     markGenerationCancelled(requestId) {
         if (typeof requestId === 'string' && requestId) {
-            this.cancelledGenerationRequestIds.add(requestId);
+            this.cancelledGenerationRequestIds.set(requestId, Date.now());
+            if (this.cancelledGenerationRequestIds.size > 200) {
+                // Sweep old items (older than 10 mins)
+                const now = Date.now();
+                for (const [id, ts] of this.cancelledGenerationRequestIds.entries()) {
+                    if (now - ts > 10 * 60 * 1000) this.cancelledGenerationRequestIds.delete(id);
+                }
+                // If still too big, brute force delete oldest
+                if (this.cancelledGenerationRequestIds.size > 200) {
+                    const first = this.cancelledGenerationRequestIds.keys().next().value;
+                    if (first) this.cancelledGenerationRequestIds.delete(first);
+                }
+            }
         }
     }
 

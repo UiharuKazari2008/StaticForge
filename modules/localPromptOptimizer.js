@@ -259,6 +259,10 @@ class LocalPromptOptimizer {
 
             // Cache the result
             this.synonymCache.set(cacheKey, filtered);
+            if (this.synonymCache.size > 1000) {
+                const first = this.synonymCache.keys().next().value;
+                if (first) this.synonymCache.delete(first);
+            }
 
             return filtered;
         } catch (error) {
@@ -387,6 +391,10 @@ class LocalPromptOptimizer {
         
         // Cache and return
         this.tagCache.set(cacheKey, result);
+        if (this.tagCache.size > 2000) {
+            const first = this.tagCache.keys().next().value;
+            if (first) this.tagCache.delete(first);
+        }
         return result;
     }
 

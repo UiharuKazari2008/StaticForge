@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const sharp = require('sharp');
+sharp.cache({memory:48, files:0, items:50});
+sharp.concurrency(2);
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
 const crypto = require('crypto');
@@ -3432,7 +3434,7 @@ function cleanupRetrievedRequests() {
     const requestsToCleanup = [];
 
     for (const [requestId, request] of pendingRequests.entries()) {
-        if (request.retrievedAt && request.retrievedAt < oneHourAgo && request.status === 'completed') {
+        if ((request.retrievedAt && request.retrievedAt < oneHourAgo && request.status === 'completed') || ((request.status === 'completed' || request.status === 'error') && (request.completedAt || 0) < oneHourAgo)) {
             requestsToCleanup.push(requestId);
         }
     }
