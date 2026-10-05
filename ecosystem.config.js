@@ -12,6 +12,11 @@ module.exports = {
         script: './web_server.js',
         cwd: __dirname,
         autorestart: true,
-        watch: false
+        watch: false,
+        // Cap glibc arenas (Oct 4 mem investigation: ~1.46GB across ~103 arenas).
+        // Do NOT add max_memory_restart / cron_restart / watch.
+        env: {
+            MALLOC_ARENA_MAX: "2"
+        }
     }]
 };
