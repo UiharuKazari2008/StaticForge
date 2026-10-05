@@ -3,7 +3,7 @@
 /**
  * Cake Pantry Module
  * 
- * Account-based cake tracking for menma, hoshino, ivory, pyra, chiyo, guren.
+ * Account-based cake tracking for menma, hoshino, ivory, pyra, chiyo, guren, rook, sala.
  * 
  * ALL accounts use SQLite (tag_wiki.db via menmaStatus.js) after import.
  * After import (cake_pantry_meta.imported_at set per account), ALL reads/writes go to SQLite.
@@ -345,6 +345,30 @@ const ACCOUNT_DEFS = {
             locked: false
         },
         baseline_kg: 54.0
+    },
+    rook: {
+        id: 'rook',
+        name: 'Rook',
+        directory: '.rook',
+        identity: {
+            name: 'Rook',
+            age_band: null,
+            look: null,
+            locked: false
+        },
+        baseline_kg: 54.0 // same base as the others; state is created lazily on first use
+    },
+    sala: {
+        id: 'sala',
+        name: 'Sala',
+        directory: '.sala',
+        identity: {
+            name: 'Sala',
+            age_band: null,
+            look: null,
+            locked: false
+        },
+        baseline_kg: 54.0 // same base as the others; state is created lazily on first use
     }
 };
 
@@ -857,6 +881,10 @@ async function inspectPantry(accountId, params = {}, options = {}) {
         .filter((e) => e.meal || e.loop || e.slices > 0)
         .map((e) => attachMealId(accountId, e));
 
+    // state.last_before/after are a denormalized copy update_meal_images never
+    // rewrote; prefer the newest cake_log meal's shots (no data migration needed).
+    const latestShots = currentMealImages(cakeLog.length ? cakeLog[cakeLog.length - 1] : null);
+
     return {
         success: true,
         accountId,
@@ -876,18 +904,22 @@ async function inspectPantry(accountId, params = {}, options = {}) {
         milestones: state.milestones || {},
         kg_history: kgHistory.slice(-logLimit),
         past_consumes: pastConsumes,
-        last_before: state.last_before,
-        last_after: state.last_after
+        last_before: latestShots.before || state.last_before,
+        last_after: latestShots.after || state.last_after
     };
 }
 
-/** Ledger fields that update_meal_images must never change. */
+/**
+ * Ledger fields that update_meal_images must never change.
+ * visual_gen_status is NOT frozen: once both shots are set it becomes 'provided'
+ * (same value consume_cake records when the caller passes both images).
+ */
 const MEAL_FROZEN_KEYS = [
     'at', 'loop', 'date_local', 'slices', 'stacks', 'cake_type', 'cake_rating',
     'kg_before', 'kg_after', 'gained_kg', 'chair', 'landscape', 'named_for',
     'qa', 'commits', 'deliveries_consumed', 'feeds_consumed', 'slices_requested',
     'max_slices_per_sitting', 'sitting_ceiling', 'soft_cap_override',
-    'skipped_do_not_eat', 'pending_slices_after', 'visual_gen_status',
+    'skipped_do_not_eat', 'pending_slices_after',
     'landed', 'left_open'
 ];
 
@@ -1002,6 +1034,9 @@ function applyMealImageUpdate(meal, patch = {}) {
     if ('after_image' in meal) next.after_image = nextAfter;
     if ('before_img' in meal) next.before_img = nextBefore;
     if ('after_img' in meal) next.after_img = nextAfter;
+    if (nextBefore && nextAfter && meal.visual_gen_status !== 'provided') {
+        next.visual_gen_status = 'provided';
+    }
     const history = Array.isArray(meal.image_history) ? meal.image_history.slice() : [];
     history.push({
         old_before: current.before,
@@ -1134,7 +1169,8 @@ async function updateMealImages(accountId, params = {}, options = {}) {
             before: applied.meal.before,
             after: applied.meal.after,
             image_history: applied.meal.image_history,
-            meal_id: applied.meal.meal_id
+            meal_id: applied.meal.meal_id,
+            visual_gen_status: applied.meal.visual_gen_status
         });
         if (!saved) {
             return { success: false, error: 'Failed to update meal images', accountId, meal_id: mealId };
@@ -1146,6 +1182,7 @@ async function updateMealImages(accountId, params = {}, options = {}) {
             before_image: applied.meal.before,
             after_image: applied.meal.after,
             image_history: applied.meal.image_history,
+            visual_gen_status: applied.meal.visual_gen_status != null ? applied.meal.visual_gen_status : null,
             meal: applied.meal
         };
     }
@@ -1174,6 +1211,7 @@ async function updateMealImages(accountId, params = {}, options = {}) {
         before_image: rewritten.meal.before,
         after_image: rewritten.meal.after,
         image_history: rewritten.meal.image_history,
+        visual_gen_status: rewritten.meal.visual_gen_status != null ? rewritten.meal.visual_gen_status : null,
         meal: rewritten.meal
     };
 }

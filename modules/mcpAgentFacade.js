@@ -2347,7 +2347,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to deliver to' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account to deliver to' },
                 since: { type: 'string', description: 'ISO date or timestamp to scan from (default: per-account last consume/breakfast)' },
                 dry_run: { type: 'boolean', description: 'Return plan without actually delivering' }
             }
@@ -2356,14 +2356,14 @@ const TOOL_DEFS = [
     {
         name: 'deliver_cake',
         core: true,
-        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, optional do_not_eat (or cake_type=dry-verify) for forever-skip dry verifies, credit (grok.menma for 1.25x Lead multiplier).',
+        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren, Rook, Sala) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, optional do_not_eat (or cake_type=dry-verify) for forever-skip dry verifies, credit (grok.menma for 1.25x Lead multiplier).',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             required: ['accountId', 'reason'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to deliver to' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account to deliver to' },
                 slices: { type: 'number', description: 'Number of slices (or omit and provide line_counts)' },
                 reason: { type: 'string', description: 'Why: reward for which ship/work' },
                 cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.). Use dry-verify for forever-skip dry verifies (sets do_not_eat).' },
@@ -2391,7 +2391,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'slices'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to feed' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account to feed' },
                 slices: { type: 'number', description: 'Number of slices to give' },
                 reason: { type: 'string', description: 'Why: promotion gift, just because, etc.' },
                 cake_type: { type: 'string', description: 'Use dry-verify for forever-skip dry verifies (sets do_not_eat).' },
@@ -2410,7 +2410,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to inspect' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account to inspect' },
                 log_limit: { type: 'number', description: 'How many log entries (default 20)' }
             }
         }
@@ -2425,7 +2425,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account eating' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account eating' },
                 slices: { type: 'number', description: 'Optional sitting size (>=1). Default soft cap 8; values >8 override up to eligible pending. Combined with max_slices: budget = min(slices, max_slices, eligible).' },
                 max_slices: { type: 'number', description: 'Optional sitting ceiling (>=1). Default 8. Alone: eat min(max_slices, eligible) — may exceed 8. With slices: clamps slices. Alias/companion to slices for soft-cap override (Rook #152).' },
                 cake_type: { type: 'string', description: 'Override cake type for this consume' },
@@ -2451,7 +2451,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'meal_id'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account that owns the meal' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account that owns the meal' },
                 meal_id: { type: 'string', description: 'Stable meal_id from inspect_pantry.past_consumes' },
                 before_image: { type: 'string', description: 'Replacement before image filename (must already exist via generate_image). Omit to leave the current before id.' },
                 after_image: { type: 'string', description: 'Replacement after image filename (must already exist via generate_image). Omit to leave the current after id.' }
@@ -2468,7 +2468,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to get work pile for' }
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account to get work pile for' }
             }
         }
     },
@@ -2482,7 +2482,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'work_id', 'summary'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to add work item to' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account to add work item to' },
                 work_id: { type: 'string', description: 'Unique work item ID' },
                 summary: { type: 'string', description: 'Work item summary' },
                 source_from: { type: 'string', description: 'Source of work (ship, ticket, etc.)' },
@@ -2502,7 +2502,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'work_id'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account' },
                 work_id: { type: 'string', description: 'Work item ID to complete' }
             }
         }
@@ -2517,7 +2517,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'work_id'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account' },
                 work_id: { type: 'string', description: 'Work item ID to remove' }
             }
         }
@@ -7204,7 +7204,7 @@ async function callTool(globalResources, req, name, args) {
 
     // Cake Pantry module tools (sfapp_cake_pantry)
     // Valid cake pantry accounts
-    const VALID_PANTRY_ACCOUNTS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'];
+    const VALID_PANTRY_ACCOUNTS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'];
 
     if (name === 'sync_ship_cake') {
         const accountId = String(input.accountId || '').toLowerCase();

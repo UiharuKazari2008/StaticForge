@@ -16,7 +16,7 @@ const MENMA_TAB_LABELS = {
     log: 'Log'
 };
 
-const MENMA_ACCOUNT_IDS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'];
+const MENMA_ACCOUNT_IDS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'];
 
 const menmaDsapScopedCss = `
 [data-dsap="pantry"] .menma-view { padding: 8px 10px 16px; }
@@ -135,7 +135,7 @@ function menmaDsapShotHtml(filename, label) {
     }
     const url = menmaDsapImageUrl(filename);
     return `<div class="menma-shot" data-menma-file="${dsapSmfEscapeAttr(filename)}">
-  <img src="${dsapSmfEscapeAttr(url)}" alt="${dsapSmfEscapeAttr(label)}" data-menma-open="${dsapSmfEscapeAttr(filename)}">
+  <img src="${dsapSmfEscapeAttr(url)}" alt="${dsapSmfEscapeAttr(label)}" loading="lazy" decoding="async" data-menma-open="${dsapSmfEscapeAttr(filename)}">
   <div class="menma-shot-cap">
     <span>${menmaDsapEscape(label)}</span>
     <button type="button" class="dsap-smf-btn dsap-smf-btn-small" data-menma-open="${dsapSmfEscapeAttr(filename)}" title="Open in Studio">
@@ -275,7 +275,8 @@ ${menmaDsapListHtml(pile.done_since_breakfast, 'Nothing folded since last meal.'
 }
 
 function menmaDsapLogItemHtml(entry) {
-    const title = `${entry.loop || 'meal'} · ${entry.slices != null ? entry.slices : '?'} slice${entry.slices === 1 ? '' : 's'} · ${entry.cake_type || 'cake'}`;
+    const mealTag = entry.meal_id != null && entry.meal_id !== '' ? `#${entry.meal_id} · ` : '';
+    const title = `${mealTag}${entry.loop || 'meal'} · ${entry.slices != null ? entry.slices : '?'} slice${entry.slices === 1 ? '' : 's'} · ${entry.cake_type || 'cake'}`;
     const kg = (entry.kg_before != null || entry.kg_after != null)
         ? `${menmaDsapNum(entry.kg_before, 2)} → ${menmaDsapNum(entry.kg_after, 2)} kg`
         : '';

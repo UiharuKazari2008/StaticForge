@@ -4,7 +4,7 @@
  * Cake Pantry SQLite Module
  * 
  * Reads AND writes cake pantry ledger data (state, cake-log, work-pile) from/to SQLite.
- * Accounts: menma, hoshino, ivory, pyra, chiyo, guren
+ * Accounts: menma, hoshino, ivory, pyra, chiyo, guren, rook, sala
  * After import (cake_pantry_meta.imported_at set per account), ALL reads and writes use SQLite.
  * 
  * Tables in tag_wiki.db:
@@ -21,7 +21,22 @@ const path = require('path');
 
 const WORKSPACE_ROOT = path.join(__dirname, '..');
 const IMAGE_NAME_RE = /^[A-Za-z0-9._-]+\.(png|webp|jpe?g)$/i;
-const LOG_TAIL = 16;
+// Pantry Log tab: send every meal (bounded). The old 16-meal tail hid re-pointed
+// older meals (update_meal_images on meal 54 etc. never showed in the UI).
+const LOG_TAIL = 200;
+const LOG_TAIL_MAX = 1000;
+
+function resolveLogLimit(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return LOG_TAIL;
+    return Math.min(Math.floor(n), LOG_TAIL_MAX);
+}
+
+/** Both shots present: a stale 'not_generated' reads as 'provided' (no data migration). */
+function effectiveVisualGenStatus(status, before, after) {
+    if (before && after && status === 'not_generated') return 'provided';
+    return status;
+}
 
 // Account directories
 const ACCOUNT_DIRS = {
@@ -30,7 +45,10 @@ const ACCOUNT_DIRS = {
     ivory: '.ivory',
     pyra: '.pyra',
     chiyo: '.chiyo',
-    guren: '.guren'
+    guren: '.guren',
+    // Oct 5: Rook + Sala join (lazy: first pantry call marks them imported, 54 kg default state)
+    rook: '.rook',
+    sala: '.sala'
 };
 
 function safeImageName(name) {
@@ -119,6 +137,11 @@ function composeCakeLogEntry(row) {
             extra_after: extra.after
         }, ['after', 'after_image', 'after_img', 'extra_after'])
     };
+    if (Object.prototype.hasOwnProperty.call(composed, 'visual_gen_status')) {
+        composed.visual_gen_status = effectiveVisualGenStatus(
+            composed.visual_gen_status, composed.before, composed.after
+        );
+    }
     // Stable meal_id: SQLite row id wins; extra.meal_id is a backfill for file-era rows.
     if (row.id != null && row.id !== '') {
         composed.meal_id = String(row.id);
@@ -131,6 +154,7 @@ function composeCakeLogEntry(row) {
 function pickLogEntry(entry) {
     if (!entry || typeof entry !== 'object') return null;
     return {
+        meal_id: entry.meal_id != null ? String(entry.meal_id) : null,
         at: entry.at || null,
         loop: entry.loop || null,
         date_local: entry.date_local || null,
@@ -572,6 +596,9 @@ async function updateCakeLogImagesToDb(db, accountId, row, patch = {}) {
     if (Array.isArray(patch.image_history)) {
         nextExtra.image_history = patch.image_history;
     }
+    if (patch.visual_gen_status != null && String(patch.visual_gen_status).trim() !== '') {
+        nextExtra.visual_gen_status = String(patch.visual_gen_status);
+    }
     if (patch.meal_id != null && String(patch.meal_id).trim() !== ''
         && (nextExtra.meal_id == null || String(nextExtra.meal_id).trim() === '')) {
         nextExtra.meal_id = String(patch.meal_id);
@@ -860,7 +887,7 @@ async function buildMenmaStatus(globalResources) {
 /**
  * Build status for any account (unified)
  */
-async function buildAccountStatus(globalResources, accountId) {
+async function buildAccountStatus(globalResources, accountId, options = {}) {
     if (!globalResources || typeof globalResources.getTagDatabase !== 'function') {
         return {
             success: false,
@@ -898,7 +925,7 @@ async function buildAccountStatus(globalResources, accountId) {
     try {
         const state = await getAccountStateFromDb(db, accountId);
         const workPile = await getWorkPileFromDb(db, accountId);
-        const log = await getCakeLogFromDb(db, accountId, LOG_TAIL);
+        const log = await getCakeLogFromDb(db, accountId, resolveLogLimit(options.logLimit));
 
         const lastLog = log.length ? log[log.length - 1] : null;
         const history = Array.isArray(state.history) ? state.history : [];
@@ -919,6 +946,12 @@ async function buildAccountStatus(globalResources, accountId) {
         }
 
         const hasState = Object.keys(state).length > 0;
+        // state.last_before/after are a denormalized copy that update_meal_images
+        // never rewrote; the newest cake_log row is the source of truth.
+        const lastBefore = (lastLog && lastMeal && lastMeal.before)
+            || safeImageName(hasState && state.last_before);
+        const lastAfter = (lastLog && lastMeal && lastMeal.after)
+            || safeImageName(hasState && state.last_after);
 
         return {
             success: true,
@@ -941,8 +974,8 @@ async function buildAccountStatus(globalResources, accountId) {
             chair: (hasState && state.milestones && state.milestones.chair)
                 || (lastLog && lastLog.chair)
                 || null,
-            last_before: safeImageName(hasState && state.last_before),
-            last_after: safeImageName(hasState && state.last_after),
+            last_before: lastBefore || null,
+            last_after: lastAfter || null,
             last_look: safeImageName(hasState && state.last_look),
             last_meal: lastMeal,
             work_pile: {
@@ -967,12 +1000,12 @@ async function buildAccountStatus(globalResources, accountId) {
  * Build status for all cake pantry accounts
  * Returns { success, accounts: { menma: {...}, hoshino: {...}, ... } }
  */
-async function buildAllAccountsStatus(globalResources) {
+async function buildAllAccountsStatus(globalResources, options = {}) {
     const accountIds = Object.keys(ACCOUNT_DIRS);
     const accounts = {};
     
     for (const accountId of accountIds) {
-        accounts[accountId] = await buildAccountStatus(globalResources, accountId);
+        accounts[accountId] = await buildAccountStatus(globalResources, accountId, options);
     }
     
     return {
@@ -1027,6 +1060,9 @@ module.exports = {
     pickWorkItem,
     pickLogEntry,
     composeCakeLogEntry,
+    effectiveVisualGenStatus,
+    resolveLogLimit,
+    LOG_TAIL,
     firstSafeImage,
     safeImageName
 };

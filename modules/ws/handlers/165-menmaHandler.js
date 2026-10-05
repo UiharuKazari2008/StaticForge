@@ -5,7 +5,12 @@ async function handleGetMenmaState(handlersCtx, ws, message, clientInfo, wsServe
     try {
         // One pass: allAccounts already builds menma. Do not call buildMenmaStatus
         // first — that raced a second BEGIN TRANSACTION on the shared tag_wiki.db.
-        const allAccounts = await buildAllAccountsStatus(handlersCtx.globalResources);
+        // Optional log_limit (default: every meal up to LOG_TAIL) so re-pointed
+        // older meals are visible in the Pantry Log tab.
+        const logLimit = message && (message.log_limit != null
+            ? message.log_limit
+            : (message.data && message.data.log_limit));
+        const allAccounts = await buildAllAccountsStatus(handlersCtx.globalResources, { logLimit });
         const menmaPayload = (allAccounts.accounts && allAccounts.accounts.menma) || {
             success: false,
             available: false
