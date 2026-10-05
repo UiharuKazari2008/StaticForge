@@ -136,6 +136,7 @@ function migrateLegacyFlatCheckpoints(checkpointDir, ext, timestampPattern) {
     for (const ent of entries) {
         if (!ent.isFile()) continue;
         if (ent.name.startsWith('branch_')) continue;
+        if (CHECKPOINT_SIDECAR_PATTERN.test(ent.name)) continue;
         if (ext && !ent.name.endsWith(ext)) continue;
         if (!timestampPattern.test(ent.name)) continue;
         const src = path.join(checkpointDir, ent.name);
@@ -161,6 +162,7 @@ function listTierCheckpointFiles(checkpointDir, tier, ext, timestampPattern) {
     const files = [];
     for (const name of fs.readdirSync(dir)) {
         if (name.startsWith('branch_')) continue;
+        if (CHECKPOINT_SIDECAR_PATTERN.test(name)) continue;
         if (ext && !name.endsWith(ext)) continue;
         if (!timestampPattern.test(name)) continue;
         const filePath = path.join(dir, name);
@@ -287,7 +289,7 @@ function applyTierRetention(files, tier, tierConfig, checkpointDir) {
             rollOrDeleteCheckpoint(file, tierConfig, checkpointDir);
         }
         if (kept.length > 0) {
-            bucketReps.push(kept[0]);
+            bucketReps.push({ mtime: kept[0].mtime, files: kept });
         }
     }
 
@@ -296,8 +298,10 @@ function applyTierRetention(files, tier, tierConfig, checkpointDir) {
     bucketReps.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
     const toRoll = bucketReps.slice(tierConfig.max);
     toRoll.sort((a, b) => a.mtime.getTime() - b.mtime.getTime());
-    for (const file of toRoll) {
-        rollOrDeleteCheckpoint(file, tierConfig, checkpointDir);
+    for (const bucket of toRoll) {
+        for (const file of bucket.files) {
+            rollOrDeleteCheckpoint(file, tierConfig, checkpointDir);
+        }
     }
 }
 
@@ -431,6 +435,7 @@ function cleanupLegacyFlatDatabaseCheckpoints(checkpointDir, dbName, dbExt, glob
 
     for (const name of fs.readdirSync(checkpointDir)) {
         if (!legacyPattern.test(name)) continue;
+        if (CHECKPOINT_SIDECAR_PATTERN.test(name)) continue;
         const filePath = path.join(checkpointDir, name);
         try {
             const stats = fs.statSync(filePath);

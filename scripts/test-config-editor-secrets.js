@@ -343,7 +343,39 @@ async function main() {
     console.info = origInfo;
     console.error = origError;
 
-    console.log('test-config-editor-secrets: ok');
+    
+
+// Undefined stored + nested MASK must not persist mask literals; leaf MASK with no
+// stored value must stay skippable (SECRET_MASK) for applyPatches.
+{
+const { service: svc } = makeService();
+const mask = ConfigEditorService.SECRET_MASK;
+const rehydratedNew = svc._rehydrateMaskedValue(
+{ api_key: mask, other: 'ok' },
+undefined,
+'config',
+['brand_new']
+);
+assert.strictEqual(rehydratedNew.api_key, mask, 'MASK + missing stored must remain MASK so save can skip');
+assert.strictEqual(rehydratedNew.other, 'ok', 'non-mask fields still apply under missing stored parent');
+const rehydratedPartial = svc._rehydrateMaskedValue(
+{ api_key: mask, name: 'x' },
+{ name: 'old' },
+'config',
+['nested']
+);
+assert.strictEqual(rehydratedPartial.api_key, mask, 'MASK + undefined stored key must remain MASK');
+assert.strictEqual(rehydratedPartial.name, 'x', 'plain fields update');
+const rehydratedKeep = svc._rehydrateMaskedValue(
+{ api_key: mask },
+{ api_key: 'real-secret-value' },
+'config',
+['nested']
+);
+assert.strictEqual(rehydratedKeep.api_key, 'real-secret-value', 'MASK + stored secret must restore stored');
+}
+
+console.log('test-config-editor-secrets: ok');
 }
 
 main().catch((err) => {

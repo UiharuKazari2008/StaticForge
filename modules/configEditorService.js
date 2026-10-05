@@ -857,19 +857,23 @@ class ConfigEditorService {
     }
 
     _rehydrateMaskedValue(incoming, stored, configId, path) {
-        if (incoming === SECRET_MASK) return stored;
-        if (incoming && typeof incoming === 'object' && stored && typeof stored === 'object') {
-            if (Array.isArray(incoming) && Array.isArray(stored)) {
+        // Masked placeholder: keep stored secret. If there is no stored value yet, return
+        // SECRET_MASK so applyPatches can skip the write (never persist the mask literal).
+        if (incoming === SECRET_MASK) return stored === undefined ? SECRET_MASK : stored;
+        if (incoming && typeof incoming === 'object') {
+            if (Array.isArray(incoming)) {
+                const storedArr = Array.isArray(stored) ? stored : [];
                 return incoming.map((item, i) => (
-                    this._rehydrateMaskedValue(item, stored[i], configId, [...path, String(i)])
+                    this._rehydrateMaskedValue(item, storedArr[i], configId, [...path, String(i)])
                 ));
             }
-            if (!Array.isArray(incoming) && !Array.isArray(stored)) {
+            if (!Array.isArray(incoming)) {
+                const storedObj = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
                 const out = {};
                 for (const key of Object.keys(incoming)) {
                     out[key] = this._rehydrateMaskedValue(
                         incoming[key],
-                        stored[key],
+                        storedObj[key],
                         configId,
                         [...path, key]
                     );
