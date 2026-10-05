@@ -32,6 +32,18 @@ const activeJobs = new Map();
 
 function initialize(globalResources) {
     globalResourcesRef = globalResources;
+    setInterval(() => {
+        const now = Date.now();
+        for (const [id, job] of activeJobs.entries()) {
+            if (job.status !== 'running') {
+                const timeStr = job.finishedAt || job.startedAt;
+                const ts = timeStr ? Date.parse(timeStr) : 0;
+                if (ts > 0 && (now - ts > 30 * 60 * 1000)) {
+                    activeJobs.delete(id);
+                }
+            }
+        }
+    }, 15 * 60 * 1000);
 }
 
 function getRoot() {

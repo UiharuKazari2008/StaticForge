@@ -44,6 +44,11 @@ class TagLookup {
         this.sqlStatements = null;
         this.cachedTagGroupsInfo = null;
         this.tagGroupPresenceCache = new Map();
+        setInterval(() => {
+            if (this.tagGroupPresenceCache.size > 20000) {
+                this.tagGroupPresenceCache.clear();
+            }
+        }, 60 * 60 * 1000);
         this.searchDb = null;
         this._searchDbStmts = null;
         this._autofillSearchCache = new Map();

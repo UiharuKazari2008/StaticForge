@@ -2136,6 +2136,8 @@ function clipToolPayload(value, limit) {
 }
 
 const toolBodies = new Map();
+let toolBodiesBytes = 0;
+const TOOL_BODIES_MAX_BYTES = 25 * 1024 * 1024;
 
 function parkToolBodies(sessionId, rows, persistDir) {
     (rows || []).forEach((row) => {
@@ -2152,10 +2154,18 @@ function parkToolBodies(sessionId, rows, persistDir) {
             label: row.label || '',
             detail: row.detail || ''
         };
-        toolBodies.set(`${sessionId}:${row.payloadId}`, body);
-        if (toolBodies.size > 400) {
+        const key = `${sessionId}:${row.payloadId}`;
+        const old = toolBodies.get(key);
+        if (old) toolBodiesBytes -= (old.args.length + old.result.length);
+        toolBodies.set(key, body);
+        toolBodiesBytes += args.length + result.length;
+        while (toolBodies.size > 400 || toolBodiesBytes > TOOL_BODIES_MAX_BYTES) {
             const first = toolBodies.keys().next().value;
-            if (first) toolBodies.delete(first);
+            if (first) {
+                const b = toolBodies.get(first);
+                if (b) toolBodiesBytes -= (b.args.length + b.result.length);
+                toolBodies.delete(first);
+            }
         }
         if (!persistDir) return;
         try {

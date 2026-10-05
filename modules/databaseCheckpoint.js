@@ -268,6 +268,22 @@ class DatabaseCheckpointManager {
                     this.dbName
                 );
                 removeOrphanCheckpointSidecars(this.checkpointDir);
+
+                const filesAfter = this.getCheckpointFiles(); // newest-first
+                const absoluteCap = Math.max(this.maxCheckpoints * 2, 50);
+                if (filesAfter.length > absoluteCap) {
+                    const toDelete = filesAfter.slice(absoluteCap);
+                    for (const file of toDelete) {
+                        try {
+                            const fullPath = file.filePath;
+                            if (fs.existsSync(fullPath)) {
+                                fs.unlinkSync(fullPath);
+                                deleteCheckpointSidecars(fullPath);
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                    console.log(`🗑️ Enforced absoluteCap: deleted ${toDelete.length} old checkpoints for ${this.dbName}`);
+                }
                 return;
             }
 
