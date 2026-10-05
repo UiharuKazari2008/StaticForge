@@ -267,6 +267,18 @@ class DatabaseCheckpointManager {
                     this.globalResources,
                     this.dbName
                 );
+                // JULES: mem-leak 9 (failsafe absolute bound if grandfathering is broken/misconfigured)
+                const filesAfter = this.getCheckpointFiles();
+                const absoluteCap = Math.max(this.maxCheckpoints * 2, 50);
+                if (filesAfter.length > absoluteCap) {
+                    const filesToDelete = filesAfter.slice(absoluteCap);
+                    filesToDelete.forEach(file => {
+                        try {
+                            fs.unlinkSync(file.filePath);
+                            deleteCheckpointSidecars(file.filePath);
+                        } catch (e) {}
+                    });
+                }
                 removeOrphanCheckpointSidecars(this.checkpointDir);
                 return;
             }

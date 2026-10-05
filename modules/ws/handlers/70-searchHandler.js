@@ -14,6 +14,38 @@ const omegasearchSearchSessions = new Map();
 const OMEGASEARCH_SESSION_TTL_MS = 30 * 60 * 1000;
 const OMEGASEARCH_SESSION_MAX_PER_CLIENT = 12;
 
+// JULES: mem-leak 3 (bounding caches and sweeps)
+const MAX_SEARCH_CACHE_SESSIONS = 32;
+const MAX_OMEGA_SESSIONS = 32;
+const SEARCH_TTL_MS = 15 * 60 * 1000;
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [sid, data] of searchCache.entries()) {
+        if (now - (data.timestamp || 0) > SEARCH_TTL_MS) {
+            searchCache.delete(sid);
+        }
+    }
+    for (const [sid, data] of omegasearchSearchSessions.entries()) {
+        if (now - (data.createdAt || 0) > OMEGASEARCH_SESSION_TTL_MS) {
+            omegasearchSearchSessions.delete(sid);
+        }
+    }
+}, 5 * 60 * 1000).unref();
+
+function enforceLru(map, max) {
+    if (map.size > max) {
+        const toDelete = map.size - max;
+        let deleted = 0;
+        for (const [key] of map.entries()) {
+            map.delete(key);
+            deleted++;
+            if (deleted >= toDelete) break;
+        }
+    }
+}
+
+
 function buildOmegasearchServerQueryKey(normalizedBlocks, normalizedFilters, workspaceId, viewType, promptSource, blockOptions) {
     return JSON.stringify({
         blocks: normalizedBlocks,
@@ -462,6 +494,7 @@ async function initializeSearchCache(handlers, sessionId, viewType) {
                 workspaceId: resolved.workspaceId,
                 timestamp: Date.now()
             });
+            enforceLru(searchCache, MAX_SEARCH_CACHE_SESSIONS);
 
             const scopeLabel = resolved.workspaceScope
                 ? `scope ${resolved.workspaceScope.workspaceIds?.join(',') || '?'} / ${resolved.workspaceScope.bucket || 'files'}`
@@ -1339,4 +1372,10 @@ function registerPackets(handlersCtx) {
     regFn('get_dataset_tags_for_path', handleGetDatasetTagsForPath);
 }
 
-module.exports = { registerPackets };
+// JULES: mem-leak 3 (cleanup search session on disconnect)
+function cleanupSearchSession(sessionId) {
+    searchCache.delete(sessionId);
+    omegasearchSearchSessions.delete(sessionId);
+}
+
+module.exports = { registerPackets, cleanupSearchSession };

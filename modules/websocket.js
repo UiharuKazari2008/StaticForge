@@ -11,12 +11,21 @@ class WebSocketServer {
         const server = globalResources.getHttpServer();
         this.sessionStore = globalResources.getSessionStore();
         
-        this.wss = new WebSocket.Server({ server });
+        // JULES: mem-leak 2 (maxPayload)
+        this.wss = new WebSocket.Server({ server, maxPayload: 32 * 1024 * 1024 });
         this.clients = new Map(); // Map to store client connections with user info
         this.pingInterval = null;
         this.queueStatusInterval = null;
         this.indexingSyncInterval = null;
         this.isIndexing = false;
+        // JULES: mem-leak 2 (heartbeat)
+        this.pingInterval = setInterval(() => {
+            this.wss.clients.forEach((ws) => {
+                if (ws.isAlive === false) return ws.terminate();
+                ws.isAlive = false;
+                ws.ping();
+            });
+        }, 30000).unref();
         this.indexingPaused = false; // Track if indexing is paused
         this.promptIndexService = new PromptIndexService(globalResources);
         this.promptIndexService.setWsServer(this);
@@ -194,6 +203,73 @@ class WebSocketServer {
             };
 
             this.clients.set(ws, clientInfo);
+
+            // JULES: mem-leak 2 (attach close/error immediately)
+            ws.isAlive = true;
+            ws.on('pong', () => { ws.isAlive = true; });
+
+            // Handle client disconnect
+            ws.on('close', (code, reason) => {
+                const clientInfo = this.clients.get(ws);
+                if (clientInfo) {
+                    console.log(`🔌 WebSocket disconnected: Session ${clientInfo.sessionId} - Code: ${code}, Reason: ${reason}`);
+
+                    const handlers = this.globalResources.getWebSocketMessageHandlers();
+                    if (handlers && handlers.detachClientActiveGenerations) {
+                        handlers.detachClientActiveGenerations(ws);
+                    }
+
+                    // Clean up session workspace
+                    this.globalResources.getWorkspaceManager().cleanupSessionWorkspace(clientInfo.sessionId);
+
+                    // Clean up metadata cache for this client
+                    if (handlers && handlers.cleanupClientCache) {
+                        handlers.cleanupClientCache(
+                            clientInfo.sessionId,
+                            ws,
+                            this.hasOtherClientForSession(clientInfo.sessionId, ws)
+                        );
+                    }
+
+                    this.clearRuntimeCompileProgressThrottleForClient(ws);
+                    this.clearRuntimeCompileLogsThrottleForClient(ws);
+                    this.clients.delete(ws);
+                    try {
+                        const { onAgentClientDisconnected } = require('./agentClientBridge');
+                        onAgentClientDisconnected(this.globalResources, clientInfo.clientId);
+                    } catch (_err) {
+                        // preferred-testing cleanup is optional
+                    }
+                }
+            });
+
+            // Handle errors
+            ws.on('error', (error) => {
+                const clientInfo = this.clients.get(ws);
+                console.error(`❌ WebSocket error for session ${clientInfo?.sessionId || 'unknown'}:`, error);
+
+                const handlers = this.globalResources.getWebSocketMessageHandlers();
+                if (handlers && handlers.detachClientActiveGenerations) {
+                    handlers.detachClientActiveGenerations(ws);
+                }
+
+                // Clean up metadata cache for this client if we have session info
+                if (clientInfo && clientInfo.sessionId) {
+                    if (handlers && handlers.cleanupClientCache) {
+                        handlers.cleanupClientCache(
+                            clientInfo.sessionId,
+                            ws,
+                            this.hasOtherClientForSession(clientInfo.sessionId, ws)
+                        );
+                    }
+                }
+
+                this.clearRuntimeCompileProgressThrottleForClient(ws);
+                this.clearRuntimeCompileLogsThrottleForClient(ws);
+                this.clients.delete(ws);
+            });
+
+
             try {
                 const { parseAgentClientIdQuery, resumeAgentClientId } = require('./agentClientBridge');
                 resumeAgentClientId(this, parseAgentClientIdQuery(req), clientInfo);
@@ -259,73 +335,16 @@ class WebSocketServer {
             // Restore session workspace for reconnection sync (only if authenticated)
             if (clientInfo.authenticated && clientInfo.sessionId) {
                 await this.restoreSessionWorkspace(clientInfo.sessionId, ws);
+                // JULES: mem-leak 2 (bail out if ws closed during await)
+                if (ws.readyState !== WebSocket.OPEN) return;
+
                 this.sendGalleryScrollStateFromSession(clientInfo.sessionId, ws);
                 await this.sendGalleryHintToClient(clientInfo.sessionId, ws);
+                if (ws.readyState !== WebSocket.OPEN) return;
             }
 
             // Send combined search + prompt FTS indexing snapshot on connect
             void this.sendSearchIndexingSnapshotToClient(ws);
-
-            // Handle client disconnect
-            ws.on('close', (code, reason) => {
-                const clientInfo = this.clients.get(ws);
-                if (clientInfo) {
-                    console.log(`🔌 WebSocket disconnected: Session ${clientInfo.sessionId} - Code: ${code}, Reason: ${reason}`);
-
-                    const handlers = this.globalResources.getWebSocketMessageHandlers();
-                    if (handlers && handlers.detachClientActiveGenerations) {
-                        handlers.detachClientActiveGenerations(ws);
-                    }
-
-                    // Clean up session workspace
-                    this.globalResources.getWorkspaceManager().cleanupSessionWorkspace(clientInfo.sessionId);
-                    
-                    // Clean up metadata cache for this client
-                    if (handlers && handlers.cleanupClientCache) {
-                        handlers.cleanupClientCache(
-                            clientInfo.sessionId,
-                            ws,
-                            this.hasOtherClientForSession(clientInfo.sessionId, ws)
-                        );
-                    }
-                    
-                    this.clearRuntimeCompileProgressThrottleForClient(ws);
-                    this.clearRuntimeCompileLogsThrottleForClient(ws);
-                    this.clients.delete(ws);
-                    try {
-                        const { onAgentClientDisconnected } = require('./agentClientBridge');
-                        onAgentClientDisconnected(this.globalResources, clientInfo.clientId);
-                    } catch (_err) {
-                        // preferred-testing cleanup is optional
-                    }
-                }
-            });
-
-            // Handle errors
-            ws.on('error', (error) => {
-                const clientInfo = this.clients.get(ws);
-                console.error(`❌ WebSocket error for session ${clientInfo?.sessionId || 'unknown'}:`, error);
-
-                const handlers = this.globalResources.getWebSocketMessageHandlers();
-                if (handlers && handlers.detachClientActiveGenerations) {
-                    handlers.detachClientActiveGenerations(ws);
-                }
-
-                // Clean up metadata cache for this client if we have session info
-                if (clientInfo && clientInfo.sessionId) {
-                    if (handlers && handlers.cleanupClientCache) {
-                        handlers.cleanupClientCache(
-                            clientInfo.sessionId,
-                            ws,
-                            this.hasOtherClientForSession(clientInfo.sessionId, ws)
-                        );
-                    }
-                }
-                
-                this.clearRuntimeCompileProgressThrottleForClient(ws);
-                this.clearRuntimeCompileLogsThrottleForClient(ws);
-                this.clients.delete(ws);
-            });
         });
 
         console.log('✓ WebSocket server initialized');
@@ -566,6 +585,10 @@ class WebSocketServer {
 
     sendToClient(ws, message) {
         if (ws.readyState === WebSocket.OPEN) {
+            // JULES: mem-leak 2 (backpressure)
+            if (ws.bufferedAmount > 8 * 1024 * 1024 && message && (message.type === 'ping' || message.type === 'queue_status')) {
+                return; // skip low priority broadcast
+            }
             ws.send(JSON.stringify(message));
         }
     }

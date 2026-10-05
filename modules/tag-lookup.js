@@ -44,6 +44,10 @@ class TagLookup {
         this.sqlStatements = null;
         this.cachedTagGroupsInfo = null;
         this.tagGroupPresenceCache = new Map();
+        // JULES: mem-leak 8
+        setInterval(() => {
+            this.tagGroupPresenceCache.clear();
+        }, 30 * 60 * 1000).unref();
         this.searchDb = null;
         this._searchDbStmts = null;
         this._autofillSearchCache = new Map();
@@ -1618,6 +1622,16 @@ class TagLookup {
     const row = await this.db.get(hasTagGroups, [tagId]);
     const result = Boolean(row);
     this.tagGroupPresenceCache.set(tagId, result);
+        // JULES: mem-leak 8 (LRU)
+        if (this.tagGroupPresenceCache.size > 1000) {
+            const toDelete = this.tagGroupPresenceCache.size - 1000;
+            let deleted = 0;
+            for (const [key] of this.tagGroupPresenceCache.entries()) {
+                this.tagGroupPresenceCache.delete(key);
+                deleted++;
+                if (deleted >= toDelete) break;
+            }
+        }
     return result;
 }
 
@@ -1647,6 +1661,16 @@ class TagLookup {
             for (const tagId of chunk) {
                 const has = chunkSet.has(tagId);
                 this.tagGroupPresenceCache.set(tagId, has);
+                // JULES: mem-leak 8 (LRU)
+        if (this.tagGroupPresenceCache.size > 1000) {
+            const toDelete = this.tagGroupPresenceCache.size - 1000;
+            let deleted = 0;
+            for (const [key] of this.tagGroupPresenceCache.entries()) {
+                this.tagGroupPresenceCache.delete(key);
+                deleted++;
+                if (deleted >= toDelete) break;
+            }
+        }
                 if (has) {
                     withGroups.add(tagId);
                 }

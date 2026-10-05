@@ -285,15 +285,34 @@ async function createExportTransfer({ operation = 'ephemeral-export', transferMo
         transferMode,
         stream: Readable.from(outBuffer),
         rawBuffer: outBuffer,
-        tarBuffer,
+        tarBuffer: null, // JULES: mem-leak 5 (nullify once compressed)
         operation,
         state: 'ready',
         bytesSent: 0,
         createdAt: Date.now()
     };
     activeTransfers.set(manifest.manifestId, transfer);
+
+    // JULES: mem-leak 5 (delete when stream ends)
+    transfer.stream.on('end', () => {
+        activeTransfers.delete(manifest.manifestId);
+    });
+    transfer.stream.on('close', () => {
+        activeTransfers.delete(manifest.manifestId);
+    });
+
     return transfer;
 }
+
+// JULES: mem-leak 5 (sweep stale transfers)
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, t] of activeTransfers.entries()) {
+        if (now - (t.createdAt || now) > 10 * 60 * 1000) {
+            activeTransfers.delete(id);
+        }
+    }
+}, 5 * 60 * 1000).unref();
 
 function getTransfer(manifestId) {
     return activeTransfers.get(manifestId) || null;

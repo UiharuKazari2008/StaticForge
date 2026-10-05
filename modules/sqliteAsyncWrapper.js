@@ -205,7 +205,7 @@ class AsyncSQLiteDatabase {
         const defaultPragma = {
             journal_mode: 'WAL',
             synchronous: 'NORMAL',
-            cache_size: 10000,
+            cache_size: -16000, // JULES: mem-leak 7
             temp_store: 'MEMORY',
             busy_timeout: 60000
         };

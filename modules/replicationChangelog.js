@@ -204,6 +204,17 @@ async function initialize(globalResources) {
 
     wireSqliteChangelogHooks(databasesPath);
     initialized = true;
+
+    // JULES: mem-leak 9 (sweep changelog)
+    setInterval(() => {
+        if (!db) return;
+        try {
+            // Delete synced records older than 7 days
+            const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+            db.run('DELETE FROM changes WHERE synced_lsn IS NOT NULL AND created_at < ?', [cutoff]).catch(() => {});
+        } catch (err) {}
+    }, 60 * 60 * 1000).unref();
+
     console.log('✓ Replication changelog ready');
     return true;
 }

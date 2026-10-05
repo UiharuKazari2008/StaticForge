@@ -12,6 +12,64 @@ if (!fs.existsSync(tracesDir)) {
 // In-memory index of open traces to reduce disk churn during a request
 const openTraces = new Map(); // requestId -> { id, startedAt, status, events: [], context: {}, attachments: [] }
 
+// JULES: mem-leak tracing-bounds
+
+const MAX_OPEN_TRACES = 200;
+const OPEN_TRACE_TTL_MS = 30 * 60 * 1000;
+const TRACES_DIR_MAX_FILES = 2000;
+const TRACES_DIR_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, trace] of openTraces.entries()) {
+        if (now - trace.startedAt > OPEN_TRACE_TTL_MS) {
+            openTraces.delete(id);
+        }
+    }
+    // Cap size
+    if (openTraces.size > MAX_OPEN_TRACES) {
+        const sorted = Array.from(openTraces.entries()).sort((a, b) => a[1].startedAt - b[1].startedAt);
+        const toDelete = sorted.slice(0, openTraces.size - MAX_OPEN_TRACES);
+        for (const [id] of toDelete) {
+            openTraces.delete(id);
+        }
+    }
+}, 15 * 60 * 1000).unref();
+
+setInterval(() => {
+    try {
+        if (!fs.existsSync(tracesDir)) return;
+        let files = fs.readdirSync(tracesDir).filter(f => f.endsWith('.json'));
+        if (files.length === 0) return;
+
+        const now = Date.now();
+        const fileStats = [];
+        for (const f of files) {
+            try {
+                const fullPath = path.join(tracesDir, f);
+                const stat = fs.statSync(fullPath);
+                if (now - stat.mtimeMs > TRACES_DIR_TTL_MS) {
+                    fs.unlinkSync(fullPath);
+                } else {
+                    fileStats.push({ path: fullPath, mtimeMs: stat.mtimeMs });
+                }
+            } catch (err) {}
+        }
+
+        if (fileStats.length > TRACES_DIR_MAX_FILES) {
+            fileStats.sort((a, b) => a.mtimeMs - b.mtimeMs);
+            const toDelete = fileStats.slice(0, fileStats.length - TRACES_DIR_MAX_FILES);
+            for (const f of toDelete) {
+                try {
+                    fs.unlinkSync(f.path);
+                } catch (err) {}
+            }
+        }
+    } catch (e) {}
+}, 12 * 60 * 60 * 1000).unref();
+
+
+
 function getTraceFilePath(traceId) {
     return path.join(tracesDir, `${traceId}.json`);
 }
@@ -90,7 +148,33 @@ function finalizeTrace(requestId, status = 'completed', meta = {}) {
     openTraces.delete(id);
 }
 
+
+// JULES: mem-leak tracing-bounds (throttle persistTrace)
+const persistTimeouts = new Map();
+
 function persistTrace(trace) {
+    if (!trace || !trace.id) return;
+
+    // If it's a finalization or initial creation, persist immediately and clear timeout
+    if (trace.status !== 'running' || trace.events.length === 0) {
+        if (persistTimeouts.has(trace.id)) {
+            clearTimeout(persistTimeouts.get(trace.id));
+            persistTimeouts.delete(trace.id);
+        }
+        _doPersistTrace(trace);
+        return;
+    }
+
+    // Otherwise throttle to max 1 write per second per trace
+    if (persistTimeouts.has(trace.id)) return;
+
+    persistTimeouts.set(trace.id, setTimeout(() => {
+        persistTimeouts.delete(trace.id);
+        _doPersistTrace(trace);
+    }, 1000).unref());
+}
+
+function _doPersistTrace(trace) {
     const filePath = getTraceFilePath(trace.id);
     try {
         fs.writeFileSync(filePath, JSON.stringify(trace, null, 2));
@@ -125,6 +209,20 @@ function listTraces() {
         return [];
     }
     
+    // JULES: mem-leak tracing-bounds (cap to 500 files to avoid memory exhaustion)
+    if (files.length > 500) {
+        try {
+            const fileStats = files.map(f => {
+                const fullPath = path.join(tracesDir, f);
+                return { f, mtimeMs: fs.statSync(fullPath).mtimeMs };
+            });
+            fileStats.sort((a, b) => b.mtimeMs - a.mtimeMs);
+            files = fileStats.slice(0, 500).map(s => s.f);
+        } catch (e) {
+            files = files.slice(0, 500);
+        }
+    }
+
     const fromFiles = files.map(f => {
         try {
             const filePath = path.join(tracesDir, f);

@@ -218,7 +218,15 @@ class WebSocketMessageHandlers {
             throw new Error('WebSocketMessageHandlers requires globalResources instance and shoudl only be instantiated by globalResources.js');
         }
         this.keepAliveIntervals = new Map(); // Store keep-alive intervals by requestId
-        this.cancelledGenerationRequestIds = new Set(); // Client-cancelled image generation request IDs
+        this.cancelledGenerationRequestIds = new Map(); // JULES: mem-leak 8 (changed to Map for TTL)
+        setInterval(() => {
+            const now = Date.now();
+            for (const [id, ts] of this.cancelledGenerationRequestIds.entries()) {
+                if (now - ts > 30 * 60 * 1000) {
+                    this.cancelledGenerationRequestIds.delete(id);
+                }
+            }
+        }, 15 * 60 * 1000).unref();
         this.activeGenerationByClient = new WeakMap(); // ws -> Set<requestId>
         this.metadataCache = new MetadataCache(1000); // LRU cache with 1000 items
         this.metadataCache.startCleanup(); // Start periodic cleanup
@@ -249,6 +257,13 @@ class WebSocketMessageHandlers {
                 : null;
             if (searchService && typeof searchService.clearSearchStateForSocket === 'function') {
                 searchService.clearSearchStateForSocket(ws, sessionId, { sessionHasOtherClients });
+            }
+            // JULES: mem-leak 3
+            if (!sessionHasOtherClients) {
+                try {
+                    const { cleanupSearchSession } = require('./ws/handlers/70-searchHandler');
+                    if (cleanupSearchSession) cleanupSearchSession(sessionId);
+                } catch (err) {}
             }
         } catch (_err) {
             // Search service may not be initialized yet
@@ -1353,7 +1368,10 @@ class WebSocketMessageHandlers {
 
     markGenerationCancelled(requestId) {
         if (typeof requestId === 'string' && requestId) {
-            this.cancelledGenerationRequestIds.add(requestId);
+            this.cancelledGenerationRequestIds.set(requestId, Date.now());
+            if (this.cancelledGenerationRequestIds.size > 500) {
+                this.cancelledGenerationRequestIds.delete(this.cancelledGenerationRequestIds.keys().next().value);
+            }
         }
     }
 

@@ -1,4 +1,5 @@
 const express = require('express');
+require('./modules/sharpConfig');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
@@ -3432,7 +3433,10 @@ function cleanupRetrievedRequests() {
     const requestsToCleanup = [];
 
     for (const [requestId, request] of pendingRequests.entries()) {
+        // JULES: mem-leak 6
         if (request.retrievedAt && request.retrievedAt < oneHourAgo && request.status === 'completed') {
+            requestsToCleanup.push(requestId);
+        } else if (!request.retrievedAt && request.completedAt && request.completedAt < oneHourAgo && (request.status === 'completed' || request.status === 'error')) {
             requestsToCleanup.push(requestId);
         }
     }
@@ -3441,6 +3445,7 @@ function cleanupRetrievedRequests() {
     for (const requestId of requestsToCleanup) {
         const request = pendingRequests.get(requestId);
         if (!request) continue; // Request might have been deleted by another operation
+        if (request.name) namedRequests.delete(request.name); // JULES: mem-leak 6 (namedRequests)
 
         // Cancel any active timeout (though there shouldn't be any for completed requests)
         cancelScheduledTimeout(requestId);

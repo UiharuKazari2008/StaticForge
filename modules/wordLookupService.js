@@ -29,6 +29,11 @@ class WordLookupService {
         this.globalResources = globalResources;
         this.wordnet = null;
         this.cache = new Map();
+
+        // JULES: mem-leak 8
+        setInterval(() => {
+            this.cache.clear();
+        }, 30 * 60 * 1000).unref();
     }
 
     getWordNet() {

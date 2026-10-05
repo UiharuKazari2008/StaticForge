@@ -2134,6 +2134,9 @@ function clipToolPayload(value, limit) {
 }
 
 const toolBodies = new Map();
+// JULES: mem-leak 8 (cap bytes)
+let toolBodiesBytes = 0;
+const TOOL_BODIES_MAX_BYTES = 16 * 1024 * 1024; // 16 MB
 
 function parkToolBodies(sessionId, rows, persistDir) {
     (rows || []).forEach((row) => {
@@ -2150,10 +2153,19 @@ function parkToolBodies(sessionId, rows, persistDir) {
             label: row.label || '',
             detail: row.detail || ''
         };
-        toolBodies.set(`${sessionId}:${row.payloadId}`, body);
-        if (toolBodies.size > 400) {
+        const key = `${sessionId}:${row.payloadId}`;
+        if (toolBodies.has(key)) {
+            toolBodiesBytes -= toolBodies.get(key).length;
+        }
+        toolBodies.set(key, body);
+        toolBodiesBytes += body.length;
+        while (toolBodies.size > 400 || toolBodiesBytes > TOOL_BODIES_MAX_BYTES) {
             const first = toolBodies.keys().next().value;
-            if (first) toolBodies.delete(first);
+            if (first) {
+                const b = toolBodies.get(first);
+                toolBodiesBytes -= b ? b.length : 0;
+                toolBodies.delete(first);
+            } else break;
         }
         if (!persistDir) return;
         try {

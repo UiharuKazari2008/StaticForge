@@ -1121,6 +1121,10 @@ function getTestingOfferState(bindKey) {
         state = { offered: new Set(), declined: new Set() };
         testingOfferState.set(key, state);
     }
+    // JULES: mem-leak 8
+    if (testingOfferState.size > 500) {
+        testingOfferState.delete(testingOfferState.keys().next().value);
+    }
     return state;
 }
 
@@ -1416,6 +1420,13 @@ function onAgentClientDisconnected(globalResources, clientId) {
     lastBindResources = globalResources;
     // Keep preferredTestingClientId so a reconnecting tab inherits the bind
     // instead of looking like a new claimant.
+    // JULES: mem-leak 8 (cleanup disconnected clients)
+    for (const state of testingOfferState.values()) {
+        if (clientId) {
+            state.offered.delete(clientId);
+            state.declined.delete(clientId);
+        }
+    }
     scheduleTestingOfferSweep(globalResources);
 }
 

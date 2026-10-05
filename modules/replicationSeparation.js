@@ -30,6 +30,16 @@ const SEPARATION_CLONE_KEYS = Object.freeze([
 let globalResourcesRef = null;
 const activeJobs = new Map();
 
+// JULES: mem-leak 8 (ttl)
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, job] of activeJobs.entries()) {
+        if (now - (job.createdAt || now) > 2 * 60 * 60 * 1000) {
+            activeJobs.delete(id);
+        }
+    }
+}, 30 * 60 * 1000).unref();
+
 function initialize(globalResources) {
     globalResourcesRef = globalResources;
 }

@@ -18,6 +18,12 @@ class LocalPromptOptimizer {
         this.spellChecker = null;
         this.fastTagSearch = null;
         this.tagCache = new Map(); // Cache for tag lookups
+
+        // JULES: mem-leak 8
+        setInterval(() => {
+            this.synonymCache.clear();
+            this.tagCache.clear();
+        }, 30 * 60 * 1000).unref();
         this.initialized = false;
     }
 
@@ -259,6 +265,16 @@ class LocalPromptOptimizer {
 
             // Cache the result
             this.synonymCache.set(cacheKey, filtered);
+        // JULES: mem-leak 8 (LRU)
+        if (this.synonymCache.size > 500) {
+            const toDelete = this.synonymCache.size - 500;
+            let deleted = 0;
+            for (const [key] of this.synonymCache.entries()) {
+                this.synonymCache.delete(key);
+                deleted++;
+                if (deleted >= toDelete) break;
+            }
+        }
 
             return filtered;
         } catch (error) {
