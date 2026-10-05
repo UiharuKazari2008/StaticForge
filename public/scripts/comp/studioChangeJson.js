@@ -2267,6 +2267,8 @@ async function applyStudioChangePayload(payload, options) {
             return false;
         }
         const count = await applyStudioChangeOps(enabledOps);
+        // refreshStudioTokenCounts: public/scripts/comp/presetTokenCount.js
+        await refreshStudioTokenCounts();
         showGlassToast('success', 'Studio change', `Applied ${count} change${count === 1 ? '' : 's'}`, false, 2500, '<i class="fas fa-check"></i>');
         return true;
     } finally {
@@ -2291,6 +2293,8 @@ async function applyStudioChangePayloadSilent(payload) {
         }
         if (!enabledOps.length && !extras) return false;
         if (enabledOps.length) await applyStudioChangeOps(enabledOps);
+        // refreshStudioTokenCounts: public/scripts/comp/presetTokenCount.js
+        await refreshStudioTokenCounts();
         return true;
     } finally {
         studioChangeDialogBusy = false;

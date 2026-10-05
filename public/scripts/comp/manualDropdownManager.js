@@ -1849,6 +1849,8 @@ function toggleSubToggle(dataset, subToggleId, subToggleConfig) {
 
     renderSubTogglesDropdown();
     updateSubTogglesButtonState();
+    // refreshTokenBarCounts: public/scripts/comp/presetTokenCount.js
+    refreshTokenBarCounts();
 }
 
 /**
@@ -1901,6 +1903,8 @@ function adjustSubToggleBias(dataset, subToggleId, delta, subToggleConfig) {
     renderSubTogglesDropdown();
     updateSubTogglesButtonState();
     paintSubToggleBiasLabels(dataset);
+    // refreshTokenBarCounts: public/scripts/comp/presetTokenCount.js
+    refreshTokenBarCounts();
 }
 
 /**
@@ -1980,6 +1984,8 @@ function adjustQualityPresetBias(delta) {
     qualityPresetBias = Math.max(0.0, Math.min(9.0, qualityPresetBias + delta));
     qualityPresetBias = Math.round(qualityPresetBias * 10) / 10; // Round to 1 decimal place
     paintBiasActionLabels('quality-bias', qualityPresetBias);
+    // refreshTokenBarCounts: public/scripts/comp/presetTokenCount.js
+    refreshTokenBarCounts();
 }
 
 function adjustDatasetPresetBias(isTransparency, delta) {

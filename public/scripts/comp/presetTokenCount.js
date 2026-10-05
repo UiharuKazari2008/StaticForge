@@ -557,3 +557,16 @@ function refreshTokenBarCounts() {
         window.promptTextareaToolbar.updateAllTokenCounts();
     }
 }
+
+// Change JSON and preset/dataset settings change non-editable tokens (and the model tokenizer)
+// without an input event. Load the tokenizer for the open model, then recount every bar.
+async function refreshStudioTokenCounts() {
+    // ensurePromptTokenizerForModel: public/scripts/comp/utilities.js
+    // manualSelectedModel: public/scripts/comp/manualDropdownManager.js
+    try {
+        await ensurePromptTokenizerForModel(manualSelectedModel);
+    } catch (error) {
+        console.error('Failed to load prompt tokenizer:', error);
+    }
+    refreshTokenBarCounts();
+}
