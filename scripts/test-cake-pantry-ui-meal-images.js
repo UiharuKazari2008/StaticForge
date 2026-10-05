@@ -69,7 +69,8 @@ function fakeDb(rows, state) {
             if (/FROM cake_pantry_log/.test(sql)) {
                 let out = rows.filter((r) => r.account_id === params[0]).slice().sort((a, b) => a.id - b.id);
                 if (/ORDER BY id DESC/.test(sql)) out = out.reverse();
-                if (/LIMIT \?/.test(sql)) out = out.slice(0, params[1]);
+                if (/OFFSET \?/.test(sql)) out = out.slice(params[2], params[2] + params[1]);
+                else if (/LIMIT \?/.test(sql)) out = out.slice(0, params[1]);
                 return out.map((r) => ({ ...r }));
             }
             if (/FROM cake_pantry_state/.test(sql) && /work_pile_/.test(sql)) return [];
@@ -85,6 +86,12 @@ function fakeDb(rows, state) {
                 const t = rows.find((r) => Number(r.id) === Number(id) && r.account_id === accountId);
                 if (t) { t.before_img = before; t.after_img = after; t.extra_data = extra; }
                 return { changes: t ? 1 : 0 };
+            }
+            if (/INSERT OR REPLACE INTO cake_pantry_state/.test(sql)) {
+                const [accountId, key, value] = params;
+                state[accountId] = state[accountId] || {};
+                state[accountId][key] = JSON.parse(value);
+                return { changes: 1 };
             }
             return { changes: 0 };
         },
@@ -146,7 +153,8 @@ function fakeDb(rows, state) {
 
     // --- update_meal_images: not_generated + both shots -> provided; frozen fields untouched
     const target = logRow(99, { visual_gen_status: 'not_generated', pending_slices_after: 2 }, { before_img: null, after_img: null });
-    const udb = fakeDb([target], state);
+    // own state copy: update_meal_images now refreshes state.last_before/after
+    const udb = fakeDb([target], JSON.parse(JSON.stringify(state)));
     const known = new Set([img(1000), img(1001)]);
     const resolveImage = (id) => (known.has(id) ? id : null);
     const half = _test.applyMealImageUpdate(composeCakeLogEntry(target), { before: img(1000), now: 'x' });
@@ -265,6 +273,63 @@ function fakeDb(rows, state) {
     assert.strictEqual(statusBare.last_meal.meal_id, '109');
     assert.strictEqual(statusBare.last_meal.before, null);
 
+
+
+    // --- Rook regression (meal 110): log_limit=1 window holds only an imageless
+    // newest meal → must search the full log, not fall back to stale state.
+    const lim1Rows = [
+        logRow(96),
+        logRow(107),
+        logRow(108, { visual_gen_status: 'provided' }),
+        logRow(110, { visual_gen_status: 'not_generated' }, { before_img: null, after_img: null })
+    ];
+    const lim1State = {
+        menma: {
+            character: { name: 'Menma' }, current_kg: 380, baseline_kg: 54,
+            last_before: img(192), last_after: img(193), history: []
+        }
+    };
+    const lim1Db = fakeDb(lim1Rows, lim1State);
+    const lim1Status = { imported: true, db: lim1Db };
+    const inspLim1 = await inspectPantry('menma', { log_limit: 1 }, {
+        state: { ...lim1State.menma, pending_deliveries: [], pending_feeds: [] },
+        cakeLog: [composeCakeLogEntry(lim1Rows[3])],
+        findLatestMealImages: (id) => _test.findLatestMealImages(id, { importStatus: lim1Status })
+    });
+    assert.strictEqual(inspLim1.past_consumes.length, 1);
+    assert.strictEqual(inspLim1.last_before, img(216), 'log_limit=1 must still resolve meal 108, not stale 96');
+    assert.strictEqual(inspLim1.last_after, img(217));
+    const statusLim1 = await buildAccountStatus({ getTagDatabase: () => ({ db: lim1Db }) }, 'menma', { logLimit: 1 });
+    assert.strictEqual(statusLim1.cake_log.length, 1);
+    assert.strictEqual(statusLim1.last_before, img(216), 'get_menma_state logLimit=1 same rule');
+    assert.strictEqual(statusLim1.last_after, img(217));
+    // pages past a long imageless streak
+    const streak = [logRow(1)];
+    for (let i = 2; i <= 130; i++) streak.push(logRow(i, {}, { before_img: null, after_img: null }));
+    const deep = await _test.findLatestMealImages('menma', { importStatus: { imported: true, db: fakeDb(streak, {}) } });
+    assert.strictEqual(deep.before, img(2));
+    assert.strictEqual(deep.meal_id, '1');
+
+    // update_meal_images refreshes state.last_before/after to the newest pair
+    const known110 = new Set([img(5000), img(5001)]);
+    const upd110 = await updateMealImages('menma', { meal_id: '110', before_image: img(5000), after_image: img(5001) }, {
+        now: '2026-10-05T23:40:00.000Z',
+        resolveImage: (id) => (known110.has(id) ? id : null),
+        importStatus: lim1Status
+    });
+    assert.strictEqual(upd110.success, true, upd110.error);
+    assert.strictEqual(upd110.last_before, img(5000));
+    assert.strictEqual(lim1State.menma.last_before, img(5000), 'state.last_before refreshed on attach');
+    assert.strictEqual(lim1State.menma.last_after, img(5001));
+    assert.strictEqual(lim1State.menma.current_kg, 380, 'kg untouched by refresh');
+    // re-pointing an OLD meal must not move last_* off the newest pair
+    const known96 = new Set([img(6000), img(6001)]);
+    await updateMealImages('menma', { meal_id: '96', before_image: img(6000), after_image: img(6001) }, {
+        now: '2026-10-05T23:41:00.000Z',
+        resolveImage: (id) => (known96.has(id) ? id : null),
+        importStatus: lim1Status
+    });
+    assert.strictEqual(lim1State.menma.last_before, img(5000), 'old-meal re-point keeps newest pair');
 
     // --- Rook + Sala eaters (Oct 5): accepted everywhere, 54 kg base, lazy state
     const fs = require('fs');

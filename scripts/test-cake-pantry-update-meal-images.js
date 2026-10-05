@@ -254,6 +254,11 @@ assert.ok(!/\bunlink(Sync)?\b/.test(pantrySrc), 'cakePantry must not unlink file
     assert.strictEqual(JSON.stringify(inspectState), stateBefore, 'account totals/state must be byte-identical');
     assert.ok(fakeDb.updates.length >= 1);
     for (const u of fakeDb.updates) {
+        if (/INSERT OR REPLACE INTO cake_pantry_state/.test(u.sql)) {
+            // denormalized last-pair refresh: only last_before / last_after keys
+            assert.ok(['last_before', 'last_after'].includes(u.params[1]), `unexpected state key ${u.params[1]}`);
+            continue;
+        }
         assert.ok(/SET before_img = \?, after_img = \?, extra_data = \?/.test(u.sql));
         assert.ok(!/kg_before|kg_after|gained_kg|slices|at |date_local/.test(u.sql));
     }

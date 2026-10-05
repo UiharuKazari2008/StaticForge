@@ -618,6 +618,32 @@ async function getCakeLogFromDb(db, accountId, limit = 50) {
 }
 
 /**
+ * Newest meal in the FULL cake_pantry_log with both images, independent of
+ * any display log_limit. Pages newest → oldest so a long imageless streak
+ * still resolves. Returns { before, after, meal_id } or nulls.
+ */
+async function getLatestMealImagesFromDb(db, accountId, pageSize = 50) {
+    let offset = 0;
+    for (;;) {
+        const rows = await db.all(
+            'SELECT * FROM cake_pantry_log WHERE account_id = ? ORDER BY id DESC LIMIT ? OFFSET ?',
+            [accountId, pageSize, offset]
+        );
+        if (!rows || rows.length === 0) break;
+        for (const row of rows) {
+            const entry = composeCakeLogEntry(row);
+            const shots = latestMealImagesFromLog(entry ? [entry] : []);
+            if (shots.before && shots.after) {
+                return { ...shots, meal_id: entry.meal_id != null ? String(entry.meal_id) : null };
+            }
+        }
+        if (rows.length < pageSize) break;
+        offset += rows.length;
+    }
+    return { before: null, after: null, meal_id: null };
+}
+
+/**
  * Find one cake_pantry_log row by inspect_pantry meal_id (row id or extra.meal_id).
  */
 async function findCakeLogRowByMealId(db, accountId, mealId) {
@@ -1013,7 +1039,12 @@ async function buildAccountStatus(globalResources, accountId, options = {}) {
         // Prefer the newest meal that actually has both shots (any status).
         // Imageless newer meals must not fall back to the stale state cache —
         // update_meal_images never rewrote state.last_before/after.
-        const latestShots = latestMealImagesFromLog(log);
+        let latestShots = latestMealImagesFromLog(log);
+        if (!(latestShots.before && latestShots.after)) {
+            // Display window (log_limit) had no pair: search the full log
+            // before falling back to the denormalized state cache.
+            latestShots = await getLatestMealImagesFromDb(db, accountId);
+        }
         const lastBefore = latestShots.before
             || safeImageName(hasState && state.last_before);
         const lastAfter = latestShots.after
@@ -1132,6 +1163,7 @@ module.exports = {
     firstSafeImage,
     safeImageName,
     latestMealImagesFromLog,
+    getLatestMealImagesFromDb,
     MONOTONIC_KG_ACCOUNTS,
     isMonotonicKgAccount,
     clampMonotonicKg

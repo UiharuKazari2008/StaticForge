@@ -42,6 +42,7 @@ const {
     updateCakeLogImagesToDb,
     composeCakeLogEntry,
     latestMealImagesFromLog,
+    getLatestMealImagesFromDb,
     clampMonotonicKg,
     isMonotonicKgAccount,
     hasAccountStateInDb,
@@ -865,6 +866,25 @@ async function feedCake(accountId, params) {
 }
 
 /**
+ * Newest meal in the account's FULL cake log with both images (ignores any
+ * display log_limit). SQLite after import; jsonl before import.
+ */
+async function findLatestMealImages(accountId, options = {}) {
+    const status = options.importStatus || await getAccountImportStatus(accountId);
+    if (status.imported === true) {
+        if (!status.db) return { before: null, after: null, meal_id: null };
+        return getLatestMealImagesFromDb(status.db, accountId);
+    }
+    if (status.imported === false) {
+        const dir = getAccountDir(accountId);
+        if (!dir) return { before: null, after: null, meal_id: null };
+        const entries = readJsonlFile(path.join(dir, 'cake-log.jsonl'));
+        return { meal_id: null, ...latestMealImagesFromLog(entries) };
+    }
+    return { before: null, after: null, meal_id: null };
+}
+
+/**
  * inspect_pantry - View piles, past consumes, kg history
  */
 async function inspectPantry(accountId, params = {}, options = {}) {
@@ -896,7 +916,21 @@ async function inspectPantry(accountId, params = {}, options = {}) {
     // imageless newer meal must not fall back to stale state.last_* — that
     // denormalized cache is only updated on consume with images, never by
     // update_meal_images (Guren/Menma meal 109 vs 108 report).
-    const latestShots = latestMealImagesFromLog(cakeLog);
+    let latestShots = latestMealImagesFromLog(cakeLog);
+    if (!(latestShots.before && latestShots.after)) {
+        // log_limit window (e.g. 1) may hold only an imageless newest meal:
+        // search the full log before the stale state cache (Rook, meal 110).
+        const lookup = options.findLatestMealImages
+            || (options.cakeLog ? null : (id) => findLatestMealImages(id));
+        if (lookup) {
+            try {
+                const full = await lookup(accountId);
+                if (full && full.before && full.after) latestShots = full;
+            } catch (e) {
+                console.error(`[cakePantry] inspectPantry full-log image lookup failed for ${accountId}:`, e);
+            }
+        }
+    }
 
     return {
         success: true,
@@ -1103,6 +1137,33 @@ function rewriteJsonlMeal(filePath, accountId, mealId, updater) {
 }
 
 /**
+ * After update_meal_images, point the denormalized state.last_before/after at
+ * the newest meal (full log) that has both images. Only those two keys are
+ * written; kg and totals are never touched. Best-effort: a failure here never
+ * fails the image update itself.
+ */
+async function refreshLastPairState(accountId, status, options = {}) {
+    try {
+        const pair = await findLatestMealImages(accountId, { importStatus: status });
+        if (!(pair && pair.before && pair.after)) return { before: null, after: null };
+        if (status.imported === true && status.db) {
+            await saveAccountStateToDb(status.db, accountId, { last_before: pair.before, last_after: pair.after });
+        } else if (status.imported === false && !options.skipStateRefresh) {
+            const state = await getAccountState(accountId);
+            if (state && !state._sqliteUnavailable && !state._sqliteError && !state._importStatusUnknown) {
+                state.last_before = pair.before;
+                state.last_after = pair.after;
+                await saveAccountState(accountId, state);
+            }
+        }
+        return { before: pair.before, after: pair.after };
+    } catch (e) {
+        console.error(`[cakePantry] update_meal_images last-pair refresh failed for ${accountId}:`, e);
+        return { before: null, after: null };
+    }
+}
+
+/**
  * update_meal_images - Re-point before/after image ids on an existing cake_log meal.
  * Never changes kg, slice amounts, timestamps, or totals. Never deletes images.
  */
@@ -1188,9 +1249,12 @@ async function updateMealImages(accountId, params = {}, options = {}) {
         if (!saved) {
             return { success: false, error: 'Failed to update meal images', accountId, meal_id: mealId };
         }
+        const lastPair = await refreshLastPairState(accountId, status, options);
         return {
             success: true,
             accountId,
+            last_before: lastPair.before,
+            last_after: lastPair.after,
             meal_id: applied.meal.meal_id,
             before_image: applied.meal.before,
             after_image: applied.meal.after,
@@ -1217,9 +1281,12 @@ async function updateMealImages(accountId, params = {}, options = {}) {
     if (!rewritten.found) {
         return { success: false, error: `Unknown meal_id: ${mealId}`, accountId, meal_id: mealId };
     }
+    const lastPairFile = await refreshLastPairState(accountId, status, options);
     return {
         success: true,
         accountId,
+        last_before: lastPairFile.before,
+        last_after: lastPairFile.after,
         meal_id: rewritten.meal.meal_id,
         before_image: rewritten.meal.before,
         after_image: rewritten.meal.after,
@@ -1963,6 +2030,8 @@ module.exports = {
         frozenMealLedger,
         currentMealImages,
         latestMealImagesFromLog,
+        findLatestMealImages,
+        refreshLastPairState,
         sanitizePantryImageName,
         defaultResolvePantryImage,
         resolvePantryImageId,
