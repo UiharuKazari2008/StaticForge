@@ -119,7 +119,7 @@ function computePruneCutoff(config, nowSec, maxAgeSec) {
         return { mode: 'standalone-age', createdBefore, maxLsn: null };
     }
     if (role !== 'master') {
-        return null;
+        return { mode: 'replica-age', createdBefore, maxLsn: null };
     }
     const children = Array.isArray(config.children) ? config.children : [];
     if (!children.length) {
@@ -301,7 +301,7 @@ async function vacuumIfBloated() {
     // Build the temporary copy on disk, not in RAM (the wrapper defaults to temp_store=MEMORY).
     await db.exec('PRAGMA temp_store = FILE');
     try {
-        await db.exec('VACUUM');
+        try { await db.exec('VACUUM'); } catch (err) { if (!err.message.toLowerCase().includes('vacuum')) throw err; }
     } finally {
         await db.exec('PRAGMA temp_store = MEMORY');
     }
