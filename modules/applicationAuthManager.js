@@ -7,11 +7,12 @@ const TEMP_TOKEN_PREFIX = 'sftok_';
 
 /** Scope → WebSocket packet types (subset; universal bypasses). */
 const SCOPE_WS_PACKETS = {
-    gallery: [
+    gallery: [ // JULES: Register gallery, generation, search, wiki, and explore WebSocket packet scopes
         'request_gallery', 'request_image_metadata', 'delete_images_bulk',
         'delete_unupscaled_original',
         'gallery_position_hint', 'send_to_sequenzia_bulk', 'update_image_preset_bulk',
-        'get_similar_image_groups', 'scrap_similar_images'
+        'get_similar_image_groups', 'scrap_similar_images',
+        'favorites_add', 'favorites_remove', 'favorites_get'
     ],
     generation: [
         'generate_image', 'generate_preset', 'cancel_generation', 'upscale_image',
@@ -19,7 +20,9 @@ const SCOPE_WS_PACKETS = {
         'expand_image', 'preview_expand_image_prompt', 'reroll_expanded_image',
         'reroll_image', 'resolve_dynamic_context', 'compile_dynamic_generation',
         'apply_tendai_preview', 'resolve_text_replacements',
-        'get_persona_settings', 'save_persona_settings', 'update_persona_settings'
+        'get_persona_settings', 'save_persona_settings', 'update_persona_settings',
+        'get_text_replacements', 'save_text_replacements', 'get_text_replacement_options',
+        'scan_text_replacements', 'delete_text_replacement', 'create_text_replacement'
     ],
     workspace: [
         'workspace_list', 'workspace_get', 'workspace_create', 'workspace_delete', 'workspace_activate',
@@ -37,7 +40,9 @@ const SCOPE_WS_PACKETS = {
         // omegasearch_query — see OMEGASEARCH_QUERY_PACKET_SCHEMA in omegasearchFilters.js
         'omegasearch_query',
         'search_index_status', 'search_index_pause', 'search_index_resume',
-        'search_index_rebuild', 'spellcheck_add_word'
+        'search_index_rebuild', 'spellcheck_add_word',
+        'get_character_db', 'character_db_upsert', 'character_db_delete',
+        'character_db_rename_copyright', 'character_db_delete_copyright'
     ],
     vfs: [
         'vfs_list', 'vfs_read', 'vfs_write', 'vfs_delete', 'vfs_mkdir', 'vfs_move',
@@ -67,7 +72,7 @@ const SCOPE_WS_PACKETS = {
         'get_static_wiki_site_index', 'get_static_wiki_page', 'get_wiki_home',
         'resolve_grimoire_url', 'get_apocrypha_zine',
         'import_fandom_wiki_page', 'import_static_wiki', 'update_wiki_import',
-        'delete_fandom_wiki_import'
+        'delete_fandom_wiki_import', 'get_fandom_wiki_index', 'get_fandom_wiki_manager'
     ],
     autofill: [
         'get_autofill_ranking', 'test_autofill_ranking', 'update_autofill_ranking',
@@ -94,7 +99,8 @@ const SCOPE_WS_PACKETS = {
         'get_novelai_explore_gallery', 'get_novelai_explore_user', 'get_novelai_explore_post',
         'set_novelai_explore_post_like', 'downvote_novelai_explore_post', 'block_novelai_explore_creator',
         'list_novelai_explore_blocked_creators', 'clear_novelai_explore_gallery_cache',
-        'ensure_novelai_explore_image', 'check_novelai_explore_upload', 'upload_novelai_explore_image'
+        'ensure_novelai_explore_image', 'check_novelai_explore_upload', 'upload_novelai_explore_image',
+        'get_studio_explore_feed'
     ],
     infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check']
 };
