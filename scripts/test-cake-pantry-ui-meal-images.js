@@ -4,7 +4,8 @@
 /**
  * Pantry UI shows re-pointed meal images (Oct 5 report, meal 54).
  * - get_menma_state cake_log is no longer cut to the newest 16 meals
- * - last_before/last_after come from the newest cake_log meal, not stale state
+ * - last_before/last_after come from the newest meal that has both images
+ *   (any visual_gen_status), not the newest meal blindly / stale state
  * - update_meal_images sets visual_gen_status 'provided' once both shots exist;
  *   rows already re-pointed read as 'provided' without a data migration
  * Isolated fakes; never touches live pantry SQLite.
@@ -19,7 +20,8 @@ const {
     pickLogEntry,
     resolveLogLimit,
     LOG_TAIL,
-    ACCOUNT_DIRS
+    ACCOUNT_DIRS,
+    latestMealImagesFromLog
 } = require('../modules/menmaStatus');
 
 const img = (n) => `17911${String(n).padStart(8, '0')}_generated_${n}.png`;
@@ -129,7 +131,7 @@ function fakeDb(rows, state) {
     assert.strictEqual(status.success, true, status.error);
     assert.strictEqual(status.cake_log.length, 58, 'all meals must reach the Log tab');
     assert.ok(status.cake_log.some((e) => e.before === '1791178597483_generated_1853559052.png' && e.meal_id === '10'));
-    assert.strictEqual(status.last_before, img(116), 'last_before must follow the newest meal, not stale state');
+    assert.strictEqual(status.last_before, img(116), 'last_before must follow the newest meal with both shots, not stale state');
     assert.strictEqual(status.last_after, img(117));
     assert.strictEqual(status.last_meal.before, img(116));
     const limited = await buildAccountStatus(gr, 'menma', { logLimit: 16 });
@@ -177,6 +179,92 @@ function fakeDb(rows, state) {
         cakeLog: []
     });
     assert.strictEqual(inspNoLog.last_before, STALE_BEFORE);
+
+
+    // --- Guren/Menma regression: imageless newest meal must not revert last_* to stale state
+    // Meals A (pair), B (pair), C logged with no images → last = B; attach C → last = C.
+    // Also cover a pair that arrived via update_meal_images (visual_gen_status 'provided').
+    const mealA = composeCakeLogEntry(logRow(107));
+    const mealB = composeCakeLogEntry(logRow(108));
+    const mealCBare = composeCakeLogEntry(logRow(109, { visual_gen_status: 'not_generated' }, {
+        before_img: null, after_img: null
+    }));
+    assert.strictEqual(mealA.before, img(214));
+    assert.strictEqual(mealB.before, img(216));
+    assert.strictEqual(mealCBare.before, null);
+    assert.strictEqual(mealCBare.after, null);
+
+    const walk = latestMealImagesFromLog([mealA, mealB, mealCBare]);
+    assert.strictEqual(walk.before, img(216), 'walk must pick B, not fall off the end');
+    assert.strictEqual(walk.after, img(217));
+    assert.deepStrictEqual(latestMealImagesFromLog([mealCBare]), { before: null, after: null });
+    // one-sided meal is not a pair
+    const oneSide = composeCakeLogEntry(logRow(200, {}, { after_img: null }));
+    assert.deepStrictEqual(
+        latestMealImagesFromLog([mealB, oneSide]),
+        { before: img(216), after: img(217) },
+        'meal with only before must be skipped'
+    );
+
+    const staleState = {
+        ...state.menma,
+        pending_deliveries: [],
+        pending_feeds: [],
+        last_before: STALE_BEFORE,
+        last_after: STALE_AFTER
+    };
+    const inspBare = await inspectPantry('menma', {}, {
+        state: staleState,
+        cakeLog: [mealA, mealB, mealCBare]
+    });
+    assert.strictEqual(inspBare.last_before, img(216), 'imageless C must leave last_* on B');
+    assert.strictEqual(inspBare.last_after, img(217));
+
+    // meal whose pair came via update_meal_images (status provided) still counts
+    const mealProvided = composeCakeLogEntry(logRow(108, { visual_gen_status: 'provided' }));
+    assert.strictEqual(mealProvided.visual_gen_status, 'provided');
+    const inspProvided = await inspectPantry('menma', {}, {
+        state: staleState,
+        cakeLog: [mealA, mealProvided, mealCBare]
+    });
+    assert.strictEqual(inspProvided.last_before, img(216));
+    assert.strictEqual(inspProvided.last_after, img(217));
+
+    // attach C's pair → last becomes C
+    const mealCAttached = composeCakeLogEntry(logRow(109, { visual_gen_status: 'provided' }, {
+        before_img: img(9000), after_img: img(9001)
+    }));
+    const inspAttached = await inspectPantry('menma', {}, {
+        state: staleState,
+        cakeLog: [mealA, mealB, mealCAttached]
+    });
+    assert.strictEqual(inspAttached.last_before, img(9000));
+    assert.strictEqual(inspAttached.last_after, img(9001));
+
+    // buildAccountStatus (DSAP / get_menma_state) same rule
+    const statusRows = [
+        logRow(107),
+        logRow(108),
+        logRow(109, { visual_gen_status: 'not_generated' }, { before_img: null, after_img: null })
+    ];
+    const statusDb = fakeDb(statusRows, {
+        menma: {
+            character: { name: 'Menma' },
+            current_kg: 110,
+            baseline_kg: 54,
+            last_before: STALE_BEFORE,
+            last_after: STALE_AFTER,
+            history: []
+        }
+    });
+    const statusBare = await buildAccountStatus({ getTagDatabase: () => ({ db: statusDb }) }, 'menma');
+    assert.strictEqual(statusBare.success, true, statusBare.error);
+    assert.strictEqual(statusBare.last_before, img(216), 'status last_* must be B while C is imageless');
+    assert.strictEqual(statusBare.last_after, img(217));
+    assert.ok(statusBare.last_meal, 'last_meal is still the newest row (C)');
+    assert.strictEqual(statusBare.last_meal.meal_id, '109');
+    assert.strictEqual(statusBare.last_meal.before, null);
+
 
     // --- Rook + Sala eaters (Oct 5): accepted everywhere, 54 kg base, lazy state
     const fs = require('fs');

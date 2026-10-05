@@ -40,6 +40,7 @@ const {
     findCakeLogRowByMealId,
     updateCakeLogImagesToDb,
     composeCakeLogEntry,
+    latestMealImagesFromLog,
     hasAccountStateInDb,
     getWorkPileFromDb,
     saveWorkPileToDb,
@@ -881,9 +882,11 @@ async function inspectPantry(accountId, params = {}, options = {}) {
         .filter((e) => e.meal || e.loop || e.slices > 0)
         .map((e) => attachMealId(accountId, e));
 
-    // state.last_before/after are a denormalized copy update_meal_images never
-    // rewrote; prefer the newest cake_log meal's shots (no data migration needed).
-    const latestShots = currentMealImages(cakeLog.length ? cakeLog[cakeLog.length - 1] : null);
+    // Prefer newest meal that has both shots (any visual_gen_status). An
+    // imageless newer meal must not fall back to stale state.last_* — that
+    // denormalized cache is only updated on consume with images, never by
+    // update_meal_images (Guren/Menma meal 109 vs 108 report).
+    const latestShots = latestMealImagesFromLog(cakeLog);
 
     return {
         success: true,
@@ -904,8 +907,8 @@ async function inspectPantry(accountId, params = {}, options = {}) {
         milestones: state.milestones || {},
         kg_history: kgHistory.slice(-logLimit),
         past_consumes: pastConsumes,
-        last_before: latestShots.before || state.last_before,
-        last_after: latestShots.after || state.last_after
+        last_before: latestShots.before || state.last_before || null,
+        last_after: latestShots.after || state.last_after || null
     };
 }
 
@@ -1949,6 +1952,7 @@ module.exports = {
         attachMealId,
         frozenMealLedger,
         currentMealImages,
+        latestMealImagesFromLog,
         sanitizePantryImageName,
         defaultResolvePantryImage,
         resolvePantryImageId,

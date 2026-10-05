@@ -151,6 +151,32 @@ function composeCakeLogEntry(row) {
     return composed;
 }
 
+
+/**
+ * Newest cake_log meal that has both before and after image filenames.
+ * Walks newest → oldest. visual_gen_status (generated, provided, …) does not
+ * matter. An imageless newer meal must not hide an older pair or fall through
+ * to the denormalized state.last_before/after cache (which update_meal_images
+ * never rewrote).
+ */
+function latestMealImagesFromLog(cakeLog) {
+    if (!Array.isArray(cakeLog) || cakeLog.length === 0) {
+        return { before: null, after: null };
+    }
+    for (let i = cakeLog.length - 1; i >= 0; i--) {
+        const entry = cakeLog[i];
+        if (!entry || typeof entry !== 'object') continue;
+        const before = safeImageName(entry.before)
+            || firstSafeImage(entry, LOG_BEFORE_KEYS);
+        const after = safeImageName(entry.after)
+            || firstSafeImage(entry, LOG_AFTER_KEYS);
+        if (before && after) {
+            return { before, after };
+        }
+    }
+    return { before: null, after: null };
+}
+
 function pickLogEntry(entry) {
     if (!entry || typeof entry !== 'object') return null;
     return {
@@ -946,11 +972,13 @@ async function buildAccountStatus(globalResources, accountId, options = {}) {
         }
 
         const hasState = Object.keys(state).length > 0;
-        // state.last_before/after are a denormalized copy that update_meal_images
-        // never rewrote; the newest cake_log row is the source of truth.
-        const lastBefore = (lastLog && lastMeal && lastMeal.before)
+        // Prefer the newest meal that actually has both shots (any status).
+        // Imageless newer meals must not fall back to the stale state cache —
+        // update_meal_images never rewrote state.last_before/after.
+        const latestShots = latestMealImagesFromLog(log);
+        const lastBefore = latestShots.before
             || safeImageName(hasState && state.last_before);
-        const lastAfter = (lastLog && lastMeal && lastMeal.after)
+        const lastAfter = latestShots.after
             || safeImageName(hasState && state.last_after);
 
         return {
@@ -1064,5 +1092,6 @@ module.exports = {
     resolveLogLimit,
     LOG_TAIL,
     firstSafeImage,
-    safeImageName
+    safeImageName,
+    latestMealImagesFromLog
 };
