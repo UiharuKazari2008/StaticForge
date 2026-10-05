@@ -1,23 +1,23 @@
 {
   "version": 1,
-  "capturedAt": "2026-09-25T14:32:45.288Z",
+  "capturedAt": "2026-10-05T14:20:48.581Z",
   "policy": "Public endpoints only. No JWT, recaptcha, cookies, or generate APIs.",
   "sources": {
     "home": {
       "url": "https://novelai.net/",
       "status": 200,
-      "bytes": 152766,
+      "bytes": 152774,
       "chunkCount": 10,
-      "chunkPathsSha256": "81504b458bbe67b6c0981cff5955b45eaac81706a5629cee416689d2e82791f5",
+      "chunkPathsSha256": "ab53bb7f8ec777e56ed0cf926066d287a515ccc1f845985fbe9fb5c13ede86fc",
       "chunkPathsSample": [
         "/_next/static/chunks/133-b47bc6fc8cb2d637.js",
-        "/_next/static/chunks/1458-731ab0e50e5410f1.js",
+        "/_next/static/chunks/3711-c8045b3756e252b7.js",
         "/_next/static/chunks/4870-2c40351ed4c49087.js",
         "/_next/static/chunks/7311-5eb2760447762c74.js",
         "/_next/static/chunks/framework-7e74bf61ca06990a.js",
-        "/_next/static/chunks/main-9b294d32a0c9c9f3.js",
-        "/_next/static/chunks/pages/_app-8f8e25e0af037617.js",
-        "/_next/static/chunks/pages/index-f7fb0e87465d6f82.js"
+        "/_next/static/chunks/main-c5fed5e9a9351d8d.js",
+        "/_next/static/chunks/pages/_app-a70b21aef518ab63.js",
+        "/_next/static/chunks/pages/index-a782709c74ddf113.js"
       ]
     },
     "updateReload": {
