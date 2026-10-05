@@ -275,10 +275,9 @@ class DatabaseCheckpointManager {
                     const toDelete = filesAfter.slice(absoluteCap);
                     for (const file of toDelete) {
                         try {
-                            const fullPath = file.path;
-                            if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-                            if (fs.existsSync(fullPath + '-shm')) fs.unlinkSync(fullPath + '-shm');
-                            if (fs.existsSync(fullPath + '-wal')) fs.unlinkSync(fullPath + '-wal');
+                            const fullPath = file.filePath;
+                            fs.unlinkSync(fullPath);
+                            deleteCheckpointSidecars(fullPath);
                         } catch (e) { /* ignore */ }
                     }
                     console.log(`🗑️ Enforced absoluteCap: deleted ${toDelete.length} old checkpoints for ${this.dbName}`);

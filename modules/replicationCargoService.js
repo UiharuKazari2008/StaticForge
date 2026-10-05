@@ -37,7 +37,7 @@ function initialize(globalResources) {
         const now = Date.now();
         const ttl = 60 * 60 * 1000;
         for (const [id, transfer] of activeTransfers.entries()) {
-            if (now - transfer.createdAt > ttl && transfer.state !== 'receiving' && transfer.state !== 'ready') {
+            if (now - transfer.createdAt > ttl && transfer.state !== 'receiving') {
                 activeTransfers.delete(id);
             }
         }
@@ -284,6 +284,8 @@ async function createExportTransfer({ operation = 'ephemeral-export', transferMo
             compress.readable.on('error', reject);
             compress.writable.end(tarBuffer);
         });
+        // free uncompressed buffer once compressed
+        tarBuffer = null;
     }
 
     packed.manifest.streamBytes = outBuffer.length;
@@ -297,7 +299,7 @@ async function createExportTransfer({ operation = 'ephemeral-export', transferMo
         transferMode,
         stream: Readable.from(outBuffer),
         rawBuffer: outBuffer,
-        tarBuffer,
+        tarBuffer: transferMode === 'tape-stream-compressed' ? null : tarBuffer,
         operation,
         state: 'ready',
         bytesSent: 0,
