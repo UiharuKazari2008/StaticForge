@@ -715,7 +715,7 @@ class WebSocketClient {
         this.lastConnectionAttempt = 0;
         this.connectionCooldown = WebSocketClient.DELAY_CONNECTION_COOLDOWN;
         this.connectionLock = false; // Prevent concurrent connection attempts
-        this.pingInterval = null;
+        this.heartbeatInterval = null;
         this.pingTimeout = null;
         this.healthCheckInterval = null;
         this._connectingWatchdog = null;
@@ -7058,9 +7058,9 @@ class WebSocketClient {
      */
     startPeriodicPings() {
         // Clear any existing ping interval
-        if (this.pingInterval) {
-            clearInterval(this.pingInterval);
-            this.pingInterval = null;
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
         }
 
         // Don't start if not connected
@@ -7069,7 +7069,7 @@ class WebSocketClient {
         }
 
         // Start periodic pings
-        this.pingInterval = setInterval(() => {
+        this.heartbeatInterval = setInterval(() => {
             if (this.isConnected()) {
                 // Send ping and measure RTT (don't wait for response)
                 this.pingWithAuth().catch(error => {
@@ -7091,9 +7091,9 @@ class WebSocketClient {
      * Stops periodic ping sending
      */
     stopPeriodicPings() {
-        if (this.pingInterval) {
-            clearInterval(this.pingInterval);
-            this.pingInterval = null;
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
             console.log('🛑 Stopped periodic ping interval');
         }
     }

@@ -26,7 +26,20 @@ const shareCodes = new Map(); // code -> { clientId, expiresAt }
 const pendingResults = new Map(); // requestId -> { resolve, reject, timer, clientId }
 const bindSessions = new Map(); // bindKey -> { clientId, lastInteractionAt, boundAt, actorName }
 const pendingReattach = new Map(); // bindKey -> { sessionId, actorName, previousClientId, startedAt }
-const testingOfferState = new Map(); // bindKey -> { offered: Set, declined: Set }
+const testingOfferState = new Map(); // bindKey -> { offered: Set, declined: Set, timestamp: Date }
+let lastSweepTimer = null;
+function startTestingOfferSweep() {
+    if (lastSweepTimer) clearInterval(lastSweepTimer);
+    lastSweepTimer = setInterval(() => {
+        const now = Date.now();
+        for (const [key, state] of testingOfferState.entries()) {
+            if (now - (state.timestamp || 0) > 60 * 60 * 1000) {
+                testingOfferState.delete(key);
+            }
+        }
+    }, 30 * 60 * 1000);
+}
+startTestingOfferSweep();
 let preferredTestingClientId = null;
 let testingOfferSweepTimer = null;
 const mcpStudioCheckpoints = new Map(); // bindKey -> { id, focusedFilename, qualitySettings }
@@ -1125,7 +1138,7 @@ function getTestingOfferState(bindKey) {
     const key = String(bindKey || '').trim() || 'preferred:testing';
     let state = testingOfferState.get(key);
     if (!state) {
-        state = { offered: new Set(), declined: new Set() };
+        state = { offered: new Set(), declined: new Set(), timestamp: Date.now() };
         testingOfferState.set(key, state);
     }
     return state;

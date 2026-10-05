@@ -1339,4 +1339,4 @@ function registerPackets(handlersCtx) {
     regFn('get_dataset_tags_for_path', handleGetDatasetTagsForPath);
 }
 
-module.exports = { registerPackets };
+module.exports = { registerPackets, cleanupSearchCache };

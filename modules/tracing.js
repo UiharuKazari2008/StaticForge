@@ -12,6 +12,27 @@ if (!fs.existsSync(tracesDir)) {
 // In-memory index of open traces to reduce disk churn during a request
 const openTraces = new Map(); // requestId -> { id, startedAt, status, events: [], context: {}, attachments: [] }
 
+setInterval(() => {
+    const now = Date.now();
+    const ttl = 2 * 60 * 60 * 1000;
+    for (const [id, trace] of openTraces.entries()) {
+        if (now - trace.startedAt > ttl) {
+            if (trace.status === 'running') {
+                trace.status = 'timeout';
+                trace.endedAt = now;
+                try { persistTrace(trace); } catch(e) {}
+            }
+            openTraces.delete(id);
+        }
+    }
+    if (openTraces.size > 200) {
+        const sorted = Array.from(openTraces.values()).sort((a, b) => a.startedAt - b.startedAt);
+        for (let i = 0; i < sorted.length - 100; i++) {
+            openTraces.delete(sorted[i].id);
+        }
+    }
+}, 15 * 60 * 1000);
+
 function getTraceFilePath(traceId) {
     return path.join(tracesDir, `${traceId}.json`);
 }

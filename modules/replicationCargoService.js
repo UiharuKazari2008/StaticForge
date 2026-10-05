@@ -31,6 +31,18 @@ function initialize(globalResources) {
     replicationPeerServer.startPeerServer(api);
     replicationService.registerCargoService(api);
     initialized = true;
+
+    // Periodically sweep idle/abandoned transfers older than 1 hour
+    setInterval(() => {
+        const now = Date.now();
+        const ttl = 60 * 60 * 1000;
+        for (const [id, transfer] of activeTransfers.entries()) {
+            if (now - transfer.createdAt > ttl && transfer.state !== 'receiving' && transfer.state !== 'ready') {
+                activeTransfers.delete(id);
+            }
+        }
+    }, 15 * 60 * 1000);
+
     return getApi();
 }
 
@@ -547,10 +559,12 @@ async function completeImport(manifestId, { streamSha256 = null } = {}) {
         response.streamSha256 = streamSha256;
         transfer.state = 'complete';
         transfer.response = response;
+        transfer.rawBuffer = null;
+        transfer.tarBuffer = null;
+        transfer.chunks = null;
         exitImportMaintenanceIfOwned(transfer, 'import complete');
         return response;
     } finally {
-        activeTransfers.delete(manifestId);
         fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
 }
