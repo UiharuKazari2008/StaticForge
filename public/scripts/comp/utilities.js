@@ -573,9 +573,11 @@ const PROMPT_NEWLINE_PLACEHOLDER = '__PROMPT_NEWLINE__';
 
 function normalizePromptNewlines(text) {
     if (text === null || text === undefined) return '';
-    return String(text)
+    const normalized = String(text)
         .replace(/\r\n?/g, '\n')
         .replace(/\n{3,}/g, '\n\n');
+    // normalizeKeyboardPromptChars: public/scripts/comp/keyboardPromptChars.js
+    return normalizeKeyboardPromptChars(normalized);
 }
 
 /**

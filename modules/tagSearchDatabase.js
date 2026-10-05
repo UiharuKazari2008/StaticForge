@@ -8,13 +8,15 @@ const path = require('path');
 const logger = require('./logger');
 const { attachLegacyDatabaseCheckpoint } = require('./legacyDatabaseCheckpoint');
 const { normalizeOfflineTagTitle } = require('./tagModelCutoff');
+const { normalizeKeyboardPromptChars } = require('../public/scripts/comp/keyboardPromptChars');
 
 let dbPath = null;
 let db = null;
 let checkpointHost = null;
 
 function normalizeTagSearchQuery(query) {
-    return (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const folded = normalizeKeyboardPromptChars((query || '') + '');
+    return folded.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 /**

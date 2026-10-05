@@ -4084,6 +4084,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 .replace(/\s{2,}/g, ' ')
                 .trim();
         };
+        const { normalizeKeyboardPromptChars } = require('../public/scripts/comp/keyboardPromptChars');
         const { normalizeEmphasisPromptSyntax } = require('./emphasisPromptSyntax');
         // prepareEmphasisTextForNovelAI: modules/emphasisGroupIdSyntax.js
         // Expand Weight Rack managed ids → classic N::…:: before syntax normalize; strip unmanaged ZW.
@@ -4095,7 +4096,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             || body.emphasis_normalization
             || null;
         const sanitizeAndNormalizeText = (text, fieldHint) => {
-            let out = text;
+            let out = typeof text === 'string' ? normalizeKeyboardPromptChars(text) : text;
             if (bakeNewlines && typeof out === 'string') {
                 out = out.replace(/\r\n?/g, '\n').split('\n').join(BAKE_NL_SENTINEL);
             }
