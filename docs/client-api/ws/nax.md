@@ -8,7 +8,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
-| `clear_nax_vibes_gallery_cache` | `clear_nax_vibes_gallery_cache_response` | session | Handler: handleClearNaxVibesGalleryCache |
+| `clear_nax_vibes_gallery_cache` | `clear_nax_vibes_gallery_cache_response` | admin/destructive | Handler: handleClearNaxVibesGalleryCache |
 | `delete_nax_custom_tag` | `delete_nax_custom_tag_response` | admin/destructive | Handler: handleDeleteNaxCustomTag |
 | `generate_nax_custom_tag` | `generate_nax_custom_tag_response` | admin/destructive | Handler: handleGenerateNaxCustomTag |
 | `get_nax_expander_presets` | `get_nax_expander_presets_response` | session | Handler: handleGetNaxExpanderPresets |
@@ -77,7 +77,7 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ### `clear_nax_vibes_gallery_cache`
 
-**Auth:** Session required
+**Auth:** Session required. Admin only (destructive — blocked for readonly; also in `isDestructiveOperation()`, matching `clear_novelai_explore_gallery_cache`)
 
 **Handler:** modules/ws/handlers/100-naxHandler.js → `handleClearNaxVibesGalleryCache`
 

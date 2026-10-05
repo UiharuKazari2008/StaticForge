@@ -164,8 +164,8 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 | `filename` | Optional |
 | `scale` | Optional |
 | `workspace` | Optional |
-| `strength` | Optional |
-| `noise` | Optional |
+| `strength` | Optional. An explicit `0` is kept, same as `noise` |
+| `noise` | Optional. An explicit `0` is kept (img2img no longer replaces 0 with the default); omit the field for the default |
 | `steps` | Optional |
 | `guidance` | Optional |
 | `rescale` | Optional |
@@ -243,8 +243,8 @@ Additional response/push types from handler:
 | `requestId` | Optional |
 | `filename` | Optional |
 | `workspace` | Optional |
-| `strength` | Optional |
-| `noise` | Optional |
+| `strength` | Optional. An explicit `0` is kept, same as `noise` |
+| `noise` | Optional. An explicit `0` is kept (img2img no longer replaces 0 with the default); omit the field for the default |
 | `steps` | Optional |
 | `guidance` | Optional |
 | `rescale` | Optional |

@@ -306,7 +306,7 @@ Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants o
 
 #### Cake Pantry Module (`sfapp_cake_pantry`)
 
-Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo, Guren. All accounts use SQLite (`tag_wiki.db`) after one-shot import per account. Fail-closed: after import, SQLite unavailable returns error (no file fallback).
+Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo, Guren, Rook, Sala. All accounts use SQLite (`tag_wiki.db`) after one-shot import per account. Fail-closed: after import, SQLite unavailable returns error (no file fallback).
 
 | Tool | Description | Submodule |
 |------|-------------|-----------|
@@ -315,7 +315,7 @@ Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo, Guren. All a
 | `feed_cake` | Yukimi grants slices (promotion or just because). Distinct from deliver. Pass `accountId`, `slices`, `reason`, `cake_type`, optional `do_not_eat` / `cake_type=dry-verify`, `from`. | `feed` |
 | `inspect_pantry` | View piles, past consumes, kg history. Returns data, not a wall of text. Each meal in `past_consumes` includes a stable `meal_id` (derived/backfilled if the record had none). Pass `accountId`, optional `log_limit`. | `inspect` |
 | `consume_cake` | Eater eats pending slices (**soft sitting cap default 8**; remainder carries). Override with `slices` and/or `max_slices` up to **all eligible pending**. Skips dry-verify forever via `cake_type=dry-verify` and/or `do_not_eat` (not reason substring). Returns kg before/after; **does not auto-generate** before/after images (pass refs or get `visual_gen.status=not_generated` with clear error while kg still saves). Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. | `consume` |
-| `update_meal_images` | Re-point `before`/`after` image ids on an **existing** meal (`cake_log` entry). Pass `accountId`, `meal_id` (from `inspect_pantry`), and at least one of `before_image` / `after_image`. Validates ids with the same gallery lookup as `generate_image` / `consume_cake`. Appends `image_history`. **Never** changes kg, slices, timestamps, or totals. **Never** deletes images. | `consume` |
+| `update_meal_images` | Re-point `before`/`after` image ids on an **existing** meal (`cake_log` entry). Pass `accountId`, `meal_id` (from `inspect_pantry`), and at least one of `before_image` / `after_image`. Validates ids with the same gallery lookup as `generate_image` / `consume_cake`. Appends `image_history`. Once both shots are set it marks the meal `visual_gen_status: "provided"` (the same value `consume_cake` records). **Never** changes kg, slices, timestamps, or totals. **Never** deletes images. | `consume` |
 | `get_work_pile` | Work pile snapshot `{ open, done_since_breakfast, eaten, updated_at, last_breakfast_at }`. Pass `accountId`. | `inspect` |
 | `add_work_item` | Add open (or `done_since_breakfast`) item. Required `accountId`, `work_id`, `summary`; optional `source_from`, `cake`, `slices_hint`, `type`. | `deliver` |
 | `complete_work_item` | Move item from `open` → `done_since_breakfast`. Pass `accountId`, `work_id`. | `deliver` |
@@ -334,7 +334,7 @@ Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo, Guren. All a
 - Dry-verify / do-not-eat forever-skip (Yozora #154): prefer `cake_type=dry-verify` **or** explicit `do_not_eat: true` on `deliver_cake` / `feed_cake` (both are stamped). `consume_cake` does **not** substring-match reason text (a ship reason like "skip do-not-eat" stays eligible). Legacy reason-only probes still skip only if the reason **starts with** a dry-verify / do-not-eat marker; those are stamped to `do_not_eat` + `cake_type=dry-verify` on consume. Existing pending with `cake_type` already `dry-verify` keep skipping.
 - `consume_cake` does **not** auto-generate visuals; pass `before_image` / `after_image` from `generate_image`, or expect `visual_gen.status=not_generated`
 
-**Accounts:** `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`, `guren`. Menma's look is locked (breakfast prompts). Other accounts start with their own identity fields. All accounts import to SQLite on first use.
+**Accounts:** `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`, `guren`, `rook`, `sala` (Rook and Sala are created lazily, 54 kg start). Menma's look is locked (breakfast prompts). Other accounts start with their own identity fields. All accounts import to SQLite on first use.
 
 #### Report Issue Module (`sfapp_report_issue`)
 

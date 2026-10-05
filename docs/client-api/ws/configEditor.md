@@ -6,6 +6,14 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 
 Maps in `config-maps/` overlay live JSON with sparse type/label rules. **Generation quips text content** is stored in SQLite (`generationQuipsDatabase`), not in `config.json` — only `config.generationQuips` scheduler/session settings are editable here.
 
+## Secret masking
+
+Every value sent to the client (`config_editor_get_node` `nodeValue` / children, `config_editor_search` previews) is masked recursively. A leaf is secret when its map rule (or nearest ancestor rule) has `secret: true` (`secret: false` opts out), when it is any `secureConfig` leaf, or when it uses a legacy secret key name. Secret leaves show `••••••••` and are never matched by value search.
+
+`config_editor_reveal_secret` is admin-only and works on one secret leaf at a time (not objects, not non-secret paths). The server log records `configId` + `path`, never the value.
+
+Saving the `••••••••` placeholder, as a leaf or nested inside an object, keeps the stored value. Enum coercion accepts `null` enums.
+
 ## Packet index
 
 | Request type | Typical response | Auth | Notes |
@@ -17,7 +25,7 @@ Maps in `config-maps/` overlay live JSON with sparse type/label rules. **Generat
 | `config_editor_checkpoints_restore` | `config_editor_checkpoints_restore_response` | admin/destructive | Handler: handleConfigEditorCheckpointsRestore |
 | `config_editor_get_node` | `config_editor_get_node_response` | session | Handler: handleConfigEditorGetNode |
 | `config_editor_list` | `config_editor_list_response` | session | Handler: handleConfigEditorList |
-| `config_editor_reveal_secret` | `config_editor_reveal_secret_response` | session | Handler: handleConfigEditorRevealSecret |
+| `config_editor_reveal_secret` | `config_editor_reveal_secret_response` | admin | Handler: handleConfigEditorRevealSecret |
 | `config_editor_save` | `config_editor_save_response` | admin/destructive | Handler: handleConfigEditorSave |
 | `config_editor_search` | `config_editor_search_response` | session | Handler: handleConfigEditorSearch |
 
@@ -198,7 +206,7 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ### `config_editor_reveal_secret`
 
-**Auth:** Session required
+**Auth:** Session required. Admin only; single secret leaf only (see [Secret masking](#secret-masking))
 
 **Handler:** modules/ws/handlers/20-configEditorHandler.js → `handleConfigEditorRevealSecret`
 

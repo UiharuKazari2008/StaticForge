@@ -166,6 +166,8 @@ Use on REST only via `X-StaticForge-App-Token: sftok_…` (no UA check). Tokens 
 | `references` | References and vibes |
 | `wiki` | Tag wiki / Grimoire |
 | `autofill` | Autofill ranking + tag wiki / Grimoire (not stuffed under `search`) |
+| `nax` | NovelAI Explore tags database and galleries (`get_nax_*`, `set_nax_favorite` / `set_nax_try` / `set_nax_hidden`, custom tags, vibes gallery + cache clear). Opt-in |
+| `explore` | NovelAI Explore (Agora) gallery, user, post, like/downvote/block, cache clear, image ensure/check/upload. Opt-in |
 | `infrastructure` | ping, status, version |
 
 #### Module scopes (`sfapp_` prefix)
@@ -181,6 +183,8 @@ Use on REST only via `X-StaticForge-App-Token: sftok_…` (no UA check). Tokens 
 | `sfapp_usage` | NovelAI account usage data (Anlas, Opus meter, generation count) |
 
 Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants only the `deliver_cake` tool. The full `sfapp_cake_pantry` grants all four pantry tools.
+
+`nax` and `explore` are additive: universal keys are unchanged, and a scoped key gets these packets only when granted the scope (unmapped packets are denied). Destructive packets in them still follow the readonly gate.
 
 List via WS `get_application_auth_scopes` (admin).
 

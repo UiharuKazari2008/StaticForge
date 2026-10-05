@@ -6,11 +6,11 @@ Payload builder: `modules/menmaStatus.js` → `buildMenmaStatus()`, `buildAllAcc
 
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 
-Cake pantry state from SQLite (`tag_wiki.db` via `menmaStatus.js`). Supports accounts: `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`, `guren`. One-shot import per account from `.{account}/` files into SQLite; after import all reads and writes use SQLite only (fail-closed). Does **not** expose `secure.config`, PIN, or keys. Breakfast images remain `GET /images/:filename` (existing gallery auth). If the tag database is unavailable, returns `available: false` instead of 500.
+Cake pantry state from SQLite (`tag_wiki.db` via `menmaStatus.js`). Supports accounts: `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`, `guren`, `rook`, `sala` (Rook and Sala state is created lazily on first use). One-shot import per account from `.{account}/` files into SQLite; after import all reads and writes use SQLite only (fail-closed). Does **not** expose `secure.config`, PIN, or keys. Breakfast images remain `GET /images/:filename` (existing gallery auth). If the tag database is unavailable, returns `available: false` instead of 500.
 
 The web applet (`public/scripts/comp/menmaDsapApplet.js`, `dsap://pantry.dyna.dreamscape.jp/status`, legacy `menma.dyna.dreamscape.jp`) calls `window.wsClient.sendMessage('get_menma_state', {})`. Response includes:
 - Root-level Menma fields (backward compat)
-- `accounts` object with status for all six accounts (menma, hoshino, ivory, pyra, chiyo, guren)
+- `accounts` object with status for all eight accounts (menma, hoshino, ivory, pyra, chiyo, guren, rook, sala)
 
 The applet displays all accounts in a clickable grid; selecting an account shows its ledger, work pile, and cake log. The selected pantry is kept in the DSAP path (`/log/ivory`) so Status / Work / Log stay on that account. `cake_log[].before` / `after` are gallery filenames (`before_image` / `before_img` aliases accepted).
 
@@ -56,8 +56,11 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
+| `log_limit` | Optional. How many `cake_log` meals to send per account. Default 200, capped at 1000 (was a fixed 16-meal tail, which hid older meals re-pointed by `update_meal_images`) |
 
 **Success response:** `get_menma_state_response`
+
+Each `cake_log[]` entry carries `meal_id` (same id as `inspect_pantry` / `update_meal_images`). `last_before` / `last_after` follow the newest `cake_log` meal rather than a stored state copy. A meal stored as `visual_gen_status: "not_generated"` reads as `"provided"` once both shots exist.
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
