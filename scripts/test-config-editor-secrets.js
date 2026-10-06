@@ -330,7 +330,7 @@ async function main() {
         handlers: mockHandlersCtx,
         ws: {},
         message: { type: 'config_editor_reveal_secret', file: 'config', path: ['password'], requestId: 'r2' },
-        clientInfo: { userType: 'admin', sessionId: 'sess-admin' },
+        clientInfo: { userType: 'admin', sessionId: 'sess-admin', applicationKeyId: 'appkey-7' },
         wsServer: {}
     });
     assert.strictEqual(sentError, null, 'Admin reveal should not be forbidden');
@@ -339,6 +339,32 @@ async function main() {
     assert.ok(logText.includes('config'), 'reveal log should include file');
     assert.ok(logText.includes('password'), 'reveal log should include path');
     assert.ok(!logText.includes(SECRETS.password), 'reveal log must not include the value');
+    const revealLine = logs.find((line) => line.includes('[config_editor] reveal'));
+    assert.ok(revealLine, 'reveal audit line should be logged');
+    assert.ok(revealLine.includes('configId=config'), 'reveal log should include configId');
+    assert.ok(revealLine.includes('path=password'), 'reveal log should include path');
+    assert.ok(revealLine.includes('userType=admin'), 'reveal log should include userType');
+    assert.ok(revealLine.includes('sessionId=sess-admin'), 'reveal log should include sessionId');
+    assert.ok(revealLine.includes('applicationKeyId=appkey-7'), 'reveal log should include applicationKeyId');
+    assert.ok(!revealLine.includes(SECRETS.password), 'reveal audit line must not include the value');
+
+    // Missing clientInfo fields must not throw; they log as "-".
+    sentError = null;
+    sentPayload = null;
+    logs.length = 0;
+    await revealHandler({
+        handlers: mockHandlersCtx,
+        ws: {},
+        message: { type: 'config_editor_reveal_secret', configId: 'config', path: ['password'], requestId: 'r3' },
+        clientInfo: { userType: 'admin' },
+        wsServer: {}
+    });
+    assert.strictEqual(sentError, null, 'Admin reveal without session/app key should still work');
+    assert.strictEqual(sentPayload?.data?.value, SECRETS.password);
+    const bareLine = logs.find((line) => line.includes('[config_editor] reveal'));
+    assert.ok(bareLine, 'reveal audit line should be logged without session/app key');
+    assert.ok(bareLine.includes('sessionId=-') && bareLine.includes('applicationKeyId=-'), 'missing fields log as "-"');
+    assert.ok(!bareLine.includes(SECRETS.password), 'reveal audit line must not include the value');
 
     console.info = origInfo;
     console.error = origError;
