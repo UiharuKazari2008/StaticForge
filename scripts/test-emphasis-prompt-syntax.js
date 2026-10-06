@@ -96,6 +96,19 @@ assert(
         const b = ctx.n(s, { fixCommas: true });
         assert(a === b, `client mirror matches server: ${JSON.stringify(s)} → ${JSON.stringify(a)} / ${JSON.stringify(b)}`);
     }
+
+    const edgeCases = [
+        ['year 2025 ::', 'year 2025 ::'],
+        ['year 2025 :: cat ::', 'year 2025 :: cat ::'],
+        ['abc 1.5 :: def ::', 'abc 1.5:: def ::'],
+        ['1.5 ::', '1.5::']
+    ];
+    for (const [s, want] of edgeCases) {
+        const a = m.normalizeEmphasisPromptSyntax(s, { fixCommas: true });
+        const b = ctx.n(s, { fixCommas: true });
+        assert(a === want, `server matches edge case: ${JSON.stringify(s)} → ${JSON.stringify(a)} (want ${JSON.stringify(want)})`);
+        assert(b === want, `client matches edge case: ${JSON.stringify(s)} → ${JSON.stringify(b)} (want ${JSON.stringify(want)})`);
+    }
 }
 
 // Client blur trim (emphasisGroupIdCodec.trimClassicEmphasisInnerEdges): keep spaces, clean commas only

@@ -1202,14 +1202,46 @@ function fixEmphasisWeightOpenerSpacing(text) {
         }
         const before = text.slice(0, i);
         const spaced = before.match(/(^|[\s,(\[{|]|::)(-?(?:\d+(?:\.\d+)?|\.\d+))([ \t]+)$/);
-        if (spaced && isValidEmphasisWeightBeforeDelimiter(spaced[2])) {
+        let isOpener = false;
+        if (spaced) {
+            isOpener = true;
+            const lead = spaced[1];
+            const weightStr = spaced[2];
+            if (lead && lead.trim() === '') {
+                const leadIndex = before.length - spaced[0].length;
+                let k = leadIndex - 1;
+                while (k >= 0 && /\s/.test(before[k])) k--;
+                if (k >= 0 && /[a-zA-Z_]/.test(before[k])) {
+                    if (!weightStr.includes('.') && !weightStr.startsWith('-')) {
+                        isOpener = false;
+                    }
+                }
+            }
+        }
+        if (spaced && isOpener && isValidEmphasisWeightBeforeDelimiter(spaced[2])) {
             out += text.slice(last, i - spaced[3].length);
             last = i;
             open = true;
             continue;
         }
         const glued = before.match(/(^|[\s,(\[{|]|::)(-?(?:\d+(?:\.\d+)?|\.\d+))$/);
-        open = !!(glued && isValidEmphasisWeightBeforeDelimiter(glued[2]));
+        let isGluedOpener = false;
+        if (glued) {
+            isGluedOpener = true;
+            const lead = glued[1];
+            const weightStr = glued[2];
+            if (lead && lead.trim() === '') {
+                const leadIndex = before.length - glued[0].length;
+                let k = leadIndex - 1;
+                while (k >= 0 && /\s/.test(before[k])) k--;
+                if (k >= 0 && /[a-zA-Z_]/.test(before[k])) {
+                    if (!weightStr.includes('.') && !weightStr.startsWith('-')) {
+                        isGluedOpener = false;
+                    }
+                }
+            }
+        }
+        open = !!(glued && isGluedOpener && isValidEmphasisWeightBeforeDelimiter(glued[2]));
     }
     return out + text.slice(last);
 }
