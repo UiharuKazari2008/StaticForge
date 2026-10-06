@@ -99,7 +99,7 @@ function textOverlayTagEmphasis(textLength) {
  * Several lines join with a blank line. One overlay keeps its own newlines.
  * applyBias(tags, emphasis) is imageGeneration.applyBiasToText.
  */
-function compileTextOverlayAppend(overlays, textTags, applyBias) {
+function compileTextOverlayAppend(overlays, textTags, applyBias, wrapDisplayText) {
     const lines = [];
     const typeOrder = [];
     const typeTexts = Object.create(null);
@@ -108,7 +108,8 @@ function compileTextOverlayAppend(overlays, textTags, applyBias) {
         const overlay = list[i] || {};
         const text = String(overlay.text || '');
         if (!text) continue;
-        lines.push(text);
+        // wrapDisplayText: protectKeyboardDisplayText (exempt from the prompt fold)
+        lines.push(typeof wrapDisplayText === 'function' ? wrapDisplayText(text) : text);
         const type = overlay.type || 'speech';
         if (!typeTexts[type]) {
             typeTexts[type] = [];

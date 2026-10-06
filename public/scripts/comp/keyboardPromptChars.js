@@ -153,6 +153,50 @@ function normalizeKeyboardPromptChars(text) {
     return convertFullwidthEmphasisBlocks(out);
 }
 
+/**
+ * In-image display text (text_overlays) is sent exactly as typed (Yukimi 2026-10-06):
+ * lookalikes like — … “ ” are allowed there. The server wraps each overlay line in
+ * these private-use markers; the prompt fold skips the wrapped spans and drops the markers.
+ */
+const KEYBOARD_DISPLAY_TEXT_OPEN = '\uE010';
+const KEYBOARD_DISPLAY_TEXT_CLOSE = '\uE011';
+const KEYBOARD_DISPLAY_TEXT_MARKER_RE = /[\uE010\uE011]/g;
+
+function protectKeyboardDisplayText(text) {
+    const s = text == null ? '' : String(text).replace(KEYBOARD_DISPLAY_TEXT_MARKER_RE, '');
+    return s ? KEYBOARD_DISPLAY_TEXT_OPEN + s + KEYBOARD_DISPLAY_TEXT_CLOSE : s;
+}
+
+/** Fold prompt text but keep protected display spans verbatim; markers never survive. */
+function normalizeKeyboardPromptCharsOutsideDisplayText(text) {
+    if (typeof text !== 'string' || text.length === 0) return text;
+    if (text.indexOf(KEYBOARD_DISPLAY_TEXT_OPEN) < 0 && text.indexOf(KEYBOARD_DISPLAY_TEXT_CLOSE) < 0) {
+        return normalizeKeyboardPromptChars(text);
+    }
+    const fold = (part) => normalizeKeyboardPromptChars(part.replace(KEYBOARD_DISPLAY_TEXT_MARKER_RE, ''));
+    let out = '';
+    let i = 0;
+    while (i < text.length) {
+        const open = text.indexOf(KEYBOARD_DISPLAY_TEXT_OPEN, i);
+        const close = open < 0 ? -1 : text.indexOf(KEYBOARD_DISPLAY_TEXT_CLOSE, open + 1);
+        if (open < 0 || close < 0) {
+            out += fold(text.slice(i));
+            break;
+        }
+        out += fold(text.slice(i, open));
+        out += text.slice(open + 1, close).replace(KEYBOARD_DISPLAY_TEXT_MARKER_RE, '');
+        i = close + 1;
+    }
+    return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { normalizeKeyboardPromptChars, KEYBOARD_PROMPT_KEEP_FULLWIDTH };
+    module.exports = {
+        normalizeKeyboardPromptChars,
+        normalizeKeyboardPromptCharsOutsideDisplayText,
+        protectKeyboardDisplayText,
+        KEYBOARD_DISPLAY_TEXT_OPEN,
+        KEYBOARD_DISPLAY_TEXT_CLOSE,
+        KEYBOARD_PROMPT_KEEP_FULLWIDTH
+    };
 }

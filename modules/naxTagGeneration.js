@@ -7,6 +7,12 @@
 const fs = require('fs');
 const path = require('path');
 const { normalizeKeyboardPromptChars } = require('../public/scripts/comp/keyboardPromptChars');
+const { stripUnmanagedEmphasisInvisibles } = require('./emphasisGroupIdSyntax');
+
+/** Fold keyboard lookalikes and strip stray zero-width chars (same as buildOptions). */
+function cleanNaxPromptText(text) {
+    return stripUnmanagedEmphasisInvisibles(normalizeKeyboardPromptChars(text));
+}
 
 const TAG_PLACEHOLDER = '<INPUT_VALUE>';
 
@@ -126,8 +132,8 @@ class NaxTagGenerationService {
         fs.mkdirSync(outDir, { recursive: true });
 
         const opts = {
-            prompt: normalizeKeyboardPromptChars(prompt),
-            negative_prompt: normalizeKeyboardPromptChars(this.applyInputValueToTemplate(genCfg.negativePrompt || '', tag)),
+            prompt: cleanNaxPromptText(prompt),
+            negative_prompt: cleanNaxPromptText(this.applyInputValueToTemplate(genCfg.negativePrompt || '', tag)),
             model: genCfg.model || 'nai-diffusion-4-5-full',
             resPreset: genCfg.resPreset || 'normal_portrait',
             steps: Number(genCfg.steps) || 28,
@@ -140,8 +146,8 @@ class NaxTagGenerationService {
 
         if (genCfg.characterPrompt) {
             opts.characterPrompts = [{
-                prompt: normalizeKeyboardPromptChars(this.applyInputValueToTemplate(genCfg.characterPrompt, tag)),
-                uc: normalizeKeyboardPromptChars(this.applyInputValueToTemplate(genCfg.characterUc || '', tag)),
+                prompt: cleanNaxPromptText(this.applyInputValueToTemplate(genCfg.characterPrompt, tag)),
+                uc: cleanNaxPromptText(this.applyInputValueToTemplate(genCfg.characterUc || '', tag)),
                 center: { x: 0.5, y: 0.5 },
                 enabled: true
             }];
