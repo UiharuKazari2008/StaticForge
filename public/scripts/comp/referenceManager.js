@@ -8982,7 +8982,7 @@ async function saveReferenceMetadata() {
             currentManageReference.metadata = result.metadata;
             
             // Show success message
-            showGlassToast('success', 'Reference metadata updated successfully');
+            showGlassToast('success', null, 'Reference metadata updated successfully');
             
             // Hide modal
             hideManageReferenceModal();
