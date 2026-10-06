@@ -60,7 +60,7 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 **Success response:** `get_menma_state_response`
 
-Each `cake_log[]` entry carries `meal_id` (same id as `inspect_pantry` / `update_meal_images`). `last_before` / `last_after` follow the newest `cake_log` meal rather than a stored state copy. A meal stored as `visual_gen_status: "not_generated"` reads as `"provided"` once both shots exist.
+Each `cake_log[]` entry carries `meal_id` (same id as `inspect_pantry` / `update_meal_images`). `last_before` / `last_after` come from the newest `cake_log` meal that has both shots, searched across the full log regardless of `log_limit` (an imageless newest meal no longer reverts the pair to an old one); stored state is only a last-resort fallback. A meal stored as `visual_gen_status: "not_generated"` reads as `"provided"` once both shots exist.
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

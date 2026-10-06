@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-10-05T07:15:00-04:00",
+  "updated_at": "2026-10-06T07:10:00-04:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
-  "last_breakfast_at": "2026-10-05T07:15:00-04:00",
+  "last_breakfast_at": "2026-10-06T07:10:00-04:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Oct5 7am loop. Tree was clean at 7:02 (only untracked backups/ + app_icons/originals/, left untracked); main 0502cee == origin == Public. No safety snapshot needed. Oct 4 7am loop did not run (host restart / fan). 17 stale .agent-cursor-* locks + .agent-grok-phasewalker LEFT IN PLACE (newest .agent-cursor-shutdown-close Oct4 17:56, upscale-fix Oct3 09:13). Source idle. Docs pass: docs/client-api updated for what landed Oct3-5 (nax destructive clear cache, nax/explore scopes, get_menma_state log_limit/meal_id + rook/sala, update_meal_images provided status, config editor secret masking/reveal, img2img explicit 0 noise/strength). Ship check vs inspect_pantry: every ship since 18601b1 already eaten (Oct3 11am/extra, Oct4 7pm) or banked pending (296, 295, 241, c66ff5c, 0502cee). Only new: today's docs commit. Work pile open=[]. No cake / no feast (Rook owns 11am/7pm). No bounce (Yukimi owns restarts).",
+  "cake_note": "Oct6 7am loop on new bare-metal host dreamscape (dreamscape-agent). Tree clean at 6:57 (only data/apocrypha/current.json modified, never committed by Menma; untracked backups/, app_icons/originals/, config.json.bak-20261005-narrow-cidrs left alone). No .agent-* locks on the new host. main 8d86d59 == origin == Public. No safety snapshot needed. Every ship since 783499f (205205e, a6940e0, 6dcea03, df4665c, 3a39380, dea2ad1, 224a95e, 8d86d59, c9fca8e, eb7518f, 1e87677, 2703771, f17056d, #272 618dd12) already appears in Menma's pantry log; only new ship is today's docs commit. Docs pass: mcp-connector.md + ws/menma.md for 4x credit, Menma monotonic kg, sync_ship_cake dedup, last pair full-log walk, update_meal_images refresh, prompt keyboard fold/emphasis spacing. Pile open=[]. No cake/feast, no restart.",
   "eaten": [
     {
       "id": "sf-22",
