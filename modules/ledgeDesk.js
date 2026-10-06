@@ -78,7 +78,7 @@ function addItems(session, rawItems, index) {
     const at = index == null || index === '' ? 0 : Math.max(0, Math.min(session.items.length, Number(index) || 0));
     if (index == null || index === '') session.items = made.concat(session.items);
     else session.items.splice(at, 0, ...made);
-    return made.map((item) => publicItem(item, session.items.indexOf(item)));
+    return made.map((item, i) => publicItem(item, at + i));
 }
 
 function removeItem(session, index) {
