@@ -271,6 +271,12 @@ function normalizeWebUrl(value) {
     try { parsed = new URL(raw); } catch (_) { return ''; }
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'chrome:' || parsed.protocol === 'chrome-extension:') {
         if (!parsed.hostname) return '';
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            const h = parsed.hostname;
+            if (h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '[::1]' || h === '169.254.169.254' || h.startsWith('192.168.') || h.startsWith('10.') || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(h) || h.startsWith('[fc00:') || h.startsWith('[fe80:')) {
+                return '';
+            }
+        }
         return parsed.href;
     }
     return '';
