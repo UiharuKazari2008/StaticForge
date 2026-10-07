@@ -1173,43 +1173,72 @@ function fixEmphasisDigitBeforeDoubleColon(text) {
 }
 
 /**
- * Yukimi 2026-10-05: a delimiter split by spaces is broken syntax — ": :" → "::".
- * Only lone colons on both sides (never touches ":::" runs).
+ * Kept for callers; split delimiters are now fixed only inside complete blocks
+ * by fixEmphasisWeightOpenerSpacing (Yukimi 2026-10-07).
  */
 function fixEmphasisSplitDelimiters(text) {
-    if (!text || text.indexOf(':') === -1) return text;
-    return text.replace(/(^|[^:]):[ \t]+:(?!:)/g, '$1::');
+    return fixEmphasisWeightOpenerSpacing(text);
 }
 
 /**
- * Yukimi 2026-10-05: spaces between a weight and its OPENING "::" break the
- * syntax — "1.5 ::cat::" → "1.5::cat::", "-1 ::x::" → "-1::x::".
- * Tracks open/close so a closer after a number ("year 2025 ::") is untouched.
- * Inner spacing ("1.5:: cat ::") is valid and kept.
+ * Yukimi 2026-10-07 (cases from Jules GH #286): fix only syntax-breaking spaces,
+ * and only inside a COMPLETE block. A weight opener "N ::" / "N : :" becomes "N::"
+ * only when a closer follows on the same line; a split closer ": :" becomes "::"
+ * only when it closes an open block. "year 2025 ::" with no closer stays as typed;
+ * "cat 2 :: dog ::" → "cat 2:: dog ::". Inner spacing ("1.5:: cat ::") and a
+ * space before the closing "::" are kept. A weight right after a comma or line
+ * start ("…, 1.2::") opens a new group, so it never counts as the closer.
+ * Server: modules/emphasisPromptSyntax.js — client: public/scripts/comp/emphasisParse.js
+ * (must stay byte-identical; scripts/test-emphasis-prompt-syntax.js checks parity).
  */
 function fixEmphasisWeightOpenerSpacing(text) {
-    if (!text || !text.includes('::')) return text;
-    let open = false;
-    let out = '';
-    let last = 0;
-    const re = /::/g;
+    if (!text || text.indexOf(':') === -1) return text;
+    const tokens = [];
+    const re = /::|:[ \t]+:/g;
     let m;
     while ((m = re.exec(text))) {
-        const i = m.index;
+        const s = m.index;
+        const e = s + m[0].length;
+        const split = m[0] !== '::';
+        if (split && (text[s - 1] === ':' || text[e] === ':')) {
+            re.lastIndex = s + 1;
+            continue;
+        }
+        tokens.push({ s, e, split });
+    }
+    if (!tokens.length) return text;
+    const weightBefore = (end) => {
+        const w = text.slice(0, end).match(/(^|[\s,(\[{|]|::)(-?(?:\d+(?:\.\d+)?|\.\d+))([ \t]*)$/);
+        return w && isValidEmphasisWeightBeforeDelimiter(w[2]) ? { gap: w[3].length } : null;
+    };
+    const opensNewGroup = (end) => {
+        const w = text.slice(0, end).match(/(^|[,\n])[ \t]*(-?(?:\d+(?:\.\d+)?|\.\d+))[ \t]*$/);
+        return !!(w && isValidEmphasisWeightBeforeDelimiter(w[2]));
+    };
+    let out = '';
+    let last = 0;
+    let open = false;
+    for (let k = 0; k < tokens.length; k++) {
+        const t = tokens[k];
         if (open) {
             open = false;
+            if (t.split) {
+                out += text.slice(last, t.s) + '::';
+                last = t.e;
+            }
             continue;
         }
-        const before = text.slice(0, i);
-        const spaced = before.match(/(^|[\s,(\[{|]|::)(-?(?:\d+(?:\.\d+)?|\.\d+))([ \t]+)$/);
-        if (spaced && isValidEmphasisWeightBeforeDelimiter(spaced[2])) {
-            out += text.slice(last, i - spaced[3].length);
-            last = i;
-            open = true;
-            continue;
+        const w = weightBefore(t.s);
+        if (!w) continue;
+        const next = tokens[k + 1];
+        const nl = text.indexOf('\n', t.e);
+        const complete = !!next && (nl < 0 || next.s < nl) && !opensNewGroup(next.s);
+        if (!complete) continue;
+        if (w.gap || t.split) {
+            out += text.slice(last, t.s - w.gap) + '::';
+            last = t.e;
         }
-        const glued = before.match(/(^|[\s,(\[{|]|::)(-?(?:\d+(?:\.\d+)?|\.\d+))$/);
-        open = !!(glued && isValidEmphasisWeightBeforeDelimiter(glued[2]));
+        open = true;
     }
     return out + text.slice(last);
 }
@@ -1238,8 +1267,7 @@ function fixEmphasisGroupCommaViolations(text) {
 
 function normalizeEmphasisPromptSyntax(text, options = {}) {
     if (!text || typeof text !== 'string') return text;
-    let out = fixEmphasisSplitDelimiters(text);
-    out = fixEmphasisWeightOpenerSpacing(out);
+    let out = fixEmphasisWeightOpenerSpacing(text);
     out = fixEmphasisDigitBeforeDoubleColon(out);
     if (options.fixCommas !== false) {
         out = fixEmphasisGroupCommaViolations(out);

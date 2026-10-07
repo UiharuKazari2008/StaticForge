@@ -96,6 +96,55 @@ assert(
         const b = ctx.n(s, { fixCommas: true });
         assert(a === b, `client mirror matches server: ${JSON.stringify(s)} → ${JSON.stringify(a)} / ${JSON.stringify(b)}`);
     }
+
+    // Complete-block rule (Yukimi 2026-10-07; cases from Jules GH #286). Server and client must agree.
+    const { normalizeKeyboardPromptChars } = require('../public/scripts/comp/keyboardPromptChars');
+    const blockCases = [
+        ['year 2025 ::', 'year 2025 ::'],                  // #286: standalone, no closer → as typed
+        ['model 5 ::', 'model 5 ::'],                      // #286
+        ['year 2025 :: cat ::', 'year 2025:: cat ::'],     // #286 wanted unchanged; complete block → glued (same shape as cat 2 :: dog ::)
+        ['abc 1.5 :: def ::', 'abc 1.5:: def ::'],         // #286 / spec: intended
+        ['1.5 ::', '1.5 ::'],                              // #286 wanted 1.5::; no closer → as typed
+        ['cat 2 :: dog ::', 'cat 2:: dog ::'],
+        ['1.5 :: cat ::', '1.5:: cat ::'],
+        ['1.5:: cat ::', '1.5:: cat ::'],
+        ['-1 :: cat ::', '-1:: cat ::'],
+        ['1.5 : : cat : :', '1.5:: cat ::'],
+        ['1.5: :cat::', '1.5::cat::'],
+        ['1.5::cat: :', '1.5::cat::'],
+        ['year 2025 : :', 'year 2025 : :'],                // split, no closer → as typed
+        ['cat : : dog', 'cat : : dog'],                    // split, no weight/block → as typed
+        ['year 2025 ::, 1.2::cat::', 'year 2025 ::, 1.2::cat::'],
+        ['year 2025 ::\n1.2::cat::', 'year 2025 ::\n1.2::cat::'],
+        ['photo, year 2025 ::, 1.5 :: cat ::', 'photo, year 2025 ::, 1.5:: cat ::'],
+        ['1.2::red hair 2025 ::', '1.2::red hair 2025 ::'],
+        ['1.2::red hair 2025 :: 1.5::blue::', '1.2::red hair 2025 :: 1.5::blue::']
+    ];
+    const fullwidthCases = [
+        ['1.5\uFF1A\uFF1Acat\uFF1A\uFF1A', '1.5::cat::'],
+        ['1.5 \uFF1A\uFF1A cat \uFF1A\uFF1A', '1.5:: cat ::'],
+        ['1.5\uFF1A \uFF1Acat\uFF1A \uFF1A', '1.5::cat::'],
+        ['year 2025\uFF1A\uFF1A', 'year 2025\uFF1A\uFF1A'],
+        ['\uFF08cat\uFF09', '\uFF08cat\uFF09'],
+        ['\uFF5Bcat\uFF5D', '{cat}'],
+        ['\uFF5Bcat', '\uFF5Bcat']
+    ];
+    const check = (input, want, pre) => {
+        const src = pre ? pre(input) : input;
+        const a = m.normalizeEmphasisPromptSyntax(src, { fixCommas: true });
+        const b = ctx.n(src, { fixCommas: true });
+        assert(a === want, `server block rule: ${JSON.stringify(input)} → ${JSON.stringify(a)} (want ${JSON.stringify(want)})`);
+        assert(b === want, `client block rule: ${JSON.stringify(input)} → ${JSON.stringify(b)} (want ${JSON.stringify(want)})`);
+    };
+    blockCases.forEach(([i, w]) => check(i, w));
+    fullwidthCases.forEach(([i, w]) => check(i, w, normalizeKeyboardPromptChars));
+    const fnSrc = (src, name) => { const st = src.indexOf(`function ${name}(`); return src.slice(st, src.indexOf('\n}\n', st)); };
+    const fs2 = require('fs');
+    const srvSrc = fs2.readFileSync(require.resolve('../modules/emphasisPromptSyntax'), 'utf8');
+    const cliSrc = fs2.readFileSync(require('path').join(__dirname, '../public/scripts/comp/emphasisParse.js'), 'utf8');
+    for (const name of ['fixEmphasisSplitDelimiters', 'fixEmphasisWeightOpenerSpacing', 'normalizeEmphasisPromptSyntax']) {
+        assert(fnSrc(srvSrc, name) === fnSrc(cliSrc, name), `server/client ${name} must be identical`);
+    }
 }
 
 // Client blur trim (emphasisGroupIdCodec.trimClassicEmphasisInnerEdges): keep spaces, clean commas only
