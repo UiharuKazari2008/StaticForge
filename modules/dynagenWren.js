@@ -214,7 +214,7 @@ function staleReason(cp, dg, body, context, now) {
  */
 async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
     const dg = body && body.dynamic_generation;
-    if (!dg || typeof dg !== 'object' || Array.isArray(dg) || dg.enabled === false) return;
+    if (!dg || typeof dg !== 'object' || Array.isArray(dg) || !dg.enabled) return;
     if (body.stageIndex !== undefined || body.compile_only || body._dynagenResolved) return;
     body._dynagenResolved = true;
 
