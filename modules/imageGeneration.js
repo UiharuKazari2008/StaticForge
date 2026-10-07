@@ -2389,7 +2389,10 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             });
 
             textOverlayBuckets.forEach((group, targetIndex) => {
-                const textAppend = compileTextOverlayAppend(group, textTags, applyBiasToText);
+                const textAppend = compileTextOverlayAppend(
+                    group, textTags, applyBiasToText,
+                    require('../public/scripts/comp/keyboardPromptChars').protectKeyboardDisplayText
+                );
                 if (!textAppend) return;
                 __runtimeGr.getLogger().verbose(`📝 Text overlay append: "${textAppend.substring(0, 60)}${textAppend.length > 60 ? '...' : ''}"`);
                 if (targetIndex === 0) {
@@ -4087,19 +4090,21 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 .replace(/\s{2,}/g, ' ')
                 .trim();
         };
-        const { normalizeKeyboardPromptChars } = require('../public/scripts/comp/keyboardPromptChars');
+        // Display text (text_overlays) is wrapped by protectKeyboardDisplayText and skips the fold.
+        const { normalizeKeyboardPromptCharsOutsideDisplayText } = require('../public/scripts/comp/keyboardPromptChars');
         const { normalizeEmphasisPromptSyntax } = require('./emphasisPromptSyntax');
         // prepareEmphasisTextForNovelAI: modules/emphasisGroupIdSyntax.js
         // Expand Weight Rack managed ids → classic N::…:: before syntax normalize; strip unmanaged ZW.
         const {
             prepareEmphasisTextForNovelAI,
-            hasManagedEmphasisGroupIds
+            hasManagedEmphasisGroupIds,
+            stripUnmanagedEmphasisInvisibles
         } = require('./emphasisGroupIdSyntax');
         const emphasisNormForExpand = baseOptions.emphasis_normalization
             || body.emphasis_normalization
             || null;
         const sanitizeAndNormalizeText = (text, fieldHint) => {
-            let out = typeof text === 'string' ? normalizeKeyboardPromptChars(text) : text;
+            let out = typeof text === 'string' ? normalizeKeyboardPromptCharsOutsideDisplayText(text) : text;
             if (bakeNewlines && typeof out === 'string') {
                 out = out.replace(/\r\n?/g, '\n').split('\n').join(BAKE_NL_SENTINEL);
             }
@@ -4117,6 +4122,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     );
                 }
                 out = prepared.text;
+            } else if (typeof out === 'string') {
+                // Stray ZW (U+200B/C/D, U+2060, U+FEFF…) around weight colons breaks N::…:: syntax.
+                out = stripUnmanagedEmphasisInvisibles(out);
             }
             out = normalizeEmphasisPromptSyntax(
                 normalizePromptSeparators(out),
