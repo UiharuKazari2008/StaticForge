@@ -78,6 +78,48 @@ const DIRECTOR_QUICK_STARTS = [
     }
 ];
 
+// Xi is the repo agent, so its list is dev work, not picture work.
+const DIRECTOR_XI_QUICK_STARTS = [
+    {
+        id: 'xi-ingest',
+        label: 'Ingest Sweep',
+        title: 'Pick up assigned Yozora issues',
+        prompt: 'Run a Yozora ingest sweep. Pick up the open issues assigned to grok.cursor or labelled cursor-agent / cursor-take. Plan first, then work them inline or multitask. Follow the repo rules for locks, timers, labels, and Done comments. Stay off greg.'
+    },
+    {
+        id: 'xi-fix-error',
+        label: 'Fix Last Error',
+        title: 'Find the newest error, fix it, and verify',
+        prompt: 'Find the most recent error. Check the PM2 logs of the Dreamscape services and the bound client if it is reachable. Trace the cause in the code, fix it, verify the fix, and file or update the Yozora issue.'
+    },
+    {
+        id: 'xi-test-client',
+        label: 'Test on Client',
+        title: 'Exercise the uncommitted client changes on the bound tab',
+        prompt: 'Test the uncommitted client changes on the bound tab. Notify the service worker, call update_client, and restart only when it says readyForRestart. Then exercise each changed feature with inspect_elements and run_client_js. Report what passed and fix what failed.'
+    },
+    {
+        id: 'xi-review-diff',
+        label: 'Review Diff',
+        title: 'Review the uncommitted diff for bugs and rule breaks',
+        prompt: 'Review the uncommitted diff (git status, git diff). Look for bugs, broken callers, repo rule violations (keyboard characters, window. prefix, typeof function checks, retyped moves, copied CSS), dead code, and missing docs. Fix clear defects and ask about anything that needs a decision.'
+    },
+    {
+        id: 'xi-ship',
+        label: 'Ship Full Cycle',
+        title: 'Commit, push, Done comments, close',
+        prompt: 'Full cycle. Commit and push the finished work (take the already-dirty files too, never stash), post the Done comments with line counts, and close the Yozora issues this work covers. Stay off greg.'
+    },
+    {
+        id: 'xi-review-wren',
+        label: 'Review Wren',
+        title: 'Fix what went wrong in Wren sessions and update the prompt guide',
+        prompt: 'Review Wren\'s recent Director sessions. Find bugs, tool failures, and errors, trace each one in the code, fix it, and file or update a Yozora issue. Then update the prompt guide drafts from what worked and what failed in those sessions.'
+    }
+];
+
+const DIRECTOR_REOPEN_KEY = 'staticforge_director_reopen';
+
 const DIRECTOR_WELCOME_QUIPS = [
     'What are we making?',
     'Tell me the picture you want.',
@@ -187,6 +229,8 @@ class Director {
         this.pendingAttachments = [];
         this._openPreferredId = null;
         this._xiEnabled = false;
+        this._reopenAfterReload = this.takeReopenState();
+        window.addEventListener('pagehide', () => this.saveReopenState());
         this.persona = 'wren';
         this._personaSession = { wren: null, xi: null };
     }
@@ -894,8 +938,12 @@ class Director {
                             submenu: DIRECTOR_QUICK_STARTS.map((task) => ({
                                 text: task.label,
                                 action: `director-tools-task-${task.id}`,
-                                hidden: () => (task.v45Only && !directorModelIsV45()) || (task.existingOnly && !director.sessionHasHistory()) || (task.needsSubject && !director.hasGrillSubject())
-                            }))
+                                hidden: () => director.persona === 'xi' || (task.v45Only && !directorModelIsV45()) || (task.existingOnly && !director.sessionHasHistory()) || (task.needsSubject && !director.hasGrillSubject())
+                            })).concat(DIRECTOR_XI_QUICK_STARTS.map((task) => ({
+                                text: task.label,
+                                action: `director-tools-task-${task.id}`,
+                                hidden: () => director.persona !== 'xi'
+                            })))
                         },
                         { separator: true },
                         {
@@ -992,7 +1040,7 @@ class Director {
         }
         if (action.startsWith('director-tools-task-')) {
             const id = action.slice('director-tools-task-'.length);
-            const task = DIRECTOR_QUICK_STARTS.find((item) => item.id === id);
+            const task = this.quickStarts().find((item) => item.id === id);
             if (!task) return;
             if (!this.currentSession || this.currentSession.draft) {
                 if (!this.currentSession) this.showNewSessionDraft();
@@ -1748,6 +1796,13 @@ class Director {
         // One listener for every compact log row, live and replayed (createTraceRow)
         if (this.directorChatMessages) {
             this.directorChatMessages.addEventListener('click', (e) => {
+                const link = e.target.closest('a[href^="http://"], a[href^="https://"]');
+                if (link && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                    e.preventDefault();
+                    // openGrimoireUrl: public/scripts/comp/featureLoader.js
+                    void openGrimoireUrl(link.href);
+                    return;
+                }
                 const toggle = e.target.closest('.director-compact-toggle');
                 if (!toggle) return;
                 const row = toggle.closest('.director-message');
@@ -1905,6 +1960,35 @@ class Director {
         await this.openCurrentSession();
         this.initializeScrollbars();
         this.scrollToBottom();
+    }
+
+    // A reload of this tab (restart_client, Update, F5) reopens the window in the same persona and chat.
+    // sessionStorage is per tab, so other tabs and a fresh login start closed.
+    saveReopenState() {
+        if (!this.directorWindowIsOpen()) {
+            sessionStorage.removeItem(DIRECTOR_REOPEN_KEY);
+            return;
+        }
+        const sessionId = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
+        sessionStorage.setItem(DIRECTOR_REOPEN_KEY, JSON.stringify({ persona: this.persona, sessionId }));
+    }
+
+    takeReopenState() {
+        const raw = sessionStorage.getItem(DIRECTOR_REOPEN_KEY);
+        sessionStorage.removeItem(DIRECTOR_REOPEN_KEY);
+        try { return raw ? JSON.parse(raw) : null; } catch (_) { return null; }
+    }
+
+    // Runs on the first director status, once Xi is known to be on or off.
+    async reopenAfterReload(saved) {
+        if (saved.persona === 'xi' && this._xiEnabled) {
+            this._personaSession.xi = saved.sessionId || null;
+            await this.openDirectorWindow();
+            await this.setPersona('xi');
+            return;
+        }
+        if (saved.persona !== 'xi' && saved.sessionId) this._openPreferredId = saved.sessionId;
+        await this.openDirectorWindow();
     }
 
     // Close hides the window only. The agent keeps running and the session stays loaded.
@@ -2113,6 +2197,11 @@ class Director {
         this.updateTrayChrome();
         this.noteCursorLogin(status.cursorLogin);
         const personaChanged = !!(status.xi && typeof status.xi.enabled === 'boolean' && this.noteXiEnabled(status.xi.enabled));
+        if (this._reopenAfterReload) {
+            const saved = this._reopenAfterReload;
+            this._reopenAfterReload = null;
+            void this.reopenAfterReload(saved);
+        }
         if (this._resumeFromStatus) {
             this._resumeFromStatus = false;
             if (personaChanged) {
@@ -4129,8 +4218,10 @@ class Director {
             type: 'director_create_session',
             requestId: Date.now().toString(),
             workspaceId: window.currentWorkspace || null,
-            persona: this.persona || 'wren'
+            persona: this.persona || 'wren',
+            sessionType: this._nextSessionType || null
         });
+        this._nextSessionType = null;
         return true;
     }
 
@@ -4199,6 +4290,22 @@ class Director {
         Promise.resolve(reveal).then(() => {
             if (this.directorChatInput) this.directorChatInput.focus();
         });
+    }
+
+    // Expand Canvas Director toggle (imageExpansion.js): new Wren chat, auto-sent brief
+    async startExpandCanvasChat(content, attachments) {
+        if (this._creatingChat) {
+            showGlassToast('error', null, 'Director is still starting a chat');
+            return;
+        }
+        if (this.directorWindow) await this.openDirectorWindow();
+        if (this.persona !== 'wren') await this.setPersona('wren');
+        await this.openNewSession();
+        this.pendingAttachments = attachments || [];
+        this.renderAttachChips();
+        this._nextSessionType = 'utility';
+        await this.sendMessage(content);
+        this._nextSessionType = null;
     }
 
     lookbacksInComposer() {
@@ -5025,11 +5132,8 @@ class Director {
     paintComposerWelcome() {
         const host = this.directorComposerWelcome;
         if (!host) return;
-        if (this.persona === 'xi') {
-            host.replaceChildren();
-            return;
-        }
-        const tasks = DIRECTOR_QUICK_STARTS.filter((task) => !task.existingOnly && (!task.needsSubject || this.hasGrillSubject()) && (!task.v45Only || directorModelIsV45()));
+        const xi = this.persona === 'xi';
+        const tasks = xi ? DIRECTOR_XI_QUICK_STARTS : DIRECTOR_QUICK_STARTS.filter((task) => !task.existingOnly && (!task.needsSubject || this.hasGrillSubject()) && (!task.v45Only || directorModelIsV45()));
         host.replaceChildren();
         const logo = document.createElement('div');
         logo.className = 'logo-text';
@@ -5050,9 +5154,14 @@ class Director {
         });
         const note = document.createElement('p');
         note.dataset.quickNote = '1';
-        const selected = DIRECTOR_QUICK_STARTS.find((task) => task.id === this._selectedQuickTaskId);
+        const selected = tasks.find((task) => task.id === this._selectedQuickTaskId);
         note.textContent = selected ? selected.title : '';
-        host.append(logo, quip, group, note);
+        if (xi) host.append(group, note);
+        else host.append(logo, quip, group, note);
+    }
+
+    quickStarts() {
+        return this.persona === 'xi' ? DIRECTOR_XI_QUICK_STARTS : DIRECTOR_QUICK_STARTS;
     }
 
     // Off-center, director.css fades the welcome out. Emptying it there would cut the fade.
@@ -5074,14 +5183,14 @@ class Director {
             button.dataset.state = button.dataset.task === this._selectedQuickTaskId ? 'on' : 'off';
         });
         const note = row.querySelector('[data-quick-note]');
-        const task = DIRECTOR_QUICK_STARTS.find((item) => item.id === this._selectedQuickTaskId);
+        const task = this.quickStarts().find((item) => item.id === this._selectedQuickTaskId);
         if (note) note.textContent = task ? task.title : '';
     }
 
     outgoingText(presetContent) {
         if (typeof presetContent === 'string') return presetContent.trim();
         const typed = (this.directorChatInput ? this.directorChatInput.value : '').trim();
-        const task = DIRECTOR_QUICK_STARTS.find((item) => item.id === this._selectedQuickTaskId);
+        const task = this.quickStarts().find((item) => item.id === this._selectedQuickTaskId);
         if (!task) return typed;
         if (!typed) return task.prompt;
         return `${task.prompt}\n\n${typed}`;
@@ -6064,6 +6173,12 @@ function askWrenAboutImage(filename, name) {
     // Director.askWrenAboutImage: this file
     if (!directorInstance) return;
     directorInstance.askWrenAboutImage(filename, name);
+}
+
+async function startExpandCanvasChat(content, attachments) {
+    // Director.startExpandCanvasChat: this file
+    if (!window.directorInstance) await initializeDirector();
+    return window.directorInstance.startExpandCanvasChat(content, attachments);
 }
 
 // Global Director instance

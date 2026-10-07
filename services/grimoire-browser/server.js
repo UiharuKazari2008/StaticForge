@@ -16,7 +16,12 @@
  *   FRAME_ANCESTORS          CSP frame-ancestors, default *
  *   CHROME_NO_SANDBOX        default 1 (set 0 to keep the sandbox)
  *   GRIMOIRE_BROWSER_IDLE_MS default 600000
- *   MAX_SESSIONS             default 4
+ *   MAX_SESSIONS             default 4 (popup windows have their own cap of the same size)
+ *   ALCHEMY_PROFILE_DIR      default ~/.local/share/dreamscape/alchemy-profile (cookies, extension logins: keep 0700)
+ *   ALCHEMY_EXTENSIONS_DIR   default ~/.local/share/dreamscape/alchemy-extensions (scripts/alchemy-update-extension.js)
+ *   ALCHEMY_CHROMIUM_DIR     default ~/.local/share/dreamscape/alchemy-chromium (scripts/alchemy-brand-chromium.js)
+ *   ALCHEMY_HEADLESS         set 1 to run headless; otherwise Chromium runs windowed on a private Xvfb display when Xvfb is installed
+ *   ALCHEMY_AUDIO            set 0 to mute; otherwise audio plays into a private PulseAudio when pulseaudio and ffmpeg are installed
  */
 
 let sharp = null;
@@ -27,7 +32,7 @@ try {
     sharp = null;
 }
 
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
@@ -66,8 +71,84 @@ const ADMIN_TOKEN = String(process.env.GRIMOIRE_BROWSER_TOKEN || '');
 const FRAME_ANCESTORS = String(process.env.FRAME_ANCESTORS || '*').trim() || '*';
 const IDLE_MS = Math.max(15000, Number(process.env.GRIMOIRE_BROWSER_IDLE_MS || 600000));
 const MAX_SESSIONS = Math.max(1, Number(process.env.MAX_SESSIONS || 4));
+const DIALOG_MS = 5 * 60 * 1000;
+const DATA_DIR = path.join(os.homedir(), '.local', 'share', 'dreamscape');
+const PROFILE_DIR = process.env.ALCHEMY_PROFILE_DIR || path.join(DATA_DIR, 'alchemy-profile');
+const EXTENSIONS_DIR = process.env.ALCHEMY_EXTENSIONS_DIR || path.join(DATA_DIR, 'alchemy-extensions');
+const ALCHEMY_BIN = path.join(process.env.ALCHEMY_CHROMIUM_DIR || path.join(DATA_DIR, 'alchemy-chromium'), 'alchemy');
 const NO_SANDBOX = process.env.CHROME_NO_SANDBOX !== '0';
+// Sites such as X refuse logins from headless Chromium, so it runs windowed on a virtual display.
+const XVFB_BIN = '/usr/bin/Xvfb';
+const XAUTH_FILE = path.join(DATA_DIR, 'alchemy-xauth');
+const HEADFUL = process.env.ALCHEMY_HEADLESS !== '1' && fs.existsSync(XVFB_BIN);
+const GPU_NODE = '/dev/dri/renderD128';
+const PULSEAUDIO_BIN = '/usr/bin/pulseaudio';
+const FFMPEG_BIN = '/usr/bin/ffmpeg';
+const AUDIO = process.env.ALCHEMY_AUDIO !== '0' && fs.existsSync(PULSEAUDIO_BIN) && fs.existsSync(FFMPEG_BIN);
+const FAKE_MIC_FILE = path.join(DATA_DIR, 'alchemy-fake-mic.wav');
+const FAKE_CAMERA_FILE = path.join(DATA_DIR, 'alchemy-fake-camera.y4m');
+const FAKE_CAMERA_LOGO = path.join(__dirname, '..', '..', 'public', 'static_images', 'app_icons', 'alchemy.png');
 const JPEG_QUALITY = Math.min(90, Math.max(30, Number(process.env.GRIMOIRE_BROWSER_JPEG_QUALITY || 55)));
+const DEFAULT_SETTINGS = Object.freeze({ jpegQuality: JPEG_QUALITY, minFps: 10, maxFps: 30, regionQuality: 78 });
+
+// Runs in the 'alchemy' isolated world, top frame only: report document.title changes (Chrome does not send target title updates for every change).
+function watchTitle() {
+    if (window !== window.top) return;
+    let last = null;
+    const check = () => {
+        if (document.title === last) return;
+        last = document.title;
+        try { globalThis.__alchemyTitle(last); } catch (_) {}
+    };
+    const watch = () => {
+        check();
+        if (document.head) new MutationObserver(check).observe(document.head, { subtree: true, childList: true, characterData: true });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch, { once: true });
+    else watch();
+}
+
+// Runs in the 'alchemy' isolated world, top frame only: Chrome draws a <select> list as an OS popup the screencast never
+// sees, so the native popup is stopped and the options go to the viewer. composedPath reaches selects in shadow DOM (chrome://settings).
+function watchSelects() {
+    if (window !== window.top) return;
+    let open = null;
+    globalThis.__alchemyPickSelect = (index) => {
+        const el = open;
+        open = null;
+        if (!el || !el.isConnected || index < 0 || index >= el.options.length || el.selectedIndex === index) return;
+        el.selectedIndex = index;
+        el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    addEventListener('mousedown', (ev) => {
+        if (ev.button !== 0) return;
+        const el = ev.composedPath().find((node) => node instanceof HTMLSelectElement);
+        if (!el || el.multiple || el.size > 1 || el.disabled) return;
+        ev.preventDefault();
+        el.focus();
+        open = el;
+        const rect = el.getBoundingClientRect();
+        const options = Array.from(el.options).slice(0, 500).map((option) => {
+            const group = option.parentElement && option.parentElement.tagName === 'OPTGROUP' ? option.parentElement : null;
+            return { label: option.label || option.text, disabled: option.disabled || !!(group && group.disabled), group: group ? group.label : '' };
+        });
+        try { globalThis.__alchemySelect(JSON.stringify({ options, selected: el.selectedIndex, x: rect.left, y: rect.bottom })); } catch (_) {}
+    }, true);
+}
+
+function sessionSettings(input, base) {
+    const src = input && typeof input === 'object' ? input : {};
+    const pick = (key, min, max) => clampSize(src[key], base[key], min, max);
+    const out = {
+        jpegQuality: pick('jpegQuality', 30, 90),
+        minFps: pick('minFps', 1, 30),
+        maxFps: pick('maxFps', 5, 60),
+        regionQuality: pick('regionQuality', 30, 90)
+    };
+    if (out.minFps > out.maxFps) out.minFps = out.maxFps;
+    return out;
+}
 
 function viewerHtml() {
     return fs.readFileSync(path.join(__dirname, 'viewer.html'));
@@ -106,6 +187,8 @@ function resolveChrome() {
     for (const bin of branded) {
         if (fs.existsSync(bin)) found.push(bin);
     }
+    // Last, so it wins a version tie; an older copy (apt updated Chromium) loses to the system build.
+    if (fs.existsSync(ALCHEMY_BIN)) found.push(ALCHEMY_BIN);
     let best = '';
     let bestScore = -1;
     for (const bin of found) {
@@ -186,7 +269,7 @@ function normalizeWebUrl(value) {
     if (!/^[a-z][a-z0-9+.-]*:/i.test(raw)) raw = 'https://' + raw;
     let parsed;
     try { parsed = new URL(raw); } catch (_) { return ''; }
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'chrome:') {
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'chrome:' || parsed.protocol === 'chrome-extension:') {
         if (!parsed.hostname) return '';
         return parsed.href;
     }
@@ -247,8 +330,17 @@ function armDownloads(session) {
         });
     };
     const onProgress = (ev) => {
-        if (!ev || !ev.guid || ev.state !== 'completed') return;
+        if (!ev || !ev.guid) return;
         const item = session.downloads.get(ev.guid);
+        // Page and Browser both report progress; 4 updates a second is enough for a toast bar.
+        if (ev.state === 'inProgress' || ev.state === 'canceled') {
+            const now = Date.now();
+            if (!item || (ev.state === 'inProgress' && now - (item.sentAt || 0) < 250)) return;
+            item.sentAt = now;
+            broadcast(session, { type: 'download-progress', id: ev.guid, filename: item.filename, received: ev.receivedBytes || 0, total: ev.totalBytes || 0, canceled: ev.state === 'canceled' });
+            return;
+        }
+        if (ev.state !== 'completed') return;
         const filename = (item && item.filename) || 'download';
         const filePath = ev.filePath || path.join(dir, filename);
         noteDownload(session, ev.guid, filename, filePath);
@@ -349,7 +441,8 @@ async function readPageResource(session, targetUrl) {
         error.status = 400;
         throw error;
     }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'data:') {
+    const ownExtension = parsed.protocol === 'chrome-extension:' && session.page.url().startsWith('chrome-extension://' + parsed.host + '/');
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'data:' && !ownExtension) {
         const error = new Error('unsupported url');
         error.status = 400;
         throw error;
@@ -382,6 +475,56 @@ async function readPageResource(session, targetUrl) {
     };
 }
 
+// Icon candidates for a desktop shortcut: large icons, then og:image, then small icons, then /favicon.ico.
+async function readPageInfo(session) {
+    const read = session.page.evaluate(async () => {
+        const abs = (href, base) => {
+            try { return new URL(href, base || document.baseURI).href; } catch (_) { return ''; }
+        };
+        const px = (sizes, fallback) => {
+            if (/any/i.test(sizes || '')) return 512;
+            let best = 0;
+            String(sizes || '').split(/\s+/).forEach((part) => {
+                const m = /^(\d+)x\d+$/i.exec(part);
+                if (m) best = Math.max(best, Number(m[1]));
+            });
+            return best || fallback;
+        };
+        const icons = [];
+        document.querySelectorAll('link[rel~="icon"], link[rel~="apple-touch-icon"], link[rel~="apple-touch-icon-precomposed"]').forEach((link) => {
+            const touch = /apple-touch-icon/i.test(link.rel);
+            icons.push({ href: abs(link.getAttribute('href')), px: px(link.getAttribute('sizes'), touch ? 180 : 16) });
+        });
+        const manifest = document.querySelector('link[rel="manifest"]');
+        if (manifest && manifest.href) {
+            try {
+                const res = await fetch(manifest.href, { credentials: 'include' });
+                const json = await res.json();
+                (Array.isArray(json.icons) ? json.icons : []).forEach((icon) => {
+                    if (icon && icon.src) icons.push({ href: abs(icon.src, manifest.href), px: px(icon.sizes, 48) });
+                });
+            } catch (_) {}
+        }
+        icons.sort((a, b) => b.px - a.px);
+        const og = document.querySelector('meta[property="og:image"], meta[name="og:image"]');
+        const list = icons.filter((i) => i.px >= 48).map((i) => i.href);
+        if (og && og.content) list.push(abs(og.content));
+        icons.filter((i) => i.px < 48).forEach((i) => list.push(i.href));
+        list.push(abs('/favicon.ico'));
+        return {
+            url: location.href,
+            title: document.title || '',
+            icons: [...new Set(list.filter((href) => /^(https?:|data:|chrome-extension:)/i.test(href)))].slice(0, 12)
+        };
+    });
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('page info timed out')), 6000));
+    const info = await Promise.race([read, timeout]);
+    // Extension pages rarely link an icon; the manifest one is what Chrome shows.
+    const ext = extensions.find((e) => e.icon && info.url.startsWith('chrome-extension://' + e.id + '/'));
+    if (ext) info.icons.unshift(ext.icon);
+    return info;
+}
+
 function clampSize(value, fallback, min, max) {
     const n = Number(value);
     if (!Number.isFinite(n)) return fallback;
@@ -398,7 +541,7 @@ function broadcast(session, payload, binary) {
 function publishLocation(session) {
     let current = '';
     try { current = session.page.url(); } catch (_) {}
-    if (/^(https?:|chrome:)/i.test(current)) session.url = current;
+    if (/^(https?:|chrome(-extension)?:)/i.test(current)) session.url = current;
     broadcast(session, {
         type: session.navigating ? 'navigating' : 'location',
         url: session.url || '',
@@ -422,8 +565,9 @@ function noteClientRtt(session, ms) {
 
 function frameIntervalMs(session) {
     const rtt = session.rttMs || 50;
-    // 33ms is about 30 fps. 100ms is the slowest capture, about 10 fps.
-    return Math.max(33, Math.min(Math.round(rtt), 100));
+    const fastest = Math.round(1000 / session.settings.maxFps);
+    const slowest = Math.round(1000 / session.settings.minFps);
+    return Math.max(fastest, Math.min(Math.round(rtt), slowest));
 }
 
 function armFrameTimer(session) {
@@ -519,7 +663,7 @@ async function packFrame(session, jpeg, gen) {
     for (const rect of rects) {
         const encoded = await sharp(cropRGBA(next, width, rect), {
             raw: { width: rect.w, height: rect.h, channels: 4 }
-        }).jpeg({ quality: 78 }).toBuffer();
+        }).jpeg({ quality: session.settings.regionQuality }).toBuffer();
         if (stale()) return { stale: true };
         total += encoded.length;
         if (total > jpeg.length * 0.7) return { binary: jpeg };
@@ -626,6 +770,15 @@ function beginNavigating(session, resetTimer) {
     });
 }
 
+// Address bar fill: Chromium has no load percentage, so lifecycle stages stand in. Only ever moves forward.
+const LOAD_STAGES = { commit: 0.3, DOMContentLoaded: 0.6, firstContentfulPaint: 0.7, load: 0.9, networkAlmostIdle: 1 };
+
+function noteLoadProgress(session, value) {
+    if (value <= (session.loadProgress || 0)) return;
+    session.loadProgress = value;
+    broadcast(session, { type: 'progress', value });
+}
+
 function endNavigating(session) {
     if (!sessions.get(session.id)) return;
     clearTimeout(session.navSettle);
@@ -647,7 +800,7 @@ function armHealth(session) {
 
 async function probeHealth(session) {
     if (!sessions.get(session.id)) return;
-    if (session.navigating) {
+    if (session.navigating || session.dialog) {
         armHealth(session);
         return;
     }
@@ -676,7 +829,35 @@ async function probeHealth(session) {
     if (sessions.get(session.id)) armHealth(session);
 }
 
+function popupCount() {
+    let count = 0;
+    for (const session of sessions.values()) if (session.popup) count++;
+    return count;
+}
+
+async function adoptPopup(announce, page, parentId) {
+    try {
+        const child = await createSession({ width: 480, height: 640, popup: true, parentId }, page);
+        if (!sessions.get(announce.id)) {
+            closeSession(child.id);
+            return;
+        }
+        broadcast(announce, { type: 'popup', url: child.url || '', sessionId: child.id, viewerToken: child.viewerToken, tab: !parentId });
+    } catch (err) {
+        console.error('[grimoire-browser] popup', err && err.message);
+        page.close().catch(() => {});
+    }
+}
+
+// Popups that can reach window.opener (OAuth, sign-in) stay alive as a child session streamed in a small window.
+// The rest (target=_blank is noopener) close here and reopen as a new Alchemy window.
 function holdPopup(session, popup) {
+    let opener = false;
+    try { opener = !!popup.target()._getTargetInfo().canAccessOpener; } catch (_) {}
+    if (opener && popupCount() < MAX_SESSIONS) {
+        adoptPopup(session, popup, session.id);
+        return;
+    }
     let settled = false;
     const finish = (url) => {
         if (settled) return;
@@ -700,6 +881,54 @@ function holdPopup(session, popup) {
     popup.once('close', () => {
         settled = true;
         clearTimeout(timer);
+    });
+}
+
+// One pending dialog per session; it waits for a viewer reply (or DIALOG_MS) and is resent on attach.
+function openDialog(session, ask, settle) {
+    if (session.dialog) session.dialog.settle(null);
+    const id = crypto.randomBytes(8).toString('hex');
+    const dialog = { id, ask: Object.assign({ type: 'dialog', id }, ask), js: ask.kind !== 'auth', timer: null };
+    dialog.settle = (reply) => {
+        if (session.dialog !== dialog) return;
+        session.dialog = null;
+        clearTimeout(dialog.timer);
+        Promise.resolve().then(() => settle(reply)).catch(() => {});
+    };
+    dialog.timer = setTimeout(() => dialog.settle(null), DIALOG_MS);
+    session.dialog = dialog;
+    broadcast(session, dialog.ask);
+}
+
+function holdDialog(session, dialog) {
+    const kind = dialog.type();
+    openDialog(session, {
+        kind,
+        message: String(dialog.message() || '').slice(0, 4000),
+        defaultValue: String(dialog.defaultValue() || '').slice(0, 4000)
+    }, (reply) => {
+        if (reply && reply.accept) return dialog.accept(kind === 'prompt' ? String(reply.text || '') : undefined);
+        return dialog.dismiss();
+    });
+}
+
+// Headless cancels HTTP auth challenges, so the 401 page loads; ask, then retry with page.authenticate.
+function holdAuth(session, response) {
+    if (response.status() !== 401 || !response.request().isNavigationRequest()) return;
+    if (response.frame() !== session.page.mainFrame()) return;
+    const header = response.headers()['www-authenticate'] || '';
+    if (!/^\s*(basic|digest)\b/i.test(header)) return;
+    const target = response.url();
+    let host = target;
+    try { host = new URL(target).host; } catch (_) {}
+    const realm = (header.match(/realm="([^"]*)"/i) || [])[1] || '';
+    openDialog(session, { kind: 'auth', message: host, realm: realm.slice(0, 200) }, async (reply) => {
+        if (!reply || !reply.accept || !sessions.get(session.id)) return;
+        await session.page.authenticate({
+            username: String(reply.username || '').slice(0, 512),
+            password: String(reply.password || '').slice(0, 512)
+        });
+        requestNavigate(session, target, false);
     });
 }
 
@@ -773,6 +1002,7 @@ async function pumpNav(session) {
         try {
             await session.cdp.send('Page.stopLoading').catch(() => {});
             if (job.gen !== session.navGen) continue;
+            if (!job.reload) await Promise.all([applySiteUserAgent(session, job.url), grantCapture(job.url)]);
             const result = job.reload
                 ? await session.cdp.send('Page.reload')
                 : await session.cdp.send('Page.navigate', { url: job.url });
@@ -810,12 +1040,18 @@ async function closeSession(id) {
     const session = sessions.get(id);
     if (!session) return;
     sessions.delete(id);
+    for (const child of [...sessions.values()]) {
+        if (child.parentId === id) closeSession(child.id);
+    }
+    if (session.popup) broadcast(session, { type: 'closed' });
     clearTimeout(session.navSettle);
     session.navSettle = null;
     clearTimeout(session.frameTimer);
     session.frameTimer = null;
     clearTimeout(session.healthTimer);
     session.healthTimer = null;
+    if (session.dialog) clearTimeout(session.dialog.timer);
+    session.dialog = null;
     session.closing = true;
     for (const ws of session.sockets) {
         try { ws.close(1000, 'closed'); } catch (_) {}
@@ -835,38 +1071,367 @@ async function closeSession(id) {
     } catch (_) {}
 }
 
-async function ensureBrowser() {
-    if (browser && browser.connected) return browser;
+let browserLaunch = null;
+let pageUserAgent = '';
+let pageUserAgentMetadata = null;
+let plainUserAgent = '';
+let plainUserAgentMetadata = null;
+// X answers an unknown brand with "we temporarily limited your login", so it gets the plain Chromium UA and brands.
+const PLAIN_UA_HOSTS = /(^|\.)(x\.com|twitter\.com)$/i;
+
+async function applySiteUserAgent(session, url) {
+    let host = '';
+    try { host = new URL(url).hostname; } catch (_) { return; }
+    const plain = PLAIN_UA_HOSTS.test(host);
+    if (!pageUserAgent || session.plainUa === plain) return;
+    session.plainUa = plain;
+    await session.page.setUserAgent(plain ? plainUserAgent : pageUserAgent, plain ? plainUserAgentMetadata : pageUserAgentMetadata).catch(() => {});
+}
+let extensions = [];
+const ownPages = new WeakSet();
+
+function extensionMessage(dir, manifest, value) {
+    const match = /^__MSG_(\w+)__$/.exec(String(value || ''));
+    if (!match) return String(value || '');
+    try {
+        const messages = JSON.parse(fs.readFileSync(path.join(dir, '_locales', manifest.default_locale || 'en', 'messages.json'), 'utf8'));
+        const key = Object.keys(messages).find((name) => name.toLowerCase() === match[1].toLowerCase());
+        return key ? String(messages[key].message || '') : '';
+    } catch (_) {
+        return '';
+    }
+}
+
+// Unpacked extensions with a manifest "key" (scripts/alchemy-update-extension.js), so the id is the store id.
+function readExtensions() {
+    let names = [];
+    try { names = fs.readdirSync(EXTENSIONS_DIR); } catch (_) { return []; }
+    const out = [];
+    for (const name of names) {
+        const dir = path.join(EXTENSIONS_DIR, name);
+        let manifest;
+        try { manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')); } catch (_) { continue; }
+        if (!manifest.key) continue;
+        const hex = crypto.createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32);
+        const id = hex.replace(/[0-9a-f]/g, (c) => String.fromCharCode(97 + parseInt(c, 16)));
+        const action = manifest.action || manifest.browser_action || {};
+        const icons = manifest.icons || {};
+        const iconSize = Object.keys(icons).sort((a, b) => Number(b) - Number(a))[0];
+        const own = (file) => 'chrome-extension://' + id + '/' + String(file).replace(/^\/+/, '');
+        out.push({
+            id,
+            dir,
+            name: extensionMessage(dir, manifest, manifest.short_name || manifest.name) || id,
+            popup: action.default_popup ? own(action.default_popup) : '',
+            icon: iconSize ? own(icons[iconSize]) : ''
+        });
+    }
+    return out;
+}
+
+// Opened before any viewer was attached (1Password's install welcome opens at launch); the next viewer gets them.
+const pendingOrphans = [];
+
+function flushOrphans(session) {
+    while (pendingOrphans.length && popupCount() < MAX_SESSIONS) {
+        const page = pendingOrphans.shift();
+        if (!page.isClosed()) adoptPopup(session, page, '');
+    }
+}
+
+// Pages an extension opens itself (chrome.tabs.create: sign-in, onboarding) have no page opener; stream them to the most recently used viewer.
+async function adoptOrphan(target) {
+    if (target.type() !== 'page') return;
+    const opener = target.opener();
+    if (opener && opener.type() === 'page') return;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const page = await target.page().catch(() => null);
+    if (!page || page.isClosed() || ownPages.has(page)) return;
+    let announce = null;
+    for (const session of sessions.values()) {
+        if (session.sockets.size && (!announce || session.idleAt > announce.idleAt)) announce = session;
+    }
+    if (!announce && pendingOrphans.length < MAX_SESSIONS) {
+        pendingOrphans.push(page);
+        return;
+    }
+    if (!announce || popupCount() >= MAX_SESSIONS) {
+        page.close().catch(() => {});
+        return;
+    }
+    adoptPopup(announce, page, '');
+}
+
+let xvfb = null;
+let xvfbDisplay = '';
+
+// Xvfb picks a free display (-displayfd) and only accepts this cookie, so other local users cannot watch the pages.
+function startDisplay() {
+    if (xvfb && xvfb.exitCode === null && xvfbDisplay) return Promise.resolve(xvfbDisplay);
+    const cookie = crypto.randomBytes(16).toString('hex');
+    fs.writeFileSync(XAUTH_FILE, '', { mode: 0o600 });
+    return new Promise((resolve, reject) => {
+        const child = spawn(XVFB_BIN, ['-displayfd', '3', '-screen', '0', '1920x1440x24', '-nolisten', 'tcp', '-auth', XAUTH_FILE], { stdio: ['ignore', 'ignore', 'ignore', 'pipe'] });
+        let out = '';
+        const fail = (err) => reject(err instanceof Error ? err : new Error('Xvfb exited'));
+        child.once('error', fail);
+        child.once('exit', fail);
+        child.stdio[3].on('data', (chunk) => {
+            out += chunk;
+            if (!out.includes('\n')) return;
+            child.off('error', fail);
+            child.off('exit', fail);
+            xvfb = child;
+            xvfbDisplay = ':' + out.trim();
+            spawnSync('xauth', ['-f', XAUTH_FILE, 'add', xvfbDisplay, '.', cookie]);
+            child.once('exit', () => {
+                if (xvfb === child) xvfb = null;
+            });
+            resolve(xvfbDisplay);
+        });
+    });
+}
+
+function stopDisplay() {
+    if (xvfb) xvfb.kill('SIGTERM');
+    xvfb = null;
+}
+
+let pulse = null;
+let pulseDir = '';
+let audioListener = null;
+
+// A private PulseAudio (socket in a fresh 0700 temp dir, one null sink) gives Chromium a device; the sink monitor is the stream.
+async function startAudio() {
+    if (pulse && pulse.exitCode === null && pulseDir) return 'unix:' + path.join(pulseDir, 'native');
+    pulseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alchemy-pulse-'));
+    const socket = path.join(pulseDir, 'native');
+    const child = spawn(PULSEAUDIO_BIN, [
+        '-n', '--daemonize=no', '--exit-idle-time=-1', '--use-pid-file=no', '--disallow-exit', '--disable-shm=yes', '--log-target=stderr', '--log-level=error',
+        '-L', 'module-native-protocol-unix socket=' + socket + ' auth-anonymous=1',
+        '-L', 'module-null-sink sink_name=alchemy sink_properties=device.description=Alchemy'
+    ], { stdio: 'ignore', env: Object.assign({}, process.env, { PULSE_RUNTIME_PATH: pulseDir, PULSE_STATE_PATH: pulseDir }) });
+    pulse = child;
+    child.once('exit', () => {
+        if (pulse === child) pulse = null;
+    });
+    for (let i = 0; i < 50 && !fs.existsSync(socket); i++) await new Promise((resolve) => setTimeout(resolve, 100));
+    if (!fs.existsSync(socket)) {
+        stopAudio();
+        throw new Error('PulseAudio did not start');
+    }
+    return 'unix:' + socket;
+}
+
+function stopAudio() {
+    if (audioListener) audioListener();
+    if (pulse) pulse.kill('SIGTERM');
+    pulse = null;
+    if (pulseDir) fs.rmSync(pulseDir, { recursive: true, force: true });
+    pulseDir = '';
+}
+
+// One listener at a time (the focused Alchemy window); a new listener ends the old stream. Ogg pages are 20ms for low latency.
+function streamAudio(res) {
+    if (audioListener) audioListener();
+    const ff = spawn(FFMPEG_BIN, [
+        '-hide_banner', '-loglevel', 'error', '-fragment_size', '3840', '-f', 'pulse', '-i', 'alchemy.monitor',
+        '-ac', '2', '-ar', '48000', '-c:a', 'libopus', '-b:a', '128k', '-frame_duration', '20',
+        '-f', 'ogg', '-page_duration', '20000', '-flush_packets', '1', 'pipe:1'
+    ], { stdio: ['ignore', 'pipe', 'ignore'], env: Object.assign({}, process.env, { PULSE_SERVER: 'unix:' + path.join(pulseDir, 'native') }) });
+    res.writeHead(200, { 'Content-Type': 'audio/ogg', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+    ff.stdout.pipe(res);
+    const end = () => {
+        if (audioListener === end) audioListener = null;
+        ff.kill('SIGKILL');
+        if (!res.writableEnded) res.end();
+    };
+    audioListener = end;
+    ff.once('exit', end);
+    ff.once('error', end);
+    res.once('close', end);
+}
+
+// Windowed Chrome stops painting a background tab, so every session gets its own window.
+async function openPage(instance) {
+    if (!HEADFUL) return instance.newPage();
+    const marker = 'about:blank#alchemy-' + crypto.randomBytes(8).toString('hex');
+    const client = await instance.target().createCDPSession();
+    try {
+        await client.send('Target.createTarget', { url: marker, newWindow: true });
+    } finally {
+        client.detach().catch(() => {});
+    }
+    const target = await instance.waitForTarget((t) => t.url() === marker, { timeout: 10000 });
+    return target.page();
+}
+
+function ensureBrowser() {
+    if (browser && browser.connected) return Promise.resolve(browser);
+    if (!browserLaunch) browserLaunch = launchBrowser().finally(() => { browserLaunch = null; });
+    return browserLaunch;
+}
+
+// Viewers get 'restarting' first, so they reopen their page instead of showing the failed tab page.
+async function restartBrowser() {
+    const ids = [...sessions.keys()];
+    for (const id of ids) broadcast(sessions.get(id), { type: 'restarting' });
+    const old = browser;
+    browser = null;
+    for (const id of ids) await closeSession(id);
+    if (old) {
+        try { await old.close(); } catch (_) {}
+    }
+    await ensureBrowser();
+}
+
+// The host has no camera or mic, so WebRTC pages got NotFoundError: a silent mic and an Alchemy-logo camera stand in.
+function fakeCaptureArgs() {
+    const args = ['--use-fake-device-for-media-stream'];
+    if (!fs.existsSync(FFMPEG_BIN)) return args;
+    if (!fs.existsSync(FAKE_MIC_FILE)) {
+        spawnSync(FFMPEG_BIN, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', '1', FAKE_MIC_FILE]);
+    }
+    if (!fs.existsSync(FAKE_CAMERA_FILE) && fs.existsSync(FAKE_CAMERA_LOGO)) {
+        spawnSync(FFMPEG_BIN, ['-y', '-loglevel', 'error', '-i', FAKE_CAMERA_LOGO, '-vf', 'scale=480:480:force_original_aspect_ratio=decrease,pad=640:480:(ow-iw)/2:(oh-ih)/2:color=0x202124', '-frames:v', '1', '-pix_fmt', 'yuv420p', FAKE_CAMERA_FILE]);
+    }
+    if (fs.existsSync(FAKE_MIC_FILE)) args.push('--use-file-for-fake-audio-capture=' + FAKE_MIC_FILE);
+    if (fs.existsSync(FAKE_CAMERA_FILE)) args.push('--use-file-for-fake-video-capture=' + FAKE_CAMERA_FILE);
+    return args;
+}
+
+let browserClient = null;
+const grantedCaptureOrigins = new Set();
+
+// The camera / mic prompt would open on the invisible X display, so each http(s) origin is granted on its first visit
+// (Browser.setPermission without an origin is ignored). Screen share still prompts.
+function grantCapture(url) {
+    let origin = '';
+    try { origin = new URL(url).origin; } catch (_) { return Promise.resolve(); }
+    if (!/^https?:/.test(origin) || !browserClient || grantedCaptureOrigins.has(origin)) return Promise.resolve();
+    grantedCaptureOrigins.add(origin);
+    return Promise.all(['camera', 'microphone'].map((name) => browserClient.send('Browser.setPermission', { permission: { name }, setting: 'granted', origin })))
+        .catch(() => grantedCaptureOrigins.delete(origin));
+}
+
+// Chromium reads enable_do_not_track from the profile at launch (DNT: 1 and navigator.doNotTrack). An unreadable file is left alone.
+function setProfilePrefs() {
+    const file = path.join(PROFILE_DIR, 'Default', 'Preferences');
+    let prefs = {};
+    try {
+        prefs = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (err) {
+        if (err.code !== 'ENOENT') return;
+    }
+    if (prefs.enable_do_not_track === true) return;
+    prefs.enable_do_not_track = true;
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, JSON.stringify(prefs), { mode: 0o600 });
+}
+
+async function launchBrowser() {
     if (!chromeBin) throw new Error('Chrome binary not found. Set CHROME_BIN.');
+    fs.mkdirSync(PROFILE_DIR, { recursive: true, mode: 0o700 });
+    fs.chmodSync(PROFILE_DIR, 0o700);
+    setProfilePrefs();
+    extensions = readExtensions();
+    const extensionDirs = extensions.map((ext) => ext.dir).join(',');
     const args = [
         '--disable-dev-shm-usage',
         '--no-first-run',
         '--no-default-browser-check',
-        '--disable-extensions',
-        '--disable-features=WebAuthentication,WebAuthnConditionalUI',
+        '--disable-features=WebAuthentication,WebAuthnConditionalUI,DisableLoadExtensionCommandLineSwitch',
         '--disable-background-networking',
         '--disable-sync',
-        '--mute-audio',
-        '--disable-popup-blocking'
+        '--disable-popup-blocking',
+        '--disable-blink-features=AutomationControlled'
     ];
+    if (extensionDirs) args.push('--disable-extensions-except=' + extensionDirs, '--load-extension=' + extensionDirs);
+    else args.push('--disable-extensions');
     if (NO_SANDBOX) args.push('--no-sandbox', '--disable-setuid-sandbox');
-    browser = await puppeteer.launch({
+    const env = Object.assign({}, process.env);
+    let audio = false;
+    if (AUDIO) {
+        try {
+            env.PULSE_SERVER = await startAudio();
+            audio = true;
+        } catch (err) {
+            console.warn('[grimoire-browser] audio off:', err.message);
+        }
+    }
+    if (!audio) args.push('--mute-audio');
+    if (HEADFUL) {
+        env.DISPLAY = await startDisplay();
+        env.XAUTHORITY = XAUTH_FILE;
+        delete env.WAYLAND_DISPLAY;
+        // Xvfb has no GPU, but ANGLE on Vulkan renders on the Intel render node directly (compositing, raster, WebGL, video decode).
+        // Without access to the node, SwiftShader keeps WebGL on (a missing WebGL is a bot signal).
+        let gpu = false;
+        try { fs.accessSync(GPU_NODE, fs.constants.R_OK | fs.constants.W_OK); gpu = true; } catch (_) {}
+        if (gpu) args.push('--use-angle=vulkan', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan', '--ignore-gpu-blocklist', '--enable-gpu-rasterization');
+        else args.push('--enable-unsafe-swiftshader');
+        console.log('[grimoire-browser] rendering ' + (gpu ? 'on the GPU (' + GPU_NODE + ')' : 'in software (no access to ' + GPU_NODE + ')'));
+        // Session windows overlap on the virtual screen; covered windows must keep painting and running timers.
+        args.push('--ozone-platform=x11', '--window-size=1280,800', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling');
+    }
+    args.push(...fakeCaptureArgs());
+    const instance = await puppeteer.launch({
         executablePath: chromeBin,
-        headless: true,
+        headless: !HEADFUL,
         pipe: true,
+        userDataDir: PROFILE_DIR,
+        ignoreDefaultArgs: ['--disable-extensions'],
+        env,
         args
     });
-    browser.on('disconnected', () => {
+    grantedCaptureOrigins.clear();
+    browserClient = await instance.target().createCDPSession();
+    instance.on('targetcreated', (target) => {
+        adoptOrphan(target).catch(() => {});
+    });
+    instance.on('disconnected', () => {
+        if (browser !== instance) return;
         browser = null;
         for (const id of [...sessions.keys()]) closeSession(id);
+        pendingOrphans.length = 0;
     });
+    // Cloudflare Turnstile refuses a click from a HeadlessChrome UA (webdriver is hidden by the flag above).
+    // Alchemy brands itself like Edge: Chrome UA + Alchemy/<version>, and an Alchemy Client Hints brand.
+    const chromeUa = (await instance.userAgent()).replace(/HeadlessChrome/g, 'Chrome');
+    const uaVersion = (chromeUa.match(/Chrome\/([\d.]+)/) || [])[1] || '0.0.0.0';
+    const fullVersion = ((await instance.version()).match(/([\d.]+)$/) || [])[1] || uaVersion;
+    const major = uaVersion.split('.')[0];
+    pageUserAgent = chromeUa + ' Alchemy/' + uaVersion;
+    const brands = (version, grease) => [
+        { brand: 'Not)A;Brand', version: grease },
+        { brand: 'Chromium', version },
+        { brand: 'Alchemy', version }
+    ];
+    pageUserAgentMetadata = {
+        brands: brands(major, '99'),
+        fullVersionList: brands(fullVersion, '99.0.0.0'),
+        fullVersion,
+        platform: 'Linux',
+        platformVersion: '',
+        architecture: 'x86',
+        model: '',
+        mobile: false,
+        bitness: '64',
+        wow64: false
+    };
+    plainUserAgent = chromeUa;
+    plainUserAgentMetadata = Object.assign({}, pageUserAgentMetadata, {
+        brands: pageUserAgentMetadata.brands.slice(0, 2),
+        fullVersionList: pageUserAgentMetadata.fullVersionList.slice(0, 2)
+    });
+    browser = instance;
     return browser;
 }
 
 async function startScreencast(session) {
     await session.cdp.send('Page.startScreencast', {
         format: 'jpeg',
-        quality: JPEG_QUALITY,
+        quality: session.settings.jpegQuality,
         maxWidth: session.width,
         maxHeight: session.height,
         everyNthFrame: 1
@@ -878,25 +1443,31 @@ async function restartScreencast(session) {
     await startScreencast(session);
 }
 
-async function createSession(body) {
-    if (sessions.size >= MAX_SESSIONS) {
+// adoptedPage: a popup page that is already open (adoptPopup); popup sessions close with their page.
+async function createSession(body, adoptedPage) {
+    const popup = !!(adoptedPage || (body && body.popup));
+    if ((popup ? popupCount() : sessions.size - popupCount()) >= MAX_SESSIONS) {
         const error = new Error('too many browser sessions');
         error.status = 429;
         throw error;
     }
-    const url = normalizeWebUrl(body && body.url) || 'about:blank';
-    if (url === 'about:blank' && body && body.url) {
-        const error = new Error('url must be http, https, or chrome');
+    const url = adoptedPage ? 'about:blank' : (normalizeWebUrl(body && body.url) || 'about:blank');
+    if (!adoptedPage && url === 'about:blank' && body && body.url) {
+        const error = new Error('url must be http, https, chrome, or chrome-extension');
         error.status = 400;
         throw error;
     }
     const width = clampSize(body && body.width, 1280, 320, 1920);
     const height = clampSize(body && body.height, 800, 240, 1440);
     const instance = await ensureBrowser();
-    const page = await instance.newPage();
+    const page = adoptedPage || await openPage(instance);
+    ownPages.add(page);
+    if (pageUserAgent) await page.setUserAgent(pageUserAgent, pageUserAgentMetadata);
     await page.evaluateOnNewDocument(blockPasskeys);
     await page.setViewport({ width, height, deviceScaleFactor: 1 });
     const cdp = await page.createCDPSession();
+    // Only one window has OS focus; each page still behaves focused (caret, :focus, focus events).
+    if (HEADFUL) await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
     const id = crypto.randomBytes(16).toString('hex');
     const viewerToken = crypto.randomBytes(24).toString('hex');
     const session = {
@@ -904,10 +1475,13 @@ async function createSession(body) {
         viewerToken,
         page,
         cdp,
-        url: url === 'about:blank' ? '' : url,
+        url: adoptedPage ? normalizeWebUrl(page.url()) : (url === 'about:blank' ? '' : url),
         title: '',
+        popup,
+        parentId: String((body && body.parentId) || ''),
         width,
         height,
+        settings: sessionSettings(body && body.settings, DEFAULT_SETTINGS),
         sockets: new Set(),
         idleAt: Date.now() + IDLE_MS,
         meta: null,
@@ -928,6 +1502,7 @@ async function createSession(body) {
         health: 'ok',
         healthMisses: 0,
         healthTimer: null,
+        dialog: null,
         closing: false
     };
     sessions.set(id, session);
@@ -938,6 +1513,29 @@ async function createSession(body) {
         session.mainFrameId = tree && tree.frameTree && tree.frameTree.frame && tree.frameTree.frame.id || '';
     } catch (_) {}
     cdp.send('Page.setLifecycleEventsEnabled', { enabled: true }).catch(() => {});
+
+    // Isolated world: a page-visible binding (page.exposeFunction) makes Cloudflare Turnstile refuse the click.
+    cdp.on('Runtime.bindingCalled', (ev) => {
+        if (ev && ev.name === '__alchemySelect' && sessions.get(id)) {
+            let picked = null;
+            try { picked = JSON.parse(ev.payload); } catch (_) {}
+            if (!picked || !Array.isArray(picked.options)) return;
+            session.selectContextId = ev.executionContextId;
+            broadcast(session, { type: 'select', options: picked.options, selected: picked.selected, x: Number(picked.x) || 0, y: Number(picked.y) || 0 });
+            return;
+        }
+        if (!ev || ev.name !== '__alchemyTitle' || !sessions.get(id)) return;
+        const title = String(ev.payload || '').slice(0, 300);
+        if (title === session.title) return;
+        session.title = title;
+        if (!session.navigating) publishLocation(session);
+    });
+    await cdp.send('Page.enable');
+    await cdp.send('Runtime.enable');
+    await cdp.send('Runtime.addBinding', { name: '__alchemyTitle', executionContextName: 'alchemy' });
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: '(' + watchTitle + ')()', worldName: 'alchemy' });
+    await cdp.send('Runtime.addBinding', { name: '__alchemySelect', executionContextName: 'alchemy' });
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: '(' + watchSelects + ')()', worldName: 'alchemy' });
 
     cdp.on('Page.screencastFrame', (event) => {
         const current = sessions.get(id);
@@ -962,11 +1560,14 @@ async function createSession(body) {
 
     cdp.on('Page.frameStartedLoading', (ev) => {
         if (!sessions.get(id) || !mainFrameEvent(ev)) return;
+        session.loadProgress = 0;
+        noteLoadProgress(session, 0.1);
         beginNavigating(session, false);
     });
 
     cdp.on('Page.lifecycleEvent', async (ev) => {
         if (!sessions.get(id) || !mainFrameEvent(ev)) return;
+        if (LOAD_STAGES[ev.name]) noteLoadProgress(session, LOAD_STAGES[ev.name]);
         if (ev.name !== 'DOMContentLoaded' && ev.name !== 'firstContentfulPaint' && ev.name !== 'load' && ev.name !== 'networkAlmostIdle') return;
         try { session.title = await page.title(); } catch (_) {}
         endNavigating(session);
@@ -974,6 +1575,7 @@ async function createSession(body) {
 
     cdp.on('Page.frameStoppedLoading', async (ev) => {
         if (!sessions.get(id) || !mainFrameEvent(ev)) return;
+        noteLoadProgress(session, 1);
         try { session.title = await page.title(); } catch (_) {}
         endNavigating(session);
     });
@@ -985,15 +1587,27 @@ async function createSession(body) {
     });
 
     page.on('popup', (popup) => holdPopup(session, popup));
+    page.on('dialog', (dialog) => holdDialog(session, dialog));
+    page.on('response', (response) => holdAuth(session, response));
+    cdp.on('Page.javascriptDialogClosed', () => {
+        if (session.dialog && session.dialog.js) {
+            clearTimeout(session.dialog.timer);
+            session.dialog = null;
+        }
+    });
     page.on('error', () => markHealth(session, 'failed'));
     page.on('close', () => {
-        if (!session.closing) markHealth(session, 'failed');
+        if (session.closing) return;
+        if (session.popup) closeSession(id);
+        else markHealth(session, 'failed');
     });
 
     page.on('framenavigated', (frame) => {
         if (!sessions.get(id) || frame !== page.mainFrame()) return;
         const next = frame.url();
-        if (/^(https?:|chrome:)/i.test(next)) session.url = next;
+        if (/^(https?:|chrome(-extension)?:)/i.test(next)) session.url = next;
+        applySiteUserAgent(session, next);
+        grantCapture(next);
         publishLocation(session);
     });
 
@@ -1022,6 +1636,14 @@ async function onViewerMessage(session, raw) {
     if (!msg || typeof msg !== 'object') return;
     touch(session);
     const page = session.page;
+    if (msg.type === 'dialog-reply') {
+        if (session.dialog && session.dialog.id === msg.id) session.dialog.settle(msg);
+        return;
+    }
+    if (msg.type === 'select-pick' && Number.isInteger(msg.index) && session.selectContextId) {
+        session.cdp.send('Runtime.evaluate', { expression: '__alchemyPickSelect(' + msg.index + ')', contextId: session.selectContextId }).catch(() => {});
+        return;
+    }
     if (msg.type === 'ping') {
         broadcast(session, { type: 'pong', t: msg.t });
         return;
@@ -1030,10 +1652,16 @@ async function onViewerMessage(session, raw) {
         noteClientRtt(session, msg.ms);
         return;
     }
+    if (msg.type === 'settings') {
+        const before = session.settings.jpegQuality;
+        session.settings = sessionSettings(msg, session.settings);
+        if (session.settings.jpegQuality !== before) await restartScreencast(session);
+        return;
+    }
     if (msg.type === 'inspect') {
         const x = Number(msg.x);
         const y = Number(msg.y);
-        let info = { selection: '', text: '', href: '', src: '', alt: '' };
+        let info = { selection: '', text: '', href: '', src: '', alt: '', editable: false };
         if (Number.isFinite(x) && Number.isFinite(y)) {
             try {
                 info = await page.evaluate((px, py) => {
@@ -1044,9 +1672,18 @@ async function onViewerMessage(session, raw) {
                         text: '',
                         href: '',
                         src: '',
-                        alt: ''
+                        alt: '',
+                        editable: false
                     };
                     if (!el) return out;
+                    const field = el.closest ? el.closest('input, textarea, [contenteditable]') : null;
+                    const nonText = /^(button|checkbox|color|file|hidden|image|radio|range|reset|submit)$/i;
+                    if (field && !field.disabled && !field.readOnly
+                        && (field.tagName !== 'INPUT' || !nonText.test(field.type))
+                        && (field.tagName === 'INPUT' || field.tagName === 'TEXTAREA' || field.isContentEditable)) {
+                        out.editable = true;
+                        if (document.activeElement !== field) field.focus();
+                    }
                     const active = document.activeElement;
                     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
                         const start = active.selectionStart;
@@ -1073,7 +1710,8 @@ async function onViewerMessage(session, raw) {
             text: info && info.text || '',
             href: info && info.href || '',
             src: info && info.src || '',
-            alt: info && info.alt || ''
+            alt: info && info.alt || '',
+            editable: !!(info && info.editable)
         });
         return;
     }
@@ -1205,6 +1843,45 @@ async function handleRequest(req, res) {
         return;
     }
 
+    if (req.method === 'POST' && pathname === '/browser/restart') {
+        if (!adminOk(req)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        try {
+            await restartBrowser();
+            sendJson(res, 200, { ok: true });
+        } catch (err) {
+            sendJson(res, 500, { error: err.message || 'restart failed' });
+        }
+        return;
+    }
+
+    if (req.method === 'GET' && pathname === '/extensions') {
+        if (!adminOk(req)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        sendJson(res, 200, { extensions: extensions.map(({ id, name, popup }) => ({ id, name, popup })) });
+        return;
+    }
+
+    const pageInfo = pathname.match(/^\/sessions\/([a-f0-9]{32})\/page-info$/);
+    if (pageInfo && req.method === 'GET') {
+        const session = sessions.get(pageInfo[1]);
+        const token = url.searchParams.get('t') || '';
+        if (!session || !tokenEquals(token, session.viewerToken)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        try {
+            sendJson(res, 200, await readPageInfo(session));
+        } catch (err) {
+            sendJson(res, 502, { error: err.message || 'page info failed' });
+        }
+        return;
+    }
+
     if (req.method === 'POST' && pathname === '/sessions') {
         if (!adminOk(req)) {
             sendJson(res, 401, { error: 'unauthorized' });
@@ -1315,6 +1992,23 @@ async function handleRequest(req, res) {
         return;
     }
 
+    // The whole browser's mix, not just this page: any session token may listen.
+    const audio = pathname.match(/^\/sessions\/([a-f0-9]{32})\/audio$/);
+    if (audio && req.method === 'GET') {
+        const session = sessions.get(audio[1]);
+        const token = url.searchParams.get('t') || '';
+        if (!session || !tokenEquals(token, session.viewerToken)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        if (!pulse || !pulseDir) {
+            sendJson(res, 503, { error: 'audio is off' });
+            return;
+        }
+        streamAudio(res);
+        return;
+    }
+
     sendJson(res, 404, { error: 'not found' });
 }
 
@@ -1333,6 +2027,8 @@ function attachViewer(ws, session) {
     if (session.health && session.health !== 'ok') {
         ws.send(JSON.stringify({ type: 'status', state: session.health, url: session.url || '' }));
     }
+    if (session.dialog) ws.send(JSON.stringify(session.dialog.ask));
+    if (!session.popup) flushOrphans(session);
     if (session.painted) {
         try { ws.send(session.painted); } catch (_) {}
     } else {
@@ -1349,7 +2045,7 @@ function attachViewer(ws, session) {
             || preview.type === 'wheel'
         );
         if (gesture) releaseFramePace(session);
-        if (preview && (preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'inspect' || preview.type === 'copy')) {
+        if (preview && (preview.type === 'dialog-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'inspect' || preview.type === 'copy')) {
             onViewerMessage(session, raw).catch((err) => {
                 console.error('[grimoire-browser] input', err && err.message);
             });
@@ -1395,6 +2091,9 @@ async function main() {
         process.exit(1);
     }
     console.log('[grimoire-browser] chrome', chromeBin);
+    if (fs.existsSync(ALCHEMY_BIN) && chromeBin !== ALCHEMY_BIN) {
+        console.warn('[grimoire-browser] the Alchemy-branded Chromium is older than the system one: run node scripts/alchemy-brand-chromium.js');
+    }
     await ensureBrowser();
 
     const server = http.createServer((req, res) => {
@@ -1439,11 +2138,17 @@ async function main() {
         if (browser) {
             try { await browser.close(); } catch (_) {}
         }
+        stopDisplay();
+        stopAudio();
         server.close(() => process.exit(0));
         setTimeout(() => process.exit(0), 1500).unref();
     };
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
+    process.on('exit', () => {
+        stopDisplay();
+        stopAudio();
+    });
 }
 
 main().catch((err) => {

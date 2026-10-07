@@ -628,7 +628,7 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         inputWrapper.className = 'confirmation-input-wrapper';
 
         const input = document.createElement('input');
-        input.type = 'text';
+        input.type = config.inputType || 'text';
         input.className = 'form-input form-control';
         input.style.width = '100%';
         input.value = defaultValue;

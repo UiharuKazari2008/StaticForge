@@ -707,6 +707,10 @@ assert.ok(!hiddenPreset.some((t) => t.name === 'save_preset'));
 
 const coreNames = _test.TOOL_DEFS.filter((t) => t.core).map((t) => t.name);
 assert.ok(coreNames.includes('get_workspaces'));
+assert.ok(coreNames.includes('get_workspace_config'));
+assert.ok(coreNames.includes('set_session_type'));
+assert.strictEqual(_test.rateGroupForTool('get_workspace_config'), 'free');
+assert.strictEqual(_test.rateGroupForTool('set_session_type'), 'write');
 assert.ok(coreNames.includes('save_preset'));
 assert.ok(coreNames.includes('get_generated_image'));
 assert.ok(coreNames.includes('delete_images'));
@@ -808,7 +812,7 @@ assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 'running' }, {}), 'running');
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => null }, {}), null);
 assert.ok(coreNames.includes('update_meal_images'));
-assert.strictEqual(coreNames.length, 101);
+assert.strictEqual(coreNames.length, 103);
 assert.ok(coreNames.includes('ledge'));
 assert.ok(coreNames.includes('generate_nax_tag'));
 assert.ok(coreNames.includes('delete_nax_tag'));
@@ -890,7 +894,7 @@ assert.ok(listedGen.inputSchema.properties.append_quality.description.includes('
 assert.ok(listedGen.inputSchema.properties.sampler.enum.includes('k_euler_ancestral'));
 assert.ok(listedGen.inputSchema.properties.dataset_config.properties.nsfw.description.includes('NSFW level id'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('settings'));
-assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('nooped'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('bakedUntil'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_session_state').description.includes('resolved'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').description.includes('needsIntegration'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.workspace.description.includes('Do not copy the bound Studio tab'));

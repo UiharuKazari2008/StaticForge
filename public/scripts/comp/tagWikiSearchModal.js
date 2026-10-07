@@ -198,6 +198,9 @@ class WikiDisplayBase {
                 // Show clean path; icon in window title already indicates type
                 titleEl.textContent = url.replace(/^(edtx|rdf|dsap):\/\//i, '');
             }
+            const web = /^(https?|chrome(-extension)?):\/\//i.test(url);
+            // grimoireSyncAlchemyIdentity: public/scripts/comp/grimoireRemoteBrowser.js
+            grimoireSyncAlchemyIdentity(this.modal, web, web ? (this._grimoireRemoteTitle || url) + ' - Alchemy' : undefined);
             return;
         }
         // For other base users (split panes etc.), no-op (main Grimoire overrides with full bar logic)
@@ -616,6 +619,10 @@ class WikiDisplayBase {
             if (tag && typeof copyRunTagText === 'function') {
                 copyRunTagText(tag);
             }
+        } else if (action === 'wiki-online-danbooru' || action === 'wiki-online-e621') {
+            // grimoireOnlineWikiUrls: public/scripts/comp/grimoireRemoteBrowser.js
+            const urls = grimoireOnlineWikiUrls(this.getCurrentTagName());
+            this.navigate(action === 'wiki-online-danbooru' ? urls.danbooru : urls.e621);
         } else if (action === 'wiki-add-to-favorites') {
             const tag = this.getCurrentTagName();
             // showAddToFavoritesDialog: public/scripts/comp/autocompleteUtils.js
@@ -1202,6 +1209,18 @@ class WikiDisplayBase {
                             icon: 'fas fa-sync-alt',
                             action: 'wiki-refresh-online',
                             hidden: () => !this.canRefreshFromOnline()
+                        },
+                        {
+                            text: 'Danbooru wiki page',
+                            icon: 'fas fa-book',
+                            action: 'wiki-online-danbooru',
+                            hidden: () => !this.hasWikiPageTag()
+                        },
+                        {
+                            text: 'e621 wiki page',
+                            icon: 'fas fa-book',
+                            action: 'wiki-online-e621',
+                            hidden: () => !this.hasWikiPageTag()
                         },
                         {
                             text: 'Search Google',
@@ -3632,7 +3651,8 @@ class WikiWindowManager {
     }
     
     // Create a new wiki window instance
-    createWindow(initialContent, initialTag = null, historyToCopy = null) {
+    // dataset: data-* values set before openModal sizes the window (Alchemy popups: grimoireRemoteBrowser.js)
+    createWindow(initialContent, initialTag = null, historyToCopy = null, dataset = null) {
         // Ensure initialization has happened
         if (!this.template) {
             this.init();
@@ -3646,6 +3666,7 @@ class WikiWindowManager {
         const windowId = `wikiWindow_${this.nextId++}`;
         const windowElement = this.template.cloneNode(true);
         windowElement.id = windowId;
+        if (dataset) Object.assign(windowElement.dataset, dataset);
         
         // Update IDs to be unique
         this.updateElementIds(windowElement, windowId);
@@ -5619,7 +5640,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const updatingActiveLeft = (this.activePane === this) || force;
 
         // http(s) and chrome:// stay real URLs. grimoireRemoteBrowser.js iframes the browser service.
-        const isChrome = /^chrome:\/\//i.test(fullUrl);
+        const isChrome = /^chrome(-extension)?:\/\//i.test(fullUrl);
         const isHttps = /^https:\/\//i.test(fullUrl);
         const isHttp = /^http:\/\//i.test(fullUrl);
         const isWeb = isChrome || isHttps || isHttp;
@@ -5653,6 +5674,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
             return;
         }
 
+        const pageTitle = (this.activePane || this)._grimoireRemoteTitle;
+        // grimoireSyncAlchemyIdentity: public/scripts/comp/grimoireRemoteBrowser.js
+        grimoireSyncAlchemyIdentity(this.modal, isWeb, isWeb ? 'Alchemy' + (pageTitle ? ' - ' + pageTitle : '') : null);
         this.addressPath.textContent = displayPath;
 
         if (this.addressPath.dataset.loadingHint) {
@@ -5771,8 +5795,18 @@ class TagWikiSearchModal extends WikiDisplayBase {
             return;
         }
 
+        const searchUrl = `edtx://en.grimoire.jp/search?q=${encodeURIComponent(val)}`;
+        // grimoireBareWebUrl / grimoireResolveBareWebUrl: public/scripts/comp/grimoireRemoteBrowser.js
+        const bareWeb = grimoireBareWebUrl(val);
+        if (bareWeb) {
+            grimoireResolveBareWebUrl(bareWeb, this.addressBar).then((next) => {
+                if (next !== null) this.navigate(next || searchUrl);
+            });
+            return;
+        }
+
         // Bare term → search page
-        this.navigate(`edtx://en.grimoire.jp/search?q=${encodeURIComponent(val)}`);
+        this.navigate(searchUrl);
     }
 
     showGrimoireNavigationLoadingPage(displayPath) {
@@ -5832,13 +5866,14 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 const protoLabel = this.escapeHtml(protocol || 'unknown');
                 detail = `The protocol <strong>${protoLabel}://</strong> is not supported. Use <strong>edtx://</strong>, <strong>rdf://</strong>, or <strong>dsap://</strong> addresses in Dreamscape Browser.`;
             } else if (kind === 'browser_unavailable') {
-                title = 'Web browser unavailable';
-                detail = 'Grimoire could not open the remote browser service. Check that it is running and Dreamscape is pointed at it.';
+                title = 'Alchemy unavailable';
+                detail = 'Alchemy is not available right now. Try again in a moment.';
             }
+            const errorIcon = kind === 'browser_unavailable' ? 'fas fa-atom' : 'fas fa-globe';
 
             this.displayArea.innerHTML = `
                 <div class="grimoire-nav-error">
-                    <div class="grimoire-nav-error-icon"><i class="fas fa-globe"></i></div>
+                    <div class="grimoire-nav-error-icon"><i class="${errorIcon}"></i></div>
                     <h2 class="grimoire-nav-error-title">${title}</h2>
                     <p class="grimoire-nav-error-url">${safeUrl}</p>
                     <p class="grimoire-nav-error-detail">${detail}</p>

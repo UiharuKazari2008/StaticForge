@@ -1,5 +1,10 @@
 {
     "mcpServers": {
-
+        "dreamscape": {
+            "url": "${env:DREAMSCAPE_MCP_URL}",
+            "headers": {
+                "Authorization": "Bearer ${env:DREAMSCAPE_MCP_KEY}"
+            }
+        }
     }
-  }
+}

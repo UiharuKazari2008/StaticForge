@@ -398,6 +398,12 @@ function setupMainMenuContextMenus() {
                         hideOnBreakpoint: "small-mobile"
                     },
                     {
+                        icon: 'fa-regular fa-atom',
+                        text: 'Alchemy',
+                        action: 'open-alchemy',
+                        hideOnBreakpoint: "small-mobile"
+                    },
+                    {
                         icon: 'fa-regular fa-flask',
                         text: 'Atelier',
                         action: 'open-naxt',
@@ -832,6 +838,11 @@ function setupMainMenuContextMenus() {
             case 'open-encyclopedia':
                 // openGrimoireApplet: public/scripts/comp/featureLoader.js
                 void openGrimoireApplet();
+                break;
+
+            case 'open-alchemy':
+                // openGrimoireUrl / ALCHEMY_HOME_URL: public/scripts/comp/featureLoader.js
+                void openGrimoireUrl(ALCHEMY_HOME_URL);
                 break;
 
             case 'open-naxt':

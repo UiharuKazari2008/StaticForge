@@ -877,8 +877,16 @@ function showCompiledPromptModal(compiledPromptData = null) {
 
     // Build metadata section using individual card elements like weather
     let metadataContent = '';
+    // escapeHtml: public/scripts/comp/utilities.js
     const metadataItems = [
         { label: 'Timestamp', value: compiled.timestamp ? new Date(compiled.timestamp).toLocaleString() : null, icon: 'fa-clock' },
+        { label: 'Expires', value: compiled.expiresAt ? new Date(compiled.expiresAt).toLocaleString() : null, icon: 'fa-hourglass-half' },
+        { label: compiled.source === 'agent' ? 'Agent' : 'Wren', value: compiled.summary ? escapeHtml(compiled.summary) : null, icon: 'fa-feather' },
+        ...(Array.isArray(compiled.dg_expanders) ? compiled.dg_expanders : []).map(entry => ({
+            label: `!${escapeHtml(entry.prefix || '')}`,
+            value: entry.value ? escapeHtml(entry.value) : null,
+            icon: 'fa-wand-magic-sparkles'
+        }))
     ].filter(item => item.value !== null);
 
     if (metadataItems.length > 0) {

@@ -148,6 +148,8 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 **Push side effects:**
 - `dynamic_generation_progress_update`
 
+Rentan (`modules/dynagenWren.js`) also pushes during a Studio generate: `image_generation_progress` with `hasDynamicGen: true`, `phase` `thinking` then `streaming` (`reasoning` is one Wren thought, `status` the overlay line), and `dynamic_generation_progress_update` with `phase: "wren_change"` and `data: { change, compiled_prompt }`. The client stores `compiled_prompt` and applies `change` (Change JSON: `expanders`, `prompt`, `uc`, `characters`) to an open Studio silently. A failed Wren turn pushes `phase: "error"` and the generate fails.
+
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `enhance_image`

@@ -205,6 +205,16 @@ async function openGrimoireApplet(initialQuery) {
     tagWikiSearchModal.open(initialQuery || '');
 }
 
+// Alchemy Home until the local homepage lands (Yozora #318)
+const ALCHEMY_HOME_URL = 'https://www.bing.com/';
+
+// http(s) lands in Alchemy, Grimoire's remote browser (TagWikiSearchModal.navigate)
+async function openGrimoireUrl(url) {
+    await featureLoader.loadFeature('grimoire');
+    tagWikiSearchModal.open('', { skipInitialHome: true });
+    tagWikiSearchModal.navigate(url);
+}
+
 async function openSpellbookApplet() {
     await featureLoader.loadFeature('spellbook');
     // initializeSpellbookModalManager: public/scripts/comp/spellbookModal.js

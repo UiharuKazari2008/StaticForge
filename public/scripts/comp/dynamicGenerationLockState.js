@@ -175,7 +175,28 @@ function readDynamicGenerationSnapshot() {
     if (novelGetBtn()) snapshot.novel = { enabled: !!novelIsEnabled(), ...novelGetSessionSettings() };
     if (compiled && compiled.context) snapshot.hasCompiledContext = true;
     if (compiled && compiled.previousResponseId) snapshot.hasPreviousResponse = true;
+    snapshot.baked = isDynamicGenerationBaked(compiled, locks.cacheLocked);
+    if (compiled && compiled.expiresAt) snapshot.bakedUntil = new Date(compiled.expiresAt).toISOString();
+    if (compiled && compiled.wren_session_id) snapshot.wrenSessionId = compiled.wren_session_id;
     return snapshot;
+}
+
+/** Wren or an agent baked the scene and it has not expired (modules/dynagenWren.js stamps expiresAt). */
+function isDynamicGenerationBaked(compiled, cacheLocked) {
+    if (!compiled || !compiled.integrated) return false;
+    if (compiled.source === 'agent' && !compiled.wren_input_hash) return true;
+    if (cacheLocked) return true;
+    return !!compiled.expiresAt && Date.now() < compiled.expiresAt;
+}
+
+function markDynamicGenerationAgentIntegrated() {
+    if (!window.dynamicGenerationData) window.dynamicGenerationData = {};
+    window.dynamicGenerationData.compiled_prompt = {
+        success: true,
+        source: 'agent',
+        integrated: true,
+        timestamp: Date.now()
+    };
 }
 
 function applyStudioDynamicGenerationConfig(config) {
@@ -264,6 +285,10 @@ function applyStudioDynamicGenerationConfig(config) {
     if (config.novel !== undefined) {
         // applyStudioNovelConfig: public/scripts/comp/novelManager.js
         changed = applyStudioNovelConfig(config.novel) || changed;
+    }
+    if (config.integrated === true || config.integrated === 'true') {
+        markDynamicGenerationAgentIntegrated();
+        changed = true;
     }
     return changed;
 }

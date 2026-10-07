@@ -27,6 +27,7 @@ User-facing applet and tool names follow a **Dreamscape** style: short, tangible
 | `studio` | Studio (`fullName`: DreamStudio 2025) |
 | `spellbook` | Spellcaster |
 | `encyclopedia` | Grimoire |
+| `alchemy` | Alchemy (Grimoire's remote browser, opens Home) |
 | `naxt` | Atelier |
 | `notebook` | Notion |
 | `bracket-generation` | Phasewalker |

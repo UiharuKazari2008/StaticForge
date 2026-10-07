@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const director = require('./cursorDirector');
 
 const RUN_IDLE_MS = 12 * 60 * 1000;
@@ -20,6 +20,7 @@ const YOZORA_ISSUE = 'https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge
 const runs = new Map();
 let indexQueue = Promise.resolve();
 let boundGr = null;
+let xiMcp = null;
 
 function enqueue(fn) {
     const next = indexQueue.then(fn, fn);
@@ -187,9 +188,27 @@ function readToolDiffText(sessionId, diffId) {
     };
 }
 
+// The repo .cursor/mcp.json reads these through ${env:...}. The key stays out of git.
+async function ensureXiMcp(gr) {
+    if (xiMcp) return;
+    try {
+        const uuid = gr.getMcpPathUuid();
+        if (!uuid) return;
+        const port = gr.getConfig({ path: 'port' }) || 9220;
+        const key = await director.ensureAppKey(gr, path.join(layout().root, 'key'), 'Xi');
+        xiMcp = { url: `http://127.0.0.1:${port}/${uuid}/mcp`, key };
+    } catch (err) {
+        console.error(`Xi MCP skipped: ${err.message}`);
+    }
+}
+
 function xiEnv() {
     const env = Object.assign({}, process.env);
     env.CURSOR_CONFIG_DIR = layout().configDir;
+    if (xiMcp) {
+        env.DREAMSCAPE_MCP_URL = xiMcp.url;
+        env.DREAMSCAPE_MCP_KEY = xiMcp.key;
+    }
     env.NO_OPEN_BROWSER = '1';
     env.GIT_TERMINAL_PROMPT = '0';
     env.NO_COLOR = '1';
@@ -271,7 +290,8 @@ function buildPrompt(chat, userText, files, clientId) {
         'Be short. A few sentences. Do not explain the obvious. Do not paste large code blocks or long examples. Name the file and the change.',
         'clientLink.clientGeneration no-go means generate_image on the server, show_chat_image, and open_in_studio only if Studio is already open. Resolution stays normal unless they name a size. Wallpaper is finish, not the wallpaper resolution preset. Over 1 megapixel needs userApprovedPaidRequest after they agree.',
         `Detail belongs on a Yozora issue. File or update the issue, then link it (${YOZORA_ISSUE}<number>). The issue is the write-up.`,
-        'Coding, diagnostics, and debugging are the job. Dreamscape tools are available when the task needs the app. Commands are already approved. Do not ask permission to run them.',
+        'Coding, diagnostics, and debugging are the job. Dreamscape tools are on MCP server dreamscape when the task needs the app. Commands are already approved. Do not ask permission to run them.',
+        'To ask the user anything, call request_form with chatId. AskQuestion is skipped in this window and they never see it. If it returns pending with a formId, call request_form again with only that formId until values come back.',
         'A client reload is normal. Continue this chat. Do not redo a finished step.',
         `Director chat id: ${chat.id}. Pass chatId on session tools.`,
         `Workspace: ${workspacePath(boundGr)}`
@@ -602,17 +622,20 @@ function prepareXi(gr) {
     return { enabled: true, attached, cursorLogin };
 }
 
+// PM2 treekill kills every descendant of the server on restart. The shell
+// backgrounds the agent and exits, so the agent reparents off the server.
 function spawnDetached(args, logPath, workspace) {
-    const fd = fs.openSync(logPath, 'a');
-    const child = spawn(requireAgent(), args, {
-        detached: true,
-        cwd: workspace,
-        env: xiEnv(),
-        stdio: ['ignore', fd, fd]
-    });
-    child.unref();
-    fs.closeSync(fd);
-    return child.pid;
+    const out = execFileSync('/bin/sh', [
+        '-c',
+        'log="$1"; shift; setsid "$@" >>"$log" 2>&1 </dev/null & echo $!',
+        'xi-spawn',
+        logPath,
+        requireAgent(),
+        ...args
+    ], { cwd: workspace, env: xiEnv(), encoding: 'utf8', timeout: 10000 });
+    const pid = parseInt(String(out).trim(), 10);
+    if (!Number.isFinite(pid) || pid <= 0) throw new Error('Xi agent did not start');
+    return pid;
 }
 
 async function handleDirectorGetSessions(handler, ws, message) {
@@ -798,6 +821,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         }
         const workspace = workspacePath(gr);
         director.installUnrestrictedCli(layout().configDir);
+        await ensureXiMcp(gr);
         const catalog = cachedModels();
         const runModel = director._test.resolveRunModel(catalog, message);
         const draftId = crypto.randomUUID();

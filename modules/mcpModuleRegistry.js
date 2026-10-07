@@ -26,8 +26,8 @@ const MODULE_DEFS = {
             'get_session_state', 'get_studio_state', 'get_open_windows', 'set_window', 'open_application',
             'get_calculator', 'set_calculator',
             'offer_director_window', 'get_client_physics',
-            'set_session_title', 'set_session_tasks', 'set_session_task', 'get_session_tasks', 'close_session_tasks',
-            'offer_workspace_switch', 'show_chat_image', 'request_form',
+            'set_session_title', 'set_session_type', 'set_session_tasks', 'set_session_task', 'get_session_tasks', 'close_session_tasks',
+            'offer_workspace_switch', 'show_chat_image', 'request_form', 'deliver_rentan',
             'list_clients', 'bind_session', 'apply_studio_changes', 'print_studio', 'run_client_js', 'inspect_elements',
             'update_client', 'restart_client',
             'get_linkxi_persona', 'save_linkxi_persona',
@@ -51,7 +51,7 @@ const MODULE_DEFS = {
         scope: 'workspace',
         label: 'Core Workspace',
         description: 'Workspace and desktop management',
-        tools: ['get_workspaces', 'scrap_images', 'toggle_favorite']
+        tools: ['get_workspaces', 'get_workspace_config', 'scrap_images', 'toggle_favorite']
     },
     core_search: {
         id: 'core_search',

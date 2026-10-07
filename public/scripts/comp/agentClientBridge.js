@@ -1139,7 +1139,9 @@
                 replyAgentSessionResult(requestId, {
                     ok: true,
                     clientId: sessionClientId,
-                    dynamicConfig: readDynamicPhysicsConfig()
+                    dynamicConfig: readDynamicPhysicsConfig(),
+                    // readDynamicGenerationSnapshot: public/scripts/comp/dynamicGenerationLockState.js
+                    dynamicGeneration: readDynamicGenerationSnapshot()
                 });
                 return;
             }

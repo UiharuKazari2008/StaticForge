@@ -228,10 +228,17 @@ Enable or configure the **existing** Studio dynamic-generation toggle (no new ch
 | `tod` / `weather` / `season` | string, `true` (auto), or `false`/`null` (off) | Existing carousel buttons |
 | `location` | string | Weather button `data-location` |
 | `directive` | string | Creative directive textarea |
-| `force_strategy` / `tool_passes` / `dialogs_count` | string / number | Existing carousel dataset |
+| `force_strategy` / `tool_passes` / `dialogs_count` | string / number | Existing carousel dataset (legacy Grok knobs; Wren ignores them) |
+| `integrated` | boolean | Write-only. `true` says you already baked the resolved scene into prompt/uc/characters/expanders. Studio stamps `compiled_prompt` as agent-integrated, so its next Generate does not ask Wren again. |
 | `creative` | boolean | Rentan creative button (`#creativeBtn`) on/off, with the same side effects as clicking it |
 | `creative_clothing` / `creative_action` | boolean | Creative button context-menu toggles (clothing / action) |
 | `novel` | boolean or object | Novel button. `true`/`false`, or `{ enabled, tone, style, explicitness, persuasiveness, auto_generate }`. Enable is refused (left off) until there is a creative directive or a loaded novel — send `directive` in the same object. Does not open the Novel editor window. |
+
+Read-only on the snapshot: `baked` (true when Studio's `compiled_prompt` is agent-integrated, Freeze Changes is on, or the Wren cache has not expired) and `bakedUntil` (ISO expiry). While `enabled` is true and `baked` is not, MCP `print_studio` and `apply_studio_changes` `autoGenerate` return `needsIntegration`.
+
+**Rentan scene expanders.** The resolved scene lives in `expanders` whose prefix starts with `dg_` (`dg_time`, `dg_weather`, `dg_season`, `dg_holiday`, `dg_scene`), referenced as `!dg_weather` in the prompt or a character. Wren owns every `dg_` entry: a resolve replaces all of them and leaves your other expanders alone. A human Studio Generate with Rentan on and a stale scene asks Wren in a hidden per-workspace Director chat (thought clouds in the progress overlay), rewrites the request, and mirrors the result back onto Studio as one Change JSON (`expanders`, `prompt`, `uc`, `characters`). The scene is reused until the same expiry as before (time period, weather, cloud cover, temperature), until a `dg_` expander is removed or edited or its `!dg_` token leaves the prompt, or until the Rentan toggles or directive change. Other prompt edits keep the scene. The carousel menu's **Open session in Director** opens that chat.
+
+Prints with this stamp say `forge_data.software: "StaticForge v1.1"`. `v1.0` prints carry Tendai (`compiled_prompt.text_replacements` with `select_text`). Upscales and edits keep the file's version. Loading a `v1.0` print with Freeze Changes on replays its Tendai; otherwise Wren re-resolves the scene.
 
 ### `director` — optional attached director prompt
 

@@ -886,7 +886,7 @@ async function handleManualPreviewImageContextMenuAction(event) {
                     };
 
                     // Open the expansion modal
-                    openImageExpansionModal(filename, imageDimensions);
+                    openImageExpansionModal(filename, imageDimensions, 'studio');
                 } catch (error) {
                     console.error('Expand error:', error);
                     showGlassToast('error', 'Error', error.message || 'Failed to open expansion modal', false, 5000, '<i class="nai-cross"></i>');
@@ -5502,8 +5502,8 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
             updateProgressStatus('Getting Ready...');
             break;
         case 'streaming':
-            updateProgressStatus('Reading Response...');
-            addProgressReasoning((data?.reason ?? data?.reasoning ?? data?.toolReason));
+            updateProgressStatus(data?.status || 'Reading Response...');
+            addProgressReasoning((data?.reason ?? data?.reasoning ?? data?.toolReason), null, 'completed', data?.reasoningId);
             break;
         case 'tool_execution':
             if (overlay?.classList?.contains('hidden') && !isNewSession) return;
@@ -5782,12 +5782,21 @@ function addProgressReasoning(reason, toolName = null, toolState = 'completed', 
         }
     }
 
+    // A thought line still being written: grow its cloud instead of adding one
+    if (!toolName && toolReasoningId) {
+        const existingThought = document.getElementById(toolReasoningId);
+        if (existingThought) {
+            existingThought.firstElementChild.textContent = reason.trim();
+            return;
+        }
+    }
+
     // Create new div for this reasoning
     const reasonDiv = document.createElement('div');
     reasonDiv.className = 'progress-reasoning-item';
 
-    // Set ID if this is a tool
-    if (toolName && toolReasoningId) {
+    // Set ID for a tool or a growing thought line
+    if (toolReasoningId) {
         reasonDiv.id = toolReasoningId;
     }
 

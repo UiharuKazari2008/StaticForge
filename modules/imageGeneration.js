@@ -121,6 +121,7 @@ function mergeNovelForgeFieldsFromOpts(forgeData, opts) {
 
 // Import modules
 const { expandShorthandTags, cleanupPromptSyntax, applyDynamicReplacements, generatePromptHash, generateRequestHash, generateDirectiveHash, processDynamicGenerationCore, calculateDynamicExpiration, compileContext, formatContextForCarousel } = require('./dynamicGenerationHandlers');
+const { resolveDynagenWithWren } = require('./dynagenWren');
 const { buildPromptApplicationContext, mapProcessedToRaw } = require('./promptApplicationContext');
 
 const {
@@ -1689,6 +1690,7 @@ function stashPromptApplicationBaseline(body, preset, data) {
 
 const buildOptions = async (globalResources, body, preset = null, queryParams = {}, ws = null, handler = null, wsServer = null, stageData = null) => {
     bindRuntimeGlobalResources(globalResources);
+    await resolveDynagenWithWren(globalResources, body, preset, ws, handler, wsServer);
     const referenceMetadataDb = __runtimeGr.getReferenceMetadataDatabase();
     const allowPaid = body.allow_paid ? body.allow_paid : preset?.allow_paid;
 
@@ -2581,7 +2583,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 // Generate context for AI processing
                 const clientInfo = wsServer?.clients?.get(ws);
                 const clientIP = clientInfo?.clientIP || null;
-                contextForAI = await compileContext(__runtimeGr, dynaRequest, clientIP);
+                // resolveDynagenWithWren (modules/dynagenWren.js) already compiled this request's context
+                contextForAI = body._dynagenContext || await compileContext(__runtimeGr, dynaRequest, clientIP);
 
                 // Send context phase progress update when context is freshly compiled
                 if (ws && handler && contextForAI) {
@@ -2778,9 +2781,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 }
             }
 
-            // Temporary: Grok Web owns compile. Do not call the paid Director API.
+            // Rentan compile is Wren (modules/dynagenWren.js). This only stamps paths it skips (stages, compile_only).
             if (!hasValidCache) {
-                __runtimeGr.getLogger().normal('⏭️ Director API nooped — Grok Web owns dynamic generation');
+                __runtimeGr.getLogger().normal('⏭️ Director API nooped - Rentan compile runs in dynagenWren');
                 const existing = body.dynamic_generation.compiled_prompt;
                 body.dynamic_generation.compiled_prompt = {
                     success: true,
@@ -7772,14 +7775,14 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         };
 
         // Merge with override params (strip prompt-review-only keys)
-        const { expansionPromptOverride: _stripPromptOv, expansionUcOverride: _stripUcOv, requestedContent: _stripReqContent, ...overrideForGen } = overrideParams || {};
+        const { expansionPromptOverride: _stripPromptOv, expansionUcOverride: _stripUcOv, expansionCharacterPromptsOverride: charactersOverride, requestedContent: _stripReqContent, ...overrideForGen } = overrideParams || {};
         const genParams = { ...defaultParams, ...overrideForGen };
 
         // Build request body for inpainting
         const requestBody = {
             prompt: expansionPrompt,
             uc: ucForRequest,
-            characterPrompts: originalCharacters, // Use original characters from metadata
+            characterPrompts: Array.isArray(charactersOverride) ? charactersOverride : originalCharacters,
             model: genParams.model,
             steps: genParams.steps,
             guidance: genParams.guidance,
