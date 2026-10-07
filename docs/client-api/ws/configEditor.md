@@ -10,7 +10,7 @@ Maps in `config-maps/` overlay live JSON with sparse type/label rules. **Generat
 
 Every value sent to the client (`config_editor_get_node` `nodeValue` / children, `config_editor_search` previews) is masked recursively. A leaf is secret when its map rule (or nearest ancestor rule) has `secret: true` (`secret: false` opts out), when it is any `secureConfig` leaf, or when it uses a legacy secret key name. Secret leaves show `••••••••` and are never matched by value search.
 
-`config_editor_reveal_secret` is admin-only and works on one secret leaf at a time (not objects, not non-secret paths). The server log records `configId` + `path`, never the value.
+`config_editor_reveal_secret` is admin-only and works on one secret leaf at a time (not objects, not non-secret paths). The server log records `configId`, `path`, and who asked (`userType`, `sessionId`, `applicationKeyId`; missing fields log as `-`), never the value.
 
 Saving the `••••••••` placeholder, as a leaf or nested inside an object, keeps the stored value. Enum coercion accepts `null` enums.
 
