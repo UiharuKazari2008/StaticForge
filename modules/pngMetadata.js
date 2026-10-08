@@ -10,6 +10,9 @@ const {
 } = require('./forgeSigning');
 const { qualityPresetStripCandidates } = require('./promptTextBoundary');
 
+// v1.1: dynamic_generation.compiled_prompt is a Wren/agent dg_ expander stamp; v1.0 is Tendai.
+const FORGE_SOFTWARE = 'StaticForge v1.1';
+
 // NovelAI image attestation public key (Ed25519 raw → SPKI)
 // https://github.com/NovelAI/novelai-image-metadata/blob/main/nai_sig.py
 const NAI_VERIFY_PUBKEY_B64 = 'Y2JcQAOhLwzwSDUJPNgL04nS0Tbqm7cSRc4xk0vRMic=';
@@ -290,7 +293,9 @@ class PngMetadata {
             if (!existingMetadata.forge_data) {
                 existingMetadata.forge_data = {};
             }
-            existingMetadata.forge_data.software = 'StaticForge v1.0';
+            if (!hasExistingForgeData || !existingMetadata.forge_data.software || forgeData.dynamic_generation) {
+                existingMetadata.forge_data.software = FORGE_SOFTWARE;
+            }
             if (!existingMetadata.forge_data.history) {
                 existingMetadata.forge_data.history = [];
             }
@@ -1483,7 +1488,7 @@ class PngMetadata {
 
             // Merge additional forge data (like upscaling info)
             existingMetadata.forge_data = { ...existingMetadata.forge_data, ...additionalForgeData };
-            existingMetadata.forge_data.software = 'StaticForge v1.0';
+            existingMetadata.forge_data.software = existingMetadata.forge_data.software || FORGE_SOFTWARE;
 
             // Ensure history array exists
             if (!existingMetadata.forge_data.history) {

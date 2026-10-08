@@ -24,7 +24,7 @@ const LOAD_MODES = new Set(['onDemand', 'startup']);
 /** Builtin Start / VFS launchIds — install must not steal these. */
 const RESERVED_LAUNCH_IDS = new Set([
     'workspace', 'studio', 'spellbook', 'reference', 'bracket-generation',
-    'encyclopedia', 'naxt', 'notebook', 'chat', 'chat-persona', 'explorer',
+    'encyclopedia', 'alchemy', 'naxt', 'notebook', 'chat', 'chat-persona', 'explorer',
     'run', 'import', 'presets', 'expanders', 'memories', 'config-editor',
     'character-db', 'event-viewer', 'explore-gallery', 'dynamic-quips',
     'novels', 'security-center', 'data-management', 'autofill-ranking',

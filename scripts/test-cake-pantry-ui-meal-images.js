@@ -69,8 +69,16 @@ function fakeDb(rows, state) {
             if (/FROM cake_pantry_log/.test(sql)) {
                 let out = rows.filter((r) => r.account_id === params[0]).slice().sort((a, b) => a.id - b.id);
                 if (/ORDER BY id DESC/.test(sql)) out = out.reverse();
-                if (/OFFSET \?/.test(sql)) out = out.slice(params[2], params[2] + params[1]);
-                else if (/LIMIT \?/.test(sql)) out = out.slice(0, params[1]);
+
+                if (/AND id < \?/.test(sql)) {
+                   const lastId = params[1];
+                   out = out.filter(r => r.id < lastId);
+                   const limit = params[2];
+                   if (limit) out = out.slice(0, limit);
+                } else {
+                   if (/OFFSET \?/.test(sql)) out = out.slice(params[2], params[2] + params[1]);
+                   else if (/LIMIT \?/.test(sql)) out = out.slice(0, params[1]);
+                }
                 return out.map((r) => ({ ...r }));
             }
             if (/FROM cake_pantry_state/.test(sql) && /work_pile_/.test(sql)) return [];
@@ -303,11 +311,11 @@ function fakeDb(rows, state) {
     assert.strictEqual(statusLim1.cake_log.length, 1);
     assert.strictEqual(statusLim1.last_before, img(216), 'get_menma_state logLimit=1 same rule');
     assert.strictEqual(statusLim1.last_after, img(217));
-    // pages past a long imageless streak
+    // pages past a long imageless streak (keyset pagination test)
     const streak = [logRow(1)];
     for (let i = 2; i <= 130; i++) streak.push(logRow(i, {}, { before_img: null, after_img: null }));
     const deep = await _test.findLatestMealImages('menma', { importStatus: { imported: true, db: fakeDb(streak, {}) } });
-    assert.strictEqual(deep.before, img(2));
+    assert.strictEqual(deep.before, img(2), 'Must correctly page past 50 imageless meals to find pair');
     assert.strictEqual(deep.meal_id, '1');
 
     // update_meal_images refreshes state.last_before/after to the newest pair

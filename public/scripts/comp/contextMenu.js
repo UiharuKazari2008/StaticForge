@@ -1443,6 +1443,7 @@ class ContextMenuController {
     createSection(section, target, sectionIndex) {
         const sectionElement = document.createElement('div');
         sectionElement.className = 'context-menu-section';
+        if (section.className) sectionElement.classList.add(section.className);
         section._element = sectionElement;
 
         switch (section.type) {

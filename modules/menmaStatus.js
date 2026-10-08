@@ -623,12 +623,15 @@ async function getCakeLogFromDb(db, accountId, limit = 50) {
  * still resolves. Returns { before, after, meal_id } or nulls.
  */
 async function getLatestMealImagesFromDb(db, accountId, pageSize = 50) {
-    let offset = 0;
+    let lastId = null;
     for (;;) {
-        const rows = await db.all(
-            'SELECT * FROM cake_pantry_log WHERE account_id = ? ORDER BY id DESC LIMIT ? OFFSET ?',
-            [accountId, pageSize, offset]
-        );
+        let query = 'SELECT * FROM cake_pantry_log WHERE account_id = ? ORDER BY id DESC LIMIT ?';
+        let params = [accountId, pageSize];
+        if (lastId != null) {
+            query = 'SELECT * FROM cake_pantry_log WHERE account_id = ? AND id < ? ORDER BY id DESC LIMIT ?';
+            params = [accountId, lastId, pageSize];
+        }
+        const rows = await db.all(query, params);
         if (!rows || rows.length === 0) break;
         for (const row of rows) {
             const entry = composeCakeLogEntry(row);
@@ -638,7 +641,7 @@ async function getLatestMealImagesFromDb(db, accountId, pageSize = 50) {
             }
         }
         if (rows.length < pageSize) break;
-        offset += rows.length;
+        lastId = rows[rows.length - 1].id;
     }
     return { before: null, after: null, meal_id: null };
 }

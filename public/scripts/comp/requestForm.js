@@ -74,7 +74,7 @@ function requestFormSelect(data) {
     const config = {
         position: 'anchor',
         anchorAlign: 'start',
-        sections: [{ type: 'list', items: [] }],
+        sections: [{ type: 'list', className: 'context-menu-section-wrap', items: [] }],
         beforeShow: () => {
             config.sections[0].items = options.map((option) => ({
                 text: option.label,

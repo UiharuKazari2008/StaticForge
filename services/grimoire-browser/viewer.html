@@ -256,8 +256,29 @@
         rttMs = rttMs ? (rttMs * 0.4 + rtt * 0.6) : rtt;
         send({ type: 'rtt', ms: Math.round(rttMs) });
       }
-    } else if (msg.type === 'popup' && msg.url) {
-      postParent({ type: 'grimoire-browser-popup', url: msg.url });
+    } else if (msg.type === 'popup' && (msg.url || msg.sessionId)) {
+      postParent({ type: 'grimoire-browser-popup', url: msg.url || '', sessionId: msg.sessionId || '', viewerToken: msg.viewerToken || '', tab: !!msg.tab });
+    } else if (msg.type === 'closed') {
+      closed = true;
+      postParent({ type: 'grimoire-browser-closed' });
+    } else if (msg.type === 'dialog' && msg.id) {
+      postParent({
+        type: 'grimoire-browser-dialog',
+        id: msg.id,
+        kind: msg.kind || 'alert',
+        message: msg.message || '',
+        defaultValue: msg.defaultValue || '',
+        realm: msg.realm || ''
+      });
+    } else if (msg.type === 'select' && Array.isArray(msg.options)) {
+      var box = canvas.getBoundingClientRect();
+      postParent({
+        type: 'grimoire-browser-select',
+        clientX: box.left + msg.x * (box.width / (meta.deviceWidth || box.width || 1)),
+        clientY: box.top + msg.y * (box.height / (meta.deviceHeight || box.height || 1)),
+        options: msg.options,
+        selected: msg.selected
+      });
     } else if (msg.type === 'status') {
       showTabStatus(msg.state || 'failed', msg.url || lastUrl);
     } else if (msg.type === 'navigating' || msg.type === 'location') {
@@ -282,8 +303,11 @@
         text: msg.text || '',
         href: msg.href || '',
         src: msg.src || '',
-        alt: msg.alt || ''
+        alt: msg.alt || '',
+        editable: !!msg.editable
       }, '*');
+    } else if (msg.type === 'restarting') {
+      restarting = true;
     } else if (msg.type === 'clipboard') {
       var text = msg.text || '';
       if (pendingClipboard) {
@@ -294,6 +318,10 @@
       if (window.parent && window.parent !== window) {
         window.parent.postMessage({ type: 'grimoire-browser-clipboard', text: text }, '*');
       }
+    } else if (msg.type === 'download-progress') {
+      postParent({ type: 'grimoire-browser-download-progress', id: msg.id || '', filename: msg.filename || 'download', received: msg.received || 0, total: msg.total || 0, canceled: !!msg.canceled });
+    } else if (msg.type === 'progress') {
+      postParent({ type: 'grimoire-browser-progress', value: Number(msg.value) || 0 });
     } else if (msg.type === 'download' && window.parent && window.parent !== window) {
       window.parent.postMessage({
         type: 'grimoire-browser-download',
@@ -362,10 +390,18 @@
   var lastUrl = '';
   var connected = false;
   var tabState = 'ok';
+  var restarting = false;
+  var closed = false;
   var statusEl = document.getElementById('tabStatus');
 
   function showTabStatus(state, url) {
+    if (closed) return;
     if (url) lastUrl = url;
+    if (restarting && state === 'failed') {
+      restarting = false;
+      postParent({ type: 'grimoire-browser-reopen', url: lastUrl });
+      return;
+    }
     tabState = state || 'failed';
     if (tabState === 'ok') {
       statusEl.hidden = true;
@@ -378,8 +414,8 @@
       : "This page isn't responding";
     document.getElementById('tabStatusUrl').textContent = lastUrl;
     document.getElementById('tabStatusDetail').textContent = failed
-      ? 'The remote browser tab is no longer running.'
-      : 'The remote tab has stopped answering. You can wait, or reload it.';
+      ? 'Alchemy could not keep this page open. Reload to try again.'
+      : 'Alchemy is waiting on this page. You can wait, or reload it.';
     statusEl.hidden = false;
     postParent({ type: 'grimoire-browser-status', state: tabState, url: lastUrl });
   }
@@ -500,7 +536,65 @@
     };
   }
 
+  var audio = null;
+  var audioWanted = false;
+  var audioVolume = 1;
+  var audioFails = 0;
+  var audioTrimTimer = 0;
+  var audioUrl = (relay ? '/api/grimoire-browser' : '') + '/sessions/' + encodeURIComponent(sessionId) + '/audio?t=' + encodeURIComponent(token);
+
+  function playAudio() {
+    if (audio && audio.paused) audio.play().catch(function () {});
+  }
+
+  // A live stream keeps buffering; jump to the newest audio so it stays in step with the picture.
+  function trimAudioLag() {
+    if (!audio || audio.paused || !audio.buffered.length) return;
+    var end = audio.buffered.end(audio.buffered.length - 1);
+    if (end - audio.currentTime > 0.6) audio.currentTime = end - 0.15;
+  }
+
+  function stopAudio() {
+    clearInterval(audioTrimTimer);
+    if (!audio) return;
+    var el = audio;
+    audio = null;
+    el.pause();
+    el.removeAttribute('src');
+    el.load();
+  }
+
+  function startAudio() {
+    if (audio || !audioWanted) return;
+    var el = new Audio(audioUrl + '&n=' + Date.now());
+    el.volume = audioVolume;
+    audio = el;
+    el.addEventListener('playing', function () { audioFails = 0; });
+    var lost = function () {
+      if (audio !== el) return;
+      stopAudio();
+      audioFails += 1;
+      if (audioWanted && audioFails < 4) setTimeout(startAudio, 2000 * audioFails);
+    };
+    el.addEventListener('error', lost);
+    el.addEventListener('ended', lost);
+    playAudio();
+    audioTrimTimer = setInterval(trimAudioLag, 1000);
+  }
+
+  // The parent turns audio on for the focused Alchemy window only; the server ends any other listener.
+  function setAudio(on, volume) {
+    if (typeof volume === 'number') audioVolume = Math.max(0, Math.min(1, volume));
+    if (audio) audio.volume = audioVolume;
+    if (on === audioWanted) return;
+    audioWanted = on;
+    audioFails = 0;
+    if (on) startAudio();
+    else stopAudio();
+  }
+
   canvas.addEventListener('pointerdown', function (ev) {
+    playAudio();
     if (ev.button === 2) return;
     canvas.focus();
     try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
@@ -591,6 +685,27 @@
       send({ type: 'navigate', url: data.url });
     } else if (data.type === 'grimoire-browser-reload') {
       send({ type: 'reload' });
+    } else if (data.type === 'grimoire-browser-dialog-reply' && data.id) {
+      send({
+        type: 'dialog-reply',
+        id: data.id,
+        accept: !!data.accept,
+        text: data.text || '',
+        username: data.username || '',
+        password: data.password || ''
+      });
+    } else if (data.type === 'grimoire-browser-audio') {
+      setAudio(!!data.on, data.volume);
+    } else if (data.type === 'grimoire-browser-select-pick' && typeof data.index === 'number') {
+      send({ type: 'select-pick', index: data.index });
+    } else if (data.type === 'grimoire-browser-settings' && data.settings) {
+      send({
+        type: 'settings',
+        jpegQuality: data.settings.jpegQuality,
+        minFps: data.settings.minFps,
+        maxFps: data.settings.maxFps,
+        regionQuality: data.settings.regionQuality
+      });
     } else if (data.type === 'grimoire-browser-paste' && typeof data.text === 'string' && data.text) {
       send({ type: 'paste', text: data.text });
     } else if (data.type === 'grimoire-browser-key' && data.kind) {

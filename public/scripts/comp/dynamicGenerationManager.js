@@ -368,6 +368,14 @@ function setupDynamicGenerationContextMenus() {
                         }
                     },
                     {
+                        text: 'Open session in Director',
+                        action: 'openRentanSession',
+                        icon: 'fas fa-comments',
+                        loadfn: function (item) {
+                            item.disabled = !window.dynamicGenerationData?.compiled_prompt?.wren_session_id;
+                        }
+                    },
+                    {
                         text: 'Compile to Prompts',
                         action: 'compileToPrompts',
                         icon: 'fas fa-file-pen',
@@ -382,382 +390,10 @@ function setupDynamicGenerationContextMenus() {
                         keepMenuOpen: true,
                         loadfn: function (item, target) {
                             const forceRefreshEnabled = dynamicCarousel?.dataset.forceRefresh === 'true';
-                            const hasPreviousResponse = Boolean(window.dynamicGenerationData?.compiled_prompt?.previousResponseId);
-                            const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates === 'true';
-
-                            // Only enable if chain updates are on and we have previous response
-                            item.disabled = !hasPreviousResponse;
+                            item.disabled = !window.dynamicGenerationData?.compiled_prompt;
                             item.checked = forceRefreshEnabled;
                             item.className = forceRefreshEnabled ? 'text-warning' : '';
                         }
-                    },
-                    {
-                        text: 'Fast Mode',
-                        action: 'toggleFastMode',
-                        icon: 'fas fa-bolt',
-                        keepMenuOpen: true,
-                        loadfn: function (item, target) {
-                            const fastModeEnabled = dynamicCarousel?.dataset.fastMode === 'true';
-                            item.checked = fastModeEnabled;
-                            item.className = fastModeEnabled ? 'text-success' : '';
-                        }
-                    },
-                    {
-                        text: 'Optimization',
-                        icon: 'fas fa-merge',
-                        submenu: [
-                            {
-                                text: 'Enable',
-                                icon: 'fas fa-cog',
-                                action: 'toggleOptimize',
-                                keepMenuOpen: true,
-                                loadfn: function (item, target) {
-                                    const optimizeEnabled = dynamicCarousel?.dataset.optimizeEnabled === 'true';
-                                    item.checked = optimizeEnabled;
-                                    item.className = optimizeEnabled ? 'text-success' : '';
-                                }
-                            },
-                            {
-                                text: 'Token Optimization',
-                                icon: 'fas fa-cash-register',
-                                action: 'toggleTokenCount',
-                                keepMenuOpen: true,
-                                loadfn: function (item, target) {
-                                    const tokenCountEnabled = dynamicCarousel?.dataset.tokenCount === 'true';
-                                    item.checked = tokenCountEnabled;
-                                    item.className = tokenCountEnabled ? 'text-success' : '';
-                                }
-                            },
-                            {
-                                text: 'Two-Pass',
-                                icon: 'fas fa-layer-group',
-                                action: 'toggleTwoStage',
-                                keepMenuOpen: true,
-                                loadfn: function (item, target) {
-                                    const fastModeEnabled = dynamicCarousel?.dataset.fastMode === 'true';
-                                    const twoStageEnabled = dynamicCarousel?.dataset.twoStage === 'true';
-                                    const tokenCountEnabled = dynamicCarousel?.dataset.tokenCount === 'true';
-
-                                    item.checked = twoStageEnabled;
-                                    item.className = twoStageEnabled ? 'text-success' : '';
-                                    // Disable when optimize is off or fast mode is enabled
-                                    item.disabled = !tokenCountEnabled || fastModeEnabled;
-                                }
-                            },
-                            {
-                                text: 'Chain Updates',
-                                action: 'toggleChainUpdates',
-                                icon: 'fas fa-link-horizontal',
-                                keepMenuOpen: true,
-                                loadfn: function (item, target) {
-                                    // Default to false (disabled) if not set
-                                    const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates === 'true';
-                                    const hasPreviousResponse = Boolean(window.dynamicGenerationData?.compiled_prompt?.previousResponseId);
-
-                                    item.disabled = !hasPreviousResponse;
-                                    item.checked = chainUpdatesEnabled;
-                                    item.className = chainUpdatesEnabled ? 'text-info' : '';
-                                }
-                            },
-                            {
-                                text: 'Visual Awareness',
-                                separator: true
-                            },
-                            {
-                                text: 'Prompt Preview',
-                                icon: 'fas fa-image-polaroid',
-                                action: 'toggleInitialPromptAware',
-                                keepMenuOpen: true,
-                                loadfn: function (item, target) {
-                                    const initialPromptAwareEnabled = dynamicCarousel?.dataset.initialPromptAware === 'true';
-                                    item.checked = initialPromptAwareEnabled;
-                                    item.className = initialPromptAwareEnabled ? 'text-success' : '';
-                                }
-                            },
-                            {
-                                text: 'Stage Results',
-                                icon: 'fas fa-arrow-down-triangle-square',
-                                action: 'togglePipelineAware',
-                                keepMenuOpen: true,
-                                loadfn: function (item, target) {
-                                    const pipelineAwareEnabled = dynamicCarousel?.dataset.pipelineAware === 'true';
-                                    item.checked = pipelineAwareEnabled;
-                                    item.className = pipelineAwareEnabled ? 'text-success' : '';
-                                    item.disabled = !(document.getElementById('pipelineStagesContainer')?.children?.length > 0);
-                                }
-                            }
-                        ]
-                    },
-                    {
-                        text: 'Strategy',
-                        icon: 'fas fa-route',
-                        valueDisplay: function (target) {
-                            const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
-                            return currentValue?.toUpperCase() || 'Auto';
-                        },
-                        submenu: [
-                            {
-                                text: 'Auto',
-                                action: 'setCreativeDirectiveStrategy',
-                                value: null,
-                                loadfn: function (item, target) {
-                                    const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
-                                    item.checked = currentValue === '' || currentValue === null;
-                                }
-                            },
-                            {
-                                text: 'Tags Only',
-                                action: 'setCreativeDirectiveStrategy',
-                                value: 'A',
-                                loadfn: function (item, target) {
-                                    const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
-                                    item.checked = currentValue === 'A';
-                                }
-                            },
-                            {
-                                text: 'Tags + Modifiers',
-                                action: 'setCreativeDirectiveStrategy',
-                                value: 'B',
-                                loadfn: function (item, target) {
-                                    const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
-                                    item.checked = currentValue === 'B';
-                                }
-                            },
-                            {
-                                text: 'Descriptive Tags',
-                                action: 'setCreativeDirectiveStrategy',
-                                value: 'C',
-                                loadfn: function (item, target) {
-                                    const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
-                                    item.checked = currentValue === 'C';
-                                }
-                            }
-                        ]
-                    },
-                    {
-                        text: 'Tool Calls',
-                        icon: 'fas fa-hammer',
-                        valueDisplay: function (target) {
-                            return getEffectiveDynamicToolPasses().toString();
-                        },
-                        submenu: [
-                            {
-                                text: '4',
-                                action: 'setCreativeDirectiveToolPasses',
-                                value: 4,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicToolPasses() === 4;
-                                }
-                            },
-                            {
-                                text: '6',
-                                action: 'setCreativeDirectiveToolPasses',
-                                value: 6,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicToolPasses() === 6;
-                                }
-                            },
-                            {
-                                text: '8',
-                                action: 'setCreativeDirectiveToolPasses',
-                                value: 8,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicToolPasses() === 8;
-                                }
-                            },
-                            {
-                                text: '10',
-                                action: 'setCreativeDirectiveToolPasses',
-                                value: 10,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicToolPasses() === 10;
-                                }
-                            },
-                            {
-                                text: '12',
-                                action: 'setCreativeDirectiveToolPasses',
-                                value: 12,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicToolPasses() === 12;
-                                }
-                            },
-                            {
-                                text: '16',
-                                action: 'setCreativeDirectiveToolPasses',
-                                value: 16,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicToolPasses() === 16;
-                                }
-                            },
-                            {
-                                text: '20',
-                                action: 'setCreativeDirectiveToolPasses',
-                                value: 20,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicToolPasses() === 20;
-                                }
-                            }
-                        ]
-                    },
-                    {
-                        text: 'Dialogs',
-                        icon: 'fas fa-comments',
-                        valueDisplay: function (target) {
-                            const currentValue = getEffectiveDynamicDialogsCount();
-                            return currentValue === 0 ? 'Off' : currentValue.toString();
-                        },
-                        submenu: [
-                            {
-                                text: 'Disable',
-                                icon: 'fas fa-times-circle',
-                                action: 'disableCreativeDirectiveDialogs',
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicDialogsCount() === 0;
-                                }
-                            },
-                            { separator: true },
-                            {
-                                text: '4',
-                                action: 'setCreativeDirectiveDialogs',
-                                value: 4,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicDialogsCount() === 4;
-                                }
-                            },
-                            {
-                                text: '6',
-                                action: 'setCreativeDirectiveDialogs',
-                                value: 6,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicDialogsCount() === 6;
-                                }
-                            },
-                            {
-                                text: '8',
-                                action: 'setCreativeDirectiveDialogs',
-                                value: 8,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicDialogsCount() === 8;
-                                }
-                            },
-                            {
-                                text: '10',
-                                action: 'setCreativeDirectiveDialogs',
-                                value: 10,
-                                loadfn: function (item, target) {
-                                    item.checked = getEffectiveDynamicDialogsCount() === 10;
-                                }
-                            }
-                        ]
-                    },
-                    {
-                        text: 'Temperature',
-                        icon: 'fas fa-thermometer-three-quarters',
-                        valueDisplay: function (target) {
-                            return formatDynamicAiTemperature(getEffectiveDynamicAiTemperature());
-                        },
-                        submenu: [
-                            {
-                                text: 'Auto',
-                                icon: 'fas fa-wand-magic-sparkles',
-                                action: 'clearAiTemperature',
-                                loadfn: function (item, target) {
-                                    item.checked = !hasExplicitDynamicAiTemperature();
-                                }
-                            },
-                            { separator: true },
-                            {
-                                text: 'Deterministic (0.0)',
-                                icon: 'fas fa-lock',
-                                action: 'setAiTemperature',
-                                value: 0.0,
-                                loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '0' || aiTemp === '0.0';
-                                }
-                            },
-                            {
-                                text: 'Very Low (0.1)',
-                                icon: 'fas fa-snowflake',
-                                action: 'setAiTemperature',
-                                value: 0.1,
-                                loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '0.1';
-                                }
-                            },
-                            {
-                                text: 'Low (0.3)',
-                                icon: 'fas fa-thermometer-quarter',
-                                action: 'setAiTemperature',
-                                value: 0.3,
-                                loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '0.3';
-                                }
-                            },
-                            {
-                                text: 'Medium-Low (0.5)',
-                                icon: 'fas fa-thermometer-half',
-                                action: 'setAiTemperature',
-                                value: 0.5,
-                                loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '0.5';
-                                }
-                            },
-                            {
-                                text: 'Medium (0.7)',
-                                icon: 'fas fa-thermometer-half',
-                                action: 'setAiTemperature',
-                                value: 0.7,
-                                loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '0.7';
-                                }
-                            },
-                            { separator: true },
-                            {
-                                text: 'Medium-High (1.0)',
-                                icon: 'fas fa-thermometer-three-quarters',
-                                action: 'setAiTemperature',
-                                value: 1.0,
-                                loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '1' || aiTemp === '1.0';
-                                }
-                            },
-                            {
-                                text: 'High (1.2)',
-                                icon: 'fas fa-thermometer-full',
-                                action: 'setAiTemperature',
-                                value: 1.2,
-                                loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '1.2';
-                                }
-                            },
-                            {
-                                text: 'Very High (1.5)',
-                                icon: 'fas fa-fire',
-                                action: 'setAiTemperature',
-                                value: 1.5,
-                                loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '1.5';
-                                }
-                            },
-                            {
-                                text: 'Maximum (2.0)',
-                                icon: 'fas fa-fire-flame-curved',
-                                action: 'setAiTemperature',
-                                value: 2.0,
-                                loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '2' || aiTemp === '2.0';
-                                }
-                            }
-                        ]
                     },
                     {
                         text: 'Freeze Data',
@@ -981,7 +617,7 @@ function handleDynamicGenerationContextMenuAction(e) {
         'toggleWeatherForecast','setSeasonUseDate','togglePipelineAware','toggleInitialPromptAware','toggleFastMode',
         'toggleLockContext','toggleLockResults','toggleChainUpdates','toggleForceRefresh','toggleExpirePreview',
         'setCreativeDirectiveStrategy','setCreativeDirectiveToolPasses','setCreativeDirectiveDialogs',
-        'disableCreativeDirectiveDialogs','setAiTemperature','clearAiTemperature'
+        'disableCreativeDirectiveDialogs','setAiTemperature','clearAiTemperature','openRentanSession'
     ]);
     if (!dynGenActions.has(action)) return false;
 
@@ -1050,6 +686,14 @@ function handleDynamicGenerationContextMenuAction(e) {
         } else if (action === 'showInspector') {
             // public/scripts/comp/featureLoader.js
             void featureLoader.loadFeature('compiled_prompt_inspector').then(() => showCompiledPromptModal());
+        } else if (action === 'openRentanSession') {
+            const rentanSessionId = window.dynamicGenerationData?.compiled_prompt?.wren_session_id;
+            // initializeDirector / Director.openSessionInWindow: public/scripts/comp/director.js
+            if (rentanSessionId && window.directorInstance) {
+                void window.directorInstance.openSessionInWindow(rentanSessionId);
+            } else if (rentanSessionId) {
+                void initializeDirector().then(() => window.directorInstance.openSessionInWindow(rentanSessionId));
+            }
         } else if (action === 'compileToPrompts') {
             // startCompileToPrompts: compileToPromptsApplet.js
             startCompileToPrompts();

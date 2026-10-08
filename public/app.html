@@ -3375,6 +3375,12 @@
                     </div>
                 </div>
 
+                <div id="expansionDirectorGroup" class="form-group">
+                    <label for="expansionDirectorNote">Director Note</label>
+                    <textarea id="expansionDirectorNote" class="form-control hover-show colored" rows="2"
+                        placeholder="What should fill the new area (optional)"></textarea>
+                </div>
+
                 <!-- Advanced Options Section -->
                 <div id="expansionAdvancedOptions" class="hidden">
                     <div class="form-group">
@@ -3468,6 +3474,10 @@
                         <button type="button" id="expansionEditCompiledPromptBtn" class="btn-secondary indicator"
                             data-state="off" title="Edit compiled prompt (optional)">
                             <i class="fas fa-align-left"></i>
+                        </button>
+                        <button type="button" id="expansionDirectorToggle" class="btn-secondary indicator"
+                            data-state="off" title="Director: Wren writes the new-area prompt and runs the expand">
+                            <i class="fas fa-clapperboard"></i>
                         </button>
                     </div>
                     <div class="controls-flex-right">
@@ -6943,8 +6953,8 @@ Examples:
                         </button>
                     </div>
                 </div>
-                <button type="button" class="btn-secondary" id="grimoireAddressSiteBtn" title="Browser, wiki page, or wiki search">
-                    <i class="fas fa-book-open"></i>
+                <button type="button" class="btn-secondary" id="grimoireAddressSiteBtn" title="Menu">
+                    <i class="fas fa-bars"></i>
                 </button>
             </div>
         </div>
@@ -8419,6 +8429,10 @@ Examples:
                 <div class="service-worker-tray-icon taskbar-tray-icon hidden" id="serviceWorkerTrayIcon"
                     title="Service Worker">
                     <i class="fas fa-hard-drive" id="serviceWorkerTrayIconGlyph"></i>
+                </div>
+                <!-- Alchemy Audio (grimoireRemoteBrowser.js grimoireShowAudioMenu) -->
+                <div class="taskbar-tray-icon hidden" id="alchemyAudioTrayIcon" title="Alchemy audio">
+                    <i class="fas fa-volume-high"></i>
                 </div>
                 <!-- Ping Warning Indicator -->
                 <div class="ping-warning-indicator taskbar-tray-icon hidden" id="pingWarningIndicator">

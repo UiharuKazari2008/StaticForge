@@ -385,11 +385,9 @@ html.disable-blur .director-session-overlay {
     transform: translateX(100%);
 }
 
-/* Xi is a coding chat. Wren's print thumbnails, quick tasks, and browser stills stay off. */
+/* Xi is a coding chat. Wren's print thumbnails and browser stills stay off. Xi quick tasks: DIRECTOR_XI_QUICK_STARTS (director.js) */
 #directorCommonHeader[data-persona="xi"] #directorSessionPreviewContainer,
 #directorCommonHeader[data-persona="xi"] #directorHeaderActionsNewSession,
-#directorContainer[data-persona="xi"] [data-quick-start],
-#directorWindow[data-persona="xi"] [data-quick-start],
 #directorContainer[data-persona="xi"] .director-session-item > .director-session-preview,
 #directorWindow[data-persona="xi"] #directorSessionImagesPane,
 #directorWindow[data-persona="xi"] #directorBrowserPane {

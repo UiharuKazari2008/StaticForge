@@ -12,6 +12,10 @@ const {
     normalizeImageGenerationSettings,
     mergeImageGenerationSettingsPatch
 } = require('./imageGenerationSettings');
+const {
+    normalizeAlchemySettings,
+    mergeAlchemySettingsPatch
+} = require('./grimoireBrowserBridge');
 const grimoireDomainRegistry = require('./grimoireDomainRegistry');
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
 const wsMessageDispatcher = require('./ws/wsMessageDispatcher');
@@ -587,7 +591,8 @@ class WebSocketMessageHandlers {
             },
             autofillSearch: normalizeAutofillSearchSettings(base.autofillSearch),
             remoteAccess: normalizeRemoteAccessSettings(base.remoteAccess),
-            imageGeneration: normalizeImageGenerationSettings(base.imageGeneration)
+            imageGeneration: normalizeImageGenerationSettings(base.imageGeneration),
+            alchemy: normalizeAlchemySettings(base.alchemy)
         };
     }
 
@@ -642,6 +647,9 @@ class WebSocketMessageHandlers {
         }
         if (patch.imageGeneration && typeof patch.imageGeneration === 'object') {
             out.imageGeneration = mergeImageGenerationSettingsPatch(out.imageGeneration, patch.imageGeneration);
+        }
+        if (patch.alchemy && typeof patch.alchemy === 'object') {
+            out.alchemy = mergeAlchemySettingsPatch(out.alchemy, patch.alchemy);
         }
         return out;
     }
@@ -1305,6 +1313,8 @@ class WebSocketMessageHandlers {
                 hasDynamicGen: progressData.hasDynamicGen || false,
                 isUpscaling: progressData.isUpscaling || false,
                 reasoning: progressData.reasoning || null, // for 3rd line display
+                status: progressData.status || null, // overlay status line override (Rentan / Wren)
+                reasoningId: progressData.reasoningId || null, // same id updates that overlay bubble in place
                 toolName: progressData.toolName || null, // tool name for icon/styling
                 toolReason: progressData.toolReason || null, // tool-specific reason
                 imageData, // omitted when connection is slow or high-latency

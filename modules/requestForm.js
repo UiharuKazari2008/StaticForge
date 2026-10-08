@@ -4,7 +4,8 @@ const crypto = require('crypto');
 
 const FORM_TYPES = new Set(['text', 'textmulti', 'prompt', 'bool', 'select', 'int', 'number']);
 const MAX_FIELDS = 12;
-const WAIT_MS = 8 * 60 * 1000;
+const WAIT_MS = 30 * 60 * 1000;
+const POLL_MS = 45 * 1000;
 const pending = new Map();
 
 function fieldId(field, index) {
@@ -75,31 +76,63 @@ function broadcastForm(globalResources, packet) {
     return true;
 }
 
+function settleRequestForm(id, answer) {
+    const row = pending.get(id);
+    if (!row) return;
+    if (row.waiter) {
+        clearTimeout(row.waiter.timer);
+        clearTimeout(row.timer);
+        pending.delete(id);
+        row.waiter.resolve(answer);
+        return;
+    }
+    row.answer = answer;
+}
+
 function askRequestForm(globalResources, spec) {
     const id = crypto.randomBytes(8).toString('hex');
     const sent = broadcastForm(globalResources, Object.assign({ id }, spec));
     if (!sent) {
         const error = new Error('No client is connected to show the form');
         error.code = 'NOT_BOUND';
-        return Promise.reject(error);
+        throw error;
+    }
+    const timer = setTimeout(() => {
+        settleRequestForm(id, { id, cancelled: true, timedOut: true, values: null });
+        pending.delete(id);
+    }, WAIT_MS);
+    pending.set(id, { timer, waiter: null, answer: null });
+    return id;
+}
+
+// MCP clients (Cursor) drop a tools/call after about 60s, so one call never waits longer than POLL_MS.
+function awaitRequestForm(id) {
+    const row = pending.get(id);
+    if (!row) return Promise.resolve({ id, cancelled: true, timedOut: true, values: null, unknown: true });
+    if (row.answer) {
+        clearTimeout(row.timer);
+        pending.delete(id);
+        return Promise.resolve(row.answer);
+    }
+    if (row.waiter) {
+        clearTimeout(row.waiter.timer);
+        row.waiter.resolve({ id, pending: true });
     }
     return new Promise((resolve) => {
-        const timer = setTimeout(() => {
-            pending.delete(id);
-            resolve({ id, cancelled: true, timedOut: true, values: null });
-        }, WAIT_MS);
-        pending.set(id, { resolve, timer });
+        const waiter = { resolve, timer: null };
+        waiter.timer = setTimeout(() => {
+            if (row.waiter === waiter) row.waiter = null;
+            resolve({ id, pending: true });
+        }, POLL_MS);
+        row.waiter = waiter;
     });
 }
 
 function submitRequestForm(message) {
     const id = String((message && (message.id || message.formId)) || '').trim();
-    const row = id ? pending.get(id) : null;
-    if (!row) return false;
-    clearTimeout(row.timer);
-    pending.delete(id);
+    if (!id || !pending.has(id)) return false;
     const values = message && message.values && typeof message.values === 'object' ? message.values : null;
-    row.resolve({
+    settleRequestForm(id, {
         id,
         cancelled: message && message.cancelled === true,
         timedOut: false,
@@ -112,5 +145,6 @@ module.exports = {
     FORM_TYPES,
     normalizeRequestForm,
     askRequestForm,
+    awaitRequestForm,
     submitRequestForm
 };

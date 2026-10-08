@@ -10,6 +10,13 @@ function requireAdmin(clientInfo, handlersCtx, ws, message) {
     return true;
 }
 
+/** Who asked for a secret reveal, for the audit log. Missing fields log as "-". */
+function revealAuditUser(clientInfo) {
+    const info = clientInfo && typeof clientInfo === 'object' ? clientInfo : {};
+    const field = (value) => (value === undefined || value === null || value === '' ? '-' : String(value));
+    return `userType=${field(info.userType)} sessionId=${field(info.sessionId)} applicationKeyId=${field(info.applicationKeyId)}`;
+}
+
 function getCheckpointService(handlersCtx) {
     return handlersCtx.globalResources.getCheckpointManagementService();
 }
@@ -65,7 +72,8 @@ async function handleConfigEditorRevealSecret(handlersCtx, ws, message, clientIn
     }
     try {
         const data = handlersCtx.globalResources.getConfigEditorService().revealSecretValue(configId, path);
-        console.info('[config_editor] reveal', configId, path.join('.'));
+        // Audit who revealed which leaf; never the value (Yozora #293).
+        console.info('[config_editor] reveal', `configId=${configId}`, `path=${path.join('.')}`, revealAuditUser(clientInfo));
         handlersCtx.sendToClient(ws, {
             type: 'config_editor_reveal_secret_response',
             requestId: message.requestId,

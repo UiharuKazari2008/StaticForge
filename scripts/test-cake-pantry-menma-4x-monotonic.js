@@ -36,6 +36,20 @@ assert.strictEqual(clampMonotonicKg('menma', 379.16, ''), 379.16);
 assert.strictEqual(clampMonotonicKg('menma', null, 54), 54, 'no prior value: accept');
 assert.strictEqual(clampMonotonicKg('guren', 80, 70), 70);
 
+// --- consume kg_before + null re-seed (cakePantry): Menma never below her history
+const { _test: pantryTest } = require('../modules/cakePantry');
+const hist = [{ kg: 379.16 }, { kg: 383 }, { kg: 'bad' }];
+assert.strictEqual(pantryTest.maxHistoryKg({ history: hist }), 383);
+assert.strictEqual(pantryTest.maxHistoryKg({}), null);
+assert.strictEqual(pantryTest.monotonicKgBefore('menma', { current_kg: 100, history: hist }), 383, 'stale current_kg cannot lower kg_before');
+assert.strictEqual(pantryTest.monotonicKgBefore('menma', { current_kg: '384.2', history: hist }), 384.2, 'higher current_kg kept (as a number)');
+assert.strictEqual(pantryTest.monotonicKgBefore('menma', { current_kg: null, baseline_kg: 54, history: [] }), 54, 'no history: baseline');
+assert.strictEqual(pantryTest.monotonicKgBefore('guren', { current_kg: 100, history: hist }), 100, 'other eaters unaffected');
+const reseeded = pantryTest.ensureCurrentKgSeeded('menma', { current_kg: null, baseline_kg: 54, history: hist }).state;
+assert.strictEqual(reseeded.current_kg, 383, 'null current_kg re-seeds from history, not baseline');
+const gurenSeed = pantryTest.ensureCurrentKgSeeded('guren', { current_kg: null, baseline_kg: 54, history: [{ kg: 145.44 }] }).state;
+assert.strictEqual(gurenSeed.current_kg, 54, 'non-monotonic seed unchanged');
+
 // --- DB save path
 function fakeDb(initial) {
     const store = new Map(Object.entries(initial).map(([k, v]) => [k, JSON.stringify(v)]));

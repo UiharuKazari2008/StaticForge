@@ -548,6 +548,13 @@ span.context-menu-item-state {
     /* Prevent menu from growing too wide */
 }
 
+/* Sections that opt in (section.className) show the whole label on several lines */
+.context-menu-section-wrap .context-menu-item-text {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-width: 360px;
+}
+
 .context-menu-item.minimised-window .context-menu-item-text {
     font-style: italic;
 }

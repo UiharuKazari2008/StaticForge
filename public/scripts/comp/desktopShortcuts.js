@@ -98,6 +98,11 @@ class DesktopShortcutsManager {
                 contextMenu: this.getStaticWikiPageContextMenu,
                 onClick: this.handleStaticWikiPageClick
             },
+            'web-page': {
+                icon: this.createWebPageIcon,
+                contextMenu: this.getWikiPageContextMenu,
+                onClick: this.handleWebPageClick
+            },
             'nax-tag': {
                 icon: this.createNaxTagIcon,
                 contextMenu: this.getNaxTagContextMenu,
@@ -2508,6 +2513,36 @@ class DesktopShortcutsManager {
 
     getStaticWikiPageContextMenu(shortcut) {
         return this.getWikiPageContextMenu(shortcut);
+    }
+
+    // Alchemy page. data.icon is a /cache/site-icons file from grimoireBrowserBridge.js page-icon.
+    createWebPageIcon(shortcut) {
+        const icon = document.createElement('div');
+        icon.className = 'desktop-shortcut-icon desktop-shortcut-icon-wiki';
+        const src = shortcut.data && shortcut.data.icon;
+        if (src) {
+            const img = document.createElement('img');
+            img.className = 'desktop-shortcut-wiki-site-icon';
+            img.src = src;
+            img.alt = '';
+            icon.appendChild(img);
+        } else {
+            const globe = document.createElement('i');
+            globe.className = 'fas fa-globe';
+            icon.appendChild(globe);
+        }
+        return icon;
+    }
+
+    async handleWebPageClick(shortcut) {
+        const url = shortcut.data && shortcut.data.url;
+        if (!url) {
+            showGlassToast('error', 'Error', 'Web page shortcut is missing its address', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        // public/scripts/comp/featureLoader.js; grimoireOpenStandaloneWindow: public/scripts/comp/grimoireRemoteBrowser.js
+        await featureLoader.loadFeature('grimoire');
+        grimoireOpenStandaloneWindow(url);
     }
 
     // Get wiki page context menu

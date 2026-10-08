@@ -5786,6 +5786,19 @@ class WebSocketClient {
         // This prevents timeouts during long-running Rentan processes
         this.resetTimeoutsForRequestType('resolve_dynamic_context');
 
+        // Wren rewrote dg_ expanders / prompt server-side (modules/dynagenWren.js); mirror it into the open Studio.
+        if (phase === 'wren_change') {
+            if (data?.compiled_prompt && window.dynamicGenerationData) {
+                window.dynamicGenerationData.compiled_prompt = data.compiled_prompt;
+            }
+            const studioModal = document.getElementById('manualModal');
+            if (data?.change && studioModal && !studioModal.classList.contains('hidden')) {
+                // applyStudioChangePayloadSilent: public/scripts/comp/studioChangeJson.js
+                void applyStudioChangePayloadSilent(data.change);
+            }
+            return;
+        }
+
         this.applyRentanCarouselFromDynamicProgress(phase, data || {});
         this.applyRentanGenerationProgressUi(phase, data || {});
     }

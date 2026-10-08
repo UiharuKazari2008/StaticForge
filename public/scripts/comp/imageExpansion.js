@@ -17,7 +17,8 @@ let expansionModalData = {
     previewName: null, // gallery preview basename for the canvas thumbnail
     compiledPrompt: null, // { prompt, uc, characterPrompts } baseline from server (not sent unless editor save)
     savedPromptOverrides: null, // { prompt, uc, characterPrompts } set only via expansion prompt editor Save
-    compiledPromptReady: false
+    compiledPromptReady: false,
+    origin: null // 'studio' when Studio opened the modal (Director brief picks open_in_studio vs open_in_lumen)
 };
 
 let expansionCompiledPromptLoadToken = 0;
@@ -623,7 +624,7 @@ function scheduleExpansionCompiledPromptReload() {
 }
 
 // Open image expansion modal
-async function openImageExpansionModal(imageFilename, imageDimensions = null) {
+async function openImageExpansionModal(imageFilename, imageDimensions = null, origin = null) {
     console.log('📦 Opening image expansion modal for:', imageFilename);
     
     // Validate filename
@@ -672,7 +673,8 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         previewName: null,
         compiledPrompt: null,
         savedPromptOverrides: null,
-        compiledPromptReady: false
+        compiledPromptReady: false,
+        origin
     };
     
     console.log('📊 Received imageDimensions:', imageDimensions);
@@ -2523,29 +2525,28 @@ function applyExpansionCanvasPreview(root, layout, imageUrl, fallbackUrl) {
     root.classList.remove('hidden');
 }
 
-function updateExpansionCanvasPreview() {
-    const root = document.getElementById('expansionCanvasPreview');
-    if (!root) return;
-
+function getExpansionCanvasLayout() {
     const px = expansionModalData.expandSourcePixels;
     const res = expansionModalData.selectedResolution;
     const target = res ? getDimensionsFromResolution(res) : null;
-    const insetToggle = document.getElementById('expansionInsetToggle');
+    if (!px || !target) return null;
     // Prefer runtime enableInset (forced off while target is not larger on both axes)
-    const insetOn = !!expansionModalData.enableInset;
     // computeExpansionLetterboxLayout: public/scripts/comp/utilities.js
-    const layout = px && target
-        ? computeExpansionLetterboxLayout(
-            px.width,
-            px.height,
-            target.width,
-            target.height,
-            expansionModalData.selectedBias,
-            { inset: insetOn }
-        )
-        : null;
+    return computeExpansionLetterboxLayout(
+        px.width,
+        px.height,
+        target.width,
+        target.height,
+        expansionModalData.selectedBias,
+        { inset: !!expansionModalData.enableInset }
+    );
+}
+
+function updateExpansionCanvasPreview() {
+    const root = document.getElementById('expansionCanvasPreview');
+    if (!root) return;
     const urls = getExpansionCanvasPreviewUrls(expansionModalData.targetImage);
-    applyExpansionCanvasPreview(root, layout, urls.imageUrl, urls.fallbackUrl);
+    applyExpansionCanvasPreview(root, getExpansionCanvasLayout(), urls.imageUrl, urls.fallbackUrl);
 }
 
 // Select expansion resolution
@@ -3132,6 +3133,89 @@ function getExpansionOverrideParams() {
     return params;
 }
 
+const EXPANSION_DIRECTOR_GUIDE_MAX = 1024;
+
+// Target canvas with the source placed and the new area flat magenta. Base64 PNG, or null.
+function renderExpansionDirectorGuide(layout) {
+    const img = document.querySelector('#expansionCanvasPreview .expansion-canvas-preview-image');
+    if (!layout || !img || !img.complete || !img.naturalWidth) return null;
+    const scale = Math.min(1, EXPANSION_DIRECTOR_GUIDE_MAX / Math.max(layout.targetWidth, layout.targetHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(layout.targetWidth * scale);
+    canvas.height = Math.round(layout.targetHeight * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FF00FF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, layout.left * scale, layout.top * scale, layout.scaledWidth * scale, layout.scaledHeight * scale);
+    try {
+        return canvas.toDataURL('image/png').split(',')[1];
+    } catch (_) {
+        return null;
+    }
+}
+
+function buildExpansionDirectorBrief(imageToExpand) {
+    const data = expansionModalData;
+    const layout = getExpansionCanvasLayout();
+    const guide = renderExpansionDirectorGuide(layout);
+    const noteEl = document.getElementById('expansionDirectorNote');
+    const note = noteEl ? noteEl.value.trim() : '';
+    const biasEl = document.getElementById('expansionBiasSelected');
+    const source = data.savedPromptOverrides || data.compiledPrompt || {};
+    const {
+        inset: _inset,
+        expansionPromptOverride: _p,
+        expansionUcOverride: _u,
+        expansionCharacterPromptsOverride: _c,
+        ...params
+    } = data.overrideParams || {};
+
+    const call = {
+        filename: imageToExpand,
+        sourceFilename: data.originalImage || imageToExpand,
+        expansionMode: data.expansionMode,
+        resolution: data.selectedResolution,
+        imageBias: data.selectedBias,
+        inset: data.enableInset,
+        upscaleAfterComplete: data.upscaleAfterComplete,
+        workspace: activeWorkspace || null
+    };
+    if (Object.keys(params).length) call.overrideParams = params;
+
+    const lines = ['Expand Canvas (Director). Write a prompt for ONLY the new area, then run the expand.', ''];
+    if (layout) {
+        lines.push(`Source: ${imageToExpand} (${layout.origWidth}x${layout.origHeight})`);
+        lines.push(`Target: ${data.selectedResolution} (${layout.targetWidth}x${layout.targetHeight}), imageBias ${data.selectedBias} (${biasEl ? biasEl.textContent.trim() : ''}), inset ${!!data.enableInset}`);
+        lines.push(`The source sits at ${layout.scaledWidth}x${layout.scaledHeight}, left ${layout.left} top ${layout.top}. New area in px: left ${layout.padLeft}, right ${layout.padRight}, top ${layout.padTop}, bottom ${layout.padBottom}.`);
+    }
+    lines.push(guide
+        ? 'Attached: the source, and expand-guide.png (the target canvas with the source placed). The magenta (#FF00FF) in the guide is the new area. Your prompt fills only the magenta.'
+        : 'Attached: the source.');
+    lines.push(`User note: ${note || 'none'}`);
+    lines.push('');
+    lines.push('Rules:');
+    lines.push('- Describe only what lands in the new area: background, scenery, floor, sky, props, and any part of a character\'s body or clothing that continues into it.');
+    lines.push('- Drop every character with no body or clothing in the new area, from the prompt and from characterPrompts. Keep a character only if part of them continues into it, and prompt only that part.');
+    lines.push('- Keep the source style, artist, and quality tags so it blends. Do not re-describe what is already in the source.');
+    lines.push(`- Call expand_image once with these values plus prompt, uc, characterPrompts (kept characters only, [] if none), and userApprovedPaidRequest true (pressing Generate was the approval): ${JSON.stringify(call)}`);
+    lines.push(data.origin === 'studio'
+        ? '- Then show_chat_image the result. Studio started this expand, so also open_in_studio the result.'
+        : '- Then show_chat_image the result and open_in_lumen it. Do not use Studio.');
+    if (source.prompt) lines.push('', `Source prompt: ${source.prompt}`);
+    if (source.uc) lines.push(`Source UC: ${source.uc}`);
+    const chars = normalizeExpansionCharacterPrompts(source.characterPrompts).filter((char) => char.enabled !== false);
+    if (chars.length) {
+        lines.push('Source characters:');
+        chars.forEach((char, index) => {
+            lines.push(`${index + 1}. ${getExpansionCharacterDisplayName(char, index)}: ${char.prompt || ''}`);
+        });
+    }
+
+    const attachments = [{ source: 'workspace', filename: imageToExpand, name: imageToExpand }];
+    if (guide) attachments.push({ source: 'client', name: 'expand-guide.png', data: guide });
+    return { content: lines.join('\n'), attachments };
+}
+
 // Submit image expansion
 async function submitImageExpansion() {
     // Use the target image that was determined by selectExpansionMode
@@ -3173,6 +3257,15 @@ async function submitImageExpansion() {
     expansionModalData.overrideParams.inset = expansionModalData.enableInset;
 
     expansionModalData.overrideParams = applyExpansionSavedOverridesToParams(expansionModalData.overrideParams);
+
+    const directorToggle = document.getElementById('expansionDirectorToggle');
+    if (directorToggle && directorToggle.getAttribute('data-state') === 'on') {
+        const brief = buildExpansionDirectorBrief(imageToExpand);
+        closeImageExpansionModal();
+        // startExpandCanvasChat: public/scripts/comp/director.js
+        await startExpandCanvasChat(brief.content, brief.attachments);
+        return;
+    }
 
     // Close modal
     closeImageExpansionModal();
@@ -3388,13 +3481,10 @@ function setupExpansionNoiseSchedulerDropdown() {
 }
 
 // Toggle upscale indicator
-function toggleExpansionUpscale() {
-    const upscaleToggle = document.getElementById('expansionUpscaleToggle');
-    if (!upscaleToggle) return;
-    
-    const currentState = upscaleToggle.getAttribute('data-state');
-    const newState = currentState === 'on' ? 'off' : 'on';
-    upscaleToggle.setAttribute('data-state', newState);
+// Upscale and Director toggles
+function toggleExpansionIndicator(e) {
+    const btn = e.currentTarget;
+    btn.setAttribute('data-state', btn.getAttribute('data-state') === 'on' ? 'off' : 'on');
 }
 
 // Toggle inset padding behavior
@@ -3506,7 +3596,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup upscale toggle
     const upscaleToggle = document.getElementById('expansionUpscaleToggle');
     if (upscaleToggle) {
-        upscaleToggle.addEventListener('click', toggleExpansionUpscale);
+        upscaleToggle.addEventListener('click', toggleExpansionIndicator);
+    }
+
+    const directorToggle = document.getElementById('expansionDirectorToggle');
+    if (directorToggle) {
+        directorToggle.addEventListener('click', toggleExpansionIndicator);
     }
     
     // Setup inset toggle

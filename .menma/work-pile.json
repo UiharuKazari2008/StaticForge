@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-10-05T07:15:00-04:00",
+  "updated_at": "2026-10-07T07:15:00-04:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
-  "last_breakfast_at": "2026-10-05T07:15:00-04:00",
+  "last_breakfast_at": "2026-10-07T07:15:00-04:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Oct5 7am loop. Tree was clean at 7:02 (only untracked backups/ + app_icons/originals/, left untracked); main 0502cee == origin == Public. No safety snapshot needed. Oct 4 7am loop did not run (host restart / fan). 17 stale .agent-cursor-* locks + .agent-grok-phasewalker LEFT IN PLACE (newest .agent-cursor-shutdown-close Oct4 17:56, upscale-fix Oct3 09:13). Source idle. Docs pass: docs/client-api updated for what landed Oct3-5 (nax destructive clear cache, nax/explore scopes, get_menma_state log_limit/meal_id + rook/sala, update_meal_images provided status, config editor secret masking/reveal, img2img explicit 0 noise/strength). Ship check vs inspect_pantry: every ship since 18601b1 already eaten (Oct3 11am/extra, Oct4 7pm) or banked pending (296, 295, 241, c66ff5c, 0502cee). Only new: today's docs commit. Work pile open=[]. No cake / no feast (Rook owns 11am/7pm). No bounce (Yukimi owns restarts).",
+  "cake_note": "Oct7 7am loop on host dreamscape. No .agent-* locks; last source edit 01:42. Tree had 59 modified + 5 new overnight files (Grimoire/Alchemy browser service, Cursor/Xi Director tools, Wren dynagen modules/dynagenWren.js, MCP facade, image expansion, dtext rebuild, docs; matches cursor-agent issues #307-#351). Safety snapshot 6157042 (63 files +3634/-639), merged origin/main (e5afe48 #285, 1fe1a72) as 3118c90, pushed origin+Public. data/apocrypha/current.json, backups/, app_icons/originals/, config.json.bak left out. Docs pass: mcp-connector.md (overlay text exempt from fold, zero-width strip) + ws/configEditor.md (#293 reveal audit fields). Pile open=[]. No cake/feast, no restart.",
   "eaten": [
     {
       "id": "sf-22",
@@ -17,5 +17,5 @@
       "note": "Eaten 2026-08-30. Do not re-eat at 7am."
     }
   ],
-  "cake_note_7am_sep15": "87ec32d, a42511c, 4cf4015, dcd95dc, 1084eb7, 4d8f6a5, 1f07c41, 97e003e, 4476a50, 26a7b13, e4f0036, 6d3f87e, 652fd38 \u2014 already dry-listed Sep15 7am"
+  "cake_note_7am_sep15": "87ec32d, a42511c, 4cf4015, dcd95dc, 1084eb7, 4d8f6a5, 1f07c41, 97e003e, 4476a50, 26a7b13, e4f0036, 6d3f87e, 652fd38 — already dry-listed Sep15 7am"
 }

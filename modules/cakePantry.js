@@ -481,6 +481,27 @@ async function ensurePantryMigration(accountId) {
 /** Visual-feast locked start weight for pantry keepers (and Menma/Guren defs). */
 const VISUAL_FEAST_BASELINE_KG = 54.0;
 
+/** Highest kg recorded in state.history, or null. */
+function maxHistoryKg(state) {
+    const hist = Array.isArray(state && state.history) ? state.history : [];
+    let max = null;
+    for (const h of hist) {
+        const kg = h && h.kg != null && h.kg !== '' ? Number(h.kg) : NaN;
+        if (Number.isFinite(kg) && (max == null || kg > max)) max = kg;
+    }
+    return max;
+}
+
+/**
+ * kg_before for a meal. Monotonic accounts (Menma) never start below the highest
+ * recorded history kg, so kg_before/kg_after and the new history entry can't drop
+ * even if current_kg was stale or re-seeded. Others: unchanged.
+ */
+function monotonicKgBefore(accountId, state) {
+    const raw = state.current_kg ?? state.baseline_kg ?? VISUAL_FEAST_BASELINE_KG;
+    return Number(clampMonotonicKg(accountId, maxHistoryKg(state), raw));
+}
+
 /**
  * Fail-closed kg seed: never leave current_kg/baseline_kg null for known accounts.
  * Also one-shot lift accounts that ate from 0 while baseline was null (Pyra 0→0.96 → 54.96).
@@ -503,7 +524,8 @@ function ensureCurrentKgSeeded(accountId, state) {
     }
 
     if (state.current_kg == null || state.current_kg === '') {
-        state.current_kg = state.baseline_kg;
+        // Menma: never re-seed below the highest kg already in her history.
+        state.current_kg = clampMonotonicKg(accountId, maxHistoryKg(state), state.baseline_kg);
         seeded = true;
     }
 
@@ -1599,7 +1621,7 @@ async function consumeCake(accountId, params = {}) {
         // Persist seed before consume so a crash mid-meal cannot re-null
         await saveAccountState(accountId, state);
     }
-    const kgBefore = state.current_kg ?? state.baseline_kg ?? VISUAL_FEAST_BASELINE_KG;
+    const kgBefore = monotonicKgBefore(accountId, state);
     const gainedKg = Number((slicesToConsume * KG_PER_SLICE).toFixed(2));
     const kgAfter = Number((kgBefore + gainedKg).toFixed(2));
 
@@ -2024,6 +2046,9 @@ module.exports = {
     completeMenmaWorkItem,
     removeMenmaWorkItem,
     _test: {
+        maxHistoryKg,
+        monotonicKgBefore,
+        ensureCurrentKgSeeded,
         MEAL_FROZEN_KEYS,
         deriveMealId,
         attachMealId,

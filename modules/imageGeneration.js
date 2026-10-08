@@ -121,6 +121,7 @@ function mergeNovelForgeFieldsFromOpts(forgeData, opts) {
 
 // Import modules
 const { expandShorthandTags, cleanupPromptSyntax, applyDynamicReplacements, generatePromptHash, generateRequestHash, generateDirectiveHash, processDynamicGenerationCore, calculateDynamicExpiration, compileContext, formatContextForCarousel } = require('./dynamicGenerationHandlers');
+const { resolveDynagenWithWren } = require('./dynagenWren');
 const { buildPromptApplicationContext, mapProcessedToRaw } = require('./promptApplicationContext');
 
 const {
@@ -1689,6 +1690,7 @@ function stashPromptApplicationBaseline(body, preset, data) {
 
 const buildOptions = async (globalResources, body, preset = null, queryParams = {}, ws = null, handler = null, wsServer = null, stageData = null) => {
     bindRuntimeGlobalResources(globalResources);
+    await resolveDynagenWithWren(globalResources, body, preset, ws, handler, wsServer);
     const referenceMetadataDb = __runtimeGr.getReferenceMetadataDatabase();
     const allowPaid = body.allow_paid ? body.allow_paid : preset?.allow_paid;
 
@@ -2387,7 +2389,10 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             });
 
             textOverlayBuckets.forEach((group, targetIndex) => {
-                const textAppend = compileTextOverlayAppend(group, textTags, applyBiasToText);
+                const textAppend = compileTextOverlayAppend(
+                    group, textTags, applyBiasToText,
+                    require('../public/scripts/comp/keyboardPromptChars').protectKeyboardDisplayText
+                );
                 if (!textAppend) return;
                 __runtimeGr.getLogger().verbose(`📝 Text overlay append: "${textAppend.substring(0, 60)}${textAppend.length > 60 ? '...' : ''}"`);
                 if (targetIndex === 0) {
@@ -2581,7 +2586,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 // Generate context for AI processing
                 const clientInfo = wsServer?.clients?.get(ws);
                 const clientIP = clientInfo?.clientIP || null;
-                contextForAI = await compileContext(__runtimeGr, dynaRequest, clientIP);
+                // resolveDynagenWithWren (modules/dynagenWren.js) already compiled this request's context
+                contextForAI = body._dynagenContext || await compileContext(__runtimeGr, dynaRequest, clientIP);
 
                 // Send context phase progress update when context is freshly compiled
                 if (ws && handler && contextForAI) {
@@ -2778,9 +2784,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 }
             }
 
-            // Temporary: Grok Web owns compile. Do not call the paid Director API.
+            // Rentan compile is Wren (modules/dynagenWren.js). This only stamps paths it skips (stages, compile_only).
             if (!hasValidCache) {
-                __runtimeGr.getLogger().normal('⏭️ Director API nooped — Grok Web owns dynamic generation');
+                __runtimeGr.getLogger().normal('⏭️ Director API nooped - Rentan compile runs in dynagenWren');
                 const existing = body.dynamic_generation.compiled_prompt;
                 body.dynamic_generation.compiled_prompt = {
                     success: true,
@@ -4084,19 +4090,21 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 .replace(/\s{2,}/g, ' ')
                 .trim();
         };
-        const { normalizeKeyboardPromptChars } = require('../public/scripts/comp/keyboardPromptChars');
+        // Display text (text_overlays) is wrapped by protectKeyboardDisplayText and skips the fold.
+        const { normalizeKeyboardPromptCharsOutsideDisplayText } = require('../public/scripts/comp/keyboardPromptChars');
         const { normalizeEmphasisPromptSyntax } = require('./emphasisPromptSyntax');
         // prepareEmphasisTextForNovelAI: modules/emphasisGroupIdSyntax.js
         // Expand Weight Rack managed ids → classic N::…:: before syntax normalize; strip unmanaged ZW.
         const {
             prepareEmphasisTextForNovelAI,
-            hasManagedEmphasisGroupIds
+            hasManagedEmphasisGroupIds,
+            stripUnmanagedEmphasisInvisibles
         } = require('./emphasisGroupIdSyntax');
         const emphasisNormForExpand = baseOptions.emphasis_normalization
             || body.emphasis_normalization
             || null;
         const sanitizeAndNormalizeText = (text, fieldHint) => {
-            let out = typeof text === 'string' ? normalizeKeyboardPromptChars(text) : text;
+            let out = typeof text === 'string' ? normalizeKeyboardPromptCharsOutsideDisplayText(text) : text;
             if (bakeNewlines && typeof out === 'string') {
                 out = out.replace(/\r\n?/g, '\n').split('\n').join(BAKE_NL_SENTINEL);
             }
@@ -4114,6 +4122,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     );
                 }
                 out = prepared.text;
+            } else if (typeof out === 'string') {
+                // Stray ZW (U+200B/C/D, U+2060, U+FEFF…) around weight colons breaks N::…:: syntax.
+                out = stripUnmanagedEmphasisInvisibles(out);
             }
             out = normalizeEmphasisPromptSyntax(
                 normalizePromptSeparators(out),
@@ -7772,14 +7783,14 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         };
 
         // Merge with override params (strip prompt-review-only keys)
-        const { expansionPromptOverride: _stripPromptOv, expansionUcOverride: _stripUcOv, requestedContent: _stripReqContent, ...overrideForGen } = overrideParams || {};
+        const { expansionPromptOverride: _stripPromptOv, expansionUcOverride: _stripUcOv, expansionCharacterPromptsOverride: charactersOverride, requestedContent: _stripReqContent, ...overrideForGen } = overrideParams || {};
         const genParams = { ...defaultParams, ...overrideForGen };
 
         // Build request body for inpainting
         const requestBody = {
             prompt: expansionPrompt,
             uc: ucForRequest,
-            characterPrompts: originalCharacters, // Use original characters from metadata
+            characterPrompts: Array.isArray(charactersOverride) ? charactersOverride : originalCharacters,
             model: genParams.model,
             steps: genParams.steps,
             guidance: genParams.guidance,

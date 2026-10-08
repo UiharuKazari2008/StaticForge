@@ -64,6 +64,24 @@ async function runTest() {
             user: { username: 'grok.menma' }
         },
         {
+            number: 299,
+            title: 'Test PR 7 (sha-like word in reason text must not dedup)',
+            closed_at: new Date().toISOString(),
+            pull_request: true,
+            labels: [],
+            assignees: [{ username: 'grok.menma' }],
+            user: { username: 'grok.menma' }
+        },
+        {
+            number: 300,
+            title: 'Test PR 8 (different sha sharing no 7-char prefix with a banked sha)',
+            closed_at: new Date().toISOString(),
+            pull_request: true,
+            labels: [],
+            assignees: [{ username: 'grok.menma' }],
+            user: { username: 'grok.menma' }
+        },
+        {
             number: 297,
             title: 'Test PR 4 (Non-numeric shortsha collision test)',
             closed_at: new Date().toISOString(),
@@ -80,6 +98,8 @@ async function runTest() {
         296: { merge_commit_sha: 'cccccccccccccccccccccccccccccccccccccccc', head: { sha: 'cccccccccccccccccccccccccccccccccccccccc' }, deletions: 100 },
         241: { merge_commit_sha: '1111111111111111111111111111111111111111', head: { sha: '1111111111111111111111111111111111111111' }, deletions: 100 },
         298: { merge_commit_sha: '2222222222222222222222222222222222222222', head: { sha: '2222222222222222222222222222222222222222' }, deletions: 100 },
+        299: { merge_commit_sha: '9999999999999999999999999999999999999999', head: { sha: '9999999999999999999999999999999999999999' }, deletions: 100 },
+        300: { merge_commit_sha: '3768dcf0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', head: { sha: '3768dcf0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }, deletions: 100 },
         297: { merge_commit_sha: 'dddddddddddddddddddddddddddddddddddddddd', head: { sha: 'dddddddddddddddddddddddddddddddddddddddd' }, deletions: 100 }
     };
 
@@ -89,6 +109,8 @@ async function runTest() {
         296: [{ sha: 'cccccccccccccccccccccccccccccccccccccccc' }],
         241: [{ sha: '1111111111111111111111111111111111111111' }],
         298: [{ sha: '15fe5e67adbc3745cc69d87a5d3d8e6b7d21838a' }],
+        299: [{ sha: '9999999999999999999999999999999999999999' }],
+        300: [{ sha: '3768dcf0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }],
         297: [{ sha: 'dddddddddddddddddddddddddddddddddddddddd' }]
     };
 
@@ -122,6 +144,8 @@ async function runTest() {
                         { reason: 'ship:295:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
                         { reason: 'ship:snapshot:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' },
                         { reason: 'ship:abcdef0:ffffffffffffffffffffffffffffffffffffffff' },
+                        { reason: 'feat: mention 9999999999999999999999999999999999999999 and ship:299 in passing, raw 1' },
+                        { reason: 'ship:notes:abc words 9999999 more text' },
                         { reason: 'ship:241:15fe5e67adbc3745cc69d87a5d3d8e6b7d21838a GH #241 remainder NAX/Explore scopes, raw 2' }
                     ]) }
                 ];
@@ -158,6 +182,9 @@ async function runTest() {
 
         assert.ok(includedPrs.includes(241), 'Failed (e): GH-labelled ship:241 bank must not suppress Yozora #241 by number');
         assert.ok(!includedPrs.includes(298), 'Failed (f): PR 298 should be skipped because its commit sha is banked (GH-labelled bank)');
+
+        assert.ok(includedPrs.includes(299), 'Failed (h): a sha or ship:<num> appearing mid-text (not the ship:<x>:<sha> prefix) must not dedup');
+        assert.ok(includedPrs.includes(300), 'Failed (i): a different sha whose 7-char prefix differs from banked 3768dce must not dedup');
 
         // Banks are read-only: a dry run must never write state or log
         assert.strictEqual(dbWrites, 0, 'Failed (g): dry_run must not write to the pantry DB');

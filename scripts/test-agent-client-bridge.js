@@ -629,7 +629,9 @@ const bounce = _test.buildDynagenIntegrationPayload({
 assert.strictEqual(bounce.success, false);
 assert.strictEqual(bounce.needsIntegration, true);
 assert.ok(bounce.next.includes('integrated=true'));
-assert.ok(_test.DYNAGEN_INTEGRATION_NEXT.includes('Director API is nooped'));
+assert.ok(_test.DYNAGEN_INTEGRATION_NEXT.includes('dg_'));
+assert.strictEqual(sanitized.dynamic_generation.compiled_prompt.source, 'agent');
+assert.strictEqual(sanitized.dynamic_generation.compiled_prompt.integrated, true);
 
 const stubResources = { getWebSocketServer: () => ({ clients: new Map() }) };
 const bridge = require('../modules/agentClientBridge');

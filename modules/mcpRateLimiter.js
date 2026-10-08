@@ -42,6 +42,7 @@ const MCP_RATE_GROUP_LIMITS = {
 const TOOL_RATE_GROUPS = {
     advanced_tools: 'free',
     get_workspaces: 'free',
+    get_workspace_config: 'free',
     list_clients: 'free',
     bind_session: 'free',
     list_notes: 'free',
@@ -83,6 +84,7 @@ const TOOL_RATE_GROUPS = {
     set_calculator: 'studio',
     offer_director_window: 'free',
     set_session_title: 'write',
+    set_session_type: 'write',
     set_session_tasks: 'write',
     set_session_task: 'write',
     get_session_tasks: 'free',
@@ -90,6 +92,7 @@ const TOOL_RATE_GROUPS = {
     offer_workspace_switch: 'write',
     show_chat_image: 'write',
     request_form: 'free',
+    deliver_rentan: 'free',
     ledge: 'free',
     get_session_state: 'studio',
     get_prompt_guide: 'free',

@@ -52,6 +52,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['gallery', 'images', 'art', 'results'], launchIds: ['workspace'] },
     { aliases: ['reference', 'references', 'vibe', 'style', 'cache', 'swatchbook'], launchIds: ['reference'] },
     { aliases: ['grimoire', 'wiki', 'e621', 'danbooru', 'e6', 'dan', 'encyclopedia', 'books', 'novelai', 'help', 'search'], launchIds: ['encyclopedia'] },
+    { aliases: ['alchemy', 'browser', 'web', 'internet', 'bing'], launchIds: ['alchemy'] },
     { aliases: ['notion', 'notes', 'notebook', 'notepad'], launchIds: ['notebook'] },
     { aliases: ['chat', 'girlfriend', 'friend', 'erp', 'roleplay', 'messages'], launchIds: ['chat'] },
     { aliases: ['atelier', 'naxt', 'naxt tag', 'tag lab'], launchIds: ['naxt'] },

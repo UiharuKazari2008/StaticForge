@@ -159,6 +159,7 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
+| `sessionType` | Optional Wren chat type: `utility` (archive 7 days after last activity), `lowvolume` (15 days, the default for a new chat), or `normal` (30 days). A chat with no stored type is `normal`. `lowvolume` becomes `normal` at 5 user messages. MCP `set_session_type` changes it. The Expand Canvas Director toggle creates `utility`. Sessions echo `sessionType` and `expires_at` |
 
 **Success response:** `director_create_session_response`
 
@@ -386,7 +387,9 @@ Xi is the host agent, and only from the desktop Director window. The Studio pane
 
 Xi is off unless `config.json` has `xi.enabled: true`. `xi.workspace` empty means this repo. The session list and computer status include `xiEnabled`. Status also includes `xi.running` and `xi.sessionId`.
 
-The turn is a detached `agent` process. A server restart reattaches by tailing the log. A client reload uses the same chat.
+The turn is a detached `agent` process launched through a short-lived `sh` + `setsid`, so it is not a descendant of the server and PM2 `treekill` does not kill it on restart. A server restart reattaches by tailing the log. A client reload uses the same chat.
+
+Xi reaches Dreamscape MCP through the repo `.cursor/mcp.json` `dreamscape` entry, which reads `${env:DREAMSCAPE_MCP_URL}` and `${env:DREAMSCAPE_MCP_KEY}`. `xiEnv` sets both from a Xi application key stored at `~/.cache/dreamscape-xi/key` (never in git). Other Cursor sessions in this repo see that server as unconfigured. Xi asks questions with `request_form` (`chatId` routes it into the Xi chat). The headless CLI skips `AskQuestion`. Cursor drops an MCP call after about 60s, so one `request_form` call waits at most 45s and then returns `pending: true` with `formId`. Calling `request_form { formId }` keeps waiting on the same open form. An answer that arrives between calls is kept for the next call. The form stays open up to 30 minutes.
 
 `director_streaming_update` rows for an edit, or any tool body over 500 characters, set `hasDiff` and `diffId` and omit `args` / `result`. `director_tool_diff` returns that text for the Diff / Output button.
 
