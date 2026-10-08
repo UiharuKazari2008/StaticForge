@@ -382,6 +382,7 @@ class WebSocketMessageHandlers {
             'workspace_update_primary_font',
             'workspace_update_textarea_font',
             'workspace_update_settings',
+            'workspace_update_window_positions',
             'workspace_reorder',
             'delete_images_bulk',
             'scrap_similar_images',
