@@ -7030,24 +7030,33 @@ function scoreMemoryRelevance(memory, prompt = '', uc = '', directive = '', cont
             // No keywords, return first 75 chars
             highlightedDescription = fullDescription.substring(0, maxSnippetLength);
         } else {
-            // Find the position with the most keyword matches
-            let bestScore = 0;
+            // Find candidate positions at word match boundaries instead of scanning every character
+            const candidateSet = new Set([0]);
+            for (const word of words) {
+                if (!word) continue;
+                let pos = memoryDesc.indexOf(word);
+                while (pos !== -1) {
+                    const start = Math.max(0, pos + word.length - maxSnippetLength);
+                    if (start < fullDescription.length) candidateSet.add(start);
+                    pos = memoryDesc.indexOf(word, pos + 1);
+                }
+            }
+
+            const candidates = Array.from(candidateSet).sort((a, b) => a - b);
+            let bestScore = -1;
             let bestStart = 0;
-            
-            for (let i = 0; i < fullDescription.length; i++) {
+
+            for (const i of candidates) {
                 let snippetScore = 0;
-                const snippet = memoryDesc.substring(i, Math.min(i + maxSnippetLength, fullDescription.length));
-                
-                // Count keyword matches in this snippet
-                words.forEach(word => {
-                    if (snippet.includes(word)) {
+                const maxEnd = Math.min(i + maxSnippetLength, fullDescription.length);
+                for (const word of words) {
+                    const pos = memoryDesc.indexOf(word, i);
+                    if (pos !== -1 && pos + word.length <= maxEnd) {
                         snippetScore += 1;
                     }
-                });
-                
-                // Prefer snippets that start near the beginning
+                }
                 if (i < 50) snippetScore += 0.5;
-                
+
                 if (snippetScore > bestScore) {
                     bestScore = snippetScore;
                     bestStart = i;
@@ -12706,6 +12715,7 @@ function formatContextForCarousel(context) {
 }
 
 module.exports = {
+    scoreMemoryRelevance,
     processDynamicGenerationCore,
     applyDynamicReplacements,
     cleanupPromptSyntax,
