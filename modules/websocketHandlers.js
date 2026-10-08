@@ -435,6 +435,7 @@ class WebSocketMessageHandlers {
             'director_delete_session',
             'director_send_message',
             'director_rollback_message',
+            'director_recycle_session',
             'director_save_feedback',
             'director_save_rules',
             'director_delete_feedback',

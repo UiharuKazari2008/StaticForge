@@ -413,13 +413,16 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
         ? null
         : staleReason(cp, dg, body, context, now);
     console.log(`Rentan ${body.workspace || ''}: ${reason ? `Wren turn (${reason})` : 'cached scene reused'}`);
-    if (!reason) {
+    const reuseCachedScene = () => {
         if (!dgExpandersFrom(body.text_replacements).length && cp.dg_expanders && cp.dg_expanders.length) {
             body.text_replacements = (Array.isArray(body.text_replacements) ? body.text_replacements : [])
                 .concat(cp.dg_expanders.map((e) => ({ name: e.prefix, value: e.value })));
         }
         const keepExpiry = cp.expiresAt && now < cp.expiresAt ? cp.expiresAt : null;
         stampCompiled(gr, body, dg, preset, context, { source: cp.source || 'wren', expiresAt: keepExpiry });
+    };
+    if (!reason) {
+        reuseCachedScene();
         return;
     }
 
@@ -448,6 +451,12 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
             onThought: (text, reasoningId) => progress({ phase: 'streaming', reasoning: text, reasoningId, status: 'Wren is thinking...' })
         });
     } catch (error) {
+        // Out of Cursor usage even on Auto (modules/cursorDirector.js executeDynagenTurn): print on the last scene.
+        if (error.code === 'CURSOR_USAGE_LIMIT' && cp && Array.isArray(cp.dg_expanders) && cp.dg_expanders.length) {
+            console.warn(`Rentan ${body.workspace || ''}: Cursor usage limit, last scene reused`);
+            reuseCachedScene();
+            return;
+        }
         const message = `Rentan: Wren could not resolve the scene (${error.message || 'unknown error'}). Turn Rentan off or try again.`;
         sendRentanError(handler, ws, message);
         throw new Error(message);

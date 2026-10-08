@@ -206,6 +206,49 @@ function registerCompareBaselineFromImageObject(imageObj) {
     return registerCompareBaselineData(data);
 }
 
+function isGalleryCompareSourceAvailable() {
+    // isStudioModalOpen: public/scripts/comp/modalUtils.js
+    if (!isStudioModalOpen()) return false;
+    const btn = document.getElementById('manualPreviewUseAsSourceBtn');
+    const state = btn ? (btn.getAttribute('data-state') || 'off') : 'off';
+    return state !== 'off';
+}
+
+function setCompareSourceFromGalleryImage(image) {
+    const data = buildCompareDataFromImageObject(image);
+    if (!data) {
+        showGlassToast('error', 'Source Not Set', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+        return false;
+    }
+    if (compareSourceImageData && data.chainSourceFile && data.chainSourceFile === compareSourceImageData.chainSourceFile) {
+        showGlassToast('info', null, 'Already the comparison source', false, 1600, '<i class="fas fa-eye-dropper"></i>');
+        return true;
+    }
+    const overlay = compareOverlayEnabled;
+    const slide = compareSlideEnabled;
+    const reveal = compareLoupeRevealEnabled;
+    const suspended = compareViewQuickSuspended;
+    const split = compareSplitPosition;
+    const ok = setCompareSourceData(data);
+    if (!ok) return false;
+    compareOverlayEnabled = overlay;
+    compareSlideEnabled = slide;
+    compareLoupeRevealEnabled = reveal;
+    compareViewQuickSuspended = suspended;
+    compareDefaultsArmed = false;
+    compareDefaultsPendingModes = null;
+    setCompareSplitPosition(split);
+    const dims = getCurrentPreviewDimensions();
+    if (dims && data.width && data.height) {
+        maybeUpdateComparePresentationInhibitedFromPreviewDims(dims.width, dims.height);
+    } else {
+        comparePresentationInhibited = false;
+    }
+    syncCompareLoupeRevealToLoupe({ setVpZoom: reveal });
+    showGlassToast('success', null, 'Comparison source updated', false, 1800, '<i class="fas fa-eye-dropper"></i>');
+    return true;
+}
+
 function captureCompareBaselineBeforeGeneration() {
     comparePreGenerationBaselineData = cloneCompareData(compareRegisteredBaselineData);
     return Boolean(comparePreGenerationBaselineData);

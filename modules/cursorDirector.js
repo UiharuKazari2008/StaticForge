@@ -39,12 +39,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const SESSION_TYPE_TTL = { utility: 7 * DAY_MS, lowvolume: 15 * DAY_MS, normal: ARCHIVE_MS };
 const LOWVOLUME_PROMOTE_AT = 5;
 const LOGIN_FAILURE = /not logged in|please log in|login expired|authentication required|unauthorized|invalid api key|auth(?:entication)? required/i;
+// Cursor's upgrade/payment ErrorDetails (USAGE_LIMIT, RATE_LIMITED*, USAGE_PRICING_REQUIRED*) as print mode words them.
+const USAGE_LIMIT_FAILURE = /usage.?limit|rate.?limit|hit your (?:usage )?limit|usage.?pricing|usage-based|spend(?:ing)? limit|resource.?exhausted|out of (?:usage|fast|included|requests)|switch to auto|increase (?:your )?limits?/i;
+const USAGE_LIMIT_RETRY_MS = 60 * 1000;
+// A turn starts on a fresh Cursor chat once the last window fill reached this,
+// or once one image chain got more than RECYCLE_CHAIN_PRINTS prints in this chat.
+const RECYCLE_CONTEXT_PERCENT = 70;
+const RECYCLE_CHAIN_PRINTS = 4;
 
 // Paths as the jail sees them. Host paths never appear inside the computer.
 const JAIL_HOME = '/home/director';
 const JAIL_WORKSPACE = '/workspace';
 const JAIL_AGENT_ROOT = '/opt/cursor-agent';
 const JAIL_PLAYWRIGHT = '/opt/ms-playwright';
+const DIRECTOR_BROWSER_PORT = 9333;
 const CLEANUP_DIRS = [
     'tmp',
     '.cache/npm',
@@ -431,8 +439,14 @@ function jailEnv() {
         npm_config_prefix: `${JAIL_HOME}/.local`,
         npm_config_cache: `${JAIL_HOME}/.cache/npm`,
         PLAYWRIGHT_BROWSERS_PATH: jailPlaywrightDir(),
-        DREAMSCAPE_DIRECTOR: '1'
+        DREAMSCAPE_DIRECTOR: '1',
+        BU_CDP_URL: directorBrowserCdpUrl()
     };
+    const chrome = findPlaywrightChrome();
+    if (chrome) {
+        env.BH_CHROME_PATH = chrome;
+        env.CHROME_PATH = chrome;
+    }
     // `cursor-agent models` requires this. It stays in the process environment
     // and is not written into the computer.
     if (process.env.CURSOR_API_KEY) env.CURSOR_API_KEY = process.env.CURSOR_API_KEY;
@@ -1182,7 +1196,7 @@ function projectPrompt() {
         'Studio references are on the session snapshot. change.vibes is vibe transfer. change.preciseReferences is a precise reference (character, style, or both), with preview set to a /cache/preview URL. show_chat_image that url and look. V5 does not run vibe transfer or precise reference yet; they are not ported. Before you convert a picture to V5, read both. If either is attached, look at it and write what it was holding into the prompt: the person, the outfit, the style, the pose. Then set the model. Do not leave the V5 prompt depending on a reference that will not run, and do not ask them to remove it. On V4.5, leave the references in place unless they asked you to drop them.',
         'Several variants of one prompt: create_phasewalker. One await_generation_job after it generates. filenames on that result is every saved stage. Do not shell the images folder to find the rest. open_application studio opens a blank editor when Studio was closed. It does not restore the last picture. Apply the setup after that. If Studio is already open, leave it. A compiled Phasewalker stays installed until you decompile it. restart_client reloads the whole page and closes Studio. Do not call it to recover from a tool error. When they pick one phase, call decompile_phasewalker {phase} before apply_studio_changes or print_studio. That writes the phase into the prompt and removes the stages. Generating while it is still compiled runs every phase again. walk:true is only for printing every phase on purpose. If you take their house style out for the test, put it back with apply_studio_changes when the test is done. Do not ask them to. Stories: note tools plus generate_image.',
         'change.tokens is live usage. count_prompt_tokens for text not yet in Studio.',
-        `Dreamspace is the jail, not the host. ${JAIL_WORKSPACE} is your project and ${JAIL_HOME} is your home. Install tools in the jail home. Network is on. The browser is connected. Do not ask for more permissions.`,
+        `Dreamspace is the jail, not the host. ${JAIL_WORKSPACE} is your project and ${JAIL_HOME} is your home. Install tools in the jail home. Network is on. The web browser is MCP plugin-browser-use-browser-use: browser_exec, then new_tab(url). A Chromium tab is already attached. Do not launch Chrome, do not open chrome://inspect, and do not ask for remote-debugging permission. uv and uvx are on PATH.`,
         'Dreamscape source is not on this machine. A missing Studio tab is not a server problem. If a tool fails for another reason, tell them the error and stop.',
         'Mounted paths: chats, images, previews, references, knowledge/apocrypha read-only, knowledge/prompt-guide writable clone (you cannot commit or push), vfs when mounted. Gallery history is omegasearch with the workspace id from the session. Do not ls, find, or python /workspace/images or /workspace/previews.',
         'offer_director_window is a toast. Call it once on a long job, then keep working.'
@@ -1207,16 +1221,113 @@ function ensureWorkspaceGitRoot(workspace) {
     if (current !== ignore) fs.writeFileSync(ignorePath, ignore);
 }
 
-function findPlaywrightChrome() {
+function hostPlaywrightChrome() {
     const root = playwrightBrowsersDir();
     if (!fs.existsSync(root)) return null;
     const hits = [];
     fs.readdirSync(root).forEach((name) => {
         const chrome = path.join(root, name, 'chrome-linux', 'chrome');
-        if (fs.existsSync(chrome)) hits.push(`${JAIL_PLAYWRIGHT}/${name}/chrome-linux/chrome`);
+        if (fs.existsSync(chrome)) hits.push(chrome);
     });
     hits.sort();
     return hits.length ? hits[hits.length - 1] : null;
+}
+
+function findPlaywrightChrome() {
+    const host = hostPlaywrightChrome();
+    if (!host) return null;
+    const name = path.basename(path.dirname(path.dirname(host)));
+    return `${JAIL_PLAYWRIGHT}/${name}/chrome-linux/chrome`;
+}
+
+function directorBrowserCdpUrl() {
+    return `http://127.0.0.1:${DIRECTOR_BROWSER_PORT}`;
+}
+
+function copyToolIfChanged(from, to) {
+    if (!fs.existsSync(from)) return false;
+    let same = false;
+    try {
+        const src = fs.statSync(from);
+        const dest = fs.statSync(to);
+        same = src.size === dest.size && dest.mtimeMs >= src.mtimeMs;
+    } catch (_) { /* missing dest */ }
+    if (same) return true;
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
+    fs.chmodSync(to, 0o755);
+    return true;
+}
+
+// Browser Use's MCP server is `uvx --python 3.12 browser-use --cli-mcp`.
+// The jail PATH does not see the host's ~/.local/bin, so the plugin died with
+// spawn uvx ENOENT. Copies live in the jail home, which is already on PATH.
+function ensureDirectorUv(paths) {
+    const bin = path.join(paths.home, '.local', 'bin');
+    const hostBin = path.join(os.homedir(), '.local', 'bin');
+    copyToolIfChanged(path.join(hostBin, 'uv'), path.join(bin, 'uv'));
+    copyToolIfChanged(path.join(hostBin, 'uvx'), path.join(bin, 'uvx'));
+}
+
+function ensureDirectorPython(paths) {
+    const uv = path.join(paths.home, '.local', 'bin', 'uv');
+    if (!fs.existsSync(uv)) return;
+    const pyRoot = path.join(paths.home, '.local', 'share', 'uv', 'python');
+    try {
+        if (fs.existsSync(pyRoot) && fs.readdirSync(pyRoot).some((name) => name.includes('3.12'))) return;
+    } catch (_) { /* install */ }
+    const result = spawnSync(uv, ['python', 'install', '3.12'], {
+        encoding: 'utf8',
+        timeout: 180000,
+        env: {
+            ...process.env,
+            HOME: paths.home,
+            PATH: `${path.dirname(uv)}:${process.env.PATH || ''}`
+        }
+    });
+    if (result.status !== 0) {
+        console.error(`Director Python 3.12 install failed: ${(result.stderr || result.stdout || '').trim()}`);
+    }
+}
+
+async function directorBrowserReady() {
+    try {
+        const res = await fetch(`${directorBrowserCdpUrl()}/json/version`, { signal: AbortSignal.timeout(1000) });
+        if (!res.ok) return false;
+        const body = await res.json();
+        return Boolean(body && body.webSocketDebuggerUrl);
+    } catch (_) {
+        return false;
+    }
+}
+
+// browser-harness attaches with BU_CDP_URL. Desktop Chrome is not inside the
+// jail, so this is the tab: headless Playwright Chromium on a fixed port.
+// --share-net makes 127.0.0.1 visible to Wren.
+async function ensureDirectorBrowser() {
+    if (await directorBrowserReady()) return;
+    const chrome = hostPlaywrightChrome();
+    if (!chrome) {
+        console.error('Director browser skipped: Playwright Chromium is not installed');
+        return;
+    }
+    const dir = path.join(directorHome(), 'browser-cdp');
+    fs.mkdirSync(dir, { recursive: true });
+    const child = spawn(chrome, [
+        '--headless=new',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        `--remote-debugging-port=${DIRECTOR_BROWSER_PORT}`,
+        `--user-data-dir=${dir}`,
+        'about:blank'
+    ], { detached: true, stdio: 'ignore' });
+    child.unref();
+    for (let i = 0; i < 20; i++) {
+        if (await directorBrowserReady()) return;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    console.error(`Director browser did not open ${directorBrowserCdpUrl()}`);
 }
 
 function writeProjectFiles(paths, mcpUrl, appKey, readonlyPaths) {
@@ -1401,6 +1512,9 @@ async function ensureProject(gr) {
     const paths = layout();
     migrateLegacyWorkspace(paths);
     ensureComputerTree(paths);
+    ensureDirectorUv(paths);
+    ensureDirectorPython(paths);
+    await ensureDirectorBrowser();
     seedPromptGuideWork(gr, paths);
     const appKey = await ensureAppKey(gr, paths.keyPath);
     const port = gr.getConfig({ path: 'port' }) || 9220;
@@ -2588,7 +2702,7 @@ function runCursorTurn(jail, cursorId, model, prompt, onText, marker) {
                 reject(error);
                 return;
             }
-            if (code !== 0 && !state.text) {
+            if (code !== 0 && (!state.text || USAGE_LIMIT_FAILURE.test(stderr))) {
                 const error = new Error((stderr || `Cursor agent exited ${code}`).trim().slice(0, 800));
                 error.rows = state.rows.slice();
                 error.partialText = state.text || '';
@@ -3008,14 +3122,49 @@ function printsForMessage(chat, messageId) {
         .map((item) => item.filename);
 }
 
-async function rememberGeneratedPrint(paths, sessionId, filename, messageId) {
+async function rememberGeneratedPrint(paths, sessionId, filename, messageId, chainKey) {
     await enqueue(async () => {
         const index = readIndex(paths.indexPath);
         const chat = index.chats.find((item) => item.id === sessionId);
         if (!chat) return;
         stampChatPrint(chat, filename, messageId);
+        if (chainKey) {
+            const chains = chat.chainPrints && typeof chat.chainPrints === 'object' ? chat.chainPrints : {};
+            chains[chainKey] = (chains[chainKey] || 0) + 1;
+            chat.chainPrints = chains;
+        }
         writeIndex(paths.indexPath, index);
     });
+}
+
+// forge_data.chain_source groups prints made against one compare source.
+// A print without one belongs to the session's own chain.
+async function printChainKey(gr, filename) {
+    try {
+        const row = await gr.getMetadataDatabase().getImageMetadata(filename, gr.getPath('images'));
+        const source = row && row.metadata && row.metadata.forge_data && row.metadata.forge_data.chain_source;
+        if (source) return String(source);
+    } catch (_) { /* an unindexed print counts toward the session chain */ }
+    return 'session';
+}
+
+function recycleReason(chat) {
+    if (!chat || !chat.cursorId) return null;
+    if (Number(chat.contextPercent) >= RECYCLE_CONTEXT_PERCENT) return 'context';
+    const chains = chat.chainPrints && typeof chat.chainPrints === 'object' ? chat.chainPrints : {};
+    if (Object.values(chains).some((count) => count > RECYCLE_CHAIN_PRINTS)) return 'chain';
+    return null;
+}
+
+// Fresh Cursor chat on the next turn, started like a new session: no transcript replay.
+// The visible history, session image, and task list stay.
+function recycleChat(chat) {
+    chat.cursorId = null;
+    chat.replay = false;
+    chat.chainPrints = {};
+    chat.contextPercent = 0;
+    chat.contextTokens = 0;
+    chat.fresh = true;
 }
 
 // print_studio / generate_image / an apply that generates all land in the gallery folder,
@@ -3459,6 +3608,7 @@ async function handleDirectorRollbackMessage(handler, ws, message) {
             chat.messages = messages.slice(0, cut);
             chat.cursorId = null;
             chat.replay = chat.messages.length > 0;
+            delete chat.fresh;
             writeIndex(paths.indexPath, index);
             return { changeJson, retryText };
         });
@@ -3478,6 +3628,35 @@ async function handleDirectorRollbackMessage(handler, ws, message) {
         });
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to roll back', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+// Print strip "Recycle session": the next turn starts a fresh Cursor chat from this print.
+async function handleDirectorRecycleSession(handler, ws, message) {
+    try {
+        const { paths } = await ensureProject(handler.globalResources);
+        const sessionId = message.sessionId;
+        if (runs.has(sessionId) || resumeTimers.has(sessionId)) {
+            handler.sendError(ws, 'Director is still working on that chat', 'DIRECTOR_BUSY', message.requestId);
+            return;
+        }
+        const filename = typeof message.filename === 'string' ? path.basename(message.filename) : '';
+        const recycled = await enqueue(async () => {
+            const index = readIndex(paths.indexPath);
+            const chat = index.chats.find((item) => item.id === sessionId);
+            if (!chat) return null;
+            recycleChat(chat);
+            if (filename && Array.isArray(chat.images) && chat.images.includes(filename)) chat.filename = filename;
+            writeIndex(paths.indexPath, index);
+            return { filename: chat.filename || null };
+        });
+        if (!recycled) {
+            handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
+            return;
+        }
+        sendOk(handler, ws, 'director_recycle_session_response', message.requestId, { sessionId, filename: recycled.filename });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to recycle the session', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
 }
 
@@ -3523,6 +3702,30 @@ function isLinkDrop(error) {
     return /econnreset|econnrefused|etimedout|enotfound|eai_again|socket hang up|network|fetch failed|connection reset|connection closed|connection refused|und_err|temporarily unavailable|broken pipe|\bepipe\b/.test(text);
 }
 
+function isUsageLimit(error) {
+    const text = `${error && error.message ? error.message : ''} ${error && error.code ? error.code : ''}`;
+    return USAGE_LIMIT_FAILURE.test(text);
+}
+
+// Usage limit on a picked model: the in-flight turn moves to Auto at once.
+// Already on Auto: wait USAGE_LIMIT_RETRY_MS and try again. Resumes cap both.
+async function moveInflightToAuto(sessionId) {
+    const paths = layout();
+    return enqueue(async () => {
+        const index = readIndex(paths.indexPath);
+        const chat = index.chats.find((item) => item.id === sessionId);
+        if (!chat || !chat.inflight) return null;
+        const wasAuto = chat.inflight.model === 'auto';
+        chat.inflight.model = 'auto';
+        chat.inflight.modelId = 'auto';
+        chat.inflight.effort = null;
+        chat.inflight.fast = false;
+        chat.inflight.reason = 'usage';
+        writeIndex(paths.indexPath, index);
+        return wasAuto ? USAGE_LIMIT_RETRY_MS : 0;
+    });
+}
+
 function continuationPrompt(chat) {
     const inflight = chat && chat.inflight ? chat.inflight : {};
     const messages = (chat && chat.messages) || [];
@@ -3535,8 +3738,11 @@ function continuationPrompt(chat) {
         }
     }
     const ask = String(inflight.userText || lastUser || '').slice(0, 2000);
+    const stopped = inflight.reason === 'usage'
+        ? 'The last model hit its usage limit while you were working this request, so this is a different model.'
+        : 'The connection dropped while you were working this request.';
     return [
-        'The connection dropped while you were working this request. Continue from the last finished step.',
+        `${stopped} Continue from the last finished step.`,
         'Do not start over, do not repeat a finished step, and do not ask what to do.',
         ask ? `Request:\n${ask}` : ''
     ].filter(Boolean).join('\n\n');
@@ -3566,13 +3772,13 @@ async function inflightCanResume(sessionId) {
 
 const resumeTimers = new Map();
 
-function scheduleDirectorResume(handler, sessionId) {
+function scheduleDirectorResume(handler, sessionId, delayMs = 1500) {
     if (!sessionId || resumeTimers.has(sessionId)) return;
     const timer = setTimeout(() => {
         resumeTimers.delete(sessionId);
         handleDirectorSendMessage(handler, null, { sessionId, resume: true }, {}, null)
             .catch((err) => console.error(`Director resume failed: ${err.message}`));
-    }, 1500);
+    }, delayMs);
     resumeTimers.set(sessionId, timer);
 }
 
@@ -3651,9 +3857,11 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 chat.inflight.resumes = (chat.inflight.resumes || 0) + 1;
                 chat.model = chat.inflight.model || chat.model;
                 chat.replay = false;
+                const prompt = continuationPrompt(chat);
+                delete chat.inflight.reason;
                 writeIndex(paths.indexPath, index);
                 return {
-                    prompt: continuationPrompt(chat),
+                    prompt,
                     cursorId: chat.cursorId,
                     model: chat.model,
                     name: chat.name,
@@ -3690,10 +3898,15 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             chat.messages.push(userMessage);
             markChatActive(chat);
             promoteSessionType(chat);
+            const recycled = recycleReason(chat);
+            if (recycled) recycleChat(chat);
+            const fresh = chat.fresh === true;
+            delete chat.fresh;
             let cursorId = chat.cursorId;
             if (!cursorId) {
                 cursorId = await createCursorChat(jail);
                 chat.cursorId = cursorId;
+                chat.chainPrints = {};
             }
             const round = roundModelRecord(message.model, message.effort || 'medium', message.fast === true, chat.model);
             chat.inflight = {
@@ -3708,10 +3921,10 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 userText: userText.slice(0, 2000)
             };
             const clientId = await bindDirectorTab(handler.globalResources, paths, directorClientId(clientInfo, message));
-            const prompt = buildPrompt(chat, userText, files, priorMessages, clientId);
+            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId);
             chat.replay = false;
             writeIndex(paths.indexPath, index);
-            return { prompt, cursorId, model: chat.model, name: chat.name, draftId: freshDraftId, round };
+            return { prompt, cursorId, model: chat.model, name: chat.name, draftId: freshDraftId, round, recycled };
         });
         if (!prepared || prepared.expired) {
             if (!prepared && ws) {
@@ -3724,6 +3937,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             }
             return;
         }
+        if (prepared.recycled) emitDirector(handler, ws, 'director_session_recycled', { sessionId, reason: prepared.recycled, auto: true });
         emitDirector(handler, ws, 'director_typing_start', { sessionId });
         marker = { cancelled: false };
         runs.set(sessionId, marker);
@@ -3737,7 +3951,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             sendBrowserPreview(handler, ws, wsServer, sessionId, filename);
         });
         const stopPrintWatch = watchGeneratedPrints(gr, (filename) => {
-            rememberGeneratedPrint(paths, sessionId, filename, draftId)
+            printChainKey(gr, filename)
+                .then((chainKey) => rememberGeneratedPrint(paths, sessionId, filename, draftId, chainKey))
                 .then(() => sendSessionImage(handler, ws, wsServer, sessionId, filename, draftId))
                 .catch((err) => console.error(`Director print record skipped: ${err.message}`));
         });
@@ -3788,16 +4003,21 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
     } catch (error) {
         runs.delete(sessionId);
         dropDirectorStream(sessionId);
-        if (sessionId && !(marker && marker.cancelled) && isLinkDrop(error) && await inflightCanResume(sessionId)) {
+        const usageLimited = isUsageLimit(error);
+        if (sessionId && !(marker && marker.cancelled) && (usageLimited || isLinkDrop(error)) && await inflightCanResume(sessionId)) {
             if (draftId && Array.isArray(error.rows) && error.rows.length) {
                 try {
                     await saveDirectorTrace(layout(), sessionId, error.rows, error.partialText || '', draftId, prepared && prepared.round);
                 } catch (_) { /* the resume still continues */ }
             }
-            noteTurnState('working', sessionId, null);
-            broadcastDirectorStatus(handler.globalResources);
-            scheduleDirectorResume(handler, sessionId);
-            return;
+            const delayMs = usageLimited ? await moveInflightToAuto(sessionId) : undefined;
+            if (delayMs !== null) {
+                if (usageLimited) console.warn(`Director ${sessionId} hit a Cursor usage limit; continuing on Auto${delayMs ? ` in ${delayMs / 1000}s` : ''}`);
+                noteTurnState('working', sessionId, null);
+                broadcastDirectorStatus(handler.globalResources);
+                scheduleDirectorResume(handler, sessionId, delayMs);
+                return;
+            }
         }
         await clearInflight(sessionId);
         noteCursorLoginFailure(error.message);
@@ -4079,14 +4299,27 @@ async function executeDynagenTurn(gr, job) {
     const slot = { change: null, controls: job.controls || null };
     runs.set(probe.id, marker);
     dynagenDeliveries.set(probe.id, slot);
+    const tracker = dynagenThoughtTracker(job.onThought);
     let turned;
     try {
-        turned = await runCursorTurn(jail, probe.cursorId, model, probe.prompt, dynagenThoughtTracker(job.onThought), marker);
+        try {
+            turned = await runCursorTurn(jail, probe.cursorId, model, probe.prompt, tracker, marker);
+        } catch (error) {
+            if (slot.change || model === 'auto' || marker.cancelled || !isUsageLimit(error)) throw error;
+            console.warn(`Rentan ${probe.id} hit a Cursor usage limit on ${model}; retrying on Auto`);
+            turned = await runCursorTurn(jail, probe.cursorId, 'auto', probe.prompt, tracker, marker);
+        }
     } catch (error) {
         if (Array.isArray(error.rows) && error.rows.length) {
             await saveDirectorTrace(paths, probe.id, error.rows, error.message || 'Rentan failed', null, null).catch(() => {});
         }
-        throw error;
+        // deliver_rentan already landed: the change is in hand even though the turn died after it.
+        if (slot.change) {
+            turned = { rows: error.rows || [], text: error.partialText || '', context: error.context || null };
+        } else {
+            if (isUsageLimit(error)) error.code = 'CURSOR_USAGE_LIMIT';
+            throw error;
+        }
     } finally {
         runs.delete(probe.id);
         dynagenDeliveries.delete(probe.id);
@@ -4233,6 +4466,16 @@ async function handleDirectorPromptGuidePush(handler, ws, message) {
 async function handleDirectorAbort(handler, ws, message) {
     const sessionId = message.sessionId;
     const marker = sessionId ? runs.get(sessionId) : null;
+    const pendingResume = sessionId ? resumeTimers.get(sessionId) : null;
+    if (pendingResume && !marker) {
+        clearTimeout(pendingResume);
+        resumeTimers.delete(sessionId);
+        clearInflight(sessionId).catch(() => {});
+        noteTurnState('interrupted', sessionId, 'Stopped');
+        broadcastDirectorStatus(handler.globalResources);
+        sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: true, sessionId });
+        return;
+    }
     if (!marker || !marker.child) {
         sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: false, sessionId: sessionId || null });
         return;
@@ -4292,6 +4535,7 @@ module.exports = {
     handleDirectorDeleteSession,
     handleDirectorGetMessages,
     handleDirectorRollbackMessage,
+    handleDirectorRecycleSession,
     handleDirectorSendMessage,
     handleDirectorAbort,
     handleDirectorGetModels,
