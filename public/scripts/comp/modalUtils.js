@@ -9418,6 +9418,10 @@ function saveWindowPositions(options = {}) {
         if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt') || !modal.querySelector('.modal-window-title')) {
             return;
         }
+        // Rect is zero or animation-scaled while minimised; keep the last saved normal geometry
+        if (modal.classList.contains('minimised') || modal.classList.contains('minimising') || modal.classList.contains('unminimising')) {
+            return;
+        }
 
         // Skip transient windows unless they're marked for position restoration
         const isTransient = modal.classList.contains('transient');

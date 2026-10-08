@@ -3845,13 +3845,63 @@ function dynagenRules() {
     return [
         'This is a hidden Rentan turn. Studio is waiting on your answer before it prints. Do not generate, print, apply_studio_changes, open windows, or ask questions.',
         'Context is the scene physics: time of day, weather, season, holiday, location. Write what would be visible in the frame as NovelAI tags: light, sky, weather on surfaces and clothes, seasonal props. Present tense, one fact once.',
-        'Context goes into dg_ expanders only: dg_time, dg_weather, dg_season, dg_holiday, dg_scene (only the ones that apply). Each value is a short tag string. The prompt carries !dg_<name> where that expander belongs. Add a missing !dg_ token once. Never paste an expander value into the prompt.',
-        'You may edit any part of the prompt, UC, and character prompts the scene needs. Remove tags or whole sections that contradict the context or would break the print (a sunny sky at night, snow in summer, a stale location or old scene, broken syntax), reword tags, and move scene details into dg_ expanders. Keep who the characters are, their bodies, and the artist; outfit and action follow the weather when they must.',
+        'Context goes into dg_ expanders only: dg_time, dg_weather, dg_season, dg_holiday, dg_scene, dg_action (only the ones that apply). Each value is a short tag string. The prompt carries !dg_<name> where that expander belongs. Add a missing !dg_ token once. Never paste an expander value into the prompt.',
+        'You may edit any part of the prompt, UC, and character prompts the scene needs. Remove tags or whole sections that contradict the context or would break the print (a sunny sky at night, snow in summer, a stale location or old scene, broken syntax), reword tags, and move scene details into dg_ expanders. Keep who the characters are, their bodies, and the artist. Outfit and action follow the Controls lines.',
+        'Body and clothing come first for every action: read each character\'s body, its current state (size, weight, pregnancy, fatigue, injury, wet or cold skin), and what they wear (tight, loose, long, short, open, layered) before choosing a reaction. Pick only what that body can do and that outfit would show: a heavy belly is supported or braced, not bent over; a tight bodysuit shows wind pressing it flat, not flapping; long hair and loose sleeves blow, bound hair does not. Weather lands on the body too (sun on skin, goosebumps, flushed cheeks, damp fabric clinging). Name the body or outfit fact you used in applied.action (and applied.creative or applied.clothing when they touch the character).',
+        'Every dg_ value, scene prop, and plant must agree with the others and with the context (no pine forest in an autumn-leaves scene, no hard shadows under overcast).',
+        'context.period and context.season tables are guidance, not text to paste. Pick the tags that fit this frame, reword them into what the camera sees, and drop the rest.',
         'A directive, when given, is the creative ask for this scene. Fold it into dg_scene and the prompt the same way.',
         'Stay under recommended tokens. count_prompt_tokens or search_autofill only when a tag is in doubt.',
-        'A later tick only says what changed. Update the affected expander bodies and keep the rest.',
-        'Deliver with the hidden tool deliver_rentan: advanced_tools {"name":"deliver_rentan","arguments":{"chatId":"<Rentan chat id below>","expanders":[{"prefix":"dg_weather","value":"..."}],"prompt":"full base prompt, only if it changed","uc":"only if it changed","characters":[{"index":0,"prompt":"only slots that changed"}],"summary":"one line"}}. expanders always lists every dg_ expander you want kept. If it returns an error, fix the payload and call it again. After it succeeds, reply with the summary line only.'
+        'A later tick only says what changed. Update the affected expander bodies and keep the rest. When Why names a control that turned on or off, apply that control now even if the context did not change; returning the same answer is wrong.',
+        'Deliver with the hidden tool deliver_rentan: advanced_tools {"name":"deliver_rentan","arguments":{"chatId":"<Rentan chat id below>","expanders":[{"prefix":"dg_weather","value":"...","reason":"one line: what in the context drove it"}],"prompt":"full base prompt, only if it changed","uc":"only if it changed","characters":[{"index":0,"prompt":"only slots that changed"}],"applied":{"action":"one line: what you changed and which context drove it"},"summary":"one line"}}. expanders always lists every dg_ expander you want kept. applied has one line for every control in the Controls list; a missing line is rejected. If it returns an error, fix the payload and call it again. After it succeeds, reply with the summary line only.'
     ].join('\n');
+}
+
+// One line per Studio Rentan control, sent every turn for the controls that apply (modules/dynagenWren.js rentanControls).
+const DYNAGEN_CONTROL_RULES = {
+    tod: 'Time of day: dg_time is the light of context.period (sun up or down, sun phase, how much light). Low warm light near sunrise and sunset, overhead and hard at midday, no sun at night.',
+    weather: 'Weather: dg_weather shows sky, cloud, precipitation, and wind as visible things (sky color, wet ground, puddles, hair and cloth moving, haze, frost), never numbers. context.recent rain still shows on surfaces.',
+    season: 'Season: dg_season carries foliage, ground cover, and seasonal props. Scene plants match it.',
+    observeHoliday: 'Holiday: when context.holiday is present, dg_holiday carries its decorations and colors, stronger as intensity rises. No holiday listed means no dg_holiday.',
+    guidance: 'Guidance: context.period lighting and atmosphere are the tags the scene should carry; weight ranks how hard to push (heaviest rows get 1.1 to 1.4::tags::, never above 1.5). Put period.uc tags into the UC the same way. Follow context.season guidelines.',
+    clothing: 'Clothing: adapt the outfit to the weather, season, and activity (context.clothingOptions are suggestions). Keep identity items (signature accessories, colors).',
+    action: 'Action: write dg_action, how the character reacts to this exact light, air, season, and holiday, as pose and action tags. Light: squinting, shading eyes, basking, face lit, eyes adjusting to the dark. Air: hair and clothes blowing, holding hair back, bracing, shivering, breath visible, fanning, sweat. Season and holiday: catching a falling leaf, leaf caught in hair, brushing off snow, holding a seasonal object. Time: fresh in the morning, winding down in the evening, resting at night. Keep the core pose; swap a prompt pose tag only where it conflicts (looking down vs shading eyes). Put !dg_action next to the pose tags.',
+    creative: 'Creative: add one flourish that suits the context in dg_scene (light play, a prop, a framing detail). It must agree with every other dg_ value.',
+    optimize: 'Optimize: tighten the prompt. Drop duplicate, weak, or contradicting tags.',
+    lockSubject: 'Lock subject: do not edit subject, body, outfit, or action tags. Only scene, light, and weather change.'
+};
+const DYNAGEN_CONTROL_OFF = {
+    clothing: 'Clothing is off: do not change the outfit.',
+    action: 'Action is off: keep the pose and action tags as written. No dg_action.'
+};
+
+// Creative menu level (Light / Medium / High). Medium is the default.
+const DYNAGEN_CREATIVE_RULES = {
+    light: DYNAGEN_CONTROL_RULES.creative,
+    medium: 'Creative (medium): give the frame an idea, same location. Choose a composition (camera angle, distance, foreground and background layers, where the light falls), a small story beat or character moment the context makes possible (a leaf landing on them, sun warming a face, wind catching a sleeve), and a mood the viewer can see. Scene and composition go in dg_scene, the moment in dg_action when action is on, otherwise in dg_scene.',
+    high: 'Creative (high): the user is bored and wants something interesting. Reframe the shot (angle, distance, framing), pick a striking moment the conditions make possible, and you may move the location to a place that suits the time, weather, and season. Keep who the characters are, their bodies, the outfit rule, and the artist. It must read as one coherent frame.'
+};
+
+// Every Creative level also cleans the prompt; Optimize alone only tightens tokens.
+const DYNAGEN_CREATIVE_CLEANUP = ' Creative also edits the prompt: tighten it (drop duplicate, weak, or stacked synonym tags), fix tags that conflict with the context or the guidance tables, and compile anything the camera cannot see (backstory, feelings, time spans, counts the image cannot show, abstract mood words) into the visible tags that show it, or drop it. Keep the meaning the user wanted visible.';
+
+function dynagenRequiredControls(controls) {
+    const c = controls || {};
+    return Object.keys(DYNAGEN_CONTROL_RULES).filter((key) => c[key] !== false && c[key] !== undefined);
+}
+
+function dynagenControlLines(controls) {
+    const c = controls || {};
+    const lines = dynagenRequiredControls(c)
+        .map((key) => {
+            if (key === 'creative') return (DYNAGEN_CREATIVE_RULES[c.creative] || DYNAGEN_CREATIVE_RULES.medium) + DYNAGEN_CREATIVE_CLEANUP;
+            return typeof c[key] === 'boolean' ? DYNAGEN_CONTROL_RULES[key] : `${DYNAGEN_CONTROL_RULES[key]} Fixed by the user: ${JSON.stringify(c[key])}.`;
+        });
+    Object.keys(DYNAGEN_CONTROL_OFF).forEach((key) => {
+        if (!c[key] && !c.lockSubject) lines.push(DYNAGEN_CONTROL_OFF[key]);
+    });
+    if (c.disable_holiday) lines.push('Holidays are disabled: no dg_holiday.');
+    return lines;
 }
 
 function dynagenTurnPrompt(fresh, job) {
@@ -3860,6 +3910,7 @@ function dynagenTurnPrompt(fresh, job) {
     lines.push('');
     lines.push(`Rentan chat id: ${job.chatId || ''}`);
     lines.push(`Why: ${job.reason || 'context refresh'}`);
+    if (job.controls) lines.push(`Controls:\n- ${dynagenControlLines(job.controls).join('\n- ')}`);
     lines.push(`Context: ${JSON.stringify(job.context || null)}`);
     if (job.directive) lines.push(`Directive: ${job.directive}`);
     lines.push(`Prompt:\n${job.prompt || ''}`);
@@ -3890,13 +3941,24 @@ function parseDynagenAnswer(text) {
 
 function normalizeDynagenAnswer(data) {
     const expanders = (Array.isArray(data.expanders) ? data.expanders : [])
-        .map((entry) => ({
-            prefix: String((entry && (entry.prefix || entry.name)) || '').replace(/^!/, '').trim(),
-            value: String((entry && entry.value) || '').trim()
-        }))
+        .map((entry) => {
+            const out = {
+                prefix: String((entry && (entry.prefix || entry.name)) || '').replace(/^!/, '').trim(),
+                value: String((entry && entry.value) || '').trim()
+            };
+            const reason = String((entry && entry.reason) || '').trim().slice(0, 240);
+            if (reason) out.reason = reason;
+            return out;
+        })
         .filter((entry) => /^dg_[a-z0-9_]+$/i.test(entry.prefix) && entry.value);
     if (!expanders.length) throw new Error('Wren returned no dg_ expanders');
     const out = { expanders, summary: String(data.summary || '').slice(0, 300) };
+    const applied = data.applied && typeof data.applied === 'object' && !Array.isArray(data.applied) ? data.applied : {};
+    out.applied = {};
+    Object.keys(applied).forEach((key) => {
+        const line = String(applied[key] || '').trim().slice(0, 240);
+        if (line) out.applied[key] = line;
+    });
     if (typeof data.prompt === 'string' && data.prompt.trim()) out.prompt = data.prompt.trim();
     if (typeof data.uc === 'string' && data.uc.trim()) out.uc = data.uc.trim();
     out.characters = (Array.isArray(data.characters) ? data.characters : [])
@@ -3915,7 +3977,20 @@ function deliverDynagen(chatId, payload) {
         error.code = 'NO_RENTAN_TURN';
         throw error;
     }
-    slot.change = normalizeDynagenAnswer(payload || {});
+    const change = normalizeDynagenAnswer(payload || {});
+    const missing = dynagenRequiredControls(slot.controls).filter((key) => !change.applied[key]);
+    if (missing.length) {
+        const error = new Error(`applied is missing a line for: ${missing.join(', ')}. Apply those controls, say what you changed, and call deliver_rentan again.`);
+        error.code = 'RENTAN_CONTROLS_UNAPPLIED';
+        throw error;
+    }
+    if (slot.controls && slot.controls.action && !slot.controls.lockSubject
+        && !change.expanders.some((e) => e.prefix.toLowerCase() === 'dg_action')) {
+        const error = new Error('Action is on: add a dg_action expander (the character reacting to this light, air, and season) and put !dg_action next to the pose tags.');
+        error.code = 'RENTAN_CONTROLS_UNAPPLIED';
+        throw error;
+    }
+    slot.change = change;
     return { chatId: id, expanders: slot.change.expanders.length, characters: slot.change.characters.length };
 }
 
@@ -3968,7 +4043,9 @@ async function claimDynagenChat(gr, jail, paths, job) {
             chat.dynagenTurns = 0;
         }
         if (!chat.cursorId) chat.cursorId = await createCursorChat(jail);
-        const fresh = !(chat.dynagenTurns > 0);
+        const rulesHash = crypto.createHash('md5').update(dynagenRules()).digest('hex');
+        const fresh = !(chat.dynagenTurns > 0) || chat.dynagenRulesHash !== rulesHash;
+        chat.dynagenRulesHash = rulesHash;
         const jobText = dynagenTurnPrompt(fresh, { ...job, chatId: chat.id });
         chat.messages = (chat.messages || []).concat({
             id: crypto.randomUUID(),
@@ -3999,7 +4076,7 @@ async function executeDynagenTurn(gr, job) {
     const model = resolveRunModel(await listCursorModels(jail), { effort: 'medium' });
     const probe = await claimDynagenChat(gr, jail, paths, job);
     const marker = { cancelled: false };
-    const slot = { change: null };
+    const slot = { change: null, controls: job.controls || null };
     runs.set(probe.id, marker);
     dynagenDeliveries.set(probe.id, slot);
     let turned;

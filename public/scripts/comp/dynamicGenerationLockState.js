@@ -170,6 +170,7 @@ function readDynamicGenerationSnapshot() {
         snapshot.creative = creativeBtn.dataset.state === 'on';
         snapshot.creative_clothing = creativeBtn.dataset.toggleClothing === 'true';
         snapshot.creative_action = creativeBtn.dataset.toggleAction === 'true';
+        snapshot.creative_level = creativeBtn.dataset.creativeLevel || 'medium';
     }
     // novelIsEnabled / novelGetSessionSettings: public/scripts/comp/novelManager.js
     if (novelGetBtn()) snapshot.novel = { enabled: !!novelIsEnabled(), ...novelGetSessionSettings() };
@@ -274,6 +275,10 @@ function applyStudioDynamicGenerationConfig(config) {
         }
         if (config.creative_action !== undefined) {
             creativeBtn.dataset.toggleAction = config.creative_action ? 'true' : 'false';
+            changed = true;
+        }
+        if (['light', 'medium', 'high'].includes(config.creative_level)) {
+            creativeBtn.dataset.creativeLevel = config.creative_level;
             changed = true;
         }
         // Click runs the Rentan toggle side effects (dynamicGenerationManager.js)

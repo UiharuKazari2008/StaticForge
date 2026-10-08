@@ -7,7 +7,7 @@ const EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS = new Set([
     'toggle-favorite', 'reroll', 'download', 'copy', 'open-in-window', 'modify',
     'expand-canvas', 'enhance', 'upscale', 'view-image-data',
     'copy-original', 'download-original', 'expand-canvas-original', 'delete-original',
-    'start-chat', 'copy-lookback', 'publish-to-explorer',
+    'start-chat', 'copy-lookback', 'ask-wren', 'publish-to-explorer',
     'set-wallpaper', 'jump-to-image', 'create-reference', 'create-desktop-shortcut',
     'scrap', 'delete', 'move-to-workspace'
 ]);

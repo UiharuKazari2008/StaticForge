@@ -376,6 +376,14 @@ function setupDynamicGenerationContextMenus() {
                         }
                     },
                     {
+                        text: 'Restore Input Prompt',
+                        action: 'restoreRentanInputPrompt',
+                        icon: 'fas fa-rotate-left',
+                        loadfn: function (item) {
+                            item.disabled = !window.dynamicGenerationData?.compiled_prompt?.original_input;
+                        }
+                    },
+                    {
                         text: 'Compile to Prompts',
                         action: 'compileToPrompts',
                         icon: 'fas fa-file-pen',
@@ -590,6 +598,27 @@ function setupDynamicGenerationContextMenus() {
                         item.checked = guidanceEnabled;
                         item.className = guidanceEnabled ? 'text-success' : '';
                     }
+                },
+                {
+                    text: 'Creativity',
+                    icon: 'fas fa-wand-magic-sparkles',
+                    valueDisplay: (target) => {
+                        const level = target.dataset.creativeLevel || 'medium';
+                        return level.charAt(0).toUpperCase() + level.slice(1);
+                    },
+                    submenu: [
+                        { text: 'Light - one flourish', icon: 'fas fa-feather', value: 'light' },
+                        { text: 'Medium - composition, a moment, a mood', icon: 'fas fa-wand-magic-sparkles', value: 'medium' },
+                        { text: 'High - reframe the shot, may move the location', icon: 'fas fa-fire', value: 'high' }
+                    ].map((level) => ({
+                        ...level,
+                        action: 'setCreativeLevel',
+                        loadfn: function (item, target) {
+                            const selected = (target.dataset.creativeLevel || 'medium') === level.value;
+                            item.checked = selected;
+                            item.className = selected ? 'text-success' : '';
+                        }
+                    }))
                 }
             ]
         }]
@@ -605,6 +634,51 @@ function setupDynamicGenerationContextMenus() {
     contextMenu.attachToElement(document.getElementById('creativeBtn'), creativeMenuConfig);
 }
 
+// Clear compiled prompt
+async function clearCompiledPrompt() {
+    if (!window.dynamicGenerationData || !window.dynamicGenerationData.compiled_prompt) {
+        showGlassToast('warning', null, 'No compiled prompt to erase.', false, undefined, '<i class="fas fa-file-slash"></i>');
+        return;
+    }
+
+    // Confirm deletion using confirmationDialog.js
+    const confirmed = await showConfirmationDialog(
+        'Are you sure you want to erase the compiled prompt?',
+        [
+            {
+                text: 'Erase',
+                value: true,
+                className: 'btn-danger',
+                icon: 'fas fa-trash'
+            },
+            {
+                text: 'Cancel',
+                value: false,
+                className: 'btn-secondary'
+            }
+        ]
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    // Clear the compiled prompt
+    delete window.dynamicGenerationData.compiled_prompt;
+    if (dynamicCarousel) {
+        dynamicCarousel.setAttribute('data-has-cache', 'false');
+    }
+    clearDynamicGenerationLockState();
+
+    // Clear stage seeds array (used for rerolling with compiled prompts)
+    if (window.lastGenerationStageSeeds) {
+        delete window.lastGenerationStageSeeds;
+        console.log('🗑️ Cleared stage seeds array');
+    }
+
+    updateDynamicGenerationToggleBtn();
+}
+
 /** @returns {boolean} true when this domain handled the action */
 function handleDynamicGenerationContextMenuAction(e) {
     const { action, target } = e.detail;
@@ -617,7 +691,7 @@ function handleDynamicGenerationContextMenuAction(e) {
         'toggleWeatherForecast','setSeasonUseDate','togglePipelineAware','toggleInitialPromptAware','toggleFastMode',
         'toggleLockContext','toggleLockResults','toggleChainUpdates','toggleForceRefresh','toggleExpirePreview',
         'setCreativeDirectiveStrategy','setCreativeDirectiveToolPasses','setCreativeDirectiveDialogs',
-        'disableCreativeDirectiveDialogs','setAiTemperature','clearAiTemperature','openRentanSession'
+        'disableCreativeDirectiveDialogs','setAiTemperature','clearAiTemperature','openRentanSession','setCreativeLevel','restoreRentanInputPrompt'
     ]);
     if (!dynGenActions.has(action)) return false;
 
@@ -738,6 +812,23 @@ function handleDynamicGenerationContextMenuAction(e) {
             const creativeBtn = document.getElementById('creativeBtn');
             const toggleActionEnabled = creativeBtn.dataset.toggleAction === 'true';
             creativeBtn.dataset.toggleAction = toggleActionEnabled ? 'false' : 'true';
+        } else if (action === 'restoreRentanInputPrompt') {
+            // Prompt, UC, and character prompts as they were before Wren's last edit (modules/dynagenWren.js original_input).
+            const original = window.dynamicGenerationData?.compiled_prompt?.original_input;
+            if (original) {
+                // applyStudioChangePayloadSilent: public/scripts/comp/studioChangeJson.js
+                void applyStudioChangePayloadSilent({
+                    prompt: original.prompt,
+                    uc: original.uc,
+                    ...(original.characters.length ? {
+                        characters: original.characters.map((row) => ({ index: row.index, action: 'replace', prompt: row.prompt }))
+                    } : {})
+                }).then((applied) => {
+                    if (applied) showGlassToast('success', null, 'Input prompt restored', false, 2500, '<i class="fas fa-rotate-left"></i>');
+                });
+            }
+        } else if (action === 'setCreativeLevel') {
+            document.getElementById('creativeBtn').dataset.creativeLevel = e.detail.item.value;
         } else if (action === 'toggleObserveHoliday') {
             const seasonBtn = document.getElementById('seasonBtn');
             const observeHolidayEnabled = seasonBtn.dataset.toggleHoliday === 'true';

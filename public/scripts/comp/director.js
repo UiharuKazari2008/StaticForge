@@ -3684,7 +3684,9 @@ class Director {
     _doRenderSessionMessages(messages, options) {
         if (!this.directorChatMessages || !Array.isArray(messages)) return;
         const keepPlace = options && options.keepPlace;
-        const follow = !keepPlace && ((options && options.scroll) || this._scrollAfterLoad || this._stickBottom);
+        const firstPaint = !!this.currentSession && this._windowSessionId !== this.currentSession.id;
+        if (firstPaint) this._stickBottom = true;
+        const follow = !keepPlace && (firstPaint || (options && options.scroll) || this._scrollAfterLoad || this._stickBottom);
         if (!keepPlace) this._scrollAfterLoad = false;
         this.promoteLiveTraceKeys(messages);
         const cappedMessages = this.currentSession

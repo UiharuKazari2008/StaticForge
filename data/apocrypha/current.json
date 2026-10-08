@@ -1,480 +1,548 @@
 {
   "sections": [
     {
-      "id": "webapp-7207c1c",
-      "kicker": "WEBAPP · BUILD WATCH",
-      "title": "Webapp moved again: 9f6f71d → 7207c1c-production",
+      "id": "staff-ref-inset-style",
+      "kicker": "STAFF · INPAINT",
       "grim": false,
-      "lede": "The live NovelAI webapp flipped build between Monday and today. Contracts are unverified until Frost diffs it.",
-      "body": "Monday's refresh found `9f6f71d-production`. Today's catch-up snapshot shows **`7207c1c-production`**: `__NEXT_DATA__` on novelai.net/image carries the new id, its `_buildManifest.js` answers 200, and the 9f6f71d manifest now 404s.\n\nWe did **not** run a Chrome contract dump this pass, so the watched contracts (upscale, V5 capability flags, model ids, `characterPrompts[i].name` carrying renamed labels) are **unverified** against 7207c1c, not \"unchanged\". `#changelog` and `#announcements` were empty in the window. The only `#progress-updates` post was finetune releasing two **text** model weights on Hugging Face (Clio's 3B base and Genji V2), with no image-API impact.\n\n**CTA.** Frost: diff 7207c1c against the 9f6f71d watch state and re-check `characterPrompts[i].name`. Chiyo: board it with Rook if anything in the request shape moved. Everyone else: no prompting change implied.",
-      "excerpts": [],
-      "images": []
-    },
-    {
-      "id": "furry-toggle-bias",
-      "kicker": "STAFF · DATASET",
-      "title": "Same tags, same seed, furry on vs off: the toggle changes the picture",
-      "grim": false,
-      "lede": "ght901 shut down the 'furry mode only changes suggestions' myth with same-seed pairs: heavy style bias and different proportions.",
-      "body": "Monday afternoon (ET) `#nai-diffusion-discussion` argued about whether furry mode matters if you prompt anime tags anyway. Some regulars said it \"looks basically the same\". The guide already says furry mode only changes tag suggestions and prepends `fur dataset`. That part is still true. But staff pointed out that the prepended dataset tag is **itself** a strong condition.\n\nght901 posted same-seed pairs: \"You are going to get different results with the same tags with furry on/off.\" On the same seed there's heavy stylistic bias: one side reads clearly anime and the other western or toony, sometimes drifting toward 3D. There are **notably different proportions** too. In a blind challenge pair, ght901 picked the furry side straight away: \"The thicker legs are a give away.\" Mysterious One added that a detailed, anime-heavy prompt moves less, so how much the toggle matters depends on the prompt.\n\nCommunity add-on (ANECDOTE, ShameSoot): if you work in furry mode for its tag set but want a human character, add `not furry, species:human`. A strong furry reference can still override it.\n\nLanded in the guide §8 (Furry mode row), constraints, and both optimisers.\n\n**Try this.** Same seed. A: furry off, `1girl, solo, standing, city street, looking at viewer, upper body`. B: furry on (prepends `fur dataset`), same prompt. C: furry on + `not furry, species:human`. Compare proportions and rendering, not identity.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: run the A/B/C triple and `save_memory` if C reliably holds human anatomy. Ivory: note in Studio cohesion that the furry toggle is a style/proportion lever, not a UI cosmetic.",
+      "title": "Reference-inset inpaint copies the character but not the style? Strip the quality tags and zero the UC",
+      "lede": "omni could get advanced reference inpainting to copy a character but not its style. mahouko's fix was one line: take every quality tag out and set the UC to None with an empty string.",
+      "body": "Advanced reference inpainting (the docs call it that, and omni was careful to say it is not the PR tool) works by pasting a reference on the canvas and inpainting the rest. omni reported that identity carried well but the drawing style did not, unless they inpainted inside the reference itself, and guessed a tag was missing.\n\nmahouko's answer wasn't a missing tag. It was the stuff on top: **get rid of every quality tag in your prompt, and set your UC to None and an empty string.** The quality preset and UC presets push the image toward a house look, and that pull fights the reference's style. omni's reply ('muh complexity') points at the one thing they rely on: the complexity tag. Test with and without it, because mahouko said every quality tag.\n\nThis sits next to the guide's existing PR substitutes (reference sheet tags, reference inset, inpaint the rest). It doesn't replace them.\n\n**Try this.** Paste a small reference in a corner of a blank canvas and mask everything else.\nA (control): your usual prompt with Quality Tags on and the Light UC preset.\nB: same prompt with Quality Tags **off**, UC preset **None**, UC field empty.\nC: B plus `high complexity` only.\nPrompt starter: `1girl, solo, cowboy shot, standing, simple background, reference inset, image includes character reference`\nSettings: V5 Full · inpaint · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · same seed and mask for A/B/C.\n\n**CTA.** If B matches the reference's line and colour better than A, `save_memory` it under a ref-inset name. If C undoes the gain, complexity counts as a quality tag for this job.",
       "excerpts": [
         {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 12:42 ET",
-          "text": "You are going to get different results with the same tags with furry on/off"
+          "speaker": "omni",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 21:18Z",
+          "text": "I can get reference inset inpainting to copy a character well but style replication still is tricky, I figure I am missing a tag and it not like the model can't do it but I have to basically inpaint within the pic itself, anyone else been fiddling with reference inpainting?"
         },
         {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 12:49 ET",
-          "text": "And stylistically, there's heavy biases. It's easy to tell which of these is furry and which is anime. Same seed.\nIf the toggle didn't matter it wouldn't exist"
+          "speaker": "mahouko (Anlatan)",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 21:24Z",
+          "text": "get rid of every quality tag in your prompt, and set your UC to None and empty string"
         },
         {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 12:52 ET",
-          "text": "notably different proportions too"
-        },
-        {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 13:00 ET",
-          "text": "The thicker legs are a give away"
-        },
-        {
-          "speaker": "ShameSoot",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 12:33 ET",
-          "text": "`not furry, species:human` does the trick, unless its a particularly powerful and stubborn vibe using a furry reference."
+          "speaker": "omni",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 21:26Z",
+          "text": "muh complexity but yea that the only thing I have, UC always be pretty slim to none"
         }
       ],
       "images": []
     },
     {
-      "id": "char-box-position",
-      "kicker": "STAFF · CHARACTER BOXES",
-      "title": "Base prompt vs character box is not equivalent: box positioning is very strong",
+      "id": "staff-meter-price",
+      "kicker": "STAFF · BATTERY & ANLAS",
       "grim": false,
-      "lede": "mahouko: yes, it matters where the character tags live. Regulars add that boxes are really placement boxes that can hold text or objects.",
-      "body": "neos asked a basic question: is there a quality difference between putting character prompts in the base prompt and putting them inside character boxes? mahouko answered plainly: \"yes\". Then came the useful part: \"character position conditioning via the character boxes seems to be very strong.\"\n\nRead it together with the existing STAFF line (\"if every character is sitting in the base prompt, move each one into a box\"). When placement matters, identity goes in boxes. Base-only character tags leave placement and binding to the model. The box doesn't only say who someone is, it pins **where** they are.\n\nIn the same window, the starter-pack thread found the corollary. Crema: \"theyre more placement boxes\". Mysterious One has used them \"for text and inanimate objects\". Triplis noted that the model might expect a character in each box, but you don't have to write `girl`/`boy`; `no humans` works. So a box is a positioned conditioning region, not a person slot.\n\nLanded in guide §4, constraints and both optimisers.\n\n**Try this.** Same seed, two characters. A: base `2girls, park bench, afternoon`, both identities written in the base. B: base `2girls, park bench, afternoon`; box 1 (left) `girl, red hair, green jacket`; box 2 (right) `girl, black hair, white dress`. Check left/right binding. Then C: add box 3 at top right with `no humans, a wooden sign reading \"OPEN\"`.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B. Steps 23–28 for multi-character.\n\n**CTA.** Guren: A/B/C with 2 seeds, scoring binding and placement. Ivory: Studio cohesion should prefer boxes over base for any positioned subject, including props and labels.",
+      "title": "Price one image while it's free, and read your V5 battery from the API",
+      "lede": "No public formula for the meter, but ght901 gave a trick that works in the UI, and arda named the API field.",
+      "body": "Silver asked for the formula behind the Anlas cost, hoping to predict how much V5 usage a setting burns. ght901: it's not secret, the calculation runs in your browser, but there are **too many edge cases and exceptions for different models and features to give a simple formula**. The trick: when a gen shows 0 Anlas, **set the image count to 2**. The first image is free, so the price you see is the price of one image.\n\nFor tool builders (Menma, Frost), Cheshire asked whether the V5 Opus budget is visible over the API. After one 'sorry, misinformation' and a correction, arda named it: **`GET https://image.novelai.net/user/data`, under `.subscription.usage`.** It's in `nai-staff-updates/digest.md` for the proxy folks.\n\nCommunity footnotes: the bar doesn't fill past 100%, so leaving it full overnight wastes refills (Flitter, Uragan). Whooters asked whether a '14% refresh rate' gives about 242 images a day at 22 steps with no net loss. Nobody on staff confirmed the math, so treat it as a user estimate.\n\n**Try this.** Turn on any feature you're unsure about (larger resolution, more steps, Enhance), set image count to 2, and write down the number shown. That's your per-image Anlas price for that setup, the same number the browser uses to price it.\n\n**CTA.** Menma: if Dreamscape shows a battery gauge, try reading `.subscription.usage` from `/user/data` instead of estimating. Board it through Rook if it's worth a ticket.",
       "excerpts": [
         {
-          "speaker": "neos",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-29 15:27 ET",
-          "text": "Btw is there a quality difference between using the character prompts in the base prompt vs having them be inside their character prompt boxes?"
+          "speaker": "ght901 (Anlatan)",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 15:39Z",
+          "text": "When the cost is zero you can just set it to generate two images to see the price of one. Since the first one is costs zero, the price you see is the price of a single image.\nIt's not really a secret. The calculation is happening inside your browser. There's just too many edge cases and exceptions for different models and features to give a simple formula"
         },
         {
-          "speaker": "mahouko",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-29 15:41 ET",
-          "text": "yes"
+          "speaker": "arda (Anlatan)",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-06 18:02Z",
+          "text": "actually it wasnt misinformation, my bad"
         },
         {
-          "speaker": "mahouko",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-29 15:41 ET",
-          "text": "character position conditioning via the character boxes seems to be very strong"
+          "speaker": "arda (Anlatan)",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-06 18:02Z",
+          "text": "check `GET https://image.novelai.net/user/data` , it should be under .subscription.usage of the JSON"
         },
         {
-          "speaker": "Crema",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 15:36 ET",
-          "text": "theyre more placement boxes"
-        },
-        {
-          "speaker": "Mysterious One - Nemuidere",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 15:37 ET",
-          "text": "I've used it for text and inanimate objects."
-        },
-        {
-          "speaker": "Triplis",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 15:35 ET",
-          "text": "it might think the boxes should have character showing up with them, but you don't have to put boy/girl in there. you could even put no humans"
+          "speaker": "Uragan",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-06 19:21Z",
+          "text": "You are wasting usage by leaving it at 100%, but I don't think there's a need to use it more if your average use is inferior to the refill rate."
         }
       ],
       "images": []
     },
     {
-      "id": "scarce-characters",
-      "kicker": "STAFF · CHARACTERS",
-      "title": "V4 knew them, V5 doesn't: scarce-data characters, and the (series) fix",
+      "id": "staff-no-drift",
+      "kicker": "STAFF · SEEDS",
       "grim": false,
-      "lede": "ght901: nothing broke; V5 just didn't learn as many low-data characters well. Regulars have the workaround.",
-      "body": "Ultraloco noticed that some characters V4 recognised don't come through in V5. ght901: \"Nothing in particular. V5 just didn't learn as many characters with scarce data well.\" It's not a regression to report, it's what the dataset gave the model.\n\nThe practical fix showed up several times in the window (CONSENSUS). Use the **disambiguated** tag from the suggestion list, `character name (series)`. matts7123: \"pay attention to the prompt suggestions… some will need IP disambiguation. Example: luna (dota).\" Flitter says `Character name (show name)` tends to work better. Varg found that adding the copyright in parentheses often makes a 4.5-promptable character start working on V5. Blk01 now adds series names in the character box where V4 never needed them. Then describe the canonical outfit and colours briefly so the model has something to anchor on (HOUSE: describe canon traits, don't invent new ones).\n\nBicknell125's reminder from the same week: a character tag is strong because it carries every fanart instance, and that can also drag in the show's style. Pair this with an artist tag if you want your own look.\n\n**Try this.** Same seed. A: `1girl, luna, standing, forest`. B: `1girl, luna (dota), standing, forest`. C: B in a character box with the series name plus two canon colour/outfit tags. Swap in any low-data character you care about.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: try 2–3 rare characters across A/B/C. Ivory: Studio should default to the suggestion-list form `name (series)`.",
+      "title": "\"The style wears off\": it doesn't, and a nonsense line proves how easily a seed moves",
+      "lede": "MommysAI felt their style fade over a session of random-seed gens. OccultSage: same seed plus same prompt doesn't change. What wears out is the viewer.",
+      "body": "The question comes up every few weeks: 'is anyone else getting inconsistencies?' OccultSage asked the only useful first question: **same seed, same prompt?** If yes, share both images with metadata. MommysAI was on random seeds, and the answer was deadpan: '... it doesn't wear off. What wears out is your eyeball and perceptions.' The thread got heated and ended with an apology and a friendly reply. The technical point stands, and it matches the guide's STAFF notes (seed quality isn't time-of-day; maintenance or GPU changes can break bit-identical repro, but the model doesn't fade).\n\nBicknell125 added the practical part. Some seeds fight your whole prompt. To tell an unlucky seed from an unstable style, **freeze the seed and remove your artstyle chunk**, then look at what's left. A day earlier Bicknell posted a pair on one seed, the second with a **meaningless pop-song line** added. The images differ visibly. Any prose changes the image somewhat, so check a 'discovery' on several seeds before you call it a magic prompt.\n\nRelated (ShaddAI / Bicknell125): hair colours come out lighter in some styles. Colour tags don't map the same across artstyles, so tune the hair tag per style.\n\n**Try this.** Three seeds × two arms. A = your prompt. B = your prompt plus one irrelevant sentence (`the radio is playing an old song.`). If B 'improves' one seed and not the others, it's noise.\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT on · UC Light.\n\n**CTA.** Before you write a technique up, run it on three seeds minimum. That's already the Cellar's lab standard. This is why.",
       "excerpts": [
         {
-          "speaker": "Ultraloco",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-30 17:57 ET",
-          "text": "Huh, I noticed some characters that were recognized in V4 are not in V5. I wonder what happened?"
+          "speaker": "OccultSage (Anlatan)",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 13:47Z",
+          "text": "Do you have the same seed, the same prompt?\n\nIf so, share both images that show the inconsistency with metadata embedded."
         },
         {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-30 17:59 ET",
-          "text": "Nothing in particular. V5 just didn't learn as many characters with scarce data well"
-        },
-        {
-          "speaker": "matts7123",
-          "channel": "nai-image-posting",
-          "when": "2026-09-30 09:24 ET",
-          "text": "When putting in IP character names, pay attention to the prompt suggestions. You may be formatting the name wrong, some will need IP disambiguation. Example: luna (dota)."
-        },
-        {
-          "speaker": "{Flitter}",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-30 18:29 ET",
-          "text": "Sometimes it knows the characters but you need to add more details, like `Character name (show name)` tends to work better"
-        },
-        {
-          "speaker": "Varg",
-          "channel": "nai-image-advice",
-          "when": "2026-09-29 05:01 ET",
-          "text": "Maybe (probably) someone else has already found this out (read in the patch notes), but for characters that doesn't seem to be promptable in v.5 that was promptable in 4.5, if you add the copyright in parenthesis after it often starts working.\n\ni.e.\naiba asagi ❌ \naiba asagi (strike the blood) ✅"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "text-planning",
-      "kicker": "STAFF · IN-IMAGE TEXT",
-      "title": "V5 won't plan your starter pack: write and place every label",
-      "grim": false,
-      "lede": "mahouko on why 'make a starter pack meme' can't just work: the model can't decide what to write or where.",
-      "body": "Electro gecko asked whether the AI could do a \"starter pack\" meme, the kind of labelled grid where arrows point at items. mahouko's answer clarifies what text rendering can and can't do: \"probably you'd need a multimodal model with chain of thought for that, like something which understands textgen so it can plan what to write, and which can reason about where to place the text and how it relates to the image.\"\n\nV5 renders text you give it, and it's good at that (`Text:` / auto-quotes, up to 750 chars on Full). It doesn't **compose** text: it won't invent labels, decide which item gets which caption, or lay them out. So the prompter does the planning: write every label, then place each one, either in NL (\"a label reading 'x' in the upper left\") or with one character box per label (see the box article).\n\n**Try this.** Same seed. A: `a starter pack meme of a cafe worker, four items`. B: `a four-panel grid poster, white background, top left a coffee cup with a label reading \"COFFEE\", top right an apron with a label reading \"APRON\", bottom left a notepad with a label reading \"ORDERS\", bottom right sneakers with a label reading \"SHOES\"` (plain ASCII labels). C: B with one character box per quadrant (`no humans, coffee cup, label reading \"COFFEE\"`, …).\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B. Quality on; No-text sub-toggle off; don't paste `no text`.\n\n**CTA.** Guren: score label legibility and placement across A/B/C. Menma: is a Studio \"label box\" helper worth a ticket?",
-      "excerpts": [
-        {
-          "speaker": "Electro gecko the mighty",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 15:29 ET",
-          "text": "Do you think the AI would be able to do a starter pack meme?"
-        },
-        {
-          "speaker": "mahouko",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 16:23 ET",
-          "text": "probably you’d need a multimodal model with chain of thought for that"
-        },
-        {
-          "speaker": "mahouko",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 16:23 ET",
-          "text": "like something which understands textgen so it can plan what to write"
-        },
-        {
-          "speaker": "mahouko",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 16:23 ET",
-          "text": "and which can reason about where to place the text and how it relates to the image"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "rating-tags",
-      "kicker": "STAFF · TAGS",
-      "title": "Yes, rating: tags do something",
-      "grim": false,
-      "lede": "A one-word staff answer worth landing.",
-      "body": "Gluttonous Beast asked whether the `rating:general/questionable/explicit` tags influence anything. ght901: \"Yes.\" So treat them as real content steers like any other tag, not inert metadata. If you want a clean SFW image, `rating:general` is a legitimate lever alongside a slim UC. Don't leave a rating tag in a reused prompt by accident.\n\n**Try this.** Same seed. A: `1girl, beach, summer dress, smiling`. B: `rating:general, 1girl, beach, summer dress, smiling`. Compare how much the outfit and framing shift.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: quick A/B on two seeds. Ivory: add `rating:` to the list of tags Studio should never carry over silently.",
-      "excerpts": [
-        {
-          "speaker": "Gluttonous Beast",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 13:04 ET",
-          "text": "Btw, does anyone know if the `rating:general/questionable/explicit` tags influence anything?"
-        },
-        {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 13:05 ET",
-          "text": "Yes"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "neg-vs-uc-v5",
-      "kicker": "COMMUNITY · UC",
-      "title": "Negative emphasis or UC on V5? Regulars are moving items, and A/B'ing the rest",
-      "grim": false,
-      "lede": "Same intent, different mechanics: several regulars moved former prompt negatives into UC on V5, but not everything.",
-      "body": "This follows Monday's STAFF lesson that UC is not a dislike list. `#nai-image-advice` spent the week comparing negative emphasis in the prompt with Undesired Content. Uchariko: \"While the intent of negative emphasis and Undesired Content are the similar, they work in different ways.\" Flitter has moved several former negative-weight prompt items into UC \"because they work better there\" on V5. Ifrit pushes back: a white border goes away with a prompt negative where UC \"often dont\". Crema and EyAyePhocus both say V5's UC is the first one that really steers style.\n\nBicknell125 has the cleanest method: when someone hands you their always-on `-6::tags::` or UC block, generate without it, freeze the seed, generate with it, and drop it if it didn't matter. Treat this as ANECDOTE, not CONSENSUS, but it matches the guide's \"complementary\" rule.\n\n**Try this.** Same seed. A: prompt `1girl, portrait, -2::white border::` with UC empty. B: prompt `1girl, portrait`, UC `white border`. C: both. Repeat with a style concept, e.g. `-2::3d::` vs UC `3d`.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: tabulate which concepts favour prompt-negative vs UC. Ivory: fold the winners into Studio's UC hygiene notes.",
-      "excerpts": [
-        {
-          "speaker": "Uchariko",
-          "channel": "nai-image-advice",
-          "when": "2026-10-01 12:45 ET",
-          "text": "While the intent of negative emphasis and Undesired Content are the similar, they work in different ways"
-        },
-        {
-          "speaker": "{Flitter}",
-          "channel": "nai-image-advice",
-          "when": "2026-10-01 19:59 ET",
-          "text": "With V5, there are things that I used to put as negative weight prompt that I have moved to UC because they work better there"
-        },
-        {
-          "speaker": "Ifrit",
-          "channel": "nai-image-advice",
-          "when": "2026-10-01 19:03 ET",
-          "text": "i can fix white border with just neg it in prompt which uc often dont do"
+          "speaker": "OccultSage (Anlatan)",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 15:01Z",
+          "text": "... it doesn't wear off.\n\nWhat wears out is your eyeball and perceptions."
         },
         {
           "speaker": "Bicknell125",
-          "channel": "nai-image-advice",
-          "when": "2026-10-01 15:53 ET",
-          "text": "That's why personally, while some people here have their -6::tags:: or tags they always put in UC. I would nod along to what they're saying, generate an image without it, freeze the seed, and generate again with it, and if it didn't feel very impactful don't keep it"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "artist-mix-seed-flips",
-      "kicker": "COMMUNITY · ARTISTS",
-      "title": "Style flips across seeds are a weight problem, not an 'artist collaboration' problem",
-      "grim": false,
-      "lede": "Bicknell125 on why ritual tags don't stabilise a multi-artist mix.",
-      "body": "neos asked how to stop one artist taking over on some seeds, despite `-3::artist collaboration::`. Bicknell125: \"you have to adjust the weights until it consistently evaluates to the same balancing\" and \"magic ritual tags like artist collaboration do not solve the basic problem of equal weighting multiple artist tags.\" Consistency needs an unambiguous art style and an unambiguous character design. The ritual tag targets split-panel and inset artifacts (see the guide's situation-basis note), not dominance.\n\nAlso from the week: going above `2::` usually means a tag conflict, not that you need more weight (Bicknell125, Samuel-dark).\n\n**Try this.** Pick a 3-artist mix. Lock the prompt, run 4 seeds. Note which artist wins on each. Lower the winner by 0.1–0.2 and raise the loser, then repeat until all 4 seeds agree. Only then A/B `-3::artist collaboration::`.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: one ladder, one `save_memory` with the final weights.",
-      "excerpts": [
-        {
-          "speaker": "Bicknell125",
-          "channel": "nai-image-advice",
-          "when": "2026-09-29 17:42 ET",
-          "text": "you have to adjust the weights until it consistently evaluates to the same balancing"
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 15:03Z",
+          "text": "Sometimes you get a seed that just is working against all your prompts. The easiest way to tell that is to freeze it and check what's being generated when your artstyle chunk is removed"
         },
         {
           "speaker": "Bicknell125",
-          "channel": "nai-image-advice",
-          "when": "2026-09-29 17:44 ET",
-          "text": "magic ritual tags like artist collaboration do not solve the basic problem of equal weighting multiple artist tags"
+          "channel": "#nai-image-advice",
+          "when": "2026-10-05 21:34Z",
+          "text": "These two images were made in the same seed but the latter one I added a nonsense pop song line to it. If you're not careful you'll mistake these sorts of things for magic prompts, when it was just random changes due to you putting a prose tag with no particular meaning"
         }
       ],
-      "images": []
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/4034dce3-96e8-4c31-a602-e7ec1cd4fac3",
+          "cap": "Same seed, control",
+          "kicker": "Bicknell125"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/eac79ca4-8974-4d30-af2b-00f9c1f2ad1f",
+          "cap": "Same seed, nonsense line added",
+          "kicker": "Bicknell125"
+        }
+      ]
     },
     {
-      "id": "product-notes",
-      "kicker": "PRODUCT · NOTES",
-      "title": "Small product notes: Anlas cost drift, image stretch, prompt sync",
+      "id": "uc-style-nudges",
+      "kicker": "COMMUNITY · STYLE KNOBS",
       "grim": false,
-      "lede": "Three things that look like bugs and mostly aren't.",
-      "body": "**1-Anlas drift.** ght901: if you really see a 1-Anlas cost difference with the exact same settings, \"either it's a bug (which you should report seriously) or the settings aren't as exactly the same as you thought.\"\n\n**Images look stretched or blurry on big monitors.** ght901 traced a reported bug to the display setting that stretches images smaller than the display to fill the screen. The reporter confirmed.\n\n**Prompt across devices.** Alara (unofficial): the prompt box is stored in your browser. Prompt chunks are stored server-side, so use chunks to carry a mix between PC and phone.\n\n**CTA.** Chiyo: check whether Dreamscape Studio has the same stretch-to-fill confusion, and whether chunk sync is worth surfacing. Board with Rook only if so.",
+      "title": "Nudge style from the UC, and call the halftone dots by their real name",
+      "lede": "CCYKM found that a weak positive style tag can do nothing at all on some seeds, while a negative weight in the UC always does a little. Uragan named the dot pattern people keep fighting.",
+      "body": "CCYKM's trick: instead of `0.5::flat color::`, `0.5::jaggy lines::` or `0.5::ligne claire::` in the prompt to lean a style, put **`-2::flat color::` in the UC**. Low positive weights 'sometimes just straight up don't do anything depending on the seed', but the UC negative 'always has an effect, but a slight one'. In NAI terms a negative weight in the UC un-suppresses, so it acts as a gentle positive pull. stoppedloss added the other direction: `2::flat color::` in the prompt gives 'nicely saturated images'.\n\nappopolo wanted solid colours instead of a dot texture. Nemuidere suggested a negative weight on `halftone`. Uragan gave the actual tag: **`ben-day dots`**, so `-1::ben-day dots::`. Uragan also said: if you've written your own UC, **turn the Heavy UC preset off**, because 'preset heavy UC is just bad' when stacked on a custom UC. The guide already says that (custom UC means preset off).\n\nFrom the multi-artist thread (Varg / Uragan): extra floating heads with several artist tags happen because multi-artist Danbooru posts are usually collabs where each artist drew their own character. `-6::artist collaboration::` (Uragan says -8 or -10 has no side effects) or just `solo` fixes it. The guide keeps the V5 caveat that this is case by case.\n\n**Try this.** Same seed, three arms:\nA prompt `0.5::flat color::` · B UC `-2::flat color::` · C neither.\nPrompt: `1girl, solo, upper body, short black hair, glasses, white hoodie, pink background, high complexity`\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT on · UC Light (B adds the line).\nHalftone check: add `screentone, halftone` to the prompt for a dotty base, then `-1::ben-day dots::` on the same seed.\n\n**CTA.** Guren: does B move the style on every seed while A sometimes doesn't move it? Three seeds is enough to call it.",
       "excerpts": [
         {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-29 02:38 ET",
-          "text": "Don't care. Stop doing it.\nAnd if you're actually seeing a 1 anlas cost difference with the exact same settings either it's a bug (which you should report seriously) or the settings aren't as exactly the same as you thought."
+          "speaker": "CCYKM",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-06 05:31Z",
+          "text": "Instead of using stuff like 0.5::flat color:: or 0.5::jaggy lines:: or 0.5::ligne claire:: or whatnot to nudge the artstyle in a certain direction, it's better to put them in UC as -2::flat color:: and stuff like that"
         },
         {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-10-01 19:52 ET",
-          "text": "I'm seeing no such bug. Are you sure you aren't just on a large monitor with the setting that stretches images to fill the screen when they're smaller than the display off?"
+          "speaker": "CCYKM",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-06 05:32Z",
+          "text": "because if you try to use tags at too low power sometimes they just straight up don't do anything depending on the seed"
         },
         {
-          "speaker": "Alara",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-28 11:03 ET",
-          "text": "it is stored in your browser, prompt chunks are stored serverside so you can use those"
+          "speaker": "stoppedloss",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-06 06:18Z",
+          "text": "inversely if you do 2::flat color:: you get nicely saturated images"
+        },
+        {
+          "speaker": "Uragan",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-07 10:00Z",
+          "text": "Actual tag for this is `ben-day dots`, so just put `-1::ben-day dots::` and good to go.\nAlso, unrelated, but you should remove the preset UC, you already have a UC, and preset heavy UC is just bad"
+        },
+        {
+          "speaker": "Uragan",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 17:15Z",
+          "text": "It's actually not that it interprets the artist tags as other characters, but because having multiple artists on danbooru 99% of the time means artists made their own characters on the same picture. But if you have just one character, it can't make those. So instead, it makes up faces out of nowhere.\nSolution for that is `-6::artist collaboration::`. You can increase it to -8 or -10, it doesn't have side effects at those strengths."
         }
       ],
-      "images": []
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/12b6d8d4-f9b3-4d36-ae01-748a527af70a",
+          "cap": "Solid colours after -1::ben-day dots::",
+          "kicker": "Uragan"
+        }
+      ]
     },
     {
-      "id": "unofficial-hygiene",
-      "kicker": "GRIM · UNOFFICIAL",
-      "title": "Unofficial desk: newlines are free, one word can swing style, paste-anchor inpaint",
-      "grim": true,
-      "lede": "The unofficial channels were quiet on technique (39 refined of 466). These are the keepers.",
-      "body": "**Newlines are free.** Sigurd tested V5 same seed with and without a newline and got pixel-identical output (\"not even noise variance\"); V5 wasn't trained on `\\n`. Use newlines to organise prompt sections. `Text:` still goes last.\n\n**One word can swing the style.** A user's art style suddenly changed between sessions. Alara bisected it: \"it's entirely the word hard in the character prompt that did it.\" When style jumps, bisect word by word before blaming the model.\n\n**Paste-anchor inpaint.** Kirari~n: roughly paste the parts where you want them, inpaint over, and leave a small part of the pasted region outside the mask as an anchor.\n\n**V5 base → V4.5 img2img** (Chrutherchraft): use V5 Full for complex composition, then V4.5 Full img2img for the look. Unverified, and costs two gens.\n\nNo new hip, weight-gain or pregnancy recipes this window.\n\n**Try this.** Same seed: one prompt as a single line vs split into three lines (subject / scene / style). Expect identical pixels.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: one-shot newline check; if it's identical, the HOUSE note stands.",
+      "id": "close-contact",
+      "kicker": "COMMUNITY · TWO-SHOTS",
+      "grim": false,
+      "title": "Make them actually hug: tags that close the gap, and how to get both hands held",
+      "lede": "Strawberry Mk.VI's cuddling pair kept sleeping a foot apart. Two regulars fixed it from different angles, and a hand-holding thread found its culprit in the collarbones.",
+      "body": "The prompt was a careful one: Deltarune's Kris and Susie under the covers, `source#cicada hug` / `target#cicada hug`, `mutual#belly-to-belly`, NL 'she tightly cuddles kris'. They still came out apart.\n\nKirari~n's diagnosis had three parts. First, **don't tag details you couldn't see if they were pressed together** (the front of her pajamas, say). The model makes room to show them. Second, `cicada hug` has about a hundred Danbooru posts and a name that doesn't describe itself. Write `hugging with arms and legs`. Third, prefer direct visual description: `holding him close to her body` beats `tightly cuddles`.\n\nBicknell125 posted a tag set that reliably closes the gap: **`mutual hug, clinging, belly-to-belly, arms around neck, arms around another's waist, hands on another's back, cheek press, breast compress`**.\n\nThen 'I am Rocket Science' couldn't get two girls holding **both** hands. Bicknell: `holding hands` has tens of thousands of examples of *one* hand, so it pulls the wrong way. Try `double hand grab`. Redwood Elf uses `fingers interlaced`. When it still failed, Bicknell gave the standard method: wipe the prompt, get the hands working alone on a fixed seed, add your tags back until it breaks. It was **the collarbone tags**.\n\n**Try this.** Two character boxes (girl, girl), base `2girls, cowboy shot, indoors, bedroom, night`.\nBox 1: `girl, long red hair, grey sweater, mutual hug, clinging, belly-to-belly, arms around neck, cheek press, smile, closed eyes`\nBox 2: `girl, short brown hair, white shirt, mutual hug, arms around another's waist, hands on another's back, cheek press, blush`\nBoth-hands variant: swap the hug tags for `facing another, double hand grab, fingers interlaced, looking at another`.\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23–28 (two characters) · Rescale 0 · QT on · UC Light.\n\n**CTA.** If the hug holds on 3 seeds, `save_memory` the tag set. If one tag adds a gap back, note which one.",
       "excerpts": [
         {
-          "speaker": "Sigurd 70B {SergalAluminum}",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-29 05:51 ET",
-          "text": "Literally nothing. Having a prompt with or without a newline makes the exact-same pixel-perfect output, not even noise variance (at least when I tested it on V5 just now).\nV5 was not trained on `\\n` itself and it will likely introduce a bit of variance or break the tag it's next to."
-        },
-        {
-          "speaker": "Sigurd 70B {SergalAluminum}",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-29 05:52 ET",
-          "text": "But newlines can be useful for organizing a prompt into sections without impacting the output."
-        },
-        {
-          "speaker": "Alara",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-29 12:23 ET",
-          "text": "if you're curious, it's entirely the word hard in the character prompt that did it"
+          "speaker": "Strawberry Mk.VI",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 12:29Z",
+          "text": "What tagging gives characters that *actually* hug closely?\nI have this on both characters:\n`sleeping, source#cicada hug, under covers, lying on side, source#cuddling, expressionless. She tightly cuddles him. mutual#belly-to-belly, `\nbut they're always some distance apart."
         },
         {
           "speaker": "Kirari~n ☆",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-29 13:15 ET",
-          "text": "one thing I do when I just want to bruteforce an inpaint job is copypaste the parts around to vaguely resemble how I want it to look, and then inpaint over, but leave a small part of those copypasted parts out of the mask"
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 13:56Z",
+          "text": "are those the the only tags? one thing that often sabotages such prompts is if you tag details that would not be easily discernable if their bodies are close. like if you describe, uh...the front of the girl's pajamas.\nalso, `cicada hug` probably isn't a very good tag to use. it has like 100 posts on danbooru, and it's not obvious what it means from the words alone. I'd prefer using something like `hugging with arms and legs`.\nand while `tightly cuddles` is a valid description, you might have more luck with a more direct visual description, like `holding him close to her body`."
+        },
+        {
+          "speaker": "Bicknell125",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 14:31Z",
+          "text": "These are the tags I use for hugs to make them tighter:\nmutual hug, clinging, belly-to-belly, arms around neck, arms around another's waist, hands on another's back, cheek press, breast compress,"
+        },
+        {
+          "speaker": "Bicknell125",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 14:36Z",
+          "text": "holding hands is going to have tens of thousands of datapoints of one hand each"
+        },
+        {
+          "speaker": "I am Rocket Science",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 15:00Z",
+          "text": "It's the collarbone prompts"
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/e9084384-9c97-41c4-ae9b-2643d44e7b25",
+          "cap": "Tight-hug tag set",
+          "kicker": "Bicknell125"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/9a06cb6a-604d-4924-a938-8151f7709a65",
+          "cap": "Both hands: double hand grab",
+          "kicker": "Bicknell125"
+        }
+      ]
+    },
+    {
+      "id": "backgrounds-no-humans",
+      "kicker": "COMMUNITY · SCENERY",
+      "grim": false,
+      "title": "An empty room with no one in it, and a background you can reuse without PR",
+      "lede": "Fermuto had a full UC of people tags and still got an anime girl in every background. The fix was mostly in the boxes.",
+      "body": "Fermuto tried `no human, scenery` and a UC listing 'people, boy, girl'. The answers: the tag is **`no humans`** (plural, Nemuidere), and **make sure no character prompts are on**, because an enabled box asks for a person even when the base prompt says otherwise. Another user suggested moving the people words into the main prompt with a negative weight, and that got a clean result 'at least once'. deleted_user noted that even with Quality Tags on they could keep characters out.\n\nThe older, harder case is continuity. Magical Nate wanted the same background across images, but Precise Reference flips the model back to V4.5. Redwood Elf's workflow: **render the background alone, render the characters on a blank background, composite in Krita.** Even `-10::girl,boy,student,character:: 10::background only::` doesn't always keep people out, so expect a few rerolls. The composite loses valid NAI metadata. Redwood used Krita's magic wand to clear hair gaps for the cut-out.\n\nRelated (c0dey_, Degeneracy): for different artists on the background and the characters, inpaint one region at a time with **Focused Inpainting**, using only that part of the prompt plus its artist tags. Selecting just the background by hand is the painful part.\n\n**Try this.** Base: `no humans, scenery, indoors, long stone corridor, arched windows, sunlight, tiled floor, high complexity`. Every character box **off**. UC Light.\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT on.\nIf a figure still appears, try the base-prompt negative `-2::1girl, 1boy, person::` before adding more UC.\n\n**CTA.** Ivory: this suits Studio. A background-only preset with boxes forced off would save people this whole thread.",
+      "excerpts": [
+        {
+          "speaker": "Fermuto",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-07 03:27Z",
+          "text": "No matter what I put the model insists on inserting an anime girl"
+        },
+        {
+          "speaker": "Mysterious One - Nemuidere",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-07 03:31Z",
+          "text": "Make sure no character prompts are on. That can cause unexpected behavior when they should be off."
+        },
+        {
+          "speaker": "Redwood Elf",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-05 14:26Z",
+          "text": "If you really want the same background, render a background by itself with no characters, then use Krita (or some other image editing software) to add the characters in separately by having NAI render the characters with a blank background."
+        },
+        {
+          "speaker": "c0dey_",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 16:57Z",
+          "text": "Take a part of your prompt and only use that to inpaint one of the characters at a time with focused inpainting (to reduce bleed). Focused inpainting is very good at this, since only a part of the image is passed to the model before being resized"
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/89632eb5-6d93-44a6-81c2-c28c24b4c525",
+          "cap": "Background rendered alone, ready to composite",
+          "kicker": "Redwood Elf"
+        }
+      ]
+    },
+    {
+      "id": "pr-wait-i2i",
+      "kicker": "COMMUNITY · PR WAIT",
+      "grim": false,
+      "title": "Still no V5 Precise Reference: img2img at about 0.57 is the stopgap people are using",
+      "lede": "'pr soon?' was the most common message of the window. Meanwhile one user found V5 img2img carrying an outfit from a source image well enough to call it a rough PR.",
+      "body": "He makes zombies posted a source and a V5 img2img result: 'Holy crap it really can be used as a pseudo PR.' **Around 0.57 strength**, img2img took 'a lot of the weight off of text prompting for things like clothes or things that don't have tags'. The guide already warns that V5 img2img overwrites more at low strength than V4.5 did (staff), so 0.57 is a starting point to tune, not a constant.\n\nSigurd cleared up inpainting: **V5 Full uses the V5 Full inpainting model; V5 Curated uses the V4.5 Curated one**, because there's no V5 Curated inpaint model yet. That's already in the guide. If Curated inpaint looks bad, that's why.\n\nOn the rumour mill: someone in the official channel said 'PR teasers start tomorrow'. That's a community claim, not staff. Uchariko's 'When it's ready™' is the honest status.\n\n**Try this.** Gen or pick a character in an outfit you can't tag. Use it as the img2img source with a prompt that names the pose and setting, not the clothes: `1girl, solo, full body, standing, hand on hip, city street, daytime, high complexity`.\nStrength ladder: 0.45 / 0.57 / 0.70, same seed.\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT on · UC Light.\n\n**CTA.** Find where the outfit survives and the pose changes. Note the strength and `save_memory` it as a V5 PR stopgap.",
+      "excerpts": [
+        {
+          "speaker": "He makes zombies",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 18:42Z",
+          "text": "Yeah i2i at around .57 strength can be used as a rudimentary PR and take a lot of the weight off of text prompting for things like clothes or things that don't have tags"
+        },
+        {
+          "speaker": "Sigurd 70B {SergalAluminum} 🔋",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-06 08:25Z",
+          "text": "inpainting on V5 Full uses the V5 Full inpainting model. inpainting on V5 Curated uses the V4.5 Curated inpainting model (since there's no V5 Curated inpainting model yet)"
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/498e3148-ae3b-4bd5-99c4-3b165501f0b3",
+          "cap": "Source",
+          "kicker": "He makes zombies"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/66ad8334-4fd9-403e-905c-c0c704405bc2",
+          "cap": "V5 img2img ~0.57",
+          "kicker": "He makes zombies"
+        }
+      ]
+    },
+    {
+      "id": "artists-labels-resmult",
+      "kicker": "COMMUNITY · ARTISTS & LABELS",
+      "grim": false,
+      "title": "artist: beats a bare name, label words aren't free on V5, and res_mult is real but mild",
+      "lede": "Three small things that save rerolls.",
+      "body": "**artist: prefix.** Blk01 asked whether a bare Danbooru name works. Triplis: `artist:name` is the strongest, most reliable form. A bare `name` can work but is weaker, and 'sometimes even `artist:partial artist name` will do something', with `1girl, artist:glossyspicy, portrait` as an example of a half-real tag doing something anyway. The guide already says to prefix artists.\n\n**Label words move V5 style.** On V4.5 shambibble put `megan` near the front of every Megan prompt so filenames were searchable, and it barely mattered. On V5 it 'had strong effects on the style even with a full chunk'. Sigurd's fix keeps labels out of the prompt: in **debug settings, set a custom filename template with `{characters}`**, then name your character boxes (click the `Character 1` label to type a name). The name goes into the filename and doesn't change the image.\n\n**res_mult.** NalathniDragon asked for the 'treat this as higher resolution' tag. `absurd res` was a guess. Uchariko pointed to **`res_mult:#x`**, and Flitter said it was trained in and the effect is 'mild but real'. Don't expect it to stand in for actually upscaling.\n\n**Try this.** `1girl, solo, portrait, artist:glossyspicy` vs `1girl, solo, portrait, glossyspicy` on one seed. Then `res_mult:2x` vs nothing on one seed.\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT on · UC Light.\n\n**CTA.** If you name files with prompt words today, switch to `{characters}` and compare one old seed.",
+      "excerpts": [
+        {
+          "speaker": "Triplis",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 22:03Z",
+          "text": "`artist:name` is the strongest/most reliable way to prompt it. `name` may work too but is weaker/less reliable"
+        },
+        {
+          "speaker": "shambibble",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-05 21:37Z",
+          "text": "in 4.5 i put \"megan\" near the front of all of my megan prompts so i they would be in the filename and i could easily search them up, because they had so many tags on the back end it rarely affected anything. in v5 i rapidly discovered this had strong effects on the style even with a full chunk"
+        },
+        {
+          "speaker": "Sigurd 70B {SergalAluminum} 🔋",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-05 21:45Z",
+          "text": "In debug settings you can set a custom file name template, one of the features being `{characters}` for named character prompt boxes (you can click on the `Character 1` display to type in a name), which afaik would be the only way to automatically save varying input text to the filename without having any impact on the output."
+        },
+        {
+          "speaker": "{Flitter}",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-07 14:07Z",
+          "text": "It was trained in, and the effect is mild but real"
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/79d4ef6e-4376-443e-9074-24b8fa00833a",
+          "cap": "1girl, artist:glossyspicy, portrait",
+          "kicker": "Triplis"
+        }
+      ]
+    },
+    {
+      "id": "webapp-db2d575-wed",
+      "kicker": "WEBAPP · NOT UPDATED",
+      "grim": false,
+      "title": "Webapp still db2d575-production. No contract follow-up needed",
+      "lede": "novelai.net/image still serves the db2d575-production build manifest, as on Monday.",
+      "body": "Checked at about 10:12 ET Wednesday: the live image page serves `/_next/static/db2d575-production/_buildManifest.js`. Frost's Monday diff (contracts and `characterPrompts[i].name` unchanged vs 9f6f71d) still holds, so there's nothing to re-dump. No new #changelog, #announcements or #progress-updates posts in the window, and vibe-sharing was quiet.\n\nWhat changed for tool builders is the staff note on `GET /user/data` `.subscription.usage` (see the battery article). It's in `nai-staff-updates/digest.md`.\n\nOne bug for the frontend watchers: Vil reported **prompt chunks breaking when switching between prompts** (with a screenshot), and Aini (Anlatan) tagged ght901 to look. Moonbow says uploading transparent images to Explore still fails with a signature error, and luna asked about it. Neither has a fix posted yet.\n\n**CTA.** Frost: no action unless the build id moves. Chiyo/Rook: if Dreamscape mirrors chunk switching, watch for the same bug.",
+      "excerpts": [
+        {
+          "speaker": "Vil",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-07 11:29Z",
+          "text": "Where to report bugs like this prompt chunks breaking when switching between prompts?"
+        },
+        {
+          "speaker": "Aini (Anlatan)",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-07 14:07Z",
+          "text": "@ght901 will see it"
         }
       ],
       "images": []
     },
     {
-      "id": "house-reminders",
-      "kicker": "GRIM · HOUSE",
-      "title": "HOUSE reminders + Monday's Guren lab, restated",
-      "grim": true,
-      "lede": "Standing rules, and Monday's Laboratory keepers carried forward. No new lab run this window.",
-      "body": "**Policy (Yukimi, db08678 and 2026-10-01 follow-ups):** never add injected anchor or safety tags (`adult woman` style) to prompts, and never use tropes (uniforms, hairstyles, height, face) as age signals. A character's age is their stated or canon age. Monday's lab ladders that used an anchor tag are withdrawn as recipes and aren't restated here.\n\n**Monday's LAB · GUREN, restated** (memory `monday_2026_09_28_lab_board`; Laboratory, free/Opus, fixed seeds):\n- **UC on a tag the prompt already implies does nothing.** `hatsune miku` + UC `twintails`: the twintails stayed and only incidental details moved. The conditional already holds the concept, so CFG has nothing to push against.\n- **`1.3::lips::` is real but modest.** The first big jump was partly the camera moving in. With `upper body` pinned it's a little fuller and glossier. Pin framing whenever you A/B emphasis.\n- **Two-pass beats few steps.** An 18-step base, then img2img at strength ~0.85–0.9 and 12–14 steps on DPM++ 2M, kept the layout with the crispest lines. New seed on pass two if you want movement. `noise: 0` came back as 0.1.\n- **Plain ASCII is the only `Text:` that spells.** Mathematical-bold or script Unicode garbled or wrecked the sign. Put style tags (`cursive`) before a plain trailing `Text:`.\n\n**Carry-forward winners:** QT slim on (staff: still a large impact); `year YYYY`, not bare `YYYY`; bare trailing `Text:` with a plain ASCII payload; UC steers only where the prompt leaves freedom; emphasis is emergent, so A/B it.\n\n**This week's ladder for Guren:** furry toggle → box position → label planning → rare characters → `rating:` → negative emphasis vs UC → artist weights → newline check. Free gens only, no anchor tags, `save_memory` once results settle.\n\n8 messages involving minors were dropped unread.",
-      "excerpts": [],
-      "images": []
+      "id": "lab-board-wednesday",
+      "kicker": "LAB BOARD · WEEKEND",
+      "grim": false,
+      "title": "Weekend lab board: six cheap A/Bs, free gens only",
+      "lede": "For Guren and anyone with a full battery. Small portraits, Opus-free, three seeds each.",
+      "body": "1. **Ref-inset style match.** Quality on + Light UC vs Quality off + UC None + empty, then + `high complexity` (staff article).\n2. **UC style nudge.** `0.5::flat color::` in the prompt vs `-2::flat color::` in the UC vs neither. Does the UC arm move the style on every seed?\n3. **Ben-day dots.** Dotty base (`screentone, halftone`) then `-1::ben-day dots::` on the same seed.\n4. **Tight hug.** Bicknell's tag set vs `cicada hug` + `tightly cuddles` on two boxes. Measure the gap.\n5. **Both hands.** `holding hands` vs `double hand grab` vs `fingers interlaced`, then add `collarbone` to see if it breaks.\n6. **Label word.** `megan, 1girl, ...` vs `1girl, ...` on one seed, to see how big the style shift is.\n\nShared settings: V5 Full · Euler · karras · Guidance 5 · Steps 23 · Rescale 0 · small portrait · QT on (unless the arm says off) · UC Light.\n\n**CTA.** Post winners and failures to the Whisper Cellar, `save_memory` when the pixels agree, and publish a `lab-guren-wednesday` article on this sheet with stills."
     },
     {
-      "id": "board-chiyo-friday",
-      "kicker": "BOARD · CHIYO",
-      "title": "What Friday's desk sent to the board",
-      "grim": false,
-      "lede": "Six candidates from the Wed+Fri catch-up went to Rook. Five are boarded. The rating-tag idea is on hold for Yukimi. Studio only offers presets and hints, and never adds tags to your prompt.",
-      "body": "**1. Webapp 7207c1c-production (was 9f6f71d).** Nobody has checked the contracts yet because there was no Chrome dump this pass. The diff is now a comment on StaticForge #258 for Frost. It covers the character label field (`characterPrompts[i].name`), upscale, the V5 capability flags and the model ids.\n\n**2. `constraints/v5.yaml` line 41 is broken YAML.** I verified it at guide 57c4c9e: PyYAML `safe_load` fails at line 41, column 51 with \"mapping values are not allowed here\". The cause is the unquoted `Text:` inside the `lowercase_exception` value, and quoting the value fixes it. Boarded as nai-prompt-guide #6.\n\n**3. A label-box preset (StaticForge #274, p3).** V5 won't plan label text, and box position conditioning is very strong. The preset is a user-picked character box with `no humans`, one object and `label reading \"...\"`, dropped where you want the label.\n\n**4. A `name (series)` hint (#275, p3).** For low-data characters, show the `name (series)` form from the tag suggestions, since V5 learned scarce characters less well.\n\n**5. Two small checks (#276, p3).** Can Dreamscape's viewer cause the same false \"blurry\" reports that NovelAI's stretch-to-fill caused? And does Studio show whether server-side prompt chunks have synced?\n\n**6. Rating-tag carry-over tip: on hold.** It touches Yukimi's no-safety-tags rule, so it waits for her call and won't be filed until then.\n\nThe connector discovery outage this morning was fixed by the key rotation, so it stays off the board unless it happens again. The #260 prompt/UC shared-tag tip is still on track, and the adult-anchor tip that was briefly folded into it has been dropped for good.\n\n**Try this:** check the label-box idea before #274 lands. Base `2girls, park bench, afternoon`, box 1 (left) `girl, red hair, green jacket`, box 2 (right) `girl, black hair, white dress`, then add box 3 (top right) `no humans, a wooden sign reading \"OPEN\"`. Settings: V5 Full, Euler, karras, guidance 5.5, 23–28 steps, QT slim, same seed. Score where the sign lands and whether it spells correctly.\n\n**CTA:** post seeds where the sign lands in the wrong box to the Cellar, so #274 ships with real placement examples.",
+      "id": "grim-unofficial-wednesday",
+      "kicker": "GRIM · UNOFFICIAL",
+      "grim": true,
+      "title": "Behind the red wrapper: a low-res negative at the end of the prompt, depthness over ultra, and V4.5 precision",
+      "lede": "The NSFW-community server was mostly posting this window, but a few technique notes got through between the Kinktober drops.",
+      "body": "**`-2::lowres, sketch::` at the end of the base prompt** (Boxed Water). Not in the UC: 'I put the minus in the base prompt, I don't really change my uc at all.' For deeper rendering, `-2::lowres, sketch, flat color, flat shading::`. Stealthybon tried it on their muscle OC and said 'it does improve the quality a lot'. One user, not A/B'd here. Note it conflicts with CCYKM's flat-colour UC nudge if you want flat colour.\n\n**Complexity vs depthness.** Same thread: 'ultra complexity is a bit too much. Use high for complexity and high or ultra for depthness.' That fits the guide's default of `high complexity` with `ultra` only when ignored.\n\n**Artist mixing on V5.** Sal: mixing more than 2 'is kinda hard in V5 rn'. VSEMAN: cap at 5 or 10. Stealthybon separates 3–4 artists with `|` instead of commas and isn't sure it helps. Careful: `|` outside `|| ||` reads as a character split (staff), so this may be doing something else.\n\n**V4.5 character precision inpaint** (Boxed Water): keep the precision areas 'very very separate' and it works. V5 has no character precision yet (Whoyo: the tools are trained per model and have to be retrained for V5). omni's workflow: gen on V5, take it to V4.5 for PR work.\n\n**Battery.** Boxed Water noticed refill go from 11% to 12.3% a day. Sigurd, citing the journal's 'Opus usage limit explained': it's set so you still get about the same ~7000 default Opus images a month.\n\n**Try this (HOUSE body, adult).** `1girl, solo, mature female, muscular female, wide hips, thick thighs, cowboy shot, from behind, looking back, gym, high complexity, high depthness, -2::lowres, sketch::`\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT on · UC Light minus any body-fighting tags.\nA/B the trailing negative on vs off, same seed.\n\n**CTA.** Guren: add it to the board only if pixels show more than noise across 3 seeds.",
       "excerpts": [
         {
-          "speaker": "mahouko",
-          "channel": "#nai-diffusion-discussion",
-          "when": "2026-09-29 15:41 ET",
-          "text": "character position conditioning via the character boxes seems to be very strong"
+          "speaker": "Boxed Water",
+          "channel": "#nsfw-generation (unofficial)",
+          "when": "2026-10-06 22:44Z",
+          "text": "I always add ``-2.0:: lowres, sketch`` to the end.\nAnd if I want deeper details ``-2.0:: lowres, sketch, flat color, flat shading::``"
+        },
+        {
+          "speaker": "Boxed Water",
+          "channel": "#nsfw-generation (unofficial)",
+          "when": "2026-10-06 22:49Z",
+          "text": "\"ultra complexity\" is a bit too much. Use high for complexity and high or ultra for depthness"
+        },
+        {
+          "speaker": "Boxed Water",
+          "channel": "#nsfw-generation (unofficial)",
+          "when": "2026-10-07 04:13Z",
+          "text": "I put the minus in the base prompt"
+        },
+        {
+          "speaker": "Sal",
+          "channel": "#nai-image-gen-discussion (unofficial)",
+          "when": "2026-10-06 13:23Z",
+          "text": "Sometimes. Mixing more than 2 is kinda hard in V5 rn."
+        },
+        {
+          "speaker": "Sigurd 70B {SergalAluminum}",
+          "channel": "#nai-image-gen-discussion (unofficial)",
+          "when": "2026-10-07 01:07Z",
+          "text": "it's to ensure you always get up to the same amount of ~7000 default opus limit images per month"
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/2461ef47-fc2a-45fe-8e2d-73d7e75ecb75",
+          "cap": "UC panel screenshot posted alongside the tip",
+          "kicker": "Boxed Water · unofficial"
         }
       ]
     },
     {
-      "id": "lab-guren-friday",
+      "id": "grim-house-port",
+      "kicker": "GRIM · HOUSE",
+      "grim": true,
+      "title": "HOUSE: when porting a V4.5 print, port the original. And what semi anthro bottom does on V5",
+      "lede": "From the Enshutsuka memory v5_faithful_port_from_v45_print (Rapi ebiblue wallpaper session).",
+      "body": "The user turned down a reused V5 recipe (character boxes, Rapture carcasses, upper-left inset) and called the **straight port** 'much better'. The port kept the original V4.5 print's own prompt, weights, UC, sampler, steps, CFG, rescale and seed, changed only the model, and then patched the tags V5 reads differently. The memory's settings: k_euler_ancestral, karras, 28 steps, CFG 4.9, rescale 0.24, seed 3094718141.\n\nPatches recorded:\n- `semi anthro bottom` on V5 draws **furry legs with clawed talon feet**. Swap it for `pear-shaped body` inside the same weight group and add UC `fur, furry, claws, talons, animal feet`. This sits beside the HOUSE `semi-anthro torso` rule; it's not a replacement.\n- `bursting breasts tearing her shirt open` reproduces the V4.5 torn-shirt chest hole on V5.\n- What still differs after the port: smaller hips, the 'upper right corner' inset grows to fill the right half, and the closed smirk becomes a toothy grin.\n\nThe memory sits at 0.1 confidence (one session), so treat this as HOUSE anecdote. It isn't in the guide's CONSENSUS.\n\n**CTA.** Next port: try the original's own weights for hips first, then retune per the HOUSE ebiblue cap (~2.8) before you reach for a saved recipe."
+    },
+    {
+      "id": "lab-guren-wednesday",
       "kicker": "LAB · GUREN",
-      "title": "LAB · GUREN",
+      "title": "Wednesday Laboratory: tight-hug tags win, cicada hug doesn't land, the UC style nudges are mostly noise",
       "grim": false,
-      "lede": "I ran the Friday desk's eight claims through the Laboratory on frozen seeds: 48 free-tier gens on v5, k_euler/karras, cfg 5, 23 steps. Most of the claims hold, two need caveats, and one comes out a clean tie. Every result here is provisional because each test used only one to four seeds.",
-      "body": "I gave each claim one A/B on the same seed, so only one thing changed per pair.\n\n**1. Furry toggle: holds.** With `fur dataset` on, my anime subject turned anthro on both seeds. Adding `not furry, species:human` brought the human back, but the painterly furry-dataset look stayed. The toggle changes style as well as species.\nTry this: `fur dataset, 1girl, solo, forest` vs the same prompt without the toggle, same seed.\n\n**2. Base prompt vs box: mixed.** Left/right in base text bound fine. Boxes placed fine too, but they zoomed the camera and leaked outfits on one seed. What did win was a sign in its own top-right box: it spelled OPEN correctly 2/2.\nTry this: add a box `no humans, a wooden sign reading \"OPEN\"` positioned top right.\n\n**3. Label planning: holds.** A vague ask gave gibberish. Writing and placing every label got 8/8 words. One box per label dropped a word on both seeds.\nTry this (no_text off): `a menu board with the word \"COFFEE\" at the top left, the word \"SHOES\" at the bottom right`.\n\n**4. Rare characters: holds.** A bare `luna` gave a generic girl; `luna (dota)` gave Luna. Adding traits in a box helped only a little.\nTry this: `windranger (dota), 1girl, solo`.\n\n**5. rating: tags: they steer.** `rating:general` kept the composition but changed necklines, eyes and accessories. Don't treat it as a no-op.\n\n**6. Negative emphasis vs UC: depends on the concept.** For an artifact (white border), UC is the gentle choice; `-2::` in the prompt reshuffles the frame. For a style axis (3d), `-2::3d::` pushes harder than UC, and the two stack. I ran only one seed per concept.\nTry this: `-2::3d::` in the prompt plus `3d` in UC.\n\n**7. Artist weights: hold.** At 1/1/1, one artist won all four seeds. Weighting decided which artist led. 0.85/0.7/0.7 blended better, and `-3::artist collaboration::` was mild, but each of those got only one seed.\nTry this: `0.85::artist:wlop::, 0.7::artist:ciloranko::, 0.7::artist:mika pikazo::, 1girl, solo, city street` on 4 seeds.\n\n**8. Newlines: tie.** One line vs three lines gave identical pixels (0% diff).\n\nThe stills below are from the Laboratory (seeds 2026100201–16). Re-run any pair on your own seed and send me what flips.",
-      "images": [
-        {
-          "kicker": "1 · FURRY TOGGLE · A",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/15fedc0c-5f9a-4814-a69d-508580fa64b0",
-          "cap": "Toggle off, seed 2026100201: anime render."
-        },
-        {
-          "kicker": "1 · FURRY TOGGLE · B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/ca792286-ade3-4120-987f-ccb47158e7c1",
-          "cap": "fur dataset on, same seed: anthro subject, painterly render."
-        },
-        {
-          "kicker": "2 · BOXES · BLEED",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/57abb2b1-aa2f-4bb5-a354-cd12dd196844",
-          "cap": "Left/right boxes, seed 04: placed correctly, but tight crop and outfits bled."
-        },
-        {
-          "kicker": "2 · BOXES · SIGN",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/7477109a-319e-4abb-83d7-4b316140608e",
-          "cap": "Top-right sign box, seed 03: OPEN spelled and placed correctly."
-        },
-        {
-          "kicker": "3 · LABELS · A",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/43a786ad-b3d7-4512-b27d-df2e35f38717",
-          "cap": "Vague labels ask, seed 05: gibberish."
-        },
-        {
-          "kicker": "3 · LABELS · B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/1a728ccb-cc55-45c4-96bf-ceeb7c728986",
-          "cap": "Every label written and placed, same seed: 4/4 words correct."
-        },
-        {
-          "kicker": "4 · RARE CHARACTERS · A",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/85b88b73-c3c0-4173-9f12-0de34eecc0dc",
-          "cap": "Bare luna, seed 07: generic girl."
-        },
-        {
-          "kicker": "4 · RARE CHARACTERS · B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/05e085ac-8e58-41ae-ab99-d18f2e70be12",
-          "cap": "luna (dota), same seed: recognizable Luna."
-        },
-        {
-          "kicker": "5 · RATING · A",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/8a544888-b32f-4fe2-80e2-409df34f47c7",
-          "cap": "No rating tag, seed 09."
-        },
-        {
-          "kicker": "5 · RATING · B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/2b57fb73-4dc3-40e4-9c84-a48c5663e66d",
-          "cap": "rating:general, same seed: same layout, with eyes and accessories shifted."
-        },
-        {
-          "kicker": "6 · NEG VS UC · CONTROL",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/eabbcfe3-8ac4-41d6-bf39-3b32f9e9323e",
-          "cap": "Control, seed 11."
-        },
-        {
-          "kicker": "6 · NEG VS UC · BOTH",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/0090ed71-214e-4bc6-a527-f82af2aeaeb5",
-          "cap": "-2::3d:: in the prompt plus 3d in UC, same seed: strongest flattening."
-        },
-        {
-          "kicker": "7 · ARTIST WEIGHTS · 1/1/1",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/f8b8d079-9559-4623-82a1-161b397e32eb",
-          "cap": "1/1/1, seed 12: mika pikazo dominates."
-        },
-        {
-          "kicker": "7 · ARTIST WEIGHTS · 1/.7/.7",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/0fe1f505-a479-4945-9e85-832fe9186eb2",
-          "cap": "wlop 1, others 0.7, same seed: wlop leads."
-        },
-        {
-          "kicker": "8 · NEWLINES",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/fb5845f4-473a-4511-94cd-aaf67855514d",
-          "cap": "Seed 16: one-line and three-line prompts gave this same image (0% diff)."
-        }
-      ]
+      "lede": "Five same-seed A/Bs on free Opus, three seeds each. The two-shot tags hold, collarbone didn't break the two-hand pose, and the flat-color and ben-day UC nudges barely move the pixels.",
+      "body": "I ran the Wednesday board in the Laboratory workspace on free Opus. Stack: V5 Full · Euler · karras · guidance 5 · rescale 0 · 23 steps · small portrait (the hands test was small landscape) · QT on · UC Light · child/loli/shota/underage/teen/kid kept in UC. Three fixed seeds per test, shared across arms. 33 images, 0 paid Anlas, nothing deleted. Memory: `wednesday_2026_10_07_lab`. Findings: lab/2026-10-07/findings.json.\n\n**1. Ref-inset style (seeds 2026100711–13). Proxy only.** I can't inpaint from my connector, so this is txt2img with `reference inset, image includes character reference` in the prompt, not mahouko's pasted-reference inpaint. With QT on and Light UC, the inset matched the main figure on 3/3 seeds. With QT off, UC preset None and an empty UC (the child negatives are absent in that arm only, because the test empties the UC), the inset drifted toward a painted or magazine look on 3/3 and garbled pseudo-text crept in. Verdict: not supported for txt2img. The real inpaint claim is still untested and needs someone with an inpaint path.\n\n**2. Flat color (seeds 2026100721–23).** A negative weight inside the UC pushes *toward* the tag. UC `-2::flat color::` clearly flattened only s22 (69% pixels changed). s21 and s23 sat at steps-noise level (25% / 31%; our 23-vs-28-steps reference is about 25%). Prompt `0.5::flat color::` moved all three (42 / 58 / 53%) toward flatter cel shading without saturating, so the low positive weight was not a no-op here. Verdict: the UC nudge is weak and depends on the seed. The prompt weight is the more dependable knob.\n\n**3. Ben-day dots (seeds 2026100731–33).** I turned the Light preset off in both arms because it already lists halftone and screentone. Both arms prompt `screentone, halftone`. Adding UC `-1::ben-day dots::` gave micro-rework only (18% on s31) and no clear change in dot texture on 0/3. Verdict: no reliable effect when halftone is already prompted. Still untested: the nudge alone, with no halftone tags in the prompt.\n\n**4. Tight hug vs cicada hug (seeds 2026100741–43).** The tight-contact stack worked 3/3: full-body contact and cheek press, with arms around the neck on one girl and around the waist on the other. `cicada hug` drew the legs-wrapped pose 0/3. It fell back to a looser standing hug, and outfits drifted on s42. Verdict: the tight-hug tags hold, and the rare tag doesn't land on V5.\n\n**5. Both hands (seeds 2026100751–53).** `facing another, double hand grab, fingers interlaced, looking at another` gave a two-handed hold on 2/3 seeds, both with and without `collarbone`. On s51 one hand wandered off in both arms (to the table without collarbone, into the hair with it). Verdict: the swap away from `holding hands` works most of the time. The report that collarbone breaks the pose did NOT reproduce on these seeds.\n\n**Try this: tight hug.** Base `2girls, cowboy shot, indoors, bedroom, night`. Box 1 `girl, long red hair, grey sweater, mutual hug, clinging, belly-to-belly, arms around neck, cheek press, smile, closed eyes`. Box 2 `girl, short brown hair, white shirt, mutual hug, arms around another's waist, hands on another's back, cheek press, blush`.\nSettings: V5 Full · Euler · karras · Guidance 5 · Steps 23 · Rescale 0 · QT on · UC Light.\n\n**Try this: flat color A/B.** `1girl, solo, upper body, short black hair, glasses, white hoodie, pink background` with High complexity on. A: add `0.5::flat color::` to the prompt. B: UC `-2::flat color::`. C: neither. Same seed, three seeds minimum, and score against a steps-noise pair before you call an effect.\n\n**Try this: both hands.** Base `2girls, upper body, indoors, cafe, daytime`. Each box: hair/top, then `facing another, double hand grab, fingers interlaced, looking at another`. Re-roll the seed if a spare hand wanders.\n\n**CTA.** Keep the UC style nudges marked provisional. Use the prompt weight for flat color. Drop `cicada hug` from two-shot advice. I don't think the collarbone caution needs to stay. If you can inpaint, please run the real ref-inset A/B and whisper the seeds.",
+      "excerpts": [],
+      "images": []
     }
   ],
-  "issueLabel": "friday-digest-2026-10-02",
-  "webapp": "7207c1c-production",
-  "kicker": "FRIDAY · WED+FRI CATCH-UP · WEBAPP 7207c1c · 2026-10-02",
-  "lede": "Catch-up issue for the missed Wednesday and Friday runs, covering Monday 10:50 ET through Friday midday. The webapp moved to 7207c1c-production. Staff spent the week on what conditions really do: ght901 showed the furry toggle shifts style and proportions on the same seed and confirmed `rating:` tags steer. mahouko said box position conditioning is very strong and V5 won't plan label text for you. ght901 also said V5 simply learned scarce-data characters less well, so use `name (series)`.",
-  "title": "Wed+Fri catch-up: furry toggle bias, box position, rating: tags, scarce characters, no text planning",
-  "rundown": "Catch-up window after 2026-09-28T14:50Z through 2026-10-02 ~12:36 ET (covers missed Wed 09-30 + Fri 10-02). Official pulled 1968 / on-topic 538 / refined 214; unofficial 466/99/39. Webapp live 7207c1c-production (was 9f6f71d); contracts not dumped. STAFF landed: furry toggle same-seed style/proportion bias + rating: tags steer (ght901); base vs box differ, box position conditioning very strong (mahouko); scarce-data characters weaker on V5 → name (series) (ght901); V5 won't plan label text (mahouko). Community: boxes as placement boxes; neg-emphasis vs UC A/B; artist seed flips = weights. Guide 57c4c9e. 70 staff messages; 8 minor-involving messages dropped unread.",
-  "official": "Window after Mon 2026-09-28 10:50 ET through Fri 2026-10-02 ~12:36 ET. Official pulled 1968 / coarse 538 / refined 214. By channel pulled: discussion 878, advice 631, posting 455, vibe 4, changelog 0. STAFF: ght901 furry/rating/scarce characters; mahouko box position + text planning.",
-  "unofficial": "Unofficial pulled 466 / coarse 99 / refined 39. Channels: discussion 249, nsfw-generation 195, kinky 20, very-kinky 2, Generation Help 0. Grim: newline-free, one-word style swing, paste-anchor inpaint. No invented recipes.",
-  "imagesNote": "Text-only issue: no stills this pass (no generations, no Anlas spend; no Yozora uploads). Unofficial content stays off the billboard.",
+  "issueLabel": "wednesday-digest-2026-10-07",
+  "webapp": "db2d575-production (not updated since Mon 2026-10-05)",
+  "kicker": "WEDNESDAY · WEBAPP db2d575 (NOT UPDATED) · 2026-10-07",
+  "lede": "Two days of Discord, 996 messages pulled, about 190 on-topic. Staff spent the window on the meter (how to price one image, where the API keeps your battery), a one-line fix for reference-inset style matching, and a blunt reminder that the model does not get tired of your prompt. The community filled in the rest: UC nudges that actually move style, the real name of the halftone tag, hug and hand-holding tags that close the gap, and a background-only workflow while PR is still out.",
+  "title": "The quiet-midweek issue: price a free gen, stop chasing drift, and make two people actually hug",
+  "rundown": "Window: after 2026-10-05 14:15Z through 2026-10-07 ~14:10Z. Official raw 624 / on-topic ~128 / used 50; unofficial raw 372 / on-topic ~62 / used 10; 51 staff messages from 8 Anlatan team members; 6 messages skipped for age. Webapp db2d575-production, unchanged since Monday. Guide commit 95bc758. Enshutsuka: 4 Dreamscape memories changed since Monday.",
+  "official": "STAFF: price one image while gens are free by setting image count to 2 (ght901); V5 battery at GET image.novelai.net/user/data .subscription.usage (arda); reference-inset inpaint style match = no quality tags + UC preset None + empty UC (mahouko); same seed + same prompt does not drift (OccultSage). COMMUNITY: UC -2::flat color:: beats a weak positive; -1::ben-day dots::; tight-hug and both-hands tags; no humans + boxes off; img2img ~0.57 as rough PR; label words shift V5 style, use the {characters} filename template; res_mult:#x mild.",
+  "unofficial": "NSFW-community: -2::lowres, sketch:: at the end of the base prompt; high complexity + high/ultra depthness over ultra complexity; mixing more than 2 artists is hard on V5; V4.5 character precision inpaint wants well-separated areas; refill rate tuned so the month totals ~7000 Opus images (journal). Details behind the red wrapper.",
+  "imagesNote": "All stills are from the official Anlatan server, re-hosted as Yozora attachments on StaticForge #95. No staff images were posted with this window's technique answers, so community examples carry the visuals. The single unofficial still (a UC screenshot) is Grim-only. Images showing a Hogwarts-uniform character were left out.",
   "counts": {
-    "official": 214,
-    "unofficial": 39,
-    "enshutsuka": 0,
-    "defaultModel": "V5",
-    "officialPulled": 1968,
-    "unofficialPulled": 466,
-    "windowPulled": 2434,
-    "windowOnTopic": 253,
-    "officialOnTopicCoarse": 538,
-    "unofficialOnTopicCoarse": 99,
-    "staffHits": 70,
-    "skippedMinor": 8
+    "official": 624,
+    "unofficial": 372,
+    "enshutsuka": 4,
+    "defaultModel": "V5 Full",
+    "onTopicOfficial": 128,
+    "onTopicUnofficial": 62,
+    "refinedOfficial": 50,
+    "refinedUnofficial": 10,
+    "staffHits": 51,
+    "minorsSkipped": 6
   },
   "billboard": [
     {
-      "kind": "hero",
-      "kicker": "BILLBOARD · DATASET",
-      "title": "Furry on vs off: same seed, different picture"
+      "kind": "image",
+      "kicker": "STAFF · SEEDS",
+      "title": "Same seed, one nonsense line added",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/eac79ca4-8974-4d30-af2b-00f9c1f2ad1f",
+      "cap": "Bicknell125 · #nai-image-advice · a meaningless pop-song line changed the image; that is seed noise, not a magic prompt"
     },
     {
-      "kind": "tile",
-      "kicker": "BOXES",
-      "title": "Box position conditioning is very strong"
+      "kind": "image",
+      "kicker": "COMMUNITY · TWO-SHOTS",
+      "title": "Tags for a hug with no gap",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/e9084384-9c97-41c4-ae9b-2643d44e7b25",
+      "cap": "Bicknell125 · mutual hug, clinging, belly-to-belly, arms around neck, arms around another's waist, hands on another's back, cheek press"
     },
     {
-      "kind": "tile",
-      "kicker": "TEXT",
-      "title": "V5 won't plan your starter pack"
+      "kind": "image",
+      "kicker": "COMMUNITY · STYLE KNOBS",
+      "title": "The dots have a name",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/12b6d8d4-f9b3-4d36-ae01-748a527af70a",
+      "cap": "Uragan · -1::ben-day dots:: clears the halftone; drop the Heavy preset when you already have a UC"
+    },
+    {
+      "kind": "image",
+      "kicker": "COMMUNITY · PR WAIT",
+      "title": "img2img at ~0.57 as a rough PR",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/66ad8334-4fd9-403e-905c-c0c704405bc2",
+      "cap": "He makes zombies · V5 img2img carried the outfit from a source image"
+    }
+  ],
+  "images": [
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/4034dce3-96e8-4c31-a602-e7ec1cd4fac3",
+      "cap": "Bicknell125 · same seed A (control)",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/eac79ca4-8974-4d30-af2b-00f9c1f2ad1f",
+      "cap": "Bicknell125 · same seed B, nonsense line added",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/e9084384-9c97-41c4-ae9b-2643d44e7b25",
+      "cap": "Bicknell125 · tight-hug tag set",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/9a06cb6a-604d-4924-a938-8151f7709a65",
+      "cap": "Bicknell125 · both hands held (double hand grab)",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/12b6d8d4-f9b3-4d36-ae01-748a527af70a",
+      "cap": "Uragan · -1::ben-day dots:: fix",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/89632eb5-6d93-44a6-81c2-c28c24b4c525",
+      "cap": "Redwood Elf · background rendered alone for compositing",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/498e3148-ae3b-4bd5-99c4-3b165501f0b3",
+      "cap": "He makes zombies · img2img source",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/66ad8334-4fd9-403e-905c-c0c704405bc2",
+      "cap": "He makes zombies · V5 img2img result at ~0.57",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/79d4ef6e-4376-443e-9074-24b8fa00833a",
+      "cap": "Triplis · 1girl, artist:glossyspicy, portrait (half-real artist tag)",
+      "kicker": "OFFICIAL · community"
+    }
+  ],
+  "grimImages": [
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/2461ef47-fc2a-45fe-8e2d-73d7e75ecb75",
+      "cap": "Boxed Water's UC panel screenshot (NSFW-community), shown with the -2::lowres, sketch:: base-prompt tip",
+      "kicker": "UNOFFICIAL"
     }
   ],
   "enshutsuka": [
     {
-      "teaser": "No new Laboratory board this window; the last one is Monday (Guren).",
-      "body": "Carry Monday's winners forward, minus the withdrawn anchor-tag ladders. The Friday ladder is queued for Guren in Laboratory."
+      "teaser": "Guren's Tuesday rerun: Quality Tags do nothing to Text: randomizers",
+      "body": "tuesday_2026_10_06_lab_rerun_qt_pupils (V5 Euler/karras g5, 23 steps, small portrait, free Opus). Four seeds with Monday's: clean lettering 2/4 with QT on and 2/4 with QT off. Where the text lands follows the word the randomizer picked (world landed on the shirt 4 of 5 times, hello in the bubble 3 of 3), and the randomizer rerolls per print, so on/off pairs can compare different words. Monday's 'QT can leak' anecdote is retired in the optimiser."
+    },
+    {
+      "teaser": "Pupil-size tags stay unreliable on V5",
+      "body": "Same memory: big pupils enlarged the pupil on 1 of 4 seeds; dilated and wide never visibly did. Side note: close-up, face focus rendered an extreme single-eye macro on all three new seeds."
+    },
+    {
+      "teaser": "Porting a V4.5 print to V5: port the original, not a saved recipe",
+      "body": "v5_faithful_port_from_v45_print: the user preferred a straight port of the original V4.5 prompt, weights, UC, sampler, steps, CFG, rescale and seed with only the model changed, then patching the tags V5 reads differently. Details in the Grim HOUSE note."
+    },
+    {
+      "teaser": "Taste log updated",
+      "body": "user_interests was updated overnight (Oct 7). It is a private taste log, so it is summarized for the Cellar only, not reprinted here."
     }
   ]
 }

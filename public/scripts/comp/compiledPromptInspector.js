@@ -29,6 +29,63 @@ function showCompiledPromptModal(compiledPromptData = null) {
         return;
     }
 
+    const contextContent = buildCompiledContextHtml(compiled);
+
+    // Build reasoning section
+    let reasoningContent = '';
+    if (compiled.reasoning) {
+        reasoningContent = `<div class="reasoning-content">${compiled.reasoning}</div>`;
+    }
+
+    // Build metadata section using individual card elements like weather
+    let metadataContent = '';
+    // escapeHtml: public/scripts/comp/utilities.js
+    const metadataItems = [
+        { label: 'Timestamp', value: compiled.timestamp ? new Date(compiled.timestamp).toLocaleString() : null, icon: 'fa-clock' },
+        { label: 'Expires', value: compiled.expiresAt ? new Date(compiled.expiresAt).toLocaleString() : null, icon: 'fa-hourglass-half' },
+        { label: compiled.source === 'agent' ? 'Agent' : 'Wren', value: compiled.summary ? escapeHtml(compiled.summary) : null, icon: 'fa-feather' },
+        ...(Array.isArray(compiled.dg_expanders) ? compiled.dg_expanders : []).map(entry => ({
+            label: `!${escapeHtml(entry.prefix || '')}`,
+            value: entry.value ? escapeHtml(entry.value) : null,
+            icon: 'fa-wand-magic-sparkles'
+        })),
+        ...Object.entries(compiled.applied || {}).map(([control, line]) => ({
+            label: escapeHtml(control),
+            value: escapeHtml(line),
+            icon: 'fa-check'
+        }))
+    ].filter(item => item.value !== null);
+
+    if (metadataItems.length > 0) {
+        metadataContent = metadataItems.map(item => `
+            <div class="weather-detail-card">
+                <div class="weather-detail-icon">
+                    <i class="fas ${item.icon}"></i>
+                </div>
+                <div class="weather-detail-content">
+                    <div class="weather-detail-label">${item.label}</div>
+                    <div class="weather-detail-value">${item.value}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Combine all sections
+    content.innerHTML = [
+        contextContent,
+        metadataContent
+    ].filter(section => section).join('');
+
+    // Show modal
+    openModal(modal);
+
+    // Focus management for accessibility
+    modal.focus();
+}
+
+// Rentan context cards (time period, holiday, weather, hourly) for compiled_prompt.context.
+// Shared by the Reality Crossover window and the image Inspector (imagePromptInspector.js).
+function buildCompiledContextHtml(compiled) {
     // Helper function to create info item with optional progress bar
     const createInfoItem = (label, value, icon = '', className = '', progressValue = null) => {
         // Filter out null, undefined, and invalid values
@@ -869,96 +926,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
         }
     }
 
-    // Build reasoning section
-    let reasoningContent = '';
-    if (compiled.reasoning) {
-        reasoningContent = `<div class="reasoning-content">${compiled.reasoning}</div>`;
-    }
-
-    // Build metadata section using individual card elements like weather
-    let metadataContent = '';
-    // escapeHtml: public/scripts/comp/utilities.js
-    const metadataItems = [
-        { label: 'Timestamp', value: compiled.timestamp ? new Date(compiled.timestamp).toLocaleString() : null, icon: 'fa-clock' },
-        { label: 'Expires', value: compiled.expiresAt ? new Date(compiled.expiresAt).toLocaleString() : null, icon: 'fa-hourglass-half' },
-        { label: compiled.source === 'agent' ? 'Agent' : 'Wren', value: compiled.summary ? escapeHtml(compiled.summary) : null, icon: 'fa-feather' },
-        ...(Array.isArray(compiled.dg_expanders) ? compiled.dg_expanders : []).map(entry => ({
-            label: `!${escapeHtml(entry.prefix || '')}`,
-            value: entry.value ? escapeHtml(entry.value) : null,
-            icon: 'fa-wand-magic-sparkles'
-        }))
-    ].filter(item => item.value !== null);
-
-    if (metadataItems.length > 0) {
-        metadataContent = metadataItems.map(item => `
-            <div class="weather-detail-card">
-                <div class="weather-detail-icon">
-                    <i class="fas ${item.icon}"></i>
-                </div>
-                <div class="weather-detail-content">
-                    <div class="weather-detail-label">${item.label}</div>
-                    <div class="weather-detail-value">${item.value}</div>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // Combine all sections
-    content.innerHTML = [
-        contextContent,
-        metadataContent
-    ].filter(section => section).join('');
-
-    // Show modal
-    openModal(modal);
-
-    // Focus management for accessibility
-    modal.focus();
-}
-
-// Clear compiled prompt
-async function clearCompiledPrompt() {
-    if (!window.dynamicGenerationData || !window.dynamicGenerationData.compiled_prompt) {
-        showGlassToast('warning', null, 'No compiled prompt to erase.', false, undefined, '<i class="fas fa-file-slash"></i>');
-        return;
-    }
-
-    // Confirm deletion using confirmationDialog.js
-    const confirmed = await showConfirmationDialog(
-        'Are you sure you want to erase the compiled prompt?',
-        [
-            {
-                text: 'Erase',
-                value: true,
-                className: 'btn-danger',
-                icon: 'fas fa-trash'
-            },
-            {
-                text: 'Cancel',
-                value: false,
-                className: 'btn-secondary'
-            }
-        ]
-    );
-
-    if (!confirmed) {
-        return;
-    }
-
-    // Clear the compiled prompt
-    delete window.dynamicGenerationData.compiled_prompt;
-    if (dynamicCarousel) {
-        dynamicCarousel.setAttribute('data-has-cache', 'false');
-    }
-    clearDynamicGenerationLockState();
-
-    // Clear stage seeds array (used for rerolling with compiled prompts)
-    if (window.lastGenerationStageSeeds) {
-        delete window.lastGenerationStageSeeds;
-        console.log('🗑️ Cleared stage seeds array');
-    }
-
-    updateDynamicGenerationToggleBtn();
+    return contextContent;
 }
 
 function wireCompiledPromptInspectorListeners() {

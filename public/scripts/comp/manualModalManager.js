@@ -1841,6 +1841,7 @@ function resetDynamicGenerationControls() {
         if (btn.id === 'creativeBtn') {
             btn.removeAttribute('data-toggle-clothing');
             btn.removeAttribute('data-toggle-action');
+            btn.removeAttribute('data-creative-level');
         }
 
         if (btn.id === 'seasonBtn') {
@@ -2188,6 +2189,7 @@ function clearManualForm() {
             btn.removeAttribute('data-use-cache');
             btn.removeAttribute('data-toggle-clothing');
             btn.removeAttribute('data-toggle-action');
+            btn.removeAttribute('data-creative-level');
 
             // Reset season button holiday and guidance toggles to default (true)
             if (btnId === 'seasonBtn') {
@@ -2571,6 +2573,7 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         clothing: creativeBtn?.dataset.toggleClothing === 'true',
         action: creativeBtn?.dataset.toggleAction === 'true',
         creative: creativeBtn?.dataset.state === 'on',
+        creative_level: creativeBtn?.dataset.creativeLevel || 'medium',
         optimize: dynamicCarousel?.dataset.optimizeEnabled === 'true' ? {
             enabled: true,
             tokenCount: dynamicCarousel.dataset.tokenCount === 'true',
@@ -4376,6 +4379,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 guidance: 'seasonBtn',
                 clothing: 'creativeBtn',
                 action: 'creativeBtn',
+                creative_level: 'creativeBtn',
                 locked: 'dynamicCarousel',
                 creative: 'creativeBtn',
                 optimize: 'dynamicCarousel'
@@ -4402,6 +4406,10 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                     }
                     if (key === 'action') {
                         btn.setAttribute('data-toggle-action', window.dynamicGenerationData[key] ? 'true' : 'false');
+                        return;
+                    }
+                    if (key === 'creative_level') {
+                        btn.setAttribute('data-creative-level', window.dynamicGenerationData[key]);
                         return;
                     }
 

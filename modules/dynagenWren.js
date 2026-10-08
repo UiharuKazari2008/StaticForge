@@ -9,8 +9,7 @@
 const crypto = require('crypto');
 const {
     compileContext,
-    calculateDynamicExpiration,
-    formatContextForCarousel
+    calculateDynamicExpiration
 } = require('./dynamicGenerationHandlers');
 const {
     generatePromptHash,
@@ -69,6 +68,119 @@ function wrenInputHash(body, dg) {
         action: !!dg.action,
         observeHoliday: dg.observeHoliday ?? null
     })).digest('hex');
+}
+
+const RENTAN_CONTROLS = ['tod', 'weather', 'season', 'observeHoliday', 'guidance', 'clothing', 'action', 'creative', 'optimize', 'lockSubject', 'disable_holiday'];
+
+// Studio controls as Wren sees them: true, false, or the override value (a fixed time, weather, or season).
+function rentanControls(dg) {
+    const out = {};
+    RENTAN_CONTROLS.forEach((key) => {
+        const value = key === 'guidance' ? dg.guidance !== false : dg[key];
+        out[key] = value === undefined || value === null || value === '' ? false : value;
+    });
+    // Creative carries its level (Creative menu Light / Medium / High), so a level change is a new turn.
+    if (out.creative) out.creative = ['light', 'medium', 'high'].includes(dg.creative_level) ? dg.creative_level : 'medium';
+    return out;
+}
+
+function changedControls(before, after) {
+    return RENTAN_CONTROLS
+        .filter((key) => JSON.stringify(before[key] ?? false) !== JSON.stringify(after[key] ?? false))
+        .map((key) => `${key} ${after[key] === false ? 'off' : after[key] === true ? 'on' : JSON.stringify(after[key])}`)
+        .join(', ');
+}
+
+const round = (n, d = 1) => (typeof n === 'number' ? Math.round(n * 10 ** d) / 10 ** d : n);
+const clock = (hours) => (typeof hours === 'number'
+    ? `${String(Math.floor(hours)).padStart(2, '0')}:${String(Math.round((hours % 1) * 60) % 60).padStart(2, '0')}`
+    : undefined);
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+const weighted = (rows) => (Array.isArray(rows) && rows.length
+    ? rows.map((row) => ({ tags: row.text, weight: round(row.bias, 2) }))
+    : undefined);
+
+// compileContext already gates each part by its control; this keeps every visible fact and drops raw API payloads.
+function rentanContextForWren(context) {
+    const c = context || {};
+    const out = {};
+    const t = c.time;
+    if (t) {
+        out.when = `${t.dayOfWeekName} ${t.monthName} ${t.dayOfMonth} ${t.year}, ${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')} ${(c.location && c.location.timezone) || t.timezone || ''}`.trim();
+    }
+    if (c.location) out.where = [c.location.city, c.location.state, c.location.country].filter(Boolean).join(', ') || undefined;
+    const p = c.timePeriod;
+    if (p) {
+        out.period = {
+            name: p.period,
+            timeOfDay: p.timeOfDay,
+            sun: p.isDaytime ? `up, ${p.sunPhase}` : 'down',
+            sunrise: clock(p.sunriseHour),
+            sunset: clock(p.sunsetHour),
+            perceivableLight: p.perceivableLight,
+            next: p.nextPeriodName && p.nextPeriodName !== p.periodKey ? `${p.nextPeriodName} at ${clock(p.nextPeriodTransitionHour)}` : undefined,
+            lighting: weighted(p.lighting),
+            atmosphere: weighted(p.atmosphere),
+            uc: weighted(p.uc)
+        };
+    }
+    const w = c.weather;
+    if (w) {
+        out.weather = {
+            sky: w.generationCondition || w.condition,
+            cloudPercent: w.cloudCoverage,
+            precipitation: w.precipitationType && w.precipitationType.type !== 'none'
+                ? `${w.precipitationType.intensity} ${w.precipitationType.description}` : 'none',
+            tempC: round(w.temperature),
+            feelsLikeC: round(w.feelsLike),
+            humidity: w.humidity,
+            wind: `${round(w.windSpeed)} m/s, gusts ${round(w.windGust)} m/s, from ${COMPASS[Math.round((w.windDirection || 0) / 22.5) % 16]}`,
+            visibilityKm: typeof w.visibility === 'number' ? round(w.visibility / 1000) : undefined,
+            uv: w.uvIndex !== undefined ? `${round(w.uvIndex)} ${(w.weatherQuality && w.weatherQuality.uvWarnings && w.weatherQuality.uvWarnings.category) || ''}`.trim() : undefined,
+            comfort: w.weatherQuality && w.weatherQuality.comfortLevel,
+            next: w.nextConditionName || undefined
+        };
+    }
+    const h = c.weatherHistoryReport;
+    if (h) {
+        const y = h.yesterday;
+        const trend = h.trendAnalysis;
+        out.recent = {
+            yesterday: y ? `${y.dominantCondition}, ${round(y.temperatureMin)}-${round(y.temperatureMax)} C, rain ${round(y.precipitationTotal)} mm, snow ${round(y.precipitationSnow)} cm` : undefined,
+            trend: trend ? [
+                `temperature ${trend.temperature.status}`,
+                `cloud ${trend.cloud.status}`,
+                `wind ${trend.wind.status}`,
+                trend.precipitation.hasCurrentPrecip ? 'precipitating now'
+                    : trend.precipitation.hadRecentPrecip ? 'rain in the last 2h'
+                        : trend.precipitation.hadEarlierPrecip ? 'rain earlier today' : 'dry'
+            ].join(', ') : undefined,
+            hours: Array.isArray(h.timelineEntries)
+                ? h.timelineEntries.map((e) => `${e.timeStr} ${e.condition} ${round(e.temperature)} C cloud ${e.cloudCoverage}% ${e.precipitationType}`)
+                : undefined
+        };
+    }
+    const s = c.season;
+    if (s) {
+        out.season = { name: s.name, guidelines: s.guidelines, modifications: s.modifications };
+        const hol = s.holiday && s.holiday.primaryHoliday;
+        if (hol) {
+            out.holiday = {
+                name: hol.name,
+                daysUntil: hol.daysUntil,
+                intensity: hol.intensity,
+                decorations: hol.decorations,
+                atmosphere: hol.atmosphere,
+                colors: hol.colors,
+                activities: hol.activities,
+                guidance: s.holiday.progressiveElements && s.holiday.progressiveElements.guidance
+            };
+        }
+    }
+    if (c.clothing && Array.isArray(c.clothing.options) && c.clothing.options.length) {
+        out.clothingOptions = c.clothing.options.slice(0, 20).map((o) => o.name);
+    }
+    return out;
 }
 
 function dgExpandersFrom(list) {
@@ -136,12 +248,63 @@ function studioChangeFrom(body, change) {
     return out;
 }
 
-function stampCompiled(gr, body, dg, preset, context, fields) {
-    const now = Date.now();
-    const existing = dg.compiled_prompt && typeof dg.compiled_prompt === 'object' ? dg.compiled_prompt : {};
+// Wren's per-expander reason survives cached reuse while that expander's text is unchanged.
+function withReasons(list, from) {
+    const reasons = new Map((Array.isArray(from) ? from : [])
+        .filter((entry) => entry && entry.reason)
+        .map((entry) => [String(entry.prefix).toLowerCase(), entry]));
+    return list.map((entry) => {
+        const source = reasons.get(String(entry.prefix).toLowerCase());
+        return source && normalizeForHash(source.value) === normalizeForHash(entry.value)
+            ? { ...entry, reason: source.reason }
+            : entry;
+    });
+}
+
+function promptHashOf(body, preset) {
     const rawPrompt = (body.prompt !== undefined && body.prompt !== null) ? body.prompt : preset?.prompt;
     const rawUc = (body.uc !== undefined && body.uc !== null) ? body.uc : preset?.uc;
     const rawNeg = body.input_prompt_negative ?? body.prompt_negative ?? preset?.input_prompt_negative ?? preset?.prompt_negative ?? '';
+    return generatePromptHash(rawPrompt, rawUc, body.allCharacterPrompts || preset?.allCharacterPrompts || [], rawNeg || '');
+}
+
+function inputSnapshot(body) {
+    return {
+        prompt: body.prompt || '',
+        uc: body.uc || '',
+        characters: (Array.isArray(body.allCharacterPrompts) ? body.allCharacterPrompts : [])
+            .map((c, index) => ({ index, prompt: (c && c.prompt) || '' }))
+    };
+}
+
+// Prompt, UC, and character prompts with Studio formatting ignored: is the Studio text still what Wren left?
+function inputHashOf(body) {
+    const snap = inputSnapshot(body);
+    return crypto.createHash('md5').update(JSON.stringify([
+        normalizeForHash(snap.prompt),
+        normalizeForHash(snap.uc),
+        snap.characters.map((row) => normalizeForHash(row.prompt))
+    ])).digest('hex');
+}
+
+// The prompt before Wren's edits, for carousel Restore Input Prompt. Missing !dg_ tokens are added so a restore keeps the scene.
+function originalInputFor(before, after, expanders, existing, incomingHash) {
+    if (existing.original_input && existing.input_hash === incomingHash) return existing.original_input;
+    if (JSON.stringify(before) === JSON.stringify(after)) return null;
+    const original = { ...before, characters: before.characters.map((row) => ({ ...row })) };
+    const haystack = [original.prompt, original.uc, ...original.characters.map((row) => row.prompt)].join('\n');
+    expanders.forEach((e) => {
+        const token = `!${e.prefix}`;
+        if (!new RegExp(`${token}(?![a-z0-9_])`, 'i').test(haystack)) original.prompt = insertPrefixToken(original.prompt, token);
+    });
+    return original;
+}
+
+function stampCompiled(gr, body, dg, preset, context, fields) {
+    const now = Date.now();
+    const existing = dg.compiled_prompt && typeof dg.compiled_prompt === 'object' ? dg.compiled_prompt : {};
+    const promptHash = promptHashOf(body, preset);
+    const inputHash = inputHashOf(body);
     dg.compiled_prompt = {
         success: true,
         source: fields.source,
@@ -149,12 +312,18 @@ function stampCompiled(gr, body, dg, preset, context, fields) {
         context,
         // Legacy Tendai stays read-only on old images; Wren output is dg_expanders.
         text_replacements: EMPTY_TENDAI,
-        dg_expanders: dgExpandersFrom(body.text_replacements),
+        dg_expanders: withReasons(dgExpandersFrom(body.text_replacements), fields.expanders || existing.dg_expanders),
         summary: fields.summary != null ? fields.summary : (existing.summary || null),
+        applied: fields.applied || existing.applied || null,
+        original_input: fields.original_input !== undefined
+            ? fields.original_input
+            : (existing.input_hash === inputHash ? existing.original_input || null : null),
+        input_hash: inputHash,
         wren_session_id: fields.sessionId || existing.wren_session_id || null,
         wren_input_hash: wrenInputHash(body, dg),
-        prompt_hash: generatePromptHash(rawPrompt, rawUc, body.allCharacterPrompts || preset?.allCharacterPrompts || [], rawNeg || ''),
+        prompt_hash: promptHash,
         request_hash: dynagenRequestHash(dg),
+        controls: rentanControls(dg),
         directive_hash: dg.directive ? generateDirectiveHash(dg.directive) : null,
         timestamp: now,
         expiresAt: fields.expiresAt || calculateDynamicExpiration(gr, context, DEFAULT_EXPIRY_MS),
@@ -198,6 +367,8 @@ function staleReason(cp, dg, body, context, now) {
     if (!cp || !cp.wren_input_hash) return isLegacyTendai(cp) ? 'pre-v1.1 Tendai stamp' : 'first Rentan turn for this prompt';
     if (dg.dyna_no_cache === true || dg.use_cache_responses === false) return 'cache is off';
     if (dg.force_context_refresh === true) return 'refresh requested';
+    const flipped = cp.controls ? changedControls(cp.controls, rentanControls(dg)) : '';
+    if (flipped) return `Rentan controls changed: ${flipped}`;
     if (cp.request_hash !== dynagenRequestHash(dg)) return 'Rentan toggles changed';
     if ((cp.directive_hash || null) !== (dg.directive ? generateDirectiveHash(dg.directive) : null)) return 'directive changed';
     const watched = watchedBlocksReason(cp, body);
@@ -264,7 +435,8 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
         result = await runDynagenTurn(gr, {
             workspaceId: body.workspace || null,
             reason,
-            context: formatContextForCarousel(context),
+            context: rentanContextForWren(context),
+            controls: rentanControls(dg),
             directive: dg.directive || '',
             prompt: body.prompt || preset?.prompt || '',
             uc: body.uc || '',
@@ -282,10 +454,15 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
     }
 
     if (body.prompt === undefined && preset?.prompt) body.prompt = preset.prompt;
+    const incomingHash = inputHashOf(body);
+    const before = inputSnapshot(body);
     applyWrenChange(body, result.change);
     stampCompiled(gr, body, dg, preset, context, {
+        original_input: originalInputFor(before, inputSnapshot(body), result.change.expanders, cp || {}, incomingHash),
         source: 'wren',
         summary: result.change.summary,
+        applied: result.change.applied,
+        expanders: result.change.expanders,
         sessionId: result.sessionId
     });
 
@@ -305,5 +482,5 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
 module.exports = {
     resolveDynagenWithWren,
     dynagenRequestHash,
-    _test: { wrenInputHash, applyWrenChange, studioChangeFrom, staleReason, contextUnchanged, insertPrefixToken, isLegacyTendai, watchedBlocksReason }
+    _test: { originalInputFor, inputSnapshot, rentanControls, changedControls, rentanContextForWren, wrenInputHash, applyWrenChange, studioChangeFrom, staleReason, contextUnchanged, insertPrefixToken, isLegacyTendai, watchedBlocksReason }
 };

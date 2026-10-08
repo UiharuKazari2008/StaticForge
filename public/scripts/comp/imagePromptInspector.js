@@ -201,6 +201,7 @@ class ImagePromptInspector {
         this.expandersSection = this.find('imagePromptInspectorExpandersSection')
             || this.expanders?.closest('.image-prompt-inspector-section');
         this.dynamic = this.find('imagePromptInspectorDynamic');
+        this.dynamicContext = this.find('imagePromptInspectorDynamicContext');
         this.dynamicSection = this.find('imagePromptInspectorDynamicSection')
             || this.dynamic?.closest('.image-prompt-inspector-section');
         this.scrollShell = this.find('imagePromptInspectorScrollShell');
@@ -779,12 +780,15 @@ class ImagePromptInspector {
             || this.metadata.forge_data?.text_replacements
             || [];
         const resolvedKeys = new Set();
+        const compiled = this.getDynamicGeneration().compiled_prompt;
+        // buildRentanExpanderRowParts: public/scripts/comp/textReplacementManager.js
+        const rentanFor = (key) => ({ rentanParts: buildRentanExpanderRowParts(key, compiled) });
 
         if (Array.isArray(seeds)) {
             seeds.forEach((seed, index) => {
                 const key = seed.key || seed.name || `Replacement ${index + 1}`;
                 resolvedKeys.add(key);
-                this.expanders.appendChild(this.buildExpanderLockItem(seed, index));
+                this.expanders.appendChild(this.buildExpanderLockItem({ ...seed, ...rentanFor(key) }, index));
             });
         }
 
@@ -796,7 +800,8 @@ class ImagePromptInspector {
                     key,
                     value: definition.value ?? definition,
                     type: definition.type || 'regular',
-                    source: definition.source || ''
+                    source: definition.source || '',
+                    ...rentanFor(key)
                 }, index));
             });
         }
@@ -825,6 +830,8 @@ class ImagePromptInspector {
             item.classList.add('negative-prompt');
         }
         if (seed.locked) item.classList.add('selected');
+        const rentanParts = seed.rentanParts;
+        if (rentanParts) item.classList.add('dynamic-replacement-type');
 
         let characterIndex = null;
         if (source.startsWith('character_')) {
@@ -861,6 +868,7 @@ class ImagePromptInspector {
         <div class="text-replacement-lock-content">
             <div class="text-replacement-lock-info">
                 <div class="text-replacement-full-value">${escapeHtml(this.formatValue(seed.value))}</div>
+                ${rentanParts ? rentanParts.reasonHtml : ''}
             </div>
             <div class="text-replacement-lock-row">
                 <div class="text-replacement-lock-badges">
@@ -869,8 +877,10 @@ class ImagePromptInspector {
                         ${characterBadge}
                         <span class="badge-icon-type" style="color: ${getReplacementTypeColor(seed.type)};">${getReplacementTypeIcon(seed.type)}</span>
                     </span>
+                    ${rentanParts ? rentanParts.expiryHtml : ''}
                 </div>
                 <div class="text-replacement-lock-pattern">
+                    ${rentanParts ? rentanParts.categoryHtml : ''}
                     ${patternHtml}
                 </div>
             </div>
@@ -932,13 +942,17 @@ class ImagePromptInspector {
         [
             ['Cache Locked', dynamicGeneration.cache_locked ?? compiled.cache_locked, 'fas fa-lock'],
             ['Context Locked', dynamicGeneration.context_locked ?? compiled.context_locked, 'fas fa-lock'],
+            ['Source', compiled.source, 'fas fa-feather'],
+            ['Summary', compiled.summary, 'fas fa-quote-left'],
+            ...Object.entries(compiled.applied || {}).map(([control, line]) => [`Applied: ${this.formatLabel(control)}`, line, 'fas fa-check']),
+            ['Expires', compiled.expiresAt ? new Date(compiled.expiresAt).toLocaleString() : null, 'fas fa-hourglass-half'],
+            ['Wren Session', compiled.wren_session_id, 'fas fa-comments'],
             ['Generated Name', compiled.generated_image_name, 'fas fa-file-signature'],
             ['Timestamp', compiled.timestamp, 'fas fa-clock'],
             ['Prompt Hash', compiled.prompt_hash, 'fas fa-hashtag'],
             ['Request Hash', compiled.request_hash, 'fas fa-hashtag'],
             ['Directive Hash', compiled.directive_hash, 'fas fa-hashtag'],
-            ['Usage', compiled.usage, 'fas fa-chart-simple'],
-            ['Context', compiled.context, 'fas fa-globe']
+            ['Usage', compiled.usage, 'fas fa-chart-simple']
         ].forEach(([label, value, icon]) => {
             if (value !== undefined && value !== null && value !== '') {
                 rows.push([label, value, icon]);
@@ -951,7 +965,19 @@ class ImagePromptInspector {
             rows.push([this.formatLabel(key), value, 'fas fa-circle-info']);
         });
 
-        const hasDynamic = rows.length > 0;
+        const context = compiled.context && typeof compiled.context === 'object' ? compiled.context : null;
+        this.dynamicContext.replaceChildren();
+        this.dynamicContext.classList.toggle('hidden', !context);
+        if (context) {
+            const metadata = this.metadata;
+            // buildCompiledContextHtml: public/scripts/comp/compiledPromptInspector.js
+            void featureLoader.loadFeature('compiled_prompt_inspector').then(() => {
+                if (this.metadata !== metadata) return;
+                this.dynamicContext.innerHTML = buildCompiledContextHtml(compiled);
+            });
+        }
+
+        const hasDynamic = rows.length > 0 || !!context;
         const section = this.dynamicSection || this.dynamic?.closest('.image-prompt-inspector-section');
         if (section) {
             section.classList.toggle('hidden', !hasDynamic);

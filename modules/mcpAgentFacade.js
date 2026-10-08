@@ -192,7 +192,7 @@ function collectEnshutsukaMustAct(input) {
     return {
         required: true,
         reasons,
-        next: 'Bake dynamicGeneration.resolved into dg_ expanders (dg_time, dg_weather, dg_season, dg_holiday, dg_scene) with !dg_ tokens in the prompt. Then apply_studio_changes or generate_image with dynamicGeneration.integrated=true. Do not ignore this data.'
+        next: 'Bake dynamicGeneration.resolved into dg_ expanders (dg_time, dg_weather, dg_season, dg_holiday, dg_scene, dg_action) with !dg_ tokens in the prompt. Then apply_studio_changes or generate_image with dynamicGeneration.integrated=true. Do not ignore this data.'
     };
 }
 
@@ -790,7 +790,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'deliver_rentan',
-        description: 'Hidden Rentan turn only: hand the resolved scene back to the Studio generate that is waiting. expanders are dg_ prefixes (dg_time, dg_weather, dg_season, dg_holiday, dg_scene) with short tag values, every one you want kept. prompt, uc, and characters only when they changed. An error means fix the payload and call again.',
+        description: 'Hidden Rentan turn only: hand the resolved scene back to the Studio generate that is waiting. expanders are dg_ prefixes (dg_time, dg_weather, dg_season, dg_holiday, dg_scene, dg_action) with short tag values, every one you want kept. prompt, uc, and characters only when they changed. applied needs one line per control in your Controls list or the delivery is rejected. An error means fix the payload and call again.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -803,7 +803,11 @@ const TOOL_DEFS = [
                     items: {
                         type: 'object',
                         required: ['prefix', 'value'],
-                        properties: { prefix: { type: 'string' }, value: { type: 'string' } }
+                        properties: {
+                            prefix: { type: 'string' },
+                            value: { type: 'string' },
+                            reason: { type: 'string', description: 'One line: what in the context drove this expander' }
+                        }
                     }
                 },
                 prompt: { type: 'string', description: 'Full base prompt with !dg_ tokens, only if it changed' },
@@ -815,6 +819,11 @@ const TOOL_DEFS = [
                         required: ['index', 'prompt'],
                         properties: { index: { type: 'integer' }, prompt: { type: 'string' } }
                     }
+                },
+                applied: {
+                    type: 'object',
+                    description: 'One line per control from the Controls list (tod, weather, season, observeHoliday, guidance, clothing, action, creative, optimize, lockSubject): what you changed and which context drove it',
+                    additionalProperties: { type: 'string' }
                 },
                 summary: { type: 'string', description: 'One line' }
             }
@@ -963,7 +972,7 @@ const TOOL_DEFS = [
                 fields: { type: 'array' },
                 dynamicGeneration: {
                     type: 'object',
-                    description: 'Studio dynagen toggles. Writing settings alone is fine. Also creative / creative_clothing / creative_action (Rentan creative button) and novel (true/false or {enabled, tone, style, explicitness, persuasiveness, auto_generate}; enable needs a creative directive or a loaded novel). autoGenerate with unbaked toggles, or with Studio Rentan on and baked false, returns needsIntegration + resolved: bake that into dg_ expanders with !dg_ tokens, then retry with integrated=true in this object.'
+                    description: 'Studio dynagen toggles. Writing settings alone is fine. Also creative / creative_level (light|medium|high, default medium) / creative_clothing / creative_action (Rentan creative button) and novel (true/false or {enabled, tone, style, explicitness, persuasiveness, auto_generate}; enable needs a creative directive or a loaded novel). autoGenerate with unbaked toggles, or with Studio Rentan on and baked false, returns needsIntegration + resolved: bake that into dg_ expanders with !dg_ tokens, then retry with integrated=true in this object.'
                 },
                 dynamic_generation: { type: 'object' },
                 director: {

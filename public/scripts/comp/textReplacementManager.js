@@ -2048,6 +2048,39 @@ function getTendaiCategoryClass(category) {
     return 'category-' + category.toLowerCase().replace(/\s+/g, '-');
 }
 
+const RENTAN_EXPANDER_CATEGORIES = [
+    [/time|tod/, 'Time of Day'],
+    [/weather/, 'Weather'],
+    [/season/, 'Seasonal'],
+    [/holiday/, 'Holiday'],
+    [/light/, 'Lighting'],
+    [/scene|atmosphere|setting/, 'Atmosphere'],
+    [/action|pose/, 'Action']
+];
+
+/**
+ * Category, reason and expiry badges for a Wren dg_ expander row (compiled_prompt.dg_expanders, modules/dynagenWren.js).
+ * Returns null when the key is not a Rentan expander of this stamp.
+ */
+function buildRentanExpanderRowParts(key, compiled) {
+    const prefix = String(key || '').toLowerCase();
+    const entry = Array.isArray(compiled?.dg_expanders)
+        ? compiled.dg_expanders.find((row) => String(row.prefix).toLowerCase() === prefix)
+        : null;
+    if (!entry) return null;
+    const purpose = prefix.replace(/^dg_/, '');
+    const match = RENTAN_EXPANDER_CATEGORIES.find(([pattern]) => pattern.test(purpose));
+    const category = match ? match[1] : purpose.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const expiresAt = Number(compiled.expiresAt) || 0;
+    return {
+        categoryHtml: `<span class="text-replacement-badge text-replacement-badge-category ${getTendaiCategoryClass(category)}">${getTendaiCategoryIcon(category)} ${escapeHtml(category)}</span>`,
+        expiryHtml: expiresAt
+            ? `<span class="text-replacement-badge text-replacement-badge-info" title="${escapeHtml(new Date(expiresAt).toLocaleString())}"><i class="fas fa-hourglass-half"></i> ${expiresAt > Date.now() ? 'Expires' : 'Expired'} ${escapeHtml(new Date(expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</span>`
+            : '',
+        reasonHtml: entry.reason ? `<div class="selectable reason-text"><i class="fas fa-quote-left"></i> ${escapeHtml(entry.reason)}</div>` : ''
+    };
+}
+
 function buildTendaiStatusIcon(replacement) {
     if (replacement.applied === false || replacement.error) {
         return {
@@ -3990,6 +4023,7 @@ function getTextReplacementLockListStructureSig(seeds, hasDynamicReplacements) {
         sig += `d:${dtr.prompt?.length || 0},${dtr.uc?.length || 0}`;
         const compiled = window.dynamicGenerationData?.compiled_prompt;
         if (compiled?.expiresAt) sig += `,e:${compiled.expiresAt}`;
+        if (compiled?.timestamp) sig += `,t:${compiled.timestamp}`;
     }
     return sig;
 }
@@ -4008,6 +4042,564 @@ function patchTextReplacementLockListRows(listContainer, seeds) {
         updateTextReplacementLockItem(index, seed);
     });
     updateLockStatusText();
+}
+
+// Rentan section header, cache banner and context cards for the Studio inspector list (Tendai v1.0 and Wren dg_ v1.1 stamps).
+function appendRentanSceneBlocks(listContainer, title) {
+    // Add section header
+    const sectionHeader = document.createElement('div');
+    sectionHeader.className = 'dynamic-replacements-section-header';
+    sectionHeader.innerHTML = `
+        <div class="section-title">
+            <i class="ri-pencil-ai-2-fill"></i>
+            <span>${title}</span>
+        </div>
+    `;
+    listContainer.appendChild(sectionHeader);
+
+    // Add expiration status banner if compiled prompt exists
+    const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+    if (compiledPrompt && compiledPrompt.expiresAt) {
+        const now = Date.now();
+        const isExpired = now >= compiledPrompt.expiresAt;
+        const msUntilExpiry = compiledPrompt.expiresAt - now;
+        const minutesUntilExpiry = Math.round(msUntilExpiry / (60 * 1000));
+        const hoursUntilExpiry = Math.round(minutesUntilExpiry / 60 * 10) / 10;
+        const expiryDate = new Date(compiledPrompt.expiresAt);
+
+        const expirationBanner = document.createElement('div');
+        if (isExpired) {
+            // Calculate days since expiration
+            const daysSinceExpiry = Math.floor(Math.abs(msUntilExpiry) / (1000 * 60 * 60 * 24));
+            const currentYear = new Date().getFullYear();
+            const expiryYear = expiryDate.getFullYear();
+
+            let expiredTimeText;
+            if (daysSinceExpiry < 7) {
+                // Less than 7 days ago: "Expired X Days ago (HH:mm)"
+                const timeStr = expiryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                if (daysSinceExpiry === 0) {
+                    expiredTimeText = `Expired Today (${timeStr})`;
+                } else {
+                    const dayText = daysSinceExpiry === 1 ? '1 Day' : `${daysSinceExpiry} Days`;
+                    expiredTimeText = `Expired ${dayText} ago (${timeStr})`;
+                }
+            } else {
+                // 7 or more days ago: "Expired on MMM dd, YYYY (HH:mm)" with year only if different
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const month = monthNames[expiryDate.getMonth()];
+                const day = expiryDate.getDate();
+                const year = expiryYear !== currentYear ? `, ${expiryYear}` : '';
+                const timeStr = expiryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                expiredTimeText = `Expired on ${month} ${day}${year} (${timeStr})`;
+            }
+
+            expirationBanner.className = 'text-replacement-expiration-banner expired';
+            expirationBanner.innerHTML = `
+                <i class="fas fa-triangle-exclamation"></i>
+                <div class="expiration-info">
+                    <div class="expiration-status">Cache Expired</div>
+                    <div class="expiration-time">${expiredTimeText}</div>
+                </div>
+            `;
+        } else {
+            const timeText = hoursUntilExpiry >= 1
+                ? `${hoursUntilExpiry}h ${minutesUntilExpiry % 60}m`
+                : `${minutesUntilExpiry}m`;
+            expirationBanner.className = 'text-replacement-expiration-banner valid';
+            expirationBanner.innerHTML = `
+                <i class="fas fa-circle-check"></i>
+                <div class="expiration-info">
+                    <div class="expiration-status">Cache Valid</div>
+                    <div class="expiration-time">Expires at ${expiryDate.toLocaleTimeString()} (${timeText})</div>
+                </div>
+            `;
+        }
+        listContainer.appendChild(expirationBanner);
+    }
+
+    // Add context cards from compiled prompt
+    const compiled = window.dynamicGenerationData?.compiled_prompt;
+    if (compiled && compiled.context) {
+        const contextCardsContainer = document.createElement('div');
+        contextCardsContainer.className = 'dynamic-replacements-context-cards';
+
+        // Build context cards using the same logic from showCompiledPromptModal
+        const context = compiled.context;
+        const weather = context.weather || {};
+        const time = context.time || {};
+
+        // Get unit preference
+        let useMetric = localStorage.getItem('weather_units_metric') !== 'false';
+
+        // Helper functions (reuse from showCompiledPromptModal scope)
+        const celsiusToFahrenheit = (celsius) => Math.round((celsius * 9 / 5) + 32);
+        const mpsToMph = (mps) => Math.round(mps * 2.237);
+        const getWeatherIcon = (condition, isNight = false) => {
+            if (!condition) return isNight ? '<i class="wi wi-night-clear"></i>' : '<i class="wi wi-day-sunny"></i>';
+
+            const timePrefix = isNight ? 'night-alt' : 'day';
+
+            // Icons that don't change between day/night
+            const timeNeutralIcons = {
+                'overcast': 'cloudy',
+                'fog': 'fog',
+                'depositing rime fog': 'fog',
+                'moderate snow fall': 'snow',
+                'heavy snow fall': 'snow',
+                'snow grains': 'snow',
+                'heavy snow showers': 'snow'
+            };
+
+            if (timeNeutralIcons[condition]) {
+                return `<i class="wi wi-${timeNeutralIcons[condition]}"></i>`;
+            }
+
+            // Time-dependent icons
+            const iconMap = {
+                'clear sky': isNight ? 'night-clear' : 'day-sunny',
+                'mainly clear': isNight ? 'night-alt-partly-cloudy' : 'day-sunny-overcast',
+                'partly cloudy': `${timePrefix}-cloudy`,
+                'light drizzle': `${timePrefix}-showers`,
+                'moderate drizzle': `${timePrefix}-showers`,
+                'dense drizzle': `${timePrefix}-showers`,
+                'light freezing drizzle': `${timePrefix}-snow`,
+                'dense freezing drizzle': `${timePrefix}-snow`,
+                'slight rain': `${timePrefix}-rain`,
+                'moderate rain': `${timePrefix}-rain`,
+                'heavy rain': `${timePrefix}-rain`,
+                'light freezing rain': `${timePrefix}-snow`,
+                'heavy freezing rain': `${timePrefix}-snow`,
+                'slight snow fall': `${timePrefix}-snow`,
+                'slight rain showers': `${timePrefix}-showers`,
+                'moderate rain showers': `${timePrefix}-rain`,
+                'violent rain showers': `${timePrefix}-storm-showers`,
+                'slight snow showers': `${timePrefix}-snow`,
+                'thunderstorm': `${timePrefix}-thunderstorm`,
+                'thunderstorm with slight hail': `${timePrefix}-thunderstorm`,
+                'thunderstorm with heavy hail': `${timePrefix}-thunderstorm`
+            };
+
+            const iconClass = iconMap[condition] || (isNight ? 'night-clear' : 'day-sunny');
+            return `<i class="wi wi-${iconClass}"></i>`;
+        };
+        const getWindDirection = (degrees) => {
+            if (degrees === null || degrees === undefined) return 'N/A';
+            const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+            const index = Math.round(degrees / 22.5) % 16;
+            return directions[index];
+        };
+
+        // Build weather content
+        let weatherContent = '';
+        if (weather.condition || weather.temperature !== undefined) {
+            // Determine if it's night based on timePeriod
+            const isNight = context.timePeriod?.isDaytime === false;
+            const weatherIcon = getWeatherIcon(weather.condition, isNight);
+            const tempC = weather.temperature;
+            const tempF = tempC !== undefined ? celsiusToFahrenheit(tempC) : null;
+            const tempDisplay = useMetric ?
+                (tempC !== undefined ? `${tempC}°C` : 'N/A') :
+                (tempF !== undefined ? `${tempF}°F` : 'N/A');
+            const feelsC = weather.feelsLike;
+            const feelsF = feelsC !== undefined ? celsiusToFahrenheit(feelsC) : null;
+            const feelsDisplay = useMetric ?
+                (feelsC !== undefined ? `${feelsC}°C` : 'N/A') :
+                (feelsF !== undefined ? `${feelsF}°F` : 'N/A');
+            const windMps = weather.windSpeed;
+            const windMph = windMps !== undefined ? mpsToMph(windMps) : null;
+            const windDisplay = useMetric ?
+                (windMps !== undefined ? `${windMps} m/s` : 'N/A') :
+                (windMph !== undefined ? `${windMph} mph` : 'N/A');
+
+            const weatherCondition = weather.condition || 'Unknown';
+            const humidityValue = weather.humidity !== undefined ? `${weather.humidity}%` : null;
+            const windDirection = weather.windDirection !== undefined ? getWindDirection(weather.windDirection) : null;
+
+            const displayTemp = useMetric ? tempC : tempF;
+            const displayFeels = useMetric ? feelsC : feelsF;
+
+            // Determine card background
+            let cardBackgroundClass = '';
+            if (context.season && weather.pressure !== undefined) {
+                const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
+                const pressure = weather.pressure;
+
+                if (season.includes('spring')) {
+                    if (pressure < 1000) cardBackgroundClass = 'season-spring-stormy';
+                    else if (pressure < 1013) cardBackgroundClass = 'season-spring-unstable';
+                    else if (pressure < 1020) cardBackgroundClass = 'season-spring-normal';
+                    else cardBackgroundClass = 'season-spring-stable';
+                } else if (season.includes('summer')) {
+                    if (pressure < 1000) cardBackgroundClass = 'season-summer-stormy';
+                    else if (pressure < 1013) cardBackgroundClass = 'season-summer-unstable';
+                    else if (pressure < 1020) cardBackgroundClass = 'season-summer-normal';
+                    else cardBackgroundClass = 'season-summer-stable';
+                } else if (season.includes('fall') || season.includes('autumn')) {
+                    if (pressure < 1000) cardBackgroundClass = 'season-fall-stormy';
+                    else if (pressure < 1013) cardBackgroundClass = 'season-fall-unstable';
+                    else if (pressure < 1020) cardBackgroundClass = 'season-fall-normal';
+                    else cardBackgroundClass = 'season-fall-stable';
+                } else if (season.includes('winter')) {
+                    if (pressure < 1000) cardBackgroundClass = 'season-winter-stormy';
+                    else if (pressure < 1013) cardBackgroundClass = 'season-winter-unstable';
+                    else if (pressure < 1020) cardBackgroundClass = 'season-winter-normal';
+                    else cardBackgroundClass = 'season-winter-stable';
+                }
+            } else if (context.season) {
+                const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
+                if (season.includes('spring')) cardBackgroundClass = 'season-spring-normal';
+                else if (season.includes('summer')) cardBackgroundClass = 'season-summer-normal';
+                else if (season.includes('fall') || season.includes('autumn')) cardBackgroundClass = 'season-fall-normal';
+                else if (season.includes('winter')) cardBackgroundClass = 'season-winter-normal';
+            }
+
+            const mainCardHtml = `
+                <div class="weather-main-card ${cardBackgroundClass}">
+                    <div class="weather-current-temp">
+                        <div class="weather-temp-value">
+                            <span class="weather-temp-number clickable" onclick="toggleWeatherUnits(event)" data-metric="${tempC !== undefined ? tempC : ''}" data-imperial="${tempF !== undefined ? tempF : ''}">${displayTemp !== undefined ? displayTemp : '--'}</span>
+                            <span class="weather-temp-unit">${useMetric ? '°C' : '°F'}</span>
+                        </div>
+                        ${displayFeels !== undefined ? `<div class="weather-feels-like" data-metric="${feelsC !== undefined ? feelsC : ''}" data-imperial="${feelsF !== undefined ? feelsF : ''}">Feels like ${displayFeels}°${useMetric ? 'C' : 'F'}</div>` : ''}
+                    </div>
+                    <div class="weather-condition-display">
+                        <div class="weather-condition-icon">${weatherIcon}</div>
+                        <div class="weather-condition-text">${weatherCondition}</div>
+                        <div class="weather-condition-details">
+                            ${humidityValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-droplet"></i>${humidityValue}</div>` : ''}
+                            ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i><span class="weather-wind-speed" data-metric="${windMps !== undefined ? windMps : ''}" data-imperial="${windMph !== undefined ? windMph : ''}">${windDisplay}</span>${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
+                        </div>
+                    </div>
+                    ${weather.cloudCoverage !== undefined || weather.visibility !== undefined || weather.uvIndex !== undefined ? `
+                    <div class="weather-card-header">
+                        <div class="weather-quick-indicators">
+                            ${weather.uvIndex !== undefined && weather.uvIndex > 0 ? `
+                            <div class="weather-quick-indicator">
+                                <div class="weather-quick-indicator-label">
+                                    <i class="fa-solid fa-sun"></i>
+                                    <span>UV ${weather.uvIndex}</span>
+                                </div>
+                                <div class="weather-quick-progress-bar">
+                                    <div class="weather-quick-progress-fill uv-index" style="width: ${Math.min((weather.uvIndex / 12) * 100, 100)}%"></div>
+                                </div>
+                            </div>
+                            ` : ''}
+                            ${weather.cloudCoverage !== undefined ? `
+                            <div class="weather-quick-indicator">
+                                <div class="weather-quick-indicator-label">
+                                    <i class="fa-solid fa-cloud"></i>
+                                    <span>${weather.cloudCoverage}%</span>
+                                </div>
+                                <div class="weather-quick-progress-bar">
+                                    <div class="weather-quick-progress-fill cloud-coverage" style="width: ${weather.cloudCoverage}%"></div>
+                                </div>
+                            </div>
+                            ` : ''}
+                            ${weather.visibility !== undefined ? `
+                            <div class="weather-quick-indicator">
+                                <div class="weather-quick-indicator-label">
+                                    <i class="fa-solid fa-eye"></i>
+                                    <span class="weather-visibility" data-metric="${weather.visibility / 1000}" data-unit="km">${useMetric ? `${(weather.visibility / 1000).toFixed(1)} km` : `${(weather.visibility * 0.000621371).toFixed(1)} mi`}</span>
+                                </div>
+                                <div class="weather-quick-progress-bar">
+                                    <div class="weather-quick-progress-fill visibility" style="width: ${Math.min((weather.visibility / 10000) * 100, 100)}%"></div>
+                                </div>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+
+            weatherContent = `<div class="weather-display">${mainCardHtml}</div>`;
+        }
+
+        // Build period card
+        let periodCardHtml = '';
+        const timePeriodInfo = context.timePeriod || {};
+
+        // Calculate season progress and template (needed for both period and holiday cards)
+        const seasonProgress = context.season ? calculateSeasonProgress(time, context.season) : 50;
+        const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+        const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
+        const hasHoliday = context.season?.holiday?.primaryHoliday;
+
+        if (context.season && timePeriodInfo.period) {
+            let periodBgClass = 'period-default';
+            const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+            const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
+            const period = timePeriodInfo.period ? timePeriodInfo.period.toLowerCase() : '';
+
+            if (season.includes('spring')) {
+                if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-spring-dawn';
+                else if (period.includes('morning')) periodBgClass = 'period-spring-morning';
+                else if (period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-spring-day';
+                else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-spring-dusk';
+                else if (period.includes('night')) periodBgClass = 'period-spring-night';
+            } else if (season.includes('summer')) {
+                if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-summer-dawn';
+                else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-summer-day';
+                else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-summer-dusk';
+                else if (period.includes('night')) periodBgClass = 'period-summer-night';
+            } else if (season.includes('fall') || season.includes('autumn')) {
+                if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-fall-dawn';
+                else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-fall-day';
+                else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-fall-dusk';
+                else if (period.includes('night')) periodBgClass = 'period-fall-night';
+            } else if (season.includes('winter')) {
+                if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-winter-dawn';
+                else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-winter-day';
+                else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-winter-dusk';
+                else if (period.includes('night')) periodBgClass = 'period-winter-night';
+            }
+
+            let shortTitle = 'Time';
+            if (timePeriodInfo.periodKey) {
+                const periodKeyMap = {
+                    'predawn': 'Pre-Dawn', 'pre_dawn': 'Pre-Dawn',
+                    'dawn': 'Dawn', 'sunrise': 'Sunrise',
+                    'morning': 'Morning',
+                    'latemorning': 'Late Morning', 'late_morning': 'Late Morning',
+                    'noon': 'Noon', 'daytime': 'Daytime',
+                    'earlyafternoon': 'Early Afternoon', 'early_afternoon': 'Early Afternoon',
+                    'afternoon': 'Afternoon',
+                    'lateafternoon': 'Late Afternoon', 'late_afternoon': 'Late Afternoon',
+                    'goldenhour': 'Golden Hour', 'golden_hour': 'Golden Hour',
+                    'evening': 'Evening',
+                    'sunset': 'Sunset', 'dusk': 'Dusk', 'twilight': 'Twilight',
+                    'night': 'Night', 'midnight': 'Midnight',
+                    'latenight': 'Late Night', 'late_night': 'Late Night'
+                };
+                shortTitle = periodKeyMap[timePeriodInfo.periodKey.toLowerCase()] ||
+                    timePeriodInfo.periodKey.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+            }
+
+            const clockTime = time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : '';
+            const dateStr = time.dayOfWeekName && time.monthName ?
+                `${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}` :
+                (time.month !== undefined && time.dayOfMonth !== undefined && time.year !== undefined ?
+                    `${time.month + 1}/${time.dayOfMonth}/${time.year}` : '');
+            const location = context.location || {};
+            const locationText = location.city && location.country ?
+                `${location.city}, ${location.country}` :
+                location.city || location.country || '';
+
+            const sunProgressRaw = timePeriodInfo.sunProgressRaw !== undefined ? timePeriodInfo.sunProgressRaw : 0;
+            const lightLevelRaw = timePeriodInfo.lightLevelRaw !== undefined ? timePeriodInfo.lightLevelRaw : 0;
+            const sunPhase = timePeriodInfo.sunPhase || 'rising';
+            let sunPositionPercent;
+            if (sunPhase === 'rising') {
+                // Rising: sunProgressRaw 0-0.5 maps to 0-50% of total bar
+                sunPositionPercent = (sunProgressRaw / 0.5) * 50;
+            } else if (sunPhase === 'setting') {
+                // Setting: sunProgressRaw 0.5-1.0 maps to 50-100% of total bar
+                sunPositionPercent = 50 + ((sunProgressRaw - 0.5) / 0.5) * 50;
+            } else {
+                sunPositionPercent = sunPhase === 'pre-dawn' ? 0 : (sunPhase === 'post-dusk' ? 100 : 50);
+            }
+
+            periodCardHtml = `
+                <div class="period-info-card ${periodBgClass}">
+                    <div class="period-info-content">
+                        <div class="period-main-info">
+                            <div class="period-title-section">
+                                <div class="period-title clickable" onclick="togglePeriodDetails(this)">
+                                    ${shortTitle}
+                                    <i class="fa-solid fa-chevron-down period-expand-icon"></i>
+                                </div>
+                                ${context.season ? `<div class="period-season-badge season-${seasonForTemplate.toLowerCase()}">${getSeasonIcon(seasonForTemplate)} ${seasonForTemplate}</div>` : ''}
+                                ${time.hour !== undefined ? `
+                                <div class="period-title-indicators">
+                                    ${context.season ? `
+                                    <div class="period-title-indicator">
+                                        <div class="period-title-indicator-label">
+                                            <span>Season</span>
+                                            <span class="period-title-indicator-value">${seasonProgress}%</span>
+                                        </div>
+                                        <div class="period-title-progress-bar season-position season-${seasonForTemplate.toLowerCase()}">
+                                            <div class="period-progress-marker" style="left: ${seasonProgress}%"></div>
+                                        </div>
+                                    </div>
+                                    ` : ''}
+                                    ${lightLevelRaw !== undefined && lightLevelRaw > 0 ? `
+                                    <div class="period-title-indicator">
+                                        <div class="period-title-indicator-label">
+                                            <span>Sun</span>
+                                        </div>
+                                        <div class="period-title-progress-bar sun-position">
+                                            <div class="period-progress-marker" style="left: ${sunPositionPercent}%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="period-title-indicator">
+                                        <div class="period-title-indicator-label">
+                                            <span>Light</span>
+                                        </div>
+                                        <div class="period-title-progress-bar light-level">
+                                            <div class="period-progress-fill light-level" style="width: ${lightLevelRaw * 10}%"></div>
+                                        </div>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                ` : ''}
+                            </div>
+                            ${clockTime || dateStr || locationText ? `
+                            <div class="period-time-date">
+                                ${clockTime ? `<div class="period-time">${clockTime}</div>` : ''}
+                                ${dateStr ? `<div class="period-date">${dateStr}</div>` : ''}
+                                ${locationText ? `<div class="period-location"><i class="fas fa-map-marker-alt"></i> ${locationText}</div>` : ''}
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="period-details hidden">
+                            ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value selectable">${Array.isArray(timePeriodInfo.lighting) ? timePeriodInfo.lighting.map(el => {
+                const text = typeof el === 'object' ? el.text : el;
+                const bias = typeof el === 'object' ? el.bias : 1.0;
+                return `${text} (${bias.toFixed(2)})`;
+            }).join(', ') : timePeriodInfo.lighting}</div></div></div>` : ''}
+                            ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${Array.isArray(timePeriodInfo.atmosphere) ? timePeriodInfo.atmosphere.map(el => {
+                const text = typeof el === 'object' ? el.text : el;
+                const bias = typeof el === 'object' ? el.bias : 1.0;
+                return `${text} (${bias.toFixed(2)})`;
+            }).join(', ') : timePeriodInfo.atmosphere}</div></div></div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Build holiday card
+        let holidayCardHtml = '';
+        if (hasHoliday) {
+            const holiday = context.season.holiday;
+            const holidayName = holiday.primaryHoliday?.name || 'Holiday';
+            const daysUntil = holiday.primaryHoliday?.daysUntil ?? holiday.progressiveElements?.daysUntil;
+            const daysUntilText = daysUntil !== undefined && daysUntil !== null ? daysUntil : '?';
+            const daysUntilLabel = daysUntil === 0 ? 'TODAY' : daysUntil === 1 ? 'day' : 'days';
+
+            // Calculate holiday progress (0-100%)
+            let holidayProgress = 50; // Default
+            if (daysUntil !== undefined && daysUntil !== null) {
+                // Assume holiday has a buffer period (e.g., 30 days before/after)
+                const bufferDays = 30;
+                if (daysUntil >= 0 && daysUntil <= bufferDays) {
+                    // Before holiday: progress increases as we approach
+                    holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysUntil) / bufferDays) * 100));
+                } else if (daysUntil < 0) {
+                    // After holiday: progress decreases
+                    const daysPast = Math.abs(daysUntil);
+                    holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysPast) / bufferDays) * 100));
+                }
+            }
+
+            // Get holiday data
+            const holidayData = holiday.primaryHoliday || {};
+            const atmosphere = holidayData.atmosphere || holiday.atmosphere || '';
+            const decorations = holidayData.decorations || holiday.decorations || '';
+            const colors = holidayData.colors || holiday.colors || '';
+            const activities = holidayData.activities || holiday.activities || '';
+
+            // Get country flag icon and region name based on region
+            const getCountryFlagIcon = (region) => {
+                const flagMap = {
+                    'us': 'fa-flag-usa',
+                    'asia': 'fa-flag',
+                    'japan': 'fa-flag'
+                };
+                return flagMap[region?.toLowerCase()] || 'fa-flag';
+            };
+            const getRegionName = (region) => {
+                const regionMap = {
+                    'us': 'United States',
+                    'asia': 'Asia',
+                    'japan': 'Japan'
+                };
+                return regionMap[region?.toLowerCase()] || region || 'Global';
+            };
+            // Get holiday CSS class name
+            const getHolidayClass = (name) => {
+                if (!name) return 'holiday-default';
+                const nameLower = name.toLowerCase();
+                // Map holiday names to CSS classes
+                if (nameLower.includes('christmas') || nameLower.includes('holiday season')) return 'holiday-christmas';
+                if (nameLower.includes('new year') && !nameLower.includes('japanese') && !nameLower.includes('chinese')) return 'holiday-new-year';
+                if (nameLower.includes('halloween')) return 'holiday-halloween';
+                if (nameLower.includes('thanksgiving')) return 'holiday-thanksgiving';
+                if (nameLower.includes('independence day') || nameLower.includes('4th of july')) return 'holiday-independence-day';
+                if (nameLower.includes('valentine')) return 'holiday-valentines-day';
+                if (nameLower.includes('easter') || nameLower.includes('spring holiday')) return 'holiday-easter';
+                if (nameLower.includes('chinese new year')) return 'holiday-chinese-new-year';
+                if (nameLower.includes('setsubun')) return 'holiday-setsubun';
+                if (nameLower.includes('hinamatsuri')) return 'holiday-hinamatsuri';
+                if (nameLower.includes('summer festival')) return 'holiday-summer-festival';
+                if (nameLower.includes('japanese new year') || nameLower.includes('oshogatsu')) return 'holiday-japanese-new-year';
+                if (nameLower.includes('cherry blossom') || nameLower.includes('hanami')) return 'holiday-cherry-blossom';
+                if (nameLower.includes('tanabata') || nameLower.includes('star festival')) return 'holiday-tanabata';
+                if (nameLower.includes('golden week') || nameLower.includes('shukujitsu')) return 'holiday-golden-week';
+                if (nameLower.includes('children') || nameLower.includes('kodomo')) return 'holiday-childrens-day';
+                if (nameLower.includes('mid-autumn') || nameLower.includes('tsukimi')) return 'holiday-mid-autumn';
+                if (nameLower.includes('obon') || nameLower.includes('bon odori')) return 'holiday-obon';
+                return 'holiday-default';
+            };
+            const region = holidayData.region || holiday.region || 'us';
+            const flagIconClass = getCountryFlagIcon(region);
+            const regionName = getRegionName(region);
+            const holidayClass = getHolidayClass(holidayName);
+
+            holidayCardHtml = `
+                <div class="period-info-card holiday-info-card ${holidayClass}">
+                    <div class="period-info-content">
+                        <div class="period-main-info">
+                            <div class="period-title-section">
+                                <div class="period-title clickable" onclick="togglePeriodDetails(this)">
+                                    ${holidayName}
+                                    <i class="fa-solid fa-chevron-down period-expand-icon"></i>
+                                </div>
+                                ${time.hour !== undefined ? `
+                                <div class="period-title-indicators">
+                                    <div class="period-season-badge">
+                                        <i class="fa-solid ${flagIconClass}"></i>
+                                        <span>${regionName}</span>
+                                    </div>
+                                    <div class="period-title-indicator">
+                                        <div class="period-title-indicator-label">
+                                            <span>Holiday</span>
+                                            <span class="period-title-indicator-value">${holidayProgress.toFixed(0)}%</span>
+                                        </div>
+                                        <div class="period-title-progress-bar light-level">
+                                            <div class="period-progress-fill light-level" style="width: ${holidayProgress}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="period-time-date">
+                                <div class="period-time" style="font-size: 1.5rem; font-weight: 600;">
+                                    ${daysUntilText} ${daysUntilLabel}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="period-details hidden">
+                            ${atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${atmosphere}</div></div></div>` : ''}
+                            ${decorations ? `<div class="period-detail"><i class="fa-solid fa-gifts"></i><div class="detail-content"><div class="detail-label">Decorations</div><div class="detail-value selectable">${decorations}</div></div></div>` : ''}
+                            ${colors ? `<div class="period-detail"><i class="fa-solid fa-palette"></i><div class="detail-content"><div class="detail-label">Colors</div><div class="detail-value selectable">${colors}</div></div></div>` : ''}
+                            ${activities ? `<div class="period-detail"><i class="fa-solid fa-people-group"></i><div class="detail-content"><div class="detail-label">Activities</div><div class="detail-value selectable">${activities}</div></div></div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Combine context cards
+        const contextCardsHtml = periodCardHtml + holidayCardHtml + weatherContent;
+        if (contextCardsHtml) {
+            contextCardsContainer.innerHTML = contextCardsHtml;
+            listContainer.appendChild(contextCardsContainer);
+        }
+    }
 }
 
 function renderTextReplacementLockList() {
@@ -4046,12 +4638,15 @@ function renderTextReplacementLockList() {
 
     listContainer.innerHTML = '';
     _textReplacementLockListStructureSig = structureSig;
+    const rentanCompiled = window.dynamicGenerationData?.compiled_prompt;
 
     currentTextReplacementSeeds.forEach((seed, index) => {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'text-replacement-lock-item';
         itemDiv.dataset.index = index;
         itemDiv.dataset.seedRow = '1';
+        const rentanParts = buildRentanExpanderRowParts(seed.key, rentanCompiled);
+        if (rentanParts) itemDiv.classList.add('dynamic-replacement-type');
 
         const isLocked = seed.locked === true;
         const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
@@ -4110,6 +4705,7 @@ function renderTextReplacementLockList() {
             <div class="text-replacement-lock-content">
                 <div class="text-replacement-lock-info">
                     <div class="text-replacement-full-value">${seed.value}</div>
+                    ${rentanParts ? rentanParts.reasonHtml : ''}
                 </div>
                 <div class="text-replacement-lock-row">
                     <div class="text-replacement-lock-badges">
@@ -4119,8 +4715,10 @@ function renderTextReplacementLockList() {
                             <span class="badge-icon-type" style="color: ${typeColor};">${typeIcon}</span>
                         </span>
                         ${stageTargetBadge}
+                        ${rentanParts ? rentanParts.expiryHtml : ''}
                     </div>
                     <div class="text-replacement-lock-pattern">
+                        ${rentanParts ? rentanParts.categoryHtml : ''}
                         ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
                         <i class="fas fa-arrow-right text-replacement-arrow"></i>
                         <span class="text-replacement-selected">!${seed.key}${indexDisplay}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
@@ -4196,6 +4794,7 @@ function renderTextReplacementLockList() {
                 <div class="text-replacement-lock-content">
                     <div class="text-replacement-lock-info">
                         <div class="text-replacement-full-value">${seed.value}</div>
+                        ${rentanParts ? rentanParts.reasonHtml : ''}
                     </div>
                     <div class="text-replacement-lock-row">
                         <div class="text-replacement-lock-badges">
@@ -4205,8 +4804,10 @@ function renderTextReplacementLockList() {
                                 <span class="badge-icon-type" style="color: ${typeColor};">${typeIcon}</span>
                             </span>
                             ${stageTargetBadge}
+                            ${rentanParts ? rentanParts.expiryHtml : ''}
                         </div>
                         <div class="text-replacement-lock-pattern">
+                            ${rentanParts ? rentanParts.categoryHtml : ''}
                             ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
                             <i class="fas fa-arrow-right text-replacement-arrow"></i>
                             <span class="text-replacement-selected">!${seed.key}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
@@ -4505,566 +5106,15 @@ function renderTextReplacementLockList() {
     }
 
     if (replacements.length > 0) {
-        // Add section header
-        const sectionHeader = document.createElement('div');
-        sectionHeader.className = 'dynamic-replacements-section-header';
-        sectionHeader.innerHTML = `
-            <div class="section-title">
-                <i class="ri-pencil-ai-2-fill"></i>
-                <span>Tendai Replacements</span>
-            </div>
-        `;
-        listContainer.appendChild(sectionHeader);
-
-        // Add expiration status banner if compiled prompt exists
-        const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
-        if (compiledPrompt && compiledPrompt.expiresAt) {
-            const now = Date.now();
-            const isExpired = now >= compiledPrompt.expiresAt;
-            const msUntilExpiry = compiledPrompt.expiresAt - now;
-            const minutesUntilExpiry = Math.round(msUntilExpiry / (60 * 1000));
-            const hoursUntilExpiry = Math.round(minutesUntilExpiry / 60 * 10) / 10;
-            const expiryDate = new Date(compiledPrompt.expiresAt);
-
-            const expirationBanner = document.createElement('div');
-            if (isExpired) {
-                // Calculate days since expiration
-                const daysSinceExpiry = Math.floor(Math.abs(msUntilExpiry) / (1000 * 60 * 60 * 24));
-                const currentYear = new Date().getFullYear();
-                const expiryYear = expiryDate.getFullYear();
-
-                let expiredTimeText;
-                if (daysSinceExpiry < 7) {
-                    // Less than 7 days ago: "Expired X Days ago (HH:mm)"
-                    const timeStr = expiryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    if (daysSinceExpiry === 0) {
-                        expiredTimeText = `Expired Today (${timeStr})`;
-                    } else {
-                        const dayText = daysSinceExpiry === 1 ? '1 Day' : `${daysSinceExpiry} Days`;
-                        expiredTimeText = `Expired ${dayText} ago (${timeStr})`;
-                    }
-                } else {
-                    // 7 or more days ago: "Expired on MMM dd, YYYY (HH:mm)" with year only if different
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    const month = monthNames[expiryDate.getMonth()];
-                    const day = expiryDate.getDate();
-                    const year = expiryYear !== currentYear ? `, ${expiryYear}` : '';
-                    const timeStr = expiryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    expiredTimeText = `Expired on ${month} ${day}${year} (${timeStr})`;
-                }
-
-                expirationBanner.className = 'text-replacement-expiration-banner expired';
-                expirationBanner.innerHTML = `
-                    <i class="fas fa-triangle-exclamation"></i>
-                    <div class="expiration-info">
-                        <div class="expiration-status">Cache Expired</div>
-                        <div class="expiration-time">${expiredTimeText}</div>
-                    </div>
-                `;
-            } else {
-                const timeText = hoursUntilExpiry >= 1
-                    ? `${hoursUntilExpiry}h ${minutesUntilExpiry % 60}m`
-                    : `${minutesUntilExpiry}m`;
-                expirationBanner.className = 'text-replacement-expiration-banner valid';
-                expirationBanner.innerHTML = `
-                    <i class="fas fa-circle-check"></i>
-                    <div class="expiration-info">
-                        <div class="expiration-status">Cache Valid</div>
-                        <div class="expiration-time">Expires at ${expiryDate.toLocaleTimeString()} (${timeText})</div>
-                    </div>
-                `;
-            }
-            listContainer.appendChild(expirationBanner);
-        }
-
-        // Add context cards from compiled prompt
-        const compiled = window.dynamicGenerationData?.compiled_prompt;
-        if (compiled && compiled.context) {
-            const contextCardsContainer = document.createElement('div');
-            contextCardsContainer.className = 'dynamic-replacements-context-cards';
-
-            // Build context cards using the same logic from showCompiledPromptModal
-            const context = compiled.context;
-            const weather = context.weather || {};
-            const time = context.time || {};
-
-            // Get unit preference
-            let useMetric = localStorage.getItem('weather_units_metric') !== 'false';
-
-            // Helper functions (reuse from showCompiledPromptModal scope)
-            const celsiusToFahrenheit = (celsius) => Math.round((celsius * 9 / 5) + 32);
-            const mpsToMph = (mps) => Math.round(mps * 2.237);
-            const getWeatherIcon = (condition, isNight = false) => {
-                if (!condition) return isNight ? '<i class="wi wi-night-clear"></i>' : '<i class="wi wi-day-sunny"></i>';
-
-                const timePrefix = isNight ? 'night-alt' : 'day';
-
-                // Icons that don't change between day/night
-                const timeNeutralIcons = {
-                    'overcast': 'cloudy',
-                    'fog': 'fog',
-                    'depositing rime fog': 'fog',
-                    'moderate snow fall': 'snow',
-                    'heavy snow fall': 'snow',
-                    'snow grains': 'snow',
-                    'heavy snow showers': 'snow'
-                };
-
-                if (timeNeutralIcons[condition]) {
-                    return `<i class="wi wi-${timeNeutralIcons[condition]}"></i>`;
-                }
-
-                // Time-dependent icons
-                const iconMap = {
-                    'clear sky': isNight ? 'night-clear' : 'day-sunny',
-                    'mainly clear': isNight ? 'night-alt-partly-cloudy' : 'day-sunny-overcast',
-                    'partly cloudy': `${timePrefix}-cloudy`,
-                    'light drizzle': `${timePrefix}-showers`,
-                    'moderate drizzle': `${timePrefix}-showers`,
-                    'dense drizzle': `${timePrefix}-showers`,
-                    'light freezing drizzle': `${timePrefix}-snow`,
-                    'dense freezing drizzle': `${timePrefix}-snow`,
-                    'slight rain': `${timePrefix}-rain`,
-                    'moderate rain': `${timePrefix}-rain`,
-                    'heavy rain': `${timePrefix}-rain`,
-                    'light freezing rain': `${timePrefix}-snow`,
-                    'heavy freezing rain': `${timePrefix}-snow`,
-                    'slight snow fall': `${timePrefix}-snow`,
-                    'slight rain showers': `${timePrefix}-showers`,
-                    'moderate rain showers': `${timePrefix}-rain`,
-                    'violent rain showers': `${timePrefix}-storm-showers`,
-                    'slight snow showers': `${timePrefix}-snow`,
-                    'thunderstorm': `${timePrefix}-thunderstorm`,
-                    'thunderstorm with slight hail': `${timePrefix}-thunderstorm`,
-                    'thunderstorm with heavy hail': `${timePrefix}-thunderstorm`
-                };
-
-                const iconClass = iconMap[condition] || (isNight ? 'night-clear' : 'day-sunny');
-                return `<i class="wi wi-${iconClass}"></i>`;
-            };
-            const getWindDirection = (degrees) => {
-                if (degrees === null || degrees === undefined) return 'N/A';
-                const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-                const index = Math.round(degrees / 22.5) % 16;
-                return directions[index];
-            };
-
-            // Build weather content
-            let weatherContent = '';
-            if (weather.condition || weather.temperature !== undefined) {
-                // Determine if it's night based on timePeriod
-                const isNight = context.timePeriod?.isDaytime === false;
-                const weatherIcon = getWeatherIcon(weather.condition, isNight);
-                const tempC = weather.temperature;
-                const tempF = tempC !== undefined ? celsiusToFahrenheit(tempC) : null;
-                const tempDisplay = useMetric ?
-                    (tempC !== undefined ? `${tempC}°C` : 'N/A') :
-                    (tempF !== undefined ? `${tempF}°F` : 'N/A');
-                const feelsC = weather.feelsLike;
-                const feelsF = feelsC !== undefined ? celsiusToFahrenheit(feelsC) : null;
-                const feelsDisplay = useMetric ?
-                    (feelsC !== undefined ? `${feelsC}°C` : 'N/A') :
-                    (feelsF !== undefined ? `${feelsF}°F` : 'N/A');
-                const windMps = weather.windSpeed;
-                const windMph = windMps !== undefined ? mpsToMph(windMps) : null;
-                const windDisplay = useMetric ?
-                    (windMps !== undefined ? `${windMps} m/s` : 'N/A') :
-                    (windMph !== undefined ? `${windMph} mph` : 'N/A');
-
-                const weatherCondition = weather.condition || 'Unknown';
-                const humidityValue = weather.humidity !== undefined ? `${weather.humidity}%` : null;
-                const windDirection = weather.windDirection !== undefined ? getWindDirection(weather.windDirection) : null;
-
-                const displayTemp = useMetric ? tempC : tempF;
-                const displayFeels = useMetric ? feelsC : feelsF;
-
-                // Determine card background
-                let cardBackgroundClass = '';
-                if (context.season && weather.pressure !== undefined) {
-                    const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
-                    const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
-                    const pressure = weather.pressure;
-
-                    if (season.includes('spring')) {
-                        if (pressure < 1000) cardBackgroundClass = 'season-spring-stormy';
-                        else if (pressure < 1013) cardBackgroundClass = 'season-spring-unstable';
-                        else if (pressure < 1020) cardBackgroundClass = 'season-spring-normal';
-                        else cardBackgroundClass = 'season-spring-stable';
-                    } else if (season.includes('summer')) {
-                        if (pressure < 1000) cardBackgroundClass = 'season-summer-stormy';
-                        else if (pressure < 1013) cardBackgroundClass = 'season-summer-unstable';
-                        else if (pressure < 1020) cardBackgroundClass = 'season-summer-normal';
-                        else cardBackgroundClass = 'season-summer-stable';
-                    } else if (season.includes('fall') || season.includes('autumn')) {
-                        if (pressure < 1000) cardBackgroundClass = 'season-fall-stormy';
-                        else if (pressure < 1013) cardBackgroundClass = 'season-fall-unstable';
-                        else if (pressure < 1020) cardBackgroundClass = 'season-fall-normal';
-                        else cardBackgroundClass = 'season-fall-stable';
-                    } else if (season.includes('winter')) {
-                        if (pressure < 1000) cardBackgroundClass = 'season-winter-stormy';
-                        else if (pressure < 1013) cardBackgroundClass = 'season-winter-unstable';
-                        else if (pressure < 1020) cardBackgroundClass = 'season-winter-normal';
-                        else cardBackgroundClass = 'season-winter-stable';
-                    }
-                } else if (context.season) {
-                    const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
-                    const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
-                    if (season.includes('spring')) cardBackgroundClass = 'season-spring-normal';
-                    else if (season.includes('summer')) cardBackgroundClass = 'season-summer-normal';
-                    else if (season.includes('fall') || season.includes('autumn')) cardBackgroundClass = 'season-fall-normal';
-                    else if (season.includes('winter')) cardBackgroundClass = 'season-winter-normal';
-                }
-
-                const mainCardHtml = `
-                    <div class="weather-main-card ${cardBackgroundClass}">
-                        <div class="weather-current-temp">
-                            <div class="weather-temp-value">
-                                <span class="weather-temp-number clickable" onclick="toggleWeatherUnits(event)" data-metric="${tempC !== undefined ? tempC : ''}" data-imperial="${tempF !== undefined ? tempF : ''}">${displayTemp !== undefined ? displayTemp : '--'}</span>
-                                <span class="weather-temp-unit">${useMetric ? '°C' : '°F'}</span>
-                            </div>
-                            ${displayFeels !== undefined ? `<div class="weather-feels-like" data-metric="${feelsC !== undefined ? feelsC : ''}" data-imperial="${feelsF !== undefined ? feelsF : ''}">Feels like ${displayFeels}°${useMetric ? 'C' : 'F'}</div>` : ''}
-                        </div>
-                        <div class="weather-condition-display">
-                            <div class="weather-condition-icon">${weatherIcon}</div>
-                            <div class="weather-condition-text">${weatherCondition}</div>
-                            <div class="weather-condition-details">
-                                ${humidityValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-droplet"></i>${humidityValue}</div>` : ''}
-                                ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i><span class="weather-wind-speed" data-metric="${windMps !== undefined ? windMps : ''}" data-imperial="${windMph !== undefined ? windMph : ''}">${windDisplay}</span>${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
-                            </div>
-                        </div>
-                        ${weather.cloudCoverage !== undefined || weather.visibility !== undefined || weather.uvIndex !== undefined ? `
-                        <div class="weather-card-header">
-                            <div class="weather-quick-indicators">
-                                ${weather.uvIndex !== undefined && weather.uvIndex > 0 ? `
-                                <div class="weather-quick-indicator">
-                                    <div class="weather-quick-indicator-label">
-                                        <i class="fa-solid fa-sun"></i>
-                                        <span>UV ${weather.uvIndex}</span>
-                                    </div>
-                                    <div class="weather-quick-progress-bar">
-                                        <div class="weather-quick-progress-fill uv-index" style="width: ${Math.min((weather.uvIndex / 12) * 100, 100)}%"></div>
-                                    </div>
-                                </div>
-                                ` : ''}
-                                ${weather.cloudCoverage !== undefined ? `
-                                <div class="weather-quick-indicator">
-                                    <div class="weather-quick-indicator-label">
-                                        <i class="fa-solid fa-cloud"></i>
-                                        <span>${weather.cloudCoverage}%</span>
-                                    </div>
-                                    <div class="weather-quick-progress-bar">
-                                        <div class="weather-quick-progress-fill cloud-coverage" style="width: ${weather.cloudCoverage}%"></div>
-                                    </div>
-                                </div>
-                                ` : ''}
-                                ${weather.visibility !== undefined ? `
-                                <div class="weather-quick-indicator">
-                                    <div class="weather-quick-indicator-label">
-                                        <i class="fa-solid fa-eye"></i>
-                                        <span class="weather-visibility" data-metric="${weather.visibility / 1000}" data-unit="km">${useMetric ? `${(weather.visibility / 1000).toFixed(1)} km` : `${(weather.visibility * 0.000621371).toFixed(1)} mi`}</span>
-                                    </div>
-                                    <div class="weather-quick-progress-bar">
-                                        <div class="weather-quick-progress-fill visibility" style="width: ${Math.min((weather.visibility / 10000) * 100, 100)}%"></div>
-                                    </div>
-                                </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                        ` : ''}
-                    </div>
-                `;
-
-                weatherContent = `<div class="weather-display">${mainCardHtml}</div>`;
-            }
-
-            // Build period card
-            let periodCardHtml = '';
-            const timePeriodInfo = context.timePeriod || {};
-
-            // Calculate season progress and template (needed for both period and holiday cards)
-            const seasonProgress = context.season ? calculateSeasonProgress(time, context.season) : 50;
-            const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
-            const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
-            const hasHoliday = context.season?.holiday?.primaryHoliday;
-
-            if (context.season && timePeriodInfo.period) {
-                let periodBgClass = 'period-default';
-                const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
-                const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
-                const period = timePeriodInfo.period ? timePeriodInfo.period.toLowerCase() : '';
-
-                if (season.includes('spring')) {
-                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-spring-dawn';
-                    else if (period.includes('morning')) periodBgClass = 'period-spring-morning';
-                    else if (period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-spring-day';
-                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-spring-dusk';
-                    else if (period.includes('night')) periodBgClass = 'period-spring-night';
-                } else if (season.includes('summer')) {
-                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-summer-dawn';
-                    else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-summer-day';
-                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-summer-dusk';
-                    else if (period.includes('night')) periodBgClass = 'period-summer-night';
-                } else if (season.includes('fall') || season.includes('autumn')) {
-                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-fall-dawn';
-                    else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-fall-day';
-                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-fall-dusk';
-                    else if (period.includes('night')) periodBgClass = 'period-fall-night';
-                } else if (season.includes('winter')) {
-                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-winter-dawn';
-                    else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-winter-day';
-                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-winter-dusk';
-                    else if (period.includes('night')) periodBgClass = 'period-winter-night';
-                }
-
-                let shortTitle = 'Time';
-                if (timePeriodInfo.periodKey) {
-                    const periodKeyMap = {
-                        'predawn': 'Pre-Dawn', 'pre_dawn': 'Pre-Dawn',
-                        'dawn': 'Dawn', 'sunrise': 'Sunrise',
-                        'morning': 'Morning',
-                        'latemorning': 'Late Morning', 'late_morning': 'Late Morning',
-                        'noon': 'Noon', 'daytime': 'Daytime',
-                        'earlyafternoon': 'Early Afternoon', 'early_afternoon': 'Early Afternoon',
-                        'afternoon': 'Afternoon',
-                        'lateafternoon': 'Late Afternoon', 'late_afternoon': 'Late Afternoon',
-                        'goldenhour': 'Golden Hour', 'golden_hour': 'Golden Hour',
-                        'evening': 'Evening',
-                        'sunset': 'Sunset', 'dusk': 'Dusk', 'twilight': 'Twilight',
-                        'night': 'Night', 'midnight': 'Midnight',
-                        'latenight': 'Late Night', 'late_night': 'Late Night'
-                    };
-                    shortTitle = periodKeyMap[timePeriodInfo.periodKey.toLowerCase()] ||
-                        timePeriodInfo.periodKey.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-                }
-
-                const clockTime = time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : '';
-                const dateStr = time.dayOfWeekName && time.monthName ?
-                    `${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}` :
-                    (time.month !== undefined && time.dayOfMonth !== undefined && time.year !== undefined ?
-                        `${time.month + 1}/${time.dayOfMonth}/${time.year}` : '');
-                const location = context.location || {};
-                const locationText = location.city && location.country ?
-                    `${location.city}, ${location.country}` :
-                    location.city || location.country || '';
-
-                const sunProgressRaw = timePeriodInfo.sunProgressRaw !== undefined ? timePeriodInfo.sunProgressRaw : 0;
-                const lightLevelRaw = timePeriodInfo.lightLevelRaw !== undefined ? timePeriodInfo.lightLevelRaw : 0;
-                const sunPhase = timePeriodInfo.sunPhase || 'rising';
-                let sunPositionPercent;
-                if (sunPhase === 'rising') {
-                    // Rising: sunProgressRaw 0-0.5 maps to 0-50% of total bar
-                    sunPositionPercent = (sunProgressRaw / 0.5) * 50;
-                } else if (sunPhase === 'setting') {
-                    // Setting: sunProgressRaw 0.5-1.0 maps to 50-100% of total bar
-                    sunPositionPercent = 50 + ((sunProgressRaw - 0.5) / 0.5) * 50;
-                } else {
-                    sunPositionPercent = sunPhase === 'pre-dawn' ? 0 : (sunPhase === 'post-dusk' ? 100 : 50);
-                }
-
-                periodCardHtml = `
-                    <div class="period-info-card ${periodBgClass}">
-                        <div class="period-info-content">
-                            <div class="period-main-info">
-                                <div class="period-title-section">
-                                    <div class="period-title clickable" onclick="togglePeriodDetails(this)">
-                                        ${shortTitle}
-                                        <i class="fa-solid fa-chevron-down period-expand-icon"></i>
-                                    </div>
-                                    ${context.season ? `<div class="period-season-badge season-${seasonForTemplate.toLowerCase()}">${getSeasonIcon(seasonForTemplate)} ${seasonForTemplate}</div>` : ''}
-                                    ${time.hour !== undefined ? `
-                                    <div class="period-title-indicators">
-                                        ${context.season ? `
-                                        <div class="period-title-indicator">
-                                            <div class="period-title-indicator-label">
-                                                <span>Season</span>
-                                                <span class="period-title-indicator-value">${seasonProgress}%</span>
-                                            </div>
-                                            <div class="period-title-progress-bar season-position season-${seasonForTemplate.toLowerCase()}">
-                                                <div class="period-progress-marker" style="left: ${seasonProgress}%"></div>
-                                            </div>
-                                        </div>
-                                        ` : ''}
-                                        ${lightLevelRaw !== undefined && lightLevelRaw > 0 ? `
-                                        <div class="period-title-indicator">
-                                            <div class="period-title-indicator-label">
-                                                <span>Sun</span>
-                                            </div>
-                                            <div class="period-title-progress-bar sun-position">
-                                                <div class="period-progress-marker" style="left: ${sunPositionPercent}%"></div>
-                                            </div>
-                                        </div>
-                                        <div class="period-title-indicator">
-                                            <div class="period-title-indicator-label">
-                                                <span>Light</span>
-                                            </div>
-                                            <div class="period-title-progress-bar light-level">
-                                                <div class="period-progress-fill light-level" style="width: ${lightLevelRaw * 10}%"></div>
-                                            </div>
-                                        </div>
-                                        ` : ''}
-                                    </div>
-                                    ` : ''}
-                                </div>
-                                ${clockTime || dateStr || locationText ? `
-                                <div class="period-time-date">
-                                    ${clockTime ? `<div class="period-time">${clockTime}</div>` : ''}
-                                    ${dateStr ? `<div class="period-date">${dateStr}</div>` : ''}
-                                    ${locationText ? `<div class="period-location"><i class="fas fa-map-marker-alt"></i> ${locationText}</div>` : ''}
-                                </div>
-                                ` : ''}
-                            </div>
-                            <div class="period-details hidden">
-                                ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value selectable">${Array.isArray(timePeriodInfo.lighting) ? timePeriodInfo.lighting.map(el => {
-                    const text = typeof el === 'object' ? el.text : el;
-                    const bias = typeof el === 'object' ? el.bias : 1.0;
-                    return `${text} (${bias.toFixed(2)})`;
-                }).join(', ') : timePeriodInfo.lighting}</div></div></div>` : ''}
-                                ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${Array.isArray(timePeriodInfo.atmosphere) ? timePeriodInfo.atmosphere.map(el => {
-                    const text = typeof el === 'object' ? el.text : el;
-                    const bias = typeof el === 'object' ? el.bias : 1.0;
-                    return `${text} (${bias.toFixed(2)})`;
-                }).join(', ') : timePeriodInfo.atmosphere}</div></div></div>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-
-            // Build holiday card
-            let holidayCardHtml = '';
-            if (hasHoliday) {
-                const holiday = context.season.holiday;
-                const holidayName = holiday.primaryHoliday?.name || 'Holiday';
-                const daysUntil = holiday.primaryHoliday?.daysUntil ?? holiday.progressiveElements?.daysUntil;
-                const daysUntilText = daysUntil !== undefined && daysUntil !== null ? daysUntil : '?';
-                const daysUntilLabel = daysUntil === 0 ? 'TODAY' : daysUntil === 1 ? 'day' : 'days';
-
-                // Calculate holiday progress (0-100%)
-                let holidayProgress = 50; // Default
-                if (daysUntil !== undefined && daysUntil !== null) {
-                    // Assume holiday has a buffer period (e.g., 30 days before/after)
-                    const bufferDays = 30;
-                    if (daysUntil >= 0 && daysUntil <= bufferDays) {
-                        // Before holiday: progress increases as we approach
-                        holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysUntil) / bufferDays) * 100));
-                    } else if (daysUntil < 0) {
-                        // After holiday: progress decreases
-                        const daysPast = Math.abs(daysUntil);
-                        holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysPast) / bufferDays) * 100));
-                    }
-                }
-
-                // Get holiday data
-                const holidayData = holiday.primaryHoliday || {};
-                const atmosphere = holidayData.atmosphere || holiday.atmosphere || '';
-                const decorations = holidayData.decorations || holiday.decorations || '';
-                const colors = holidayData.colors || holiday.colors || '';
-                const activities = holidayData.activities || holiday.activities || '';
-
-                // Get country flag icon and region name based on region
-                const getCountryFlagIcon = (region) => {
-                    const flagMap = {
-                        'us': 'fa-flag-usa',
-                        'asia': 'fa-flag',
-                        'japan': 'fa-flag'
-                    };
-                    return flagMap[region?.toLowerCase()] || 'fa-flag';
-                };
-                const getRegionName = (region) => {
-                    const regionMap = {
-                        'us': 'United States',
-                        'asia': 'Asia',
-                        'japan': 'Japan'
-                    };
-                    return regionMap[region?.toLowerCase()] || region || 'Global';
-                };
-                // Get holiday CSS class name
-                const getHolidayClass = (name) => {
-                    if (!name) return 'holiday-default';
-                    const nameLower = name.toLowerCase();
-                    // Map holiday names to CSS classes
-                    if (nameLower.includes('christmas') || nameLower.includes('holiday season')) return 'holiday-christmas';
-                    if (nameLower.includes('new year') && !nameLower.includes('japanese') && !nameLower.includes('chinese')) return 'holiday-new-year';
-                    if (nameLower.includes('halloween')) return 'holiday-halloween';
-                    if (nameLower.includes('thanksgiving')) return 'holiday-thanksgiving';
-                    if (nameLower.includes('independence day') || nameLower.includes('4th of july')) return 'holiday-independence-day';
-                    if (nameLower.includes('valentine')) return 'holiday-valentines-day';
-                    if (nameLower.includes('easter') || nameLower.includes('spring holiday')) return 'holiday-easter';
-                    if (nameLower.includes('chinese new year')) return 'holiday-chinese-new-year';
-                    if (nameLower.includes('setsubun')) return 'holiday-setsubun';
-                    if (nameLower.includes('hinamatsuri')) return 'holiday-hinamatsuri';
-                    if (nameLower.includes('summer festival')) return 'holiday-summer-festival';
-                    if (nameLower.includes('japanese new year') || nameLower.includes('oshogatsu')) return 'holiday-japanese-new-year';
-                    if (nameLower.includes('cherry blossom') || nameLower.includes('hanami')) return 'holiday-cherry-blossom';
-                    if (nameLower.includes('tanabata') || nameLower.includes('star festival')) return 'holiday-tanabata';
-                    if (nameLower.includes('golden week') || nameLower.includes('shukujitsu')) return 'holiday-golden-week';
-                    if (nameLower.includes('children') || nameLower.includes('kodomo')) return 'holiday-childrens-day';
-                    if (nameLower.includes('mid-autumn') || nameLower.includes('tsukimi')) return 'holiday-mid-autumn';
-                    if (nameLower.includes('obon') || nameLower.includes('bon odori')) return 'holiday-obon';
-                    return 'holiday-default';
-                };
-                const region = holidayData.region || holiday.region || 'us';
-                const flagIconClass = getCountryFlagIcon(region);
-                const regionName = getRegionName(region);
-                const holidayClass = getHolidayClass(holidayName);
-
-                holidayCardHtml = `
-                    <div class="period-info-card holiday-info-card ${holidayClass}">
-                        <div class="period-info-content">
-                            <div class="period-main-info">
-                                <div class="period-title-section">
-                                    <div class="period-title clickable" onclick="togglePeriodDetails(this)">
-                                        ${holidayName}
-                                        <i class="fa-solid fa-chevron-down period-expand-icon"></i>
-                                    </div>
-                                    ${time.hour !== undefined ? `
-                                    <div class="period-title-indicators">
-                                        <div class="period-season-badge">
-                                            <i class="fa-solid ${flagIconClass}"></i>
-                                            <span>${regionName}</span>
-                                        </div>
-                                        <div class="period-title-indicator">
-                                            <div class="period-title-indicator-label">
-                                                <span>Holiday</span>
-                                                <span class="period-title-indicator-value">${holidayProgress.toFixed(0)}%</span>
-                                            </div>
-                                            <div class="period-title-progress-bar light-level">
-                                                <div class="period-progress-fill light-level" style="width: ${holidayProgress}%"></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    ` : ''}
-                                </div>
-                                <div class="period-time-date">
-                                    <div class="period-time" style="font-size: 1.5rem; font-weight: 600;">
-                                        ${daysUntilText} ${daysUntilLabel}
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="period-details hidden">
-                                ${atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${atmosphere}</div></div></div>` : ''}
-                                ${decorations ? `<div class="period-detail"><i class="fa-solid fa-gifts"></i><div class="detail-content"><div class="detail-label">Decorations</div><div class="detail-value selectable">${decorations}</div></div></div>` : ''}
-                                ${colors ? `<div class="period-detail"><i class="fa-solid fa-palette"></i><div class="detail-content"><div class="detail-label">Colors</div><div class="detail-value selectable">${colors}</div></div></div>` : ''}
-                                ${activities ? `<div class="period-detail"><i class="fa-solid fa-people-group"></i><div class="detail-content"><div class="detail-label">Activities</div><div class="detail-value selectable">${activities}</div></div></div>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-
-            // Combine context cards
-            const contextCardsHtml = periodCardHtml + holidayCardHtml + weatherContent;
-            if (contextCardsHtml) {
-                contextCardsContainer.innerHTML = contextCardsHtml;
-                listContainer.appendChild(contextCardsContainer);
-            }
-        }
+        appendRentanSceneBlocks(listContainer, 'Tendai Replacements');
 
         // Render each replacement (reuse the same function from textReplacementManager.js)
         replacements.forEach((replacement, globalIndex) => {
             const itemElement = createDynamicReplacementItemForLockModal(replacement, globalIndex);
             listContainer.appendChild(itemElement);
         });
+    } else if (rentanCompiled?.dg_expanders?.length) {
+        appendRentanSceneBlocks(listContainer, 'Rentan Scene');
     }
 
     // Usage section (render phases, calls, per-tool rows with icons/background, reasons, token totals)
