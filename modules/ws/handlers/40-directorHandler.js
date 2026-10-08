@@ -20,6 +20,7 @@ const {
     handleDirectorGetCursorUsage,
     handleDirectorGetMessages,
     handleDirectorRollbackMessage,
+    handleDirectorRecycleSession,
     handleDirectorToolDiff,
     handleDirectorToolPayload,
     handleRequestFormSubmit,
@@ -68,6 +69,7 @@ function registerPackets(handlersCtx) {
     // Tray icon state and the tray resource line. Read-only, so not destructive.
     reg('director_computer_status', handleDirectorComputerStatus);
     reg('director_rollback_message', handleDirectorRollbackMessage, DIRECTOR_DESTRUCTIVE);
+    reg('director_recycle_session', handleDirectorRecycleSession, DIRECTOR_DESTRUCTIVE);
     reg('director_save_feedback', handleDirectorSaveFeedback, DIRECTOR_DESTRUCTIVE);
     reg('director_load_rules', handleDirectorLoadRules);
     reg('director_save_rules', handleDirectorSaveRules, DIRECTOR_DESTRUCTIVE);

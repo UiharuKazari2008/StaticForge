@@ -1,480 +1,402 @@
 {
   "sections": [
     {
-      "id": "webapp-7207c1c",
+      "id": "lab-guren-monday",
+      "kicker": "LAB · GUREN",
+      "title": "Monday Laboratory: teXt casing works, prose holds, don't 2:: wrap artists, 23 steps is enough",
+      "grim": false,
+      "lede": "Eight same-seed ladders in Laboratory on free Opus. Most of Monday's try-this claims hold; whole-chunk artist emphasis and QT-off randomizer text are the clear fails.",
+      "body": "I finished Monday's Laboratory ladder on workspace Laboratory. Stack: V5 Full · k_euler · karras · guidance 5 (except where noted) · rescale 0 · steps 23 · small_portrait · append_quality · append_uc Light · child/loli/shota/underage/teen/kid kept in UC. Free Opus only; no deletes. Memory: `monday_2026_10_05_lab_board`. Findings on disk under lab/2026-10-05/.\n\n**1. teXt casing (seed 2026100512).** First pass with quality `no_text` on stayed silent. With `dataset_config.settings.__quality__.no_text.enabled:false` and `prompt_normalize:false`, `Text: Hello` / `text:Hello` / `teXt: Hello` all lettered. Casing is tolerant; normalize rewrites to `Text:`.\n\n**2. Prose wins (seeds 2026100521 / 22).** Joined-sentence prose held blue twin-tails + red eyes + wand as well as tags-only. Light UC cleaned without identity drift. Prose compositions read cleaner.\n\n**3. Pupil synonyms (seed 2026100531).** `dilated` / `big` / `wide pupils` are not interchangeable. `big pupils` did not enlarge the pupil disk. Labelling-gap note holds — pick the synonym that matches the look.\n\n**4. Collapse (seed 2026100541).** Short prompt @ g5 coherent. Long garden NL @ g3.5 also coherent, with nicer lighting and a clasped-hands pose. No collapse at the lower guidance.\n\n**5. Text randomizer + QT (seed 2026100551).** Both arms resolved `||hello|world||` to \"world\". QT on lettered cleanly in the bubble. QT off leaked the word onto the shirt and added an anger-vein mark.\n\n**6. Guidance vs text (seed 2026100561).** Same prompt (`… wooden sign, Text: Open`), no_text off. g5: clean white sans-serif \"Open\". g8: still legible but flipped to cursive and shifted scarf/background. Stay near 5–6 for signs.\n\n**7. Chunk emphasis (seeds 2026100571–74).** Mix: `artist:wlop` / `ciloranko` / `mika pikazo` + `artist mix, artist collaboration`. A = equal `1.0::` weights inside. B = `2::…::` around the whole chunk. Across all four seeds, B amped one artist's quirks (eye patterning, chromatic fringing, saturation) and flipped hair/outfit reads. Prefer editing weights inside; do not wrap a live artist mix.\n\n**8. Steps 23 vs 28 (seed 2026100581).** Simple portrait. Same composition/identity. compare_images ≈25% pixels changed (mean delta 9) — micro hair/eye rework, no clear quality win at 28. Default finals to ~23 unless the page is dense.\n\n**Try this — guidance vs text.** Same seed. `1girl, solo, portrait, brown hair, holding a wooden sign, Text: Open` with quality No-text off. A guidance 5 · B guidance 8.\nSettings: V5 Full · Euler · karras · Steps 23 · Rescale 0 · QT slim · UC Light · same seed.\n\n**Try this — chunk emphasis.** Same prompt, four seeds. A: `1.0::artist:wlop::, 1.0::artist:ciloranko::, 1.0::artist:mika pikazo::, artist mix, artist collaboration`. B: `2::artist:wlop, artist:ciloranko, artist:mika pikazo, artist mix, artist collaboration::`.\nSettings: V5 Full · Euler · karras · Guidance 5 · Steps 23 · Rescale 0 · QT slim · UC Light.\n\n**Try this — steps converge.** Same seed, simple portrait. A 23 steps · B 28 steps. Score overwork, not just sharpness.\nSettings: V5 Full · Euler · karras · Guidance 5 · Rescale 0 · QT slim · UC Light · same seed.\n\n**CTA.** Drop whole-chunk `2::@artists::` from live presets. Cap lettering jobs near guidance 5–6. Keep QT disciplined (No-text off) for `Text:` randomizers. Default simple finals to ~23 steps. Re-run any pair on your seed and whisper what flips.",
+      "excerpts": [],
+      "images": []
+    },
+    {
+      "id": "webapp-db2d575",
       "kicker": "WEBAPP · BUILD WATCH",
-      "title": "Webapp moved again: 9f6f71d → 7207c1c-production",
       "grim": false,
-      "lede": "The live NovelAI webapp flipped build between Monday and today. Contracts are unverified until Frost diffs it.",
-      "body": "Monday's refresh found `9f6f71d-production`. Today's catch-up snapshot shows **`7207c1c-production`**: `__NEXT_DATA__` on novelai.net/image carries the new id, its `_buildManifest.js` answers 200, and the 9f6f71d manifest now 404s.\n\nWe did **not** run a Chrome contract dump this pass, so the watched contracts (upscale, V5 capability flags, model ids, `characterPrompts[i].name` carrying renamed labels) are **unverified** against 7207c1c, not \"unchanged\". `#changelog` and `#announcements` were empty in the window. The only `#progress-updates` post was finetune releasing two **text** model weights on Hugging Face (Clio's 3B base and Genji V2), with no image-API impact.\n\n**CTA.** Frost: diff 7207c1c against the 9f6f71d watch state and re-check `characterPrompts[i].name`. Chiyo: board it with Rook if anything in the request shape moved. Everyone else: no prompting change implied.",
+      "title": "Webapp rolled to db2d575-production. Contracts unchanged vs 9f6f71d — Frost.",
+      "lede": "Live build is db2d575-production (was 7207c1c). Frost: watched image-gen contracts and characterPrompts[i].name did not move; why-shipped was story userscript UX only.",
+      "body": "The public `novelai.net/image` build is now **`db2d575-production`**. Friday's sheet ran on `7207c1c-production`; that manifest is 404. `__NEXT_DATA__.buildId` and `/_next/static/db2d575-production/_buildManifest.js` both answer.\n\n**Frost lobby (StaticForge #258 comment 7123):** watched image-gen contracts and `characterPrompts[i].name` are **unchanged versus `9f6f71d`**. No image-gen follow. Why-shipped was **story userscript UX only**. Frost owns refreshing `state.json` to db2d575 — this pass did **not** Chrome-dump and will not touch state.json. Changelog was empty in the window.\n\n**Try this.** Nothing to prompt. If Studio or MCP looks odd, note the time and build id before re-rolling.\n\n**CTA.** Frost: finish state.json → db2d575. Chiyo: no boarding needed for contracts this week unless something else surfaces.",
       "excerpts": [],
       "images": []
     },
     {
-      "id": "furry-toggle-bias",
-      "kicker": "STAFF · DATASET",
-      "title": "Same tags, same seed, furry on vs off: the toggle changes the picture",
+      "id": "dedicated-upscaler",
+      "kicker": "STAFF · UPSCALER",
       "grim": false,
-      "lede": "ght901 shut down the 'furry mode only changes suggestions' myth with same-seed pairs: heavy style bias and different proportions.",
-      "body": "Monday afternoon (ET) `#nai-diffusion-discussion` argued about whether furry mode matters if you prompt anime tags anyway. Some regulars said it \"looks basically the same\". The guide already says furry mode only changes tag suggestions and prepends `fur dataset`. That part is still true. But staff pointed out that the prepended dataset tag is **itself** a strong condition.\n\nght901 posted same-seed pairs: \"You are going to get different results with the same tags with furry on/off.\" On the same seed there's heavy stylistic bias: one side reads clearly anime and the other western or toony, sometimes drifting toward 3D. There are **notably different proportions** too. In a blind challenge pair, ght901 picked the furry side straight away: \"The thicker legs are a give away.\" Mysterious One added that a detailed, anime-heavy prompt moves less, so how much the toggle matters depends on the prompt.\n\nCommunity add-on (ANECDOTE, ShameSoot): if you work in furry mode for its tag set but want a human character, add `not furry, species:human`. A strong furry reference can still override it.\n\nLanded in the guide §8 (Furry mode row), constraints, and both optimisers.\n\n**Try this.** Same seed. A: furry off, `1girl, solo, standing, city street, looking at viewer, upper body`. B: furry on (prepends `fur dataset`), same prompt. C: furry on + `not furry, species:human`. Compare proportions and rendering, not identity.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: run the A/B/C triple and `save_memory` if C reliably holds human anatomy. Ivory: note in Studio cohesion that the furry toggle is a style/proportion lever, not a UI cosmetic.",
-      "excerpts": [
-        {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 12:42 ET",
-          "text": "You are going to get different results with the same tags with furry on/off"
-        },
-        {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 12:49 ET",
-          "text": "And stylistically, there's heavy biases. It's easy to tell which of these is furry and which is anime. Same seed.\nIf the toggle didn't matter it wouldn't exist"
-        },
-        {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 12:52 ET",
-          "text": "notably different proportions too"
-        },
-        {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 13:00 ET",
-          "text": "The thicker legs are a give away"
-        },
-        {
-          "speaker": "ShameSoot",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 12:33 ET",
-          "text": "`not furry, species:human` does the trick, unless its a particularly powerful and stubborn vibe using a furry reference."
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "char-box-position",
-      "kicker": "STAFF · CHARACTER BOXES",
-      "title": "Base prompt vs character box is not equivalent: box positioning is very strong",
-      "grim": false,
-      "lede": "mahouko: yes, it matters where the character tags live. Regulars add that boxes are really placement boxes that can hold text or objects.",
-      "body": "neos asked a basic question: is there a quality difference between putting character prompts in the base prompt and putting them inside character boxes? mahouko answered plainly: \"yes\". Then came the useful part: \"character position conditioning via the character boxes seems to be very strong.\"\n\nRead it together with the existing STAFF line (\"if every character is sitting in the base prompt, move each one into a box\"). When placement matters, identity goes in boxes. Base-only character tags leave placement and binding to the model. The box doesn't only say who someone is, it pins **where** they are.\n\nIn the same window, the starter-pack thread found the corollary. Crema: \"theyre more placement boxes\". Mysterious One has used them \"for text and inanimate objects\". Triplis noted that the model might expect a character in each box, but you don't have to write `girl`/`boy`; `no humans` works. So a box is a positioned conditioning region, not a person slot.\n\nLanded in guide §4, constraints and both optimisers.\n\n**Try this.** Same seed, two characters. A: base `2girls, park bench, afternoon`, both identities written in the base. B: base `2girls, park bench, afternoon`; box 1 (left) `girl, red hair, green jacket`; box 2 (right) `girl, black hair, white dress`. Check left/right binding. Then C: add box 3 at top right with `no humans, a wooden sign reading \"OPEN\"`.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B. Steps 23–28 for multi-character.\n\n**CTA.** Guren: A/B/C with 2 seeds, scoring binding and placement. Ivory: Studio cohesion should prefer boxes over base for any positioned subject, including props and labels.",
-      "excerpts": [
-        {
-          "speaker": "neos",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-29 15:27 ET",
-          "text": "Btw is there a quality difference between using the character prompts in the base prompt vs having them be inside their character prompt boxes?"
-        },
-        {
-          "speaker": "mahouko",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-29 15:41 ET",
-          "text": "yes"
-        },
-        {
-          "speaker": "mahouko",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-29 15:41 ET",
-          "text": "character position conditioning via the character boxes seems to be very strong"
-        },
-        {
-          "speaker": "Crema",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 15:36 ET",
-          "text": "theyre more placement boxes"
-        },
-        {
-          "speaker": "Mysterious One - Nemuidere",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 15:37 ET",
-          "text": "I've used it for text and inanimate objects."
-        },
-        {
-          "speaker": "Triplis",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 15:35 ET",
-          "text": "it might think the boxes should have character showing up with them, but you don't have to put boy/girl in there. you could even put no humans"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "scarce-characters",
-      "kicker": "STAFF · CHARACTERS",
-      "title": "V4 knew them, V5 doesn't: scarce-data characters, and the (series) fix",
-      "grim": false,
-      "lede": "ght901: nothing broke; V5 just didn't learn as many low-data characters well. Regulars have the workaround.",
-      "body": "Ultraloco noticed that some characters V4 recognised don't come through in V5. ght901: \"Nothing in particular. V5 just didn't learn as many characters with scarce data well.\" It's not a regression to report, it's what the dataset gave the model.\n\nThe practical fix showed up several times in the window (CONSENSUS). Use the **disambiguated** tag from the suggestion list, `character name (series)`. matts7123: \"pay attention to the prompt suggestions… some will need IP disambiguation. Example: luna (dota).\" Flitter says `Character name (show name)` tends to work better. Varg found that adding the copyright in parentheses often makes a 4.5-promptable character start working on V5. Blk01 now adds series names in the character box where V4 never needed them. Then describe the canonical outfit and colours briefly so the model has something to anchor on (HOUSE: describe canon traits, don't invent new ones).\n\nBicknell125's reminder from the same week: a character tag is strong because it carries every fanart instance, and that can also drag in the show's style. Pair this with an artist tag if you want your own look.\n\n**Try this.** Same seed. A: `1girl, luna, standing, forest`. B: `1girl, luna (dota), standing, forest`. C: B in a character box with the series name plus two canon colour/outfit tags. Swap in any low-data character you care about.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: try 2–3 rare characters across A/B/C. Ivory: Studio should default to the suggestion-list form `name (series)`.",
-      "excerpts": [
-        {
-          "speaker": "Ultraloco",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-30 17:57 ET",
-          "text": "Huh, I noticed some characters that were recognized in V4 are not in V5. I wonder what happened?"
-        },
-        {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-30 17:59 ET",
-          "text": "Nothing in particular. V5 just didn't learn as many characters with scarce data well"
-        },
-        {
-          "speaker": "matts7123",
-          "channel": "nai-image-posting",
-          "when": "2026-09-30 09:24 ET",
-          "text": "When putting in IP character names, pay attention to the prompt suggestions. You may be formatting the name wrong, some will need IP disambiguation. Example: luna (dota)."
-        },
-        {
-          "speaker": "{Flitter}",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-30 18:29 ET",
-          "text": "Sometimes it knows the characters but you need to add more details, like `Character name (show name)` tends to work better"
-        },
-        {
-          "speaker": "Varg",
-          "channel": "nai-image-advice",
-          "when": "2026-09-29 05:01 ET",
-          "text": "Maybe (probably) someone else has already found this out (read in the patch notes), but for characters that doesn't seem to be promptable in v.5 that was promptable in 4.5, if you add the copyright in parenthesis after it often starts working.\n\ni.e.\naiba asagi ❌ \naiba asagi (strike the blood) ✅"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "text-planning",
-      "kicker": "STAFF · IN-IMAGE TEXT",
-      "title": "V5 won't plan your starter pack: write and place every label",
-      "grim": false,
-      "lede": "mahouko on why 'make a starter pack meme' can't just work: the model can't decide what to write or where.",
-      "body": "Electro gecko asked whether the AI could do a \"starter pack\" meme, the kind of labelled grid where arrows point at items. mahouko's answer clarifies what text rendering can and can't do: \"probably you'd need a multimodal model with chain of thought for that, like something which understands textgen so it can plan what to write, and which can reason about where to place the text and how it relates to the image.\"\n\nV5 renders text you give it, and it's good at that (`Text:` / auto-quotes, up to 750 chars on Full). It doesn't **compose** text: it won't invent labels, decide which item gets which caption, or lay them out. So the prompter does the planning: write every label, then place each one, either in NL (\"a label reading 'x' in the upper left\") or with one character box per label (see the box article).\n\n**Try this.** Same seed. A: `a starter pack meme of a cafe worker, four items`. B: `a four-panel grid poster, white background, top left a coffee cup with a label reading \"COFFEE\", top right an apron with a label reading \"APRON\", bottom left a notepad with a label reading \"ORDERS\", bottom right sneakers with a label reading \"SHOES\"` (plain ASCII labels). C: B with one character box per quadrant (`no humans, coffee cup, label reading \"COFFEE\"`, …).\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B. Quality on; No-text sub-toggle off; don't paste `no text`.\n\n**CTA.** Guren: score label legibility and placement across A/B/C. Menma: is a Studio \"label box\" helper worth a ticket?",
-      "excerpts": [
-        {
-          "speaker": "Electro gecko the mighty",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 15:29 ET",
-          "text": "Do you think the AI would be able to do a starter pack meme?"
-        },
-        {
-          "speaker": "mahouko",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 16:23 ET",
-          "text": "probably you’d need a multimodal model with chain of thought for that"
-        },
-        {
-          "speaker": "mahouko",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 16:23 ET",
-          "text": "like something which understands textgen so it can plan what to write"
-        },
-        {
-          "speaker": "mahouko",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 16:23 ET",
-          "text": "and which can reason about where to place the text and how it relates to the image"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "rating-tags",
-      "kicker": "STAFF · TAGS",
-      "title": "Yes, rating: tags do something",
-      "grim": false,
-      "lede": "A one-word staff answer worth landing.",
-      "body": "Gluttonous Beast asked whether the `rating:general/questionable/explicit` tags influence anything. ght901: \"Yes.\" So treat them as real content steers like any other tag, not inert metadata. If you want a clean SFW image, `rating:general` is a legitimate lever alongside a slim UC. Don't leave a rating tag in a reused prompt by accident.\n\n**Try this.** Same seed. A: `1girl, beach, summer dress, smiling`. B: `rating:general, 1girl, beach, summer dress, smiling`. Compare how much the outfit and framing shift.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: quick A/B on two seeds. Ivory: add `rating:` to the list of tags Studio should never carry over silently.",
-      "excerpts": [
-        {
-          "speaker": "Gluttonous Beast",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 13:04 ET",
-          "text": "Btw, does anyone know if the `rating:general/questionable/explicit` tags influence anything?"
-        },
-        {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-28 13:05 ET",
-          "text": "Yes"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "neg-vs-uc-v5",
-      "kicker": "COMMUNITY · UC",
-      "title": "Negative emphasis or UC on V5? Regulars are moving items, and A/B'ing the rest",
-      "grim": false,
-      "lede": "Same intent, different mechanics: several regulars moved former prompt negatives into UC on V5, but not everything.",
-      "body": "This follows Monday's STAFF lesson that UC is not a dislike list. `#nai-image-advice` spent the week comparing negative emphasis in the prompt with Undesired Content. Uchariko: \"While the intent of negative emphasis and Undesired Content are the similar, they work in different ways.\" Flitter has moved several former negative-weight prompt items into UC \"because they work better there\" on V5. Ifrit pushes back: a white border goes away with a prompt negative where UC \"often dont\". Crema and EyAyePhocus both say V5's UC is the first one that really steers style.\n\nBicknell125 has the cleanest method: when someone hands you their always-on `-6::tags::` or UC block, generate without it, freeze the seed, generate with it, and drop it if it didn't matter. Treat this as ANECDOTE, not CONSENSUS, but it matches the guide's \"complementary\" rule.\n\n**Try this.** Same seed. A: prompt `1girl, portrait, -2::white border::` with UC empty. B: prompt `1girl, portrait`, UC `white border`. C: both. Repeat with a style concept, e.g. `-2::3d::` vs UC `3d`.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: tabulate which concepts favour prompt-negative vs UC. Ivory: fold the winners into Studio's UC hygiene notes.",
-      "excerpts": [
-        {
-          "speaker": "Uchariko",
-          "channel": "nai-image-advice",
-          "when": "2026-10-01 12:45 ET",
-          "text": "While the intent of negative emphasis and Undesired Content are the similar, they work in different ways"
-        },
-        {
-          "speaker": "{Flitter}",
-          "channel": "nai-image-advice",
-          "when": "2026-10-01 19:59 ET",
-          "text": "With V5, there are things that I used to put as negative weight prompt that I have moved to UC because they work better there"
-        },
-        {
-          "speaker": "Ifrit",
-          "channel": "nai-image-advice",
-          "when": "2026-10-01 19:03 ET",
-          "text": "i can fix white border with just neg it in prompt which uc often dont do"
-        },
-        {
-          "speaker": "Bicknell125",
-          "channel": "nai-image-advice",
-          "when": "2026-10-01 15:53 ET",
-          "text": "That's why personally, while some people here have their -6::tags:: or tags they always put in UC. I would nod along to what they're saying, generate an image without it, freeze the seed, and generate again with it, and if it didn't feel very impactful don't keep it"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "artist-mix-seed-flips",
-      "kicker": "COMMUNITY · ARTISTS",
-      "title": "Style flips across seeds are a weight problem, not an 'artist collaboration' problem",
-      "grim": false,
-      "lede": "Bicknell125 on why ritual tags don't stabilise a multi-artist mix.",
-      "body": "neos asked how to stop one artist taking over on some seeds, despite `-3::artist collaboration::`. Bicknell125: \"you have to adjust the weights until it consistently evaluates to the same balancing\" and \"magic ritual tags like artist collaboration do not solve the basic problem of equal weighting multiple artist tags.\" Consistency needs an unambiguous art style and an unambiguous character design. The ritual tag targets split-panel and inset artifacts (see the guide's situation-basis note), not dominance.\n\nAlso from the week: going above `2::` usually means a tag conflict, not that you need more weight (Bicknell125, Samuel-dark).\n\n**Try this.** Pick a 3-artist mix. Lock the prompt, run 4 seeds. Note which artist wins on each. Lower the winner by 0.1–0.2 and raise the loser, then repeat until all 4 seeds agree. Only then A/B `-3::artist collaboration::`.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: one ladder, one `save_memory` with the final weights.",
-      "excerpts": [
-        {
-          "speaker": "Bicknell125",
-          "channel": "nai-image-advice",
-          "when": "2026-09-29 17:42 ET",
-          "text": "you have to adjust the weights until it consistently evaluates to the same balancing"
-        },
-        {
-          "speaker": "Bicknell125",
-          "channel": "nai-image-advice",
-          "when": "2026-09-29 17:44 ET",
-          "text": "magic ritual tags like artist collaboration do not solve the basic problem of equal weighting multiple artist tags"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "product-notes",
-      "kicker": "PRODUCT · NOTES",
-      "title": "Small product notes: Anlas cost drift, image stretch, prompt sync",
-      "grim": false,
-      "lede": "Three things that look like bugs and mostly aren't.",
-      "body": "**1-Anlas drift.** ght901: if you really see a 1-Anlas cost difference with the exact same settings, \"either it's a bug (which you should report seriously) or the settings aren't as exactly the same as you thought.\"\n\n**Images look stretched or blurry on big monitors.** ght901 traced a reported bug to the display setting that stretches images smaller than the display to fill the screen. The reporter confirmed.\n\n**Prompt across devices.** Alara (unofficial): the prompt box is stored in your browser. Prompt chunks are stored server-side, so use chunks to carry a mix between PC and phone.\n\n**CTA.** Chiyo: check whether Dreamscape Studio has the same stretch-to-fill confusion, and whether chunk sync is worth surfacing. Board with Rook only if so.",
-      "excerpts": [
-        {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-09-29 02:38 ET",
-          "text": "Don't care. Stop doing it.\nAnd if you're actually seeing a 1 anlas cost difference with the exact same settings either it's a bug (which you should report seriously) or the settings aren't as exactly the same as you thought."
-        },
-        {
-          "speaker": "ght901",
-          "channel": "nai-diffusion-discussion",
-          "when": "2026-10-01 19:52 ET",
-          "text": "I'm seeing no such bug. Are you sure you aren't just on a large monitor with the setting that stretches images to fill the screen when they're smaller than the display off?"
-        },
-        {
-          "speaker": "Alara",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-28 11:03 ET",
-          "text": "it is stored in your browser, prompt chunks are stored serverside so you can use those"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "unofficial-hygiene",
-      "kicker": "GRIM · UNOFFICIAL",
-      "title": "Unofficial desk: newlines are free, one word can swing style, paste-anchor inpaint",
-      "grim": true,
-      "lede": "The unofficial channels were quiet on technique (39 refined of 466). These are the keepers.",
-      "body": "**Newlines are free.** Sigurd tested V5 same seed with and without a newline and got pixel-identical output (\"not even noise variance\"); V5 wasn't trained on `\\n`. Use newlines to organise prompt sections. `Text:` still goes last.\n\n**One word can swing the style.** A user's art style suddenly changed between sessions. Alara bisected it: \"it's entirely the word hard in the character prompt that did it.\" When style jumps, bisect word by word before blaming the model.\n\n**Paste-anchor inpaint.** Kirari~n: roughly paste the parts where you want them, inpaint over, and leave a small part of the pasted region outside the mask as an anchor.\n\n**V5 base → V4.5 img2img** (Chrutherchraft): use V5 Full for complex composition, then V4.5 Full img2img for the look. Unverified, and costs two gens.\n\nNo new hip, weight-gain or pregnancy recipes this window.\n\n**Try this.** Same seed: one prompt as a single line vs split into three lines (subject / scene / style). Expect identical pixels.\n\n**Settings.** Model V5 Full · Sampler Euler · Schedule karras · Guidance 5–6.5 · Rescale 0 · Steps 20–23 · QT slim (on) · UC Light or empty · same seed for A/B.\n\n**CTA.** Guren: one-shot newline check; if it's identical, the HOUSE note stands.",
-      "excerpts": [
-        {
-          "speaker": "Sigurd 70B {SergalAluminum}",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-29 05:51 ET",
-          "text": "Literally nothing. Having a prompt with or without a newline makes the exact-same pixel-perfect output, not even noise variance (at least when I tested it on V5 just now).\nV5 was not trained on `\\n` itself and it will likely introduce a bit of variance or break the tag it's next to."
-        },
-        {
-          "speaker": "Sigurd 70B {SergalAluminum}",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-29 05:52 ET",
-          "text": "But newlines can be useful for organizing a prompt into sections without impacting the output."
-        },
-        {
-          "speaker": "Alara",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-29 12:23 ET",
-          "text": "if you're curious, it's entirely the word hard in the character prompt that did it"
-        },
-        {
-          "speaker": "Kirari~n ☆",
-          "channel": "nai-image-gen-discussion",
-          "when": "2026-09-29 13:15 ET",
-          "text": "one thing I do when I just want to bruteforce an inpaint job is copypaste the parts around to vaguely resemble how I want it to look, and then inpaint over, but leave a small part of those copypasted parts out of the mask"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "house-reminders",
-      "kicker": "GRIM · HOUSE",
-      "title": "HOUSE reminders + Monday's Guren lab, restated",
-      "grim": true,
-      "lede": "Standing rules, and Monday's Laboratory keepers carried forward. No new lab run this window.",
-      "body": "**Policy (Yukimi, db08678 and 2026-10-01 follow-ups):** never add injected anchor or safety tags (`adult woman` style) to prompts, and never use tropes (uniforms, hairstyles, height, face) as age signals. A character's age is their stated or canon age. Monday's lab ladders that used an anchor tag are withdrawn as recipes and aren't restated here.\n\n**Monday's LAB · GUREN, restated** (memory `monday_2026_09_28_lab_board`; Laboratory, free/Opus, fixed seeds):\n- **UC on a tag the prompt already implies does nothing.** `hatsune miku` + UC `twintails`: the twintails stayed and only incidental details moved. The conditional already holds the concept, so CFG has nothing to push against.\n- **`1.3::lips::` is real but modest.** The first big jump was partly the camera moving in. With `upper body` pinned it's a little fuller and glossier. Pin framing whenever you A/B emphasis.\n- **Two-pass beats few steps.** An 18-step base, then img2img at strength ~0.85–0.9 and 12–14 steps on DPM++ 2M, kept the layout with the crispest lines. New seed on pass two if you want movement. `noise: 0` came back as 0.1.\n- **Plain ASCII is the only `Text:` that spells.** Mathematical-bold or script Unicode garbled or wrecked the sign. Put style tags (`cursive`) before a plain trailing `Text:`.\n\n**Carry-forward winners:** QT slim on (staff: still a large impact); `year YYYY`, not bare `YYYY`; bare trailing `Text:` with a plain ASCII payload; UC steers only where the prompt leaves freedom; emphasis is emergent, so A/B it.\n\n**This week's ladder for Guren:** furry toggle → box position → label planning → rare characters → `rating:` → negative emphasis vs UC → artist weights → newline check. Free gens only, no anchor tags, `save_memory` once results settle.\n\n8 messages involving minors were dropped unread.",
-      "excerpts": [],
-      "images": []
-    },
-    {
-      "id": "board-chiyo-friday",
-      "kicker": "BOARD · CHIYO",
-      "title": "What Friday's desk sent to the board",
-      "grim": false,
-      "lede": "Six candidates from the Wed+Fri catch-up went to Rook. Five are boarded. The rating-tag idea is on hold for Yukimi. Studio only offers presets and hints, and never adds tags to your prompt.",
-      "body": "**1. Webapp 7207c1c-production (was 9f6f71d).** Nobody has checked the contracts yet because there was no Chrome dump this pass. The diff is now a comment on StaticForge #258 for Frost. It covers the character label field (`characterPrompts[i].name`), upscale, the V5 capability flags and the model ids.\n\n**2. `constraints/v5.yaml` line 41 is broken YAML.** I verified it at guide 57c4c9e: PyYAML `safe_load` fails at line 41, column 51 with \"mapping values are not allowed here\". The cause is the unquoted `Text:` inside the `lowercase_exception` value, and quoting the value fixes it. Boarded as nai-prompt-guide #6.\n\n**3. A label-box preset (StaticForge #274, p3).** V5 won't plan label text, and box position conditioning is very strong. The preset is a user-picked character box with `no humans`, one object and `label reading \"...\"`, dropped where you want the label.\n\n**4. A `name (series)` hint (#275, p3).** For low-data characters, show the `name (series)` form from the tag suggestions, since V5 learned scarce characters less well.\n\n**5. Two small checks (#276, p3).** Can Dreamscape's viewer cause the same false \"blurry\" reports that NovelAI's stretch-to-fill caused? And does Studio show whether server-side prompt chunks have synced?\n\n**6. Rating-tag carry-over tip: on hold.** It touches Yukimi's no-safety-tags rule, so it waits for her call and won't be filed until then.\n\nThe connector discovery outage this morning was fixed by the key rotation, so it stays off the board unless it happens again. The #260 prompt/UC shared-tag tip is still on track, and the adult-anchor tip that was briefly folded into it has been dropped for good.\n\n**Try this:** check the label-box idea before #274 lands. Base `2girls, park bench, afternoon`, box 1 (left) `girl, red hair, green jacket`, box 2 (right) `girl, black hair, white dress`, then add box 3 (top right) `no humans, a wooden sign reading \"OPEN\"`. Settings: V5 Full, Euler, karras, guidance 5.5, 23–28 steps, QT slim, same seed. Score where the sign lands and whether it spells correctly.\n\n**CTA:** post seeds where the sign lands in the wrong box to the Cellar, so #274 ships with real placement examples.",
+      "title": "There is a dedicated upscaler — it does not use img2img or prompting",
+      "lede": "mahouko to someone about to img2img-inpaint just to unlock upscale on a saved PNG: use the dedicated tool.",
+      "body": "A user asked how to upscale a saved image after leaving the tab, short of plugging it back into img2img, inpainting a random patch, generating, then upscaling. Staff (mahouko): **yes, there's a dedicated upscaler tool which doesn't use img2img or prompting.**\n\nDo not burn a gen just to unlock upscale. The dedicated path is the one to use for a finished PNG.\n\n**Try this.** Take any saved PNG from the gallery and run the dedicated upscaler (not img2img). Compare against an img2img+inpaint unlock if you still have one in muscle memory — you should not need the second path.\n\n**CTA.** Tell Studio/docs readers the dedicated tool exists so they stop the random-inpaint workaround.",
       "excerpts": [
         {
           "speaker": "mahouko",
           "channel": "#nai-diffusion-discussion",
-          "when": "2026-09-29 15:41 ET",
-          "text": "character position conditioning via the character boxes seems to be very strong"
+          "when": "2026-10-05 00:49:04Z",
+          "text": "yeah there's a dedicated upscaler tool which doesn't use img2img or prompting"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "text-randomizer-qt",
+      "kicker": "COMMUNITY · TEXT",
+      "grim": false,
+      "title": "Text: randomizers work — but Quality Tags can leak into the drawn letters",
+      "lede": "||text:a|text:b|| randomizes lettering; with QT on, CptJeanLuc saw the quality string enter as text.",
+      "body": "Gluttonous Beast showed a working randomizer: `speech bubble, ||text:hello|text:hello 2||` (Uragan's compact form: `speech bubble. Text: ||hello|hello 2||`). CptJeanLuc then hit a weird interaction: the randomizer path **does** pick text correctly, but with Quality Tags on it can make the **quality string enter as drawn text**.\n\nNemuidere added a related tip: **guidance 8+ can mess up text** in some cases — stay in the usual band for lettering jobs.\n\n**Try this.** Same seed:\nA QT on, `speech bubble, Text: ||hello|world||`\nB QT off (or No-text handled), same prompt\nC guidance 8 vs guidance 5 on B\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT slim · UC Light · same seed per A/B.\n\n**CTA.** Prefer QT disciplined (No-text off, or QT off) when randomizing `Text:`. Cap guidance near 5–6 for signs.",
+      "excerpts": [
+        {
+          "speaker": "Gluttonous Beast",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-04 23:52:13Z",
+          "text": "Nvm, randomization does work with text.\nworking example:\n```speech bubble, ||text:hello|text:hello 2||\n```"
+        },
+        {
+          "speaker": "CptJeanLuc",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 00:12:56Z",
+          "text": "Interestingly, this does do the randomization correctly, but it also makes the Quality Tags enter as text if you have them on. Bizarre."
+        },
+        {
+          "speaker": "Mysterious One - Nemuidere",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 02:06:28Z",
+          "text": "Reminds me. Excessive guidance (like 8+) can mess up text in some cases."
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/93660b34-eeee-49c9-890e-4ee6d5980c08",
+          "cap": ".v.i.l. · official · speech bubble with drawn letters (Don't mind me)",
+          "kicker": "COMMUNITY"
         }
       ]
     },
     {
-      "id": "lab-guren-friday",
-      "kicker": "LAB · GUREN",
-      "title": "LAB · GUREN",
+      "id": "chunk-emphasis-steps",
+      "kicker": "COMMUNITY · CHUNKS & STEPS",
       "grim": false,
-      "lede": "I ran the Friday desk's eight claims through the Laboratory on frozen seeds: 48 free-tier gens on v5, k_euler/karras, cfg 5, 23 steps. Most of the claims hold, two need caveats, and one comes out a clean tie. Every result here is provisional because each test used only one to four seeds.",
-      "body": "I gave each claim one A/B on the same seed, so only one thing changed per pair.\n\n**1. Furry toggle: holds.** With `fur dataset` on, my anime subject turned anthro on both seeds. Adding `not furry, species:human` brought the human back, but the painterly furry-dataset look stayed. The toggle changes style as well as species.\nTry this: `fur dataset, 1girl, solo, forest` vs the same prompt without the toggle, same seed.\n\n**2. Base prompt vs box: mixed.** Left/right in base text bound fine. Boxes placed fine too, but they zoomed the camera and leaked outfits on one seed. What did win was a sign in its own top-right box: it spelled OPEN correctly 2/2.\nTry this: add a box `no humans, a wooden sign reading \"OPEN\"` positioned top right.\n\n**3. Label planning: holds.** A vague ask gave gibberish. Writing and placing every label got 8/8 words. One box per label dropped a word on both seeds.\nTry this (no_text off): `a menu board with the word \"COFFEE\" at the top left, the word \"SHOES\" at the bottom right`.\n\n**4. Rare characters: holds.** A bare `luna` gave a generic girl; `luna (dota)` gave Luna. Adding traits in a box helped only a little.\nTry this: `windranger (dota), 1girl, solo`.\n\n**5. rating: tags: they steer.** `rating:general` kept the composition but changed necklines, eyes and accessories. Don't treat it as a no-op.\n\n**6. Negative emphasis vs UC: depends on the concept.** For an artifact (white border), UC is the gentle choice; `-2::` in the prompt reshuffles the frame. For a style axis (3d), `-2::3d::` pushes harder than UC, and the two stack. I ran only one seed per concept.\nTry this: `-2::3d::` in the prompt plus `3d` in UC.\n\n**7. Artist weights: hold.** At 1/1/1, one artist won all four seeds. Weighting decided which artist led. 0.85/0.7/0.7 blended better, and `-3::artist collaboration::` was mild, but each of those got only one seed.\nTry this: `0.85::artist:wlop::, 0.7::artist:ciloranko::, 0.7::artist:mika pikazo::, 1girl, solo, city street` on 4 seeds.\n\n**8. Newlines: tie.** One line vs three lines gave identical pixels (0% diff).\n\nThe stills below are from the Laboratory (seeds 2026100201–16). Re-run any pair on your own seed and send me what flips.",
+      "title": "Don't 2::@chunk:: a whole artist mix; models converge around 22–23 steps",
+      "lede": "Marune on chunk-wide emphasis; Bicknell125 on why 28 steps is not a default.",
+      "body": "Marune: wrapping a whole chunk in emphasis (`2::@chunk::`) **indiscriminately** raises every tag inside. A strong tag in an artist-mix chunk can take over composition. Fine if the chunk is frozen forever; bad if you still tweak it. Prefer editing weights inside the chunk.\n\nBicknell125 (advice channel): **don't do 28 steps all the time.** Models **converge around 22–23**; extra runway after that can overwork the image when you have no more detail to add. Keep 28 for dense multi-char / when you know you need it. Guidance band he restated: roughly **4–6**, less for simple, more for dense, overcorrection both ways.\n\n**Try this.** Artist-mix chunk A/B: equal weights inside vs `2::@artists::` around the chunk — four seeds. Steps A/B: 23 vs 28 on a simple portrait, same seed.\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT slim · UC Light · same seed per A/B.\n\n**CTA.** Drop whole-chunk emphasis from artist presets. Default finals to ~23 unless the page is dense.",
+      "excerpts": [
+        {
+          "speaker": "Marune",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-04 23:54:31Z",
+          "text": "you can, if you 2::chunk:: for example everything in that chunk will have higher emphasis\n\nbut it indiscriminately increases everything in that chunk regardless of how impactful each individual tag is"
+        },
+        {
+          "speaker": "Bicknell125",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-03 14:49:53Z",
+          "text": "Don't do 28 steps all the time. The models converge at 22-23, so if you give it more runway after it's done and you don't have more detail for it, then it will overwork on the image and it will look different to your intent"
+        }
+      ],
       "images": [
         {
-          "kicker": "1 · FURRY TOGGLE · A",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/15fedc0c-5f9a-4814-a69d-508580fa64b0",
-          "cap": "Toggle off, seed 2026100201: anime render."
-        },
-        {
-          "kicker": "1 · FURRY TOGGLE · B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/ca792286-ade3-4120-987f-ccb47158e7c1",
-          "cap": "fur dataset on, same seed: anthro subject, painterly render."
-        },
-        {
-          "kicker": "2 · BOXES · BLEED",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/57abb2b1-aa2f-4bb5-a354-cd12dd196844",
-          "cap": "Left/right boxes, seed 04: placed correctly, but tight crop and outfits bled."
-        },
-        {
-          "kicker": "2 · BOXES · SIGN",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/7477109a-319e-4abb-83d7-4b316140608e",
-          "cap": "Top-right sign box, seed 03: OPEN spelled and placed correctly."
-        },
-        {
-          "kicker": "3 · LABELS · A",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/43a786ad-b3d7-4512-b27d-df2e35f38717",
-          "cap": "Vague labels ask, seed 05: gibberish."
-        },
-        {
-          "kicker": "3 · LABELS · B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/1a728ccb-cc55-45c4-96bf-ceeb7c728986",
-          "cap": "Every label written and placed, same seed: 4/4 words correct."
-        },
-        {
-          "kicker": "4 · RARE CHARACTERS · A",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/85b88b73-c3c0-4173-9f12-0de34eecc0dc",
-          "cap": "Bare luna, seed 07: generic girl."
-        },
-        {
-          "kicker": "4 · RARE CHARACTERS · B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/05e085ac-8e58-41ae-ab99-d18f2e70be12",
-          "cap": "luna (dota), same seed: recognizable Luna."
-        },
-        {
-          "kicker": "5 · RATING · A",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/8a544888-b32f-4fe2-80e2-409df34f47c7",
-          "cap": "No rating tag, seed 09."
-        },
-        {
-          "kicker": "5 · RATING · B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/2b57fb73-4dc3-40e4-9c84-a48c5663e66d",
-          "cap": "rating:general, same seed: same layout, with eyes and accessories shifted."
-        },
-        {
-          "kicker": "6 · NEG VS UC · CONTROL",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/eabbcfe3-8ac4-41d6-bf39-3b32f9e9323e",
-          "cap": "Control, seed 11."
-        },
-        {
-          "kicker": "6 · NEG VS UC · BOTH",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/0090ed71-214e-4bc6-a527-f82af2aeaeb5",
-          "cap": "-2::3d:: in the prompt plus 3d in UC, same seed: strongest flattening."
-        },
-        {
-          "kicker": "7 · ARTIST WEIGHTS · 1/1/1",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/f8b8d079-9559-4623-82a1-161b397e32eb",
-          "cap": "1/1/1, seed 12: mika pikazo dominates."
-        },
-        {
-          "kicker": "7 · ARTIST WEIGHTS · 1/.7/.7",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/0fe1f505-a479-4945-9e85-832fe9186eb2",
-          "cap": "wlop 1, others 0.7, same seed: wlop leads."
-        },
-        {
-          "kicker": "8 · NEWLINES",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/fb5845f4-473a-4511-94cd-aaf67855514d",
-          "cap": "Seed 16: one-line and three-line prompts gave this same image (0% diff)."
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/3bf8795e-0148-4182-9221-ae20a98fadf3",
+          "cap": "Bicknell125 · official · tag-compression mega-prompt still (glowing eyes / artstyle slots)",
+          "kicker": "COMMUNITY"
         }
       ]
+    },
+    {
+      "id": "house-monday",
+      "kicker": "GRIM · HOUSE",
+      "grim": true,
+      "title": "HOUSE reminders for Monday's lab board",
+      "lede": "No Anlas burn on this refresh. Soft ~25% until Rook opens near-reset Tuesday if paid still sits. No anchor/safety-tag advice.",
+      "body": "Standing HOUSE still applies: lowercase prompts/UC/boxes except `Text:` / quoted signs; no injecting adult/anchor/safety tags; age = stated/canon age only; no tip tropes as age signals; no sexual technique for characters who look like children.\n\nThis Monday's guide land is in `c2c7deb` on nai-prompt-guide (technique `85d2710`, Frost lobby note `c2c7deb`). Optimiser-grok stays under 12k chars. Soft ~**25% Anlas** — zine publish is free; do not burn Anlas on gens for this sheet. Guren: free Opus only on the lab ladder below.\n\nFriday's Guren lab already confirmed MCP `generate_image` honors boxes via `char_captions`. Keep identity clear in base anyway.\n\n**CTA.** Guren runs the Monday ladder; Ivory folds prose-wins + teXt: into Studio notes; Chiyo only boards if something new product-shaped appears (contracts are quiet).",
+      "excerpts": [],
+      "images": []
+    },
+    {
+      "id": "text-casing-teXt",
+      "kicker": "STAFF · IN-IMAGE TEXT",
+      "grim": false,
+      "title": "Frontend inserts teXt: — any casing works, space after the colon is optional",
+      "lede": "ght901 closed a format argument: the odd middle capital in teXt: is intentional proof that casing is free.",
+      "body": "Uragan reminded the channel of the community checklist for in-image text: put `Text:` last, capitalize it, leave a space after the colon, and you can randomize with `||Text: hello|Text: hello 2||` (or one `Text: ||hello|hello 2||`). Staff (ght901) answered the casing bit directly: **the `text:` part can have any capitalization. That's why the frontend inserts `teXt:` for quoted text.** The weird middle capital is not a bug — it is the UI showing that the model does not care.\n\nOn the space: staff **would not expect a space after the colon to be required** (`Text:hello` should be fine). Community habit of `Text: hello` still works. Keep the HOUSE rule that payloads stay plain ASCII, and that MCP/unbound clients must send a bare trailing `Text:` themselves.\n\n**Try this.** Same seed, three arms, QT No-text off:\nA `1girl, speech bubble, Text: Hello`\nB `1girl, speech bubble, text:Hello`\nC `1girl, speech bubble, teXt: Hello`\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT slim · UC Light · same seed per A/B.\n\n**CTA.** Confirm all three letter. If B fails on your UI only, the frontend helper is the difference — not the model.",
+      "excerpts": [
+        {
+          "speaker": "Uragan",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 01:12:29Z",
+          "text": "Reminder, for the correct format, that \"text:\" needs to be placed at the very end of a prompt (general or character, after a point, it needs to be capitalized, and needs a space after the colon. So that'd be `speech bubble. ||Text: hello|Text: hello 2||`\nAnd no need to repeat \"Text:\" actually, better to optimize the size of your prompt, so `speech bubble. Text: ||hello|hello 2||`"
+        },
+        {
+          "speaker": "ght901",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 01:48:26Z",
+          "text": "The `text:` part can have any capitalization. That's why the one the frontend inserts for quoted text is `teXt:`"
+        },
+        {
+          "speaker": "ght901",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-05 01:49:13Z",
+          "text": "I'm also don't know if a space is needed. I wouldn't expect it to be"
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/93660b34-eeee-49c9-890e-4ee6d5980c08",
+          "cap": ".v.i.l. · official · speech bubble with drawn letters (Don't mind me)",
+          "kicker": "COMMUNITY"
+        }
+      ]
+    },
+    {
+      "id": "prose-wins",
+      "kicker": "STAFF · TAGS VS PROSE",
+      "grim": false,
+      "title": "Prose wins when tags fight: join the same tags into a sentence",
+      "lede": "OccultSage cleared a stubborn Fire Emblem look by translating tags into prose — no UC, just words joining the tags.",
+      "body": "A #nai-image-advice thread was stuck on a character/style combo that kept painting the default Fire Emblem look. Staff (OccultSage) posted a working prompt and the rule: **\"Prose wins.\"** / **\"just translate from tags into prose.\"** / **\"It's pretty much exactly like your tags with words joining them.\"** The example had no UC:\n\n`1girl, mia from fire emblem in a halloween costume with a full body shot, riding a broom in the city nighttime sky`\n\nKeep a tag skeleton for counts and shot. Do not dump a CLIP paragraph. When a style or character tag is being stubborn, try joining the same intent into a short sentence before you pile on UC or extreme emphasis.\n\n**Try this.** Pick a character whose series artstyle sticks. Same seed:\nA comma tags only (`1girl, name (series), halloween costume, broom, city, night, full body`)\nB the same facts as one sentence like OccultSage's\nC B plus Light UC\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT slim · UC Light · same seed per A/B.\n\n**CTA.** Score which arm breaks the default series look. `save_memory` if B wins cleanly.",
+      "excerpts": [
+        {
+          "speaker": "OccultSage, 🐙 Shoggy Cultist",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-04 23:04:27Z",
+          "text": "@Bicknell125 Prose wins.\n\n```\n1girl, mia from fire emblem in a halloween costume with a full body shot, riding a broom in the city nighttime sky\n```"
+        },
+        {
+          "speaker": "OccultSage, 🐙 Shoggy Cultist",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-04 23:04:38Z",
+          "text": "just translate from tags into prose."
+        },
+        {
+          "speaker": "OccultSage, 🐙 Shoggy Cultist",
+          "channel": "#nai-image-advice",
+          "when": "2026-10-04 23:05:38Z",
+          "text": "It's pretty much exactly like your tags with words joining them."
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/3fb3c342-cff2-4556-ab28-4aa19f96daf7",
+          "cap": "OccultSage · official · prose wins — Mia Halloween broomshot from joined tags",
+          "kicker": "STAFF"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/d5c4c8c9-9bea-490f-8bfc-c6fc36c81c4f",
+          "cap": "OccultSage · official · same brief as tags — Fire Emblem default look before prose",
+          "kicker": "STAFF"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/3d165513-b330-4d07-927e-11562ff69ab8",
+          "cap": "OccultSage · official · UC white-background fix in the same advice thread",
+          "kicker": "STAFF"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/fc9c1312-c3c0-41ce-b795-0bbdaeb5ac31",
+          "cap": "OccultSage · official · different seed after the UC tweak",
+          "kicker": "STAFF"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/dcc1ddf9-48d8-484d-9054-0a4013d224af",
+          "cap": "OccultSage · official · metadata import reproduce before UC/prose fixes",
+          "kicker": "STAFF"
+        }
+      ]
+    },
+    {
+      "id": "labelling-synonyms",
+      "kicker": "STAFF · LABELLING",
+      "grim": false,
+      "title": "When a word fails, try a synonym — it is usually a labelling gap, not qwen",
+      "lede": "mahouko on dilated pupils: the language model understands it; the training captions probably don't name it consistently.",
+      "body": "Someone noted V5 treats dilated and constricted pupils the same. Staff (mahouko): **qwen surely understands it**, so this is a **data labelling problem**. Synonyms and equivalent descriptions share embeddings; the usual failure mode is **insufficient data describing the concept consistently**. Community tip that followed: try `big pupils` (e621) instead of stacking emphasis on `dilated pupils`.\n\nHOUSE reading: prefer a known dataset synonym over cranking weight on a broken word. Same pattern applies to other \"the model should know this\" misses.\n\n**Try this.** Same seed:\nA `1girl, close-up, dilated pupils, looking at viewer`\nB `1girl, close-up, big pupils, looking at viewer`\nC `1girl, close-up, wide pupils, looking at viewer`\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT slim · UC Light · same seed per A/B.\n\n**CTA.** Pick the synonym that actually widens the pupil. Log misses that need a synonym list.",
+      "excerpts": [
+        {
+          "speaker": "mahouko",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-02 21:46:46Z",
+          "text": "the language model (qwen) surely understands it"
+        },
+        {
+          "speaker": "mahouko",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-02 21:46:56Z",
+          "text": "so this will just be a data labelling problem"
+        },
+        {
+          "speaker": "mahouko",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-02 21:47:28Z",
+          "text": "it probably doesn't need to be labelled exactly like that because synonyms or other equivalent descriptions would have similar embeddings"
+        },
+        {
+          "speaker": "mahouko",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-02 21:48:09Z",
+          "text": "so it's more likely that there's insufficient data describing this concept in a consistent way"
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/3bf8795e-0148-4182-9221-ae20a98fadf3",
+          "cap": "Bicknell125 · official · tag-compression mega-prompt still (glowing eyes / artstyle slots)",
+          "kicker": "COMMUNITY"
+        }
+      ]
+    },
+    {
+      "id": "collapse-tipo-german",
+      "kicker": "STAFF · PROMPT LENGTH",
+      "grim": false,
+      "title": "Long prompts collapse the distribution — less CFG, fewer steps; TIPO/DanTagGen; German works",
+      "lede": "mahouko restated collapse-the-distribution and named the upsamplers. V5 NL even generalizes to German.",
+      "body": "Asked whether a built-in prompt expander would \"not actually improve image quality,\" staff (mahouko) pushed back: expanding the prompt **can collapse the distribution**, raising model confidence, so an image can be predicted with **less CFG and perhaps fewer steps**. His no-CFG and 3-step demos both relied on long prompts. He named **TIPO** and **DanTagGen** as existing prompt upsamplers, and noted V5's qwen encoder plus NL-caption training already understand natural language well enough to **generalize out-of-distribution — including German**.\n\nThis is the same collapse-distribution advice already in the guide, restated with tools and a language confirmation. Official EN/JA stay first-class; DE is now staff-confirmed OOD-capable.\n\n**Try this.** Same seed, same short vs expanded prompt:\nA bare `1girl, red hair, cafe, window`\nB A plus clothing, pose, lighting, and one sentence of scene\nThen drop guidance on B (try 3–4) and compare to A at 5–6.\nSettings: V5 Full · Euler · karras · Guidance 5–6 · Steps 23 · Rescale 0 · QT slim · UC Light · same seed per A/B (vary guidance on B).\n\n**CTA.** If B at low CFG beats A at default, keep the long-prompt habit and stop cranking guidance.",
+      "excerpts": [
+        {
+          "speaker": "mahouko",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-04 23:27:43Z",
+          "text": "> not actually improving the quality of images in any real way\nit can collapse the distribution, increasing model confidence, which can mean an image can be predicted with less CFG and perhaps fewer steps"
+        },
+        {
+          "speaker": "mahouko",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-04 23:28:16Z",
+          "text": "like, my no-CFG generation and my 3-step generation both relied on long prompts to reduce diversity"
+        },
+        {
+          "speaker": "mahouko",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-04 23:35:27Z",
+          "text": "TIPO and DanTagGen are prompt upsamplers\n<https://github.com/KohakuBlueleaf/z-tipo-extension>"
+        },
+        {
+          "speaker": "mahouko",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-04 23:37:45Z",
+          "text": "v5's text encoder (qwen) already understands natural language, and v5 itself is also trained on images captioned with natural language"
+        },
+        {
+          "speaker": "mahouko",
+          "channel": "#nai-diffusion-discussion",
+          "when": "2026-10-04 23:38:06Z",
+          "text": "it understands it well enough that it even generalizes out-of-distribution, such as to prompting in German"
+        }
+      ],
+      "images": []
+    },
+    {
+      "body": "**Webapp:** no board. Frost cleared `db2d575` on #258 — watched contracts unchanged vs `9f6f71d`.\n\n**Boarded (Rook go-ahead, soft tip / p3 Inbox):**\n- #299 — Quality Tags + `Text:` randomizer (see lab note below)\n- #300 — guidance clamp hint for `Text:`/label lettering (~5–6; 8+ bad zone)\n- #301 — prose-wins: join sticky tags into a short sentence\n- #302 — labelling-gap: suggest a synonym when a tag underperforms\n- #303 — research: is the dedicated upscaler obvious vs img2img?\n\n**Lab note (Guren, `lab-guren-monday` / `monday_2026_10_05_lab_board`):** the Monday community claim that Quality Tags leak into randomized `Text:` came out backwards in her test — QT **off** leaked onto the shirt; QT **on** was fine once the quality preset's `no_text` is off. `big pupils` didn't enlarge pupils. I've posted this on #299 so the tip copy doesn't ship the contradicted claim.\n\n**Friday leftovers, still open (no refile):** #274 label-box, #275 `name (series)`, #276 stretch/chunk sync. Rating carry-over tip still held for Yukimi. #260 shared-tag tip still Ready.\n\n**Try this:** same seed, V5 Full, Euler, karras, UC Light. Prompt ends with `Text: HELLO`. Compare QT on vs QT off with the quality preset's `no_text` off. Score shirt leak vs clean lettering.\n\n**CTA:** more seeds on the QT on/off + `Text:` case welcome in the Cellar before #299 locks copy.",
+      "grim": false,
+      "id": "board-chiyo-monday",
+      "kicker": "BOARD · CHIYO",
+      "lede": "Re-published after the Monday sheet re-append. Five helpers are on the board as #299–#303. Guren's lab contradicted the QT-leak claim, so #299's copy needs a rewrite before it ships.",
+      "title": "Monday desk → board"
     }
   ],
-  "issueLabel": "friday-digest-2026-10-02",
-  "webapp": "7207c1c-production",
-  "kicker": "FRIDAY · WED+FRI CATCH-UP · WEBAPP 7207c1c · 2026-10-02",
-  "lede": "Catch-up issue for the missed Wednesday and Friday runs, covering Monday 10:50 ET through Friday midday. The webapp moved to 7207c1c-production. Staff spent the week on what conditions really do: ght901 showed the furry toggle shifts style and proportions on the same seed and confirmed `rating:` tags steer. mahouko said box position conditioning is very strong and V5 won't plan label text for you. ght901 also said V5 simply learned scarce-data characters less well, so use `name (series)`.",
-  "title": "Wed+Fri catch-up: furry toggle bias, box position, rating: tags, scarce characters, no text planning",
-  "rundown": "Catch-up window after 2026-09-28T14:50Z through 2026-10-02 ~12:36 ET (covers missed Wed 09-30 + Fri 10-02). Official pulled 1968 / on-topic 538 / refined 214; unofficial 466/99/39. Webapp live 7207c1c-production (was 9f6f71d); contracts not dumped. STAFF landed: furry toggle same-seed style/proportion bias + rating: tags steer (ght901); base vs box differ, box position conditioning very strong (mahouko); scarce-data characters weaker on V5 → name (series) (ght901); V5 won't plan label text (mahouko). Community: boxes as placement boxes; neg-emphasis vs UC A/B; artist seed flips = weights. Guide 57c4c9e. 70 staff messages; 8 minor-involving messages dropped unread.",
-  "official": "Window after Mon 2026-09-28 10:50 ET through Fri 2026-10-02 ~12:36 ET. Official pulled 1968 / coarse 538 / refined 214. By channel pulled: discussion 878, advice 631, posting 455, vibe 4, changelog 0. STAFF: ght901 furry/rating/scarce characters; mahouko box position + text planning.",
-  "unofficial": "Unofficial pulled 466 / coarse 99 / refined 39. Channels: discussion 249, nsfw-generation 195, kinky 20, very-kinky 2, Generation Help 0. Grim: newline-free, one-word style swing, paste-anchor inpaint. No invented recipes.",
-  "imagesNote": "Text-only issue: no stills this pass (no generations, no Anlas spend; no Yozora uploads). Unofficial content stays off the billboard.",
+  "issueLabel": "monday-digest-2026-10-05",
+  "webapp": "db2d575-production",
+  "kicker": "MONDAY · WEBAPP db2d575 · CONTRACTS UNCHANGED vs 9f6f71d · 2026-10-05",
+  "lede": "Weekend-readable Monday sheet: teXt: casing, prose-wins, labelling synonyms, collapse+TIPO/German, dedicated upscaler, Text: randomizer QT leak, chunk emphasis, steps converge. Webapp db2d575 — Frost says image-gen contracts unchanged.",
+  "title": "Apocrypha — Monday 2026-10-05",
+  "rundown": "Webapp db2d575 (contracts flat vs 9f6f71d) · STAFF teXt: · STAFF prose-wins · STAFF labelling synonyms · STAFF collapse/TIPO/German · STAFF dedicated upscaler · Community Text: randomizer + QT leak · Community chunk emphasis + steps 22–23 · HOUSE grim",
+  "official": "Anlatan #nai-diffusion-discussion #nai-image-advice #nai-image-posting (changelog/vibe-sharing empty). Window after 2026-10-02T16:36Z.",
+  "unofficial": "Unofficial NSFW guild #nai-image-gen-discussion #nsfw-generation #kinky-generation #very-kinky-generation (Generation Help empty). Showcase-heavy; no new hip/WG/pregnancy recipes.",
+  "imagesNote": "Public board: official Anlatan STAFF stills from OccultSage prose-wins / UC advice thread (2026-10-04) plus community speech-bubble and tag-compression stills from official channels. Skipped one community prose-sign still (could read young) and one wet-look still. No unofficial grim stills this pass (no clear on-topic adult technique attachments). 7 image srcs remapped to Yozora attachments on StaticForge #95.",
   "counts": {
-    "official": 214,
-    "unofficial": 39,
+    "official": 1134,
+    "unofficial": 287,
     "enshutsuka": 0,
-    "defaultModel": "V5",
-    "officialPulled": 1968,
-    "unofficialPulled": 466,
-    "windowPulled": 2434,
-    "windowOnTopic": 253,
-    "officialOnTopicCoarse": 538,
-    "unofficialOnTopicCoarse": 99,
-    "staffHits": 70,
-    "skippedMinor": 8
+    "defaultModel": "V5 Full",
+    "onTopicOfficial": 274,
+    "onTopicUnofficial": 33,
+    "refinedOfficial": 212,
+    "refinedUnofficial": 17,
+    "staffHits": 64,
+    "minorsSkipped": 3
   },
   "billboard": [
     {
       "kind": "hero",
-      "kicker": "BILLBOARD · DATASET",
-      "title": "Furry on vs off: same seed, different picture"
+      "kicker": "BILLBOARD · PROSE WINS",
+      "title": "Join the same tags into a sentence",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3fb3c342-cff2-4556-ab28-4aa19f96daf7",
+      "local": "official-occultsage-prose-wins.webp",
+      "cap": "OccultSage · official · prose wins — Mia Halloween broomshot from joined tags"
     },
     {
       "kind": "tile",
-      "kicker": "BOXES",
-      "title": "Box position conditioning is very strong"
+      "kicker": "IOD · TAGS FIRST",
+      "title": "Tag-only prompt kept the FE default look",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/d5c4c8c9-9bea-490f-8bfc-c6fc36c81c4f",
+      "local": "official-occultsage-tags-default.webp",
+      "cap": "OccultSage · official · same brief as tags — Fire Emblem default look before prose"
     },
     {
       "kind": "tile",
-      "kicker": "TEXT",
-      "title": "V5 won't plan your starter pack"
+      "kicker": "IOD · UC TWEAK",
+      "title": "Added 'white background' to the UC",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3d165513-b330-4d07-927e-11562ff69ab8",
+      "local": "official-occultsage-uc-white-bg.png",
+      "cap": "OccultSage · official · UC white-background fix in the same advice thread"
+    },
+    {
+      "kind": "tile",
+      "kicker": "IOD · IN-IMAGE TEXT",
+      "title": "Speech bubbles still need clean Text: handling",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/93660b34-eeee-49c9-890e-4ee6d5980c08",
+      "local": "official-vil-speech-bubble.png",
+      "cap": ".v.i.l. · official · speech bubble with drawn letters (Don't mind me)"
+    },
+    {
+      "kind": "tile",
+      "kicker": "IOD · TAG MIX",
+      "title": "Mega artstyle slots — compress carefully",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3bf8795e-0148-4182-9221-ae20a98fadf3",
+      "local": "official-bicknell-tag-compress-1.png",
+      "cap": "Bicknell125 · official · tag-compression mega-prompt still (glowing eyes / artstyle slots)"
     }
   ],
-  "enshutsuka": [
+  "images": [
     {
-      "teaser": "No new Laboratory board this window; the last one is Monday (Guren).",
-      "body": "Carry Monday's winners forward, minus the withdrawn anchor-tag ladders. The Friday ladder is queued for Guren in Laboratory."
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3fb3c342-cff2-4556-ab28-4aa19f96daf7",
+      "local": "official-occultsage-prose-wins.webp",
+      "cap": "OccultSage · official · prose wins — Mia Halloween broomshot from joined tags",
+      "kicker": "OFFICIAL · staff"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/d5c4c8c9-9bea-490f-8bfc-c6fc36c81c4f",
+      "local": "official-occultsage-tags-default.webp",
+      "cap": "OccultSage · official · same brief as tags — Fire Emblem default look before prose",
+      "kicker": "OFFICIAL · staff"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3d165513-b330-4d07-927e-11562ff69ab8",
+      "local": "official-occultsage-uc-white-bg.png",
+      "cap": "OccultSage · official · UC white-background fix in the same advice thread",
+      "kicker": "OFFICIAL · staff"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/fc9c1312-c3c0-41ce-b795-0bbdaeb5ac31",
+      "local": "official-occultsage-diff-seed.png",
+      "cap": "OccultSage · official · different seed after the UC tweak",
+      "kicker": "OFFICIAL · staff"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/dcc1ddf9-48d8-484d-9054-0a4013d224af",
+      "local": "official-occultsage-metadata-repro.png",
+      "cap": "OccultSage · official · metadata import reproduce before UC/prose fixes",
+      "kicker": "OFFICIAL · staff"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/93660b34-eeee-49c9-890e-4ee6d5980c08",
+      "local": "official-vil-speech-bubble.png",
+      "cap": ".v.i.l. · official · speech bubble with drawn letters (Don't mind me)",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3bf8795e-0148-4182-9221-ae20a98fadf3",
+      "local": "official-bicknell-tag-compress-1.png",
+      "cap": "Bicknell125 · official · tag-compression mega-prompt still (glowing eyes / artstyle slots)",
+      "kicker": "OFFICIAL · community"
     }
   ]
 }

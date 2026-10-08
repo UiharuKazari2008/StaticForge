@@ -3840,6 +3840,13 @@ function buildGalleryItemContextMenuConfig(image, item) {
                         hideOnBreakpoint: "small-mobile"
                     },
                     {
+                        icon: 'fas fa-eye-dropper',
+                        text: 'Use as Comparison Source',
+                        action: 'use-as-compare-source',
+                        // isGalleryCompareSourceAvailable: public/scripts/comp/compareViewManager.js
+                        hidden: () => !isGalleryCompareSourceAvailable()
+                    },
+                    {
                         icon: 'mdi mdi-1-25 mdi-relative-scale',
                         text: 'Expand Canvas',
                         action: 'expand-canvas'
@@ -8093,6 +8100,11 @@ function handleGalleryContextMenuAction(event) {
                 image: image,
                 metadata: image.metadata || null
             }, event);
+            break;
+
+        case 'use-as-compare-source':
+            // setCompareSourceFromGalleryImage: public/scripts/comp/compareViewManager.js
+            setCompareSourceFromGalleryImage(image);
             break;
 
         case 'upscale':

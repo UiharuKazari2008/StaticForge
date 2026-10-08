@@ -28,6 +28,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `director_prompt_guide_push` | `director_prompt_guide_push_response` | admin/destructive | Pushes `director-draft` to the Docubase origin. |
 | `director_reinstall` | `director_reinstall_response` | admin/destructive | Deletes and rebuilds `computer/`. Aborts running turns. Chats and prompt-guide work survive. |
 | `director_rollback_message` | `director_rollback_message_response` | admin/destructive | Handler: handleDirectorRollbackMessage |
+| `director_recycle_session` | `director_recycle_session_response` | admin/destructive | Wren only. Next turn starts a fresh Cursor chat with no transcript replay. Refused with `DIRECTOR_BUSY` while a turn runs or a resume is pending. |
 | `director_save_feedback` | `director_save_feedback_response` | admin/destructive | Handler: handleDirectorSaveFeedback |
 | `director_save_rules` | `director_save_rules_response` | admin/destructive | Handler: handleDirectorSaveRules |
 | `director_send_message` | `director_send_message_response` | admin/destructive | Handler: handleDirectorSendMessage. `persona: "xi"` runs the host agent. |
@@ -353,9 +354,31 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 | `requestId` | Optional |
 | `sessionId` | Chat to stop |
 
-**Success response:** `director_abort_response` with `aborted` true when a running turn was stopped.
+**Success response:** `director_abort_response` with `aborted` true when a running turn was stopped, or when a pending resume (usage-limit wait) was cancelled.
 
-**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+**Errors:** `type: "error"` via `sendError()` - see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `director_recycle_session`
+
+**Auth:** Session required. Admin only (destructive - blocked for readonly)
+
+**Handler:** modules/ws/handlers/40-directorHandler.js -> `handleDirectorRecycleSession`
+
+**Request fields:**
+
+| Field | Notes |
+|---|---|
+| `sessionId` | Wren chat to recycle |
+| `filename` | Optional. A print already in the session strip; it becomes the session image |
+| `requestId` | Optional |
+
+**Success response:** `director_recycle_session_response` with `sessionId` and `filename` (the session image the fresh chat starts from).
+
+The visible history, session image, and task list stay. The next turn opens a new Cursor chat and is prompted like the first turn of a new session.
+
+**Auto recycle:** a turn also starts fresh when the last context fill was 70% or more, or when more than 4 prints in the current Cursor chat share one image chain (`forge_data.chain_source`; prints without one count as the session chain). The server broadcasts `director_session_recycled` `{ sessionId, reason: "context" | "chain", auto: true }` before `director_typing_start`.
+
+**Errors:** `DIRECTOR_BUSY`, `SESSION_NOT_FOUND`, or `type: "error"` via `sendError()`.
 
 ## Xi
 

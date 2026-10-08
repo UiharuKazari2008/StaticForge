@@ -2303,12 +2303,15 @@ class Director {
                 items: [
                     { text: 'Open', icon: 'fas fa-images', action: 'open-print' },
                     { text: 'Show on message', icon: 'fas fa-comment', action: 'show-print', disabled: !messageId },
-                    { text: 'Attach to message', icon: 'fas fa-paperclip', action: 'attach-print' }
+                    { text: 'Attach to message', icon: 'fas fa-paperclip', action: 'attach-print' },
+                    { separator: true },
+                    { text: 'Recycle session', icon: 'fas fa-recycle', action: 'recycle-session', disabled: () => director._running }
                 ]
             }],
             onAction: (action) => {
                 if (action === 'open-print') director.openSessionImage(filename);
                 if (action === 'attach-print') director.attachPrintToComposer(filename);
+                if (action === 'recycle-session') director.recycleSession(filename);
                 if (action === 'show-print' && messageId) {
                     const node = director.directorChatMessages
                         && director.directorChatMessages.querySelector(`[data-message-key="${CSS.escape(String(messageId))}"]`);
@@ -2479,6 +2482,28 @@ class Director {
         this.directorSessionImages.appendChild(fragment);
         this.paintPrintsToggle();
         this.initializeScrollbars();
+    }
+
+    // director_recycle_session: next turn is a fresh Cursor chat from this print (modules/cursorDirector.js)
+    async recycleSession(filename) {
+        const sessionId = this.currentSession && this.currentSession.id;
+        if (!sessionId || this._running) return;
+        try {
+            const result = await this.directorRequest('director_recycle_session', { sessionId, filename });
+            this.noteSessionRecycled({ sessionId, filename: result.filename });
+        } catch (err) {
+            showGlassToast('error', 'Director', err.message || 'Could not recycle the session');
+        }
+    }
+
+    // director_session_recycled (auto) and the manual response
+    noteSessionRecycled(payload) {
+        if (!payload || !this.currentSession || String(payload.sessionId) !== String(this.currentSession.id)) return;
+        this.currentSession.contextPercent = 0;
+        this.currentSession.contextTokens = 0;
+        if (payload.filename) this.currentSession.filename = payload.filename;
+        const why = payload.reason === 'context' ? 'the context was filling up' : (payload.reason === 'chain' ? 'one image chain ran long' : '');
+        showGlassToast('info', null, why ? `Fresh session: ${why}` : 'Session recycled', false, 2400, '<i class="fas fa-recycle"></i>');
     }
 
     openSessionImage(filename) {
@@ -5826,6 +5851,13 @@ class Director {
         window.wsClient.on('director_session_image', (data) => {
             if (window.directorInstance) {
                 window.directorInstance.noteSessionImage(data.data || data);
+            }
+        });
+
+        // Auto recycle: this turn started on a fresh Cursor chat
+        window.wsClient.on('director_session_recycled', (data) => {
+            if (window.directorInstance) {
+                window.directorInstance.noteSessionRecycled(data.data || data);
             }
         });
 
