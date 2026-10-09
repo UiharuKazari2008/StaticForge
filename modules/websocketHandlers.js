@@ -456,6 +456,10 @@ class WebSocketMessageHandlers {
             'add_api_key',
             'update_api_key',
             'unlock_api_service', // JULES: Fix privilege leak for read-only clients on tripwire unlock
+            'create_application_key',
+            'revoke_application_key',
+            'approve_application_auth_request',
+            'deny_application_auth_request',
             'clear_search_cache',
             'refresh_server_cache',
             'recompile_runtime_assets',
