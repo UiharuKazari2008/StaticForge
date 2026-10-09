@@ -250,9 +250,10 @@ User: *find an artist* / *top voted artists* / *who draws like this*
 
 User: *show Explore top this week* / *find community gens of X* / *open that Explore post*
 
-1. `search_explore` — `sort` `new` / `top` / `random`; `period` `day`/`week`/`month`/`all`; optional text `search`; parity filters `model` / `aspect` / `vt: "with"`.
-2. `get_explore_post` `{ "postId": "<uuid>" }` for full prompt + settings + image URL.
-3. In-app WS cousins: [ws/explore.md](./ws/explore.md) (`get_novelai_explore_gallery`, `get_novelai_explore_post`, …).
+1. `search_explore` — default `mode: "compact"` (no image bytes). `sort` `new` / `top` / `hot` / `random`; `period` `day`/`week`/`month`/`all` is applied on text search; `cursor` for the next page; `fields` for a missing key. `model: "nai-diffusion-v4"` is V4.5 Full.
+2. `count_explore` `{ "tags": ["mutual hug"], "period": "week" }` for post and distinct-creator counts. Do not page the gallery to count.
+3. `get_explore_post` `{ "postId": "<uuid>" }` for the compact post. `includeImage: true` or `get_explore_image` `{ "postId" }` for the full image URL only.
+4. In-app WS cousins: [ws/explore.md](./ws/explore.md) (`get_novelai_explore_gallery`, `get_novelai_explore_post`, …).
 
 ## Recipe: memories (search, create, refine)
 

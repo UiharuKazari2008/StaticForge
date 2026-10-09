@@ -113,58 +113,195 @@ function setCache(key, payload) {
     writeDiskEntry(key, entry);
 }
 
+/** Queries that 500 on the upstream tag/tokenizer path when sent with spaces. */
+const EXPLORE_TEXT_QUERY_CASES = [
+    'mutual hug',
+    'double hand grab',
+    'fingers interlaced',
+    'cicada',
+    'clinging',
+    'arms around neck'
+];
+
+/**
+ * Explore's model filter is the image-model id (`system:model:<id>`).
+ * `nai-diffusion-v4` is not an id — V4.5 Full is `nai-diffusion-4-5-full` —
+ * and the upstream search 500s on the unknown slug.
+ */
+const EXPLORE_MODEL_ALIASES = {
+    'nai-diffusion-v4': 'nai-diffusion-4-5-full',
+    'nai-diffusion-v4-full': 'nai-diffusion-4-5-full',
+    'nai-diffusion-v4.5': 'nai-diffusion-4-5-full',
+    'nai-diffusion-v4.5-full': 'nai-diffusion-4-5-full',
+    'nai-diffusion-4.5': 'nai-diffusion-4-5-full',
+    'nai-diffusion-4.5-full': 'nai-diffusion-4-5-full',
+    'v4.5': 'nai-diffusion-4-5-full',
+    'v4_5': 'nai-diffusion-4-5-full',
+    'nai-diffusion-v4-curated': 'nai-diffusion-4-5-curated',
+    'nai-diffusion-v4.5-curated': 'nai-diffusion-4-5-curated',
+    'nai-diffusion-4.5-curated': 'nai-diffusion-4-5-curated',
+    'nai-diffusion-4-curated': 'nai-diffusion-4-curated-preview',
+    v4: 'nai-diffusion-4-full',
+    v3: 'nai-diffusion-3',
+    furry: 'nai-diffusion-furry-3',
+    v5: 'nai-diffusion-5-full',
+    'v5-full': 'nai-diffusion-5-full',
+    'v5-curated': 'nai-diffusion-5-curated',
+    'nai-diffusion-5-full': 'nai-diffusion-5-full',
+    'nai-diffusion-5-curated': 'nai-diffusion-5-curated',
+    'nai-diffusion-4-5-full': 'nai-diffusion-4-5-full',
+    'nai-diffusion-4-5-curated': 'nai-diffusion-4-5-curated',
+    'nai-diffusion-4-full': 'nai-diffusion-4-full',
+    'nai-diffusion-4-curated-preview': 'nai-diffusion-4-curated-preview',
+    'nai-diffusion-3': 'nai-diffusion-3',
+    'nai-diffusion-furry-3': 'nai-diffusion-furry-3'
+};
+
+let exploreRandomSalt = '';
+
+function exploreRandomSaltValue(explicit) {
+    const given = String(explicit || '').trim();
+    if (given) return given.slice(0, 32);
+    if (!exploreRandomSalt) {
+        exploreRandomSalt = Math.random().toString(36).slice(2, 8);
+    }
+    return exploreRandomSalt;
+}
+
 function normalizeSort(sort) {
     const s = String(sort || 'new').toLowerCase();
-    if (s === 'top' || s === 'hot' || s === 'new') return s;
+    if (s === 'top' || s === 'hot' || s === 'new' || s === 'random') return s;
+    if (s === 'created_at' || s === 'latest') return 'new';
     return 'new';
 }
 
 function normalizePeriod(period) {
-    const p = String(period || 'day').toLowerCase();
-    if (p === 'week' || p === 'month' || p === 'day') return p;
+    const p = String(period == null || period === '' ? 'day' : period).trim().toLowerCase();
+    if (p === 'week' || p === 'month' || p === 'day' || p === 'all') return p;
     return 'day';
 }
 
-function buildSearchBody({ sort, period, search, model, aspect, vt, creatorId, offset, limit }) {
-    const selectors = [];
-    let orderers;
+function normalizeExploreModel(model) {
+    const raw = String(model || '').trim().toLowerCase();
+    if (!raw) return '';
+    return EXPLORE_MODEL_ALIASES[raw] || raw;
+}
 
-    const cid = (creatorId || '').trim();
-    if (cid) {
-        // Creator feed: newest first; include moderated posts (no moderation_status filter)
-        orderers = [{ field: 'created_at', sort_direction: 'desc' }];
-        selectors.push({ field: 'creator_id', value: cid });
-    } else {
-        selectors.push({ field: 'moderation_status', value: '1' });
-        if (sort === 'top') {
-            orderers = [{ field: 'top', sort_direction: 'desc' }];
-            selectors.unshift({ field: 'top', value: period });
-        } else if (sort === 'hot') {
-            orderers = [{ field: 'hot', sort_direction: 'desc' }];
-            selectors.unshift({ field: 'top', value: period });
-        } else {
-            orderers = [{ field: 'created_at', sort_direction: 'desc' }];
+/**
+ * Comma-separated tag query → one selector each.
+ * Spaces become underscores. The upstream tokenizer 500s on raw multi-word
+ * values (`mutual hug`, `arms around neck`, …) and on the same path for a
+ * few single tokens when they arrive unnormalized.
+ */
+function exploreSearchTags(search) {
+    const raw = String(search || '').trim();
+    if (!raw) return [];
+    const tags = [];
+    raw.split(',').forEach((part) => {
+        const trimmed = part.trim().replace(/\s+/g, ' ');
+        if (!trimmed) return;
+        const wire = trimmed.replace(/ /g, '_');
+        if (wire) tags.push(wire);
+    });
+    return tags;
+}
+
+function readExploreLikeCount(raw) {
+    if (!raw || typeof raw !== 'object') return 0;
+    const buckets = [raw, raw.stats, raw.counts, raw.image];
+    const keys = ['like_count', 'likes', 'likeCount', 'upvote_count', 'upvotes'];
+    for (let b = 0; b < buckets.length; b++) {
+        const bucket = buckets[b];
+        if (!bucket || typeof bucket !== 'object') continue;
+        for (let k = 0; k < keys.length; k++) {
+            const value = bucket[keys[k]];
+            if (value == null || value === '') continue;
+            const n = Number(value);
+            if (!Number.isFinite(n)) continue;
+            if (n > 0) return n;
         }
     }
+    return 0;
+}
 
-    const q = (search || '').trim();
-    if (q && !cid) {
-        selectors.push({ field: 'tag', value: q });
-    }
-    if (model && !cid) {
-        selectors.push({ field: 'tag', value: 'system:model:' + model });
-    }
-    if (aspect && !cid) {
-        selectors.push({ field: 'tag', value: 'system:aspect:' + aspect });
-    }
-    if (vt === 'with' && !cid) {
-        selectors.push({ field: 'tag', value: 'system:has_vt' });
+function buildSearchBody({
+    sort,
+    period,
+    search,
+    model,
+    aspect,
+    vt,
+    creatorId,
+    offset,
+    limit,
+    honorPeriod,
+    randomSalt
+}) {
+    const selectors = [];
+    const setSelector = (field, value) => {
+        const idx = selectors.findIndex((row) => row.field === field);
+        const next = { field, value };
+        if (idx >= 0) selectors[idx] = next;
+        else selectors.push(next);
+    };
+
+    const cid = (creatorId || '').trim();
+    const pagination = { limit, offset };
+    if (cid) {
+        setSelector('creator_id', cid);
+        return {
+            orderers: [{ field: 'created_at', sort_direction: 'desc' }],
+            selectors,
+            pagination,
+            effectiveSort: 'new',
+            periodApplied: false
+        };
     }
 
+    const textTags = exploreSearchTags(search);
+    const unwindowed = period === 'all';
+    const periodValue = unwindowed ? null : (period || 'day');
+    const periodWanted = !!periodValue && (
+        sort === 'top'
+        || sort === 'hot'
+        || sort === 'random'
+        || (!!honorPeriod && textTags.length > 0)
+    );
+    let effectiveSort = (sort === 'new' || (unwindowed && sort !== 'random')) ? 'new' : sort;
+
+    if (sort === 'random') {
+        const salt = exploreRandomSaltValue(randomSalt);
+        return {
+            orderers: [{ field: 'random', sort_direction: 'desc' }],
+            selectors: [{ field: 'random', value: `${periodValue || 'day'}:${salt}` }],
+            pagination,
+            effectiveSort: 'random',
+            periodApplied: true
+        };
+    }
+
+    if (periodWanted && sort !== 'random') {
+        const rank = sort === 'hot' ? 'hot' : 'top';
+        setSelector(rank, periodValue);
+        effectiveSort = rank === 'hot' ? 'hot' : 'top';
+    }
+
+    textTags.forEach((tag) => {
+        selectors.push({ field: 'tag', value: tag });
+    });
+    const modelSlug = normalizeExploreModel(model);
+    if (modelSlug) selectors.push({ field: 'tag', value: 'system:model:' + modelSlug });
+    if (aspect) selectors.push({ field: 'tag', value: 'system:aspect:' + aspect });
+    if (vt === 'with') selectors.push({ field: 'tag', value: 'system:has_vt' });
+    setSelector('moderation_status', '1');
+
+    const orderField = effectiveSort === 'new' ? 'created_at' : effectiveSort;
     return {
-        orderers,
+        orderers: [{ field: orderField, sort_direction: 'desc' }],
         selectors,
-        pagination: { limit, offset }
+        pagination,
+        effectiveSort,
+        periodApplied: periodWanted && effectiveSort !== 'new'
     };
 }
 
@@ -213,7 +350,7 @@ function normalizeResult(raw) {
         description: raw.description || '',
         created_at: raw.created_at || null,
         moderation_status: raw.moderation_status,
-        like_count: Number.isFinite(Number(raw.like_count)) ? Number(raw.like_count) : 0,
+        like_count: readExploreLikeCount(raw),
         liked_by_self: raw.liked_by_self == null ? null : !!raw.liked_by_self,
         creator: raw.creator
             ? { id: raw.creator.id, name: raw.creator.name }
@@ -1031,36 +1168,79 @@ async function ensureExploreImage(id, kind, opts = {}) {
  * @param {function} [options.getApiKey]
  * @param {object} [options.apiKeyManager]
  */
+function decodeExploreCursor(cursor) {
+    const raw = String(cursor || '').trim();
+    if (!raw) return null;
+    try {
+        const json = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+        const offset = Math.max(0, parseInt(json && json.o, 10) || 0);
+        if (!json || typeof json !== 'object') return null;
+        return { offset };
+    } catch {
+        return null;
+    }
+}
+
+function encodeExploreCursor(offset) {
+    const o = Math.max(0, parseInt(offset, 10) || 0);
+    return Buffer.from(JSON.stringify({ o }), 'utf8').toString('base64url');
+}
+
 async function getExploreGallery(options = {}) {
     if (options.likedBySelf) {
         return getExploreLikedGallery(options);
     }
 
-    const sort = normalizeSort(options.sort);
+    const requestedSort = normalizeSort(options.sort);
     const period = normalizePeriod(options.period);
     const search = (options.search || '').trim();
-    const model = (options.model || '').trim().toLowerCase();
+    const model = normalizeExploreModel(options.model);
     const aspect = (options.aspect || '').trim().toLowerCase();
     const vt = (options.vt || '').trim().toLowerCase();
     const creatorId = (options.creatorId || '').trim();
+    const honorPeriod = !!options.honorPeriod;
     const limit = Math.min(Math.max(parseInt(options.limit, 10) || PAGE_LIMIT, 1), PAGE_LIMIT);
 
     let offset = 0;
-    if (options.offset != null) {
+    if (options.cursor) {
+        const decoded = decodeExploreCursor(options.cursor);
+        if (!decoded) {
+            const err = new Error('Invalid explore cursor');
+            err.status = 400;
+            throw err;
+        }
+        offset = decoded.offset;
+    } else if (options.offset != null) {
         offset = Math.max(0, parseInt(options.offset, 10) || 0);
     } else if (options.page != null) {
         const page = Math.max(1, parseInt(options.page, 10) || 1);
         offset = (page - 1) * limit;
     }
 
-    const baseParams = {
-        sort: creatorId ? 'new' : sort,
+    const previewBody = buildSearchBody({
+        sort: creatorId ? 'new' : requestedSort,
         period,
         search,
         model,
         aspect,
         vt,
-        creatorId
+        creatorId,
+        offset: 0,
+        limit,
+        honorPeriod,
+        randomSalt: options.randomSalt
+    });
+    const sort = previewBody.effectiveSort || requestedSort;
+
+    const baseParams = {
+        sort: creatorId ? 'new' : sort,
+        period,
+        search: exploreSearchTags(search).join(','),
+        model,
+        aspect,
+        vt,
+        creatorId,
+        honorPeriod: honorPeriod ? 1 : 0
     };
 
     const { apiKey, apiKeyManager } = await resolveExploreApiKey(options);
@@ -1095,7 +1275,16 @@ async function getExploreGallery(options = {}) {
         }
 
         const work = (async () => {
-            const body = buildSearchBody(params);
+            const prepared = buildSearchBody({
+                ...params,
+                honorPeriod,
+                randomSalt: options.randomSalt
+            });
+            const body = {
+                orderers: prepared.orderers,
+                selectors: prepared.selectors,
+                pagination: prepared.pagination
+            };
             const raw = await postSearch(body, apiKey, apiKeyManager);
             const rawResults = Array.isArray(raw.results)
                 ? raw.results.map(normalizeResult).filter(Boolean)
@@ -1156,7 +1345,8 @@ async function getExploreGallery(options = {}) {
         results: collected.results,
         pagination: collected.pagination,
         sort: baseParams.sort,
-        period: creatorId || sort === 'new' ? null : period,
+        period: creatorId ? null : (previewBody.periodApplied ? period : null),
+        periodApplied: !!previewBody.periodApplied,
         search,
         creatorId: creatorId || null,
         fromCache: collected.fromCache,
@@ -1679,6 +1869,321 @@ function getExplorePostFromCache(id) {
     return null;
 }
 
+function parseExploreMetadata(raw) {
+    if (!raw) return null;
+    let meta = raw;
+    if (typeof raw === 'string') {
+        try {
+            meta = JSON.parse(raw);
+        } catch {
+            return null;
+        }
+    }
+    if (!meta || typeof meta !== 'object') return null;
+    let comment = meta.Comment || meta.comment || null;
+    if (typeof comment === 'string') {
+        try {
+            comment = JSON.parse(comment);
+        } catch {
+            comment = null;
+        }
+    }
+    const merged = {
+        ...(comment && typeof comment === 'object' ? comment : {}),
+        ...(meta.Comment || meta.comment ? {} : meta)
+    };
+    if (meta.Source || meta.source) merged.source = meta.Source || meta.source;
+    if (meta.Description && !merged.prompt && !merged.Description) merged.Description = meta.Description;
+    if (!merged.prompt) {
+        merged.prompt = (comment && comment.v4_prompt && comment.v4_prompt.caption && comment.v4_prompt.caption.base_caption)
+            || meta.Description
+            || '';
+    }
+    if (!merged.uc) {
+        merged.uc = (comment && comment.v4_negative_prompt && comment.v4_negative_prompt.caption && comment.v4_negative_prompt.caption.base_caption)
+            || '';
+    }
+    return merged;
+}
+
+function exploreCenter(cap) {
+    if (!cap || typeof cap !== 'object') return { x: null, y: null };
+    const raw = Array.isArray(cap.centers) ? cap.centers[0] : cap.center;
+    if (Array.isArray(raw)) return { x: raw[0] ?? null, y: raw[1] ?? null };
+    if (raw && typeof raw === 'object') return { x: raw.x ?? null, y: raw.y ?? null };
+    return { x: null, y: null };
+}
+
+function exploreCharacterRows(meta) {
+    if (!meta) return [];
+    const caps = meta.v4_prompt && meta.v4_prompt.caption && meta.v4_prompt.caption.char_captions;
+    const negs = meta.v4_negative_prompt && meta.v4_negative_prompt.caption && meta.v4_negative_prompt.caption.char_captions;
+    const positive = Array.isArray(caps) ? caps : [];
+    const negative = Array.isArray(negs) ? negs : [];
+    const count = Math.max(positive.length, negative.length);
+    const rows = [];
+    for (let i = 0; i < count; i++) {
+        const prompt = positive[i] && positive[i].char_caption ? String(positive[i].char_caption) : '';
+        const uc = negative[i] && negative[i].char_caption ? String(negative[i].char_caption) : '';
+        if (!prompt && !uc) continue;
+        const center = exploreCenter(positive[i] || negative[i]);
+        rows.push({ prompt, uc, x: center.x, y: center.y });
+    }
+    return rows;
+}
+
+function exploreHasVibe(meta) {
+    if (!meta || typeof meta !== 'object') return false;
+    if (Array.isArray(meta.reference_image_multiple) && meta.reference_image_multiple.length > 0) return true;
+    if (Array.isArray(meta.reference_strength_multiple) && meta.reference_strength_multiple.some((n) => Number(n) > 0)) return true;
+    if (Array.isArray(meta.reference_information_extracted_multiple) && meta.reference_information_extracted_multiple.length > 0) return true;
+    if (meta.vibe_transfer || meta.vibeTransfer) return true;
+    return false;
+}
+
+function exploreModelFromMeta(meta) {
+    if (!meta) return null;
+    const direct = meta.model || meta.model_name || meta.diffusion_model;
+    if (direct) return String(direct);
+    const source = String(meta.source || meta.Source || '');
+    if (/nai-diffusion/i.test(source)) return source;
+    return source || null;
+}
+
+function exploreHashFromMeta(meta) {
+    if (!meta) return null;
+    const hash = meta.hash || meta.image_hash || meta.signed_hash || null;
+    return hash == null || hash === '' ? null : String(hash);
+}
+
+const EXPLORE_COMPACT_KEYS = [
+    'id', 'creator', 'timestamp', 'model', 'hash', 'sampler', 'steps', 'guidance',
+    'rescale', 'seed', 'quality', 'ucPreset', 'prompt', 'uc', 'characters', 'vt',
+    'likes', 'previewUrl', 'thumbnailId'
+];
+
+function compactExplorePost(post, options = {}) {
+    const row = post && typeof post === 'object' ? post : {};
+    const meta = parseExploreMetadata(row.image && row.image.nai_metadata) || parseExploreMetadata(row.nai_metadata) || {};
+    const id = row.id != null ? String(row.id) : '';
+    const creator = row.creator && typeof row.creator === 'object'
+        ? { id: row.creator.id != null ? String(row.creator.id) : null, name: row.creator.name || '' }
+        : { id: row.creator_id != null ? String(row.creator_id) : null, name: '' };
+    const compact = {
+        id,
+        creator,
+        timestamp: row.created_at || row.timestamp || null,
+        model: exploreModelFromMeta(meta),
+        hash: exploreHashFromMeta(meta),
+        sampler: meta.sampler != null ? meta.sampler : null,
+        steps: meta.steps != null ? meta.steps : null,
+        guidance: meta.scale != null ? meta.scale : (meta.guidance != null ? meta.guidance : null),
+        rescale: meta.cfg_rescale != null ? meta.cfg_rescale : (meta.rescale != null ? meta.rescale : null),
+        seed: meta.seed != null ? meta.seed : null,
+        quality: meta.qualityToggle != null ? meta.qualityToggle : (meta.append_quality != null ? meta.append_quality : (meta.quality_preset != null ? meta.quality_preset : null)),
+        ucPreset: meta.ucPreset != null ? meta.ucPreset : (meta.uc_preset != null ? meta.uc_preset : (meta.append_uc != null ? meta.append_uc : null)),
+        prompt: meta.prompt || row.prompt || '',
+        uc: meta.uc || row.uc || '',
+        characters: exploreCharacterRows(meta),
+        vt: exploreHasVibe(meta),
+        likes: readExploreLikeCount(row),
+        previewUrl: row.thumbnailUrl || (id ? publicThumbUrl(id, '') : null),
+        thumbnailId: id || null
+    };
+    if (row.prompt && !compact.prompt) compact.prompt = row.prompt;
+    const extra = {};
+    if (options.includeImage && (row.imageUrl || row.blobUrl)) {
+        extra.imageUrl = row.imageUrl || row.blobUrl;
+    }
+    const requested = Array.isArray(options.fields) ? options.fields : [];
+    requested.forEach((name) => {
+        const key = String(name || '').trim();
+        if (!key || EXPLORE_COMPACT_KEYS.includes(key) || key === 'imageUrl' || key === 'nai_metadata' || key === 'blobUrl') return;
+        if (key === 'title') extra.title = row.title || '';
+        else if (key === 'description') extra.description = row.description || '';
+        else if (key === 'width') extra.width = row.image && row.image.width != null ? row.image.width : null;
+        else if (key === 'height') extra.height = row.image && row.image.height != null ? row.image.height : null;
+        else if (key === 'blurhash') extra.blurhash = row.image && row.image.blurhash ? row.image.blurhash : null;
+        else if (key === 'likedBySelf') extra.likedBySelf = row.liked_by_self == null ? null : !!row.liked_by_self;
+        else if (key === 'noiseSchedule') extra.noiseSchedule = meta.noise_schedule || null;
+        else if (key === 'source') extra.source = meta.source || null;
+        else if (Object.prototype.hasOwnProperty.call(row, key)) extra[key] = row[key];
+    });
+    if (requested.includes('nai_metadata') && row.image && row.image.nai_metadata != null) {
+        extra.nai_metadata = row.image.nai_metadata;
+    }
+    return { ...compact, ...extra };
+}
+
+function shapeExploreSearchForAgent(data, input = {}) {
+    const mode = String((input && input.mode) || 'compact').toLowerCase() === 'full' ? 'full' : 'compact';
+    const rows = Array.isArray(data && data.results) ? data.results
+        : (Array.isArray(data && data.rawResults) ? data.rawResults : []);
+    const extraFields = mode === 'full'
+        ? ['title', 'description', 'width', 'height', 'likedBySelf', 'noiseSchedule']
+        : [];
+    const requested = extraFields.concat(Array.isArray(input && input.fields) ? input.fields : []);
+    const posts = rows.map((row) => compactExplorePost(row, { fields: requested, includeImage: false }));
+    const pagination = data && data.pagination ? data.pagination : {};
+    const hasMore = !!pagination.hasMore;
+    return {
+        success: true,
+        mode,
+        posts,
+        nextCursor: hasMore ? encodeExploreCursor(pagination.nextOffset) : null,
+        pagination: {
+            limit: pagination.limit != null ? pagination.limit : null,
+            offset: pagination.offset != null ? pagination.offset : null,
+            total: pagination.total != null ? pagination.total : null,
+            hasMore
+        },
+        sort: data && data.sort ? data.sort : null,
+        period: data && data.periodApplied ? data.period : (data && data.period ? data.period : null),
+        periodApplied: !!(data && data.periodApplied),
+        search: data && data.search ? data.search : ''
+    };
+}
+
+const EXPLORE_COUNT_MAX_PAGES = 6;
+
+function exploreCreatorId(row) {
+    if (!row || typeof row !== 'object') return '';
+    if (row.creator && row.creator.id != null) return String(row.creator.id);
+    if (row.creator_id != null) return String(row.creator_id);
+    return '';
+}
+
+function exploreInTimeWindow(row, fromMs, toMs) {
+    if (fromMs == null && toMs == null) return true;
+    const ts = Date.parse(row && (row.created_at || row.timestamp));
+    if (!Number.isFinite(ts)) return false;
+    if (fromMs != null && ts < fromMs) return false;
+    if (toMs != null && ts > toMs) return false;
+    return true;
+}
+
+async function scanExploreCount(search, base, windowMs) {
+    const creators = new Set();
+    let scanned = 0;
+    let matched = 0;
+    let posts = null;
+    let offset = 0;
+    let complete = false;
+    const customWindow = windowMs.fromMs != null || windowMs.toMs != null;
+    for (let page = 0; page < EXPLORE_COUNT_MAX_PAGES; page++) {
+        const data = await search({
+            ...base,
+            offset,
+            limit: PAGE_LIMIT,
+            skipThumbPrefetch: true,
+            honorPeriod: !customWindow
+        });
+        const rows = Array.isArray(data && data.results) ? data.results
+            : (Array.isArray(data && data.rawResults) ? data.rawResults : []);
+        rows.forEach((row) => {
+            scanned += 1;
+            const ts = Date.parse(row && (row.created_at || row.timestamp));
+            if (base.creatorId && windowMs.fromMs != null && Number.isFinite(ts) && ts < windowMs.fromMs) {
+                complete = true;
+                return;
+            }
+            if (!exploreInTimeWindow(row, windowMs.fromMs, windowMs.toMs)) return;
+            matched += 1;
+            const id = exploreCreatorId(row);
+            if (id) creators.add(id);
+        });
+        const total = data && data.pagination && data.pagination.total;
+        if (!customWindow && total != null && posts == null) posts = Number(total);
+        const hasMore = !!(data && data.pagination && data.pagination.hasMore);
+        if (!hasMore || rows.length === 0 || complete) {
+            complete = true;
+            break;
+        }
+        offset = data.pagination.nextOffset != null ? data.pagination.nextOffset : offset + rows.length;
+    }
+    if (customWindow) {
+        posts = matched;
+    } else if (posts == null) {
+        posts = matched;
+        complete = complete || scanned === matched;
+    }
+    const creatorsComplete = complete && (posts == null || scanned >= posts || customWindow);
+    return {
+        posts: Number.isFinite(posts) ? posts : matched,
+        creators: creators.size,
+        creatorsComplete
+    };
+}
+
+function exploreCountList(value) {
+    if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean);
+    if (value == null || value === '') return [];
+    return String(value).split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function periodStartMs(period, now = Date.now()) {
+    if (period === 'day') return now - (24 * 60 * 60 * 1000);
+    if (period === 'week') return now - (7 * 24 * 60 * 60 * 1000);
+    if (period === 'month') return now - (30 * 24 * 60 * 60 * 1000);
+    return null;
+}
+
+async function countExplore(options = {}, hooks) {
+    const tags = exploreCountList(options.tags != null ? options.tags : options.tag);
+    const creators = exploreCountList(options.creators != null ? options.creators : options.creatorId);
+    if (!tags.length && !creators.length) {
+        const err = new Error('tags or creators is required');
+        err.status = 400;
+        throw err;
+    }
+    const period = normalizePeriod(options.period);
+    const fromMs = options.from ? Date.parse(options.from) : null;
+    const toMs = options.to ? Date.parse(options.to) : null;
+    const windowMs = {
+        fromMs: Number.isFinite(fromMs) ? fromMs : null,
+        toMs: Number.isFinite(toMs) ? toMs : null
+    };
+    const search = (hooks && typeof hooks.search === 'function')
+        ? hooks.search
+        : (opts) => getExploreGallery(opts);
+    const shared = {
+        sort: options.sort || 'top',
+        period,
+        model: options.model,
+        aspect: options.aspect,
+        vt: options.vt,
+        honorPeriod: true
+    };
+    const periodFrom = periodStartMs(period);
+    const counts = [];
+    for (let i = 0; i < tags.length; i++) {
+        const tag = tags[i];
+        const row = await scanExploreCount(search, { ...shared, search: tag }, windowMs);
+        counts.push({ tag, posts: row.posts, creators: row.creators, creatorsComplete: row.creatorsComplete });
+    }
+    for (let i = 0; i < creators.length; i++) {
+        const creator = creators[i];
+        const creatorWindow = {
+            fromMs: windowMs.fromMs != null ? windowMs.fromMs : periodFrom,
+            toMs: windowMs.toMs
+        };
+        const row = await scanExploreCount(search, { ...shared, creatorId: creator, search: '' }, creatorWindow);
+        counts.push({
+            creator,
+            posts: row.posts,
+            creators: row.posts > 0 ? 1 : 0,
+            creatorsComplete: row.creatorsComplete
+        });
+    }
+    return {
+        success: true,
+        period,
+        from: windowMs.fromMs != null ? new Date(windowMs.fromMs).toISOString() : null,
+        to: windowMs.toMs != null ? new Date(windowMs.toMs).toISOString() : null,
+        counts
+    };
+}
+
 module.exports = {
     initNovelaiExploreGallery,
     setApiKeyResolver,
@@ -1711,5 +2216,15 @@ module.exports = {
     EXPLORE_UPLOAD_TITLE_MIN,
     EXPLORE_UPLOAD_TITLE_MAX,
     PAGE_LIMIT,
-    CACHE_TTL_MS
+    CACHE_TTL_MS,
+    EXPLORE_TEXT_QUERY_CASES,
+    normalizeExploreModel,
+    exploreSearchTags,
+    buildSearchBody,
+    readExploreLikeCount,
+    compactExplorePost,
+    shapeExploreSearchForAgent,
+    encodeExploreCursor,
+    decodeExploreCursor,
+    countExplore
 };

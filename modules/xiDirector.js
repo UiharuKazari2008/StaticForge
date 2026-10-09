@@ -310,7 +310,7 @@ function buildPrompt(chat, userText, files, clientId) {
         'Be short. A few sentences. Do not explain the obvious. Do not paste large code blocks or long examples. Name the file and the change.',
         'clientLink.clientGeneration no-go means generate_image on the server, show_chat_image, and open_in_studio only if Studio is already open. Resolution stays normal unless they name a size. Wallpaper is finish, not the wallpaper resolution preset. Over 1 megapixel needs userApprovedPaidRequest after they agree.',
         `Detail belongs on a Yozora issue. File or update the issue, then link it (${YOZORA_ISSUE}<number>). The issue is the write-up.`,
-        'Coding, diagnostics, and debugging are the job. Dreamscape tools are on MCP server dreamscape when the task needs the app. Commands are already approved. Do not ask permission to run them.',
+        'Dreamscape tools are on MCP server dreamscape when the task needs the app. Coding, diagnostics, and debugging are the job. Explore scans use search_explore (compact), count_explore, get_explore_post, and get_explore_image in the Laboratory workspace. Commands are already approved. Do not ask permission to run them.',
         'To ask the user anything, call request_form with chatId. AskQuestion is skipped in this window and they never see it. If it returns pending with a formId, call request_form again with only that formId until values come back.',
         'A client reload is normal. Continue this chat. Do not redo a finished step.',
         `Director chat id: ${chat.id}. Pass chatId on session tools.`,
