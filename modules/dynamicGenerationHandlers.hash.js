@@ -63,24 +63,8 @@ function generateDirectiveHash(directive) {
         .digest('hex');
 }
 
-/**
- * Generate a hash for the generated system message text
- * Hashes the actual system message content instead of the inputs
- * @param {string} systemMessageText - The generated system message text
- * @returns {string} MD5 hash of the system message text
- */
-function generateSystemMessageHashFromText(systemMessageText) {
-    if (!systemMessageText || typeof systemMessageText !== 'string') {
-        throw new Error('System message text must be a non-empty string');
-    }
-    return crypto.createHash('md5')
-        .update(systemMessageText)
-        .digest('hex');
-}
-
 module.exports = {
     generatePromptHash,
     generateRequestHash,
-    generateDirectiveHash,
-    generateSystemMessageHashFromText
+    generateDirectiveHash
 };
