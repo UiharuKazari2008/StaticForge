@@ -1,5 +1,5 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
-const { getOpusUsageFromAccountData } = require('../../opusUsage');
+const { withBuiltinPresets } = require('../../backgroundOnlyPreset');
 
 const QUIPS_DESTRUCTIVE = { destructive: true };
 
@@ -51,7 +51,7 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
             target_workspace: preset.target_workspace || null,
         });
 
-        const detailedPresets = Object.entries(currentPromptConfig.presets || {}).map(
+        const detailedPresets = Object.entries(withBuiltinPresets(currentPromptConfig.presets || {})).map(
             ([name, preset]) => extractPresetInfo(name, preset)
         );
 
@@ -68,7 +68,7 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
             ok: true,
             user: accountData,
             balance: accountBalance,
-            opusUsage: getOpusUsageFromAccountData(accountData),
+            opusUsage: handlersCtx.globalResources.getOpusUsage(),
             bootCycleId: handlersCtx.globalResources.bootCycleId || null,
             novelaiStatus,
             ...accountHealth,
@@ -126,7 +126,7 @@ async function handleRetryAccountData(handlersCtx, ws, message, clientInfo, wsSe
                 ...accountHealth,
                 user: accountData,
                 balance: accountBalance,
-                opusUsage: getOpusUsageFromAccountData(accountData),
+                opusUsage: handlersCtx.globalResources.getOpusUsage(),
             },
             timestamp: new Date().toISOString()
         });

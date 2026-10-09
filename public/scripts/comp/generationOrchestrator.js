@@ -125,6 +125,10 @@ async function handleManualSave(options = {}) {
     if (options && options.workspaceId) {
         generationParams.target_workspace = options.workspaceId;
     }
+    if (manualBackgroundOnly) {
+        generationParams.backgroundOnly = true;
+        generationParams.forceCharacterBoxesOff = true;
+    }
 
     // Remove skip_pipeline_stages from preset - this is a runtime flag only
     delete generationParams.skip_pipeline_stages;

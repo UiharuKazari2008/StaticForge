@@ -1915,10 +1915,14 @@ function disableDynamicGeneration() {
     }
 }
 
+/** Background scenery preset: character boxes stay off for this editor session. */
+var manualBackgroundOnly = false;
+
 /**
  * Clear manual form - MOVED FROM app.js
  */
 function clearManualForm() {
+    manualBackgroundOnly = false;
     manualSelectedEffort = 'high';
     manualEffortSnapshot = null;
     // Clean up any existing blob URLs
@@ -2580,6 +2584,10 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         requestBody.variety = true;
     }
     // Character prompts
+    if (manualBackgroundOnly) {
+        requestBody.backgroundOnly = true;
+        requestBody.forceCharacterBoxesOff = true;
+    }
     if (values.characterPrompts && values.characterPrompts.length > 0) {
         requestBody.allCharacterPrompts = values.characterPrompts;
         requestBody.use_coords = false;
@@ -3893,6 +3901,13 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             autoPositionBtn.setAttribute('data-state', actualUseCoords ? 'off' : 'on');
         } else {
             clearCharacterPrompts();
+        }
+
+        manualBackgroundOnly = data.backgroundOnly === true
+            || data.forceCharacterBoxesOff === true
+            || !!(data.forge_data && data.forge_data.backgroundOnly === true);
+        if (manualBackgroundOnly && typeof forceCharacterPromptTogglesOff === 'function') {
+            forceCharacterPromptTogglesOff();
         }
 
         updateAutoPositionToggle();

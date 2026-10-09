@@ -13,6 +13,11 @@ const {
 } = require('./promptTextBoundary');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 const { resolveNekoEnumValue } = require('./nekoEnumResolve');
+const {
+    resolvePresetRecord,
+    isBackgroundOnlyRequest,
+    applyBackgroundOnlyToBody
+} = require('./backgroundOnlyPreset');
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
 
@@ -891,13 +896,11 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
         throw new Error(`Failed to load prompt configuration: ${error.message}`);
     }
 
-    // Check if preset exists
-    if (!currentPromptConfig.presets || !currentPromptConfig.presets[presetName]) {
+    // Stored presets win. The Background scenery preset is built in and is not written to prompt config.
+    const preset = resolvePresetRecord(currentPromptConfig.presets, presetName);
+    if (!preset) {
         throw new Error(`Preset "${presetName}" not found`);
     }
-
-    // Get preset configuration
-    const preset = currentPromptConfig.presets[presetName];
 
     // Check for recursion - if preset has image source, throw error
     if (preset.image && preset.image.startsWith('preset:')) {
@@ -1690,6 +1693,9 @@ function stashPromptApplicationBaseline(body, preset, data) {
 
 const buildOptions = async (globalResources, body, preset = null, queryParams = {}, ws = null, handler = null, wsServer = null, stageData = null) => {
     bindRuntimeGlobalResources(globalResources);
+    if (body && typeof body === 'object' && isBackgroundOnlyRequest(body, preset)) {
+        body = applyBackgroundOnlyToBody(body, preset);
+    }
     await resolveDynagenWithWren(globalResources, body, preset, ws, handler, wsServer);
     const referenceMetadataDb = __runtimeGr.getReferenceMetadataDatabase();
     const allowPaid = body.allow_paid ? body.allow_paid : preset?.allow_paid;
@@ -3581,6 +3587,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             append_transparency: body.append_transparency !== undefined ? !!body.append_transparency : !!preset?.append_transparency,
             transparency_bias: body.transparency_bias !== undefined ? Number(body.transparency_bias) : preset?.transparency_bias,
             append_uc: body.append_uc !== undefined ? body.append_uc : preset?.append_uc,
+            backgroundOnly: body.backgroundOnly === true ? true : undefined,
             append_quality_id: selectedQualityId,
             append_uc_id: selectedUcId,
             vibe_transfer: body.vibe_transfer !== undefined ? body.vibe_transfer : (preset && preset.vibe_transfer ? preset.vibe_transfer : undefined),
@@ -4318,6 +4325,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.append_transparency;
     delete apiOpts.transparency_bias;
     delete apiOpts.append_uc;
+    delete apiOpts.backgroundOnly;
+    delete apiOpts.forceCharacterBoxesOff;
+    delete apiOpts.builtin;
     delete apiOpts.input_prompt;
     delete apiOpts.input_uc;
     delete apiOpts.input_prompt_negative;
@@ -4372,6 +4382,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         if (apiCharacters.length > 0) {
             apiOpts.characterPrompts = apiCharacters;
             apiOpts.use_coords = useCoords;
+        } else if (opts.backgroundOnly === true) {
+            delete apiOpts.characterPrompts;
         }
     }
 
@@ -4751,6 +4763,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         }
         if (opts.append_uc !== undefined) {
             forgeData.append_uc = opts.append_uc;
+        }
+        if (opts.backgroundOnly === true) {
+            forgeData.backgroundOnly = true;
         }
         if (opts.effort === 'medium' || opts.effort === 'high') {
             forgeData.effort = opts.effort;
@@ -5349,6 +5364,10 @@ async function generateImageWebSocket(globalResources, body, userType, sessionId
 
     if (!body.model) {
         throw new Error('Invalid request body: model parameter is missing');
+    }
+
+    if (isBackgroundOnlyRequest(body, null)) {
+        body = applyBackgroundOnlyToBody(body, null);
     }
 
     if (body.batch_characters && !options.singlePrint) {
@@ -6598,6 +6617,9 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
 
     // Add dataset config if available (from forge_data)
     const forgeData = actualMetadata.forge_data || {};
+    if (forgeData.backgroundOnly === true) {
+        requestBody.backgroundOnly = true;
+    }
     if (forgeData.dataset_config) {
         requestBody.dataset_config = forgeData.dataset_config;
     }
