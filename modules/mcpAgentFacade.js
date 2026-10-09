@@ -242,13 +242,13 @@ function sanitizeLinkXiPersona(settings) {
 }
 
 const STUDIO_PARAM_SCHEMA = {
-    steps: { type: 'number', description: 'Sampler steps (typical 23–28)' },
+    steps: { type: 'number', description: 'Sampler steps (typical 23–28). V5 Medium forces 14; higher values are clamped.' },
     guidance: { type: 'number', description: 'CFG / prompt guidance (typical 5). 0 is falsy and remaps to 5.5; pass 0.001 for near-zero CFG.' },
     rescale: { type: 'number', description: 'CFG rescale 0–1' },
     sampler: { type: 'string', description: 'k_euler_ancestral (Euler Ancestral), k_dpmpp_sde (DPM++ SDE), k_dpmpp_2m (DPM++ 2M), k_dpmpp_2m_sde (DPM++ 2M SDE), k_euler (Euler), k_dpmpp_2s_ancestral (DPM++ 2S Ancestral)', enum: ['k_euler_ancestral', 'k_dpmpp_sde', 'k_dpmpp_2m', 'k_dpmpp_2m_sde', 'k_euler', 'k_dpmpp_2s_ancestral'] },
     noiseScheduler: { type: 'string', description: 'karras, exponential, or polyexponential', enum: ['karras', 'exponential', 'polyexponential'] },
     model: { type: 'string', description: 'e.g. v5, v5_cur, v4_5, v4_5_cur, v4, v4_cur, v3, furry. Live ids are on tools/list and get_studio_state.settings.models' },
-    effort: { type: 'string', description: 'V5 Full only. high (default, nai-diffusion-5-full) or medium (nai-diffusion-5-full-medium). Medium locks steps to 14, sampler to Euler Ancestral, UC to the heavy preset, and turns rescale off. Guidance still applies.', enum: ['high', 'medium'] },
+    effort: { type: 'string', description: 'V5 Full only. high (default, nai-diffusion-5-full) or medium (nai-diffusion-5-full-medium). Medium forces steps 14, sampler k_euler_ancestral, heavy UC with the user UC dropped, empty character UC, and CFG rescale off. Guidance still applies. Server clamps these even if steps, sampler, rescale, or UC are also set.', enum: ['high', 'medium'] },
     seed: { type: ['string', 'number'], description: 'Specific seed, or "last" to lock last used' },
     seedLock: { type: 'boolean', description: 'true locks last used seed (Studio sprout). false rolls a new variation' },
     resolution: { type: 'string', description: 'Named size (normal_portrait=832x1216, normal_landscape=1216x832, normal_square=1024x1024, normal_wallpaper_landscape=1024x576, normal_wallpaper_portrait=576x1024, large_*, xlarge_*, wallpaper_*, small_*) or custom plus width/height. Live px sizes are on tools/list and get_studio_state.settings.resolutions' },

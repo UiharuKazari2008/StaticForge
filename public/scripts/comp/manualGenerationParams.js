@@ -90,6 +90,15 @@ function attachManualGenerationParamsListeners(signal) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
         const allowStepsTick = createWheelTickGate(400);
         manualSteps.addEventListener('wheel', function (e) {
+            // mediumControlIsLocked: public/scripts/comp/utilities.js — Medium steps stay at 14
+            if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('steps')) {
+                e.preventDefault();
+                if (typeof activeMediumLock === 'function') {
+                    const lock = activeMediumLock();
+                    if (lock) this.value = String(lock.steps);
+                }
+                return;
+            }
             if (!guardWheelTick(e, allowStepsTick)) return;
             const currentValue = parseInt(this.value) || 25;
             const delta = e.deltaY > 0 ? -1 : 1;
@@ -152,6 +161,10 @@ function attachManualGenerationParamsListeners(signal) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
         const allowRescaleTick = createWheelTickGate(400);
         manualRescale.addEventListener('wheel', function (e) {
+            if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('rescale')) {
+                e.preventDefault();
+                return;
+            }
             if (!guardWheelTick(e, allowRescaleTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.0;

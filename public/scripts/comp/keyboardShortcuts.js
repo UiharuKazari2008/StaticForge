@@ -247,10 +247,16 @@ function cycleManualResolutionSizeTier() {
 }
 
 function applyStudioFreeLimits() {
-    const stepsVal = parseInt(manualSteps.value);
-    if (stepsVal > 28) {
-        manualSteps.value = 28;
-        manualSteps.dispatchEvent(new Event('input', { bubbles: true }));
+    const stepsLocked = typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('steps');
+    if (!stepsLocked) {
+        const stepsVal = parseInt(manualSteps.value);
+        if (stepsVal > 28) {
+            manualSteps.value = 28;
+            manualSteps.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    } else if (typeof activeMediumLock === 'function' && manualSteps) {
+        const lock = activeMediumLock();
+        if (lock) manualSteps.value = String(lock.steps);
     }
 
     const resVal = manualResolutionHidden ? manualResolutionHidden.value : '';
@@ -272,8 +278,15 @@ function applyStudioFreeLimits() {
 }
 
 function applyStudioMaximumQuality() {
-    manualSteps.value = 50;
-    manualSteps.dispatchEvent(new Event('input', { bubbles: true }));
+    if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('steps')) {
+        if (typeof activeMediumLock === 'function' && manualSteps) {
+            const lock = activeMediumLock();
+            if (lock) manualSteps.value = String(lock.steps);
+        }
+    } else {
+        manualSteps.value = 50;
+        manualSteps.dispatchEvent(new Event('input', { bubbles: true }));
+    }
 
     const inputResVal = manualResolutionHidden ? manualResolutionHidden.value : '';
     if (inputResVal && !(inputResVal.startsWith('large_') || inputResVal.startsWith('xlarge_') || inputResVal.startsWith('wallpaper_'))) {

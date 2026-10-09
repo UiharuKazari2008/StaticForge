@@ -313,12 +313,14 @@ function determineModelFromMetadata(metadata) {
     // Source is "NovelAI Diffusion V5 DB276663". New V5 hashes are full.
     // JULES:#171
     if (source.includes("NovelAI Diffusion V5")) {
+        // Medium hashes resolve to V5_MEDIUM (forge key v5_medium), not Full and not Curated.
         switch (source) {
+            case "NovelAI Diffusion V5 93F4BD30":
+            case "NovelAI Diffusion V5 70AB5786":
+                return "V5_MEDIUM";
             case "NovelAI Diffusion V5 657484A5":
             case "NovelAI Diffusion V5 0ADF9AB7":
             case "NovelAI Diffusion V5 DB276663":
-            case "NovelAI Diffusion V5 93F4BD30":
-            case "NovelAI Diffusion V5 70AB5786":
                 return "V5";
             default:
                 return "V5";
@@ -377,6 +379,7 @@ function determineModelFromMetadata(metadata) {
 // Helper function to get model display name
 function getModelDisplayName(model) {
     return model === "V5" ? "<span class='model-name'>NovelAI v5</span><span class='badge custom-dropdown-badge'>F</span>" :
+           model === "V5_MEDIUM" ? "<span class='model-name'>NovelAI v5</span><span class='badge custom-dropdown-badge'>M</span>" :
            model === "V5_CUR" ? "<span class='model-name'>NovelAI v5</span><span class='badge custom-dropdown-badge curated-badge'>C</span>" :
            model === "V4_5" ? "<span class='model-name'>NovelAI v4.5</span><span class='badge custom-dropdown-badge'>F</span>" : 
            model === "V4_5_CUR" ? "<span class='model-name'>NovelAI v4.5</span><span class='badge custom-dropdown-badge curated-badge'>C</span>" : 

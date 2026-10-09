@@ -4090,3 +4090,18 @@ body:not(.desktop-mode) div#manualModal {
     pointer-events: none;
 }
 
+#manualModal[data-effort="medium"] .control-row-sampler,
+#manualModal[data-effort="medium"] #manualRescaleGroup {
+    display: none !important;
+}
+
+#manualStepsGroup[data-medium-lock="1"] {
+    cursor: not-allowed;
+}
+
+#manualStepsGroup[data-medium-lock="1"] #manualSteps {
+    pointer-events: none;
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+

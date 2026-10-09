@@ -366,6 +366,7 @@ function exploreFormatModelLabel(parsed) {
     const detected = determineModelFromMetadata({ source: src, Source: src });
     const map = {
         V5: 'NAI Diffusion V5 Full',
+        V5_MEDIUM: 'NAI Diffusion V5 Medium',
         V5_CUR: 'NAI Diffusion V5 Curated',
         V4_5: 'NAI Diffusion V4.5 Full',
         V4_5_CUR: 'NAI Diffusion V4.5 Curated',

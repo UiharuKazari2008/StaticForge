@@ -480,6 +480,9 @@ function renderManualSamplerDropdown(selectedVal) {
  * selectManualSampler('k_dpmpp_2m'); // Selects DPM++ 2M sampler and auto-selects exponential noise scheduler
  */
 function selectManualSampler(value) {
+    if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('sampler') && value !== 'k_euler_ancestral') {
+        value = 'k_euler_ancestral';
+    }
     manualSelectedSampler = value;
 
     // Auto-set noise scheduler based on sampler selection
@@ -2057,6 +2060,10 @@ function renderUcPresetsDropdown() {
  * selectUcPreset(4); // Selects 'Curated' UC preset
  */
 function selectUcPreset(value) {
+    if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('uc')) {
+        const lock = typeof activeMediumLock === 'function' ? activeMediumLock() : null;
+        value = lock && typeof ucPresetLevelFromId === 'function' ? ucPresetLevelFromId(lock.ucPresetId) : 3;
+    }
     // resolvePresetTableForModel: public/scripts/comp/utilities.js
     const ucTable = resolvePresetTableForModel(window.optionsData?.uc_presets, manualSelectedModel);
     if (value > 0 && Array.isArray(ucTable) && !ucTable[value - 1]) {
@@ -3708,6 +3715,10 @@ function onManualRatioWheel(e) {
 }
 
 function onManualSamplerWheel(e) {
+    if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('sampler')) {
+        e.preventDefault();
+        return;
+    }
     if (!guardWheelTick(e, allowManualSamplerTick)) return;
     const current = manualSelectedSampler || 'k_euler_ancestral';
     const idx = SAMPLER_MAP.findIndex((s) => s.meta === current);

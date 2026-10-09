@@ -9,7 +9,7 @@ const {
     verifyGeneratedImage
 } = require('./forgeSigning');
 const { qualityPresetStripCandidates } = require('./promptTextBoundary');
-const { isMediumEffortSource, isMediumEffortSlug } = require('./modelFeatures');
+const { isMediumEffortSource, isMediumEffortSlug, v5SourceForgeCode } = require('./modelFeatures');
 
 // v1.1: dynamic_generation.compiled_prompt is a Wren/agent dg_ expander stamp; v1.0 is Tendai.
 const FORGE_SOFTWARE = 'StaticForge v1.1';
@@ -1173,15 +1173,20 @@ class PngMetadata {
         // first so "V4.5" is never read as V5.
         // JULES:#171
         if (source.includes("NovelAI Diffusion V5")) {
+            // Medium hashes (93F4BD30 / 70AB5786) are v5_medium, not Full and not Curated.
+            // v5SourceForgeCode: modules/modelFeatures.js — metadataSources + effort.medium.sources
+            const v5Code = v5SourceForgeCode(source);
+            if (v5Code === 'V5_MEDIUM') return 'V5_MEDIUM';
             switch (source) {
                 case "NovelAI Diffusion V5 657484A5":
                 case "NovelAI Diffusion V5 0ADF9AB7":
                 case "NovelAI Diffusion V5 DB276663":
+                    return "V5";
                 case "NovelAI Diffusion V5 93F4BD30":
                 case "NovelAI Diffusion V5 70AB5786":
-                    return "V5";
+                    return "V5_MEDIUM";
                 default:
-                    return "V5";
+                    return v5Code || "V5";
             }
         }
         
@@ -1236,7 +1241,7 @@ class PngMetadata {
 
     // Helper: Get model display name
     getModelDisplayName(model) {
-        return model === "V5" ? "V5" : model === "V5_CUR" ? "V5 (Curated)" : model === "V4_5" ? "V4.5" : model === "V4_5_CUR" ? "V4.5 (Curated)" : model === "V4" ? "V4" : model === "V4_CUR" ? "V4 (Curated)" : model === "V3" ? "V3" : "Unknown";
+        return model === "V5" ? "V5" : model === "V5_MEDIUM" ? "V5 Medium" : model === "V5_CUR" ? "V5 (Curated)" : model === "V4_5" ? "V4.5" : model === "V4_5_CUR" ? "V4.5 (Curated)" : model === "V4" ? "V4" : model === "V4_CUR" ? "V4 (Curated)" : model === "V3" ? "V3" : "Unknown";
     }
 
     // Helper: get base name for pairing

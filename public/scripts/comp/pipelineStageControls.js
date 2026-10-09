@@ -1403,6 +1403,10 @@ function setupStageAdvancedControls(stageId) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
         const allowRescaleTick = createWheelTickGate(400);
         rescaleInput.addEventListener('wheel', (e) => {
+            if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('rescale')) {
+                e.preventDefault();
+                return;
+            }
             if (!guardWheelTick(e, allowRescaleTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             // Use custom value if set (including 0), otherwise use inherited
@@ -1448,6 +1452,10 @@ function setupStageAdvancedControls(stageId) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
         const allowSamplerTick = createWheelTickGate(400);
         samplerBtn.addEventListener('wheel', (e) => {
+            if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('sampler')) {
+                e.preventDefault();
+                return;
+            }
             if (!guardWheelTick(e, allowSamplerTick)) return;
             const samplerInput = document.getElementById(`${stageId}_sampler`);
             let current = samplerInput?.value || '';
@@ -1478,6 +1486,10 @@ function setupStageAdvancedControls(stageId) {
         stepsInput.addEventListener('blur', () => {
             let value = parseInt(stepsInput.value);
             if (isNaN(value) || value < 1) value = 1;
+            const lock = typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('steps') && typeof activeMediumLock === 'function'
+                ? activeMediumLock()
+                : null;
+            if (lock && value > lock.steps) value = lock.steps;
             if (value > 50) value = 50;
             if (stepsInput.value !== '') {
                 stepsInput.value = value;
@@ -1491,6 +1503,14 @@ function setupStageAdvancedControls(stageId) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
         const allowStepsTick = createWheelTickGate(400);
         stepsInput.addEventListener('wheel', (e) => {
+            if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('steps')) {
+                e.preventDefault();
+                const lock = typeof activeMediumLock === 'function' ? activeMediumLock() : null;
+                if (lock && stepsInput.value && parseInt(stepsInput.value, 10) > lock.steps) {
+                    stepsInput.value = String(lock.steps);
+                }
+                return;
+            }
             if (!guardWheelTick(e, allowStepsTick)) return;
             // Use inherited value if no custom value set
             const currentValue = stepsInput.value ? parseInt(stepsInput.value) : parseInt(stepsInput.placeholder || 25);

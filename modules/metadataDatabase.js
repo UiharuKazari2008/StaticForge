@@ -11,6 +11,7 @@ const metadataWriteQueue = require('./metadataWriteQueue');
 const { parsePromptSegments } = require('./promptSegments');
 const { isTextColonPrefix, stripTextColonPrefix } = require('./promptTextBoundary');
 const omegasearchFilters = require('./omegasearchFilters');
+const { v5SourceForgeCode } = require('./modelFeatures');
 
 let db = null;
 let readOnlyDb = null;
@@ -2958,6 +2959,7 @@ function isIndexingPaused() {
 /** Forge UI / filter keys (modelGroups) → API slug for text search aliases */
 const MODEL_FORGE_TO_NAI_SLUG = {
     v5: 'nai-diffusion-5-full',
+    v5_medium: 'nai-diffusion-5-full-medium',
     v5_cur: 'nai-diffusion-5-curated',
     v4_5: 'nai-diffusion-4-5-full',
     v4_5_cur: 'nai-diffusion-4-5-curated',
@@ -3412,22 +3414,27 @@ function parseModelSourceFromPngMeta(pngMeta) {
 
 /**
  * Map metadata.source hash to internal forge model code (pngMetadata.js determineModelFromMetadata).
- * @returns {string} V5 | V5_CUR | V4_5 | V4_5_CUR | V4 | V4_CUR | V3 | FURRY | unknown
+ * @returns {string} V5_MEDIUM | V5 | V5_CUR | V4_5 | V4_5_CUR | V4 | V4_CUR | V3 | FURRY | unknown
  */
 function determineForgeModelCode(source) {
     if (!source) return 'unknown';
 
-    // Live image app (2026-09-29): current V5 full Source is DB276663.
-    // Unknown V5 hashes stay full. Curated is only the explicit cases.
-    // JULES:#171
+    // Live image app (2026-10-09): 93F4BD30 / 70AB5786 are V5 Medium (v5_medium).
+    // Other V5 hashes stay Full. Curated is not the V5 default.
+    // v5SourceForgeCode: modules/modelFeatures.js
     if (source.includes('NovelAI Diffusion V5')) {
+        const v5Code = v5SourceForgeCode(source);
+        if (v5Code === 'V5_MEDIUM') return 'V5_MEDIUM';
         switch (source) {
             case 'NovelAI Diffusion V5 657484A5':
             case 'NovelAI Diffusion V5 0ADF9AB7':
             case 'NovelAI Diffusion V5 DB276663':
                 return 'V5';
+            case 'NovelAI Diffusion V5 93F4BD30':
+            case 'NovelAI Diffusion V5 70AB5786':
+                return 'V5_MEDIUM';
             default:
-                return 'V5';
+                return v5Code || 'V5';
         }
     }
 
@@ -8034,6 +8041,7 @@ module.exports = {
     rebuildSearchIndexes,
     setIndexingPaused,
     isIndexingPaused,
+    determineForgeModelCode,
 
     // Checkpoint management - access through wrapper
     getCheckpointManager

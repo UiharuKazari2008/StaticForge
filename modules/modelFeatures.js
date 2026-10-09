@@ -118,6 +118,74 @@ function isV5ForgeModel(forgeModel) {
     return key === 'v5' || key === 'v5_cur' || key.startsWith('v5_');
 }
 
+/**
+ * Forge code for a NovelAI Source string. Medium hashes are v5_medium (V5_MEDIUM),
+ * not Full and not Curated. Other V5 hashes stay Full.
+ * @param {string} source
+ * @param {Record<string, object>|null} [features]
+ * @returns {'V5_MEDIUM'|'V5'|null}
+ */
+function v5SourceForgeCode(source, features = null) {
+    const text = String(source || '');
+    if (!text.includes('NovelAI Diffusion V5')) return null;
+    const listed = new Set(mediumEffortSources('v5', features));
+    const mediumRow = getModelFeatures('v5_medium', features);
+    const extra = mediumRow && Array.isArray(mediumRow.metadataSources) ? mediumRow.metadataSources : [];
+    extra.forEach((row) => listed.add(row));
+    if (listed.has(text)) return 'V5_MEDIUM';
+    return 'V5';
+}
+
+/**
+ * @param {string} code forge code from the PNG parsers (V5_MEDIUM, V5, FURRY, …)
+ * @returns {string|null}
+ */
+function forgeCodeToKey(code) {
+    if (!code || code === 'unknown') return null;
+    if (code === 'FURRY') return 'v3_furry';
+    return String(code).toLowerCase();
+}
+
+/**
+ * Inpaint / infill images use the inpaint API slug. The forge key stays v5_medium.
+ * @param {object|null} meta
+ * @returns {boolean}
+ */
+function metadataIsInpaint(meta) {
+    if (!meta || typeof meta !== 'object') return false;
+    const forge = meta.forge_data && typeof meta.forge_data === 'object' ? meta.forge_data : {};
+    const blobs = [
+        meta.model,
+        forge.model,
+        meta.action,
+        forge.action,
+        forge.request_type,
+        forge.generation_type
+    ].map((value) => String(value || '').toLowerCase());
+    if (blobs.some((value) => value.includes('inpaint') || value === 'infill')) return true;
+    if (meta.mask || forge.mask || forge.mask_compressed) return true;
+    return false;
+}
+
+/**
+ * API slug for a parsed PNG. Medium hashes → nai-diffusion-5-full-medium,
+ * and the inpaint slug when the image is an inpaint.
+ * @param {object|null} meta
+ * @param {Record<string, object>|null} [features]
+ * @returns {string|null}
+ */
+function apiModelForParsedSource(meta, features = null) {
+    const source = meta && (meta.source || meta.Source);
+    const code = v5SourceForgeCode(source, features);
+    if (code === 'V5_MEDIUM') {
+        return resolveApiModelSlug('v5_medium', { inpaint: metadataIsInpaint(meta) }, features);
+    }
+    if (code === 'V5') {
+        return resolveApiModelSlug('v5', { inpaint: metadataIsInpaint(meta) }, features);
+    }
+    return null;
+}
+
 /** Omit-default forge key for MCP / new memories / ranking tests. Pass an explicit model to override. */
 const DEFAULT_FORGE_MODEL = 'v5';
 
@@ -132,5 +200,9 @@ module.exports = {
     mediumEffortSources,
     isMediumEffortSource,
     isMediumEffortSlug,
+    v5SourceForgeCode,
+    forgeCodeToKey,
+    metadataIsInpaint,
+    apiModelForParsedSource,
     DEFAULT_FORGE_MODEL
 };
