@@ -1,6 +1,9 @@
 'use strict';
 
-// Xi is the host-side Director persona. Wren stays in the bubblewrap jail.
+// Xi is the host-side Director persona. Wren keeps its own jail and is not
+// changed here. Xi itself now starts inside bubblewrap: the project and one
+// home-access folder are bind-mounted, HOME is fresh per launch, and the
+// process does not inherit Cursor variables from Dreamscape.
 // This process is detached and unref'd so a Dreamscape restart does not kill
 // the turn. The server reattaches by tailing the turn log. Diffs stay on disk
 // and go to the client only when someone opens that one payload.
@@ -11,6 +14,7 @@ const crypto = require('crypto');
 const os = require('os');
 const { spawn, execFileSync } = require('child_process');
 const director = require('./cursorDirector');
+const xiLaunch = require('./xiLaunch');
 
 const RUN_IDLE_MS = 12 * 60 * 1000;
 const RUN_HARD_MS = 30 * 60 * 1000;
@@ -202,35 +206,40 @@ async function ensureXiMcp(gr) {
     }
 }
 
-function xiEnv() {
-    const env = Object.assign({}, process.env);
-    env.CURSOR_CONFIG_DIR = layout().configDir;
-    
-    try {
-        const authData = JSON.parse(fs.readFileSync(path.join(env.CURSOR_CONFIG_DIR, 'auth.json'), 'utf8'));
-        if (authData.apiKey && !env.CURSOR_API_KEY) {
-            env.CURSOR_API_KEY = authData.apiKey;
-        } else if (authData.accessToken && !env.CURSOR_AUTH_TOKEN) {
-            env.CURSOR_AUTH_TOKEN = authData.accessToken;
-        }
-    } catch (_) {}
-
-    if (xiMcp) {
-        env.DREAMSCAPE_MCP_URL = xiMcp.url;
-        env.DREAMSCAPE_MCP_KEY = xiMcp.key;
-    }
-    env.NO_OPEN_BROWSER = '1';
-    env.GIT_TERMINAL_PROMPT = '0';
-    env.NO_COLOR = '1';
-    return env;
+function mcpLaunchEnv() {
+    if (!xiMcp) return {};
+    return {
+        DREAMSCAPE_MCP_URL: xiMcp.url,
+        DREAMSCAPE_MCP_KEY: xiMcp.key
+    };
 }
 
-function requireAgent() {
-    const bin = director.findAgent();
-    if (bin) return bin;
-    const error = new Error('Cursor is not installed on this host');
-    error.code = 'CURSOR_MISSING';
-    throw error;
+function launchPlan(agentArgs, options) {
+    const opts = options || {};
+    return xiLaunch.buildLaunch({
+        projectDir: opts.projectDir || workspacePath(boundGr),
+        homeAccessDir: opts.homeAccessDir || layout().root,
+        agentArgs: agentArgs || [],
+        extraEnv: Object.assign({}, mcpLaunchEnv(), opts.extraEnv || {}),
+        detach: opts.detach === true,
+        secureConfigPath: opts.secureConfigPath,
+        accountsDir: opts.accountsDir,
+        projectRoot: opts.projectRoot,
+        accountId: opts.accountId,
+        runRoot: opts.runRoot,
+        runHome: opts.runHome,
+        command: opts.command,
+        includeAgent: opts.includeAgent,
+        bwrapBin: opts.bwrapBin,
+        agentBin: opts.agentBin,
+        cwd: opts.cwd,
+        homeDir: opts.homeDir
+    });
+}
+
+function removeRunHome(runHome) {
+    if (!runHome) return;
+    try { fs.rmSync(runHome, { recursive: true, force: true }); } catch (_) { /* already gone */ }
 }
 
 function pidAlive(pid) {
@@ -327,11 +336,15 @@ function buildPrompt(chat, userText, files, clientId) {
 
 function createCursorChat(workspace) {
     return new Promise((resolve, reject) => {
-        const child = spawn(requireAgent(), ['create-chat', '--workspace', workspace], {
-            cwd: workspace,
-            env: xiEnv(),
+        const plan = launchPlan(['create-chat', '--workspace', workspace], {
+            projectDir: workspace,
+            detach: false
+        });
+        const child = spawn(plan.bin, plan.args, {
+            env: plan.hostEnv,
             stdio: ['ignore', 'pipe', 'pipe']
         });
+        const dropHome = () => removeRunHome(plan.runHome);
         let out = '';
         let err = '';
         let settled = false;
@@ -362,8 +375,12 @@ function createCursorChat(workspace) {
             }
         });
         child.stderr.on('data', (buf) => { err += buf.toString(); });
-        child.on('error', (error) => finish(reject, error));
+        child.on('error', (error) => {
+            dropHome();
+            finish(reject, error);
+        });
         child.on('close', (code) => {
+            dropHome();
             const id = chatId();
             if (id) {
                 finish(resolve, id);
@@ -465,6 +482,7 @@ function finishRun(run, why) {
         if (!text && !rows.length) run.stream.error = 'Xi stopped before it replied';
     }
     run.settled = true;
+    removeRunHome(run.runHome);
     if (run.stopPrintWatch) {
         try { run.stopPrintWatch(); } catch (_) { /* watcher already closed */ }
         run.stopPrintWatch = null;
@@ -675,17 +693,27 @@ function prepareXi(gr) {
 // PM2 treekill kills every descendant of the server on restart. The shell
 // backgrounds the agent and exits, so the agent reparents off the server.
 function spawnDetached(args, logPath, workspace) {
-    const out = execFileSync('/bin/sh', [
-        '-c',
-        'log="$1"; shift; setsid "$@" >>"$log" 2>&1 </dev/null & echo $!',
-        'xi-spawn',
-        logPath,
-        requireAgent(),
-        ...args
-    ], { cwd: workspace, env: xiEnv(), encoding: 'utf8', timeout: 10000 });
+    const plan = launchPlan(args, { projectDir: workspace, detach: true });
+    let out = '';
+    try {
+        out = execFileSync('/bin/sh', [
+            '-c',
+            'log="$1"; shift; setsid "$@" >>"$log" 2>&1 </dev/null & echo $!',
+            'xi-spawn',
+            logPath,
+            plan.bin,
+            ...plan.args
+        ], { cwd: workspace, env: plan.hostEnv, encoding: 'utf8', timeout: 10000 });
+    } catch (err) {
+        removeRunHome(plan.runHome);
+        throw err;
+    }
     const pid = parseInt(String(out).trim(), 10);
-    if (!Number.isFinite(pid) || pid <= 0) throw new Error('Xi agent did not start');
-    return pid;
+    if (!Number.isFinite(pid) || pid <= 0) {
+        removeRunHome(plan.runHome);
+        throw new Error('Xi agent did not start');
+    }
+    return { pid, runHome: plan.runHome };
 }
 
 function getActiveXiAccountId(gr) {
@@ -999,9 +1027,10 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             '--',
             prepared.prompt
         ];
-        const pid = spawnDetached(args, log, workspace);
+        const started = spawnDetached(args, log, workspace);
         const meta = {
-            pid,
+            pid: started.pid,
+            runHome: started.runHome,
             sessionId,
             log,
             draftId,
@@ -1233,5 +1262,5 @@ module.exports = {
     handleDirectorAbort,
     handleDirectorForkSession,
     handleDirectorToolDiff,
-    _test: { shouldPark, markToolDiffs, readToolDiffText, buildPrompt }
+    _test: { shouldPark, markToolDiffs, readToolDiffText, buildPrompt, launchPlan }
 };
