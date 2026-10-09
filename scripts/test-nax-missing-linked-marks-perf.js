@@ -12,10 +12,10 @@ function testMissingLinkedMarks() {
         fs.unlinkSync(testDbPath);
     }
 
-    naxTagsDatabase.initializeNaxTagsDatabase(testDbPath);
-    const db = naxTagsDatabase.getDb();
-
-    db.exec(`
+    // getDb() returns null unless the DB file exists, so seed the schema first
+    fs.mkdirSync(path.dirname(testDbPath), { recursive: true });
+    const seed = new Database(testDbPath);
+    seed.exec(`
         CREATE TABLE IF NOT EXISTS nax_galleries (
             slug TEXT PRIMARY KEY,
             title TEXT,
@@ -38,6 +38,11 @@ function testMissingLinkedMarks() {
             is_custom INTEGER DEFAULT 0
         );
     `);
+    seed.close();
+
+    naxTagsDatabase.initializeNaxTagsDatabase(testDbPath);
+    const db = naxTagsDatabase.getDb();
+    assert.ok(db, 'NAX tags DB should open');
 
     // Insert test galleries from first merge group: 'danbooru-artist-tags-v4' & 'danbooru-artist-tags-v4.5'
     const insertGallery = db.prepare('INSERT INTO nax_galleries (slug, title) VALUES (?, ?)');
