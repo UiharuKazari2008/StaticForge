@@ -1232,9 +1232,6 @@ function listMissingLinkedMarks(markFilter) {
     const wantTry = markFilter === 'try';
     const markSql = wantTry ? 'try_mark = 1' : 'favorite = 1';
     const galleryExists = d.prepare('SELECT 1 AS ok FROM nax_galleries WHERE slug = ?');
-    const tagExistsStmt = d.prepare(
-        'SELECT 1 AS ok FROM nax_tags WHERE gallery_slug = ? AND tag = ?'
-    );
     const out = [];
     for (const group of NAX_FAVORITE_MERGE_GROUPS) {
         const slugs = group.filter((slug) => !!galleryExists.get(slug));
@@ -1244,12 +1241,27 @@ function listMissingLinkedMarks(markFilter) {
             SELECT DISTINCT tag FROM nax_tags
             WHERE gallery_slug IN (${placeholders}) AND ${markSql}
         `).all(...slugs);
+        if (!tags.length) continue;
+
+        const existingRows = d.prepare(`
+            SELECT gallery_slug, tag FROM nax_tags
+            WHERE gallery_slug IN (${placeholders})
+              AND tag IN (
+                  SELECT DISTINCT tag FROM nax_tags
+                  WHERE gallery_slug IN (${placeholders}) AND ${markSql}
+              )
+        `).all(...slugs, ...slugs);
+
+        const existingSet = new Set(
+            existingRows.map((r) => `${r.gallery_slug}\0${r.tag}`)
+        );
+
         for (let i = 0; i < tags.length; i++) {
             const tag = tags[i] && tags[i].tag;
             if (!tag) continue;
             for (let s = 0; s < slugs.length; s++) {
                 const gallerySlug = slugs[s];
-                if (!tagExistsStmt.get(gallerySlug, tag)) {
+                if (!existingSet.has(`${gallerySlug}\0${tag}`)) {
                     out.push({
                         tag,
                         gallerySlug,
