@@ -6,6 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const USAGE_URL = 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage';
+const PLAN_URL = 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo';
 const CACHE_MS = 60 * 1000;
 
 let caches = {};
@@ -93,7 +94,66 @@ function daysLeftFromEnd(endMs, now = Date.now()) {
     return Math.ceil(ms / 86400000);
 }
 
-function summarize(body, now = Date.now()) {
+const PLAN_LABELS = {
+    free: 'Free',
+    hobby: 'Hobby',
+    pro: 'Pro',
+    pro_plus: 'Pro+',
+    proplus: 'Pro+',
+    ultra: 'Ultra',
+    business: 'Business',
+    enterprise: 'Enterprise',
+    team: 'Team'
+};
+
+function formatPlanName(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    const key = text.toLowerCase().replace(/[\s-]+/g, '_');
+    if (PLAN_LABELS[key]) return PLAN_LABELS[key];
+    return text;
+}
+
+function planLabelFrom(planBody, usageBody) {
+    const info = planBody && (planBody.planInfo || planBody);
+    const fromPlan = info && (info.planName || info.plan || info.membershipType);
+    const fromUsage = usageBody && (usageBody.membershipType || usageBody.planName);
+    return formatPlanName(fromPlan) || formatPlanName(fromUsage) || '—';
+}
+
+function centsNumber(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+function formatUsdFromCents(cents) {
+    if (cents == null) return '—';
+    const dollars = cents / 100;
+    const abs = Math.abs(dollars).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return dollars < 0 ? `-$${abs}` : `$${abs}`;
+}
+
+function costFromUsage(body) {
+    const plan = body && body.planUsage ? body.planUsage : {};
+    const spend = body && body.spendLimitUsage ? body.spendLimitUsage : {};
+    const included = centsNumber(plan.totalSpend);
+    const onDemandRaw = spend.individualUsed != null ? spend.individualUsed : spend.totalSpend;
+    const onDemand = centsNumber(onDemandRaw);
+    let total = null;
+    if (included != null || onDemand != null) total = (included || 0) + (onDemand || 0);
+    const limit = centsNumber(plan.limit);
+    const parts = [];
+    if (included != null) parts.push(`Included ${formatUsdFromCents(included)}`);
+    if (onDemand != null && onDemand > 0) parts.push(`On-demand ${formatUsdFromCents(onDemand)}`);
+    if (limit != null && included != null) parts.push(`plan allowance ${formatUsdFromCents(limit)}`);
+    return {
+        costCents: total,
+        costLabel: total == null ? '—' : formatUsdFromCents(total),
+        costTitle: parts.join(' · ') || 'API usage cost unavailable'
+    };
+}
+
+function summarize(body, now = Date.now(), planBody = null) {
     const plan = body && body.planUsage ? body.planUsage : {};
     const percent = roundPercent(plan.totalPercentUsed);
     const autoPercent = roundPercent(plan.autoPercentUsed);
@@ -112,6 +172,7 @@ function summarize(body, now = Date.now()) {
         parts.push(daysLeft === 0 ? 'Billing cycle ended' : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`);
     }
     const daysLabel = daysLeft == null ? '—' : (daysLeft === 1 ? '1 day' : `${daysLeft} days`);
+    const cost = costFromUsage(body);
     return {
         percent,
         autoPercent,
@@ -121,7 +182,11 @@ function summarize(body, now = Date.now()) {
         daysLabel,
         cycleEnd: endMs,
         title: parts.join(' · ') || 'Cursor usage',
-        label: percent == null ? '—' : `${percent}%`
+        label: percent == null ? '—' : `${percent}%`,
+        plan: planLabelFrom(planBody, body),
+        costCents: cost.costCents,
+        costLabel: cost.costLabel,
+        costTitle: cost.costTitle
     };
 }
 
@@ -135,7 +200,11 @@ function publicAccountUsage(usage) {
             autoPercent: null,
             apiPercent: null,
             daysLeft: null,
-            daysLabel: '—'
+            daysLabel: '—',
+            plan: '—',
+            costCents: null,
+            costLabel: '—',
+            costTitle: 'API usage cost unavailable'
         };
     }
     return {
@@ -146,7 +215,11 @@ function publicAccountUsage(usage) {
         autoPercent: usage.autoPercent == null ? null : usage.autoPercent,
         apiPercent: usage.apiPercent == null ? null : usage.apiPercent,
         daysLeft: Number.isFinite(usage.daysLeft) ? usage.daysLeft : null,
-        daysLabel: usage.daysLabel || '—'
+        daysLabel: usage.daysLabel || '—',
+        plan: usage.plan || '—',
+        costCents: usage.costCents == null ? null : usage.costCents,
+        costLabel: usage.costLabel || '—',
+        costTitle: usage.costTitle || 'API usage cost unavailable'
     };
 }
 
@@ -234,8 +307,8 @@ function refreshCliAuth() {
     });
 }
 
-async function fetchUsage(token) {
-    const response = await fetch(USAGE_URL, {
+async function postDashboard(url, token) {
+    return fetch(url, {
         method: 'POST',
         headers: {
             Authorization: `Bearer ${token}`,
@@ -244,15 +317,32 @@ async function fetchUsage(token) {
         },
         body: '{}'
     });
-    if (response.status === 401) {
+}
+
+async function fetchUsage(token) {
+    const dash = await fetchDashboard(token);
+    return dash.usage;
+}
+
+async function fetchDashboard(token) {
+    const [usageRes, planRes] = await Promise.all([
+        postDashboard(USAGE_URL, token),
+        postDashboard(PLAN_URL, token)
+    ]);
+    if (usageRes.status === 401) {
         const error = new Error('Cursor login expired');
         error.code = 'CURSOR_LOGIN';
         throw error;
     }
-    if (!response.ok) {
-        throw new Error(`Cursor usage returned ${response.status}`);
+    if (!usageRes.ok) {
+        throw new Error(`Cursor usage returned ${usageRes.status}`);
     }
-    return response.json();
+    const usage = await usageRes.json();
+    let plan = null;
+    if (planRes.ok) {
+        try { plan = await planRes.json(); } catch (_) {}
+    }
+    return { usage, plan };
 }
 
 async function getCursorUsage(persona = 'wren') {
@@ -261,9 +351,9 @@ async function getCursorUsage(persona = 'wren') {
     if (cached && now - cached.at < CACHE_MS) return cached.value;
 
     let { token, activeId } = readAccessToken(persona);
-    let body;
+    let dash;
     try {
-        body = await fetchUsage(token);
+        dash = await fetchDashboard(token);
     } catch (error) {
         if (error.code !== 'CURSOR_LOGIN') throw error;
         const refreshed = await refreshCliAuth();
@@ -271,8 +361,9 @@ async function getCursorUsage(persona = 'wren') {
         const auth = readAccessToken(persona);
         token = auth.token;
         activeId = auth.activeId;
-        body = await fetchUsage(token);
+        dash = await fetchDashboard(token);
     }
+    const body = dash.usage;
 
     const cursorAccountAuthStore = require('./cursorAccountAuthStore');
     let email = cursorAccountAuthStore.extractEmailFromToken(token);
@@ -290,7 +381,7 @@ async function getCursorUsage(persona = 'wren') {
     }
 
     const value = {
-        ...summarize(body),
+        ...summarize(body, Date.now(), dash.plan),
         persona,
         activeAccountId: activeId,
         accountEmail: email || ''
@@ -330,9 +421,9 @@ async function getCursorUsageForAccount(accountId) {
         return empty;
     }
 
-    let body;
+    let dash;
     try {
-        body = await fetchUsage(token);
+        dash = await fetchDashboard(token);
     } catch (error) {
         const failed = {
             ...summarize(null),
@@ -344,8 +435,9 @@ async function getCursorUsageForAccount(accountId) {
         rememberUsage(null, id, failed);
         return failed;
     }
+    const body = dash.usage;
     const value = {
-        ...summarize(body),
+        ...summarize(body, Date.now(), dash.plan),
         persona: personaHit,
         activeAccountId: id,
         accountEmail: emailForAccount(id, token)
@@ -388,5 +480,5 @@ module.exports = {
     publicAccountUsage,
     invalidateCursorUsage,
     handleDirectorGetCursorUsage,
-    _test: { summarize, roundPercent, cycleEndMs, daysLeftFromEnd, publicAccountUsage }
+    _test: { summarize, roundPercent, cycleEndMs, daysLeftFromEnd, publicAccountUsage, formatPlanName, formatUsdFromCents, costFromUsage }
 };

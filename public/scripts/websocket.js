@@ -474,6 +474,7 @@ class BannerManager {
             'set_user_pin': 'Set User PIN',
             'set_user_pin_login_enabled': 'Toggle User PIN',
             'list_application_keys': 'List App Keys',
+            'list_application_request_log': 'App Request Log',
             'create_application_key': 'Create App Key',
             'revoke_application_key': 'Revoke App Key',
             'approve_application_auth_request': 'Approve App Auth',
@@ -7418,6 +7419,10 @@ class WebSocketClient {
 
     async listApplicationKeys() {
         return this.sendMessage('list_application_keys', {});
+    }
+
+    async listApplicationRequestLog(page = 1, perPage = 25) {
+        return this.sendMessage('list_application_request_log', { page, perPage });
     }
 
     async getApplicationAuthScopes() {

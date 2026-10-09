@@ -87,6 +87,11 @@ function securityDsapBuildUrl(view, query = {}) {
     return qs ? `${base}?${qs}` : base;
 }
 
+function securityDsapAppkeyIsInactive(key) {
+    const status = String((key && key.status) || '');
+    return status === 'expired' || status === 'replaced' || status === 'revoked';
+}
+
 function securityDsapShortUserAgent(ua) {
     const s = String(ua || '');
     return s.length > 52 ? `${s.slice(0, 49)}…` : s;
@@ -279,57 +284,36 @@ ${dsapSmfBuildHeader({
     <p class="sec-pins-note"><i class="fas fa-info-circle"></i> PIN values are stored in config.json (plain text). Leave fields blank to keep current values.</p>
   </div>
 
-  <div class="sec-dsap-section-hdr sec-sub-hdr"><i class="fas fa-user-gear"></i> Cursor Accounts (Wren / Xi)</div>
+  <div class="sec-dsap-section-hdr sec-sub-hdr"><i class="fas fa-user-gear"></i> Director Accounts (Cursor)</div>
   <div class="sec-dsap-statusbox" id="secCursorAccountsStatus">
-    <span class="sec-dsap-status-message" id="secCursorAccountsStatusMessage">Loading Cursor account settings…</span>
+    <span class="sec-dsap-status-message" id="secCursorAccountsStatusMessage">Loading Director accounts…</span>
   </div>
   <div class="sec-toolbar">
     <button type="button" id="secCursorAccountsRefresh" class="sec-dsap-action-btn"><i class="fas fa-sync"></i> Refresh</button>
     <button type="button" id="secCursorAccountsAddBtn" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-plus"></i> Add Account Profile</button>
   </div>
-  <div id="secCursorAccountsLoading" class="sec-dsap-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading Cursor accounts…</div>
+  <div id="secCursorAccountsLoading" class="sec-dsap-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading Director accounts…</div>
   <div id="secCursorAccountsError" class="sec-dsap-error hidden"><i class="fas fa-exclamation-triangle"></i> <span id="secCursorAccountsErrorText">Failed to load</span></div>
   <div id="secCursorAccountsContent" class="sec-pins-content hidden">
-    <p class="sec-dsap-settings-intro">Manage active Cursor account profiles and credentials for Wren (Dreamspace Persona) and Xi (Host Agent).</p>
-    <table class="sec-dsap-settings-table" cellspacing="0" cellpadding="4" border="0" width="100%">
-      <tr>
-        <td class="sec-dsap-setting-label"><strong>Wren Account</strong><br><span class="sec-dsap-setting-hint">Dreamspace Studio</span></td>
-        <td class="sec-dsap-setting-control">
-          <span class="sec-dsap-setting-hint">Active Profile:</span>
-          <select id="secWrenAccountSelect" class="sec-input" style="max-width: 220px; display: inline-block; padding: 4px 8px; margin-right: 6px;"></select>
-          <button type="button" id="secSwitchWrenAccount" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-exchange-alt"></i> Switch Wren</button>
-          <span id="secWrenAccountStatus" class="sec-pin-status">—</span>
-        </td>
-      </tr>
-      <tr>
-        <td class="sec-dsap-setting-label"><strong>Xi Account</strong><br><span class="sec-dsap-setting-hint">Host Cursor Agent</span></td>
-        <td class="sec-dsap-setting-control">
-          <span class="sec-dsap-setting-hint">Active Profile:</span>
-          <select id="secXiAccountSelect" class="sec-input" style="max-width: 220px; display: inline-block; padding: 4px 8px; margin-right: 6px;"></select>
-          <button type="button" id="secSwitchXiAccount" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-exchange-alt"></i> Switch Xi</button>
-          <span id="secXiAccountStatus" class="sec-pin-status">—</span>
-        </td>
-      </tr>
-    </table>
-
-    <div class="sec-dsap-section-hdr sec-sub-hdr" style="margin-top: 14px; font-size: 0.9em;">Configured Account Profiles</div>
+    <p class="sec-dsap-settings-intro">Cursor profiles for Wren and Xi. Activate a profile in its column. Highlighted rows need a fresh login.</p>
     <div id="secCursorAccountsTableWrap" class="sec-table-wrap hidden">
       <table class="sec-data-table" cellspacing="0" cellpadding="4" width="100%" border="1">
         <thead>
           <tr>
             <th align="left">Profile Name</th>
-            <th align="left">Email / Account ID</th>
-            <th align="center" width="70">Usage</th>
-            <th align="center" width="80">Days left</th>
             <th align="center" width="90">Wren</th>
             <th align="center" width="90">Xi</th>
-            <th align="center" width="210">Actions</th>
+            <th align="center" width="70">Plan</th>
+            <th align="center" width="70">Usage</th>
+            <th align="center" width="80">Cost</th>
+            <th align="center" width="70">Days left</th>
+            <th align="center" width="220">Actions</th>
           </tr>
         </thead>
         <tbody id="secCursorAccountsTableBody"></tbody>
       </table>
     </div>
-    <div id="secCursorAccountsEmpty" class="sec-dsap-empty hidden"><i class="fas fa-user-slash"></i> No additional account profiles configured</div>
+    <div id="secCursorAccountsEmpty" class="sec-dsap-empty hidden"><i class="fas fa-user-slash"></i> No account profiles configured</div>
   </div>
 
   <div id="secCursorAccountPanel" class="sec-details-panel hidden">
@@ -340,9 +324,13 @@ ${dsapSmfBuildHeader({
     <div class="sec-details-body sec-appkeys-form">
       <input type="hidden" id="secCursorAccountIdInput" value="">
       <label>Profile Name<input type="text" id="secCursorAccountNameInput" class="sec-input" placeholder="e.g. Main Account, Work Account"></label>
+      <div class="sec-readonly-row"><span class="sec-dsap-setting-hint">Display name</span> <span id="secCursorAccountDisplayName" class="sec-readonly-value">—</span></div>
       <label>Badge color<input type="text" id="secCursorAccountColorInput" class="sec-input" placeholder="#5b8def" maxlength="7"></label>
       <label>Email Address<input type="text" id="secCursorAccountEmailInput" class="sec-input" placeholder="user@example.com (auto-detected if token is pasted)"></label>
       <label>API Key / Access Token / auth.json JSON<textarea id="secCursorAccountTokenInput" class="sec-input" rows="3" style="font-family: monospace; font-size: 0.85em;" placeholder="Paste Cursor API Key (sk-...), Access Token (eyJ...), or auth.json JSON object"></textarea></label>
+      <div class="sec-appkeys-form-actions">
+        <button type="button" id="secCursorAccountCopyToken" class="sec-dsap-action-btn sec-btn-small" title="Copy the token in this field"><i class="fas fa-copy"></i> Copy token</button>
+      </div>
       <div class="sec-appkeys-form-actions">
         <button type="button" id="secCursorAccountSubmitSave" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-save"></i> Save Profile</button>
       </div>
@@ -408,6 +396,7 @@ ${dsapSmfBuildHeader({
   </div>
   <div class="sec-toolbar">
     <button type="button" id="secAppkeysRefresh" class="sec-dsap-action-btn"><i class="fas fa-sync"></i> Refresh</button>
+    <button type="button" id="secAppkeysLogBtn" class="sec-dsap-action-btn"><i class="fas fa-list"></i> Request log</button>
     <button type="button" id="secAppkeysCreateBtn" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-plus"></i> Create Key</button>
   </div>
   <div id="secAppkeysLoading" class="sec-dsap-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading application keys…</div>
@@ -442,7 +431,7 @@ ${dsapSmfBuildHeader({
       <tbody id="secAppkeysTableBody"></tbody>
     </table>
   </div>
-  <div id="secAppkeysEmpty" class="sec-dsap-empty hidden"><i class="fas fa-plug"></i> No application keys registered</div>
+  <div id="secAppkeysEmpty" class="sec-dsap-empty hidden"><i class="fas fa-plug"></i> No active application keys</div>
   <div id="secAppkeysCreatePanel" class="sec-details-panel hidden">
     <div class="sec-details-header">
       <strong>Create Application Key</strong>
@@ -472,6 +461,62 @@ ${dsapSmfBuildHeader({
         <button type="button" id="secAppkeySubmitCreate" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-check"></i> Issue Key</button>
       </div>
       <div id="secAppkeyCreateResult" class="sec-appkey-result hidden"></div>
+    </div>
+  </div>
+
+  <div id="secAppkeysLogPage" class="sec-appkeys-log hidden">
+    <div class="sec-dsap-section-hdr">Application requests</div>
+    <div class="sec-dsap-statusbox" id="secAppkeysLogStatus">
+      <span class="sec-dsap-status-message" id="secAppkeysLogStatusMessage">Request log</span>
+    </div>
+    <div class="sec-toolbar">
+      <button type="button" id="secAppkeysLogBack" class="sec-dsap-action-btn"><i class="fas fa-arrow-left"></i> Back</button>
+      <button type="button" id="secAppkeysLogRefresh" class="sec-dsap-action-btn"><i class="fas fa-sync"></i> Refresh</button>
+      <button type="button" class="sec-dsap-action-btn sec-applog-tab active" data-sec-applog-tab="requests">Requests</button>
+      <button type="button" class="sec-dsap-action-btn sec-applog-tab" data-sec-applog-tab="inactive">Inactive keys</button>
+    </div>
+    <div id="secAppkeysLogRequests">
+      <div id="secAppkeysLogLoading" class="sec-dsap-loading hidden"><i class="fas fa-spinner-third fa-spin"></i> Loading requests…</div>
+      <div id="secAppkeysLogError" class="sec-dsap-error hidden"><i class="fas fa-exclamation-triangle"></i> <span id="secAppkeysLogErrorText">Failed to load</span></div>
+      <div id="secAppkeysLogTableWrap" class="sec-table-wrap hidden">
+        <table class="sec-data-table" cellspacing="0" cellpadding="4" width="100%" border="1">
+          <thead>
+            <tr>
+              <th align="left">Time</th>
+              <th align="left">Application</th>
+              <th align="center" width="70">Method</th>
+              <th align="left">Path</th>
+              <th align="center" width="60">Status</th>
+              <th align="left">IP</th>
+            </tr>
+          </thead>
+          <tbody id="secAppkeysLogTableBody"></tbody>
+        </table>
+      </div>
+      <div id="secAppkeysLogEmpty" class="sec-dsap-empty hidden"><i class="fas fa-list"></i> No application requests recorded yet</div>
+      <div class="sec-pager" id="secAppkeysLogPager">
+        <button type="button" class="sec-dsap-action-btn sec-btn-small" id="secAppkeysLogPrev"><i class="fas fa-chevron-left"></i> Prev</button>
+        <span class="sec-pager-info"><span id="secAppkeysLogPageLabel">1</span> / <span id="secAppkeysLogTotalPages">1</span></span>
+        <button type="button" class="sec-dsap-action-btn sec-btn-small" id="secAppkeysLogNext">Next <i class="fas fa-chevron-right"></i></button>
+      </div>
+    </div>
+    <div id="secAppkeysLogInactive" class="hidden">
+      <div id="secAppkeysInactiveTableWrap" class="sec-table-wrap hidden">
+        <table class="sec-data-table" cellspacing="0" cellpadding="4" width="100%" border="1">
+          <thead>
+            <tr>
+              <th align="left">Application</th>
+              <th align="left">Key</th>
+              <th align="left">Scopes</th>
+              <th align="center" width="90">Status</th>
+              <th align="center" width="110">Expires</th>
+              <th align="center" width="140">Last used</th>
+            </tr>
+          </thead>
+          <tbody id="secAppkeysInactiveTableBody"></tbody>
+        </table>
+      </div>
+      <div id="secAppkeysInactiveEmpty" class="sec-dsap-empty hidden"><i class="fas fa-plug"></i> No inactive keys</div>
     </div>
   </div>
 </div>
@@ -923,6 +968,11 @@ const securityDsapScopedCss = `
 [data-dsap="security-dyna"] .sec-status-revoked,
 [data-dsap="security-dyna"] .sec-status-replaced { color: #990000; font-weight: bold; }
 [data-dsap="security-dyna"] .sec-status-refresh_required { color: #996600; font-weight: bold; }
+[data-dsap="security-dyna"] tr.sec-account-needs-login td { background: #ffe8c2; }
+[data-dsap="security-dyna"] .sec-readonly-row { margin: 6px 0; }
+[data-dsap="security-dyna"] .sec-readonly-value { font-weight: bold; }
+[data-dsap="security-dyna"] .sec-auth-view.sec-showing-applog > :not(#secAppkeysLogPage) { display: none !important; }
+[data-dsap="security-dyna"] .sec-applog-tab.active { background: #003366; color: #ffffff; border-color: #001a33; }
 
 [data-dsap="security-dyna"] i,
 [data-dsap="security-dyna"] i * {
@@ -943,8 +993,8 @@ const securityDsapDriver = {
             honeypot: { items: [], meta: { page: 1, perPage: SECURITY_DEFAULT_PER_PAGE, search: '', total: 0, totalPages: 1 } },
             pins: { userPinLoginEnabled: true, adminPinConfigured: false, userPinConfigured: false },
             keychain: { services: [], originalSelections: {}, pendingSelections: {}, editServiceId: null, editKeyIndex: null, addServiceId: null },
-            appkeys: { keys: [], pending: [], scopes: [], selectedScopes: ['universal'] },
-            cursorAccounts: { wren: {}, xi: {}, accounts: [], wrenStatus: {}, xiStatus: {}, usage: null },
+            appkeys: { keys: [], pending: [], scopes: [], selectedScopes: ['universal'], logTab: 'requests', logPage: 1, logItems: [], logMeta: { page: 1, totalPages: 1 } },
+            cursorAccounts: { wren: {}, xi: {}, accounts: [], wrenStatus: {}, xiStatus: {}, usage: null, captureEnabled: false, capturePersona: 'xi' },
             telemetry: { items: [], meta: { page: 1, perPage: SECURITY_DEFAULT_PER_PAGE, search: '', eventType: '', total: 0, totalPages: 1 }, selectedId: null },
             searchTimers: {}
         };
@@ -1237,16 +1287,57 @@ const securityDsapDriver = {
             submitCreate.addEventListener('click', () => void this._submitAppkeyCreate(root));
         }
 
-        const switchWrenBtn = root.querySelector('#secSwitchWrenAccount');
-        if (switchWrenBtn && switchWrenBtn.dataset.secWired !== '1') {
-            switchWrenBtn.dataset.secWired = '1';
-            switchWrenBtn.addEventListener('click', () => void this._switchCursorAccount(root, 'wren'));
+        const appkeysLogBtn = root.querySelector('#secAppkeysLogBtn');
+        if (appkeysLogBtn && appkeysLogBtn.dataset.secWired !== '1') {
+            appkeysLogBtn.dataset.secWired = '1';
+            appkeysLogBtn.addEventListener('click', () => this._openAppkeysLog(root));
         }
 
-        const switchXiBtn = root.querySelector('#secSwitchXiAccount');
-        if (switchXiBtn && switchXiBtn.dataset.secWired !== '1') {
-            switchXiBtn.dataset.secWired = '1';
-            switchXiBtn.addEventListener('click', () => void this._switchCursorAccount(root, 'xi'));
+        const appkeysLogBack = root.querySelector('#secAppkeysLogBack');
+        if (appkeysLogBack && appkeysLogBack.dataset.secWired !== '1') {
+            appkeysLogBack.dataset.secWired = '1';
+            appkeysLogBack.addEventListener('click', () => this._closeAppkeysLog(root));
+        }
+
+        const appkeysLogRefresh = root.querySelector('#secAppkeysLogRefresh');
+        if (appkeysLogRefresh && appkeysLogRefresh.dataset.secWired !== '1') {
+            appkeysLogRefresh.dataset.secWired = '1';
+            appkeysLogRefresh.addEventListener('click', () => {
+                if (this._state.appkeys.logTab === 'inactive') this._renderInactiveAppkeys(root);
+                else void this._loadAppkeysLog(root);
+            });
+        }
+
+        const appkeysLogPrev = root.querySelector('#secAppkeysLogPrev');
+        if (appkeysLogPrev && appkeysLogPrev.dataset.secWired !== '1') {
+            appkeysLogPrev.dataset.secWired = '1';
+            appkeysLogPrev.addEventListener('click', () => {
+                const page = this._state.appkeys.logMeta.page || 1;
+                if (page <= 1) return;
+                this._state.appkeys.logPage = page - 1;
+                void this._loadAppkeysLog(root);
+            });
+        }
+
+        const applogTabs = root.querySelector('#secAppkeysLogPage');
+        if (applogTabs && applogTabs.dataset.secTabWired !== '1') {
+            applogTabs.dataset.secTabWired = '1';
+            applogTabs.addEventListener('click', (e) => {
+                const tab = e.target.closest('[data-sec-applog-tab]');
+                if (!tab) return;
+                this._setAppkeysLogTab(root, tab.dataset.secApplogTab);
+            });
+        }
+
+        const appkeysLogNext = root.querySelector('#secAppkeysLogNext');
+        if (appkeysLogNext && appkeysLogNext.dataset.secWired !== '1') {
+            appkeysLogNext.dataset.secWired = '1';
+            appkeysLogNext.addEventListener('click', () => {
+                const meta = this._state.appkeys.logMeta || {};
+                if ((meta.page || 1) >= (meta.totalPages || 1)) return;
+                this._state.appkeys.logPage = (meta.page || 1) + 1;
+                void this._loadAppkeysLog(root);
+            });
         }
 
         const addCursorAccBtn = root.querySelector('#secCursorAccountsAddBtn');
@@ -1257,12 +1348,23 @@ const securityDsapDriver = {
                 if (panel) {
                     root.querySelector('#secCursorAccountIdInput').value = '';
                     root.querySelector('#secCursorAccountNameInput').value = '';
+                    const displayName = root.querySelector('#secCursorAccountDisplayName');
+                    if (displayName) displayName.textContent = '—';
                     root.querySelector('#secCursorAccountColorInput').value = '';
                     root.querySelector('#secCursorAccountEmailInput').value = '';
                     root.querySelector('#secCursorAccountTokenInput').value = '';
                     root.querySelector('#secCursorAccountPanelTitle').textContent = 'Add Cursor Account Profile';
                     panel.classList.remove('hidden');
                 }
+            });
+        }
+
+        const copyCursorTokenBtn = root.querySelector('#secCursorAccountCopyToken');
+        if (copyCursorTokenBtn && copyCursorTokenBtn.dataset.secWired !== '1') {
+            copyCursorTokenBtn.dataset.secWired = '1';
+            copyCursorTokenBtn.addEventListener('click', () => {
+                const token = root.querySelector('#secCursorAccountTokenInput')?.value || '';
+                this._copyCursorToken(token);
             });
         }
 
@@ -1297,14 +1399,26 @@ const securityDsapDriver = {
             root.querySelector('#secCursorAccountPanel')?.classList.add('hidden');
             return;
         }
-        if (action === 'switch-both-cursor-account') {
+        if (action === 'activate-cursor-account') {
             const accId = btn.closest('[data-sec-cursor-acc-id]')?.dataset.secCursorAccId;
-            if (accId && !btn.disabled) void this._switchCursorAccount(root, 'both', accId);
+            const persona = btn.dataset.secPersona;
+            if (accId && (persona === 'wren' || persona === 'xi') && !btn.disabled) {
+                void this._switchCursorAccount(root, persona, accId);
+            }
+            return;
+        }
+        if (action === 'copy-cursor-token') {
+            const accId = btn.closest('[data-sec-cursor-acc-id]')?.dataset.secCursorAccId;
+            const acc = (this._state.cursorAccounts?.accounts || []).find((row) => row.id === accId);
+            this._copyCursorToken(acc && acc.token);
             return;
         }
         if (action === 'capture-cursor-account') {
             const accId = btn.closest('[data-sec-cursor-acc-id]')?.dataset.secCursorAccId;
-            if (accId) void this._captureCursorAccountCredentials(root, 'wren', accId);
+            if (accId && !btn.disabled) {
+                const persona = this._state.cursorAccounts?.capturePersona || 'xi';
+                void this._captureCursorAccountCredentials(root, persona, accId);
+            }
             return;
         }
         if (action === 'edit-cursor-account') {
@@ -1961,7 +2075,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         root.querySelector('#secCursorAccountsLoading')?.classList.remove('hidden');
         root.querySelector('#secCursorAccountsContent')?.classList.add('hidden');
         root.querySelector('#secCursorAccountsError')?.classList.add('hidden');
-        this._setCursorAccountsStatus(root, 'Loading Cursor accounts…', null);
+        this._setCursorAccountsStatus(root, 'Loading Director accounts…', null);
 
         if (!(await this._ensureWs())) {
             root.querySelector('#secCursorAccountsLoading')?.classList.add('hidden');
@@ -1972,23 +2086,25 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         try {
             const response = await wsClient.getCursorAccounts();
             const data = response?.data || response;
-            if (!data || data.success === false) throw new Error('Failed to load Cursor accounts');
+            if (!data || data.success === false) throw new Error('Failed to load Director accounts');
             this._state.cursorAccounts = {
                 wren: data.wren || { activeAccountId: 'default' },
                 xi: data.xi || { activeAccountId: 'default' },
                 accounts: data.accounts || [],
                 wrenStatus: data.wrenStatus || {},
                 xiStatus: data.xiStatus || {},
-                usage: data.usage || null
+                usage: data.usage || null,
+                captureEnabled: data.captureEnabled === true,
+                capturePersona: data.capturePersona || 'xi'
             };
             this._renderCursorAccounts(root);
-            this._setCursorAccountsStatus(root, 'Cursor accounts ready', 'ok');
+            this._setCursorAccountsStatus(root, 'Director accounts ready', 'ok');
         } catch (err) {
             console.error('[security-dsap] cursor accounts load error:', err);
             root.querySelector('#secCursorAccountsError')?.classList.remove('hidden');
             const errText = root.querySelector('#secCursorAccountsErrorText');
-            if (errText) errText.textContent = err.message || 'Failed to load Cursor accounts';
-            this._setCursorAccountsStatus(root, 'Failed to load Cursor accounts', 'error');
+            if (errText) errText.textContent = err.message || 'Failed to load Director accounts';
+            this._setCursorAccountsStatus(root, 'Failed to load Director accounts', 'error');
         } finally {
             root.querySelector('#secCursorAccountsLoading')?.classList.add('hidden');
         }
@@ -2011,39 +2127,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
 
         root.querySelector('#secCursorAccountsContent')?.classList.remove('hidden');
 
-        const wrenSelect = root.querySelector('#secWrenAccountSelect');
-        const xiSelect = root.querySelector('#secXiAccountSelect');
-
         const accounts = state.accounts || [];
-        const optionsHtml = accounts.map((a) => `<option value="${securityDsapEscapeAttr(a.id)}">${securityDsapEscapeHtml(a.name)}${a.email ? ' (' + securityDsapEscapeHtml(a.email) + ')' : ''}</option>`).join('');
-
-        if (wrenSelect) {
-            wrenSelect.innerHTML = optionsHtml;
-            wrenSelect.value = state.wren?.activeAccountId || 'default';
-        }
-        if (xiSelect) {
-            xiSelect.innerHTML = optionsHtml;
-            xiSelect.value = state.xi?.activeAccountId || 'default';
-        }
-
-        const wrenBadge = root.querySelector('#secWrenAccountStatus');
-        const xiBadge = root.querySelector('#secXiAccountStatus');
-
-        if (wrenBadge) {
-            const ok = state.wrenStatus?.ok !== false;
-            const usageInfo = state.usage?.label ? ` (${state.usage.label})` : '';
-            const emailInfo = state.usage?.accountEmail ? ` · ${state.usage.accountEmail}` : '';
-            wrenBadge.textContent = (ok ? 'Active' : 'Missing / Expired') + usageInfo + emailInfo;
-            wrenBadge.className = 'sec-pin-status ' + (ok ? 'configured' : 'not-set');
-        }
-        if (xiBadge) {
-            const ok = state.xiStatus?.ok !== false;
-            const usageInfo = state.xiUsage?.label ? ` (${state.xiUsage.label})` : '';
-            const emailInfo = state.xiUsage?.accountEmail ? ` · ${state.xiUsage.accountEmail}` : '';
-            xiBadge.textContent = (ok ? 'Active' : 'Missing / Expired') + usageInfo + emailInfo;
-            xiBadge.className = 'sec-pin-status ' + (ok ? 'configured' : 'not-set');
-        }
-
         const tbody = root.querySelector('#secCursorAccountsTableBody');
         const emptyEl = root.querySelector('#secCursorAccountsEmpty');
         const tableWrap = root.querySelector('#secCursorAccountsTableWrap');
@@ -2058,14 +2142,19 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (tableWrap) tableWrap.classList.remove('hidden');
 
         if (tbody) {
+            const captureOn = state.captureEnabled === true;
+            const captureTitle = captureOn
+                ? 'Capture and pair the live Xi login that is not a saved profile'
+                : 'Xi is already using a saved profile';
             tbody.innerHTML = accounts.map((acc) => {
                 const isWrenActive = (state.wren?.activeAccountId || 'default') === acc.id;
                 const isXiActive = (state.xi?.activeAccountId || 'default') === acc.id;
-                const bothActive = isWrenActive && isXiActive;
                 const isDefault = acc.isDefault || acc.id === 'default';
                 const usage = acc.usage || {};
                 const usageLabel = usage.label && usage.label !== '—' ? usage.label : '—';
                 const usageClass = usage.limited ? 'sec-pin-status not-set' : (usageLabel === '—' ? 'sec-dsap-setting-hint' : '');
+                const planLabel = usage.plan && usage.plan !== '—' ? usage.plan : '—';
+                const costLabel = usage.costLabel && usage.costLabel !== '—' ? usage.costLabel : '—';
                 const daysText = usage.daysLeft == null ? '—' : String(usage.daysLeft);
                 const daysTitle = usage.daysLeft == null
                     ? (usage.title || 'Billing cycle end is not available')
@@ -2073,19 +2162,23 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
                 const loginNeeded = !!(acc.isEmpty || /pending login/i.test(acc.email || '') || /expired|not logged|login|unauthorized/i.test(usage.title || ''));
                 const badgeColor = /^#[0-9a-fA-F]{6}$/.test(acc.color || '') ? acc.color : '#5b8def';
                 const badgeLetter = (String(acc.name || '?').match(/[A-Za-z0-9]/) || ['?'])[0].toUpperCase();
+                const personaCell = (active, persona) => active
+                    ? '<span class="sec-pin-status configured"><i class="fas fa-check"></i> Active</span>'
+                    : `<button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="activate-cursor-account" data-sec-persona="${persona}">Activate</button>`;
                 return `
-<tr data-sec-cursor-acc-id="${securityDsapEscapeAttr(acc.id)}">
+<tr data-sec-cursor-acc-id="${securityDsapEscapeAttr(acc.id)}" class="${loginNeeded ? 'sec-account-needs-login' : ''}">
   <td><span class="director-account-badge" style="background:${securityDsapEscapeAttr(badgeColor)}" title="${securityDsapEscapeAttr(acc.name || '')}">${securityDsapEscapeHtml(badgeLetter)}</span> <strong>${securityDsapEscapeHtml(acc.name)}</strong>${isDefault ? ' <span class="sec-dsap-setting-hint">(Default)</span>' : ''}</td>
-  <td>${securityDsapEscapeHtml(acc.email || acc.id)}</td>
+  <td align="center">${personaCell(isWrenActive, 'wren')}</td>
+  <td align="center">${personaCell(isXiActive, 'xi')}</td>
+  <td align="center">${securityDsapEscapeHtml(planLabel)}</td>
   <td align="center"><span class="${usageClass}" title="${securityDsapEscapeAttr(usage.title || 'Cursor usage')}">${securityDsapEscapeHtml(usageLabel)}</span></td>
+  <td align="center"><span title="${securityDsapEscapeAttr(usage.costTitle || 'API usage cost')}">${securityDsapEscapeHtml(costLabel)}</span></td>
   <td align="center"><span title="${securityDsapEscapeAttr(daysTitle)}">${securityDsapEscapeHtml(daysText)}</span></td>
-  <td align="center">${isWrenActive ? '<span class="sec-pin-status configured"><i class="fas fa-check"></i> Active</span>' : '<span class="sec-dsap-setting-hint">Inactive</span>'}</td>
-  <td align="center">${isXiActive ? '<span class="sec-pin-status configured"><i class="fas fa-check"></i> Active</span>' : '<span class="sec-dsap-setting-hint">Inactive</span>'}</td>
   <td class="sec-actions-cell" align="center">
-    <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="switch-both-cursor-account" title="${bothActive ? 'Wren and Xi already use this account' : 'Switch Wren and Xi to this account'}"${bothActive ? ' disabled' : ''}><i class="fas fa-exchange-alt"></i> Both</button>
     ${loginNeeded ? `<button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="login-cursor-account" title="Open Cursor login for this profile"><i class="fas fa-right-to-bracket"></i> Login</button>` : ''}
-    <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="capture-cursor-account" title="Capture & Pair Credentials"><i class="fas fa-camera"></i></button>
-    <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="edit-cursor-account" title="Edit Profile Name / Credentials"><i class="fas fa-edit"></i></button>
+    <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="capture-cursor-account" title="${securityDsapEscapeAttr(captureTitle)}"${captureOn ? '' : ' disabled'}><i class="fas fa-camera"></i></button>
+    <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="copy-cursor-token" title="Copy account token"${acc.token ? '' : ' disabled'}><i class="fas fa-copy"></i></button>
+    <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="edit-cursor-account" title="Edit profile"><i class="fas fa-edit"></i></button>
     ${!isDefault ? `<button type="button" class="sec-dsap-action-btn sec-btn-danger sec-btn-small" data-sec-action="delete-cursor-account" title="Delete Profile"><i class="fas fa-trash"></i></button>` : ''}
   </td>
 </tr>`;
@@ -2094,8 +2187,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
     },
 
     async _switchCursorAccount(root, persona, accountIdOverride) {
-        const selectId = persona === 'xi' ? '#secXiAccountSelect' : '#secWrenAccountSelect';
-        const accountId = accountIdOverride || root.querySelector(selectId)?.value;
+        const accountId = accountIdOverride;
         if (!accountId) return;
 
         if (!(await this._ensureWs())) return;
@@ -2283,11 +2375,151 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (!panel) return;
         root.querySelector('#secCursorAccountIdInput').value = acc.id || '';
         root.querySelector('#secCursorAccountNameInput').value = acc.name || '';
+        const displayName = root.querySelector('#secCursorAccountDisplayName');
+        if (displayName) displayName.textContent = acc.displayName ? String(acc.displayName) : '—';
         root.querySelector('#secCursorAccountColorInput').value = acc.color || '';
         root.querySelector('#secCursorAccountEmailInput').value = acc.email || '';
         root.querySelector('#secCursorAccountTokenInput').value = acc.token || '';
         root.querySelector('#secCursorAccountPanelTitle').textContent = 'Edit Cursor Account Profile';
         panel.classList.remove('hidden');
+    },
+
+    _copyCursorToken(token) {
+        const value = String(token || '').trim();
+        if (!value) {
+            if (typeof showGlassToast === 'function') showGlassToast('warning', null, 'This profile has no token to copy', false, 4000);
+            return;
+        }
+        const done = () => {
+            if (typeof showGlassToast === 'function') showGlassToast('success', null, 'Account token copied', false, 2500, '<i class="fas fa-copy"></i>');
+        };
+        if (typeof copyTextToClipboard === 'function') {
+            Promise.resolve(copyTextToClipboard(value)).then(done).catch(() => {
+                if (typeof showGlassToast === 'function') showGlassToast('error', null, 'Could not copy the token', false, 4000);
+            });
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).then(done).catch(() => {
+                if (typeof showGlassToast === 'function') showGlassToast('error', null, 'Could not copy the token', false, 4000);
+            });
+            return;
+        }
+        if (typeof showGlassToast === 'function') showGlassToast('error', null, 'Could not copy the token', false, 4000);
+    },
+
+    _openAppkeysLog(root) {
+        this._state.appkeys.logTab = this._state.appkeys.logTab || 'requests';
+        root.querySelector('#secAuthView')?.classList.add('sec-showing-applog');
+        root.querySelector('#secAppkeysLogPage')?.classList.remove('hidden');
+        this._setAppkeysLogTab(root, this._state.appkeys.logTab);
+    },
+
+    _closeAppkeysLog(root) {
+        root.querySelector('#secAuthView')?.classList.remove('sec-showing-applog');
+        root.querySelector('#secAppkeysLogPage')?.classList.add('hidden');
+    },
+
+    _setAppkeysLogTab(root, tab) {
+        const next = tab === 'inactive' ? 'inactive' : 'requests';
+        this._state.appkeys.logTab = next;
+        root.querySelectorAll('[data-sec-applog-tab]').forEach((el) => {
+            el.classList.toggle('active', el.dataset.secApplogTab === next);
+        });
+        root.querySelector('#secAppkeysLogRequests')?.classList.toggle('hidden', next !== 'requests');
+        root.querySelector('#secAppkeysLogInactive')?.classList.toggle('hidden', next !== 'inactive');
+        if (next === 'inactive') this._renderInactiveAppkeys(root);
+        else void this._loadAppkeysLog(root);
+    },
+
+    async _loadAppkeysLog(root) {
+        const page = this._state.appkeys.logPage || 1;
+        root.querySelector('#secAppkeysLogLoading')?.classList.remove('hidden');
+        root.querySelector('#secAppkeysLogError')?.classList.add('hidden');
+        root.querySelector('#secAppkeysLogTableWrap')?.classList.add('hidden');
+        root.querySelector('#secAppkeysLogEmpty')?.classList.add('hidden');
+        if (!(await this._ensureWs())) {
+            root.querySelector('#secAppkeysLogLoading')?.classList.add('hidden');
+            root.querySelector('#secAppkeysLogError')?.classList.remove('hidden');
+            const errText = root.querySelector('#secAppkeysLogErrorText');
+            if (errText) errText.textContent = 'Connection unavailable — check WebSocket';
+            return;
+        }
+        try {
+            const response = await wsClient.listApplicationRequestLog(page, 25);
+            const data = response?.data || response;
+            if (!data || data.success === false) throw new Error('Failed to load application requests');
+            this._state.appkeys.logItems = data.requests || [];
+            this._state.appkeys.logMeta = data.pagination || { page: 1, totalPages: 1, currentPage: 1 };
+            this._state.appkeys.logMeta.page = data.pagination?.currentPage || page;
+            this._renderAppkeysLog(root);
+        } catch (err) {
+            root.querySelector('#secAppkeysLogError')?.classList.remove('hidden');
+            const errText = root.querySelector('#secAppkeysLogErrorText');
+            if (errText) errText.textContent = err.message || 'Failed to load application requests';
+        } finally {
+            root.querySelector('#secAppkeysLogLoading')?.classList.add('hidden');
+        }
+    },
+
+    _renderAppkeysLog(root) {
+        const items = this._state.appkeys.logItems || [];
+        const meta = this._state.appkeys.logMeta || { page: 1, totalPages: 1 };
+        const pageLabel = root.querySelector('#secAppkeysLogPageLabel');
+        const totalLabel = root.querySelector('#secAppkeysLogTotalPages');
+        if (pageLabel) pageLabel.textContent = String(meta.page || meta.currentPage || 1);
+        if (totalLabel) totalLabel.textContent = String(meta.totalPages || 1);
+        const status = root.querySelector('#secAppkeysLogStatusMessage');
+        if (status) status.textContent = items.length ? 'Requests made with application keys' : 'No application requests on this page';
+        if (!items.length) {
+            root.querySelector('#secAppkeysLogEmpty')?.classList.remove('hidden');
+            root.querySelector('#secAppkeysLogTableWrap')?.classList.add('hidden');
+            return;
+        }
+        root.querySelector('#secAppkeysLogEmpty')?.classList.add('hidden');
+        root.querySelector('#secAppkeysLogTableWrap')?.classList.remove('hidden');
+        const tbody = root.querySelector('#secAppkeysLogTableBody');
+        if (!tbody) return;
+        tbody.innerHTML = items.map((row) => `
+<tr>
+  <td>${securityDsapEscapeHtml(securityDsapFormatTimestamp(row.createdAt))}</td>
+  <td>${securityDsapEscapeHtml(row.appName || row.applicationKeyId || '—')}<br><span class="sec-dsap-setting-hint">${securityDsapEscapeHtml(securityDsapShortUserAgent(row.userAgent))}</span></td>
+  <td align="center">${securityDsapEscapeHtml(row.httpMethod || '—')}</td>
+  <td class="sec-path-cell">${securityDsapEscapeHtml(row.path || '—')}</td>
+  <td align="center">${securityDsapEscapeHtml(row.statusCode || '—')}</td>
+  <td>${securityDsapEscapeHtml(row.ip || '—')}</td>
+</tr>`).join('');
+    },
+
+    _renderInactiveAppkeys(root) {
+        const keys = (this._state.appkeys.keys || []).filter((key) => securityDsapAppkeyIsInactive(key));
+        const wrap = root.querySelector('#secAppkeysInactiveTableWrap');
+        const empty = root.querySelector('#secAppkeysInactiveEmpty');
+        const tbody = root.querySelector('#secAppkeysInactiveTableBody');
+        const status = root.querySelector('#secAppkeysLogStatusMessage');
+        if (status) status.textContent = keys.length ? `${keys.length} inactive key(s)` : 'No inactive keys';
+        if (!keys.length) {
+            if (empty) empty.classList.remove('hidden');
+            if (wrap) wrap.classList.add('hidden');
+            return;
+        }
+        if (empty) empty.classList.add('hidden');
+        if (wrap) wrap.classList.remove('hidden');
+        if (!tbody) return;
+        tbody.innerHTML = keys.map((key) => {
+            const statusClass = 'sec-status-' + String(key.status || '').replace(/[^a-z_]/g, '');
+            const expires = key.isPerpetual ? 'Never' : securityDsapFormatTimestamp(key.expiresAt);
+            const scopes = (key.scopes || []).join(', ');
+            return `
+<tr>
+  <td>${securityDsapEscapeHtml(key.appName)}<br><span class="sec-dsap-setting-hint">${securityDsapEscapeHtml(key.userAgent)}</span></td>
+  <td><code>${securityDsapEscapeHtml(key.keyPrefix)}…</code></td>
+  <td>${securityDsapEscapeHtml(scopes)}</td>
+  <td align="center" class="${statusClass}">${securityDsapEscapeHtml(key.status)}</td>
+  <td align="center">${securityDsapEscapeHtml(expires)}</td>
+  <td align="center">${securityDsapEscapeHtml(securityDsapFormatTimestamp(key.lastUsedAt))}</td>
+</tr>`;
+        }).join('');
     },
 
 
@@ -2573,8 +2805,11 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             this._state.appkeys.pending = pendingResp?.requests || [];
             this._state.appkeys.scopes = scopesResp?.scopes || [];
             this._renderAppkeys(root);
-            const activeCount = this._state.appkeys.keys.filter((k) => k.status === 'active' || k.status === 'refresh_required').length;
-            this._setStatus(root, 'appkeys', `${this._state.appkeys.keys.length} key(s) on record (${activeCount} active)`, 'ok');
+            const activeCount = this._state.appkeys.keys.filter((k) => !securityDsapAppkeyIsInactive(k)).length;
+            this._setStatus(root, 'appkeys', `${activeCount} active application key(s)`, 'ok');
+            if (root.querySelector('#secAuthView')?.classList.contains('sec-showing-applog') && this._state.appkeys.logTab === 'inactive') {
+                this._renderInactiveAppkeys(root);
+            }
         } catch (err) {
             console.error('[security-dsap] appkeys load error:', err);
             root.querySelector('#secAppkeysError')?.classList.remove('hidden');
@@ -2587,7 +2822,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
     },
 
     _renderAppkeys(root) {
-        const keys = this._state.appkeys.keys;
+        const keys = (this._state.appkeys.keys || []).filter((key) => !securityDsapAppkeyIsInactive(key));
         const pending = this._state.appkeys.pending;
         const tbody = root.querySelector('#secAppkeysTableBody');
         const pendingBody = root.querySelector('#secAppkeysPendingBody');

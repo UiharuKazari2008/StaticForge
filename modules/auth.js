@@ -1,7 +1,34 @@
 const fs = require('fs');
 const crypto = require('crypto');
-const { isApplicationKeyFormat, isTempTokenFormat } = require('./applicationAuthManager');
+const { isApplicationKeyFormat, isTempTokenFormat, redactApplicationRequestPath } = require('./applicationAuthManager');
 const { isOAuthAccessTokenFormat } = require('./mcpOAuthProvider');
+
+function noteApplicationRequest(req, res, globalResources, source) {
+    if (!req || !res || req._appRequestNoted) return;
+    const auth = req.applicationAuth;
+    if (!auth || !auth.applicationKeyId) return;
+    req._appRequestNoted = true;
+    res.on('finish', () => {
+        let manager = null;
+        try {
+            manager = globalResources.getApplicationAuthManager();
+        } catch (_) {
+            return;
+        }
+        if (!manager || typeof manager.recordApplicationRequest !== 'function') return;
+        const rawPath = req.originalUrl || req.url || req.path || '/';
+        manager.recordApplicationRequest({
+            applicationKeyId: auth.applicationKeyId,
+            appName: auth.appName || '',
+            httpMethod: req.method || '',
+            path: redactApplicationRequestPath(rawPath),
+            statusCode: res.statusCode || 0,
+            source: source || 'http',
+            ip: req.socket?.remoteAddress || req.ip || '',
+            userAgent: req.headers && req.headers['user-agent']
+        }).catch(() => {});
+    });
+}
 
 function applyAuthContext(req, context) {
     req.userType = context.userType;
@@ -87,6 +114,7 @@ function createAuthMiddleware(globalResources) {
             }
             if (appAuth && !appAuth.rejected) {
                 applyAuthContext(req, appAuth);
+                noteApplicationRequest(req, res, globalResources, 'http');
                 return next();
             }
         } catch (err) {
@@ -133,6 +161,7 @@ function createApplicationAuthEarlyMiddleware(globalResources) {
             const appAuth = await resolveApplicationAuth(req, globalResources);
             if (appAuth && !appAuth.rejected) {
                 applyAuthContext(req, appAuth);
+                noteApplicationRequest(req, res, globalResources, 'http');
             }
         } catch (_) {
             // Non-fatal for early middleware
@@ -181,6 +210,7 @@ function createMcpAuthMiddleware(globalResources, options = {}) {
             }
             if (appAuth && !appAuth.rejected && appAuth.authMethod === 'application_key') {
                 applyAuthContext(req, appAuth);
+                noteApplicationRequest(req, res, globalResources, 'mcp');
                 return next();
             }
         } catch (err) {
@@ -208,6 +238,7 @@ function createMcpAuthMiddleware(globalResources, options = {}) {
                                 oauthResource: validation.resource,
                                 sessionId: `oauth:${validation.applicationKeyId}`
                             });
+                            noteApplicationRequest(req, res, globalResources, 'mcp');
                             return next();
                         }
                     }
@@ -255,6 +286,7 @@ function createDevAuthMiddleware(globalResources) {
             }
             if (appAuth && !appAuth.rejected) {
                 applyAuthContext(req, appAuth);
+                noteApplicationRequest(req, res, globalResources, 'dev');
                 return next();
             }
         } catch (err) {

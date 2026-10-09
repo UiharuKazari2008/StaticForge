@@ -219,6 +219,15 @@ function scopesAllowPacket(scopes, packetType) {
     return required.some((scopeId) => scopes.includes(scopeId));
 }
 
+function redactApplicationRequestPath(value) {
+    const raw = String(value || '/').split('?')[0];
+    const redacted = raw.replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/ig,
+        '{id}'
+    );
+    return redacted.slice(0, 180) || '/';
+}
+
 function rowToKeySummary(row, includeExpired = false) {
     if (!row) return null;
     const nowSec = Math.floor(Date.now() / 1000);
@@ -604,6 +613,71 @@ class ApplicationAuthManager {
         return { success: true, added, scopes: next };
     }
 
+    async recordApplicationRequest(entry) {
+        const row = entry && typeof entry === 'object' ? entry : {};
+        const keyId = row.applicationKeyId != null ? String(row.applicationKeyId).slice(0, 80) : '';
+        if (!keyId) return false;
+        const nowSec = Math.floor(Date.now() / 1000);
+        await getDb().run(
+            `INSERT INTO application_request_log
+                (created_at, application_key_id, app_name, http_method, path, status_code, source, ip, user_agent)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                nowSec,
+                keyId,
+                String(row.appName || '').slice(0, 120),
+                String(row.httpMethod || '').slice(0, 16),
+                redactApplicationRequestPath(row.path),
+                Number(row.statusCode) || 0,
+                String(row.source || 'http').slice(0, 24),
+                String(row.ip || '').slice(0, 80),
+                String(row.userAgent || '').slice(0, 180)
+            ]
+        );
+        const cutoff = await getDb().get(
+            'SELECT id FROM application_request_log ORDER BY id DESC LIMIT 1 OFFSET 1999'
+        );
+        if (cutoff && cutoff.id != null) {
+            await getDb().run('DELETE FROM application_request_log WHERE id < ?', [cutoff.id]);
+        }
+        return true;
+    }
+
+    async listApplicationRequests({ page = 1, perPage = 25 } = {}) {
+        const limit = Math.max(1, Math.min(100, parseInt(perPage, 10) || 25));
+        const currentPage = Math.max(1, parseInt(page, 10) || 1);
+        const offset = (currentPage - 1) * limit;
+        const totalRow = await getDb().get('SELECT COUNT(*) AS n FROM application_request_log');
+        const totalCount = totalRow && totalRow.n ? Number(totalRow.n) : 0;
+        const rows = await getDb().all(
+            `SELECT id, created_at, application_key_id, app_name, http_method, path, status_code, source, ip, user_agent
+             FROM application_request_log
+             ORDER BY id DESC
+             LIMIT ? OFFSET ?`,
+            [limit, offset]
+        );
+        return {
+            requests: (rows || []).map((row) => ({
+                id: row.id,
+                createdAt: row.created_at ? row.created_at * 1000 : null,
+                applicationKeyId: row.application_key_id,
+                appName: row.app_name || '',
+                httpMethod: row.http_method || '',
+                path: row.path || '',
+                statusCode: row.status_code || 0,
+                source: row.source || '',
+                ip: row.ip || '',
+                userAgent: row.user_agent || ''
+            })),
+            pagination: {
+                totalCount,
+                totalPages: Math.max(1, Math.ceil(totalCount / limit)),
+                currentPage,
+                perPage: limit
+            }
+        };
+    }
+
     async listApplicationKeys({ includeExpired = true, userType = null } = {}) {
         const rows = userType
             ? await getDb().all(
@@ -869,5 +943,6 @@ module.exports = {
     scopesAllowPacket,
     isApplicationKeyFormat,
     isTempTokenFormat,
+    redactApplicationRequestPath,
     OMEGASEARCH_QUERY_PACKET_SCHEMA
 };

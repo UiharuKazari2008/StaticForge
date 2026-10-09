@@ -807,6 +807,39 @@ async function handleUpdateApiKey(handlersCtx, ws, message, clientInfo, wsServer
     }
 }
 
+function syncDirectorAccountCredentials(handlersCtx, cursorData) {
+    const cursorAccountAuthStore = require('../../cursorAccountAuthStore');
+    let changed = false;
+    for (const persona of ['wren', 'xi']) {
+        const slot = cursorData[persona] || {};
+        const activeId = slot.activeAccountId || 'default';
+        const acc = (cursorData.accounts || []).find((row) => row.id === activeId);
+        let result = null;
+        try {
+            result = cursorAccountAuthStore.syncActiveAccountCredentials(persona, activeId, acc);
+        } catch (err) {
+            console.warn(`[190-adminHandler] credential sync skipped for ${persona}:`, err.message);
+        }
+        if (!result || !result.updated) continue;
+        const idx = (cursorData.accounts || []).findIndex((row) => row.id === activeId);
+        if (idx < 0) continue;
+        const email = result.email && !String(result.email).startsWith('(')
+            ? result.email
+            : cursorData.accounts[idx].email;
+        cursorData.accounts[idx] = {
+            ...cursorData.accounts[idx],
+            email,
+            token: result.token || cursorData.accounts[idx].token || '',
+            isEmpty: !result.token
+        };
+        changed = true;
+    }
+    if (changed && handlersCtx.globalResources && typeof handlersCtx.globalResources.modifyConfig === 'function') {
+        handlersCtx.globalResources.modifyConfig('secureConfig').assign('cursorAccounts', cursorData);
+    }
+    return changed;
+}
+
 async function handleGetCursorAccounts(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
         if (clientInfo.userType !== 'admin') {
@@ -870,6 +903,14 @@ async function handleGetCursorAccounts(handlersCtx, ws, message, clientInfo, wsS
             return acc;
         });
 
+        syncDirectorAccountCredentials(handlersCtx, { ...cursorData, accounts });
+        cursorData.accounts = accounts;
+
+        let xiLive = { hasLive: false, known: false, matchedAccountId: '' };
+        try {
+            xiLive = cursorAccountAuthStore.describeLiveAccount('xi', accounts);
+        } catch (_) {}
+
         const accountsWithUsage = await Promise.all(accounts.map(async (acc) => {
             let row = null;
             if (usage && usage.activeAccountId === acc.id) row = usage;
@@ -879,7 +920,13 @@ async function handleGetCursorAccounts(handlersCtx, ws, message, clientInfo, wsS
                     row = await cursorUsage.getCursorUsageForAccount(acc.id);
                 } catch (_) {}
             }
-            return { ...acc, usage: cursorUsage.publicAccountUsage(row) };
+            const meta = cursorAccountAuthStore.readAccountProfileMeta(acc.id);
+            return {
+                ...acc,
+                token: acc.token || meta.token || '',
+                displayName: meta.displayName || '',
+                usage: cursorUsage.publicAccountUsage(row)
+            };
         }));
 
         handlersCtx.sendToClient(ws, {
@@ -893,7 +940,11 @@ async function handleGetCursorAccounts(handlersCtx, ws, message, clientInfo, wsS
                 wrenStatus,
                 xiStatus,
                 usage,
-                xiUsage
+                xiUsage,
+                captureEnabled: !!(xiLive.hasLive && !xiLive.known),
+                capturePersona: 'xi',
+                xiLiveKnown: xiLive.known === true,
+                xiLiveMatchedAccountId: xiLive.matchedAccountId || ''
             },
             timestamp: new Date().toISOString()
         });
@@ -939,7 +990,19 @@ async function handleSwitchCursorAccount(handlersCtx, ws, message, clientInfo, w
             // Copy out last active paired credentials so no live auth tokens are lost
             if (prevAccountId && prevAccountId !== accountId) {
                 try {
-                    cursorAccountAuthStore.captureLivePersonaAuthFiles(target, prevAccountId);
+                    const captured = cursorAccountAuthStore.captureLivePersonaAuthFiles(target, prevAccountId);
+                    const idx = cursorData.accounts.findIndex((row) => row.id === prevAccountId);
+                    if (idx >= 0 && captured && captured.token) {
+                        const email = captured.email && !String(captured.email).startsWith('(')
+                            ? captured.email
+                            : cursorData.accounts[idx].email;
+                        cursorData.accounts[idx] = {
+                            ...cursorData.accounts[idx],
+                            email,
+                            token: captured.token,
+                            isEmpty: false
+                        };
+                    }
                 } catch (err) {
                     console.warn(`[190-adminHandler] Warning saving prev account credentials (${prevAccountId}):`, err.message);
                 }

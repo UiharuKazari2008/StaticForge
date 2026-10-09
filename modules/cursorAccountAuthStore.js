@@ -176,7 +176,7 @@ function saveAccountAuthFiles(accountId, profile, customToken) {
         authInfo: {
             authId: accountId,
             email: realEmail,
-            displayName: profile.name || realEmail
+            displayName: String((existingCliData.authInfo && existingCliData.authInfo.displayName) || '').trim()
         },
         ...DIRECTOR_CLI_OVERLAY
     };
@@ -526,6 +526,119 @@ function restoreActiveCursorAccounts(gr) {
     }
 }
 
+function tokenSubject(token) {
+    if (!token || typeof token !== 'string') return '';
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) return '';
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+        return String(payload.sub || payload.user_id || payload.userId || '').trim();
+    } catch (_) {
+        return '';
+    }
+}
+
+function personaConfigDir(persona) {
+    try {
+        if (persona === 'wren') {
+            const cursorDirector = require('./cursorDirector');
+            if (typeof cursorDirector.layout !== 'function') return null;
+            const home = cursorDirector.layout().home;
+            return home ? path.join(home, '.config', 'cursor') : null;
+        }
+        if (persona === 'xi') {
+            const xiDirector = require('./xiDirector');
+            if (typeof xiDirector.layout !== 'function') return null;
+            return xiDirector.layout().configDir || null;
+        }
+    } catch (_) {}
+    return null;
+}
+
+function authSnapshot(dir) {
+    const empty = { token: '', refresh: '', email: '', sub: '', displayName: '' };
+    if (!dir) return empty;
+    const auth = readJson(path.join(dir, 'auth.json')) || {};
+    const cli = readJson(path.join(dir, 'cli-config.json')) || {};
+    const info = cli.authInfo || {};
+    const token = auth.accessToken || auth.apiKey || '';
+    const email = extractEmailFromToken(token) || (isEmailString(info.email) ? info.email : '');
+    return {
+        token: typeof token === 'string' ? token : '',
+        refresh: typeof auth.refreshToken === 'string' ? auth.refreshToken : '',
+        email,
+        sub: tokenSubject(token),
+        displayName: String(info.displayName || '').trim()
+    };
+}
+
+function identitiesMatch(live, stored) {
+    if (!live || !stored) return false;
+    if (live.sub && stored.sub) return live.sub === stored.sub;
+    const liveEmail = String(live.email || '').trim().toLowerCase();
+    const storedEmail = String(stored.email || '').trim().toLowerCase();
+    return !!(liveEmail && storedEmail && liveEmail === storedEmail);
+}
+
+function credentialBytesDiffer(live, stored) {
+    return (live.token || '') !== (stored.token || '') || (live.refresh || '') !== (stored.refresh || '');
+}
+
+function accountIdentity(account) {
+    const hint = account && typeof account === 'object' ? account : {};
+    const stored = authSnapshot(getAccountDir(hint.id || 'default'));
+    return {
+        token: stored.token || (typeof hint.token === 'string' ? hint.token : ''),
+        refresh: stored.refresh,
+        email: stored.email || (isEmailString(hint.email) ? hint.email : ''),
+        sub: stored.sub || tokenSubject(hint.token),
+        displayName: stored.displayName
+    };
+}
+
+function readAccountProfileMeta(accountId) {
+    return accountIdentity({ id: accountId || 'default' });
+}
+
+/**
+ * Copy live auth into the stored profile only when it is the same account
+ * (subject or email) and the token bytes have changed.
+ */
+function syncActiveAccountCredentials(persona, accountId, accountHint) {
+    const liveDir = personaConfigDir(persona);
+    const live = authSnapshot(liveDir);
+    if (!live.token) return { updated: false, live };
+    const stored = accountIdentity({ id: accountId, ...(accountHint || {}) });
+    if (!identitiesMatch(live, stored)) return { updated: false, live, mismatch: true };
+    if (!credentialBytesDiffer(live, stored)) return { updated: false, live };
+    const captured = captureLivePersonaAuthFiles(persona, accountId);
+    return {
+        updated: true,
+        live,
+        email: captured.email,
+        token: captured.token || live.token,
+        displayName: live.displayName || stored.displayName || ''
+    };
+}
+
+function describeLiveAccount(persona, accounts) {
+    const live = authSnapshot(personaConfigDir(persona));
+    if (!live.token) return { hasLive: false, known: false, matchedAccountId: '', displayName: '' };
+    const list = Array.isArray(accounts) ? accounts : [];
+    for (const acc of list) {
+        const stored = accountIdentity(acc);
+        if (identitiesMatch(live, stored)) {
+            return {
+                hasLive: true,
+                known: true,
+                matchedAccountId: acc.id || '',
+                displayName: live.displayName || stored.displayName || ''
+            };
+        }
+    }
+    return { hasLive: true, known: false, matchedAccountId: '', displayName: live.displayName || '' };
+}
+
 function getActiveAccountId(persona = 'wren') {
     try {
         const primaryPath = path.join(process.cwd(), 'secure.config.json');
@@ -556,5 +669,12 @@ module.exports = {
     publicCursorAccount,
     normalizeAccountColor,
     beginCursorAccountLogin,
-    restoreActiveCursorAccounts
+    restoreActiveCursorAccounts,
+    tokenSubject,
+    identitiesMatch,
+    credentialBytesDiffer,
+    readAccountProfileMeta,
+    syncActiveAccountCredentials,
+    describeLiveAccount,
+    _test: { identitiesMatch, credentialBytesDiffer, tokenSubject, authSnapshot }
 };

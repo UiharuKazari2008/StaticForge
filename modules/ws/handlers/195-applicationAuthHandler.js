@@ -67,6 +67,16 @@ async function handleAuthenticateApplication(handlersCtx, ws, message, clientInf
         payload.data.logViewerPathUuid = handlersCtx.globalResources.getLogViewerPathUuid();
     }
     wsServer.sendToClient(ws, payload);
+    manager.recordApplicationRequest({
+        applicationKeyId: result.applicationKeyId,
+        appName: result.appName,
+        httpMethod: 'WS',
+        path: 'authenticate_application',
+        statusCode: 200,
+        source: 'ws',
+        ip: clientInfo.ip || clientInfo.remoteAddress || '',
+        userAgent: ua
+    }).catch(() => {});
 }
 
 async function handleRefreshApplicationKey(handlersCtx, ws, message, clientInfo, wsServer) {
@@ -270,6 +280,21 @@ async function handleListApplicationKeys(handlersCtx, ws, message, clientInfo, w
     });
 }
 
+async function handleListApplicationRequestLog(handlersCtx, ws, message, clientInfo, wsServer) {
+    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
+    const manager = getManager(handlersCtx);
+    const page = await manager.listApplicationRequests({
+        page: message.page,
+        perPage: message.perPage
+    });
+    wsServer.sendToClient(ws, {
+        type: 'list_application_request_log_response',
+        requestId: message.requestId,
+        data: { success: true, ...page },
+        timestamp: new Date().toISOString()
+    });
+}
+
 async function handleGetApplicationAuthScopes(handlersCtx, ws, message, clientInfo, wsServer) {
     if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     const manager = getManager(handlersCtx);
@@ -407,6 +432,7 @@ function registerPackets(handlersCtx) {
     reg('claim_application_authorization', handleClaimApplicationAuthorization, APP_AUTH_CRITICAL);
 
     reg('list_application_keys', handleListApplicationKeys);
+    reg('list_application_request_log', handleListApplicationRequestLog);
     reg('get_application_auth_scopes', handleGetApplicationAuthScopes);
     reg('create_application_key', handleCreateApplicationKey, ADMIN_DESTRUCTIVE);
     reg('revoke_application_key', handleRevokeApplicationKey, ADMIN_DESTRUCTIVE);

@@ -169,6 +169,22 @@ async function createApplicationAuthTables() {
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_tokens_expires ON oauth_access_tokens (expires_at)`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_tokens_refresh ON oauth_access_tokens (refresh_token_hash)`);
 
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS application_request_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at INTEGER NOT NULL,
+            application_key_id TEXT,
+            app_name TEXT,
+            http_method TEXT,
+            path TEXT,
+            status_code INTEGER,
+            source TEXT,
+            ip TEXT,
+            user_agent TEXT
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_app_req_log_created ON application_request_log (id)`);
+
     await ensureOAuthClientsApplicationKeyIdNullable(db);
 }
 
