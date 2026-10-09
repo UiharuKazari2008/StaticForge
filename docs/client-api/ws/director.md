@@ -96,7 +96,8 @@ Read-only, so it is **not** destructive: the tray icon and tray menu need it. Re
 }
 ```
 
-- `state` is `working` while a turn runs, `offline` when the computer is down (`computer.code` is `BWRAP_MISSING`, `CURSOR_MISSING`, `DIRECTOR_NOT_PREPARED`, or the last `prepareDirector` failure), then `interrupted` / `failed` from the last turn, else `idle`.
+- `state` is `working` while a turn runs, `offline` when the computer is down (`computer.code` is `BWRAP_MISSING`, `CURSOR_MISSING`, `DIRECTOR_NOT_PREPARED`, `DIRECTOR_IDLE_SHUTDOWN`, or the last `prepareDirector` failure), then `interrupted` / `failed` from the last turn, else `idle`.
+- After `director.idleShutdownMinutes` with no Director or Wren turn (default 15, `0` disables), the server stops the Director browser process and marks Dreamspace stopped. The next turn starts it again. Dreamscape itself is not restarted.
 - `sessions` is the 3 most recent chats from `index.json`, newest first, with `current` set on the one a turn is running in.
 - `resources` measures **the Director's computer, not the Dreamscape host**: the tracked `bwrap` child plus its descendants (`cursor-agent`, `node`, headless chrome), read from `/proc/<pid>/stat` and `/proc/<pid>/task/<pid>/children`. `cpu` is a percent of one core over a 150 ms `utime + stime` delta and `rss` is in bytes; both are the tree total, and `processes` is the top 6 by CPU. With no turn running this is the last live sample with `live: false`, or `null` when there has not been one.
 

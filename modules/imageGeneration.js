@@ -47,6 +47,7 @@ function sanitizeDynamicGenerationForForge(dg) {
     delete dgForForge.novel_note_id;
     delete dgForForge.novel_story_cursor_line;
     delete dgForForge.novel_resume_advancement;
+    delete dgForForge._rentanReviewDone;
     return dgForForge;
 }
 
@@ -4273,6 +4274,18 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         if (body.mcp_generated === true || body.mcpGenerated === true) {
             baseOptions.mcp_generated = true;
         }
+        if (body._rentanReview) {
+            baseOptions._rentanReview = body._rentanReview;
+            baseOptions._rentanRebuild = async (change) => {
+                const dynagen = require('./dynagenWren');
+                dynagen.commitRentanChange(globalResources, body, preset, change);
+                body._dynagenResolved = true;
+                const next = await buildOptions(globalResources, body, preset, queryParams, ws, handler, wsServer, stageData);
+                if (body.requestId) next.requestId = body.requestId;
+                delete next.seed;
+                return next;
+            };
+        }
 
         return baseOptions;
     } catch (error) {
@@ -4355,6 +4368,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.stepPreviewHeight;
     delete apiOpts.requestId;
     delete apiOpts.max_enhance_source;
+    delete apiOpts._rentanReview;
+    delete apiOpts._rentanRebuild;
 
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
@@ -4383,7 +4398,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         auto_char_numerize: opts.auto_char_numerize,
         auto_clean_uc: opts.auto_clean_uc
     });
-    if (lastApiGenerationRecord && lastApiGenerationRecord.fingerprint === currentFingerprint && lastApiGenerationRecord.filename) {
+    if (!opts._rentanReview && lastApiGenerationRecord && lastApiGenerationRecord.fingerprint === currentFingerprint && lastApiGenerationRecord.filename) {
         const candidatePath = path.join(__runtimeGr.getPath('images'), lastApiGenerationRecord.filename);
         if (fs.existsSync(candidatePath)) {
             __runtimeGr.getLogger().normal(`⚡ Reusing identical generation result for existing image: ${lastApiGenerationRecord.filename}`);
@@ -4615,6 +4630,50 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         const fallbackErr = new Error(String(error));
         fallbackErr.name = 'ImageGenerationError';
         throw fallbackErr;
+    }
+
+    if (opts._rentanReview && opts.no_save !== true && !baseMetadata && opts.stageIndex === undefined
+        && opts.mcp_generated !== true && opts.mcpGenerated !== true) {
+        const dynagen = require('./dynagenWren');
+        const attemptBuffer = Buffer.from(img.data);
+        const settled = await dynagen.holdRentanPrint({
+            review: opts._rentanReview,
+            buffer: attemptBuffer,
+            compiledPrompt: [opts.prompt || '', opts.negative_prompt || ''].filter(Boolean).join('\n'),
+            snapshot: dynagen.snapshotRentanOpts(opts),
+            imageData: attemptBuffer.toString('base64'),
+            onPreview: (info) => {
+                if (!ws || !handler) return;
+                handler.sendGenerationProgress(ws, opts.requestId || 'generation', {
+                    hasDynamicGen: true,
+                    phase: 'reviewing',
+                    status: info.status,
+                    attempt: info.n,
+                    maxAttempts: info.max,
+                    imageData: info.imageData,
+                    imageFormat: 'png',
+                    currentStep: info.n,
+                    totalSteps: info.max
+                });
+            }
+        });
+        if (settled && settled.action === 'rebuild') {
+            if (typeof opts._rentanRebuild !== 'function') {
+                throw new Error('Rentan: Wren could not resolve the scene (review rebuild is not available). Turn Rentan off or try again.');
+            }
+            const nextOpts = await opts._rentanRebuild(settled.change);
+            return handleGeneration(globalResources, nextOpts, returnImage, presetName, workspaceId, req, streamingCallback, ws, handler, baseMetadata, stageSeeds);
+        }
+        if (!settled || settled.action !== 'save' || !settled.attempt) {
+            throw new Error('Rentan: Wren could not resolve the scene (review ended with nothing to save). Turn Rentan off or try again.');
+        }
+        img = { data: settled.attempt.buffer };
+        dynagen.restoreRentanSnapshot(opts, settled.attempt.snapshot);
+        if (settled.attempt.change) {
+            dynagen.emitApprovedRentanChange(handler, ws, opts._rentanReview, settled.attempt.change);
+        } else if (opts.dynamic_generation) {
+            opts.dynamic_generation._rentanReviewDone = true;
+        }
     }
 
     const timestamp = Date.now().toString();
@@ -5300,6 +5359,12 @@ async function handlePrintCopies(globalResources, body, copies, userType, sessio
             { singlePrint: true }
         );
         lastResult = result;
+        if (i === 0 && copyBody.dynamic_generation && copyBody.dynamic_generation._rentanReviewDone) {
+            body.prompt = copyBody.prompt;
+            body.uc = copyBody.uc;
+            body.text_replacements = copyBody.text_replacements;
+            body.allCharacterPrompts = copyBody.allCharacterPrompts;
+        }
         const names = collectGenerationResultFilenames(result);
         const lastName = names.length ? names[names.length - 1] : null;
         if (lastName) {

@@ -27,7 +27,7 @@ const MODULE_DEFS = {
             'get_calculator', 'set_calculator',
             'offer_director_window', 'get_client_physics',
             'set_session_title', 'set_session_type', 'set_session_tasks', 'set_session_task', 'get_session_tasks', 'close_session_tasks',
-            'offer_workspace_switch', 'show_chat_image', 'request_form', 'deliver_rentan',
+            'offer_workspace_switch', 'show_chat_image', 'request_form', 'deliver_rentan', 'await_rentan_attempt', 'finish_rentan',
             'list_clients', 'bind_session', 'apply_studio_changes', 'print_studio', 'run_client_js', 'inspect_elements',
             'update_client', 'restart_client',
             'get_linkxi_persona', 'save_linkxi_persona',

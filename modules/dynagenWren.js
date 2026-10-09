@@ -345,6 +345,378 @@ function sendRentanError(handler, ws, message) {
     });
 }
 
+const RENTAN_MAX_ATTEMPTS = 5;
+const RENTAN_ATTEMPT_WAIT_MS = 45 * 1000;
+
+function rentanReviewApplies(body) {
+    const dg = body && body.dynamic_generation;
+    if (!dg || typeof dg !== 'object' || Array.isArray(dg) || dg.enabled === false) return false;
+    if (body._rentanSkipReview || dg._rentanReviewDone) return false;
+    if (body.stageIndex !== undefined || body.compile_only) return false;
+    if (Array.isArray(body.pipeline) && body.pipeline.length > 0 && body.skip_pipeline_stages !== true) return false;
+    if (body.no_save === true || body.preview_only === true) return false;
+    if (body.mcp_generated === true || body.mcpGenerated === true) return false;
+    if (body.source === 'agent') return false;
+    const cp = dg.compiled_prompt;
+    if (cp && cp.source === 'agent') return false;
+    return true;
+}
+
+function rentanReviewStatus(n, max) {
+    return `Wren is reviewing attempt ${n}/${max}`;
+}
+
+function createRentanReview(options) {
+    const opts = options || {};
+    return {
+        chatId: String(opts.chatId || ''),
+        controls: opts.controls || null,
+        max: opts.max || RENTAN_MAX_ATTEMPTS,
+        waitMs: opts.waitMs != null ? opts.waitMs : RENTAN_ATTEMPT_WAIT_MS,
+        capWaitMs: opts.capWaitMs != null ? opts.capWaitMs : RENTAN_ATTEMPT_WAIT_MS,
+        attempts: [],
+        current: null,
+        change: null,
+        delivered: false,
+        atCap: false,
+        decision: null,
+        failed: null,
+        closed: false,
+        deferred: opts.deferred === true,
+        turnOpen: false,
+        homeDir: opts.homeDir || null,
+        requestBody: opts.requestBody || null,
+        preset: opts.preset || null,
+        gr: opts.gr || null,
+        statusLine: 'Wren is thinking...',
+        writePreview: opts.writePreview || null,
+        openTurn: opts.openTurn || null,
+        log: opts.log || ((message) => console.warn(message)),
+        _attemptWaiters: [],
+        _decisionWaiters: [],
+        _firstWaiters: [],
+        _firstRejecters: []
+    };
+}
+
+function wakeReview(list, value) {
+    const waiters = list.splice(0);
+    waiters.forEach((waiter) => {
+        try { waiter(value); } catch (_) { /* waiter already left */ }
+    });
+}
+
+function noteRentanDelivery(review, change) {
+    review.change = change;
+    if (!review.delivered) {
+        review.delivered = true;
+        wakeReview(review._firstWaiters, change);
+        review._firstRejecters.splice(0);
+        return { first: true, rebuild: false };
+    }
+    if (!review.attempts.length) return { first: false, rebuild: false, updated: true };
+    const decision = { action: 'rebuild', change };
+    review.decision = decision;
+    wakeReview(review._decisionWaiters, decision);
+    return { first: false, rebuild: true };
+}
+
+function waitForFirstDelivery(review) {
+    if (review.failed) return Promise.reject(review.failed);
+    if (review.delivered && review.change) return Promise.resolve(review.change);
+    return new Promise((resolve, reject) => {
+        review._firstWaiters.push(resolve);
+        review._firstRejecters.push(reject);
+    });
+}
+
+function failRentanReview(review, error) {
+    if (!review || review.delivered || review.failed) return;
+    review.failed = error || new Error('Rentan turn ended before deliver_rentan');
+    const rejecters = review._firstRejecters.splice(0);
+    review._firstWaiters.splice(0);
+    rejecters.forEach((reject) => {
+        try { reject(review.failed); } catch (_) { /* already settled */ }
+    });
+}
+
+function formatRentanAttempt(review, attempt) {
+    return {
+        pending: false,
+        attempt: attempt.n,
+        max: review.max,
+        path: attempt.jailPath,
+        previewPath: attempt.previewPath,
+        compiledPrompt: attempt.compiledPrompt,
+        atCap: review.atCap === true,
+        next: review.atCap
+            ? `This is attempt ${attempt.n} of ${review.max}. finish_rentan with pick set to the best attempt number.`
+            : 'Read the preview. finish_rentan approved:true, or deliver_rentan with a fix.'
+    };
+}
+
+function awaitRentanAttempt(review, timeoutMs) {
+    if (!review) {
+        const error = new Error('No Rentan turn is waiting on this chat. Pass the Rentan chat id from your turn prompt.');
+        error.code = 'NO_RENTAN_TURN';
+        throw error;
+    }
+    const wait = timeoutMs != null ? timeoutMs : review.waitMs;
+    if (review.current && !review.current.consumed) {
+        review.current.consumed = true;
+        return Promise.resolve(formatRentanAttempt(review, review.current));
+    }
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = (value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(value);
+        };
+        const onAttempt = (attempt) => {
+            attempt.consumed = true;
+            finish(formatRentanAttempt(review, attempt));
+        };
+        const timer = setTimeout(() => {
+            const idx = review._attemptWaiters.indexOf(onAttempt);
+            if (idx >= 0) review._attemptWaiters.splice(idx, 1);
+            finish({
+                pending: true,
+                attempt: review.attempts.length,
+                max: review.max,
+                next: 'The print is not ready yet. Call await_rentan_attempt again with the same chatId. Do not guess the picture.'
+            });
+        }, wait);
+        review._attemptWaiters.push(onAttempt);
+    });
+}
+
+async function writeRentanPreview(review, buffer, relativePath) {
+    if (review.writePreview) {
+        await review.writePreview({ buffer, relativePath, homeDir: review.homeDir, n: review.attempts.length + 1 });
+        return;
+    }
+    if (!review.homeDir) return;
+    const fs = require('fs');
+    const path = require('path');
+    const sharp = require('sharp');
+    const abs = path.join(review.homeDir, relativePath);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    await sharp(buffer).webp({ quality: 80 }).toFile(abs);
+}
+
+async function submitRentanAttempt(review, payload) {
+    const n = review.attempts.length + 1;
+    if (n > review.max) return null;
+    const rel = `rentan/${n}.webp`;
+    const jailPath = `/home/director/${rel}`;
+    await writeRentanPreview(review, payload.buffer, rel);
+    const attempt = {
+        n,
+        buffer: payload.buffer,
+        compiledPrompt: payload.compiledPrompt || '',
+        previewPath: rel,
+        jailPath,
+        change: review.change ? JSON.parse(JSON.stringify(review.change)) : null,
+        snapshot: payload.snapshot || null,
+        consumed: false
+    };
+    review.attempts.push(attempt);
+    review.current = attempt;
+    review.atCap = n >= review.max;
+    review.statusLine = rentanReviewStatus(n, review.max);
+    wakeReview(review._attemptWaiters, attempt);
+    return attempt;
+}
+
+function finishRentanReview(review, input) {
+    if (!review) {
+        const error = new Error('No Rentan turn is waiting on this chat.');
+        error.code = 'NO_RENTAN_TURN';
+        throw error;
+    }
+    const approved = input && (input.approved === true || input.approved === 'true');
+    const pick = input && input.pick != null && input.pick !== '' ? Number(input.pick) : null;
+    if (approved) {
+        const attempt = review.current || review.attempts[review.attempts.length - 1];
+        if (!attempt) {
+            const error = new Error('No attempt is ready to approve. Call await_rentan_attempt first.');
+            error.code = 'NO_RENTAN_ATTEMPT';
+            throw error;
+        }
+        const decision = { action: 'save', attempt, approved: true };
+        review.decision = decision;
+        wakeReview(review._decisionWaiters, decision);
+        return { chatId: review.chatId, approved: true, attempt: attempt.n };
+    }
+    if (Number.isInteger(pick) && pick >= 1) {
+        if (!review.atCap) {
+            const error = new Error(`pick is only available on attempt ${review.max}. Approve this attempt or deliver a fix.`);
+            error.code = 'RENTAN_PICK_EARLY';
+            throw error;
+        }
+        const attempt = review.attempts.find((row) => row.n === pick) || review.attempts[review.attempts.length - 1];
+        const decision = { action: 'save', attempt, pick: attempt.n };
+        review.decision = decision;
+        wakeReview(review._decisionWaiters, decision);
+        return { chatId: review.chatId, pick: attempt.n, attempt: attempt.n };
+    }
+    const error = new Error('finish_rentan needs approved:true or, on the last attempt, pick.');
+    error.code = 'BAD_RENTAN_FINISH';
+    throw error;
+}
+
+function waitForRentanDecision(review, timeoutMs) {
+    if (review.decision && review.decision.action) {
+        const decision = review.decision;
+        review.decision = null;
+        return Promise.resolve(decision);
+    }
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = (value) => {
+            if (settled) return;
+            settled = true;
+            if (timer) clearTimeout(timer);
+            resolve(value);
+        };
+        let timer = null;
+        const onDecision = (decision) => {
+            if (review.decision === decision) review.decision = null;
+            finish(decision);
+        };
+        if (timeoutMs != null && timeoutMs >= 0) {
+            timer = setTimeout(() => {
+                const idx = review._decisionWaiters.indexOf(onDecision);
+                if (idx >= 0) review._decisionWaiters.splice(idx, 1);
+                finish(null);
+            }, timeoutMs);
+        }
+        review._decisionWaiters.push(onDecision);
+    });
+}
+
+function forceSaveLastAttempt(review, reason) {
+    const attempt = review.attempts[review.attempts.length - 1];
+    if (!attempt) return null;
+    const message = `Rentan review ${review.chatId || ''}: ${reason || 'Wren did not finish'}. Saving attempt ${attempt.n}.`;
+    review.log(message);
+    const decision = { action: 'save', attempt, forced: true, reason: message };
+    review.decision = decision;
+    wakeReview(review._decisionWaiters, decision);
+    return decision;
+}
+
+function closeRentanReview(review, error) {
+    if (!review || review.closed) return;
+    review.closed = true;
+    if (!review.delivered) {
+        failRentanReview(review, error || new Error('Rentan turn ended before deliver_rentan'));
+        return;
+    }
+    if (!review.decision && review._decisionWaiters.length) {
+        forceSaveLastAttempt(review, error && error.message ? error.message : 'the Rentan turn ended');
+    }
+}
+
+function snapshotRentanOpts(opts) {
+    let dynamic = null;
+    if (opts && opts.dynamic_generation) {
+        const copy = { ...opts.dynamic_generation };
+        delete copy._rentanReviewDone;
+        dynamic = JSON.parse(JSON.stringify(copy));
+    }
+    return {
+        prompt: opts.prompt,
+        negative_prompt: opts.negative_prompt,
+        seed: opts.seed,
+        allCharacterPrompts: opts.allCharacterPrompts,
+        dynamic_generation: dynamic,
+        input_prompt: opts.input_prompt,
+        input_uc: opts.input_uc,
+        input_prompt_negative: opts.input_prompt_negative,
+        input_character_prompts: opts.input_character_prompts,
+        text_replacements: opts.text_replacements
+    };
+}
+
+function restoreRentanSnapshot(opts, snapshot) {
+    if (!opts || !snapshot) return;
+    Object.keys(snapshot).forEach((key) => {
+        if (snapshot[key] !== undefined) opts[key] = snapshot[key];
+    });
+}
+
+function commitRentanChange(gr, body, preset, change) {
+    const dg = body && body.dynamic_generation;
+    if (!dg || !change) return;
+    const existing = dg.compiled_prompt && typeof dg.compiled_prompt === 'object' ? dg.compiled_prompt : {};
+    applyWrenChange(body, change);
+    stampCompiled(gr, body, dg, preset, body._dynagenContext || {}, {
+        original_input: existing.original_input || null,
+        source: 'wren',
+        summary: change.summary,
+        applied: change.applied,
+        expanders: change.expanders,
+        sessionId: existing.wren_session_id || null,
+        wrenAt: Date.now()
+    });
+}
+
+function emitApprovedRentanChange(handler, ws, review, change) {
+    const body = review && review.requestBody;
+    if (!ws || !handler || !change || !body) return;
+    commitRentanChange(review.gr, body, review.preset, change);
+    if (body.dynamic_generation) body.dynamic_generation._rentanReviewDone = true;
+    handler.sendToClient(ws, {
+        type: 'dynamic_generation_progress_update',
+        phase: 'wren_change',
+        data: {
+            change: studioChangeFrom(body, change),
+            compiled_prompt: body.dynamic_generation && body.dynamic_generation.compiled_prompt
+        },
+        timestamp: new Date().toISOString()
+    });
+}
+
+async function holdRentanPrint(args) {
+    const review = args && args.review;
+    if (!review) return null;
+    const attempt = await submitRentanAttempt(review, {
+        buffer: args.buffer,
+        compiledPrompt: args.compiledPrompt,
+        snapshot: args.snapshot
+    });
+    if (!attempt) return forceSaveLastAttempt(review, 'attempt cap exceeded');
+    if (review.deferred && !review.turnOpen && typeof review.openTurn === 'function') {
+        review.turnOpen = true;
+        await review.openTurn(attempt);
+    }
+    if (typeof args.onPreview === 'function') {
+        args.onPreview({
+            n: attempt.n,
+            max: review.max,
+            status: review.statusLine,
+            imageData: args.imageData || null
+        });
+    }
+    const decision = await waitForRentanDecision(review, review.atCap ? review.capWaitMs : null);
+    if (!decision || (decision.action === 'rebuild' && review.atCap)) {
+        const forced = forceSaveLastAttempt(review, !decision
+            ? `Wren did not pick within the cap on attempt ${attempt.n}`
+            : 'rebuild requested at the attempt cap');
+        if (forced && review.requestBody && review.requestBody.dynamic_generation) {
+            review.requestBody.dynamic_generation._rentanReviewDone = true;
+        }
+        return forced;
+    }
+    if (decision.action === 'save' && review.requestBody && review.requestBody.dynamic_generation) {
+        review.requestBody.dynamic_generation._rentanReviewDone = true;
+    }
+    return decision;
+}
+
 function isLegacyTendai(cp) {
     return !!(cp && !cp.wren_input_hash && cp.source !== 'agent' && cp.text_replacements);
 }
@@ -382,6 +754,49 @@ function staleReason(cp, dg, body, context, now) {
     return 'context changed since the last tick';
 }
 
+function attachDeferredRentanReview(gr, body, preset, ws, handler, context) {
+    const dg = body.dynamic_generation;
+    const { layout, startRentanReviewTurn } = require('./cursorDirector');
+    const requestId = body.requestId || 'buildOptions';
+    const progress = (data) => {
+        if (ws && handler) handler.sendGenerationProgress(ws, requestId, { hasDynamicGen: true, ...data });
+    };
+    const review = createRentanReview({
+        deferred: true,
+        controls: rentanControls(dg),
+        requestBody: body,
+        preset,
+        gr,
+        homeDir: layout().home
+    });
+    review.delivered = true;
+    review.openTurn = (attempt) => startRentanReviewTurn(gr, {
+        workspaceId: body.workspace || null,
+        reason: 'review cached scene',
+        reviewOnly: true,
+        review,
+        attemptN: attempt.n,
+        max: review.max,
+        previewPath: attempt.jailPath,
+        compiledPrompt: attempt.compiledPrompt,
+        context: rentanContextForWren(context),
+        controls: rentanControls(dg),
+        directive: dg.directive || '',
+        prompt: body.prompt || preset?.prompt || '',
+        uc: body.uc || '',
+        characters: (Array.isArray(body.allCharacterPrompts) ? body.allCharacterPrompts : [])
+            .map((c, index) => ({ index, prompt: (c && c.prompt) || '' })),
+        expanders: dgExpandersFrom(body.text_replacements),
+        onThought: (text, reasoningId) => progress({
+            phase: 'streaming',
+            reasoning: text,
+            reasoningId,
+            status: review.statusLine || 'Wren is thinking...'
+        })
+    });
+    body._rentanReview = review;
+}
+
 /**
  * Resolve Rentan before buildOptions processes the prompt. Mutates body
  * (prompt, uc, character prompts, text_replacements, dynamic_generation.compiled_prompt).
@@ -391,6 +806,7 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
     const dg = body && body.dynamic_generation;
     if (!dg || typeof dg !== 'object' || Array.isArray(dg) || dg.enabled === false) return;
     if (body.stageIndex !== undefined || body.compile_only || body._dynagenResolved) return;
+    if (dg._rentanReviewDone) return;
     body._dynagenResolved = true;
 
     const cp = dg.compiled_prompt && typeof dg.compiled_prompt === 'object' ? dg.compiled_prompt : null;
@@ -417,6 +833,7 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
         ? null
         : staleReason(cp, dg, body, context, now);
     console.log(`Rentan ${body.workspace || ''}: ${reason ? `Wren turn (${reason})` : 'cached scene reused'}`);
+    const reviewWanted = rentanReviewApplies(body);
     const reuseCachedScene = () => {
         if (!dgExpandersFrom(body.text_replacements).length && cp.dg_expanders && cp.dg_expanders.length) {
             body.text_replacements = (Array.isArray(body.text_replacements) ? body.text_replacements : [])
@@ -427,6 +844,7 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
     };
     if (!reason) {
         reuseCachedScene();
+        if (reviewWanted) attachDeferredRentanReview(gr, body, preset, ws, handler, context);
         return;
     }
 
@@ -436,12 +854,20 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
     };
     progress({ phase: 'thinking' });
 
-    const { runDynagenTurn } = require('./cursorDirector');
+    const { runDynagenTurn, layout } = require('./cursorDirector');
+    const review = reviewWanted ? createRentanReview({
+        controls: rentanControls(dg),
+        requestBody: body,
+        preset,
+        gr,
+        homeDir: layout().home
+    }) : null;
     let result;
     try {
         result = await runDynagenTurn(gr, {
             workspaceId: body.workspace || null,
             reason,
+            review,
             context: rentanContextForWren(context),
             controls: rentanControls(dg),
             directive: dg.directive || '',
@@ -452,7 +878,12 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
             expanders: dgExpandersFrom(body.text_replacements).length
                 ? dgExpandersFrom(body.text_replacements)
                 : ((cp && cp.dg_expanders) || []),
-            onThought: (text, reasoningId) => progress({ phase: 'streaming', reasoning: text, reasoningId, status: 'Wren is thinking...' })
+            onThought: (text, reasoningId) => progress({
+                phase: 'streaming',
+                reasoning: text,
+                reasoningId,
+                status: (review && review.statusLine) || 'Wren is thinking...'
+            })
         });
     } catch (error) {
         // Out of Cursor usage even on Auto (modules/cursorDirector.js executeDynagenTurn): print on the last scene.
@@ -480,6 +911,11 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
         wrenAt: Date.now()
     });
 
+    if (review) {
+        body._rentanReview = review;
+        return;
+    }
+
     if (ws && handler && !preset) {
         handler.sendToClient(ws, {
             type: 'dynamic_generation_progress_update',
@@ -496,5 +932,22 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
 module.exports = {
     resolveDynagenWithWren,
     dynagenRequestHash,
+    rentanReviewApplies,
+    createRentanReview,
+    noteRentanDelivery,
+    waitForFirstDelivery,
+    failRentanReview,
+    closeRentanReview,
+    awaitRentanAttempt,
+    finishRentanReview,
+    submitRentanAttempt,
+    holdRentanPrint,
+    forceSaveLastAttempt,
+    snapshotRentanOpts,
+    restoreRentanSnapshot,
+    commitRentanChange,
+    emitApprovedRentanChange,
+    rentanReviewStatus,
+    RENTAN_MAX_ATTEMPTS,
     _test: { originalInputFor, inputSnapshot, rentanControls, changedControls, rentanContextForWren, wrenInputHash, applyWrenChange, studioChangeFrom, staleReason, contextUnchanged, insertPrefixToken, isLegacyTendai, watchedBlocksReason }
 };

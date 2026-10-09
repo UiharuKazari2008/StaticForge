@@ -93,6 +93,8 @@ const TOOL_RATE_GROUPS = {
     show_chat_image: 'write',
     request_form: 'free',
     deliver_rentan: 'free',
+    await_rentan_attempt: 'free',
+    finish_rentan: 'free',
     ledge: 'free',
     get_session_state: 'studio',
     get_prompt_guide: 'free',

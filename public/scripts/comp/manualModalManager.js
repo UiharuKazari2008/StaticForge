@@ -5595,7 +5595,7 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
     applyManualPreviewDynamicGenPhase(phase);
 
     // Only offer Cancel once an actual generation is processing dynamic-gen phases (not context-only previews or completion/error)
-    const dynGenProcessingPhases = ['starting', 'context', 'thinking', 'streaming', 'tool_execution', 'optimizing'];
+    const dynGenProcessingPhases = ['starting', 'context', 'thinking', 'streaming', 'tool_execution', 'optimizing', 'reviewing'];
     const manualIsGenerating = Boolean(manualForm?.classList.contains('generating'));
     setManualDynamicGenerationProgressCancelVisible(manualIsGenerating && dynGenProcessingPhases.includes(phase));
 
@@ -5615,6 +5615,10 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
             break;
         case 'streaming':
             updateProgressStatus(data?.status || 'Reading Response...');
+            addProgressReasoning((data?.reason ?? data?.reasoning ?? data?.toolReason), null, 'completed', data?.reasoningId);
+            break;
+        case 'reviewing':
+            updateProgressStatus(data?.status || `Wren is reviewing attempt ${data?.attempt || 1}/5`);
             addProgressReasoning((data?.reason ?? data?.reasoning ?? data?.toolReason), null, 'completed', data?.reasoningId);
             break;
         case 'tool_execution':

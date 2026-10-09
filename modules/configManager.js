@@ -623,6 +623,9 @@ class ConfigManager {
                     xi: {
                         enabled: false,
                         workspace: ''
+                    },
+                    director: {
+                        idleShutdownMinutes: 15
                     }
                 };
             case 'favorites':

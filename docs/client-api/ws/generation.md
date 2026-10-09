@@ -150,6 +150,8 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 
 Rentan (`modules/dynagenWren.js`) also pushes during a Studio generate: `image_generation_progress` with `hasDynamicGen: true`, `phase` `thinking` then `streaming` (`reasoning` is one Wren thought, `status` the overlay line), and `dynamic_generation_progress_update` with `phase: "wren_change"` and `data: { change, compiled_prompt }`. The client stores `compiled_prompt` and applies `change` (Change JSON: `expanders`, `prompt`, `uc`, `characters`) to an open Studio silently. A failed Wren turn pushes `phase: "error"` and the generate fails.
 
+Every Studio Rentan print is reviewed before it is saved. Wren calls hidden tools `await_rentan_attempt` and `finish_rentan` (or `deliver_rentan` again to reprint). The overlay status line is `Wren is reviewing attempt N/5` (`phase: "reviewing"`) and each attempt's preview is `imageData` on `image_generation_progress`. At most 5 attempts. Approving, or picking one at the cap, is the only `wren_change` Studio applies. MCP `generate_image`, pipelines, and preview-only builds skip the review. A dynagen turn uses a 2 minute idle cap and a 3 minute hard cap (8 minutes while a review is open), and the child process is killed when that expires, so it cannot hold the generation FIFO for the Director chat's 30 minutes.
+
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `enhance_image`
