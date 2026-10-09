@@ -248,6 +248,7 @@ const STUDIO_PARAM_SCHEMA = {
     sampler: { type: 'string', description: 'k_euler_ancestral (Euler Ancestral), k_dpmpp_sde (DPM++ SDE), k_dpmpp_2m (DPM++ 2M), k_dpmpp_2m_sde (DPM++ 2M SDE), k_euler (Euler), k_dpmpp_2s_ancestral (DPM++ 2S Ancestral)', enum: ['k_euler_ancestral', 'k_dpmpp_sde', 'k_dpmpp_2m', 'k_dpmpp_2m_sde', 'k_euler', 'k_dpmpp_2s_ancestral'] },
     noiseScheduler: { type: 'string', description: 'karras, exponential, or polyexponential', enum: ['karras', 'exponential', 'polyexponential'] },
     model: { type: 'string', description: 'e.g. v5, v5_cur, v4_5, v4_5_cur, v4, v4_cur, v3, furry. Live ids are on tools/list and get_studio_state.settings.models' },
+    effort: { type: 'string', description: 'V5 Full only. high (default, nai-diffusion-5-full) or medium (nai-diffusion-5-full-medium). Medium locks steps to 14, sampler to Euler Ancestral, UC to the heavy preset, and turns rescale off. Guidance still applies.', enum: ['high', 'medium'] },
     seed: { type: ['string', 'number'], description: 'Specific seed, or "last" to lock last used' },
     seedLock: { type: 'boolean', description: 'true locks last used seed (Studio sprout). false rolls a new variation' },
     resolution: { type: 'string', description: 'Named size (normal_portrait=832x1216, normal_landscape=1216x832, normal_square=1024x1024, normal_wallpaper_landscape=1024x576, normal_wallpaper_portrait=576x1024, large_*, xlarge_*, wallpaper_*, small_*) or custom plus width/height. Live px sizes are on tools/list and get_studio_state.settings.resolutions' },
@@ -5814,6 +5815,9 @@ function changeJsonFromImageMeta(meta, filename) {
     if (src.sampler) params.sampler = src.sampler;
     if (src.noise_schedule) params.noiseScheduler = src.noise_schedule;
     if (src.model) params.model = src.model;
+    if (forge.effort === 'medium' || forge.effort === 'high' || src.effort === 'medium' || src.effort === 'high') {
+        params.effort = forge.effort || src.effort;
+    }
     if (src.seed != null) params.seed = src.seed;
     if (src.append_quality != null) params.append_quality = !!src.append_quality;
     if (src.append_uc != null) params.append_uc = src.append_uc;
@@ -7625,6 +7629,7 @@ function studioChangeFromPreset(preset) {
     const data = preset && typeof preset === 'object' ? preset : {};
     const params = {};
     if (data.model) params.model = data.model;
+    if (data.effort === 'medium' || data.effort === 'high') params.effort = data.effort;
     if (data.steps != null) params.steps = data.steps;
     if (data.guidance != null) params.guidance = data.guidance;
     if (data.rescale != null) params.rescale = data.rescale;

@@ -488,6 +488,53 @@ html.disable-blur .director-session-overlay {
     opacity: 0.72;
 }
 
+.director-session-item[data-inactive-account="1"],
+.director-session-item.inactive-account {
+    opacity: 0.52;
+    filter: grayscale(0.85);
+}
+
+.director-session-item[data-inactive-account="1"]:hover,
+.director-session-item.inactive-account:hover {
+    opacity: 0.75;
+    filter: grayscale(0.5);
+}
+
+.director-account-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+    flex: none;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+}
+
+#directorAccountBadge {
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+}
+
+.director-inactive-account-tag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.72rem;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 171, 0, 0.15);
+    color: #ffb74d;
+    border: 1px solid rgba(255, 171, 0, 0.3);
+    margin-left: 4px;
+    font-weight: 500;
+}
+
 .director-session-item {
     display: flex;
     align-items: center;

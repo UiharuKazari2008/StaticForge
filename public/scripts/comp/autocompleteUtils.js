@@ -5522,6 +5522,7 @@ function getServiceIconClass(serviceName, status) {
     const inactive = isServiceStatusInactiveIcon(status);
     switch (serviceName) {
         case 'nai-diffusion-5-full':
+        case 'nai-diffusion-5-full-medium':
         case 'nai-diffusion-5-curated':
         case 'nai-diffusion-4-5-full':
         case 'nai-diffusion-4-5':

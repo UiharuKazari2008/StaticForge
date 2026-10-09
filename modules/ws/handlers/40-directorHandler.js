@@ -6,6 +6,7 @@ const {
     handleDirectorGetSession,
     handleDirectorOpenWorkspace,
     handleDirectorDeleteSession,
+    handleDirectorForkSession,
     handleDirectorSendMessage,
     handleDirectorGetModels,
     handleDirectorAbort,
@@ -56,6 +57,7 @@ function registerPackets(handlersCtx) {
     reg('director_create_session', handleDirectorCreateSession, DIRECTOR_DESTRUCTIVE);
     reg('director_get_session', handleDirectorGetSession);
     reg('director_delete_session', handleDirectorDeleteSession, DIRECTOR_DESTRUCTIVE);
+    reg('director_fork_session', handleDirectorForkSession, DIRECTOR_DESTRUCTIVE);
     reg('director_send_message', handleDirectorSendMessage, DIRECTOR_DESTRUCTIVE);
     reg('director_get_models', handleDirectorGetModels);
     reg('director_abort', handleDirectorAbort, DIRECTOR_DESTRUCTIVE);

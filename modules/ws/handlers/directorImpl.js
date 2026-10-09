@@ -24,6 +24,7 @@ module.exports = {
     handleDirectorGetSession: route(xi.handleDirectorGetSession, cursor.handleDirectorGetSession),
     handleDirectorOpenWorkspace: route(xi.handleDirectorOpenWorkspace, cursor.handleDirectorOpenWorkspace),
     handleDirectorDeleteSession: route(xi.handleDirectorDeleteSession, cursor.handleDirectorDeleteSession),
+    handleDirectorForkSession: route(xi.handleDirectorForkSession, cursor.handleDirectorForkSession),
     handleDirectorGetMessages: route(xi.handleDirectorGetMessages, cursor.handleDirectorGetMessages),
     handleDirectorRollbackMessage: route(xi.handleDirectorRollbackMessage, cursor.handleDirectorRollbackMessage),
     handleDirectorRecycleSession: cursor.handleDirectorRecycleSession,

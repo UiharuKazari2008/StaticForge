@@ -19,6 +19,8 @@ const {
 
 const DG_PREFIX = /^dg_/i;
 const DEFAULT_EXPIRY_MS = 30 * 60 * 1000;
+// An expired scene older than this gets a Wren turn even when the context looks the same (daytime AM and PM share a period).
+const MAX_SCENE_AGE_MS = 6 * 60 * 60 * 1000;
 const EMPTY_TENDAI = { prompt: [], uc: [], character_prompts: [] };
 
 // Same subset imageGeneration buildOptions hashes, so its cache check agrees.
@@ -320,6 +322,7 @@ function stampCompiled(gr, body, dg, preset, context, fields) {
             : (existing.input_hash === inputHash ? existing.original_input || null : null),
         input_hash: inputHash,
         wren_session_id: fields.sessionId || existing.wren_session_id || null,
+        wren_at: fields.wrenAt || existing.wren_at || null,
         wren_input_hash: wrenInputHash(body, dg),
         prompt_hash: promptHash,
         request_hash: dynagenRequestHash(dg),
@@ -374,6 +377,7 @@ function staleReason(cp, dg, body, context, now) {
     const watched = watchedBlocksReason(cp, body);
     if (watched) return watched;
     if (cp.expiresAt && now < cp.expiresAt) return null;
+    if (now - (cp.wren_at || cp.timestamp || 0) > MAX_SCENE_AGE_MS) return 'scene older than 6h';
     if (contextUnchanged(cp.context, context)) return null;
     return 'context changed since the last tick';
 }
@@ -472,7 +476,8 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
         summary: result.change.summary,
         applied: result.change.applied,
         expanders: result.change.expanders,
-        sessionId: result.sessionId
+        sessionId: result.sessionId,
+        wrenAt: Date.now()
     });
 
     if (ws && handler && !preset) {

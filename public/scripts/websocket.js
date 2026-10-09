@@ -7444,6 +7444,34 @@ class WebSocketClient {
         return this.sendMessage('deny_application_auth_request', { requestId });
     }
 
+    async getCursorAccounts() {
+        return this.sendMessage('get_cursor_accounts', {});
+    }
+
+    async switchCursorAccount(persona, accountId, customToken = '') {
+        return this.sendMessage('switch_cursor_account', { persona, accountId, customToken });
+    }
+
+    async saveCursorAccount(account) {
+        return this.sendMessage('save_cursor_account', account);
+    }
+
+    async loginCursorAccount(accountId) {
+        return this.sendMessage('login_cursor_account', { accountId });
+    }
+
+    async captureCursorAccount(persona, accountId) {
+        return this.sendMessage('capture_cursor_account', { persona, accountId });
+    }
+
+    async logoutCursorAccount(persona, accountId) {
+        return this.sendMessage('logout_cursor_account', { persona, accountId });
+    }
+
+    async deleteCursorAccount(accountId) {
+        return this.sendMessage('delete_cursor_account', { accountId });
+    }
+
     // Wait for connection to be established with better validation
     async waitForConnection(timeout = 10000) {
         return new Promise((resolve, reject) => {

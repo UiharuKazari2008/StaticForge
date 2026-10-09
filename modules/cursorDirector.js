@@ -42,10 +42,6 @@ const LOGIN_FAILURE = /not logged in|please log in|login expired|authentication 
 // Cursor's upgrade/payment ErrorDetails (USAGE_LIMIT, RATE_LIMITED*, USAGE_PRICING_REQUIRED*) as print mode words them.
 const USAGE_LIMIT_FAILURE = /usage.?limit|rate.?limit|hit your (?:usage )?limit|usage.?pricing|usage-based|spend(?:ing)? limit|resource.?exhausted|out of (?:usage|fast|included|requests)|switch to auto|increase (?:your )?limits?/i;
 const USAGE_LIMIT_RETRY_MS = 60 * 1000;
-// A turn starts on a fresh Cursor chat once the last window fill reached this,
-// or once one image chain got more than RECYCLE_CHAIN_PRINTS prints in this chat.
-const RECYCLE_CONTEXT_PERCENT = 70;
-const RECYCLE_CHAIN_PRINTS = 4;
 
 // Paths as the jail sees them. Host paths never appear inside the computer.
 const JAIL_HOME = '/home/director';
@@ -250,6 +246,10 @@ function readJsonFile(file) {
 
 let lastCursorLogin = { ok: false, reason: 'missing' };
 
+function getLastCursorLogin() {
+    return lastCursorLogin;
+}
+
 function overlayObject(base, overlay) {
     const next = base && typeof base === 'object' ? { ...base } : {};
     Object.keys(overlay).forEach((key) => {
@@ -283,9 +283,12 @@ function sameFileBytes(a, b) {
     }
 }
 
-// auth.json sits beside cli-config.json. The agent writes it in the jail home;
-// usage reads the host copy. Keep the newer file in both places.
+// auth.json sits beside cli-config.json. Non-default accounts use their own profile storage.
 function syncCursorAuthFile(configDir) {
+    const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+    const activeAccountId = cursorAccountAuthStore.getActiveAccountId('wren');
+    if (activeAccountId !== 'default') return;
+
     const hostAuth = path.join(os.homedir(), '.config', 'cursor', 'auth.json');
     const jailAuth = path.join(configDir, 'auth.json');
     const hostTime = fileMtimeMs(hostAuth);
@@ -299,54 +302,60 @@ function syncCursorAuthFile(configDir) {
     try { fs.chmodSync(to, 0o600); } catch (_) { /* copy landed */ }
 }
 
-// Runs from ensureComputerTree, which prepareDirector calls at server startup
-// and every later ensureProject. The host file is only the login source. The
-// jail copy is a separate config with Dreamspace's own approval options on top.
-// auth.json is copied with that config (newer file wins) so usage and the jail
-// stay on the same login. create-chat exits only when that copy has authInfo
-// and a statsig cache for the same authId.
+// Syncs active Wren Cursor account login into jail config directory without overwriting bare profiles.
 function syncCursorCliLogin(home) {
-    const hostDir = path.join(os.homedir(), '.cursor');
-    const hostConfig = readJsonFile(path.join(hostDir, 'cli-config.json')) || {};
-    const authInfo = hostConfig.authInfo;
-    const authId = authInfo && authInfo.authId;
     const configDir = path.join(home, '.config', 'cursor');
     fs.mkdirSync(configDir, { recursive: true });
+
+    const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+    const activeAccountId = cursorAccountAuthStore.getActiveAccountId('wren');
+
+    // Restore active account profile's files into configDir
+    cursorAccountAuthStore.restoreAccountAuthFiles(activeAccountId, configDir);
+
     const configPath = path.join(configDir, 'cli-config.json');
-    writeJsonFile(configPath, overlayObject(hostConfig, DIRECTOR_CLI_OVERLAY));
-    syncCursorAuthFile(configDir);
-    if (!authId) {
+    const currentConfig = readJsonFile(configPath) || {};
+    writeJsonFile(configPath, overlayObject(currentConfig, DIRECTOR_CLI_OVERLAY));
+
+    const authPath = path.join(configDir, 'auth.json');
+    const authData = readJsonFile(authPath) || {};
+
+    const token = authData.accessToken || authData.apiKey || '';
+    const email = (currentConfig.authInfo && currentConfig.authInfo.email) || '';
+
+    if (!token && (!email || email === '(Pending Login)' || email === '(Logged Out)')) {
         lastCursorLogin = { ok: false, reason: 'missing' };
         return lastCursorLogin;
     }
-    const cachePath = path.join(configDir, 'statsig-cache.json');
-    const cache = readJsonFile(cachePath);
-    const hostCache = path.join(hostDir, 'statsig-cache.json');
-    if ((!cache || cache.userID !== authId) && fs.existsSync(hostCache)) {
-        fs.copyFileSync(hostCache, cachePath);
-        try { fs.chmodSync(cachePath, 0o600); } catch (_) { /* copy landed */ }
-    }
+
     lastCursorLogin = { ok: true, reason: null };
     return lastCursorLogin;
 }
 
-// Private CLI home for a host agent. Copies the login, then forces unrestricted
-// approval on that copy. The user's own ~/.cursor config is left alone.
+// Private CLI home for Xi (host agent). Restores active Xi profile credentials.
 function installUnrestrictedCli(configDir) {
-    const hostDir = path.join(os.homedir(), '.cursor');
-    const hostConfig = readJsonFile(path.join(hostDir, 'cli-config.json')) || {};
     fs.mkdirSync(configDir, { recursive: true });
-    writeJsonFile(path.join(configDir, 'cli-config.json'), overlayObject(hostConfig, DIRECTOR_CLI_OVERLAY));
-    syncCursorAuthFile(configDir);
-    const authId = hostConfig.authInfo && hostConfig.authInfo.authId;
-    if (!authId) return { ok: false, reason: 'missing' };
-    const cachePath = path.join(configDir, 'statsig-cache.json');
-    const cache = readJsonFile(cachePath);
-    const hostCache = path.join(hostDir, 'statsig-cache.json');
-    if ((!cache || cache.userID !== authId) && fs.existsSync(hostCache)) {
-        fs.copyFileSync(hostCache, cachePath);
-        try { fs.chmodSync(cachePath, 0o600); } catch (_) { /* copy landed */ }
+
+    const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+    const activeAccountId = cursorAccountAuthStore.getActiveAccountId('xi');
+
+    // Restore active account profile's files into configDir
+    cursorAccountAuthStore.restoreAccountAuthFiles(activeAccountId, configDir);
+
+    const configPath = path.join(configDir, 'cli-config.json');
+    const currentConfig = readJsonFile(configPath) || {};
+    writeJsonFile(configPath, overlayObject(currentConfig, DIRECTOR_CLI_OVERLAY));
+
+    const authPath = path.join(configDir, 'auth.json');
+    const authData = readJsonFile(authPath) || {};
+
+    const token = authData.accessToken || authData.apiKey || '';
+    const email = (currentConfig.authInfo && currentConfig.authInfo.email) || '';
+
+    if (!token && (!email || email === '(Pending Login)' || email === '(Logged Out)')) {
+        return { ok: false, reason: 'missing' };
     }
+
     return { ok: true, reason: null };
 }
 
@@ -439,7 +448,7 @@ function jailEnv() {
         npm_config_prefix: `${JAIL_HOME}/.local`,
         npm_config_cache: `${JAIL_HOME}/.cache/npm`,
         PLAYWRIGHT_BROWSERS_PATH: jailPlaywrightDir(),
-        DREAMSCAPE_DIRECTOR: '1',
+        CURSOR_CONFIG_DIR: `${JAIL_HOME}/.config/cursor`,
         BU_CDP_URL: directorBrowserCdpUrl()
     };
     const chrome = findPlaywrightChrome();
@@ -447,10 +456,6 @@ function jailEnv() {
         env.BH_CHROME_PATH = chrome;
         env.CHROME_PATH = chrome;
     }
-    // `cursor-agent models` requires this. It stays in the process environment
-    // and is not written into the computer.
-    if (process.env.CURSOR_API_KEY) env.CURSOR_API_KEY = process.env.CURSOR_API_KEY;
-    if (process.env.CURSOR_AUTH_TOKEN) env.CURSOR_AUTH_TOKEN = process.env.CURSOR_AUTH_TOKEN;
     return env;
 }
 
@@ -485,6 +490,15 @@ function buildJail(bwrapBin, agentBin, paths, mounts) {
     args.push('--chdir', JAIL_WORKSPACE);
     args.push('--clearenv');
     const env = jailEnv();
+    try {
+        const authPath = require('path').join(paths.home, '.config', 'cursor', 'auth.json');
+        const authData = JSON.parse(require('fs').readFileSync(authPath, 'utf8'));
+        if (authData.apiKey) {
+            env.CURSOR_API_KEY = authData.apiKey;
+        } else if (authData.accessToken) {
+            env.CURSOR_AUTH_TOKEN = authData.accessToken;
+        }
+    } catch (_) {}
     Object.keys(env).forEach((key) => args.push('--setenv', key, env[key]));
     return { bin: bwrapBin, args, agent: agent.inJail, workspace: JAIL_WORKSPACE, root: paths.root };
 }
@@ -1043,9 +1057,21 @@ function sessionChoice(chat) {
     return null;
 }
 
+function getActiveAccountId(gr, persona = 'wren') {
+    try {
+        const secureConfig = gr && typeof gr.getSecureConfig === 'function' ? gr.getSecureConfig() : null;
+        if (secureConfig && secureConfig.cursorAccounts) {
+            const p = persona === 'xi' ? secureConfig.cursorAccounts.xi : secureConfig.cursorAccounts.wren;
+            if (p && p.activeAccountId) return p.activeAccountId;
+        }
+    } catch (_) {}
+    return 'default';
+}
+
 function publicSession(chat) {
     return {
         id: chat.id,
+        accountId: chat.accountId || 'default',
         name: chat.name || 'Director',
         workspaceId: chat.workspaceId || null,
         filename: chat.filename || null,
@@ -2030,13 +2056,8 @@ function cleanupComputer() {
 
 function abortAllRuns() {
     let aborted = 0;
-    runs.forEach((marker) => {
-        marker.cancelled = true;
-        if (!marker.child) return;
-        try {
-            marker.child.kill('SIGTERM');
-            aborted += 1;
-        } catch (_) { /* already exited */ }
+    runs.forEach((marker, sessionId) => {
+        if (hardStopSession(sessionId)) aborted += 1;
     });
     return aborted;
 }
@@ -2067,18 +2088,59 @@ function spawnAgent(jail, args) {
     return spawn(jail.bin, jail.args.concat([jail.agent], args), {
         cwd: jail.root,
         env: { PATH: process.env.PATH || '/usr/bin:/bin' },
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true
     });
 }
 
-const CREATE_CHAT_MS = 20000;
+// detached: true makes the sandbox its own process group. Kill the group, then
+// every pid still listed under it, so shells and subagents do not keep running.
+function signalProcessTree(pid, signal) {
+    const root = Number(pid);
+    if (!Number.isFinite(root) || root <= 0) return;
+    try { process.kill(-root, signal); } catch (_) { /* not a group leader */ }
+    const rows = procTree(root);
+    for (let i = rows.length - 1; i >= 0; i--) {
+        try { process.kill(rows[i].pid, signal); } catch (_) { /* already exited */ }
+    }
+    try { process.kill(root, signal); } catch (_) { /* already exited */ }
+}
 
+function hardStopSession(sessionId) {
+    if (!sessionId) return false;
+    const pending = resumeTimers.get(sessionId);
+    if (pending) {
+        clearTimeout(pending);
+        resumeTimers.delete(sessionId);
+    }
+    const marker = runs.get(sessionId);
+    if (!marker) return !!pending;
+    marker.cancelled = true;
+    const pid = marker.child && marker.child.pid;
+    if (pid) {
+        signalProcessTree(pid, 'SIGTERM');
+        setTimeout(() => signalProcessTree(pid, 'SIGKILL'), 500);
+    }
+    return true;
+}
+
+const CREATE_CHAT_MS = 20000;
+const CHAT_ID_LINE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// cursor-agent create-chat prints the chat id right away but can then hang
+// without exiting, so the id on stdout is the success signal, not the exit.
 function createCursorChat(jail) {
     return new Promise((resolve, reject) => {
         const child = spawnAgent(jail, ['create-chat', '--workspace', jail.workspace]);
         let out = '';
         let err = '';
         let settled = false;
+        const stop = () => {
+            if (child.exitCode === null && child.signalCode === null) {
+                try { child.kill('SIGKILL'); } catch (_) { /* already gone */ }
+            }
+        };
+        const chatId = () => String(out || '').split('\n').map((line) => line.trim()).find((line) => CHAT_ID_LINE.test(line)) || null;
         const finish = (fn, value) => {
             if (settled) return;
             settled = true;
@@ -2086,19 +2148,26 @@ function createCursorChat(jail) {
             fn(value);
         };
         const timer = setTimeout(() => {
-            try { child.kill('SIGKILL'); } catch (_) { /* already gone */ }
+            stop();
             finish(reject, new Error('Creating the Cursor chat timed out'));
         }, CREATE_CHAT_MS);
-        child.stdout.on('data', (buf) => { out += buf.toString(); });
+        child.stdout.on('data', (buf) => {
+            out += buf.toString();
+            const id = chatId();
+            if (id) {
+                finish(resolve, id);
+                stop();
+            }
+        });
         child.stderr.on('data', (buf) => { err += buf.toString(); });
         child.on('error', (error) => finish(reject, error));
         child.on('close', (code) => {
-            const id = String(out || '').trim().split('\n').filter(Boolean).pop();
-            if (code !== 0 || !id) {
-                finish(reject, new Error((err || out || `create-chat exited ${code}`).trim().slice(0, 500)));
+            const id = chatId();
+            if (id) {
+                finish(resolve, id);
                 return;
             }
-            finish(resolve, id);
+            finish(reject, new Error((err || out || `create-chat exited ${code}`).trim().slice(0, 500)));
         });
     });
 }
@@ -2601,6 +2670,14 @@ function consumeStreamLine(line, state) {
 
 function runCursorTurn(jail, cursorId, model, prompt, onText, marker) {
     return new Promise((resolve, reject) => {
+        if (marker && marker.cancelled) {
+            const error = new Error(marker.steer ? 'Steered' : 'Stopped');
+            error.rows = [];
+            error.partialText = '';
+            error.steer = marker.steer === true;
+            reject(error);
+            return;
+        }
         const args = [
             '--print',
             '--output-format', 'stream-json',
@@ -2617,6 +2694,10 @@ function runCursorTurn(jail, cursorId, model, prompt, onText, marker) {
         ];
         const child = spawnAgent(jail, args);
         if (marker) marker.child = child;
+        if (marker && marker.cancelled) {
+            signalProcessTree(child.pid, 'SIGTERM');
+            setTimeout(() => signalProcessTree(child.pid, 'SIGKILL'), 500);
+        }
         const state = { text: '', tool: '', error: null, finished: false, rows: [], live: null, context: null };
         let buffer = '';
         let stderr = '';
@@ -2687,10 +2768,11 @@ function runCursorTurn(jail, cursorId, model, prompt, onText, marker) {
             clearInterval(timer);
             if (buffer.trim()) consumeStreamLine(buffer, state);
             if (marker && marker.cancelled) {
-                const error = new Error('Stopped');
+                const error = new Error(marker.steer ? 'Steered' : 'Stopped');
                 error.rows = state.rows.slice();
                 error.partialText = state.text || '';
                 error.context = state.context || null;
+                error.steer = marker.steer === true;
                 reject(error);
                 return;
             }
@@ -2841,9 +2923,11 @@ function attachmentsFromCreate(message) {
 async function makeChat(gr, jail, paths, fields) {
     // cursorId is filled on the first message. create-chat can sit on the network
     // and must not block the session from showing up.
+    const activeAccId = getActiveAccountId(gr, 'wren');
     const chat = {
         id: `dirc_${crypto.randomBytes(8).toString('hex')}`,
         cursorId: null,
+        accountId: fields.accountId || activeAccId,
         name: fields.name || 'Director',
         workspaceId: fields.workspaceId || null,
         filename: fields.filename || null,
@@ -3122,38 +3206,14 @@ function printsForMessage(chat, messageId) {
         .map((item) => item.filename);
 }
 
-async function rememberGeneratedPrint(paths, sessionId, filename, messageId, chainKey) {
+async function rememberGeneratedPrint(paths, sessionId, filename, messageId) {
     await enqueue(async () => {
         const index = readIndex(paths.indexPath);
         const chat = index.chats.find((item) => item.id === sessionId);
         if (!chat) return;
         stampChatPrint(chat, filename, messageId);
-        if (chainKey) {
-            const chains = chat.chainPrints && typeof chat.chainPrints === 'object' ? chat.chainPrints : {};
-            chains[chainKey] = (chains[chainKey] || 0) + 1;
-            chat.chainPrints = chains;
-        }
         writeIndex(paths.indexPath, index);
     });
-}
-
-// forge_data.chain_source groups prints made against one compare source.
-// A print without one belongs to the session's own chain.
-async function printChainKey(gr, filename) {
-    try {
-        const row = await gr.getMetadataDatabase().getImageMetadata(filename, gr.getPath('images'));
-        const source = row && row.metadata && row.metadata.forge_data && row.metadata.forge_data.chain_source;
-        if (source) return String(source);
-    } catch (_) { /* an unindexed print counts toward the session chain */ }
-    return 'session';
-}
-
-function recycleReason(chat) {
-    if (!chat || !chat.cursorId) return null;
-    if (Number(chat.contextPercent) >= RECYCLE_CONTEXT_PERCENT) return 'context';
-    const chains = chat.chainPrints && typeof chat.chainPrints === 'object' ? chat.chainPrints : {};
-    if (Object.values(chains).some((count) => count > RECYCLE_CHAIN_PRINTS)) return 'chain';
-    return null;
 }
 
 // Fresh Cursor chat on the next turn, started like a new session: no transcript replay.
@@ -3161,7 +3221,6 @@ function recycleReason(chat) {
 function recycleChat(chat) {
     chat.cursorId = null;
     chat.replay = false;
-    chat.chainPrints = {};
     chat.contextPercent = 0;
     chat.contextTokens = 0;
     chat.fresh = true;
@@ -3304,7 +3363,10 @@ async function appendSessionCard(gr, sessionId, card) {
         const chat = index.chats.find((item) => item.id === sessionId);
         if (!chat) return null;
         chat.messages = chat.messages || [];
-        chat.messages.push(message);
+        const draftId = chat.inflight && chat.inflight.draftId;
+        const draftAt = draftId ? chat.messages.findIndex((item) => item.id === draftId) : -1;
+        if (draftAt >= 0) chat.messages.splice(draftAt, 0, message);
+        else chat.messages.push(message);
         writeIndex(paths.indexPath, index);
         return message;
     });
@@ -3384,16 +3446,26 @@ function xiConfigEnabled(gr) {
 
 async function handleDirectorGetSessions(handler, ws, message) {
     try {
-        const { paths } = await ensureProject(handler.globalResources);
+        const gr = handler.globalResources;
+        const { paths } = await ensureProject(gr);
         const index = await enqueue(async () => {
             const current = readIndex(paths.indexPath);
             if (archiveStaleChats(current)) writeIndex(paths.indexPath, current);
             return current;
         });
+        const activeAccId = getActiveAccountId(gr, 'wren');
+        const secureConfig = gr && typeof gr.getSecureConfig === 'function' ? gr.getSecureConfig() : null;
+        const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+        const rawAccounts = (secureConfig && secureConfig.cursorAccounts && secureConfig.cursorAccounts.accounts) || [
+            { id: 'default', name: 'Host Account (Default)', isDefault: true }
+        ];
+        const accounts = rawAccounts.map(cursorAccountAuthStore.publicCursorAccount).filter(Boolean);
         sendOk(handler, ws, 'director_get_sessions_response', message.requestId, {
             sessions: index.chats.filter(chatIsListed).map(publicSession).reverse(),
             persona: 'wren',
-            xiEnabled: xiConfigEnabled(handler.globalResources)
+            activeAccountId: activeAccId,
+            accounts,
+            xiEnabled: xiConfigEnabled(gr)
         });
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to fetch Director sessions', error.code || 'DIRECTOR_ERROR', message.requestId);
@@ -3541,10 +3613,10 @@ async function handleDirectorOpenWorkspace(handler, ws, message) {
 async function handleDirectorDeleteSession(handler, ws, message) {
     try {
         const { paths } = await ensureProject(handler.globalResources);
-        if (runs.has(message.sessionId)) {
-            handler.sendError(ws, 'Director is still working on that chat', 'DIRECTOR_BUSY', message.requestId);
-            return;
-        }
+        const marker = message.sessionId ? runs.get(message.sessionId) : null;
+        if (marker) marker.deleted = true;
+        hardStopSession(message.sessionId);
+        clearInflight(message.sessionId).catch(() => {});
         await enqueue(async () => {
             const index = readIndex(paths.indexPath);
             index.chats = index.chats.filter((chat) => chat.id !== message.sessionId);
@@ -3772,11 +3844,11 @@ async function inflightCanResume(sessionId) {
 
 const resumeTimers = new Map();
 
-function scheduleDirectorResume(handler, sessionId, delayMs = 1500) {
+function scheduleDirectorResume(handler, ws, sessionId, delayMs = 1500) {
     if (!sessionId || resumeTimers.has(sessionId)) return;
     const timer = setTimeout(() => {
         resumeTimers.delete(sessionId);
-        handleDirectorSendMessage(handler, null, { sessionId, resume: true }, {}, null)
+        handleDirectorSendMessage(handler, ws, { sessionId, resume: true }, {}, null)
             .catch((err) => console.error(`Director resume failed: ${err.message}`));
     }, delayMs);
     resumeTimers.set(sessionId, timer);
@@ -3839,6 +3911,28 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             return;
         }
         const content = String(message.content || '').trim();
+        const contentLower = content.toLowerCase();
+
+        if (contentLower === '/logout' || contentLower === 'logout' || contentLower === '/auth-logout' || contentLower === '/clear-auth') {
+            const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+            const secureConfig = gr.getSecureConfig ? gr.getSecureConfig() : {};
+            const cursorData = (secureConfig && secureConfig.cursorAccounts) || {};
+            const activeAccountId = (cursorData.wren && cursorData.wren.activeAccountId) || 'default';
+
+            cursorAccountAuthStore.logoutCursorAccount('wren', activeAccountId);
+
+            handler.sendToClient(ws, {
+                type: 'director_message_response',
+                data: {
+                    sessionId,
+                    reply: `🔒 **Logged out of Cursor account for Wren.**\n\nThe active account profile (\`${activeAccountId}\`) and live authentication state have been logged out and cleared. Perform a fresh login in Cursor or click **Capture Credentials** in Security Center after logging in.`,
+                    done: true
+                },
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
+
         const catalog = await listCursorModels(jail);
         const runModel = resolveRunModel(catalog, message);
         const freshDraftId = message.resume ? null : crypto.randomUUID();
@@ -3898,15 +3992,18 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             chat.messages.push(userMessage);
             markChatActive(chat);
             promoteSessionType(chat);
-            const recycled = recycleReason(chat);
-            if (recycled) recycleChat(chat);
             const fresh = chat.fresh === true;
             delete chat.fresh;
             let cursorId = chat.cursorId;
+            const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+            const activeAccountId = cursorAccountAuthStore.getActiveAccountId('wren');
+            if (chat.accountId && chat.accountId !== activeAccountId) {
+                cursorId = null; // force new chat since old session belongs to a different account
+            }
             if (!cursorId) {
                 cursorId = await createCursorChat(jail);
                 chat.cursorId = cursorId;
-                chat.chainPrints = {};
+                chat.accountId = activeAccountId;
             }
             const round = roundModelRecord(message.model, message.effort || 'medium', message.fast === true, chat.model);
             chat.inflight = {
@@ -3924,7 +4021,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId);
             chat.replay = false;
             writeIndex(paths.indexPath, index);
-            return { prompt, cursorId, model: chat.model, name: chat.name, draftId: freshDraftId, round, recycled };
+            return { prompt, cursorId, model: chat.model, name: chat.name, draftId: freshDraftId, round };
         });
         if (!prepared || prepared.expired) {
             if (!prepared && ws) {
@@ -3937,7 +4034,6 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             }
             return;
         }
-        if (prepared.recycled) emitDirector(handler, ws, 'director_session_recycled', { sessionId, reason: prepared.recycled, auto: true });
         emitDirector(handler, ws, 'director_typing_start', { sessionId });
         marker = { cancelled: false };
         runs.set(sessionId, marker);
@@ -3951,8 +4047,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             sendBrowserPreview(handler, ws, wsServer, sessionId, filename);
         });
         const stopPrintWatch = watchGeneratedPrints(gr, (filename) => {
-            printChainKey(gr, filename)
-                .then((chainKey) => rememberGeneratedPrint(paths, sessionId, filename, draftId, chainKey))
+            rememberGeneratedPrint(paths, sessionId, filename, draftId)
                 .then(() => sendSessionImage(handler, ws, wsServer, sessionId, filename, draftId))
                 .catch((err) => console.error(`Director print record skipped: ${err.message}`));
         });
@@ -4003,6 +4098,28 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
     } catch (error) {
         runs.delete(sessionId);
         dropDirectorStream(sessionId);
+        if (marker && marker.deleted) {
+            await clearInflight(sessionId);
+            noteTurnState('idle', sessionId, null);
+            broadcastDirectorStatus(handler.globalResources);
+            return;
+        }
+        if (marker && (marker.steer || error.steer)) {
+            if (draftId && Array.isArray(error.rows) && error.rows.length) {
+                try {
+                    await saveDirectorTrace(layout(), sessionId, error.rows, error.partialText || '', draftId, prepared && prepared.round);
+                } catch (_) { /* the follow-up still sends */ }
+            }
+            await clearInflight(sessionId);
+            noteTurnState('idle', sessionId, null);
+            broadcastDirectorStatus(handler.globalResources);
+            emitDirector(handler, ws, 'director_message_response', {
+                success: true,
+                sessionId,
+                steer: true
+            });
+            return;
+        }
         const usageLimited = isUsageLimit(error);
         if (sessionId && !(marker && marker.cancelled) && (usageLimited || isLinkDrop(error)) && await inflightCanResume(sessionId)) {
             if (draftId && Array.isArray(error.rows) && error.rows.length) {
@@ -4015,7 +4132,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 if (usageLimited) console.warn(`Director ${sessionId} hit a Cursor usage limit; continuing on Auto${delayMs ? ` in ${delayMs / 1000}s` : ''}`);
                 noteTurnState('working', sessionId, null);
                 broadcastDirectorStatus(handler.globalResources);
-                scheduleDirectorResume(handler, sessionId, delayMs);
+                scheduleDirectorResume(handler, ws, sessionId, delayMs);
                 return;
             }
         }
@@ -4466,26 +4583,75 @@ async function handleDirectorPromptGuidePush(handler, ws, message) {
 async function handleDirectorAbort(handler, ws, message) {
     const sessionId = message.sessionId;
     const marker = sessionId ? runs.get(sessionId) : null;
-    const pendingResume = sessionId ? resumeTimers.get(sessionId) : null;
-    if (pendingResume && !marker) {
-        clearTimeout(pendingResume);
-        resumeTimers.delete(sessionId);
+    const steer = message.steer === true;
+    if (marker) marker.steer = steer;
+    const stopped = hardStopSession(sessionId);
+    if (!stopped) {
+        sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: false, sessionId: sessionId || null, steer });
+        return;
+    }
+    if (!steer) {
         clearInflight(sessionId).catch(() => {});
         noteTurnState('interrupted', sessionId, 'Stopped');
         broadcastDirectorStatus(handler.globalResources);
-        sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: true, sessionId });
-        return;
     }
-    if (!marker || !marker.child) {
-        sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: false, sessionId: sessionId || null });
-        return;
+    sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: true, sessionId, steer });
+}
+
+async function handleDirectorForkSession(handler, ws, message) {
+    try {
+        const { paths } = await ensureProject(handler.globalResources);
+        const forked = await enqueue(async () => {
+            const index = readIndex(paths.indexPath);
+            const chat = index.chats.find((item) => item.id === message.sessionId);
+            if (!chat) return null;
+            const kept = messagesUntil(chat.messages || [], message.messageId);
+            if (!kept) return false;
+            const name = `${chat.name || 'Director'} fork`.slice(0, 48);
+            const created = await makeChat(handler.globalResources, null, paths, {
+                name,
+                workspaceId: chat.workspaceId || null,
+                filename: chat.filename || null,
+                image_type: chat.image_type || null,
+                accountId: chat.accountId || null
+            });
+            created.messages = kept;
+            created.replay = kept.length > 0;
+            created.cursorId = null;
+            created.model = chat.model || created.model;
+            created.choice = chat.choice || null;
+            created.tasks = normalizeSessionTasks(chat.tasks);
+            index.chats.push(created);
+            writeIndex(paths.indexPath, index);
+            return created;
+        });
+        if (!forked) {
+            handler.sendError(ws, forked === false ? 'Message not found' : 'Session not found', forked === false ? 'MESSAGE_NOT_FOUND' : 'SESSION_NOT_FOUND', message.requestId);
+            return;
+        }
+        sendOk(handler, ws, 'director_fork_session_response', message.requestId, {
+            session: { ...publicSession(forked), messages: (forked.messages || []).map(publicMessage) }
+        });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to fork the session', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
-    marker.cancelled = true;
-    clearInflight(sessionId).catch(() => {});
-    try { marker.child.kill('SIGTERM'); } catch (_) { /* already exited */ }
-    noteTurnState('interrupted', sessionId, 'Stopped');
-    broadcastDirectorStatus(handler.globalResources);
-    sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: true, sessionId });
+}
+
+function messagesUntil(messages, messageKey) {
+    const key = String(messageKey || '');
+    if (!key || key.startsWith('live:')) return null;
+    const colon = key.indexOf(':');
+    const id = colon > 0 ? key.slice(0, colon) : key;
+    const indexAt = messages.findIndex((item) => item && (item.id === id || item.timestamp === id));
+    if (indexAt < 0) return null;
+    const head = messages.slice(0, indexAt + 1).map((item) => JSON.parse(JSON.stringify(item)));
+    if (colon > 0 && Array.isArray(head[head.length - 1].trace)) {
+        const rowIndex = parseInt(key.slice(colon + 1), 10);
+        if (Number.isFinite(rowIndex) && rowIndex >= 0) {
+            head[head.length - 1].trace = head[head.length - 1].trace.slice(0, rowIndex + 1);
+        }
+    }
+    return head;
 }
 
 // Tray icon and tray menu. Sits next to director_computer_size: the same
@@ -4533,6 +4699,7 @@ module.exports = {
     handleDirectorGetSession,
     handleDirectorOpenWorkspace,
     handleDirectorDeleteSession,
+    handleDirectorForkSession,
     handleDirectorGetMessages,
     handleDirectorRollbackMessage,
     handleDirectorRecycleSession,
@@ -4582,7 +4749,9 @@ module.exports = {
     findBwrap,
     ensureProject,
     prepareDirector,
+    syncCursorCliLogin,
     installUnrestrictedCli,
+    getLastCursorLogin,
     broadcastDirectorStatus,
     readAttachment,
     ensureAppKey,

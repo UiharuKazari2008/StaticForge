@@ -41,6 +41,9 @@ const MODEL_NORM_SLUGS = new Set(['v5', 'v5_cur', 'v4_5', 'v4_5_cur', 'v4', 'v4_
 /** NAI API slugs accepted by legacy search_models → model_norm for facet reader */
 const NAI_SLUG_TO_MODEL_NORM = {
     'nai-diffusion-5-full': 'v5',
+    'nai-diffusion-5-full-inpainting': 'v5',
+    'nai-diffusion-5-full-medium': 'v5',
+    'nai-diffusion-5-full-medium-inpainting': 'v5',
     'nai-diffusion-5-curated': 'v5_cur',
     'nai-diffusion-4-5-full': 'v4_5',
     'nai-diffusion-4-5-curated': 'v4_5_cur',

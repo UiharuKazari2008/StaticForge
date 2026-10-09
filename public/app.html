@@ -1295,6 +1295,7 @@
 
                                 <!-- Right side action elements -->
                                 <div class="director-header-right">
+                                    <span id="directorAccountBadge" class="director-account-badge hidden" title="Active profile">?</span>
                                     <div id="directorUsageDisplay" class="inset-badge gen-count-display" title="Cursor usage">
                                         <div class="price-list-container">
                                             <i id="directorUsageIcon" class="fas fa-battery-three-quarters" aria-hidden="true"></i>
@@ -2565,12 +2566,19 @@
                     <div class="form-row control-row-model">
                         <div class="form-group" id="manualModelGroup">
                             <label for="manualModel">Model</label>
-                            <div id="manualModelDropdown" class="custom-dropdown dropup">
-                                <button type="button" id="manualModelDropdownBtn"
-                                    class="custom-dropdown-btn hover-show colored">
-                                    <span id="manualModelSelected">Select model...</span>
+                            <div class="model-group">
+                                <div id="manualModelDropdown" class="custom-dropdown dropup">
+                                    <button type="button" id="manualModelDropdownBtn"
+                                        class="custom-dropdown-btn hover-show colored">
+                                        <span id="manualModelSelected">Select model...</span>
+                                    </button>
+                                    <div id="manualModelDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                                </div>
+                                <button type="button" id="manualEffortBtn" class="btn-secondary toggle-btn hidden"
+                                    data-state="off" aria-pressed="false" aria-label="Medium effort"
+                                    title="Medium effort. Lower cost. Steps stay at 14, sampler stays Euler Ancestral, undesired content stays on Heavy, and rescale is off.">
+                                    <i class="fas fa-gauge"></i>
                                 </button>
-                                <div id="manualModelDropdownMenu" class="custom-dropdown-menu hidden"></div>
                             </div>
                             <input type="hidden" id="manualModel" value="">
                         </div>

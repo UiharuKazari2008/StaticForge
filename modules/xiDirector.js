@@ -205,6 +205,16 @@ async function ensureXiMcp(gr) {
 function xiEnv() {
     const env = Object.assign({}, process.env);
     env.CURSOR_CONFIG_DIR = layout().configDir;
+    
+    try {
+        const authData = JSON.parse(fs.readFileSync(path.join(env.CURSOR_CONFIG_DIR, 'auth.json'), 'utf8'));
+        if (authData.apiKey && !env.CURSOR_API_KEY) {
+            env.CURSOR_API_KEY = authData.apiKey;
+        } else if (authData.accessToken && !env.CURSOR_AUTH_TOKEN) {
+            env.CURSOR_AUTH_TOKEN = authData.accessToken;
+        }
+    } catch (_) {}
+
     if (xiMcp) {
         env.DREAMSCAPE_MCP_URL = xiMcp.url;
         env.DREAMSCAPE_MCP_KEY = xiMcp.key;
@@ -234,14 +244,24 @@ function pidAlive(pid) {
     }
 }
 
-function killPid(pid) {
+function killPid(pid, signal) {
     const n = Number(pid);
+    const sig = signal || 'SIGTERM';
     if (!n) return;
     try {
-        process.kill(-n, 'SIGTERM');
+        process.kill(-n, sig);
     } catch (_) {
-        try { process.kill(n, 'SIGTERM'); } catch (_) { /* already exited */ }
+        try { process.kill(n, sig); } catch (_) { /* already exited */ }
     }
+}
+
+function hardStopXi(sessionId) {
+    const run = sessionId ? runs.get(sessionId) : null;
+    if (!run) return false;
+    run.cancelled = true;
+    killPid(run.pid, 'SIGTERM');
+    setTimeout(() => killPid(run.pid, 'SIGKILL'), 500);
+    return true;
 }
 
 function cachedModels() {
@@ -315,6 +335,14 @@ function createCursorChat(workspace) {
         let out = '';
         let err = '';
         let settled = false;
+        // create-chat prints the id at once but can hang without exiting.
+        const stop = () => {
+            if (child.exitCode === null && child.signalCode === null) {
+                try { child.kill('SIGKILL'); } catch (_) { /* already gone */ }
+            }
+        };
+        const chatId = () => String(out || '').split('\n').map((line) => line.trim())
+            .find((line) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(line)) || null;
         const finish = (fn, value) => {
             if (settled) return;
             settled = true;
@@ -322,19 +350,26 @@ function createCursorChat(workspace) {
             fn(value);
         };
         const timer = setTimeout(() => {
-            try { child.kill('SIGKILL'); } catch (_) { /* already gone */ }
+            stop();
             finish(reject, new Error('Creating the Cursor chat timed out'));
         }, 20000);
-        child.stdout.on('data', (buf) => { out += buf.toString(); });
+        child.stdout.on('data', (buf) => {
+            out += buf.toString();
+            const id = chatId();
+            if (id) {
+                finish(resolve, id);
+                stop();
+            }
+        });
         child.stderr.on('data', (buf) => { err += buf.toString(); });
         child.on('error', (error) => finish(reject, error));
         child.on('close', (code) => {
-            const id = String(out || '').trim().split('\n').filter(Boolean).pop();
-            if (code !== 0 || !id) {
-                finish(reject, new Error((err || out || `create-chat exited ${code}`).trim().slice(0, 500)));
+            const id = chatId();
+            if (id) {
+                finish(resolve, id);
                 return;
             }
-            finish(resolve, id);
+            finish(reject, new Error((err || out || `create-chat exited ${code}`).trim().slice(0, 500)));
         });
     });
 }
@@ -438,7 +473,8 @@ function finishRun(run, why) {
     if (run.persistTimer) clearTimeout(run.persistTimer);
     runs.delete(run.sessionId);
     try { fs.unlinkSync(run.metaPath); } catch (_) { /* already gone */ }
-    const failed = !!(run.cancelled || (run.stream && run.stream.error) || why === 'timeout');
+    const steered = why === 'steer' || run.steer === true;
+    const failed = !steered && !!(run.cancelled || (run.stream && run.stream.error) || why === 'timeout');
     const errorText = run.cancelled
         ? 'Stopped'
         : (why === 'timeout' ? 'Xi stopped because it made no progress' : ((run.stream && run.stream.error) || 'Xi stopped'));
@@ -452,6 +488,20 @@ function finishRun(run, why) {
                 if (chat && chat.name) name = chat.name;
             } catch (_) { /* keep the name from the start of the turn */ }
             const text = (run.stream && run.stream.text) || '';
+            if (run.deleted) {
+                try { director.broadcastDirectorStatus(boundGr); } catch (_) { /* status is best effort */ }
+                return;
+            }
+            if (steered) {
+                emit(boundGr, 'director_message_response', {
+                    success: true,
+                    sessionId: run.sessionId,
+                    persona: 'xi',
+                    steer: true
+                });
+                try { director.broadcastDirectorStatus(boundGr); } catch (_) { /* status is best effort */ }
+                return;
+            }
             if (failed) {
                 emit(boundGr, 'director_message_error', {
                     sessionId: run.sessionId,
@@ -638,12 +688,33 @@ function spawnDetached(args, logPath, workspace) {
     return pid;
 }
 
+function getActiveXiAccountId(gr) {
+    try {
+        const secureConfig = gr && typeof gr.getSecureConfig === 'function' ? gr.getSecureConfig() : null;
+        if (secureConfig && secureConfig.cursorAccounts && secureConfig.cursorAccounts.xi) {
+            return secureConfig.cursorAccounts.xi.activeAccountId || 'default';
+        }
+    } catch (_) {}
+    return 'default';
+}
+
 async function handleDirectorGetSessions(handler, ws, message) {
     if (!assertEnabled(handler, ws, message.requestId)) return;
     try {
+        const gr = handler.globalResources;
         const index = readIndex();
+        const activeAccId = getActiveXiAccountId(gr);
+        const secureConfig = gr && typeof gr.getSecureConfig === 'function' ? gr.getSecureConfig() : null;
+        const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+        const rawAccounts = (secureConfig && secureConfig.cursorAccounts && secureConfig.cursorAccounts.accounts) || [
+            { id: 'default', name: 'Host Account (Default)', isDefault: true }
+        ];
+        const accounts = rawAccounts.map(cursorAccountAuthStore.publicCursorAccount).filter(Boolean);
         sendOk(handler, ws, 'director_get_sessions_response', message.requestId, {
-            sessions: index.chats.filter(chatIsListed).map(publicXiSession).reverse()
+            sessions: index.chats.filter(chatIsListed).map(publicXiSession).reverse(),
+            persona: 'xi',
+            activeAccountId: activeAccId,
+            accounts
         });
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to fetch Xi sessions', error.code || 'DIRECTOR_ERROR', message.requestId);
@@ -655,12 +726,14 @@ async function handleDirectorCreateSession(handler, ws, message) {
     try {
         const gr = handler.globalResources;
         boundGr = gr;
+        const activeAccId = getActiveXiAccountId(gr);
         const workspaceId = message.workspaceId || null;
         const chat = await enqueue(async () => {
             const index = readIndex();
             const created = {
                 id: `xi_${crypto.randomBytes(8).toString('hex')}`,
                 cursorId: null,
+                accountId: activeAccId,
                 persona: 'xi',
                 name: (message.description || '').trim().slice(0, 48) || 'Xi',
                 workspaceId,
@@ -726,9 +799,12 @@ async function handleDirectorOpenWorkspace(handler, ws, message) {
 
 async function handleDirectorDeleteSession(handler, ws, message) {
     if (!assertEnabled(handler, ws, message.requestId)) return;
-    if (runs.has(message.sessionId)) {
-        handler.sendError(ws, 'Xi is still working on that chat', 'DIRECTOR_BUSY', message.requestId);
-        return;
+    const run = runs.get(message.sessionId);
+    if (run) {
+        run.deleted = true;
+        run.cancelled = true;
+        hardStopXi(message.sessionId);
+        finishRun(run, 'abort');
     }
     await enqueue(async () => {
         const index = readIndex();
@@ -819,6 +895,30 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             handler.sendError(ws, 'Xi is still working on the last request', 'DIRECTOR_BUSY', message.requestId);
             return;
         }
+
+        const spokenContent = String(message.content || '').trim();
+        const spokenLower = spokenContent.toLowerCase();
+
+        if (spokenLower === '/logout' || spokenLower === 'logout' || spokenLower === '/auth-logout' || spokenLower === '/clear-auth') {
+            const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+            const secureConfig = gr.getSecureConfig ? gr.getSecureConfig() : {};
+            const cursorData = (secureConfig && secureConfig.cursorAccounts) || {};
+            const activeAccountId = (cursorData.xi && cursorData.xi.activeAccountId) || 'default';
+
+            cursorAccountAuthStore.logoutCursorAccount('xi', activeAccountId);
+
+            handler.sendToClient(ws, {
+                type: 'director_message_response',
+                data: {
+                    sessionId,
+                    reply: `🔒 **Logged out of Cursor account for Xi.**\n\nThe active account profile (\`${activeAccountId}\`) and live authentication state have been logged out and cleared. Perform a fresh login in Cursor or click **Capture Credentials** in Security Center after logging in.`,
+                    done: true
+                },
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
+
         const workspace = workspacePath(gr);
         director.installUnrestrictedCli(layout().configDir);
         await ensureXiMcp(gr);
@@ -854,9 +954,15 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             });
             chat.updated_at = new Date().toISOString();
             let cursorId = chat.cursorId;
+            const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+            const activeAccountId = cursorAccountAuthStore.getActiveAccountId('xi');
+            if (chat.accountId && chat.accountId !== activeAccountId) {
+                cursorId = null;
+            }
             if (!cursorId) {
                 cursorId = await createCursorChat(workspace);
                 chat.cursorId = cursorId;
+                chat.accountId = activeAccountId;
             }
             const round = director._test.roundModelRecord(message.model, message.effort || 'medium', message.fast === true, chat.model);
             chat.inflight = {
@@ -917,14 +1023,67 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
 async function handleDirectorAbort(handler, ws, message) {
     const sessionId = message.sessionId;
     const run = sessionId ? runs.get(sessionId) : null;
+    const steer = message.steer === true;
     if (!run) {
-        sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: false, sessionId: sessionId || null });
+        sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: false, sessionId: sessionId || null, steer });
         return;
     }
+    run.steer = steer;
     run.cancelled = true;
-    killPid(run.pid);
-    finishRun(run, 'abort');
-    sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: true, sessionId });
+    hardStopXi(sessionId);
+    finishRun(run, steer ? 'steer' : 'abort');
+    sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: true, sessionId, steer });
+}
+
+async function handleDirectorForkSession(handler, ws, message) {
+    if (!assertEnabled(handler, ws, message.requestId)) return;
+    const forked = await enqueue(async () => {
+        const index = readIndex();
+        const chat = index.chats.find((item) => item.id === message.sessionId);
+        if (!chat) return null;
+        const key = String(message.messageId || '');
+        if (!key || key.startsWith('live:')) return false;
+        const colon = key.indexOf(':');
+        const id = colon > 0 ? key.slice(0, colon) : key;
+        const messages = chat.messages || [];
+        const indexAt = messages.findIndex((item) => item && (item.id === id || item.timestamp === id));
+        if (indexAt < 0) return false;
+        const head = messages.slice(0, indexAt + 1).map((item) => JSON.parse(JSON.stringify(item)));
+        if (colon > 0 && Array.isArray(head[head.length - 1].trace)) {
+            const rowIndex = parseInt(key.slice(colon + 1), 10);
+            if (Number.isFinite(rowIndex) && rowIndex >= 0) {
+                head[head.length - 1].trace = head[head.length - 1].trace.slice(0, rowIndex + 1);
+            }
+        }
+        const activeAccId = getActiveXiAccountId(handler.globalResources);
+        const created = {
+            id: `xi_${crypto.randomBytes(8).toString('hex')}`,
+            cursorId: null,
+            accountId: chat.accountId || activeAccId,
+            name: `${chat.name || 'Xi'} fork`.slice(0, 48),
+            workspaceId: chat.workspaceId || null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            archived: false,
+            model: chat.model || null,
+            choice: chat.choice || null,
+            replay: head.length > 0,
+            messages: head,
+            tasks: Array.isArray(chat.tasks) ? JSON.parse(JSON.stringify(chat.tasks)) : []
+        };
+        index.chats.push(created);
+        writeIndex(index);
+        return created;
+    });
+    if (!forked) {
+        handler.sendError(ws, forked === false ? 'Message not found' : 'Session not found', forked === false ? 'MESSAGE_NOT_FOUND' : 'SESSION_NOT_FOUND', message.requestId);
+        return;
+    }
+    sendOk(handler, ws, 'director_fork_session_response', message.requestId, {
+        session: Object.assign(publicXiSession(forked), {
+            messages: (forked.messages || []).map(director._test.publicMessage)
+        })
+    });
 }
 
 async function handleDirectorToolDiff(handler, ws, message) {
@@ -1034,7 +1193,10 @@ async function appendSessionCard(gr, sessionId, card) {
         const chat = index.chats.find((item) => item.id === sessionId);
         if (!chat) return null;
         chat.messages = chat.messages || [];
-        chat.messages.push(message);
+        const draftId = chat.inflight && chat.inflight.draftId;
+        const draftAt = draftId ? chat.messages.findIndex((item) => item.id === draftId) : -1;
+        if (draftAt >= 0) chat.messages.splice(draftAt, 0, message);
+        else chat.messages.push(message);
         writeIndex(index);
         return message;
     });
@@ -1069,6 +1231,7 @@ module.exports = {
     handleDirectorRollbackMessage,
     handleDirectorSendMessage,
     handleDirectorAbort,
+    handleDirectorForkSession,
     handleDirectorToolDiff,
     _test: { shouldPark, markToolDiffs, readToolDiffText, buildPrompt }
 };

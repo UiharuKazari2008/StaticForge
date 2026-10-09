@@ -1919,6 +1919,8 @@ function disableDynamicGeneration() {
  * Clear manual form - MOVED FROM app.js
  */
 function clearManualForm() {
+    manualSelectedEffort = 'high';
+    manualEffortSnapshot = null;
     // Clean up any existing blob URLs
     cleanupBlobUrls();
     releaseManualPreviewImageSrc();
@@ -2213,6 +2215,103 @@ function clearManualForm() {
     updateV3ModelVisibility();
 }
 
+let manualSelectedEffort = 'high';
+let manualEffortSnapshot = null;
+
+function v5FullSupportsEffort() {
+    const caps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures() : null;
+    return !!(caps && caps.effort && caps.effort.medium);
+}
+
+function getManualEffort() {
+    return v5FullSupportsEffort() && manualSelectedEffort === 'medium' ? 'medium' : 'high';
+}
+
+function bindManualEffortButton() {
+    const btn = document.getElementById('manualEffortBtn');
+    if (!btn || btn.dataset.bound === '1') return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        setManualEffort(manualSelectedEffort === 'medium' ? 'high' : 'medium');
+    });
+}
+
+function paintManualEffort() {
+    const leftover = document.getElementById('manualEffortGroup');
+    if (leftover) leftover.remove();
+    const available = v5FullSupportsEffort();
+    const medium = available && manualSelectedEffort === 'medium';
+    const modal = document.getElementById('manualModal');
+    const btn = document.getElementById('manualEffortBtn');
+    if (btn) {
+        btn.classList.toggle('hidden', !available);
+        btn.setAttribute('data-state', medium ? 'on' : 'off');
+        btn.setAttribute('aria-pressed', medium ? 'true' : 'false');
+    }
+    if (modal) {
+        if (medium) modal.dataset.effort = 'medium';
+        else delete modal.dataset.effort;
+    }
+    ['manualSteps', 'manualRescale'].forEach((id) => {
+        const field = document.getElementById(id);
+        if (field) field.disabled = medium;
+    });
+    const samplerBtn = document.getElementById('manualSamplerDropdownBtn');
+    if (samplerBtn) {
+        samplerBtn.disabled = medium;
+        samplerBtn.setAttribute('aria-disabled', medium ? 'true' : 'false');
+    }
+    const ucBtn = document.getElementById('ucPresetsDropdownBtn');
+    if (ucBtn) ucBtn.disabled = medium;
+    if (manualUc) manualUc.readOnly = medium;
+}
+
+function setManualEffort(level) {
+    const wantMedium = String(level || '').toLowerCase() === 'medium';
+    const next = v5FullSupportsEffort() && wantMedium ? 'medium' : 'high';
+    const prev = manualSelectedEffort;
+    if (next === 'medium' && prev !== 'medium') {
+        manualEffortSnapshot = {
+            steps: manualSteps ? manualSteps.value : '',
+            sampler: (typeof manualSelectedSampler !== 'undefined' && manualSelectedSampler) || '',
+            rescale: manualRescale ? manualRescale.value : ''
+        };
+    }
+    if (next !== 'medium' && prev === 'medium') {
+        const snap = manualEffortSnapshot;
+        manualEffortSnapshot = null;
+        const steps = snap && snap.steps != null ? String(snap.steps) : '';
+        if (manualSteps) manualSteps.value = (!steps || steps === '14') ? '23' : steps;
+        if (manualRescale) {
+            manualRescale.value = snap && snap.rescale != null && snap.rescale !== '' ? snap.rescale : '0.00';
+        }
+        if (snap && snap.sampler && snap.sampler !== 'k_euler_ancestral' && typeof selectManualSampler === 'function') {
+            selectManualSampler(snap.sampler);
+        }
+    }
+    manualSelectedEffort = next;
+    if (next === 'medium') {
+        if (manualSteps) manualSteps.value = '14';
+        if (manualRescale) manualRescale.value = '0.00';
+        if (typeof selectManualSampler === 'function' && (typeof manualSelectedSampler === 'undefined' || manualSelectedSampler !== 'k_euler_ancestral')) {
+            selectManualSampler('k_euler_ancestral');
+        }
+        if (typeof updatePercentageOverlays === 'function') updatePercentageOverlays();
+        if (typeof updateManualPriceDisplay === 'function') updateManualPriceDisplay();
+    }
+    paintManualEffort();
+}
+
+function syncManualEffortChrome() {
+    bindManualEffortButton();
+    if (!v5FullSupportsEffort() && manualSelectedEffort === 'medium') {
+        setManualEffort('high');
+        return;
+    }
+    paintManualEffort();
+}
+
 /**
  * Collect manual form values - MOVED FROM app.js
  */
@@ -2224,6 +2323,7 @@ function collectManualFormValues() {
 
     let values = {
         model: manualModel.value,
+        effort: getManualEffort(),
         prompt: normalizePromptNewlines(manualPrompt.value).trim() + '',
         uc: normalizePromptNewlines(manualUc.value).trim() + '',
         input_prompt_negative: manualPromptNegative
@@ -2454,6 +2554,7 @@ function extractLockedDynamicReplacements() {
  * Add shared fields to request body - MOVED FROM app.js
  */
 function addSharedFieldsToRequestBody(requestBody, values) {
+    if (values.effort) requestBody.effort = values.effort;
     if (values.uc) requestBody.uc = values.uc;
     if (values.input_prompt_negative !== undefined && values.input_prompt_negative !== '') {
         requestBody.input_prompt_negative = values.input_prompt_negative;
@@ -3955,6 +4056,9 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
         selectUcPreset(selectedUcPreset);
         renderUcPresetsDropdown();
+        if (resolveGenerationEffort(data) === 'medium') {
+            setManualEffort('medium');
+        }
 
         // Note: Character prompts are already handled in the first section above
         // This redundant section has been removed to prevent overwriting loaded character prompts

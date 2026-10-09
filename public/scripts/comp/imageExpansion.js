@@ -1331,6 +1331,11 @@ async function runEnhanceImageRequest(targetFilename, enhanceValues, submitBtn =
             submitBtn.disabled = false;
             submitBtn.classList.remove('loading');
         }
+        // Rentan context progress from the enhance request opens the Studio overlay; a running Studio generate closes its own.
+        if (!document.getElementById('manualForm')?.classList.contains('generating')) {
+            // hideDynamicGenerationProgressOverlayImmediate: public/scripts/comp/manualModalManager.js
+            hideDynamicGenerationProgressOverlayImmediate();
+        }
     }
 }
 

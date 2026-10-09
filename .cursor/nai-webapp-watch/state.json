@@ -1,22 +1,22 @@
 {
   "version": 1,
-  "capturedAt": "2026-10-05T14:20:48.581Z",
+  "capturedAt": "2026-10-09T17:06:25.666Z",
   "policy": "Public endpoints only. No JWT, recaptcha, cookies, or generate APIs.",
   "sources": {
     "home": {
       "url": "https://novelai.net/",
       "status": 200,
-      "bytes": 152774,
+      "bytes": 152969,
       "chunkCount": 10,
-      "chunkPathsSha256": "ab53bb7f8ec777e56ed0cf926066d287a515ccc1f845985fbe9fb5c13ede86fc",
+      "chunkPathsSha256": "1ed236ceaa91762edc84828dc1d29ab9476f41925dc436af2ce00703b42a2652",
       "chunkPathsSample": [
-        "/_next/static/chunks/133-b47bc6fc8cb2d637.js",
-        "/_next/static/chunks/3711-c8045b3756e252b7.js",
-        "/_next/static/chunks/4870-2c40351ed4c49087.js",
+        "/_next/static/chunks/133-1a6c287b6c9eff23.js",
+        "/_next/static/chunks/3711-5cf6ab35ba70001f.js",
+        "/_next/static/chunks/4870-642fa8d0a39c4dee.js",
         "/_next/static/chunks/7311-5eb2760447762c74.js",
         "/_next/static/chunks/framework-7e74bf61ca06990a.js",
-        "/_next/static/chunks/main-c5fed5e9a9351d8d.js",
-        "/_next/static/chunks/pages/_app-a70b21aef518ab63.js",
+        "/_next/static/chunks/main-91df8a045524259a.js",
+        "/_next/static/chunks/pages/_app-b1c0ffe38c343809.js",
         "/_next/static/chunks/pages/index-a782709c74ddf113.js"
       ]
     },
@@ -41,15 +41,16 @@
       "bytes": 44804,
       "etag": null,
       "lastModified": null,
-      "sha256": "22c51a1e05679d7a01b6fbb222e413bb7752ad9ca970747bdc928016896c5cda"
+      "sha256": "0bc2955b9a81daae8d5fe16a81bb58388d7dd59cf23c73cf300fbd299470c681"
     },
     "blogUsage": {
       "url": "https://blog.novelai.net/subscription-updates-usage-limits-2025-88a208d5d9c5",
-      "status": 307,
-      "bytes": 171,
+      "status": 403,
+      "bytes": 5730,
       "etag": null,
       "lastModified": null,
-      "sha256": "c08a7c0e8b31a3acfcd26f4d76ae3941440b1c381e506ca1b5558a17473d89f5"
+      "sha256": "67b28b0b3322c7d766d613ae2a3dc622bde4fffeff6e6cffc04bb0d8cff712a5",
+      "error": "HTTP 403"
     }
   }
 }

@@ -807,6 +807,612 @@ async function handleUpdateApiKey(handlersCtx, ws, message, clientInfo, wsServer
     }
 }
 
+async function handleGetCursorAccounts(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
+        const secureConfig = handlersCtx.globalResources.getSecureConfig() || {};
+        const cursorData = secureConfig.cursorAccounts || {
+            wren: { activeAccountId: 'default', customToken: '' },
+            xi: { activeAccountId: 'default', customToken: '' },
+            accounts: [
+                { id: 'default', name: 'Host Account (Default)', email: 'system@cursor.sh', isDefault: true }
+            ]
+        };
+
+        const cursorDirector = require('../../cursorDirector');
+        const xiDirector = require('../../xiDirector');
+        const cursorUsage = require('../../cursorUsage');
+
+        let usage = null;
+        try {
+            usage = await cursorUsage.getCursorUsage('wren');
+        } catch (_) {}
+
+        let xiUsage = null;
+        try {
+            xiUsage = await cursorUsage.getCursorUsage('xi');
+        } catch (_) {}
+
+        let wrenStatus = { ok: false, reason: 'unknown' };
+        try {
+            if (typeof cursorDirector.getLastCursorLogin === 'function') {
+                wrenStatus = cursorDirector.getLastCursorLogin();
+            } else {
+                wrenStatus = { ok: true, reason: null };
+            }
+        } catch (_) {}
+
+        let xiStatus = { ok: false, reason: 'unknown' };
+        try {
+            if (typeof xiDirector.runtimeStatus === 'function') {
+                const st = xiDirector.runtimeStatus();
+                xiStatus = st.cursorLogin || { ok: st.enabled, reason: null };
+            } else {
+                xiStatus = { ok: true, reason: null };
+            }
+        } catch (_) {}
+
+        const cursorAccountAuthStore = require('../../cursorAccountAuthStore');
+        const hostInfo = cursorAccountAuthStore.getHostAccountInfo();
+
+        const rawAccounts = cursorData.accounts || [
+            { id: 'default', name: 'Host Account (Default)', email: hostInfo.email || 'Host Logged-in User', isDefault: true }
+        ];
+
+        const accounts = rawAccounts.map((acc) => {
+            if (acc.id === 'default' && (!acc.email || acc.email === 'system@cursor.sh')) {
+                return { ...acc, email: hostInfo.email || 'Host Logged-in User' };
+            }
+            return acc;
+        });
+
+        const accountsWithUsage = await Promise.all(accounts.map(async (acc) => {
+            let row = null;
+            if (usage && usage.activeAccountId === acc.id) row = usage;
+            else if (xiUsage && xiUsage.activeAccountId === acc.id) row = xiUsage;
+            else {
+                try {
+                    row = await cursorUsage.getCursorUsageForAccount(acc.id);
+                } catch (_) {}
+            }
+            return { ...acc, usage: cursorUsage.publicAccountUsage(row) };
+        }));
+
+        handlersCtx.sendToClient(ws, {
+            type: 'get_cursor_accounts_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                wren: cursorData.wren || { activeAccountId: 'default', customToken: '' },
+                xi: cursorData.xi || { activeAccountId: 'default', customToken: '' },
+                accounts: accountsWithUsage,
+                wrenStatus,
+                xiStatus,
+                usage,
+                xiUsage
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error fetching Cursor accounts:', error);
+        handlersCtx.sendError(ws, 'Failed to fetch Cursor accounts', error.message, message.requestId);
+    }
+}
+
+async function handleSwitchCursorAccount(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
+        const { persona, accountId, customToken } = message;
+        if (!persona || (persona !== 'wren' && persona !== 'xi' && persona !== 'both')) {
+            handlersCtx.sendError(ws, 'persona must be "wren", "xi", or "both"', 'INVALID_PERSONA', message.requestId);
+            return;
+        }
+        if (!accountId || typeof accountId !== 'string') {
+            handlersCtx.sendError(ws, 'accountId is required', 'MISSING_ACCOUNT_ID', message.requestId);
+            return;
+        }
+
+        const secureConfig = handlersCtx.globalResources.getSecureConfig() || {};
+        const cursorData = secureConfig.cursorAccounts || {
+            wren: { activeAccountId: 'default', customToken: '' },
+            xi: { activeAccountId: 'default', customToken: '' },
+            accounts: [
+                { id: 'default', name: 'Host Account (Default)', email: 'system@cursor.sh', isDefault: true }
+            ]
+        };
+
+        const targets = persona === 'both' ? ['wren', 'xi'] : [persona];
+        const cursorAccountAuthStore = require('../../cursorAccountAuthStore');
+
+        for (const target of targets) {
+            const prevAccountId = target === 'wren'
+                ? (cursorData.wren?.activeAccountId || 'default')
+                : (cursorData.xi?.activeAccountId || 'default');
+            // Copy out last active paired credentials so no live auth tokens are lost
+            if (prevAccountId && prevAccountId !== accountId) {
+                try {
+                    cursorAccountAuthStore.captureLivePersonaAuthFiles(target, prevAccountId);
+                } catch (err) {
+                    console.warn(`[190-adminHandler] Warning saving prev account credentials (${prevAccountId}):`, err.message);
+                }
+            }
+            if (target === 'wren') {
+                cursorData.wren = { activeAccountId: accountId, customToken: customToken || '' };
+            } else {
+                cursorData.xi = { activeAccountId: accountId, customToken: customToken || '' };
+            }
+        }
+
+        handlersCtx.globalResources.modifyConfig('secureConfig').assign('cursorAccounts', cursorData);
+
+        const cursorDirector = require('../../cursorDirector');
+        const xiDirector = require('../../xiDirector');
+        const cursorUsage = require('../../cursorUsage');
+
+        if (typeof cursorUsage.invalidateCursorUsage === 'function') {
+            cursorUsage.invalidateCursorUsage();
+        }
+
+        for (const target of targets) {
+            if (target === 'wren') {
+                try {
+                    if (typeof cursorDirector.abortAllRuns === 'function') {
+                        cursorDirector.abortAllRuns();
+                    }
+                    const jailHome = cursorDirector.layout().home;
+                    const wrenConfigDir = path.join(jailHome, '.config', 'cursor');
+                    cursorAccountAuthStore.restoreAccountAuthFiles(accountId, wrenConfigDir);
+                    cursorDirector.syncCursorCliLogin(jailHome);
+                } catch (err) {
+                    console.warn('Wren CLI auth sync warning:', err.message);
+                }
+            } else if (target === 'xi') {
+                try {
+                    const xiConfigDir = xiDirector.layout ? xiDirector.layout().configDir : null;
+                    if (xiConfigDir) {
+                        cursorAccountAuthStore.restoreAccountAuthFiles(accountId, xiConfigDir);
+                        if (typeof cursorDirector.installUnrestrictedCli === 'function') {
+                            cursorDirector.installUnrestrictedCli(xiConfigDir);
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Xi CLI auth sync warning:', err.message);
+                }
+            }
+        }
+
+        if (typeof cursorUsage.invalidateCursorUsage === 'function') {
+            cursorUsage.invalidateCursorUsage();
+        }
+
+        let updatedUsage = null;
+        let updatedXiUsage = null;
+        if (targets.includes('wren')) {
+            try {
+                updatedUsage = await cursorUsage.getCursorUsage('wren');
+            } catch (_) {}
+        }
+        if (targets.includes('xi')) {
+            try {
+                updatedXiUsage = await cursorUsage.getCursorUsage('xi');
+            } catch (_) {}
+        }
+
+        const who = persona === 'both' ? 'Wren and Xi' : (persona === 'wren' ? 'Wren' : 'Xi');
+        console.log(`👤 Cursor account switched for ${who} to profile ${accountId} by session ${clientInfo.sessionId}`);
+
+        handlersCtx.sendToClient(ws, {
+            type: 'switch_cursor_account_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                persona,
+                activeAccountId: accountId,
+                usage: updatedUsage,
+                xiUsage: updatedXiUsage,
+                message: `Switched Cursor account for ${who}`
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error switching Cursor account:', error);
+        handlersCtx.sendError(ws, 'Failed to switch Cursor account', error.message, message.requestId);
+    }
+}
+
+async function handleSaveCursorAccount(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
+        const { id, name, email, token, persona = 'wren', makeActive = true, color } = message;
+        if (!name || typeof name !== 'string' || name.trim().length === 0) {
+            handlersCtx.sendError(ws, 'Profile name is required', 'MISSING_NAME', message.requestId);
+            return;
+        }
+
+        const secureConfig = handlersCtx.globalResources.getSecureConfig() || {};
+        const cursorData = secureConfig.cursorAccounts || {
+            wren: { activeAccountId: 'default', customToken: '' },
+            xi: { activeAccountId: 'default', customToken: '' },
+            accounts: [
+                { id: 'default', name: 'Host Account (Default)', email: 'system@cursor.sh', isDefault: true }
+            ]
+        };
+
+        const profileId = id && id.trim() ? id.trim() : `acc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const existingIdx = cursorData.accounts.findIndex(a => a.id === profileId);
+
+        const cursorAccountAuthStore = require('../../cursorAccountAuthStore');
+        const tokenStr = (token || '').trim();
+        const isNewProfile = existingIdx < 0;
+        const isEmptyNew = isNewProfile && !tokenStr && profileId !== 'default';
+        const targetPersona = (persona === 'xi') ? 'xi' : 'wren';
+
+        if (isNewProfile) {
+            // Copy out the last active paired credentials so no live auth tokens are lost
+            const prevAccountId = (targetPersona === 'wren' ? cursorData.wren?.activeAccountId : cursorData.xi?.activeAccountId) || 'default';
+            if (prevAccountId) {
+                try {
+                    cursorAccountAuthStore.captureLivePersonaAuthFiles(targetPersona, prevAccountId);
+                } catch (err) {
+                    console.warn(`[190-adminHandler] Warning saving prev account credentials before creating new profile (${prevAccountId}):`, err.message);
+                }
+            }
+        }
+
+        let extractedEmail = (email || '').trim();
+        if (isEmptyNew) {
+            extractedEmail = '(Pending Login)';
+        } else if (!extractedEmail) {
+            extractedEmail = cursorAccountAuthStore.extractEmailFromToken(tokenStr) || cursorAccountAuthStore.getHostAccountInfo().email || '';
+        }
+
+        const newAccount = {
+            id: profileId,
+            name: name.trim(),
+            email: extractedEmail,
+            token: isEmptyNew ? '' : tokenStr,
+            isEmpty: isEmptyNew,
+            isDefault: profileId === 'default',
+            color: cursorAccountAuthStore.normalizeAccountColor(color)
+        };
+
+        if (existingIdx >= 0) {
+            cursorData.accounts[existingIdx] = { ...cursorData.accounts[existingIdx], ...newAccount };
+        } else {
+            cursorData.accounts.push(newAccount);
+        }
+
+        // If creating a new bare profile and makeActive is true, set it active and clear live config dir bare!
+        if (isNewProfile && (isEmptyNew || makeActive)) {
+            if (targetPersona === 'wren') {
+                cursorData.wren = { activeAccountId: profileId, customToken: '' };
+            } else {
+                cursorData.xi = { activeAccountId: profileId, customToken: '' };
+            }
+            // Clear live directory bare for new login (pass null for activeAccountId so only live dir is cleared)
+            cursorAccountAuthStore.logoutCursorAccount(targetPersona, null);
+        }
+
+        handlersCtx.globalResources.modifyConfig('secureConfig').assign('cursorAccounts', cursorData);
+
+        // Save account auth files for profileId
+        cursorAccountAuthStore.saveAccountAuthFiles(profileId, { ...newAccount, isNew: isNewProfile }, isEmptyNew ? 'empty' : tokenStr);
+
+        // If tokenStr was provided for a new profile, restore it to live dir
+        if (isNewProfile && !isEmptyNew && tokenStr) {
+            const cursorDirector = require('../../cursorDirector');
+            const xiDirector = require('../../xiDirector');
+            if (targetPersona === 'wren') {
+                const jailHome = cursorDirector.layout().home;
+                const wrenConfigDir = path.join(jailHome, '.config', 'cursor');
+                cursorAccountAuthStore.restoreAccountAuthFiles(profileId, wrenConfigDir);
+            } else if (targetPersona === 'xi') {
+                const xiConfigDir = xiDirector.layout ? xiDirector.layout().configDir : null;
+                if (xiConfigDir) {
+                    cursorAccountAuthStore.restoreAccountAuthFiles(profileId, xiConfigDir);
+                }
+            }
+        }
+
+        handlersCtx.sendToClient(ws, {
+            type: 'save_cursor_account_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                account: newAccount,
+                persona: targetPersona,
+                activeAccountId: profileId,
+                message: existingIdx >= 0 ? 'Cursor account profile updated' : 'Cursor account profile created and set as active bare profile for new login'
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error saving Cursor account profile:', error);
+        handlersCtx.sendError(ws, 'Failed to save Cursor account profile', error.message, message.requestId);
+    }
+}
+
+async function handleLoginCursorAccount(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+        const accountId = String(message.accountId || '').trim();
+        if (!accountId) {
+            handlersCtx.sendError(ws, 'accountId is required', 'MISSING_ACCOUNT_ID', message.requestId);
+            return;
+        }
+        const secureConfig = handlersCtx.globalResources.getSecureConfig() || {};
+        const accounts = (secureConfig.cursorAccounts && secureConfig.cursorAccounts.accounts) || [];
+        if (!accounts.some((acc) => acc.id === accountId)) {
+            handlersCtx.sendError(ws, 'Account profile not found', 'ACCOUNT_NOT_FOUND', message.requestId);
+            return;
+        }
+        const cursorAccountAuthStore = require('../../cursorAccountAuthStore');
+        const job = cursorAccountAuthStore.beginCursorAccountLogin(accountId, {
+            onDone: (result) => {
+                try {
+                    const current = handlersCtx.globalResources.getSecureConfig() || {};
+                    const cursorData = current.cursorAccounts;
+                    const acc = cursorData && Array.isArray(cursorData.accounts)
+                        ? cursorData.accounts.find((item) => item.id === accountId)
+                        : null;
+                    if (acc) {
+                        if (result.email) acc.email = result.email;
+                        acc.isEmpty = false;
+                        handlersCtx.globalResources.modifyConfig('secureConfig').assign('cursorAccounts', cursorData);
+                    }
+                    cursorAccountAuthStore.restoreActiveCursorAccounts(handlersCtx.globalResources);
+                    try { require('../../cursorUsage').invalidateCursorUsage(); } catch (_) { /* usage refresh is optional */ }
+                } catch (err) {
+                    console.error('Cursor login capture failed:', err);
+                }
+                if (wsServer && typeof wsServer.broadcast === 'function') {
+                    wsServer.broadcast({
+                        type: 'cursor_account_login_complete',
+                        data: { success: true, accountId, email: result.email || '' },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            },
+            onFail: (error) => {
+                if (wsServer && typeof wsServer.broadcast === 'function') {
+                    wsServer.broadcast({
+                        type: 'cursor_account_login_complete',
+                        data: { success: false, accountId, message: error.message || 'Login failed' },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            }
+        });
+        const url = job.url || await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('Login link did not appear')), 20000);
+            job.listeners.push({
+                onUrl: (found) => {
+                    clearTimeout(timer);
+                    resolve(found);
+                },
+                onFail: (error) => {
+                    clearTimeout(timer);
+                    reject(error);
+                }
+            });
+            if (job.url) {
+                clearTimeout(timer);
+                resolve(job.url);
+            }
+        });
+        handlersCtx.sendToClient(ws, {
+            type: 'login_cursor_account_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                accountId,
+                url,
+                message: 'Finish signing in in the browser tab. Dreamscape will capture that login for this profile.'
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Cursor account login failed:', error);
+        handlersCtx.sendError(ws, error.message || 'Failed to start Cursor login', error.code || 'LOGIN_FAILED', message.requestId);
+    }
+}
+
+async function handleDeleteCursorAccount(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
+        const { accountId } = message;
+        if (!accountId || accountId === 'default') {
+            handlersCtx.sendError(ws, 'Cannot delete the default host account profile', 'CANNOT_DELETE_DEFAULT', message.requestId);
+            return;
+        }
+
+        const secureConfig = handlersCtx.globalResources.getSecureConfig() || {};
+        const cursorData = secureConfig.cursorAccounts || {
+            wren: { activeAccountId: 'default', customToken: '' },
+            xi: { activeAccountId: 'default', customToken: '' },
+            accounts: [
+                { id: 'default', name: 'Host Account (Default)', email: 'system@cursor.sh', isDefault: true }
+            ]
+        };
+
+        cursorData.accounts = cursorData.accounts.filter(a => a.id !== accountId);
+
+        if (cursorData.wren && cursorData.wren.activeAccountId === accountId) {
+            cursorData.wren.activeAccountId = 'default';
+        }
+        if (cursorData.xi && cursorData.xi.activeAccountId === accountId) {
+            cursorData.xi.activeAccountId = 'default';
+        }
+
+        handlersCtx.globalResources.modifyConfig('secureConfig').assign('cursorAccounts', cursorData);
+
+        const cursorAccountAuthStore = require('../../cursorAccountAuthStore');
+        cursorAccountAuthStore.deleteAccountAuthFiles(accountId);
+
+        handlersCtx.sendToClient(ws, {
+            type: 'delete_cursor_account_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                accountId,
+                message: 'Cursor account profile deleted'
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error deleting Cursor account profile:', error);
+        handlersCtx.sendError(ws, 'Failed to delete Cursor account profile', error.message, message.requestId);
+    }
+}
+
+async function handleCaptureCursorAccount(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
+        const { accountId, persona } = message;
+        if (!accountId || typeof accountId !== 'string') {
+            handlersCtx.sendError(ws, 'accountId is required', 'MISSING_ACCOUNT_ID', message.requestId);
+            return;
+        }
+
+        const targetPersona = persona || 'wren';
+        const cursorAccountAuthStore = require('../../cursorAccountAuthStore');
+        const capturedInfo = cursorAccountAuthStore.captureLivePersonaAuthFiles(targetPersona, accountId);
+
+        const secureConfig = handlersCtx.globalResources.getSecureConfig() || {};
+        const cursorData = secureConfig.cursorAccounts || {
+            wren: { activeAccountId: 'default', customToken: '' },
+            xi: { activeAccountId: 'default', customToken: '' },
+            accounts: []
+        };
+
+        const existingIdx = cursorData.accounts.findIndex(a => a.id === accountId);
+        const hasValidToken = Boolean(capturedInfo.token);
+        const email = capturedInfo.email && !capturedInfo.email.startsWith('(') ? capturedInfo.email : (capturedInfo.token ? (cursorAccountAuthStore.extractEmailFromToken(capturedInfo.token) || capturedInfo.email) : '(Pending Login)');
+
+        if (existingIdx >= 0) {
+            const acc = cursorData.accounts[existingIdx];
+            const isGenericName = !acc.name || acc.name.startsWith('Captured Account') || acc.name.startsWith('Account ') || acc.name.startsWith('New Profile');
+            cursorData.accounts[existingIdx] = {
+                ...acc,
+                name: (isGenericName && email && !email.startsWith('(')) ? email : acc.name,
+                email: email,
+                token: capturedInfo.token || '',
+                isEmpty: !hasValidToken
+            };
+        } else {
+            cursorData.accounts.push({
+                id: accountId,
+                name: email && !email.startsWith('(') ? email : `Account (${new Date().toLocaleDateString()})`,
+                email: email,
+                token: capturedInfo.token || '',
+                isEmpty: !hasValidToken
+            });
+        }
+
+        // Make this profile active for targetPersona and restore auth files into live config dir
+        if (targetPersona === 'wren') {
+            cursorData.wren = { activeAccountId: accountId, customToken: '' };
+        } else {
+            cursorData.xi = { activeAccountId: accountId, customToken: '' };
+        }
+
+        handlersCtx.globalResources.modifyConfig('secureConfig').assign('cursorAccounts', cursorData);
+
+        const cursorDirector = require('../../cursorDirector');
+        const xiDirector = require('../../xiDirector');
+        if (targetPersona === 'wren') {
+            const jailHome = cursorDirector.layout().home;
+            const wrenConfigDir = path.join(jailHome, '.config', 'cursor');
+            cursorAccountAuthStore.restoreAccountAuthFiles(accountId, wrenConfigDir);
+        } else if (targetPersona === 'xi') {
+            const xiConfigDir = xiDirector.layout ? xiDirector.layout().configDir : null;
+            if (xiConfigDir) {
+                cursorAccountAuthStore.restoreAccountAuthFiles(accountId, xiConfigDir);
+            }
+        }
+
+        handlersCtx.sendToClient(ws, {
+            type: 'capture_cursor_account_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                accountId,
+                email: email,
+                message: `Captured & paired account credentials (${email})`
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error capturing Cursor account credentials:', error);
+        handlersCtx.sendError(ws, 'Failed to capture Cursor account credentials', error.message, message.requestId);
+    }
+}
+
+async function handleLogoutCursorAccount(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
+        const { persona, accountId } = message;
+        const targetPersona = persona || 'wren';
+
+        const secureConfig = handlersCtx.globalResources.getSecureConfig() || {};
+        const cursorData = secureConfig.cursorAccounts || { wren: {}, xi: {}, accounts: [] };
+        const activeId = accountId || (targetPersona === 'wren' ? cursorData.wren?.activeAccountId : cursorData.xi?.activeAccountId) || 'default';
+
+        const cursorAccountAuthStore = require('../../cursorAccountAuthStore');
+        cursorAccountAuthStore.logoutCursorAccount(targetPersona, activeId);
+
+        const existingIdx = cursorData.accounts.findIndex(a => a.id === activeId);
+        if (existingIdx >= 0) {
+            cursorData.accounts[existingIdx].email = '(Logged Out)';
+            cursorData.accounts[existingIdx].token = '';
+            cursorData.accounts[existingIdx].isEmpty = true;
+            handlersCtx.globalResources.modifyConfig('secureConfig').assign('cursorAccounts', cursorData);
+        }
+
+        handlersCtx.sendToClient(ws, {
+            type: 'logout_cursor_account_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                persona: targetPersona,
+                accountId: activeId,
+                message: `Logged out Cursor account for ${targetPersona === 'wren' ? 'Wren' : 'Xi'}`
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error logging out Cursor account:', error);
+        handlersCtx.sendError(ws, 'Failed to log out Cursor account', error.message, message.requestId);
+    }
+}
+
 /**
  * Register admin WebSocket packet handlers (IP blocking, rate limits, API keys).
  * @param {import('../../websocketHandlers').WebSocketMessageHandlers} handlersCtx
@@ -849,8 +1455,17 @@ function registerPackets(handlersCtx) {
     reg('add_api_key', handleAddApiKey, ADMIN_DESTRUCTIVE);
     reg('update_api_key', handleUpdateApiKey, ADMIN_DESTRUCTIVE);
     reg('unlock_api_service', handleUnlockApiService, ADMIN_DESTRUCTIVE);
+
+    reg('get_cursor_accounts', handleGetCursorAccounts);
+    reg('switch_cursor_account', handleSwitchCursorAccount, ADMIN_DESTRUCTIVE);
+    reg('save_cursor_account', handleSaveCursorAccount, ADMIN_DESTRUCTIVE);
+    reg('login_cursor_account', handleLoginCursorAccount, ADMIN_DESTRUCTIVE);
+    reg('capture_cursor_account', handleCaptureCursorAccount, ADMIN_DESTRUCTIVE);
+    reg('logout_cursor_account', handleLogoutCursorAccount, ADMIN_DESTRUCTIVE);
+    reg('delete_cursor_account', handleDeleteCursorAccount, ADMIN_DESTRUCTIVE);
 }
 
 module.exports = {
     registerPackets
 };
+

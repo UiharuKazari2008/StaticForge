@@ -1,0 +1,560 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+const ACCOUNTS_BASE_DIR = path.join(process.cwd(), '.cache', 'dreamscape-cursor-accounts');
+
+const DIRECTOR_CLI_OVERLAY = {
+    permissions: {
+        allowShellExecution: true,
+        allowWebSearch: true,
+        allowFileSystem: true
+    }
+};
+
+function getAccountDir(accountId) {
+    const id = (accountId || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+    return path.join(ACCOUNTS_BASE_DIR, id);
+}
+
+function ensureDir(dir) {
+    fs.mkdirSync(dir, { recursive: true });
+}
+
+function safeCopyFile(src, dst) {
+    try {
+        if (fs.existsSync(src)) {
+            ensureDir(path.dirname(dst));
+            fs.copyFileSync(src, dst);
+            try { fs.chmodSync(dst, 0o600); } catch (_) {}
+            return true;
+        }
+    } catch (err) {
+        console.warn(`[cursorAccountAuthStore] Copy failed ${src} -> ${dst}:`, err.message);
+    }
+    return false;
+}
+
+function readJson(file) {
+    try {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (_) {
+        return null;
+    }
+}
+
+function writeJson(file, data) {
+    try {
+        ensureDir(path.dirname(file));
+        fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+        try { fs.chmodSync(file, 0o600); } catch (_) {}
+        return true;
+    } catch (err) {
+        console.warn(`[cursorAccountAuthStore] Write failed ${file}:`, err.message);
+        return false;
+    }
+}
+
+function isEmailString(str) {
+    return typeof str === 'string' && str.includes('@') && !str.startsWith('(');
+}
+
+function extractEmailFromToken(token) {
+    if (!token || typeof token !== 'string') return '';
+    try {
+        if (token.startsWith('{')) {
+            const parsed = JSON.parse(token);
+            if (isEmailString(parsed.email)) return parsed.email;
+            if (isEmailString(parsed.emailAddress)) return parsed.emailAddress;
+            if (parsed.accessToken) return extractEmailFromToken(parsed.accessToken);
+        }
+        const parts = token.split('.');
+        if (parts.length === 3) {
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+            const candidates = [
+                payload.email,
+                payload['https://cursor.com/email'],
+                payload['https://cursor.sh/email'],
+                payload.email_address,
+                payload.userEmail,
+                payload.user_metadata && payload.user_metadata.email,
+                payload.profile && payload.profile.email
+            ];
+            for (const cand of candidates) {
+                if (isEmailString(cand)) return cand;
+            }
+        }
+    } catch (_) {}
+    return '';
+}
+
+function getHostAccountInfo() {
+    let email = '';
+    let token = '';
+    try {
+        const cliPath = path.join(os.homedir(), '.cursor', 'cli-config.json');
+        if (fs.existsSync(cliPath)) {
+            const data = readJson(cliPath);
+            if (data && data.authInfo) {
+                const cand = data.authInfo.email || data.authInfo.emailAddress;
+                if (isEmailString(cand)) {
+                    email = cand;
+                }
+            }
+        }
+    } catch (_) {}
+
+    try {
+        const authPath = path.join(os.homedir(), '.config', 'cursor', 'auth.json');
+        if (fs.existsSync(authPath)) {
+            const data = readJson(authPath);
+            if (data) {
+                token = data.accessToken || data.apiKey || '';
+                if (!email && data.accessToken) {
+                    const extracted = extractEmailFromToken(data.accessToken);
+                    if (isEmailString(extracted)) {
+                        email = extracted;
+                    }
+                }
+            }
+        }
+    } catch (_) {}
+
+    return { email, token };
+}
+
+/**
+ * Save auth files for a specific account profile.
+ */
+function saveAccountAuthFiles(accountId, profile, customToken) {
+    const accDir = getAccountDir(accountId);
+    ensureDir(accDir);
+
+    const rawToken = (customToken !== undefined ? customToken : (profile.token || '')).trim();
+    let authData = {};
+
+    const authFile = path.join(accDir, 'auth.json');
+    if (profile.isEmpty || rawToken === 'empty') {
+        authData = {};
+    } else if (rawToken.startsWith('{')) {
+        try {
+            authData = JSON.parse(rawToken);
+        } catch (_) {
+            authData.accessToken = rawToken;
+        }
+    } else if (rawToken.startsWith('sk-')) {
+        authData.apiKey = rawToken;
+        authData.accessToken = rawToken;
+    } else if (rawToken) {
+        authData.accessToken = rawToken;
+    } else if (fs.existsSync(authFile)) {
+        authData = readJson(authFile) || {};
+    } else if (accountId === 'default') {
+        const hostAuth = path.join(os.homedir(), '.config', 'cursor', 'auth.json');
+        authData = readJson(hostAuth) || {};
+    } else {
+        authData = {};
+    }
+
+    writeJson(authFile, authData);
+
+    const cliFile = path.join(accDir, 'cli-config.json');
+    let existingCliData = readJson(cliFile);
+    if (!existingCliData && accountId === 'default') {
+        const hostCli = path.join(os.homedir(), '.cursor', 'cli-config.json');
+        existingCliData = readJson(hostCli) || {};
+    }
+    existingCliData = existingCliData || {};
+
+    const hostInfo = getHostAccountInfo();
+    const realEmail = profile.isEmpty ? '(Pending Login)' : (profile.email || extractEmailFromToken(authData.accessToken) || (accountId === 'default' ? hostInfo.email : '') || '');
+
+    const cliData = {
+        ...existingCliData,
+        authInfo: {
+            authId: accountId,
+            email: realEmail,
+            displayName: profile.name || realEmail
+        },
+        ...DIRECTOR_CLI_OVERLAY
+    };
+    writeJson(cliFile, cliData);
+
+    if (profile.isEmpty || rawToken === 'empty') {
+        const cacheFile = path.join(accDir, 'statsig-cache.json');
+        if (fs.existsSync(cacheFile)) {
+            try { fs.unlinkSync(cacheFile); } catch (_) {}
+        }
+    } else {
+        const hostCache = path.join(os.homedir(), '.cursor', 'statsig-cache.json');
+        if (!fs.existsSync(path.join(accDir, 'statsig-cache.json'))) {
+            safeCopyFile(hostCache, path.join(accDir, 'statsig-cache.json'));
+        }
+    }
+}
+
+/**
+ * Capture live auth files from active persona (Wren/Xi) or host into a saved account profile.
+ */
+function captureLivePersonaAuthFiles(persona, accountId) {
+    const accDir = getAccountDir(accountId);
+    ensureDir(accDir);
+
+    const cursorDirector = require('./cursorDirector');
+    const xiDirector = require('./xiDirector');
+
+    let sourceDir = null;
+    if (persona === 'wren') {
+        const jailHome = cursorDirector.layout().home;
+        sourceDir = path.join(jailHome, '.config', 'cursor');
+    } else if (persona === 'xi') {
+        sourceDir = xiDirector.layout ? xiDirector.layout().configDir : null;
+    }
+
+    let copiedFromSource = false;
+    if (sourceDir && fs.existsSync(sourceDir)) {
+        const liveAuth = readJson(path.join(sourceDir, 'auth.json')) || {};
+        if (liveAuth.accessToken || liveAuth.apiKey) {
+            safeCopyFile(path.join(sourceDir, 'auth.json'), path.join(accDir, 'auth.json'));
+            safeCopyFile(path.join(sourceDir, 'cli-config.json'), path.join(accDir, 'cli-config.json'));
+            safeCopyFile(path.join(sourceDir, 'statsig-cache.json'), path.join(accDir, 'statsig-cache.json'));
+            copiedFromSource = true;
+        }
+    }
+
+    if (!copiedFromSource) {
+        if (accountId === 'default') {
+            const hostAuth = path.join(os.homedir(), '.config', 'cursor', 'auth.json');
+            const hostCli = path.join(os.homedir(), '.cursor', 'cli-config.json');
+            const hostCache = path.join(os.homedir(), '.cursor', 'statsig-cache.json');
+            safeCopyFile(hostAuth, path.join(accDir, 'auth.json'));
+            safeCopyFile(hostCli, path.join(accDir, 'cli-config.json'));
+            safeCopyFile(hostCache, path.join(accDir, 'statsig-cache.json'));
+        }
+    }
+
+    const authData = readJson(path.join(accDir, 'auth.json')) || {};
+    const cliData = readJson(path.join(accDir, 'cli-config.json')) || {};
+
+    const token = authData.accessToken || authData.apiKey || '';
+    let email = extractEmailFromToken(token);
+    if (!email && cliData.authInfo && cliData.authInfo.email && !cliData.authInfo.email.startsWith('(')) {
+        email = cliData.authInfo.email;
+    }
+    if (!email && token) {
+        email = getHostAccountInfo().email || 'authenticated_user@cursor.sh';
+    }
+    if (!email) {
+        email = '(Pending Login)';
+    }
+
+    if (cliData.authInfo) {
+        cliData.authInfo.authId = accountId;
+        cliData.authInfo.email = email;
+        writeJson(path.join(accDir, 'cli-config.json'), cliData);
+    }
+
+    return { email, token, captured: true };
+}
+
+/**
+ * Restore stored auth files for an account profile into a target config dir (e.g. Wren or Xi CLI config dir).
+ */
+function restoreAccountAuthFiles(accountId, targetConfigDir) {
+    if (!targetConfigDir) return false;
+    const accDir = getAccountDir(accountId);
+    ensureDir(targetConfigDir);
+
+    // Ensure account profile files on disk match the account profile metadata in secureConfig
+    try {
+        const secureConfigPath = path.join(process.cwd(), 'secure.config.json');
+        if (fs.existsSync(secureConfigPath)) {
+            const data = readJson(secureConfigPath);
+            const accounts = data && data.cursorAccounts && data.cursorAccounts.accounts;
+            if (Array.isArray(accounts)) {
+                const acc = accounts.find(a => a.id === accountId);
+                if (acc) {
+                    saveAccountAuthFiles(accountId, acc, acc.isEmpty ? 'empty' : (acc.token || ''));
+                }
+            }
+        }
+    } catch (_) {}
+
+    // If profile dir doesn't exist yet and account is default, seed it from host
+    if (!fs.existsSync(accDir) && (accountId === 'default' || !accountId)) {
+        const hostInfo = getHostAccountInfo();
+        saveAccountAuthFiles('default', { name: 'Host Account (Default)', email: hostInfo.email || 'Host Logged-in User' }, '');
+    }
+
+    let copiedAny = false;
+    if (fs.existsSync(accDir)) {
+        const authSrc = path.join(accDir, 'auth.json');
+        const cliSrc = path.join(accDir, 'cli-config.json');
+        const cacheSrc = path.join(accDir, 'statsig-cache.json');
+
+        if (safeCopyFile(authSrc, path.join(targetConfigDir, 'auth.json'))) copiedAny = true;
+        if (safeCopyFile(cliSrc, path.join(targetConfigDir, 'cli-config.json'))) copiedAny = true;
+        if (safeCopyFile(cacheSrc, path.join(targetConfigDir, 'statsig-cache.json'))) copiedAny = true;
+    }
+
+    return copiedAny;
+}
+
+/**
+ * Delete stored auth files for an account profile.
+ */
+function deleteAccountAuthFiles(accountId) {
+    if (!accountId || accountId === 'default') return false;
+    const accDir = getAccountDir(accountId);
+    try {
+        if (fs.existsSync(accDir)) {
+            fs.rmSync(accDir, { recursive: true, force: true });
+            return true;
+        }
+    } catch (err) {
+        console.warn(`[cursorAccountAuthStore] Delete failed ${accDir}:`, err.message);
+    }
+    return false;
+}
+
+/**
+ * Log out active Cursor account for a persona (Wren/Xi) and clear active profile credentials.
+ */
+function logoutCursorAccount(persona, activeAccountId) {
+    const cursorDirector = require('./cursorDirector');
+    const xiDirector = require('./xiDirector');
+    const cursorUsage = require('./cursorUsage');
+
+    let targetConfigDir = null;
+    if (persona === 'wren') {
+        const jailHome = cursorDirector.layout().home;
+        targetConfigDir = path.join(jailHome, '.config', 'cursor');
+    } else if (persona === 'xi') {
+        targetConfigDir = xiDirector.layout ? xiDirector.layout().configDir : null;
+    }
+
+    if (targetConfigDir && fs.existsSync(targetConfigDir)) {
+        writeJson(path.join(targetConfigDir, 'auth.json'), {});
+        const cliData = readJson(path.join(targetConfigDir, 'cli-config.json')) || {};
+        cliData.authInfo = cliData.authInfo || {};
+        cliData.authInfo.email = '(Logged Out)';
+        writeJson(path.join(targetConfigDir, 'cli-config.json'), cliData);
+        const cacheFile = path.join(targetConfigDir, 'statsig-cache.json');
+        if (fs.existsSync(cacheFile)) {
+            try { fs.unlinkSync(cacheFile); } catch (_) {}
+        }
+    }
+
+    if (activeAccountId) {
+        const accDir = getAccountDir(activeAccountId);
+        if (fs.existsSync(accDir)) {
+            writeJson(path.join(accDir, 'auth.json'), {});
+            const cliData = readJson(path.join(accDir, 'cli-config.json')) || {};
+            cliData.authInfo = cliData.authInfo || {};
+            cliData.authInfo.email = '(Logged Out)';
+            writeJson(path.join(accDir, 'cli-config.json'), cliData);
+            const cacheFile = path.join(accDir, 'statsig-cache.json');
+            if (fs.existsSync(cacheFile)) {
+                try { fs.unlinkSync(cacheFile); } catch (_) {}
+            }
+        }
+    }
+
+    if (typeof cursorUsage.invalidateCursorUsage === 'function') {
+        cursorUsage.invalidateCursorUsage();
+    }
+
+    return { success: true, message: `Logged out Cursor account for ${persona === 'wren' ? 'Wren' : 'Xi'}` };
+}
+
+function publicCursorAccount(acc) {
+    if (!acc || typeof acc !== 'object') return null;
+    const color = typeof acc.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(acc.color) ? acc.color : '';
+    return {
+        id: acc.id,
+        name: acc.name || 'Account',
+        email: acc.email || '',
+        color,
+        isDefault: !!(acc.isDefault || acc.id === 'default'),
+        isEmpty: !!acc.isEmpty
+    };
+}
+
+function normalizeAccountColor(value) {
+    const text = String(value || '').trim();
+    return /^#[0-9a-fA-F]{6}$/.test(text) ? text.toLowerCase() : '';
+}
+
+const loginJobs = new Map();
+const LOGIN_URL_RE = /https:\/\/cursor\.com\/loginDeepControl\?\S+/;
+const LOGIN_WAIT_MS = 5 * 60 * 1000;
+
+function stopLoginJob(job, signal) {
+    if (!job) return;
+    if (job.timer) clearInterval(job.timer);
+    if (job.failTimer) clearTimeout(job.failTimer);
+    job.timer = null;
+    job.failTimer = null;
+    if (job.child && job.child.exitCode == null && job.child.signalCode == null) {
+        try { job.child.kill(signal || 'SIGTERM'); } catch (_) { /* already gone */ }
+    }
+}
+
+function readLoginAuth(dir) {
+    const auth = readJson(path.join(dir, 'auth.json'));
+    if (!auth || !(auth.accessToken || auth.apiKey)) return null;
+    return auth;
+}
+
+function finishAccountLogin(accountId) {
+    const job = loginJobs.get(accountId);
+    if (!job || job.settled) return null;
+    const auth = readLoginAuth(job.dir);
+    if (!auth) return null;
+    job.settled = true;
+    stopLoginJob(job, 'SIGTERM');
+    const accDir = getAccountDir(accountId);
+    ensureDir(accDir);
+    safeCopyFile(path.join(job.dir, 'auth.json'), path.join(accDir, 'auth.json'));
+    safeCopyFile(path.join(job.dir, 'cli-config.json'), path.join(accDir, 'cli-config.json'));
+    try { fs.rmSync(job.dir, { recursive: true, force: true }); } catch (_) { /* staging dir */ }
+    loginJobs.delete(accountId);
+    const email = extractEmailFromToken(auth.accessToken) || '';
+    const listeners = job.listeners.splice(0);
+    const result = { accountId, email, token: auth.accessToken || auth.apiKey || '' };
+    listeners.forEach((listener) => {
+        if (listener.onDone) listener.onDone(result);
+    });
+    return result;
+}
+
+function failAccountLogin(accountId, message) {
+    const job = loginJobs.get(accountId);
+    if (!job || job.settled) return;
+    job.settled = true;
+    stopLoginJob(job, 'SIGTERM');
+    try { fs.rmSync(job.dir, { recursive: true, force: true }); } catch (_) { /* staging dir */ }
+    loginJobs.delete(accountId);
+    const listeners = job.listeners.splice(0);
+    listeners.forEach((listener) => {
+        if (listener.onFail) listener.onFail(new Error(message || 'Login failed'));
+    });
+}
+
+// Isolated CURSOR_CONFIG_DIR so a browser login never replaces the live Wren or Xi auth.
+// The caller restores the configured active profiles after the new auth is stored.
+function beginCursorAccountLogin(accountId, listener) {
+    const id = String(accountId || '').trim();
+    if (!id) {
+        const error = new Error('accountId is required');
+        error.code = 'MISSING_ACCOUNT_ID';
+        throw error;
+    }
+    const existing = loginJobs.get(id);
+    if (existing && !existing.settled) {
+        existing.listeners.push(listener || {});
+        if (existing.url && listener && listener.onUrl) listener.onUrl(existing.url);
+        return existing;
+    }
+    const cursorDirector = require('./cursorDirector');
+    const agentBin = cursorDirector.findAgent && cursorDirector.findAgent();
+    if (!agentBin) {
+        const error = new Error('Cursor is not installed');
+        error.code = 'CURSOR_MISSING';
+        throw error;
+    }
+    const dir = path.join(getAccountDir(id), 'pending-login');
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* fresh staging dir */ }
+    ensureDir(dir);
+    const child = require('child_process').spawn(agentBin, ['login'], {
+        env: Object.assign({}, process.env, {
+            NO_OPEN_BROWSER: '1',
+            CURSOR_CONFIG_DIR: dir,
+            BROWSER: 'echo'
+        }),
+        stdio: ['ignore', 'pipe', 'pipe']
+    });
+    const job = {
+        child,
+        dir,
+        url: '',
+        settled: false,
+        listeners: [listener || {}],
+        timer: null,
+        failTimer: null
+    };
+    loginJobs.set(id, job);
+    let buf = '';
+    const take = (chunk) => {
+        buf += chunk.toString();
+        if (buf.length > 8000) buf = buf.slice(-4000);
+        const match = buf.match(LOGIN_URL_RE);
+        if (!match || job.url) return;
+        job.url = match[0];
+        job.listeners.forEach((item) => {
+            if (item.onUrl) item.onUrl(job.url);
+        });
+    };
+    child.stdout.on('data', take);
+    child.stderr.on('data', take);
+    child.on('error', (error) => failAccountLogin(id, error.message || 'Login failed'));
+    child.on('exit', () => {
+        if (!finishAccountLogin(id) && loginJobs.get(id) === job) {
+            failAccountLogin(id, 'Login ended before Cursor saved the session');
+        }
+    });
+    job.timer = setInterval(() => { finishAccountLogin(id); }, 1000);
+    job.failTimer = setTimeout(() => failAccountLogin(id, 'Login timed out'), LOGIN_WAIT_MS);
+    return job;
+}
+
+function restoreActiveCursorAccounts(gr) {
+    const secure = gr && typeof gr.getSecureConfig === 'function' ? gr.getSecureConfig() : null;
+    const cursor = (secure && secure.cursorAccounts) || {};
+    const wrenId = cursor.wren && cursor.wren.activeAccountId;
+    const xiId = cursor.xi && cursor.xi.activeAccountId;
+    const cursorDirector = require('./cursorDirector');
+    if (wrenId && cursorDirector.layout) {
+        const dir = path.join(cursorDirector.layout().home, '.config', 'cursor');
+        restoreAccountAuthFiles(wrenId, dir);
+    }
+    if (xiId) {
+        const xiDirector = require('./xiDirector');
+        if (xiDirector.layout) restoreAccountAuthFiles(xiId, xiDirector.layout().configDir);
+    }
+}
+
+function getActiveAccountId(persona = 'wren') {
+    try {
+        const primaryPath = path.join(process.cwd(), 'secure.config.json');
+        const secondaryPath = path.join(process.cwd(), 'config', 'secureConfig.json');
+        const targetPath = fs.existsSync(primaryPath) ? primaryPath : (fs.existsSync(secondaryPath) ? secondaryPath : null);
+        if (targetPath) {
+            const data = readJson(targetPath);
+            if (data && data.cursorAccounts) {
+                const ca = data.cursorAccounts;
+                if (persona === 'wren' && ca.wren && ca.wren.activeAccountId) return ca.wren.activeAccountId;
+                if (persona === 'xi' && ca.xi && ca.xi.activeAccountId) return ca.xi.activeAccountId;
+            }
+        }
+    } catch (_) {}
+    return 'default';
+}
+
+module.exports = {
+    getAccountDir,
+    getHostAccountInfo,
+    extractEmailFromToken,
+    saveAccountAuthFiles,
+    captureLivePersonaAuthFiles,
+    restoreAccountAuthFiles,
+    deleteAccountAuthFiles,
+    logoutCursorAccount,
+    getActiveAccountId,
+    publicCursorAccount,
+    normalizeAccountColor,
+    beginCursorAccountLogin,
+    restoreActiveCursorAccounts
+};

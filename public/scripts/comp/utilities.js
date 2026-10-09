@@ -872,8 +872,28 @@ const STUDIO_MODEL_FROM_DETECTED = {
     FURRY: 'v3_furry'
 };
 
+const V5_MEDIUM_EFFORT_SOURCES = [
+    'NovelAI Diffusion V5 93F4BD30',
+    'NovelAI Diffusion V5 70AB5786'
+];
+
+function resolveGenerationEffort(data) {
+    if (!data || typeof data !== 'object') return 'high';
+    const forge = data.forge_data && typeof data.forge_data === 'object' ? data.forge_data : {};
+    const direct = String(data.effort || forge.effort || '').toLowerCase();
+    if (direct === 'medium') return 'medium';
+    const source = String(data.source || data.Source || '');
+    if (V5_MEDIUM_EFFORT_SOURCES.indexOf(source) !== -1) return 'medium';
+    const slug = String(data.model || forge.model || '').toLowerCase();
+    if (slug === 'nai-diffusion-5-full-medium' || slug === 'nai-diffusion-5-full-medium-inpainting') return 'medium';
+    return 'high';
+}
+
 const STUDIO_MODEL_FROM_SLUG = {
     'nai-diffusion-5-full': 'v5',
+    'nai-diffusion-5-full-inpainting': 'v5',
+    'nai-diffusion-5-full-medium': 'v5',
+    'nai-diffusion-5-full-medium-inpainting': 'v5',
     'nai-diffusion-5-curated': 'v5_cur',
     'nai-diffusion-4-5-full': 'v4_5',
     'nai-diffusion-4-5-curated': 'v4_5_cur',
@@ -1038,6 +1058,11 @@ function updateV3ModelVisibility() {
     // Store the V3 state for later use (use window reference if available)
     if (window.isV3ModelSelected !== undefined) {
         window.isV3ModelSelected = isV3Selected;
+    }
+
+    // syncManualEffortChrome: public/scripts/comp/manualModalManager.js
+    if (typeof syncManualEffortChrome === 'function') {
+        syncManualEffortChrome();
     }
 }
 

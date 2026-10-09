@@ -13,19 +13,15 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            // Ensure WebSocket is connected and ready
+            // Ensure WebSocket client is initialized
             if (!window.wsClient) {
                 throw new Error('WebSocket client not initialized');
             }
 
-            // Additional validation that the connection is stable
-            if (window.wsClient.getConnectionState() !== 'connected') {
-                throw new Error('WebSocket connection not in stable state');
-            }
-
-            // Add server readiness check before making the request
-            if (!window.wsClient || !window.wsClient.isConnected()) {
-                throw new Error('WebSocket not connected - server not ready');
+            // Wait for WebSocket connection to be established and stable if not currently connected
+            if (!window.wsClient.isConnected() || window.wsClient.getConnectionState() !== 'connected') {
+                console.log(`⏳ [loadOptions] Waiting for WebSocket connection to stabilize (attempt ${attempt}/${maxRetries})...`);
+                await window.wsClient.waitForConnection(10000);
             }
 
             // If health check passes, proceed with get_app_options

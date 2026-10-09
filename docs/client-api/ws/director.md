@@ -8,7 +8,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
-| `director_abort` | `director_abort_response` | admin/destructive | Stops the running turn for `sessionId`. |
+| `director_abort` | `director_abort_response` | admin/destructive | Hard-stops the running turn for `sessionId` (agent process tree and a pending resume). `steer: true` keeps the transcript and does not report the turn as stopped. |
+| `director_fork_session` | `director_fork_session_response` | admin/destructive | Copies the chat through `messageId` into a new session. The original chat stays. |
 | `director_cleanup` | `director_cleanup_response` | admin/destructive | Deletes temp and caches inside `computer/`. Refused with `DIRECTOR_BUSY` while a turn runs. |
 | `director_computer_size` | `director_computer_size_response` | admin/destructive | Bytes used by `computer/` (and its `home`) plus `promptGuide` state. |
 | `director_computer_status` | `director_computer_status_response` | session | Tray state, computer readiness, the 3 most recent chats, and the agent's live CPU / RSS. |
@@ -354,8 +355,9 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 |-------|-------|
 | `requestId` | Optional |
 | `sessionId` | Chat to stop |
+| `steer` | Optional. When true, the follow-up is sent without marking the turn stopped |
 
-**Success response:** `director_abort_response` with `aborted` true when a running turn was stopped, or when a pending resume (usage-limit wait) was cancelled.
+**Success response:** `director_abort_response` with `aborted` true when a running turn was stopped, including when the agent process had not spawned yet, or when a pending resume (usage-limit wait) was cancelled. Deleting a session that is still running uses the same hard stop, then removes the chat.
 
 **Errors:** `type: "error"` via `sendError()` - see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
@@ -377,7 +379,7 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 
 The visible history, session image, and task list stay. The next turn opens a new Cursor chat and is prompted like the first turn of a new session.
 
-**Auto recycle:** a turn also starts fresh when the last context fill was 70% or more, or when more than 4 prints in the current Cursor chat share one image chain (`forge_data.chain_source`; prints without one count as the session chain). The server broadcasts `director_session_recycled` `{ sessionId, reason: "context" | "chain", auto: true }` before `director_typing_start`.
+Visible Director chats never recycle on their own; only this request does it. The hidden per-workspace Rentan chat rotates by itself (40 turns or 70% context).
 
 **Errors:** `DIRECTOR_BUSY`, `SESSION_NOT_FOUND`, or `type: "error"` via `sendError()`.
 

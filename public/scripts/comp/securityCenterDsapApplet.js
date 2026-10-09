@@ -279,6 +279,76 @@ ${dsapSmfBuildHeader({
     <p class="sec-pins-note"><i class="fas fa-info-circle"></i> PIN values are stored in config.json (plain text). Leave fields blank to keep current values.</p>
   </div>
 
+  <div class="sec-dsap-section-hdr sec-sub-hdr"><i class="fas fa-user-gear"></i> Cursor Accounts (Wren / Xi)</div>
+  <div class="sec-dsap-statusbox" id="secCursorAccountsStatus">
+    <span class="sec-dsap-status-message" id="secCursorAccountsStatusMessage">Loading Cursor account settings…</span>
+  </div>
+  <div class="sec-toolbar">
+    <button type="button" id="secCursorAccountsRefresh" class="sec-dsap-action-btn"><i class="fas fa-sync"></i> Refresh</button>
+    <button type="button" id="secCursorAccountsAddBtn" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-plus"></i> Add Account Profile</button>
+  </div>
+  <div id="secCursorAccountsLoading" class="sec-dsap-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading Cursor accounts…</div>
+  <div id="secCursorAccountsError" class="sec-dsap-error hidden"><i class="fas fa-exclamation-triangle"></i> <span id="secCursorAccountsErrorText">Failed to load</span></div>
+  <div id="secCursorAccountsContent" class="sec-pins-content hidden">
+    <p class="sec-dsap-settings-intro">Manage active Cursor account profiles and credentials for Wren (Dreamspace Persona) and Xi (Host Agent).</p>
+    <table class="sec-dsap-settings-table" cellspacing="0" cellpadding="4" border="0" width="100%">
+      <tr>
+        <td class="sec-dsap-setting-label"><strong>Wren Account</strong><br><span class="sec-dsap-setting-hint">Dreamspace Studio</span></td>
+        <td class="sec-dsap-setting-control">
+          <span class="sec-dsap-setting-hint">Active Profile:</span>
+          <select id="secWrenAccountSelect" class="sec-input" style="max-width: 220px; display: inline-block; padding: 4px 8px; margin-right: 6px;"></select>
+          <button type="button" id="secSwitchWrenAccount" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-exchange-alt"></i> Switch Wren</button>
+          <span id="secWrenAccountStatus" class="sec-pin-status">—</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="sec-dsap-setting-label"><strong>Xi Account</strong><br><span class="sec-dsap-setting-hint">Host Cursor Agent</span></td>
+        <td class="sec-dsap-setting-control">
+          <span class="sec-dsap-setting-hint">Active Profile:</span>
+          <select id="secXiAccountSelect" class="sec-input" style="max-width: 220px; display: inline-block; padding: 4px 8px; margin-right: 6px;"></select>
+          <button type="button" id="secSwitchXiAccount" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-exchange-alt"></i> Switch Xi</button>
+          <span id="secXiAccountStatus" class="sec-pin-status">—</span>
+        </td>
+      </tr>
+    </table>
+
+    <div class="sec-dsap-section-hdr sec-sub-hdr" style="margin-top: 14px; font-size: 0.9em;">Configured Account Profiles</div>
+    <div id="secCursorAccountsTableWrap" class="sec-table-wrap hidden">
+      <table class="sec-data-table" cellspacing="0" cellpadding="4" width="100%" border="1">
+        <thead>
+          <tr>
+            <th align="left">Profile Name</th>
+            <th align="left">Email / Account ID</th>
+            <th align="center" width="70">Usage</th>
+            <th align="center" width="80">Days left</th>
+            <th align="center" width="90">Wren</th>
+            <th align="center" width="90">Xi</th>
+            <th align="center" width="210">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="secCursorAccountsTableBody"></tbody>
+      </table>
+    </div>
+    <div id="secCursorAccountsEmpty" class="sec-dsap-empty hidden"><i class="fas fa-user-slash"></i> No additional account profiles configured</div>
+  </div>
+
+  <div id="secCursorAccountPanel" class="sec-details-panel hidden">
+    <div class="sec-details-header">
+      <strong id="secCursorAccountPanelTitle">Add Cursor Account Profile</strong>
+      <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="close-cursor-account-panel"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="sec-details-body sec-appkeys-form">
+      <input type="hidden" id="secCursorAccountIdInput" value="">
+      <label>Profile Name<input type="text" id="secCursorAccountNameInput" class="sec-input" placeholder="e.g. Main Account, Work Account"></label>
+      <label>Badge color<input type="text" id="secCursorAccountColorInput" class="sec-input" placeholder="#5b8def" maxlength="7"></label>
+      <label>Email Address<input type="text" id="secCursorAccountEmailInput" class="sec-input" placeholder="user@example.com (auto-detected if token is pasted)"></label>
+      <label>API Key / Access Token / auth.json JSON<textarea id="secCursorAccountTokenInput" class="sec-input" rows="3" style="font-family: monospace; font-size: 0.85em;" placeholder="Paste Cursor API Key (sk-...), Access Token (eyJ...), or auth.json JSON object"></textarea></label>
+      <div class="sec-appkeys-form-actions">
+        <button type="button" id="secCursorAccountSubmitSave" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-save"></i> Save Profile</button>
+      </div>
+    </div>
+  </div>
+
   <div class="sec-dsap-section-hdr sec-sub-hdr">Service Keys</div>
   <div class="sec-dsap-statusbox" id="secKeychainStatus">
     <span class="sec-dsap-status-message" id="secKeychainStatusMessage">Loading service keys…</span>
@@ -874,6 +944,7 @@ const securityDsapDriver = {
             pins: { userPinLoginEnabled: true, adminPinConfigured: false, userPinConfigured: false },
             keychain: { services: [], originalSelections: {}, pendingSelections: {}, editServiceId: null, editKeyIndex: null, addServiceId: null },
             appkeys: { keys: [], pending: [], scopes: [], selectedScopes: ['universal'] },
+            cursorAccounts: { wren: {}, xi: {}, accounts: [], wrenStatus: {}, xiStatus: {}, usage: null },
             telemetry: { items: [], meta: { page: 1, perPage: SECURITY_DEFAULT_PER_PAGE, search: '', eventType: '', total: 0, totalPages: 1 }, selectedId: null },
             searchTimers: {}
         };
@@ -1103,6 +1174,7 @@ const securityDsapDriver = {
         this._wireRefresh(root, '#secHoneypotRefresh', 'honeypot');
         this._wireRefresh(root, '#secAppkeysRefresh', 'auth');
         this._wireRefresh(root, '#secKeychainRefresh', 'auth');
+        this._wireRefresh(root, '#secCursorAccountsRefresh', 'auth');
         this._wireRefresh(root, '#secTelemetryRefresh', 'telemetry');
         this._wirePager(root, '#secBlockedPager', 'blocked', host);
         this._wirePager(root, '#secHoneypotPager', 'honeypot', host);
@@ -1164,6 +1236,41 @@ const securityDsapDriver = {
             submitCreate.dataset.secWired = '1';
             submitCreate.addEventListener('click', () => void this._submitAppkeyCreate(root));
         }
+
+        const switchWrenBtn = root.querySelector('#secSwitchWrenAccount');
+        if (switchWrenBtn && switchWrenBtn.dataset.secWired !== '1') {
+            switchWrenBtn.dataset.secWired = '1';
+            switchWrenBtn.addEventListener('click', () => void this._switchCursorAccount(root, 'wren'));
+        }
+
+        const switchXiBtn = root.querySelector('#secSwitchXiAccount');
+        if (switchXiBtn && switchXiBtn.dataset.secWired !== '1') {
+            switchXiBtn.dataset.secWired = '1';
+            switchXiBtn.addEventListener('click', () => void this._switchCursorAccount(root, 'xi'));
+        }
+
+        const addCursorAccBtn = root.querySelector('#secCursorAccountsAddBtn');
+        if (addCursorAccBtn && addCursorAccBtn.dataset.secWired !== '1') {
+            addCursorAccBtn.dataset.secWired = '1';
+            addCursorAccBtn.addEventListener('click', () => {
+                const panel = root.querySelector('#secCursorAccountPanel');
+                if (panel) {
+                    root.querySelector('#secCursorAccountIdInput').value = '';
+                    root.querySelector('#secCursorAccountNameInput').value = '';
+                    root.querySelector('#secCursorAccountColorInput').value = '';
+                    root.querySelector('#secCursorAccountEmailInput').value = '';
+                    root.querySelector('#secCursorAccountTokenInput').value = '';
+                    root.querySelector('#secCursorAccountPanelTitle').textContent = 'Add Cursor Account Profile';
+                    panel.classList.remove('hidden');
+                }
+            });
+        }
+
+        const saveCursorAccBtn = root.querySelector('#secCursorAccountSubmitSave');
+        if (saveCursorAccBtn && saveCursorAccBtn.dataset.secWired !== '1') {
+            saveCursorAccBtn.dataset.secWired = '1';
+            saveCursorAccBtn.addEventListener('click', () => void this._saveCursorAccountProfile(root));
+        }
     },
 
     _onClick(e) {
@@ -1184,6 +1291,35 @@ const securityDsapDriver = {
         if (action === 'close-appkey-create') {
             root.querySelector('#secAppkeysCreatePanel')?.classList.add('hidden');
             root.querySelector('#secAppkeyCreateResult')?.classList.add('hidden');
+            return;
+        }
+        if (action === 'close-cursor-account-panel') {
+            root.querySelector('#secCursorAccountPanel')?.classList.add('hidden');
+            return;
+        }
+        if (action === 'switch-both-cursor-account') {
+            const accId = btn.closest('[data-sec-cursor-acc-id]')?.dataset.secCursorAccId;
+            if (accId && !btn.disabled) void this._switchCursorAccount(root, 'both', accId);
+            return;
+        }
+        if (action === 'capture-cursor-account') {
+            const accId = btn.closest('[data-sec-cursor-acc-id]')?.dataset.secCursorAccId;
+            if (accId) void this._captureCursorAccountCredentials(root, 'wren', accId);
+            return;
+        }
+        if (action === 'edit-cursor-account') {
+            const accId = btn.closest('[data-sec-cursor-acc-id]')?.dataset.secCursorAccId;
+            if (accId) this._openCursorAccountEdit(root, accId);
+            return;
+        }
+        if (action === 'login-cursor-account') {
+            const accId = btn.closest('[data-sec-cursor-acc-id]')?.dataset.secCursorAccId;
+            if (accId) void this._loginCursorAccount(root, accId);
+            return;
+        }
+        if (action === 'delete-cursor-account') {
+            const accId = btn.closest('[data-sec-cursor-acc-id]')?.dataset.secCursorAccId;
+            if (accId) void this._deleteCursorAccountProfile(root, accId);
             return;
         }
         if (action === 'close-keychain-edit') {
@@ -1816,9 +1952,344 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         await Promise.all([
             this._loadPins(root),
             this._loadKeychain(root),
-            this._loadAppkeys(root)
+            this._loadAppkeys(root),
+            this._loadCursorAccounts(root)
         ]);
     },
+
+    async _loadCursorAccounts(root) {
+        root.querySelector('#secCursorAccountsLoading')?.classList.remove('hidden');
+        root.querySelector('#secCursorAccountsContent')?.classList.add('hidden');
+        root.querySelector('#secCursorAccountsError')?.classList.add('hidden');
+        this._setCursorAccountsStatus(root, 'Loading Cursor accounts…', null);
+
+        if (!(await this._ensureWs())) {
+            root.querySelector('#secCursorAccountsLoading')?.classList.add('hidden');
+            this._setCursorAccountsStatus(root, 'Connection unavailable — check WebSocket', 'error');
+            return;
+        }
+
+        try {
+            const response = await wsClient.getCursorAccounts();
+            const data = response?.data || response;
+            if (!data || data.success === false) throw new Error('Failed to load Cursor accounts');
+            this._state.cursorAccounts = {
+                wren: data.wren || { activeAccountId: 'default' },
+                xi: data.xi || { activeAccountId: 'default' },
+                accounts: data.accounts || [],
+                wrenStatus: data.wrenStatus || {},
+                xiStatus: data.xiStatus || {},
+                usage: data.usage || null
+            };
+            this._renderCursorAccounts(root);
+            this._setCursorAccountsStatus(root, 'Cursor accounts ready', 'ok');
+        } catch (err) {
+            console.error('[security-dsap] cursor accounts load error:', err);
+            root.querySelector('#secCursorAccountsError')?.classList.remove('hidden');
+            const errText = root.querySelector('#secCursorAccountsErrorText');
+            if (errText) errText.textContent = err.message || 'Failed to load Cursor accounts';
+            this._setCursorAccountsStatus(root, 'Failed to load Cursor accounts', 'error');
+        } finally {
+            root.querySelector('#secCursorAccountsLoading')?.classList.add('hidden');
+        }
+    },
+
+    _setCursorAccountsStatus(root, message, tone) {
+        const msgEl = root.querySelector('#secCursorAccountsStatusMessage');
+        const boxEl = root.querySelector('#secCursorAccountsStatus');
+        if (msgEl) msgEl.textContent = message;
+        if (boxEl) {
+            boxEl.classList.remove('sec-dsap-status-error', 'sec-dsap-status-ok');
+            if (tone === 'error') boxEl.classList.add('sec-dsap-status-error');
+            if (tone === 'ok') boxEl.classList.add('sec-dsap-status-ok');
+        }
+    },
+
+    _renderCursorAccounts(root) {
+        const state = this._state.cursorAccounts;
+        if (!state) return;
+
+        root.querySelector('#secCursorAccountsContent')?.classList.remove('hidden');
+
+        const wrenSelect = root.querySelector('#secWrenAccountSelect');
+        const xiSelect = root.querySelector('#secXiAccountSelect');
+
+        const accounts = state.accounts || [];
+        const optionsHtml = accounts.map((a) => `<option value="${securityDsapEscapeAttr(a.id)}">${securityDsapEscapeHtml(a.name)}${a.email ? ' (' + securityDsapEscapeHtml(a.email) + ')' : ''}</option>`).join('');
+
+        if (wrenSelect) {
+            wrenSelect.innerHTML = optionsHtml;
+            wrenSelect.value = state.wren?.activeAccountId || 'default';
+        }
+        if (xiSelect) {
+            xiSelect.innerHTML = optionsHtml;
+            xiSelect.value = state.xi?.activeAccountId || 'default';
+        }
+
+        const wrenBadge = root.querySelector('#secWrenAccountStatus');
+        const xiBadge = root.querySelector('#secXiAccountStatus');
+
+        if (wrenBadge) {
+            const ok = state.wrenStatus?.ok !== false;
+            const usageInfo = state.usage?.label ? ` (${state.usage.label})` : '';
+            const emailInfo = state.usage?.accountEmail ? ` · ${state.usage.accountEmail}` : '';
+            wrenBadge.textContent = (ok ? 'Active' : 'Missing / Expired') + usageInfo + emailInfo;
+            wrenBadge.className = 'sec-pin-status ' + (ok ? 'configured' : 'not-set');
+        }
+        if (xiBadge) {
+            const ok = state.xiStatus?.ok !== false;
+            const usageInfo = state.xiUsage?.label ? ` (${state.xiUsage.label})` : '';
+            const emailInfo = state.xiUsage?.accountEmail ? ` · ${state.xiUsage.accountEmail}` : '';
+            xiBadge.textContent = (ok ? 'Active' : 'Missing / Expired') + usageInfo + emailInfo;
+            xiBadge.className = 'sec-pin-status ' + (ok ? 'configured' : 'not-set');
+        }
+
+        const tbody = root.querySelector('#secCursorAccountsTableBody');
+        const emptyEl = root.querySelector('#secCursorAccountsEmpty');
+        const tableWrap = root.querySelector('#secCursorAccountsTableWrap');
+
+        if (!accounts.length) {
+            if (emptyEl) emptyEl.classList.remove('hidden');
+            if (tableWrap) tableWrap.classList.add('hidden');
+            return;
+        }
+
+        if (emptyEl) emptyEl.classList.add('hidden');
+        if (tableWrap) tableWrap.classList.remove('hidden');
+
+        if (tbody) {
+            tbody.innerHTML = accounts.map((acc) => {
+                const isWrenActive = (state.wren?.activeAccountId || 'default') === acc.id;
+                const isXiActive = (state.xi?.activeAccountId || 'default') === acc.id;
+                const bothActive = isWrenActive && isXiActive;
+                const isDefault = acc.isDefault || acc.id === 'default';
+                const usage = acc.usage || {};
+                const usageLabel = usage.label && usage.label !== '—' ? usage.label : '—';
+                const usageClass = usage.limited ? 'sec-pin-status not-set' : (usageLabel === '—' ? 'sec-dsap-setting-hint' : '');
+                const daysText = usage.daysLeft == null ? '—' : String(usage.daysLeft);
+                const daysTitle = usage.daysLeft == null
+                    ? (usage.title || 'Billing cycle end is not available')
+                    : (usage.daysLeft === 0 ? 'Billing cycle ended' : `${usage.daysLabel || daysText + ' days'} left in this billing cycle`);
+                const loginNeeded = !!(acc.isEmpty || /pending login/i.test(acc.email || '') || /expired|not logged|login|unauthorized/i.test(usage.title || ''));
+                const badgeColor = /^#[0-9a-fA-F]{6}$/.test(acc.color || '') ? acc.color : '#5b8def';
+                const badgeLetter = (String(acc.name || '?').match(/[A-Za-z0-9]/) || ['?'])[0].toUpperCase();
+                return `
+<tr data-sec-cursor-acc-id="${securityDsapEscapeAttr(acc.id)}">
+  <td><span class="director-account-badge" style="background:${securityDsapEscapeAttr(badgeColor)}" title="${securityDsapEscapeAttr(acc.name || '')}">${securityDsapEscapeHtml(badgeLetter)}</span> <strong>${securityDsapEscapeHtml(acc.name)}</strong>${isDefault ? ' <span class="sec-dsap-setting-hint">(Default)</span>' : ''}</td>
+  <td>${securityDsapEscapeHtml(acc.email || acc.id)}</td>
+  <td align="center"><span class="${usageClass}" title="${securityDsapEscapeAttr(usage.title || 'Cursor usage')}">${securityDsapEscapeHtml(usageLabel)}</span></td>
+  <td align="center"><span title="${securityDsapEscapeAttr(daysTitle)}">${securityDsapEscapeHtml(daysText)}</span></td>
+  <td align="center">${isWrenActive ? '<span class="sec-pin-status configured"><i class="fas fa-check"></i> Active</span>' : '<span class="sec-dsap-setting-hint">Inactive</span>'}</td>
+  <td align="center">${isXiActive ? '<span class="sec-pin-status configured"><i class="fas fa-check"></i> Active</span>' : '<span class="sec-dsap-setting-hint">Inactive</span>'}</td>
+  <td class="sec-actions-cell" align="center">
+    <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="switch-both-cursor-account" title="${bothActive ? 'Wren and Xi already use this account' : 'Switch Wren and Xi to this account'}"${bothActive ? ' disabled' : ''}><i class="fas fa-exchange-alt"></i> Both</button>
+    ${loginNeeded ? `<button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="login-cursor-account" title="Open Cursor login for this profile"><i class="fas fa-right-to-bracket"></i> Login</button>` : ''}
+    <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="capture-cursor-account" title="Capture & Pair Credentials"><i class="fas fa-camera"></i></button>
+    <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="edit-cursor-account" title="Edit Profile Name / Credentials"><i class="fas fa-edit"></i></button>
+    ${!isDefault ? `<button type="button" class="sec-dsap-action-btn sec-btn-danger sec-btn-small" data-sec-action="delete-cursor-account" title="Delete Profile"><i class="fas fa-trash"></i></button>` : ''}
+  </td>
+</tr>`;
+            }).join('');
+        }
+    },
+
+    async _switchCursorAccount(root, persona, accountIdOverride) {
+        const selectId = persona === 'xi' ? '#secXiAccountSelect' : '#secWrenAccountSelect';
+        const accountId = accountIdOverride || root.querySelector(selectId)?.value;
+        if (!accountId) return;
+
+        if (!(await this._ensureWs())) return;
+
+        const who = persona === 'both' ? 'Wren and Xi' : (persona === 'wren' ? 'Wren' : 'Xi');
+        try {
+            const response = await wsClient.switchCursorAccount(persona, accountId);
+            const data = response?.data || response;
+            if (data?.success) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, data.message || `Switched Cursor account for ${who}`, false, 4000, '<i class="fas fa-user-check"></i>');
+                }
+                void this._loadCursorAccounts(root);
+            } else {
+                throw new Error(data?.message || 'Failed to switch account');
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', 'Error', err.message || `Failed to switch Cursor account for ${who}`, false, 5000);
+            }
+        }
+    },
+
+    async _importHostCursorLogin(root) {
+        if (!(await this._ensureWs())) return;
+        try {
+            const profileName = `Host Login (${new Date().toLocaleDateString()})`;
+            const response = await wsClient.saveCursorAccount({ id: '', name: profileName, email: '', token: '' });
+            const data = response?.data || response;
+            if (data?.success && data.account) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', 'Host Account Imported', `Captured host login: ${data.account.email || data.account.name}`, false, 5000, '<i class="fas fa-file-import"></i>');
+                }
+                void this._loadCursorAccounts(root);
+            } else {
+                throw new Error(data?.message || 'Failed to import host login');
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', 'Import Failed', err.message || 'Failed to import host login', false, 5000);
+            }
+        }
+    },
+
+    async _captureCursorAccountCredentials(root, persona, accountId) {
+        if (!accountId) return;
+        if (!(await this._ensureWs())) return;
+
+        try {
+            const response = await wsClient.captureCursorAccount(persona || 'wren', accountId);
+            const data = response?.data || response;
+            if (data?.success) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', 'Credentials Captured & Paired', data.message || `Captured account credentials`, false, 5000, '<i class="fas fa-camera"></i>');
+                }
+                void this._loadCursorAccounts(root);
+            } else {
+                throw new Error(data?.message || 'Failed to capture credentials');
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', 'Capture Failed', err.message || 'Failed to capture credentials', false, 5000);
+            }
+        }
+    },
+
+    async _logoutCursorAccount(root, persona) {
+        if (!(await this._ensureWs())) return;
+
+        try {
+            const activeId = persona === 'wren' ? (this._state.cursorAccounts?.wren?.activeAccountId || 'default') : (this._state.cursorAccounts?.xi?.activeAccountId || 'default');
+            const response = await wsClient.logoutCursorAccount(persona || 'wren', activeId);
+            const data = response?.data || response;
+            if (data?.success) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', 'Logged Out', `Logged out Cursor account for ${persona === 'wren' ? 'Wren' : 'Xi'}`, false, 5000, '<i class="fas fa-sign-out-alt"></i>');
+                }
+                void this._loadCursorAccounts(root);
+            } else {
+                throw new Error(data?.message || 'Failed to logout account');
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', 'Logout Failed', err.message || 'Failed to logout account', false, 5000);
+            }
+        }
+    },
+
+    async _loginCursorAccount(root, accountId) {
+        if (!accountId || !(await this._ensureWs())) return;
+        if (!this._cursorLoginWired && window.wsClient) {
+            this._cursorLoginWired = true;
+            window.wsClient.on('cursor_account_login_complete', (packet) => {
+                const body = packet && (packet.data || packet);
+                const host = this._state && this._state.host && this._state.host.getRoot && this._state.host.getRoot();
+                if (body && body.success) {
+                    if (typeof showGlassToast === 'function') {
+                        showGlassToast('success', 'Cursor login', body.email ? `Saved login for ${body.email}` : 'Login captured for that profile', false, 5000, '<i class="fas fa-right-to-bracket"></i>');
+                    }
+                } else if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', 'Cursor login', (body && body.message) || 'Login did not finish', false, 5000);
+                }
+                if (host) void this._loadCursorAccounts(host);
+            });
+        }
+        try {
+            const response = await wsClient.loginCursorAccount(accountId);
+            const data = response?.data || response;
+            const url = data && data.url;
+            if (!data?.success || !url) throw new Error(data?.message || 'Login link did not appear');
+            const opened = window.open(url, '_blank', 'noopener,noreferrer');
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('info', 'Cursor login', opened ? 'Finish signing in in the new tab. This profile updates when Cursor accepts it.' : 'The browser blocked the tab. Allow popups and click Login again.', false, 7000, '<i class="fas fa-right-to-bracket"></i>');
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', 'Cursor login', err.message || 'Could not start login', false, 5000);
+            }
+        }
+    },
+
+    async _saveCursorAccountProfile(root) {
+        const id = root.querySelector('#secCursorAccountIdInput')?.value?.trim();
+        const name = root.querySelector('#secCursorAccountNameInput')?.value?.trim();
+        const email = root.querySelector('#secCursorAccountEmailInput')?.value?.trim();
+        const token = root.querySelector('#secCursorAccountTokenInput')?.value?.trim();
+        const color = root.querySelector('#secCursorAccountColorInput')?.value?.trim();
+
+        if (!name) {
+            if (typeof showGlassToast === 'function') showGlassToast('warning', null, 'Enter a profile name', false, 4000);
+            return;
+        }
+
+        if (!(await this._ensureWs())) return;
+
+        try {
+            const response = await wsClient.saveCursorAccount({ id, name, email, token, color });
+            const data = response?.data || response;
+            if (data?.success) {
+                root.querySelector('#secCursorAccountPanel')?.classList.add('hidden');
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, data.message || 'Saved Cursor account profile', false, 4000, '<i class="fas fa-save"></i>');
+                }
+                void this._loadCursorAccounts(root);
+            } else {
+                throw new Error(data?.message || 'Failed to save account profile');
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', 'Error', err.message || 'Failed to save account profile', false, 5000);
+            }
+        }
+    },
+
+    async _deleteCursorAccountProfile(root, accountId) {
+        if (!accountId || accountId === 'default') return;
+        const ok = await showConfirmationDialog('Delete Cursor account profile?', [
+            { text: 'Delete', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ]);
+        if (!ok || !(await this._ensureWs())) return;
+
+        try {
+            const response = await wsClient.deleteCursorAccount(accountId);
+            const data = response?.data || response;
+            if (data?.success) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, 'Deleted Cursor account profile', false, 4000, '<i class="fas fa-trash"></i>');
+                }
+                void this._loadCursorAccounts(root);
+            } else {
+                throw new Error(data?.message || 'Failed to delete profile');
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', 'Error', err.message || 'Failed to delete profile', false, 5000);
+            }
+        }
+    },
+
+    _openCursorAccountEdit(root, accountId) {
+        const acc = (this._state.cursorAccounts?.accounts || []).find((a) => a.id === accountId);
+        if (!acc) return;
+        const panel = root.querySelector('#secCursorAccountPanel');
+        if (!panel) return;
+        root.querySelector('#secCursorAccountIdInput').value = acc.id || '';
+        root.querySelector('#secCursorAccountNameInput').value = acc.name || '';
+        root.querySelector('#secCursorAccountColorInput').value = acc.color || '';
+        root.querySelector('#secCursorAccountEmailInput').value = acc.email || '';
+        root.querySelector('#secCursorAccountTokenInput').value = acc.token || '';
+        root.querySelector('#secCursorAccountPanelTitle').textContent = 'Edit Cursor Account Profile';
+        panel.classList.remove('hidden');
+    },
+
 
     async _loadHoneypot(root) {
         const meta = this._state.honeypot.meta;

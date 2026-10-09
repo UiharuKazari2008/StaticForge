@@ -3508,9 +3508,10 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         const forgeModelKey = String(body.model || '').toLowerCase();
         const wantsInpaint = !!(body.mask || body.mask_compressed) && !!body.image && !forgeModelKey.includes('_inp');
         // modules/modelFeatures.js — curated V5 inpaint remaps to V4.5 curated until ready
-        const { resolveApiModelSlug, getModelFeatures } = require('./modelFeatures');
+        const { resolveApiModelSlug, getModelFeatures, normalizeEffort, mediumEffortConfig } = require('./modelFeatures');
         const modelFeaturesMap = __runtimeGr.getModelFeaturesMap();
-        const apiModelSlug = resolveApiModelSlug(forgeModelKey, { inpaint: wantsInpaint }, modelFeaturesMap);
+        const effortLevel = normalizeEffort(body.effort != null ? body.effort : preset?.effort);
+        const apiModelSlug = resolveApiModelSlug(forgeModelKey, { inpaint: wantsInpaint, effort: effortLevel }, modelFeaturesMap);
         const ModelEnum = __runtimeGr.getNekoAiService('Model');
         const SamplerEnum = __runtimeGr.getNekoAiService('Sampler');
         const NoiseEnum = __runtimeGr.getNekoAiService('Noise');
@@ -3523,6 +3524,24 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             if (enumHit) resolvedApiModel = ModelEnum[enumHit];
         }
         const forgeCaps = getModelFeatures(forgeModelKey, modelFeaturesMap);
+        const mediumCaps = effortLevel === 'medium' ? mediumEffortConfig(forgeModelKey, modelFeaturesMap) : null;
+        if (mediumCaps) {
+            stepsValue = Number(mediumCaps.steps) || 14;
+            rescaleValue = 0;
+            body.sampler = mediumCaps.sampler || 'k_euler_ancestral';
+            processedNegativePrompt = '';
+            if (Array.isArray(processedCharacterPrompts)) {
+                processedCharacterPrompts = processedCharacterPrompts.map((char) => ({ ...char, uc: '' }));
+            }
+            if (dynamic_generation?.compiled_prompt) {
+                dynamic_generation.compiled_prompt.uc = '';
+                if (Array.isArray(dynamic_generation.compiled_prompt.characterPrompts)) {
+                    dynamic_generation.compiled_prompt.characterPrompts = dynamic_generation.compiled_prompt.characterPrompts.map((char) => (
+                        char && typeof char === 'object' ? { ...char, uc: '' } : char
+                    ));
+                }
+            }
+        }
         if (body.upscaled_enhance === true && forgeCaps?.maxEnhance !== true) {
             throw new Error(`Max Enhance is not supported by model ${forgeModelKey || 'unknown'}`);
         }
@@ -3543,7 +3562,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             noise_schedule: resolveNekoEnumValue(NoiseEnum, body.noiseScheduler || preset?.noiseScheduler, NoiseEnum.KARRAS, 'noise_schedule'),
             no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
             qualityToggle: false,
-            ucPreset: 4,
+            ucPreset: mediumCaps ? undefined : 4,
+            ucPresetId: mediumCaps ? (mediumCaps.ucPresetId || 'heavy') : undefined,
+            effort: forgeCaps?.effort ? effortLevel : undefined,
             params_version: forgeCaps?.paramsVersion,
             dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
             seed: parseInt(seedValue || '0'),
@@ -3593,6 +3614,15 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             }
             if (forgeCaps.noiseScheduleUi === false) {
                 baseOptions.noise_schedule = undefined;
+            }
+            if (mediumCaps) {
+                baseOptions.cfg_rescale = undefined;
+                baseOptions.negative_prompt = '';
+                if (Array.isArray(baseOptions.characterPrompts)) {
+                    baseOptions.characterPrompts = baseOptions.characterPrompts.map((char) => (
+                        char && typeof char === 'object' ? { ...char, uc: '' } : char
+                    ));
+                }
             }
             if (forgeCaps.paramsVersion != null && baseOptions.params_version == null) {
                 baseOptions.params_version = forgeCaps.paramsVersion;
@@ -4313,6 +4343,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.pipeline;
     delete apiOpts.text_replacements;
     delete apiOpts.auto_clean_uc;
+    delete apiOpts.effort;
     delete apiOpts.keep_newlines;
     delete apiOpts.bake_newlines;
     delete apiOpts.auto_char_numerize;
@@ -4720,6 +4751,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         }
         if (opts.append_uc !== undefined) {
             forgeData.append_uc = opts.append_uc;
+        }
+        if (opts.effort === 'medium' || opts.effort === 'high') {
+            forgeData.effort = opts.effort;
         }
         if (opts.vibe_transfer !== undefined) {
             forgeData.vibe_transfer = opts.vibe_transfer;
@@ -8568,11 +8602,20 @@ async function enhanceImage(globalResources, filename, scale, sessionId, workspa
         parsedMetadata.source = sourceMetadata.tEXt.Source;
     }
     const sourceDimensions = await getImageDimensions(sourceBuffer);
+    // An expanded PNG stores only the fill prompt for the new edges; enhance the whole canvas with the original's prompt, as the gallery shows it.
+    const promptMetadata = parsedMetadata.forge_data?.expansion_source
+        ? (await __runtimeGr.getPngMetadata().extractNovelAIMetadata(filePath)) || parsedMetadata
+        : parsedMetadata;
     const requestBody = await convertMetadataToRequestFormat(globalResources, {
         filename,
         workspace: workspaceId,
-        metadata: parsedMetadata
+        metadata: promptMetadata
     });
+    // Enhance refines the pixels it was given: reuse the stored Rentan scene, never a new Wren turn.
+    if (requestBody.dynamic_generation) {
+        requestBody.dynamic_generation.cache_locked = true;
+        requestBody.dynamic_generation.context_locked = true;
+    }
     const { getModelFeatures } = require('./modelFeatures');
     const modelFeatures = getModelFeatures(requestBody.model, __runtimeGr.getModelFeaturesMap());
     if (!modelFeatures) {

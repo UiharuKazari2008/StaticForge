@@ -9,6 +9,7 @@ const {
     verifyGeneratedImage
 } = require('./forgeSigning');
 const { qualityPresetStripCandidates } = require('./promptTextBoundary');
+const { isMediumEffortSource, isMediumEffortSlug } = require('./modelFeatures');
 
 // v1.1: dynamic_generation.compiled_prompt is a Wren/agent dg_ expander stamp; v1.0 is Tendai.
 const FORGE_SOFTWARE = 'StaticForge v1.1';
@@ -856,7 +857,10 @@ class PngMetadata {
             // Store the final compiled prompts (what was actually sent to generation)
             compiled_prompt: meta.prompt || '',
             compiled_uc: meta.uc || '',
-            compiled_characterPrompts: compiledCharacterPrompts
+            compiled_characterPrompts: compiledCharacterPrompts,
+            effort: (forgeData.effort === 'medium' || isMediumEffortSource(meta.source) || isMediumEffortSlug(meta.model))
+                ? 'medium'
+                : (forgeData.effort === 'high' ? 'high' : undefined)
         };
 
         // If image_source is present, resolve source dimensions without reading the whole file
@@ -1173,6 +1177,8 @@ class PngMetadata {
                 case "NovelAI Diffusion V5 657484A5":
                 case "NovelAI Diffusion V5 0ADF9AB7":
                 case "NovelAI Diffusion V5 DB276663":
+                case "NovelAI Diffusion V5 93F4BD30":
+                case "NovelAI Diffusion V5 70AB5786":
                     return "V5";
                 default:
                     return "V5";

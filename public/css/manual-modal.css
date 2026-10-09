@@ -2202,7 +2202,7 @@ body.desktop-mode .form-section.model-control .control-holder .form-row.control-
         width: auto;
     }
 
-    #manualModal #manualModelDropdown {
+    #manualModal #manualModelGroup .model-group {
         min-width: 125px;
     }
 
@@ -4057,5 +4057,36 @@ html.disable-blur .manual-loading-overlay {
 }
 body:not(.desktop-mode) div#manualModal {
     z-index: 1001;
+}
+
+#manualModelGroup .model-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    width: 100%;
+}
+
+#manualModal #manualModelGroup .model-group > #manualModelDropdown {
+    flex: 1 1 auto;
+    min-width: 72px;
+    width: auto;
+}
+
+#manualEffortBtn {
+    flex: 0 0 auto;
+}
+
+#manualModelSelected {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#manualModal[data-effort="medium"] #manualUc,
+#manualModal[data-effort="medium"] textarea[id$="_uc"] {
+    opacity: 0.55;
+    pointer-events: none;
 }
 

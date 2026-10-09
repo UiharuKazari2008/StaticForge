@@ -27,7 +27,66 @@
     "maxEnhanceMaxArea": 2516582.4,
     "datasetAliases": {
       "furry dataset": "fur dataset"
+    },
+    "effort": {
+      "default": "high",
+      "levels": ["high", "medium"],
+      "medium": {
+        "apiModel": "nai-diffusion-5-full-medium",
+        "inpaintApiModel": "nai-diffusion-5-full-medium-inpainting",
+        "steps": 14,
+        "sampler": "k_euler_ancestral",
+        "ucPresetId": "heavy",
+        "cfgRescale": false,
+        "sources": [
+          "NovelAI Diffusion V5 93F4BD30",
+          "NovelAI Diffusion V5 70AB5786"
+        ]
+      }
     }
+  },
+  "v5_medium": {
+    "apiModel": "nai-diffusion-5-full-medium",
+    "inpaintApiModel": "nai-diffusion-5-full-medium-inpainting",
+    "tokenizer": "qwen",
+    "tokenLimit": 1471,
+    "recommendedTokens": 1103,
+    "paramsVersion": 4,
+    "vibeTransfer": false,
+    "preciseReference": false,
+    "varietyPlus": false,
+    "encodedVibes": false,
+    "inpainting": true,
+    "curatedInpaintReady": true,
+    "maxEnhance": true,
+    "e2eUpscale": false,
+    "enhancePromptAdd": true,
+    "transparency": true,
+    "freeformCharacterPosition": true,
+    "opusUsageLimit": true,
+    "noiseScheduleUi": false,
+    "hasFurryMode": true,
+    "maxCharacters": 32,
+    "suggestTagsTypeAnime": "animev5",
+    "suggestTagsTypeFurry": "furryv5",
+    "maxEnhanceMinArea": 1,
+    "maxEnhanceMaxArea": 2516582.4,
+    "datasetAliases": {
+      "furry dataset": "fur dataset"
+    },
+    "cfgRescaleUi": false,
+    "fixedSettings": {
+      "steps": 14,
+      "sampler": "k_euler_ancestral",
+      "ucPresetId": "heavy"
+    },
+    "clearsUserUc": true,
+    "effortHighKey": "v5",
+    "anlasStepCostFactor": 0.9387755,
+    "metadataSources": [
+      "NovelAI Diffusion V5 93F4BD30",
+      "NovelAI Diffusion V5 70AB5786"
+    ]
   },
   "v5_cur": {
     "apiModel": "nai-diffusion-5-curated",

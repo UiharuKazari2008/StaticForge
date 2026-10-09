@@ -317,6 +317,8 @@ function determineModelFromMetadata(metadata) {
             case "NovelAI Diffusion V5 657484A5":
             case "NovelAI Diffusion V5 0ADF9AB7":
             case "NovelAI Diffusion V5 DB276663":
+            case "NovelAI Diffusion V5 93F4BD30":
+            case "NovelAI Diffusion V5 70AB5786":
                 return "V5";
             default:
                 return "V5";

@@ -822,6 +822,19 @@ class Director {
             ],
             onAction: (action, target) => this.handleSessionContextAction(action, target)
         };
+        this.directorMessageContextConfig = {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        { text: 'Retry', icon: 'fas fa-rotate-right', action: 'director-message-retry' },
+                        { text: 'Revert', icon: 'fas fa-undo', action: 'director-message-revert' },
+                        { text: 'Fork', icon: 'fas fa-code-branch', action: 'director-message-fork' }
+                    ]
+                }
+            ],
+            onAction: (action, target) => this.handleMessageContextAction(action, target)
+        };
 
         // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
         if (this.directorToolsBtn) {
@@ -851,6 +864,41 @@ class Director {
         if (action === 'director-delete-session') {
             this.deleteSessionFromContextMenu(session);
         }
+    }
+
+    handleMessageContextAction(action, target) {
+        const row = target && target.closest ? target.closest('[data-message-key]') : null;
+        const messageKey = row && row.dataset.messageKey;
+        if (!messageKey) return;
+        if (action === 'director-message-retry') {
+            this.rollbackToMessage(messageKey, { retry: true, skipConfirm: true });
+            return;
+        }
+        if (action === 'director-message-revert') {
+            this.rollbackToMessage(messageKey, { retry: false, skipConfirm: false });
+            return;
+        }
+        if (action === 'director-message-fork') this.forkFromMessage(messageKey);
+    }
+
+    attachMessageMenu(element) {
+        if (!element || !contextMenu || !this.directorMessageContextConfig) return;
+        contextMenu.attachToElement(element, this.directorMessageContextConfig);
+    }
+
+    forkFromMessage(messageKey) {
+        if (!this.currentSession || !this.currentSession.id || !messageKey) return;
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            showGlassToast('error', 'Director', 'WebSocket not connected');
+            return;
+        }
+        window.wsClient.send({
+            type: 'director_fork_session',
+            requestId: Date.now().toString(),
+            persona: this.persona || 'wren',
+            sessionId: this.currentSession.id,
+            messageId: String(messageKey)
+        });
     }
 
     // Cleanup / Reinstall / Prompt guide — shared by the session tools menu and the tray menu
@@ -1133,18 +1181,31 @@ class Director {
         return !!this.directorChatMessages.querySelector(`[data-message-key="${messageKey}"]`);
     }
 
-    abortTurn(keepRunning) {
+    abortTurn(keepRunning, options) {
         const sessionId = this.currentSession && this.currentSession.id;
+        const steer = !!(options && options.steer);
         if (!sessionId || !this._running || this._runningSessionId !== sessionId) return;
+        if (steer) this.freezeLiveTurn();
         if (!keepRunning) {
             this._running = false;
             this.updateTrayChrome();
         }
         if (!window.wsClient || !window.wsClient.isConnected()) return;
         // Server had no live run (director_abort_response aborted:false): nothing will end the turn, so end it here.
-        this.directorRequest('director_abort', { sessionId }).then((result) => {
-            if (result && result.aborted === false) this.finishTurn(sessionId);
-        }).catch(() => this.finishTurn(sessionId));
+        this.directorRequest('director_abort', { sessionId, steer }).then((result) => {
+            if (result && result.aborted === false && !steer) this.finishTurn(sessionId);
+        }).catch(() => {
+            if (!steer) this.finishTurn(sessionId);
+        });
+    }
+
+    // Keep the in-progress rows where they are so the next turn appends under them.
+    freezeLiveTurn() {
+        const live = this.directorChatMessages && this.directorChatMessages.querySelector('.director-live-turn');
+        if (!live) return;
+        live.classList.remove('director-live-turn');
+        live.classList.add('director-settled-turn');
+        delete live.dataset.liveTurn;
     }
 
     readSessionModel(sessionId) {
@@ -2585,14 +2646,13 @@ class Director {
         }
     }
 
-    // director_session_recycled (auto) and the manual response
+    // director_recycle_session_response
     noteSessionRecycled(payload) {
         if (!payload || !this.currentSession || String(payload.sessionId) !== String(this.currentSession.id)) return;
         this.currentSession.contextPercent = 0;
         this.currentSession.contextTokens = 0;
         if (payload.filename) this.currentSession.filename = payload.filename;
-        const why = payload.reason === 'context' ? 'the context was filling up' : (payload.reason === 'chain' ? 'one image chain ran long' : '');
-        showGlassToast('info', null, why ? `Fresh session: ${why}` : 'Session recycled', false, 2400, '<i class="fas fa-recycle"></i>');
+        showGlassToast('info', null, 'Session recycled', false, 2400, '<i class="fas fa-recycle"></i>');
     }
 
     openSessionImage(filename) {
@@ -3272,6 +3332,9 @@ class Director {
                     }
                     if (body && body.success) {
                         this.directorSessions = body.sessions || [];
+                        this.activeAccountId = body.activeAccountId || 'default';
+                        this.cursorAccounts = body.accounts || [];
+                        this.paintAccountBadge();
                         this.renderDirectorSessions();
                         resolve();
                     } else {
@@ -3368,6 +3431,19 @@ class Director {
         item.dataset.sessionId = session.id; // Add data attribute for easier identification
         if (session.archived) item.dataset.archived = '1';
 
+        const activeAccId = this.activeAccountId || 'default';
+        const sessionAccId = session.accountId || 'default';
+        const isInactiveAccount = sessionAccId !== activeAccId;
+
+        if (isInactiveAccount) {
+            item.dataset.inactiveAccount = '1';
+            item.classList.add('inactive-account');
+            const accounts = this.cursorAccounts || [];
+            const accProfile = accounts.find((a) => a.id === sessionAccId);
+            const accName = accProfile ? accProfile.name : sessionAccId;
+            item.title = `Paired with inactive account: ${accName}`;
+        }
+
         const formattedDate = session.archived
             ? `Archived ${this.formatSessionDate(session.archived_at || session.updated_at || session.created_at)}`
             : this.formatSessionDate(session.updated_at || session.created_at);
@@ -3375,10 +3451,13 @@ class Director {
         const preview = this.persona === 'xi'
             ? ''
             : `<img class="director-session-preview" src="${this.getSessionPreviewImage(session)}" alt="Session preview" loading="lazy">`;
+
+        const accountBadge = this.accountBadgeHtml(sessionAccId, isInactiveAccount);
+
         item.innerHTML = `
             ${preview}
             <div class="director-session-info">
-                <div class="director-session-name"><span>${this.escapeHtml(session.name)}</span>${this.workspaceDot(session)}</div>
+                <div class="director-session-name"><span>${this.escapeHtml(session.name)}</span>${accountBadge}${this.workspaceDot(session)}</div>
                 <div class="director-session-date">${formattedDate}</div>
             </div>
         `;
@@ -3401,6 +3480,50 @@ class Director {
         });
 
         return item;
+    }
+
+    accountPalette() {
+        return ['#5b8def', '#e06c75', '#98c379', '#e5c07b', '#c678dd', '#56b6c2', '#d19a66', '#61afef'];
+    }
+
+    accountProfile(accountId) {
+        const id = accountId || 'default';
+        return (this.cursorAccounts || []).find((acc) => acc && acc.id === id) || { id, name: 'Account' };
+    }
+
+    accountColor(account) {
+        const given = account && typeof account.color === 'string' ? account.color : '';
+        if (/^#[0-9a-fA-F]{6}$/.test(given)) return given;
+        const palette = this.accountPalette();
+        const id = String((account && account.id) || 'default');
+        let n = 0;
+        for (let i = 0; i < id.length; i++) n = (n + id.charCodeAt(i)) % palette.length;
+        return palette[n];
+    }
+
+    accountLetter(account) {
+        const name = String((account && account.name) || '?').trim();
+        const match = name.match(/[A-Za-z0-9]/);
+        return (match ? match[0] : (name.charAt(0) || '?')).toUpperCase();
+    }
+
+    accountBadgeHtml(accountId, inactive) {
+        const account = this.accountProfile(accountId);
+        const letter = this.accountLetter(account);
+        const color = this.accountColor(account);
+        const name = account.name || accountId || 'Account';
+        const title = inactive ? `${name} (not the active profile)` : name;
+        return `<span class="director-account-badge" style="background:${this.escapeHtml(color)}" title="${this.escapeHtml(title)}">${this.escapeHtml(letter)}</span>`;
+    }
+
+    paintAccountBadge() {
+        const el = document.getElementById('directorAccountBadge');
+        if (!el) return;
+        const account = this.accountProfile(this.activeAccountId || 'default');
+        el.textContent = this.accountLetter(account);
+        el.style.background = this.accountColor(account);
+        el.title = account.name || 'Active profile';
+        el.classList.remove('hidden');
     }
 
     formatSessionDate(timestamp) {
@@ -3538,6 +3661,13 @@ class Director {
             const sessionId = this.currentSession.id;
             this._deleteWasCurrent = true;
             this._deleteTargetId = sessionId;
+            if (this._runningSessionId === sessionId) {
+                this._running = false;
+                this._runningSessionId = null;
+                this._steer = null;
+                this.hideTypingIndicator();
+                this.updateTrayChrome();
+            }
             const lastSessionId = localStorage.getItem(this.lastSessionStorageKey());
             if (lastSessionId === sessionId) {
                 localStorage.removeItem(this.lastSessionStorageKey());
@@ -4147,6 +4277,7 @@ class Director {
         }
         
         messageDiv.innerHTML = content;
+        this.attachMessageMenu(messageDiv);
         return messageDiv;
     }
     
@@ -4656,6 +4787,7 @@ class Director {
         }
         messageDiv.appendChild(header);
         messageDiv.appendChild(body);
+        this.attachMessageMenu(messageDiv);
         return messageDiv;
     }
 
@@ -4736,6 +4868,7 @@ class Director {
         }
         card.appendChild(header);
         card.appendChild(body);
+        this.attachMessageMenu(card);
         return card;
     }
 
@@ -4819,7 +4952,16 @@ class Director {
             data: payload
         });
         if (!el) return;
-        this.directorChatMessages.appendChild(el);
+        const live = this.directorChatMessages.querySelector('.director-live-turn');
+        const typing = this.directorChatMessages.querySelector('.director-typing-indicator');
+        if (live) {
+            el.dataset.liveCard = '1';
+            live.appendChild(el);
+        } else if (typing) {
+            this.directorChatMessages.insertBefore(el, typing);
+        } else {
+            this.directorChatMessages.appendChild(el);
+        }
         this.applyMessageFilter();
     }
 
@@ -4897,7 +5039,7 @@ class Director {
         const rows = (payload.rows || []).slice();
         const streaming = !!(payload.live && (payload.live.text || payload.live.name));
         if (streaming) rows.push(payload.live);
-        const existing = [...host.children];
+        const existing = [...host.children].filter((el) => el.dataset.liveCard !== '1');
         rows.forEach((row, index) => {
             const held = existing[index];
             const sameKind = held && held.dataset.traceKind === this.traceKind(row);
@@ -4956,7 +5098,8 @@ class Director {
         if (!window.wsClient || !window.wsClient.isConnected()) return;
         window.wsClient.send({
             type: 'director_get_cursor_usage',
-            requestId: Date.now().toString()
+            requestId: Date.now().toString(),
+            persona: this.persona || 'wren'
         });
     }
 
@@ -5033,6 +5176,7 @@ class Director {
         if (otherEl) otherEl.textContent = other == null ? '—' : `${other}%`;
         host.title = data.title || 'Cursor usage';
         host.classList.toggle('low-credits', data.limited === true);
+        this.paintAccountBadge();
         if (iconEl) {
             iconEl.className = data.limited ? 'fas fa-battery-empty' : 'fas fa-battery-three-quarters';
         }
@@ -5259,8 +5403,8 @@ class Director {
                 this._outgoingQueue = (this._outgoingQueue || []).filter((item) => item.sessionId !== sessionId);
                 this._steer = Object.assign({ sessionId }, job);
                 this.renderQueueChip();
-                showGlassToast('info', 'Director', 'Steering. Stopping this turn, then sending your message.');
-                this.abortTurn(true);
+                showGlassToast('info', 'Director', 'Sent without interrupting.');
+                this.abortTurn(true, { steer: true });
                 return;
             }
             this._outgoingQueue = this._outgoingQueue || [];
@@ -5610,9 +5754,12 @@ class Director {
         });
 
         window.wsClient.on('director_get_cursor_usage_response', (data) => {
-            if (window.directorInstance) {
-                window.directorInstance.paintCursorUsage(data.data || {});
-            }
+            const director = window.directorInstance;
+            if (!director) return;
+            const body = data.data || {};
+            const asked = director.persona || 'wren';
+            if (body.persona && body.persona !== asked) return;
+            director.paintCursorUsage(body);
         });
 
         // Tray state + the computer's CPU / memory. Pushed on turn start, turn
@@ -5671,6 +5818,9 @@ class Director {
             if (director.packetPersona(data.data) !== director.persona) return;
             director.directorSessions = data.data.sessions || [];
             window.directorSessions = director.directorSessions;
+            if (data.data.activeAccountId) director.activeAccountId = data.data.activeAccountId;
+            if (Array.isArray(data.data.accounts)) director.cursorAccounts = data.data.accounts;
+            director.paintAccountBadge();
             director.renderDirectorSessions();
         });
 
@@ -5839,6 +5989,7 @@ class Director {
             }
             // A late flush for a turn that already ended must not re-arm "running".
             if (payload && window.directorInstance && payload.sessionId === window.directorInstance._settledSessionId) return;
+            if (payload && window.directorInstance && window.directorInstance._steer && payload.sessionId === window.directorInstance._steer.sessionId) return;
             if (payload && payload.sessionId === window.currentSession?.id && window.directorInstance) {
                 if (!window.directorInstance._running || window.directorInstance._runningSessionId !== payload.sessionId) {
                     window.directorInstance._running = true;
@@ -5860,6 +6011,10 @@ class Director {
         
         // Handle Director message response
         window.wsClient.on('director_message_response', (data) => {
+            if (data.data && data.data.steer && window.directorInstance) {
+                window.directorInstance.finishTurn(data.data.sessionId);
+                return;
+            }
             if (data.data && window.directorInstance) {
                 window.directorInstance.finishTurn(data.data.sessionId);
                 if (data.data.context && window.currentSession && data.data.sessionId === window.currentSession.id) {
@@ -5895,6 +6050,7 @@ class Director {
         // Handle Director message error
         window.wsClient.on('director_message_error', (data) => {
             const director = window.directorInstance;
+            if (director && data.data && director._deleteTargetId && data.data.sessionId === director._deleteTargetId) return;
             const steering = !!(director && director._steer && data.data && director._steer.sessionId === data.data.sessionId);
             if (data.data && director) {
                 director.finishTurn(data.data.sessionId);
@@ -5919,6 +6075,23 @@ class Director {
         });
 
         // Handle Director rollback message response
+        window.wsClient.on('director_fork_session_response', async (data) => {
+            const director = window.directorInstance;
+            const body = data && data.data;
+            if (!director || !body || !body.success || !body.session) {
+                showGlassToast('error', 'Director', (body && body.message) || 'Could not fork that chat');
+                return;
+            }
+            if (director.packetPersona(body) !== director.persona) return;
+            director.directorSessions = [body.session].concat(
+                (director.directorSessions || []).filter((item) => item.id !== body.session.id)
+            );
+            window.directorSessions = director.directorSessions;
+            director.renderDirectorSessions();
+            showGlassToast('success', 'Director', 'Forked from that message. The original chat is unchanged.');
+            await director.showSessionChat(body.session, { skipLoad: true });
+        });
+
         window.wsClient.on('director_rollback_message_response', async (data) => {
             if (data.data && data.data.success) {
                 showGlassToast('success', null, data.data.message || 'Messages rolled back successfully');
@@ -5962,13 +6135,6 @@ class Director {
         window.wsClient.on('director_session_image', (data) => {
             if (window.directorInstance) {
                 window.directorInstance.noteSessionImage(data.data || data);
-            }
-        });
-
-        // Auto recycle: this turn started on a fresh Cursor chat
-        window.wsClient.on('director_session_recycled', (data) => {
-            if (window.directorInstance) {
-                window.directorInstance.noteSessionRecycled(data.data || data);
             }
         });
 
@@ -6070,48 +6236,43 @@ class Director {
         this.rollbackToMessage(messageKey);
     }
 
-    async rollbackToMessage(messageKey) {
-        const retry = this._rollbackRetry === true;
+    async rollbackToMessage(messageKey, options) {
+        const retry = (options && options.retry === true) || this._rollbackRetry === true;
+        const skipConfirm = !!(options && options.skipConfirm);
         this._rollbackRetry = false;
         if (!this.currentSession) return;
 
-        // Find the message element
-        const messageElement = document.querySelector(`[data-message-key="${messageKey}"]`);
+        const key = String(messageKey || '');
+        if (key.startsWith('live:')) {
+            showGlassToast('error', null, 'That row is still streaming');
+            return;
+        }
+        const colon = key.indexOf(':');
+        const messageId = colon > 0 ? key.slice(0, colon) : key;
+        if (!messageId) return;
+
+        const messageElement = this.directorChatMessages && this.directorChatMessages.querySelector(`[data-message-key="${CSS.escape(key)}"]`);
         if (!messageElement) {
             showGlassToast('error', null, 'Message not found');
             return;
         }
 
-        // Get message data
-        const messageData = messageElement.dataset.messageData;
-        if (!messageData) {
-            showGlassToast('error', null, 'Message data not found');
-            return;
+        if (!skipConfirm) {
+            const choice = await showConfirmationDialog(
+                retry
+                    ? 'Keep this reply, revert to this message and ask again, or cancel.'
+                    : 'Keep this reply, revert to this message, or cancel.',
+                [
+                    { text: 'Keep', value: 'keep', className: 'btn-primary' },
+                    { text: 'Revert', value: 'revert', className: 'btn-danger' },
+                    { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
+                ],
+                null,
+                { title: retry ? 'Restart message' : 'Revert message', icon: 'fas fa-undo' }
+            );
+            if (choice !== 'revert') return;
         }
-
-        let message;
-        try {
-            message = JSON.parse(messageData);
-        } catch (e) {
-            showGlassToast('error', null, 'Failed to parse message data');
-            return;
-        }
-
-        const choice = await showConfirmationDialog(
-            retry
-                ? 'Keep this reply, revert to this message and ask again, or cancel.'
-                : 'Keep this reply, revert to this message, or cancel.',
-            [
-                { text: 'Keep', value: 'keep', className: 'btn-primary' },
-                { text: 'Revert', value: 'revert', className: 'btn-danger' },
-                { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
-            ],
-            null,
-            { title: retry ? 'Restart message' : 'Revert message', icon: 'fas fa-undo' }
-        );
-
-        if (choice !== 'revert') return;
-        this.dropFromMessage(messageKey);
+        this.dropFromMessage(key);
 
         // Send rollback request
         if (window.wsClient && window.wsClient.isConnected()) {
@@ -6120,7 +6281,7 @@ class Director {
                 requestId: Date.now().toString(),
                 persona: this.persona || 'wren',
                 sessionId: this.currentSession.id,
-                messageId: message.id || message.timestamp,
+                messageId: messageId,
                 retry: retry
             });
 

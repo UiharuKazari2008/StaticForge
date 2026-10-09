@@ -59,6 +59,7 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
 | `sampler` | string | `k_euler_ancestral` (Euler Ancestral), `k_dpmpp_sde`, `k_dpmpp_2m`, `k_dpmpp_2m_sde`, `k_euler`, `k_dpmpp_2s_ancestral` |
 | `noiseScheduler` | string | `karras`, `exponential`, `polyexponential` |
 | `model` | string | e.g. `"v5"`. Live ids: MCP `get_studio_state.settings.models` |
+| `effort` | string | V5 Full only. `high` (default) or `medium`. Medium uses `nai-diffusion-5-full-medium` (inpaint: `nai-diffusion-5-full-medium-inpainting`). Steps lock to 14, sampler locks to Euler Ancestral, undesired content locks to the heavy preset, and prompt guidance rescale is off. Guidance still applies. |
 | `seed` | string or number | Specific seed, or `"last"` to lock the last used seed (same as `seedLock: true`). Copy / `GET /agent/session/state` echo the **actual seed that was used**, not a filename. |
 | `seedLock` | boolean | `true` locks the last used seed via the existing Studio sprout control (Ivory A/B). `false` unlocks so the next generate rolls a new variation. Omit to leave lock state alone. No new chrome. |
 | `resolution` | string | Named preset (`normal_portrait`=832×1216, `normal_landscape`=1216×832, `normal_square`=1024×1024, `small_*`, `large_*`, `xlarge_*`, `wallpaper_*`). **Omit `width`/`height` when using a named preset.** Custom size: `"custom"` plus `width` and `height`. Live px sizes: `settings.resolutions`. |
