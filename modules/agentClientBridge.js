@@ -144,7 +144,9 @@ function snippetUserAgent(raw) {
     return String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 80);
 }
 
-// Same header order as web_server.js getRealIP and modules/websocket.js handshake clientIP
+// modules/clientAddress.js — same trusted-proxy XFF walk as web_server.js getRealIP
+const { resolveRequestClientIp, trustedProxiesForClientIp } = require('./clientAddress');
+
 function normalizeClientIP(ip) {
     if (!ip) return '';
     return String(ip).replace(/^::ffff:/i, '').toLowerCase();
@@ -167,15 +169,9 @@ function scoreClientNearness(info, requestIP) {
 
 function requestClientIP(req) {
     if (!req) return null;
-    const headers = req.headers || {};
-    const raw = headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-        headers['x-real-ip'] ||
-        req.connection?.remoteAddress ||
-        req.socket?.remoteAddress ||
-        req.ip ||
-        null;
-    if (!raw || raw === 'unknown') return null;
-    return String(raw);
+    const resolved = resolveRequestClientIp(req, trustedProxiesForClientIp(null));
+    if (!resolved.ip || resolved.ip === 'unknown') return null;
+    return String(resolved.ip);
 }
 
 function isStudioChangePayload(obj) {

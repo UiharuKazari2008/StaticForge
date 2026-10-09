@@ -6,6 +6,7 @@
  */
 
 const { McpOAuthProvider, validateRedirectUri, parseScopes } = require('./mcpOAuthProvider');
+const { parseTrustedAccessOptions } = require('./applicationAuthManager');
 const consent = require('./mcpOAuthConsent');
 // modules/mcpModuleRegistry.js — specialized module definitions
 const { listSpecializedModules } = require('./mcpModuleRegistry');
@@ -44,6 +45,8 @@ button{flex:1;padding:14px;border:none;border-radius:8px;font-size:1rem;font-wei
 .field input{width:100%;padding:12px;background:#1a1a2e;border:1px solid #3a3a5c;border-radius:8px;color:#e0e0e0;font-size:0.95rem}
 .field input:focus{outline:none;border-color:#8b8bff}
 .note{font-size:0.85rem;color:#666;margin-top:8px}
+.check{display:flex;align-items:flex-start;gap:8px;margin:10px 0;color:#e0e0e0;font-size:0.92rem}
+.check input{margin-top:3px}
 .bound-note{background:#1a1a2e;border-radius:8px;padding:12px;margin-bottom:20px;color:#bbb}
 .custom-dropdown{position:relative;margin-bottom:12px}
 .custom-dropdown-btn{width:100%;text-align:left;background:#1a1a2e;color:#e0e0e0;border:1px solid #3a3a5c;border-radius:8px;padding:12px}
@@ -384,8 +387,24 @@ ${renderKeyOptions(params.keys || [], params.selectedKeyId, displayScopes)}
 <label for="new_key_name">Or create a new key</label>
 <input type="text" id="new_key_name" name="new_key_name" maxlength="80" placeholder="${escapeHtml(params.generatedName)}" autocomplete="off">
 </div>
+${renderTrustedAccessFields(params)}
 <button type="submit" name="action" value="create_key" class="create">Create new key</button>
 </form>`;
+}
+
+function renderTrustedAccessFields(params) {
+    if (!params || params.adminApproval !== true) return '';
+    return `<div class="field">
+<label class="check"><input type="checkbox" name="allow_keyless" value="1"> Allow Keyless Requests (See Trusted Access)</label>
+<label class="check"><input type="checkbox" name="persistent" value="1"> Persistent Key</label>
+<label for="trusted_cidrs">Trusted CIDRs</label>
+<input type="text" id="trusted_cidrs" name="trusted_cidrs" maxlength="500" placeholder="203.0.113.10/32, 2001:db8::/64" autocomplete="off">
+<p class="note">Admin approval only. 127.0.0.1 and ::1 are included when keyless is on. A persistent key does not expire or refresh. Grok bots should use one.</p>
+</div>`;
+}
+
+function oauthTrustedKeyOptions(body, userType) {
+    return parseTrustedAccessOptions(body, { admin: userType === 'admin' });
 }
 
 function renderPickScript(hasPicker) {
@@ -527,6 +546,7 @@ function createOAuthRoutes(globalResources) {
             boundKeyLabel: page.applicationKeyId
                 ? await boundKeyLabel(page.applicationKeyId)
                 : '',
+            adminApproval: session.userType === 'admin',
             error
         })), status);
     }
@@ -814,11 +834,23 @@ function createOAuthRoutes(globalResources) {
                 // HARD DENY: strip cake AFTER fallback (DEFAULT_CREATE_SCOPES includes cake)
                 const createScopes = stripBlockedScopesIfGrokWeb(baseScopes, redirect_uri);
                 const manager = globalResources.getApplicationAuthManager();
+                let trusted;
+                try {
+                    trusted = oauthTrustedKeyOptions(req.body, session.userType);
+                } catch (err) {
+                    return renderAuthorizedStep(req, res, page, {
+                        error: err.message || 'Invalid trusted CIDR',
+                        status: 400
+                    });
+                }
                 const created = await manager.createApplicationKey({
                     appName: String(new_key_name || '').trim() || consent.generatedKeyName(client.clientName),
                     userAgent: String(req.headers['user-agent'] || 'mcp-oauth-consent').slice(0, 300),
                     scopes: createScopes,
-                    userType: session.userType
+                    userType: session.userType,
+                    allowKeyless: trusted.allowKeyless,
+                    persistent: trusted.persistent,
+                    trustedCidrs: trusted.trustedCidrs
                 });
                 if ((created.summary.scopes || []).includes('universal')) {
                     await manager.revokeApplicationKey(created.summary.id);
@@ -964,5 +996,6 @@ function createOAuthRoutes(globalResources) {
 module.exports = {
     createOAuthRoutes,
     renderConsentPage,
+    oauthTrustedKeyOptions,
     CONSENT_PAGE_HTML
 };

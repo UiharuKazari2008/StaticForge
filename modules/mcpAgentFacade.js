@@ -7094,7 +7094,7 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'get_client_physics') {
         const bind = autoBindIfNeeded(globalResources, req);
-        // requestClientIP: modules/agentClientBridge.js (same order as web_server.js getRealIP)
+        // requestClientIP: modules/agentClientBridge.js (clientAddress trusted-proxy XFF walk)
         const data = await getClientPhysics(globalResources, bind.bindKey, input, requestClientIP(req));
         return mcpTextResult({ success: true, autoBound: !!bind.auto, ...data });
     }

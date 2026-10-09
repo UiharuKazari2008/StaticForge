@@ -41,9 +41,13 @@ async function createApplicationAuthTables() {
             created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
             last_refreshed_at INTEGER,
             last_used_at INTEGER,
+            last_used_ip TEXT,
             revoked_at INTEGER,
             replaced_by_id TEXT,
-            status TEXT NOT NULL DEFAULT 'active'
+            status TEXT NOT NULL DEFAULT 'active',
+            allow_keyless INTEGER NOT NULL DEFAULT 0,
+            persistent INTEGER NOT NULL DEFAULT 0,
+            trusted_cidrs TEXT NOT NULL DEFAULT '[]'
         )
     `);
 
@@ -186,6 +190,23 @@ async function createApplicationAuthTables() {
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_app_req_log_created ON application_request_log (id)`);
 
     await ensureOAuthClientsApplicationKeyIdNullable(db);
+    await ensureApplicationKeyTrustedColumns(db);
+}
+
+async function ensureApplicationKeyTrustedColumns(database) {
+    const cols = await database.all('PRAGMA table_info(application_keys)');
+    const names = new Set((cols || []).map((col) => col.name));
+    const additions = [
+        ['last_used_ip', 'last_used_ip TEXT'],
+        ['allow_keyless', 'allow_keyless INTEGER NOT NULL DEFAULT 0'],
+        ['persistent', 'persistent INTEGER NOT NULL DEFAULT 0'],
+        ['trusted_cidrs', "trusted_cidrs TEXT NOT NULL DEFAULT '[]'"]
+    ];
+    for (const [name, definition] of additions) {
+        if (names.has(name)) continue;
+        await database.exec(`ALTER TABLE application_keys ADD COLUMN ${definition}`);
+    }
+    await database.exec('CREATE INDEX IF NOT EXISTS idx_app_keys_keyless_ua ON application_keys (allow_keyless, user_agent)');
 }
 
 async function ensureOAuthClientsApplicationKeyIdNullable(database) {

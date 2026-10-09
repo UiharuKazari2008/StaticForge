@@ -309,6 +309,14 @@ async function handleGetApplicationAuthScopes(handlersCtx, ws, message, clientIn
 async function handleCreateApplicationKey(handlersCtx, ws, message, clientInfo, wsServer) {
     if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     const { appName, userAgent, scopes, userType, perpetual, expiresInDays, refreshIntervalDays } = message;
+    const { parseTrustedAccessOptions } = require('../../applicationAuthManager');
+    let trusted;
+    try {
+        trusted = parseTrustedAccessOptions(message, { admin: true });
+    } catch (err) {
+        handlersCtx.sendError(ws, err.message, err.code || 'INVALID_TRUSTED_CIDR', message.requestId);
+        return;
+    }
     if (!appName || !userAgent) {
         handlersCtx.sendError(ws, 'appName and userAgent are required', 'MISSING_FIELDS', message.requestId);
         return;
@@ -326,7 +334,10 @@ async function handleCreateApplicationKey(handlersCtx, ws, message, clientInfo, 
         scopes: scopes || ['universal'],
         userType: userType || 'admin',
         expiresAt,
-        refreshIntervalDays: refreshIntervalDays != null ? parseInt(refreshIntervalDays, 10) : 30
+        refreshIntervalDays: refreshIntervalDays != null ? parseInt(refreshIntervalDays, 10) : 30,
+        allowKeyless: trusted.allowKeyless,
+        persistent: trusted.persistent,
+        trustedCidrs: trusted.trustedCidrs
     });
 
     wsServer.sendToClient(ws, {

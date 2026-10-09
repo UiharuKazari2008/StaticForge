@@ -303,7 +303,7 @@ class WebSocketMessageHandlers {
             }
 
             // Application key scope enforcement
-            if (clientInfo.authMethod === 'application_key' && Array.isArray(clientInfo.applicationScopes)) {
+            if ((clientInfo.authMethod === 'application_key' || clientInfo.authMethod === 'trusted_keyless') && Array.isArray(clientInfo.applicationScopes)) {
                 const appAuthManager = this.globalResources.getApplicationAuthManager();
                 if (!appAuthManager.canAccessWsPacket(clientInfo.applicationScopes, message.type, clientInfo.userType)) {
                     wsServer.sendToClient(ws, {

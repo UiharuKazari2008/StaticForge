@@ -196,6 +196,7 @@ try {
             params: { name: 'generate_image', arguments: { prompt: 'SECRET_PROMPT' } }
         },
         headers: { 'x-forwarded-for': '203.0.113.10, 10.0.0.1' },
+        socket: { remoteAddress: '192.168.200.121' },
         applicationAuth: { applicationKeyId: 'key-1', appName: 'guren' }
     };
     const res = mockRes();
@@ -205,7 +206,9 @@ try {
     assert.strictEqual(captured.length, 1);
     assert.ok(captured[0].includes('tools/call generate_image'));
     assert.ok(captured[0].includes('actor=guren/appkey:key-1'));
-    assert.ok(captured[0].includes('203.0.113.10'));
+    assert.ok(captured[0].includes('10.0.0.1'));
+    assert.ok(!captured[0].includes('203.0.113.10'));
+    assert.ok(!captured[0].includes('192.168.200.121'));
     assert.ok(captured[0].includes('status=200 ok'));
     assert.ok(!captured[0].includes('SECRET_PROMPT'));
     assert.ok(!captured[0].includes('abc-uuid-1234'));
@@ -215,7 +218,8 @@ try {
         method: 'POST',
         path: '/abc-uuid-1234/mcp',
         body: { method: 'tools/call', params: { name: 'generate_image' } },
-        headers: { 'x-real-ip': '198.51.100.9' },
+        headers: { 'x-real-ip': '198.51.100.9', 'x-forwarded-for': '127.0.0.1' },
+        socket: { remoteAddress: '198.51.100.9' },
         applicationAuth: { applicationKeyId: 'key-2', appName: 'ivory' }
     };
     const abortRes = mockRes();
@@ -224,6 +228,7 @@ try {
     assert.strictEqual(captured.length, 2);
     assert.ok(captured[1].includes('abort'));
     assert.ok(captured[1].includes('198.51.100.9'));
+    assert.ok(!captured[1].includes('127.0.0.1'));
     assert.ok(captured[1].includes('actor=ivory/appkey:key-2'));
     assert.ok(!captured[1].includes('abc-uuid-1234'));
 

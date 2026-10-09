@@ -1,6 +1,14 @@
 const crypto = require('crypto');
 const WebSocket = require('ws');
 const { PromptIndexService } = require('./promptIndexService');
+const { realClientIp, trustedProxiesFromResources } = require('./clientAddress');
+const {
+    HEARTBEAT_INTERVAL_MS,
+    createSocketHeartbeatEntry,
+    noteHeartbeatPong,
+    reapSocketHeartbeats,
+    formatWsDisconnectLog
+} = require('./wsSocketHeartbeat');
 
 class WebSocketServer {
     constructor(globalResources = null) {
@@ -25,6 +33,7 @@ class WebSocketServer {
         this.setupWebSocket();
         this.setupPlumbingSubscriptions();
         this.startIndexingSync();
+        this.startSocketHeartbeat();
     }
     
     /**
@@ -172,13 +181,9 @@ class WebSocketServer {
             // Extract session from request
             const sessionResult = await this.extractSession(req);
             
-            // Get client IP address
-            const clientIP = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-                            req.headers['x-real-ip'] ||
-                            req.connection?.remoteAddress ||
-                            req.socket?.remoteAddress ||
-                            req.ip ||
-                            false;
+            // Same trusted-proxy walk as web_server.js getRealIP (modules/clientAddress.js).
+            const resolvedIp = realClientIp(req, trustedProxiesFromResources(this.globalResources));
+            const clientIP = resolvedIp && resolvedIp !== 'unknown' ? resolvedIp : false;
 
             // Allow connection even without authentication for critical messages
             // Store client information (may be unauthenticated initially)
@@ -190,7 +195,8 @@ class WebSocketServer {
                 clientId: crypto.randomBytes(6).toString('hex'),
                 userAgent: String(req.headers['user-agent'] || '').replace(/\s+/g, ' ').trim().slice(0, 80),
                 connectedAt: new Date(),
-                lastActivity: new Date()
+                lastActivity: new Date(),
+                heartbeat: createSocketHeartbeatEntry()
             };
 
             this.clients.set(ws, clientInfo);
@@ -266,11 +272,20 @@ class WebSocketServer {
             // Send combined search + prompt FTS indexing snapshot on connect
             void this.sendSearchIndexingSnapshotToClient(ws);
 
+            ws.on('pong', () => {
+                noteHeartbeatPong(clientInfo.heartbeat);
+            });
+
             // Handle client disconnect
             ws.on('close', (code, reason) => {
-                const clientInfo = this.clients.get(ws);
-                if (clientInfo) {
-                    console.log(`🔌 WebSocket disconnected: Session ${clientInfo.sessionId} - Code: ${code}, Reason: ${reason}`);
+                const info = this.clients.get(ws) || clientInfo;
+                console.log(formatWsDisconnectLog({
+                    clientIP: info && info.clientIP,
+                    code,
+                    reason,
+                    sessionId: info && info.sessionId
+                }));
+                if (this.clients.has(ws)) {
 
                     const handlers = this.globalResources.getWebSocketMessageHandlers();
                     if (handlers && handlers.detachClientActiveGenerations) {
@@ -897,6 +912,36 @@ class WebSocketServer {
         });
         
         console.log(`📢 Broadcast image addition to workspace ${workspaceId}: ${Array.isArray(imageFilenames) ? imageFilenames.length : 1} image(s)`);
+    }
+
+    startSocketHeartbeat() {
+        if (this.socketHeartbeatTimer) {
+            clearInterval(this.socketHeartbeatTimer);
+        }
+        this.socketHeartbeatTimer = setInterval(() => {
+            const openClients = [];
+            for (const [ws, info] of this.clients) {
+                openClients.push({ ws, info, heartbeat: info && info.heartbeat });
+            }
+            reapSocketHeartbeats(openClients, {
+                isOpen: (client) => client.ws && client.ws.readyState === WebSocket.OPEN,
+                ping: (client) => {
+                    try {
+                        client.ws.ping();
+                    } catch (_err) {
+                        // Socket already closing
+                    }
+                },
+                terminate: (client) => {
+                    try {
+                        client.ws.terminate();
+                    } catch (_err) {
+                        // Already gone
+                    }
+                }
+            });
+        }, HEARTBEAT_INTERVAL_MS);
+        if (this.socketHeartbeatTimer.unref) this.socketHeartbeatTimer.unref();
     }
 
     startPingInterval(pingCallback = null) {

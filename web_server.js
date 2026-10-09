@@ -51,6 +51,7 @@ const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge'
 const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacRemoteBridge');
 const { getQwenTokenizerDefinition } = require('./modules/qwenTokenizerAssetCache');
 const { getOpusUsageFromAccountData } = require('./modules/opusUsage');
+const { realClientIp, trustedProxiesFromResources } = require('./modules/clientAddress');
 
 let runtimeCompileComplete = false;
 
@@ -447,14 +448,10 @@ function logBlockedRequest(ip, url, options = {}) {
     scheduleBlockedLogFloodFlush(ip);
 }
 
-// Get real IP address from request
+// Client IP from modules/clientAddress.js: rightmost XFF hop, skipping trustedProxies.
+// Never the leftmost X-Forwarded-For entry (spoofable through Kuroko) and never req.ip.
 function getRealIP(req) {
-    return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-           req.headers['x-real-ip'] ||
-           req.connection?.remoteAddress ||
-           req.socket?.remoteAddress ||
-           req.ip ||
-           'unknown';
+    return realClientIp(req, trustedProxiesFromResources(globalResources));
 }
 
 // Check if IP address is in a private range

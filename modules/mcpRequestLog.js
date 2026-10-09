@@ -91,15 +91,11 @@ function peekMcpActor(req) {
 }
 
 function peekMcpIp(req) {
-    // requestClientIP: modules/agentClientBridge.js (same header order as web_server.js getRealIP)
+    // modules/clientAddress.js — rightmost XFF from trusted proxies, same as getRealIP
     if (!req) return 'unknown';
-    const headers = req.headers || {};
-    return headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-        headers['x-real-ip'] ||
-        req.connection?.remoteAddress ||
-        req.socket?.remoteAddress ||
-        req.ip ||
-        'unknown';
+    const { resolveRequestClientIp, trustedProxiesForClientIp } = require('./clientAddress');
+    const resolved = resolveRequestClientIp(req, trustedProxiesForClientIp(null));
+    return resolved.ip || 'unknown';
 }
 
 function inferMcpOutcome(statusCode, body) {

@@ -3,9 +3,13 @@
 const net = require('net');
 
 /**
- * Apocrypha / Grim client-IP resolution.
- * Fail closed. Do not reuse web_server.js getRealIP (leftmost XFF) or isPrivateIP (prefix match).
+ * Client-IP resolution for Apocrypha / Grim and for request authentication.
+ * Fail closed. Walk X-Forwarded-For from the right and skip trustedProxies only.
+ * Do not trust the leftmost XFF hop, X-Real-IP, or req.ip.
+ * Kuroko (192.168.200.121) is an infrastructure trusted proxy.
  */
+
+const KUROKO_TRUSTED_PROXY = '192.168.200.121';
 
 const LOOPBACK_CIDRS = Object.freeze(['127.0.0.0/8', '::1']);
 
@@ -424,6 +428,62 @@ function normalizeApocryphaAccessConfig(raw) {
     return { trustedProxies, localCidrs, localGrim };
 }
 
+/**
+ * trustedProxies for getRealIP / WebSocket / MCP.
+ * Configured apocrypha.trustedProxies win when present; loopback stays the default.
+ * Kuroko is always included so public traffic is not attributed to the proxy itself.
+ */
+function trustedProxiesForClientIp(configured) {
+    const list = Array.isArray(configured) && configured.length
+        ? configured.filter((entry) => typeof entry === 'string' && entry.trim()).slice()
+        : DEFAULT_APOCRYPHA_ACCESS.trustedProxies.slice();
+    const hasKuroko = list.some((entry) => {
+        const trimmed = String(entry).trim();
+        return trimmed === KUROKO_TRUSTED_PROXY || trimmed.startsWith(`${KUROKO_TRUSTED_PROXY}/`);
+    });
+    if (!hasKuroko) list.push(KUROKO_TRUSTED_PROXY);
+    return list;
+}
+
+function trustedProxiesFromResources(globalResources) {
+    let configured = null;
+    try {
+        if (globalResources && typeof globalResources.getConfig === 'function') {
+            configured = globalResources.getConfig({ path: 'apocrypha.trustedProxies' });
+        }
+    } catch (_err) {
+        configured = null;
+    }
+    return trustedProxiesForClientIp(configured);
+}
+
+/**
+ * Identify the client for rate limits, WebSocket sessions, and Trusted Access.
+ * keylessIp is null when a trusted proxy did not yield a client (missing/invalid XFF).
+ * ip falls back to the socket peer so spoofed XFF is never used.
+ */
+function resolveRequestClientIp(req, trustedProxies) {
+    const list = Array.isArray(trustedProxies) ? trustedProxies : trustedProxiesForClientIp(trustedProxies);
+    const resolved = resolveClientAddress(req, {
+        trustedProxies: list,
+        localCidrs: LOOPBACK_CIDRS
+    });
+    const identified = resolved.client || null;
+    return {
+        ip: identified || resolved.peer || 'unknown',
+        client: identified,
+        peer: resolved.peer,
+        trustedPeer: resolved.trustedPeer === true,
+        reason: resolved.reason,
+        keylessIp: identified
+    };
+}
+
+function realClientIp(req, configuredTrustedProxies) {
+    const resolved = resolveRequestClientIp(req, trustedProxiesForClientIp(configuredTrustedProxies));
+    return resolved.ip || 'unknown';
+}
+
 function resolveApocryphaAccess(req, rawConfig) {
     const config = normalizeApocryphaAccessConfig(rawConfig);
     const resolved = resolveClientAddress(req, config);
@@ -459,7 +519,12 @@ module.exports = {
     ipInCidrs,
     isLoopbackIp,
     isPrivateOrLinkLocalOrUla,
+    KUROKO_TRUSTED_PROXY,
     resolveClientAddress,
+    resolveRequestClientIp,
+    realClientIp,
+    trustedProxiesForClientIp,
+    trustedProxiesFromResources,
     resolveApocryphaAccess,
     normalizeApocryphaAccessConfig,
     shouldShowGrim,
