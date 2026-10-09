@@ -50,7 +50,7 @@ const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
 const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacRemoteBridge');
 const { getQwenTokenizerDefinition } = require('./modules/qwenTokenizerAssetCache');
-const { getOpusUsageFromAccountData } = require('./modules/opusUsage');
+const { SUBSCRIPTION_USAGE_POLL_MS } = require('./modules/opusUsage');
 
 let runtimeCompileComplete = false;
 
@@ -312,6 +312,7 @@ function getQueueMiddleware(req, res, next) {
 }
 
 const BALANCE_REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
+// Opus battery: GET /user/subscription .usage, same cadence as the webapp.
 const ACCOUNT_DATA_REFRESH_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
 const CACHE_REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
@@ -3606,7 +3607,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
         wsServer.startPingInterval(() => {
             return {
                 balance: globalResources.getAccountBalance(),
-                opusUsage: getOpusUsageFromAccountData(globalResources.getAccountData()),
+                opusUsage: globalResources.getOpusUsage(),
                 accountHealth: globalResources.getAccountClientFields(),
                 queue_status: globalResources.getQueue().getStatus(),
                 image_count: globalResources.getImageCounter().getCount(),
@@ -3701,6 +3702,11 @@ async function handleAdminUnixSocketMessage(message, socket) {
         // Set up periodic refreshes using globalResources timer system
         globalResources.registerTimer('accountDataRefresh', 'interval', () => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL);
         globalResources.registerTimer('balanceRefresh', 'interval', () => refreshBalance(), BALANCE_REFRESH_INTERVAL);
+        globalResources.registerTimer('subscriptionUsagePoll', 'interval', () => {
+            globalResources.refreshSubscriptionUsage(false).catch((error) => {
+                console.warn('⚠️ Subscription usage poll failed:', error && error.message ? error.message : error);
+            });
+        }, SUBSCRIPTION_USAGE_POLL_MS);
         globalResources.registerTimer('cacheRefresh', 'interval', () => initializeCacheData(), CACHE_REFRESH_INTERVAL);
         setTimeout(() => {
             try {
