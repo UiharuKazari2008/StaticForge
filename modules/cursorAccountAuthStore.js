@@ -469,7 +469,7 @@ function beginCursorAccountLogin(accountId, listener) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* fresh staging dir */ }
     ensureDir(dir);
     const child = require('child_process').spawn(agentBin, ['login'], {
-        env: Object.assign({}, process.env, {
+        env: cleanCursorChildEnv({
             NO_OPEN_BROWSER: '1',
             CURSOR_CONFIG_DIR: dir,
             BROWSER: 'echo'
@@ -656,7 +656,18 @@ function getActiveAccountId(persona = 'wren') {
     return 'default';
 }
 
+// Copy process.env without inherited Cursor session vars (CURSOR_*, VSCODE_*) so a
+// Dreamscape started from a Cursor agent shell cannot leak its key into child logins.
+function cleanCursorChildEnv(extra, base) {
+    const env = Object.assign({}, base || process.env);
+    for (const key of Object.keys(env)) {
+        if (key.startsWith('CURSOR_') || key.startsWith('VSCODE_')) delete env[key];
+    }
+    return Object.assign(env, extra || {});
+}
+
 module.exports = {
+    cleanCursorChildEnv,
     getAccountDir,
     getHostAccountInfo,
     extractEmailFromToken,
