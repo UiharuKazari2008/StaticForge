@@ -1680,7 +1680,7 @@ function registerPackets(handlersCtx) {
     regFn('set_gallery_show_shared', handleSetGalleryShowShared);
     regFn('delete_images_bulk', handleDeleteImagesBulk, GALLERY_DESTRUCTIVE);
     regFn('delete_unupscaled_original', handleDeleteUnupscaledOriginal, GALLERY_DESTRUCTIVE);
-    regFn('send_to_sequenzia_bulk', handleSendToSequenziaBulk);
+    regFn('send_to_sequenzia_bulk', handleSendToSequenziaBulk, GALLERY_DESTRUCTIVE);
     regFn('update_image_preset_bulk', handleUpdateImagePresetBulk, GALLERY_DESTRUCTIVE);
 }
 

@@ -384,6 +384,7 @@ class WebSocketMessageHandlers {
             'workspace_update_settings',
             'workspace_reorder',
             'delete_images_bulk',
+            'send_to_sequenzia_bulk',
             'scrap_similar_images',
             'delete_unupscaled_original',
             'delete_reference',
