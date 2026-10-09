@@ -151,7 +151,9 @@ otherwise, because any `pm2` command, even `pm2 ping`, would spawn a new daemon 
 unit (the runner's) with the caller's env. The check runs again right before the restart. The server is
 restarted **by name** (`pm2 restart Dreamscape`, no `--update-env`), which keeps Dreamscape's saved env
 as it is (PM2 5.3.1). Restarting through `ecosystem.config.js` would force `updateEnv` and merge
-sudo's reset env (PATH, DEPLOY_*, GITHUB_*) into it.
+sudo's reset env (PATH, DEPLOY_*, GITHUB_*) into it. `scripts/notify-service-worker-update.sh` only
+notifies the service worker and cannot restart the server. Agents do not run a restart: check that
+the Director is idle, ask Yukimi or Sala with the reason, and stop.
 
 Always runs against `STATICFORGE_LIVE_ROOT` (default `/home/kanmi/staticforge`). Does **not** use Actions `checkout` into the live tree.
 

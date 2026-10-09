@@ -765,8 +765,6 @@ broadcast_notice() {
         -d "$body" || log "WARNING: broadcast failed"
 }
 
-DID_RESTART_WITH_NOTIFY=0
-
 # Toast when reason set and any deploy label
 if [[ -n "$REASON" ]] && (( RESTART_SERVER + PUSH_CLIENTS + RESTART_CLIENTS > 0 )); then
     # Defer restart-client dialog; toast first only when not restarting clients alone
@@ -788,22 +786,18 @@ $(fence_untrusted "$PM2_PROBLEM")
 Start pm2-kanmi.service and re-run host-deploy via workflow_dispatch with restart_server." || true
         die "deployed $(git rev-parse --short HEAD) but skipped the PM2 restart: $PM2_PROBLEM"
     fi
-    if (( PUSH_CLIENTS == 1 )); then
-        log "PM2 restart + SW notify..."
-        bash "$LIVE_ROOT/scripts/notify-service-worker-update.sh" --restart
-        DID_RESTART_WITH_NOTIFY=1
-    else
-        log "PM2 restart (./restart)..."
-        # ./restart tails logs forever — run the pm2 steps only.
-        # Restart by NAME without --update-env: PM2 5.3.1 then keeps Dreamscape's saved env exactly.
-        # (Restarting via ecosystem.config.js forces updateEnv and would merge this caller's env -
-        # sudo's reset env, DEPLOY_*/GITHUB_* - into Dreamscape's stored env.)
-        pm2 flush Dreamscape || true
-        pm2 restart Dreamscape
-        pm2 reset Dreamscape || true
-        # Wait ready
-        STATICFORGE_HTTP_PORT="$HTTP_PORT" STATICFORGE_SERVER_WAIT_TIMEOUT_MS="${STATICFORGE_SERVER_WAIT_TIMEOUT_MS:-180000}" \
-        node - <<'NODE'
+    log "PM2 restart (by name, no --update-env)..."
+    # ./restart tails logs forever — run the pm2 steps only.
+    # Restart by NAME without --update-env: PM2 5.3.1 then keeps Dreamscape's saved env exactly.
+    # (Restarting via ecosystem.config.js forces updateEnv and would merge this caller's env -
+    # sudo's reset env, DEPLOY_*/GITHUB_* - into Dreamscape's stored env.)
+    # notify-service-worker-update.sh cannot restart the server. Notify separately below.
+    pm2 flush Dreamscape || true
+    pm2 restart Dreamscape
+    pm2 reset Dreamscape || true
+    # Wait ready
+    STATICFORGE_HTTP_PORT="$HTTP_PORT" STATICFORGE_SERVER_WAIT_TIMEOUT_MS="${STATICFORGE_SERVER_WAIT_TIMEOUT_MS:-180000}" \
+    node - <<'NODE'
 const http = require('http');
 const port = Number(process.env.STATICFORGE_HTTP_PORT || 9220);
 const deadline = Date.now() + Number(process.env.STATICFORGE_SERVER_WAIT_TIMEOUT_MS || 180000);
@@ -828,11 +822,10 @@ function probe() {
 }
 probe();
 NODE
-    fi
 fi
 
-if (( PUSH_CLIENTS == 1 && DID_RESTART_WITH_NOTIFY == 0 )); then
-    log "SW notify (no server restart)..."
+if (( PUSH_CLIENTS == 1 )); then
+    log "SW notify..."
     bash "$LIVE_ROOT/scripts/notify-service-worker-update.sh"
 fi
 
