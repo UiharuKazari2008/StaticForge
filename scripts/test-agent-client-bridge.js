@@ -429,6 +429,30 @@ const onlyLive = new Map([
 ]);
 const onlyRes = { getWebSocketServer: () => ({ clients: onlyLive, sendToClient() {} }) };
 assert.strictEqual(_test.pickReattachTarget(onlyRes, { previousClientId: 'gone' }).clientId, 'ddd444ddd444');
+const sameIdFresh = new Map([
+    [{ readyState: 1 }, {
+        sessionId: 'sess-a',
+        clientId: 'aaa111aaa111',
+        authenticated: true,
+        connectedAt: new Date()
+    }]
+]);
+assert.strictEqual(_test.pickReattachTarget(
+    { getWebSocketServer: () => ({ clients: sameIdFresh }) },
+    { sessionId: 'sess-a', previousClientId: 'aaa111aaa111', startedAt: Date.now() - 1000 }
+).clientId, 'aaa111aaa111');
+const zombieClients = new Map([
+    [{ readyState: 1 }, {
+        sessionId: 'sess-a',
+        clientId: 'renamedrenamed',
+        authenticated: true,
+        connectedAt: new Date(Date.now() - 10000)
+    }]
+]);
+assert.strictEqual(_test.pickReattachTarget(
+    { getWebSocketServer: () => ({ clients: zombieClients }) },
+    { sessionId: 'sess-a', previousClientId: 'aaa111aaa111', startedAt: Date.now() }
+), null);
 _test.markPendingReattach('appkey:test', { sessionId: 'sess-a', previousClientId: 'old' });
 assert.strictEqual(_test.pendingReattach.get('appkey:test').sessionId, 'sess-a');
 _test.clearPendingReattach('appkey:test');
@@ -456,6 +480,8 @@ assert.strictEqual(_test.bindSessions.get('appkey:key-b').clientId, 'tab-b');
 _test.bindSessions.clear();
 
 assert.strictEqual(_test.TESTING_OFFER_SETTLE_MS, 800);
+assert.strictEqual(typeof _test.testingOfferExpireTimer.hasRef, 'function');
+assert.strictEqual(_test.testingOfferExpireTimer.hasRef(), false);
 
 function testingOfferResources(rows) {
     const clients = new Map();
@@ -639,7 +665,7 @@ const bridge = require('../modules/agentClientBridge');
 Promise.all([
     _test.enrichDynamicGenerationForMcp(stubResources, 'missing', { enabled: false, tod: 'night' }),
     bridge.getClientPhysics(stubResources, null, { enabled: false })
-]).then(([disabledDyn, physics]) => {
+]).then(async ([disabledDyn, physics]) => {
     assert.strictEqual(disabledDyn.directorApi, 'noop');
     assert.strictEqual(disabledDyn.enabled, false);
     assert.strictEqual(disabledDyn.resolved, null);
@@ -648,6 +674,89 @@ Promise.all([
     assert.strictEqual(physics.clientId, null);
     assert.strictEqual(physics.resolved, null);
     assert.strictEqual(physics.dynamicGeneration.directorApi, 'noop');
+
+    function restartHarness(clientId, onCommand) {
+        const info = {
+            sessionId: 'sess-restart',
+            clientId,
+            authenticated: true,
+            connectedAt: new Date(Date.now() - 60000)
+        };
+        const ws = { readyState: 1 };
+        const commands = [];
+        const wsServer = {
+            clients: new Map([[ws, info]]),
+            sendToClient(_target, msg) {
+                if (!msg || msg.type !== 'agent_session_command') return;
+                commands.push(msg.data.command);
+                const data = onCommand(msg.data, info);
+                if (data !== undefined) {
+                    setImmediate(() => bridge.handleAgentSessionResult(null, ws, {
+                        requestId: msg.requestId,
+                        data
+                    }));
+                }
+            }
+        };
+        return {
+            info,
+            commands,
+            globalResources: { getWebSocketServer: () => wsServer }
+        };
+    }
+
+    const fast = restartHarness('abc123abc123', (data, info) => {
+        if (data.command === 'client_restart') {
+            info.connectedAt = new Date(Date.now() + 1500);
+            return { ok: true, restarting: true };
+        }
+        if (data.command === 'get_state') return { ok: true, workspaceId: 'lab' };
+        return undefined;
+    });
+    const fastKey = 'appkey:restart-fast';
+    bridge.bindClient(fast.globalResources, { clientId: 'abc123abc123', bindKey: fastKey });
+    const fastStarted = Date.now();
+    const fastResult = await bridge.restartBoundClient(fast.globalResources, fastKey, {
+        timeoutMs: 2000,
+        allowPending: true,
+        pollMs: 15
+    });
+    assert.strictEqual(fastResult.reattached, true);
+    assert.strictEqual(fastResult.pending, undefined);
+    assert.strictEqual(fastResult.clientId, 'abc123abc123');
+    assert.ok(Date.now() - fastStarted < 5000);
+    _test.bindSessions.delete(fastKey);
+
+    const slow = restartHarness('def456def456', (data) => {
+        if (data.command === 'client_restart') return { ok: true, restarting: true };
+        if (data.command === 'get_state') return { ok: true, workspaceId: 'lab' };
+        return undefined;
+    });
+    const slowKey = 'appkey:restart-slow';
+    bridge.bindClient(slow.globalResources, { clientId: 'def456def456', bindKey: slowKey });
+    const pendingResult = await bridge.restartBoundClient(slow.globalResources, slowKey, {
+        timeoutMs: 40,
+        allowPending: true,
+        pollMs: 10
+    });
+    assert.strictEqual(pendingResult.pending, true);
+    assert.strictEqual(pendingResult.reattached, false);
+    assert.ok(pendingResult.restartId);
+    assert.strictEqual(slow.commands.filter((command) => command === 'client_restart').length, 1);
+    slow.info.connectedAt = new Date(Date.now() + 2000);
+    const resumed = await bridge.restartBoundClient(slow.globalResources, slowKey, {
+        timeoutMs: 2000,
+        allowPending: true,
+        pollMs: 10,
+        restartId: pendingResult.restartId
+    });
+    assert.strictEqual(resumed.reattached, true);
+    assert.strictEqual(resumed.clientId, 'def456def456');
+    assert.strictEqual(slow.commands.filter((command) => command === 'client_restart').length, 1);
+    _test.bindSessions.delete(slowKey);
+    _test.pendingRestarts.clear();
+    _test.pendingReattach.clear();
+
     console.log('test-agent-client-bridge: ok');
 }).catch((err) => {
     console.error(err);

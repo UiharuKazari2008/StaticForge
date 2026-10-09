@@ -25,7 +25,8 @@ const BIND_IDLE_MS = 15 * 60 * 1000;
 const shareCodes = new Map(); // code -> { clientId, expiresAt }
 const pendingResults = new Map(); // requestId -> { resolve, reject, timer, clientId }
 const bindSessions = new Map(); // bindKey -> { clientId, lastInteractionAt, boundAt, actorName }
-const pendingReattach = new Map(); // bindKey -> { sessionId, actorName, previousClientId, startedAt }
+const pendingReattach = new Map(); // bindKey -> { sessionId, actorName, previousClientId, previousConnectedAt, startedAt }
+const pendingRestarts = new Map(); // restartId -> { bindKey, startedAt }
 const testingOfferState = new Map(); // bindKey -> { offered: Set, declined: Set, timestamp: Date }
 let lastSweepTimer = null;
 function startTestingOfferSweep() {
@@ -38,6 +39,7 @@ function startTestingOfferSweep() {
             }
         }
     }, 30 * 60 * 1000);
+    if (typeof lastSweepTimer.unref === 'function') lastSweepTimer.unref();
 }
 startTestingOfferSweep();
 let preferredTestingClientId = null;
@@ -1446,13 +1448,22 @@ function sleepMs(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function connectionTimeMs(info) {
+    if (!info || info.connectedAt == null) return 0;
+    const raw = info.connectedAt;
+    const ms = raw instanceof Date ? raw.getTime() : (typeof raw === 'number' ? raw : Date.parse(raw));
+    return Number.isFinite(ms) ? ms : 0;
+}
+
 function markPendingReattach(bindKey, rec) {
     const key = String(bindKey || '').trim();
     if (!key) return null;
+    const previousConnectedAt = rec && Number(rec.previousConnectedAt) > 0 ? Number(rec.previousConnectedAt) : null;
     const row = {
         sessionId: rec && rec.sessionId ? rec.sessionId : null,
         actorName: rec && rec.actorName ? rec.actorName : null,
         previousClientId: rec && rec.previousClientId ? rec.previousClientId : null,
+        previousConnectedAt,
         startedAt: Date.now()
     };
     pendingReattach.set(key, row);
@@ -1480,15 +1491,29 @@ function findClientsBySessionId(wsServer, sessionId) {
     return out;
 }
 
+function isPostRestartConnection(row, hint) {
+    const connected = connectionTimeMs(row && row.info);
+    const previousConnectedAt = Number(hint && hint.previousConnectedAt);
+    const startedAt = Number(hint && hint.startedAt);
+    if (Number.isFinite(previousConnectedAt) && previousConnectedAt > 0) {
+        return connected > previousConnectedAt;
+    }
+    if (Number.isFinite(startedAt) && startedAt > 0) {
+        return connected >= startedAt;
+    }
+    return !hint || row.clientId !== hint.previousClientId;
+}
+
 function pickReattachTarget(globalResources, hint) {
     const wsServer = getWsServer(globalResources);
     const sessionId = hint && hint.sessionId;
     const previousClientId = hint && hint.previousClientId;
     if (sessionId) {
         const matches = findClientsBySessionId(wsServer, sessionId)
-            .filter((row) => row.clientId !== previousClientId);
+            .filter((row) => isPostRestartConnection(row, hint));
         if (matches.length) return matches[0];
-        // JULES: Fix reattach race — if we are looking for a specific session, do not fall through to unrelated tabs.
+        // Same login session only. A still-open pre-restart socket (including one
+        // whose clientId was renamed on resume) is not a reattach.
         return null;
     }
     const live = [];
@@ -1496,7 +1521,7 @@ function pickReattachTarget(globalResources, hint) {
         for (const [ws, info] of wsServer.clients) {
             if (ws.readyState !== WebSocket.OPEN) continue;
             const clientId = ensureClientId(info);
-            if (clientId === previousClientId) continue;
+            if (!isPostRestartConnection({ ws, info, clientId }, hint || { previousClientId })) continue;
             if (!info || !info.authenticated) continue;
             live.push({ ws, info, clientId });
         }
@@ -1513,8 +1538,11 @@ function pickReattachTarget(globalResources, hint) {
 async function awaitClientReattach(globalResources, bindKey, opts) {
     const key = requireBindKey(bindKey);
     const timeoutMs = opts && opts.timeoutMs != null ? Number(opts.timeoutMs) : REATTACH_TIMEOUT_MS;
+    const pollMs = opts && opts.pollMs != null ? Number(opts.pollMs) : 400;
     const hint = Object.assign({}, pendingReattach.get(key) || {}, opts || {});
-    const deadline = Date.now() + (Number.isFinite(timeoutMs) ? timeoutMs : REATTACH_TIMEOUT_MS);
+    const waitMs = Number.isFinite(timeoutMs) ? timeoutMs : REATTACH_TIMEOUT_MS;
+    const stepMs = Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 400;
+    const deadline = Date.now() + waitMs;
     while (Date.now() < deadline) {
         const found = pickReattachTarget(globalResources, hint);
         if (found) {
@@ -1524,7 +1552,8 @@ async function awaitClientReattach(globalResources, bindKey, opts) {
                 actorName: hint.actorName || null
             });
             try {
-                const state = await sendBoundCommand(globalResources, 'get_state', {}, 8000, key);
+                const stateTimeout = Math.min(8000, Math.max(200, deadline - Date.now()));
+                const state = await sendBoundCommand(globalResources, 'get_state', {}, stateTimeout, key);
                 if (state && state.error == null && state.ok !== false) {
                     clearPendingReattach(key);
                     return {
@@ -1538,7 +1567,9 @@ async function awaitClientReattach(globalResources, bindKey, opts) {
                 // Tab is connected but not answering yet — keep waiting.
             }
         }
-        await sleepMs(400);
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
+        await sleepMs(Math.min(stepMs, remaining));
     }
     const err = new Error('Bound client did not reattach');
     err.status = 504;
@@ -1557,33 +1588,105 @@ async function prepareBoundClientUpdate(globalResources, bindKey) {
     return data || {};
 }
 
-async function restartBoundClient(globalResources, bindKey) {
+function findPendingRestartByBind(bindKey) {
+    for (const [id, row] of pendingRestarts) {
+        if (row && row.bindKey === bindKey) return { id, row };
+    }
+    return null;
+}
+
+function forgetPendingRestart(restartId, bindKey) {
+    if (restartId) pendingRestarts.delete(restartId);
+    if (bindKey) clearPendingReattach(bindKey);
+}
+
+async function finishRestartWait(globalResources, restartId, row, waitMs, allowPending, pollMs, restartAck) {
+    const key = row.bindKey;
+    const elapsed = Date.now() - row.startedAt;
+    const remainingBudget = REATTACH_TIMEOUT_MS - elapsed;
+    if (remainingBudget <= 0) {
+        forgetPendingRestart(restartId, key);
+        const err = new Error('Bound client did not reattach');
+        err.status = 504;
+        throw err;
+    }
+    const slice = Math.min(waitMs, remainingBudget);
+    try {
+        const reattach = await awaitClientReattach(globalResources, key, { timeoutMs: slice, pollMs });
+        pendingRestarts.delete(restartId);
+        return {
+            ok: true,
+            restarted: true,
+            restartId,
+            ...(restartAck || {}),
+            ...reattach
+        };
+    } catch (err) {
+        if (allowPending && err && err.status === 504) {
+            return {
+                ok: true,
+                pending: true,
+                restarted: true,
+                reattached: false,
+                restartId,
+                ...(restartAck || {})
+            };
+        }
+        forgetPendingRestart(restartId, key);
+        throw err;
+    }
+}
+
+async function restartBoundClient(globalResources, bindKey, opts) {
+    const options = opts && typeof opts === 'object' ? opts : {};
+    const waitMs = options.timeoutMs != null ? Number(options.timeoutMs) : REATTACH_TIMEOUT_MS;
+    const allowPending = options.allowPending === true;
+    const pollMs = options.pollMs;
+    const requestedId = options.restartId ? String(options.restartId).trim() : '';
+    const boundedWait = Number.isFinite(waitMs) && waitMs > 0 ? waitMs : REATTACH_TIMEOUT_MS;
+
+    if (requestedId) {
+        const row = pendingRestarts.get(requestedId);
+        if (!row) {
+            const err = new Error('Restart is not pending');
+            err.status = 404;
+            throw err;
+        }
+        return finishRestartWait(globalResources, requestedId, row, boundedWait, allowPending, pollMs);
+    }
+
     const key = requireBindKey(bindKey);
+    const existing = findPendingRestartByBind(key);
+    if (existing) {
+        return finishRestartWait(globalResources, existing.id, existing.row, boundedWait, allowPending, pollMs);
+    }
+
     const bound = getBoundRecord(globalResources, key);
     if (!bound) {
         const err = new Error('No Studio client is bound');
         err.status = 404;
         throw err;
     }
-    markPendingReattach(key, {
+    const marked = markPendingReattach(key, {
         sessionId: bound.info && bound.info.sessionId ? bound.info.sessionId : null,
         actorName: boundActorName(key),
-        previousClientId: getBoundClientId(key)
+        previousClientId: getBoundClientId(key),
+        previousConnectedAt: connectionTimeMs(bound.info)
     });
+    const restartId = crypto.randomBytes(8).toString('hex');
+    const row = { bindKey: key, startedAt: marked.startedAt };
+    pendingRestarts.set(restartId, row);
     let restartAck = null;
     try {
         restartAck = await sendBoundCommand(globalResources, 'client_restart', {}, 8000, key);
     } catch (err) {
-        if (!err || (err.status !== 504 && err.status !== 404)) throw err;
+        if (!err || (err.status !== 504 && err.status !== 404)) {
+            forgetPendingRestart(restartId, key);
+            throw err;
+        }
         restartAck = { ok: true, restarting: true, ackLost: true };
     }
-    const reattach = await awaitClientReattach(globalResources, key, { timeoutMs: REATTACH_TIMEOUT_MS });
-    return {
-        ok: true,
-        restarted: true,
-        ...(restartAck || {}),
-        ...reattach
-    };
+    return finishRestartWait(globalResources, restartId, row, boundedWait, allowPending, pollMs, restartAck);
 }
 
 function dynamicConfigFromSnapshot(dyn) {
@@ -2323,6 +2426,10 @@ module.exports = {
         REATTACH_TIMEOUT_MS,
         TESTING_OFFER_TIMEOUT_MS,
         TESTING_OFFER_SETTLE_MS,
+        get testingOfferExpireTimer() {
+            return lastSweepTimer;
+        },
+        pendingRestarts,
         isAgentClientId,
         parseAgentClientIdQuery,
         resumeAgentClientId,
