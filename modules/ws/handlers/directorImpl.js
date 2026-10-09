@@ -4,6 +4,7 @@
 const cursor = require('../../cursorDirector');
 const xi = require('../../xiDirector');
 const { submitRequestForm } = require('../../requestForm');
+const { submitWorkspaceSwitch } = require('../../sessionWorkspaceSwitch');
 const cursorUsage = require('../../cursorUsage');
 const legacy = require('../../directorRules');
 
@@ -25,6 +26,7 @@ module.exports = {
     handleDirectorOpenWorkspace: route(xi.handleDirectorOpenWorkspace, cursor.handleDirectorOpenWorkspace),
     handleDirectorDeleteSession: route(xi.handleDirectorDeleteSession, cursor.handleDirectorDeleteSession),
     handleDirectorForkSession: route(xi.handleDirectorForkSession, cursor.handleDirectorForkSession),
+    handleDirectorMoveSession: route(xi.handleDirectorMoveSession, cursor.handleDirectorMoveSession),
     handleDirectorGetMessages: route(xi.handleDirectorGetMessages, cursor.handleDirectorGetMessages),
     handleDirectorRollbackMessage: route(xi.handleDirectorRollbackMessage, cursor.handleDirectorRollbackMessage),
     handleDirectorRecycleSession: cursor.handleDirectorRecycleSession,
@@ -35,6 +37,9 @@ module.exports = {
     handleDirectorToolPayload: cursor.handleDirectorToolPayload,
     handleRequestFormSubmit: function (_handler, _ws, message) {
         submitRequestForm(message || {});
+    },
+    handleWorkspaceSwitchResult: function (_handler, _ws, message) {
+        submitWorkspaceSwitch(message || {});
     },
     handleLedgeChecks: function (handler, _ws, message) {
         const ledge = require('../../ledgeDesk');

@@ -90,6 +90,7 @@ const TOOL_RATE_GROUPS = {
     get_session_tasks: 'free',
     close_session_tasks: 'write',
     offer_workspace_switch: 'write',
+    request_workspace_switch: 'free',
     show_chat_image: 'write',
     request_form: 'free',
     deliver_rentan: 'free',
