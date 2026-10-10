@@ -124,6 +124,8 @@ function createKnowledgeMemoryTables() {
     `);
 
     ensureKnowledgeMemoryColumns();
+    ensureMemoryImageLinkTables();
+    ensureMemorySearchIndex();
     
     logger.bootSubStep('Knowledge memory database ready');
 }
@@ -135,7 +137,140 @@ function ensureKnowledgeMemoryColumns() {
     if (!cols.includes('model')) {
         db.exec(`ALTER TABLE knowledge_memories ADD COLUMN model TEXT NOT NULL DEFAULT 'v4_5'`);
     }
+    if (!cols.includes('revision')) {
+        db.exec(`ALTER TABLE knowledge_memories ADD COLUMN revision INTEGER NOT NULL DEFAULT 0`);
+    }
     db.exec(`UPDATE knowledge_memories SET model = 'v4_5' WHERE model IS NULL OR TRIM(model) = ''`);
+}
+
+const MEMORY_SORTS = {
+    name: 'name COLLATE NOCASE ASC',
+    updated: 'updated_at DESC, name COLLATE NOCASE ASC',
+    confidence: 'confidence DESC, name COLLATE NOCASE ASC',
+    category: 'category COLLATE NOCASE ASC, name COLLATE NOCASE ASC',
+    model: 'model COLLATE NOCASE ASC, name COLLATE NOCASE ASC'
+};
+
+const V5_MEDIUM_EFFORT_MEMORY = 'V5 Medium effort testing';
+
+function memorySortSql(sort) {
+    const key = String(sort || '').trim().toLowerCase();
+    return MEMORY_SORTS[key] || 'usage_count DESC, updated_at DESC';
+}
+
+function ensureMemoryImageLinkTables() {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS memory_revisions (
+            memory_name TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            observations_json TEXT,
+            session_id TEXT,
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            PRIMARY KEY (memory_name, revision)
+        );
+        CREATE TABLE IF NOT EXISTS memory_image_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            memory_name TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            image_id TEXT NOT NULL,
+            session_id TEXT,
+            source TEXT NOT NULL CHECK (source IN ('auto', 'manual')),
+            note TEXT,
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            UNIQUE (memory_name, revision, image_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_image_links_name_rev
+            ON memory_image_links (memory_name, revision);
+        CREATE TABLE IF NOT EXISTS session_generated_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            image_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE (session_id, image_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_gen_images_lookup
+            ON session_generated_images (session_id, created_at);
+        CREATE TABLE IF NOT EXISTS session_save_cursors (
+            session_id TEXT PRIMARY KEY,
+            last_save_at INTEGER NOT NULL
+        );
+    `);
+}
+
+function ensureMemorySearchIndex() {
+    db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_memory_fts USING fts5(
+            body,
+            tokenize = 'unicode61 remove_diacritics 2'
+        );
+    `);
+    backfillMemorySearchIndex();
+}
+
+function memorySearchBody(name, description, category, model, observations) {
+    const notes = (Array.isArray(observations) ? observations : [])
+        .map((row) => (typeof row === 'string' ? row : (row && row.content) || ''))
+        .filter(Boolean);
+    return [name, description, category, model, ...notes].filter(Boolean).join('\n');
+}
+
+function deleteMemoryFts(memoryId) {
+    if (memoryId == null) return;
+    try {
+        db.prepare('DELETE FROM knowledge_memory_fts WHERE rowid = ?').run(memoryId);
+    } catch (_err) {
+        // row was never indexed
+    }
+}
+
+function upsertMemoryFts(memoryId, name, description, category, model, observations) {
+    if (memoryId == null) return;
+    deleteMemoryFts(memoryId);
+    db.prepare(`INSERT INTO knowledge_memory_fts(rowid, body) VALUES (?, ?)`).run(
+        memoryId,
+        memorySearchBody(name, description, category, model, observations)
+    );
+}
+
+function backfillMemorySearchIndex() {
+    let missing;
+    try {
+        missing = db.prepare(`
+            SELECT km.id, km.name, km.description, km.category, km.model
+            FROM knowledge_memories km
+            WHERE km.id NOT IN (SELECT rowid FROM knowledge_memory_fts)
+        `).all();
+    } catch (error) {
+        logger.warn('Knowledge memory search index backfill skipped:', error.message);
+        return;
+    }
+    if (!missing.length) return;
+    const obsStmt = db.prepare('SELECT content FROM knowledge_observations WHERE memory_id = ?');
+    const write = db.transaction((rows) => {
+        rows.forEach((row) => {
+            const observations = obsStmt.all(row.id).map((item) => item.content);
+            upsertMemoryFts(row.id, row.name, row.description, row.category, row.model, observations);
+        });
+    });
+    write(missing);
+}
+
+function purgeMemorySidecars(name) {
+    if (!name) return;
+    const row = db.prepare('SELECT id FROM knowledge_memories WHERE name = ?').get(name);
+    db.prepare('DELETE FROM memory_image_links WHERE memory_name = ?').run(name);
+    db.prepare('DELETE FROM memory_revisions WHERE memory_name = ?').run(name);
+    if (row) deleteMemoryFts(row.id);
+}
+
+function ftsMatchQuery(raw) {
+    const terms = String(raw || '')
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}_]+/u)
+        .map((term) => term.trim())
+        .filter((term) => term.length > 1);
+    if (!terms.length) return null;
+    return terms.map((term) => `"${term.replace(/"/g, '')}"*`).join(' AND ');
 }
 
 function normalizeMemoryModel(model) {
@@ -306,7 +441,7 @@ function memoryModelQuery(model) {
     return raw.replace(/\./g, '_');
 }
 
-function listKnowledgeMemoriesPaged({ limit = 25, offset = 0, search = '', category = null, model = null } = {}) {
+function listKnowledgeMemoriesPaged({ limit = 25, offset = 0, search = '', category = null, model = null, sort = null } = {}) {
     if (!db) {
         throw new Error('Knowledge memory database not initialized');
     }
@@ -352,7 +487,7 @@ function listKnowledgeMemoriesPaged({ limit = 25, offset = 0, search = '', categ
             updated_at
         FROM knowledge_memories
         WHERE ${where}
-        ORDER BY usage_count DESC, updated_at DESC
+        ORDER BY ${memorySortSql(sort)}
         LIMIT ? OFFSET ?
     `;
     const dataParams = [...params, safeLimit, safeOffset];
@@ -442,7 +577,8 @@ function getKnowledgeMemory(name, incrementUsage = true) {
         relations,
         observations,
         usage_count: usageCount,
-        last_used_at: lastUsedAt
+        last_used_at: lastUsedAt,
+        revision: memory.revision || 0
     };
 }
 
@@ -458,12 +594,13 @@ function getKnowledgeMemory(name, incrementUsage = true) {
  * @param {string} [model] - Studio forge model this memory applies to (omit = DEFAULT_FORGE_MODEL)
  * @returns {Object} Created/updated memory
  */
-function saveKnowledgeMemory(name, description, category, entities = [], relations = [], observations = [], confidence = 0.1, model = DEFAULT_MEMORY_MODEL) {
+function saveKnowledgeMemory(name, description, category, entities = [], relations = [], observations = [], confidence = 0.1, model = DEFAULT_MEMORY_MODEL, meta = null) {
     if (!db) {
         throw new Error('Knowledge memory database not initialized');
     }
 
     const resolvedModel = normalizeMemoryModel(model);
+    const sessionId = meta && meta.sessionId ? String(meta.sessionId) : null;
     let normalizedEntities = normalizeMemoryEntities(entities);
     const normalizedObservations = normalizeMemoryObservations(observations, normalizedEntities);
     normalizedEntities = ensureObservationEntities(normalizedEntities, normalizedObservations);
@@ -472,10 +609,11 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
     // Start transaction
     const transaction = db.transaction(() => {
         // Check if memory already exists
-        const existingStmt = db.prepare('SELECT id FROM knowledge_memories WHERE name = ?');
+        const existingStmt = db.prepare('SELECT id, revision FROM knowledge_memories WHERE name = ?');
         const existing = existingStmt.get(name);
 
         let memoryId;
+        let revision;
         if (existing) {
             // Update existing memory
             const updateStmt = db.prepare(`
@@ -485,6 +623,7 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
             `);
             updateStmt.run(description, category, confidence, resolvedModel, name);
             memoryId = existing.id;
+            revision = (Number(existing.revision) || 0) + 1;
 
             // Delete existing entities, relations, and observations (cascade will clean up)
             db.prepare('DELETE FROM knowledge_entities WHERE memory_id = ?').run(memoryId);
@@ -498,7 +637,17 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
             `);
             const result = insertStmt.run(name, description, category, confidence, resolvedModel);
             memoryId = result.lastInsertRowid;
+            revision = 1;
         }
+
+        db.prepare('UPDATE knowledge_memories SET revision = ? WHERE id = ?').run(revision, memoryId);
+        db.prepare(`
+            INSERT INTO memory_revisions (memory_name, revision, observations_json, session_id, created_at)
+            VALUES (?, ?, ?, ?, strftime('%s', 'now'))
+            ON CONFLICT(memory_name, revision) DO UPDATE SET
+                observations_json = excluded.observations_json,
+                session_id = excluded.session_id
+        `).run(name, revision, JSON.stringify(normalizedObservations), sessionId);
 
         // Insert entities
         const entityStmt = db.prepare(`
@@ -544,11 +693,23 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
             );
         });
 
-        return memoryId;
+        return { memoryId, revision };
     });
 
     // Execute transaction
-    const memoryId = transaction();
+    const savedRow = transaction();
+    try {
+        upsertMemoryFts(
+            savedRow.memoryId,
+            name,
+            description,
+            category,
+            resolvedModel,
+            normalizedObservations
+        );
+    } catch (error) {
+        logger.warn(`Knowledge memory search index update failed: ${error && error.message}`);
+    }
 
     return {
         name,
@@ -558,7 +719,8 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
         relations: normalizedRelations,
         observations: normalizedObservations,
         confidence,
-        model: resolvedModel
+        model: resolvedModel,
+        revision: savedRow.revision
     };
 }
 
@@ -572,6 +734,7 @@ function deleteKnowledgeMemory(name) {
         throw new Error('Knowledge memory database not initialized');
     }
 
+    purgeMemorySidecars(name);
     const stmt = db.prepare('DELETE FROM knowledge_memories WHERE name = ?');
     const result = stmt.run(name);
     return result.changes > 0;
@@ -599,6 +762,7 @@ function deleteKnowledgeMemoriesBulk(names) {
         
         for (const name of namesToDelete) {
             try {
+                purgeMemorySidecars(name);
                 const result = deleteStmt.run(name);
                 if (result.changes > 0) {
                     deletedCount++;
@@ -704,6 +868,17 @@ function deleteKnowledgeMemoriesByFilter(filterType) {
         default:
             throw new Error(`Invalid filter type: ${filterType}`);
     }
+
+    const nameSql = {
+        low_confidence: 'SELECT name FROM knowledge_memories WHERE confidence < 0.3',
+        old_usage: 'SELECT name FROM knowledge_memories WHERE last_used_at IS NOT NULL AND last_used_at < ?',
+        never_used: 'SELECT name FROM knowledge_memories WHERE (usage_count = 0 OR usage_count IS NULL) AND last_used_at IS NULL',
+        everything: 'SELECT name FROM knowledge_memories'
+    };
+    const doomed = filterType === 'old_usage'
+        ? db.prepare(nameSql[filterType]).all(thirtyDaysAgo)
+        : db.prepare(nameSql[filterType]).all();
+    doomed.forEach((row) => purgeMemorySidecars(row.name));
 
     // Get count before deletion
     let matchedCount;
@@ -1250,6 +1425,404 @@ function getKnowledgeMemoryStats() {
     };
 }
 
+function requireDb() {
+    if (!db) throw new Error('Knowledge memory database not initialized');
+}
+
+function recordSessionGeneratedImage(sessionId, imageId, createdAtMs) {
+    requireDb();
+    const session = String(sessionId || '').trim();
+    const image = String(imageId || '').trim();
+    if (!session || !image) return false;
+    const createdAt = createdAtMs != null ? Number(createdAtMs) : Date.now();
+    if (!Number.isFinite(createdAt)) return false;
+    const result = db.prepare(`
+        INSERT OR IGNORE INTO session_generated_images (session_id, image_id, created_at)
+        VALUES (?, ?, ?)
+    `).run(session, image, createdAt);
+    return result.changes > 0;
+}
+
+/**
+ * Images generated in this session after the previous save_memory and at or before nowMs.
+ * Moves the session cursor so the next save does not see them again.
+ */
+function takeSessionImagesSinceLastSave(sessionId, nowMs) {
+    requireDb();
+    const session = String(sessionId || '').trim();
+    if (!session) return [];
+    const now = nowMs != null ? Number(nowMs) : Date.now();
+    const cursorRow = db.prepare('SELECT last_save_at FROM session_save_cursors WHERE session_id = ?').get(session);
+    const cursor = cursorRow ? Number(cursorRow.last_save_at) || 0 : 0;
+    const rows = db.prepare(`
+        SELECT image_id FROM session_generated_images
+        WHERE session_id = ? AND created_at > ? AND created_at <= ?
+        ORDER BY created_at ASC, id ASC
+    `).all(session, cursor, now);
+    db.prepare(`
+        INSERT INTO session_save_cursors (session_id, last_save_at) VALUES (?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET last_save_at = excluded.last_save_at
+    `).run(session, now);
+    return rows.map((row) => row.image_id);
+}
+
+function linkMemoryImage(input = {}) {
+    requireDb();
+    const name = String(input.memory || input.memoryName || input.name || '').trim();
+    const image = String(input.image || input.imageId || input.filename || '').trim();
+    if (!name) return { success: false, error: 'memory is required' };
+    if (!image) return { success: false, error: 'image is required' };
+    const mem = db.prepare('SELECT revision FROM knowledge_memories WHERE name = ?').get(name);
+    if (!mem) return { success: false, error: `Memory "${name}" not found` };
+    const current = Number(mem.revision) || 1;
+    const revision = input.revision != null && input.revision !== ''
+        ? parseInt(input.revision, 10)
+        : current;
+    if (!Number.isFinite(revision) || revision < 1) {
+        return { success: false, error: 'revision must be a positive integer' };
+    }
+    const source = input.source === 'auto' ? 'auto' : 'manual';
+    const note = input.note != null && String(input.note).trim() ? String(input.note).trim() : null;
+    const sessionId = input.sessionId != null && String(input.sessionId).trim()
+        ? String(input.sessionId).trim()
+        : null;
+    db.prepare(`
+        INSERT INTO memory_image_links (memory_name, revision, image_id, session_id, source, note, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+        ON CONFLICT(memory_name, revision, image_id) DO UPDATE SET
+            note = COALESCE(excluded.note, memory_image_links.note),
+            session_id = COALESCE(excluded.session_id, memory_image_links.session_id),
+            source = excluded.source
+    `).run(name, revision, image, sessionId, source, note);
+    return { success: true, memory: name, revision, image, source, note, sessionId };
+}
+
+function unlinkMemoryImage(input = {}) {
+    requireDb();
+    const name = String(input.memory || input.memoryName || input.name || '').trim();
+    const image = String(input.image || input.imageId || input.filename || '').trim();
+    if (!name) return { success: false, error: 'memory is required' };
+    if (!image) return { success: false, error: 'image is required' };
+    let result;
+    if (input.revision != null && input.revision !== '') {
+        const revision = parseInt(input.revision, 10);
+        if (!Number.isFinite(revision) || revision < 1) {
+            return { success: false, error: 'revision must be a positive integer' };
+        }
+        result = db.prepare(`
+            DELETE FROM memory_image_links WHERE memory_name = ? AND image_id = ? AND revision = ?
+        `).run(name, image, revision);
+        return { success: result.changes > 0, memory: name, image, revision, removed: result.changes };
+    }
+    const mem = db.prepare('SELECT revision FROM knowledge_memories WHERE name = ?').get(name);
+    const revision = mem ? (Number(mem.revision) || 1) : null;
+    if (!revision) return { success: false, error: `Memory "${name}" not found` };
+    result = db.prepare(`
+        DELETE FROM memory_image_links WHERE memory_name = ? AND image_id = ? AND revision = ?
+    `).run(name, image, revision);
+    return { success: result.changes > 0, memory: name, image, revision, removed: result.changes };
+}
+
+function mapImageLinkRow(row) {
+    return {
+        memory: row.memory_name,
+        revision: row.revision,
+        imageId: row.image_id,
+        sessionId: row.session_id,
+        source: row.source,
+        note: row.note,
+        createdAt: row.created_at
+    };
+}
+
+function listMemoryImageLinks(input = {}) {
+    requireDb();
+    const name = String(input.memory || input.memoryName || input.name || '').trim();
+    if (!name) return [];
+    if (input.revision != null && input.revision !== '') {
+        const revision = parseInt(input.revision, 10);
+        return db.prepare(`
+            SELECT memory_name, revision, image_id, session_id, source, note, created_at
+            FROM memory_image_links
+            WHERE memory_name = ? AND revision = ?
+            ORDER BY id ASC
+        `).all(name, revision).map(mapImageLinkRow);
+    }
+    return db.prepare(`
+        SELECT memory_name, revision, image_id, session_id, source, note, created_at
+        FROM memory_image_links
+        WHERE memory_name = ?
+        ORDER BY revision ASC, id ASC
+    `).all(name).map(mapImageLinkRow);
+}
+
+function parseStoredObservations(raw) {
+    if (!raw) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (_err) {
+        return [];
+    }
+}
+
+function listMemoryRevisions(memoryName) {
+    requireDb();
+    const name = String(memoryName || '').trim();
+    if (!name) return [];
+    const rows = db.prepare(`
+        SELECT revision, observations_json, session_id, created_at
+        FROM memory_revisions
+        WHERE memory_name = ?
+        ORDER BY revision ASC
+    `).all(name);
+    const images = db.prepare(`
+        SELECT revision, image_id, session_id, source, note, created_at
+        FROM memory_image_links
+        WHERE memory_name = ?
+        ORDER BY revision ASC, id ASC
+    `).all(name);
+    const byRev = new Map();
+    images.forEach((row) => {
+        if (!byRev.has(row.revision)) byRev.set(row.revision, []);
+        byRev.get(row.revision).push(mapImageLinkRow(row));
+    });
+    const seen = new Set(rows.map((row) => row.revision));
+    const revisions = rows.map((row) => ({
+        revision: row.revision,
+        sessionId: row.session_id,
+        createdAt: row.created_at,
+        observations: parseStoredObservations(row.observations_json),
+        images: byRev.get(row.revision) || []
+    }));
+    byRev.forEach((imgs, revision) => {
+        if (seen.has(revision)) return;
+        revisions.push({
+            revision,
+            sessionId: imgs[0] && imgs[0].sessionId,
+            createdAt: imgs[0] && imgs[0].createdAt,
+            observations: [],
+            images: imgs
+        });
+    });
+    revisions.sort((a, b) => a.revision - b.revision);
+    return revisions;
+}
+
+function getMemoryRevisionImages(memoryName, revision) {
+    const revisions = listMemoryRevisions(memoryName);
+    if (revision != null && revision !== '') {
+        const rev = parseInt(revision, 10);
+        return revisions.filter((row) => row.revision === rev);
+    }
+    return revisions;
+}
+
+function observationText(row) {
+    if (typeof row === 'string') return row;
+    return String((row && (row.content != null ? row.content : row.text)) || '');
+}
+
+function attachObservationImages(observations, revisions) {
+    const assigned = new Map();
+    let prev = new Map();
+    const sorted = Array.isArray(revisions) ? [...revisions].sort((a, b) => a.revision - b.revision) : [];
+    sorted.forEach((rev) => {
+        const counts = new Map();
+        const texts = (Array.isArray(rev.observations) ? rev.observations : []).map(observationText);
+        texts.forEach((text) => counts.set(text, (counts.get(text) || 0) + 1));
+        counts.forEach((count, text) => {
+            const added = count - (prev.get(text) || 0);
+            if (added > 0 && text && !assigned.has(text)) {
+                assigned.set(text, { images: rev.images || [], revision: rev.revision });
+            }
+        });
+        prev = counts;
+    });
+    return (Array.isArray(observations) ? observations : []).map((row) => {
+        const text = observationText(row);
+        const hit = assigned.get(text);
+        const base = typeof row === 'string' ? { content: row, importance: 0.5 } : { ...row };
+        return {
+            ...base,
+            images: hit ? hit.images : [],
+            imageRevision: hit ? hit.revision : null
+        };
+    });
+}
+
+function parseV5Finding(content) {
+    const parts = String(content || '').split('|').map((part) => part.trim());
+    if (parts.length < 2) return null;
+    return {
+        date: parts[0] || '',
+        gist: parts[1] || '',
+        result: parts[2] || '',
+        verdict: parts.slice(3).join(' | ')
+    };
+}
+
+function decorateMemoryForRevisionDisplay(memory) {
+    if (!memory || !memory.name) return memory;
+    const revisions = listMemoryRevisions(memory.name);
+    const observations = attachObservationImages(memory.observations, revisions);
+    const findingRows = memory.name === V5_MEDIUM_EFFORT_MEMORY
+        ? observations.map((row) => ({
+            ...row,
+            finding: parseV5Finding(row.content)
+        }))
+        : null;
+    return {
+        ...memory,
+        observations,
+        revisions,
+        findingRows
+    };
+}
+
+function fastSearchKnowledgeMemories(query, limit = 20) {
+    requireDb();
+    const match = ftsMatchQuery(query);
+    const cap = Math.max(1, Math.min(50, parseInt(limit, 10) || 20));
+    if (!match) return [];
+    try {
+        return db.prepare(`
+            SELECT km.name, km.description, km.category, km.confidence, km.model, km.updated_at, km.revision
+            FROM knowledge_memory_fts f
+            JOIN knowledge_memories km ON km.id = f.rowid
+            WHERE knowledge_memory_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+        `).all(match, cap);
+    } catch (error) {
+        logger.warn('Knowledge memory fast search fell back to LIKE:', error.message);
+        const like = `%${String(query || '').trim().toLowerCase()}%`;
+        return db.prepare(`
+            SELECT name, description, category, confidence, model, updated_at, revision
+            FROM knowledge_memories km
+            WHERE LOWER(name) LIKE ? OR LOWER(description) LIKE ? OR LOWER(IFNULL(category, '')) LIKE ?
+               OR LOWER(IFNULL(model, '')) LIKE ?
+               OR EXISTS (
+                    SELECT 1 FROM knowledge_observations ko
+                    WHERE ko.memory_id = km.id AND LOWER(ko.content) LIKE ?
+               )
+            ORDER BY updated_at DESC
+            LIMIT ?
+        `).all(like, like, like, like, like, cap);
+    }
+}
+
+function buildMemoryMindMap({ limit = 60, search = '', category = null, model = null } = {}) {
+    requireDb();
+    const page = listKnowledgeMemoriesPaged({
+        limit: Math.max(1, Math.min(120, parseInt(limit, 10) || 60)),
+        offset: 0,
+        search: search || '',
+        category: category || null,
+        model: model || null,
+        sort: 'name'
+    });
+    const items = page.items || [];
+    const idStmt = db.prepare('SELECT id FROM knowledge_memories WHERE name = ?');
+    const entStmt = db.prepare('SELECT name FROM knowledge_entities WHERE memory_id = ?');
+    const obsStmt = db.prepare('SELECT content FROM knowledge_observations WHERE memory_id = ?');
+    const relStmt = db.prepare('SELECT from_entity_id, to_entity_id, relation_type FROM knowledge_relations WHERE memory_id = ?');
+    const tagOwners = new Map();
+    const texts = new Map();
+    const relations = new Map();
+    const nameByLower = new Map();
+
+    items.forEach((mem) => {
+        nameByLower.set(String(mem.name).toLowerCase(), mem.name);
+        const row = idStmt.get(mem.name);
+        if (!row) {
+            texts.set(mem.name, String(mem.description || '').toLowerCase());
+            relations.set(mem.name, []);
+            return;
+        }
+        entStmt.all(row.id).forEach((entity) => {
+            const tag = String(entity.name || '').trim();
+            if (!tag || tag.toLowerCase() === 'memory') return;
+            const key = tag.toLowerCase();
+            if (!tagOwners.has(key)) tagOwners.set(key, { label: tag, owners: [] });
+            tagOwners.get(key).owners.push(mem.name);
+        });
+        const notes = obsStmt.all(row.id).map((item) => item.content).join('\n');
+        texts.set(mem.name, `${mem.description || ''}\n${notes}`.toLowerCase());
+        relations.set(mem.name, relStmt.all(row.id));
+    });
+
+    const nodes = [];
+    const edges = [];
+    const nodeIds = new Set();
+    const addNode = (node) => {
+        if (nodeIds.has(node.id)) return;
+        nodeIds.add(node.id);
+        nodes.push(node);
+    };
+
+    items.forEach((mem) => {
+        addNode({
+            id: `mem:${mem.name}`,
+            kind: 'memory',
+            name: mem.name,
+            label: mem.name,
+            category: mem.category || '',
+            confidence: mem.confidence,
+            model: mem.model || '',
+            updated_at: mem.updated_at
+        });
+        if (mem.category) {
+            const cid = `cat:${mem.category}`;
+            addNode({ id: cid, kind: 'category', label: mem.category, name: mem.category });
+            edges.push({ from: `mem:${mem.name}`, to: cid, kind: 'category' });
+        }
+    });
+
+    tagOwners.forEach((info, key) => {
+        const unique = [...new Set(info.owners)];
+        if (unique.length < 2 || unique.length > 24) return;
+        const tid = `tag:${key}`;
+        addNode({ id: tid, kind: 'tag', label: info.label, name: info.label });
+        unique.forEach((owner) => {
+            edges.push({ from: `mem:${owner}`, to: tid, kind: 'shared_tag' });
+        });
+    });
+
+    const seenEdge = new Set();
+    const addEdge = (edge) => {
+        const key = `${edge.kind}|${edge.from}|${edge.to}|${edge.label || ''}`;
+        if (seenEdge.has(key)) return;
+        seenEdge.add(key);
+        edges.push(edge);
+    };
+
+    items.forEach((mem) => {
+        const text = texts.get(mem.name) || '';
+        items.forEach((other) => {
+            if (other.name === mem.name || other.name.length < 4) return;
+            if (text.includes(String(other.name).toLowerCase())) {
+                addEdge({ from: `mem:${mem.name}`, to: `mem:${other.name}`, kind: 'reference' });
+            }
+        });
+        (relations.get(mem.name) || []).forEach((rel) => {
+            [rel.from_entity_id, rel.to_entity_id].forEach((end) => {
+                const target = nameByLower.get(String(end || '').trim().toLowerCase());
+                if (target && target !== mem.name) {
+                    addEdge({
+                        from: `mem:${mem.name}`,
+                        to: `mem:${target}`,
+                        kind: 'link',
+                        label: rel.relation_type
+                    });
+                }
+            });
+        });
+    });
+
+    return { nodes, edges, total: page.total };
+}
+
 module.exports = {
     initializeKnowledgeMemoryDatabase,
     closeKnowledgeMemoryDatabase,
@@ -1272,6 +1845,21 @@ module.exports = {
     countKnowledgeMemoriesByFilter,
     deleteKnowledgeMemoriesByFilter,
     searchKnowledgeMemories,
-    getKnowledgeMemoryStats
+    getKnowledgeMemoryStats,
+    MEMORY_SORTS,
+    V5_MEDIUM_EFFORT_MEMORY,
+    memorySortSql,
+    recordSessionGeneratedImage,
+    takeSessionImagesSinceLastSave,
+    linkMemoryImage,
+    unlinkMemoryImage,
+    listMemoryImageLinks,
+    listMemoryRevisions,
+    getMemoryRevisionImages,
+    attachObservationImages,
+    parseV5Finding,
+    decorateMemoryForRevisionDisplay,
+    fastSearchKnowledgeMemories,
+    buildMemoryMindMap
 };
 

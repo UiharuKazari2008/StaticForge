@@ -13,7 +13,7 @@ const VALID_KNOWLEDGE_FILTERS = ['low_confidence', 'old_usage', 'never_used', 'e
 
 async function handleListKnowledgeMemories(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
-        const { requestId, limit, offset, search, category, page, perPage } = message;
+        const { requestId, limit, offset, search, category, page, perPage, sort, model } = message;
 
         const knowledgeMemoryDb = handlersCtx.globalResources.getKnowledgeMemoryDb();
 
@@ -40,7 +40,9 @@ async function handleListKnowledgeMemories(handlersCtx, ws, message, clientInfo,
                     limit: respPerPage,
                     offset: computedOffset,
                     search: search || '',
-                    category: category || null
+                    category: category || null,
+                    model: model || null,
+                    sort: sort || null
                 });
                 memories = res.items;
                 total = res.total;
@@ -53,7 +55,9 @@ async function handleListKnowledgeMemories(handlersCtx, ws, message, clientInfo,
                     limit: respPerPage,
                     offset: off,
                     search: search || '',
-                    category: category || null
+                    category: category || null,
+                    model: model || null,
+                    sort: sort || null
                 });
                 memories = res.items;
                 total = res.total;
@@ -103,7 +107,9 @@ async function handleGetKnowledgeMemory(handlersCtx, ws, message, clientInfo, ws
             return;
         }
 
-        const memory = knowledgeMemoryDb.getKnowledgeMemory(name, false);
+        const memory = knowledgeMemoryDb.decorateMemoryForRevisionDisplay(
+            knowledgeMemoryDb.getKnowledgeMemory(name, false)
+        );
 
         if (!memory) {
             handlersCtx.sendError(ws, `Memory "${name}" not found`, 'MEMORY_NOT_FOUND', requestId);
@@ -388,6 +394,166 @@ async function handleUpdateKnowledgeMemory(handlersCtx, ws, message, clientInfo,
     }
 }
 
+function knowledgeDbOrError(handlersCtx, ws, requestId) {
+    const knowledgeMemoryDb = handlersCtx.globalResources.getKnowledgeMemoryDb();
+    if (!knowledgeMemoryDb) {
+        handlersCtx.sendError(ws, 'Knowledge memory database not available', 'DB_NOT_AVAILABLE', requestId);
+        return null;
+    }
+    return knowledgeMemoryDb;
+}
+
+async function handleSearchKnowledgeMemoriesFast(handlersCtx, ws, message) {
+    try {
+        const { requestId, query, limit } = message;
+        const knowledgeMemoryDb = knowledgeDbOrError(handlersCtx, ws, requestId);
+        if (!knowledgeMemoryDb) return;
+        const q = String(query || '').trim();
+        if (!q) {
+            handlersCtx.sendToClient(ws, {
+                type: 'search_knowledge_memories_fast_response',
+                data: { success: true, results: [] },
+                timestamp: new Date().toISOString(),
+                requestId
+            });
+            return;
+        }
+        const results = knowledgeMemoryDb.fastSearchKnowledgeMemories(q, limit);
+        handlersCtx.sendToClient(ws, {
+            type: 'search_knowledge_memories_fast_response',
+            data: { success: true, results },
+            timestamp: new Date().toISOString(),
+            requestId
+        });
+    } catch (error) {
+        console.error('❌ Error searching knowledge memories:', error);
+        handlersCtx.sendError(ws, 'Failed to search knowledge memories', error.message, message.requestId);
+    }
+}
+
+async function handleGetMemoryMindMap(handlersCtx, ws, message) {
+    try {
+        const { requestId, search, category, model, limit } = message;
+        const knowledgeMemoryDb = knowledgeDbOrError(handlersCtx, ws, requestId);
+        if (!knowledgeMemoryDb) return;
+        const map = knowledgeMemoryDb.buildMemoryMindMap({
+            search: search || '',
+            category: category || null,
+            model: model || null,
+            limit
+        });
+        handlersCtx.sendToClient(ws, {
+            type: 'get_memory_mind_map_response',
+            data: { success: true, ...map },
+            timestamp: new Date().toISOString(),
+            requestId
+        });
+    } catch (error) {
+        console.error('❌ Error building memory mind map:', error);
+        handlersCtx.sendError(ws, 'Failed to build memory mind map', error.message, message.requestId);
+    }
+}
+
+async function handleListMemoryImageLinks(handlersCtx, ws, message) {
+    try {
+        const { requestId, name, memory, revision } = message;
+        const knowledgeMemoryDb = knowledgeDbOrError(handlersCtx, ws, requestId);
+        if (!knowledgeMemoryDb) return;
+        const memoryName = String(name || memory || '').trim();
+        if (!memoryName) {
+            handlersCtx.sendError(ws, 'Memory name is required', 'MISSING_NAME', requestId);
+            return;
+        }
+        const links = knowledgeMemoryDb.listMemoryImageLinks({ memoryName, revision });
+        handlersCtx.sendToClient(ws, {
+            type: 'list_memory_image_links_response',
+            data: { success: true, memory: memoryName, links },
+            timestamp: new Date().toISOString(),
+            requestId
+        });
+    } catch (error) {
+        console.error('❌ Error listing memory image links:', error);
+        handlersCtx.sendError(ws, 'Failed to list memory image links', error.message, message.requestId);
+    }
+}
+
+async function handleGetMemoryRevisionImages(handlersCtx, ws, message) {
+    try {
+        const { requestId, name, memory, revision } = message;
+        const knowledgeMemoryDb = knowledgeDbOrError(handlersCtx, ws, requestId);
+        if (!knowledgeMemoryDb) return;
+        const memoryName = String(name || memory || '').trim();
+        if (!memoryName) {
+            handlersCtx.sendError(ws, 'Memory name is required', 'MISSING_NAME', requestId);
+            return;
+        }
+        const revisions = knowledgeMemoryDb.getMemoryRevisionImages(memoryName, revision);
+        handlersCtx.sendToClient(ws, {
+            type: 'get_memory_revision_images_response',
+            data: { success: true, memory: memoryName, revisions },
+            timestamp: new Date().toISOString(),
+            requestId
+        });
+    } catch (error) {
+        console.error('❌ Error reading memory revision images:', error);
+        handlersCtx.sendError(ws, 'Failed to read memory revision images', error.message, message.requestId);
+    }
+}
+
+async function handleLinkMemoryImage(handlersCtx, ws, message) {
+    try {
+        const { requestId, name, memory, image, imageId, note, revision } = message;
+        const knowledgeMemoryDb = knowledgeDbOrError(handlersCtx, ws, requestId);
+        if (!knowledgeMemoryDb) return;
+        const result = knowledgeMemoryDb.linkMemoryImage({
+            memory: memory || name,
+            image: image || imageId,
+            note,
+            revision,
+            source: 'manual'
+        });
+        if (!result.success) {
+            handlersCtx.sendError(ws, result.error || 'Failed to link image', 'LINK_FAILED', requestId);
+            return;
+        }
+        handlersCtx.sendToClient(ws, {
+            type: 'link_memory_image_response',
+            data: result,
+            timestamp: new Date().toISOString(),
+            requestId
+        });
+    } catch (error) {
+        console.error('❌ Error linking memory image:', error);
+        handlersCtx.sendError(ws, 'Failed to link memory image', error.message, message.requestId);
+    }
+}
+
+async function handleUnlinkMemoryImage(handlersCtx, ws, message) {
+    try {
+        const { requestId, name, memory, image, imageId, revision } = message;
+        const knowledgeMemoryDb = knowledgeDbOrError(handlersCtx, ws, requestId);
+        if (!knowledgeMemoryDb) return;
+        const result = knowledgeMemoryDb.unlinkMemoryImage({
+            memory: memory || name,
+            image: image || imageId,
+            revision
+        });
+        if (!result.success) {
+            handlersCtx.sendError(ws, result.error || 'Image link not found', 'UNLINK_FAILED', requestId);
+            return;
+        }
+        handlersCtx.sendToClient(ws, {
+            type: 'unlink_memory_image_response',
+            data: result,
+            timestamp: new Date().toISOString(),
+            requestId
+        });
+    } catch (error) {
+        console.error('❌ Error unlinking memory image:', error);
+        handlersCtx.sendError(ws, 'Failed to unlink memory image', error.message, message.requestId);
+    }
+}
+
 /**
  * Register knowledge memory WebSocket packet handlers on wsPacketRegistry.
  * @param {import('../../websocketHandlers').WebSocketMessageHandlers} handlersCtx
@@ -411,6 +577,12 @@ function registerPackets(handlersCtx) {
     reg('count_knowledge_memories_by_filter', handleCountKnowledgeMemoriesByFilter);
     reg('delete_knowledge_memories_by_filter', handleDeleteKnowledgeMemoriesByFilter, KNOWLEDGE_DESTRUCTIVE);
     reg('update_knowledge_memory', handleUpdateKnowledgeMemory, KNOWLEDGE_DESTRUCTIVE);
+    reg('search_knowledge_memories_fast', handleSearchKnowledgeMemoriesFast);
+    reg('get_memory_mind_map', handleGetMemoryMindMap);
+    reg('list_memory_image_links', handleListMemoryImageLinks);
+    reg('get_memory_revision_images', handleGetMemoryRevisionImages);
+    reg('link_memory_image', handleLinkMemoryImage, KNOWLEDGE_DESTRUCTIVE);
+    reg('unlink_memory_image', handleUnlinkMemoryImage, KNOWLEDGE_DESTRUCTIVE);
 }
 
 module.exports = {

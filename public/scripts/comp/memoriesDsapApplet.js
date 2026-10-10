@@ -17,6 +17,35 @@ const MEMORIES_DSAP_TAB_LABELS = {
 };
 const MEMORIES_DEFAULT_PER_PAGE = 25;
 const MEMORIES_PER_PAGE_OPTIONS = [10, 25, 50, 100];
+const MEMORIES_V5_EFFORT = 'V5 Medium effort testing';
+const MEMORIES_SORT_OPTIONS = [
+    { id: '', label: 'Most used' },
+    { id: 'name', label: 'Name' },
+    { id: 'updated', label: 'Updated' },
+    { id: 'confidence', label: 'Confidence' },
+    { id: 'category', label: 'Category' },
+    { id: 'model', label: 'Model' }
+];
+
+function memoriesDsapSortLabel(sort) {
+    const hit = MEMORIES_SORT_OPTIONS.find((row) => row.id === (sort || ''));
+    return hit ? hit.label : 'Most used';
+}
+
+function memoriesDsapImageSrc(imageId) {
+    return `/images/${encodeURIComponent(imageId)}`;
+}
+
+function memoriesDsapRenderImageThumbs(images) {
+    const rows = Array.isArray(images) ? images : [];
+    if (!rows.length) return '';
+    return `<div class="memories-image-row">${rows.map((img) => {
+        const id = img && (img.imageId || img.image || img);
+        const note = img && img.note ? ` title="${memoriesDsapEscapeAttr(img.note)}"` : '';
+        const source = img && img.source ? `<span class="memories-image-source">${memoriesDsapEscapeHtml(img.source)}</span>` : '';
+        return `<a class="memories-image-thumb" href="${memoriesDsapImageSrc(id)}" target="_blank" rel="noopener"${note}><img src="${memoriesDsapImageSrc(id)}" alt="${memoriesDsapEscapeAttr(id)}">${source}</a>`;
+    }).join('')}</div>`;
+}
 const LINKXI_VERBOSITY_OPTIONS = [
     { value: 'auto', name: 'Auto' },
     { value: '1', name: 'Brief' },
@@ -62,12 +91,14 @@ function memoriesDsapDecodeSegment(segment) {
 }
 
 /** Build a canonical list URL carrying the current list filters/page (for history + back buttons) */
-function memoriesDsapBuildListUrl({ page = 1, perPage = MEMORIES_DEFAULT_PER_PAGE, search = '', category = '' } = {}) {
+function memoriesDsapBuildListUrl({ page = 1, perPage = MEMORIES_DEFAULT_PER_PAGE, search = '', category = '', sort = '', view = '' } = {}) {
     const q = new URLSearchParams();
     if (page && page > 1) q.set('page', String(page));
     if (perPage && perPage !== MEMORIES_DEFAULT_PER_PAGE) q.set('perPage', String(perPage));
     if (search) q.set('search', search);
     if (category) q.set('category', category);
+    if (sort) q.set('sort', sort);
+    if (view && view !== 'list') q.set('view', view);
     const qs = q.toString();
     return qs ? `dsap://${MEMORIES_DSAP_URL}/?${qs}` : `dsap://${MEMORIES_DSAP_URL}/`;
 }
@@ -81,6 +112,8 @@ function memoriesDsapBuildDetailUrl(name, listContext = null) {
         if (listContext.perPage && listContext.perPage !== MEMORIES_DEFAULT_PER_PAGE) q.set('perPage', String(listContext.perPage));
         if (listContext.search) q.set('search', listContext.search);
         if (listContext.category) q.set('category', listContext.category);
+        if (listContext.sort) q.set('sort', listContext.sort);
+        if (listContext.view && listContext.view !== 'list') q.set('view', listContext.view);
         const qs = q.toString();
         if (qs) base += `?${qs}`;
     }
@@ -136,7 +169,20 @@ ${memoriesDsapBuildTabBar(tab)}
     <div class="memories-toolbar dsap-smf-toolbar">
         <div class="memories-search-wrap">
             <i class="fas fa-search memories-search-icon"></i>
-            <input type="text" id="memoriesSearchInput" class="memories-search-input" placeholder="Search memories by name or description...">
+            <input type="text" id="memoriesSearchInput" class="memories-search-input" placeholder="Search memories — Enter opens the top hit" autocomplete="off">
+            <div id="memoriesFastSearch" class="memories-fast-search hidden"></div>
+        </div>
+        <div class="memories-filter-wrap" id="memoriesSortWrap">
+            <button type="button" id="memoriesSortBtn" class="memories-filter-btn" title="Sort memories">
+                <i class="fas fa-sort"></i>
+                <span id="memoriesSortLabel">Most used</span>
+                <i class="fas fa-caret-down"></i>
+            </button>
+        </div>
+        <div class="memories-view-toggle" id="memoriesViewToggle">
+            <button type="button" class="memories-btn memories-btn-small" data-memories-view="list">List</button>
+            <button type="button" class="memories-btn memories-btn-small" data-memories-view="cards">Cards</button>
+            <button type="button" class="memories-btn memories-btn-small" data-memories-view="map">Mind map</button>
         </div>
         <div class="memories-filter-wrap" id="memoriesCategoryFilterWrap">
             <button type="button" id="memoriesCategoryBtn" class="memories-filter-btn" title="Filter by category">
@@ -161,6 +207,7 @@ ${memoriesDsapBuildTabBar(tab)}
             <span>Loading Knowledge memories...</span>
         </div>
         <div id="memoriesList" class="memories-list hidden"></div>
+        <div id="memoriesMindMap" class="memories-mindmap hidden"></div>
         <div id="memoriesEmpty" class="memories-empty hidden">
             <i class="fas fa-info-circle"></i>
             <span>No memories found</span>
@@ -276,6 +323,13 @@ ${memoriesDsapBuildTabBar(tab)}
                     </button>
                 </div>
                 <div id="memoriesObservations" class="memories-observations"></div>
+            </div>
+
+            <div class="memories-section">
+                <div class="memories-section-head">
+                    <h4><i class="fas fa-images"></i> Revisions</h4>
+                </div>
+                <div id="memoriesRevisions" class="memories-revisions"></div>
             </div>
         </div>
     </div>
@@ -1290,6 +1344,81 @@ const memoriesDsapScopedCss = `
   padding: 1px 3px !important;
   border-radius: 0 !important;
 }
+[data-dsap="memories-dyna"] .memories-view-toggle { display: flex; gap: 2px; }
+[data-dsap="memories-dyna"] .memories-view-toggle .is-active {
+  background: #d6e4f5 !important;
+  border-color: #3a6ea5 !important;
+}
+[data-dsap="memories-dyna"] .memories-fast-search {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: 100%;
+  background: #fff;
+  border: 1px solid #666;
+  max-height: 240px;
+  overflow: auto;
+}
+[data-dsap="memories-dyna"] .memories-fast-hit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  border-bottom: 1px solid #ddd;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 10pt;
+}
+[data-dsap="memories-dyna"] .memories-fast-hit:hover,
+[data-dsap="memories-dyna"] .memories-fast-hit.is-active { background: #e7f0fa; }
+[data-dsap="memories-dyna"] .memories-fast-hit small { color: #555; }
+[data-dsap="memories-dyna"] .memories-list.memories-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+[data-dsap="memories-dyna"] .memories-card {
+  border: 1px solid #999;
+  background: #fff;
+  padding: 6px;
+  cursor: pointer;
+  min-height: 110px;
+}
+[data-dsap="memories-dyna"] .memories-card:hover { background: #f4f8fc; }
+[data-dsap="memories-dyna"] .memories-mindmap {
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #999;
+  min-height: 280px;
+}
+[data-dsap="memories-dyna"] .memories-map-node { cursor: pointer; }
+[data-dsap="memories-dyna"] .memories-image-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+[data-dsap="memories-dyna"] .memories-image-thumb {
+  position: relative;
+  display: block;
+  width: 72px;
+  height: 72px;
+  border: 1px solid #999;
+  background: #eee;
+  overflow: hidden;
+}
+[data-dsap="memories-dyna"] .memories-image-thumb img { width: 100%; height: 100%; object-fit: cover; }
+[data-dsap="memories-dyna"] .memories-image-source {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 8pt;
+  text-align: center;
+}
+[data-dsap="memories-dyna"] .memories-finding-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+[data-dsap="memories-dyna"] .memories-finding-table th,
+[data-dsap="memories-dyna"] .memories-finding-table td { border: 1px solid #bbb; padding: 3px 4px; vertical-align: top; }
+[data-dsap="memories-dyna"] .memories-rev-card { border: 1px solid #ccc; background: #fff; padding: 4px 6px; margin-bottom: 4px; }
 
 /* Footer (bulk actions + hint) */
 [data-dsap="memories-dyna"] .memories-footer {
@@ -1337,12 +1466,14 @@ const memoriesDsapDriver = {
         this._state = {
             host,
             memories: [],           // current page items
-            listMeta: { total: 0, page: 1, perPage: MEMORIES_DEFAULT_PER_PAGE, search: '', category: null },
+            listMeta: { total: 0, page: 1, perPage: MEMORIES_DEFAULT_PER_PAGE, search: '', category: null, sort: '', view: 'list' },
             current: null,          // detail memory
             isEdit: false,
             original: null,
             wsHandlers: [],
-            searchTimer: null
+            searchTimer: null,
+            fastSearchTimer: null,
+            fastHits: []
         };
 
         const root = host.getRoot();
@@ -1374,6 +1505,8 @@ const memoriesDsapDriver = {
         // Category filter (list only)
         setTimeout(() => {
             this._wireCategoryClickMenu(root);
+            this._wireSortClickMenu(root);
+            this._wireViewToggle(root);
             this._wirePerPageClickMenu(root);
         }, 0);
 
@@ -1404,14 +1537,17 @@ const memoriesDsapDriver = {
             const perPage = Math.max(5, Math.min(200, parseInt(host.getQueryParam('perPage') || String(MEMORIES_DEFAULT_PER_PAGE), 10) || MEMORIES_DEFAULT_PER_PAGE));
             const search = host.getQueryParam('search') || '';
             const category = host.getQueryParam('category') || null;
+            const sort = host.getQueryParam('sort') || '';
+            const view = host.getQueryParam('view') || 'list';
 
-            this._state.listMeta = { total: 0, page, perPage, search, category };
+            this._state.listMeta = { total: 0, page, perPage, search, category, sort, view };
 
             this._prefillListControlsFromMeta(root);
+            this._markViewToggle(root, view);
 
             if (statsBar) statsBar.style.display = '';
 
-            void this._loadPagedList({ page, perPage, search, category });
+            void this._loadPagedList({ page, perPage, search, category, sort, view });
         }
 
         this._bindWs(root, host);
@@ -1465,40 +1601,62 @@ const memoriesDsapDriver = {
             searchInput.dataset.memoriesWired = '1';
             searchInput.addEventListener('input', () => {
                 clearTimeout(this._state.searchTimer);
+                clearTimeout(this._state.fastSearchTimer);
+                const typed = searchInput.value || '';
+                this._state.fastSearchTimer = setTimeout(() => {
+                    void this._runFastSearch(typed);
+                }, 80);
                 this._state.searchTimer = setTimeout(() => {
                     const meta = this._state.listMeta || {};
                     const newSearch = searchInput.value || '';
-                    // Only navigate if the value actually changed from what the URL says
                     if ((meta.search || '') !== newSearch) {
                         const url = memoriesDsapBuildListUrl({
-                            page: 1, // new search resets to first page
+                            page: 1,
                             perPage: meta.perPage || MEMORIES_DEFAULT_PER_PAGE,
                             search: newSearch,
-                            category: meta.category || ''
+                            category: meta.category || '',
+                            sort: meta.sort || '',
+                            view: meta.view || 'list'
                         });
                         if (typeof this._state.host.navigate === 'function') {
                             this._state.host.navigate(url);
                         } else {
-                            void this._loadPagedList({ page: 1, perPage: meta.perPage, search: newSearch, category: meta.category });
+                            void this._loadPagedList({
+                                page: 1,
+                                perPage: meta.perPage,
+                                search: newSearch,
+                                category: meta.category,
+                                sort: meta.sort,
+                                view: meta.view
+                            });
                         }
                     }
                 }, 280);
             });
 
-            // Also allow pressing Enter to force immediate navigation
             searchInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     clearTimeout(this._state.searchTimer);
+                    const hit = (this._state.fastHits || [])[0];
+                    if (hit && hit.name) {
+                        e.preventDefault();
+                        this._openMemoryFromSearch(hit.name);
+                        return;
+                    }
                     const meta = this._state.listMeta || {};
                     const url = memoriesDsapBuildListUrl({
                         page: 1,
                         perPage: meta.perPage || MEMORIES_DEFAULT_PER_PAGE,
                         search: searchInput.value || '',
-                        category: meta.category || ''
+                        category: meta.category || '',
+                        sort: meta.sort || '',
+                        view: meta.view || 'list'
                     });
                     if (typeof this._state.host.navigate === 'function') {
                         this._state.host.navigate(url);
                     }
+                } else if (e.key === 'Escape') {
+                    this._hideFastSearch();
                 }
             });
         }
@@ -1616,6 +1774,10 @@ const memoriesDsapDriver = {
             clearTimeout(state.searchTimer);
             state.searchTimer = null;
         }
+        if (state.fastSearchTimer) {
+            clearTimeout(state.fastSearchTimer);
+            state.fastSearchTimer = null;
+        }
 
         if (_memoriesCategoryOutsideClick) {
             document.removeEventListener('click', _memoriesCategoryOutsideClick, true);
@@ -1646,6 +1808,9 @@ const memoriesDsapDriver = {
 
         const label = root.querySelector('#memoriesCategoryLabel');
         if (label) label.textContent = meta.category || 'All Categories';
+        const sortLabel = root.querySelector('#memoriesSortLabel');
+        if (sortLabel) sortLabel.textContent = memoriesDsapSortLabel(meta.sort);
+        this._markViewToggle(root, meta.view || 'list');
 
         const hidden = root.querySelector('#memoriesPerPageHidden');
         const selected = root.querySelector('#memoriesPerPageSelected');
@@ -1709,7 +1874,7 @@ const memoriesDsapDriver = {
     },
 
     /** Load a page of memories (server does the search + category + ordering + paging) */
-    async _loadPagedList({ page = 1, perPage = MEMORIES_DEFAULT_PER_PAGE, search = '', category = null } = {}) {
+    async _loadPagedList({ page = 1, perPage = MEMORIES_DEFAULT_PER_PAGE, search = '', category = null, sort = '', view = 'list' } = {}) {
         const root = this._state.host.getRoot();
         const list = root.querySelector('#memoriesList');
         const loading = root.querySelector('#memoriesLoading');
@@ -1730,7 +1895,8 @@ const memoriesDsapDriver = {
                 page,
                 perPage,
                 search,
-                category
+                category,
+                sort: sort || undefined
             });
 
             if (resp && resp.success) {
@@ -1740,11 +1906,14 @@ const memoriesDsapDriver = {
                     page: resp.page || page,
                     perPage: resp.perPage || perPage,
                     search: search || '',
-                    category: category || null
+                    category: category || null,
+                    sort: sort || '',
+                    view: view || 'list'
                 };
 
                 this._updateStats(resp.stats);
                 this._renderPagedList();
+                if ((view || 'list') === 'map') void this._loadMindMap();
                 // Keep the toolbar controls in sync with the loaded meta (search value, category label, per-page)
                 this._prefillListControlsFromMeta(root);
                 if (pager) pager.style.opacity = '';
@@ -1823,17 +1992,29 @@ const memoriesDsapDriver = {
     _renderPagedList() {
         const root = this._state.host.getRoot();
         const listEl = root.querySelector('#memoriesList');
+        const mapEl = root.querySelector('#memoriesMindMap');
         const loading = root.querySelector('#memoriesLoading');
         const empty = root.querySelector('#memoriesEmpty');
         const pagerEl = root.querySelector('#memoriesPager');
+        const meta = this._state.listMeta || { total: 0, page: 1, perPage: MEMORIES_DEFAULT_PER_PAGE };
+        const view = meta.view || 'list';
+        if (listEl) listEl.classList.toggle('memories-card-grid', view === 'cards');
 
         if (loading) loading.classList.add('hidden');
 
-        const meta = this._state.listMeta || { total: 0, page: 1, perPage: MEMORIES_DEFAULT_PER_PAGE };
         const items = this._state.memories || [];
 
         // Update pager UI
         this._renderPager(root, meta);
+
+        if (view === 'map') {
+            if (listEl) listEl.classList.add('hidden');
+            if (empty) empty.classList.add('hidden');
+            if (mapEl) mapEl.classList.remove('hidden');
+            if (pagerEl) pagerEl.style.display = 'none';
+            return;
+        }
+        if (mapEl) mapEl.classList.add('hidden');
 
         if (!items.length) {
             if (listEl) listEl.classList.add('hidden');
@@ -1856,22 +2037,34 @@ const memoriesDsapDriver = {
 
         items.forEach(mem => {
             const item = document.createElement('div');
-            item.className = 'memories-memory-item';
+            item.className = view === 'cards' ? 'memories-card' : 'memories-memory-item';
             item.dataset.memoryName = mem.name || '';
             item.dataset.memoryDesc = mem.description || '';
 
+            const updated = mem.updated_at ? memoriesDsapFormatDate(mem.updated_at) : 'Never';
             const last = mem.last_used_at ? memoriesDsapFormatDate(mem.last_used_at) : 'Never';
             const catBadge = mem.category ? `<span class="memories-badge category">${memoriesDsapEscapeHtml(mem.category)}</span>` : '';
             const uses = `<span class="memories-badge">${mem.usage_count || 0} uses</span>`;
+            const modelBadge = mem.model ? `<span class="memories-badge">${memoriesDsapEscapeHtml(mem.model)}</span>` : '';
+            const confidence = `${((mem.confidence || 0) * 100).toFixed(0)}%`;
 
-            item.innerHTML = `
+            item.innerHTML = view === 'cards'
+                ? `
+                <div class="memories-memory-name">${memoriesDsapEscapeHtml(mem.name)}</div>
+                <div class="memories-memory-badges">${catBadge}${modelBadge}</div>
+                <div class="memories-memory-desc">${memoriesDsapEscapeHtml(mem.description || '')}</div>
+                <div class="memories-memory-meta">
+                    <span><i class="fas fa-star"></i> ${confidence}</span>
+                    <span><i class="fas fa-clock"></i> ${updated}</span>
+                </div>`
+                : `
                 <div class="memories-memory-item-header">
                     <div class="memories-memory-name">${memoriesDsapEscapeHtml(mem.name)}</div>
-                    <div class="memories-memory-badges">${catBadge}${uses}</div>
+                    <div class="memories-memory-badges">${catBadge}${modelBadge}${uses}</div>
                 </div>
                 <div class="memories-memory-desc">${memoriesDsapEscapeHtml(mem.description || '')}</div>
                 <div class="memories-memory-meta">
-                    <span><i class="fas fa-star"></i> ${((mem.confidence || 0) * 100).toFixed(0)}%</span>
+                    <span><i class="fas fa-star"></i> ${confidence}</span>
                     <span><i class="fas fa-clock"></i> ${last}</span>
                 </div>
             `;
@@ -1882,7 +2075,9 @@ const memoriesDsapDriver = {
                     page: meta.page,
                     perPage: meta.perPage,
                     search: meta.search || '',
-                    category: meta.category || ''
+                    category: meta.category || '',
+                    sort: meta.sort || '',
+                    view: meta.view || 'list'
                 };
                 const url = memoriesDsapBuildDetailUrl(mem.name, listCtx);
                 if (typeof this._state.host.navigate === 'function') {
@@ -1944,13 +2139,22 @@ const memoriesDsapDriver = {
             page,
             perPage,
             search: meta.search || '',
-            category: meta.category || ''
+            category: meta.category || '',
+            sort: meta.sort || '',
+            view: meta.view || 'list'
         });
 
         if (typeof this._state.host.navigate === 'function') {
             this._state.host.navigate(url);
         } else {
-            void this._loadPagedList({ page, perPage, search: meta.search, category: meta.category });
+            void this._loadPagedList({
+                page,
+                perPage,
+                search: meta.search,
+                category: meta.category,
+                sort: meta.sort,
+                view: meta.view
+            });
         }
     },
 
@@ -1962,8 +2166,10 @@ const memoriesDsapDriver = {
         const perPage = parseInt(host.getQueryParam('perPage') || String(MEMORIES_DEFAULT_PER_PAGE), 10) || MEMORIES_DEFAULT_PER_PAGE;
         const search = host.getQueryParam('search') || '';
         const category = host.getQueryParam('category') || '';
+        const sort = host.getQueryParam('sort') || '';
+        const view = host.getQueryParam('view') || 'list';
 
-        const url = memoriesDsapBuildListUrl({ page, perPage, search, category });
+        const url = memoriesDsapBuildListUrl({ page, perPage, search, category, sort, view });
         if (typeof host.navigate === 'function') {
             host.navigate(url);
         } else {
@@ -2011,6 +2217,7 @@ const memoriesDsapDriver = {
         this._renderEntities();
         this._renderRelations();
         this._renderObservations();
+        this._renderRevisions();
 
         this._updateEditUI();
     },
@@ -2363,11 +2570,265 @@ const memoriesDsapDriver = {
                     </div>
                 `;
                 card.querySelector('.memories-remove-btn').addEventListener('click', () => this._removeObservation(idx));
+            } else if (this._state.current && this._state.current.name === MEMORIES_V5_EFFORT) {
+                return;
             } else {
                 const imp = o.importance != null ? `<div class="memories-obs-imp">Importance: ${(o.importance * 100).toFixed(0)}%</div>` : '';
-                card.innerHTML = `<div class="memories-obs-content">${memoriesDsapEscapeHtml(o.content || '')}</div>${imp}`;
+                const thumbs = memoriesDsapRenderImageThumbs(o.images);
+                card.innerHTML = `<div class="memories-obs-content">${memoriesDsapEscapeHtml(o.content || '')}</div>${imp}${thumbs}`;
             }
             container.appendChild(card);
+        });
+
+        if (!isEdit && this._state.current && this._state.current.name === MEMORIES_V5_EFFORT) {
+            container.innerHTML = this._findingTableHtml(obs);
+        }
+    },
+
+    _findingTableHtml(obs) {
+        const rows = (obs || []).map((o) => {
+            const finding = o.finding || null;
+            const parts = finding || { date: '', gist: o.content || '', result: '', verdict: '' };
+            return `<tr>
+                <td>${memoriesDsapEscapeHtml(parts.date || '')}</td>
+                <td>${memoriesDsapEscapeHtml(parts.gist || o.content || '')}</td>
+                <td>${memoriesDsapEscapeHtml(parts.result || '')}</td>
+                <td>${memoriesDsapEscapeHtml(parts.verdict || '')}</td>
+                <td>${memoriesDsapRenderImageThumbs(o.images)}</td>
+            </tr>`;
+        }).join('');
+        return `<table class="memories-finding-table">
+            <thead><tr><th>Date</th><th>Prompt gist</th><th>Medium vs high</th><th>Verdict</th><th>Images</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="5">No findings</td></tr>'}</tbody>
+        </table>`;
+    },
+
+    _renderRevisions() {
+        const root = this._state.host.getRoot();
+        const container = root.querySelector('#memoriesRevisions');
+        if (!container) return;
+        const revisions = this._state.current?.revisions || [];
+        if (!revisions.length) {
+            container.innerHTML = '<div style="color:#222222;font-size:11pt;padding:4px 2px;">No revisions yet</div>';
+            return;
+        }
+        container.innerHTML = revisions.map((rev) => {
+            const when = rev.createdAt ? memoriesDsapFormatDate(rev.createdAt) : '';
+            const count = (rev.images || []).length;
+            return `<div class="memories-rev-card">
+                <div><strong>Revision ${memoriesDsapEscapeHtml(rev.revision)}</strong> ${memoriesDsapEscapeHtml(when)} · ${count} image${count === 1 ? '' : 's'}</div>
+                ${memoriesDsapRenderImageThumbs(rev.images)}
+            </div>`;
+        }).join('');
+    },
+
+    _markViewToggle(root, view) {
+        if (!root) return;
+        root.querySelectorAll('[data-memories-view]').forEach((btn) => {
+            btn.classList.toggle('is-active', btn.dataset.memoriesView === (view || 'list'));
+        });
+    },
+
+    _wireViewToggle(root) {
+        const wrap = root.querySelector('#memoriesViewToggle');
+        if (!wrap || wrap.dataset.memoriesWired === '1') return;
+        wrap.dataset.memoriesWired = '1';
+        wrap.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-memories-view]');
+            if (!btn) return;
+            const meta = this._state.listMeta || {};
+            const url = memoriesDsapBuildListUrl({
+                page: 1,
+                perPage: meta.perPage || MEMORIES_DEFAULT_PER_PAGE,
+                search: meta.search || '',
+                category: meta.category || '',
+                sort: meta.sort || '',
+                view: btn.dataset.memoriesView || 'list'
+            });
+            if (typeof this._state.host.navigate === 'function') this._state.host.navigate(url);
+        });
+    },
+
+    _wireSortClickMenu(root) {
+        const btn = root.querySelector('#memoriesSortBtn');
+        const label = root.querySelector('#memoriesSortLabel');
+        if (!btn || btn.dataset.memoriesSortWired === '1') return;
+        btn.dataset.memoriesSortWired = '1';
+        const driver = this;
+        const config = {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 280,
+            beforeShow: () => {
+                const current = (driver._state.listMeta && driver._state.listMeta.sort) || '';
+                config.sections[0].items = MEMORIES_SORT_OPTIONS.map((opt) => ({
+                    text: opt.label,
+                    action: 'select-memories-sort',
+                    sortValue: opt.id,
+                    loadfn: (item) => {
+                        item.highlighted = item.sortValue === current;
+                    }
+                }));
+            },
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-memories-sort') return;
+                if (label) label.textContent = item.text;
+                const meta = driver._state.listMeta || {};
+                const url = memoriesDsapBuildListUrl({
+                    page: 1,
+                    perPage: meta.perPage || MEMORIES_DEFAULT_PER_PAGE,
+                    search: meta.search || '',
+                    category: meta.category || '',
+                    sort: item.sortValue || '',
+                    view: meta.view || 'list'
+                });
+                if (typeof driver._state.host.navigate === 'function') driver._state.host.navigate(url);
+            }
+        };
+        this._attachMemoriesClickMenu(btn, config);
+    },
+
+    _hideFastSearch() {
+        const root = this._state && this._state.host && this._state.host.getRoot();
+        const box = root && root.querySelector('#memoriesFastSearch');
+        if (box) {
+            box.classList.add('hidden');
+            box.innerHTML = '';
+        }
+        if (this._state) this._state.fastHits = [];
+    },
+
+    _openMemoryFromSearch(name) {
+        this._hideFastSearch();
+        const meta = this._state.listMeta || {};
+        const url = memoriesDsapBuildDetailUrl(name, {
+            page: meta.page,
+            perPage: meta.perPage,
+            search: meta.search || '',
+            category: meta.category || '',
+            sort: meta.sort || '',
+            view: meta.view || 'list'
+        });
+        if (typeof this._state.host.navigate === 'function') this._state.host.navigate(url);
+    },
+
+    async _runFastSearch(query) {
+        const root = this._state.host.getRoot();
+        const box = root && root.querySelector('#memoriesFastSearch');
+        const q = String(query || '').trim();
+        if (!box) return;
+        if (q.length < 2 || !window.wsClient || !window.wsClient.isConnected()) {
+            this._hideFastSearch();
+            return;
+        }
+        try {
+            const resp = await window.wsClient.sendMessage('search_knowledge_memories_fast', { query: q, limit: 12 });
+            if (!resp || !resp.success) {
+                this._hideFastSearch();
+                return;
+            }
+            const hits = resp.results || [];
+            this._state.fastHits = hits;
+            if (!hits.length) {
+                this._hideFastSearch();
+                return;
+            }
+            box.innerHTML = hits.map((hit, idx) => `
+                <button type="button" class="memories-fast-hit${idx === 0 ? ' is-active' : ''}" data-memory-name="${memoriesDsapEscapeAttr(hit.name)}">
+                    <strong>${memoriesDsapEscapeHtml(hit.name)}</strong>
+                    <small>${memoriesDsapEscapeHtml(hit.category || '')} ${hit.model ? '· ' + memoriesDsapEscapeHtml(hit.model) : ''}</small>
+                </button>
+            `).join('');
+            box.classList.remove('hidden');
+            box.querySelectorAll('.memories-fast-hit').forEach((btn) => {
+                btn.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    this._openMemoryFromSearch(btn.dataset.memoryName);
+                });
+            });
+        } catch (err) {
+            console.error('memories fast search', err);
+            this._hideFastSearch();
+        }
+    },
+
+    async _loadMindMap() {
+        const root = this._state.host.getRoot();
+        const mapEl = root.querySelector('#memoriesMindMap');
+        if (!mapEl) return;
+        const meta = this._state.listMeta || {};
+        mapEl.classList.remove('hidden');
+        mapEl.innerHTML = '<div class="memories-loading"><span>Building mind map...</span></div>';
+        try {
+            const resp = await window.wsClient.sendMessage('get_memory_mind_map', {
+                search: meta.search || '',
+                category: meta.category || null,
+                limit: 60
+            });
+            if (!resp || !resp.success) {
+                mapEl.innerHTML = '<div style="padding:8px;">Mind map unavailable</div>';
+                return;
+            }
+            this._renderMindMap(mapEl, resp);
+        } catch (err) {
+            console.error('memories mind map', err);
+            mapEl.innerHTML = '<div style="padding:8px;">Mind map failed to load</div>';
+        }
+    },
+
+    _renderMindMap(mapEl, graph) {
+        const nodes = graph.nodes || [];
+        const edges = graph.edges || [];
+        const memories = nodes.filter((node) => node.kind === 'memory');
+        const byCat = new Map();
+        memories.forEach((node) => {
+            const cat = node.category || 'uncategorized';
+            if (!byCat.has(cat)) byCat.set(cat, []);
+            byCat.get(cat).push(node);
+        });
+        const pos = {};
+        let col = 0;
+        let maxRows = 1;
+        byCat.forEach((group, cat) => {
+            const x = 24 + col * 230;
+            pos[`cat:${cat}`] = { x, y: 16 };
+            group.forEach((node, i) => {
+                pos[node.id] = { x, y: 78 + i * 78 };
+            });
+            if (group.length > maxRows) maxRows = group.length;
+            col += 1;
+        });
+        const tags = nodes.filter((node) => node.kind === 'tag');
+        tags.forEach((node, i) => {
+            pos[node.id] = {
+                x: 24 + (i % 4) * 230,
+                y: 78 + maxRows * 78 + 36 + Math.floor(i / 4) * 56
+            };
+        });
+        const width = Math.max(640, col * 230 + 40);
+        const height = Math.max(280, 78 + maxRows * 78 + 80 + Math.ceil(tags.length / 4) * 56);
+        const lines = edges.map((edge) => {
+            const a = pos[edge.from];
+            const b = pos[edge.to];
+            if (!a || !b) return '';
+            const color = edge.kind === 'reference' ? '#1d4e89' : (edge.kind === 'link' ? '#8a3b12' : (edge.kind === 'shared_tag' ? '#2f6b3a' : '#888'));
+            return `<line x1="${a.x + 90}" y1="${a.y + 18}" x2="${b.x + 70}" y2="${b.y + 16}" stroke="${color}" stroke-width="1.2"/>`;
+        }).join('');
+        const boxes = nodes.map((node) => {
+            const p = pos[node.id];
+            if (!p) return '';
+            const fill = node.kind === 'memory' ? '#fff8e8' : (node.kind === 'category' ? '#e7f0fa' : '#e8f6ea');
+            const w = node.kind === 'memory' ? 200 : 150;
+            const click = node.kind === 'memory' ? ` data-memory-name="${memoriesDsapEscapeAttr(node.name)}"` : '';
+            return `<g class="memories-map-node" transform="translate(${p.x},${p.y})"${click}>
+                <rect width="${w}" height="34" fill="${fill}" stroke="#666"/>
+                <text x="6" y="22" font-size="11" font-family="sans-serif">${memoriesDsapEscapeHtml(String(node.label || '').slice(0, 28))}</text>
+            </g>`;
+        }).join('');
+        mapEl.innerHTML = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${lines}${boxes}</svg>`;
+        mapEl.querySelectorAll('[data-memory-name]').forEach((node) => {
+            node.addEventListener('click', () => this._openMemoryFromSearch(node.dataset.memoryName));
         });
     },
 
@@ -2419,7 +2880,9 @@ const memoriesDsapDriver = {
                     page: 1,
                     perPage: meta.perPage || MEMORIES_DEFAULT_PER_PAGE,
                     search: meta.search || '',
-                    category: item.categoryValue || ''
+                    category: item.categoryValue || '',
+                    sort: meta.sort || '',
+                    view: meta.view || 'list'
                 });
                 if (typeof driver._state.host.navigate === 'function') {
                     driver._state.host.navigate(url);
