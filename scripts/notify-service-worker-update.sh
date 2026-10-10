@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Refresh the server SW hash cache and notify connected clients to download
 # updates (same manifest as OPTIONS /). This script does not restart Dreamscape.
-# Agents never restart the server. If a change needs a restart, check that the
-# Director is idle and ask Yukimi or Sala, with the reason, then stop.
+# Only Menma restarts the server, after node scripts/director-idle-check.js
+# passes. Other agents run the check and ask Yukimi or Sala, then stop.
 # See .cursor/rules/director-idle-before-restart.mdc.
 #
 # Requires the StaticForge server to be running (unix socket on
