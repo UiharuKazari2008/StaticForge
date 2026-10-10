@@ -156,7 +156,8 @@ class GenerationUsageToolManager {
 
     /**
      * Account-level V5 usage (inverted remaining battery).
-     * Ping / get_app_options / retry_account_data push opusUsage; this only paints it.
+     * The server polls GET /user/subscription .usage about every 60s and pushes opusUsage.
+     * Login /user/data usage is only the first paint. image_count is the 24h counter.
      * @returns {object}
      */
     getSnapshot() {
@@ -209,7 +210,12 @@ class GenerationUsageToolManager {
     }
 
     updateUsage(usage) {
-        if (window.optionsData) window.optionsData.opusUsage = usage || null;
+        if (window.optionsData) {
+            window.optionsData.opusUsage = usage || null;
+            if (usage && window.optionsData.user && window.optionsData.user.subscription) {
+                window.optionsData.user.subscription.usage = usage;
+            }
+        }
         this.sync();
     }
 

@@ -7858,7 +7858,9 @@ async function callTool(globalResources, req, name, args) {
         }
         const accountData = globalResources.getAccountData();
         const balance = globalResources.getAccountBalance();
-        const opusUsage = getOpusUsageFromAccountData(accountData);
+        const opusUsage = typeof globalResources.getOpusUsage === 'function'
+            ? globalResources.getOpusUsage()
+            : getOpusUsageFromAccountData(accountData);
         const subscription = accountData && accountData.subscription;
 
         // Calculate hours until renewal from subscription.expiresAt (Unix seconds)

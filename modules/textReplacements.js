@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { findBuiltinPreset } = require('./backgroundOnlyPreset');
 const { applyStageConditionalPromptBlocks } = require('./promptStageBlocks');
 // hasManagedEmphasisGroupIds, listManagedEmphasisBlocks: modules/emphasisGroupIdSyntax.js
 let _emphasisGroupIdSyntax;
@@ -72,11 +73,16 @@ class TextReplacements {
         }
         
         // If not a group or group resolution failed, check regular presets
-        const foundPreset = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === uuid);
+        const foundPreset = Object.entries(currentPromptConfig.presets || {}).find(([key, preset]) => preset.uuid === uuid);
         if (foundPreset) {
             return { preset: foundPreset[1], presetName: foundPreset[0], isFromGroup: false };
         }
-        
+
+        const builtin = findBuiltinPreset({ uuid });
+        if (builtin) {
+            return { preset: builtin.preset, presetName: builtin.key, isFromGroup: false };
+        }
+
         return null;
     }
 

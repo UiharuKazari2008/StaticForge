@@ -28,6 +28,11 @@ const PromptLogitAnalyzer = require('./promptLogitAnalyzer');
 const WorkspaceManager = require('./workspace');
 const Queue = require('./queue');
 const { normalizeNovelAiSubscription } = require('./novelAiSubscription');
+const {
+    SUBSCRIPTION_USAGE_POLL_MS,
+    takePolledUsage,
+    resolveOpusUsageForGauge,
+} = require('./opusUsage');
 const { NovelAiStatusMonitor } = require('./novelAiStatusMonitor');
 const {
     evaluateAccountDataHealth,
@@ -169,6 +174,10 @@ class GlobalResources {
         };
         this.lastBalanceCheck = 0;
         this.lastAccountDataCheck = 0;
+        // Live Opus meter from GET /user/subscription. Login /user/data usage is first paint only.
+        this.liveSubscriptionUsage = null;
+        this.lastSubscriptionUsagePoll = 0;
+        this._subscriptionUsagePollInFlight = false;
         // Task 1 account health — see modules/accountDataHealth.js (Tasks 2/3 consume via get_app_options / ping)
         this.accountDataHealth = evaluateAccountDataHealth({ ok: false, reason: 'not_initialized' });
         this.refreshBalanceCallback = null; // Callback function to refresh balance (set from web_server.js)
@@ -3625,11 +3634,85 @@ class GlobalResources {
 
                     this._applyAccountHealthAfterBalanceSync(newBalanceData);
                     this.lastBalanceCheck = now;
+                    this._notePolledSubscriptionUsage(newBalanceData, now);
                 } else if (newBalanceData) {
                     this._applyAccountHealthAfterBalanceSync(newBalanceData);
                 }
             }
         }
+    }
+
+    /**
+     * Opus battery for clients. Polled /user/subscription .usage wins over the login snapshot.
+     * @returns {{ percent: number, isNegative: boolean, timeUntilNextPercent: number }|null}
+     */
+    getOpusUsage() {
+        return resolveOpusUsageForGauge(this.accountData, this.liveSubscriptionUsage);
+    }
+
+    /**
+     * Remember .usage from a successful GET /user/subscription payload.
+     * Does not write receipts or replace the rest of the account record.
+     * @param {{ ok?: boolean, subscription?: object }|null|undefined} balanceResult
+     * @param {number} [now]
+     * @private
+     */
+    _notePolledSubscriptionUsage(balanceResult, now = Date.now()) {
+        const polled = takePolledUsage(balanceResult);
+        if (!polled) return null;
+        this.liveSubscriptionUsage = polled;
+        this.lastSubscriptionUsagePoll = now;
+        if (!this.accountData) this.accountData = { ok: false };
+        if (!this.accountData.subscription) this.accountData.subscription = {};
+        this.accountData.subscription.usage = { ...polled };
+        return polled;
+    }
+
+    _websocketClientCount() {
+        try {
+            const wsServer = this.getWebSocketServer();
+            if (!wsServer || typeof wsServer.getConnectionCount !== 'function') return null;
+            return wsServer.getConnectionCount();
+        } catch (_err) {
+            return null;
+        }
+    }
+
+    /**
+     * Poll GET /user/subscription and store .usage for the Anlas battery.
+     * About every 60s while a client is connected. Skips the balance receipt path.
+     * @param {boolean} [force]
+     * @returns {Promise<ReturnType<GlobalResources['getOpusUsage']>>}
+     */
+    async refreshSubscriptionUsage(force = false) {
+        const now = Date.now();
+        if (this._subscriptionUsagePollInFlight) return this.getOpusUsage();
+        if (!force && this.lastSubscriptionUsagePoll && (now - this.lastSubscriptionUsagePoll) < SUBSCRIPTION_USAGE_POLL_MS) {
+            return this.getOpusUsage();
+        }
+        if (!force) {
+            const clients = this._websocketClientCount();
+            if (clients === 0 || clients === null) return this.getOpusUsage();
+        }
+
+        const getBalanceFn = this.dataPlumbing.callbacks.has('getBalance')
+            ? this.dataPlumbing.callbacks.get('getBalance').callback
+            : (this.getBalanceCallback && typeof this.getBalanceCallback === 'function' ? this.getBalanceCallback : null);
+        if (!getBalanceFn) return this.getOpusUsage();
+
+        this._subscriptionUsagePollInFlight = true;
+        try {
+            const balanceResult = await getBalanceFn();
+            if (balanceResult && balanceResult.ok) {
+                this.lastSubscriptionUsagePoll = Date.now();
+                this._notePolledSubscriptionUsage(balanceResult, this.lastSubscriptionUsagePoll);
+            }
+        } catch (error) {
+            console.warn('⚠️ Subscription usage poll failed:', error && error.message ? error.message : error);
+        } finally {
+            this._subscriptionUsagePollInFlight = false;
+        }
+        return this.getOpusUsage();
     }
 
     /**

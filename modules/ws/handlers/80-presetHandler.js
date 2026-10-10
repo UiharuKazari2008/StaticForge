@@ -1,4 +1,10 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
+const {
+    withBuiltinPresets,
+    presentBackgroundOnlyPreset,
+    findBuiltinPreset,
+    resolvePresetRecord
+} = require('../../backgroundOnlyPreset');
 const { generateImageWebSocket } = require('../../imageGeneration');
 const { broadcastGalleryMutation } = require('./120-galleryHandler');
 const { notifyGenerationQueued } = require('../../generationJobQueue');
@@ -39,6 +45,7 @@ async function handleLoadPreset(handlers, ws, message, clientInfo, wsServer) {
     try {
         const currentPromptConfig = handlers.globalResources.getPromptConfig();
         let preset, actualPresetName;
+        const storedPresets = currentPromptConfig.presets || {};
 
         if (presetUuid) {
             const resolution = handlers.globalResources.getTextReplacements().resolvePresetOrGroup(presetUuid);
@@ -49,7 +56,7 @@ async function handleLoadPreset(handlers, ws, message, clientInfo, wsServer) {
             preset = resolution.preset;
             actualPresetName = resolution.presetName;
         } else {
-            preset = currentPromptConfig.presets[presetName];
+            preset = resolvePresetRecord(storedPresets, presetName);
             if (!preset) {
                 handlers.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
                 return;
@@ -57,10 +64,10 @@ async function handleLoadPreset(handlers, ws, message, clientInfo, wsServer) {
             actualPresetName = presetName;
         }
 
-        const presetData = {
+        const presetData = presentBackgroundOnlyPreset({
             ...preset,
             preset_name: actualPresetName,
-        };
+        });
 
         handlers.sendToClient(ws, {
             type: 'load_preset_response',
@@ -136,7 +143,7 @@ async function handleGetPresets(handlers, ws, message, clientInfo, wsServer) {
     const { page = 1, itemsPerPage = 15, searchTerm = '' } = message;
 
     try {
-        const presets = handlers.globalResources.getPromptConfig({ path: 'presets' }) || {};
+        const presets = withBuiltinPresets(handlers.globalResources.getPromptConfig({ path: 'presets' }) || {});
 
         let filteredPresets = presets;
         if (searchTerm) {
@@ -468,6 +475,10 @@ async function handleDeletePreset(handlers, ws, message, clientInfo, wsServer) {
         const preset = handlers.globalResources.getPromptConfig({ path: ['presets', presetName] });
 
         if (!preset) {
+            if (findBuiltinPreset({ name: presetName })) {
+                handlers.sendError(ws, 'Built-in preset', `"${presetName}" is a built-in Studio preset and stays in the list`, message.requestId);
+                return;
+            }
             handlers.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
             return;
         }
@@ -515,7 +526,8 @@ async function handleGeneratePresetWork(handlers, ws, message, clientInfo, wsSer
     }
 
     try {
-        const preset = handlers.globalResources.getPromptConfig({ path: ['presets', presetName] });
+        const storedPresets = handlers.globalResources.getPromptConfig({ path: 'presets' }) || {};
+        const preset = resolvePresetRecord(storedPresets, presetName);
 
         if (!preset) {
             handlers.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);

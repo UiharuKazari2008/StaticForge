@@ -1074,6 +1074,18 @@ function toggleCharacterPromptEnabled(characterId) {
     }
 }
 
+/** Turn every character box off. Prompt and UC text stay as written. */
+function forceCharacterPromptTogglesOff() {
+    if (!characterPromptsContainer) return;
+    const items = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+    items.forEach((item) => {
+        const toggleBtn = document.getElementById(`${item.id}_enabled`);
+        if (toggleBtn) toggleBtn.setAttribute('data-state', 'off');
+        item.classList.add('character-prompt-disabled');
+    });
+    scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts();
+}
+
 function getCharacterPrompts() {
     const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     const characterPrompts = [];
