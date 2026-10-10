@@ -17,6 +17,9 @@
  * - 4x multiplier for grok.menma (Jules/Cursor Lead); Yukimi 2026-10-05 (was 1.25x)
  * - Menma current_kg never decreases (monotonic clamp on every state save)
  * - Soft sitting cap default 8; override via slices/max_slices up to all eligible; remainder carries
+ * - Optional delivery_ids on consume eats those deliveries instead of the whole FIFO
+ * - FIFO de-dup: the same ship reason/key is eaten once; a later copy stays pending
+ * - void_cake_delivery marks one pending delivery do_not_eat (kg unchanged, audit row)
  * - Skip dry-verify forever via cake_type=dry-verify and/or do_not_eat flag
  *   (not reason substring; legacy reason must *start with* marker)
  * 
@@ -187,6 +190,199 @@ function takeSlicesFromItems(items, budget) {
 
 function sumItemSlices(items) {
     return (items || []).reduce((s, i) => s + (Number(i.slices) || 0), 0);
+}
+
+/** Placeholder reasons are not a ship identity. Two "unspecified" banks may both be eaten. */
+const DEDUP_PLACEHOLDER_REASONS = new Set(['unspecified', 'gift']);
+
+/**
+ * Ship bank identity from a delivery reason. Same rules as sync_ship_cake:
+ * Yozora PR number only when the reason starts with ship:<num>, except GH-labelled
+ * mirrors (those dedup by sha only); sha from ship:<token>:<hex> (full and 7-char).
+ */
+function parseShipBankReason(reasonStr) {
+    if (reasonStr == null || reasonStr === '') {
+        return { reason: null, pr: null, shas: [] };
+    }
+    const reason = String(reasonStr);
+    let pr = null;
+    const numMatch = reason.match(/^ship:(\d+)(?=[:\s]|$)/);
+    if (numMatch) {
+        const num = parseInt(numMatch[1], 10);
+        const ghLabel = new RegExp(`\\bGH\\s*#${num}(?!\\d)`, 'i');
+        if (!ghLabel.test(reason)) pr = num;
+    }
+    const shas = [];
+    const shaMatch = reason.match(/^ship:([^:]+):([a-f0-9]+)/);
+    if (shaMatch) {
+        const sha = shaMatch[2];
+        shas.push(sha);
+        if (sha.length >= 7) shas.push(sha.substring(0, 7));
+    }
+    return { reason, pr, shas };
+}
+
+/**
+ * Tokens that mean "this ship was already banked".
+ * Exact reason (case-insensitive) plus PR number and sha, so a duplicate
+ * delivery of the same ship is not eaten twice (Rook #388).
+ */
+function shipDedupTokens(reasonStr) {
+    const parsed = parseShipBankReason(reasonStr);
+    if (!parsed.reason) return [];
+    const trimmed = parsed.reason.trim();
+    const tokens = [];
+    const lower = trimmed.toLowerCase();
+    if (trimmed && !DEDUP_PLACEHOLDER_REASONS.has(lower)) {
+        tokens.push(`reason:${lower}`);
+    }
+    if (parsed.pr != null) tokens.push(`pr:${parsed.pr}`);
+    for (const sha of parsed.shas) tokens.push(`sha:${sha}`);
+    return tokens;
+}
+
+function collectEatenShipTokens(cakeLog) {
+    const seen = new Set();
+    const add = (reason) => {
+        for (const token of shipDedupTokens(reason)) seen.add(token);
+    };
+    for (const entry of cakeLog || []) {
+        if (!entry || typeof entry !== 'object') continue;
+        add(entry.reason);
+        if (Array.isArray(entry.named_for)) {
+            for (const name of entry.named_for) add(name);
+        }
+    }
+    return seen;
+}
+
+/**
+ * FIFO: the first delivery with a reason/key is eatable; a later delivery
+ * that shares that reason, PR number, or sha is a duplicate and is not eaten.
+ * `eatenTokens` seeds the set from meals that already consumed the ship.
+ */
+function partitionFifoDuplicateDeliveries(deliveries, eatenTokens) {
+    const seen = new Set(eatenTokens || []);
+    const fresh = [];
+    const duplicates = [];
+    for (const item of deliveries || []) {
+        const tokens = shipDedupTokens(item && item.reason);
+        if (tokens.length > 0 && tokens.some((token) => seen.has(token))) {
+            duplicates.push(item);
+            continue;
+        }
+        fresh.push(item);
+        for (const token of tokens) seen.add(token);
+    }
+    return { fresh, duplicates };
+}
+
+/**
+ * Rebuild a pending list after a take.
+ * Fully eaten ids drop out. Partials and stamped do-not-eat rows replace
+ * their originals. Everything else (unselected delivery_ids, FIFO duplicates)
+ * stays in place.
+ */
+function pendingAfterTake(original, taken, remaining, skipped) {
+    const takenFully = new Set();
+    for (const item of taken || []) {
+        if (item && item.id != null && !item._partial) takenFully.add(String(item.id));
+    }
+    const remainById = new Map();
+    for (const item of remaining || []) {
+        if (item && item.id != null) remainById.set(String(item.id), item);
+    }
+    const skippedById = new Map();
+    for (const item of skipped || []) {
+        if (item && item.id != null) skippedById.set(String(item.id), item);
+    }
+    const out = [];
+    for (const item of original || []) {
+        const id = item && item.id != null ? String(item.id) : null;
+        if (id && takenFully.has(id)) continue;
+        if (id && remainById.has(id)) {
+            out.push(remainById.get(id));
+            continue;
+        }
+        if (id && skippedById.has(id)) {
+            out.push(skippedById.get(id));
+            continue;
+        }
+        out.push(item);
+    }
+    return out;
+}
+
+function eligiblePendingSliceCount(deliveries, feeds) {
+    return sumItemSlices((deliveries || []).filter((item) => !isDoNotEatItem(item)))
+        + sumItemSlices((feeds || []).filter((item) => !isDoNotEatItem(item)));
+}
+
+function normalizeDeliveryIdList(raw) {
+    if (raw == null || raw === '') return { ids: null };
+    const list = typeof raw === 'string' ? [raw] : raw;
+    if (!Array.isArray(list)) {
+        return { error: 'delivery_ids must be an array of delivery ids' };
+    }
+    const ids = [];
+    for (const item of list) {
+        const id = item == null ? '' : String(item).trim();
+        if (!id) return { error: 'delivery_ids contains an empty id' };
+        ids.push(id);
+    }
+    if (!ids.length) return { error: 'delivery_ids must list at least one delivery id' };
+    return { ids };
+}
+
+/**
+ * Choose what this consume may eat.
+ * delivery_ids, when set, replaces FIFO: only those pending deliveries
+ * (unknown / already void ids error; feeds are not pulled in).
+ * Duplicates of a ship reason/key already eaten, or earlier in this FIFO, are held back.
+ */
+function selectConsumeItems(pendingDeliveries, pendingFeeds, params, eatenTokens) {
+    const idFilter = normalizeDeliveryIdList(params && params.delivery_ids);
+    if (idFilter.error) return { ok: false, error: idFilter.error };
+
+    const skippedDeliveries = (pendingDeliveries || [])
+        .filter((d) => isDoNotEatItem(d))
+        .map(stampDoNotEatMigration);
+    const eligibleDeliveries = (pendingDeliveries || []).filter((d) => !isDoNotEatItem(d));
+    const skippedFeeds = (pendingFeeds || [])
+        .filter((f) => isDoNotEatItem(f))
+        .map(stampDoNotEatMigration);
+    let eligibleFeeds = (pendingFeeds || []).filter((f) => !isDoNotEatItem(f));
+
+    let pool = eligibleDeliveries;
+    if (idFilter.ids) {
+        const eligibleById = new Map();
+        for (const delivery of eligibleDeliveries) {
+            if (delivery && delivery.id != null) eligibleById.set(String(delivery.id), delivery);
+        }
+        const anyById = new Map();
+        for (const delivery of pendingDeliveries || []) {
+            if (delivery && delivery.id != null) anyById.set(String(delivery.id), delivery);
+        }
+        for (const id of idFilter.ids) {
+            if (!anyById.has(id) || !eligibleById.has(id)) {
+                return { ok: false, error: `Unknown or non-pending delivery_id: ${id}` };
+            }
+        }
+        const wanted = new Set(idFilter.ids);
+        pool = eligibleDeliveries.filter((d) => d && d.id != null && wanted.has(String(d.id)));
+        eligibleFeeds = [];
+    }
+
+    const { fresh, duplicates } = partitionFifoDuplicateDeliveries(pool, eatenTokens);
+    return {
+        ok: true,
+        filtered: Boolean(idFilter.ids),
+        skippedDeliveries,
+        skippedFeeds,
+        eligibleDeliveries: fresh,
+        eligibleFeeds,
+        duplicateDeliveries: duplicates
+    };
 }
 
 /**
@@ -1324,9 +1520,33 @@ async function updateMealImages(accountId, params = {}, options = {}) {
  * Rules:
  * - Soft sitting cap default MAX_SLICES_PER_SITTING (8); remainder stays pending
  * - Override with params.slices and/or params.max_slices up to all eligible pending
+ * - Optional params.delivery_ids eats those deliveries instead of FIFO
+ * - Same ship reason/key is eaten once; a later duplicate stays pending (#388)
  * - Skip dry-verify forever via cake_type=dry-verify and/or do_not_eat (legacy: reason starts with marker)
  * - Does NOT auto-generate before/after images (pass refs if already generated)
  */
+
+async function persistAccountState(accountId, state, options) {
+    if (options && options.state) {
+        if (typeof options.saveState === 'function') {
+            const ok = await options.saveState(accountId, state);
+            return ok !== false;
+        }
+        return true;
+    }
+    return saveAccountState(accountId, state);
+}
+
+async function persistCakeLogEntry(accountId, entry, options) {
+    if (options && options.state) {
+        if (typeof options.appendLog === 'function') {
+            const ok = await options.appendLog(accountId, entry);
+            return ok !== false;
+        }
+        return true;
+    }
+    return appendCakeLog(accountId, entry);
+}
 
 async function syncShipCake(accountId, params) {
     const state = await getAccountState(accountId);
@@ -1386,19 +1606,9 @@ async function syncShipCake(accountId, params) {
         // Yozora PR number: ship:<num>:... / ship:<num> ... (numeric token only).
         // Banks labelled as a GitHub mirror PR ("GH #<num>" / "GH#<num>") use GitHub
         // numbering, which overlaps Yozora's, so they dedup by sha only.
-        const numMatch = reasonStr.match(/^ship:(\d+)(?=[:\s]|$)/);
-        if (numMatch) {
-            const num = parseInt(numMatch[1], 10);
-            const ghLabel = new RegExp(`\\bGH\\s*#${num}(?!\\d)`, 'i');
-            if (!ghLabel.test(reasonStr)) bankedPrNumbers.add(num);
-        }
-        // Match ship:<num>:<sha> or ship:<shortsha>:<sha> or ship:snapshot:<sha>
-        const match = reasonStr.match(/^ship:([^:]+):([a-f0-9]+)/);
-        if (match) {
-            const sha = match[2];
-            bankedShas.add(sha);
-            if (sha.length >= 7) bankedShas.add(sha.substring(0, 7));
-        }
+        const parsed = parseShipBankReason(reasonStr);
+        if (parsed.pr != null) bankedPrNumbers.add(parsed.pr);
+        for (const sha of parsed.shas) bankedShas.add(sha);
     };
 
     for (const d of pendingDeliveries) {
@@ -1536,8 +1746,9 @@ async function syncShipCake(accountId, params) {
     };
 }
 
-async function consumeCake(accountId, params = {}) {
-    const state = await getAccountState(accountId);
+async function consumeCake(accountId, params = {}, options = {}) {
+    const injected = !!(options && options.state);
+    const state = injected ? options.state : await getAccountState(accountId);
     if (!state) {
         return { success: false, error: 'Unknown account', accountId };
     }
@@ -1545,40 +1756,68 @@ async function consumeCake(accountId, params = {}) {
         return { success: false, error: state._reason || 'SQLite unavailable', accountId };
     }
 
+    let cakeLog = [];
+    if (options && options.cakeLog != null) {
+        cakeLog = options.cakeLog;
+    } else if (!injected) {
+        cakeLog = await getCakeLog(accountId, 2000) || [];
+    }
+
     const pendingDeliveries = Array.isArray(state.pending_deliveries) ? state.pending_deliveries : [];
     const pendingFeeds = Array.isArray(state.pending_feeds) ? state.pending_feeds : [];
 
-    // Prefer cake_type / do_not_eat; stamp legacy reason-prefix skips (Yozora #154)
-    const skippedDeliveries = pendingDeliveries
-        .filter((d) => isDoNotEatItem(d))
-        .map(stampDoNotEatMigration);
-    const eligibleDeliveries = pendingDeliveries.filter((d) => !isDoNotEatItem(d));
-    const skippedFeeds = pendingFeeds
-        .filter((f) => isDoNotEatItem(f))
-        .map(stampDoNotEatMigration);
-    const eligibleFeeds = pendingFeeds.filter((f) => !isDoNotEatItem(f));
+    // Prefer cake_type / do_not_eat; stamp legacy reason-prefix skips (Yozora #154).
+    // delivery_ids replaces FIFO. Duplicate ship reason/key is not eaten twice (#388).
+    const selection = selectConsumeItems(
+        pendingDeliveries,
+        pendingFeeds,
+        params,
+        collectEatenShipTokens(cakeLog)
+    );
+    if (!selection.ok) {
+        return {
+            success: false,
+            error: selection.error,
+            accountId,
+            pending_slices: state.pending_slices || 0
+        };
+    }
+
+    const skippedDeliveries = selection.skippedDeliveries;
+    const eligibleDeliveries = selection.eligibleDeliveries;
+    const skippedFeeds = selection.skippedFeeds;
+    const eligibleFeeds = selection.eligibleFeeds;
+    const duplicateDeliveries = selection.duplicateDeliveries;
 
     const eligibleSlices = sumItemSlices(eligibleDeliveries) + sumItemSlices(eligibleFeeds);
     const skippedSlices = sumItemSlices(skippedDeliveries) + sumItemSlices(skippedFeeds);
+    const duplicateIds = duplicateDeliveries.map((d) => d && d.id).filter(Boolean);
 
     if (eligibleSlices <= 0) {
-        // Keep counter honest if only do-not-eat remain
-        const recalcPending = skippedSlices;
-        if ((state.pending_slices || 0) !== recalcPending) {
-            state.pending_slices = recalcPending;
-            state.pending_deliveries = [...skippedDeliveries];
-            state.pending_feeds = [...skippedFeeds];
-            await saveAccountState(accountId, state);
+        // Nothing left that can be eaten. pending_slices counts eligible slices
+        // only, so a void (do_not_eat) stays out of the counter (#388).
+        // Do not drop duplicate deliveries that are still pending.
+        if (duplicateDeliveries.length === 0) {
+            const recalcPending = eligiblePendingSliceCount(skippedDeliveries, skippedFeeds);
+            if ((state.pending_slices || 0) !== recalcPending) {
+                state.pending_slices = recalcPending;
+                state.pending_deliveries = [...skippedDeliveries];
+                state.pending_feeds = [...skippedFeeds];
+                await persistAccountState(accountId, state, options);
+            }
         }
         return {
             success: false,
-            error: skippedSlices > 0
-                ? 'No eligible pending slices to consume (only do-not-eat / dry-verify remain)'
-                : 'No pending slices to consume',
+            error: duplicateDeliveries.length > 0
+                ? 'No eligible pending slices to consume (duplicate ship reason/key already eaten)'
+                : (skippedSlices > 0
+                    ? 'No eligible pending slices to consume (only do-not-eat / dry-verify remain)'
+                    : 'No pending slices to consume'),
             accountId,
             pending_slices: state.pending_slices || 0,
             skipped_slices: skippedSlices,
             skipped_deliveries: skippedDeliveries.length,
+            skipped_duplicate_deliveries: duplicateIds,
             max_slices_per_sitting: MAX_SLICES_PER_SITTING
         };
     }
@@ -1619,7 +1858,7 @@ async function consumeCake(accountId, params = {}) {
     Object.assign(state, kgState);
     if (kgSeeded) {
         // Persist seed before consume so a crash mid-meal cannot re-null
-        await saveAccountState(accountId, state);
+        await persistAccountState(accountId, state, options);
     }
     const kgBefore = monotonicKgBefore(accountId, state);
     const gainedKg = Number((slicesToConsume * KG_PER_SLICE).toFixed(2));
@@ -1655,9 +1894,19 @@ async function consumeCake(accountId, params = {}) {
         kg_per_slice: KG_PER_SLICE
     };
 
-    const remainingDeliveries = [...fromDeliveries.remaining, ...skippedDeliveries];
-    const remainingFeeds = [...fromFeeds.remaining, ...skippedFeeds];
-    const pendingAfter = sumItemSlices(remainingDeliveries) + sumItemSlices(remainingFeeds);
+    const remainingDeliveries = pendingAfterTake(
+        pendingDeliveries,
+        fromDeliveries.taken,
+        fromDeliveries.remaining,
+        skippedDeliveries
+    );
+    const remainingFeeds = pendingAfterTake(
+        pendingFeeds,
+        fromFeeds.taken,
+        fromFeeds.remaining,
+        skippedFeeds
+    );
+    const pendingAfter = eligiblePendingSliceCount(remainingDeliveries, remainingFeeds);
 
     const logEntry = {
         at: now,
@@ -1683,6 +1932,7 @@ async function consumeCake(accountId, params = {}) {
         sitting_ceiling: sitting.ceiling,
         soft_cap_override: sitting.override,
         skipped_do_not_eat: skippedDeliveries.length + skippedFeeds.length,
+        skipped_duplicate_deliveries: duplicateIds,
         pending_slices_after: pendingAfter,
         visual_gen_status: visualGen.status
     };
@@ -1711,12 +1961,12 @@ async function consumeCake(accountId, params = {}) {
         after: logEntry.after
     });
 
-    const saved = await saveAccountState(accountId, state);
+    const saved = await persistAccountState(accountId, state, options);
     if (!saved) {
         return { success: false, error: 'Failed to save state', accountId };
     }
 
-    const logged = await appendCakeLog(accountId, logEntry);
+    const logged = await persistCakeLogEntry(accountId, logEntry, options);
     if (!logged) {
         console.error(`[cakePantry] consumeCake: failed to append cake log for ${accountId}`);
     }
@@ -1744,8 +1994,117 @@ async function consumeCake(accountId, params = {}) {
         pending_slices: pendingAfter,
         skipped_slices: skippedSlices,
         skipped_deliveries: skippedDeliveries.map((d) => d.id).filter(Boolean),
+        skipped_duplicate_deliveries: duplicateIds,
         carry_slices: pendingAfter,
         log_entry: logEntry
+    };
+}
+
+/**
+ * void_cake_delivery - Mark one pending delivery do_not_eat.
+ * Keeps cake_type, stores void_reason and optional consumed_by_meal.
+ * Writes an audit row (who, when, reason). Never changes kg.
+ * Errors on unknown or non-pending ids. pending_slices is recomputed
+ * from items that are still eligible to eat (Rook #388).
+ */
+async function voidCakeDelivery(accountId, params = {}, options = {}) {
+    const deliveryId = params.delivery_id != null
+        ? String(params.delivery_id).trim()
+        : (params.deliveryId != null ? String(params.deliveryId).trim() : '');
+    const reason = params.reason != null ? String(params.reason).trim() : '';
+    if (!deliveryId) {
+        return { success: false, error: 'delivery_id is required', accountId };
+    }
+    if (!reason) {
+        return { success: false, error: 'reason is required', accountId };
+    }
+
+    const injected = !!(options && options.state);
+    const state = injected ? options.state : await getAccountState(accountId);
+    if (!state) {
+        return { success: false, error: 'Unknown account', accountId };
+    }
+    if (state._sqliteUnavailable || state._sqliteError || state._importStatusUnknown) {
+        return { success: false, error: state._reason || 'SQLite unavailable', accountId };
+    }
+
+    const pending = Array.isArray(state.pending_deliveries) ? state.pending_deliveries : [];
+    const idx = pending.findIndex((d) => d && d.id != null && String(d.id) === deliveryId);
+    if (idx < 0 || isDoNotEatItem(pending[idx]) || pending[idx].voided === true) {
+        return {
+            success: false,
+            error: `Unknown or non-pending delivery_id: ${deliveryId}`,
+            accountId,
+            delivery_id: deliveryId
+        };
+    }
+
+    const item = pending[idx];
+    const now = (options && options.now) || new Date().toISOString();
+    const who = (options && options.actor) || params.who || params.actor || null;
+    const consumedByMeal = params.consumed_by_meal != null && String(params.consumed_by_meal).trim() !== ''
+        ? String(params.consumed_by_meal).trim()
+        : null;
+    const kg = state.current_kg;
+
+    const voided = {
+        ...item,
+        do_not_eat: true,
+        voided: true,
+        void_reason: reason,
+        voided_at: now,
+        voided_by: who || null,
+        consumed_by_meal: consumedByMeal
+    };
+
+    const nextDeliveries = pending.slice();
+    nextDeliveries[idx] = voided;
+    const feeds = Array.isArray(state.pending_feeds) ? state.pending_feeds : [];
+    state.pending_deliveries = nextDeliveries;
+    state.pending_slices = eligiblePendingSliceCount(nextDeliveries, feeds);
+
+    const audit = {
+        event: 'void_cake_delivery',
+        at: now,
+        who: who || null,
+        reason,
+        void_reason: reason,
+        delivery_id: deliveryId,
+        consumed_by_meal: consumedByMeal,
+        cake_type: item.cake_type != null ? item.cake_type : null,
+        slices: 0,
+        stacks: 0,
+        gained_kg: 0,
+        kg_before: kg != null ? kg : null,
+        kg_after: kg != null ? kg : null,
+        named_for: []
+    };
+    if (!Array.isArray(state.audit_log)) state.audit_log = [];
+    state.audit_log.push(audit);
+
+    const saved = await persistAccountState(accountId, state, options);
+    if (!saved) {
+        return { success: false, error: 'Failed to save state', accountId };
+    }
+    const logged = await persistCakeLogEntry(accountId, audit, options);
+    if (!logged) {
+        console.error(`[cakePantry] voidCakeDelivery: failed to append audit log for ${accountId}`);
+    }
+
+    return {
+        success: true,
+        accountId,
+        delivery_id: deliveryId,
+        void_reason: reason,
+        who: audit.who,
+        at: now,
+        consumed_by_meal: consumedByMeal,
+        cake_type: voided.cake_type != null ? voided.cake_type : null,
+        do_not_eat: true,
+        current_kg: state.current_kg,
+        pending_slices: state.pending_slices,
+        delivery: voided,
+        audit
     };
 }
 
@@ -2011,6 +2370,11 @@ module.exports = {
     stampDoNotEatMigration,
     takeSlicesFromItems,
     sumItemSlices,
+    parseShipBankReason,
+    shipDedupTokens,
+    collectEatenShipTokens,
+    partitionFifoDuplicateDeliveries,
+    eligiblePendingSliceCount,
     resolveSittingBudget,
     setGlobalResources,
     getGlobalResources,
@@ -2029,6 +2393,7 @@ module.exports = {
     feedCake,
     inspectPantry,
     consumeCake,
+    voidCakeDelivery,
     updateMealImages,
     deriveMealId,
     attachMealId,

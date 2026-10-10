@@ -85,10 +85,11 @@ assert.strictEqual(_test.TOOL_RATE_GROUPS.deliver_cake, 'write');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.feed_cake, 'write');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.inspect_pantry, 'free');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.consume_cake, 'write');
+assert.strictEqual(_test.TOOL_RATE_GROUPS.void_cake_delivery, 'write');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.update_meal_images, 'write');
 const cakeNames = (scopes) => _test.listToolsForScopes(scopes, null).map((t) => t.name);
 const cakeFull = cakeNames(['sfapp_cake_pantry']);
-for (const name of ['sync_ship_cake', 'deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake', 'update_meal_images']) {
+for (const name of ['sync_ship_cake', 'deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake', 'void_cake_delivery', 'update_meal_images']) {
     assert.ok(cakeFull.includes(name), `full pantry scope missing ${name}`);
 }
 const cakeDeliver = cakeNames(['sfapp_cake_pantry:deliver']);
@@ -97,15 +98,18 @@ assert.ok(cakeDeliver.includes('deliver_cake'));
 assert.ok(!cakeDeliver.includes('feed_cake'));
 assert.ok(!cakeDeliver.includes('inspect_pantry'));
 assert.ok(!cakeDeliver.includes('consume_cake'));
+assert.ok(!cakeDeliver.includes('void_cake_delivery'));
 assert.ok(!cakeDeliver.includes('update_meal_images'));
 const cakeConsume = cakeNames(['sfapp_cake_pantry:consume']);
 assert.ok(cakeConsume.includes('consume_cake'));
+assert.ok(cakeConsume.includes('void_cake_delivery'));
 assert.ok(cakeConsume.includes('update_meal_images'));
 assert.ok(!cakeConsume.includes('inspect_pantry'));
 const cakeInspect = cakeNames(['sfapp_cake_pantry:inspect']);
 assert.ok(cakeInspect.includes('inspect_pantry'));
 assert.ok(!cakeInspect.includes('update_meal_images'));
 assert.ok(!cakeInspect.includes('consume_cake'));
+assert.ok(!cakeInspect.includes('void_cake_delivery'));
 const updateMealDef = _test.TOOL_DEFS.find((t) => t.name === 'update_meal_images');
 assert.ok(updateMealDef, 'update_meal_images tool def missing');
 assert.ok(updateMealDef.inputSchema.properties.meal_id);
@@ -827,7 +831,8 @@ assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 'running' }, {}), 'running');
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => null }, {}), null);
 assert.ok(coreNames.includes('update_meal_images'));
-assert.strictEqual(coreNames.length, 106);
+assert.ok(coreNames.includes('void_cake_delivery'));
+assert.strictEqual(coreNames.length, 107);
 assert.ok(coreNames.includes('ledge'));
 assert.ok(coreNames.includes('generate_nax_tag'));
 assert.ok(coreNames.includes('delete_nax_tag'));
