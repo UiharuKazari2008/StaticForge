@@ -37,6 +37,19 @@ function ucPresetLevel(id) {
  * @param {Record<string, object>|null} [features]
  * @returns {object|null}
  */
+/**
+ * An explicit effort (high or medium) on a v5_medium model key means V5 Full with that effort.
+ * @param {string} forgeModel
+ * @param {string} [effort]
+ * @returns {string}
+ */
+function explicitEffortModelKey(forgeModel, effort) {
+    const key = String(forgeModel || '').toLowerCase();
+    const e = String(effort == null ? '' : effort).toLowerCase();
+    if ((e === 'high' || e === 'medium') && /^v5_medium(_inp)?$/.test(key)) return key.replace('v5_medium', 'v5');
+    return key;
+}
+
 function resolveMediumLock(forgeModel, effort, features = null) {
     const map = features || loadModelFeatures();
     const key = String(forgeModel || '').toLowerCase().replace(/_inp$/, '');
@@ -152,6 +165,7 @@ function applyMediumLocksToOptions(options, lock, ucPresets, modelKey) {
 }
 
 module.exports = {
+    explicitEffortModelKey,
     UC_PRESET_ID_LEVEL,
     ucPresetLevel,
     resolveMediumLock,

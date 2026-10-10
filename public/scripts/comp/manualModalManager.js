@@ -2276,6 +2276,13 @@ function paintManualEffort() {
 
 function setManualEffort(level) {
     const wantMedium = String(level || '').toLowerCase() === 'medium';
+    // A loaded V5 Medium image/preset leaves the model on v5_medium (fixedSettings, no effort toggle),
+    // which kept Medium forced. An explicit effort change maps the model back to V5 Full first.
+    const fixedCaps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures() : null;
+    if (fixedCaps && fixedCaps.fixedSettings && typeof selectManualModel === 'function') {
+        // selectManualModel: public/scripts/comp/manualDropdownManager.js
+        selectManualModel('v5', '', true);
+    }
     const next = v5FullSupportsEffort() && wantMedium ? 'medium' : 'high';
     const prev = manualSelectedEffort;
     if (next === 'medium' && prev !== 'medium') {

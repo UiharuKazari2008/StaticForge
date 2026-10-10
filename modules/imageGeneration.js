@@ -3514,7 +3514,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         }
 
         // Check if this is an img2img request
-        const forgeModelKey = String(body.model || '').toLowerCase();
+        let forgeModelKey = String(body.model || '').toLowerCase();
+        // Explicit effort wins: v5_medium + effort high/medium runs as V5 Full with that effort.
+        // explicitEffortModelKey: modules/v5MediumLock.js
+        forgeModelKey = explicitEffortModelKey(forgeModelKey, body.effort);
+        if (body.model) body.model = forgeModelKey;
         const wantsInpaint = !!(body.mask || body.mask_compressed) && !!body.image && !forgeModelKey.includes('_inp');
         // modules/modelFeatures.js — curated V5 inpaint remaps to V4.5 curated until ready
         const { resolveApiModelSlug, getModelFeatures, normalizeEffort } = require('./modelFeatures');
