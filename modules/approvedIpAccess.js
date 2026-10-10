@@ -212,8 +212,28 @@ function requestUserAgent(req) {
  * existing authenticated session. Returns without a session when nothing matches.
  */
 function applyApprovedIpLogin(req, globalResources) {
-    if (!req || !req.session || req.session.authenticated === true) {
-        return { applied: false };
+    if (!req || !req.session) return { applied: false };
+    if (req.session.authenticated === true) {
+        // A session granted by an approved IP lasts only while that IP still matches
+        // the same enabled entry. Removing, disabling, or leaving the range ends it.
+        if (req.session.authMethod !== 'approved_ip') return { applied: false };
+        const again = identifyApprovedClient(req, globalResources);
+        const still = matchApprovedIp(loadApprovedIpEntries(globalResources), again.ip);
+        if (still && still.id === req.session.approvedIpId && still.userType === req.session.userType) {
+            return { applied: false, kept: true };
+        }
+        req.session.authenticated = false;
+        delete req.session.userType;
+        delete req.session.approvedIpId;
+        delete req.session.authMethod;
+        auditWebLogin(globalResources, {
+            event: 'approved_ip_revoked',
+            ip: again.ip || again.peer || '',
+            userAgent: requestUserAgent(req),
+            user: 'readonly',
+            source: 'approved_ip'
+        });
+        return { applied: false, revoked: true };
     }
     const identified = identifyApprovedClient(req, globalResources);
     if (identified.ip) req.realClientIp = identified.ip;
