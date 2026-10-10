@@ -126,6 +126,7 @@ const {
     feedCake,
     inspectPantry,
     consumeCake,
+    voidCakeDelivery,
     updateMealImages,
     listAccounts: listCakePantryAccounts,
     getWorkPile,
@@ -2622,7 +2623,7 @@ const TOOL_DEFS = [
     {
         name: 'consume_cake',
         core: true,
-        description: 'Eater eats pending slices. Soft sitting cap default 8 (remainder carries); override with slices and/or max_slices up to all eligible pending. Skips dry-verify forever via cake_type=dry-verify and/or do_not_eat (not reason substring; legacy reason must start with marker). Records kg; does not auto-generate before/after images — pass before_image/after_image if already generated, else visual_gen.status=not_generated with a clear error while kg still saves. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
+        description: 'Eater eats pending slices. Soft sitting cap default 8 (remainder carries); override with slices and/or max_slices up to all eligible pending. Optional delivery_ids eats those pending deliveries instead of FIFO (unknown or non-pending ids error; feeds are not included). FIFO de-dup: the same ship reason/key is eaten once; a later duplicate stays pending. Skips dry-verify forever via cake_type=dry-verify and/or do_not_eat (not reason substring; legacy reason must start with marker). Records kg; does not auto-generate before/after images — pass before_image/after_image if already generated, else visual_gen.status=not_generated with a clear error while kg still saves. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -2641,7 +2642,29 @@ const TOOL_DEFS = [
                 landscape: { type: 'boolean' },
                 named_for: { type: 'array', items: { type: 'string' }, description: 'What this consume is named for' },
                 commits: { type: 'array', items: { type: 'string' } },
-                loop: { type: 'string', description: 'Loop name (7am-breakfast, etc.)' }
+                loop: { type: 'string', description: 'Loop name (7am-breakfast, etc.)' },
+                delivery_ids: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Eat these pending delivery ids instead of FIFO. Unknown, void, or do-not-eat ids error. Sitting cap still applies. A duplicate ship reason/key in the selection is not eaten twice.'
+                }
+            }
+        }
+    },
+    {
+        name: 'void_cake_delivery',
+        core: true,
+        description: 'Void one pending delivery so it is not eaten (do_not_eat: true). Pass accountId, delivery_id, and reason. Keeps cake_type, stores void_reason, and optional consumed_by_meal when the ship was already eaten (for example by an earlier FIFO duplicate). Writes an audit row with who, when, and reason. Never changes kg. Errors on unknown or non-pending ids. Recomputes pending_slices from deliveries and feeds that are still eligible to eat.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId', 'delivery_id', 'reason'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account that holds the delivery' },
+                delivery_id: { type: 'string', description: 'Pending delivery id (del_…) to void' },
+                reason: { type: 'string', description: 'Why this delivery is void (stored as void_reason and on the audit row)' },
+                consumed_by_meal: { type: 'string', description: 'Optional meal id that already ate this ship (audit only; does not change that meal)' }
             }
         }
     },
@@ -7842,6 +7865,29 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
         }
         const result = await consumeCake(accountId, input);
+        return mcpTextResult(result, !result.success);
+    }
+
+    if (name === 'void_cake_delivery') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
+        }
+        const deliveryId = input.delivery_id != null ? String(input.delivery_id).trim() : '';
+        const reason = input.reason != null ? String(input.reason).trim() : '';
+        if (!deliveryId) {
+            return mcpTextResult({ success: false, error: 'delivery_id is required' }, true);
+        }
+        if (!reason) {
+            return mcpTextResult({ success: false, error: 'reason is required' }, true);
+        }
+        const result = await voidCakeDelivery(accountId, {
+            delivery_id: deliveryId,
+            reason,
+            consumed_by_meal: input.consumed_by_meal
+        }, {
+            actor: resolveActorName(req) || resolveBindKey(req) || null
+        });
         return mcpTextResult(result, !result.success);
     }
 
