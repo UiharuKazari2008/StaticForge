@@ -284,7 +284,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `ledge` | One desk for many images (`modules/ledgeDesk.js`), broadcast as `ledge_state`. `op: open` **requires `name`** when it creates a session; an existing `sessionId` reopens without one (a `name` there renames). The window title is `Ledge [name]`. Generated prints land in the `Prints` session. | `gallery` | client |
 | `compare_images` | Sharp abs-diff of two gallery files; magenta webp + change % | `gallery` | no |
 | `evaluate_workspace_themes` | Tag/character frequency on recent workspace files | `gallery` | no |
-| `vfs_list` / `vfs_read` | `vfs_list_directory` / `vfs_read_system_file` or `vfs_download_file`. Path `@desktop` is the workspace desktop. | `vfs` | no |
+| `vfs_list` / `vfs_read` | `vfs_list_directory` / `vfs_read_system_file`. Text user files return inline (`offset` / `limit`, 64 KB cap). Binaries return `url` = `GET /{mcpPathUuid}/vfs/files/:fileId` (same MCP auth). Path `@desktop` is the workspace desktop. | `vfs` | no |
 | `create_shortcut` | Desktop or VFS shortcut (`vfs_create_shortcut` / `desktop_add_shortcut`). Types: image, preset, studio-change, note, wiki-page, static-wiki-page, nax-tag, reference, applet, dsap, request, bracket-generation, folder, system-folder. `dest` omitted / `@desktop` is that workspace's desktop. studio-change: `payload` / `change`, or `fromStudio` to snapshot the bound tab; `filename` / `icon` sets a gallery-image icon. | `vfs` | studio-change `fromStudio` |
 | `advanced_tools` | Discover or run a hidden tool (`query`, or `name` + `arguments`). Memory/NAX/guide/session queries return core names. Empty match returns the full tool list. | any | — |
 
