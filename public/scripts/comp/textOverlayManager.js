@@ -268,7 +268,10 @@ function mountTextOverlayCustomDisplay(item) {
     if (!item) return null;
     let input = document.getElementById(`${item.id}_custom_display`);
     if (!input) {
-        item.insertAdjacentHTML('beforeend', textOverlayCustomDisplayMarkup(item.id));
+        // Inside the prompt box, under the textarea, so it is counted in the box height.
+        const textarea = document.getElementById(`${item.id}_text`);
+        if (textarea) textarea.insertAdjacentHTML('afterend', textOverlayCustomDisplayMarkup(item.id));
+        else item.insertAdjacentHTML('beforeend', textOverlayCustomDisplayMarkup(item.id));
         input = document.getElementById(`${item.id}_custom_display`);
     }
     wireTextOverlayCustomDisplay(item.id);
@@ -294,6 +297,25 @@ function wireTextOverlayCustomDisplay(textOverlayId) {
     });
 }
 
+function textOverlayCustomExtraHeight(textOverlayId) {
+    const input = document.getElementById(`${textOverlayId}_custom_display`);
+    if (!input || input.classList.contains('hidden')) return 0;
+    const cs = getComputedStyle(input);
+    return input.offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+}
+
+function resizeTextOverlayBox(textOverlayId) {
+    const textarea = document.getElementById(`${textOverlayId}_text`);
+    if (!textarea) return;
+    const extra = textOverlayCustomExtraHeight(textOverlayId);
+    autoResizeTextarea(textarea, 10, extra);
+    // syncPromptTextareaContainerMeasurements: public/scripts/comp/utilities.js
+    const container = textarea.closest('.prompt-textarea-container');
+    if (container && typeof syncPromptTextareaContainerMeasurements === 'function') {
+        syncPromptTextareaContainerMeasurements(container, extra);
+    }
+}
+
 function syncTextOverlayCustomDisplay(textOverlayId) {
     const item = document.getElementById(textOverlayId);
     if (!item) return;
@@ -306,6 +328,7 @@ function syncTextOverlayCustomDisplay(textOverlayId) {
     if (document.activeElement !== input) {
         input.value = model.customText || '';
     }
+    resizeTextOverlayBox(textOverlayId);
 }
 
 function renderTextOverlayTypeDropdown(textOverlayId) {
@@ -374,9 +397,9 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
     // Auto-resize functionality
     if (textarea) {
         item._textArea = textarea;
-        autoResizeTextarea(textarea, 10);
+        resizeTextOverlayBox(item.id);
         textarea.addEventListener('input', () => {
-            autoResizeTextarea(textarea, 10);
+            resizeTextOverlayBox(item.id);
             // Textarea is the editing source while focused — keep model text in sync
             if (document.activeElement === textarea) {
                 const model = ensureTextOverlayModel(item);
@@ -881,7 +904,7 @@ function applyTextOverlayDataToCard(item, overlayData) {
         } else {
             textarea.value = text.includes('\n') ? textOverlayNewlinesToDisplay(text) : text;
         }
-        autoResizeTextarea(textarea, 10);
+        resizeTextOverlayBox(textOverlayId);
     }
 
     const typeIconClass = textOverlayIconClass(typeKey);
