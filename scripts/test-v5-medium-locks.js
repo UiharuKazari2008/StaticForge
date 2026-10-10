@@ -300,6 +300,8 @@ assert.ok(!mediumUi.stageSteps.classList.contains('hover-show'));
 assert.ok(mediumUi.steps.title.includes('V5 Medium'));
 assert.strictEqual(mediumUi.stepsGroup.title, mediumUi.steps.title);
 assert.strictEqual(mediumUi.stepsGroup.dataset.mediumLock, '1');
+assert.ok(mediumUi.stepsGroup.classList.contains('hidden'), 'steps hidden in Medium');
+assert.ok(mediumUi.stageSteps.classList.contains('hidden'), 'stage steps hidden in Medium');
 assert.ok(mediumUi.samplerRow.classList.contains('hidden'), 'sampler row hidden');
 assert.ok(mediumUi.rescaleGroup.classList.contains('hidden'), 'rescale hidden');
 assert.strictEqual(mediumUi.rescale.disabled, true);
@@ -317,6 +319,7 @@ assert.ok(highUi.steps.classList.contains('hover-show'));
 assert.ok(!highUi.steps.classList.contains('medium-locked'));
 assert.ok(!highUi.samplerRow.classList.contains('hidden'));
 assert.ok(!highUi.rescaleGroup.classList.contains('hidden'));
+assert.ok(!highUi.stepsGroup.classList.contains('hidden'), 'steps visible in Full');
 assert.strictEqual(highUi.ctx.stepsLocked, false);
 
 const effortCtx = {
@@ -424,6 +427,7 @@ assert.strictEqual(loadedMedium.steps.disabled, true);
 assert.strictEqual(loadedMedium.steps.value, '14');
 assert.strictEqual(loadedMedium.steps.tabIndex, -1);
 assert.ok(loadedMedium.steps.classList.contains('medium-locked'));
+assert.ok(loadedMedium.stepsGroup.classList.contains('hidden'), 'steps hidden after Medium image load');
 assert.ok(!loadedMedium.steps.classList.contains('hover-show'), 'image load drops the steps hover affordance');
 assert.ok(loadedMedium.samplerRow.classList.contains('hidden'), 'image load hides sampler');
 assert.ok(loadedMedium.rescaleGroup.classList.contains('hidden'), 'image load hides cfg rescale');

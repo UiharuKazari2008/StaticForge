@@ -969,6 +969,8 @@ function applyMediumStudioChrome(lock) {
         }
     }
     if (stepsGroup) {
+        // V5 Medium: steps are forced to the lock value under the hood; hide the control like sampler/rescale.
+        stepsGroup.classList.toggle('hidden', medium);
         if (medium) {
             stepsGroup.title = stepsTitle;
             stepsGroup.dataset.mediumLock = '1';
@@ -1015,6 +1017,7 @@ function applyMediumStudioChrome(lock) {
         stageRoot.querySelectorAll('input[id$="_steps"]').forEach((input) => {
             input.disabled = medium;
             if (input.classList) {
+                input.classList.toggle('hidden', medium);
                 input.classList.toggle('hover-show', !medium);
                 input.classList.toggle('medium-locked', medium);
             }

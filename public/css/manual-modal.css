@@ -4134,3 +4134,9 @@ body:not(.desktop-mode) div#manualModal {
     margin: 0;
 }
 
+
+/* V5 Medium: steps fixed at 14 server-side; control hidden like sampler/rescale. */
+#manualStepsGroup.hidden,
+#pipelineStagesContainer input[id$="_steps"].hidden {
+    display: none !important;
+}
