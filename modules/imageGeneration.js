@@ -12,7 +12,7 @@ const {
     compileTextOverlayAppend
 } = require('./promptTextBoundary');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
-const { resolveMediumLock, applyMediumLocksToOptions } = require('./v5MediumLock');
+const { resolveMediumLock, applyMediumLocksToOptions, explicitEffortModelKey } = require('./v5MediumLock');
 const { resolveNekoEnumValue } = require('./nekoEnumResolve');
 const {
     resolvePresetRecord,
