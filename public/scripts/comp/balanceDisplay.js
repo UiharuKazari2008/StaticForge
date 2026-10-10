@@ -12,20 +12,11 @@ try {
 // wireManualResolutionDimensionListeners, wireManualDropdownSetup → manualDropdownManager.js (step 47.5)
 // wireUploadClipboardListeners → referenceManager.js (step 40)
 // wireSeedListeners, wireInlinePresetListeners → presetManager.js (step 461)
-function toggleSubMenu() {
-    const menu = document.querySelectorAll('.sub-menu-toggle');
-    if (menu) {
-        menu.forEach(menu => {
-            menu.classList.toggle('hidden');
-        });
-    }
-}
-
 function closeSubMenu() {
     const menu = document.querySelectorAll('.sub-menu-toggle');
     if (menu) {
-        menu.forEach(menu => {
-            menu.classList.add('hidden');
+        menu.forEach(item => {
+            item.classList.add('hidden');
         });
     }
 }
