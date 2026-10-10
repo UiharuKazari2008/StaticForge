@@ -853,6 +853,34 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'await_rentan_attempt',
+        description: 'Hidden Rentan review only: wait for the next Studio attempt. Returns the attempt number, a preview path in your Dreamspace home (rentan/<n>.webp), and the compiled prompt. Each call waits up to 45s. pending true means the print is not ready: call again with the same chatId. Do not guess the picture.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['chatId'],
+            properties: {
+                chatId: { type: 'string', description: 'Rentan chat id from your turn prompt' }
+            }
+        }
+    },
+    {
+        name: 'finish_rentan',
+        description: 'Hidden Rentan review only: save an attempt. approved true saves the attempt you just reviewed. On attempt 5, pass pick as the attempt number (1-5) of the best print. A missing finish on the last attempt saves the last print.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['chatId'],
+            properties: {
+                chatId: { type: 'string', description: 'Rentan chat id from your turn prompt' },
+                approved: { type: 'boolean', description: 'true saves the current attempt' },
+                pick: { type: 'integer', description: 'On attempt 5, the attempt number to save' }
+            }
+        }
+    },
+    {
         name: 'request_form',
         core: true,
         description: 'Ask the user to fill a short form and wait for it. fields is an array of {label, type, sub, data}. type is text, textmulti, prompt (prompt box with syntax and autofill — use for a prompt, a character name, or a description), bool, select, int, or number. data holds placeholder, default, required, min, max, step, and for select an options array of strings or {value, label}. Pass chatId when a Director chat is running so the form sits in that chat; otherwise it opens its own window. Returns values keyed by id (or the label). cancelled true means they closed it — do not invent answers. Each call waits up to 45s. pending true with formId means the form is still open: call request_form again with only {formId} (no fields) until values come back.',
@@ -7355,9 +7383,35 @@ async function callTool(globalResources, req, name, args) {
         try {
             // deliverDynagen: modules/cursorDirector.js
             const delivered = require('./cursorDirector').deliverDynagen(input.chatId, input);
-            return mcpTextResult({ success: true, ...delivered, next: 'Delivered. Reply with the summary line only.' });
+            return mcpTextResult({
+                success: true,
+                ...delivered,
+                next: delivered.rebuild
+                    ? 'Fix delivered. Call await_rentan_attempt again for the next print.'
+                    : delivered.rebuild === false
+                        ? 'Delivered. Call await_rentan_attempt and review the print. Do not stop yet.'
+                        : 'Delivered. Reply with the summary line only.'
+            });
         } catch (error) {
             return mcpTextResult({ success: false, error: error.message, code: error.code || 'BAD_RENTAN_PAYLOAD' }, true);
+        }
+    }
+
+    if (name === 'await_rentan_attempt') {
+        try {
+            const attempt = await require('./cursorDirector').awaitRentanAttempt(input.chatId);
+            return mcpTextResult({ success: true, ...attempt });
+        } catch (error) {
+            return mcpTextResult({ success: false, error: error.message, code: error.code || 'NO_RENTAN_TURN' }, true);
+        }
+    }
+
+    if (name === 'finish_rentan') {
+        try {
+            const finished = require('./cursorDirector').finishRentan(input.chatId, input);
+            return mcpTextResult({ success: true, ...finished, next: 'Saved. Reply with one summary line.' });
+        } catch (error) {
+            return mcpTextResult({ success: false, error: error.message, code: error.code || 'BAD_RENTAN_FINISH' }, true);
         }
     }
 

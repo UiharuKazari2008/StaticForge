@@ -10,6 +10,13 @@ const PROJECT_NAME = 'Dreamscape Director';
 const DIRECTOR_UA = 'DreamscapeDirector/1.0';
 const RUN_IDLE_MS = 12 * 60 * 1000;
 const RUN_HARD_MS = 30 * 60 * 1000;
+// Rentan turns sit inside the global generation FIFO (#352). A silent turn dies
+// in 2 minutes; a turn that keeps talking dies at 3, or 8 when it is reviewing
+// attempts (#351). Both are well under the Director chat caps above.
+const DYNAGEN_IDLE_MS = 2 * 60 * 1000;
+const DYNAGEN_HARD_MS = 3 * 60 * 1000;
+const RENTAN_REVIEW_HARD_MS = 8 * 60 * 1000;
+const DEFAULT_IDLE_SHUTDOWN_MINUTES = 15;
 const INFLIGHT_MAX_RESUMES = 3;
 const INFLIGHT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
@@ -83,6 +90,12 @@ const MAX_CARD_REASON = 200;
 const MAX_CARD_CAPTION = 200;
 let lastPrepare = { ready: false, code: 'DIRECTOR_NOT_PREPARED' };
 let lastTurn = { state: 'idle', sessionId: null, error: null, at: null };
+// Host Chromium for the Wren computer. Idle shutdown kills this pid only (#367).
+let browserChild = null;
+let computerStopped = false;
+let lastDirectorActivityAt = 0;
+let idleShutdownTimer = null;
+let boundIdleGr = null;
 
 function enqueue(fn) {
     const next = indexQueue.then(fn, fn);
@@ -1180,7 +1193,50 @@ function assistantRowsCoverResult(rows, result) {
     const joined = compactDirectorText(parts.join(''));
     const compact = compactDirectorText(result);
     if (!compact) return true;
-    return joined === compact || joined.endsWith(compact);
+    // Exact cover only. A lossy partial with the clean copy appended used to
+    // pass an endsWith check and keep the doubled reply (#350).
+    return joined === compact;
+}
+
+// A longer assistant message that does not extend the live partial is the full
+// reply (#350). Lossy --stream-partial-output snapshots drop braces, so the
+// final text is not a prefix and must replace the live row, not append.
+function takeAssistantText(state, text) {
+    openLiveRow(state, 'assistant');
+    const live = state.live.text || '';
+    if (!live || text.startsWith(live) || live.startsWith(text)) {
+        if (text.length >= live.length) state.live.text = text;
+    } else if (text.length >= live.length) {
+        state.live.text = text;
+    } else {
+        state.live.text += text;
+    }
+    state.text = state.live.text;
+}
+
+// Saved Description is the CLI result. A lossy partial with the clean copy
+// appended is one assistant row; replace that row so the chat shows it once.
+function settleDirectorResult(state, result) {
+    state.result = result;
+    const compactResult = compactDirectorText(result);
+    const assistants = (state.rows || []).filter((row) => row && row.type === 'assistant' && row.text);
+    const joined = compactDirectorText(assistants.map((row) => row.text).join(''));
+    if (!assistants.length) {
+        state.rows.push({ type: 'assistant', text: result });
+        state.text = result;
+        return;
+    }
+    if (!assistantRowsCoverResult(state.rows, result)) {
+        const last = assistants[assistants.length - 1];
+        const lastCompact = compactDirectorText(last.text);
+        if ((lastCompact && compactResult && lastCompact.includes(compactResult) && lastCompact !== compactResult)
+            || (joined.includes(compactResult) && joined !== compactResult && lastCompact !== compactResult)) {
+            last.text = result;
+        } else if (!joined.includes(compactResult)) {
+            state.rows.push({ type: 'assistant', text: result });
+        }
+    }
+    state.text = result;
 }
 
 function openLiveRow(state, type, extra) {
@@ -1348,6 +1404,7 @@ async function ensureDirectorBrowser() {
         `--user-data-dir=${dir}`,
         'about:blank'
     ], { detached: true, stdio: 'ignore' });
+    browserChild = child;
     child.unref();
     for (let i = 0; i < 20; i++) {
         if (await directorBrowserReady()) return;
@@ -1527,6 +1584,9 @@ async function ensureAppKey(gr, keyPath, appName = PROJECT_NAME) {
 }
 
 async function ensureProject(gr) {
+    noteDirectorActivity();
+    wakeDirectorComputer();
+    armIdleShutdown(gr);
     const bwrapBin = requireBwrap();
     const agentBin = findAgent();
     if (!agentBin) {
@@ -1564,6 +1624,7 @@ async function prepareDirector(gr) {
     }
     try {
         await ensureProject(gr);
+        armIdleShutdown(gr);
         resumeInterruptedTurns(gr).catch((err) => {
             console.error(`Director resume skipped: ${err.message}`);
         });
@@ -1912,7 +1973,90 @@ async function sampleDirectorResources() {
 
 // bwrap, the agent binary, and a prepared project are the three ways the
 // computer can be down. findBwrap / findAgent are cached after the first look.
+// Idle shutdown (#367) is a fourth: the process and the Wren computer stop
+// between turns, and the next turn starts them again. Dreamscape itself stays up.
+function readIdleShutdownMinutes(gr) {
+    try {
+        const cfg = gr && gr.getConfig && gr.getConfig();
+        const raw = cfg && cfg.director && cfg.director.idleShutdownMinutes;
+        if (raw === 0 || raw === '0') return 0;
+        const minutes = Number(raw);
+        if (Number.isFinite(minutes) && minutes > 0) return minutes;
+    } catch (_) { /* default */ }
+    return DEFAULT_IDLE_SHUTDOWN_MINUTES;
+}
+
+function noteDirectorActivity(at) {
+    lastDirectorActivityAt = Number.isFinite(at) ? at : Date.now();
+}
+
+function directorWorkRunning() {
+    if (runs.size) return true;
+    try {
+        const xi = require('./xiDirector').runtimeStatus();
+        if (xi && xi.running) return true;
+    } catch (_) { /* Xi is optional */ }
+    return false;
+}
+
+function wakeDirectorComputer() {
+    if (!computerStopped && !(lastPrepare && lastPrepare.code === 'DIRECTOR_IDLE_SHUTDOWN')) return;
+    computerStopped = false;
+    lastPrepare = { ready: true, code: null };
+}
+
+function shutdownIdleDirector(reason) {
+    if (directorWorkRunning()) return { stopped: false, reason: 'busy', dreamscapeRestart: false };
+    const pids = [];
+    if (browserChild && browserChild.pid) {
+        const pid = browserChild.pid;
+        signalProcessTree(pid, 'SIGTERM');
+        setTimeout(() => signalProcessTree(pid, 'SIGKILL'), 500);
+        pids.push(pid);
+        browserChild = null;
+    }
+    abortAllRuns();
+    computerStopped = true;
+    lastPrepare = {
+        ready: false,
+        code: 'DIRECTOR_IDLE_SHUTDOWN',
+        error: 'Dreamspace stopped after idle time. The next turn starts it again.'
+    };
+    console.log(`Director idle shutdown: ${reason || 'idle'}`);
+    try { if (boundIdleGr) broadcastDirectorStatus(boundIdleGr); } catch (_) { /* status is best effort */ }
+    return { stopped: true, pids, dreamscapeRestart: false, computer: 'stopped' };
+}
+
+function tickIdleShutdown(now, overrides) {
+    const extra = overrides && typeof overrides === 'object' ? overrides : {};
+    const minutes = extra.minutes != null ? Number(extra.minutes) : readIdleShutdownMinutes(boundIdleGr);
+    const at = Number.isFinite(now) ? now : Date.now();
+    if (!minutes) return { stopped: false, reason: 'disabled', dreamscapeRestart: false };
+    if (!lastDirectorActivityAt) return { stopped: false, reason: 'never started', dreamscapeRestart: false };
+    if (computerStopped) return { stopped: false, reason: 'already stopped', dreamscapeRestart: false };
+    const running = extra.running != null ? extra.running === true : directorWorkRunning();
+    if (running) return { stopped: false, reason: 'busy', dreamscapeRestart: false };
+    if (at - lastDirectorActivityAt < minutes * 60 * 1000) {
+        return { stopped: false, reason: 'active', dreamscapeRestart: false };
+    }
+    return shutdownIdleDirector(`${minutes} minutes idle`);
+}
+
+function armIdleShutdown(gr) {
+    if (gr) boundIdleGr = gr;
+    if (idleShutdownTimer) return;
+    idleShutdownTimer = setInterval(() => {
+        try { tickIdleShutdown(); } catch (err) {
+            console.error(`Director idle shutdown tick failed: ${err.message}`);
+        }
+    }, 60 * 1000);
+    if (typeof idleShutdownTimer.unref === 'function') idleShutdownTimer.unref();
+}
+
 function computerReadiness() {
+    if (computerStopped) {
+        return { ready: false, code: 'DIRECTOR_IDLE_SHUTDOWN', error: 'Dreamspace stopped after idle time. The next turn starts it again.' };
+    }
     if (!findBwrap()) return { ready: false, code: 'BWRAP_MISSING', error: 'bubblewrap is not installed' };
     if (!findAgent()) return { ready: false, code: 'CURSOR_MISSING', error: 'Cursor is not installed' };
     if (!fs.existsSync(path.join(layout().workspace, '.cursor', 'mcp.json'))) {
@@ -1937,6 +2081,7 @@ function noteTurnState(state, sessionId, error) {
 // and the tray menu, and one class on the icon.
 function directorState(computer) {
     if (runs.size) return 'working';
+    if (computerStopped) return 'offline';
     if (!computer.ready) return 'offline';
     if (lastTurn.state === 'interrupted' || lastTurn.state === 'failed') return lastTurn.state;
     return 'idle';
@@ -2634,13 +2779,7 @@ function consumeStreamLine(line, state) {
         });
         const text = blocks.filter((block) => block && block.type === 'text').map((block) => block.text || '').join('');
         if (!text) return;
-        openLiveRow(state, 'assistant');
-        if (!state.live.text || text.startsWith(state.live.text) || state.live.text.startsWith(text)) {
-            if (text.length >= state.live.text.length) state.live.text = text;
-        } else {
-            state.live.text += text;
-        }
-        state.text = state.live.text;
+        takeAssistantText(state, text);
         return;
     }
     if (evt.type === 'tool_call' || evt.type === 'tool_use') {
@@ -2657,21 +2796,42 @@ function consumeStreamLine(line, state) {
         state.finished = true;
         if (evt.is_error) state.error = evt.result || 'Director run failed';
         else if (typeof evt.result === 'string' && evt.result.trim()) {
-            const result = evt.result.trim();
-            state.result = result;
-            const covered = assistantRowsCoverResult(state.rows, result);
-            const lastAssistant = covered
-                ? [...state.rows].reverse().find((row) => row && row.type === 'assistant' && row.text)
-                : null;
-            state.text = lastAssistant ? lastAssistant.text : result;
-            if (!covered) {
-                state.rows.push({ type: 'assistant', text: result });
-            }
+            settleDirectorResult(state, evt.result.trim());
         }
     }
 }
 
-function runCursorTurn(jail, cursorId, model, prompt, onText, marker) {
+function turnDeadline(now, startedAt, lastActivity, limits) {
+    const idleMs = limits && limits.idleMs > 0 ? limits.idleMs : RUN_IDLE_MS;
+    const hardMs = limits && limits.hardMs > 0 ? limits.hardMs : RUN_HARD_MS;
+    if (now - startedAt >= hardMs) {
+        return { reason: 'hard', message: (limits && limits.hardMessage) || 'Director stopped after 30 minutes' };
+    }
+    if (now - lastActivity >= idleMs) {
+        return { reason: 'idle', message: (limits && limits.idleMessage) || 'Director stopped because it made no progress for several minutes' };
+    }
+    return null;
+}
+
+function dynagenTurnLimits(review) {
+    const hardMs = review ? RENTAN_REVIEW_HARD_MS : DYNAGEN_HARD_MS;
+    const hardMin = Math.round(hardMs / 60000);
+    return {
+        idleMs: DYNAGEN_IDLE_MS,
+        hardMs,
+        idleMessage: 'Rentan stopped because it made no progress for 2 minutes',
+        hardMessage: `Rentan stopped after ${hardMin} minutes`
+    };
+}
+
+function killAgentChild(child) {
+    const pid = child && child.pid;
+    if (!pid) return;
+    signalProcessTree(pid, 'SIGTERM');
+    setTimeout(() => signalProcessTree(pid, 'SIGKILL'), 500);
+}
+
+function runCursorTurn(jail, cursorId, model, prompt, onText, marker, limits) {
     return new Promise((resolve, reject) => {
         if (marker && marker.cancelled) {
             const error = new Error(marker.steer ? 'Steered' : 'Stopped');
@@ -2681,6 +2841,7 @@ function runCursorTurn(jail, cursorId, model, prompt, onText, marker) {
             reject(error);
             return;
         }
+        noteDirectorActivity();
         const args = [
             '--print',
             '--output-format', 'stream-json',
@@ -2740,19 +2901,15 @@ function runCursorTurn(jail, cursorId, model, prompt, onText, marker) {
             error.rows = state.rows.slice();
             error.partialText = state.text || '';
             error.context = state.context || null;
-            try { child.kill('SIGTERM'); } catch (_) { /* already exited */ }
+            killAgentChild(child);
+            noteDirectorActivity();
             reject(error);
         };
+        const pollMs = limits && limits.pollMs > 0 ? limits.pollMs : 15000;
         const timer = setInterval(() => {
-            const now = Date.now();
-            if (now - startedAt >= RUN_HARD_MS) {
-                fail('Director stopped after 30 minutes');
-                return;
-            }
-            if (now - lastActivity >= RUN_IDLE_MS) {
-                fail('Director stopped because it made no progress for several minutes');
-            }
-        }, 15000);
+            const deadline = turnDeadline(Date.now(), startedAt, lastActivity, limits);
+            if (deadline) fail(deadline.message);
+        }, pollMs);
         const noteActivity = () => { lastActivity = Date.now(); };
         child.stdout.on('data', noteActivity);
         child.stderr.on('data', noteActivity);
@@ -2769,6 +2926,7 @@ function runCursorTurn(jail, cursorId, model, prompt, onText, marker) {
             if (settled) return;
             settled = true;
             clearInterval(timer);
+            noteDirectorActivity();
             if (buffer.trim()) consumeStreamLine(buffer, state);
             if (marker && marker.cancelled) {
                 const error = new Error(marker.steer ? 'Steered' : 'Stopped');
@@ -2799,6 +2957,7 @@ function runCursorTurn(jail, cursorId, model, prompt, onText, marker) {
             if (!state.rows.length && state.text) {
                 state.rows.push({ type: 'assistant', text: state.text });
             }
+            noteDirectorActivity();
             resolve({ text: state.text || '', result: state.result || '', rows: state.rows, context: state.context || null });
         });
     });
@@ -4202,7 +4361,18 @@ function dynagenRules() {
         'A directive, when given, is the creative ask for this scene. Fold it into dg_scene and the prompt the same way.',
         'Stay under recommended tokens. count_prompt_tokens or search_autofill only when a tag is in doubt.',
         'A later tick only says what changed. Update the affected expander bodies and keep the rest. When Why names a control that turned on or off, apply that control now even if the context did not change; returning the same answer is wrong.',
-        'Deliver with the hidden tool deliver_rentan: advanced_tools {"name":"deliver_rentan","arguments":{"chatId":"<Rentan chat id below>","expanders":[{"prefix":"dg_weather","value":"...","reason":"one line: what in the context drove it"}],"prompt":"full base prompt, only if it changed","uc":"only if it changed","characters":[{"index":0,"prompt":"only slots that changed"}],"applied":{"action":"one line: what you changed and which context drove it"},"summary":"one line"}}. expanders always lists every dg_ expander you want kept. applied has one line for every control in the Controls list; a missing line is rejected. If it returns an error, fix the payload and call it again. After it succeeds, reply with the summary line only.'
+        'Deliver with the hidden tool deliver_rentan: advanced_tools {"name":"deliver_rentan","arguments":{"chatId":"<Rentan chat id below>","expanders":[{"prefix":"dg_weather","value":"...","reason":"one line: what in the context drove it"}],"prompt":"full base prompt, only if it changed","uc":"only if it changed","characters":[{"index":0,"prompt":"only slots that changed"}],"applied":{"action":"one line: what you changed and which context drove it"},"summary":"one line"}}. expanders always lists every dg_ expander you want kept. applied has one line for every control in the Controls list; a missing line is rejected. If it returns an error, fix the payload and call it again.'
+    ].join('\n');
+}
+
+function rentanReviewInstructions() {
+    return [
+        'This turn stays open until the print is saved. Do not stop after deliver_rentan.',
+        'Call await_rentan_attempt with the Rentan chat id: advanced_tools {"name":"await_rentan_attempt","arguments":{"chatId":"<Rentan chat id>"}}. It waits up to 45s. pending means call it again with the same chatId. Do not guess the picture.',
+        'It returns the attempt number, a preview path in your home (rentan/<n>.webp), and the compiled prompt. Read that preview with your file tools.',
+        'If the print matches the scene, finish_rentan: advanced_tools {"name":"finish_rentan","arguments":{"chatId":"<Rentan chat id>","approved":true}}.',
+        'If it does not, call deliver_rentan again with the fix. Studio prints another attempt. Then await_rentan_attempt again.',
+        'You get 5 attempts. On attempt 5, finish_rentan with pick set to the best attempt number. If you do neither, the last attempt is saved.'
     ].join('\n');
 }
 
@@ -4255,7 +4425,15 @@ function dynagenControlLines(controls) {
 
 function dynagenTurnPrompt(fresh, job) {
     const lines = [];
-    lines.push(fresh ? dynagenRules() : 'Rentan tick. Same rules as the first turn. Deliver with deliver_rentan.');
+    const reviewing = !!(job && (job.review || job.reviewOnly));
+    if (job && job.reviewOnly) {
+        lines.push('Rentan review of a print that is already in front of you. Same scene rules. Do not generate.');
+        lines.push(rentanReviewInstructions());
+    } else {
+        lines.push(fresh ? dynagenRules() : 'Rentan tick. Same rules as the first turn. Deliver with deliver_rentan.');
+        if (reviewing) lines.push(rentanReviewInstructions());
+        else lines.push('After deliver_rentan succeeds, reply with the summary line only.');
+    }
     lines.push('');
     lines.push(`Rentan chat id: ${job.chatId || ''}`);
     lines.push(`Why: ${job.reason || 'context refresh'}`);
@@ -4268,6 +4446,9 @@ function dynagenTurnPrompt(fresh, job) {
         lines.push(`Characters: ${JSON.stringify(job.characters)}`);
     }
     lines.push(`Current dg_ expanders: ${JSON.stringify(job.expanders || [])}`);
+    if (job.attemptN) lines.push(`Attempt: ${job.attemptN}/${job.max || 5}`);
+    if (job.previewPath) lines.push(`Preview: ${job.previewPath}`);
+    if (job.compiledPrompt) lines.push(`Compiled prompt:\n${job.compiledPrompt}`);
     return lines.join('\n');
 }
 
@@ -4340,6 +4521,16 @@ function deliverDynagen(chatId, payload) {
         throw error;
     }
     slot.change = change;
+    if (slot.review) {
+        const { noteRentanDelivery } = require('./dynagenWren');
+        const outcome = noteRentanDelivery(slot.review, change);
+        return {
+            chatId: id,
+            expanders: slot.change.expanders.length,
+            characters: slot.change.characters.length,
+            rebuild: outcome.rebuild === true
+        };
+    }
     return { chatId: id, expanders: slot.change.expanders.length, characters: slot.change.characters.length };
 }
 
@@ -4420,56 +4611,130 @@ async function noteDynagenTurn(paths, sessionId) {
     });
 }
 
-async function executeDynagenTurn(gr, job) {
-    const { paths, jail } = await ensureProject(gr);
-    const model = resolveRunModel(await listCursorModels(jail), { effort: 'medium' });
-    const probe = await claimDynagenChat(gr, jail, paths, job);
-    const marker = { cancelled: false };
-    const slot = { change: null, controls: job.controls || null };
-    runs.set(probe.id, marker);
-    dynagenDeliveries.set(probe.id, slot);
-    const tracker = dynagenThoughtTracker(job.onThought);
-    let turned;
+async function executeDynagenTurn(gr, job, review, started) {
+    const limits = dynagenTurnLimits(!!(review || (job && (job.review || job.reviewOnly))));
+    let probe = null;
+    let announced = false;
+    const announce = (fn, value) => {
+        if (announced || !started) return;
+        announced = true;
+        fn(value);
+    };
     try {
+        const { paths, jail } = await ensureProject(gr);
+        const model = resolveRunModel(await listCursorModels(jail), { effort: 'medium' });
+        probe = await claimDynagenChat(gr, jail, paths, job);
+        if (review) {
+            review.chatId = probe.id;
+            if (!review.homeDir) review.homeDir = paths.home;
+        }
+        const marker = { cancelled: false };
+        const slot = { change: null, controls: job.controls || null, review: review || null };
+        runs.set(probe.id, marker);
+        dynagenDeliveries.set(probe.id, slot);
+        announce((value) => started.resolve(value), { sessionId: probe.id });
+        const tracker = dynagenThoughtTracker(job.onThought);
+        let turned;
         try {
-            turned = await runCursorTurn(jail, probe.cursorId, model, probe.prompt, tracker, marker);
+            try {
+                turned = await runCursorTurn(jail, probe.cursorId, model, probe.prompt, tracker, marker, limits);
+            } catch (error) {
+                if (slot.change || model === 'auto' || marker.cancelled || !isUsageLimit(error)) throw error;
+                console.warn(`Rentan ${probe.id} hit a Cursor usage limit on ${model}; retrying on Auto`);
+                turned = await runCursorTurn(jail, probe.cursorId, 'auto', probe.prompt, tracker, marker, limits);
+            }
         } catch (error) {
-            if (slot.change || model === 'auto' || marker.cancelled || !isUsageLimit(error)) throw error;
-            console.warn(`Rentan ${probe.id} hit a Cursor usage limit on ${model}; retrying on Auto`);
-            turned = await runCursorTurn(jail, probe.cursorId, 'auto', probe.prompt, tracker, marker);
+            if (Array.isArray(error.rows) && error.rows.length) {
+                await saveDirectorTrace(paths, probe.id, error.rows, error.message || 'Rentan failed', null, null).catch(() => {});
+            }
+            // deliver_rentan already landed: the change is in hand even though the turn died after it.
+            if (slot.change) {
+                turned = { rows: error.rows || [], text: error.partialText || '', context: error.context || null };
+            } else {
+                if (isUsageLimit(error)) error.code = 'CURSOR_USAGE_LIMIT';
+                throw error;
+            }
         }
+        await saveDirectorTrace(paths, probe.id, turned.rows, turned.text, null, null);
+        if (turned.context) await rememberContext(paths, probe.id, turned.context);
+        const change = slot.change || (review ? null : parseDynagenAnswer(turned.result || turned.text));
+        await noteDynagenTurn(paths, probe.id);
+        return { sessionId: probe.id, change };
     } catch (error) {
-        if (Array.isArray(error.rows) && error.rows.length) {
-            await saveDirectorTrace(paths, probe.id, error.rows, error.message || 'Rentan failed', null, null).catch(() => {});
+        announce((value) => started.reject(value), error);
+        if (review && !review.delivered) {
+            const { failRentanReview } = require('./dynagenWren');
+            failRentanReview(review, error);
         }
-        // deliver_rentan already landed: the change is in hand even though the turn died after it.
-        if (slot.change) {
-            turned = { rows: error.rows || [], text: error.partialText || '', context: error.context || null };
-        } else {
-            if (isUsageLimit(error)) error.code = 'CURSOR_USAGE_LIMIT';
-            throw error;
-        }
+        throw error;
     } finally {
-        runs.delete(probe.id);
-        dynagenDeliveries.delete(probe.id);
+        if (review) {
+            const { closeRentanReview } = require('./dynagenWren');
+            closeRentanReview(review);
+        }
+        if (probe) {
+            runs.delete(probe.id);
+            dynagenDeliveries.delete(probe.id);
+        }
     }
-    await saveDirectorTrace(paths, probe.id, turned.rows, turned.text, null, null);
-    if (turned.context) await rememberContext(paths, probe.id, turned.context);
-    const change = slot.change || parseDynagenAnswer(turned.result || turned.text);
-    await noteDynagenTurn(paths, probe.id);
-    return { sessionId: probe.id, change };
 }
 
-// One Rentan turn at a time per workspace; later callers queue behind it.
-function runDynagenTurn(gr, job) {
-    const key = (job && job.workspaceId) || '_';
+function queueDynagen(key, run) {
     const prior = dynagenQueues.get(key) || Promise.resolve();
-    const next = prior.catch(() => {}).then(() => executeDynagenTurn(gr, job || {}));
+    const next = prior.catch(() => {}).then(run);
     dynagenQueues.set(key, next);
     next.finally(() => {
         if (dynagenQueues.get(key) === next) dynagenQueues.delete(key);
     }).catch(() => {});
     return next;
+}
+
+// One Rentan turn at a time per workspace; later callers queue behind it.
+// A review turn resolves the caller at the first deliver_rentan and keeps the
+// process open for await_rentan_attempt / finish_rentan (#351, #352).
+function runDynagenTurn(gr, job) {
+    const key = (job && job.workspaceId) || '_';
+    const review = job && job.review;
+    const full = queueDynagen(key, () => executeDynagenTurn(gr, job || {}, review || null, null));
+    if (!review || job.reviewOnly) return full;
+    const { waitForFirstDelivery } = require('./dynagenWren');
+    return waitForFirstDelivery(review).then((change) => ({
+        sessionId: review.chatId,
+        change,
+        review
+    }));
+}
+
+function startRentanReviewTurn(gr, job) {
+    const key = (job && job.workspaceId) || '_';
+    let started;
+    const ready = new Promise((resolve, reject) => {
+        started = { resolve, reject };
+    });
+    queueDynagen(key, () => executeDynagenTurn(gr, job || {}, job && job.review, started));
+    return ready;
+}
+
+function rentanReviewFor(chatId) {
+    let id = String(chatId || '').trim();
+    if (!id && dynagenDeliveries.size === 1) id = dynagenDeliveries.keys().next().value;
+    const slot = dynagenDeliveries.get(id);
+    if (!slot || !slot.review) {
+        const error = new Error('No Rentan turn is waiting on this chat. Pass the Rentan chat id from your turn prompt.');
+        error.code = 'NO_RENTAN_TURN';
+        throw error;
+    }
+    return slot.review;
+}
+
+function awaitRentanAttempt(chatId, timeoutMs) {
+    const { awaitRentanAttempt: wait } = require('./dynagenWren');
+    return wait(rentanReviewFor(chatId), timeoutMs);
+}
+
+function finishRentan(chatId, input) {
+    const { finishRentanReview } = require('./dynagenWren');
+    return finishRentanReview(rentanReviewFor(chatId), input || {});
 }
 
 async function rememberContext(paths, sessionId, context) {
@@ -4813,12 +5078,21 @@ module.exports = {
     ensureAppKey,
     runDynagenTurn,
     deliverDynagen,
+    awaitRentanAttempt,
+    finishRentan,
+    startRentanReviewTurn,
     _test: {
         insideDir, safeName, effortModel, consumeStreamLine, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
         parseCursorModelLine, agentJailTarget, buildJail, jailEnv, systemBindArgs,
         publicSession, publicMessage, publicTraceRow, roundModelRecord, watchGeneratedPrints, rememberGeneratedPrint,
         isLinkDrop, continuationPrompt,
         normalizeSessionTasks, readProcStat, directorState, computerReadiness,
-        parseDynagenAnswer, dynagenThoughtTracker, dynagenTurnPrompt, chatIsListed, dynagenDeliveries
+        parseDynagenAnswer, dynagenThoughtTracker, dynagenTurnPrompt, chatIsListed, dynagenDeliveries,
+        takeAssistantText, settleDirectorResult, turnDeadline, dynagenTurnLimits, killAgentChild, signalProcessTree,
+        RUN_IDLE_MS, RUN_HARD_MS, DYNAGEN_IDLE_MS, DYNAGEN_HARD_MS, RENTAN_REVIEW_HARD_MS,
+        readIdleShutdownMinutes, noteDirectorActivity, tickIdleShutdown, wakeDirectorComputer, shutdownIdleDirector,
+        rentanReviewInstructions,
+        setBrowserChild: (child) => { browserChild = child; },
+        idleShutdownState: () => ({ computerStopped, lastDirectorActivityAt, code: lastPrepare && lastPrepare.code })
     }
 };

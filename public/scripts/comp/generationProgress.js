@@ -91,6 +91,9 @@ function calculateGenerationProgress(progressData) {
             }
             return 16;
 
+        case 'reviewing':
+            return 22;
+
         case 'completion':
             // 25%: AI processing complete
             return 25;
@@ -133,7 +136,9 @@ function getGenerationStatusMessage(progressData) {
                 ? `Executing tools (${d.currentKey}/${d.totalKeys})...`
                 : 'Executing tools...';
         case 'streaming':
-            return 'Processing AI response...';
+            return d.status || 'Processing AI response...';
+        case 'reviewing':
+            return d.status || 'Wren is reviewing...';
         case 'completion':
             return 'AI processing complete, starting generation...';
         case 'generating':

@@ -5985,7 +5985,7 @@ class WebSocketClient {
                 }
             }
 
-            if (data.phase === 'generating' && !galleryRerollActive && !isRerollProgress) {
+            if ((data.phase === 'generating' || data.phase === 'reviewing') && !galleryRerollActive && !isRerollProgress) {
                 const stepFrames = Array.isArray(data.stepFrames) ? data.stepFrames : null;
                 const hasSingleStep = data.currentStep !== undefined && data.imageData;
                 if (stepFrames && stepFrames.length > 0) {
