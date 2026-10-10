@@ -5426,6 +5426,7 @@ class Director {
         const named = {
             await_generation_job: 'Wait for print',
             get_generation_job: 'Print job',
+            list_generation_requests: 'Print history',
             expand_image: 'Expand',
             expand: 'Expand',
             upscale_image: 'Upscale',

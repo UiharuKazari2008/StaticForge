@@ -4,6 +4,11 @@ const { resolveDynamicContext } = require('../../dynamicGenerationHandlers');
 const { broadcastGalleryMutation } = require('./120-galleryHandler');
 const { notifyGenerationQueued } = require('../../generationJobQueue');
 const { completeApplyGenerateFromWorkspace } = require('../../mcpReliability');
+const {
+    rememberGenerationRequest,
+    patchGenerationRequest,
+    urlsForFilenames
+} = require('../../generationRequestLog');
 
 function takeSkipGenerationQueue(message) {
     if (!message || !message.skipGenerationQueue) return false;
@@ -11,18 +16,83 @@ function takeSkipGenerationQueue(message) {
     return true;
 }
 
-async function runOnGenerationFifo(handlers, ws, message, type, workFn) {
+function fifoCaller(clientInfo) {
+    if (clientInfo && clientInfo.sessionId) return `session:${clientInfo.sessionId}`;
+    if (clientInfo && clientInfo.userType) return String(clientInfo.userType);
+    return 'studio';
+}
+
+function noteFifoOutcome(globalResources, jobId, outcome) {
+    const failed = !!(outcome && outcome.success === false);
+    const names = failed ? [] : collectSavedGenerationFilenames(outcome);
+    patchGenerationRequest(globalResources, jobId, {
+        status: failed ? 'failed' : 'completed',
+        finishedAt: Date.now(),
+        imageIds: names,
+        imageUrls: urlsForFilenames(globalResources, names),
+        error: failed ? ((outcome && outcome.error) || 'generation failed') : null
+    });
+}
+
+async function runOnGenerationFifo(handlers, ws, message, type, workFn, clientInfo) {
     if (takeSkipGenerationQueue(message)) {
         return workFn();
     }
     const requestId = message.requestId || 'unknown';
+    const caller = fifoCaller(clientInfo);
+    const workspace = message.workspace || message.workspaceId || null;
     handlers.startKeepAliveInterval(ws, requestId, 15000);
+    const holder = { job: null };
     const job = handlers.globalResources.getGenerationJobQueue().submit({
         type,
         source: 'ws',
         requestId,
-        run: workFn
+        caller,
+        workspace,
+        run: async () => {
+            const id = holder.job && holder.job.id;
+            if (id) {
+                try {
+                    patchGenerationRequest(handlers.globalResources, id, {
+                        status: 'running',
+                        startedAt: Date.now()
+                    });
+                } catch (_err) { /* history must not block the print */ }
+            }
+            try {
+                const outcome = await workFn();
+                if (id) {
+                    try {
+                        noteFifoOutcome(handlers.globalResources, id, outcome);
+                    } catch (_err) { /* history must not block the print */ }
+                }
+                return outcome;
+            } catch (err) {
+                if (id) {
+                    try {
+                        patchGenerationRequest(handlers.globalResources, id, {
+                            status: 'failed',
+                            finishedAt: Date.now(),
+                            error: (err && err.message) || 'generation failed'
+                        });
+                    } catch (_err) { /* history must not block the print */ }
+                }
+                throw err;
+            }
+        }
     });
+    holder.job = job;
+    try {
+        rememberGenerationRequest(handlers.globalResources, {
+            jobId: job.id,
+            status: job.status,
+            type,
+            source: 'ws',
+            caller,
+            workspace,
+            createdAt: Date.now()
+        });
+    } catch (_err) { /* history must not block the print */ }
     notifyGenerationQueued(handlers, ws, requestId, job);
     return job.promise;
 }
@@ -100,6 +170,7 @@ function normalizeExpansionOverrideParams(data) {
 
 async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsServer) {
     const requestId = message.requestId || 'unknown';
+    let outcome = null;
 
     try {
         const { requestId: _, enableStreaming, ...data } = message;
@@ -206,6 +277,11 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
         await broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo, result, data.workspace);
 
         handlers.stopKeepAliveInterval(requestId);
+        outcome = {
+            filename: result && result.filename,
+            filenames: collectSavedGenerationFilenames(result),
+            seed: result && result.seed
+        };
     } catch (error) {
         handlers.stopKeepAliveInterval(requestId);
 
@@ -229,20 +305,23 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
             code: errorCode,
             timestamp: new Date().toISOString()
         });
+        outcome = { success: false, error: exactMessage };
     } finally {
         handlers.unregisterActiveGeneration(ws, requestId);
         handlers.clearGenerationCancelled(requestId);
     }
+    return outcome;
 }
 
 async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer) {
     return runOnGenerationFifo(handlers, ws, message, 'generate_image', () => (
         handleImageGenerationWork(handlers, ws, message, clientInfo, wsServer)
-    ));
+    ), clientInfo);
 }
 
 async function handleImageRerollWork(handlers, ws, message, clientInfo, wsServer) {
     const requestId = message.requestId;
+    let outcome = null;
     try {
         const { filename, workspace, allow_paid } = message;
         console.log(`🎲 Processing image reroll request: ${requestId} for filename: ${filename}, allow_paid: ${allow_paid}`);
@@ -288,6 +367,11 @@ async function handleImageRerollWork(handlers, ws, message, clientInfo, wsServer
         });
 
         await broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo, result);
+        outcome = {
+            filename: result && result.filename,
+            filenames: collectSavedGenerationFilenames(result),
+            seed: result && result.seed
+        };
     } catch (error) {
         handlers.stopKeepAliveInterval(requestId);
         console.error('❌ Image reroll error:', error);
@@ -298,16 +382,18 @@ async function handleImageRerollWork(handlers, ws, message, clientInfo, wsServer
             error: error.message || 'Image reroll failed',
             timestamp: new Date().toISOString()
         });
+        outcome = { success: false, error: error.message || 'Image reroll failed' };
     } finally {
         handlers.unregisterActiveGeneration(ws, requestId);
         handlers.clearGenerationCancelled(requestId);
     }
+    return outcome;
 }
 
 async function handleImageReroll(handlers, ws, message, clientInfo, wsServer) {
     return runOnGenerationFifo(handlers, ws, message, 'reroll_image', () => (
         handleImageRerollWork(handlers, ws, message, clientInfo, wsServer)
-    ));
+    ), clientInfo);
 }
 
 async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer) {

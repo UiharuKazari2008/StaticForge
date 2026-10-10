@@ -82,6 +82,8 @@ function createGenerationJobQueue(options) {
             filename: flat.filename || result.filename || null,
             filenames: flat.filenames || result.filenames || null,
             destPath: job.destPath || flat.dest_path || null,
+            caller: job.caller || null,
+            workspace: job.workspace || null,
             seed: flat.seed || result.seed || null,
             error: job.status === 'failed'
                 ? (job.error && job.error.message) || flat.error || 'generation failed'
@@ -153,6 +155,8 @@ function createGenerationJobQueue(options) {
             source: String(info.source || 'unknown'),
             requestId: info.requestId || null,
             destPath: info.destPath || info.dest_path || null,
+            caller: info.caller || null,
+            workspace: info.workspace || null,
             status: 'queued',
             createdAt: nowFn(),
             startedAt: null,

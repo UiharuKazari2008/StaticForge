@@ -737,6 +737,7 @@ assert.ok(coreNames.includes('get_client_physics'));
 assert.ok(coreNames.includes('get_linkxi_persona'));
 assert.ok(coreNames.includes('save_linkxi_persona'));
 assert.ok(coreNames.includes('get_generation_job'));
+assert.ok(coreNames.includes('list_generation_requests'));
 assert.ok(coreNames.includes('await_generation_job'));
 assert.ok(coreNames.includes('ensure_artifact'));
 assert.ok(coreNames.includes('get_open_windows'));
@@ -834,7 +835,7 @@ assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => null }, {}), null);
 assert.ok(coreNames.includes('update_meal_images'));
 assert.ok(coreNames.includes('void_cake_delivery'));
-assert.strictEqual(coreNames.length, 108);
+assert.strictEqual(coreNames.length, 109);
 assert.ok(coreNames.includes('ledge'));
 assert.ok(coreNames.includes('generate_nax_tag'));
 assert.ok(coreNames.includes('delete_nax_tag'));
