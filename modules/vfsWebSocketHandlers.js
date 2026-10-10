@@ -65,42 +65,54 @@ class VfsWebSocketHandlers {
     }
 
     async handleVfsListDirectory(ws, message, clientInfo) {
-        const { path: vfsPath, offset, limit, sortField, sortDirection, search } = this.getPayload(message);
-        const result = await this.getVfs().listDirectory(vfsPath || '/', {
-            offset: offset || 0,
-            limit: limit || 300,
-            sortField: sortField || 'name',
-            sortDirection: sortDirection || 'asc',
-            search: search || ''
-        });
-        this.handlers.sendToClient(ws, {
-            type: 'vfs_list_directory_response',
-            requestId: message.requestId,
-            data: { success: true, ...this.enrichListResult(result) },
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const { path: vfsPath, offset, limit, sortField, sortDirection, search } = this.getPayload(message);
+            const result = await this.getVfs().listDirectory(vfsPath || '/', {
+                offset: offset || 0,
+                limit: limit || 300,
+                sortField: sortField || 'name',
+                sortDirection: sortDirection || 'asc',
+                search: search || ''
+            });
+            this.handlers.sendToClient(ws, {
+                type: 'vfs_list_directory_response',
+                requestId: message.requestId,
+                data: { success: true, ...this.enrichListResult(result) },
+                timestamp: new Date().toISOString()
+            });
+        } catch (err) {
+            this.handlers.sendError(ws, err.message || 'Failed to list directory', 'vfs_list_directory', message.requestId);
+        }
     }
 
     async handleVfsGetPathStats(ws, message) {
-        const { path: vfsPath } = this.getPayload(message);
-        const stats = await this.getVfs().getPathStats(vfsPath || '/');
-        this.handlers.sendToClient(ws, {
-            type: 'vfs_get_path_stats_response',
-            requestId: message.requestId,
-            data: { success: true, stats },
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const { path: vfsPath } = this.getPayload(message);
+            const stats = await this.getVfs().getPathStats(vfsPath || '/');
+            this.handlers.sendToClient(ws, {
+                type: 'vfs_get_path_stats_response',
+                requestId: message.requestId,
+                data: { success: true, stats },
+                timestamp: new Date().toISOString()
+            });
+        } catch (err) {
+            this.handlers.sendError(ws, err.message || 'Failed to stat path', 'vfs_get_path_stats', message.requestId);
+        }
     }
 
     async handleVfsResolvePath(ws, message) {
-        const { path: inputPath } = this.getPayload(message);
-        const path = await this.getVfs().resolvePathInput(inputPath || '/');
-        this.handlers.sendToClient(ws, {
-            type: 'vfs_resolve_path_response',
-            requestId: message.requestId,
-            data: { success: true, path },
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const { path: inputPath } = this.getPayload(message);
+            const path = await this.getVfs().resolvePathInput(inputPath || '/');
+            this.handlers.sendToClient(ws, {
+                type: 'vfs_resolve_path_response',
+                requestId: message.requestId,
+                data: { success: true, path },
+                timestamp: new Date().toISOString()
+            });
+        } catch (err) {
+            this.handlers.sendError(ws, err.message || 'Failed to resolve path', 'vfs_resolve_path', message.requestId);
+        }
     }
 
     async handleVfsCreateFolder(ws, message, clientInfo, wsServer) {
@@ -267,43 +279,53 @@ class VfsWebSocketHandlers {
     }
 
     async handleVfsUploadFile(ws, message, clientInfo, wsServer) {
-        const { path: vfsPath, fileData, originalFilename, mimeType, tempFile } = this.getPayload(message);
-        let buffer;
-        if (tempFile) {
-            const tempPath = path.join(this.globalResources.getPath('tempDownload'), tempFile);
-            buffer = fs.readFileSync(tempPath);
-        } else if (fileData) {
-            const base64 = fileData.replace(/^data:[^;]+;base64,/, '');
-            buffer = Buffer.from(base64, 'base64');
-        } else {
-            throw new Error('No file data provided');
+        try {
+            const payload = this.getPayload(message);
+            const { path: vfsPath, fileData, originalFilename, mimeType, tempFile, overwrite } = payload;
+            let buffer;
+            if (tempFile) {
+                const tempPath = path.join(this.globalResources.getPath('tempDownload'), tempFile);
+                buffer = fs.readFileSync(tempPath);
+            } else if (fileData) {
+                const base64 = fileData.replace(/^data:[^;]+;base64,/, '');
+                buffer = Buffer.from(base64, 'base64');
+            } else {
+                throw new Error('No file data provided');
+            }
+            const resolvedPath = await this.getVfs().resolvePathInput(vfsPath);
+            const location = this.getVfs().resolveLocationFromPath(resolvedPath);
+            const file = await this.getVfs().saveUserFileBuffer(buffer, {
+                originalName: originalFilename || 'file',
+                mimeType: mimeType || 'application/octet-stream',
+                scope: location.scope,
+                workspaceId: location.workspaceId,
+                folderId: location.folderId,
+                overwrite: overwrite === true || overwrite === 'true'
+            });
+            if (!file || !file.id) throw new Error('File was not stored');
+            this.broadcastVfsUpdated(wsServer, resolvedPath);
+            // modules/replicationJournal.js — recordReplicationVfsJournal
+            await recordReplicationVfsJournal(file.content_hash, {
+                fileId: file.id,
+                originalName: file.original_name,
+                scope: location.scope,
+                workspaceId: location.workspaceId
+            });
+            const uuid = this.globalResources.getVfsPathUuid();
+            this.handlers.sendToClient(ws, {
+                type: 'vfs_upload_file_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    overwritten: file.overwritten === true,
+                    path: resolvedPath,
+                    file: this.getVfs().enrichItemsWithPreviewUrls([this.getVfs().makeFileItem(file)], uuid)[0]
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (err) {
+            this.handlers.sendError(ws, err.message || 'Failed to upload file', 'vfs_upload_file', message.requestId);
         }
-        const location = this.getVfs().resolveLocationFromPath(vfsPath);
-        const file = await this.getVfs().saveUserFileBuffer(buffer, {
-            originalName: originalFilename || 'file',
-            mimeType: mimeType || 'application/octet-stream',
-            scope: location.scope,
-            workspaceId: location.workspaceId,
-            folderId: location.folderId
-        });
-        this.broadcastVfsUpdated(wsServer, vfsPath);
-        // modules/replicationJournal.js — recordReplicationVfsJournal
-        await recordReplicationVfsJournal(file.content_hash, {
-            fileId: file.id,
-            originalName: file.original_name,
-            scope: location.scope,
-            workspaceId: location.workspaceId
-        });
-        const uuid = this.globalResources.getVfsPathUuid();
-        this.handlers.sendToClient(ws, {
-            type: 'vfs_upload_file_response',
-            requestId: message.requestId,
-            data: {
-                success: true,
-                file: this.getVfs().enrichItemsWithPreviewUrls([this.getVfs().makeFileItem(file)], uuid)[0]
-            },
-            timestamp: new Date().toISOString()
-        });
     }
 
     async handleVfsReplaceFile(ws, message, clientInfo, wsServer) {

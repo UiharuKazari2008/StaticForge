@@ -2142,7 +2142,7 @@ const TOOL_DEFS = [
     {
         name: 'vfs_move',
         core: true,
-        description: 'Move files or folders into dest (a folder path). Pass path or paths[]. Wraps vfs_move_items.',
+        description: 'Move files or folders into dest (a folder path, or a folder name in the same parent). Pass path or paths[] (a name path or an item id). Wraps vfs_move_items.',
         scope: 'vfs',
         inputSchema: {
             type: 'object',
@@ -2175,15 +2175,15 @@ const TOOL_DEFS = [
     {
         name: 'vfs_write',
         core: true,
-        description: 'Save a new user file into the folder at path. Pass name plus fileData (base64) or sourcePath — a file on the Director computer under ~/.cache/dreamscape-director/ (absolute, or relative to that folder) so a large file is not pasted through the model. sourcePath outside that tree is refused. Wraps vfs_upload_file.',
+        description: 'Save a user file. path is the destination folder plus name, or the file path itself (for example /Workspaces/<ws>/cake-kit/file.json). A file with the same name in that folder is overwritten. Pass fileData (base64) or sourcePath — a file on the Director computer under ~/.cache/dreamscape-director/ (absolute, or relative to that folder) so a large file is not pasted through the model. sourcePath outside that tree is refused. Wraps vfs_upload_file.',
         scope: 'vfs',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             required: ['path'],
             properties: {
-                path: { type: 'string', description: 'Destination folder path' },
-                name: { type: 'string', description: 'File name. Defaults to the sourcePath basename.' },
+                path: { type: 'string', description: 'Destination folder, or the file path when name is omitted or matches the last segment' },
+                name: { type: 'string', description: 'File name. Defaults to the sourcePath basename, or the last path segment.' },
                 fileData: { type: 'string', description: 'Base64 (data: URL prefix allowed)' },
                 sourcePath: { type: 'string', description: 'File under ~/.cache/dreamscape-director/' },
                 mimeType: { type: 'string' }
@@ -4717,9 +4717,19 @@ async function resolveVfsItem(globalResources, req, vfsPath) {
     const items = packet.data && Array.isArray(packet.data.items) ? packet.data.items : [];
     const lower = parts.name.toLowerCase();
     const item = items.find((row) => row && row.name === parts.name)
-        || items.find((row) => row && String(row.name || '').toLowerCase() === lower);
-    if (!item) return { error: `Not found: ${parts.path}`, parts };
-    return { item, parts, parentPath: parent.path };
+        || items.find((row) => row && String(row.name || '').toLowerCase() === lower)
+        || items.find((row) => row && (row.id === parts.name || row.targetId === parts.name || row.vfsEntryId === parts.name));
+    if (item) return { item, parts, parentPath: parent.path };
+    // Directory search matches names, so an id segment is resolved from the database
+    // and accepted only at the root (bare id) or when it already lives in this parent.
+    const vfs = globalResources.getVfsManager && globalResources.getVfsManager();
+    if (vfs && typeof vfs.resolveItemById === 'function') {
+        const byId = await vfs.resolveItemById(parts.name);
+        if (byId && byId.item && (parts.parent === '/' || byId.parentPath === parent.path)) {
+            return { item: byId.item, parts, parentPath: byId.parentPath || parent.path };
+        }
+    }
+    return { error: `Not found: ${parts.path}`, parts };
 }
 
 async function resolveVfsItems(globalResources, req, input) {
@@ -4801,10 +4811,18 @@ async function callVfsTool(globalResources, req, name, input) {
     if (name === 'vfs_move' || name === 'vfs_copy') {
         const dest = splitVfsPath(input.dest);
         if (!dest || !String(input.dest || '').trim()) return mcpTextResult({ success: false, error: 'dest folder path is required' }, true);
-        const target = await resolveVfsCanonicalPath(globalResources, req, dest.path);
-        if (target.error) return mcpTextResult({ success: false, error: target.error }, true);
         const resolved = await resolveVfsItems(globalResources, req, input);
         if (resolved.error) return mcpTextResult({ success: false, error: resolved.error }, true);
+        let target = await resolveVfsCanonicalPath(globalResources, req, dest.path);
+        if (target.error) {
+            const rawDest = String(input.dest || '').trim();
+            const parentPath = resolved.rows[0] && resolved.rows[0].parentPath;
+            if (rawDest && parentPath && !rawDest.includes('/') && !rawDest.includes('\\')) {
+                const relative = `${parentPath === '/' ? '' : parentPath}/${rawDest}`;
+                target = await resolveVfsCanonicalPath(globalResources, req, relative);
+            }
+        }
+        if (target.error) return mcpTextResult({ success: false, error: target.error }, true);
         const items = resolved.rows.map((row) => row.item);
         const packet = name === 'vfs_move'
             ? await dispatchPacketTool(globalResources, req, 'vfs_move_items', { items, targetPath: target.path })
@@ -4848,16 +4866,28 @@ async function callVfsTool(globalResources, req, name, input) {
             if (!fileName) fileName = path.basename(source.absPath);
         }
         if (!fileData) return mcpTextResult({ success: false, error: 'fileData (base64) or sourcePath is required' }, true);
+        let folderPath = dest.path;
+        if (!fileName && dest.name && dest.parent) {
+            fileName = dest.name;
+            folderPath = dest.parent;
+        }
         if (!fileName || fileName.includes('/')) return mcpTextResult({ success: false, error: 'name is required (a file name, not a path)' }, true);
-        const target = await resolveVfsCanonicalPath(globalResources, req, dest.path);
+        if (dest.name === fileName && dest.parent) {
+            const asFolder = await resolveVfsCanonicalPath(globalResources, req, dest.path);
+            if (asFolder.error) folderPath = dest.parent;
+        }
+        const target = await resolveVfsCanonicalPath(globalResources, req, folderPath);
         if (target.error) return mcpTextResult({ success: false, error: target.error }, true);
         const packet = await dispatchPacketTool(globalResources, req, 'vfs_upload_file', {
             path: target.path,
             fileData,
             originalFilename: fileName,
+            overwrite: true,
             mimeType: input.mimeType || VFS_MIME_BY_EXT[path.extname(fileName).toLowerCase()] || 'application/octet-stream'
         });
-        return mcpTextResult({ ...flattenPacket(packet), path: `${dest.path === '/' ? '' : dest.path}/${fileName}` }, !packet.success);
+        if (!packet.success) return mcpTextResult({ ...flattenPacket(packet), path: `${folderPath === '/' ? '' : folderPath}/${fileName}` }, true);
+        const shown = `${folderPath === '/' ? '' : folderPath}/${fileName}`;
+        return mcpTextResult({ ...flattenPacket(packet), path: shown, overwritten: !!(packet.data && packet.data.overwritten) }, false);
     }
 
     if (name === 'vfs_read') {

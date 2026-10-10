@@ -96,7 +96,7 @@ class VfsManager {
             if (reserved && parts.length > 3) {
                 throw new Error('Cannot navigate into system folder subpaths');
             }
-            const folderId = parts[2];
+            const folderId = parts[parts.length - 1];
             return { type: 'user-folder', path: normalized, workspaceId, folderId, parentChain: parts.slice(2) };
         }
         // Root-scoped user folders: /{folderId} or /{folderId}/...
@@ -1197,7 +1197,8 @@ class VfsManager {
             search = ''
         } = options;
 
-        const parsed = this.parsePath(vfsPath);
+        const resolvedPath = await this.resolvePathInput(vfsPath || '/');
+        const parsed = this.parsePath(resolvedPath);
         let items = [];
         let totalSizeBytes = 0;
         let emptyMessage = null;
@@ -1833,18 +1834,73 @@ class VfsManager {
         return normalized;
     }
 
+    async _folderChainExists(scope, workspaceId, ids, parentId) {
+        let parent = parentId || null;
+        for (const id of ids) {
+            const folder = await vfsDatabase.getFolderById(id);
+            if (!this._folderSegmentMatches(folder, { scope, workspaceId, parentId: parent, allowHidden: true })) return false;
+            parent = folder.id;
+        }
+        return true;
+    }
+
+    _folderSegmentMatches(folder, { scope, workspaceId, parentId, desktopIds = null, desktopOnly = false, excludeDesktop = false, allowHidden = false }) {
+        if (!folder || folder.trashed_at) return false;
+        if (!allowHidden && this._isHiddenSurfaceFolder(folder)) return false;
+        if (folder.scope !== scope) return false;
+        if (scope === 'workspace' && folder.workspace_id !== workspaceId) return false;
+        if ((folder.parent_id || null) !== (parentId || null)) return false;
+        if (desktopOnly && desktopIds && !desktopIds.has(folder.id)) return false;
+        if (excludeDesktop && desktopIds && desktopIds.has(folder.id)) return false;
+        return true;
+    }
+
+    async _findWorkspaceFolderSegment(workspaceId, parentId, name, options = {}) {
+        const named = await this._findWorkspaceFolderByName(workspaceId, parentId, name, options);
+        if (named) return named;
+        const byId = await vfsDatabase.getFolderById(name);
+        const desktopIds = (options.desktopOnly || options.excludeDesktop)
+            ? this._getDesktopVfsFolderIds(workspaceId)
+            : null;
+        if (!this._folderSegmentMatches(byId, {
+            scope: 'workspace',
+            workspaceId,
+            parentId,
+            desktopIds,
+            desktopOnly: !!options.desktopOnly,
+            excludeDesktop: !!options.excludeDesktop
+        })) return null;
+        return byId;
+    }
+
+    // A path is canonical only when every folder segment is a real id in that parent.
+    // Friendly names parse without throwing, so they must not skip name resolution.
+    async _isStoredCanonicalPath(vfsPath) {
+        const parts = this.normalizePath(vfsPath).split('/').filter(Boolean);
+        if (!parts.length || parts[0] === 'System') return false;
+        const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces() || {};
+        if (parts[0] === 'Workspaces') {
+            if (parts.length === 1) return true;
+            if (!Object.prototype.hasOwnProperty.call(workspaces, parts[1])) return false;
+            if (parts.length === 2) return true;
+            if (parts[2] === 'Desktop') {
+                return this._folderChainExists('workspace', parts[1], parts.slice(3), null);
+            }
+            if (WORKSPACE_RESERVED_NAMES.includes(parts[2])) return parts.length === 3;
+            return this._folderChainExists('workspace', parts[1], parts.slice(2), null);
+        }
+        return this._folderChainExists('root', null, parts, null);
+    }
+
     async resolvePathInput(input) {
         const trimmed = (input || '').trim();
         if (!trimmed || trimmed === '/') return '/';
 
-        try {
-            let canonical = this.normalizePath(trimmed);
-            if (canonical.split('/').filter(Boolean)[0] === 'System') {
-                return await this._assertSystemPathListable(canonical);
-            }
-            this.parsePath(canonical);
-            return canonical;
-        } catch (_) { /* resolve friendly path */ }
+        const normalized = this.normalizePath(trimmed);
+        if (normalized.split('/').filter(Boolean)[0] === 'System') {
+            return await this._assertSystemPathListable(normalized);
+        }
+        if (await this._isStoredCanonicalPath(normalized)) return normalized;
 
         let parts = trimmed.replace(/^\/+/, '').split('/').filter(Boolean);
         const wm = this.globalResources.getWorkspaceManager();
@@ -1860,10 +1916,16 @@ class VfsManager {
             let parentId = null;
             for (; i < parts.length; i++) {
                 const folders = await vfsDatabase.getFoldersByParent('root', null, parentId);
-                const match = folders.find(f =>
+                let match = folders.find(f =>
                     !this._isHiddenSurfaceFolder(f) &&
                     (f.name || '').toLowerCase() === parts[i].toLowerCase()
                 );
+                if (!match) {
+                    const byId = await vfsDatabase.getFolderById(parts[i]);
+                    if (this._folderSegmentMatches(byId, { scope: 'root', workspaceId: null, parentId })) {
+                        match = byId;
+                    }
+                }
                 if (!match) throw new Error(`Path not found: ${parts[i]}`);
                 canonical = canonical ? `${canonical}/${match.id}` : `/${match.id}`;
                 parentId = match.id;
@@ -1896,9 +1958,10 @@ class VfsManager {
                 continue;
             }
 
-            const match = onDesktop
-                ? await this._findWorkspaceFolderByName(wsId, parentId, seg, { desktopOnly: parentId === null })
-                : await this._findWorkspaceFolderByName(wsId, parentId, seg, { excludeDesktop: parentId === null });
+            const findOptions = onDesktop
+                ? { desktopOnly: parentId === null }
+                : { excludeDesktop: parentId === null };
+            const match = await this._findWorkspaceFolderSegment(wsId, parentId, seg, findOptions);
 
             if (!match) throw new Error(`Folder not found: ${seg}`);
             canonical = `${canonical}/${match.id}`;
@@ -2100,19 +2163,20 @@ class VfsManager {
     }
 
     async getPathStats(vfsPath) {
-        const normalized = this.normalizePath(vfsPath);
+        const resolvedPath = await this.resolvePathInput(vfsPath || '/');
+        const normalized = this.normalizePath(resolvedPath);
         const cached = this._pathStatsCache.get(normalized);
         if (cached && Date.now() - cached.at < this._pathStatsCacheTtlMs) {
             return cached.stats;
         }
 
-        const parsed = this.parsePath(vfsPath);
+        const parsed = this.parsePath(resolvedPath);
         const [display, listingStats] = await Promise.all([
-            this.getPathDisplayInfo(vfsPath),
+            this.getPathDisplayInfo(resolvedPath),
             this._computePathListingStats(parsed)
         ]);
         const stats = {
-            path: vfsPath,
+            path: resolvedPath,
             displayName: display.displayName,
             displayPath: display.displayPath,
             itemCount: listingStats.itemCount,
@@ -2448,7 +2512,63 @@ class VfsManager {
         return newFolder;
     }
 
-    async saveUserFileBuffer(buffer, { originalName, mimeType, scope, workspaceId, folderId }) {
+    async _canonicalFolderPath(folderId) {
+        const chain = [];
+        const seen = new Set();
+        let current = folderId ? await vfsDatabase.getFolderById(folderId) : null;
+        while (current && !seen.has(current.id)) {
+            seen.add(current.id);
+            chain.push(current);
+            if (!current.parent_id) break;
+            current = await vfsDatabase.getFolderById(current.parent_id);
+        }
+        if (!chain.length) return null;
+        chain.reverse();
+        const leaf = chain[chain.length - 1];
+        const ids = chain.map((folder) => folder.id).join('/');
+        if (leaf.scope === 'workspace' && leaf.workspace_id) {
+            return `/Workspaces/${leaf.workspace_id}/${ids}`;
+        }
+        return `/${ids}`;
+    }
+
+    async resolveItemById(rawId) {
+        const id = String(rawId || '').trim();
+        if (!id) return null;
+        const file = await vfsDatabase.getUserFileById(id);
+        if (file && !file.trashed_at) {
+            const parentPath = file.folder_id
+                ? await this._canonicalFolderPath(file.folder_id)
+                : (file.scope === 'workspace' && file.workspace_id ? `/Workspaces/${file.workspace_id}` : '/');
+            return {
+                item: this.makeFileItem(file, { workspaceId: file.workspace_id || null }),
+                parentPath: parentPath || '/'
+            };
+        }
+        const folder = await vfsDatabase.getFolderById(id);
+        if (!folder || folder.trashed_at || this._isHiddenSurfaceFolder(folder)) return null;
+        const parentPath = folder.parent_id
+            ? await this._canonicalFolderPath(folder.parent_id)
+            : (folder.scope === 'workspace' && folder.workspace_id ? `/Workspaces/${folder.workspace_id}` : '/');
+        return {
+            item: this.makeFolderItem(folder, { workspaceId: folder.workspace_id || null }),
+            parentPath: parentPath || '/'
+        };
+    }
+
+    async saveUserFileBuffer(buffer, { originalName, mimeType, scope, workspaceId, folderId, overwrite = false }) {
+        const storedFolderId = folderId || null;
+        const storedWorkspaceId = scope === 'workspace' ? workspaceId : null;
+        if (scope === 'workspace') {
+            const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces() || {};
+            if (!storedWorkspaceId || !workspaces[storedWorkspaceId]) {
+                throw new Error(`Workspace not found: ${storedWorkspaceId || workspaceId || ''}`);
+            }
+        }
+        if (storedFolderId) {
+            const folder = await vfsDatabase.getFolderById(storedFolderId);
+            if (!folder || folder.trashed_at) throw new Error(`Folder not found: ${storedFolderId}`);
+        }
         const hash = crypto.createHash('md5').update(buffer).digest('hex');
         const userFilesPath = this.globalResources.getPath('userFiles');
         if (!fs.existsSync(userFilesPath)) {
@@ -2469,14 +2589,44 @@ class VfsManager {
                 previewPath = `${hash}.webp`;
             } catch (_) { /* preview optional */ }
         }
+        const name = originalName || 'file';
+        const storedMime = mimeType || 'application/octet-stream';
+        if (overwrite) {
+            const existing = await vfsDatabase.getUserFilesByLocation(scope, storedWorkspaceId, storedFolderId);
+            const needle = name.toLowerCase();
+            const exact = existing.filter((file) => file.original_name === name);
+            const matches = exact.length
+                ? exact
+                : existing.filter((file) => String(file.original_name || '').toLowerCase() === needle);
+            if (matches.length) {
+                matches.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0) || String(b.id).localeCompare(String(a.id)));
+                const keep = matches[0];
+                const oldHash = keep.content_hash;
+                const updated = await vfsDatabase.updateUserFile(keep.id, {
+                    original_name: name,
+                    content_hash: hash,
+                    mime_type: storedMime,
+                    size: buffer.length,
+                    preview_path: previewPath
+                });
+                for (const extra of matches.slice(1)) {
+                    const extraHash = extra.content_hash;
+                    await vfsDatabase.deleteUserFile(extra.id);
+                    await this._gcContentBlobIfUnreferenced(extraHash);
+                }
+                if (oldHash && oldHash !== hash) await this._gcContentBlobIfUnreferenced(oldHash);
+                if (updated) updated.overwritten = true;
+                return updated;
+            }
+        }
         return vfsDatabase.createUserFile({
             contentHash: hash,
-            originalName: originalName || 'file',
-            mimeType: mimeType || 'application/octet-stream',
+            originalName: name,
+            mimeType: storedMime,
             size: buffer.length,
             scope,
-            workspaceId: scope === 'workspace' ? workspaceId : null,
-            folderId: folderId || null,
+            workspaceId: storedWorkspaceId,
+            folderId: storedFolderId,
             previewPath
         });
     }
@@ -2610,7 +2760,12 @@ class VfsManager {
         const wsId = location.workspaceId || parsed.workspaceId || null;
         const isDesktopRoot = parsed.type === 'system-folder' && parsed.systemName === 'Desktop';
 
-        for (const ref of itemRefs) {
+        for (let ref of itemRefs) {
+            if (ref && !ref.targetKind && ref.id) {
+                const found = await this.resolveItemById(ref.id);
+                if (!found) throw new Error(`Not found: ${ref.id}`);
+                ref = found.item;
+            }
             const sourceWsId = this._shortcutWorkspaceId(ref, wsId);
             const isFolderShortcut = await this._isFolderShortcutRef(ref, sourceWsId);
 
@@ -2719,7 +2874,10 @@ class VfsManager {
             }
 
             if (ref.targetKind === 'user-file') {
-                await vfsDatabase.updateUserFile(ref.targetId, {
+                const fileId = ref.targetId || ref.id;
+                const existing = await vfsDatabase.getUserFileById(fileId);
+                if (!existing || existing.trashed_at) throw new Error(`Not found: ${fileId}`);
+                await vfsDatabase.updateUserFile(fileId, {
                     folder_id: location.folderId,
                     scope: location.scope,
                     workspace_id: location.scope === 'workspace' ? location.workspaceId : null
