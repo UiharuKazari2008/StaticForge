@@ -140,6 +140,16 @@ async function initializeDatabases(gr) {
         console.log('✓ Tag Wiki database ready');
 
         initializeApplicationAuthManager(gr);
+        try {
+            const { widenDirectorApplicationKeys } = require('../directorAppKeyScopes');
+            const widened = await widenDirectorApplicationKeys(gr.applicationAuthManager);
+            if (widened && widened.updated > 0) {
+                const labels = widened.keys.filter((key) => key.changed).map((key) => key.label).join(', ');
+                console.log(`✓ Director application keys widened in place: ${labels}`);
+            }
+        } catch (scopeErr) {
+            console.error(`Director application key scope migration skipped: ${scopeErr.message}`);
+        }
     } catch (error) {
         console.error('  ❌ Failed to initialize databases:', error);
         console.error('  Full error stack:', error.stack);

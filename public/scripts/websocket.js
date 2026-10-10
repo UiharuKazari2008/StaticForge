@@ -478,6 +478,7 @@ class BannerManager {
             'list_application_keys': 'List App Keys',
             'list_application_request_log': 'App Request Log',
             'create_application_key': 'Create App Key',
+            'update_application_key': 'Edit App Key',
             'revoke_application_key': 'Revoke App Key',
             'approve_application_auth_request': 'Approve App Auth',
             'get_api_key_services': 'Get Keychain',
@@ -7452,6 +7453,10 @@ class WebSocketClient {
 
     async createApplicationKey(payload) {
         return this.sendMessage('create_application_key', payload);
+    }
+
+    async updateApplicationKey(payload) {
+        return this.sendMessage('update_application_key', payload);
     }
 
     async revokeApplicationKey(keyId) {

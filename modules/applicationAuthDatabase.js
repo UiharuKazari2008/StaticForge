@@ -189,6 +189,20 @@ async function createApplicationAuthTables() {
     `);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_app_req_log_created ON application_request_log (id)`);
 
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS application_key_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at INTEGER NOT NULL,
+            application_key_id TEXT NOT NULL,
+            app_name TEXT,
+            event TEXT NOT NULL,
+            actor TEXT,
+            source TEXT,
+            changes TEXT NOT NULL
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_app_key_audit_key ON application_key_audit (application_key_id)`);
+
     await ensureOAuthClientsApplicationKeyIdNullable(db);
     await ensureApplicationKeyTrustedColumns(db);
 }

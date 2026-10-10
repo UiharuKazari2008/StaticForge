@@ -434,7 +434,7 @@ ${dsapSmfBuildHeader({
           <th align="center" width="90">Status</th>
           <th align="center" width="110">Expires</th>
           <th align="center" width="110">Refresh by</th>
-          <th align="center" width="80">Actions</th>
+          <th align="center" width="130">Actions</th>
         </tr>
       </thead>
       <tbody id="secAppkeysTableBody"></tbody>
@@ -474,6 +474,33 @@ ${dsapSmfBuildHeader({
         <button type="button" id="secAppkeySubmitCreate" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-check"></i> Issue Key</button>
       </div>
       <div id="secAppkeyCreateResult" class="sec-appkey-result hidden"></div>
+    </div>
+  </div>
+  <div id="secAppkeysEditPanel" class="sec-details-panel hidden">
+    <div class="sec-details-header">
+      <strong>Edit Application Key</strong>
+      <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="close-appkey-edit"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="sec-details-body sec-appkeys-form">
+      <p class="sec-dsap-setting-hint">Saves this key in place. The secret is not reissued. Refreshing a key stays a separate action.</p>
+      <label>Label<input type="text" id="secAppkeyEditNameInput" class="sec-input" placeholder="Application name"></label>
+      <label>Expiration
+        <button type="button" id="secAppkeyEditExpiryBtn" class="dsap-smf-btn dsap-smf-btn-small sec-appkey-menu-btn">
+          <span id="secAppkeyEditExpirySelected">Unchanged</span> <i class="fas fa-caret-down"></i>
+        </button>
+        <input type="hidden" id="secAppkeyEditExpiryHidden" value="unchanged">
+      </label>
+      <label class="sec-check"><input type="checkbox" id="secAppkeyEditAllowKeyless"> Allow Keyless Requests</label>
+      <label class="sec-check"><input type="checkbox" id="secAppkeyEditPersistent"> Persistent Key</label>
+      <label class="sec-check"><input type="checkbox" id="secAppkeyEditAllowDelete"> Allow delete (administrator key)</label>
+      <label>Trusted CIDRs<input type="text" id="secAppkeyEditCidrsInput" class="sec-input" placeholder="203.0.113.10/32, 2001:db8::/64"></label>
+      <div class="sec-appkeys-scopes" id="secAppkeyEditScopesWrap">
+        <span class="sec-dsap-setting-hint">Scopes (select one or more; Universal overrides others)</span>
+        <div id="secAppkeyEditScopesList"></div>
+      </div>
+      <div class="sec-appkeys-form-actions">
+        <button type="button" id="secAppkeyEditSave" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-save"></i> Save</button>
+      </div>
     </div>
   </div>
 
@@ -524,6 +551,7 @@ ${dsapSmfBuildHeader({
               <th align="center" width="90">Status</th>
               <th align="center" width="110">Expires</th>
               <th align="center" width="140">Last used</th>
+              <th align="center" width="80">Actions</th>
             </tr>
           </thead>
           <tbody id="secAppkeysInactiveTableBody"></tbody>
@@ -1060,7 +1088,7 @@ const securityDsapDriver = {
             pins: { userPinLoginEnabled: true, adminPinConfigured: false, userPinConfigured: false },
             approvedIps: { entries: [], clientIp: '', matched: false, matchedId: null, matchedLabel: '', matchedUserType: null },
             keychain: { services: [], originalSelections: {}, pendingSelections: {}, editServiceId: null, editKeyIndex: null, addServiceId: null },
-            appkeys: { keys: [], pending: [], scopes: [], selectedScopes: ['universal'], logTab: 'requests', logPage: 1, logItems: [], logMeta: { page: 1, totalPages: 1 } },
+            appkeys: { keys: [], pending: [], scopes: [], selectedScopes: ['universal'], editScopes: ['universal'], editingKeyId: null, logTab: 'requests', logPage: 1, logItems: [], logMeta: { page: 1, totalPages: 1 } },
             cursorAccounts: { wren: {}, xi: {}, accounts: [], wrenStatus: {}, xiStatus: {}, usage: null, captureEnabled: false, capturePersona: 'xi' },
             telemetry: { items: [], meta: { page: 1, perPage: SECURITY_DEFAULT_PER_PAGE, search: '', eventType: '', total: 0, totalPages: 1 }, selectedId: null },
             searchTimers: {}
@@ -1345,9 +1373,16 @@ const securityDsapDriver = {
         if (createBtn && createBtn.dataset.secWired !== '1') {
             createBtn.dataset.secWired = '1';
             createBtn.addEventListener('click', () => {
+                root.querySelector('#secAppkeysEditPanel')?.classList.add('hidden');
                 root.querySelector('#secAppkeysCreatePanel')?.classList.remove('hidden');
                 void this._wireAppkeyCreateForm(root);
             });
+        }
+
+        const editSave = root.querySelector('#secAppkeyEditSave');
+        if (editSave && editSave.dataset.secWired !== '1') {
+            editSave.dataset.secWired = '1';
+            editSave.addEventListener('click', () => void this._submitAppkeyEdit(root));
         }
 
         const submitCreate = root.querySelector('#secAppkeySubmitCreate');
@@ -1498,6 +1533,19 @@ const securityDsapDriver = {
         if (action === 'close-appkey-create') {
             root.querySelector('#secAppkeysCreatePanel')?.classList.add('hidden');
             root.querySelector('#secAppkeyCreateResult')?.classList.add('hidden');
+            return;
+        }
+        if (action === 'close-appkey-edit') {
+            root.querySelector('#secAppkeysEditPanel')?.classList.add('hidden');
+            this._state.appkeys.editingKeyId = null;
+            return;
+        }
+        if (action === 'edit-appkey') {
+            const keyId = btn.closest('[data-sec-appkey-id]')?.dataset.secAppkeyId;
+            if (keyId) {
+                this._closeAppkeysLog(root);
+                this._openAppkeyEdit(root, keyId);
+            }
             return;
         }
         if (action === 'close-cursor-account-panel') {
@@ -2846,14 +2894,16 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             const statusClass = 'sec-status-' + String(key.status || '').replace(/[^a-z_]/g, '');
             const expires = key.isPerpetual ? 'Never' : securityDsapFormatTimestamp(key.expiresAt);
             const scopes = (key.scopes || []).join(', ');
+            const canEdit = key.status === 'expired';
             return `
-<tr>
+<tr data-sec-appkey-id="${securityDsapEscapeAttr(key.id)}">
   <td>${securityDsapEscapeHtml(key.appName)}<br><span class="sec-dsap-setting-hint">${securityDsapEscapeHtml(key.userAgent)}</span></td>
   <td><code>${securityDsapEscapeHtml(key.keyPrefix)}…</code></td>
   <td>${securityDsapEscapeHtml(scopes)}</td>
   <td align="center" class="${statusClass}">${securityDsapEscapeHtml(key.status)}</td>
   <td align="center">${securityDsapEscapeHtml(expires)}</td>
   <td align="center">${securityDsapEscapeHtml(securityDsapFormatTimestamp(key.lastUsedAt))}</td>
+  <td class="sec-actions-cell">${canEdit ? `<button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="edit-appkey" title="Edit"><i class="fas fa-pen"></i></button>` : '—'}</td>
 </tr>`;
         }).join('');
     },
@@ -3202,7 +3252,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
   <td align="center" class="${statusClass}">${securityDsapEscapeHtml(key.status)}</td>
   <td align="center">${securityDsapEscapeHtml(expires)}</td>
   <td align="center">${securityDsapEscapeHtml(refreshBy)}</td>
-  <td class="sec-actions-cell">${canRevoke ? `<button type="button" class="sec-dsap-action-btn sec-btn-danger sec-btn-small" data-sec-action="revoke-appkey" title="Revoke"><i class="fas fa-ban"></i></button>` : '—'}</td>
+  <td class="sec-actions-cell"><button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="edit-appkey" title="Edit"><i class="fas fa-pen"></i></button>${canRevoke ? ` <button type="button" class="sec-dsap-action-btn sec-btn-danger sec-btn-small" data-sec-action="revoke-appkey" title="Revoke"><i class="fas fa-ban"></i></button>` : ''}</td>
 </tr>`;
         }).join('');
     },
@@ -3326,6 +3376,103 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             void this._loadAppkeys(root);
         } catch (err) {
             if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', err.message || 'Failed to create key', false, 5000);
+        }
+    },
+
+    _renderAppkeyEditScopes(root) {
+        const list = root.querySelector('#secAppkeyEditScopesList');
+        if (!list) return;
+        const scopes = this._state.appkeys.scopes || [];
+        const selected = this._state.appkeys.editScopes || [];
+        list.innerHTML = scopes.map((s) =>
+            `<span class="sec-scope-chip${selected.includes(s.id) ? ' selected' : ''}" data-scope-id="${securityDsapEscapeAttr(s.id)}" title="${securityDsapEscapeAttr(s.description || '')}">${securityDsapEscapeHtml(s.label || s.id)}</span>`
+        ).join('');
+        if (list.dataset.secWired === '1') return;
+        list.dataset.secWired = '1';
+        list.addEventListener('click', (e) => {
+            const chip = e.target.closest('[data-scope-id]');
+            if (!chip) return;
+            const id = chip.dataset.scopeId;
+            let next = (this._state.appkeys.editScopes || []).slice();
+            if (id === 'universal') {
+                next = ['universal'];
+            } else {
+                next = next.filter((s) => s !== 'universal');
+                if (next.includes(id)) next = next.filter((s) => s !== id);
+                else next.push(id);
+                if (!next.length) next = ['universal'];
+            }
+            this._state.appkeys.editScopes = next;
+            list.querySelectorAll('.sec-scope-chip').forEach((el) => {
+                el.classList.toggle('selected', next.includes(el.dataset.scopeId));
+            });
+        });
+    },
+
+    _openAppkeyEdit(root, keyId) {
+        const key = (this._state.appkeys.keys || []).find((row) => row.id === keyId);
+        if (!key) return;
+        if (key.status === 'revoked' || key.status === 'replaced') return;
+        this._state.appkeys.editingKeyId = key.id;
+        this._state.appkeys.editScopes = (key.scopes && key.scopes.length) ? key.scopes.slice() : ['universal'];
+        const name = root.querySelector('#secAppkeyEditNameInput');
+        if (name) name.value = key.appName || '';
+        const keyless = root.querySelector('#secAppkeyEditAllowKeyless');
+        if (keyless) keyless.checked = !!key.allowKeyless;
+        const persistent = root.querySelector('#secAppkeyEditPersistent');
+        if (persistent) persistent.checked = !!key.persistent;
+        const allowDelete = root.querySelector('#secAppkeyEditAllowDelete');
+        if (allowDelete) allowDelete.checked = key.allowDelete !== false && key.userType !== 'readonly';
+        const cidrs = root.querySelector('#secAppkeyEditCidrsInput');
+        if (cidrs) cidrs.value = (key.trustedCidrs || []).join(', ');
+        this._wireAppkeyClickMenus(root, 'secAppkeyEditExpiry', [
+            { value: 'unchanged', label: 'Unchanged' },
+            { value: 'perpetual', label: 'Never' },
+            { value: '30', label: '30 days' },
+            { value: '90', label: '90 days' },
+            { value: '365', label: '1 year' }
+        ], 'unchanged');
+        const expiryHidden = root.querySelector('#secAppkeyEditExpiryHidden');
+        const expirySelected = root.querySelector('#secAppkeyEditExpirySelected');
+        if (expiryHidden) expiryHidden.value = 'unchanged';
+        if (expirySelected) expirySelected.textContent = 'Unchanged';
+        this._renderAppkeyEditScopes(root);
+        root.querySelector('#secAppkeysCreatePanel')?.classList.add('hidden');
+        root.querySelector('#secAppkeysEditPanel')?.classList.remove('hidden');
+    },
+
+    async _submitAppkeyEdit(root) {
+        const keyId = this._state.appkeys.editingKeyId;
+        const label = root.querySelector('#secAppkeyEditNameInput')?.value?.trim();
+        if (!keyId || !label) {
+            if (typeof showGlassToast === 'function') showGlassToast('warning', null, 'Label is required', false, 4000);
+            return;
+        }
+        if (!(await this._ensureWs())) return;
+        const expiry = root.querySelector('#secAppkeyEditExpiryHidden')?.value || 'unchanged';
+        const payload = {
+            keyId,
+            label,
+            scopes: this._state.appkeys.editScopes || ['universal'],
+            allowKeyless: !!root.querySelector('#secAppkeyEditAllowKeyless')?.checked,
+            persistent: !!root.querySelector('#secAppkeyEditPersistent')?.checked,
+            allowDelete: !!root.querySelector('#secAppkeyEditAllowDelete')?.checked,
+            trustedCidrs: root.querySelector('#secAppkeyEditCidrsInput')?.value || ''
+        };
+        if (expiry === 'perpetual') payload.perpetual = true;
+        else if (expiry !== 'unchanged') payload.expiresInDays = parseInt(expiry, 10);
+        try {
+            const response = await wsClient.updateApplicationKey(payload);
+            if (!response?.success) throw new Error('Failed to update application key');
+            if (response.applicationKey) throw new Error('Edit must not reissue the key');
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', null, response.unchanged ? 'Application key unchanged' : 'Application key updated', false, 3000, '<i class="fas fa-pen"></i>');
+            }
+            root.querySelector('#secAppkeysEditPanel')?.classList.add('hidden');
+            this._state.appkeys.editingKeyId = null;
+            void this._loadAppkeys(root);
+        } catch (err) {
+            if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', err.message || 'Failed to update key', false, 5000);
         }
     },
 

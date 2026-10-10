@@ -194,6 +194,7 @@ List via WS `get_application_auth_scopes` (admin).
 |--------|------|-------------|
 | `list_application_keys` | admin | All keys (active, expired, revoked, replaced) |
 | `create_application_key` | admin | Issue key directly |
+| `update_application_key` | admin | Edit label, scopes, keyless, persistent, trusted CIDRs, allow-delete, and expiry by `keyId`. Does not reissue the secret |
 | `revoke_application_key` | admin | Revoke by `keyId` |
 | `list_application_auth_requests` | admin | Pending authorization requests |
 | `approve_application_auth_request` | admin | Approve pending request |

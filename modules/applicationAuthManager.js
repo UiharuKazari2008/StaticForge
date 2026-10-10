@@ -20,7 +20,8 @@ const SCOPE_WS_PACKETS = {
         'expand_image', 'preview_expand_image_prompt', 'reroll_expanded_image',
         'reroll_image', 'resolve_dynamic_context', 'compile_dynamic_generation',
         'apply_tendai_preview', 'resolve_text_replacements',
-        'get_persona_settings', 'save_persona_settings', 'update_persona_settings'
+        'get_persona_settings', 'save_persona_settings', 'update_persona_settings',
+        'list_memory_image_links', 'link_memory_image', 'unlink_memory_image'
     ],
     workspace: [
         'workspace_list', 'workspace_get', 'workspace_create', 'workspace_delete', 'workspace_activate',
@@ -84,7 +85,8 @@ const SCOPE_WS_PACKETS = {
     knowledge: [
         'list_knowledge_memories', 'get_knowledge_memory', 'delete_knowledge_memory',
         'delete_knowledge_memories_bulk', 'count_knowledge_memories_by_filter',
-        'delete_knowledge_memories_by_filter', 'update_knowledge_memory'
+        'delete_knowledge_memories_by_filter', 'update_knowledge_memory',
+        'list_memory_image_links', 'link_memory_image', 'unlink_memory_image'
     ],
     nax: [
         'get_nax_galleries', 'get_nax_tags', 'get_nax_marked_tags', 'get_nax_expander_presets',
@@ -141,6 +143,7 @@ const ADMIN_MANAGEMENT_WS_PACKETS = new Set([
     'list_application_keys',
     'get_application_auth_scopes',
     'create_application_key',
+    'update_application_key',
     'revoke_application_key',
     'list_application_auth_requests',
     'approve_application_auth_request',
@@ -310,6 +313,58 @@ function normalizeScopes(scopes) {
         return ['universal'];
     }
     return normalized.filter((s) => AVAILABLE_SCOPES.some((a) => a.id === s));
+}
+
+/** Replace a key's scope list. Empty is an error. Universal collapses the rest. */
+function scopesForReplace(scopes) {
+    if (!Array.isArray(scopes)) {
+        const err = new Error('scopes must be a list');
+        err.code = 'INVALID_SCOPES';
+        throw err;
+    }
+    const cleaned = scopes.map((s) => String(s).trim()).filter(Boolean);
+    if (cleaned.includes('universal')) return ['universal'];
+    const allowed = new Set(AVAILABLE_SCOPES.map((s) => s.id));
+    const next = [];
+    for (const scope of cleaned) {
+        if (!allowed.has(scope) || next.includes(scope)) continue;
+        next.push(scope);
+    }
+    if (!next.length) {
+        const err = new Error('At least one scope is required');
+        err.code = 'EMPTY_SCOPES';
+        throw err;
+    }
+    return next;
+}
+
+const EDITABLE_KEY_FIELDS = [
+    'label', 'scopes', 'allowKeyless', 'persistent', 'trustedCidrs', 'allowDelete', 'expiresAt'
+];
+
+function editableKeySnapshot(row) {
+    const summary = rowToKeySummary(row, true) || {};
+    return {
+        label: summary.appName || '',
+        scopes: summary.scopes || [],
+        allowKeyless: summary.allowKeyless === true,
+        persistent: summary.persistent === true,
+        trustedCidrs: summary.trustedCidrs || [],
+        allowDelete: summary.allowDelete === true,
+        expiresAt: summary.expiresAt == null ? null : summary.expiresAt
+    };
+}
+
+function changedEditableFields(before, after) {
+    return EDITABLE_KEY_FIELDS.filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+}
+
+function pickEditableFields(snapshot, fields) {
+    const picked = {};
+    (fields || []).forEach((key) => {
+        picked[key] = snapshot[key];
+    });
+    return picked;
 }
 
 function getPacketScopes(packetType) {
@@ -723,6 +778,189 @@ class ApplicationAuthManager {
             ['revoked', nowSec, keyId]
         );
         return { success: (result?.changes || 0) > 0 };
+    }
+
+    /**
+     * Update one key by id. Does not mint, rotate, or return a secret.
+     * Reissue stays on refreshApplicationKey.
+     */
+    async updateApplicationKey(keyId, patch, options = {}) {
+        const src = patch && typeof patch === 'object' ? patch : {};
+        const opts = options && typeof options === 'object' ? options : {};
+        if (!keyId) return { success: false, error: 'Application key not found', code: 'KEY_NOT_FOUND' };
+        const known = ['label', 'appName', 'scopes', 'allowKeyless', 'allow_keyless', 'persistent', 'trustedCidrs', 'trusted_cidrs', 'allowDelete', 'allow_delete', 'userType', 'perpetual', 'expiresAt', 'expiresInDays', 'refreshIntervalDays'];
+        if (!known.some((key) => src[key] !== undefined)) {
+            return { success: false, error: 'Nothing to update', code: 'NOTHING_TO_UPDATE' };
+        }
+        const row = await getDb().get('SELECT * FROM application_keys WHERE id = ?', [keyId]);
+        if (!row) return { success: false, error: 'Application key not found', code: 'KEY_NOT_FOUND' };
+        if (row.revoked_at || row.status === 'revoked' || row.status === 'replaced') {
+            return { success: false, error: 'Application key cannot be edited', code: 'NOT_EDITABLE' };
+        }
+        if (opts.userType && row.user_type && row.user_type !== opts.userType
+            && src.allowDelete == null && src.allow_delete == null && src.userType == null) {
+            return { success: false, error: 'USER_TYPE_MISMATCH', code: 'USER_TYPE_MISMATCH' };
+        }
+
+        let appName = row.app_name;
+        let scopesJson = row.scopes;
+        let userType = row.user_type === 'readonly' ? 'readonly' : 'admin';
+        let allowKeyless = Number(row.allow_keyless) === 1 ? 1 : 0;
+        let persistent = Number(row.persistent) === 1 ? 1 : 0;
+        let trustedJson = row.trusted_cidrs || '[]';
+        let expiresAt = row.expires_at;
+        let refreshBefore = row.refresh_before_at;
+        let status = row.status === 'expired' ? 'expired' : 'active';
+        const nowSec = Math.floor(Date.now() / 1000);
+
+        if (src.label != null || src.appName != null) {
+            const label = String(src.label != null ? src.label : src.appName).trim();
+            if (!label) return { success: false, error: 'Label is required', code: 'MISSING_LABEL' };
+            appName = label.slice(0, 120);
+        }
+        if (src.scopes != null) {
+            try {
+                scopesJson = JSON.stringify(scopesForReplace(src.scopes));
+            } catch (err) {
+                return { success: false, error: err.message, code: err.code || 'INVALID_SCOPES' };
+            }
+        }
+        if (src.allowKeyless != null || src.allow_keyless != null) {
+            const flag = src.allowKeyless != null ? src.allowKeyless : src.allow_keyless;
+            allowKeyless = trustedAccessFlag(flag) ? 1 : 0;
+        }
+        if (src.persistent != null) {
+            persistent = trustedAccessFlag(src.persistent) ? 1 : 0;
+        }
+        if (src.trustedCidrs != null || src.trusted_cidrs != null) {
+            const cidrs = normalizeTrustedCidrList(src.trustedCidrs != null ? src.trustedCidrs : src.trusted_cidrs);
+            if (!cidrs.ok) return { success: false, error: cidrs.error, code: 'INVALID_TRUSTED_CIDR' };
+            trustedJson = JSON.stringify(cidrs.cidrs);
+        }
+        if (src.allowDelete != null || src.allow_delete != null) {
+            const flag = src.allowDelete != null ? src.allowDelete : src.allow_delete;
+            userType = trustedAccessFlag(flag) ? 'admin' : 'readonly';
+        } else if (src.userType != null) {
+            userType = src.userType === 'readonly' ? 'readonly' : 'admin';
+        }
+        if (src.perpetual === true || src.expiresAt === null) {
+            expiresAt = null;
+        } else if (src.expiresAt != null) {
+            const ms = Number(src.expiresAt);
+            if (!Number.isFinite(ms)) return { success: false, error: 'Invalid expiry', code: 'INVALID_EXPIRY' };
+            expiresAt = Math.floor(ms / 1000);
+        } else if (src.expiresInDays != null) {
+            const days = parseInt(src.expiresInDays, 10);
+            if (!Number.isFinite(days) || days < 1) return { success: false, error: 'Invalid expiry', code: 'INVALID_EXPIRY' };
+            expiresAt = nowSec + days * 86400;
+        }
+        if (persistent === 1) {
+            expiresAt = null;
+            if (Number(row.persistent) !== 1) {
+                refreshBefore = nowSec + PERSISTENT_REFRESH_DAYS * 86400;
+            }
+        } else if (Number(row.persistent) === 1) {
+            const days = src.refreshIntervalDays != null ? Math.max(1, parseInt(src.refreshIntervalDays, 10) || 30) : 30;
+            refreshBefore = nowSec + days * 86400;
+        } else if (src.refreshIntervalDays != null) {
+            const days = Math.max(1, parseInt(src.refreshIntervalDays, 10) || 30);
+            refreshBefore = nowSec + days * 86400;
+        }
+        if (persistent === 1 || expiresAt == null || expiresAt > nowSec) {
+            if (status === 'expired') status = 'active';
+        } else if (expiresAt != null && expiresAt <= nowSec) {
+            status = 'expired';
+        }
+
+        const before = editableKeySnapshot(row);
+        const preview = Object.assign({}, row, {
+            app_name: appName,
+            scopes: scopesJson,
+            user_type: userType,
+            allow_keyless: allowKeyless,
+            persistent,
+            trusted_cidrs: trustedJson,
+            expires_at: expiresAt,
+            refresh_before_at: refreshBefore,
+            status
+        });
+        const after = editableKeySnapshot(preview);
+        const fields = changedEditableFields(before, after);
+        if (!fields.length) {
+            return {
+                success: true,
+                unchanged: true,
+                reissued: false,
+                summary: rowToKeySummary(row, true)
+            };
+        }
+
+        const hashBefore = row.key_hash;
+        const prefixBefore = row.key_prefix;
+        const written = await getDb().run(
+            `UPDATE application_keys
+             SET app_name = ?, scopes = ?, user_type = ?, expires_at = ?, refresh_before_at = ?,
+                 allow_keyless = ?, persistent = ?, trusted_cidrs = ?, status = ?
+             WHERE id = ? AND revoked_at IS NULL AND status NOT IN ('revoked', 'replaced')`,
+            [appName, scopesJson, userType, expiresAt, refreshBefore, allowKeyless, persistent, trustedJson, status, keyId]
+        );
+        if (!written || !written.changes) {
+            return { success: false, error: 'Application key cannot be edited', code: 'NOT_EDITABLE' };
+        }
+        const updated = await getDb().get('SELECT * FROM application_keys WHERE id = ?', [keyId]);
+        if (!updated || updated.key_hash !== hashBefore || updated.key_prefix !== prefixBefore) {
+            return { success: false, error: 'Application key secret was not kept', code: 'KEY_MUTATED' };
+        }
+        const audit = await this._auditApplicationKeyEdit(updated, {
+            before,
+            after: editableKeySnapshot(updated),
+            fields,
+            options: opts
+        });
+        return {
+            success: true,
+            unchanged: false,
+            reissued: false,
+            summary: rowToKeySummary(updated, true),
+            audit
+        };
+    }
+
+    async _auditApplicationKeyEdit(row, { before, after, fields, options }) {
+        const opts = options || {};
+        const entry = {
+            event: 'application_key_edited',
+            keyId: String(row.id).slice(0, 80),
+            label: redactLoggedSecrets(row.app_name || '').slice(0, 120),
+            fields: fields.slice(),
+            before: pickEditableFields(before, fields),
+            after: pickEditableFields(after, fields),
+            source: String(opts.source || 'update_application_key').slice(0, 40),
+            actor: String(opts.actor || 'admin').slice(0, 40),
+            ip: String(opts.ip || '').slice(0, 80),
+            at: new Date().toISOString()
+        };
+        const changes = JSON.stringify({
+            fields: entry.fields,
+            before: entry.before,
+            after: entry.after
+        }).replace(/sfapp_[A-Za-z0-9_-]{20,}/g, '[redacted]')
+            .replace(/sftok_[A-Za-z0-9_-]{20,}/g, '[redacted]');
+        const nowSec = Math.floor(Date.now() / 1000);
+        await getDb().run(
+            `INSERT INTO application_key_audit
+                (created_at, application_key_id, app_name, event, actor, source, changes)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [nowSec, entry.keyId, entry.label, entry.event, entry.actor, entry.source, changes]
+        );
+        console.log(
+            `🔐 application_key_edited id=${entry.keyId} label=${JSON.stringify(entry.label)} fields=${entry.fields.join(',')} source=${entry.source}`
+        );
+        const gr = this.globalResources;
+        if (gr && Array.isArray(gr.authAuditLog)) {
+            gr.authAuditLog.push(entry);
+        }
+        return { event: entry.event, fields: entry.fields, source: entry.source };
     }
 
     async mergeNamedScopes(keyId, requestedScopes, { userType = null } = {}) {

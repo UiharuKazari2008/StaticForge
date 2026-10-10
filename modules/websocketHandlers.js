@@ -514,6 +514,7 @@ class WebSocketMessageHandlers {
             'clear_known_bad_paths',
             'set_admin_pin',
             'set_approved_ips',
+            'update_application_key',
             'set_user_pin',
             'set_user_pin_login_enabled',
             'update_user_global_settings',

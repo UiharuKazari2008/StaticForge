@@ -45,6 +45,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `unlock_api_service` | `unlock_api_service_response` | session | Handler: handleUnlockApiService |
 | `update_api_key` | `update_api_key_response` | admin/destructive | Handler: handleUpdateApiKey |
 | `update_api_key_selections` | `update_api_key_selections_response` | admin/destructive | Handler: handleUpdateApiKeySelections |
+| `update_application_key` | `update_application_key_response` | admin/destructive | Handler: handleUpdateApplicationKey |
 
 ## Response envelope
 
@@ -783,6 +784,40 @@ Additional response/push types from handler:
 - Service ID is required
 
 **Success response:** `unlock_api_service_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `update_application_key`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/195-applicationAuthHandler.js → `handleUpdateApplicationKey`
+
+Updates the key record by `keyId`. Does not reissue or rotate the secret. `refresh_application_key` remains the reissue path.
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `keyId` | Required |
+| `label` / `appName` | Optional label |
+| `scopes` | Optional scope name list. Universal replaces the others |
+| `allowKeyless` | Optional |
+| `persistent` | Optional. A persistent key does not expire |
+| `trustedCidrs` | Optional CIDR list |
+| `allowDelete` | Optional. True keeps the key as administrator; false makes it read-only |
+| `perpetual` | Optional. True clears expiry |
+| `expiresAt` | Optional unix ms. Null clears expiry |
+| `expiresInDays` | Optional days from now |
+
+**Validation errors:**
+- keyId is required
+- Label is required when a label is sent empty
+- Invalid trusted CIDR
+- At least one scope is required when scopes are sent
+
+**Success response:** `update_application_key_response` with `summary`, `reissued: false`, and `fields`. The secret is not included.
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

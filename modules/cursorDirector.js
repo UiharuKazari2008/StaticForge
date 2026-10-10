@@ -28,10 +28,8 @@ const EFFORT_MODELS = {
     high: 'grok-4.7-high',
     xhigh: 'grok-4.7-xhigh'
 };
-const MCP_SCOPES = [
-    'generation', 'gallery', 'workspace', 'search', 'references',
-    'wiki', 'autofill', 'notes', 'knowledge', 'presets', 'chat', 'vfs'
-];
+const { DIRECTOR_MCP_SCOPES } = require('./directorAppKeyScopes');
+const MCP_SCOPES = DIRECTOR_MCP_SCOPES;
 // Bubblewrap is the barrier. The jail's own CLI config copy approves every
 // shell and web search so Cursor does not stop to ask inside the computer.
 const DIRECTOR_CLI_OVERLAY = {
@@ -1541,18 +1539,27 @@ function writeMcpApprovals(paths) {
 }
 
 // MCP_SCOPES grows over time. A stored key minted before a scope existed keeps
-// working once the missing names are merged in, so the key is never rotated here.
-// modules/applicationAuthManager.js — mergeNamedScopes
+// working once the missing names are written onto the same row. The secret stays.
+// modules/applicationAuthManager.js — updateApplicationKey
 async function ensureKeyScopes(manager, keyId, scopes, userType) {
-    if (!keyId) return;
+    if (!keyId || !manager || typeof manager.updateApplicationKey !== 'function') return;
     const current = Array.isArray(scopes) ? scopes : [];
     if (current.includes('universal')) return;
     const missing = MCP_SCOPES.filter((scope) => !current.includes(scope));
     if (!missing.length) return;
     try {
-        await manager.mergeNamedScopes(keyId, missing, { userType: userType || 'admin' });
+        const result = await manager.updateApplicationKey(keyId, {
+            scopes: current.concat(missing)
+        }, {
+            source: 'director_ensure_key',
+            actor: 'director',
+            userType: userType || 'admin'
+        });
+        if (result && result.success === false) {
+            console.error(`Director key scope update failed: ${result.error || result.code}`);
+        }
     } catch (err) {
-        console.error(`Director key scope merge failed: ${err.message}`);
+        console.error(`Director key scope update failed: ${err.message}`);
     }
 }
 
@@ -5022,6 +5029,7 @@ async function handleDirectorComputerStatus(handler, ws, message) {
 
 module.exports = {
     PROJECT_NAME,
+    MCP_SCOPES,
     EFFORT_MODELS,
     handleDirectorGetSessions,
     handleDirectorCreateSession,

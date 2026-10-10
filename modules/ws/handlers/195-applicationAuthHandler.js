@@ -352,6 +352,64 @@ async function handleCreateApplicationKey(handlersCtx, ws, message, clientInfo, 
     });
 }
 
+async function handleUpdateApplicationKey(handlersCtx, ws, message, clientInfo, wsServer) {
+    if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
+    const { keyId } = message;
+    if (!keyId) {
+        handlersCtx.sendError(ws, 'keyId is required', 'MISSING_KEY_ID', message.requestId);
+        return;
+    }
+    const patch = {};
+    if (message.label != null || message.appName != null) {
+        patch.label = message.label != null ? message.label : message.appName;
+    }
+    if (message.scopes != null) patch.scopes = message.scopes;
+    if (message.allowKeyless != null || message.allow_keyless != null) {
+        patch.allowKeyless = message.allowKeyless != null ? message.allowKeyless : message.allow_keyless;
+    }
+    if (message.persistent != null) patch.persistent = message.persistent;
+    if (message.trustedCidrs != null || message.trusted_cidrs != null) {
+        patch.trustedCidrs = message.trustedCidrs != null ? message.trustedCidrs : message.trusted_cidrs;
+    }
+    if (message.allowDelete != null || message.allow_delete != null) {
+        patch.allowDelete = message.allowDelete != null ? message.allowDelete : message.allow_delete;
+    } else if (message.userType != null) {
+        patch.userType = message.userType;
+    }
+    if (message.perpetual === true || message.expiresAt === null) patch.perpetual = true;
+    else if (message.expiresAt != null) patch.expiresAt = message.expiresAt;
+    else if (message.expiresInDays != null) patch.expiresInDays = message.expiresInDays;
+    if (message.refreshIntervalDays != null) patch.refreshIntervalDays = message.refreshIntervalDays;
+
+    const manager = getManager(handlersCtx);
+    const result = await manager.updateApplicationKey(keyId, patch, {
+        source: 'update_application_key',
+        actor: (clientInfo && clientInfo.userType) || 'admin',
+        ip: (clientInfo && clientInfo.ip) || ''
+    });
+    if (!result || result.success !== true) {
+        handlersCtx.sendError(
+            ws,
+            (result && result.error) || 'Failed to update application key',
+            (result && result.code) || 'UPDATE_FAILED',
+            message.requestId
+        );
+        return;
+    }
+    wsServer.sendToClient(ws, {
+        type: 'update_application_key_response',
+        requestId: message.requestId,
+        data: {
+            success: true,
+            summary: result.summary,
+            reissued: false,
+            unchanged: result.unchanged === true,
+            fields: result.audit ? result.audit.fields : []
+        },
+        timestamp: new Date().toISOString()
+    });
+}
+
 async function handleRevokeApplicationKey(handlersCtx, ws, message, clientInfo, wsServer) {
     if (!requireAdmin(clientInfo, handlersCtx, ws, message)) return;
     const { keyId } = message;
@@ -446,6 +504,7 @@ function registerPackets(handlersCtx) {
     reg('list_application_request_log', handleListApplicationRequestLog);
     reg('get_application_auth_scopes', handleGetApplicationAuthScopes);
     reg('create_application_key', handleCreateApplicationKey, ADMIN_DESTRUCTIVE);
+    reg('update_application_key', handleUpdateApplicationKey, ADMIN_DESTRUCTIVE);
     reg('revoke_application_key', handleRevokeApplicationKey, ADMIN_DESTRUCTIVE);
     reg('list_application_auth_requests', handleListApplicationAuthRequests);
     reg('approve_application_auth_request', handleApproveApplicationAuthRequest, ADMIN_DESTRUCTIVE);
