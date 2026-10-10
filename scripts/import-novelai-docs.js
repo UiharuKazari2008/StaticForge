@@ -23,7 +23,6 @@
 const fs = require('fs');
 const path = require('path');
 const { parse } = require('node-html-parser');
-const config = require('../config');
 const { browserRequest } = require('../modules/browserHttp');
 
 const DOCS_HOST = 'docs.novelai.net';
@@ -106,6 +105,7 @@ function isCloudflareBlock(html) {
 }
 
 async function fetchHtml(url, retries = 0) {
+    const config = require('../config');
     try {
         const res = await browserRequest(url, null, {
             acceptResType: 'html',

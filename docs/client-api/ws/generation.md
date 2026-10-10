@@ -379,9 +379,27 @@ Additional response/push types from handler:
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
+| `filename` | Gallery PNG to upscale |
+| `workspace` | Optional workspace id |
+| `backend` | `nai` (default, NovelAI, spends Anlas) or `local` (Ruiko GPU, free). Alias of `upscaler`. `nai` is also accepted as `novelai`. |
+| `upscaler` | `novelai`, `esrgan`, or `local` |
+| `model` / `localUpscaleModel` | Local model id when `backend` is `local`: `RealESRGAN_x4plus`, `RealESRGAN_x4plus_anime_6B`, `4x-UltraSharp` |
+| `scale` / `localUpscaleScale` | Local scale `2` or `4`. NovelAI ignores scale and returns 2x. |
 | `...data` | Optional |
 
-**Success response:** `image_upscaling_response`
+Local upscales do not check or spend Anlas. The success payload includes `jobId` from the worker. If Ruiko is offline or `localWorker.url` / `localWorker.key` are missing from `secure.config.json`, the error text names `backend="nai"` as the paid fallback and does not call NovelAI.
+
+**Success response:** `image_upscaling_response` (`filename`, `metadata`, `jobId` for local)
+
+### `local_upscale_status`
+
+**Auth:** Session required. Not destructive.
+
+**Handler:** `handleLocalUpscaleStatus`
+
+Returns `{ online, configured, reason, gpu, version, queueLength, models }`. `models` is the worker `/models` list when Ruiko is up, otherwise the three built-in ids. Studio and Enhance use this to fill the model picker.
+
+**Success response:** `local_upscale_status_response`
 
 Additional response/push types from handler:
 - `image_upscaling_error`

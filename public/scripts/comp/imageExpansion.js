@@ -1036,6 +1036,13 @@ function collectEnhanceDialogValues(dialog) {
     if (noiseScheduler) extra.noiseScheduler = noiseScheduler;
     const model = dialog.querySelector('#enhanceModelHidden')?.value;
     if (model) extra.model = model;
+    const upscalerModel = dialog.querySelector('#enhanceUpscaleModel')?.value || '';
+    if (upscalerModel && upscalerModel !== 'novelai') {
+        extra.upscaler = 'local';
+        extra.backend = 'local';
+        extra.localUpscaleModel = upscalerModel;
+        extra.localUpscaleScale = Number(dialog.querySelector('#enhanceLocalScale')?.value) || 4;
+    }
     return buildEnhanceRequestValues({
         scale,
         magnitude,
@@ -1305,6 +1312,27 @@ function wireEnhanceDialog(dialog, scaleOptions) {
     }
 
     applyEnhanceMagnitudeOverlays(document.getElementById('enhanceMagnitudeInput')?.value || '3.0');
+    wireEnhanceLocalUpscalePicker('enhanceUpscaleModel', 'enhanceLocalScaleGroup');
+}
+
+function wireEnhanceLocalUpscalePicker(selectId, scaleGroupId) {
+    const select = document.getElementById(selectId);
+    const scaleGroup = scaleGroupId ? document.getElementById(scaleGroupId) : null;
+    if (!select || select.dataset.localUpscaleWired === '1') return;
+    select.dataset.localUpscaleWired = '1';
+    if (typeof fillLocalUpscaleSelect === 'function') fillLocalUpscaleSelect(select, true);
+    const sync = () => {
+        const local = select.value && select.value !== 'novelai';
+        if (scaleGroup) scaleGroup.classList.toggle('hidden', !local);
+    };
+    select.addEventListener('change', sync);
+    sync();
+    if (typeof refreshLocalUpscaleSelects === 'function') {
+        refreshLocalUpscaleSelects().then(() => {
+            if (typeof fillLocalUpscaleSelect === 'function') fillLocalUpscaleSelect(select, true);
+            sync();
+        });
+    }
 }
 
 function buildEnhanceRequestValues({ scale, magnitude, strengthRaw = '', noiseRaw = '', extra = null } = {}) {
@@ -1360,6 +1388,27 @@ async function runEnhanceImageRequest(targetFilename, enhanceValues, submitBtn =
         await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
         return result;
     } catch (error) {
+        if (enhanceValues && enhanceValues.upscaler === 'local'
+            && typeof isLocalWorkerOfflineError === 'function'
+            && isLocalWorkerOfflineError(error)) {
+            const useNai = typeof confirmNaiUpscaleFallback === 'function'
+                ? await confirmNaiUpscaleFallback(error)
+                : false;
+            if (useNai) {
+                updateGlassToastComplete(enhanceToastId, {
+                    type: 'info',
+                    title: 'Using NovelAI',
+                    message: 'Ruiko is offline. NovelAI enhance spends Anlas.',
+                    showProgress: false
+                });
+                const naiValues = Object.assign({}, enhanceValues);
+                delete naiValues.upscaler;
+                delete naiValues.backend;
+                delete naiValues.localUpscaleModel;
+                delete naiValues.localUpscaleScale;
+                return await runEnhanceImageRequest(targetFilename, naiValues, submitBtn);
+            }
+        }
         updateGlassToastComplete(enhanceToastId, {
             type: 'error',
             title: isMax ? 'Max Enhance Failed' : 'Enhance Failed',
@@ -1510,8 +1559,39 @@ function openEnhanceMiniWindow(image, event) {
     scaleGroup.appendChild(scaleLabel);
     scaleGroup.appendChild(scaleBtn);
 
+    const upscalerGroup = document.createElement('div');
+    upscalerGroup.className = 'form-group';
+    const upscalerLabel = document.createElement('label');
+    upscalerLabel.textContent = 'Upscaler';
+    upscalerLabel.htmlFor = 'enhanceMiniUpscaleModel';
+    const upscalerSelect = document.createElement('select');
+    upscalerSelect.id = 'enhanceMiniUpscaleModel';
+    upscalerSelect.className = 'form-control hover-show colored local-upscale-model';
+    upscalerGroup.appendChild(upscalerLabel);
+    upscalerGroup.appendChild(upscalerSelect);
+    const localScaleGroup = document.createElement('div');
+    localScaleGroup.id = 'enhanceMiniLocalScaleGroup';
+    localScaleGroup.className = 'form-group hidden';
+    const localScaleLabel = document.createElement('label');
+    localScaleLabel.textContent = 'Local scale';
+    const localScaleSelect = document.createElement('select');
+    localScaleSelect.id = 'enhanceMiniLocalScale';
+    localScaleSelect.className = 'form-control hover-show colored local-upscale-scale';
+    const scale4 = document.createElement('option');
+    scale4.value = '4';
+    scale4.textContent = '4x';
+    const scale2 = document.createElement('option');
+    scale2.value = '2';
+    scale2.textContent = '2x';
+    localScaleSelect.appendChild(scale4);
+    localScaleSelect.appendChild(scale2);
+    localScaleGroup.appendChild(localScaleLabel);
+    localScaleGroup.appendChild(localScaleSelect);
+
     row.appendChild(magnitudeGroup);
     row.appendChild(scaleGroup);
+    row.appendChild(upscalerGroup);
+    row.appendChild(localScaleGroup);
 
     const buttons = document.createElement('div');
     buttons.className = 'credit-cost-buttons';
@@ -1547,6 +1627,7 @@ function openEnhanceMiniWindow(image, event) {
         selectScale,
         () => selectedScale
     );
+    wireEnhanceLocalUpscalePicker('enhanceMiniUpscaleModel', 'enhanceMiniLocalScaleGroup');
 
     cancelBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1554,9 +1635,17 @@ function openEnhanceMiniWindow(image, event) {
     });
     confirmBtn.addEventListener('click', (e) => {
         e.preventDefault();
+        const extra = {};
+        if (upscalerSelect.value && upscalerSelect.value !== 'novelai') {
+            extra.upscaler = 'local';
+            extra.backend = 'local';
+            extra.localUpscaleModel = upscalerSelect.value;
+            extra.localUpscaleScale = Number(localScaleSelect.value) || 4;
+        }
         const enhanceValues = buildEnhanceRequestValues({
             scale: selectedScale,
-            magnitude: magnitudeInput.value
+            magnitude: magnitudeInput.value,
+            extra
         });
         closeEnhanceMiniDialog();
         void runEnhanceImageRequest(filename, enhanceValues);
@@ -1658,6 +1747,17 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
                     <span id="enhanceScaleSelected">${initialScaleName}</span>
                 </button>
                 <input type="hidden" id="enhanceScaleHidden" value="${initialScale}">
+            </div>
+            <div class="form-group">
+                <label for="enhanceUpscaleModel">Upscaler</label>
+                <select id="enhanceUpscaleModel" class="form-control hover-show colored local-upscale-model" title="Upscale model"></select>
+            </div>
+            <div class="form-group hidden" id="enhanceLocalScaleGroup">
+                <label for="enhanceLocalScale">Local scale</label>
+                <select id="enhanceLocalScale" class="form-control hover-show colored local-upscale-scale" title="Local upscale scale">
+                    <option value="4">4x</option>
+                    <option value="2">2x</option>
+                </select>
             </div>
             <div class="form-group enhance-advanced-toggle-group">
                 <label>&nbsp;</label>

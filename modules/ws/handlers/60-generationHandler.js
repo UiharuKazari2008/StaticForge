@@ -14,7 +14,8 @@ const {
     handleResolveDynamicContext,
     handleCompileDynamicGeneration,
     handleApplyTendaiPreview,
-    handleResolveTextReplacements
+    handleResolveTextReplacements,
+    handleLocalUpscaleStatus
 } = require('./generationImpl');
 
 const GENERATION_DESTRUCTIVE = { destructive: true, ...WS_DISPATCH_FIFO_CONNECTION };
@@ -49,6 +50,7 @@ function registerPackets(handlersCtx) {
     regFn('compile_dynamic_generation', handleCompileDynamicGeneration, GENERATION_DESTRUCTIVE);
     regFn('apply_tendai_preview', handleApplyTendaiPreview, GENERATION_DESTRUCTIVE);
     regFn('resolve_text_replacements', handleResolveTextReplacements, GENERATION_DESTRUCTIVE);
+    regFn('local_upscale_status', handleLocalUpscaleStatus);
 }
 
 module.exports = { registerPackets };

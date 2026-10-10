@@ -159,6 +159,7 @@ class BannerManager {
             // Core image operations
             'generate_image': 'Generate Image',
             'upscale_image': 'Upscale Image',
+            'local_upscale_status': 'Ruiko Upscaler',
             'reroll_image': 'Recast Spell',
             'expand_image': 'Expand Canvas',
             'preview_expand_image_prompt': 'Preview Expand Prompt',
@@ -6136,8 +6137,12 @@ class WebSocketClient {
             throw new Error('WebSocket not connected');
         }
 
-        // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
-        assertClientImageGenerationAllowed();
+        const localUpscale = enhanceOptions && (enhanceOptions.upscaler === 'local' || enhanceOptions.backend === 'local');
+        // Local Ruiko upscale does not spend Anlas. NovelAI enhance still does.
+        if (!localUpscale) {
+            // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
+            assertClientImageGenerationAllowed();
+        }
 
         try {
             const payload = { filename, scale, workspace };

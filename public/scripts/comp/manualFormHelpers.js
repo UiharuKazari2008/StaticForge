@@ -6,11 +6,24 @@ async function updateMenuBarHeight() {
 }
 
 // Toggle manual upscale button functionality
+function syncManualUpscaleModelVisibility() {
+    const modelSelect = document.getElementById('manualUpscaleModel');
+    const scaleSelect = document.getElementById('manualUpscaleScale');
+    const on = manualUpscale && manualUpscale.getAttribute('data-state') === 'on';
+    if (modelSelect) modelSelect.classList.toggle('hidden', !on);
+    const local = on && modelSelect && modelSelect.value && modelSelect.value !== 'novelai';
+    if (scaleSelect) scaleSelect.classList.toggle('hidden', !local);
+}
+
 function toggleManualUpscale() {
     const currentState = manualUpscale.getAttribute('data-state');
     const newState = currentState === 'on' ? 'off' : 'on';
 
     manualUpscale.setAttribute('data-state', newState);
+    if (newState === 'on' && typeof refreshLocalUpscaleSelects === 'function') {
+        refreshLocalUpscaleSelects().then(() => syncManualUpscaleModelVisibility());
+    }
+    syncManualUpscaleModelVisibility();
     updateManualPriceDisplay();
 }
 

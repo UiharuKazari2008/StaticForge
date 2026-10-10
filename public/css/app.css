@@ -2843,6 +2843,8 @@ span#datasetSelected {
 button#clearSeedBtn,
 button#rollSeedBtn,
 button#manualUpscale,
+select.local-upscale-model,
+select.local-upscale-scale,
 button#saveStage0Btn,
 button#varietyBtn,
 button#manualEffortBtn,
@@ -2857,6 +2859,12 @@ button#loadSeedBtn,
 button.toggle_variety.toggle-btn {
     min-width: 34px;
     padding: 0.25em;
+}
+
+select.local-upscale-model,
+select.local-upscale-scale {
+    max-width: 11rem;
+    height: 34px;
 }
 
 

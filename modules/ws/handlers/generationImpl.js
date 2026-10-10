@@ -1,5 +1,11 @@
 const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, enhanceImage, maxEnhanceImage, previewExpandImagePrompt, compileDynamicGenerationWebSocket, applyTendaiPreviewWebSocket } = require('../../imageGeneration');
 const { upscaleImageWebSocket } = require('../../imageUpscaling');
+const {
+    isLocalUpscaler,
+    normalizeUpscalerName,
+    checkLocalWorkerHealth,
+    LOCAL_UPSCALE_MODELS
+} = require('../../localUpscaleWorker');
 const { resolveDynamicContext } = require('../../dynamicGenerationHandlers');
 const { broadcastGalleryMutation } = require('./120-galleryHandler');
 const { notifyGenerationQueued } = require('../../generationJobQueue');
@@ -237,6 +243,7 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
                 metadata: result.metadata,
                 contentLength
             };
+            if (result && result.jobId) responseData.jobId = result.jobId;
             attachStagedGenerationResponseFields(responseData, result);
 
             handlers.sendToClient(ws, {
@@ -264,6 +271,7 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
                 metadata: result.metadata,
                 contentLength
             };
+            if (result && result.jobId) responseData.jobId = result.jobId;
             attachStagedGenerationResponseFields(responseData, result);
 
             handlers.sendToClient(ws, {
@@ -406,16 +414,19 @@ async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer)
 
         handlers.startKeepAliveInterval(ws, requestId, 15000);
 
+        const backendName = normalizeUpscalerName(data.backend || data.upscaler) || 'novelai';
+        const localUpscale = isLocalUpscaler(backendName);
         const result = await upscaleImageWebSocket(handlers.globalResources,
             data.filename,
             data.workspace,
             clientInfo.userType,
             clientInfo.sessionId,
-            data.upscaler || 'novelai',
-            data.scale || 4,
+            backendName,
+            data.localUpscaleScale || data.scale || 4,
             ws,
             handlers,
-            requestId
+            requestId,
+            localUpscale ? { model: data.localUpscaleModel || data.model } : null
         );
 
         handlers.stopKeepAliveInterval(requestId);
@@ -428,7 +439,8 @@ async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer)
                 image: result.buffer ? result.buffer.toString('base64') : null,
                 filename: result.filename,
                 metadata: result.metadata,
-                contentLength
+                contentLength,
+                jobId: result.jobId || null
             },
             timestamp: new Date().toISOString()
         });
@@ -448,7 +460,11 @@ async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer)
         handlers.sendToClient(ws, {
             type: 'image_upscaling_error',
             requestId: requestId,
-            data: null,
+            data: {
+                jobId: error.jobId || null,
+                code: error.code || null,
+                fallbackBackend: error.fallbackBackend || null
+            },
             error: error.message || 'Image upscaling failed',
             timestamp: new Date().toISOString()
         });
@@ -693,6 +709,47 @@ async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
         handlers.startKeepAliveInterval(ws, requestId, 15000);
         handlers.registerActiveGeneration(ws, requestId);
 
+        if (isLocalUpscaler(message.backend || message.upscaler)) {
+            const requestedScale = Number(message.localUpscaleScale);
+            const result = await upscaleImageWebSocket(
+                handlers.globalResources,
+                message.filename,
+                message.workspace || null,
+                clientInfo.userType,
+                clientInfo.sessionId,
+                'local',
+                requestedScale === 2 ? 2 : 4,
+                ws,
+                handlers,
+                requestId,
+                { model: message.localUpscaleModel }
+            );
+            handlers.stopKeepAliveInterval(requestId);
+            const contentLength = handlers.resolveGeneratedImageContentLength(result);
+            handlers.sendToClient(ws, {
+                type: 'enhance_image_response',
+                requestId,
+                data: {
+                    image: result.buffer ? result.buffer.toString('base64') : null,
+                    filename: result.filename,
+                    seed: null,
+                    metadata: result.metadata,
+                    contentLength,
+                    jobId: result.jobId || null
+                },
+                timestamp: new Date().toISOString()
+            });
+            if (result.filename) {
+                await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
+                    viewType: 'images',
+                    action: 'append_top',
+                    filename: result.filename,
+                    workspaceId: message.workspace
+                });
+            }
+            return;
+        }
+
         const result = await enhanceImage(
             handlers.globalResources,
             message.filename,
@@ -743,7 +800,11 @@ async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
         handlers.sendToClient(ws, {
             type: 'enhance_image_error',
             requestId,
-            data: null,
+            data: {
+                jobId: error.jobId || null,
+                code: error.code || null,
+                fallbackBackend: error.fallbackBackend || null
+            },
             error: error.message || 'Enhance failed',
             timestamp: new Date().toISOString()
         });
@@ -979,6 +1040,39 @@ async function handleResolveTextReplacements(handlers, ws, message, clientInfo, 
     }
 }
 
+async function handleLocalUpscaleStatus(handlers, ws, message) {
+    const requestId = message.requestId || null;
+    try {
+        const health = await checkLocalWorkerHealth(handlers.globalResources);
+        handlers.sendToClient(ws, {
+            type: 'local_upscale_status_response',
+            requestId,
+            data: {
+                online: !!health.online,
+                configured: !!health.configured,
+                reason: health.reason || null,
+                gpu: health.gpu || null,
+                version: health.version || null,
+                queueLength: health.queueLength != null ? health.queueLength : null,
+                models: (health.models && health.models.length) ? health.models : LOCAL_UPSCALE_MODELS
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        handlers.sendToClient(ws, {
+            type: 'local_upscale_status_response',
+            requestId,
+            data: {
+                online: false,
+                configured: false,
+                reason: error.message || 'Local upscaler status failed',
+                models: LOCAL_UPSCALE_MODELS
+            },
+            timestamp: new Date().toISOString()
+        });
+    }
+}
+
 module.exports = {
     handleImageGeneration,
     handleImageReroll,
@@ -993,5 +1087,6 @@ module.exports = {
     handleResolveDynamicContext,
     handleCompileDynamicGeneration,
     handleApplyTendaiPreview,
-    handleResolveTextReplacements
+    handleResolveTextReplacements,
+    handleLocalUpscaleStatus
 };

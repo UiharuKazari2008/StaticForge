@@ -10,10 +10,14 @@ const {
     getImageDimensions
 } = require('./imageTools');
 const { generateMobilePreviews } = require('./previewUtils');
+const {
+    normalizeUpscalerName,
+    upscaleBufferWithLocalWorker
+} = require('./localUpscaleWorker');
 
 async function resolveUpscaleRatio(upscaledBuffer, srcWidth, requestedScale, upscaler) {
     const requested = requestedScale === true ? 4 : (Number(requestedScale) || 4);
-    const fallback = (upscaler === 'esrgan') ? requested : 2;
+    const fallback = (upscaler === 'esrgan' || upscaler === 'local') ? requested : 2;
     try {
         const { width: outW } = await getImageDimensions(upscaledBuffer);
         if (srcWidth > 0 && outW > 0) {
@@ -26,29 +30,60 @@ async function resolveUpscaleRatio(upscaledBuffer, srcWidth, requestedScale, ups
     return fallback;
 }
 
-const upscaleImageCore = async (globalResources, imageBuffer, scale = 4, width, height, upscaler = 'novelai', ws = null, handler = null, requestId = null) => {
+function tagLocalJob(buffer, jobId) {
+    if (jobId && Buffer.isBuffer(buffer)) {
+        Object.defineProperty(buffer, 'localJobId', { value: jobId, enumerable: false });
+    }
+    return buffer;
+}
+
+const upscaleImageCore = async (globalResources, imageBuffer, scale = 4, width, height, upscaler = 'novelai', ws = null, handler = null, requestId = null, localOptions = null) => {
     bindRuntimeGlobalResources(globalResources);
+    const provider = normalizeUpscalerName(upscaler) || 'novelai';
     const actualScale = scale === true ? 4 : scale;
     if (actualScale <= 1) {
         console.log('📏 No upscaling needed (scale <= 1)');
         return undefined;
     }
 
-    // Simple delay for upscaling requests (1 second)
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // NovelAI and RunPod get a short gap. The local worker has its own queue.
+    if (provider !== 'local') {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
     try {
-        if (upscaler === 'esrgan') {
-            // ESRGAN via RunPod (pass ws, handler, requestId for keep-alive during polling)
-            return await upscaleWithESRGAN(imageBuffer, actualScale, width, height, upscaler, ws, handler, requestId);
-        } else {
-            // Default to NovelAI
-            return await upscaleWithNovelAI(imageBuffer, actualScale, width, height);
+        if (provider === 'local') {
+            return await upscaleWithLocalWorker(imageBuffer, actualScale, localOptions || {}, ws, handler, requestId);
         }
+        if (provider === 'esrgan') {
+            // ESRGAN via RunPod (pass ws, handler, requestId for keep-alive during polling)
+            return await upscaleWithESRGAN(imageBuffer, actualScale, width, height, provider, ws, handler, requestId);
+        }
+        return await upscaleWithNovelAI(imageBuffer, actualScale, width, height);
     } catch (error) {
         console.error('❌ Upscaling failed:', error.message);
         throw error;
     }
+};
+
+const upscaleWithLocalWorker = async (imageBuffer, scale, localOptions, ws, handler, requestId) => {
+    const model = localOptions.model || localOptions.localUpscaleModel;
+    const result = await upscaleBufferWithLocalWorker(__runtimeGr, imageBuffer, {
+        model,
+        scale,
+        onProgress: (progress, status, jobId) => {
+            if (!ws || !handler || !requestId) return;
+            const message = status === 'queued'
+                ? 'Waiting for Ruiko (job ' + jobId + ')...'
+                : 'Upscaling on Ruiko (job ' + jobId + ')...';
+            try {
+                handler.sendKeepAlive(ws, requestId, 'progress', progress, message);
+            } catch (err) {
+                console.warn('Failed to send keep-alive:', err.message);
+            }
+        }
+    });
+    return tagLocalJob(result.buffer, result.jobId);
 };
 
 const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
@@ -254,7 +289,20 @@ const upscaleWithESRGAN = async (imageBuffer, scale, width, height, upscaler, ws
 };
 
 // Main upscaling function
-async function upscaleImage(globalResources, filename, workspaceId, req, res, upscaler = 'novelai', scale = 4) {
+function upscaleForgeData(ratio, provider, localOptions, buffer) {
+    const data = {
+        upscale_ratio: ratio,
+        upscaled_at: Date.now(),
+        generation_type: 'upscaled',
+        upscaler_provider: provider
+    };
+    const model = localOptions && (localOptions.model || localOptions.localUpscaleModel);
+    if (model) data.upscaler_model = model;
+    if (buffer && buffer.localJobId) data.local_job_id = buffer.localJobId;
+    return data;
+}
+
+async function upscaleImage(globalResources, filename, workspaceId, req, res, upscaler = 'novelai', scale = 4, localOptions = null) {
     bindRuntimeGlobalResources(globalResources);
     // Check if user is read-only
     if (req.userType === 'readonly') {
@@ -274,16 +322,12 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
         const { width, height } = await getImageDimensions(imageBuffer);
 
         // Upscale the image
-        const upscaledBuffer = await upscaleImageCore(globalResources, imageBuffer, scale, width, height, upscaler);
+        const provider = normalizeUpscalerName(upscaler) || 'novelai';
+        const upscaledBuffer = await upscaleImageCore(globalResources, imageBuffer, scale, width, height, provider, null, null, null, localOptions);
 
         // Copy origin Comment onto the upscaled PNG (copyMetadataToImage was previously unbound here).
-        const ratio = await resolveUpscaleRatio(upscaledBuffer, width, scale, upscaler);
-        const upscaledForgeData = {
-            upscale_ratio: ratio,
-            upscaled_at: Date.now(),
-            generation_type: 'upscaled',
-            upscaler_provider: upscaler
-        };
+        const ratio = await resolveUpscaleRatio(upscaledBuffer, width, scale, provider);
+        const upscaledForgeData = upscaleForgeData(ratio, provider, localOptions, upscaledBuffer);
         const updatedUpscaledBuffer = __runtimeGr.getPngMetadata().copyMetadataToImage(imageBuffer, upscaledBuffer, upscaledForgeData);
 
         // Save upscaled image
@@ -311,6 +355,9 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
         
         // Return the upscaled image
         res.setHeader('Content-Type', 'image/png');
+        if (upscaledBuffer && upscaledBuffer.localJobId) {
+            res.setHeader('X-Upscale-Job-Id', upscaledBuffer.localJobId);
+        }
         res.send(updatedUpscaledBuffer);
         
     } catch (error) {
@@ -320,7 +367,7 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
 }
 
 // WebSocket-native upscaling function
-async function upscaleImageWebSocket(globalResources, filename, workspaceId, userType, sessionId, upscaler = 'novelai', scale = 4, ws = null, handler = null, requestId = null) {
+async function upscaleImageWebSocket(globalResources, filename, workspaceId, userType, sessionId, upscaler = 'novelai', scale = 4, ws = null, handler = null, requestId = null, localOptions = null) {
     bindRuntimeGlobalResources(globalResources);
     // Check if user is read-only
     if (userType === 'readonly') {
@@ -341,16 +388,12 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
         const { width, height } = await getImageDimensions(imageBuffer);
 
         // Upscale the image (pass ws, handler, requestId for keep-alive)
-        const upscaledBuffer = await upscaleImageCore(globalResources, imageBuffer, scale, width, height, upscaler, ws, handler, requestId);
+        const provider = normalizeUpscalerName(upscaler) || 'novelai';
+        const upscaledBuffer = await upscaleImageCore(globalResources, imageBuffer, scale, width, height, provider, ws, handler, requestId, localOptions);
 
         // Copy origin Comment/signed_hash onto the upscaled PNG instead of overwriting via updateMetadata.
-        const ratio = await resolveUpscaleRatio(upscaledBuffer, width, scale, upscaler);
-        const upscaledForgeData = {
-            upscale_ratio: ratio,
-            upscaled_at: Date.now(),
-            generation_type: 'upscaled',
-            upscaler_provider: upscaler
-        };
+        const ratio = await resolveUpscaleRatio(upscaledBuffer, width, scale, provider);
+        const upscaledForgeData = upscaleForgeData(ratio, provider, localOptions, upscaledBuffer);
         const updatedUpscaledBuffer = __runtimeGr.getPngMetadata().copyMetadataToImage(imageBuffer, upscaledBuffer, upscaledForgeData);
         
         // Save upscaled image
@@ -398,7 +441,8 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
             filename: upscaledFilename,
             width: width * scale,
             height: height * scale,
-            metadata: responseMetadata
+            metadata: responseMetadata,
+            jobId: (upscaledBuffer && upscaledBuffer.localJobId) || null
         };
         
     } catch (error) {

@@ -2213,7 +2213,9 @@ function updateManualPriceDisplay(bypass = false) {
             // Add upscale cost if upscale toggle is enabled
             let totalCost = cost.isFree ? cost.opus : cost.list;
             const manualUpscale = document.getElementById('manualUpscale');
-            if (manualUpscale && manualUpscale.getAttribute('data-state') === 'on') {
+            const manualUpscaleModel = document.getElementById('manualUpscaleModel');
+            const localStudioUpscale = manualUpscaleModel && manualUpscaleModel.value && manualUpscaleModel.value !== 'novelai';
+            if (manualUpscale && manualUpscale.getAttribute('data-state') === 'on' && !localStudioUpscale) {
                 const upscaleInfo = calculateUpscaleInfo(width, height);
                 if (upscaleInfo.available) {
                     totalCost += upscaleInfo.cost;

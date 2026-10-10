@@ -98,6 +98,7 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
         // ESRGAN options for upscaling
         let selectedUpscaler = 'novelai';
         let selectedScale = 4;
+        let selectedLocalModel = null;
 
         if (isUpscaling) {
             // Calculate upscale info to determine NovelAI availability
@@ -156,6 +157,26 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
                 methodMenu.appendChild(novelaiOption);
             }
 
+            const localModels = (typeof knownLocalUpscaleModels === 'function')
+                ? knownLocalUpscaleModels()
+                : [];
+            localModels.forEach((model) => {
+                [4, 2].forEach((scale) => {
+                    const localOption = document.createElement('div');
+                    localOption.className = 'custom-dropdown-option';
+                    localOption.dataset.method = 'local';
+                    localOption.dataset.model = model.id;
+                    localOption.dataset.scale = String(scale);
+                    const outputRes = imageWidth && imageHeight ? `${imageWidth * scale}×${imageHeight * scale}` : `${scale}x`;
+                    localOption.textContent = `Local (Ruiko) ${model.name} ${scale}x - Free - ${outputRes}`;
+                    localOption.addEventListener('click', () => {
+                        selectUpscaleMethod('local', scale, model.id);
+                        closeUpscaleMethodDropdown();
+                    });
+                    methodMenu.appendChild(localOption);
+                });
+            });
+
             // Add ESRGAN options
             const scaleOptions = [2, 3, 4, 8];
             scaleOptions.forEach(scale => {
@@ -187,17 +208,20 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
             }), { preventFocusTransfer: true });
 
             // Method selection function
-            function selectUpscaleMethod(method, scale) {
+            function selectUpscaleMethod(method, scale, modelId) {
                 selectedUpscaler = method;
                 selectedScale = scale;
+                selectedLocalModel = method === 'local' ? modelId : null;
 
-                const displayText = method === 'novelai' ?
-                    `NovelAI (4x)` :
-                    `ESRGAN (${scale}x)`;
+                const displayText = method === 'novelai'
+                    ? 'NovelAI (4x)'
+                    : method === 'local'
+                        ? `Local (Ruiko) ${scale}x`
+                        : `ESRGAN (${scale}x)`;
                 methodDropdownBtn.textContent = displayText;
 
-                // Update button text
-                if (method === 'esrgan') {
+                // Update button text. Local Ruiko upscale does not spend Anlas.
+                if (method === 'esrgan' || method === 'local') {
                     confirmBtn.textContent = 'Upscale ';
                 } else {
                     const buttonText = isFreeUpscaling ? 'Upscale ' : `Upscale (${cost} credits) `;
@@ -210,7 +234,9 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
                 // Update selected state in dropdown
                 methodMenu.querySelectorAll('.custom-dropdown-option').forEach(opt => {
                     opt.classList.remove('selected');
-                    if (opt.dataset.method === method && opt.dataset.scale === scale.toString()) {
+                    const sameMethod = opt.dataset.method === method && opt.dataset.scale === scale.toString();
+                    const sameModel = method !== 'local' || opt.dataset.model === modelId;
+                    if (sameMethod && sameModel) {
                         opt.classList.add('selected');
                     }
                 });
@@ -304,7 +330,8 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
                 resolve({
                     confirmed: true,
                     upscaler: selectedUpscaler,
-                    scale: selectedScale
+                    scale: selectedScale,
+                    model: selectedLocalModel
                 });
             } else {
                 resolve(true);
@@ -368,7 +395,7 @@ function positionCreditCostDialog(event, dialog) {
     const windowHeight = window.innerHeight;
     
     // Get dialog dimensions (use a reasonable default if not yet rendered)
-    const dialogWidth = 350; // Match CSS width
+    const dialogWidth = 420; // Match the wider upscale method list
     const dialogHeight = 150; // Approximate height
     
     let x, y;
@@ -429,8 +456,9 @@ function positionCreditCostDialog(event, dialog) {
 
 // Check if a request requires paid credits
 function requiresPaidCredits(requestBody) {    
-    // Check for upscaling
-    if (requestBody.upscale && requestBody.upscale > 1) return true;
+    // Check for upscaling. Local Ruiko upscale does not spend Anlas.
+    const localUpscale = requestBody && (requestBody.upscaler === 'local' || requestBody.backend === 'local');
+    if (requestBody.upscale && requestBody.upscale > 1 && !localUpscale) return true;
     
     // Check for large resolutions
     if (requestBody.resolution) {
@@ -453,4 +481,98 @@ function requiresPaidCredits(requestBody) {
     }
     
     return false;
+}
+
+const LOCAL_UPSCALE_MODELS = [
+    { id: 'RealESRGAN_x4plus', name: 'RealESRGAN x4plus' },
+    { id: 'RealESRGAN_x4plus_anime_6B', name: 'RealESRGAN anime 6B' },
+    { id: '4x-UltraSharp', name: '4x-UltraSharp' }
+];
+
+let localUpscaleModelCache = null;
+
+function knownLocalUpscaleModels() {
+    if (localUpscaleModelCache && Array.isArray(localUpscaleModelCache.models) && localUpscaleModelCache.models.length) {
+        return localUpscaleModelCache.models;
+    }
+    return LOCAL_UPSCALE_MODELS.slice();
+}
+
+function isLocalWorkerOfflineError(error) {
+    const message = error && error.message ? String(error.message) : String(error || '');
+    return message.indexOf('backend="nai"') !== -1 || message.indexOf('LOCAL_WORKER_OFFLINE') !== -1;
+}
+
+async function fetchLocalUpscaleModels() {
+    const fallback = {
+        online: false,
+        configured: false,
+        models: LOCAL_UPSCALE_MODELS.slice(),
+        reason: 'Ruiko is offline or not configured.'
+    };
+    if (!window.wsClient || typeof window.wsClient.isConnected !== 'function' || !window.wsClient.isConnected()) {
+        return fallback;
+    }
+    try {
+        const pending = window.wsClient.sendMessage('local_upscale_status', {}, false);
+        const data = await Promise.race([
+            pending,
+            new Promise((resolve) => setTimeout(() => resolve(null), 1200))
+        ]);
+        if (!data || !Array.isArray(data.models) || !data.models.length) {
+            return localUpscaleModelCache || fallback;
+        }
+        localUpscaleModelCache = {
+            online: !!data.online,
+            configured: !!data.configured,
+            models: data.models,
+            reason: data.reason || null,
+            gpu: data.gpu || null
+        };
+        return localUpscaleModelCache;
+    } catch (err) {
+        return {
+            ...fallback,
+            reason: err && err.message ? err.message : fallback.reason
+        };
+    }
+}
+
+async function confirmNaiUpscaleFallback(error) {
+    const detail = error && error.message ? error.message : 'Ruiko is offline.';
+    const choice = await showConfirmationDialog(
+        detail + ' Use NovelAI upscale instead? This spends Anlas.',
+        [
+            { text: 'Use NovelAI', value: 'nai', className: 'btn-primary' },
+            { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
+        ]
+    );
+    return choice === 'nai';
+}
+
+function fillLocalUpscaleSelect(select, includeNovelAi) {
+    if (!select) return;
+    const previous = select.value || (includeNovelAi ? 'novelai' : '');
+    select.textContent = '';
+    if (includeNovelAi) {
+        const nai = document.createElement('option');
+        nai.value = 'novelai';
+        nai.textContent = 'NovelAI';
+        select.appendChild(nai);
+    }
+    knownLocalUpscaleModels().forEach((model) => {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.textContent = 'Local (Ruiko) ' + (model.name || model.id);
+        select.appendChild(option);
+    });
+    const values = Array.from(select.options).map((option) => option.value);
+    select.value = values.indexOf(previous) !== -1 ? previous : (includeNovelAi ? 'novelai' : (values[0] || ''));
+}
+
+async function refreshLocalUpscaleSelects() {
+    await fetchLocalUpscaleModels();
+    fillLocalUpscaleSelect(document.getElementById('manualUpscaleModel'), true);
+    fillLocalUpscaleSelect(document.getElementById('enhanceUpscaleModel'), true);
+    fillLocalUpscaleSelect(document.getElementById('enhanceMiniUpscaleModel'), true);
 }
