@@ -1,0 +1,3 @@
+# Incremental NAX tag import. Does not restart Dreamscape or notify the service worker.
+# Install on the dreamscape host user crontab. Adjust the repo path if needed.
+20 5 * * * cd /home/kanmi/staticforge && /usr/bin/node scripts/sync-nax-tags.js >> /home/kanmi/staticforge/logs/nax-tag-sync.log 2>&1

@@ -385,7 +385,7 @@ The HTTP response waits until Cancel or countdown 0 (about 20s). Apply+restart s
 Ingest / Cursor testing uses the silent pair instead of this dialog:
 
 - `POST /agent/session/prepare-update` (MCP `update_client`) — desktop Update path; `appliedWithoutRestart` / `readyForRestart` / `alreadyCurrent`
-- `POST /agent/session/restart` (MCP `restart_client`) — reload + reattach **only** when `readyForRestart`
+- `POST /agent/session/restart` (MCP `restart_client`) — reload + reattach **only** when `readyForRestart`. MCP waits at most 45s and may return `pending: true` with `restartId`; call again with `{restartId}` until `reattached`. The same `clientId` counts once `get_state` answers.
 - `POST /agent/session/js` / `POST /agent/session/inspect` — then test
 
 ### `POST /agent/session/prepare-update`

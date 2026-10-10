@@ -1206,9 +1206,15 @@ const TOOL_DEFS = [
     {
         name: 'restart_client',
         core: true,
-        description: 'Restart the bound Dreamscape tab and wait until that session reconnects, this key rebinds, and get_state answers. No 15s dialog. Call only after update_client returns readyForRestart (JS/HTML). Skip when appliedWithoutRestart or alreadyCurrent. Then run inspect_elements / run_client_js.',
+        description: 'Restart the bound Dreamscape tab and wait until that login session reconnects (the same clientId counts), this key rebinds, and get_state answers. One call waits at most 45s, under the MCP client limit. pending true with restartId means it has not reattached yet: call restart_client again with only {restartId}. No 15s dialog. Call only after update_client returns readyForRestart (JS/HTML). Skip when appliedWithoutRestart or alreadyCurrent. Then run inspect_elements / run_client_js.',
         scope: 'generation',
-        inputSchema: { type: 'object', additionalProperties: false, properties: {} }
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                restartId: { type: 'string', description: 'From a previous pending restart_client result. Pass only this to keep waiting. Omit it on the first call.' }
+            }
+        }
     },
     {
         name: 'get_linkxi_persona',
@@ -5491,6 +5497,7 @@ function savedPrintStat(globalResources, filename, sinceMs) {
 
 const APPLY_PRINT_BIRTH_SLACK_MS = 3000;
 const applyPrintWait = { timeoutMs: 180000 };
+const restartClientWait = { timeoutMs: 45000 };
 
 function galleryFilenameBornMs(filename) {
     const match = /^(\d{13})_/.exec(String(filename || ''));
@@ -7670,7 +7677,7 @@ async function callTool(globalResources, req, name, args) {
                 : (data.appliedWithoutRestart
                     ? 'appliedWithoutRestart — CSS/assets are live. Do not restart_client. inspect_elements / run_client_js now.'
                     : (data.readyForRestart
-                        ? 'Call restart_client and wait for reattached, then inspect_elements / run_client_js.'
+                        ? 'Call restart_client. If it returns pending and restartId, call restart_client again with only {restartId} until reattached, then inspect_elements / run_client_js.'
                         : 'alreadyCurrent — inspect/js now. Do not restart_client.')),
             ...data
         }, failed);
@@ -7678,10 +7685,24 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'restart_client') {
         const bind = autoBindIfNeeded(globalResources, req);
-        if (!getBoundRecord(globalResources, bind.bindKey)) {
+        if (!input.restartId && !getBoundRecord(globalResources, bind.bindKey)) {
             return mcpBindChoiceResult(bind);
         }
-        const data = await restartBoundClient(globalResources, bind.bindKey);
+        const data = await restartBoundClient(globalResources, bind.bindKey, {
+            timeoutMs: restartClientWait.timeoutMs,
+            allowPending: true,
+            restartId: input.restartId ? String(input.restartId) : ''
+        });
+        if (data && data.pending) {
+            return mcpTextResult({
+                success: true,
+                autoBound: !!bind.auto,
+                pending: true,
+                restarted: true,
+                restartId: data.restartId,
+                next: 'The tab is still reloading. Call restart_client again with only {restartId} until reattached is true. Do not start another restart and do not inspect yet.'
+            });
+        }
         const failed = !!(data && (data.ok === false || data.reattached === false));
         return mcpTextResult({
             success: !failed,
@@ -8525,6 +8546,7 @@ module.exports = {
         isApplyJobOwnPrint,
         reopenStaleApplyJob,
         applyPrintWait,
+        restartClientWait,
         validateSetWindowArgs,
         validateOpenApplicationArgs,
         validateGetCalculatorArgs,

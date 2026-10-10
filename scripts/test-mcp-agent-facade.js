@@ -688,6 +688,9 @@ assert.strictEqual(_test.TOOL_DEFS.find((t) => t.name === 'update_client').core,
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'update_client').description.includes('appliedWithoutRestart'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'update_client').description.includes('refreshServerCache'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'restart_client').description.includes('appliedWithoutRestart'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'restart_client').description.includes('restartId'));
+assert.strictEqual(_test.restartClientWait.timeoutMs, 45000);
+assert.ok(_test.restartClientWait.timeoutMs < 60000);
 assert.strictEqual(_test.TOOL_DEFS.find((t) => t.name === 'restart_client').core, true);
 assert.strictEqual(_test.TOOL_DEFS.find((t) => t.name === 'inspect_elements').inputSchema.required[0], 'selectors');
 // Client-browser testing is a Cursor ingest workflow, not Wren / grok.com. It stays on the tool descriptions only.
@@ -1119,6 +1122,7 @@ async function runMcpAuth(options) {
         statusCode: 200,
         body: null,
         setHeader() {},
+        on() {},
         status(code) {
             this.statusCode = code;
             return this;
@@ -2119,6 +2123,73 @@ async function runDirectorMcpTests() {
         assert.ok(_test.resolveDirectorSourcePath(bad, home).error, `sourcePath ${bad}`);
     }
     await fsp.rm(mountTmp, { recursive: true, force: true });
+
+    const restartBridge = require('../modules/agentClientBridge');
+    const restartClientId = 'aaa111bbb222';
+    const restartInfo = {
+        sessionId: 'sess-mcp-restart',
+        clientId: restartClientId,
+        authenticated: true,
+        connectedAt: new Date(Date.now() - 60000)
+    };
+    const restartWs = { readyState: 1 };
+    const restartCommands = [];
+    const restartResources = {
+        getWebSocketServer: () => ({
+            clients: new Map([[restartWs, restartInfo]]),
+            sendToClient(_target, msg) {
+                if (!msg || msg.type !== 'agent_session_command') return;
+                restartCommands.push(msg.data.command);
+                let data;
+                if (msg.data.command === 'client_restart') {
+                    if (restartInfo.connectedAt.getTime() < Date.now()) {
+                        data = { ok: true, restarting: true };
+                    }
+                } else if (msg.data.command === 'get_state') {
+                    data = { ok: true, workspaceId: 'lab' };
+                }
+                if (data) {
+                    setImmediate(() => restartBridge.handleAgentSessionResult(null, restartWs, {
+                        requestId: msg.requestId,
+                        data
+                    }));
+                }
+            }
+        }),
+        getPath: () => os.tmpdir()
+    };
+    const restartReq = {
+        applicationAuth: { applicationKeyId: 'restart-key', applicationScopes: ['generation'] },
+        authMethod: 'application_key'
+    };
+    const restartBindKey = 'appkey:restart-key';
+    restartBridge.bindClient(restartResources, { clientId: restartClientId, bindKey: restartBindKey });
+    const savedRestartWait = _test.restartClientWait.timeoutMs;
+    _test.restartClientWait.timeoutMs = 50;
+    try {
+        const pendingTool = await _test.callTool(restartResources, restartReq, 'restart_client', {});
+        const pendingBody = JSON.parse(pendingTool.content[0].text);
+        assert.strictEqual(pendingTool.isError, false);
+        assert.strictEqual(pendingBody.pending, true);
+        assert.strictEqual(pendingBody.success, true);
+        assert.ok(pendingBody.restartId);
+        assert.strictEqual(restartCommands.filter((command) => command === 'client_restart').length, 1);
+        restartInfo.connectedAt = new Date(Date.now() + 2000);
+        const started = Date.now();
+        const doneTool = await _test.callTool(restartResources, restartReq, 'restart_client', {
+            restartId: pendingBody.restartId
+        });
+        const doneBody = JSON.parse(doneTool.content[0].text);
+        assert.strictEqual(doneBody.reattached, true);
+        assert.strictEqual(doneBody.clientId, restartClientId);
+        assert.ok(Date.now() - started < 5000);
+        assert.strictEqual(restartCommands.filter((command) => command === 'client_restart').length, 1);
+    } finally {
+        _test.restartClientWait.timeoutMs = savedRestartWait;
+        restartBridge._test.bindSessions.delete(restartBindKey);
+        restartBridge._test.pendingRestarts.clear();
+        restartBridge._test.pendingReattach.clear();
+    }
     const vfsWriteOutside = await _test.callTool({}, { applicationAuth: { applicationScopes: ['vfs'] } }, 'vfs_write', {
         path: '/notes/x.txt',
         sourcePath: '/etc/passwd'

@@ -288,7 +288,7 @@ Cursor ingest / QA on the **running Dreamscape tab** (port 9220). Do **not** use
 2. `update_client` — same as desktop context-menu **Update** (`refresh-cache`): `refreshServerCache` then SW download
 3. Branch on the result:
    - `appliedWithoutRestart` — CSS/assets are live (stylesheet swap). **Do not** `restart_client` (a reload can keep stale HTML hashes).
-   - `readyForRestart` — JS/HTML. Then `restart_client` (wait `reattached`)
+   - `readyForRestart` — JS/HTML. Then `restart_client`. `reattached: true` means inspect/js now. `pending: true` with `restartId` means call `restart_client` again with only `{restartId}` until `reattached` (one call stays under the MCP limit).
    - `alreadyCurrent` — nothing to apply; inspect/js now
 4. Then `inspect_elements` (`selectors`, optional `html` / `style` / `text` / `box` / `attrs`) and/or `run_client_js` (`script`; Promises are awaited)
 5. Do not reuse a pre-restart Studio snapshot after a JS/HTML restart. `POST /agent/session/update` is the 15s human Cancel dialog — not this path.
