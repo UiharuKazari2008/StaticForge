@@ -2576,6 +2576,7 @@ html.disable-blur .director-attach-chip {
     line-height: 1.5;
     color: var(--text-primary, #fff);
     word-wrap: break-word;
+    white-space: pre-wrap;
     font-style: italic;
     user-select: text;
     -webkit-user-drag: auto;
