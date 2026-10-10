@@ -29,7 +29,7 @@ const hit = lookupCharacterAge('rapi_(nikke)');
 assert(hit.success === true && hit.valid === true, 'known character tag is valid');
 assert(hit.character === 'rapi (nikke)', 'underscore form resolves to the stored tag');
 assert(hit.age === ageFromCharacterText(hit.character), 'age comes from the stored tag');
-assert(hit.age >= 18 && hit.age <= 35, 'reply age is 18 to 35');
+assert(hit.age >= 22 && hit.age <= 38, 'reply age is 22 to 38');
 assert(hit.source === 'validated character database', 'hit names the validated database');
 assert(hit.next.indexOf('Wikipedia') >= 0 && hit.next.indexOf('Fandom') >= 0, 'hit rejects outside wikis');
 assert(lookupCharacterAge('not a character zz').next.indexOf('Fandom') >= 0, 'miss rejects outside wikis');

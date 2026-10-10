@@ -1,12 +1,12 @@
 /**
  * Offline character age. Confirms the name is a local character tag, then
- * returns one age from 18 to 35 derived from that tag text.
+ * returns one age from 22 to 38 derived from that tag text.
  */
 
 const { findExactCharacterTag } = require('./naxTagsDatabase');
 
-const AGE_MIN = 18;
-const AGE_MAX = 35;
+const AGE_MIN = 22;
+const AGE_MAX = 38;
 
 function ageFromCharacterText(text) {
     const norm = String(text || '').trim().toLowerCase();
