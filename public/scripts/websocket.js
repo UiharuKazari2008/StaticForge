@@ -160,6 +160,7 @@ class BannerManager {
             'generate_image': 'Generate Image',
             'upscale_image': 'Upscale Image',
             'local_upscale_status': 'Ruiko Upscaler',
+            'remote_workers_status': 'Remote Workers',
             'reroll_image': 'Recast Spell',
             'expand_image': 'Expand Canvas',
             'preview_expand_image_prompt': 'Preview Expand Prompt',
@@ -591,7 +592,8 @@ class WebSocketClient {
         'get_static_wiki_page',
         'resolve_grimoire_url',
         'get_tag_autofill',
-        'resolve_text_replacements'
+        'resolve_text_replacements',
+        'remote_workers_status'
     ]);
 
     static PROGRESS_REQUEST_TYPES = new Set([
@@ -627,6 +629,7 @@ class WebSocketClient {
         'request_image_metadata',
         'stage_chain_files',
         'runpod_pods_status',
+        'remote_workers_status',
         'runpod_pod_start',
         'runpod_pod_stop',
         'report_client_perf',

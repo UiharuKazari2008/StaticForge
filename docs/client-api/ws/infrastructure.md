@@ -10,6 +10,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 |---|---|---|---|
 | `check_updates` | `check_updates_response` | critical | Handler: handleCheckUpdates |
 | `get_system_info` | `get_system_info_response` | session | Handler: handleGetSystemInfo |
+| `remote_workers_status` | `remote_workers_status_response` | session | Handler: handleRemoteWorkersStatus. Optional `workerId` refreshes one row. |
 | `ping` | `ping_response` | critical | Handler: handlePing |
 | `pong` | `pong` (echo) | critical | Client heartbeat reply; server echoes `type: "pong"` |
 | `server_status` | `server_status_response` | critical | Handler: handleServerStatus |
@@ -175,4 +176,21 @@ Client reply to the server broadcast `ping` (~10s). Also allowed during replicat
 **Success response:** `version_check_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `remote_workers_status`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/172-remoteWorkersHandler.js → `handleRemoteWorkersStatus`
+
+Probes services Dreamscape already health-checks (Ruiko `/health` + `/models`, grimoire-browser `/health`, replication master `/replication/status`, NovelAI status monitor). Each check has a timeout. The payload is an allowlist: `id`, `name`, `host`, `status` (`healthy`, `degraded`, `offline`, `unconfigured`), `checkedAt`, `latencyMs`, `detail`. Keys and tokens are not included.
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `workerId` | Optional. One of `ruiko`, `grimoire-browser`, `replication-master`, `novelai`. Omit to refresh every row. |
+
+**Success response:** `remote_workers_status_response` with `data.workers` and `data.checkedAt`.
 

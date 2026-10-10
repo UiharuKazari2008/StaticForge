@@ -506,11 +506,137 @@ function dataMgmtDsapBuildStorageTableHtml(usage) {
 </table>`;
 }
 
+const DATA_MGMT_REMOTE_WORKER_ORDER = ['ruiko', 'grimoire-browser', 'replication-master', 'novelai'];
+
+const DATA_MGMT_REMOTE_WORKER_STATUS_LABEL = {
+    healthy: 'Healthy',
+    degraded: 'Degraded',
+    offline: 'Offline',
+    unconfigured: 'Not configured'
+};
+
+function dataMgmtDsapFormatCheckTime(iso) {
+    if (!iso) return '—';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleString();
+}
+
+function dataMgmtDsapFormatLatency(ms) {
+    if (ms == null || !Number.isFinite(Number(ms))) return '—';
+    return Math.round(Number(ms)) + ' ms';
+}
+
+function dataMgmtDsapRemoteWorkersMerge(incoming) {
+    const byId = new Map((dataMgmtDsapDriver._remoteWorkers || []).map((row) => [row.id, row]));
+    (incoming || []).forEach((row) => {
+        if (row && row.id) byId.set(row.id, row);
+    });
+    const known = DATA_MGMT_REMOTE_WORKER_ORDER.filter((id) => byId.has(id)).map((id) => byId.get(id));
+    const extra = [];
+    byId.forEach((row) => {
+        if (!DATA_MGMT_REMOTE_WORKER_ORDER.includes(row.id)) extra.push(row);
+    });
+    dataMgmtDsapDriver._remoteWorkers = known.concat(extra);
+}
+
+function dataMgmtDsapBuildRemoteWorkersHtml(workers) {
+    const busy = dataMgmtDsapDriver._remoteWorkerBusy || new Set();
+    const busyAll = busy.has('*');
+    const rows = (workers || []).map((worker) => {
+        const status = DATA_MGMT_REMOTE_WORKER_STATUS_LABEL[worker.status] ? worker.status : 'offline';
+        const label = DATA_MGMT_REMOTE_WORKER_STATUS_LABEL[status];
+        const tip = worker.detail ? (label + ': ' + worker.detail) : label;
+        const rowBusy = busyAll || busy.has(worker.id);
+        const idAttr = dataMgmtDsapEscapeAttr(worker.id);
+        return `<tr class="data-mgmt-worker-row${rowBusy ? ' data-mgmt-worker-row-busy' : ''}" data-remote-worker-id="${idAttr}">
+      <td class="data-mgmt-worker-dot-cell"><span class="data-mgmt-worker-dot data-mgmt-worker-dot-${status}" title="${dataMgmtDsapEscapeAttr(tip)}"></span></td>
+      <td class="data-mgmt-worker-name">${dataMgmtDsapEscapeHtml(worker.name)}</td>
+      <td class="data-mgmt-worker-host">${dataMgmtDsapEscapeHtml(worker.host || '—')}</td>
+      <td class="data-mgmt-worker-meta">${dataMgmtDsapEscapeHtml(dataMgmtDsapFormatCheckTime(worker.checkedAt))}</td>
+      <td class="data-mgmt-worker-meta">${dataMgmtDsapEscapeHtml(dataMgmtDsapFormatLatency(worker.latencyMs))}</td>
+      <td class="data-mgmt-worker-actions"><button type="button" class="dsap-smf-btn dsap-smf-btn-small" data-remote-worker-refresh="${idAttr}"${rowBusy ? ' disabled' : ''} title="${dataMgmtDsapEscapeAttr('Refresh ' + (worker.name || 'worker'))}"><i class="fas fa-arrows-rotate"></i></button></td>
+    </tr>`;
+    }).join('');
+    const body = rows || '<tr><td colspan="6" class="data-mgmt-muted">No remote workers</td></tr>';
+    return `${dsapSmfBuildToolbar(`<button type="button" class="dsap-smf-btn dsap-smf-btn-small" id="dataMgmtRemoteWorkersRefreshAll"${busyAll ? ' disabled' : ''}><i class="fas fa-arrows-rotate"></i> Refresh all</button>`, 'dataMgmtRemoteWorkersToolbar')}
+<table class="sec-data-table data-mgmt-workers-table" cellspacing="0" cellpadding="4" width="100%" border="1">
+  <thead>
+    <tr>
+      <th align="center" width="28"></th>
+      <th align="left">Service</th>
+      <th align="left">Host</th>
+      <th align="center" width="170">Last check</th>
+      <th align="center" width="80">Latency</th>
+      <th align="center" width="70">Refresh</th>
+    </tr>
+  </thead>
+  <tbody>${body}</tbody>
+</table>`;
+}
+
+function dataMgmtDsapRemoteWorkersRender(root) {
+    const host = root?.querySelector('#dataMgmtRemoteWorkersHost');
+    if (!host) return;
+    host.innerHTML = dataMgmtDsapBuildRemoteWorkersHtml(dataMgmtDsapDriver._remoteWorkers || []);
+}
+
+function dataMgmtDsapRemoteWorkersWire(root) {
+    if (!root || root.dataset.remoteWorkersWired === '1') return;
+    root.dataset.remoteWorkersWired = '1';
+    root.addEventListener('click', (event) => {
+        const allBtn = event.target.closest('#dataMgmtRemoteWorkersRefreshAll');
+        const rowBtn = event.target.closest('[data-remote-worker-refresh]');
+        if (!allBtn && !rowBtn) return;
+        if ((allBtn && allBtn.disabled) || (rowBtn && rowBtn.disabled)) return;
+        event.preventDefault();
+        const workerId = rowBtn ? rowBtn.getAttribute('data-remote-worker-refresh') : '';
+        void dataMgmtDsapRemoteWorkersLoad(root, workerId || null);
+    });
+}
+
+async function dataMgmtDsapRemoteWorkersLoad(root, workerId) {
+    const host = root?.querySelector('#dataMgmtRemoteWorkersHost');
+    if (!host) return;
+    dataMgmtDsapRemoteWorkersWire(root);
+    if (!window.wsClient?.isConnected()) {
+        host.innerHTML = '<p class="data-mgmt-muted">Remote workers unavailable (WebSocket not connected)</p>';
+        return;
+    }
+    if (!dataMgmtDsapDriver._remoteWorkerBusy) dataMgmtDsapDriver._remoteWorkerBusy = new Set();
+    const busyKey = workerId || '*';
+    dataMgmtDsapDriver._remoteWorkerBusy.add(busyKey);
+    if ((dataMgmtDsapDriver._remoteWorkers || []).length) dataMgmtDsapRemoteWorkersRender(root);
+    try {
+        const payload = workerId ? { workerId } : {};
+        const response = await window.wsClient.sendMessage('remote_workers_status', payload, false);
+        const data = response && Array.isArray(response.workers) ? response : (response?.data || {});
+        dataMgmtDsapRemoteWorkersMerge(data.workers || []);
+        if (!dataMgmtDsapDriver._remoteWorkers.length) {
+            host.innerHTML = `<p class="data-mgmt-muted">${dataMgmtDsapEscapeHtml(data.error || 'No remote workers')}</p>`;
+            return;
+        }
+    } catch (error) {
+        console.error('[data-mgmt] remote workers status failed:', error);
+        if (!(dataMgmtDsapDriver._remoteWorkers || []).length) {
+            host.innerHTML = '<p class="data-mgmt-muted">Failed to check remote workers</p>';
+            return;
+        }
+    } finally {
+        dataMgmtDsapDriver._remoteWorkerBusy.delete(busyKey);
+    }
+    if ((dataMgmtDsapDriver._remoteWorkers || []).length) dataMgmtDsapRemoteWorkersRender(root);
+}
+
 function dataMgmtDsapBuildStatusHtml() {
     return `${dataMgmtDsapBuildAccountSectionHtml()}
 ${dsapSmfBuildSectionHdr('Replication')}
 <div id="dataMgmtStatusReplicationHost" class="data-mgmt-status-repl-host">
   <div class="data-mgmt-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading replication…</div>
+</div>
+${dsapSmfBuildSectionHdr('Remote Workers')}
+<div id="dataMgmtRemoteWorkersHost" class="data-mgmt-workers-host">
+  <div class="data-mgmt-loading"><i class="fas fa-spinner-third fa-spin"></i> Checking remote workers…</div>
 </div>
 ${dsapSmfBuildSectionHdr('System Status')}
 <div class="data-mgmt-status-layout">
@@ -2074,6 +2200,20 @@ const dataMgmtDsapScopedCss = `
 [data-dsap="data-mgmt"] .data-mgmt-stub { background: #fff; border: 1px solid #b8c4d0; padding: 14px 16px; }
 [data-dsap="data-mgmt"] .data-mgmt-stub-lead { font-weight: 600; margin: 0 0 8px; }
 [data-dsap="data-mgmt"] .data-mgmt-stub-body p { margin: 0 0 8px; font-size: 0.85rem; line-height: 1.45; }
+[data-dsap="data-mgmt"] .data-mgmt-workers-host { margin-bottom: 12px; }
+[data-dsap="data-mgmt"] #dataMgmtRemoteWorkersToolbar { justify-content: flex-end; }
+[data-dsap="data-mgmt"] .data-mgmt-workers-table { margin-top: 2px; }
+[data-dsap="data-mgmt"] .data-mgmt-worker-dot-cell { text-align: center; width: 28px; }
+[data-dsap="data-mgmt"] .data-mgmt-worker-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; border: 1px solid rgba(0,0,0,0.2); }
+[data-dsap="data-mgmt"] .data-mgmt-worker-dot-healthy { background: #228822; }
+[data-dsap="data-mgmt"] .data-mgmt-worker-dot-degraded { background: #c79100; }
+[data-dsap="data-mgmt"] .data-mgmt-worker-dot-offline { background: #aa2222; }
+[data-dsap="data-mgmt"] .data-mgmt-worker-dot-unconfigured { background: #9aa3ab; }
+[data-dsap="data-mgmt"] .data-mgmt-worker-name { font-weight: 600; text-align: left; }
+[data-dsap="data-mgmt"] .data-mgmt-worker-host { text-align: left; word-break: break-all; }
+[data-dsap="data-mgmt"] .data-mgmt-worker-meta { white-space: nowrap; text-align: center; }
+[data-dsap="data-mgmt"] .data-mgmt-worker-actions { text-align: center; white-space: nowrap; }
+[data-dsap="data-mgmt"] .data-mgmt-worker-row-busy { opacity: 0.72; }
 `;
 
 const dataMgmtDsapDriver = {
@@ -2084,6 +2224,8 @@ const dataMgmtDsapDriver = {
     _replicationStatus: null,
     _replMenuTargets: [],
     _replWired: false,
+    _remoteWorkers: [],
+    _remoteWorkerBusy: new Set(),
 
     init(host) {
         this._host = host;
@@ -2227,6 +2369,8 @@ const dataMgmtDsapDriver = {
         this._accountListenersWired = false;
         this._replicationStatus = null;
         this._replWired = false;
+        this._remoteWorkers = [];
+        if (this._remoteWorkerBusy) this._remoteWorkerBusy.clear();
         const root = host?.getRoot?.();
         if (root) {
             dataMgmtDsapReplicationUnwireNav(root);
@@ -2265,6 +2409,7 @@ const dataMgmtDsapDriver = {
         const storageHost = root.querySelector('#dataMgmtStorageTableHost');
         void dataMgmtDsapReplicationLoadStatusSummary(root);
         void dataMgmtDsapIndexingLoad(root);
+        void dataMgmtDsapRemoteWorkersLoad(root);
         if (!pieHost || !wsHost || !storageHost) return;
 
         if (!window.wsClient?.isConnected()) {
