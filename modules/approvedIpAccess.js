@@ -202,6 +202,77 @@ function auditWebLogin(globalResources, record) {
     return entry;
 }
 
+const DIFF_FIELDS = ['cidr', 'label', 'enabled', 'userType'];
+
+function diffView(entry) {
+    return {
+        id: String(entry.id || ''),
+        cidr: String(entry.cidr || ''),
+        label: String(entry.label || '').slice(0, MAX_LABEL_LENGTH),
+        enabled: entry.enabled === true,
+        userType: entry.userType === 'readonly' ? 'readonly' : 'admin'
+    };
+}
+
+/** Added, removed and changed rows, matched by id. */
+function diffApprovedIpEntries(beforeList, afterList) {
+    const before = (Array.isArray(beforeList) ? beforeList : []).filter((e) => e && typeof e === 'object').map(diffView);
+    const after = (Array.isArray(afterList) ? afterList : []).filter((e) => e && typeof e === 'object').map(diffView);
+    const beforeById = new Map(before.map((e) => [e.id, e]));
+    const afterIds = new Set(after.map((e) => e.id));
+    const added = [];
+    const changed = [];
+    for (const row of after) {
+        const old = beforeById.get(row.id);
+        if (!old || !row.id) { added.push(row); continue; }
+        const fields = DIFF_FIELDS.filter((f) => old[f] !== row[f]);
+        if (fields.length) changed.push({ id: row.id, fields, before: old, after: row });
+    }
+    const removed = before.filter((e) => !e.id || !afterIds.has(e.id));
+    return { added, removed, changed };
+}
+
+/** Audit a saved Approved IP list (console, authAuditLog, telemetry). */
+function auditApprovedIpsSaved(globalResources, { before, after, actor, sessionId, ip, source } = {}) {
+    const diff = diffApprovedIpEntries(before, after);
+    const entry = {
+        event: 'approved_ips_updated',
+        actor: String(actor || 'admin').slice(0, 40),
+        sessionId: String(sessionId || '').slice(0, 80),
+        ip: String(ip || '').slice(0, 80),
+        source: String(source || 'set_approved_ips').slice(0, 40),
+        count: Array.isArray(after) ? after.length : 0,
+        added: diff.added,
+        removed: diff.removed,
+        changed: diff.changed,
+        at: new Date().toISOString()
+    };
+    const fmt = (rows) => rows.map((r) => `${r.cidr}(${r.label})`).join(',') || '-';
+    console.log(
+        `🔐 approved_ips_updated actor=${entry.actor} session=${entry.sessionId || '-'} ip=${entry.ip || '-'} added=${fmt(diff.added)} removed=${fmt(diff.removed)} changed=${diff.changed.map((c) => `${c.after.cidr}[${c.fields.join('+')}]`).join(',') || '-'}`
+    );
+    if (globalResources && Array.isArray(globalResources.authAuditLog)) {
+        globalResources.authAuditLog.push(entry);
+    }
+    try {
+        const telemetry = globalResources && typeof globalResources.getTelemetryDatabase === 'function'
+            ? globalResources.getTelemetryDatabase()
+            : null;
+        if (telemetry && typeof telemetry.recordTelemetryEvent === 'function') {
+            telemetry.recordTelemetryEvent({
+                eventType: 'security_config',
+                ip: entry.ip,
+                userType: entry.actor,
+                route: entry.event,
+                payload: { sessionId: entry.sessionId, source: entry.source, added: diff.added, removed: diff.removed, changed: diff.changed }
+            }).catch(() => {});
+        }
+    } catch (_err) {
+        // Telemetry is optional. The console line is the audit.
+    }
+    return entry;
+}
+
 function requestUserAgent(req) {
     const headers = req && req.headers;
     return headers && typeof headers['user-agent'] === 'string' ? headers['user-agent'] : '';
@@ -323,5 +394,7 @@ module.exports = {
     queryCarriesLoginKey,
     readHeaderLoginKey,
     auditWebLogin,
-    describeClientForAudit
+    describeClientForAudit,
+    diffApprovedIpEntries,
+    auditApprovedIpsSaved
 };

@@ -4,7 +4,8 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 const {
     normalizeApprovedIpEntries,
     matchApprovedIp,
-    loadApprovedIpEntries
+    loadApprovedIpEntries,
+    auditApprovedIpsSaved
 } = require('../../approvedIpAccess');
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
@@ -1597,8 +1598,16 @@ async function handleSetApprovedIps(handlersCtx, ws, message, clientInfo) {
             handlersCtx.sendError(ws, normalized.error, 'INVALID_APPROVED_IP', message.requestId);
             return;
         }
+        const previous = loadApprovedIpEntries(handlersCtx.globalResources).map((e) => ({ ...e }));
         handlersCtx.globalResources.modifyConfig('config').assign('approvedIps', normalized.entries);
-        console.log(`🔐 Approved IPs updated (${normalized.entries.length}) by session ${clientInfo.sessionId}`);
+        auditApprovedIpsSaved(handlersCtx.globalResources, {
+            before: previous,
+            after: normalized.entries,
+            actor: clientInfo.userType || 'admin',
+            sessionId: clientInfo.sessionId,
+            ip: clientInfo.clientIP || clientInfo.ip || '',
+            source: 'set_approved_ips'
+        });
         handlersCtx.sendToClient(ws, {
             type: 'set_approved_ips_response',
             requestId: message.requestId,

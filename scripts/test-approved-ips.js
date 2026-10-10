@@ -337,6 +337,45 @@ async function main() {
     assert.strictEqual(stored[0].userType, 'readonly');
     assert.strictEqual(stored[0].cidr, '10.0.0.5/32');
     assert.strictEqual(stored[0].enabled, true);
+    const savedAudit = adminGr.authAuditLog.filter((e) => e.event === 'approved_ips_updated');
+    assert.strictEqual(savedAudit.length, 1, 'save writes one audit entry');
+    assert.strictEqual(savedAudit[0].ip, '10.0.0.5');
+    assert.strictEqual(savedAudit[0].actor, 'admin');
+    assert.strictEqual(savedAudit[0].sessionId, 'sess-test');
+    assert.strictEqual(savedAudit[0].added.length, 1);
+    assert.strictEqual(savedAudit[0].added[0].cidr, '10.0.0.5/32');
+
+    const firstId = stored[0].id;
+    const changed = await invokeHandler(handleSetApprovedIps, adminGr, 'admin', {
+        requestId: 'r4b',
+        entries: [
+            { id: firstId, label: 'Home 2', cidr: '10.0.0.6', enabled: false, userType: 'admin' },
+            { label: 'Office', cidr: '192.0.2.0/24', enabled: true, userType: 'user' }
+        ]
+    }, '10.0.0.5');
+    assert.strictEqual(changed[0].data.success, true);
+    const audits = adminGr.authAuditLog.filter((e) => e.event === 'approved_ips_updated');
+    const last = audits[audits.length - 1];
+    assert.strictEqual(last.added.length, 1);
+    assert.strictEqual(last.added[0].label, 'Office');
+    assert.strictEqual(last.removed.length, 0);
+    assert.strictEqual(last.changed.length, 1);
+    assert.deepStrictEqual(last.changed[0].fields.sort(), ['cidr', 'enabled', 'label', 'userType']);
+    assert.strictEqual(last.changed[0].before.cidr, '10.0.0.5/32');
+    assert.strictEqual(last.changed[0].after.cidr, '10.0.0.6/32');
+    const removedSave = await invokeHandler(handleSetApprovedIps, adminGr, 'admin', {
+        requestId: 'r4c',
+        entries: stored.filter((e) => e.label === 'Office')
+    }, '10.0.0.5');
+    assert.strictEqual(removedSave[0].data.success, true);
+    const rm = adminGr.authAuditLog.filter((e) => e.event === 'approved_ips_updated').pop();
+    assert.strictEqual(rm.removed.length, 1);
+    assert.strictEqual(rm.removed[0].label, 'Home 2');
+    // restore the single entry the rest of the test expects
+    await invokeHandler(handleSetApprovedIps, adminGr, 'admin', {
+        requestId: 'r4d',
+        entries: [{ label: 'Home', cidr: '10.0.0.5', enabled: true, userType: 'user' }]
+    }, '10.0.0.5');
 
     const listed = await invokeHandler(handleGetApprovedIps, adminGr, 'admin', { requestId: 'r5' }, '198.51.100.8');
     assert.strictEqual(listed[0].data.success, true);
@@ -349,7 +388,13 @@ async function main() {
 
     console.log('Security Center exposes the Approved IPs section');
     const ui = fs.readFileSync(path.join(root, 'public/scripts/comp/securityCenterDsapApplet.js'), 'utf8');
-    assert.ok(ui.includes('data-sec-tab="approved"'));
+    assert.ok(!ui.includes('data-sec-tab="approved"'), 'Approved IPs is not a top-level tab');
+    const authStart = ui.indexOf('id="secAuthView"');
+    const authEnd = ui.indexOf('<div class="sec-view', authStart);
+    const approvedAt = ui.indexOf('id="secApprovedView"');
+    assert.ok(approvedAt > authStart && approvedAt < authEnd, 'Approved IPs sits inside Authentication');
+    assert.ok(ui.slice(authStart, authEnd).indexOf('Application Keys') < approvedAt, 'Approved IPs is near the bottom');
+    assert.ok(!/id="secApprovedView"[^>]*style=/.test(ui));
     assert.ok(ui.includes('id="secApprovedView"'));
     assert.ok(ui.includes('Signs in as'));
     assert.ok(ui.includes('X-Dreamscape-Login-Key'));

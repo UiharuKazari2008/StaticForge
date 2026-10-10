@@ -14,7 +14,6 @@ const SECURITY_DSAP_TAB_LABELS = {
     blocked: 'Blocked Clients',
     honeypot: 'Honeypot',
     auth: 'Authentication',
-    approved: 'Approved IPs',
     telemetry: 'Telemetry'
 };
 
@@ -23,8 +22,8 @@ function securityDsapNormalizeView(view) {
     if (!v || v === 'home' || v === 'dashboard') return 'home';
     if (v === 'paths' || v === 'honeypot' || v === 'scraped') return 'honeypot';
     if (v === 'pins' || v === 'appkeys' || v === 'authentication' || v === 'auth' || v === 'keys') return 'auth';
-    if (v === 'approved' || v === 'approved-ips' || v === 'approvedips' || v === 'ips') return 'approved';
-    if (v === 'blocked' || v === 'telemetry' || v === 'honeypot' || v === 'auth' || v === 'approved') return v;
+    if (v === 'approved' || v === 'approved-ips' || v === 'approvedips' || v === 'ips') return 'auth';
+    if (v === 'blocked' || v === 'telemetry' || v === 'honeypot' || v === 'auth') return v;
     return 'home';
 }
 
@@ -120,7 +119,6 @@ ${dsapSmfBuildHeader({
     <td align="center" class="sec-tab" data-sec-tab="blocked"><i class="fas fa-ban"></i> Blocked Clients</td>
     <td align="center" class="sec-tab" data-sec-tab="honeypot"><i class="fas fa-spider"></i> Honeypot</td>
     <td align="center" class="sec-tab" data-sec-tab="auth"><i class="fas fa-key"></i> Authentication</td>
-    <td align="center" class="sec-tab" data-sec-tab="approved"><i class="fas fa-shield-halved"></i> Approved IPs</td>
     <td align="center" class="sec-tab" data-sec-tab="telemetry"><i class="fas fa-chart-line"></i> Telemetry</td>
   </tr>
 </table>
@@ -560,56 +558,55 @@ ${dsapSmfBuildHeader({
       <div id="secAppkeysInactiveEmpty" class="sec-dsap-empty hidden"><i class="fas fa-plug"></i> No inactive keys</div>
     </div>
   </div>
-</div>
-
-<div class="sec-view sec-approved-view hidden" id="secApprovedView">
-  <div class="sec-dsap-section-hdr">Approved IPs</div>
-  <div class="sec-dsap-statusbox" id="secApprovedStatus">
-    <span class="sec-dsap-status-message" id="secApprovedStatusMessage">Loading approved IPs…</span>
-  </div>
-  <p class="sec-dsap-settings-intro">A request whose real client IP matches an enabled CIDR is signed in to the web UI as that account, with no PIN. The client IP is the socket address unless the direct peer is a trusted proxy. Spoofed X-Forwarded-For is ignored. Loopback is not included unless you add it. Disabled rows never match. The first enabled match wins.</p>
-  <div class="sec-dsap-statusbox" id="secApprovedClientBox">
-    <span class="sec-dsap-status-message" id="secApprovedClientMessage">Checking this client…</span>
-  </div>
-  <div class="sec-toolbar">
-    <button type="button" id="secApprovedRefresh" class="sec-dsap-action-btn"><i class="fas fa-sync"></i> Refresh</button>
-  </div>
-  <div id="secApprovedLoading" class="sec-dsap-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading approved IPs…</div>
-  <div id="secApprovedError" class="sec-dsap-error hidden"><i class="fas fa-exclamation-triangle"></i> <span id="secApprovedErrorText">Failed to load</span></div>
-  <div id="secApprovedTableWrap" class="sec-table-wrap hidden">
-    <table class="sec-data-table" cellspacing="0" cellpadding="4" width="100%" border="1">
-      <thead>
-        <tr>
-          <th align="left">Label</th>
-          <th align="left">CIDR</th>
-          <th align="center" width="120">Signs in as</th>
-          <th align="center" width="90">Enabled</th>
-          <th align="center" width="160">Actions</th>
-        </tr>
-      </thead>
-      <tbody id="secApprovedTableBody"></tbody>
-    </table>
-  </div>
-  <div id="secApprovedEmpty" class="sec-dsap-empty hidden"><i class="fas fa-shield"></i> No approved IPs. Nothing matches.</div>
-  <div id="secApprovedForm" class="sec-details-panel">
-    <div class="sec-details-header">
-      <strong id="secApprovedFormTitle">Add approved IP</strong>
+  <div class="sec-approved-view" id="secApprovedView">
+    <div class="sec-dsap-section-hdr sec-sub-hdr"><i class="fas fa-shield-halved"></i> Approved IPs</div>
+    <div class="sec-dsap-statusbox" id="secApprovedStatus">
+      <span class="sec-dsap-status-message" id="secApprovedStatusMessage">Loading approved IPs…</span>
     </div>
-    <div class="sec-details-body sec-appkeys-form">
-      <input type="hidden" id="secApprovedIdInput" value="">
-      <label>Label<input type="text" id="secApprovedLabelInput" class="sec-input" maxlength="80" placeholder="Home LAN"></label>
-      <label>CIDR<input type="text" id="secApprovedCidrInput" class="sec-input" placeholder="203.0.113.10/32 or 2001:db8::/64" spellcheck="false"></label>
-      <label>Signs in as
-        <select id="secApprovedUserType" class="sec-input">
-          <option value="admin">Administrator</option>
-          <option value="readonly">User</option>
-        </select>
-      </label>
-      <label class="sec-check"><input type="checkbox" id="secApprovedEnabled" checked> Enabled</label>
-      <p class="sec-dsap-setting-hint">Downloads and API calls can send this account's login key in the <code>X-Dreamscape-Login-Key</code> header or <code>Authorization: Bearer</code>. The query string is never accepted.</p>
-      <div class="sec-appkeys-form-actions">
-        <button type="button" class="sec-dsap-action-btn sec-btn-primary" data-sec-action="save-approved-ip"><i class="fas fa-save"></i> Save</button>
-        <button type="button" class="sec-dsap-action-btn" data-sec-action="clear-approved-form"><i class="fas fa-times"></i> Clear</button>
+    <p class="sec-dsap-settings-intro">A request whose real client IP matches an enabled CIDR is signed in to the web UI as that account, with no PIN. The client IP is the socket address unless the direct peer is a trusted proxy. Spoofed X-Forwarded-For is ignored. Loopback is not included unless you add it. Disabled rows never match. The first enabled match wins.</p>
+    <div class="sec-dsap-statusbox" id="secApprovedClientBox">
+      <span class="sec-dsap-status-message" id="secApprovedClientMessage">Checking this client…</span>
+    </div>
+    <div class="sec-toolbar">
+      <button type="button" id="secApprovedRefresh" class="sec-dsap-action-btn"><i class="fas fa-sync"></i> Refresh</button>
+    </div>
+    <div id="secApprovedLoading" class="sec-dsap-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading approved IPs…</div>
+    <div id="secApprovedError" class="sec-dsap-error hidden"><i class="fas fa-exclamation-triangle"></i> <span id="secApprovedErrorText">Failed to load</span></div>
+    <div id="secApprovedTableWrap" class="sec-table-wrap hidden">
+      <table class="sec-data-table" cellspacing="0" cellpadding="4" width="100%" border="1">
+        <thead>
+          <tr>
+            <th align="left">Label</th>
+            <th align="left">CIDR</th>
+            <th align="center" width="120">Signs in as</th>
+            <th align="center" width="90">Enabled</th>
+            <th align="center" width="160">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="secApprovedTableBody"></tbody>
+      </table>
+    </div>
+    <div id="secApprovedEmpty" class="sec-dsap-empty hidden"><i class="fas fa-shield"></i> No approved IPs. Nothing matches.</div>
+    <div id="secApprovedForm" class="sec-details-panel">
+      <div class="sec-details-header">
+        <strong id="secApprovedFormTitle">Add approved IP</strong>
+      </div>
+      <div class="sec-details-body sec-appkeys-form">
+        <input type="hidden" id="secApprovedIdInput" value="">
+        <label>Label<input type="text" id="secApprovedLabelInput" class="sec-input" maxlength="80" placeholder="Home LAN"></label>
+        <label>CIDR<input type="text" id="secApprovedCidrInput" class="sec-input" placeholder="203.0.113.10/32 or 2001:db8::/64" spellcheck="false"></label>
+        <label>Signs in as
+          <select id="secApprovedUserType" class="sec-input">
+            <option value="admin">Administrator</option>
+            <option value="readonly">User</option>
+          </select>
+        </label>
+        <label class="sec-check"><input type="checkbox" id="secApprovedEnabled" checked> Enabled</label>
+        <p class="sec-dsap-setting-hint">Downloads and API calls can send this account's login key in the <code>X-Dreamscape-Login-Key</code> header or <code>Authorization: Bearer</code>. The query string is never accepted.</p>
+        <div class="sec-appkeys-form-actions">
+          <button type="button" class="sec-dsap-action-btn sec-btn-primary" data-sec-action="save-approved-ip"><i class="fas fa-save"></i> Save</button>
+          <button type="button" class="sec-dsap-action-btn" data-sec-action="clear-approved-form"><i class="fas fa-times"></i> Clear</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1269,7 +1266,6 @@ const securityDsapDriver = {
             blocked: 'secBlockedView',
             honeypot: 'secHoneypotView',
             auth: 'secAuthView',
-            approved: 'secApprovedView',
             telemetry: 'secTelemetryView'
         };
         return map[view] || 'secHomeView';
@@ -1321,7 +1317,11 @@ const securityDsapDriver = {
         this._wireRefresh(root, '#secAppkeysRefresh', 'auth');
         this._wireRefresh(root, '#secKeychainRefresh', 'auth');
         this._wireRefresh(root, '#secCursorAccountsRefresh', 'auth');
-        this._wireRefresh(root, '#secApprovedRefresh', 'approved');
+        const approvedRefresh = root.querySelector('#secApprovedRefresh');
+        if (approvedRefresh && approvedRefresh.dataset.secWired !== '1') {
+            approvedRefresh.dataset.secWired = '1';
+            approvedRefresh.addEventListener('click', () => { void this._loadApprovedIps(root); });
+        }
         this._wireRefresh(root, '#secTelemetryRefresh', 'telemetry');
         this._wirePager(root, '#secBlockedPager', 'blocked', host);
         this._wirePager(root, '#secHoneypotPager', 'honeypot', host);
@@ -1812,7 +1812,6 @@ const securityDsapDriver = {
         else if (this._state.view === 'blocked') void this._loadBlocked(root);
         else if (this._state.view === 'honeypot') void this._loadHoneypot(root);
         else if (this._state.view === 'auth') void this._loadAuth(root);
-        else if (this._state.view === 'approved') void this._loadApprovedIps(root);
         else if (this._state.view === 'telemetry') void this._loadTelemetry(root);
     },
 
@@ -2420,7 +2419,8 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             this._loadPins(root),
             this._loadKeychain(root),
             this._loadAppkeys(root),
-            this._loadCursorAccounts(root)
+            this._loadCursorAccounts(root),
+            this._loadApprovedIps(root)
         ]);
     },
 
