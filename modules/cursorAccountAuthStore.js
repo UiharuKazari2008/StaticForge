@@ -448,6 +448,7 @@ function normalizeAccountColor(value) {
 const loginJobs = new Map();
 const LOGIN_URL_RE = /https:\/\/cursor\.com\/loginDeepControl\?\S+/;
 const LOGIN_WAIT_MS = 5 * 60 * 1000;
+const LOGIN_EXIT_GRACE_TICKS = 10;
 
 function stopLoginJob(job, signal) {
     if (!job) return;
@@ -460,10 +461,24 @@ function stopLoginJob(job, signal) {
     }
 }
 
+// cursor-agent 2026.10 ignores CURSOR_CONFIG_DIR for `login` and writes to
+// $XDG_CONFIG_HOME/cursor or $HOME/.config/cursor, so the job pins HOME and
+// XDG_CONFIG_HOME inside the staging dir and we look in every candidate.
+function loginAuthDirs(dir) {
+    return [dir, path.join(dir, 'xdg', 'cursor'), path.join(dir, 'home', '.config', 'cursor'), path.join(dir, 'home', '.cursor')];
+}
+
+function findLoginAuthDir(dir) {
+    for (const candidate of loginAuthDirs(dir)) {
+        const auth = readJson(path.join(candidate, 'auth.json'));
+        if (auth && (auth.accessToken || auth.apiKey)) return candidate;
+    }
+    return null;
+}
+
 function readLoginAuth(dir) {
-    const auth = readJson(path.join(dir, 'auth.json'));
-    if (!auth || !(auth.accessToken || auth.apiKey)) return null;
-    return auth;
+    const found = findLoginAuthDir(dir);
+    return found ? readJson(path.join(found, 'auth.json')) : null;
 }
 
 function finishAccountLogin(accountId) {
@@ -475,8 +490,13 @@ function finishAccountLogin(accountId) {
     stopLoginJob(job, 'SIGTERM');
     const accDir = getAccountDir(accountId);
     ensureDir(accDir);
-    safeCopyFile(path.join(job.dir, 'auth.json'), path.join(accDir, 'auth.json'));
-    safeCopyFile(path.join(job.dir, 'cli-config.json'), path.join(accDir, 'cli-config.json'));
+    const authDir = findLoginAuthDir(job.dir) || job.dir;
+    safeCopyFile(path.join(authDir, 'auth.json'), path.join(accDir, 'auth.json'));
+    if (fs.existsSync(path.join(authDir, 'cli-config.json'))) {
+        safeCopyFile(path.join(authDir, 'cli-config.json'), path.join(accDir, 'cli-config.json'));
+    } else {
+        safeCopyFile(path.join(job.dir, 'cli-config.json'), path.join(accDir, 'cli-config.json'));
+    }
     try { fs.rmSync(job.dir, { recursive: true, force: true }); } catch (_) { /* staging dir */ }
     loginJobs.delete(accountId);
     const email = extractEmailFromToken(auth.accessToken) || '';
@@ -532,10 +552,14 @@ function beginCursorAccountLogin(accountId, listener) {
     const dir = path.join(getAccountDir(id), 'pending-login');
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* fresh staging dir */ }
     ensureDir(dir);
+    ensureDir(path.join(dir, 'home'));
+    ensureDir(path.join(dir, 'xdg'));
     const child = require('child_process').spawn(agentBin, ['login'], {
         env: spawnEnvWithoutInheritedCursor({
             NO_OPEN_BROWSER: '1',
             CURSOR_CONFIG_DIR: dir,
+            HOME: path.join(dir, 'home'),
+            XDG_CONFIG_HOME: path.join(dir, 'xdg'),
             BROWSER: 'echo'
         }),
         stdio: ['ignore', 'pipe', 'pipe']
@@ -565,9 +589,18 @@ function beginCursorAccountLogin(accountId, listener) {
     child.stderr.on('data', take);
     child.on('error', (error) => failAccountLogin(id, error.message || 'Login failed'));
     child.on('exit', () => {
-        if (!finishAccountLogin(id) && loginJobs.get(id) === job) {
-            failAccountLogin(id, 'Login ended before Cursor saved the session');
-        }
+        if (finishAccountLogin(id)) return;
+        // Give the CLI a few seconds to flush auth.json after it exits.
+        let tries = 0;
+        const grace = setInterval(() => {
+            tries += 1;
+            if (loginJobs.get(id) !== job || job.settled) { clearInterval(grace); return; }
+            if (finishAccountLogin(id)) { clearInterval(grace); return; }
+            if (tries >= LOGIN_EXIT_GRACE_TICKS) {
+                clearInterval(grace);
+                failAccountLogin(id, 'Login ended before Cursor saved the session');
+            }
+        }, 500);
     });
     job.timer = setInterval(() => { finishAccountLogin(id); }, 1000);
     job.failTimer = setTimeout(() => failAccountLogin(id, 'Login timed out'), LOGIN_WAIT_MS);
@@ -861,6 +894,7 @@ module.exports = {
     publicCursorAccount,
     normalizeAccountColor,
     beginCursorAccountLogin,
+    findLoginAuthDir,
     restoreActiveCursorAccounts,
     isCursorApiKey,
     isJwt,
