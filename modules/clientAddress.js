@@ -433,7 +433,14 @@ function normalizeApocryphaAccessConfig(raw) {
  * Configured apocrypha.trustedProxies win when present; loopback stays the default.
  * Kuroko is always included so public traffic is not attributed to the proxy itself.
  */
+// Last apocrypha.trustedProxies seen via trustedProxiesFromResources, so callers
+// without globalResources (MCP request log, agent client bridge) honour config too.
+let lastConfiguredTrustedProxies = null;
+
 function trustedProxiesForClientIp(configured) {
+    if (!(Array.isArray(configured) && configured.length) && lastConfiguredTrustedProxies) {
+        configured = lastConfiguredTrustedProxies;
+    }
     const list = Array.isArray(configured) && configured.length
         ? configured.filter((entry) => typeof entry === 'string' && entry.trim()).slice()
         : DEFAULT_APOCRYPHA_ACCESS.trustedProxies.slice();
@@ -453,6 +460,9 @@ function trustedProxiesFromResources(globalResources) {
         }
     } catch (_err) {
         configured = null;
+    }
+    if (Array.isArray(configured) && configured.length) {
+        lastConfiguredTrustedProxies = configured.filter((e) => typeof e === "string" && e.trim()).slice();
     }
     return trustedProxiesForClientIp(configured);
 }
