@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Extract prompt terms from metadata (per workspace) and generate targeted quips via Grok.
+ * Extract prompt terms from metadata (per workspace) and generate targeted quips via Director.
  *
  * Usage:
  *   node scripts/generate-dynamic-quips.js --extract-only

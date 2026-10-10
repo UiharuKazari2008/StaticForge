@@ -1,5 +1,4 @@
 const crypto = require('crypto');
-const { z } = require('zod');
 const {
     SHARED_QUIPS_WORKSPACE_ID,
     dedupeQuipEntries
@@ -21,24 +20,6 @@ function normalizePhrasesPerTerm(value) {
     const n = parseInt(value, 10);
     if (!Number.isFinite(n)) return DEFAULT_PHRASES_PER_TERM;
     return Math.max(MIN_PHRASES_PER_TERM, Math.min(MAX_PHRASES_PER_TERM, n));
-}
-
-function buildQuipSchemas(phrasesPerTerm = DEFAULT_PHRASES_PER_TERM) {
-    const min = normalizePhrasesPerTerm(phrasesPerTerm);
-    const max = Math.max(min, MAX_PHRASES_PER_TERM);
-    const QuipBatchSchema = z.object({
-        quips: z.array(z.object({
-            term: z.string(),
-            phrases: z.array(z.string()).min(min).max(max)
-        }))
-    });
-    const QuipSingleTermSchema = z.object({
-        quips: z.array(z.object({
-            term: z.string(),
-            phrases: z.array(z.string()).min(min).max(max)
-        })).min(1).max(1)
-    });
-    return { QuipBatchSchema, QuipSingleTermSchema, minPhrases: min, maxPhrases: max };
 }
 
 const STATIC_QUALITY_TERMS = new Set([
@@ -1145,29 +1126,6 @@ class GenerationQuipsManager {
         return results;
     }
 
-    buildGrokSystemPrompt(workspaceName, phrasesPerTerm = DEFAULT_PHRASES_PER_TERM) {
-        const minPhrases = normalizePhrasesPerTerm(phrasesPerTerm);
-        const maxPhrases = Math.max(minPhrases, MAX_PHRASES_PER_TERM);
-        return [
-            'You write short, punchy loading-screen quips for an AI image generation app.',
-            `The user workspace "${workspaceName}" has a distinct creative fingerprint from their real prompt history.`,
-            'Focus on characters, attributes, outfits, poses, and scenarios they actually obsess over — not quality-booster tags, dataset tokens, or negative-prompt junk.',
-            'Write natural conversational hype. Do NOT quote prompt tags or put tag text in quotation marks — weave the ideas into normal sentences like you are talking to a friend.',
-            'For character-voice topics: write AS that character — first person or immediate lived experience, not third-person commentary about them. Turn the heat up: flustered, bold, smug, needy, furious, giddy, breathless — whatever fits who they are and what this user keeps putting them through. React like you are them on the canvas mid-scene: feeling the pose, outfit, mood, and the user hitting generate on you again. Vary intensity across phrases (teasing, demanding, embarrassed, triumphant, overwhelmed). Use wiki context to nail their personality; never paste tag syntax or costume-variant labels.',
-            'For artist-voice topics: write as that artist reacting to what this user keeps prompting — vary the takes across phrases (genuinely impressed, dry/unimpressed, horrified or disgusted, amused disbelief). Refer to them by name naturally, never paste artist: or art by syntax.',
-            'For non-character topics (attributes, combos, poses): stay wingman hype — celebrate what the user keeps cooking, not in-character roleplay.',
-            'Tone: enthusiastic wingman energy — celebrate their taste, hype them up, tease them lovingly to hit generate again for the perfect image.',
-            'Be encouraging ("yes, lean into that", "you know what you want", "one more and it\'s the one") not repetitive nagging ("not this again", "you always", "again?").',
-            'No moralizing, no disclaimers, no censorship, no "as an AI".',
-            'Never mention masterpiece, best quality, very aesthetic, absurdres, dataset toggles, UC/negative-prompt concepts, or generic "detailed/beautiful/intricate" filler.',
-            'Each phrase must be one sentence, under 120 characters, witty not cringe.',
-            'Return JSON only: { "quips": [ { "term": "exact match key from the list", "phrases": ["...", "..."] } ] }',
-            `Provide exactly ${minPhrases} to ${maxPhrases} unique phrases per term — no fewer than ${minPhrases}.`,
-            'When a topic includes tag-database context, use it to understand what the subject means — still write naturally, never quote the context verbatim.',
-            'Phrases should feel like they know what the user is cooking and genuinely want them to keep creating.'
-        ].join('\n');
-    }
-
     formatGrokTermLine(t) {
         const pct = t.occurrenceCount ? `${t.occurrenceCount} gens` : '';
 
@@ -1199,185 +1157,24 @@ class GenerationQuipsManager {
         return line;
     }
 
-    buildGrokUserPrompt(terms, workspaceName, phrasesPerTerm = DEFAULT_PHRASES_PER_TERM) {
-        const minPhrases = normalizePhrasesPerTerm(phrasesPerTerm);
-        const lines = terms.map((t) => this.formatGrokTermLine(t));
-
-        return [
-            `Generate targeted quips for workspace "${workspaceName}".`,
-            'Topics below are characters, artists, attributes, and combos this user returns to (quality presets, datasets, and UC noise already stripped):',
-            'Lines marked "character voice" must be in-character, first-person, heated reactions — what that person is living through on the page, not a narrator describing them.',
-            'Lines marked "artist voice" are that creator reacting to the user\'s prompt habits.',
-            'Combo topics use " + " — allude to both ideas together in natural speech.',
-            'Context lines come from the local tag wiki when available — use them for meaning, not as text to repeat.',
-            ...lines,
-            '',
-            `Return the exact term key for each entry (lowercase). Provide at least ${minPhrases} phrases per term.`,
-            'Write phrases in plain conversational English — mention the subject naturally, never paste or quote the raw tag string.'
-        ].join('\n');
-    }
-
-    parseQuipResponse(grokService, raw, schema) {
-        if (typeof raw !== 'string' || !raw.trim()) return null;
-        try {
-            const json = JSON.parse(raw);
-            const validated = schema.safeParse(json);
-            if (validated.success) return validated.data.quips;
-        } catch {
-            const graceful = grokService.gracefulParse(schema, raw, 'generation quips');
-            if (graceful.success) return graceful.data.quips;
-        }
-        return null;
-    }
-
-    normalizeQuipEntry(entry) {
-        if (!entry?.term || !Array.isArray(entry.phrases)) return null;
-        const phrases = entry.phrases
-            .filter((p) => typeof p === 'string' && p.trim())
-            .map((p) => p.trim());
-        if (phrases.length === 0) return null;
-        return {
-            term: entry.term.toLowerCase().trim(),
-            phrases
-        };
-    }
-
-    async callGrokForQuips(grokService, workspaceName, terms, schemaOptions = {}) {
-        const { QuipBatchSchema, QuipSingleTermSchema } = buildQuipSchemas(schemaOptions.phrasesPerTerm);
-        const schema = schemaOptions.singleTerm ? QuipSingleTermSchema : QuipBatchSchema;
-        const messages = [
-            { role: 'system', content: this.buildGrokSystemPrompt(workspaceName, schemaOptions.phrasesPerTerm) },
-            { role: 'user', content: this.buildGrokUserPrompt(terms, workspaceName, schemaOptions.phrasesPerTerm) }
-        ];
-
-        const result = await grokService.callDirectorAIWithCompletion(messages, {
-            model: grokService.getDefaultGrokModel(),
-            responseSchema: schema,
-            max_completion_tokens: 16000,
-            temperature: 1.05,
-            toolLoops: 1
-        });
-
-        return this.parseQuipResponse(grokService, result?.content || result?.message || '', schema);
-    }
-
-    /**
-     * Native @ai-sdk/xai path for quips (smaller task).
-     * Uses generateObject for reliable structured output.
-     * The XaiNativeService also fully supports streaming (streamText) and native
-     * web_search when enableWebSearch: true — ready for other small utility tasks.
-     */
-    async callXaiNativeForQuips(xaiService, workspaceName, terms, schemaOptions = {}) {
-        const { QuipBatchSchema, QuipSingleTermSchema } = buildQuipSchemas(schemaOptions.phrasesPerTerm);
-        const schema = schemaOptions.singleTerm ? QuipSingleTermSchema : QuipBatchSchema;
-
-        // If the outer generateQuipsForWorkspace is managing cross-batch state (same session
-        // for the whole workspace request), it passes the exact messages array via _callMessages.
-        let messages = schemaOptions && schemaOptions._callMessages;
-        if (!messages || !Array.isArray(messages) || messages.length === 0) {
-            messages = [
-                { role: 'system', content: this.buildGrokSystemPrompt(workspaceName, schemaOptions.phrasesPerTerm) },
-                { role: 'user', content: this.buildGrokUserPrompt(terms, workspaceName, schemaOptions.phrasesPerTerm) }
-            ];
-        }
-
-        // Primary: clean structured generation via the native SDK.
-        // Web search is available on the service but not required for creative quip generation.
-        try {
-            const aiRes = await xaiService.generateObject({
-                schema,
-                messages,
-                model: 'grok-4.3',
-                temperature: 1.05,
-                maxTokens: 16000,
-                enableWebSearch: false,
-                logLabel: 'Quips AI (native)',
-                reasoningEffort: 'low'
-            });
-            if (aiRes && aiRes.object && Array.isArray(aiRes.object.quips)) {
-                return {
-                    parsed: aiRes.object.quips,
-                    usage: aiRes.usage || null,
-                    rawText: JSON.stringify(aiRes.object)
-                };
-            }
-        } catch (err) {
-            this.globalResources.getLogger?.().detailed?.(`xaiNative quips generateObject failed, falling back: ${err?.message}`);
-        }
-
-        // Fallback: ask for text and reuse the existing (graceful) parser from the classic GrokService.
-        // This keeps behavior identical to the old path on weird outputs.
-        try {
-            const grokService = this.globalResources.getGrokService();
-            const textResult = await xaiService.generateText({
-                messages,
-                model: 'grok-4.3',
-                temperature: 1.05,
-                maxTokens: 16000,
-                enableWebSearch: false,
-                logLabel: 'Quips AI (native)',
-                reasoningEffort: 'low'
-            });
-            const raw = textResult?.text || '';
-            const parsed = this.parseQuipResponse(grokService, raw, schema);
-            return { parsed, usage: textResult?.usage || null, rawText: raw };
-        } catch (fallbackErr) {
-            console.error('❌ xaiNative quips fallback also failed:', fallbackErr?.message);
-            return { parsed: null, usage: null, rawText: '' };
-        }
-    }
-
     async generateQuipsForWorkspace(workspaceId, terms, workspaceName, progressCtx = null, options = {}) {
         const grokBatchSize = options.grokBatchSize ?? 3;
         const phrasesPerTerm = options.phrasesPerTerm ?? DEFAULT_PHRASES_PER_TERM;
-        const { minPhrases } = buildQuipSchemas(phrasesPerTerm);
+        const minPhrases = normalizePhrasesPerTerm(phrasesPerTerm);
+        const maxPhrases = Math.max(minPhrases, MAX_PHRASES_PER_TERM);
         if (!terms || terms.length === 0) return [];
 
         terms = await this.enrichTermsWithTagLookup(terms);
 
-        // Prefer the native @ai-sdk/xai service for this smaller utility task (quips).
-        // It supports streaming + native web search out of the box; we use generateObject here
-        // because quips are a structured JSON batch and we want strong schema adherence.
-        const xaiNativeService = this.globalResources.getXaiNativeService?.();
-        const grokService = this.globalResources.getGrokService();
+        const { runQuipsTurn } = require('./cursorDirector');
         const batchSize = Math.max(1, Math.min(5, parseInt(grokBatchSize, 10) || 3));
         const allQuips = [];
         const batchTotal = Math.ceil(terms.length / batchSize);
-
-        // === Session / conversation continuity for the entire workspace quip request ===
-        // By default we accumulate messages across batches so the model sees previous quips
-        // it generated for this workspace (better stylistic consistency).
-        // Config under generationQuips:
-        //   maintainQuipSession: true          // use same logical session (accumulated messages)
-        //   breakQuipSessionAt128k: true       // start a fresh session when we near 128k context
-        //   logFullPromptsToConsole: false     // when true, console.log the full sent messages + returned content for this run
-        const quipsCfg = this.globalResources.getConfig({ path: 'generationQuips' }) || {};
-        const maintainSession = quipsCfg.maintainQuipSession !== false; // default true
-        const breakAt128k = quipsCfg.breakQuipSessionAt128k !== false;  // default true
-        const logFullToConsole = !!quipsCfg.logFullPromptsToConsole;
-        const TOKEN_BREAK_THRESHOLD = 120000; // headroom before 128k (Grok pricing / context tiers)
-
-        let sessionMessages = null;
-        let sessionTokens = 0; // accumulated from actual usage replies
-
-        if (xaiNativeService && maintainSession) {
-            const systemPrompt = this.buildGrokSystemPrompt(workspaceName, phrasesPerTerm);
-            sessionMessages = [{ role: 'system', content: systemPrompt }];
-            if (logFullToConsole) {
-                const logger = this.globalResources.getLogger();
-                if (logger && typeof logger.detailed === 'function') {
-                    logger.detailed(`🧠 Quips session started for ${workspaceName} (maintainSession=true, breakAt128k=${breakAt128k})`);
-                }
-            }
-        }
-
         const logger = this.globalResources.getLogger();
 
-        for (let i = 0; i < terms.length; i += batchSize) {
-            const batchIndex = Math.floor(i / batchSize) + 1;
-            const batch = terms.slice(i, i + batchSize);
-
-            if (progressCtx) {
+        const askDirector = async (batch, batchIndex) => {
+            const progress = () => {
+                if (!progressCtx) return;
                 this.publishGenerationProgress({
                     status: 'running',
                     phase: 'generating',
@@ -1389,161 +1186,59 @@ class GenerationQuipsManager {
                     batch_total: batchTotal,
                     terms_complete: allQuips.length,
                     terms_total: terms.length,
-                    message: `Grok: ${workspaceName} — batch ${batchIndex}/${batchTotal}`
+                    message: `Director: ${workspaceName} - batch ${batchIndex}/${batchTotal}`
                 }, { wsServer: progressCtx.wsServer });
-            }
-
-            // Build the messages for *this* call (either fresh per-batch or continued session)
-            let callMessages = null;
-            let userContentForBatch = null;
-            let didBreakSession = false;
-
-            if (xaiNativeService && sessionMessages) {
-                userContentForBatch = this.buildGrokUserPrompt(batch, workspaceName, phrasesPerTerm);
-                callMessages = [...sessionMessages, { role: 'user', content: userContentForBatch }];
-
-                // Decide whether to break into a new logical session for this batch
-                const estimatedAdd = Math.ceil(((userContentForBatch || '').length + 1500) / 3.5); // cheap chars->tokens estimate
-                if (breakAt128k && (sessionTokens + estimatedAdd > TOKEN_BREAK_THRESHOLD)) {
-                    if (logger && typeof logger.detailed === 'function') {
-                        logger.detailed(`🆕 Breaking quip session for "${workspaceName}" (sessionTokens~${sessionTokens}, next est +${estimatedAdd} would near/exceed 128k)`);
+            };
+            progress();
+            const beat = progressCtx ? setInterval(progress, 30000) : null;
+            try {
+                const result = await runQuipsTurn(this.globalResources, {
+                    workspaceId: workspaceId || null,
+                    workspaceName,
+                    topics: batch.map((row) => this.formatGrokTermLine(row)).join('\n'),
+                    expectedTerms: batch.map((row) => String(row.term || '').toLowerCase().trim()).filter(Boolean),
+                    minPhrases,
+                    maxPhrases,
+                    onThought: (line) => {
+                        if (logger && typeof logger.detailed === 'function') {
+                            logger.detailed(`Quips Director: ${String(line || '').slice(0, 240)}`);
+                        }
                     }
-                    // Start a fresh session: keep only the original system prompt + this batch's user message
-                    const systemOnly = sessionMessages[0] ? [sessionMessages[0]] : [];
-                    sessionMessages = systemOnly.length ? systemOnly : [{ role: 'system', content: this.buildGrokSystemPrompt(workspaceName, phrasesPerTerm) }];
-                    callMessages = [...sessionMessages, { role: 'user', content: userContentForBatch }];
-                    sessionTokens = 0;
-                    didBreakSession = true;
-                }
+                });
+                return Array.isArray(result && result.quips) ? result.quips : null;
+            } catch (error) {
+                console.error(`Quips Director turn failed for "${workspaceName}":`, error && error.message);
+                const code = error && error.code;
+                if (code === 'BWRAP_MISSING' || code === 'CURSOR_MISSING' || code === 'CURSOR_USAGE_LIMIT') throw error;
+                return null;
+            } finally {
+                if (beat) clearInterval(beat);
             }
+        };
 
-            // Console insight header — same style as the main Director / GrokService flows
-            const effectiveMsgCount = callMessages ? callMessages.length : 2;
-            const usingNative = !!xaiNativeService;
-            if (logger && typeof logger.detailed === 'function') {
-                const label = usingNative ? 'Quips AI (native)' : 'Quips AI (legacy)';
-                const stateNote = didBreakSession ? ' | new session (128k break)' : (sessionMessages ? ' | stateful' : '');
-                logger.detailed(`🎯 ${label}: ${usingNative ? (this.globalResources.getConfig({ path: 'defaultGrokModel' }) || 'grok-4.3') : 'grok'} | Batch ${batchIndex}/${batchTotal} | ${effectiveMsgCount} msgs | 0 tools${stateNote}`);
-            }
-
-            // Optional full visibility of exactly what we are sending (for debugging style/consistency issues)
-            if (logFullToConsole && callMessages && logger) {
-                try {
-                    const sentPreview = JSON.stringify(callMessages, null, 2);
-                    if (typeof logger.detailed === 'function') {
-                        logger.detailed(`📤 Quips FULL SENT (batch ${batchIndex}/${batchTotal}):\n${sentPreview.slice(0, 12000)}`);
-                    } else {
-                        console.log(`📤 Quips FULL SENT (batch ${batchIndex}/${batchTotal}):\n${sentPreview.slice(0, 12000)}`);
-                    }
-                } catch (_) {}
-            }
-
-            let parsed = null;
-            let aiUsage = null;
-
-            if (xaiNativeService) {
-                const aiResult = await this.callXaiNativeForQuips(xaiNativeService, workspaceName, batch, { phrasesPerTerm, _callMessages: callMessages });
-                parsed = aiResult?.parsed || null;
-                aiUsage = aiResult?.usage || null;
-
-                // Update the running session state for the next batch (same workspace request)
-                if (maintainSession && sessionMessages && userContentForBatch) {
-                    // Append the turn we just did
-                    sessionMessages.push({ role: 'user', content: userContentForBatch });
-                    const assistantJson = parsed && Array.isArray(parsed) ? JSON.stringify({ quips: parsed }) : (aiResult?.rawText || '');
-                    sessionMessages.push({ role: 'assistant', content: assistantJson || '' });
-
-                    if (aiUsage) {
-                        const tot = aiUsage.totalTokens || (aiUsage.promptTokens || 0) + (aiUsage.completionTokens || 0) || 0;
-                        sessionTokens += tot;
-                    }
-                }
-            } else {
-                // Fallback to the classic (OpenAI SDK) path if native service isn't ready yet.
-                // (Legacy path stays per-batch independent unless you also wire sessioning there.)
-                parsed = await this.callGrokForQuips(grokService, workspaceName, batch, { phrasesPerTerm });
-            }
-
-            // Optional: log what came back (after we have parsed)
-            if (logFullToConsole && logger) {
-                try {
-                    const ret = parsed ? JSON.stringify({ quips: parsed }, null, 2) : '(no parsed quips)';
-                    if (typeof logger.detailed === 'function') {
-                        logger.detailed(`📥 Quips FULL RETURNED (batch ${batchIndex}/${batchTotal}):\n${ret.slice(0, 8000)}`);
-                    } else {
-                        console.log(`📥 Quips FULL RETURNED (batch ${batchIndex}/${batchTotal}):\n${ret.slice(0, 8000)}`);
-                    }
-                } catch (_) {}
-            }
+        for (let i = 0; i < terms.length; i += batchSize) {
+            const batchIndex = Math.floor(i / batchSize) + 1;
+            const batch = terms.slice(i, i + batchSize);
+            let parsed = await askDirector(batch, batchIndex);
             const batchResults = [];
 
             if (Array.isArray(parsed)) {
                 for (const entry of parsed) {
                     const normalized = this.normalizeQuipEntry(entry);
-                    if (normalized) batchResults.push(normalized);
+                    if (normalized && normalized.phrases.length >= minPhrases) batchResults.push(normalized);
                 }
             }
 
             const gotTerms = new Set(batchResults.map((q) => q.term));
             for (const termRow of batch) {
-                const termKey = termRow.term.toLowerCase().trim();
-                const existing = batchResults.find((q) => q.term === termKey);
-                if (!existing || existing.phrases.length < minPhrases) {
-                    let retryParsed = null;
-                    let retryUsage = null;
-                    let retryUserContent = null;
-
-                    if (xaiNativeService) {
-                        retryUserContent = this.buildGrokUserPrompt([termRow], workspaceName, phrasesPerTerm);
-                        let retryCallMessages = null;
-
-                        if (maintainSession && sessionMessages) {
-                            retryCallMessages = [...sessionMessages, { role: 'user', content: retryUserContent }];
-                            // light 128k check for the retry turn too
-                            const est = Math.ceil((retryUserContent.length + 800) / 3.5);
-                            if (breakAt128k && (sessionTokens + est > TOKEN_BREAK_THRESHOLD)) {
-                                if (logger && typeof logger.detailed === 'function') {
-                                    logger.detailed(`🆕 Breaking quip session (retry) for "${workspaceName}" near 128k`);
-                                }
-                                const sys = sessionMessages[0] ? [sessionMessages[0]] : [];
-                                sessionMessages = sys.length ? sys : [{ role: 'system', content: this.buildGrokSystemPrompt(workspaceName, phrasesPerTerm) }];
-                                retryCallMessages = [...sessionMessages, { role: 'user', content: retryUserContent }];
-                                sessionTokens = 0;
-                            }
-                        }
-
-                        const retryRes = await this.callXaiNativeForQuips(xaiNativeService, workspaceName, [termRow], {
-                            phrasesPerTerm,
-                            singleTerm: true,
-                            _callMessages: retryCallMessages
-                        });
-                        retryParsed = retryRes?.parsed || null;
-                        retryUsage = retryRes?.usage || null;
-
-                        // keep session alive with this retry turn
-                        if (maintainSession && sessionMessages && retryUserContent) {
-                            sessionMessages.push({ role: 'user', content: retryUserContent });
-                            const asst = retryParsed && Array.isArray(retryParsed) ? JSON.stringify({ quips: retryParsed }) : (retryRes?.rawText || '');
-                            sessionMessages.push({ role: 'assistant', content: asst || '' });
-                            if (retryUsage) {
-                                const tot = retryUsage.totalTokens || (retryUsage.promptTokens || 0) + (retryUsage.completionTokens || 0) || 0;
-                                sessionTokens += tot;
-                            }
-                        }
-                    } else {
-                        const retryRes = await this.callGrokForQuips(grokService, workspaceName, [termRow], { phrasesPerTerm, singleTerm: true });
-                        retryParsed = Array.isArray(retryRes) ? retryRes : null;
-                    }
-
-                    if (Array.isArray(retryParsed) && retryParsed[0]) {
-                        const normalized = this.normalizeQuipEntry(retryParsed[0]);
-                        if (normalized) {
-                            if (existing) {
-                                existing.phrases = normalized.phrases;
-                            } else {
-                                batchResults.push(normalized);
-                            }
-                        }
+                const termKey = String(termRow.term || '').toLowerCase().trim();
+                if (!termKey || gotTerms.has(termKey)) continue;
+                const retryParsed = await askDirector([termRow], batchIndex);
+                if (Array.isArray(retryParsed) && retryParsed[0]) {
+                    const normalized = this.normalizeQuipEntry(retryParsed[0]);
+                    if (normalized) {
+                        batchResults.push(normalized);
+                        gotTerms.add(normalized.term);
                     }
                 }
             }
@@ -1560,7 +1255,7 @@ class GenerationQuipsManager {
                     batch_total: batchTotal,
                     terms_complete: allQuips.length + batchResults.length,
                     terms_total: terms.length,
-                    message: `Grok: ${workspaceName} — batch ${batchIndex}/${batchTotal}`
+                    message: `Director: ${workspaceName} - batch ${batchIndex}/${batchTotal}`
                 }, {
                     wsServer: progressCtx.wsServer,
                     previews: batchResults,
@@ -1568,17 +1263,12 @@ class GenerationQuipsManager {
                 });
             }
 
-            for (const entry of batchResults) {
-                if (entry.phrases.length >= minPhrases || !gotTerms.has(entry.term)) {
-                    allQuips.push(entry);
-                } else if (entry.phrases.length > 0) {
-                    allQuips.push(entry);
-                }
-            }
+            allQuips.push(...batchResults);
         }
 
         return dedupeQuipEntries(allQuips);
     }
+
 
     async generateGlobalFallbackQuips(allWorkspaceTerms, excludeTerms = [], options = {}) {
         const excludeSet = new Set(
@@ -1676,7 +1366,7 @@ class GenerationQuipsManager {
             phase: 'generating',
             workspace_total: generationSteps,
             terms_total: workspaceEntries.reduce((n, [, d]) => n + (d.terms?.length || 0), 0) + sharedTerms.length,
-            message: generateOnly ? 'Starting Grok quip generation…' : 'Extract complete, starting Grok…',
+            message: generateOnly ? 'Starting Director quip generation...' : 'Extract complete, starting Director...',
             error: null,
             started_at: Math.floor(Date.now() / 1000)
         }, { wsServer });
@@ -1691,7 +1381,7 @@ class GenerationQuipsManager {
                     continue;
                 }
 
-                console.log(`🤖 Generating quips for "${wsName}" (${data.terms.length} terms)...`);
+                console.log(`Director: generating quips for "${wsName}" (${data.terms.length} terms)...`);
 
                 const quips = await this.generateQuipsForWorkspace(workspaceId, data.terms, wsName, {
                     workspaceIndex,

@@ -333,14 +333,14 @@ ${quipsDsapBuildSmfChrome('configuration')}
     <td class="quips-dsap-setting-hint-cell">How many prompt terms to extract and rank per scan</td>
   </tr>
   <tr>
-    <td class="quips-dsap-setting-label">Terms per Grok batch</td>
+    <td class="quips-dsap-setting-label">Terms per Director batch</td>
     <td>
       <button type="button" id="quipsDsapGrokBatchBtn" class="dsap-smf-btn dsap-smf-btn-small quips-dsap-setting-menu-btn">
         <span id="quipsDsapGrokBatchSelected">3</span> <i class="fas fa-caret-down"></i>
       </button>
       <input type="hidden" id="quipsDsapGrokBatchHidden" value="3">
     </td>
-    <td class="quips-dsap-setting-hint-cell">How many ranked terms to send per Grok request</td>
+    <td class="quips-dsap-setting-hint-cell">How many ranked terms to send per Director turn</td>
   </tr>
   <tr>
     <td class="quips-dsap-setting-label">Quips per term</td>
@@ -350,7 +350,7 @@ ${quipsDsapBuildSmfChrome('configuration')}
       </button>
       <input type="hidden" id="quipsDsapPhrasesPerTermHidden" value="15">
     </td>
-    <td class="quips-dsap-setting-hint-cell">How many phrases Grok generates for each ranked term</td>
+    <td class="quips-dsap-setting-hint-cell">How many phrases Director writes for each ranked term</td>
   </tr>
 </table>
 

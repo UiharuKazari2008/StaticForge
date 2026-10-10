@@ -58,6 +58,7 @@ async function main() {
         apply_studio_changes: 'generation',
         request_workspace_switch: 'generation',
         deliver_rentan: 'generation',
+        deliver_quips: 'generation',
         await_rentan_attempt: 'generation',
         finish_rentan: 'generation',
         link_memory_image: 'generation',
