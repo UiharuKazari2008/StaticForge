@@ -3149,17 +3149,35 @@ function chatIsListed(chat) {
     return (chat.messages || []).some((item) => item && item.role === 'user' && item.message_type !== 'Attachment');
 }
 
+// Opening Director follows the Studio image, but an image a hidden Rentan/Quips
+// turn touched (e.g. Enhance with Director on) must not switch to that chat.
+// Only preferredChatId (the carousel menu) may open a hidden chat.
+function pickOpenWorkspaceChat(index, message, workspaceId) {
+    const preview = message.previewFilename ? basenameFile(message.previewFilename) : '';
+    let found = findChatById(index, message.preferredChatId);
+    if (!found && preview) found = findChatByFilename(index, preview);
+    if (!found && message.directorSessionId) {
+        const byMeta = findChatById(index, message.directorSessionId);
+        if (byMeta && !chatIsHidden(byMeta)) found = byMeta;
+    }
+    if (!found && !preview && !message.directorSessionId) found = latestForWorkspace(index, workspaceId);
+    return found;
+}
 function findChatById(index, id) {
     if (!id) return null;
     return index.chats.find((chat) => chat.id === id) || null;
 }
 
+// Rentan and Quips chats run in the background; only an explicit open by id shows them.
+function chatIsHidden(chat) {
+    return !!(chat && (chat.dynagen || chat.quips));
+}
 function findChatByFilename(index, filename) {
     if (!basenameFile(filename)) return null;
     let empty = null;
     for (let i = index.chats.length - 1; i >= 0; i--) {
         const chat = index.chats[i];
-        if (!chatOwnsFilename(chat, filename)) continue;
+        if (chatIsHidden(chat) || !chatOwnsFilename(chat, filename)) continue;
         if (chatIsListed(chat)) return chat;
         if (!empty) empty = chat;
     }
@@ -3772,11 +3790,7 @@ async function handleDirectorOpenWorkspace(handler, ws, message) {
         const workspaceId = message.workspaceId || null;
         const chat = await enqueue(async () => {
             const index = readIndex(paths.indexPath);
-            const preview = message.previewFilename ? basenameFile(message.previewFilename) : '';
-            let found = findChatById(index, message.preferredChatId);
-            if (!found && preview) found = findChatByFilename(index, preview);
-            if (!found && message.directorSessionId) found = findChatById(index, message.directorSessionId);
-            if (!found && !preview && !message.directorSessionId) found = latestForWorkspace(index, workspaceId);
+            const found = pickOpenWorkspaceChat(index, message, workspaceId);
             if (found && found.archived) {
                 markChatActive(found);
                 writeIndex(paths.indexPath, index);
@@ -5106,7 +5120,7 @@ module.exports = {
         publicSession, publicMessage, publicTraceRow, roundModelRecord, watchGeneratedPrints, rememberGeneratedPrint,
         isLinkDrop, continuationPrompt,
         normalizeSessionTasks, readProcStat, directorState, computerReadiness,
-        parseDynagenAnswer, dynagenThoughtTracker, dynagenTurnPrompt, chatIsListed, dynagenDeliveries,
+        parseDynagenAnswer, dynagenThoughtTracker, dynagenTurnPrompt, chatIsListed, chatIsHidden, pickOpenWorkspaceChat, dynagenDeliveries,
         takeAssistantText, settleDirectorResult, turnDeadline, dynagenTurnLimits, killAgentChild, signalProcessTree,
         RUN_IDLE_MS, RUN_HARD_MS, DYNAGEN_IDLE_MS, DYNAGEN_HARD_MS, RENTAN_REVIEW_HARD_MS,
         readIdleShutdownMinutes, noteDirectorActivity, tickIdleShutdown, wakeDirectorComputer, shutdownIdleDirector,
