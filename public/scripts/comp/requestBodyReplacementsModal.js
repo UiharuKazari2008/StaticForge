@@ -872,7 +872,14 @@ async function handleCreateRequestBodyReplacementSubmit() {
 // Render the request body replacements list
 function renderRequestBodyReplacementsList() {
     const listContainer = document.getElementById('requestBodyReplacementsList');
-    if (!listContainer) return;
+    const refreshCounts = () => {
+        // refreshTokenBarCounts: public/scripts/comp/presetTokenCount.js
+        if (typeof refreshTokenBarCounts === 'function') refreshTokenBarCounts();
+    };
+    if (!listContainer) {
+        refreshCounts();
+        return;
+    }
 
     // Don't re-render if any item is currently being edited
     const editingItem = listContainer.querySelector('.text-replacement-item.editing');
@@ -893,6 +900,7 @@ function renderRequestBodyReplacementsList() {
                 <p><i class="fas fa-search"></i> No request body replacements found</p>
             </div>
         `;
+        refreshCounts();
         return;
     }
 
@@ -900,6 +908,7 @@ function renderRequestBodyReplacementsList() {
         const itemElement = createRequestBodyReplacementItem(replacement, index);
         listContainer.appendChild(itemElement);
     });
+    refreshCounts();
 }
 
 // Create a request body replacement item element

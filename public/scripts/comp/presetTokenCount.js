@@ -75,10 +75,49 @@ function buildQwenPresetTokenCountMap(tokenizer) {
     return cache;
 }
 
+let requestExpanderCountCache = { sig: '', tokenizer: null, counts: null };
+
+function requestExpanderTokenCounts() {
+    if (typeof requestBodyReplacements === 'undefined' || !Array.isArray(requestBodyReplacements) || !requestBodyReplacements.length) {
+        return null;
+    }
+    const tokenizer = typeof getPromptTokenizer === 'function' ? getPromptTokenizer() : null;
+    if (!tokenizer) return null;
+    const sig = requestBodyReplacements.map((entry) => {
+        if (!entry || !entry.name) return '';
+        const value = Array.isArray(entry.value) ? entry.value.join('\n') : (entry.value == null ? '' : String(entry.value));
+        return `${entry.name}\t${value}`;
+    }).join('\n');
+    if (requestExpanderCountCache.sig === sig && requestExpanderCountCache.tokenizer === tokenizer) {
+        return requestExpanderCountCache.counts;
+    }
+    const counts = {};
+    requestBodyReplacements.forEach((entry) => {
+        if (!entry || !entry.name) return;
+        const key = String(entry.name);
+        if (Array.isArray(entry.value)) {
+            counts[key] = entry.value.map((item) => countTokensForText(item == null ? '' : String(item)));
+        } else {
+            counts[key] = countTokensForText(entry.value == null ? '' : String(entry.value));
+        }
+    });
+    requestExpanderCountCache = { sig, tokenizer, counts };
+    return counts;
+}
+
+function withRequestExpanderCounts(counts) {
+    if (!counts) return counts;
+    const extra = requestExpanderTokenCounts();
+    if (!extra) return counts;
+    return Object.assign({}, counts, {
+        expanders: Object.assign({}, counts.expanders, extra)
+    });
+}
+
 function getPresetTokenCountMap() {
     const tokenizer = getPromptTokenizer();
     if (getForgeModelFeatures()?.tokenizer !== 'qwen' || !tokenizer) {
-        return window.optionsData?.preset_token_counts || null;
+        return withRequestExpanderCounts(window.optionsData?.preset_token_counts || null);
     }
     const modelKey = getModelKeyForTokenCount();
     const optionsVersion = getOptionsDataCacheVersion(window.optionsData);
@@ -95,7 +134,7 @@ function getPresetTokenCountMap() {
             counts: buildQwenPresetTokenCountMap(tokenizer)
         };
     }
-    return qwenPresetTokenCountCache.counts;
+    return withRequestExpanderCounts(qwenPresetTokenCountCache.counts);
 }
 
 function getModelKeyForTokenCount() {
@@ -452,7 +491,9 @@ function getActivePresetTokenDelta(combinedPromptText) {
         result.prompt += tokens;
     }
 
-    const ucLevel = typeof selectedUcPreset !== 'undefined' ? selectedUcPreset : 0;
+    // Drafting (medium effort) sends no custom UC. The wire preset is Heavy (level 3).
+    const drafting = typeof getManualEffort === 'function' && getManualEffort() === 'medium';
+    const ucLevel = drafting ? 3 : (typeof selectedUcPreset !== 'undefined' ? selectedUcPreset : 0);
     if (ucLevel > 0 && modelKey && map.uc[modelKey]) {
         const levels = map.uc[modelKey];
         const entry = levels.find((l) => l.level === ucLevel) || levels[ucLevel - 1];
@@ -472,7 +513,7 @@ function getActivePresetTokenDelta(combinedPromptText) {
                 }
                 result.prompt += p;
             }
-            if (nsfwEntry.uc) {
+            if (!drafting && nsfwEntry.uc) {
                 let u = nsfwEntry.uc;
                 if (typeof nsfwBias !== 'undefined' && nsfwBias !== 1.0 && typeof applyBiasToText === 'function') {
                     const add = window.optionsData?.nsfw_presets?.[String(nsfwVal)]?.add;
@@ -511,6 +552,7 @@ function getNonEditableTokenTotals(promptTexts, ucTexts, periodKey, model) {
 
 function computeRentanTokenDelta() {
     const result = { prompt: 0, uc: 0 };
+    const drafting = typeof getManualEffort === 'function' && getManualEffort() === 'medium';
     const tr = window.dynamicGenerationData?.compiled_prompt?.text_replacements;
     if (!tr || !getPromptTokenizer()) return result;
 
@@ -526,12 +568,12 @@ function computeRentanTokenDelta() {
     };
 
     result.prompt += sumArr(tr.prompt);
-    result.uc += sumArr(tr.uc);
+    if (!drafting) result.uc += sumArr(tr.uc);
     if (Array.isArray(tr.character_prompts)) {
         tr.character_prompts.forEach((char) => {
             if (char) {
                 result.prompt += sumArr(char.prompt);
-                result.uc += sumArr(char.uc);
+                if (!drafting) result.uc += sumArr(char.uc);
             }
         });
     }

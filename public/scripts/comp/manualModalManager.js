@@ -2248,14 +2248,20 @@ function paintManualEffort() {
     const medium = available && manualSelectedEffort === 'medium';
     const modal = document.getElementById('manualModal');
     const btn = document.getElementById('manualEffortBtn');
+    const wasDrafting = !!(modal && modal.dataset.effort === 'medium');
     if (btn) {
         btn.classList.toggle('hidden', !available);
         btn.setAttribute('data-state', medium ? 'on' : 'off');
         btn.setAttribute('aria-pressed', medium ? 'true' : 'false');
+        btn.title = 'Drafting (Medium Effort, Off is High Effort)';
+        btn.setAttribute('aria-label', 'Drafting');
     }
     if (modal) {
         if (medium) modal.dataset.effort = 'medium';
         else delete modal.dataset.effort;
+    }
+    if (wasDrafting !== medium && typeof refreshTokenBarCounts === 'function') {
+        refreshTokenBarCounts();
     }
     // applyMediumStudioChrome: public/scripts/comp/utilities.js
     let lock = null;

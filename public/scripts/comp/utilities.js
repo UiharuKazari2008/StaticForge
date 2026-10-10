@@ -2263,8 +2263,11 @@ function updateManualTokenFreeDisplay(groupTotals) {
     // Allow negative when overcommitted past the model token budget
     const free = maxTokens - total;
     freeEl.textContent = free;
-    const tabLabel = activeTab === 'uc' ? 'UC' : 'Prompt';
-    container.title = `${free} tokens free (${tabLabel}, ${total}/${maxTokens} used)`;
+    const draftingUc = activeTab === 'uc' && typeof getManualEffort === 'function' && getManualEffort() === 'medium';
+    const tabLabel = draftingUc ? 'Heavy preset only' : (activeTab === 'uc' ? 'UC' : 'Prompt');
+    container.title = draftingUc
+        ? `${free} tokens free (Drafting, Heavy preset only, custom undesired content is not sent, ${total}/${maxTokens} used)`
+        : `${free} tokens free (${tabLabel}, ${total}/${maxTokens} used)`;
 
     const isCritical = free < 64;
     const isWarning = !isCritical && total > maxTokens / 2;

@@ -380,6 +380,11 @@ class PromptTextareaToolbar {
         }
 
         const isUc = this.isUcTextarea(changedTextarea);
+        // Drafting drops custom UC. A full recount keeps Heavy-preset accounting in sync.
+        if (isUc && typeof getManualEffort === 'function' && getManualEffort() === 'medium') {
+            this.updateAllTokenCounts();
+            return;
+        }
         const stripped = this.stripTextForTokenCount(changedTextarea.value || '');
         const newCount = tokenizer.countTokens(stripped);
         const prev = this._fieldTokenCache.get(changedTextarea) || { count: 0, expanderNe: 0 };
@@ -431,8 +436,9 @@ class PromptTextareaToolbar {
 
         // Must match stripTextForTokenCount / incremental — otherwise blur recount inflates the bar
         // with managed delimiter glyphs while focused edits use stripped counts.
+        const drafting = typeof getManualEffort === 'function' && getManualEffort() === 'medium';
         const promptTexts = promptTextareas.map((ta) => this.stripTextForTokenCount(ta.value || ''));
-        const ucTexts = ucTextareas.map((ta) => this.stripTextForTokenCount(ta.value || ''));
+        const ucTexts = ucTextareas.map((ta) => drafting ? '' : this.stripTextForTokenCount(ta.value || ''));
 
         const promptAnalysis = tokenizer.analyzeTexts(promptTexts);
         const ucAnalysis = tokenizer.analyzeTexts(ucTexts);
