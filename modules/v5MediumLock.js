@@ -206,7 +206,28 @@ function foldUcIntoInlineNegative(uc, inline) {
     return merged.join(', ');
 }
 
+/**
+ * UC phrases Medium would drop, minus any already covered (UC preset text Medium sends itself,
+ * or phrases already in the inline negative). Deduped, comma-joined, '' when nothing is left.
+ * @param {string} uc
+ * @param {string[]} [covered]
+ * @returns {string}
+ */
+function mediumUcResidual(uc, covered = []) {
+    const skip = new Set();
+    (covered || []).forEach((text) => splitTopLevelPhrases(text).forEach((part) => skip.add(part.toLowerCase())));
+    const out = [];
+    splitTopLevelPhrases(String(uc || '').replace(/__ENSHUTSUKA_APPEND_POINT__/g, '')).forEach((part) => {
+        const key = part.toLowerCase();
+        if (skip.has(key)) return;
+        skip.add(key);
+        out.push(part);
+    });
+    return out.join(', ');
+}
+
 module.exports = {
+    mediumUcResidual,
     foldUcIntoInlineNegative,
     splitTopLevelPhrases,
     explicitEffortModelKey,

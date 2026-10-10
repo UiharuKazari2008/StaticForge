@@ -21,7 +21,7 @@ const {
     assertTokenCompiler
 } = require('../public/scripts/comp/promptListFold');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
-const { resolveMediumLock, applyMediumLocksToOptions, explicitEffortModelKey, foldUcIntoInlineNegative } = require('./v5MediumLock');
+const { resolveMediumLock, applyMediumLocksToOptions, explicitEffortModelKey, mediumUcResidual } = require('./v5MediumLock');
 const { resolveNekoEnumValue } = require('./nekoEnumResolve');
 const {
     resolvePresetRecord,
@@ -1719,21 +1719,6 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
     const rawInputPromptNegative = (body.input_prompt_negative !== undefined && body.input_prompt_negative !== null)
         ? body.input_prompt_negative
         : (body.prompt_negative !== undefined && body.prompt_negative !== null ? body.prompt_negative : (preset?.input_prompt_negative ?? preset?.prompt_negative ?? ''));
-    // V5 Medium drops the user UC; fold it into the inline negative for processing only.
-    // Saved input_uc / input_prompt_negative stay raw so High restores them. foldUcIntoInlineNegative: modules/v5MediumLock.js
-    const earlyMediumLock = (() => {
-        try {
-            const key = explicitEffortModelKey(String(body.model || preset?.model || '').toLowerCase(), body.effort);
-            const { normalizeEffort: normEffort } = require('./modelFeatures');
-            return resolveMediumLock(key, normEffort(body.effort != null ? body.effort : preset?.effort), __runtimeGr.getModelFeaturesMap());
-        } catch (err) {
-            return null;
-        }
-    })();
-    const foldMediumUc = !!(earlyMediumLock && earlyMediumLock.clearsUserUc);
-    const effectiveInputPromptNegative = foldMediumUc
-        ? foldUcIntoInlineNegative(rawNegativePrompt || '', rawInputPromptNegative || '')
-        : rawInputPromptNegative;
 
     // Handle upscale override from query parameters
     let upscaleValue = (body.upscale !== undefined && body.upscale !== null) ? body.upscale : preset?.upscale;
@@ -1789,7 +1774,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         let processedPromptResult = __runtimeGr.getTextReplacements().applyTextReplacements(rawPrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
         let processedNegativePromptResult = __runtimeGr.getTextReplacements().applyTextReplacements(rawNegativePrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
         let processedPromptNegativeFragmentResult = __runtimeGr.getTextReplacements().applyTextReplacements(
-            effectiveInputPromptNegative || '',
+            rawInputPromptNegative || '',
             presetName,
             body.model,
             periodKey,
@@ -1801,13 +1786,6 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         let processedPrompt = processedPromptResult.text;
         let processedNegativePrompt = processedNegativePromptResult.text;
         let processedCharacterPrompts = body.allCharacterPrompts || preset?.allCharacterPrompts || undefined;
-        if (foldMediumUc && Array.isArray(processedCharacterPrompts)) {
-            processedCharacterPrompts = processedCharacterPrompts.map((char) => (
-                char && typeof char === 'object' && char.uc
-                    ? { ...char, input_prompt_negative: foldUcIntoInlineNegative(char.uc, getCharacterInputPromptNegative(char)) }
-                    : char
-            ));
-        }
 
         // Define marker for dynamic append-to-end operations (inserted before presets)
         const APPEND_MARKER = '__ENSHUTSUKA_APPEND_POINT__';
@@ -2252,6 +2230,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         // Handle enhanced preset selections
         let selectedQualityId = null;
         let selectedUcId = null;
+        let mediumCoveredUcPreset = '';
 
         // Handle append_quality with enhanced preset selection
         if (body.append_quality && currentPromptConfig.quality_presets) {
@@ -2303,6 +2282,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 // Add UC preset to the start of the UC and separate the original UC with ", "
                 processedNegativePrompt = selectedUc.value + (processedNegativePrompt ? ', ' + processedNegativePrompt : '');
                 selectedUcId = selectedUc.id;
+                mediumCoveredUcPreset = selectedUc.value;
                 __runtimeGr.getLogger().detailed(`🚫 UC preset: ${selectedUc.value.substring(0, 80)}${selectedUc.value.length > 80 ? '...' : ''} (ID: ${selectedUc.id})`);
 
                 // Track this modification
@@ -3581,6 +3561,28 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             body.sampler = mediumLock.sampler;
             varietyValue = false;
             if (mediumLock.clearsUserUc) {
+                // Medium sends no UC: move everything the UC builders produced (user UC, NSFW level,
+                // dataset/vibe/preset adds) into the inline negative. The UC preset text is skipped
+                // because Medium sends the heavy preset itself. mediumUcResidual: modules/v5MediumLock.js
+                const baseResidual = mediumUcResidual(processedNegativePrompt, [mediumCoveredUcPreset, processedPromptNegativeFragment]);
+                if (baseResidual) {
+                    processedPrompt = ensurePromptNegativeBlockMerged(processedPrompt, buildPromptNegativeBlock(baseResidual));
+                }
+                if (Array.isArray(processedCharacterPrompts)) {
+                    processedCharacterPrompts = processedCharacterPrompts.map((char) => {
+                        if (!char || typeof char !== 'object') return char;
+                        const residual = mediumUcResidual(char.uc, [getCharacterInputPromptNegative(char)]);
+                        return residual
+                            ? { ...char, prompt: ensurePromptNegativeBlockMerged(char.prompt || '', buildPromptNegativeBlock(residual)) }
+                            : char;
+                    });
+                }
+                if (dynamic_generation?.compiled_prompt) {
+                    dynamic_generation.compiled_prompt.prompt = processedPrompt;
+                    if (Array.isArray(dynamic_generation.compiled_prompt.characterPrompts) && Array.isArray(processedCharacterPrompts)) {
+                        dynamic_generation.compiled_prompt.characterPrompts = processedCharacterPrompts;
+                    }
+                }
                 processedNegativePrompt = '';
                 if (Array.isArray(processedCharacterPrompts)) {
                     processedCharacterPrompts = processedCharacterPrompts.map((char) => (

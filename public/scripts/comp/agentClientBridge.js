@@ -966,6 +966,10 @@
             workspaceId: readWorkspaceId(),
             checkpointId,
             ...hydration,
+            // studioChangeLastMediumUcFold: public/scripts/comp/studioChangeJson.js
+            ...(typeof studioChangeLastMediumUcFold !== 'undefined' && studioChangeLastMediumUcFold
+                ? { mediumUcFolded: studioChangeLastMediumUcFold }
+                : {}),
             ...(partialVSlider ? {
                 partial: true,
                 warning: 'Prompt/expanders applied but vSlider catalog did not hydrate — fix kind, axes, and 2+ stops per axis, then retry vSlider only.'

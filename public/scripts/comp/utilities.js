@@ -1029,6 +1029,10 @@ function applyMediumStudioChrome(lock) {
         if (medium) field.title = 'Character UC is cleared on V5 Medium.';
         else field.removeAttribute('title');
     });
+    // Re-measure the UC boxes now that the UC field is shown or hidden.
+    const ucShownChanged = applyMediumStudioChrome._lastMedium !== medium;
+    applyMediumStudioChrome._lastMedium = medium;
+    if (ucShownChanged && typeof prepareManualTabLayout === 'function') prepareManualTabLayout('uc');
     const stageRoot = document.getElementById('pipelineStagesContainer');
     if (stageRoot) {
         stageRoot.querySelectorAll('input[id$="_steps"]').forEach((input) => {
@@ -2439,7 +2443,9 @@ function getPromptStackGapBefore(nextEl) {
 function syncPromptTextareaContainerMeasurements(container, extraContainerHeight = 0) {
     if (!container) return false;
 
-    const wraps = container.querySelectorAll(':scope > .prompt-textarea-emphasis-wrap');
+    // Skip .hidden fields (V5 Medium hides UC) so the box does not keep their height.
+    const shown = (el) => !el.classList.contains('hidden');
+    const wraps = Array.from(container.querySelectorAll(':scope > .prompt-textarea-emphasis-wrap')).filter(shown);
     let sum = 0;
 
     if (wraps.length) {
@@ -2450,9 +2456,9 @@ function syncPromptTextareaContainerMeasurements(container, extraContainerHeight
             }
         });
     } else {
-        const stacked = container.querySelectorAll(
+        const stacked = Array.from(container.querySelectorAll(
             ':scope > textarea.prompt-textarea, :scope > textarea.character-prompt-textarea'
-        );
+        )).filter(shown);
         if (!stacked.length) return false;
         stacked.forEach((ta, idx) => {
             sum += getPromptStackedElementHeight(ta);

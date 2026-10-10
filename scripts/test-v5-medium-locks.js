@@ -498,10 +498,48 @@ assert.ok(opsLock > 0 && opsLock < opsReturn, 'apply_studio_changes locks after 
     assert.strictEqual(foldUcIntoInlineNegative('red, Blurry', 'blurry, blue'), 'red, Blurry, blue');
     assert.strictEqual(foldUcIntoInlineNegative('2::red, hat::, red', 'red'), '2::red, hat::, red');
     const genSrc = fs.readFileSync(path.join(__dirname, '../modules/imageGeneration.js'), 'utf8');
-    assert.ok(genSrc.includes('effectiveInputPromptNegative ||'), 'inline negative processing uses folded UC');
+    const { mediumUcResidual } = require('../modules/v5MediumLock');
+    assert.strictEqual(mediumUcResidual('heavyA, heavyB, nsfw, red, __ENSHUTSUKA_APPEND_POINT__', ['heavyA, heavyB', 'red']), 'nsfw');
+    assert.strictEqual(mediumUcResidual('', ['x']), '');
+    assert.strictEqual(mediumUcResidual('Red, red, blue'), 'Red, blue');
+    assert.ok(genSrc.includes('mediumUcResidual(processedNegativePrompt, [mediumCoveredUcPreset, processedPromptNegativeFragment])'), 'Medium folds the full built UC');
+    assert.ok(genSrc.includes('mediumUcResidual(char.uc, [getCharacterInputPromptNegative(char)])'), 'Medium folds each character UC');
     assert.ok(genSrc.includes('input_prompt_negative: rawInputPromptNegative,'), 'saved inline negative stays raw');
     const utilSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/utilities.js'), 'utf8');
+    assert.ok(utilSrc.includes("filter(shown)") && utilSrc.includes("prepareManualTabLayout('uc')"), 'UC box re-measures without hidden fields');
     assert.ok(utilSrc.includes("getElementById('ucPresetsDropdown')") && utilSrc.includes('toggleUcWrap(uc)'), 'Medium hides UC field and presets');
+}
+
+// Change JSON in Medium moves uc into promptNegative and reports it.
+{
+    const src = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/studioChangeJson.js'), 'utf8');
+    const names = ['studioChangeSplitPhrases', 'studioChangeFoldUc', 'studioChangeTargetsMedium', 'foldStudioChangeMediumUc'];
+    const fields = { promptNegative: 'blue', 'character:0:promptNegative': 'hat' };
+    const ctx = {
+        studioChangeLastMediumUcFold: null,
+        mediumOn: true,
+        activeMediumLock() { return ctx.mediumOn ? {} : null; },
+        getStudioFieldValue: (id) => fields[id] || '',
+        resolveStudioChangeCharacterAction: (e) => e.action || 'replace',
+        resolveStudioChangeCharIndex: (e, a, i) => (e.index != null ? e.index : i),
+        studioChangeCharacterPartRaw: (e, part) => (part === 'promptNegative' ? (e.promptNegative != null ? e.promptNegative : e.input_prompt_negative) : e[part])
+    };
+    vm.createContext(ctx);
+    vm.runInContext(names.map((n) => extractFunction(src, n)).join('\n') + '\nthis.fold = foldStudioChangeMediumUc; this.last = () => studioChangeLastMediumUcFold;', ctx);
+    const out = ctx.fold({ uc: 'red, blue', characters: [{ uc: 'red', index: 0 }] }, {});
+    assert.strictEqual(out.uc, undefined);
+    assert.strictEqual(out.promptNegative, 'red, blue');
+    assert.strictEqual(out.characters[0].promptNegative, 'red, hat');
+    assert.strictEqual(out.characters[0].uc, undefined);
+    assert.ok(/moved into the inline negative/.test(ctx.last().note));
+    const high = ctx.fold({ uc: 'red' }, { effort: 'high' });
+    assert.strictEqual(high.uc, 'red', 'High keeps uc');
+    ctx.mediumOn = false;
+    assert.strictEqual(ctx.fold({ uc: 'red' }, {}).uc, 'red', 'not Medium keeps uc');
+    assert.strictEqual(ctx.fold({ uc: 'red' }, { effort: 'medium' }).promptNegative, 'red, blue', 'explicit medium folds');
+    assert.ok(src.includes('payload = foldStudioChangeMediumUc(payload, params);'));
+    const bridge = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/agentClientBridge.js'), 'utf8');
+    assert.ok(bridge.includes('mediumUcFolded: studioChangeLastMediumUcFold'));
 }
 
 console.log('test-v5-medium-locks: ok');

@@ -54,7 +54,7 @@ Rules:
 - text_overlays: array of {text, type, customText, target, stages, disabled}. type is a display style id (speech, thought, caption, shout, whisper, neon, sign, …, custom). subtitle is an alias of caption. custom injects customText (Danbooru-style tags such as "english text, neon sign") instead of a preset. Empty customText injects no display tag; the letters still compile through Text:. Weighted legacy forms (2.0::english text, speech bubble:: and 2.0::english text, 3.0::caption, subtitle::) still resolve. Replaces the Studio text list. One row per target. Several lines in that row are separated by a blank line and compile to one Text: with the display tags written once in front. Do not add a row per line and do not paste "Text:" into the prompt. Separate bubbles in different places are character slots: the line in double quotes, a blank line, a placement phrase (on the left, / on the right,), and position {x, y}. The full script stays in the one overlay. Judge the print against the compiled prompt; edit this array and the input prompt, not the compiled string. The type enum on generate_image / apply_studio_changes lists every style id.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
-- params.effort: high or medium. V5 Full only. medium is Drafting: steps lock to 14, sampler to Euler Ancestral, rescale off. Custom undesired content is not sent. Token accounting counts the Heavy preset only. Guidance still applies.
+- params.effort: high or medium. V5 Full only. medium is Drafting: steps lock to 14, sampler to Euler Ancestral, rescale off. UC is not sent: put negatives in promptNegative (inline negative). A uc in the change is moved into promptNegative automatically. Token accounting counts the Heavy preset only. Guidance still applies.
 - Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count, creative, creative_level (light|medium|high), creative_clothing, creative_action, novel}. novel is true/false or {enabled, tone, style, explicitness, persuasiveness, auto_generate}; enabling needs a directive. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
 - Optional director: {sessionId, messageId, prompt}. Attached director prompt / session on the existing Director button + creative directive. Same must-act rule.
 - Optional params.image_bias: 0–4 preset (0 top/left, 2 center, 4 bottom/right) or {x, y, scale, rotate}. Only with a base image; skipped while a mask exists.
@@ -128,6 +128,94 @@ const STUDIO_CHANGE_UC_PRESET_NAMES = {
 };
 
 let studioChangeDialogBusy = false;
+/** Set by buildOpsFromPayload when Medium moved a change's UC into the inline negative. */
+let studioChangeLastMediumUcFold = null;
+
+/** Split on top-level commas (keeps ::groups:: and brackets whole). Mirrors modules/v5MediumLock.js. */
+function studioChangeSplitPhrases(text) {
+    const out = [];
+    let buf = '';
+    let depth = 0;
+    let inGroup = false;
+    const src = String(text || '');
+    for (let i = 0; i < src.length; i++) {
+        const ch = src[i];
+        if (ch === ':' && src[i + 1] === ':') { inGroup = !inGroup; buf += '::'; i += 1; continue; }
+        if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+        else if ((ch === ')' || ch === ']' || ch === '}') && depth > 0) depth -= 1;
+        if (ch === ',' && depth === 0 && !inGroup) { out.push(buf); buf = ''; continue; }
+        buf += ch;
+    }
+    out.push(buf);
+    return out.map((part) => part.trim()).filter(Boolean);
+}
+
+/** UC first, then the inline negative, deduped case-insensitively. */
+function studioChangeFoldUc(uc, inline) {
+    const seen = new Set();
+    const merged = [];
+    studioChangeSplitPhrases(uc).concat(studioChangeSplitPhrases(inline)).forEach((part) => {
+        const key = part.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push(part);
+    });
+    return merged.join(', ');
+}
+
+function studioChangeTargetsMedium(params) {
+    const effort = params && params.effort != null ? String(params.effort).toLowerCase() : '';
+    if (effort === 'high') return false;
+    if (effort === 'medium') return true;
+    const model = String((params && params.model) || '').toLowerCase();
+    if (/^v5_medium/.test(model)) return true;
+    if (model && !/^v5(_inp)?$/.test(model)) return false;
+    // activeMediumLock: public/scripts/comp/utilities.js
+    return typeof activeMediumLock === 'function' && !!activeMediumLock();
+}
+
+/**
+ * Medium sends no UC. Move a change's string uc (base and per character) into the matching
+ * promptNegative, folded onto the current inline negative, instead of writing a dropped UC.
+ */
+function foldStudioChangeMediumUc(payload, params) {
+    if (!payload || !studioChangeTargetsMedium(params)) return payload;
+    const next = { ...payload };
+    const folded = [];
+    if (typeof next.uc === 'string' && next.uc.trim()) {
+        const current = typeof next.promptNegative === 'string'
+            ? next.promptNegative
+            : (getStudioFieldValue('promptNegative') || '');
+        next.promptNegative = studioChangeFoldUc(next.uc, current);
+        delete next.uc;
+        folded.push('base');
+    }
+    const listKey = Array.isArray(next.characters) ? 'characters' : (Array.isArray(next.characterPrompts) ? 'characterPrompts' : null);
+    if (listKey) {
+        next[listKey] = next[listKey].map((entry, index) => {
+            if (!entry || typeof entry !== 'object' || typeof entry.uc !== 'string' || !entry.uc.trim()) return entry;
+            const action = resolveStudioChangeCharacterAction(entry);
+            const raw = studioChangeCharacterPartRaw(entry, 'promptNegative');
+            let current = typeof raw === 'string' ? raw : '';
+            if (typeof raw !== 'string' && action !== 'add') {
+                const charIndex = resolveStudioChangeCharIndex(entry, action, index);
+                if (charIndex >= 0) current = getStudioFieldValue(`character:${charIndex}:promptNegative`) || '';
+            }
+            const out = { ...entry, promptNegative: studioChangeFoldUc(entry.uc, current) };
+            delete out.uc;
+            delete out.input_prompt_negative;
+            folded.push(`character ${index + 1}`);
+            return out;
+        });
+    }
+    if (folded.length) {
+        studioChangeLastMediumUcFold = {
+            fields: folded,
+            note: `Medium sends no UC, so the uc for ${folded.join(', ')} was moved into the inline negative (promptNegative).`
+        };
+    }
+    return next;
+}
 
 function isStudioChangePayload(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
@@ -857,6 +945,8 @@ function buildOpsFromPayload(payload) {
     if (params.nsfw == null && payload.dataset_config && payload.dataset_config.nsfw != null) {
         params.nsfw = payload.dataset_config.nsfw;
     }
+    studioChangeLastMediumUcFold = null;
+    payload = foldStudioChangeMediumUc(payload, params);
     const datasetConfig = pickStudioChangeDatasetConfig(payload, params);
     if (datasetConfig) {
         params.dataset_config = datasetConfig;
