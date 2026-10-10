@@ -94,7 +94,7 @@ const SCOPE_WS_PACKETS = {
         'delete_nax_custom_tag', 'get_nax_vibes_gallery', 'clear_nax_vibes_gallery_cache'
     ],
     explore: [
-        'get_novelai_explore_gallery', 'get_novelai_explore_user', 'get_novelai_explore_post',
+        'get_novelai_explore_gallery', 'get_studio_explore_feed', 'get_novelai_explore_user', 'get_novelai_explore_post',
         'set_novelai_explore_post_like', 'downvote_novelai_explore_post', 'block_novelai_explore_creator',
         'list_novelai_explore_blocked_creators', 'clear_novelai_explore_gallery_cache',
         'ensure_novelai_explore_image', 'check_novelai_explore_upload', 'upload_novelai_explore_image'
