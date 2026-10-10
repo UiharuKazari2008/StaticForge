@@ -1514,6 +1514,12 @@ class PngMetadata {
                     upscaler_provider: additionalForgeData.upscaler_provider,
                     upscale_ratio: additionalForgeData.upscale_ratio
                 };
+                if (additionalForgeData.upscaler_model) {
+                    historyEntry.upscaler_model = additionalForgeData.upscaler_model;
+                }
+                if (additionalForgeData.local_job_id) {
+                    historyEntry.local_job_id = additionalForgeData.local_job_id;
+                }
                 existingMetadata.forge_data.history.push(historyEntry);
             }
 

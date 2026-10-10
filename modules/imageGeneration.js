@@ -152,6 +152,7 @@ const {
 const { generateMobilePreviews } = require('./previewUtils');
 const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const { upscaleImageCore, resolveUpscaleRatio } = require('./imageUpscaling');
+const { assertLocalWorkerOnline, isLocalUpscaler } = require('./localUpscaleWorker');
 const { canonicalizeApiOptions } = require('./generationFingerprint');
 const { mapAllCharacterPromptsToApi } = require('./characterPromptApiFormat');
 
@@ -4376,6 +4377,13 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             };
         }
 
+        if (isLocalUpscaler(body.upscaler || body.backend)) {
+            baseOptions.upscaler = 'local';
+            baseOptions.localUpscaleModel = body.localUpscaleModel || null;
+            baseOptions.localUpscaleScale = body.localUpscaleScale || body.upscale || 4;
+            if (body.upscale) baseOptions.upscale = baseOptions.localUpscaleScale;
+        }
+
         rememberPromptFold(baseOptions, foldBag);
         return baseOptions;
     } catch (error) {
@@ -4387,6 +4395,9 @@ let lastApiGenerationRecord = null;
 
 async function handleGeneration(globalResources, opts, returnImage = false, presetName = null, workspaceId = null, req = null, streamingCallback = null, ws = null, handler = null, baseMetadata = null, stageSeeds = null) {
     bindRuntimeGlobalResources(globalResources);
+    if (opts && opts.upscale && isLocalUpscaler(opts.upscaler || opts.backend)) {
+        await assertLocalWorkerOnline(globalResources);
+    }
     const seed = opts.seed || Math.floor(0x100000000 * Math.random() - 1);
     const layer1Seed = opts.layer1Seed || null;
 
@@ -4406,6 +4417,10 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     // Create a clean copy of opts for the API call, removing custom properties
     const apiOpts = { ...opts };
     delete apiOpts.upscale;
+    delete apiOpts.upscaler;
+    delete apiOpts.backend;
+    delete apiOpts.localUpscaleModel;
+    delete apiOpts.localUpscaleScale;
     delete apiOpts.no_save;
     delete apiOpts.layer1Seed;
     delete apiOpts.allCharacterPrompts;
@@ -5177,13 +5192,30 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 handler.sendGenerationProgress(ws, opts.requestId || 'generation', progressData);
             }
 
-            const scale = opts.upscale === true ? 4 : opts.upscale;
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            const localUpscale = isLocalUpscaler(opts.upscaler || opts.backend);
+            const scale = opts.upscale === true
+                ? (localUpscale ? (Number(opts.localUpscaleScale) || 4) : 4)
+                : opts.upscale;
+            if (!localUpscale) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
 
             const { width: upscaleWidth, height: upscaleHeight } = await getImageDimensions(finalBuffer);
-            const scaledBuffer = await upscaleImageCore(globalResources, finalBuffer, scale, upscaleWidth, upscaleHeight);
+            const scaledBuffer = await upscaleImageCore(
+                globalResources,
+                finalBuffer,
+                scale,
+                upscaleWidth,
+                upscaleHeight,
+                localUpscale ? 'local' : 'novelai',
+                ws,
+                handler,
+                opts.requestId || null,
+                { model: opts.localUpscaleModel, localUpscaleModel: opts.localUpscaleModel }
+            );
 
-            // Get new balance and calculate credit usage for upscaling
+            // Get new balance and calculate credit usage for upscaling.
+            // A local Ruiko upscale does not call NovelAI, so this delta stays 0.
             const upscaleCreditUsage = await __runtimeGr.calculateCreditUsage();
 
             if (upscaleCreditUsage.totalUsage > 0) {
@@ -5191,12 +5223,19 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             }
 
             // Copy origin Comment onto the upscaled PNG; record measured ratio (NAI live 2x, not the old implicit 4).
-            const ratio = await resolveUpscaleRatio(scaledBuffer, upscaleWidth, scale, 'novelai');
+            const ratio = await resolveUpscaleRatio(scaledBuffer, upscaleWidth, scale, localUpscale ? 'local' : 'novelai');
             const upscaledForgeData = {
                 upscale_ratio: ratio,
                 upscaled_at: Date.now(),
-                generation_type: 'upscaled'
+                generation_type: 'upscaled',
+                upscaler_provider: localUpscale ? 'local' : 'novelai'
             };
+            if (localUpscale && opts.localUpscaleModel) {
+                upscaledForgeData.upscaler_model = opts.localUpscaleModel;
+            }
+            if (scaledBuffer && scaledBuffer.localJobId) {
+                upscaledForgeData.local_job_id = scaledBuffer.localJobId;
+            }
             await ensureForgeDataBlurhash(upscaledForgeData, scaledBuffer);
             const updatedScaledBuffer = __runtimeGr.getPngMetadata().copyMetadataToImage(finalBuffer, scaledBuffer, upscaledForgeData);
             const upscaledName = name.replace('.png', '_upscaled.png');
@@ -5242,6 +5281,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 filename: upscaledName,
                 saved: shouldSave,
                 seed: seed,
+                jobId: (scaledBuffer && scaledBuffer.localJobId) || null,
                 workspace: targetWorkspaceId || null,
                 compiled_prompt: opts.dynamic_generation?.compiled_prompt,
                 text_replacements_seed: opts.text_replacements_seed && Array.isArray(opts.text_replacements_seed) && opts.text_replacements_seed.length > 0 ? opts.text_replacements_seed : undefined,

@@ -1948,7 +1948,7 @@ const TOOL_DEFS = [
     {
         name: 'upscale_image',
         core: true,
-        description: 'NovelAI 2x upscale of a gallery image. Paid Opus — requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. Pass filename from get_generated_image / generate_image.',
+        description: 'Upscale a gallery image. backend "nai" (default, alias novelai) is NovelAI 2x and spends Opus: requires userApprovedPaidRequest (alias allow_paid). backend "local" is the Ruiko GPU worker (free, no Anlas check) and takes optional model (RealESRGAN_x4plus, RealESRGAN_x4plus_anime_6B, 4x-UltraSharp) and scale 2 or 4. Every local request returns jobId. If Ruiko is offline the error names backend="nai" as the paid fallback; do not switch to nai unless the user agrees. Pass filename from get_generated_image / generate_image.',
         scope: 'generation',
         packet: 'upscale_image',
         inputSchema: {
@@ -1958,10 +1958,12 @@ const TOOL_DEFS = [
             properties: {
                 filename: { type: 'string' },
                 workspace: WORKSPACE_PLACEMENT_SCHEMA,
-                upscaler: { type: 'string', description: 'Default novelai' },
-                scale: { type: 'number', description: 'Passed through; live NAI contract is 2x' },
-                userApprovedPaidRequest: { type: 'boolean', description: 'Required. Upscale spends Opus. Alias of allow_paid.' },
-                allow_paid: { type: 'boolean', description: 'Same as userApprovedPaidRequest.' }
+                backend: { type: 'string', description: 'nai (default, spends Anlas) or local (Ruiko GPU, free). Alias of upscaler. nai is the paid fallback named in offline errors.' },
+                upscaler: { type: 'string', description: 'novelai, esrgan, or local. Prefer backend.' },
+                model: { type: 'string', description: 'Local worker model when backend is local. RealESRGAN_x4plus, RealESRGAN_x4plus_anime_6B, or 4x-UltraSharp.' },
+                scale: { type: 'number', description: 'Local scale 2 or 4. Live NAI contract ignores this and returns 2x.' },
+                userApprovedPaidRequest: { type: 'boolean', description: 'Required for backend nai. Not required for backend local. Alias of allow_paid.' },
+                allow_paid: { type: 'boolean', description: 'Same as userApprovedPaidRequest. Not required when backend is local.' }
             }
         }
     },
@@ -4165,12 +4167,19 @@ function pickPaidApproval(payload) {
         || payload.allow_paid === true;
 }
 
-function wouldSpendPaidCredits(name, payload) {
-    if (name === 'upscale_image' || name === 'expand_image') return true;
+function localUpscaleSelected(payload) {
     if (!payload || typeof payload !== 'object') return false;
-    if (payload.upscale === true) return true;
+    const backend = String(payload.backend || payload.upscaler || '').toLowerCase();
+    return backend === 'local' || backend === 'ruiko';
+}
+
+function wouldSpendPaidCredits(name, payload) {
+    if (name === 'upscale_image') return !localUpscaleSelected(payload);
+    if (name === 'expand_image') return true;
+    if (!payload || typeof payload !== 'object') return false;
     const upscaleN = Number(payload.upscale);
-    if (Number.isFinite(upscaleN) && upscaleN > 1) return true;
+    const upscaleCosts = payload.upscale === true || (Number.isFinite(upscaleN) && upscaleN > 1);
+    if (upscaleCosts && !localUpscaleSelected(payload)) return true;
     const res = String(payload.resolution || payload.resPreset || payload.res_preset || '').toLowerCase();
     if (/^(large_|xlarge_|wallpaper_)/.test(res)) return true;
     const w = Number(payload.width);
@@ -6857,6 +6866,17 @@ async function callTool(globalResources, req, name, args) {
     }
     if (name === 'upscale_image' || name === 'expand_image') {
         input.filename = input.filename || input.image;
+    }
+    if (name === 'upscale_image') {
+        const backend = String(input.backend || input.upscaler || '').toLowerCase();
+        if (backend === 'nai') input.upscaler = 'novelai';
+        else if (backend === 'local' || backend === 'ruiko') input.upscaler = 'local';
+        else if (input.backend && !input.upscaler) input.upscaler = input.backend;
+        if (input.upscaler === 'local') {
+            input.backend = 'local';
+            if (input.model && !input.localUpscaleModel) input.localUpscaleModel = input.model;
+            if (input.scale != null && input.localUpscaleScale == null) input.localUpscaleScale = input.scale;
+        }
     }
     if (name === 'expand_image' && (input.imageBias === undefined || input.imageBias === null)) {
         input.imageBias = input.image_bias != null ? input.image_bias : input.bias;

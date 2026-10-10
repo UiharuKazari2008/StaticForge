@@ -29,9 +29,29 @@ function attachManualGenerationParamsListeners(signal) {
     if (manualUpscale) {
         manualUpscale.addEventListener('click', (e) => {
             e.preventDefault();
-            // toggleManualUpscale: public/scripts/app.js
+            // toggleManualUpscale: public/scripts/comp/manualFormHelpers.js
             toggleManualUpscale();
         }, { signal });
+    }
+
+    const manualUpscaleModel = document.getElementById('manualUpscaleModel');
+    const manualUpscaleScale = document.getElementById('manualUpscaleScale');
+    if (typeof fillLocalUpscaleSelect === 'function') {
+        fillLocalUpscaleSelect(manualUpscaleModel, true);
+    }
+    if (manualUpscaleModel) {
+        manualUpscaleModel.addEventListener('change', () => {
+            if (typeof syncManualUpscaleModelVisibility === 'function') syncManualUpscaleModelVisibility();
+            updateManualPriceDisplay();
+        }, { signal });
+    }
+    if (manualUpscaleScale) {
+        manualUpscaleScale.addEventListener('change', () => {
+            updateManualPriceDisplay();
+        }, { signal });
+    }
+    if (typeof refreshLocalUpscaleSelects === 'function') {
+        refreshLocalUpscaleSelects();
     }
 
     if (manualSteps) {

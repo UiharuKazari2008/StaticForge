@@ -2421,7 +2421,20 @@ function collectManualFormValues() {
     values.vibe_transfer = collectVibeTransferData();
     values.normalize_vibes = vibeNormalizeToggle.getAttribute('data-state') === 'on';
 
-    values.upscale = manualUpscale.getAttribute('data-state') === 'on' ? 2 : undefined;
+    const upscaleModelSelect = document.getElementById('manualUpscaleModel');
+    const upscaleScaleSelect = document.getElementById('manualUpscaleScale');
+    const upscaleModelValue = upscaleModelSelect ? upscaleModelSelect.value : 'novelai';
+    if (manualUpscale.getAttribute('data-state') === 'on' && upscaleModelValue && upscaleModelValue !== 'novelai') {
+        values.upscaler = 'local';
+        values.localUpscaleModel = upscaleModelValue;
+        values.localUpscaleScale = Number(upscaleScaleSelect && upscaleScaleSelect.value) || 4;
+        values.upscale = values.localUpscaleScale;
+    } else {
+        values.upscale = manualUpscale.getAttribute('data-state') === 'on' ? 2 : undefined;
+        values.upscaler = undefined;
+        values.localUpscaleModel = undefined;
+        values.localUpscaleScale = undefined;
+    }
 
     // Add request body replacements
     if (typeof requestBodyReplacements !== 'undefined' && requestBodyReplacements.length > 0) {
@@ -2590,7 +2603,15 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     const prints = parseGenerationPrintCount(values.n);
     if (prints > 1) requestBody.n = prints;
 
-    if (values.upscale) requestBody.upscale = true;
+    if (values.upscaler === 'local') {
+        requestBody.upscale = Number(values.localUpscaleScale) || 4;
+        requestBody.upscaler = 'local';
+        requestBody.backend = 'local';
+        requestBody.localUpscaleModel = values.localUpscaleModel;
+        requestBody.localUpscaleScale = Number(values.localUpscaleScale) || 4;
+    } else if (values.upscale) {
+        requestBody.upscale = true;
+    }
     // isV5Model: public/scripts/comp/utilities.js — do not send skip_cfg on V5
     if (varietyEnabled && !isV5Model()) {
         requestBody.variety = true;
@@ -4901,6 +4922,28 @@ async function handleManualGeneration(e, options = {}) {
 
     const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
     const values = collectManualFormValues();
+
+    if (values.upscaler === 'local' && typeof fetchLocalUpscaleModels === 'function') {
+        const status = await fetchLocalUpscaleModels();
+        if (!status || !status.online) {
+            const useNai = typeof confirmNaiUpscaleFallback === 'function'
+                ? await confirmNaiUpscaleFallback(new Error(status && status.reason ? status.reason : 'Ruiko is offline.'))
+                : false;
+            if (!useNai) {
+                isGenerating = false;
+                updateImageGenerationIndicator();
+                updateManualGenerateBtnState();
+                return;
+            }
+            values.upscaler = undefined;
+            values.localUpscaleModel = undefined;
+            values.localUpscaleScale = undefined;
+            values.upscale = 2;
+            const modelSelect = document.getElementById('manualUpscaleModel');
+            if (modelSelect) modelSelect.value = 'novelai';
+            if (typeof syncManualUpscaleModelVisibility === 'function') syncManualUpscaleModelVisibility();
+        }
+    }
 
     // Helper: Validate required fields
     function validateFields(requiredFields, msg) {

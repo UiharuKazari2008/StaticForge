@@ -1704,6 +1704,9 @@ class SpellbookModalManager {
             
             // Show upscale options dialog (always show for upscaling)
             const isFreeUpscaling = upscaleInfo.cost === 0;
+            if (typeof fetchLocalUpscaleModels === 'function') {
+                await fetchLocalUpscaleModels();
+            }
             const confirmed = await showCreditCostDialog(upscaleInfo.cost, null, upscaleInfo.outputResolution, true, width, height, isFreeUpscaling);
             if (!confirmed) {
                 // Reset button state
@@ -1715,6 +1718,7 @@ class SpellbookModalManager {
             // Extract upscaler and scale from confirmation result
             const upscaler = confirmed.upscaler || 'novelai';
             const scale = confirmed.scale || 4;
+            const localModel = confirmed.model || null;
 
             // Show progress toast
             toastId = showGlassToast('info', 'Upscaling Image', 'Upscaling image...', true, false, '<i class="nai-upscale"></i>');
@@ -1731,11 +1735,31 @@ class SpellbookModalManager {
                 filename: this.generatedFilename,
                 workspace: this.generatedWorkspace || null,
                 upscaler: upscaler,
-                scale: scale
+                backend: upscaler === 'local' ? 'local' : upscaler,
+                scale: scale,
+                model: localModel,
+                localUpscaleModel: localModel,
+                localUpscaleScale: scale
             };
 
-            // Upscale image via WebSocket
-            const result = await window.wsClient.upscaleImage(upscaleParams);
+            let result;
+            try {
+                result = await window.wsClient.upscaleImage(upscaleParams);
+            } catch (error) {
+                if (upscaler === 'local' && typeof isLocalWorkerOfflineError === 'function' && isLocalWorkerOfflineError(error) && upscaleInfo.available) {
+                    const useNai = await confirmNaiUpscaleFallback(error);
+                    if (!useNai) throw error;
+                    result = await window.wsClient.upscaleImage({
+                        filename: this.generatedFilename,
+                        workspace: this.generatedWorkspace || null,
+                        upscaler: 'novelai',
+                        backend: 'nai',
+                        scale: 4
+                    });
+                } else {
+                    throw error;
+                }
+            }
 
             if (result) {
                 const { filename: upscaledFilename } = result;

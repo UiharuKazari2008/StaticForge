@@ -220,6 +220,9 @@ async function upscaleImage(image, event = null) {
     // Show upscale options dialog (always show for upscaling)
     // Even if NovelAI is not available, ESRGAN options will be shown
     const isFreeUpscaling = upscaleInfo.available && upscaleInfo.cost === 0;
+    if (typeof fetchLocalUpscaleModels === 'function') {
+        await fetchLocalUpscaleModels();
+    }
     const confirmed = await showCreditCostDialog(upscaleInfo.cost, event, upscaleInfo.outputResolution, true, width, height, isFreeUpscaling);
 
     if (!confirmed) {
@@ -229,6 +232,7 @@ async function upscaleImage(image, event = null) {
     // Extract upscaler and scale from confirmation result
     const upscaler = confirmed.upscaler || 'novelai';
     const scale = confirmed.scale || 4;
+    const localModel = confirmed.model || null;
 
     // Check if we're in a modal context
     const isInModal = !document.getElementById('manualModal').classList.contains('hidden');
@@ -264,12 +268,33 @@ async function upscaleImage(image, event = null) {
             filename: filename,
             workspace: activeWorkspace || null,
             upscaler: upscaler,
-            scale: scale
+            backend: upscaler === 'local' ? 'local' : upscaler,
+            scale: scale,
+            model: localModel,
+            localUpscaleModel: localModel,
+            localUpscaleScale: scale
         };
 
         // Upscale image via WebSocket
         try {
-            const result = await window.wsClient.upscaleImage(upscaleParams);
+            let result;
+            try {
+                result = await window.wsClient.upscaleImage(upscaleParams);
+            } catch (error) {
+                if (upscaler === 'local' && typeof isLocalWorkerOfflineError === 'function' && isLocalWorkerOfflineError(error) && upscaleInfo.available) {
+                    const useNai = await confirmNaiUpscaleFallback(error);
+                    if (!useNai) throw error;
+                    result = await window.wsClient.upscaleImage({
+                        filename: filename,
+                        workspace: activeWorkspace || null,
+                        upscaler: 'novelai',
+                        backend: 'nai',
+                        scale: 4
+                    });
+                } else {
+                    throw error;
+                }
+            }
 
             if (result) {
                 const { filename, metadata } = result;

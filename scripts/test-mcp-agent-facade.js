@@ -313,10 +313,14 @@ assert.strictEqual(_test.pickPaidApproval({ userApprovedPaidRequest: true }), tr
 assert.strictEqual(_test.pickPaidApproval({ allow_paid: true }), true);
 assert.strictEqual(_test.pickPaidApproval({}), false);
 assert.strictEqual(_test.wouldSpendPaidCredits('upscale_image', {}), true);
+assert.strictEqual(_test.wouldSpendPaidCredits('upscale_image', { backend: 'local' }), false);
+assert.strictEqual(_test.wouldSpendPaidCredits('upscale_image', { upscaler: 'local' }), false);
 assert.strictEqual(_test.wouldSpendPaidCredits('expand_image', {}), true);
 assert.strictEqual(_test.wouldSpendPaidCredits('generate_image', { resolution: 'normal_portrait' }), false);
 assert.strictEqual(_test.wouldSpendPaidCredits('generate_image', { resolution: 'xlarge_portrait' }), true);
 assert.strictEqual(_test.wouldSpendPaidCredits('generate_image', { upscale: true }), true);
+assert.strictEqual(_test.wouldSpendPaidCredits('generate_image', { upscale: true, backend: 'local' }), false);
+assert.strictEqual(_test.wouldSpendPaidCredits('generate_image', { upscale: true, backend: 'local', resolution: 'large_portrait' }), true);
 assert.ok(_test.MCP_INSTRUCTIONS.includes('userApprovedPaidRequest'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('html as {}'));
 assert.strictEqual(_test.resolveWorkspaceId(''), 'default');
@@ -835,7 +839,7 @@ assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => null }, {}), null);
 assert.ok(coreNames.includes('update_meal_images'));
 assert.ok(coreNames.includes('void_cake_delivery'));
-assert.strictEqual(coreNames.length, 109);
+assert.strictEqual(coreNames.length, 110);
 assert.ok(coreNames.includes('ledge'));
 assert.ok(coreNames.includes('generate_nax_tag'));
 assert.ok(coreNames.includes('delete_nax_tag'));
