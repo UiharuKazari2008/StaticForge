@@ -330,7 +330,8 @@ async function fetchDashboard(token) {
         postDashboard(PLAN_URL, token)
     ]);
     if (usageRes.status === 401) {
-        const error = new Error('Cursor login expired');
+        // A crsr_ API key cannot read the session dashboard; that is not an expired login.
+        const error = new Error(/^crsr_/.test(String(token || '')) ? 'Usage needs a browser session (API key is active)' : 'Cursor login expired');
         error.code = 'CURSOR_LOGIN';
         throw error;
     }

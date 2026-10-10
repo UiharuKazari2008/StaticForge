@@ -2178,7 +2178,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
                     : `<button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="activate-cursor-account" data-sec-persona="${persona}">Activate</button>`;
                 return `
 <tr data-sec-cursor-acc-id="${securityDsapEscapeAttr(acc.id)}" class="${loginNeeded ? 'sec-account-needs-login' : ''}">
-  <td><span class="director-account-badge" style="background:${securityDsapEscapeAttr(badgeColor)}" title="${securityDsapEscapeAttr(acc.name || '')}">${securityDsapEscapeHtml(badgeLetter)}</span> <strong>${securityDsapEscapeHtml(acc.name)}</strong>${isDefault ? ' <span class="sec-dsap-setting-hint">(Default)</span>' : ''}</td>
+  <td><span class="director-account-badge" style="background:${securityDsapEscapeAttr(badgeColor)}" title="${securityDsapEscapeAttr(acc.name || '')}">${securityDsapEscapeHtml(badgeLetter)}</span> <strong>${securityDsapEscapeHtml(acc.name)}</strong>${(acc.displayName || acc.identity) ? ` <span class="sec-dsap-setting-hint" title="${securityDsapEscapeAttr(acc.identity || '')}">${securityDsapEscapeHtml(acc.displayName || acc.identity)}</span>` : ''}${isDefault ? ' <span class="sec-dsap-setting-hint">(Default)</span>' : ''}</td>
   <td align="center">${personaCell(isWrenActive, 'wren')}</td>
   <td align="center">${personaCell(isXiActive, 'xi')}</td>
   <td align="center">${securityDsapEscapeHtml(planLabel)}</td>
@@ -2293,7 +2293,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             this._cursorLoginWired = true;
             window.wsClient.on('cursor_account_login_complete', (packet) => {
                 const body = packet && (packet.data || packet);
-                const host = this._state && this._state.host && this._state.host.getRoot && this._state.host.getRoot();
+                const host = (this._state && this._state.host && this._state.host.getRoot && this._state.host.getRoot()) || (root && root.isConnected ? root : null);
                 if (body && body.success) {
                     if (typeof showGlassToast === 'function') {
                         showGlassToast('success', 'Cursor login', body.email ? `Saved login for ${body.email}` : 'Login captured for that profile', false, 5000, '<i class="fas fa-right-to-bracket"></i>');

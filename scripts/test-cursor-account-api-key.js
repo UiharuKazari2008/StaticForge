@@ -157,12 +157,12 @@ async function testNamedApiKeyLogin() {
 
     const auth = readAuth(ACCOUNT_ID);
     assert.strictEqual(auth.apiKey, MINTED_KEY);
-    assert.strictEqual(auth.accessToken, undefined);
+    assert.strictEqual(auth.accessToken, session, 'browser session kept beside the minted key for usage');
 
     store.saveAccountAuthFiles(ACCOUNT_ID, recorded.account, recorded.account.token);
     const restored = readAuth(ACCOUNT_ID);
     assert.strictEqual(restored.apiKey, MINTED_KEY, 'restore must keep the new API key');
-    assert.strictEqual(restored.accessToken, undefined);
+    assert.strictEqual(restored.accessToken, session, 're-saving the same key keeps the session');
 
     const methods = calls.map((call) => call.url.split('/').pop());
     assert.deepStrictEqual(methods, ['ListUserApiKeys', 'RevokeUserApiKey', 'RevokeUserApiKey', 'CreateUserApiKey']);

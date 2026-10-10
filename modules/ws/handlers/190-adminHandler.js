@@ -929,6 +929,7 @@ async function handleGetCursorAccounts(handlersCtx, ws, message, clientInfo, wsS
                 color: pub.color,
                 isDefault: pub.isDefault,
                 isEmpty: pub.isEmpty,
+                identity: pub.identity || '',
                 displayName: meta.displayName || '',
                 usage: cursorUsage.publicAccountUsage(row)
             };

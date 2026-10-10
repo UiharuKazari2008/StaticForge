@@ -91,9 +91,8 @@ function normalizeAuthRecord(auth) {
     const src = auth && typeof auth === 'object' ? auth : {};
     const apiKey = typeof src.apiKey === 'string' ? src.apiKey.trim() : '';
     const accessToken = typeof src.accessToken === 'string' ? src.accessToken.trim() : '';
-    if (isCursorApiKey(apiKey) || isCursorApiKey(accessToken)) {
-        return { apiKey: isCursorApiKey(apiKey) ? apiKey : accessToken };
-    }
+    if (isCursorApiKey(accessToken)) return { apiKey: accessToken };
+    if (isCursorApiKey(apiKey) && !accessToken) return { apiKey };
     const next = {};
     if (accessToken) next.accessToken = accessToken;
     if (typeof src.refreshToken === 'string' && src.refreshToken.trim()) next.refreshToken = src.refreshToken.trim();
@@ -207,6 +206,12 @@ function saveAccountAuthFiles(accountId, profile, customToken) {
         authData = {};
     } else if (rawToken) {
         authData = authFromCredential(rawToken, explicitKind);
+        // Re-saving the same minted key keeps the browser session stored beside it.
+        const prior = fs.existsSync(authFile) ? (readJson(authFile) || {}) : {};
+        if (authData.apiKey && !authData.accessToken && prior.apiKey === authData.apiKey && typeof prior.accessToken === 'string' && prior.accessToken) {
+            authData.accessToken = prior.accessToken;
+            if (typeof prior.refreshToken === 'string' && prior.refreshToken) authData.refreshToken = prior.refreshToken;
+        }
     } else if (fs.existsSync(authFile)) {
         authData = normalizeAuthRecord(readJson(authFile) || {});
     } else if (accountId === 'default') {
@@ -427,13 +432,25 @@ function logoutCursorAccount(persona, activeAccountId) {
     return { success: true, message: `Logged out Cursor account for ${persona === 'wren' ? 'Wren' : 'Xi'}` };
 }
 
+// "github|user_01..." -> "GitHub user_01..."; emails pass through.
+function accountIdentityLabel(acc) {
+    const raw = String((acc && acc.email) || '').trim();
+    if (!raw || /^\((pending login|logged out)\)$/i.test(raw)) return '';
+    if (isEmailString(raw)) return raw;
+    const m = raw.match(/^([a-z0-9-]+)\|(.+)$/i);
+    if (!m) return raw;
+    const names = { github: 'GitHub', google: 'Google', grok: 'Grok', 'google-oauth2': 'Google', auth0: 'Email' };
+    return `${names[m[1].toLowerCase()] || m[1]} ${m[2]}`;
+}
+
 function publicCursorAccount(acc) {
     if (!acc || typeof acc !== 'object') return null;
     const color = typeof acc.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(acc.color) ? acc.color : '';
     return {
         id: acc.id,
         name: acc.name || 'Account',
-        email: acc.email || '',
+        email: isEmailString(acc.email) ? acc.email : '',
+        identity: accountIdentityLabel(acc),
         color,
         isDefault: !!(acc.isDefault || acc.id === 'default'),
         isEmpty: !!acc.isEmpty
@@ -506,6 +523,7 @@ function finishAccountLogin(accountId) {
         email,
         token: auth.accessToken || auth.apiKey || '',
         accessToken: auth.accessToken || '',
+        refreshToken: auth.refreshToken || '',
         apiKey: isCursorApiKey(auth.apiKey) ? auth.apiKey : ''
     };
     listeners.forEach((listener) => {
@@ -693,7 +711,7 @@ async function recordGuidedLogin(cursorData, accountId, session, deps) {
         }
     }
     const token = apiKey || accessToken || (isCursorApiKey(incoming.token) ? incoming.token : '');
-    const email = incoming.email || extractEmailFromToken(accessToken) || '';
+    const email = incoming.email || extractEmailFromToken(accessToken) || tokenSubject(accessToken) || '';
     const tokenKind = (apiKey || isCursorApiKey(token)) ? 'apiKey' : (token ? 'accessToken' : '');
     const profile = {
         id: accountId,
@@ -713,7 +731,13 @@ async function recordGuidedLogin(cursorData, accountId, session, deps) {
         profile.name = acc.name || '';
         profile.email = acc.email || profile.email;
     }
-    saveAccountAuthFiles(accountId, profile, token || 'empty');
+    // Keep the browser session next to the minted key: the CLI runs on the key,
+    // the usage dashboard needs the session.
+    const authRecord = {};
+    if (accessToken) authRecord.accessToken = accessToken;
+    if (incoming.refreshToken) authRecord.refreshToken = incoming.refreshToken;
+    if (apiKey) authRecord.apiKey = apiKey;
+    saveAccountAuthFiles(accountId, profile, Object.keys(authRecord).length ? JSON.stringify(authRecord) : (token || 'empty'));
     return {
         cursorData: data,
         account: acc || null,
@@ -892,6 +916,7 @@ module.exports = {
     logoutCursorAccount,
     getActiveAccountId,
     publicCursorAccount,
+    accountIdentityLabel,
     normalizeAccountColor,
     beginCursorAccountLogin,
     findLoginAuthDir,
