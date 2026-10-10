@@ -34,7 +34,7 @@ const { runCacheDirExpiry, CLEANUP_INTERVAL_MS, FIRST_RUN_DELAY_MS } = require('
 const { handleGeneration, buildOptions, handleRerollGeneration, handleStagedGeneration } = require('./modules/imageGeneration');
 const UnixSocketCommunication = require('./modules/unixSocketCommunication');
 const { handleNaxImageRequest } = require('./modules/naxImageServer');
-const { isAdminUser } = require('./modules/auth');
+const { isAdminUser, applyHeaderLoginKey } = require('./modules/auth');
 const { streamLogFile } = require('./modules/logStreamService');
 const pm2Service = require('./modules/pm2Service');
 const runtimeAssetService = require('./modules/runtimeAssetService');
@@ -52,6 +52,7 @@ const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacR
 const { getQwenTokenizerDefinition } = require('./modules/qwenTokenizerAssetCache');
 const { SUBSCRIPTION_USAGE_POLL_MS } = require('./modules/opusUsage');
 const { realClientIp, trustedProxiesFromResources } = require('./modules/clientAddress');
+const { createApprovedIpAutoLoginMiddleware } = require('./modules/approvedIpAccess');
 
 let runtimeCompileComplete = false;
 
@@ -683,8 +684,38 @@ function securityMiddleware(req, res, next) {
     // Skip security checks for authenticated users (session or application credentials)
     if ((req.session && req.session.authenticated) ||
         req.authMethod === 'application_key' ||
-        req.authMethod === 'temp_token') {
+        req.authMethod === 'temp_token' ||
+        req.authMethod === 'login_key') {
         return next();
+    }
+
+    // Header login key is accepted here so downloads are not rejected before authMiddleware.
+    // The query string is never a login key. A mismatch fails closed.
+    try {
+        const headerAuth = applyHeaderLoginKey(req, globalResources);
+        if (headerAuth.forbiddenQuery) {
+            return res.status(400).json({
+                success: false,
+                error: 'Do not put the login key in the query string',
+                code: 'QUERY_AUTH_FORBIDDEN'
+            });
+        }
+        if (headerAuth.invalidHeader) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid login key header',
+                code: 'INVALID_LOGIN_KEY_HEADER'
+            });
+        }
+        if (headerAuth.rejected) {
+            return res.status(403).json({
+                success: false,
+                error: 'Invalid authentication token'
+            });
+        }
+        if (headerAuth.accepted) return next();
+    } catch (err) {
+        console.error('Header login error:', err.message);
     }
 
     const ip = getRealIP(req);
@@ -1173,6 +1204,7 @@ const sessionMiddleware = session({
 
 globalResources.loadKnownBadPaths();
 app.use(sessionMiddleware);
+app.use(createApprovedIpAutoLoginMiddleware(globalResources));
 app.use(createApplicationAuthEarlyMiddleware(globalResources));
 app.use(securityMiddleware);
 app.use(limiter);

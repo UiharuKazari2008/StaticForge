@@ -365,21 +365,42 @@ Server clears `connect.sid` cookie. Client should disconnect WebSocket and clear
 
 ## Legacy Bearer / query token (loginKey)
 
-When `config.loginKey` is set (non-null), `authMiddleware` accepts:
+When `config.loginKey` is set (non-null), `authMiddleware` accepts the login key from headers and compares it in constant time:
 
+- Header: `X-Dreamscape-Login-Key: <loginKey>`
 - Header: `Authorization: Bearer <loginKey>`
-- Query: `?auth=<loginKey>`
+
+`X-Dreamscape-Login-Key` is used when both headers are present. `?loginKey=` and `?x-dreamscape-login-key=` are rejected with **400** `{ "error": "Do not put the login key in the query string", "code": "QUERY_AUTH_FORBIDDEN" }` and are never treated as credentials.
+
+Legacy query `?auth=<loginKey>` still authenticates (constant-time compare) so existing clients keep working.
 
 On match:
 
 - `req.userType = 'admin'`
+- `req.authMethod = 'login_key'`
 - Session marked authenticated if present
+- An audit line records IP, User-Agent, and user (`header_login_key` or `login_key`). The IP is the real client (socket peer, or XFF only from a trusted proxy).
 
-Useful for headless clients without cookie jars. When `loginKey` is **null**, middleware skips token check and only session auth applies.
+Useful for headless downloads and API calls without a cookie jar. When `loginKey` is **null**, middleware skips the token check and only session auth applies.
 
 **Note:** Do not pass `sfapp_` / `sftok_` tokens as legacy Bearer on routes expecting `loginKey` — use application headers instead.
 
 **Errors:** 403 `{ "error": "Invalid authentication token" }`
+
+## Approved IPs (web UI, no PIN)
+
+Security Center → **Approved IPs** (admin only) stores a list of CIDRs. Each row has a label, an enabled toggle, and the web UI account it signs in as (`admin` or `readonly`).
+
+A request whose real client IP matches an enabled row is signed in on that request (`req.session.authenticated`, `req.authMethod = 'approved_ip'`) with no PIN and no login screen. The login page ping then redirects to `/app`. A non-match leaves the session unauthenticated so PIN login still applies.
+
+Client IP rules:
+
+- The socket address is the client unless the direct peer is a configured trusted proxy.
+- `X-Forwarded-For` from an untrusted peer is ignored.
+- A trusted proxy with a missing or invalid forwarding header does not match.
+- Disabled rows never match. An empty list matches nothing. Loopback is not implied.
+
+Every new approved-IP sign-in is audited (IP, User-Agent, user, label). WebSocket packets `get_approved_ips` and `set_approved_ips` are admin-only. See [admin.md](./ws/admin.md).
 
 ## WebSocket authentication (browser session)
 

@@ -2,7 +2,7 @@
 
 HTTP routes defined in `web_server.js` and static middleware. Default base: `http://<host>:9220`.
 
-**Authentication:** Unless noted, routes use `authMiddleware` — session cookie or `Authorization: Bearer <loginKey>` / `?auth=`. See [authentication.md](./authentication.md).
+**Authentication:** Unless noted, routes use `authMiddleware` — session cookie, `X-Dreamscape-Login-Key`, or `Authorization: Bearer <loginKey>` (`?auth=` still works; `?loginKey=` is rejected). An approved client IP can sign the web UI in with no PIN. See [authentication.md](./authentication.md).
 
 **Cache headers:** Auth middleware forces no-store on protected JSON routes. Image routes use longer cache (see each route).
 
@@ -550,7 +550,7 @@ Service worker cache miss handler. **No auth.**
 
 ### `GET /images/:filename`
 
-**Auth required.**
+**Auth required.** Session cookie, `X-Dreamscape-Login-Key`, or `Authorization: Bearer <loginKey>`. Do not put the login key in the query string. An approved client IP is signed in before this check.
 
 | Query | Description |
 |-------|-------------|

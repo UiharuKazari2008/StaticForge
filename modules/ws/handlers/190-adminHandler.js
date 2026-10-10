@@ -1,6 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const wsPacketRegistry = require('../wsPacketRegistry');
+const {
+    normalizeApprovedIpEntries,
+    matchApprovedIp,
+    loadApprovedIpEntries
+} = require('../../approvedIpAccess');
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
 
@@ -1546,6 +1551,71 @@ async function handleLogoutCursorAccount(handlersCtx, ws, message, clientInfo, w
     }
 }
 
+function approvedIpClientView(clientInfo, entries) {
+    const clientIp = clientInfo && typeof clientInfo.clientIP === 'string' ? clientInfo.clientIP : '';
+    const matched = matchApprovedIp(entries, clientIp);
+    return {
+        clientIp: clientIp || '',
+        matched: !!matched,
+        matchedId: matched ? matched.id : null,
+        matchedLabel: matched ? matched.label : '',
+        matchedUserType: matched ? matched.userType : null
+    };
+}
+
+async function handleGetApprovedIps(handlersCtx, ws, message, clientInfo) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+        const entries = loadApprovedIpEntries(handlersCtx.globalResources);
+        handlersCtx.sendToClient(ws, {
+            type: 'get_approved_ips_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                entries,
+                ...approvedIpClientView(clientInfo, entries)
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error fetching approved IPs:', error);
+        handlersCtx.sendError(ws, 'Failed to fetch approved IPs', error.message, message.requestId);
+    }
+}
+
+async function handleSetApprovedIps(handlersCtx, ws, message, clientInfo) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+        const normalized = normalizeApprovedIpEntries(message.entries);
+        if (!normalized.ok) {
+            handlersCtx.sendError(ws, normalized.error, 'INVALID_APPROVED_IP', message.requestId);
+            return;
+        }
+        handlersCtx.globalResources.modifyConfig('config').assign('approvedIps', normalized.entries);
+        console.log(`🔐 Approved IPs updated (${normalized.entries.length}) by session ${clientInfo.sessionId}`);
+        handlersCtx.sendToClient(ws, {
+            type: 'set_approved_ips_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                entries: normalized.entries,
+                message: 'Approved IPs updated',
+                ...approvedIpClientView(clientInfo, normalized.entries)
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error saving approved IPs:', error);
+        handlersCtx.sendError(ws, 'Failed to save approved IPs', error.message, message.requestId);
+    }
+}
+
 /**
  * Register admin WebSocket packet handlers (IP blocking, rate limits, API keys).
  * @param {import('../../websocketHandlers').WebSocketMessageHandlers} handlersCtx
@@ -1574,6 +1644,8 @@ function registerPackets(handlersCtx) {
     reg('clear_known_bad_paths', handleClearKnownBadPaths, ADMIN_DESTRUCTIVE);
 
     reg('get_pin_settings', handleGetPinSettings);
+    reg('get_approved_ips', handleGetApprovedIps);
+    reg('set_approved_ips', handleSetApprovedIps, ADMIN_DESTRUCTIVE);
     reg('set_admin_pin', handleSetAdminPin, ADMIN_DESTRUCTIVE);
     reg('set_user_pin', handleSetUserPin, ADMIN_DESTRUCTIVE);
     reg('set_user_pin_login_enabled', handleSetUserPinLoginEnabled, ADMIN_DESTRUCTIVE);
@@ -1600,6 +1672,8 @@ function registerPackets(handlersCtx) {
 }
 
 module.exports = {
-    registerPackets
+    registerPackets,
+    handleGetApprovedIps,
+    handleSetApprovedIps
 };
 

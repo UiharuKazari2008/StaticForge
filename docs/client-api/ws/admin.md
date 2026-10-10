@@ -21,6 +21,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `deny_application_auth_request` | `deny_application_auth_request_response` | session | Handler: handleDenyApplicationAuthRequest |
 | `export_ip_to_gateway` | `export_ip_to_gateway_response` | admin/destructive | Handler: handleExportIPToGateway |
 | `get_api_key_services` | `get_api_key_services_response` | admin/destructive | Handler: handleGetApiKeyServices |
+| `get_approved_ips` | `get_approved_ips_response` | admin | Handler: handleGetApprovedIps |
 | `get_application_auth_scopes` | `get_application_auth_scopes_response` | session | Handler: handleGetApplicationAuthScopes |
 | `get_blocked_ips` | `get_blocked_ips_response` | session | Handler: handleGetBlockedIPs |
 | `get_ip_blocking_reasons` | `get_ip_blocking_reasons_response` | session | Handler: handleGetIPBlockingReasons |
@@ -37,6 +38,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `request_temp_access_token` | `temp_access_token_response` | critical | Handler: handleRequestTempAccessToken |
 | `revoke_application_key` | `revoke_application_key_response` | session | Handler: handleRevokeApplicationKey |
 | `set_admin_pin` | `set_admin_pin_response` | admin/destructive | Handler: handleSetAdminPin |
+| `set_approved_ips` | `set_approved_ips_response` | admin/destructive | Handler: handleSetApprovedIps |
 | `set_user_pin` | `set_user_pin_response` | admin/destructive | Handler: handleSetUserPin |
 | `set_user_pin_login_enabled` | `set_user_pin_login_enabled_response` | admin/destructive | Handler: handleSetUserPinLoginEnabled |
 | `unblock_ip` | `unblock_ip_response` | admin/destructive | Handler: handleUnblockIP |
@@ -439,6 +441,30 @@ Additional response/push types from handler:
 **Success response:** `get_known_bad_paths_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `get_approved_ips`
+
+**Auth:** Admin session. Readonly and non-admin callers receive `INSUFFICIENT_PERMISSIONS`.
+
+**Handler:** modules/ws/handlers/190-adminHandler.js → `handleGetApprovedIps`
+
+Returns the approved CIDR list plus the current WebSocket client IP and whether it matches an enabled row. Loopback is not implied.
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `get_approved_ips_response` with `entries`, `clientIp`, `matched`, `matchedId`, `matchedLabel`, `matchedUserType`.
+
+### `set_approved_ips`
+
+**Auth:** Admin session, destructive. Readonly callers are rejected before the handler.
+
+**Handler:** modules/ws/handlers/190-adminHandler.js → `handleSetApprovedIps`
+
+Replaces `config.approvedIps`. Each entry needs `label`, `cidr`, `enabled`, and `userType` (`admin` or `readonly`). Invalid CIDRs, duplicates, and unknown accounts are rejected. An empty list clears approvals.
 
 ### `get_pin_settings`
 

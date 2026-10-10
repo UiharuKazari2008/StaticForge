@@ -14,6 +14,7 @@ const SECURITY_DSAP_TAB_LABELS = {
     blocked: 'Blocked Clients',
     honeypot: 'Honeypot',
     auth: 'Authentication',
+    approved: 'Approved IPs',
     telemetry: 'Telemetry'
 };
 
@@ -22,7 +23,8 @@ function securityDsapNormalizeView(view) {
     if (!v || v === 'home' || v === 'dashboard') return 'home';
     if (v === 'paths' || v === 'honeypot' || v === 'scraped') return 'honeypot';
     if (v === 'pins' || v === 'appkeys' || v === 'authentication' || v === 'auth' || v === 'keys') return 'auth';
-    if (v === 'blocked' || v === 'telemetry' || v === 'honeypot' || v === 'auth') return v;
+    if (v === 'approved' || v === 'approved-ips' || v === 'approvedips' || v === 'ips') return 'approved';
+    if (v === 'blocked' || v === 'telemetry' || v === 'honeypot' || v === 'auth' || v === 'approved') return v;
     return 'home';
 }
 
@@ -118,6 +120,7 @@ ${dsapSmfBuildHeader({
     <td align="center" class="sec-tab" data-sec-tab="blocked"><i class="fas fa-ban"></i> Blocked Clients</td>
     <td align="center" class="sec-tab" data-sec-tab="honeypot"><i class="fas fa-spider"></i> Honeypot</td>
     <td align="center" class="sec-tab" data-sec-tab="auth"><i class="fas fa-key"></i> Authentication</td>
+    <td align="center" class="sec-tab" data-sec-tab="approved"><i class="fas fa-shield-halved"></i> Approved IPs</td>
     <td align="center" class="sec-tab" data-sec-tab="telemetry"><i class="fas fa-chart-line"></i> Telemetry</td>
   </tr>
 </table>
@@ -527,6 +530,59 @@ ${dsapSmfBuildHeader({
         </table>
       </div>
       <div id="secAppkeysInactiveEmpty" class="sec-dsap-empty hidden"><i class="fas fa-plug"></i> No inactive keys</div>
+    </div>
+  </div>
+</div>
+
+<div class="sec-view sec-approved-view hidden" id="secApprovedView">
+  <div class="sec-dsap-section-hdr">Approved IPs</div>
+  <div class="sec-dsap-statusbox" id="secApprovedStatus">
+    <span class="sec-dsap-status-message" id="secApprovedStatusMessage">Loading approved IPs…</span>
+  </div>
+  <p class="sec-dsap-settings-intro">A request whose real client IP matches an enabled CIDR is signed in to the web UI as that account, with no PIN. The client IP is the socket address unless the direct peer is a trusted proxy. Spoofed X-Forwarded-For is ignored. Loopback is not included unless you add it. Disabled rows never match. The first enabled match wins.</p>
+  <div class="sec-dsap-statusbox" id="secApprovedClientBox">
+    <span class="sec-dsap-status-message" id="secApprovedClientMessage">Checking this client…</span>
+  </div>
+  <div class="sec-toolbar">
+    <button type="button" id="secApprovedRefresh" class="sec-dsap-action-btn"><i class="fas fa-sync"></i> Refresh</button>
+  </div>
+  <div id="secApprovedLoading" class="sec-dsap-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading approved IPs…</div>
+  <div id="secApprovedError" class="sec-dsap-error hidden"><i class="fas fa-exclamation-triangle"></i> <span id="secApprovedErrorText">Failed to load</span></div>
+  <div id="secApprovedTableWrap" class="sec-table-wrap hidden">
+    <table class="sec-data-table" cellspacing="0" cellpadding="4" width="100%" border="1">
+      <thead>
+        <tr>
+          <th align="left">Label</th>
+          <th align="left">CIDR</th>
+          <th align="center" width="120">Signs in as</th>
+          <th align="center" width="90">Enabled</th>
+          <th align="center" width="160">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="secApprovedTableBody"></tbody>
+    </table>
+  </div>
+  <div id="secApprovedEmpty" class="sec-dsap-empty hidden"><i class="fas fa-shield"></i> No approved IPs. Nothing matches.</div>
+  <div id="secApprovedForm" class="sec-details-panel">
+    <div class="sec-details-header">
+      <strong id="secApprovedFormTitle">Add approved IP</strong>
+    </div>
+    <div class="sec-details-body sec-appkeys-form">
+      <input type="hidden" id="secApprovedIdInput" value="">
+      <label>Label<input type="text" id="secApprovedLabelInput" class="sec-input" maxlength="80" placeholder="Home LAN"></label>
+      <label>CIDR<input type="text" id="secApprovedCidrInput" class="sec-input" placeholder="203.0.113.10/32 or 2001:db8::/64" spellcheck="false"></label>
+      <label>Signs in as
+        <select id="secApprovedUserType" class="sec-input">
+          <option value="admin">Administrator</option>
+          <option value="readonly">User</option>
+        </select>
+      </label>
+      <label class="sec-check"><input type="checkbox" id="secApprovedEnabled" checked> Enabled</label>
+      <p class="sec-dsap-setting-hint">Downloads and API calls can send this account's login key in the <code>X-Dreamscape-Login-Key</code> header or <code>Authorization: Bearer</code>. The query string is never accepted.</p>
+      <div class="sec-appkeys-form-actions">
+        <button type="button" class="sec-dsap-action-btn sec-btn-primary" data-sec-action="save-approved-ip"><i class="fas fa-save"></i> Save</button>
+        <button type="button" class="sec-dsap-action-btn" data-sec-action="clear-approved-form"><i class="fas fa-times"></i> Clear</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1002,6 +1058,7 @@ const securityDsapDriver = {
             blocked: { items: [], meta: { page: 1, perPage: SECURITY_DEFAULT_PER_PAGE, search: '', total: 0, totalPages: 1 }, selectedIp: null },
             honeypot: { items: [], meta: { page: 1, perPage: SECURITY_DEFAULT_PER_PAGE, search: '', total: 0, totalPages: 1 } },
             pins: { userPinLoginEnabled: true, adminPinConfigured: false, userPinConfigured: false },
+            approvedIps: { entries: [], clientIp: '', matched: false, matchedId: null, matchedLabel: '', matchedUserType: null },
             keychain: { services: [], originalSelections: {}, pendingSelections: {}, editServiceId: null, editKeyIndex: null, addServiceId: null },
             appkeys: { keys: [], pending: [], scopes: [], selectedScopes: ['universal'], logTab: 'requests', logPage: 1, logItems: [], logMeta: { page: 1, totalPages: 1 } },
             cursorAccounts: { wren: {}, xi: {}, accounts: [], wrenStatus: {}, xiStatus: {}, usage: null, captureEnabled: false, capturePersona: 'xi' },
@@ -1184,6 +1241,7 @@ const securityDsapDriver = {
             blocked: 'secBlockedView',
             honeypot: 'secHoneypotView',
             auth: 'secAuthView',
+            approved: 'secApprovedView',
             telemetry: 'secTelemetryView'
         };
         return map[view] || 'secHomeView';
@@ -1235,6 +1293,7 @@ const securityDsapDriver = {
         this._wireRefresh(root, '#secAppkeysRefresh', 'auth');
         this._wireRefresh(root, '#secKeychainRefresh', 'auth');
         this._wireRefresh(root, '#secCursorAccountsRefresh', 'auth');
+        this._wireRefresh(root, '#secApprovedRefresh', 'approved');
         this._wireRefresh(root, '#secTelemetryRefresh', 'telemetry');
         this._wirePager(root, '#secBlockedPager', 'blocked', host);
         this._wirePager(root, '#secHoneypotPager', 'honeypot', host);
@@ -1405,6 +1464,29 @@ const securityDsapDriver = {
         const root = this._state.host.getRoot();
         const action = btn.dataset.secAction;
 
+        if (action === 'save-approved-ip') {
+            void this._saveApprovedIp(root);
+            return;
+        }
+        if (action === 'clear-approved-form') {
+            this._clearApprovedForm(root);
+            return;
+        }
+        if (action === 'edit-approved-ip') {
+            const approvedId = btn.dataset.secApprovedId;
+            if (approvedId) this._editApprovedIp(root, approvedId);
+            return;
+        }
+        if (action === 'toggle-approved-ip') {
+            const approvedId = btn.dataset.secApprovedId;
+            if (approvedId) void this._toggleApprovedIp(root, approvedId);
+            return;
+        }
+        if (action === 'delete-approved-ip') {
+            const approvedId = btn.dataset.secApprovedId;
+            if (approvedId) void this._deleteApprovedIp(root, approvedId);
+            return;
+        }
         if (action === 'close-details') {
             root.querySelector('#secBlockedDetails')?.classList.add('hidden');
             return;
@@ -1682,6 +1764,7 @@ const securityDsapDriver = {
         else if (this._state.view === 'blocked') void this._loadBlocked(root);
         else if (this._state.view === 'honeypot') void this._loadHoneypot(root);
         else if (this._state.view === 'auth') void this._loadAuth(root);
+        else if (this._state.view === 'approved') void this._loadApprovedIps(root);
         else if (this._state.view === 'telemetry') void this._loadTelemetry(root);
     },
 
@@ -2087,6 +2170,200 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             this._setStatus(root, 'home', 'Failed to load dashboard', 'error');
         } finally {
             root.querySelector('#secHomeLoading')?.classList.add('hidden');
+        }
+    },
+
+    _approvedUserLabel(userType) {
+        return userType === 'readonly' ? 'User' : 'Administrator';
+    },
+
+    _clearApprovedForm(root) {
+        const idInput = root.querySelector('#secApprovedIdInput');
+        const labelInput = root.querySelector('#secApprovedLabelInput');
+        const cidrInput = root.querySelector('#secApprovedCidrInput');
+        const userType = root.querySelector('#secApprovedUserType');
+        const enabled = root.querySelector('#secApprovedEnabled');
+        const title = root.querySelector('#secApprovedFormTitle');
+        if (idInput) idInput.value = '';
+        if (labelInput) labelInput.value = '';
+        if (cidrInput) cidrInput.value = '';
+        if (userType) userType.value = 'admin';
+        if (enabled) enabled.checked = true;
+        if (title) title.textContent = 'Add approved IP';
+    },
+
+    _editApprovedIp(root, id) {
+        const entry = (this._state.approvedIps.entries || []).find((row) => row.id === id);
+        if (!entry) return;
+        const idInput = root.querySelector('#secApprovedIdInput');
+        const labelInput = root.querySelector('#secApprovedLabelInput');
+        const cidrInput = root.querySelector('#secApprovedCidrInput');
+        const userType = root.querySelector('#secApprovedUserType');
+        const enabled = root.querySelector('#secApprovedEnabled');
+        const title = root.querySelector('#secApprovedFormTitle');
+        if (idInput) idInput.value = entry.id || '';
+        if (labelInput) labelInput.value = entry.label || '';
+        if (cidrInput) cidrInput.value = entry.cidr || '';
+        if (userType) userType.value = entry.userType === 'readonly' ? 'readonly' : 'admin';
+        if (enabled) enabled.checked = entry.enabled === true;
+        if (title) title.textContent = 'Edit approved IP';
+    },
+
+    _renderApprovedClient(root) {
+        const state = this._state.approvedIps || {};
+        const ip = state.clientIp || 'unknown';
+        const el = root.querySelector('#secApprovedClientMessage');
+        const box = root.querySelector('#secApprovedClientBox');
+        if (box) {
+            box.classList.remove('sec-dsap-status-error', 'sec-dsap-status-ok');
+            box.classList.add(state.matched ? 'sec-dsap-status-ok' : 'sec-dsap-status-error');
+        }
+        if (!el) return;
+        if (state.matched) {
+            el.textContent = `This client IP ${ip} matches "${state.matchedLabel || 'approved IP'}" and signs in as ${this._approvedUserLabel(state.matchedUserType)}.`;
+        } else {
+            el.textContent = `This client IP ${ip} does not match an approved address.`;
+        }
+    },
+
+    _renderApprovedIps(root) {
+        const entries = this._state.approvedIps.entries || [];
+        const wrap = root.querySelector('#secApprovedTableWrap');
+        const empty = root.querySelector('#secApprovedEmpty');
+        const body = root.querySelector('#secApprovedTableBody');
+        this._renderApprovedClient(root);
+        if (!entries.length) {
+            wrap?.classList.add('hidden');
+            empty?.classList.remove('hidden');
+            if (body) body.innerHTML = '';
+            return;
+        }
+        empty?.classList.add('hidden');
+        wrap?.classList.remove('hidden');
+        if (!body) return;
+        body.innerHTML = entries.map((entry) => {
+            const id = securityDsapEscapeAttr(entry.id);
+            const enabled = entry.enabled === true;
+            return `<tr>
+              <td>${securityDsapEscapeHtml(entry.label)}</td>
+              <td><code>${securityDsapEscapeHtml(entry.cidr)}</code></td>
+              <td align="center">${securityDsapEscapeHtml(this._approvedUserLabel(entry.userType))}</td>
+              <td align="center">${enabled ? 'Yes' : 'No'}</td>
+              <td align="center">
+                <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="edit-approved-ip" data-sec-approved-id="${id}">Edit</button>
+                <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="toggle-approved-ip" data-sec-approved-id="${id}">${enabled ? 'Disable' : 'Enable'}</button>
+                <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="delete-approved-ip" data-sec-approved-id="${id}">Remove</button>
+              </td>
+            </tr>`;
+        }).join('');
+    },
+
+    async _loadApprovedIps(root) {
+        root.querySelector('#secApprovedLoading')?.classList.remove('hidden');
+        root.querySelector('#secApprovedError')?.classList.add('hidden');
+        root.querySelector('#secApprovedTableWrap')?.classList.add('hidden');
+        root.querySelector('#secApprovedEmpty')?.classList.add('hidden');
+        this._setStatus(root, 'approved', 'Loading approved IPs…', null);
+
+        if (!(await this._ensureWs())) {
+            root.querySelector('#secApprovedLoading')?.classList.add('hidden');
+            this._setStatus(root, 'approved', 'Connection unavailable — check WebSocket', 'error');
+            return;
+        }
+
+        try {
+            const response = await wsClient.getApprovedIps();
+            if (!response?.success) throw new Error('Failed to load approved IPs');
+            this._state.approvedIps = {
+                entries: Array.isArray(response.entries) ? response.entries : [],
+                clientIp: response.clientIp || '',
+                matched: response.matched === true,
+                matchedId: response.matchedId || null,
+                matchedLabel: response.matchedLabel || '',
+                matchedUserType: response.matchedUserType || null
+            };
+            this._renderApprovedIps(root);
+            this._setStatus(root, 'approved', 'Approved IPs ready', 'ok');
+        } catch (err) {
+            console.error('[security-dsap] approved IP load error:', err);
+            root.querySelector('#secApprovedError')?.classList.remove('hidden');
+            const errText = root.querySelector('#secApprovedErrorText');
+            if (errText) errText.textContent = err.message || 'Failed to load approved IPs';
+            this._setStatus(root, 'approved', 'Failed to load approved IPs', 'error');
+            if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', 'Failed to load approved IPs', false, 5000);
+        } finally {
+            root.querySelector('#secApprovedLoading')?.classList.add('hidden');
+        }
+    },
+
+    async _persistApprovedIps(root, entries) {
+        if (!(await this._ensureWs())) return false;
+        const response = await wsClient.setApprovedIps(entries);
+        if (!response?.success) throw new Error(response?.message || 'Failed to save approved IPs');
+        this._state.approvedIps = {
+            entries: Array.isArray(response.entries) ? response.entries : entries,
+            clientIp: response.clientIp || this._state.approvedIps.clientIp || '',
+            matched: response.matched === true,
+            matchedId: response.matchedId || null,
+            matchedLabel: response.matchedLabel || '',
+            matchedUserType: response.matchedUserType || null
+        };
+        this._renderApprovedIps(root);
+        this._setStatus(root, 'approved', response.message || 'Approved IPs updated', 'ok');
+        return true;
+    },
+
+    async _saveApprovedIp(root) {
+        const id = root.querySelector('#secApprovedIdInput')?.value.trim() || '';
+        const label = root.querySelector('#secApprovedLabelInput')?.value.trim() || '';
+        const cidr = root.querySelector('#secApprovedCidrInput')?.value.trim() || '';
+        const userType = root.querySelector('#secApprovedUserType')?.value || 'admin';
+        const enabled = !!root.querySelector('#secApprovedEnabled')?.checked;
+        if (!label || !cidr) {
+            if (typeof showGlassToast === 'function') showGlassToast('warning', null, 'Label and CIDR are required', false, 4000);
+            return;
+        }
+        const entries = (this._state.approvedIps.entries || []).map((row) => ({ ...row }));
+        const draft = { label, cidr, userType, enabled };
+        if (id) draft.id = id;
+        const index = id ? entries.findIndex((row) => row.id === id) : -1;
+        if (index >= 0) entries[index] = { ...entries[index], ...draft };
+        else entries.push(draft);
+        try {
+            const ok = await this._persistApprovedIps(root, entries);
+            if (ok) {
+                this._clearApprovedForm(root);
+                if (typeof showGlassToast === 'function') showGlassToast('success', null, 'Approved IP saved', false, 4000, '<i class="fas fa-save"></i>');
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', err.message || 'Failed to save approved IP', false, 5000);
+        }
+    },
+
+    async _toggleApprovedIp(root, id) {
+        const entries = (this._state.approvedIps.entries || []).map((row) => (
+            row.id === id ? { ...row, enabled: row.enabled !== true } : { ...row }
+        ));
+        try {
+            await this._persistApprovedIps(root, entries);
+        } catch (err) {
+            if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', err.message || 'Failed to update approved IP', false, 5000);
+        }
+    },
+
+    async _deleteApprovedIp(root, id) {
+        const entry = (this._state.approvedIps.entries || []).find((row) => row.id === id);
+        const ok = await showConfirmationDialog(`Remove approved IP${entry ? ` "${entry.label}"` : ''}?`, [
+            { text: 'Remove', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ]);
+        if (!ok) return;
+        const entries = (this._state.approvedIps.entries || []).filter((row) => row.id !== id);
+        try {
+            const saved = await this._persistApprovedIps(root, entries);
+            if (saved && root.querySelector('#secApprovedIdInput')?.value === id) this._clearApprovedForm(root);
+        } catch (err) {
+            if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', err.message || 'Failed to remove approved IP', false, 5000);
         }
     },
 

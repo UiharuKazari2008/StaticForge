@@ -3,6 +3,12 @@ const crypto = require('crypto');
 const { isApplicationKeyFormat, isTempTokenFormat, redactApplicationRequestPath, describeKeylessPacket } = require('./applicationAuthManager');
 const { isOAuthAccessTokenFormat } = require('./mcpOAuthProvider');
 const { resolveRequestClientIp, trustedProxiesFromResources } = require('./clientAddress');
+const {
+    queryCarriesLoginKey,
+    readHeaderLoginKey,
+    auditWebLogin,
+    describeClientForAudit
+} = require('./approvedIpAccess');
 
 function noteApplicationRequest(req, res, globalResources, source) {
     if (!req || !res || req._appRequestNoted) return;
@@ -103,6 +109,55 @@ async function resolveApplicationAuth(req, globalResources, options = {}) {
     return null;
 }
 
+function acceptLoginKey(req, globalResources, source) {
+    req.userType = 'admin';
+    req.authMethod = 'login_key';
+    if (req.session) {
+        req.session.authenticated = true;
+        req.session.userType = 'admin';
+    }
+    const client = describeClientForAudit(req, globalResources);
+    if (client.client) req.realClientIp = client.client;
+    else if (client.peer) req.realClientIp = client.peer;
+    const headerSource = source === 'x-dreamscape-login-key' || source === 'bearer';
+    auditWebLogin(globalResources, {
+        event: headerSource ? 'header_login_key' : 'login_key',
+        ip: client.ip,
+        userAgent: (req.headers && req.headers['user-agent']) || '',
+        user: 'admin',
+        source: source || 'header'
+    });
+    req._headerLoginAccepted = true;
+}
+
+/**
+ * Header login key (X-Dreamscape-Login-Key or Authorization: Bearer).
+ * Query-string copies are refused. Constant-time compare. Does not read ?auth=.
+ * A second call after success does not audit again.
+ */
+function applyHeaderLoginKey(req, globalResources) {
+    if (req && req._headerLoginAccepted && req.authMethod === 'login_key') {
+        return { accepted: true, already: true };
+    }
+    if (queryCarriesLoginKey(req)) return { forbiddenQuery: true };
+    let loginKey = null;
+    try {
+        loginKey = globalResources.getSecureConfig({ path: 'loginKey' });
+    } catch (_err) {
+        loginKey = null;
+    }
+    if (loginKey === null || typeof loginKey !== 'string') return { absent: true };
+    const headerKey = readHeaderLoginKey(req);
+    if (headerKey.invalid) return { invalidHeader: true };
+    if (!headerKey.token) return { absent: true };
+    if (isApplicationKeyFormat(headerKey.token) || isTempTokenFormat(headerKey.token)) {
+        return { appCredential: true };
+    }
+    if (!credentialsMatch(headerKey.token, loginKey)) return { rejected: true };
+    acceptLoginKey(req, globalResources, headerKey.source);
+    return { accepted: true };
+}
+
 function createAuthMiddleware(globalResources) {
     return async (req, res, next) => {
         res.setHeader('Cache-Control', 'blocked, no-store, no-cache, must-revalidate, private, max-age=0');
@@ -125,25 +180,38 @@ function createAuthMiddleware(globalResources) {
             console.error('Application auth resolution error:', err.message);
         }
 
+        const headerAuth = applyHeaderLoginKey(req, globalResources);
+        if (headerAuth.forbiddenQuery) {
+            return res.status(400).json({
+                error: 'Do not put the login key in the query string',
+                code: 'QUERY_AUTH_FORBIDDEN'
+            });
+        }
+        if (headerAuth.invalidHeader) {
+            return res.status(400).json({ error: 'Invalid login key header', code: 'INVALID_LOGIN_KEY_HEADER' });
+        }
+        if (headerAuth.appCredential) {
+            return res.status(403).json({ error: 'Use X-StaticForge-App-Key or X-StaticForge-App-Token headers for application credentials' });
+        }
+        if (headerAuth.rejected) {
+            return res.status(403).json({ error: 'Invalid authentication token' });
+        }
+        if (headerAuth.accepted) return next();
+
         const loginKey = globalResources.getSecureConfig({ path: 'loginKey' });
         if (loginKey === null) {
             return next();
         }
 
-        const authToken = req.query.auth || req.headers.authorization?.replace('Bearer ', '');
-        if (authToken) {
-            if (isApplicationKeyFormat(authToken) || isTempTokenFormat(authToken)) {
-                return res.status(403).json({ error: 'Use X-StaticForge-App-Key or X-StaticForge-App-Token headers for application credentials' });
-            }
-            if (authToken !== loginKey) {
+        const legacyAuth = req.query ? req.query.auth : undefined;
+        if (legacyAuth != null && legacyAuth !== '') {
+            if (typeof legacyAuth !== 'string'
+                || isApplicationKeyFormat(legacyAuth)
+                || isTempTokenFormat(legacyAuth)
+                || !credentialsMatch(legacyAuth, loginKey)) {
                 return res.status(403).json({ error: 'Invalid authentication token' });
             }
-            req.userType = 'admin';
-            req.authMethod = 'login_key';
-            if (req.session) {
-                req.session.authenticated = true;
-                req.session.userType = 'admin';
-            }
+            acceptLoginKey(req, globalResources, 'legacy_query');
             return next();
         }
 
@@ -444,5 +512,6 @@ module.exports = {
     isAdminUser,
     resolveApplicationAuth,
     resolveMcpKeyless,
-    applyAuthContext
+    applyAuthContext,
+    applyHeaderLoginKey
 };

@@ -470,6 +470,8 @@ class BannerManager {
             'delete_known_bad_path': 'Delete Bad Path',
             'clear_known_bad_paths': 'Clear Bad Paths',
             'get_pin_settings': 'Get PIN Settings',
+            'get_approved_ips': 'Get Approved IPs',
+            'set_approved_ips': 'Set Approved IPs',
             'set_admin_pin': 'Set Admin PIN',
             'set_user_pin': 'Set User PIN',
             'set_user_pin_login_enabled': 'Toggle User PIN',
@@ -7426,6 +7428,14 @@ class WebSocketClient {
 
     async setUserPinLoginEnabled(enabled) {
         return this.sendMessage('set_user_pin_login_enabled', { enabled });
+    }
+
+    async getApprovedIps() {
+        return this.sendMessage('get_approved_ips', {});
+    }
+
+    async setApprovedIps(entries) {
+        return this.sendMessage('set_approved_ips', { entries });
     }
 
     async listApplicationKeys() {
