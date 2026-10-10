@@ -28,6 +28,13 @@ function director() {
     return require('./cursorDirector');
 }
 
+const JAIL_KEY_DIR = '/tmp/.xi-secret';
+const JAIL_KEY_FILE = `${JAIL_KEY_DIR}/api-key`;
+
+function apiKeyStore() {
+    return require('./cursorAccountApiKey');
+}
+
 function authStore() {
     return require('./cursorAccountAuthStore');
 }
@@ -85,7 +92,17 @@ function loadActiveCredential(options) {
     if (!record.apiKey && !record.accessToken && acc && acc.token && !acc.isEmpty) {
         record = store._test.authFromCredential(acc.token, acc.tokenKind);
     }
-    return { accountId, auth: record, email: (acc && acc.email) || '' };
+    const keyFile = apiKeyStore().keyFile(accountId, accountsDir);
+    const storedKey = apiKeyStore().readKey(accountId, accountsDir);
+    // Prefer the session; the stored key is only for sessions that cannot refresh.
+    const useStoredKey = !!storedKey && !record.refreshToken;
+    return {
+        accountId,
+        auth: record,
+        email: (acc && acc.email) || '',
+        keyFile: useStoredKey ? keyFile : null,
+        storedKey: useStoredKey ? storedKey : ''
+    };
 }
 
 function secretValues(auth) {
@@ -272,6 +289,9 @@ function buildLaunch(options) {
     if (!opts.detach) args.push('--die-with-parent');
     director()._test.systemBindArgs().forEach((part) => args.push(part));
     args.push('--proc', '/proc', '--dev', '/dev', '--tmpfs', '/dev/shm', '--tmpfs', '/tmp');
+    if (credential.keyFile) {
+        args.push('--dir', JAIL_KEY_DIR, '--ro-bind', credential.keyFile, JAIL_KEY_FILE);
+    }
     if (agent) {
         args.push('--dir', '/opt', '--dir', JAIL_AGENT_ROOT);
         args.push('--ro-bind', agent.hostRoot, JAIL_AGENT_ROOT);
@@ -296,13 +316,19 @@ function buildLaunch(options) {
     args.push('--clearenv');
     Object.keys(env).forEach((key) => args.push('--setenv', key, String(env[key] == null ? '' : env[key])));
 
-    const command = (opts.command && opts.command.length)
+    let command = (opts.command && opts.command.length)
         ? opts.command.map((part) => String(part))
         : [agent.inJail].concat(opts.agentArgs || []).map((part) => String(part));
+    if (credential.keyFile) {
+        command = ['/bin/sh', '-c',
+            `CURSOR_API_KEY="$(cat ${JAIL_KEY_FILE})"; export CURSOR_API_KEY; exec "$@"`,
+            'xi-launch'].concat(command);
+    }
     args.push('--');
     command.forEach((part) => args.push(part));
 
     const secrets = secretValues(credential.auth);
+    if (credential.storedKey) secrets.push(credential.storedKey);
     assertSecretsOffArgv(args, secrets);
     const hostEnv = hostSpawnEnv();
     assertNoInheritedCursor(hostEnv);
@@ -315,6 +341,7 @@ function buildLaunch(options) {
         runHome,
         accountId: credential.accountId,
         authFile,
+        apiKeyMount: credential.keyFile ? JAIL_KEY_FILE : null,
         jailHome: JAIL_HOME,
         jailConfig,
         projectDir,
@@ -335,6 +362,7 @@ function spawnLaunch(options) {
 module.exports = {
     JAIL_ENV_KEYS,
     JAIL_HOME,
+    JAIL_KEY_FILE,
     defaultProjectDir,
     resolveHomeAccess,
     loadActiveCredential,

@@ -206,6 +206,40 @@ function main() {
         assert.ok(!output.includes('inherited-cursor-config'));
         assert.ok(output.includes('CURSOR_CONFIG_DIR=/home/xi/.config/cursor'));
 
+        // Stored per-account key: mounted read-only, exported only inside the jail.
+        const keyStore = require('../modules/cursorAccountApiKey');
+        const STORED = 'crsr_stored_beta_key__00000000000000';
+        assert.strictEqual(keyStore.setKey('beta', STORED, accountsDir), STORED.slice(-4));
+        assert.strictEqual((fs.statSync(keyStore.keyFile('beta', accountsDir)).mode & 0o777), 0o600);
+        const keyed = xiLaunch.buildLaunch(common);
+        homes.push(keyed.runHome);
+        const flatKeyed = keyed.args.join('\n');
+        assert.ok(!flatKeyed.includes(STORED));
+        assert.ok(!flatKeyed.includes(INHERITED));
+        assert.strictEqual(envValue(keyed.args, 'CURSOR_API_KEY'), undefined);
+        assert.strictEqual(keyed.env.CURSOR_API_KEY, undefined);
+        assert.strictEqual(keyed.hostEnv.CURSOR_API_KEY, undefined);
+        assert.strictEqual(keyed.apiKeyMount, xiLaunch.JAIL_KEY_FILE);
+        const ro = keyed.args.indexOf('--ro-bind', keyed.args.indexOf(keyStore.keyFile('beta', accountsDir)) - 1);
+        assert.strictEqual(keyed.args[ro + 1], keyStore.keyFile('beta', accountsDir));
+        assert.strictEqual(keyed.args[ro + 2], xiLaunch.JAIL_KEY_FILE);
+        const keyRun = xiLaunch.buildLaunch(Object.assign({}, common, {
+            command: ['/bin/sh', '-c', 'test "$CURSOR_API_KEY" = "$(cat ' + xiLaunch.JAIL_KEY_FILE + ')" && echo KEY:OK']
+        }));
+        homes.push(keyRun.runHome);
+        const keyOut = spawnSync(keyRun.bin, keyRun.args, { env: keyRun.hostEnv, encoding: 'utf8' });
+        assert.ok(String(keyOut.stdout).includes('KEY:OK'), 'stored key not exported in jail');
+        assert.ok(!String(keyOut.stdout).includes(STORED));
+        // A refreshable session wins over the stored key.
+        writeJson(path.join(accountsDir, 'beta', 'auth.json'), { accessToken: 'session-access-token-x', refreshToken: 'session-refresh-token-x' });
+        const session = xiLaunch.buildLaunch(common);
+        homes.push(session.runHome);
+        assert.strictEqual(session.apiKeyMount, null);
+        assert.ok(!session.args.includes(xiLaunch.JAIL_KEY_FILE));
+        assert.throws(() => keyStore.setKey('beta', 'not-a-key', accountsDir), /Not a Cursor API key/);
+        keyStore.clearKey('beta', accountsDir);
+        assert.strictEqual(keyStore.last4('beta', accountsDir), '');
+
         assert.throws(() => {
             xiLaunch.buildLaunch(Object.assign({}, common, { homeAccessDir: os.homedir() }));
         }, /whole home directory/);
