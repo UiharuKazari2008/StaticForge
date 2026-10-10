@@ -12,6 +12,7 @@ const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { createMcpAuthMiddleware } = require('./auth');
 const { McpOAuthProvider } = require('./mcpOAuthProvider');
 const { createOAuthRoutes } = require('./mcpOAuthRoutes');
+const novelaiExplore = require('./novelaiExploreGallery');
 const { scopesAllowPacket } = require('./applicationAuthManager');
 const {
     dispatchAgentPacket,
@@ -166,6 +167,8 @@ if (!TOOL_RATE_GROUPS.ensure_artifact) TOOL_RATE_GROUPS.ensure_artifact = 'galle
 if (!TOOL_RATE_GROUPS.resolve_lookback) TOOL_RATE_GROUPS.resolve_lookback = 'search';
 if (!TOOL_RATE_GROUPS.search_explore) TOOL_RATE_GROUPS.search_explore = 'search';
 if (!TOOL_RATE_GROUPS.get_explore_post) TOOL_RATE_GROUPS.get_explore_post = 'search';
+if (!TOOL_RATE_GROUPS.count_explore) TOOL_RATE_GROUPS.count_explore = 'search';
+if (!TOOL_RATE_GROUPS.get_explore_image) TOOL_RATE_GROUPS.get_explore_image = 'search';
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -1283,39 +1286,76 @@ const TOOL_DEFS = [
         name: 'search_explore',
         core: true,
         allowAutofill: true,
-        description: 'Search the NovelAI Explore (Agora) community image gallery. Returns recent/top generated images from the public gallery. Supports sorting (new, top, random), periods (day, week, month, all), text search, and parity filters model / aspect / vt (vibe transfer). Use it to find community examples of prompts or characters.',
-        scope: 'search',
+        description: 'Search NovelAI Explore (Agora). Default mode is compact: id, creator, time, model, sampler, steps, guidance, rescale, seed, quality and UC preset, base prompt and UC, character prompts with coordinates, vibe flag, likes, and a thumbnail id or preview URL. No full image. Page with cursor. Pass period with a text search to keep the time window. mode full adds title and size only. fields adds a missing key (title, width, height, noiseSchedule, nai_metadata). Run from the Laboratory workspace.',
+        scope: 'explore',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             properties: {
-                search: { type: 'string', description: 'Text query to search for' },
+                search: { type: 'string', description: 'Tag query. Commas are separate tags. Multi-word tags are sent in Danbooru form.' },
                 sort: {
                     type: 'string',
-                    description: 'new (default), top, random',
-                    enum: ['new', 'top', 'random']
+                    description: 'new (default), top, hot, random. A text search with period uses top so the window applies.',
+                    enum: ['new', 'top', 'hot', 'random']
                 },
                 period: {
                     type: 'string',
-                    description: 'day, week, month, all (default day for top)',
+                    description: 'day, week, month, all. Applied on text search when set.',
                     enum: ['day', 'week', 'month', 'all']
                 },
                 model: {
                     type: 'string',
-                    description: 'Optional Explore model slug filter (system:model:<id>), e.g. nai-diffusion-5-full, nai-diffusion-5-curated, nai-diffusion-v4'
+                    description: 'Explore model id. nai-diffusion-v4 is V4.5 Full (nai-diffusion-4-5-full). Also nai-diffusion-5-full, nai-diffusion-4-5-curated, nai-diffusion-4-full.'
                 },
                 aspect: {
                     type: 'string',
-                    description: 'Optional aspect filter: portrait, landscape, or square',
+                    description: 'portrait, landscape, or square',
                     enum: ['portrait', 'landscape', 'square']
                 },
                 vt: {
                     type: 'string',
-                    description: 'Optional vibe-transfer filter: with → posts that used vibe transfer',
+                    description: 'with → posts that used vibe transfer',
                     enum: ['with']
                 },
+                mode: {
+                    type: 'string',
+                    description: 'compact (default) or full. Neither includes the image file.',
+                    enum: ['compact', 'full']
+                },
+                fields: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Extra keys besides the compact post: title, description, width, height, blurhash, likedBySelf, noiseSchedule, source, nai_metadata.'
+                },
                 limit: { type: 'number', description: 'Max results (default 50, limit 50)' },
-                page: { type: 'number', description: 'Page number (default 1)' }
+                cursor: { type: 'string', description: 'nextCursor from the previous page' },
+                page: { type: 'number', description: 'Page number when cursor is omitted (default 1)' }
+            }
+        }
+    },
+    {
+        name: 'count_explore',
+        core: true,
+        allowAutofill: true,
+        description: 'Server-side Explore counts. Pass tags or creators and a period (day, week, month, all) or from/to. Returns post count and distinct creator count per tag. Does not return posts or images. Use this instead of paging search_explore. Run from the Laboratory workspace.',
+        scope: 'explore',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                tags: { type: 'array', items: { type: 'string' }, description: 'Tags to count. One row each.' },
+                tag: { type: 'string', description: 'Single tag when tags is omitted.' },
+                creators: { type: 'array', items: { type: 'string' }, description: 'Creator ids to count instead of tags.' },
+                period: {
+                    type: 'string',
+                    description: 'day, week, month, all',
+                    enum: ['day', 'week', 'month', 'all']
+                },
+                from: { type: 'string', description: 'ISO start of a custom window' },
+                to: { type: 'string', description: 'ISO end of a custom window' },
+                model: { type: 'string' },
+                aspect: { type: 'string', enum: ['portrait', 'landscape', 'square'] },
+                vt: { type: 'string', enum: ['with'] }
             }
         }
     },
@@ -1323,14 +1363,35 @@ const TOOL_DEFS = [
         name: 'get_explore_post',
         core: true,
         allowAutofill: true,
-        description: 'Get full details for a single NovelAI Explore (Agora) post including original prompt, settings, and full resolution image URL (if not deleted/hidden).',
-        scope: 'search',
+        description: 'One NovelAI Explore post in the compact shape (prompt, settings, likes). The full image URL is included only when includeImage is true. Otherwise call get_explore_image. fields adds anything compact omitted. Run from the Laboratory workspace.',
+        scope: 'explore',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             required: ['postId'],
             properties: {
-                postId: { type: 'string', description: 'The UUID of the explore post' }
+                postId: { type: 'string', description: 'Explore post UUID' },
+                includeImage: { type: 'boolean', description: 'When true, include the full image URL. Default false.' },
+                fields: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Extra keys: title, width, height, blurhash, noiseSchedule, nai_metadata.'
+                }
+            }
+        }
+    },
+    {
+        name: 'get_explore_image',
+        core: true,
+        allowAutofill: true,
+        description: 'Full image URL for one Explore post. Call this only when the compact post is not enough and you need the picture. Returns a URL, not image bytes. Run from the Laboratory workspace.',
+        scope: 'explore',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['postId'],
+            properties: {
+                postId: { type: 'string', description: 'Explore post UUID' }
             }
         }
     },
@@ -5426,6 +5487,7 @@ function toolAllowedForScopes(scopes, tool) {
             || agentHasNamedScope(scopes, 'references');
     }
     if (agentHasNamedScope(scopes, tool.scope)) return true;
+    if (tool.scope === 'explore' && agentHasNamedScope(scopes, 'search')) return true;
     // modules/applicationAuthManager.js — autofill already includes wiki packets
     if (tool.scope === 'wiki' && agentHasNamedScope(scopes, 'autofill')) return true;
     if (tool.allowAutofill && agentHasNamedScope(scopes, 'autofill')) return true;
@@ -5477,7 +5539,7 @@ const ADVANCED_CORE_HINTS = [
         test: (q) => /memor/i.test(q) || /saveknowledgememory|searchknowledgememor|retrieveknowledgememory|listknowledgememor/i.test(q.replace(/[\s_]+/g, '')),
         names: ['list_memories', 'search_memories', 'get_memory', 'save_memory', 'listKnowledgeMemories', 'searchKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory']
     },
-    { test: (q) => /agora|explore|novelai explore|explore gallery/i.test(q), names: ['search_explore', 'get_explore_post'] },
+    { test: (q) => /agora|explore|novelai explore|explore gallery/i.test(q), names: ['search_explore', 'count_explore', 'get_explore_post', 'get_explore_image'] },
     { test: (q) => /\bnax\b|top votes|artist tag/i.test(q), names: ['search_nax', 'list_nax_galleries', 'generate_nax_tag', 'delete_nax_tag'] },
     { test: (q) => /character card|get_character_card|appearance wiki/i.test(q), names: ['get_character_card'] },
     { test: (q) => /lookback|dsap:\/\/lookback/i.test(q), names: ['resolve_lookback'] },
@@ -6042,14 +6104,46 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'search_explore') {
         const explore = globalResources.getNovelaiExploreGallery();
-        const data = await explore.getExploreGallery(input);
-        return mcpTextResult({ success: true, ...data });
+        const query = {
+            ...input,
+            honorPeriod: input.period != null && String(input.period).trim() !== '',
+            skipThumbPrefetch: true
+        };
+        const data = await explore.getExploreGallery(query);
+        return mcpTextResult(novelaiExplore.shapeExploreSearchForAgent(data, query));
+    }
+
+    if (name === 'count_explore') {
+        const explore = globalResources.getNovelaiExploreGallery();
+        const data = await explore.countExplore(input);
+        return mcpTextResult(data);
     }
 
     if (name === 'get_explore_post') {
         const explore = globalResources.getNovelaiExploreGallery();
         const data = await explore.getExplorePost(input.postId, input);
-        return mcpTextResult({ success: true, post: data });
+        const includeImage = input.includeImage === true;
+        let imageUrl = null;
+        if (includeImage && typeof explore.ensureExploreImage === 'function') {
+            const image = await explore.ensureExploreImage(input.postId, 'blob', input);
+            imageUrl = image && (image.publicUrl || image.url) ? (image.publicUrl || image.url) : null;
+        }
+        const post = novelaiExplore.compactExplorePost(
+            { ...data, imageUrl },
+            { includeImage, fields: input.fields }
+        );
+        return mcpTextResult({ success: true, post });
+    }
+
+    if (name === 'get_explore_image') {
+        const explore = globalResources.getNovelaiExploreGallery();
+        const postId = input.postId || input.id;
+        const image = await explore.ensureExploreImage(postId, 'blob', input);
+        return mcpTextResult({
+            success: true,
+            id: String(postId || ''),
+            url: image && (image.publicUrl || image.url) ? (image.publicUrl || image.url) : null
+        });
     }
 
     if (name === 'search_nax') {

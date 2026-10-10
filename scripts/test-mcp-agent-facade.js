@@ -812,7 +812,7 @@ assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 'running' }, {}), 'running');
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => null }, {}), null);
 assert.ok(coreNames.includes('update_meal_images'));
-assert.strictEqual(coreNames.length, 103);
+assert.strictEqual(coreNames.length, 105);
 assert.ok(coreNames.includes('ledge'));
 assert.ok(coreNames.includes('generate_nax_tag'));
 assert.ok(coreNames.includes('delete_nax_tag'));
@@ -1114,7 +1114,8 @@ async function runMcpAuth(options) {
         json(body) {
             this.body = body;
             return this;
-        }
+        },
+        on() {}
     };
     let continued = false;
     await createMcpAuthMiddleware(globalResources)(req, response, () => {
@@ -1320,9 +1321,13 @@ async function main() {
     );
     const exploreListNames = exploreListed.body.result.tools.map(t => t.name);
     assert.ok(exploreListNames.includes('search_explore'));
+    assert.ok(exploreListNames.includes('count_explore'));
     assert.ok(exploreListNames.includes('get_explore_post'));
+    assert.ok(exploreListNames.includes('get_explore_image'));
     assert.strictEqual(_test.rateGroupForTool('search_explore'), 'search');
+    assert.strictEqual(_test.rateGroupForTool('count_explore'), 'search');
     assert.strictEqual(_test.rateGroupForTool('get_explore_post'), 'search');
+    assert.strictEqual(_test.rateGroupForTool('get_explore_image'), 'search');
 
     const mockExplore = {
         getExploreGallery: async (input) => ({ rawResults: [{ id: 'exp123', prompt: 'test' }], pagination: { limit: 50, offset: 0, total: 100 } }),
@@ -1337,7 +1342,10 @@ async function main() {
     );
     const expSearchPayload = JSON.parse(expSearchCall.content[0].text);
     assert.strictEqual(expSearchPayload.success, true);
-    assert.strictEqual(expSearchPayload.rawResults[0].id, 'exp123');
+    assert.strictEqual(expSearchPayload.mode, 'compact');
+    assert.strictEqual(expSearchPayload.posts[0].id, 'exp123');
+    assert.strictEqual(expSearchPayload.posts[0].prompt, 'test');
+    assert.ok(!Object.prototype.hasOwnProperty.call(expSearchPayload.posts[0], 'nai_metadata'));
     assert.strictEqual(expSearchPayload.pagination.limit, 50);
 
     const expPostCall = await _test.callTool(
@@ -1350,6 +1358,7 @@ async function main() {
     assert.strictEqual(expPostPayload.success, true);
     assert.strictEqual(expPostPayload.post.id, 'exp123');
     assert.strictEqual(expPostPayload.post.prompt, 'test');
+    assert.ok(!Object.prototype.hasOwnProperty.call(expPostPayload.post, 'imageUrl'));
 
     const naxCall = await _test.callTool(
         { getNaxTagsDatabase: () => mockNax },
@@ -2106,7 +2115,7 @@ async function runDirectorMcpTests() {
     assert.ok(vfsWriteOutside.content[0].text.includes('sourcePath'));
 }
 
-main().catch((error) => {
+main().then(() => process.exit(0)).catch((error) => {
     console.error(error);
     process.exit(1);
 });

@@ -19,10 +19,11 @@ const EXPLORE_PERIOD_OPTIONS = [
 const EXPLORE_MODEL_OPTIONS = [
     { value: '', label: 'All Models' },
     { value: 'nai-diffusion-3', label: 'NAI Diffusion V3' },
-    { value: 'nai-diffusion-4-curated', label: 'NAI Diffusion V4 Curated' },
+    { value: 'nai-diffusion-furry-3', label: 'NAI Diffusion Furry V3' },
+    { value: 'nai-diffusion-4-curated-preview', label: 'NAI Diffusion V4 Curated' },
     { value: 'nai-diffusion-4-full', label: 'NAI Diffusion V4 Full' },
-    { value: 'nai-diffusion-v4-curated', label: 'NAI Diffusion V4.5 Curated' },
-    { value: 'nai-diffusion-v4', label: 'NAI Diffusion V4.5 Full' },
+    { value: 'nai-diffusion-4-5-curated', label: 'NAI Diffusion V4.5 Curated' },
+    { value: 'nai-diffusion-4-5-full', label: 'NAI Diffusion V4.5 Full' },
     { value: 'nai-diffusion-5-curated', label: 'NAI Diffusion V5 Curated' },
     { value: 'nai-diffusion-5-full', label: 'NAI Diffusion V5 Full' }
 ];
