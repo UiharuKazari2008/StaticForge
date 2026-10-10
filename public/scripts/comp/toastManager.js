@@ -1561,3 +1561,7 @@ function handleToastButtonClick(buttonId) {
         console.error('Button handler not found for ID:', buttonId);
     }
 }
+
+if (typeof window !== 'undefined') {
+    window.handleToastButtonClick = handleToastButtonClick;
+}
