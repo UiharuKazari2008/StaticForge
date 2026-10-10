@@ -921,21 +921,30 @@ async function handleGetCursorAccounts(handlersCtx, ws, message, clientInfo, wsS
                 } catch (_) {}
             }
             const meta = cursorAccountAuthStore.readAccountProfileMeta(acc.id);
+            const pub = cursorAccountAuthStore.publicCursorAccount(acc) || {};
             return {
-                ...acc,
-                token: acc.token || meta.token || '',
+                id: pub.id,
+                name: pub.name,
+                email: pub.email,
+                color: pub.color,
+                isDefault: pub.isDefault,
+                isEmpty: pub.isEmpty,
                 displayName: meta.displayName || '',
                 usage: cursorUsage.publicAccountUsage(row)
             };
         }));
+
+        const personaBinding = (row) => ({
+            activeAccountId: (row && row.activeAccountId) || 'default'
+        });
 
         handlersCtx.sendToClient(ws, {
             type: 'get_cursor_accounts_response',
             requestId: message.requestId,
             data: {
                 success: true,
-                wren: cursorData.wren || { activeAccountId: 'default', customToken: '' },
-                xi: cursorData.xi || { activeAccountId: 'default', customToken: '' },
+                wren: personaBinding(cursorData.wren),
+                xi: personaBinding(cursorData.xi),
                 accounts: accountsWithUsage,
                 wrenStatus,
                 xiStatus,
@@ -1098,7 +1107,7 @@ async function handleSaveCursorAccount(handlersCtx, ws, message, clientInfo, wsS
             return;
         }
 
-        const { id, name, email, token, persona = 'wren', makeActive = true, color } = message;
+        const { id, name, email, token, persona = 'wren', makeActive = true, color, tokenKind } = message;
         if (!name || typeof name !== 'string' || name.trim().length === 0) {
             handlersCtx.sendError(ws, 'Profile name is required', 'MISSING_NAME', message.requestId);
             return;
@@ -1117,8 +1126,13 @@ async function handleSaveCursorAccount(handlersCtx, ws, message, clientInfo, wsS
         const existingIdx = cursorData.accounts.findIndex(a => a.id === profileId);
 
         const cursorAccountAuthStore = require('../../cursorAccountAuthStore');
-        const tokenStr = (token || '').trim();
+        const incomingToken = (token || '').trim();
         const isNewProfile = existingIdx < 0;
+        const previous = existingIdx >= 0 ? cursorData.accounts[existingIdx] : null;
+        const keepStoredToken = !incomingToken && previous && !previous.isEmpty;
+        const tokenStr = keepStoredToken ? String(previous.token || '') : incomingToken;
+        const explicitKind = tokenKind === 'apiKey' || tokenKind === 'accessToken' ? tokenKind : '';
+        const storedKind = keepStoredToken ? (previous.tokenKind || '') : explicitKind;
         const isEmptyNew = isNewProfile && !tokenStr && profileId !== 'default';
         const targetPersona = (persona === 'xi') ? 'xi' : 'wren';
 
@@ -1146,7 +1160,8 @@ async function handleSaveCursorAccount(handlersCtx, ws, message, clientInfo, wsS
             name: name.trim(),
             email: extractedEmail,
             token: isEmptyNew ? '' : tokenStr,
-            isEmpty: isEmptyNew,
+            tokenKind: isEmptyNew ? '' : storedKind,
+            isEmpty: isNewProfile ? isEmptyNew : (keepStoredToken ? !!previous.isEmpty : !tokenStr),
             isDefault: profileId === 'default',
             color: cursorAccountAuthStore.normalizeAccountColor(color)
         };
@@ -1227,29 +1242,38 @@ async function handleLoginCursorAccount(handlersCtx, ws, message, clientInfo, ws
         const cursorAccountAuthStore = require('../../cursorAccountAuthStore');
         const job = cursorAccountAuthStore.beginCursorAccountLogin(accountId, {
             onDone: (result) => {
-                try {
-                    const current = handlersCtx.globalResources.getSecureConfig() || {};
-                    const cursorData = current.cursorAccounts;
-                    const acc = cursorData && Array.isArray(cursorData.accounts)
-                        ? cursorData.accounts.find((item) => item.id === accountId)
-                        : null;
-                    if (acc) {
-                        if (result.email) acc.email = result.email;
-                        acc.isEmpty = false;
-                        handlersCtx.globalResources.modifyConfig('secureConfig').assign('cursorAccounts', cursorData);
+                void (async () => {
+                    let email = result && result.email ? result.email : '';
+                    let provisionError = null;
+                    try {
+                        const current = handlersCtx.globalResources.getSecureConfig() || {};
+                        const cursorData = current.cursorAccounts || { accounts: [] };
+                        const recorded = await cursorAccountAuthStore.recordGuidedLogin(cursorData, accountId, result || {});
+                        email = recorded.email || email;
+                        provisionError = recorded.provisionError;
+                        const pending = handlersCtx.globalResources.modifyConfig('secureConfig', undefined, { immediate: true }).assign('cursorAccounts', cursorData);
+                        if (pending && typeof pending.then === 'function') await pending;
+                        cursorAccountAuthStore.restoreActiveCursorAccounts(handlersCtx.globalResources);
+                        try { require('../../cursorUsage').invalidateCursorUsage(); } catch (_) { /* usage refresh is optional */ }
+                    } catch (err) {
+                        provisionError = err;
+                        console.error('Cursor login capture failed:', err);
                     }
-                    cursorAccountAuthStore.restoreActiveCursorAccounts(handlersCtx.globalResources);
-                    try { require('../../cursorUsage').invalidateCursorUsage(); } catch (_) { /* usage refresh is optional */ }
-                } catch (err) {
-                    console.error('Cursor login capture failed:', err);
-                }
-                if (wsServer && typeof wsServer.broadcast === 'function') {
-                    wsServer.broadcast({
-                        type: 'cursor_account_login_complete',
-                        data: { success: true, accountId, email: result.email || '' },
-                        timestamp: new Date().toISOString()
-                    });
-                }
+                    if (wsServer && typeof wsServer.broadcast === 'function') {
+                        wsServer.broadcast({
+                            type: 'cursor_account_login_complete',
+                            data: {
+                                success: !provisionError,
+                                accountId,
+                                email: email || '',
+                                message: provisionError
+                                    ? (provisionError.message || 'Login was saved, but the account API key was not created')
+                                    : ''
+                            },
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                })();
             },
             onFail: (error) => {
                 if (wsServer && typeof wsServer.broadcast === 'function') {

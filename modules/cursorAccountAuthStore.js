@@ -61,6 +61,70 @@ function isEmailString(str) {
     return typeof str === 'string' && str.includes('@') && !str.startsWith('(');
 }
 
+function isJwt(token) {
+    const parts = String(token || '').split('.');
+    if (parts.length !== 3) return false;
+    return parts.every((part) => part.length > 0 && /^[A-Za-z0-9_-]+$/.test(part));
+}
+
+// User API keys from the Cursor dashboard are `crsr_…`. `sk-` is the older check.
+// A session from `agent login` is a JWT. The CLI only exchanges and refreshes real API keys.
+function isCursorApiKey(token) {
+    const raw = String(token || '').trim();
+    if (!raw || raw === 'empty' || raw.startsWith('{') || isJwt(raw)) return false;
+    return raw.startsWith('crsr_') || raw.startsWith('sk-');
+}
+
+function credentialKind(token, explicit) {
+    if (explicit === 'apiKey' || explicit === 'accessToken') return explicit;
+    const raw = String(token || '').trim();
+    if (!raw || raw === 'empty' || raw.startsWith('{')) return '';
+    return isCursorApiKey(raw) ? 'apiKey' : 'accessToken';
+}
+
+function dreamscapeApiKeyName(accountId) {
+    const id = String(accountId || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `dreamscape-${id}`;
+}
+
+function normalizeAuthRecord(auth) {
+    const src = auth && typeof auth === 'object' ? auth : {};
+    const apiKey = typeof src.apiKey === 'string' ? src.apiKey.trim() : '';
+    const accessToken = typeof src.accessToken === 'string' ? src.accessToken.trim() : '';
+    if (isCursorApiKey(apiKey) || isCursorApiKey(accessToken)) {
+        return { apiKey: isCursorApiKey(apiKey) ? apiKey : accessToken };
+    }
+    const next = {};
+    if (accessToken) next.accessToken = accessToken;
+    if (typeof src.refreshToken === 'string' && src.refreshToken.trim()) next.refreshToken = src.refreshToken.trim();
+    if (apiKey) next.apiKey = apiKey;
+    return next;
+}
+
+function authFromCredential(rawToken, explicitKind) {
+    const raw = String(rawToken || '').trim();
+    if (!raw || raw === 'empty') return {};
+    if (raw.startsWith('{')) {
+        try {
+            return normalizeAuthRecord(JSON.parse(raw));
+        } catch (_) {
+            return { accessToken: raw };
+        }
+    }
+    if (credentialKind(raw, explicitKind) === 'apiKey') return { apiKey: raw };
+    return { accessToken: raw };
+}
+
+// Login and other Cursor spawns must not inherit the key that launched Dreamscape.
+function spawnEnvWithoutInheritedCursor(overrides) {
+    const env = {};
+    Object.keys(process.env).forEach((key) => {
+        if (key.startsWith('CURSOR_') || key.startsWith('VSCODE_')) return;
+        env[key] = process.env[key];
+    });
+    return Object.assign(env, overrides || {});
+}
+
 function extractEmailFromToken(token) {
     if (!token || typeof token !== 'string') return '';
     try {
@@ -134,26 +198,20 @@ function saveAccountAuthFiles(accountId, profile, customToken) {
 
     const rawToken = (customToken !== undefined ? customToken : (profile.token || '')).trim();
     let authData = {};
+    const explicitKind = profile && (profile.tokenKind === 'apiKey' || profile.tokenKind === 'accessToken')
+        ? profile.tokenKind
+        : '';
 
     const authFile = path.join(accDir, 'auth.json');
     if (profile.isEmpty || rawToken === 'empty') {
         authData = {};
-    } else if (rawToken.startsWith('{')) {
-        try {
-            authData = JSON.parse(rawToken);
-        } catch (_) {
-            authData.accessToken = rawToken;
-        }
-    } else if (rawToken.startsWith('sk-')) {
-        authData.apiKey = rawToken;
-        authData.accessToken = rawToken;
     } else if (rawToken) {
-        authData.accessToken = rawToken;
+        authData = authFromCredential(rawToken, explicitKind);
     } else if (fs.existsSync(authFile)) {
-        authData = readJson(authFile) || {};
+        authData = normalizeAuthRecord(readJson(authFile) || {});
     } else if (accountId === 'default') {
         const hostAuth = path.join(os.homedir(), '.config', 'cursor', 'auth.json');
-        authData = readJson(hostAuth) || {};
+        authData = normalizeAuthRecord(readJson(hostAuth) || {});
     } else {
         authData = {};
     }
@@ -423,7 +481,13 @@ function finishAccountLogin(accountId) {
     loginJobs.delete(accountId);
     const email = extractEmailFromToken(auth.accessToken) || '';
     const listeners = job.listeners.splice(0);
-    const result = { accountId, email, token: auth.accessToken || auth.apiKey || '' };
+    const result = {
+        accountId,
+        email,
+        token: auth.accessToken || auth.apiKey || '',
+        accessToken: auth.accessToken || '',
+        apiKey: isCursorApiKey(auth.apiKey) ? auth.apiKey : ''
+    };
     listeners.forEach((listener) => {
         if (listener.onDone) listener.onDone(result);
     });
@@ -469,7 +533,7 @@ function beginCursorAccountLogin(accountId, listener) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* fresh staging dir */ }
     ensureDir(dir);
     const child = require('child_process').spawn(agentBin, ['login'], {
-        env: cleanCursorChildEnv({
+        env: spawnEnvWithoutInheritedCursor({
             NO_OPEN_BROWSER: '1',
             CURSOR_CONFIG_DIR: dir,
             BROWSER: 'echo'
@@ -508,6 +572,123 @@ function beginCursorAccountLogin(accountId, listener) {
     job.timer = setInterval(() => { finishAccountLogin(id); }, 1000);
     job.failTimer = setTimeout(() => failAccountLogin(id, 'Login timed out'), LOGIN_WAIT_MS);
     return job;
+}
+
+const DASHBOARD_ROOT = 'https://api2.cursor.sh/aiserver.v1.DashboardService';
+
+function dashboardKeyList(body) {
+    if (!body || typeof body !== 'object') return [];
+    const list = body.apiKeys || body.api_keys || body.userApiKeys || body.keys;
+    return Array.isArray(list) ? list : [];
+}
+
+function dashboardKeyId(row) {
+    if (!row || typeof row !== 'object') return null;
+    const id = row.id != null ? row.id : row.keyId;
+    if (typeof id === 'number' && Number.isFinite(id)) return id;
+    if (typeof id === 'string' && /^\d+$/.test(id)) return Number(id);
+    return null;
+}
+
+async function postCursorDashboard(method, accessToken, body, fetchImpl) {
+    const doFetch = fetchImpl || fetch;
+    const res = await doFetch(`${DASHBOARD_ROOT}/${method}`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'Connect-Protocol-Version': '1'
+        },
+        body: JSON.stringify(body || {}),
+        signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+            ? AbortSignal.timeout(20000)
+            : undefined
+    });
+    const text = await res.text();
+    let data = {};
+    if (text) {
+        try { data = JSON.parse(text); } catch (_) { data = { message: String(text).slice(0, 300) }; }
+    }
+    if (!res.ok) {
+        const error = new Error(data.message || data.error || `Cursor ${method} failed (${res.status})`);
+        error.status = res.status;
+        throw error;
+    }
+    return data;
+}
+
+// Drop every previously minted dreamscape-<accountId> key, then create a new one.
+async function provisionNamedApiKey(accountId, accessToken, fetchImpl) {
+    const session = String(accessToken || '').trim();
+    if (!session) {
+        const error = new Error('Cursor login did not return a session');
+        error.code = 'MISSING_SESSION';
+        throw error;
+    }
+    const name = dreamscapeApiKeyName(accountId);
+    const listed = await postCursorDashboard('ListUserApiKeys', session, {}, fetchImpl);
+    const stale = dashboardKeyList(listed).filter((row) => String((row && row.name) || '').trim() === name);
+    for (const row of stale) {
+        const id = dashboardKeyId(row);
+        if (id == null) continue;
+        await postCursorDashboard('RevokeUserApiKey', session, { id }, fetchImpl);
+    }
+    const created = await postCursorDashboard('CreateUserApiKey', session, { name }, fetchImpl);
+    const apiKey = created && (created.apiKey || created.api_key);
+    if (!isCursorApiKey(apiKey)) {
+        const error = new Error('Cursor did not return an API key for this account');
+        error.code = 'API_KEY_MISSING';
+        throw error;
+    }
+    return apiKey;
+}
+
+// Persist the guided login onto the account profile. The stored credential is the
+// named API key. A failed mint keeps the fresh session so restore does not write
+// the previous token back over the login that just succeeded.
+async function recordGuidedLogin(cursorData, accountId, session, deps) {
+    const data = cursorData && typeof cursorData === 'object' ? cursorData : { accounts: [] };
+    const incoming = session && typeof session === 'object' ? session : {};
+    const accessToken = incoming.accessToken || (isJwt(incoming.token) ? incoming.token : '');
+    let apiKey = isCursorApiKey(incoming.apiKey) ? incoming.apiKey : '';
+    let provisionError = null;
+    if (!apiKey && accessToken) {
+        try {
+            apiKey = await provisionNamedApiKey(accountId, accessToken, deps && deps.fetchImpl);
+        } catch (err) {
+            provisionError = err;
+        }
+    }
+    const token = apiKey || accessToken || (isCursorApiKey(incoming.token) ? incoming.token : '');
+    const email = incoming.email || extractEmailFromToken(accessToken) || '';
+    const tokenKind = (apiKey || isCursorApiKey(token)) ? 'apiKey' : (token ? 'accessToken' : '');
+    const profile = {
+        id: accountId,
+        name: '',
+        email: email || '(Pending Login)',
+        token,
+        tokenKind,
+        isEmpty: !token
+    };
+    const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+    const acc = accounts.find((item) => item && item.id === accountId);
+    if (acc) {
+        if (email) acc.email = email;
+        acc.token = token;
+        acc.tokenKind = tokenKind;
+        acc.isEmpty = !token;
+        profile.name = acc.name || '';
+        profile.email = acc.email || profile.email;
+    }
+    saveAccountAuthFiles(accountId, profile, token || 'empty');
+    return {
+        cursorData: data,
+        account: acc || null,
+        email: profile.email,
+        token,
+        tokenKind,
+        provisionError
+    };
 }
 
 function restoreActiveCursorAccounts(gr) {
@@ -681,11 +862,29 @@ module.exports = {
     normalizeAccountColor,
     beginCursorAccountLogin,
     restoreActiveCursorAccounts,
+    isCursorApiKey,
+    isJwt,
+    credentialKind,
+    dreamscapeApiKeyName,
+    spawnEnvWithoutInheritedCursor,
+    provisionNamedApiKey,
+    recordGuidedLogin,
     tokenSubject,
     identitiesMatch,
     credentialBytesDiffer,
     readAccountProfileMeta,
     syncActiveAccountCredentials,
     describeLiveAccount,
-    _test: { identitiesMatch, credentialBytesDiffer, tokenSubject, authSnapshot }
+    _test: {
+        identitiesMatch,
+        credentialBytesDiffer,
+        tokenSubject,
+        authSnapshot,
+        isCursorApiKey,
+        credentialKind,
+        normalizeAuthRecord,
+        authFromCredential,
+        spawnEnvWithoutInheritedCursor,
+        dreamscapeApiKeyName
+    }
 };

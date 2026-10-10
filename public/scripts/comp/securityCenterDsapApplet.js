@@ -327,7 +327,12 @@ ${dsapSmfBuildHeader({
       <div class="sec-readonly-row"><span class="sec-dsap-setting-hint">Display name</span> <span id="secCursorAccountDisplayName" class="sec-readonly-value">—</span></div>
       <label>Badge color<input type="text" id="secCursorAccountColorInput" class="sec-input" placeholder="#5b8def" maxlength="7"></label>
       <label>Email Address<input type="text" id="secCursorAccountEmailInput" class="sec-input" placeholder="user@example.com (auto-detected if token is pasted)"></label>
-      <label>API Key / Access Token / auth.json JSON<textarea id="secCursorAccountTokenInput" class="sec-input" rows="3" style="font-family: monospace; font-size: 0.85em;" placeholder="Paste Cursor API Key (sk-...), Access Token (eyJ...), or auth.json JSON object"></textarea></label>
+      <label>Credential type<select id="secCursorAccountTokenKind" class="sec-input">
+        <option value="">Auto (API key or session token)</option>
+        <option value="apiKey">API key</option>
+        <option value="accessToken">Access token</option>
+      </select></label>
+      <label>API Key / Access Token / auth.json JSON<textarea id="secCursorAccountTokenInput" class="sec-input" rows="3" style="font-family: monospace; font-size: 0.85em;" placeholder="Paste a Cursor API key (crsr_…), a session token (eyJ…), or an auth.json object. Leave blank when editing to keep the saved key."></textarea></label>
       <div class="sec-appkeys-form-actions">
         <button type="button" id="secCursorAccountCopyToken" class="sec-dsap-action-btn sec-btn-small" title="Copy the token in this field"><i class="fas fa-copy"></i> Copy token</button>
       </div>
@@ -1357,6 +1362,8 @@ const securityDsapDriver = {
                     root.querySelector('#secCursorAccountColorInput').value = '';
                     root.querySelector('#secCursorAccountEmailInput').value = '';
                     root.querySelector('#secCursorAccountTokenInput').value = '';
+                    const tokenKind = root.querySelector('#secCursorAccountTokenKind');
+                    if (tokenKind) tokenKind.value = '';
                     root.querySelector('#secCursorAccountPanelTitle').textContent = 'Add Cursor Account Profile';
                     panel.classList.remove('hidden');
                 }
@@ -2318,6 +2325,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         const name = root.querySelector('#secCursorAccountNameInput')?.value?.trim();
         const email = root.querySelector('#secCursorAccountEmailInput')?.value?.trim();
         const token = root.querySelector('#secCursorAccountTokenInput')?.value?.trim();
+        const tokenKind = root.querySelector('#secCursorAccountTokenKind')?.value || '';
         const color = root.querySelector('#secCursorAccountColorInput')?.value?.trim();
 
         if (!name) {
@@ -2328,7 +2336,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (!(await this._ensureWs())) return;
 
         try {
-            const response = await wsClient.saveCursorAccount({ id, name, email, token, color });
+            const response = await wsClient.saveCursorAccount({ id, name, email, token, tokenKind, color });
             const data = response?.data || response;
             if (data?.success) {
                 root.querySelector('#secCursorAccountPanel')?.classList.add('hidden');
@@ -2384,6 +2392,8 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         root.querySelector('#secCursorAccountColorInput').value = acc.color || '';
         root.querySelector('#secCursorAccountEmailInput').value = acc.email || '';
         root.querySelector('#secCursorAccountTokenInput').value = acc.token || '';
+        const tokenKind = root.querySelector('#secCursorAccountTokenKind');
+        if (tokenKind) tokenKind.value = acc.tokenKind === 'apiKey' || acc.tokenKind === 'accessToken' ? acc.tokenKind : '';
         root.querySelector('#secCursorAccountPanelTitle').textContent = 'Edit Cursor Account Profile';
         panel.classList.remove('hidden');
     },
