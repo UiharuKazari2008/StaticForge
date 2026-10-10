@@ -954,6 +954,11 @@ async function followChromeLink(session, x, y) {
     try {
         href = await session.page.evaluate((px, py) => {
             let el = document.elementFromPoint(px, py);
+            while (el && el.shadowRoot) {
+                const inner = el.shadowRoot.elementFromPoint(px, py);
+                if (!inner || inner === el) break;
+                el = inner;
+            }
             const seen = new Set();
             while (el && !seen.has(el)) {
                 seen.add(el);
@@ -1665,7 +1670,26 @@ async function onViewerMessage(session, raw) {
         if (Number.isFinite(x) && Number.isFinite(y)) {
             try {
                 info = await page.evaluate((px, py) => {
-                    const el = document.elementFromPoint(px, py);
+                    let el = document.elementFromPoint(px, py);
+                    while (el && el.shadowRoot) {
+                        const inner = el.shadowRoot.elementFromPoint(px, py);
+                        if (!inner || inner === el) break;
+                        el = inner;
+                    }
+                    const closestAcross = (node, selector) => {
+                        let cur = node;
+                        const seen = new Set();
+                        while (cur && !seen.has(cur)) {
+                            seen.add(cur);
+                            if (cur.closest) {
+                                const hit = cur.closest(selector);
+                                if (hit) return hit;
+                            }
+                            const root = cur.getRootNode && cur.getRootNode();
+                            cur = root && root.host ? root.host : null;
+                        }
+                        return null;
+                    };
                     const sel = window.getSelection();
                     const out = {
                         selection: sel ? String(sel) : '',
@@ -1676,7 +1700,7 @@ async function onViewerMessage(session, raw) {
                         editable: false
                     };
                     if (!el) return out;
-                    const field = el.closest ? el.closest('input, textarea, [contenteditable]') : null;
+                    const field = closestAcross(el, 'input, textarea, [contenteditable]');
                     const nonText = /^(button|checkbox|color|file|hidden|image|radio|range|reset|submit)$/i;
                     if (field && !field.disabled && !field.readOnly
                         && (field.tagName !== 'INPUT' || !nonText.test(field.type))
@@ -1684,7 +1708,10 @@ async function onViewerMessage(session, raw) {
                         out.editable = true;
                         if (document.activeElement !== field) field.focus();
                     }
-                    const active = document.activeElement;
+                    let active = document.activeElement;
+                    while (active && active.shadowRoot && active.shadowRoot.activeElement) {
+                        active = active.shadowRoot.activeElement;
+                    }
                     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
                         const start = active.selectionStart;
                         const end = active.selectionEnd;
@@ -1693,8 +1720,8 @@ async function onViewerMessage(session, raw) {
                         }
                     }
                     out.text = String(el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 2000);
-                    const img = el.tagName === 'IMG' ? el : (el.closest ? el.closest('img') : null);
-                    const link = el.tagName === 'A' ? el : (el.closest ? el.closest('a') : null);
+                    const img = closestAcross(el, 'img');
+                    const link = closestAcross(el, 'a[href]');
                     if (img) {
                         out.src = img.currentSrc || img.src || '';
                         out.alt = img.alt || '';

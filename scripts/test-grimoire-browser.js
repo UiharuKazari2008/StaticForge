@@ -61,6 +61,7 @@ function killChild(child) {
 
 const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 const INSPECT_HTML = '<!DOCTYPE html><title>grim-inspect</title><style>html,body,p,a,div{margin:0}#t{position:absolute;left:8px;top:8px;font:20px/24px sans-serif}#img{position:absolute;left:8px;top:80px;width:48px;height:48px;background:#ccc}#lnk{position:absolute;left:8px;top:160px;font:20px/24px sans-serif}#box{position:absolute;left:8px;top:220px;width:240px;height:40px;font:20px/24px sans-serif}</style><p id="t">hello clipboard</p><img id="img" alt="dot" src="/dot.gif"><a id="lnk" href="/file.bin" download="file.bin">get file</a><div id="box" contenteditable="true"></div>';
+const SHADOW_HTML = '<!DOCTYPE html><title>grim-shadow</title><style>html,body{margin:0}</style><div id="host" style="position:absolute;left:0;top:0;width:400px;height:180px"></div><div id="nest" style="position:absolute;left:0;top:200px;width:400px;height:48px"></div><script>var host=document.getElementById("host");var root=host.attachShadow({mode:"open"});root.innerHTML=\'<a id="lnk" href="/shadow-target" style="position:absolute;left:8px;top:40px;font:20px/24px sans-serif">shadow link</a><input id="field" type="text" value="shadow field" style="position:absolute;left:8px;top:110px;width:240px;height:32px;font:20px sans-serif">\';var nest=document.getElementById("nest");var outer=nest.attachShadow({mode:"open"});var inner=document.createElement("div");inner.style.cssText="width:400px;height:48px";outer.appendChild(inner);var innerRoot=inner.attachShadow({mode:"open"});var a=document.createElement("a");a.href="/nested-shadow";a.textContent="nested link";a.style.cssText="display:block;font:20px/48px sans-serif;padding-left:8px";innerRoot.appendChild(a);</script>';
 
 async function main() {
     const page = await listen((req, res) => {
@@ -105,6 +106,11 @@ async function main() {
             res.end(INSPECT_HTML);
             return;
         }
+        if (pathName === '/shadow') {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(SHADOW_HTML);
+            return;
+        }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end('<!DOCTYPE html><title>grim-local</title><style>html,body{margin:0;height:100%}button{width:100%;height:100%;font-size:28px}</style><button id="b" onclick="document.title=\'clicked\'">press</button>');
     });
@@ -118,7 +124,8 @@ async function main() {
             HOST: '127.0.0.1',
             PORT: '0',
             GRIMOIRE_BROWSER_TOKEN: TOKEN,
-            CHROME_NO_SANDBOX: '1'
+            CHROME_NO_SANDBOX: '1',
+            ALCHEMY_PROFILE_DIR: path.join('/tmp', 'grim-test-profile-' + process.pid)
         },
         stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -312,6 +319,30 @@ async function main() {
         const fileBytes = Buffer.from(await fileRes.arrayBuffer());
         if (fileRes.status !== 200 || fileBytes.toString() !== 'grim-bytes') {
             throw new Error('download bytes ' + fileRes.status + ' ' + fileBytes.toString());
+        }
+
+        ws.send(JSON.stringify({ type: 'navigate', url: 'http://127.0.0.1:' + pagePort + '/shadow' }));
+        await waitFor('shadow page', async () => {
+            const res = await fetch(base + '/sessions/' + session.id, {
+                headers: { Authorization: 'Bearer ' + TOKEN }
+            });
+            const body = await res.json();
+            return body.title === 'grim-shadow' ? body : null;
+        }, 15000);
+        ws.send(JSON.stringify({ type: 'inspect', x: 40, y: 52 }));
+        const shadowLink = await nextControl('inspect');
+        if (!String(shadowLink.href || '').endsWith('/shadow-target')) {
+            throw new Error('inspect missed the shadow link: ' + JSON.stringify(shadowLink));
+        }
+        ws.send(JSON.stringify({ type: 'inspect', x: 40, y: 126 }));
+        const shadowField = await nextControl('inspect');
+        if (!shadowField.editable) {
+            throw new Error('inspect missed the shadow text field: ' + JSON.stringify(shadowField));
+        }
+        ws.send(JSON.stringify({ type: 'inspect', x: 40, y: 220 }));
+        const nestedLink = await nextControl('inspect');
+        if (!String(nestedLink.href || '').endsWith('/nested-shadow')) {
+            throw new Error('inspect missed the nested shadow link: ' + JSON.stringify(nestedLink));
         }
 
         ws.send(JSON.stringify({ type: 'navigate', url: 'chrome://version' }));
