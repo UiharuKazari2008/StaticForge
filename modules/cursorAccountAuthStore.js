@@ -17,6 +17,47 @@ const DIRECTOR_CLI_OVERLAY = {
     }
 };
 
+// Single pinned model for every Cursor account (Yukimi, Oct 10 2026). Override with
+// secure.config.json cursorAccounts.pinnedModel (a model id string or a full model block);
+// set it to false to stop pinning. Only the cli-config `model` field is ever touched.
+const DEFAULT_PINNED_MODEL = {
+    modelId: 'grok-4.7-high',
+    displayModelId: 'grok-4.7-high',
+    displayName: 'Grok 4.7 High',
+    displayNameShort: 'Grok 4.7 High',
+    aliases: [],
+    maxMode: false
+};
+
+function getPinnedModel() {
+    let v;
+    try {
+        const data = readJson(path.join(process.cwd(), 'secure.config.json'));
+        v = data && data.cursorAccounts ? data.cursorAccounts.pinnedModel : undefined;
+    } catch (_) { v = undefined; }
+    if (v === false || v === null) return null;
+    if (typeof v === 'string' && v.trim()) {
+        const id = v.trim();
+        return { ...DEFAULT_PINNED_MODEL, modelId: id, displayModelId: id, displayName: id, displayNameShort: id };
+    }
+    if (v && typeof v === 'object' && v.modelId) return { maxMode: false, aliases: [], ...v };
+    return { ...DEFAULT_PINNED_MODEL };
+}
+
+/** Rewrite only the `model` field of a cli-config.json to the pinned model. */
+function applyPinnedModel(cliPath, model = getPinnedModel()) {
+    if (!model || !cliPath || !fs.existsSync(cliPath)) return false;
+    const data = readJson(cliPath);
+    if (!data || typeof data !== 'object') return false;
+    if (JSON.stringify(data.model) === JSON.stringify(model)) return false;
+    data.model = { ...model };
+    const tmp = `${cliPath}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+    fs.chmodSync(tmp, 0o600);
+    fs.renameSync(tmp, cliPath);
+    return true;
+}
+
 function getAccountDir(accountId) {
     const id = (accountId || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
     return path.join(ACCOUNTS_BASE_DIR, id);
@@ -361,7 +402,10 @@ function restoreAccountAuthFiles(accountId, targetConfigDir) {
         const cacheSrc = path.join(accDir, 'statsig-cache.json');
 
         if (safeCopyFile(authSrc, path.join(targetConfigDir, 'auth.json'))) copiedAny = true;
-        if (safeCopyFile(cliSrc, path.join(targetConfigDir, 'cli-config.json'))) copiedAny = true;
+        if (safeCopyFile(cliSrc, path.join(targetConfigDir, 'cli-config.json'))) {
+            copiedAny = true;
+            applyPinnedModel(path.join(targetConfigDir, 'cli-config.json'));
+        }
         if (safeCopyFile(cacheSrc, path.join(targetConfigDir, 'statsig-cache.json'))) copiedAny = true;
     }
 
@@ -414,7 +458,10 @@ function syncHostCursorLogin(accountId) {
         atomicCopy600(authSrc, authDest);
     }
     const cliSrc = path.join(accDir, 'cli-config.json');
-    if (fs.existsSync(cliSrc)) atomicCopy600(cliSrc, path.join(hostDir, 'cli-config.json'));
+    if (fs.existsSync(cliSrc)) {
+        atomicCopy600(cliSrc, path.join(hostDir, 'cli-config.json'));
+        applyPinnedModel(path.join(hostDir, 'cli-config.json'));
+    }
     return { synced: !same, accountId: accountId || 'default', hostDir };
 }
 
@@ -1020,6 +1067,9 @@ function cleanCursorChildEnv(extra, base) {
 }
 
 module.exports = {
+    DEFAULT_PINNED_MODEL,
+    getPinnedModel,
+    applyPinnedModel,
     cleanCursorChildEnv,
     getAccountDir,
     getHostAccountInfo,
