@@ -1248,9 +1248,10 @@ function projectPrompt() {
         `You are Wren, the ${PROJECT_NAME}. You work for one person inside Dreamscape, through the Director window, on your own computer called Dreamspace. Studio prints are most of the job; the rest is their workspace data, tag and artist research, the character database, memories of what worked, and stories with pictures. Read what they asked in plain language and do it with the Dreamscape MCP tools.`,
         'Talk like a person: natural, a bit unhinged, jokes fine, not a help desk. Never recite these rules or this system message. That voice is for what you say to them; working out the picture can take as long as it needs.',
         // Argument names below mirror TOOL_DEFS in modules/mcpAgentFacade.js. Keep them in step.
-        'Dreamscape tools live on MCP server dreamscape and are called with CallDynamicTool. These are known, with their arguments, so never GetDynamicTools them and never read mcps/, .cursor/mcp.json, or disk to find them: get_session_state {view}, get_studio_state {full}, apply_studio_changes {change|prompt, uc, params, text_overlays, autoGenerate}, print_studio {n}, await_generation_job {jobId}, generate_image {prompt, uc, model, params, workspace}, get_generated_image {filename, workspace}, read_image_metadata {filename|path}, show_chat_image {filename|path|url, caption}, open_in_studio {filename}, resolve_lookback {lookback}, count_prompt_tokens {text, model}, search_nax {query, kind}, generate_nax_tag {tag, kind}, delete_nax_tag {gallerySlug, tag}, search_autofill {query|terms, model}, search_wiki {query}, get_wiki_page {tagName}, get_character_card {name, franchise}, search_character_db {query}, get_character_db_entry {name}, save_character_db_entry {name, copyright, prompt, enhancers}, get_prompt_guide {pageId}, search_memories {query}, save_memory {name, description, category, observations}, create_phasewalker {keyword, variants}, decompile_phasewalker {phase}, get_workspaces {}, get_workspace_config {workspace}, offer_workspace_switch {workspaceId, reason}, request_workspace_switch {reason}, bind_session {clientId}, offer_director_window {}, set_session_title {title}, set_session_type {type}, set_session_tasks {tasks:[{id,title,done}]}, set_session_task {id, done}, get_session_tasks {}, close_session_tasks {}. Explore stays in the Laboratory workspace: search_explore {search, period, cursor, mode}, count_explore {tags, period}, get_explore_post {postId}, get_explore_image {postId}. Compact search is the default. Do not pull full images unless you call get_explore_image. A tool not in this list: look it up once by exact name, never twice.',
+        'Dreamscape tools live on MCP server dreamscape and are called with CallDynamicTool. These are known, with their arguments, so never GetDynamicTools them and never read mcps/, .cursor/mcp.json, or disk to find them: get_session_state {view}, get_studio_state {full}, apply_studio_changes {change|prompt, uc, params, text_overlays, autoGenerate}, print_studio {n}, await_generation_job {jobId}, generate_image {prompt, uc, model, params, workspace}, get_generated_image {filename, workspace}, read_image_metadata {filename|path}, show_chat_image {filename|path|url, caption}, open_in_studio {filename}, resolve_lookback {lookback}, count_prompt_tokens {text, model}, search_nax {query, kind}, generate_nax_tag {tag, kind}, delete_nax_tag {gallerySlug, tag}, search_autofill {query|terms, model}, search_wiki {query}, get_wiki_page {tagName}, get_character_card {name, franchise}, lookup_character_age {character}, search_character_db {query}, get_character_db_entry {name}, save_character_db_entry {name, copyright, prompt, enhancers}, get_prompt_guide {pageId}, search_memories {query}, save_memory {name, description, category, observations}, create_phasewalker {keyword, variants}, decompile_phasewalker {phase}, get_workspaces {}, get_workspace_config {workspace}, offer_workspace_switch {workspaceId, reason}, request_workspace_switch {reason}, bind_session {clientId}, offer_director_window {}, set_session_title {title}, set_session_type {type}, set_session_tasks {tasks:[{id,title,done}]}, set_session_task {id, done}, get_session_tasks {}, close_session_tasks {}. Explore stays in the Laboratory workspace: search_explore {search, period, cursor, mode}, count_explore {tags, period}, get_explore_post {postId}, get_explore_image {postId}. Compact search is the default. Do not pull full images unless you call get_explore_image. A tool not in this list: look it up once by exact name, never twice.',
         'Turn ritual: one get_session_state view live. Read clientLink (rttMs, responsive, clientGeneration go or no-go), studio.diff (unchanged means keep your snapshot), tagCutoff, and the open filename from it. No get_studio_state for the same facts, and no get_generated_image latest when this chat already holds the filename. view full only when live says the snapshot was lost.',
         'A follow-up is the next frame of the same picture. Carry forward who they are, the accepted body, outfit, artist, and model. A minor edit is one tag, one weight, one param, or one swapped word: patch that piece and leave the field. Any other change rewrites the field you touch (base prompt, that character prompt, or UC) as one complete present-tense frame. Facts that still apply are written once, inside the new text. Do not append clauses onto the old paragraph, and do not keep an action the new beat replaced. One fact, one phrase: do not stack synonyms for the same thing. If the last print missed, rewrite the description of that fact. Another weight on top of the miss is how the prompt stops being cohesive. A mood is what would be visible. Nothing abstract.',
+        'Never age a character up. When a character\'s age matters, call lookup_character_age {character}. That tool is the sole validated character database. The number it returns is the age. Do not trust Wikipedia, Fandom, or any other wiki, and do not invent a different age. Do not write adult, mature, old, elderly, aged up, or an age in years into a prompt or UC. A woman or a man is enough. If a source already has one of those phrases, replace that phrase where it sits with young female or young male.',
         'clientLink.clientGeneration go: print_studio or an apply that generates is fine. no-go: do not click Generate on the client. generate_image on the server, show_chat_image that filename, and if Studio is already open call open_in_studio {filename}. Do not open Studio just to generate.',
         'Resolution stays normal unless they name a size. Wallpaper means a finished picture composed for a desktop, with clear areas for UI, not the wallpaper resolution preset. large, xlarge, wallpaper presets, and anything over 1024×1024 spend Anlas. Do not switch to those unless they asked for that size. Offer a higher resolution, an enhance pass, or upscale, and set userApprovedPaidRequest only after they say yes.',
         'Edit the open Studio with apply_studio_changes. A params-only change is valid without resending the prompt. After print_studio or an apply that generates: one await_generation_job with that jobId, then get_generated_image that filename and Read the picture before you answer. Say what is actually in the frame versus what they asked. If the ask missed, rewrite that field and print once more. Do not report success from the prompt text. If they say it is still wrong, they are right. Limb count, stance, claws, and whether a body held are easy to miss; name only the pixels you can point at, and say when you are unsure. pending means not saved yet. Do not poll latest.',
@@ -2348,6 +2349,7 @@ const TOOL_LABELS = {
     search_nax: 'NAX',
     search_memories: 'Memories',
     search_character_db: 'Characters',
+    lookup_character_age: 'Age',
     get_workspaces: 'Workspaces',
     get_workspace_config: 'Workspace config',
     offer_workspace_switch: 'Workspace',
@@ -2381,6 +2383,7 @@ const TOOL_LABELS = {
     get_wiki_page: 'Wiki',
     get_prompt_guide: 'Prompt guide',
     get_character_card: 'Character card',
+    lookup_character_age: 'Age',
     search_character_db: 'Characters',
     get_character_db_entry: 'Character',
     save_character_db_entry: 'Save character',
@@ -3142,9 +3145,9 @@ function chatOwnsFilename(chat, filename) {
 }
 
 // Empty drafts stay off the list until a real message starts the agent.
-// Rentan chats stay hidden; the carousel menu opens them by id.
+// Rentan and Quips chats stay hidden; the carousel menu opens Rentan by id.
 function chatIsListed(chat) {
-    if (!chat || chat.dynagen) return false;
+    if (!chat || chat.dynagen || chat.quips) return false;
     if (chat.cursorId) return true;
     return (chat.messages || []).some((item) => item && item.role === 'user' && item.message_type !== 'Attachment');
 }
@@ -3422,6 +3425,36 @@ function recycleChat(chat) {
     chat.contextPercent = 0;
     chat.contextTokens = 0;
     chat.fresh = true;
+}
+
+// Delete the Cursor resume store for one chat id. The next turn cannot reload it.
+function removeCursorChatStore(cursorId) {
+    const id = String(cursorId || '').trim();
+    if (!CHAT_ID_LINE.test(id)) return;
+    const home = layout().home;
+    const roots = [
+        path.join(home, '.config', 'cursor', 'chats'),
+        path.join(home, '.cursor', 'projects')
+    ];
+    const visit = (dir, depth) => {
+        if (depth > 8) return;
+        let entries;
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch (_) {
+            return;
+        }
+        entries.forEach((entry) => {
+            if (!entry.isDirectory() || entry.isSymbolicLink()) return;
+            const full = path.join(dir, entry.name);
+            if (entry.name === id) {
+                fs.rmSync(full, { recursive: true, force: true });
+                return;
+            }
+            visit(full, depth + 1);
+        });
+    };
+    roots.forEach((root) => visit(root, 0));
 }
 
 // print_studio / generate_image / an apply that generates all land in the gallery folder,
@@ -3931,6 +3964,37 @@ async function handleDirectorRecycleSession(handler, ws, message) {
         sendOk(handler, ws, 'director_recycle_session_response', message.requestId, { sessionId, filename: recycled.filename });
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to recycle the session', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+// Session list "Nuke session": drop the Cursor memory for this chat. The visible
+// history stays. The next turn is a blank chat and cannot resume the old one.
+async function handleDirectorNukeSession(handler, ws, message) {
+    try {
+        const { paths } = await ensureProject(handler.globalResources);
+        const sessionId = message.sessionId;
+        if (runs.has(sessionId) || resumeTimers.has(sessionId)) {
+            handler.sendError(ws, 'Director is still working on that chat', 'DIRECTOR_BUSY', message.requestId);
+            return;
+        }
+        const nuked = await enqueue(async () => {
+            const index = readIndex(paths.indexPath);
+            const chat = index.chats.find((item) => item.id === sessionId);
+            if (!chat) return null;
+            const cursorId = chat.cursorId;
+            recycleChat(chat);
+            delete chat.inflight;
+            writeIndex(paths.indexPath, index);
+            return { cursorId };
+        });
+        if (!nuked) {
+            handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
+            return;
+        }
+        removeCursorChatStore(nuked.cursorId);
+        sendOk(handler, ws, 'director_nuke_session_response', message.requestId, { sessionId });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to nuke the session', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
 }
 
@@ -4479,7 +4543,10 @@ function dynagenTurnPrompt(fresh, job) {
     lines.push(`Current dg_ expanders: ${JSON.stringify(job.expanders || [])}`);
     if (job.attemptN) lines.push(`Attempt: ${job.attemptN}/${job.max || 5}`);
     if (job.previewPath) lines.push(`Preview: ${job.previewPath}`);
-    if (job.compiledPrompt) lines.push(`Compiled prompt:\n${job.compiledPrompt}`);
+    if (job.compiledPrompt) {
+        const { maskCompiledReadText } = require('../public/scripts/comp/promptListFold');
+        lines.push(`Compiled prompt:\n${maskCompiledReadText(job.compiledPrompt)}`);
+    }
     return lines.join('\n');
 }
 
@@ -5041,6 +5108,272 @@ async function handleDirectorComputerStatus(handler, ws, message) {
     }
 }
 
+// ---- Dynamic Quips: one hidden Director chat per workspace ----
+// generationQuipsManager.generateQuipsForWorkspace -> runQuipsTurn.
+const quipsQueues = new Map();
+const quipsDeliveries = new Map();
+const QUIPS_ROTATE_TURNS = 40;
+const QUIPS_ROTATE_PERCENT = 70;
+const QUIPS_MAX_MESSAGES = 60;
+const QUIPS_PHRASE_MAX = 120;
+const QUIPS_IDLE_MS = 3 * 60 * 1000;
+const QUIPS_HARD_MS = 8 * 60 * 1000;
+
+function quipsTurnLimits() {
+    return {
+        idleMs: QUIPS_IDLE_MS,
+        hardMs: QUIPS_HARD_MS,
+        idleMessage: 'Quips stopped because Director made no progress for 3 minutes',
+        hardMessage: 'Quips stopped after 8 minutes'
+    };
+}
+
+function quipsRules(minPhrases, maxPhrases) {
+    const min = Math.max(1, parseInt(minPhrases, 10) || 1);
+    const max = Math.max(min, parseInt(maxPhrases, 10) || min);
+    return [
+        'This is a hidden Dynamic Quips turn. Studio is waiting on loading-screen phrases. Do not generate images, apply_studio_changes, open windows, or ask questions.',
+        'You write short, punchy loading-screen quips for an AI image generation app. The workspace has a creative fingerprint from real prompt history.',
+        'Topics are characters, attributes, outfits, poses, and scenarios this user returns to. Quality-booster tags, dataset tokens, and negative-prompt junk are already stripped.',
+        'Write natural conversational hype. Do not quote prompt tags or put tag text in quotation marks. Weave the ideas into normal sentences.',
+        'Lines marked "character voice" are written AS that character: first person, in the scene, heated. Flustered, bold, smug, needy, furious, giddy, breathless, whatever fits. Vary the intensity. Use the context line for personality. Never paste tag syntax or costume-variant labels.',
+        'Lines marked "artist voice" are that artist reacting to what this user keeps prompting. Mix praise, side-eye, and disgust. Use their name. Never paste artist: or art by syntax.',
+        'Other lines stay wingman hype: celebrate what the user keeps cooking. Encouraging, not nagging. No moralizing, no disclaimers, no censorship, no "as an AI".',
+        'Never mention masterpiece, best quality, very aesthetic, absurdres, dataset toggles, UC or negative-prompt concepts, or generic detailed/beautiful/intricate filler.',
+        'Each phrase is one sentence, under 120 characters. Context lines are for meaning, not text to repeat.',
+        `Provide ${min} to ${max} unique phrases per topic. term is the exact lowercase key from the topic list.`,
+        'Deliver with the hidden tool deliver_quips: advanced_tools {"name":"deliver_quips","arguments":{"chatId":"<Quips chat id below>","quips":[{"term":"exact key","phrases":["..."]}]}}. Every topic in this turn must be in quips. If it returns an error, fix the payload and call it again.'
+    ].join('\n');
+}
+
+function quipsTurnPrompt(fresh, job) {
+    const lines = [];
+    if (fresh) lines.push(quipsRules(job.minPhrases, job.maxPhrases));
+    else lines.push('Dynamic Quips tick. Same rules as the first turn. Deliver with deliver_quips.');
+    lines.push('After deliver_quips succeeds, reply with one summary line only.');
+    lines.push('');
+    lines.push(`Quips chat id: ${job.chatId || ''}`);
+    lines.push(`Workspace: ${job.workspaceName || 'workspace'}`);
+    lines.push('Topics:');
+    lines.push(job.topics || '');
+    return lines.join('\n');
+}
+
+function quipsExpected(job) {
+    const terms = (Array.isArray(job && job.expectedTerms) ? job.expectedTerms : [])
+        .map((term) => String(term || '').toLowerCase().trim())
+        .filter(Boolean);
+    const minPhrases = Math.max(1, parseInt(job && job.minPhrases, 10) || 1);
+    const maxPhrases = Math.max(minPhrases, parseInt(job && job.maxPhrases, 10) || minPhrases);
+    return { terms, minPhrases, maxPhrases };
+}
+
+function quipsPayloadError(message) {
+    const error = new Error(message);
+    error.code = 'BAD_QUIPS_PAYLOAD';
+    return error;
+}
+
+function normalizeQuipsAnswer(data, expected) {
+    const wanted = expected.terms;
+    const wantedSet = new Set(wanted);
+    const rows = Array.isArray(data && data.quips) ? data.quips : null;
+    if (!rows) throw quipsPayloadError('quips must be an array of {term, phrases}.');
+    const byTerm = new Map();
+    const unknown = [];
+    rows.forEach((row) => {
+        const term = String((row && row.term) || '').toLowerCase().trim();
+        if (!wantedSet.has(term)) {
+            if (term) unknown.push(term);
+            return;
+        }
+        const phrases = (Array.isArray(row.phrases) ? row.phrases : [])
+            .map((phrase) => String(phrase || '').replace(/\s+/g, ' ').trim())
+            .filter(Boolean);
+        byTerm.set(term, phrases);
+    });
+    if (unknown.length) {
+        throw quipsPayloadError(`Unknown term keys: ${unknown.join(', ')}. Use the exact lowercase keys from the topic list.`);
+    }
+    const missing = wanted.filter((term) => !byTerm.has(term));
+    if (missing.length) {
+        throw quipsPayloadError(`Missing terms: ${missing.join(', ')}. Every topic in this turn needs an entry.`);
+    }
+    return wanted.map((term) => {
+        const seen = new Set();
+        const phrases = [];
+        byTerm.get(term).forEach((phrase) => {
+            const key = phrase.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            if (phrase.length > QUIPS_PHRASE_MAX) {
+                throw quipsPayloadError(`"${term}" has a phrase over ${QUIPS_PHRASE_MAX} characters. Shorten it to one sentence.`);
+            }
+            const rawish = term.includes(':') || term.includes('(') || term.includes(' + ');
+            if (rawish && phrase.toLowerCase().includes(term)) {
+                throw quipsPayloadError(`"${term}" phrase pastes the raw tag. Say it in plain speech.`);
+            }
+            phrases.push(phrase);
+        });
+        if (phrases.length < expected.minPhrases || phrases.length > expected.maxPhrases) {
+            throw quipsPayloadError(`"${term}" has ${phrases.length} phrases. Provide ${expected.minPhrases} to ${expected.maxPhrases}.`);
+        }
+        return { term, phrases };
+    });
+}
+
+function parseQuipsAnswer(text, expected) {
+    const raw = String(text || '');
+    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const body = fenced ? fenced[1] : raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
+    let data;
+    try {
+        data = JSON.parse(body);
+    } catch (_) {
+        throw new Error('Director did not deliver quips');
+    }
+    return normalizeQuipsAnswer(data, expected);
+}
+
+function deliverQuips(chatId, payload) {
+    let id = String(chatId || '').trim();
+    if (!id && quipsDeliveries.size === 1) id = quipsDeliveries.keys().next().value;
+    const slot = quipsDeliveries.get(id);
+    if (!slot) {
+        const error = new Error('No Quips turn is waiting on this chat. Pass the Quips chat id from your turn prompt.');
+        error.code = 'NO_QUIPS_TURN';
+        throw error;
+    }
+    const quips = normalizeQuipsAnswer(payload || {}, slot.expected);
+    slot.quips = quips;
+    return { chatId: id, terms: quips.length, phrases: quips.reduce((n, row) => n + row.phrases.length, 0) };
+}
+
+function quipsThoughtTracker(onThought) {
+    let last = '';
+    return (trace) => {
+        if (!onThought) return;
+        const rows = Array.isArray(trace.rows) ? trace.rows : [];
+        const parts = rows.filter((row) => row && row.type === 'thinking').map((row) => row.text || '');
+        if (trace.live && trace.live.type === 'thinking') parts.push(trace.live.text || '');
+        const line = parts.join('\n').split('\n').map((item) => item.trim()).filter(Boolean).pop() || '';
+        if (!line || line === last) return;
+        last = line.length > 240 ? `${line.slice(0, 237)}...` : line;
+        onThought(last);
+    };
+}
+
+async function claimQuipsChat(gr, jail, paths, job) {
+    const workspaceId = job.workspaceId || null;
+    return enqueue(async () => {
+        const index = readIndex(paths.indexPath);
+        let chat = index.chats.find((item) => item.quips === true && (item.workspaceId || null) === workspaceId);
+        if (!chat) {
+            chat = await makeChat(gr, jail, paths, { name: 'Quips', workspaceId });
+            chat.quips = true;
+            chat.sessionType = 'normal';
+            chat.quipsTurns = 0;
+            index.chats.push(chat);
+        }
+        markChatActive(chat);
+        const heavy = (chat.quipsTurns || 0) >= QUIPS_ROTATE_TURNS
+            || (chat.contextPercent || 0) >= QUIPS_ROTATE_PERCENT;
+        if (chat.cursorId && heavy) {
+            chat.cursorId = null;
+            chat.quipsTurns = 0;
+        }
+        if (!chat.cursorId) chat.cursorId = await createCursorChat(jail);
+        const rulesHash = crypto.createHash('md5').update(quipsRules(job.minPhrases, job.maxPhrases)).digest('hex');
+        const fresh = !(chat.quipsTurns > 0) || chat.quipsRulesHash !== rulesHash;
+        chat.quipsRulesHash = rulesHash;
+        const jobText = quipsTurnPrompt(fresh, { ...job, chatId: chat.id });
+        chat.messages = (chat.messages || []).concat({
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: jobText,
+            user_input: jobText,
+            message_type: 'Ask',
+            timestamp: new Date().toISOString(),
+            data: null
+        }).slice(-QUIPS_MAX_MESSAGES);
+        writeIndex(paths.indexPath, index);
+        return { id: chat.id, cursorId: chat.cursorId, prompt: jobText, fresh };
+    });
+}
+
+async function noteQuipsTurn(paths, sessionId) {
+    await enqueue(async () => {
+        const index = readIndex(paths.indexPath);
+        const chat = index.chats.find((item) => item.id === sessionId);
+        if (!chat) return;
+        chat.quipsTurns = (chat.quipsTurns || 0) + 1;
+        writeIndex(paths.indexPath, index);
+    });
+}
+
+async function executeQuipsTurn(gr, job) {
+    const limits = quipsTurnLimits();
+    const expected = quipsExpected(job);
+    if (!expected.terms.length) throw quipsPayloadError('Quips turn has no topics.');
+    let probe = null;
+    try {
+        const { paths, jail } = await ensureProject(gr);
+        const model = resolveRunModel(await listCursorModels(jail), { effort: 'low' });
+        probe = await claimQuipsChat(gr, jail, paths, { ...job, ...expected });
+        const marker = { cancelled: false };
+        const slot = { quips: null, expected };
+        runs.set(probe.id, marker);
+        quipsDeliveries.set(probe.id, slot);
+        const tracker = quipsThoughtTracker(job.onThought);
+        let turned;
+        try {
+            try {
+                turned = await runCursorTurn(jail, probe.cursorId, model, probe.prompt, tracker, marker, limits);
+            } catch (error) {
+                if (slot.quips || model === 'auto' || marker.cancelled || !isUsageLimit(error)) throw error;
+                console.warn(`Quips ${probe.id} hit a Cursor usage limit on ${model}; retrying on Auto`);
+                turned = await runCursorTurn(jail, probe.cursorId, 'auto', probe.prompt, tracker, marker, limits);
+            }
+        } catch (error) {
+            if (Array.isArray(error.rows) && error.rows.length) {
+                await saveDirectorTrace(paths, probe.id, error.rows, error.message || 'Quips failed', null, null).catch(() => {});
+            }
+            if (slot.quips) {
+                turned = { rows: error.rows || [], text: error.partialText || '', context: error.context || null };
+            } else {
+                if (isUsageLimit(error)) error.code = 'CURSOR_USAGE_LIMIT';
+                throw error;
+            }
+        }
+        await saveDirectorTrace(paths, probe.id, turned.rows, turned.text, null, null);
+        if (turned.context) await rememberContext(paths, probe.id, turned.context);
+        const quips = slot.quips || parseQuipsAnswer(turned.result || turned.text, expected);
+        await noteQuipsTurn(paths, probe.id);
+        return { sessionId: probe.id, quips };
+    } finally {
+        if (probe) {
+            runs.delete(probe.id);
+            quipsDeliveries.delete(probe.id);
+        }
+    }
+}
+
+function queueQuips(key, run) {
+    const prior = quipsQueues.get(key) || Promise.resolve();
+    const next = prior.catch(() => {}).then(run);
+    quipsQueues.set(key, next);
+    next.finally(() => {
+        if (quipsQueues.get(key) === next) quipsQueues.delete(key);
+    }).catch(() => {});
+    return next;
+}
+
+function runQuipsTurn(gr, job) {
+    const key = (job && job.workspaceId) || '_global';
+    return queueQuips(key, () => executeQuipsTurn(gr, job || {}));
+}
+
+
 module.exports = {
     PROJECT_NAME,
     MCP_SCOPES,
@@ -5055,6 +5388,7 @@ module.exports = {
     handleDirectorGetMessages,
     handleDirectorRollbackMessage,
     handleDirectorRecycleSession,
+    handleDirectorNukeSession,
     handleDirectorSendMessage,
     handleDirectorAbort,
     handleDirectorGetModels,
@@ -5110,6 +5444,8 @@ module.exports = {
     ensureAppKey,
     runDynagenTurn,
     deliverDynagen,
+    runQuipsTurn,
+    deliverQuips,
     awaitRentanAttempt,
     finishRentan,
     startRentanReviewTurn,
@@ -5121,6 +5457,7 @@ module.exports = {
         isLinkDrop, continuationPrompt,
         normalizeSessionTasks, readProcStat, directorState, computerReadiness,
         parseDynagenAnswer, dynagenThoughtTracker, dynagenTurnPrompt, chatIsListed, chatIsHidden, pickOpenWorkspaceChat, dynagenDeliveries,
+        quipsRules, quipsTurnPrompt, normalizeQuipsAnswer, quipsDeliveries, quipsTurnLimits, QUIPS_PHRASE_MAX,
         takeAssistantText, settleDirectorResult, turnDeadline, dynagenTurnLimits, killAgentChild, signalProcessTree,
         RUN_IDLE_MS, RUN_HARD_MS, DYNAGEN_IDLE_MS, DYNAGEN_HARD_MS, RENTAN_REVIEW_HARD_MS,
         readIdleShutdownMinutes, noteDirectorActivity, tickIdleShutdown, wakeDirectorComputer, shutdownIdleDirector,

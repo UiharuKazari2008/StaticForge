@@ -823,6 +823,13 @@ class Director {
                             handlerfn: (option, target) => this.moveSessionToWorkspace(option, target)
                         },
                         {
+                            text: 'Nuke session',
+                            icon: 'fas fa-bomb',
+                            action: 'director-nuke-session',
+                            className: 'text-danger',
+                            hidden: () => this.persona === 'xi'
+                        },
+                        {
                             text: 'Delete Session',
                             icon: 'fas fa-trash-alt',
                             action: 'director-delete-session',
@@ -881,8 +888,38 @@ class Director {
             this.forkSession(session);
             return;
         }
+        if (action === 'director-nuke-session') {
+            this.nukeSessionFromContextMenu(session);
+            return;
+        }
         if (action === 'director-delete-session') {
             this.deleteSessionFromContextMenu(session);
+        }
+    }
+
+    async nukeSessionFromContextMenu(session) {
+        if (!session || !session.id || typeof showConfirmationDialog !== 'function') return;
+        if (this._running && this.currentSession && String(this.currentSession.id) === String(session.id)) {
+            showGlassToast('error', 'Director', 'Director is still working on that chat');
+            return;
+        }
+        try {
+            const result = await showConfirmationDialog(
+                `Nuke the context for "${session.name}"? The chat stays. The model starts blank and will not remember this conversation.`,
+                [
+                    { text: 'Nuke', value: true, className: 'btn-danger', icon: 'fas fa-bomb' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ]
+            );
+            if (!result) return;
+            const body = await this.directorRequest('director_nuke_session', { sessionId: session.id });
+            if (this.currentSession && String(body.sessionId) === String(this.currentSession.id)) {
+                this.currentSession.contextPercent = 0;
+                this.currentSession.contextTokens = 0;
+            }
+            showGlassToast('info', null, 'Session nuked', false, 2400, '<i class="fas fa-bomb"></i>');
+        } catch (err) {
+            showGlassToast('error', 'Director', err.message || 'Could not nuke the session');
         }
     }
 

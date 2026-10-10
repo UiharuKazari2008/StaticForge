@@ -786,7 +786,7 @@
             const rows = snapshot && snapshot.keywordSteps ? snapshot.keywordSteps[keyword] : null;
             if (Array.isArray(rows) && rows.length > stepCount) stepCount = rows.length;
         });
-        return {
+        const opened = {
             ok: true,
             compiled: compile,
             editorOpen: studioEditorIsOpen(),
@@ -794,6 +794,7 @@
             stepCount,
             change: readStudioChangeSnapshot()
         };
+        return typeof maskAgentStudioRead === 'function' ? maskAgentStudioRead(opened) : opened;
     }
 
     function phasewalkerSnapshot() {
@@ -902,9 +903,12 @@
             phase: kept && (kept.name || kept.prompt),
             change: readStudioChangeSnapshot()
         };
-        if (!data || data.autoGenerate !== true) return result;
+        if (!data || data.autoGenerate !== true) {
+            return typeof maskAgentStudioRead === 'function' ? maskAgentStudioRead(result) : result;
+        }
         const gen = fireBoundTabGenerate({ n: 1 });
-        return { ...result, autoGenerate: true, ...gen };
+        const generated = { ...result, autoGenerate: true, ...gen };
+        return typeof maskAgentStudioRead === 'function' ? maskAgentStudioRead(generated) : generated;
     }
 
     async function applyStudioFromCommand(data) {
@@ -1104,6 +1108,7 @@
                 ...current
             };
         }
+        if (typeof maskAgentStudioRead === 'function') body = maskAgentStudioRead(body);
         replyAgentSessionResult(requestId, body);
     }
 

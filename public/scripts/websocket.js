@@ -454,6 +454,7 @@ class BannerManager {
             'director_get_messages': 'Get Director Messages',
             'director_rollback_message': 'Rollback Message',
             'director_recycle_session': 'Recycle Director Session',
+            'director_nuke_session': 'Nuke Director Session',
             'director_save_feedback': 'Save Feedback',
             'director_load_rules': 'Load Rules',
             'director_save_rules': 'Save Rules',

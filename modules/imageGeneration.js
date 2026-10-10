@@ -12,6 +12,14 @@ const {
     compileTextOverlayAppend
 } = require('./promptTextBoundary');
 const { resolveTextDisplayStyle } = require('../public/scripts/comp/textDisplayStyles');
+const {
+    foldPromptList,
+    noteFold,
+    createFoldBag,
+    rememberPromptFold,
+    sealApiPayload,
+    assertTokenCompiler
+} = require('../public/scripts/comp/promptListFold');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 const { resolveMediumLock, applyMediumLocksToOptions, explicitEffortModelKey } = require('./v5MediumLock');
 const { resolveNekoEnumValue } = require('./nekoEnumResolve');
@@ -4142,6 +4150,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         };
         // Display text (text_overlays) is wrapped by protectKeyboardDisplayText and skips the fold.
         const { normalizeKeyboardPromptCharsOutsideDisplayText } = require('../public/scripts/comp/keyboardPromptChars');
+        const foldBag = createFoldBag();
         const { normalizeEmphasisPromptSyntax } = require('./emphasisPromptSyntax');
         // prepareEmphasisTextForNovelAI: modules/emphasisGroupIdSyntax.js
         // Expand Weight Rack managed ids → classic N::…:: before syntax normalize; strip unmanaged ZW.
@@ -4182,6 +4191,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             );
             if (bakeNewlines && typeof out === 'string') {
                 out = out.split(BAKE_NL_SENTINEL).join('\n');
+            }
+            if (typeof out === 'string') {
+                const folded = foldPromptList(out);
+                noteFold(foldBag, fieldHint, folded);
+                out = folded.text;
             }
             return out;
         };
@@ -4254,17 +4268,26 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         baseOptions.input_character_prompts = sanitizeMarkerFromCharacterPrompts(baseOptions.input_character_prompts);
 
         // Restore managed text for forge hydrate (API prompt/uc already expanded above).
+        const foldStoredPrompt = (value) => (typeof value === 'string' ? foldPromptList(value).text : value);
         if (managedInputSnapshots.input_prompt !== undefined) {
-            baseOptions.input_prompt = managedInputSnapshots.input_prompt;
+            baseOptions.input_prompt = foldStoredPrompt(managedInputSnapshots.input_prompt);
         }
         if (managedInputSnapshots.input_uc !== undefined) {
-            baseOptions.input_uc = managedInputSnapshots.input_uc;
+            baseOptions.input_uc = foldStoredPrompt(managedInputSnapshots.input_uc);
         }
         if (managedInputSnapshots.input_prompt_negative !== undefined) {
-            baseOptions.input_prompt_negative = managedInputSnapshots.input_prompt_negative;
+            baseOptions.input_prompt_negative = foldStoredPrompt(managedInputSnapshots.input_prompt_negative);
         }
         if (managedInputSnapshots.input_character_prompts) {
-            baseOptions.input_character_prompts = managedInputSnapshots.input_character_prompts;
+            baseOptions.input_character_prompts = managedInputSnapshots.input_character_prompts.map((char) => {
+                if (!char || typeof char !== 'object') return char;
+                const next = { ...char };
+                if (typeof next.prompt === 'string') next.prompt = foldStoredPrompt(next.prompt);
+                if (typeof next.uc === 'string') next.uc = foldStoredPrompt(next.uc);
+                if (typeof next.input_prompt_negative === 'string') next.input_prompt_negative = foldStoredPrompt(next.input_prompt_negative);
+                if (typeof next.prompt_negative === 'string') next.prompt_negative = foldStoredPrompt(next.prompt_negative);
+                return next;
+            });
         }
 
         // compiled_prompt is written earlier (before this pass); strip internal append markers so they never reach client/metadata.
@@ -4329,6 +4352,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             };
         }
 
+        rememberPromptFold(baseOptions, foldBag);
         return baseOptions;
     } catch (error) {
         throw error;
@@ -4436,6 +4460,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             delete apiOpts.characterPrompts;
         }
     }
+
+    sealApiPayload(apiOpts, opts);
+    assertTokenCompiler(apiOpts);
 
     // Check for duplicate generation request to NovelAI API
     const currentFingerprint = canonicalizeApiOptions(apiOpts, opts.upscale, {

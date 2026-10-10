@@ -23,6 +23,7 @@ const {
     handleDirectorGetMessages,
     handleDirectorRollbackMessage,
     handleDirectorRecycleSession,
+    handleDirectorNukeSession,
     handleDirectorToolDiff,
     handleDirectorToolPayload,
     handleRequestFormSubmit,
@@ -76,6 +77,7 @@ function registerPackets(handlersCtx) {
     reg('director_computer_status', handleDirectorComputerStatus);
     reg('director_rollback_message', handleDirectorRollbackMessage, DIRECTOR_DESTRUCTIVE);
     reg('director_recycle_session', handleDirectorRecycleSession, DIRECTOR_DESTRUCTIVE);
+    reg('director_nuke_session', handleDirectorNukeSession, DIRECTOR_DESTRUCTIVE);
     reg('director_save_feedback', handleDirectorSaveFeedback, DIRECTOR_DESTRUCTIVE);
     reg('director_load_rules', handleDirectorLoadRules);
     reg('director_save_rules', handleDirectorSaveRules, DIRECTOR_DESTRUCTIVE);

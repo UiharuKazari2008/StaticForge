@@ -577,7 +577,10 @@ function normalizePromptNewlines(text) {
         .replace(/\r\n?/g, '\n')
         .replace(/\n{3,}/g, '\n\n');
     // normalizeKeyboardPromptChars: public/scripts/comp/keyboardPromptChars.js
-    return normalizeKeyboardPromptChars(normalized);
+    const keyed = normalizeKeyboardPromptChars(normalized);
+    // foldPromptList: public/scripts/comp/promptListFold.js
+    if (typeof foldPromptList === 'function') return foldPromptList(keyed).text;
+    return keyed;
 }
 
 /**

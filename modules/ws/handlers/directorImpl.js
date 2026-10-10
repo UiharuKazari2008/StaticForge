@@ -30,6 +30,7 @@ module.exports = {
     handleDirectorGetMessages: route(xi.handleDirectorGetMessages, cursor.handleDirectorGetMessages),
     handleDirectorRollbackMessage: route(xi.handleDirectorRollbackMessage, cursor.handleDirectorRollbackMessage),
     handleDirectorRecycleSession: cursor.handleDirectorRecycleSession,
+    handleDirectorNukeSession: cursor.handleDirectorNukeSession,
     handleDirectorSendMessage: route(xi.handleDirectorSendMessage, cursor.handleDirectorSendMessage),
     handleDirectorGetModels: cursor.handleDirectorGetModels,
     handleDirectorAbort: route(xi.handleDirectorAbort, cursor.handleDirectorAbort),

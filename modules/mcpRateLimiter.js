@@ -94,6 +94,7 @@ const TOOL_RATE_GROUPS = {
     show_chat_image: 'write',
     request_form: 'free',
     deliver_rentan: 'free',
+    deliver_quips: 'free',
     await_rentan_attempt: 'free',
     finish_rentan: 'free',
     ledge: 'free',
@@ -166,7 +167,8 @@ const TOOL_RATE_GROUPS = {
     complete_work_item: 'write',
     remove_work_item: 'write',
     report_issue: 'write',
-    get_usage: 'free'
+    get_usage: 'free',
+    lookup_character_age: 'search'
 };
 
 const rateGroupHits = new Map();

@@ -11,6 +11,7 @@ const {
 } = require('./applicationAuthManager');
 const { getWsPacketEntry } = require('./ws/wsPacketRegistry');
 const { buildStudioSettingsCatalog } = require('./studioSettingsCatalog');
+const { maskAgentStudioRead } = require('../public/scripts/comp/promptListFold');
 
 const SHARE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SHARE_TTL_MS = 5 * 60 * 1000;
@@ -2276,7 +2277,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             try {
                 const data = await sendBoundCommand(globalResources, 'get_state', {}, 8000, bindKey);
                 const change = (data && data.change && typeof data.change === 'object' && !Array.isArray(data.change))
-                    ? data.change
+                    ? maskAgentStudioRead(data.change)
                     : null;
                 return res.json({
                     success: true,

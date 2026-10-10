@@ -264,6 +264,27 @@ function tagExists(gallerySlug, tag) {
     return !!row;
 }
 
+const CHARACTER_TAG_GALLERIES = [
+    'danbooru-character-tags-v5',
+    'danbooru-character-tags-v4.5',
+    'danbooru-character-tags-v4'
+];
+
+function findExactCharacterTag(raw) {
+    const norm = String(raw || '').trim().replace(/[_]+/g, ' ').replace(/\s+/g, ' ').toLowerCase();
+    if (!norm || norm.length > 200 || norm.includes(',')) return null;
+    const d = getDb();
+    if (!d) return null;
+    const stmt = d.prepare(
+        'SELECT tag FROM nax_tags WHERE gallery_slug = ? AND lower(tag) = ? LIMIT 1'
+    );
+    for (let i = 0; i < CHARACTER_TAG_GALLERIES.length; i++) {
+        const row = stmt.get(CHARACTER_TAG_GALLERIES[i], norm);
+        if (row && row.tag) return row.tag;
+    }
+    return null;
+}
+
 function getTagRow(gallerySlug, tag) {
     const d = getDb();
     if (!d) return null;
@@ -1378,6 +1399,7 @@ module.exports = {
     getGalleries,
     slugExists,
     tagExists,
+    findExactCharacterTag,
     getTagRow,
     getTagFilename,
     findTagByGalleryFilename,

@@ -441,13 +441,14 @@ function failRentanReview(review, error) {
 }
 
 function formatRentanAttempt(review, attempt) {
+    const { maskCompiledReadText } = require('../public/scripts/comp/promptListFold');
     return {
         pending: false,
         attempt: attempt.n,
         max: review.max,
         path: attempt.jailPath,
         previewPath: attempt.previewPath,
-        compiledPrompt: attempt.compiledPrompt,
+        compiledPrompt: maskCompiledReadText(attempt.compiledPrompt),
         atCap: review.atCap === true,
         next: review.atCap
             ? `This is attempt ${attempt.n} of ${review.max}. finish_rentan with pick set to the best attempt number.`
