@@ -16,7 +16,7 @@ $Service = "RuikoUpscaler"
 New-Item -ItemType Directory -Force -Path $Root, $ModelDir, $LogDir | Out-Null
 
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    throw "Python 3.11+ is required on PATH (Windows 11)."
+    throw "Python 3.10+ is required on PATH (Windows 11)."
 }
 
 if (-not (Test-Path $Python)) {
@@ -63,8 +63,8 @@ $nssm = Get-Command nssm -ErrorAction SilentlyContinue
 if (-not $nssm) {
     Write-Host "NSSM is not on PATH. Install NSSM, then re-run this script to register the service."
 } else {
-    $existing = & nssm status $Service 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $existing = Get-Service $Service -ErrorAction SilentlyContinue
+    if (-not $existing) {
         & nssm install $Service $Python
     }
     & nssm set $Service Application $Python
