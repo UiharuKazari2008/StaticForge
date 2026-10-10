@@ -1784,7 +1784,9 @@ async function applyStudioParam(paramId, value) {
     switch (paramId) {
         case 'steps':
             if (stepsEl) {
-                stepsEl.value = parseInt(value, 10) || 1;
+                const locked = typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('steps');
+                const cap = locked && typeof activeMediumLock === 'function' ? activeMediumLock() : null;
+                stepsEl.value = cap ? String(cap.steps) : (parseInt(value, 10) || 1);
                 ping(stepsEl);
             }
             break;
@@ -1796,6 +1798,7 @@ async function applyStudioParam(paramId, value) {
             }
             break;
         case 'rescale':
+            if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('rescale')) break;
             if (rescaleEl) {
                 const n = Number(value);
                 rescaleEl.value = Number.isFinite(n) ? n.toFixed(2) : value;
@@ -1803,6 +1806,10 @@ async function applyStudioParam(paramId, value) {
             }
             break;
         case 'sampler':
+            if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('sampler')) {
+                selectManualSampler('k_euler_ancestral');
+                break;
+            }
             // selectManualSampler: public/scripts/comp/manualDropdownManager.js
             selectManualSampler(value);
             break;
@@ -1888,6 +1895,13 @@ async function applyStudioParam(paramId, value) {
             updateSubTogglesButtonState();
             break;
         case 'append_uc':
+            if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('uc')) {
+                const lock = typeof activeMediumLock === 'function' ? activeMediumLock() : null;
+                const level = lock && typeof ucPresetLevelFromId === 'function' ? ucPresetLevelFromId(lock.ucPresetId) : 3;
+                selectUcPreset(level);
+                renderUcPresetsDropdown();
+                break;
+            }
             // selectUcPreset / renderUcPresetsDropdown: public/scripts/comp/manualDropdownManager.js
             selectUcPreset(Number(value));
             renderUcPresetsDropdown();
@@ -2191,6 +2205,9 @@ async function applyStudioChangeOps(ops) {
     enabled.filter((op) => op.kind === 'genso-locks').forEach((op) => {
         applyStudioGensoLocks(op.toValue);
     });
+
+    // applyModelLocks: public/scripts/comp/utilities.js — after params, including steps written before effort
+    if (typeof applyModelLocks === 'function') applyModelLocks();
 
     return enabled.length;
 }

@@ -2253,18 +2253,15 @@ function paintManualEffort() {
         if (medium) modal.dataset.effort = 'medium';
         else delete modal.dataset.effort;
     }
-    ['manualSteps', 'manualRescale'].forEach((id) => {
-        const field = document.getElementById(id);
-        if (field) field.disabled = medium;
-    });
-    const samplerBtn = document.getElementById('manualSamplerDropdownBtn');
-    if (samplerBtn) {
-        samplerBtn.disabled = medium;
-        samplerBtn.setAttribute('aria-disabled', medium ? 'true' : 'false');
+    // applyMediumStudioChrome: public/scripts/comp/utilities.js
+    let lock = null;
+    if (medium) {
+        lock = typeof activeMediumLock === 'function' ? activeMediumLock() : null;
+        if (!lock) {
+            lock = { steps: 14, sampler: 'k_euler_ancestral', ucPresetId: 'heavy', clearsUserUc: true, cfgRescale: false };
+        }
     }
-    const ucBtn = document.getElementById('ucPresetsDropdownBtn');
-    if (ucBtn) ucBtn.disabled = medium;
-    if (manualUc) manualUc.readOnly = medium;
+    if (typeof applyMediumStudioChrome === 'function') applyMediumStudioChrome(lock);
 }
 
 function setManualEffort(level) {
@@ -2275,9 +2272,11 @@ function setManualEffort(level) {
         manualEffortSnapshot = {
             steps: manualSteps ? manualSteps.value : '',
             sampler: (typeof manualSelectedSampler !== 'undefined' && manualSelectedSampler) || '',
-            rescale: manualRescale ? manualRescale.value : ''
+            rescale: manualRescale ? manualRescale.value : '',
+            ucPreset: typeof selectedUcPreset !== 'undefined' ? selectedUcPreset : 3
         };
     }
+    manualSelectedEffort = next;
     if (next !== 'medium' && prev === 'medium') {
         const snap = manualEffortSnapshot;
         manualEffortSnapshot = null;
@@ -2289,18 +2288,13 @@ function setManualEffort(level) {
         if (snap && snap.sampler && snap.sampler !== 'k_euler_ancestral' && typeof selectManualSampler === 'function') {
             selectManualSampler(snap.sampler);
         }
-    }
-    manualSelectedEffort = next;
-    if (next === 'medium') {
-        if (manualSteps) manualSteps.value = '14';
-        if (manualRescale) manualRescale.value = '0.00';
-        if (typeof selectManualSampler === 'function' && (typeof manualSelectedSampler === 'undefined' || manualSelectedSampler !== 'k_euler_ancestral')) {
-            selectManualSampler('k_euler_ancestral');
+        if (snap && snap.ucPreset != null && typeof selectUcPreset === 'function') {
+            selectUcPreset(snap.ucPreset);
         }
-        if (typeof updatePercentageOverlays === 'function') updatePercentageOverlays();
-        if (typeof updateManualPriceDisplay === 'function') updateManualPriceDisplay();
     }
-    paintManualEffort();
+    // applyModelLocks: public/scripts/comp/utilities.js — same chrome as a model switch
+    if (typeof applyModelLocks === 'function') applyModelLocks();
+    else paintManualEffort();
 }
 
 function syncManualEffortChrome() {
@@ -2309,7 +2303,9 @@ function syncManualEffortChrome() {
         setManualEffort('high');
         return;
     }
-    paintManualEffort();
+    // applyModelLocks: public/scripts/comp/utilities.js
+    if (typeof applyModelLocks === 'function') applyModelLocks();
+    else paintManualEffort();
 }
 
 /**
@@ -2321,20 +2317,21 @@ function collectManualFormValues() {
         manualResolutionHidden.value = 'normal_square';
     }
 
+    const mediumLock = typeof activeMediumLock === 'function' ? activeMediumLock() : null;
     let values = {
         model: manualModel.value,
-        effort: getManualEffort(),
+        effort: mediumLock ? 'medium' : getManualEffort(),
         prompt: normalizePromptNewlines(manualPrompt.value).trim() + '',
         uc: normalizePromptNewlines(manualUc.value).trim() + '',
         input_prompt_negative: manualPromptNegative
             ? normalizePromptNewlines(manualPromptNegative.value).trim()
             : '',
         seed: manualSeed.value.trim(),
-        sampler: manualSampler.value,
+        sampler: mediumLock ? mediumLock.sampler : manualSampler.value,
         noiseScheduler: manualNoiseScheduler.value,
-        steps: parseInt(manualSteps.value) || 25,
+        steps: mediumLock ? mediumLock.steps : (parseInt(manualSteps.value) || 25),
         guidance: parseFloat(manualGuidance.value) || 5.0,
-        rescale: parseFloat(manualRescale.value) || 0.0,
+        rescale: mediumLock ? 0 : (parseFloat(manualRescale.value) || 0.0),
         upscale: manualUpscale.getAttribute('data-state') === 'on',
         presetName: manualPresetName.value ? manualPresetName.value.trim() : undefined,
         autoPositionBtn: document.getElementById('autoPositionBtn'),
@@ -2399,7 +2396,9 @@ function collectManualFormValues() {
     if (transparencyBias !== 1.0) {
         values.transparency_bias = transparencyBias;
     }
-    values.append_uc = selectedUcPreset;
+    values.append_uc = mediumLock && typeof ucPresetLevelFromId === 'function'
+        ? ucPresetLevelFromId(mediumLock.ucPresetId)
+        : selectedUcPreset;
 
     // Collect vibe transfer data
     values.vibe_transfer = collectVibeTransferData();
@@ -4056,9 +4055,6 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
         selectUcPreset(selectedUcPreset);
         renderUcPresetsDropdown();
-        if (resolveGenerationEffort(data) === 'medium') {
-            setManualEffort('medium');
-        }
 
         // Note: Character prompts are already handled in the first section above
         // This redundant section has been removed to prevent overwriting loaded character prompts
@@ -4758,6 +4754,8 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         // Pipeline restore recreates variety+ / noise-schedule chrome after model select.
         // updateV3ModelVisibility: public/scripts/comp/utilities.js
         updateV3ModelVisibility();
+        // applyModelLocks: public/scripts/comp/utilities.js — after steps, sampler, rescale, UC, and pipeline stages
+        if (typeof applyModelLocks === 'function') applyModelLocks(data);
     } catch (error) {
         console.error('Error loading into form:', error);
         showError('Failed to load data');

@@ -829,6 +829,7 @@ const UC_PRESET_LEVEL_LABELS = ['None', 'Human Focus', 'Light', 'Heavy', 'Curate
 
 const PRESET_TABLE_MODEL_FALLBACKS = {
     v5: ['v4_5', 'v4_5_cur', 'v4'],
+    v5_medium: ['v5', 'v4_5', 'v4_5_cur', 'v4'],
     v5_cur: ['v4_5_cur', 'v4_5', 'v4_cur', 'v4'],
     v4_5: ['v4_5_cur', 'v4'],
     v4_5_cur: ['v4_5', 'v4_cur'],
@@ -863,6 +864,7 @@ function getCurrentSelectedModel() {
 
 const STUDIO_MODEL_FROM_DETECTED = {
     V5: 'v5',
+    V5_MEDIUM: 'v5',
     V5_CUR: 'v5_cur',
     V4_5: 'v4_5',
     V4_5_CUR: 'v4_5_cur',
@@ -884,9 +886,198 @@ function resolveGenerationEffort(data) {
     if (direct === 'medium') return 'medium';
     const source = String(data.source || data.Source || '');
     if (V5_MEDIUM_EFFORT_SOURCES.indexOf(source) !== -1) return 'medium';
-    const slug = String(data.model || forge.model || '').toLowerCase();
-    if (slug === 'nai-diffusion-5-full-medium' || slug === 'nai-diffusion-5-full-medium-inpainting') return 'medium';
+    const rawModel = String(data.model || forge.model || '');
+    if (rawModel.toUpperCase() === 'V5_MEDIUM') return 'medium';
+    const slug = rawModel.toLowerCase();
+    if (slug === 'v5_medium' || slug === 'nai-diffusion-5-full-medium' || slug === 'nai-diffusion-5-full-medium-inpainting') return 'medium';
     return 'high';
+}
+
+/** 0 None, 1 Human Focus, 2 Light, 3 Heavy, 4 Curated, 5 Furry Focus. */
+function ucPresetLevelFromId(id) {
+    const text = String(id == null ? '' : id).trim().toLowerCase().replace(/[\s-]+/g, '_');
+    const map = { none: 0, human_focus: 1, light: 2, heavy: 3, curated: 4, furry_focus: 5 };
+    if (Object.prototype.hasOwnProperty.call(map, text)) return map[text];
+    const numeric = parseInt(text, 10);
+    return Number.isFinite(numeric) ? numeric : 3;
+}
+
+/**
+ * Studio Medium lock. v5 + effort medium, or a model row with fixedSettings (v5_medium).
+ * @returns {object|null}
+ */
+function activeMediumLock() {
+    const model = typeof getCurrentSelectedModel === 'function' ? getCurrentSelectedModel() : '';
+    const caps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures(model) : null;
+    const effort = typeof getManualEffort === 'function' ? getManualEffort() : 'high';
+    const effortMedium = effort === 'medium' && !!(caps && caps.effort && caps.effort.medium);
+    const fixed = caps && caps.fixedSettings ? caps.fixedSettings : null;
+    if (!effortMedium && !fixed) return null;
+    const mediumCaps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures('v5_medium') : null;
+    const shared = fixed || (mediumCaps && mediumCaps.fixedSettings) || (caps && caps.effort && caps.effort.medium) || {};
+    const fromEffort = (caps && caps.effort && caps.effort.medium) || {};
+    return {
+        steps: Number(shared.steps != null ? shared.steps : fromEffort.steps) || 14,
+        sampler: shared.sampler || fromEffort.sampler || 'k_euler_ancestral',
+        ucPresetId: shared.ucPresetId || fromEffort.ucPresetId || 'heavy',
+        clearsUserUc: fixed ? caps.clearsUserUc !== false : true,
+        cfgRescale: false
+    };
+}
+
+function mediumControlIsLocked(control) {
+    if (!activeMediumLock()) return false;
+    return control === 'steps' || control === 'sampler' || control === 'rescale' || control === 'uc';
+}
+
+const MEDIUM_STEPS_TITLE = 'Steps are fixed at 14 by V5 Medium.';
+
+/**
+ * Hide sampler and CFG rescale, and show Steps as disabled with a tooltip.
+ * Wheel and keyboard handlers consult mediumControlIsLocked so they cannot change these.
+ */
+function applyMediumStudioChrome(lock) {
+    const medium = !!lock;
+    const steps = document.getElementById('manualSteps');
+    const stepsGroup = document.getElementById('manualStepsGroup');
+    const samplerRow = document.querySelector('#manualModal .control-row-sampler');
+    const rescaleGroup = document.getElementById('manualRescaleGroup');
+    const rescale = document.getElementById('manualRescale');
+    const samplerBtn = document.getElementById('manualSamplerDropdownBtn');
+    const ucBtn = document.getElementById('ucPresetsDropdownBtn');
+    const uc = document.getElementById('manualUc') || (typeof manualUc !== 'undefined' ? manualUc : null);
+    const stepsTitle = medium ? `Steps are fixed at ${lock.steps} by V5 Medium.` : '';
+
+    if (steps) {
+        steps.disabled = medium;
+        steps.readOnly = medium;
+        if (steps.classList) {
+            steps.classList.toggle('hover-show', !medium);
+            steps.classList.toggle('medium-locked', medium);
+        }
+        if (medium) {
+            steps.max = String(lock.steps);
+            steps.value = String(lock.steps);
+            steps.title = stepsTitle;
+            steps.setAttribute('aria-disabled', 'true');
+            steps.tabIndex = -1;
+        } else {
+            steps.max = '50';
+            steps.removeAttribute('title');
+            steps.removeAttribute('aria-disabled');
+            steps.removeAttribute('tabindex');
+        }
+    }
+    if (stepsGroup) {
+        if (medium) {
+            stepsGroup.title = stepsTitle;
+            stepsGroup.dataset.mediumLock = '1';
+        } else {
+            stepsGroup.removeAttribute('title');
+            delete stepsGroup.dataset.mediumLock;
+        }
+    }
+    if (samplerRow) samplerRow.classList.toggle('hidden', medium);
+    if (samplerBtn) {
+        samplerBtn.disabled = medium;
+        samplerBtn.setAttribute('aria-disabled', medium ? 'true' : 'false');
+        if (medium) samplerBtn.title = 'Sampler is fixed to Euler Ancestral by V5 Medium.';
+        else samplerBtn.removeAttribute('title');
+    }
+    if (rescaleGroup) rescaleGroup.classList.toggle('hidden', medium);
+    if (rescale) {
+        rescale.disabled = medium;
+        if (medium) {
+            rescale.value = '0.00';
+            rescale.title = 'CFG rescale is off for V5 Medium.';
+        } else {
+            rescale.removeAttribute('title');
+        }
+    }
+    if (ucBtn) {
+        ucBtn.disabled = medium;
+        if (medium) ucBtn.title = 'Undesired content is fixed to the heavy preset by V5 Medium. Your UC is not sent.';
+        else ucBtn.removeAttribute('title');
+    }
+    if (uc) {
+        uc.readOnly = medium;
+        if (medium) uc.title = 'Your UC is not sent on V5 Medium. The heavy preset is sent instead.';
+        else uc.removeAttribute('title');
+    }
+    document.querySelectorAll('#manualModal textarea[id$="_uc"]').forEach((field) => {
+        if (field === uc) return;
+        field.readOnly = medium;
+        if (medium) field.title = 'Character UC is cleared on V5 Medium.';
+        else field.removeAttribute('title');
+    });
+    const stageRoot = document.getElementById('pipelineStagesContainer');
+    if (stageRoot) {
+        stageRoot.querySelectorAll('input[id$="_steps"]').forEach((input) => {
+            input.disabled = medium;
+            if (input.classList) {
+                input.classList.toggle('hover-show', !medium);
+                input.classList.toggle('medium-locked', medium);
+            }
+            if (medium) {
+                input.max = String(lock.steps);
+                if (input.value && parseInt(input.value, 10) > lock.steps) input.value = String(lock.steps);
+                input.title = stepsTitle;
+                input.setAttribute('aria-disabled', 'true');
+                input.tabIndex = -1;
+            } else {
+                input.max = '50';
+                input.removeAttribute('title');
+                input.removeAttribute('aria-disabled');
+                input.removeAttribute('tabindex');
+            }
+        });
+        stageRoot.querySelectorAll('input[id$="_rescale"]').forEach((input) => {
+            input.disabled = medium;
+            if (medium) input.title = 'CFG rescale is off for V5 Medium.';
+            else input.removeAttribute('title');
+        });
+        stageRoot.querySelectorAll('button[id$="_samplerDropdownBtn"]').forEach((btn) => {
+            btn.disabled = medium;
+            if (medium) btn.title = 'Sampler is fixed to Euler Ancestral by V5 Medium.';
+            else btn.removeAttribute('title');
+        });
+    }
+}
+
+/**
+ * Re-apply Medium locks after Studio settings are populated.
+ * Same path as switching the model (updateV3ModelVisibility, then syncManualEffortChrome)
+ * or the effort toggle (setManualEffort). Pass loaded metadata so a Medium source
+ * sets effort before the chrome runs.
+ * @param {object} [data]
+ */
+function applyModelLocks(data) {
+    const record = data && typeof data === 'object' ? data : null;
+    if (record && typeof setManualEffort === 'function' && resolveGenerationEffort(record) === 'medium') {
+        const current = typeof getManualEffort === 'function' ? getManualEffort() : 'high';
+        if (current !== 'medium') {
+            setManualEffort('medium');
+            return;
+        }
+    }
+    const lock = activeMediumLock();
+    if (lock) {
+        const stepsEl = document.getElementById('manualSteps');
+        const rescaleEl = document.getElementById('manualRescale');
+        if (stepsEl) stepsEl.value = String(lock.steps);
+        if (rescaleEl) rescaleEl.value = '0.00';
+        if (typeof selectManualSampler === 'function') {
+            const currentSampler = typeof manualSelectedSampler !== 'undefined' ? manualSelectedSampler : '';
+            if (currentSampler !== lock.sampler) selectManualSampler(lock.sampler);
+        }
+        if (typeof selectUcPreset === 'function' && typeof ucPresetLevelFromId === 'function') {
+            selectUcPreset(ucPresetLevelFromId(lock.ucPresetId));
+        }
+        if (typeof updatePercentageOverlays === 'function') updatePercentageOverlays();
+        if (typeof updateManualPriceDisplay === 'function') updateManualPriceDisplay();
+    }
+    if (typeof paintManualEffort === 'function') paintManualEffort();
+    else applyMediumStudioChrome(lock);
 }
 
 const STUDIO_MODEL_FROM_SLUG = {

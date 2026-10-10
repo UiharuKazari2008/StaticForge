@@ -12,6 +12,7 @@ const {
     compileTextOverlayAppend
 } = require('./promptTextBoundary');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
+const { resolveMediumLock, applyMediumLocksToOptions } = require('./v5MediumLock');
 const { resolveNekoEnumValue } = require('./nekoEnumResolve');
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
@@ -1015,6 +1016,7 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
 // Enhanced preset handling functions
 const PRESET_TABLE_MODEL_FALLBACKS = {
     v5: ['v4_5', 'v4_5_cur', 'v4'],
+    v5_medium: ['v5', 'v4_5', 'v4_5_cur', 'v4'],
     v5_cur: ['v4_5_cur', 'v4_5', 'v4_cur', 'v4'],
     v4_5: ['v4_5_cur', 'v4'],
     v4_5_cur: ['v4_5', 'v4_cur'],
@@ -3509,7 +3511,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         const forgeModelKey = String(body.model || '').toLowerCase();
         const wantsInpaint = !!(body.mask || body.mask_compressed) && !!body.image && !forgeModelKey.includes('_inp');
         // modules/modelFeatures.js — curated V5 inpaint remaps to V4.5 curated until ready
-        const { resolveApiModelSlug, getModelFeatures, normalizeEffort, mediumEffortConfig } = require('./modelFeatures');
+        const { resolveApiModelSlug, getModelFeatures, normalizeEffort } = require('./modelFeatures');
         const modelFeaturesMap = __runtimeGr.getModelFeaturesMap();
         const effortLevel = normalizeEffort(body.effort != null ? body.effort : preset?.effort);
         const apiModelSlug = resolveApiModelSlug(forgeModelKey, { inpaint: wantsInpaint, effort: effortLevel }, modelFeaturesMap);
@@ -3525,21 +3527,28 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             if (enumHit) resolvedApiModel = ModelEnum[enumHit];
         }
         const forgeCaps = getModelFeatures(forgeModelKey, modelFeaturesMap);
-        const mediumCaps = effortLevel === 'medium' ? mediumEffortConfig(forgeModelKey, modelFeaturesMap) : null;
-        if (mediumCaps) {
-            stepsValue = Number(mediumCaps.steps) || 14;
+        // v5_medium.fixedSettings / clearsUserUc, and V5 Full effort=medium.
+        // resolveMediumLock: modules/v5MediumLock.js
+        const mediumLock = resolveMediumLock(forgeModelKey, effortLevel, modelFeaturesMap);
+        if (mediumLock) {
+            stepsValue = mediumLock.steps;
             rescaleValue = 0;
-            body.sampler = mediumCaps.sampler || 'k_euler_ancestral';
-            processedNegativePrompt = '';
-            if (Array.isArray(processedCharacterPrompts)) {
-                processedCharacterPrompts = processedCharacterPrompts.map((char) => ({ ...char, uc: '' }));
-            }
-            if (dynamic_generation?.compiled_prompt) {
-                dynamic_generation.compiled_prompt.uc = '';
-                if (Array.isArray(dynamic_generation.compiled_prompt.characterPrompts)) {
-                    dynamic_generation.compiled_prompt.characterPrompts = dynamic_generation.compiled_prompt.characterPrompts.map((char) => (
+            body.sampler = mediumLock.sampler;
+            varietyValue = false;
+            if (mediumLock.clearsUserUc) {
+                processedNegativePrompt = '';
+                if (Array.isArray(processedCharacterPrompts)) {
+                    processedCharacterPrompts = processedCharacterPrompts.map((char) => (
                         char && typeof char === 'object' ? { ...char, uc: '' } : char
                     ));
+                }
+                if (dynamic_generation?.compiled_prompt) {
+                    dynamic_generation.compiled_prompt.uc = '';
+                    if (Array.isArray(dynamic_generation.compiled_prompt.characterPrompts)) {
+                        dynamic_generation.compiled_prompt.characterPrompts = dynamic_generation.compiled_prompt.characterPrompts.map((char) => (
+                            char && typeof char === 'object' ? { ...char, uc: '' } : char
+                        ));
+                    }
                 }
             }
         }
@@ -3563,8 +3572,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             noise_schedule: resolveNekoEnumValue(NoiseEnum, body.noiseScheduler || preset?.noiseScheduler, NoiseEnum.KARRAS, 'noise_schedule'),
             no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
             qualityToggle: false,
-            ucPreset: mediumCaps ? undefined : 4,
-            ucPresetId: mediumCaps ? (mediumCaps.ucPresetId || 'heavy') : undefined,
+            ucPreset: mediumLock ? undefined : 4,
+            ucPresetId: mediumLock ? (mediumLock.ucPresetId || 'heavy') : undefined,
             effort: forgeCaps?.effort ? effortLevel : undefined,
             params_version: forgeCaps?.paramsVersion,
             dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
@@ -3616,14 +3625,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             if (forgeCaps.noiseScheduleUi === false) {
                 baseOptions.noise_schedule = undefined;
             }
-            if (mediumCaps) {
+            if (mediumLock) {
                 baseOptions.cfg_rescale = undefined;
-                baseOptions.negative_prompt = '';
-                if (Array.isArray(baseOptions.characterPrompts)) {
-                    baseOptions.characterPrompts = baseOptions.characterPrompts.map((char) => (
-                        char && typeof char === 'object' ? { ...char, uc: '' } : char
-                    ));
-                }
             }
             if (forgeCaps.paramsVersion != null && baseOptions.params_version == null) {
                 baseOptions.params_version = forgeCaps.paramsVersion;
@@ -4260,6 +4263,32 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             compiledPromptRef.characterPrompts = sanitizeMarkerFromCharacterPrompts(compiledPromptRef.characterPrompts);
         }
 
+        if (body.mcp_generated === true || body.mcpGenerated === true) {
+            baseOptions.mcp_generated = true;
+        }
+
+        // After auto-clean and sanitize: Medium request is the heavy preset, empty box UCs,
+        // steps/sampler from fixedSettings. input_uc stays so Studio can restore the editor.
+        // applyMediumLocksToOptions: modules/v5MediumLock.js
+        if (mediumLock) {
+            const locked = applyMediumLocksToOptions(
+                baseOptions,
+                mediumLock,
+                currentPromptConfig && currentPromptConfig.uc_presets,
+                forgeModelKey
+            );
+            Object.keys(baseOptions).forEach((key) => {
+                if (!Object.prototype.hasOwnProperty.call(locked, key)) delete baseOptions[key];
+            });
+            Object.assign(baseOptions, locked);
+            baseOptions.sampler = resolveNekoEnumValue(
+                SamplerEnum,
+                locked.sampler,
+                SamplerEnum.EULER_ANC,
+                'sampler'
+            );
+        }
+
         // Trace: store full buildOptions output (no sanitization per user request)
         try {
             if (body.requestId) {
@@ -4271,9 +4300,6 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             }
         } catch { }
 
-        if (body.mcp_generated === true || body.mcpGenerated === true) {
-            baseOptions.mcp_generated = true;
-        }
         if (body._rentanReview) {
             baseOptions._rentanReview = body._rentanReview;
             baseOptions._rentanRebuild = async (change) => {

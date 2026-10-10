@@ -3643,6 +3643,7 @@ function transformRawMetadataForEditor(metadata) {
             // Convert the detected model to the format expected by the form
             switch (detectedModel) {
                 case 'V5':
+                case 'V5_MEDIUM':
                     transformed.model = 'v5';
                     break;
                 case 'V5_CUR':
@@ -3890,6 +3891,7 @@ function transformMetadataForEditor(metadata) {
             // Convert the detected model to the format expected by the form
             switch (detectedModel) {
                 case 'V5':
+                case 'V5_MEDIUM':
                     transformed.model = 'v5';
                     break;
                 case 'V5_CUR':
@@ -6079,6 +6081,7 @@ const PREVIEW_META_HOST = '.gallery-item, .manual-preview-image-container, .imag
 
 const PREVIEW_META_MODELS = {
     V5: { label: 'v5', tone: 'v5', feature: 'v5' },
+    V5_MEDIUM: { label: 'v5M', tone: 'v5', feature: 'v5_medium' },
     V5_CUR: { label: 'v5C', tone: 'v5', feature: 'v5_cur' },
     V4_5: { label: 'v4.5', tone: 'v45', feature: 'v4_5' },
     V4_5_CUR: { label: 'v4.5C', tone: 'v45', feature: 'v4_5_cur' },

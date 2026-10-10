@@ -4090,3 +4090,47 @@ body:not(.desktop-mode) div#manualModal {
     pointer-events: none;
 }
 
+#manualModal[data-effort="medium"] .control-row-sampler,
+#manualModal[data-effort="medium"] #manualRescaleGroup {
+    display: none !important;
+}
+
+#manualStepsGroup[data-medium-lock="1"] {
+    cursor: not-allowed;
+}
+
+#manualStepsGroup[data-medium-lock="1"] #manualSteps,
+#manualSteps.medium-locked,
+#manualModal input.medium-locked {
+    pointer-events: none;
+    opacity: 0.55;
+    cursor: not-allowed;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: var(--text-muted, #8a8a8a);
+}
+
+#manualStepsGroup[data-medium-lock="1"] #manualSteps:hover,
+#manualStepsGroup[data-medium-lock="1"] #manualSteps:focus,
+#manualStepsGroup[data-medium-lock="1"]:hover #manualSteps,
+#manualSteps.medium-locked:hover,
+#manualSteps.medium-locked:focus,
+#manualModal input.medium-locked:hover,
+#manualModal input.medium-locked:focus {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    outline: none;
+    padding: 0.25em 1.2em 0.25em 0;
+}
+
+#manualSteps.medium-locked::-webkit-inner-spin-button,
+#manualSteps.medium-locked::-webkit-outer-spin-button,
+#manualModal input.medium-locked::-webkit-inner-spin-button,
+#manualModal input.medium-locked::-webkit-outer-spin-button {
+    appearance: none;
+    display: none;
+    margin: 0;
+}
+
