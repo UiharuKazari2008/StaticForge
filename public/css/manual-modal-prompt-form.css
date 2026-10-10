@@ -967,8 +967,9 @@
     font-size: 0.85em;
 }
 
-#uc-tab .prompt-textarea-emphasis-wrap + .prompt-textarea-emphasis-wrap,
-.character-prompt-textarea-container .prompt-textarea-emphasis-wrap + .prompt-textarea-emphasis-wrap {
+/* :not(.hidden): V5 Medium hides the UC wrap; the inline negative then has no divider above it */
+#uc-tab .prompt-textarea-emphasis-wrap:not(.hidden) + .prompt-textarea-emphasis-wrap,
+.character-prompt-textarea-container .prompt-textarea-emphasis-wrap:not(.hidden) + .prompt-textarea-emphasis-wrap {
     margin-top: var(--spacing-xs);
     border-top: 1px solid var(--glass-border-3);
 }
