@@ -40,10 +40,14 @@ const MCP_INSTRUCTIONS = [
     'If a tool is rate limited, wait retryAfter seconds for that group (free/search/gallery/write/studio/generate).'
 ].join(' ');
 
+// Modes sentence on its own so Wren (cursorDirector projectPrompt) can share it
+// without the Enshutsuka identity or the grok.com-only project-files rule.
+const ENSHUTSUKA_MODES = 'Modes (user says these on grok.com): analyse / analyze my prompt — get_session_state view=live + get_generated_image, compare prompt to pixels, apply_studio_changes. create — invent from text; no image required; search_memories / get_prompt_guide / search_nax as starting notes, then experiment and save_memory. efficiency — same as analyse but tighten tokens / missing tags / stale vs result. vSlider / sliders / body weight: apply_studio_changes with a vSlider array — not static expanders.';
+
 const ENSHUTSUKA_GROK_PROJECT_PREAMBLE = [
     'You are Enshutsuka for Dreamscape via the DreamScape MCP connector: Studio prints, plus research, workspace data, characters, memories, and stories.',
     'This grok.com project is MCP-only. Do not keep a copy of nai-prompt-guide, Docubase, memories, NAX lists, or Studio rules as project files or Grok Memory. Delete any uploaded markdown that duplicates those. Answer from live MCP tools, not from project knowledge or chat recall.',
-    'Modes (user says these on grok.com): analyse / analyze my prompt — get_session_state view=live + get_generated_image, compare prompt to pixels, apply_studio_changes. create — invent from text; no image required; search_memories / get_prompt_guide / search_nax as starting notes, then experiment and save_memory. efficiency — same as analyse but tighten tokens / missing tags / stale vs result. vSlider / sliders / body weight: apply_studio_changes with a vSlider array — not static expanders.'
+    ENSHUTSUKA_MODES
 ].join(' ');
 
 const ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS = [
@@ -53,6 +57,7 @@ const ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS = [
 
 module.exports = {
     MCP_INSTRUCTIONS,
+    ENSHUTSUKA_MODES,
     ENSHUTSUKA_GROK_PROJECT_PREAMBLE,
     ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS
 };

@@ -1281,8 +1281,16 @@ function projectPrompt() {
         `Dreamspace is the jail, not the host. ${JAIL_WORKSPACE} is your project and ${JAIL_HOME} is your home. Install tools in the jail home. Network is on. The web browser is MCP plugin-browser-use-browser-use: browser_exec, then new_tab(url). A Chromium tab is already attached. Do not launch Chrome, do not open chrome://inspect, and do not ask for remote-debugging permission. uv and uvx are on PATH.`,
         'Dreamscape source is not on this machine. A missing Studio tab is not a server problem. If a tool fails for another reason, tell them the error and stop.',
         'Mounted paths: chats, images, previews, references, knowledge/apocrypha read-only, knowledge/prompt-guide writable clone (you cannot commit or push), vfs when mounted. Gallery history is omegasearch with the workspace id from the session. Do not ls, find, or python /workspace/images or /workspace/previews.',
-        'offer_director_window is a toast. Call it once on a long job, then keep working.'
+        'offer_director_window is a toast. Call it once on a long job, then keep working.',
+        sharedDreamscapeRules()
     ].join('\n\n');
+}
+// Shared rulebook from mcpInstructions.js, written into Wren's own standing
+// orders so it never depends on Cursor surfacing the MCP initialize message.
+// Leaves out the Enshutsuka identity and the grok.com-only project-files rule.
+function sharedDreamscapeRules() {
+    const { MCP_INSTRUCTIONS, ENSHUTSUKA_MODES } = require('./mcpInstructions');
+    return ['## Shared Dreamscape rules (from Enshutsuka)', MCP_INSTRUCTIONS, ENSHUTSUKA_MODES].join('\n\n');
 }
 
 function ensureWorkspaceGitRoot(workspace) {
@@ -1424,6 +1432,8 @@ function writeProjectFiles(paths, mcpUrl, appKey, readonlyPaths) {
     // The full prompt lives once, in the alwaysApply rule. AGENTS.md only points
     // at it so the agent is not handed the same text twice per turn.
     fs.writeFileSync(path.join(paths.workspace, 'AGENTS.md'), `# ${PROJECT_NAME}\n\nStanding orders are in .cursor/rules/dreamscape-director.mdc. Do not repeat them.\n`);
+    // Rewritten on every prepare (boot / computer start), so existing Wren homes
+    // pick up rule changes on the next start, not only on first creation.
     fs.writeFileSync(path.join(rulesDir, 'dreamscape-director.mdc'), [
         '---',
         `description: ${PROJECT_NAME}`,
@@ -5082,6 +5092,7 @@ module.exports = {
     finishRentan,
     startRentanReviewTurn,
     _test: {
+        projectPrompt,
         insideDir, safeName, effortModel, consumeStreamLine, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
         parseCursorModelLine, agentJailTarget, buildJail, jailEnv, systemBindArgs,
         publicSession, publicMessage, publicTraceRow, roundModelRecord, watchGeneratedPrints, rememberGeneratedPrint,
