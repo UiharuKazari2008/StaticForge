@@ -936,6 +936,7 @@ async function handleGetCursorAccounts(handlersCtx, ws, message, clientInfo, wsS
                 isDefault: pub.isDefault,
                 isEmpty: pub.isEmpty,
                 identity: pub.identity || '',
+                apiKeyLast4: require('../../cursorAccountApiKey').last4(pub.id, require('path').join(process.cwd(), '.cache', 'dreamscape-cursor-accounts')),
                 displayName: meta.displayName || '',
                 usage: cursorUsage.publicAccountUsage(row)
             };
@@ -1510,6 +1511,36 @@ async function handleLogoutCursorAccountProfile(handlersCtx, ws, message, client
     }
 }
 
+async function handleSetCursorAccountApiKey(handlersCtx, ws, message, clientInfo) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+        const accountId = String(message.accountId || '');
+        const secureConfig = handlersCtx.globalResources.getSecureConfig() || {};
+        const accounts = ((secureConfig.cursorAccounts || {}).accounts) || [];
+        if (!accounts.some((a) => a && a.id === accountId)) {
+            handlersCtx.sendError(ws, 'Unknown Cursor account', 'NOT_FOUND', message.requestId);
+            return;
+        }
+        const store = require('../../cursorAccountApiKey');
+        const dir = require('path').join(process.cwd(), '.cache', 'dreamscape-cursor-accounts');
+        let apiKeyLast4 = '';
+        if (message.clear) store.clearKey(accountId, dir);
+        else apiKeyLast4 = store.setKey(accountId, message.apiKey, dir);
+        handlersCtx.sendToClient(ws, {
+            type: 'set_cursor_account_api_key_response',
+            requestId: message.requestId,
+            data: { success: true, accountId, apiKeyLast4 },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Cursor account API key update failed:', error.code || 'error');
+        handlersCtx.sendError(ws, 'Failed to store API key', error.code === 'INVALID_API_KEY' ? 'Not a Cursor API key' : 'Write failed', message.requestId);
+    }
+}
+
 async function handleLogoutCursorAccount(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
         if (clientInfo.userType !== 'admin') {
@@ -1678,6 +1709,7 @@ function registerPackets(handlersCtx) {
     reg('logout_cursor_account', handleLogoutCursorAccount, ADMIN_DESTRUCTIVE);
     reg('logout_cursor_account_profile', handleLogoutCursorAccountProfile, ADMIN_DESTRUCTIVE);
     reg('delete_cursor_account', handleDeleteCursorAccount, ADMIN_DESTRUCTIVE);
+    reg('set_cursor_account_api_key', handleSetCursorAccountApiKey, ADMIN_DESTRUCTIVE);
 }
 
 module.exports = {
