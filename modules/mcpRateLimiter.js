@@ -127,6 +127,7 @@ const TOOL_RATE_GROUPS = {
     save_linkxi_persona: 'write',
     generate_image: 'generate',
     get_generation_job: 'free',
+    list_generation_requests: 'free',
     await_generation_job: 'free',
     generate_preset: 'generate',
     upscale_image: 'generate',

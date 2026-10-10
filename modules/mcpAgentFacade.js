@@ -81,6 +81,14 @@ const {
     buildArtifactUrl
 } = require('./mcpArtifactTickets');
 const {
+    urlsForFilenames,
+    rememberGenerationRequest,
+    patchGenerationRequest,
+    queryGenerationRequests,
+    handleGenerationRequestsHttp,
+    handleMcpGalleryImageDownload
+} = require('./generationRequestLog');
+const {
     rememberApplyGenerateJob,
     getApplyGenerateJob,
     findPendingApplyGenerate,
@@ -363,7 +371,7 @@ const GENERATE_IMAGE_PROPERTIES = {
     },
     async: {
         type: 'boolean',
-        description: 'Default false: stall this call until the file and Grok webp are ready. true: enqueue on the shared generation FIFO and return jobId now. Then get_generation_job or await_generation_job.'
+        description: 'Default false: enqueue and wait on that job. The response always includes jobId. If the wait times out, the same jobId is returned for await_generation_job. true: return jobId without waiting.'
     },
     dest_path: DEST_PATH_SCHEMA,
     append_transparency: { type: 'boolean', description: 'If true, server prepends "transparent background". Do not also add that tag by hand.' },
@@ -382,7 +390,7 @@ const TOOL_DEFS = [
     {
         name: 'generate_image',
         core: true,
-        description: 'Generate on the server. Default waits on the shared generation FIFO (Studio uses the same stack; 8–20s gap after each job) and returns filename plus a Grok-sized webp (tool channel) and dest_path / bytes / mime / url (no pixels in the JSON). Pass dest_path (default artifacts/<filename>.webp) then render_file /home/workdir/artifacts/… after curling url if the sandbox file is missing. async true returns jobId immediately — then get_generation_job or await_generation_job with the same dest_path. Full Studio settings (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, n, …) as top-level keys or inside params. n (2–8) is print copies. Paid Anlas/Opus (upscale, expand, large/xlarge/wallpaper) requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. dynamicGeneration enabled:false or omit does not compile and does not 500. Unintegrated toggles return needsIntegration + resolved and do not enqueue. Not the Studio Generate button (use apply_studio_changes autoGenerate).',
+        description: 'Generate on the server. Always returns jobId, allocated before the wait. Default waits on the shared generation FIFO (Studio uses the same stack; 8–20s gap after each job) and returns filename plus a Grok-sized webp (tool channel) and dest_path / bytes / mime / url (no pixels in the JSON). If that wait times out, the response is the same jobId so await_generation_job can continue — there is no generate_image response without a jobId. imageUrl is the original gallery PNG behind the same MCP credential and does not expire; url is only the short-lived grok webp (about 15 min). Pass dest_path (default artifacts/<filename>.webp) then render_file /home/workdir/artifacts/… after curling url if the sandbox file is missing. wrote:false reason remote-sandbox means the caller sandbox was not written; the PNG is still saved in the gallery at imageUrl. async true returns jobId immediately — then get_generation_job or await_generation_job with the same dest_path. list_generation_requests lists past jobs. Full Studio settings (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, n, …) as top-level keys or inside params. n (2–8) is print copies. Paid Anlas/Opus (upscale, expand, large/xlarge/wallpaper) requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. dynamicGeneration enabled:false or omit does not compile and does not 500. Unintegrated toggles return needsIntegration + resolved and do not enqueue. Not the Studio Generate button (use apply_studio_changes autoGenerate).',
         scope: 'generation',
         packet: 'generate_image',
         inputSchema: {
@@ -394,16 +402,35 @@ const TOOL_DEFS = [
     {
         name: 'get_generation_job',
         core: true,
-        description: 'Poll a generate_image / generate_preset job from async true. Pass jobId. If complete, returns the same filename + Grok webp + dest_path as generate_image. If still queued or running, returns status and position.',
+        description: 'Poll a generate_image / generate_preset job. Pass jobId from any generate_image response (sync or async). If complete, returns the same filename + Grok webp + dest_path + imageUrl as generate_image. If still queued or running, returns status and position.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             properties: {
-                jobId: { type: 'string', description: 'Token from generate_image async true' },
+                jobId: { type: 'string', description: 'Token from generate_image. Every generate_image response includes one.' },
                 dest_path: DEST_PATH_SCHEMA
             },
             required: ['jobId']
+        }
+    },
+    {
+        name: 'list_generation_requests',
+        core: true,
+        description: 'List past generate_image, generate_preset, and Studio FIFO requests. Each row has jobId, status, createdAt, startedAt, finishedAt, caller, workspace, imageIds, and imageUrls. imageUrls are authenticated gallery PNG URLs and do not expire. Filter by caller, workspace, since, and until. Paged with offset and limit (default 50, max 200).',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                caller: { type: 'string', description: 'Actor name or application key id' },
+                workspace: { type: 'string', description: 'Workspace id' },
+                workspaceId: { type: 'string' },
+                since: { type: 'string', description: 'ISO time or epoch ms. Keep rows with createdAt >= since.' },
+                until: { type: 'string', description: 'ISO time or epoch ms. Keep rows with createdAt <= until.' },
+                offset: { type: 'number' },
+                limit: { type: 'number', description: 'Page size. Default 50, max 200.' }
+            }
         }
     },
     {
@@ -415,7 +442,7 @@ const TOOL_DEFS = [
             type: 'object',
             additionalProperties: false,
             properties: {
-                jobId: { type: 'string', description: 'Token from generate_image async true' },
+                jobId: { type: 'string', description: 'Token from generate_image. Every generate_image response includes one.' },
                 dest_path: DEST_PATH_SCHEMA
             },
             required: ['jobId']
@@ -424,7 +451,7 @@ const TOOL_DEFS = [
     {
         name: 'get_generated_image',
         core: true,
-        description: 'Get one gallery image as NovelAI metadata plus a Grok-sized webp (tool channel) and dest_path / bytes / mime / url / wrote. Pass dest_path then render_file. Filename, seed, or omit filename for the latest image in this workspace that is not the pre-apply print. After apply autoGenerate, pass afterCheckpointId or since=apply (or the jobId) so latest is not the previous file. workspace default is "default". Do not page get_images.',
+        description: 'Get one gallery image as NovelAI metadata plus a Grok-sized webp (tool channel) and dest_path / bytes / mime / url / wrote. imageUrl is the original PNG behind the same MCP credential and does not expire; url is the short-lived grok webp (about 15 min). Pass dest_path then render_file. Filename, seed, or omit filename for the latest image in this workspace that is not the pre-apply print. After apply autoGenerate, pass afterCheckpointId or since=apply (or the jobId) so latest is not the previous file. workspace default is "default". Do not page get_images.',
         scope: 'gallery',
         packet: 'request_image_metadata',
         inputSchema: {
@@ -6221,25 +6248,210 @@ function pickFocusedWindowFilename(windows) {
     );
 }
 
+const DEFAULT_SYNC_GENERATE_WAIT_MS = 20000;
+
+function syncGenerateWaitMs(globalResources) {
+    if (!globalResources || typeof globalResources.getConfig !== 'function') return DEFAULT_SYNC_GENERATE_WAIT_MS;
+    try {
+        const raw = globalResources.getConfig({ path: 'mcp_sync_generate_wait_ms' });
+        const n = Number(raw);
+        if (Number.isFinite(n) && n >= 0) return n;
+    } catch (_err) { /* default */ }
+    return DEFAULT_SYNC_GENERATE_WAIT_MS;
+}
+
+function generationCaller(req) {
+    const name = resolveActorName(req);
+    const auth = req && req.applicationAuth;
+    const keyId = auth && auth.applicationKeyId ? String(auth.applicationKeyId) : '';
+    if (name && keyId) return { caller: `${name}/appkey:${keyId}`, callerId: keyId };
+    if (name) return { caller: name, callerId: '' };
+    if (keyId) return { caller: `appkey:${keyId}`, callerId: keyId };
+    const bind = resolveBindKey(req);
+    return { caller: bind || 'unknown', callerId: '' };
+}
+
+function attachDurableGalleryFields(globalResources, body) {
+    const names = collectFilenames(body);
+    if (!names.length) return body;
+    const imageUrls = urlsForFilenames(globalResources, names);
+    const next = {
+        ...body,
+        imageId: names[0],
+        imageIds: names,
+        imageUrl: imageUrls[0] || null,
+        imageUrls,
+        saved: true,
+        savedTo: 'gallery'
+    };
+    if (next.imageUrl && next.wrote === false) {
+        const hint = 'Original PNG: GET imageUrl with the same MCP credential (authenticated, does not expire).';
+        next.next = next.next ? `${next.next} ${hint}` : hint;
+    }
+    return next;
+}
+
 async function mcpResultFromGenerateFlat(globalResources, flat, success, destPathHint) {
     const filename = sanitizeGalleryFilename(
         (flat && flat.filename) || (flat && Array.isArray(flat.filenames) ? flat.filenames[0] : '')
     );
-    const body = { ...(flat || {}), filename: filename || null };
+    const body = attachDurableGalleryFields(globalResources, { ...(flat || {}), filename: filename || null });
     if (filename && success) {
         try {
             const resolved = resolveGalleryImagePath(globalResources, filename);
             const image = await resizeImageForGrok(resolved.filePath);
             if (image) {
                 image.filename = filename;
-                return mcpImageResult(attachDestPathMeta(globalResources, {
+                return mcpImageResult(attachDurableGalleryFields(globalResources, attachDestPathMeta(globalResources, {
                     ...body,
                     imageKind: 'grok'
-                }, image, destPathHint), image);
+                }, image, destPathHint)), image);
             }
         } catch (_) { /* metadata-only fallback */ }
     }
     return mcpTextResult(body, !success);
+}
+
+async function runQueuedMcpGenerate(globalResources, req, name, packetType, payload, destPathHint, wantAsync, extras) {
+    const queue = globalResources.getGenerationJobQueue();
+    const who = generationCaller(req);
+    const workspace = payload.workspace || null;
+    const extra = extras && typeof extras === 'object' ? extras : {};
+    const holder = { job: null };
+    const job = queue.submit({
+        type: name,
+        source: 'mcp',
+        destPath: destPathHint || null,
+        caller: who.caller,
+        workspace,
+        run: async () => {
+            const id = holder.job.id;
+            try {
+                patchGenerationRequest(globalResources, id, { status: 'running', startedAt: Date.now() });
+            } catch (_err) { /* history must not block the print */ }
+            try {
+                const packet = await dispatchPacketTool(globalResources, req, packetType, {
+                    ...payload,
+                    skipGenerationQueue: true
+                });
+                const flat = flattenPacket(packet);
+                if (packet.success) {
+                    noteMcpSessionImages(globalResources, req, collectFilenames({
+                        filename: flat.filename,
+                        filenames: flat.filenames
+                    }));
+                }
+                if (packet.success && payload.save_memory) {
+                    const title = String(payload.prompt || '').trim().slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'generation_memory';
+                    const memoryName = `gen_${Date.now()}_${title}`;
+                    const description = `Generation parameters for: ${String(payload.prompt || '').slice(0, 50)}`;
+                    const memoryResult = runMemoryTool(globalResources, 'save_memory', {
+                        name: memoryName,
+                        description,
+                        category: 'generation_record',
+                        observations: [
+                            { content: `Prompt: ${payload.prompt}` },
+                            { content: `UC: ${payload.uc || ''}` },
+                            { content: `Model: ${payload.model || ''}` },
+                            { content: `Seed: ${flat.seed || payload.seed || ''}` }
+                        ]
+                    }, { sessionId: resolveBindKey(req) });
+                    if (memoryResult && memoryResult.success) {
+                        flat.saved_memory = memoryResult.memory;
+                    }
+                }
+                if (extra.qualityDropped) flat.qualityDropped = extra.qualityDropped;
+                if (extra.qualityInherited) flat.qualityInherited = extra.qualityInherited;
+                const names = collectFilenames({ filename: flat.filename, filenames: flat.filenames });
+                try {
+                    patchGenerationRequest(globalResources, id, {
+                        status: packet.success ? 'completed' : 'failed',
+                        finishedAt: Date.now(),
+                        imageIds: names,
+                        imageUrls: urlsForFilenames(globalResources, names),
+                        error: packet.success ? null : (flat.error || 'generation failed')
+                    });
+                } catch (_err) { /* history must not block the print */ }
+                return { success: packet.success, flat };
+            } catch (err) {
+                try {
+                    patchGenerationRequest(globalResources, id, {
+                        status: 'failed',
+                        finishedAt: Date.now(),
+                        error: (err && err.message) || 'generation failed'
+                    });
+                } catch (_err) { /* history must not block the print */ }
+                throw err;
+            }
+        }
+    });
+    holder.job = job;
+    try {
+        rememberGenerationRequest(globalResources, {
+            jobId: job.id,
+            status: job.status,
+            type: name,
+            source: 'mcp',
+            caller: who.caller,
+            callerId: who.callerId,
+            workspace,
+            createdAt: Date.now()
+        });
+    } catch (_err) { /* history must not block the print */ }
+    if (wantAsync) {
+        return mcpTextResult({
+            success: true,
+            async: true,
+            jobId: job.id,
+            status: job.status,
+            position: job.position,
+            delayMs: job.estimatedDelayMs,
+            dest_path: destPathHint || null,
+            next: 'Call await_generation_job with this jobId and the same dest_path. Do not invent a save after polling.'
+        });
+    }
+    try {
+        await queue.wait(job.id, syncGenerateWaitMs(globalResources));
+    } catch (err) {
+        if (err && err.code === 'GENERATION_JOB_TIMEOUT') {
+            const live = queue.get(job.id);
+            const snap = live ? queue.snapshot(live) : { status: 'queued', position: job.position, delayMs: job.estimatedDelayMs };
+            try {
+                patchGenerationRequest(globalResources, job.id, { status: snap.status });
+            } catch (_err) { /* history must not block the print */ }
+            return mcpTextResult({
+                success: true,
+                async: true,
+                timedOut: true,
+                jobId: job.id,
+                status: snap.status,
+                position: snap.position,
+                delayMs: snap.delayMs,
+                dest_path: destPathHint || null,
+                next: 'Sync wait ended before the print finished. Call await_generation_job with this jobId. The job is still on the FIFO.'
+            });
+        }
+        const failed = queue.get(job.id);
+        return mcpTextResult({
+            success: false,
+            jobId: job.id,
+            status: failed ? failed.status : 'failed',
+            error: (err && err.message) || 'generation failed'
+        }, true);
+    }
+    const ready = queue.get(job.id) || holder.job;
+    try {
+        return await mcpResultFromGenerationJob(
+            globalResources,
+            ready,
+            queue,
+            req,
+            destPathHint || ready.destPath
+        );
+    } catch (err) {
+        if (err && !err.jobId) err.jobId = job.id;
+        throw err;
+    }
 }
 
 async function mcpResultFromGenerationJob(globalResources, job, queue, req, destPathHint) {
@@ -7060,6 +7272,31 @@ async function callTool(globalResources, req, name, args) {
         }, written.wrote !== true && !remote);
     }
 
+    if (name === 'list_generation_requests') {
+        const workspace = input.workspace || input.workspaceId;
+        let resolvedWorkspace = workspace;
+        if (workspace != null && String(workspace).trim()) {
+            resolvedWorkspace = resolveWorkspaceId(workspace, globalResources);
+        }
+        try {
+            const page = queryGenerationRequests(globalResources, {
+                caller: input.caller,
+                workspace: resolvedWorkspace,
+                since: input.since,
+                until: input.until,
+                offset: input.offset,
+                limit: input.limit
+            });
+            return mcpTextResult({ success: true, ...page });
+        } catch (err) {
+            return mcpTextResult({
+                success: false,
+                error: (err && err.message) || 'Failed to list generation requests',
+                code: err && err.code ? err.code : undefined
+            }, true);
+        }
+    }
+
     if (name === 'get_generation_job' || name === 'await_generation_job') {
         const jobId = String(input.jobId || input.id || '').trim();
         if (!jobId) {
@@ -7212,57 +7449,17 @@ async function callTool(globalResources, req, name, args) {
             }
         }
 
-        if (wantAsync && (name === 'generate_image' || name === 'generate_preset')) {
-            const queue = globalResources.getGenerationJobQueue();
-            const job = queue.submit({
-                type: name,
-                source: 'mcp',
-                destPath: destPathHint || null,
-                run: async () => {
-                    const packet = await dispatchPacketTool(globalResources, req, def.packet, {
-                        ...payload,
-                        skipGenerationQueue: true
-                    });
-                    const flat = flattenPacket(packet);
-                    if (packet.success) {
-                        noteMcpSessionImages(globalResources, req, collectFilenames({
-                            filename: flat.filename,
-                            filenames: flat.filenames
-                        }));
-                    }
-                    if (packet.success && payload.save_memory) {
-                        const title = String(payload.prompt || '').trim().slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'generation_memory';
-                        const memoryName = `gen_${Date.now()}_${title}`;
-                        const description = `Generation parameters for: ${String(payload.prompt || '').slice(0, 50)}`;
-                        const category = 'generation_record';
-                        const memoryResult = runMemoryTool(globalResources, 'save_memory', {
-                            name: memoryName,
-                            description,
-                            category,
-                            observations: [
-                                { content: `Prompt: ${payload.prompt}` },
-                                { content: `UC: ${payload.uc || ''}` },
-                                { content: `Model: ${payload.model || ''}` },
-                                { content: `Seed: ${flat.seed || payload.seed || ''}` }
-                            ]
-                        }, { sessionId: resolveBindKey(req) });
-                        if (memoryResult && memoryResult.success) {
-                            flat.saved_memory = memoryResult.memory;
-                        }
-                    }
-                    return { success: packet.success, flat };
-                }
-            });
-            return mcpTextResult({
-                success: true,
-                async: true,
-                jobId: job.id,
-                status: job.status,
-                position: job.position,
-                delayMs: job.estimatedDelayMs,
-                dest_path: destPathHint || null,
-                next: 'Call await_generation_job with this jobId and the same dest_path. Do not invent a save after polling.'
-            });
+        if (name === 'generate_image' || name === 'generate_preset') {
+            return runQueuedMcpGenerate(
+                globalResources,
+                req,
+                name,
+                def.packet,
+                payload,
+                destPathHint,
+                wantAsync,
+                { qualityDropped, qualityInherited }
+            );
         }
 
         const packet = await dispatchPacketTool(globalResources, req, def.packet, payload);
@@ -7273,36 +7470,6 @@ async function callTool(globalResources, req, name, args) {
                 filenames: flat.filenames
             }));
         }
-        if (packet.success && (name === 'generate_image' || name === 'generate_preset')) {
-            const names = collectFilenames({
-                filename: flat.filename,
-                filenames: flat.filenames
-            });
-            flat.lumen = await maybeOpenGeneratedInLumen(globalResources, req, names);
-
-            if (payload.save_memory) {
-                const title = String(payload.prompt || '').trim().slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'generation_memory';
-                const memoryName = `gen_${Date.now()}_${title}`;
-                const description = `Generation parameters for: ${String(payload.prompt || '').slice(0, 50)}`;
-                const category = 'generation_record';
-                const memoryResult = runMemoryTool(globalResources, 'save_memory', {
-                    name: memoryName,
-                    description,
-                    category,
-                    observations: [
-                        { content: `Prompt: ${payload.prompt}` },
-                        { content: `UC: ${payload.uc || ''}` },
-                        { content: `Model: ${payload.model || ''}` },
-                        { content: `Seed: ${flat.seed || payload.seed || ''}` }
-                    ]
-                }, { sessionId: resolveBindKey(req) });
-                if (memoryResult && memoryResult.success) {
-                    flat.saved_memory = memoryResult.memory;
-                }
-            }
-        }
-        if (qualityDropped) flat.qualityDropped = qualityDropped;
-        if (qualityInherited) flat.qualityInherited = qualityInherited;
         return mcpResultFromGenerateFlat(globalResources, flat, packet.success, destPathHint);
     }
 
@@ -7453,14 +7620,14 @@ async function callTool(globalResources, req, name, args) {
             completeApplyGenerateJob(pendingApply.jobId, filename);
         }
         const mustAct = collectEnshutsukaMustAct(meta);
-        return mcpImageResult(attachDestPathMeta(globalResources, {
+        return mcpImageResult(attachDurableGalleryFields(globalResources, attachDestPathMeta(globalResources, {
             ...meta,
             filename,
             imageKind,
             workspaceId: lookedUp.workspaceId,
             latest: !!lookedUp.latest,
             mustAct
-        }, image, pickDestPathInput(input), { full: wantFull }), image);
+        }, image, pickDestPathInput(input), { full: wantFull })), image);
     }
 
     if (name === 'list_clients') {
@@ -8633,7 +8800,8 @@ async function handleJsonRpc(globalResources, req, message) {
                 success: false,
                 error: messageText,
                 code: error && error.code ? error.code : undefined,
-                status
+                status,
+                jobId: error && error.jobId ? error.jobId : undefined
             }, true);
             recordActivity(globalResources, {
                 tool: name,
@@ -8797,6 +8965,35 @@ function registerRoutes(app, { globalResources }) {
         standardHeaders: true,
         legacyHeaders: false
     });
+    const generationRequestLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: 120,
+        keyGenerator: (req) => `mcp-gen-requests:${ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'unknown')}`,
+        standardHeaders: true,
+        legacyHeaders: false
+    });
+    app.get(`${prefix}/generation-requests`, mcpMiddleware, mcpAuth, generationRequestLimiter, (req, res) => {
+        const query = Object.assign({}, req.query || {});
+        if (query.workspace || query.workspaceId) {
+            query.workspace = resolveWorkspaceId(query.workspace || query.workspaceId, globalResources);
+        }
+        handleGenerationRequestsHttp(globalResources, {
+            applicationAuth: req.applicationAuth,
+            query
+        }, res);
+    });
+
+    const galleryImageLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: 120,
+        keyGenerator: (req) => `mcp-gallery-image:${ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'unknown')}`,
+        standardHeaders: true,
+        legacyHeaders: false
+    });
+    app.get(`${prefix}/gallery/:filename`, mcpMiddleware, mcpAuth, galleryImageLimiter, (req, res) => {
+        handleMcpGalleryImageDownload(globalResources, req, res);
+    });
+
     app.get(`${prefix}/artifacts/:ticket`, artifactLimiter, (req, res) => {
         const row = getArtifactTicket(req.params.ticket);
         if (!row) {
@@ -8934,6 +9131,10 @@ module.exports = {
         reopenStaleApplyJob,
         applyPrintWait,
         restartClientWait,
+        DEFAULT_SYNC_GENERATE_WAIT_MS,
+        syncGenerateWaitMs,
+        generationCaller,
+        attachDurableGalleryFields,
         validateSetWindowArgs,
         validateOpenApplicationArgs,
         validateGetCalculatorArgs,

@@ -22,7 +22,7 @@ const MODULE_DEFS = {
         label: 'Core Generation',
         description: 'Image generation, Studio control, presets',
         tools: [
-            'generate_image', 'get_generation_job', 'await_generation_job', 'ensure_artifact',
+            'generate_image', 'get_generation_job', 'list_generation_requests', 'await_generation_job', 'ensure_artifact',
             'get_session_state', 'get_studio_state', 'get_open_windows', 'set_window', 'open_application',
             'get_calculator', 'set_calculator',
             'offer_director_window', 'get_client_physics',

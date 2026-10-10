@@ -1388,9 +1388,33 @@ function studioNudgeManualInput(input, deltaY, shiftKey) {
     }));
 }
 
+const STUDIO_MEDIUM_LOCKED_TIP = 'Locked while Medium effort is on. Switch Effort to High to change it.';
+
+// mediumControlIsLocked: public/scripts/comp/utilities.js
+function studioMediumLocked(control) {
+    return typeof mediumControlIsLocked === 'function' && mediumControlIsLocked(control);
+}
+
+function studioEffortMenuDisabled() {
+    // Enabled on V5 Full (effort toggle) and on v5_medium (setManualEffort maps it back to Full).
+    const caps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures() : null;
+    return !(caps && ((caps.effort && caps.effort.medium) || caps.fixedSettings));
+}
+
+function getStudioEffortMenuItems() {
+    const current = typeof activeMediumLock === 'function' && activeMediumLock() ? 'medium' : 'high';
+    return [
+        { text: 'High', action: 'studio-select-effort', value: 'high', showIndicator: true, checked: current === 'high' },
+        { text: 'Medium', action: 'studio-select-effort', value: 'medium', showIndicator: true, checked: current === 'medium' }
+    ];
+}
+
 function studioParamScrubRow(param, label, iconClass) {
     const inputId = param === 'steps' ? 'manualSteps' : (param === 'guidance' ? 'manualGuidance' : 'manualRescale');
+    const locked = () => studioMediumLocked(param);
     return {
+        disabled: locked,
+        tooltip: () => (locked() ? STUDIO_MEDIUM_LOCKED_TIP : ''),
         content: function () {
             const wrap = document.createElement('div');
             wrap.className = 'dataset-option-content';
@@ -1428,6 +1452,7 @@ function studioParamScrubRow(param, label, iconClass) {
             controls.addEventListener('mousedown', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                if (locked()) return;
                 const stepEl = e.target.closest('[data-bias-step]');
                 if (!stepEl) return;
                 const dir = Number(stepEl.dataset.biasStep);
@@ -1440,6 +1465,7 @@ function studioParamScrubRow(param, label, iconClass) {
             });
             // bindStudioRowWheel: public/scripts/comp/manualDropdownManager.js
             bindStudioRowWheel(wrap, (e) => {
+                if (locked()) return;
                 studioNudgeManualInput(document.getElementById(inputId), e.deltaY, e.shiftKey);
                 paint();
             });
@@ -2006,6 +2032,8 @@ function getStudioImageGenerationSettingsMenuConfig() {
                         text: 'UC Preset',
                         // getStudioUcPresetMenuItems: public/scripts/comp/manualDropdownManager.js
                         optionsfn: getStudioUcPresetMenuItems,
+                        disabled: () => studioMediumLocked('uc'),
+                        tooltip: () => (studioMediumLocked('uc') ? STUDIO_MEDIUM_LOCKED_TIP : ''),
                         valueDisplay: function () {
                             return UC_PRESET_LEVEL_LABELS[selectedUcPreset] || '';
                         }
@@ -2029,6 +2057,14 @@ function getStudioImageGenerationSettingsMenuConfig() {
                         optionsfn: getStudioModelMenuItems,
                         valueDisplay: studioCurrentModelLabel
                     },
+                    {
+                        icon: 'fas fa-gauge-high',
+                        text: 'Effort',
+                        optionsfn: getStudioEffortMenuItems,
+                        valueDisplay: () => (studioEffortMenuDisabled() ? '' : (typeof activeMediumLock === 'function' && activeMediumLock() ? 'Medium' : 'High')),
+                        disabled: studioEffortMenuDisabled,
+                        tooltip: () => (studioEffortMenuDisabled() ? 'Effort is only available on V5 Full.' : '')
+                    },
                     studioParamScrubRow('steps', 'Steps', 'fas fa-shoe-prints'),
                     studioParamScrubRow('guidance', 'Guidance', 'fas fa-compass'),
                     studioParamScrubRow('rescale', 'Rescale', 'fas fa-arrows-left-right'),
@@ -2036,7 +2072,9 @@ function getStudioImageGenerationSettingsMenuConfig() {
                         icon: 'fas fa-shuffle',
                         text: 'Sampler',
                         optionsfn: getStudioSamplerMenuItems,
-                        valueDisplay: studioCurrentSamplerLabel
+                        valueDisplay: studioCurrentSamplerLabel,
+                        disabled: () => studioMediumLocked('sampler'),
+                        tooltip: () => (studioMediumLocked('sampler') ? STUDIO_MEDIUM_LOCKED_TIP : '')
                     },
                     {
                         icon: 'fas fa-wave-square',
@@ -2254,6 +2292,11 @@ function handleImageGenerationSettingsMenuAction(action, target, item) {
     if (action === 'studio-select-sampler' && row && row.value) {
         // selectManualSampler: public/scripts/comp/manualDropdownManager.js
         selectManualSampler(row.value);
+        return true;
+    }
+    if (action === 'studio-select-effort' && row && row.value) {
+        // setManualEffort: public/scripts/comp/manualModalManager.js
+        setManualEffort(row.value);
         return true;
     }
     if (action === 'studio-select-noise' && row && row.value) {
