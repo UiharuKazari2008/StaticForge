@@ -101,7 +101,7 @@ const SCOPE_WS_PACKETS = {
         'list_novelai_explore_blocked_creators', 'clear_novelai_explore_gallery_cache',
         'ensure_novelai_explore_image', 'check_novelai_explore_upload', 'upload_novelai_explore_image'
     ],
-    infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check', 'runpod_pods_status']
+    infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check', 'runpod_pods_status', 'remote_workers_status']
 };
 
 const AVAILABLE_SCOPES = [

@@ -646,3 +646,26 @@
     background: none;
     cursor: pointer;
 }
+
+/* Data Management: Remote workers */
+[data-dsap] .data-mgmt-workers-table { width: 100%; }
+[data-dsap] .data-mgmt-worker-dot-cell { width: 18px; text-align: center; }
+[data-dsap] .data-mgmt-worker-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #9a9a9a;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    vertical-align: middle;
+}
+[data-dsap] .data-mgmt-worker-dot-healthy { background: #2fb344; }
+[data-dsap] .data-mgmt-worker-dot-degraded { background: #e5a50a; }
+[data-dsap] .data-mgmt-worker-dot-offline { background: #d63939; }
+[data-dsap] .data-mgmt-worker-dot-unconfigured { background: #9a9a9a; }
+[data-dsap] .data-mgmt-worker-name { font-weight: bold; }
+[data-dsap] .data-mgmt-worker-host,
+[data-dsap] .data-mgmt-workers-host,
+[data-dsap] .data-mgmt-worker-meta { font-size: 11px; opacity: 0.8; }
+[data-dsap] .data-mgmt-worker-actions { text-align: right; white-space: nowrap; }
+[data-dsap] .data-mgmt-worker-row-busy { opacity: 0.6; }
