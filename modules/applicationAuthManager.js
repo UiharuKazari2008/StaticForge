@@ -12,7 +12,8 @@ const SCOPE_WS_PACKETS = {
         'request_gallery', 'request_image_metadata', 'delete_images_bulk',
         'delete_unupscaled_original',
         'gallery_position_hint', 'send_to_sequenzia_bulk', 'update_image_preset_bulk',
-        'get_similar_image_groups', 'scrap_similar_images'
+        'get_similar_image_groups', 'scrap_similar_images', 'get_nax_vibes_gallery',
+        'set_gallery_show_shared'
     ],
     generation: [
         'generate_image', 'generate_preset', 'cancel_generation', 'upscale_image',
@@ -40,7 +41,7 @@ const SCOPE_WS_PACKETS = {
         // omegasearch_query — see OMEGASEARCH_QUERY_PACKET_SCHEMA in omegasearchFilters.js
         'omegasearch_query',
         'search_index_status', 'search_index_pause', 'search_index_resume',
-        'search_index_rebuild', 'spellcheck_add_word'
+        'search_index_rebuild', 'spellcheck_add_word', 'prompt_index_reconcile'
     ],
     vfs: [
         'vfs_list', 'vfs_read', 'vfs_write', 'vfs_delete', 'vfs_mkdir', 'vfs_move',
@@ -100,7 +101,7 @@ const SCOPE_WS_PACKETS = {
         'list_novelai_explore_blocked_creators', 'clear_novelai_explore_gallery_cache',
         'ensure_novelai_explore_image', 'check_novelai_explore_upload', 'upload_novelai_explore_image'
     ],
-    infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check']
+    infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check', 'runpod_pods_status']
 };
 
 const AVAILABLE_SCOPES = [
