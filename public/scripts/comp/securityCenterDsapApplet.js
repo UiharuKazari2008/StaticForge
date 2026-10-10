@@ -453,6 +453,10 @@ ${dsapSmfBuildHeader({
         <input type="hidden" id="secAppkeyExpiryHidden" value="perpetual">
       </label>
       <label>Refresh interval (days)<input type="number" id="secAppkeyRefreshDaysInput" class="sec-input" min="1" max="365" value="30"></label>
+      <label class="sec-check"><input type="checkbox" id="secAppkeyAllowKeyless"> Allow Keyless Requests (See Trusted Access)</label>
+      <label class="sec-check"><input type="checkbox" id="secAppkeyPersistent"> Persistent Key</label>
+      <label>Trusted CIDRs<input type="text" id="secAppkeyCidrsInput" class="sec-input" placeholder="203.0.113.10/32, 2001:db8::/64"></label>
+      <p class="sec-dsap-setting-hint">127.0.0.1 and ::1 are included when keyless requests are allowed. A persistent key does not expire or refresh. Every Grok bot should have one.</p>
       <div class="sec-appkeys-scopes" id="secAppkeyScopesWrap">
         <span class="sec-dsap-setting-hint">Scopes (select one or more; Universal overrides others)</span>
         <div id="secAppkeyScopesList"></div>
@@ -2853,13 +2857,14 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
 
         tbody.innerHTML = keys.map((key) => {
             const statusClass = 'sec-status-' + String(key.status || 'active').replace(/[^a-z_]/g, '');
-            const expires = key.isPerpetual ? 'Never' : securityDsapFormatTimestamp(key.expiresAt);
-            const refreshBy = securityDsapFormatTimestamp(key.refreshBeforeAt);
+            const expires = key.isPerpetual || key.persistent ? 'Never' : securityDsapFormatTimestamp(key.expiresAt);
+            const refreshBy = key.persistent ? '—' : securityDsapFormatTimestamp(key.refreshBeforeAt);
+            const flagBits = [key.allowKeyless ? 'Keyless' : '', key.persistent ? 'Persistent' : ''].filter(Boolean).join(' · ');
             const scopes = (key.scopes || []).join(', ');
             const canRevoke = key.status === 'active' || key.status === 'refresh_required';
             return `
 <tr data-sec-appkey-id="${securityDsapEscapeAttr(key.id)}">
-  <td>${securityDsapEscapeHtml(key.appName)}<br><span class="sec-dsap-setting-hint">${securityDsapEscapeHtml(key.userAgent)}</span></td>
+  <td>${securityDsapEscapeHtml(key.appName)}<br><span class="sec-dsap-setting-hint">${securityDsapEscapeHtml(key.userAgent)}</span>${flagBits ? `<br><span class="sec-dsap-setting-hint">${securityDsapEscapeHtml(flagBits)}</span>` : ''}</td>
   <td><code>${securityDsapEscapeHtml(key.keyPrefix)}…</code></td>
   <td>${securityDsapEscapeHtml(scopes)}</td>
   <td align="center" class="${statusClass}">${securityDsapEscapeHtml(key.status)}</td>
@@ -2970,7 +2975,10 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
                 scopes,
                 userType,
                 perpetual: expiry === 'perpetual',
-                refreshIntervalDays: refreshDays
+                refreshIntervalDays: refreshDays,
+                allowKeyless: !!root.querySelector('#secAppkeyAllowKeyless')?.checked,
+                persistent: !!root.querySelector('#secAppkeyPersistent')?.checked,
+                trustedCidrs: root.querySelector('#secAppkeyCidrsInput')?.value || ''
             };
             if (expiry !== 'perpetual') payload.expiresInDays = parseInt(expiry, 10);
 

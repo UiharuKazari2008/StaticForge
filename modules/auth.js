@@ -1,7 +1,8 @@
 const fs = require('fs');
 const crypto = require('crypto');
-const { isApplicationKeyFormat, isTempTokenFormat, redactApplicationRequestPath } = require('./applicationAuthManager');
+const { isApplicationKeyFormat, isTempTokenFormat, redactApplicationRequestPath, describeKeylessPacket } = require('./applicationAuthManager');
 const { isOAuthAccessTokenFormat } = require('./mcpOAuthProvider');
+const { resolveRequestClientIp, trustedProxiesFromResources } = require('./clientAddress');
 
 function noteApplicationRequest(req, res, globalResources, source) {
     if (!req || !res || req._appRequestNoted) return;
@@ -24,7 +25,7 @@ function noteApplicationRequest(req, res, globalResources, source) {
             path: redactApplicationRequestPath(rawPath),
             statusCode: res.statusCode || 0,
             source: source || 'http',
-            ip: req.socket?.remoteAddress || req.ip || '',
+            ip: req.realClientIp || req.socket?.remoteAddress || '',
             userAgent: req.headers && req.headers['user-agent']
         }).catch(() => {});
     });
@@ -54,9 +55,12 @@ async function resolveApplicationAuth(req, globalResources, options = {}) {
     if (!extracted) return null;
 
     const userAgent = req.headers['user-agent'] || '';
+    const ipInfo = resolveRequestClientIp(req, trustedProxiesFromResources(globalResources));
+    if (ipInfo.ip && ipInfo.ip !== 'unknown') req.realClientIp = ipInfo.ip;
     const keyValidateOptions = {
         allowRefreshOverdue: options.allowRefreshOverdue === true,
-        skipUserAgent: options.skipUserAgent === true
+        skipUserAgent: options.skipUserAgent === true,
+        clientIp: ipInfo.keylessIp || ipInfo.ip || null
     };
     if (options.unknownUserAgentBypass === true) {
         keyValidateOptions.unknownUserAgentBypass = true;
@@ -248,6 +252,17 @@ function createMcpAuthMiddleware(globalResources, options = {}) {
             console.error('MCP OAuth auth resolution error:', err.message);
         }
 
+        try {
+            const keyless = await resolveMcpKeyless(req, globalResources);
+            if (keyless) {
+                applyAuthContext(req, keyless);
+                noteApplicationRequest(req, res, globalResources, 'keyless');
+                return next();
+            }
+        } catch (err) {
+            console.error('MCP keyless auth error:', err.message);
+        }
+
         if (resourceMetadataUrl) {
             res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${resourceMetadataUrl}"`);
         }
@@ -366,6 +381,50 @@ function createAgentAssetAuthMiddleware(globalResources) {
     };
 }
 
+function presentedMcpCredential(req) {
+    if (!req || !req.headers) return false;
+    if (req.headers['x-staticforge-app-key'] || req.headers['x-staticforge-app-token']) return true;
+    const authorization = req.headers.authorization;
+    return typeof authorization === 'string' && /^Bearer\s+\S+/i.test(authorization);
+}
+
+/**
+ * Keyless Trusted Access runs only when the request did not present a key or bearer.
+ * A presented credential stays on the normal auth path, including rejection.
+ */
+async function resolveMcpKeyless(req, globalResources) {
+    if (presentedMcpCredential(req)) return null;
+    let manager = null;
+    try {
+        manager = globalResources.getApplicationAuthManager();
+    } catch (_) {
+        return null;
+    }
+    if (!manager || typeof manager.resolveKeylessAccess !== 'function') return null;
+    const ipInfo = resolveRequestClientIp(req, trustedProxiesFromResources(globalResources));
+    if (ipInfo.ip && ipInfo.ip !== 'unknown') req.realClientIp = ipInfo.ip;
+    const userAgent = (req.headers && req.headers['user-agent']) || '';
+    const keyless = await manager.resolveKeylessAccess({
+        userAgent,
+        clientIp: ipInfo.keylessIp
+    });
+    if (!keyless) return null;
+    const described = describeKeylessPacket(req);
+    try {
+        await manager.auditKeylessRequest({
+            applicationKeyId: keyless.applicationKeyId,
+            appName: keyless.appName,
+            userAgent,
+            ip: ipInfo.keylessIp,
+            packet: described.packet,
+            tool: described.tool
+        });
+    } catch (err) {
+        console.error('keyless audit failed:', err.message);
+    }
+    return keyless;
+}
+
 function isReadOnlyUser(req) {
     return req.userType === 'readonly';
 }
@@ -384,5 +443,6 @@ module.exports = {
     isReadOnlyUser,
     isAdminUser,
     resolveApplicationAuth,
+    resolveMcpKeyless,
     applyAuthContext
 };

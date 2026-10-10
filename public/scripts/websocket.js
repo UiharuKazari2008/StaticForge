@@ -509,7 +509,7 @@ class BannerManager {
 class WebSocketClient {
     // Constants for timeouts, delays, and limits
     static TIMEOUT_UI_DEFAULT = 3000; // Default UI timeout (3 seconds)
-    static TIMEOUT_PING = 5000; // Ping timeout (5 seconds)
+    static TIMEOUT_PING = 20000; // Ping timeout (20 seconds; cellular/WireGuard pongs)
     static TIMEOUT_CONNECTION_STABILITY = 2000; // Connection stability check timeout
     static TIMEOUT_HOST_AVAILABILITY = 3000; // Host availability check timeout
     static TIMEOUT_VERSION_CHECK = 2000; // Version compatibility check timeout
@@ -4279,6 +4279,20 @@ class WebSocketClient {
         return !!this._connectingSince && (Date.now() - this._connectingSince) > WebSocketClient.DELAY_CONNECTING_WATCHDOG;
     }
 
+    /**
+     * One unanswered client ping. Reconnect only after PING_LIVENESS_MISSES (2)
+     * so a single slow cellular pong does not recycle the socket.
+     * @returns {boolean} true when the socket was replaced
+     */
+    _registerMissedPong() {
+        this._missedPingCount = (this._missedPingCount || 0) + 1;
+        if (this._missedPingCount >= WebSocketClient.PING_LIVENESS_MISSES) {
+            this._replaceStaleSocket('ping-liveness');
+            return true;
+        }
+        return false;
+    }
+
     _socketNeedsReplace() {
         if (!this.ws) return false;
         if (this.ws.readyState === WebSocket.CONNECTING && this._connectingIsStale()) {
@@ -7034,7 +7048,7 @@ class WebSocketClient {
                 // Calculate dynamic timeout based on RTT
                 const timeoutMs = this.calculateDynamicTimeout(WebSocketClient.TIMEOUT_PING, 1, 3, {
                     minTimeout: WebSocketClient.TIMEOUT_PING,
-                    maxTimeout: 15000,
+                    maxTimeout: 45000,
                     noRttMultiplier: 1
                 });
 
@@ -7044,11 +7058,8 @@ class WebSocketClient {
                         this.pendingPings.delete(requestId);
                         this.decrementPendingRequests();
 
-                        this._missedPingCount += 1;
                         console.warn(`⚠️ Ping request timeout (ID: ${requestId}) after ${timeoutMs}ms`);
-                        if (this._missedPingCount >= WebSocketClient.PING_LIVENESS_MISSES) {
-                            this._replaceStaleSocket('ping-liveness');
-                        }
+                        this._registerMissedPong();
                         const timeoutError = new Error(`Ping request timeout after ${timeoutMs}ms`);
                         timeoutError.code = 'PING_TIMEOUT';
                         timeoutError.requestId = requestId;

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { getDb } = require('./applicationAuthDatabase');
 const { OMEGASEARCH_QUERY_PACKET_SCHEMA } = require('./omegasearchFilters');
+const { parseCidr, ipInCidrs } = require('./clientAddress');
 
 const APP_KEY_PREFIX = 'sfapp_';
 const TEMP_TOKEN_PREFIX = 'sftok_';
@@ -179,6 +180,112 @@ function parseScopesJson(raw) {
     }
 }
 
+/** Loopback hosts implied for every allowKeyless application. Not the whole /8. */
+const KEYLESS_IMPLIED_CIDRS = Object.freeze(['127.0.0.1/32', '::1/128']);
+const PERSISTENT_REFRESH_DAYS = 36500;
+
+function parseTrustedCidrsJson(raw) {
+    try {
+        const parsed = JSON.parse(raw || '[]');
+        return Array.isArray(parsed) ? parsed.map((entry) => String(entry)) : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function canonicalCidr(parsed) {
+    return `${parsed.ip}/${parsed.prefix}`;
+}
+
+function normalizeTrustedCidrList(value) {
+    const raw = Array.isArray(value) ? value : String(value == null ? '' : value).split(/[\s,]+/);
+    const cidrs = [];
+    const seen = new Set();
+    for (const entry of raw) {
+        const token = String(entry || '').trim();
+        if (!token) continue;
+        const parsed = parseCidr(token);
+        if (!parsed) {
+            return { ok: false, error: `Invalid trusted CIDR: ${token}`, cidrs: [] };
+        }
+        const canonical = canonicalCidr(parsed);
+        if (seen.has(canonical)) continue;
+        seen.add(canonical);
+        cidrs.push(canonical);
+    }
+    return { ok: true, cidrs };
+}
+
+function trustedAccessFlag(value) {
+    return value === true || value === 1 || value === '1' || value === 'on' || value === 'true';
+}
+
+/**
+ * allowKeyless, persistent, and trusted CIDRs.
+ * Readonly consent sessions cannot set them (admin approval required).
+ */
+function parseTrustedAccessOptions(input, { admin = false } = {}) {
+    if (!admin) {
+        return { allowKeyless: false, persistent: false, trustedCidrs: [] };
+    }
+    const src = input && typeof input === 'object' ? input : {};
+    const rawCidrs = src.trustedCidrs != null ? src.trustedCidrs : src.trusted_cidrs;
+    const cidrs = normalizeTrustedCidrList(rawCidrs);
+    if (!cidrs.ok) {
+        const err = new Error(cidrs.error);
+        err.code = 'INVALID_TRUSTED_CIDR';
+        throw err;
+    }
+    const allowKeyless = trustedAccessFlag(src.allowKeyless != null ? src.allowKeyless : src.allow_keyless);
+    const persistent = trustedAccessFlag(src.persistent);
+    return { allowKeyless, persistent, trustedCidrs: cidrs.cidrs };
+}
+
+function keylessCidrsForRow(row) {
+    return KEYLESS_IMPLIED_CIDRS.concat(parseTrustedCidrsJson(row && row.trusted_cidrs));
+}
+
+function actorFromKeyRow(row) {
+    const userType = row && row.user_type === 'admin' ? 'admin' : 'readonly';
+    return {
+        userType,
+        readOnly: userType !== 'admin',
+        allowDelete: userType === 'admin',
+        scopes: parseScopesJson(row && row.scopes),
+        applicationKeyId: row ? row.id : null,
+        appName: row && row.app_name ? row.app_name : null,
+        persistent: !!(row && Number(row.persistent) === 1),
+        allowKeyless: !!(row && Number(row.allow_keyless) === 1)
+    };
+}
+
+function redactLoggedSecrets(value) {
+    return String(value == null ? '' : value)
+        .replace(/sfapp_[A-Za-z0-9_-]+/g, '[redacted]')
+        .replace(/sftok_[A-Za-z0-9_-]+/g, '[redacted]');
+}
+
+function describeKeylessPacket(req) {
+    const body = req && req.body;
+    const item = Array.isArray(body) ? body[0] : body;
+    let packet = '';
+    let tool = '';
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+        if (typeof item.method === 'string') packet = item.method;
+        if (typeof item.type === 'string' && !packet) packet = item.type;
+        if (packet === 'tools/call' && item.params && typeof item.params.name === 'string') {
+            tool = item.params.name;
+        }
+    }
+    if (!packet && req) {
+        packet = String(req.path || req.url || '').split('?')[0];
+    }
+    return {
+        packet: redactLoggedSecrets(packet).slice(0, 120) || '-',
+        tool: redactLoggedSecrets(tool).slice(0, 120) || '-'
+    };
+}
+
 // JULES: Pre-compute static reverse lookup Map O(1) from packetType to scopes array
 const PACKET_TO_SCOPES_MAP = new Map();
 for (const [scopeId, packets] of Object.entries(SCOPE_WS_PACKETS)) {
@@ -231,14 +338,16 @@ function redactApplicationRequestPath(value) {
 function rowToKeySummary(row, includeExpired = false) {
     if (!row) return null;
     const nowSec = Math.floor(Date.now() / 1000);
+    const persistent = Number(row.persistent) === 1;
+    const allowKeyless = Number(row.allow_keyless) === 1;
     const expiresAt = row.expires_at != null ? row.expires_at * 1000 : null;
     const refreshBeforeAt = row.refresh_before_at * 1000;
     let status = row.status;
     if (status === 'active' && row.revoked_at) {
         status = 'revoked';
-    } else if (status === 'active' && expiresAt && expiresAt <= Date.now()) {
+    } else if (!persistent && status === 'active' && expiresAt && expiresAt <= Date.now()) {
         status = 'expired';
-    } else if (status === 'active' && refreshBeforeAt <= Date.now()) {
+    } else if (!persistent && status === 'active' && refreshBeforeAt <= Date.now()) {
         status = 'refresh_required';
     }
 
@@ -259,10 +368,16 @@ function rowToKeySummary(row, includeExpired = false) {
         createdAt: row.created_at * 1000,
         lastRefreshedAt: row.last_refreshed_at ? row.last_refreshed_at * 1000 : null,
         lastUsedAt: row.last_used_at ? row.last_used_at * 1000 : null,
+        lastUsedIp: row.last_used_ip || '',
         revokedAt: row.revoked_at ? row.revoked_at * 1000 : null,
         status,
-        isPerpetual: row.expires_at == null,
-        refreshOverdue: status === 'refresh_required' || (refreshBeforeAt <= Date.now() && status === 'active')
+        isPerpetual: persistent || row.expires_at == null,
+        persistent,
+        allowKeyless,
+        trustedCidrs: parseTrustedCidrsJson(row.trusted_cidrs),
+        readOnly: (row.user_type || 'admin') !== 'admin',
+        allowDelete: (row.user_type || 'admin') === 'admin',
+        refreshOverdue: !persistent && (status === 'refresh_required' || (refreshBeforeAt <= Date.now() && status === 'active'))
     };
 }
 
@@ -342,7 +457,8 @@ class ApplicationAuthManager {
     async validateApplicationKey(rawKey, userAgent, {
         allowRefreshOverdue = false,
         skipUserAgent = false,
-        unknownUserAgentBypass = false
+        unknownUserAgentBypass = false,
+        clientIp = null
     } = {}) {
         if (!isApplicationKeyFormat(rawKey)) {
             return { valid: false, code: 'INVALID_KEY_FORMAT', message: 'Invalid application key format' };
@@ -374,12 +490,13 @@ class ApplicationAuthManager {
         }
 
         const nowSec = Math.floor(Date.now() / 1000);
-        if (row.expires_at != null && row.expires_at <= nowSec) {
+        const persistent = Number(row.persistent) === 1;
+        if (!persistent && row.expires_at != null && row.expires_at <= nowSec) {
             await getDb().run('UPDATE application_keys SET status = ? WHERE id = ?', ['expired', row.id]);
             return { valid: false, code: 'KEY_EXPIRED', message: 'Application key expired — re-authorize via login' };
         }
 
-        if (row.refresh_before_at <= nowSec && !allowRefreshOverdue) {
+        if (!persistent && row.refresh_before_at <= nowSec && !allowRefreshOverdue) {
             return {
                 valid: false,
                 code: 'REFRESH_REQUIRED',
@@ -388,7 +505,11 @@ class ApplicationAuthManager {
             };
         }
 
-        await getDb().run('UPDATE application_keys SET last_used_at = ? WHERE id = ?', [nowSec, row.id]);
+        const usedIp = clientIp ? String(clientIp).slice(0, 80) : '';
+        await getDb().run(
+            'UPDATE application_keys SET last_used_at = ?, last_used_ip = ? WHERE id = ?',
+            [nowSec, usedIp, row.id]
+        );
 
         return {
             valid: true,
@@ -400,6 +521,7 @@ class ApplicationAuthManager {
             expiresAt: row.expires_at != null ? row.expires_at * 1000 : null,
             refreshBeforeAt: row.refresh_before_at * 1000,
             originalExpiresAt: row.original_expires_at != null ? row.original_expires_at * 1000 : null,
+            persistent,
             userAgentMatched: uaMatched,
             userAgentBypassed: !!(unknownUserAgentBypass && !uaMatched)
         };
@@ -484,7 +606,10 @@ class ApplicationAuthManager {
         scopes,
         userType = 'admin',
         expiresAt = null,
-        refreshIntervalDays = 30
+        refreshIntervalDays = 30,
+        allowKeyless = false,
+        persistent = false,
+        trustedCidrs = []
     }) {
         const id = crypto.randomUUID();
         const rawKey = generateAppKey();
@@ -492,18 +617,29 @@ class ApplicationAuthManager {
         const keyPrefix = rawKey.slice(0, 12);
         const nowSec = Math.floor(Date.now() / 1000);
         const normalizedScopes = normalizeScopes(scopes);
-        const refreshBeforeAt = nowSec + Math.max(1, refreshIntervalDays) * 86400;
-        const expiresAtSec = expiresAt != null ? Math.floor(expiresAt / 1000) : null;
+        const isPersistent = persistent === true;
+        const keyless = allowKeyless === true;
+        const cidrNorm = normalizeTrustedCidrList(trustedCidrs);
+        if (!cidrNorm.ok) {
+            const err = new Error(cidrNorm.error);
+            err.code = 'INVALID_TRUSTED_CIDR';
+            throw err;
+        }
+        const refreshDays = isPersistent ? PERSISTENT_REFRESH_DAYS : Math.max(1, refreshIntervalDays);
+        const refreshBeforeAt = nowSec + refreshDays * 86400;
+        const expiresAtSec = isPersistent || expiresAt == null ? null : Math.floor(expiresAt / 1000);
 
         await getDb().run(
             `INSERT INTO application_keys
              (id, key_hash, key_prefix, app_name, user_agent, scopes, user_type,
-              expires_at, refresh_before_at, original_expires_at, created_at, last_refreshed_at, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              expires_at, refresh_before_at, original_expires_at, created_at, last_refreshed_at, status,
+              allow_keyless, persistent, trusted_cidrs)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 id, keyHash, keyPrefix, String(appName).trim(), String(userAgent).trim(),
                 JSON.stringify(normalizedScopes), userType === 'readonly' ? 'readonly' : 'admin',
-                expiresAtSec, refreshBeforeAt, expiresAtSec, nowSec, nowSec, 'active'
+                expiresAtSec, refreshBeforeAt, expiresAtSec, nowSec, nowSec, 'active',
+                keyless ? 1 : 0, isPersistent ? 1 : 0, JSON.stringify(cidrNorm.cidrs)
             ]
         );
 
@@ -522,6 +658,14 @@ class ApplicationAuthManager {
 
         const oldRow = validation.keyRecord;
         const nowSec = Math.floor(Date.now() / 1000);
+
+        if (Number(oldRow.persistent) === 1) {
+            return {
+                valid: false,
+                code: 'PERSISTENT_NO_REFRESH',
+                message: 'Persistent keys do not expire or refresh'
+            };
+        }
 
         if (oldRow.expires_at != null && oldRow.expires_at <= nowSec) {
             await getDb().run('UPDATE application_keys SET status = ? WHERE id = ?', ['expired', oldRow.id]);
@@ -545,12 +689,16 @@ class ApplicationAuthManager {
             await getDb().run(
                 `INSERT INTO application_keys
                  (id, key_hash, key_prefix, app_name, user_agent, scopes, user_type,
-                  expires_at, refresh_before_at, original_expires_at, created_at, last_refreshed_at, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  expires_at, refresh_before_at, original_expires_at, created_at, last_refreshed_at, status,
+                  allow_keyless, persistent, trusted_cidrs)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     newId, newHash, newPrefix, oldRow.app_name, oldRow.user_agent, oldRow.scopes,
                     oldRow.user_type, oldRow.expires_at, newRefreshBefore, oldRow.original_expires_at,
-                    oldRow.created_at, nowSec, 'active'
+                    oldRow.created_at, nowSec, 'active',
+                    Number(oldRow.allow_keyless) === 1 ? 1 : 0,
+                    0,
+                    oldRow.trusted_cidrs || '[]'
                 ]
             );
             await getDb().run('COMMIT');
@@ -909,6 +1057,111 @@ class ApplicationAuthManager {
         };
     }
 
+    async touchKeyUse(keyId, clientIp) {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const usedIp = clientIp ? String(clientIp).slice(0, 80) : '';
+        await getDb().run(
+            'UPDATE application_keys SET last_used_at = ?, last_used_ip = ? WHERE id = ?',
+            [nowSec, usedIp, keyId]
+        );
+    }
+
+    /**
+     * Keyless MCP actor. Exact User-Agent, allowKeyless, and client IP in the
+     * app CIDRs (127.0.0.1 and ::1 are implied). Does not grant admin unless
+     * the application user_type is admin.
+     */
+    async resolveKeylessAccess({ userAgent, clientIp } = {}) {
+        const ua = String(userAgent || '').trim();
+        if (!ua || !clientIp) return null;
+        const rows = await getDb().all(
+            `SELECT * FROM application_keys
+             WHERE status = 'active' AND revoked_at IS NULL AND allow_keyless = 1 AND user_agent = ?
+             ORDER BY created_at ASC`,
+            [ua]
+        );
+        const nowSec = Math.floor(Date.now() / 1000);
+        for (const row of rows) {
+            if (!this.validateUserAgent(row.user_agent, ua)) continue;
+            if (!ipInCidrs(clientIp, keylessCidrsForRow(row))) continue;
+            const persistent = Number(row.persistent) === 1;
+            if (!persistent && row.expires_at != null && row.expires_at <= nowSec) continue;
+            if (!persistent && row.refresh_before_at <= nowSec) continue;
+            const actor = actorFromKeyRow(row);
+            await this.touchKeyUse(row.id, clientIp);
+            return {
+                userType: actor.userType,
+                readOnly: actor.readOnly,
+                allowDelete: actor.allowDelete,
+                authMethod: 'trusted_keyless',
+                applicationKeyId: actor.applicationKeyId,
+                applicationScopes: actor.scopes,
+                appName: actor.appName,
+                applicationUserAgent: ua,
+                sessionId: `keyless:${actor.applicationKeyId}`,
+                persistent: actor.persistent,
+                allowKeyless: true,
+                clientIp: String(clientIp)
+            };
+        }
+        return null;
+    }
+
+    async auditKeylessRequest({ applicationKeyId, appName, userAgent, ip, packet, tool } = {}) {
+        const id = String(applicationKeyId || '').slice(0, 80);
+        if (!id) return false;
+        const ua = redactLoggedSecrets(userAgent).slice(0, 180);
+        const clientIp = redactLoggedSecrets(ip).slice(0, 80);
+        const packetLabel = redactLoggedSecrets(packet).slice(0, 120) || '-';
+        const toolLabel = redactLoggedSecrets(tool).slice(0, 120) || '-';
+        console.log(`🔑 keyless app=${id} ua=${JSON.stringify(ua)} ip=${clientIp} packet=${packetLabel} tool=${toolLabel}`);
+        await this.recordApplicationRequest({
+            applicationKeyId: id,
+            appName: appName || '',
+            httpMethod: 'KEYLESS',
+            path: toolLabel !== '-' ? `${packetLabel} ${toolLabel}` : packetLabel,
+            statusCode: 0,
+            source: 'keyless',
+            ip: clientIp,
+            userAgent: ua
+        });
+        return true;
+    }
+
+    /**
+     * Expires non-persistent keys whose expires_at has passed.
+     * Persistent keys are skipped: no expiry and no refresh rotation.
+     */
+    async runKeyRefreshExpiryJob(nowMs = Date.now()) {
+        const nowSec = Math.floor(nowMs / 1000);
+        const rows = await getDb().all(
+            `SELECT id, persistent, expires_at, refresh_before_at
+             FROM application_keys
+             WHERE status = 'active' AND revoked_at IS NULL`
+        );
+        let expired = 0;
+        let skippedPersistent = 0;
+        let refreshDue = 0;
+        for (const row of rows || []) {
+            if (Number(row.persistent) === 1) {
+                skippedPersistent += 1;
+                continue;
+            }
+            if (row.expires_at != null && row.expires_at <= nowSec) {
+                await getDb().run(
+                    `UPDATE application_keys SET status = 'expired' WHERE id = ? AND status = 'active' AND revoked_at IS NULL`,
+                    [row.id]
+                );
+                expired += 1;
+                continue;
+            }
+            if (row.refresh_before_at != null && row.refresh_before_at <= nowSec) {
+                refreshDue += 1;
+            }
+        }
+        return { expired, skippedPersistent, refreshDue };
+    }
+
     extractAuthFromRequest(req) {
         const appKeyHeader = req.headers['x-staticforge-app-key'];
         if (appKeyHeader) {
@@ -944,5 +1197,8 @@ module.exports = {
     isApplicationKeyFormat,
     isTempTokenFormat,
     redactApplicationRequestPath,
+    parseTrustedAccessOptions,
+    describeKeylessPacket,
+    KEYLESS_IMPLIED_CIDRS,
     OMEGASEARCH_QUERY_PACKET_SCHEMA
 };
