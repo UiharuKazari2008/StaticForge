@@ -2206,6 +2206,9 @@ async function applyStudioChangeOps(ops) {
         applyStudioGensoLocks(op.toValue);
     });
 
+    // applyModelLocks: public/scripts/comp/utilities.js — after params, including steps written before effort
+    if (typeof applyModelLocks === 'function') applyModelLocks();
+
     return enabled.length;
 }
 

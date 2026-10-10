@@ -193,7 +193,8 @@ const uiFns = [
         'ucPresetLevelFromId',
         'activeMediumLock',
         'mediumControlIsLocked',
-        'applyMediumStudioChrome'
+        'applyMediumStudioChrome',
+        'applyModelLocks'
     ].map((name) => extractFunction(utilSrc, name))
 ].join('\n');
 
@@ -231,6 +232,7 @@ function wire(el) {
 
 function runChrome(effort) {
     const steps = wire(makeEl('manualSteps'));
+    steps.className = 'form-control hover-show colored';
     steps.value = '28';
     steps.max = '50';
     const stepsGroup = wire(makeEl('manualStepsGroup'));
@@ -243,6 +245,7 @@ function runChrome(effort) {
     const uc = wire(makeEl('manualUc'));
     const charUc = wire(makeEl('char_uc'));
     const stageSteps = wire(makeEl('stage_steps'));
+    stageSteps.className = 'form-control hover-show colored';
     stageSteps.value = '30';
     const byId = {
         manualSteps: steps,
@@ -289,6 +292,11 @@ assert.strictEqual(mediumUi.ctx.lock.steps, 14);
 assert.strictEqual(mediumUi.steps.disabled, true);
 assert.strictEqual(mediumUi.steps.value, '14');
 assert.strictEqual(mediumUi.steps.max, '14');
+assert.strictEqual(mediumUi.steps.tabIndex, -1);
+assert.ok(mediumUi.steps.classList.contains('medium-locked'));
+assert.ok(!mediumUi.steps.classList.contains('hover-show'), 'locked steps have no hover affordance');
+assert.ok(mediumUi.stageSteps.classList.contains('medium-locked'));
+assert.ok(!mediumUi.stageSteps.classList.contains('hover-show'));
 assert.ok(mediumUi.steps.title.includes('V5 Medium'));
 assert.strictEqual(mediumUi.stepsGroup.title, mediumUi.steps.title);
 assert.strictEqual(mediumUi.stepsGroup.dataset.mediumLock, '1');
@@ -305,6 +313,8 @@ const highUi = runChrome('high');
 assert.strictEqual(highUi.ctx.lock, null);
 assert.strictEqual(highUi.steps.disabled, false);
 assert.strictEqual(highUi.steps.value, '28');
+assert.ok(highUi.steps.classList.contains('hover-show'));
+assert.ok(!highUi.steps.classList.contains('medium-locked'));
 assert.ok(!highUi.samplerRow.classList.contains('hidden'));
 assert.ok(!highUi.rescaleGroup.classList.contains('hidden'));
 assert.strictEqual(highUi.ctx.stepsLocked, false);
@@ -330,5 +340,150 @@ assert.ok(changeSrc.includes("mediumControlIsLocked('sampler')"));
 assert.ok(changeSrc.includes("mediumControlIsLocked('uc')"));
 assert.ok(stageSrc.includes("mediumControlIsLocked('steps')"));
 assert.ok(stageSrc.includes("mediumControlIsLocked('sampler')"));
+
+function runImageLoad(metadata) {
+    const steps = wire(makeEl('manualSteps'));
+    steps.className = 'form-control hover-show colored';
+    steps.value = String(metadata.steps);
+    steps.max = '50';
+    const stepsGroup = wire(makeEl('manualStepsGroup'));
+    const samplerRow = wire(makeEl('samplerRow'));
+    const rescaleGroup = wire(makeEl('manualRescaleGroup'));
+    const rescale = wire(makeEl('manualRescale'));
+    rescale.value = Number(metadata.cfg_rescale).toFixed(2);
+    const samplerBtn = wire(makeEl('manualSamplerDropdownBtn'));
+    const ucBtn = wire(makeEl('ucPresetsDropdownBtn'));
+    const uc = wire(makeEl('manualUc'));
+    const charUc = wire(makeEl('char_uc'));
+    const stageSteps = wire(makeEl('stage_steps'));
+    stageSteps.className = 'form-control hover-show colored';
+    stageSteps.value = '30';
+    const byId = {
+        manualSteps: steps,
+        manualStepsGroup: stepsGroup,
+        manualRescaleGroup: rescaleGroup,
+        manualRescale: rescale,
+        manualSamplerDropdownBtn: samplerBtn,
+        ucPresetsDropdownBtn: ucBtn,
+        manualUc: uc,
+        pipelineStagesContainer: {
+            querySelectorAll(sel) {
+                if (sel.includes('_steps')) return [stageSteps];
+                return [];
+            }
+        }
+    };
+    const ctx = {
+        console,
+        effort: 'high',
+        model: 'v5',
+        metadata,
+        appliedSampler: metadata.sampler || 'k_euler',
+        appliedUc: 4,
+        setEffortCalls: 0,
+        manualSelectedSampler: metadata.sampler || 'k_euler',
+        window: { optionsData: { modelFeatures: features } },
+        getCurrentSelectedModel() { return ctx.model; },
+        getManualEffort() { return ctx.effort; },
+        document: {
+            getElementById(id) { return byId[id] || null; },
+            querySelector(sel) {
+                if (sel.includes('control-row-sampler')) return samplerRow;
+                return null;
+            },
+            querySelectorAll(sel) {
+                if (sel.includes('textarea')) return [charUc];
+                return [];
+            }
+        }
+    };
+    vm.createContext(ctx);
+    vm.runInContext(`${uiFns}
+function setManualEffort(level) {
+    this.effort = String(level || '').toLowerCase() === 'medium' ? 'medium' : 'high';
+    this.setEffortCalls += 1;
+    applyModelLocks();
+}
+function selectManualSampler(value) { this.appliedSampler = value; }
+function selectUcPreset(value) { this.appliedUc = value; }
+applyModelLocks(this.metadata);
+`, ctx);
+    return { ctx, steps, stepsGroup, samplerRow, rescaleGroup, rescale, stageSteps };
+}
+
+const loadedMedium = runImageLoad({
+    source: MEDIUM_A,
+    model: 'V5_MEDIUM',
+    steps: 28,
+    sampler: 'k_euler',
+    cfg_rescale: 0.45
+});
+assert.strictEqual(loadedMedium.ctx.effort, 'medium');
+assert.strictEqual(loadedMedium.ctx.setEffortCalls, 1, 'image load uses the effort switch path');
+assert.strictEqual(loadedMedium.steps.disabled, true);
+assert.strictEqual(loadedMedium.steps.value, '14');
+assert.strictEqual(loadedMedium.steps.tabIndex, -1);
+assert.ok(loadedMedium.steps.classList.contains('medium-locked'));
+assert.ok(!loadedMedium.steps.classList.contains('hover-show'), 'image load drops the steps hover affordance');
+assert.ok(loadedMedium.samplerRow.classList.contains('hidden'), 'image load hides sampler');
+assert.ok(loadedMedium.rescaleGroup.classList.contains('hidden'), 'image load hides cfg rescale');
+assert.strictEqual(loadedMedium.rescale.disabled, true);
+assert.strictEqual(loadedMedium.rescale.value, '0.00');
+assert.strictEqual(loadedMedium.ctx.appliedSampler, 'k_euler_ancestral');
+assert.strictEqual(loadedMedium.ctx.appliedUc, 3);
+assert.strictEqual(loadedMedium.stageSteps.disabled, true);
+assert.strictEqual(loadedMedium.stageSteps.value, '14');
+assert.ok(!loadedMedium.stageSteps.classList.contains('hover-show'));
+
+const loadedFull = runImageLoad({
+    source: FULL,
+    model: 'V5',
+    steps: 28,
+    sampler: 'k_euler',
+    cfg_rescale: 0.45
+});
+assert.strictEqual(loadedFull.ctx.effort, 'high');
+assert.strictEqual(loadedFull.ctx.setEffortCalls, 0);
+assert.strictEqual(loadedFull.steps.disabled, false);
+assert.strictEqual(loadedFull.steps.value, '28');
+assert.ok(loadedFull.steps.classList.contains('hover-show'));
+assert.ok(!loadedFull.samplerRow.classList.contains('hidden'));
+assert.ok(!loadedFull.rescaleGroup.classList.contains('hidden'));
+
+const modalSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/manualModalManager.js'), 'utf8');
+const formSrc = modalSrc.slice(
+    modalSrc.indexOf('async function loadIntoManualForm'),
+    modalSrc.indexOf('function autoResizeTextareasAfterModalShow')
+);
+const populatedAt = formSrc.indexOf('manualSteps.value = data.steps');
+const pipelineAt = formSrc.lastIndexOf('loadPipelineStages(');
+const lockAt = formSrc.lastIndexOf('applyModelLocks(data)');
+assert.ok(populatedAt > 0 && pipelineAt > populatedAt && lockAt > pipelineAt, 'locks run after settings and pipeline stages');
+assert.ok(!formSrc.includes("setManualEffort('medium')"), 'load form uses applyModelLocks, not a mid-load effort write');
+const openSrc = modalSrc.slice(
+    modalSrc.indexOf('async function openManualModalWithContent'),
+    modalSrc.indexOf('function updateCreativeDirectiveVisibility')
+);
+assert.ok(openSrc.includes("loadIntoManualForm('preset'"));
+assert.ok(openSrc.includes("loadIntoManualForm('metadata'"));
+assert.ok(extractFunction(modalSrc, 'setManualEffort').includes('applyModelLocks('));
+assert.ok(extractFunction(modalSrc, 'syncManualEffortChrome').includes('applyModelLocks('));
+assert.ok(extractFunction(utilSrc, 'updateV3ModelVisibility').includes('syncManualEffortChrome('));
+
+const settingsSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/imageGenerationSettings.js'), 'utf8');
+const restoreSrc = settingsSrc.slice(
+    settingsSrc.indexOf('async function maybeRestoreLastStudioPreview'),
+    settingsSrc.indexOf('const IMAGE_GENERATION_BOOLEAN_MENU_ITEMS')
+);
+assert.ok(restoreSrc.includes('openManualModalWithContent'));
+assert.ok(restoreSrc.includes("type: 'image'"), 'history restore loads the image through Studio');
+
+const opsSrc = changeSrc.slice(
+    changeSrc.indexOf('async function applyStudioChangeOps'),
+    changeSrc.indexOf('async function saveStudioChangeToDesktop')
+);
+const opsLock = opsSrc.lastIndexOf('applyModelLocks(');
+const opsReturn = opsSrc.lastIndexOf('return enabled.length');
+assert.ok(opsLock > 0 && opsLock < opsReturn, 'apply_studio_changes locks after params are written');
 
 console.log('test-v5-medium-locks: ok');

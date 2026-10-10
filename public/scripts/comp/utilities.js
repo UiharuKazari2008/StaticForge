@@ -951,15 +951,21 @@ function applyMediumStudioChrome(lock) {
     if (steps) {
         steps.disabled = medium;
         steps.readOnly = medium;
+        if (steps.classList) {
+            steps.classList.toggle('hover-show', !medium);
+            steps.classList.toggle('medium-locked', medium);
+        }
         if (medium) {
             steps.max = String(lock.steps);
             steps.value = String(lock.steps);
             steps.title = stepsTitle;
             steps.setAttribute('aria-disabled', 'true');
+            steps.tabIndex = -1;
         } else {
             steps.max = '50';
             steps.removeAttribute('title');
             steps.removeAttribute('aria-disabled');
+            steps.removeAttribute('tabindex');
         }
     }
     if (stepsGroup) {
@@ -1008,13 +1014,21 @@ function applyMediumStudioChrome(lock) {
     if (stageRoot) {
         stageRoot.querySelectorAll('input[id$="_steps"]').forEach((input) => {
             input.disabled = medium;
+            if (input.classList) {
+                input.classList.toggle('hover-show', !medium);
+                input.classList.toggle('medium-locked', medium);
+            }
             if (medium) {
                 input.max = String(lock.steps);
                 if (input.value && parseInt(input.value, 10) > lock.steps) input.value = String(lock.steps);
                 input.title = stepsTitle;
+                input.setAttribute('aria-disabled', 'true');
+                input.tabIndex = -1;
             } else {
                 input.max = '50';
                 input.removeAttribute('title');
+                input.removeAttribute('aria-disabled');
+                input.removeAttribute('tabindex');
             }
         });
         stageRoot.querySelectorAll('input[id$="_rescale"]').forEach((input) => {
@@ -1028,6 +1042,42 @@ function applyMediumStudioChrome(lock) {
             else btn.removeAttribute('title');
         });
     }
+}
+
+/**
+ * Re-apply Medium locks after Studio settings are populated.
+ * Same path as switching the model (updateV3ModelVisibility, then syncManualEffortChrome)
+ * or the effort toggle (setManualEffort). Pass loaded metadata so a Medium source
+ * sets effort before the chrome runs.
+ * @param {object} [data]
+ */
+function applyModelLocks(data) {
+    const record = data && typeof data === 'object' ? data : null;
+    if (record && typeof setManualEffort === 'function' && resolveGenerationEffort(record) === 'medium') {
+        const current = typeof getManualEffort === 'function' ? getManualEffort() : 'high';
+        if (current !== 'medium') {
+            setManualEffort('medium');
+            return;
+        }
+    }
+    const lock = activeMediumLock();
+    if (lock) {
+        const stepsEl = document.getElementById('manualSteps');
+        const rescaleEl = document.getElementById('manualRescale');
+        if (stepsEl) stepsEl.value = String(lock.steps);
+        if (rescaleEl) rescaleEl.value = '0.00';
+        if (typeof selectManualSampler === 'function') {
+            const currentSampler = typeof manualSelectedSampler !== 'undefined' ? manualSelectedSampler : '';
+            if (currentSampler !== lock.sampler) selectManualSampler(lock.sampler);
+        }
+        if (typeof selectUcPreset === 'function' && typeof ucPresetLevelFromId === 'function') {
+            selectUcPreset(ucPresetLevelFromId(lock.ucPresetId));
+        }
+        if (typeof updatePercentageOverlays === 'function') updatePercentageOverlays();
+        if (typeof updateManualPriceDisplay === 'function') updateManualPriceDisplay();
+    }
+    if (typeof paintManualEffort === 'function') paintManualEffort();
+    else applyMediumStudioChrome(lock);
 }
 
 const STUDIO_MODEL_FROM_SLUG = {

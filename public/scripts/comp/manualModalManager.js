@@ -2292,21 +2292,9 @@ function setManualEffort(level) {
             selectUcPreset(snap.ucPreset);
         }
     }
-    if (next === 'medium') {
-        const lock = typeof activeMediumLock === 'function' ? activeMediumLock() : null;
-        const steps = lock ? lock.steps : 14;
-        const sampler = lock ? lock.sampler : 'k_euler_ancestral';
-        const ucLevel = lock && typeof ucPresetLevelFromId === 'function' ? ucPresetLevelFromId(lock.ucPresetId) : 3;
-        if (manualSteps) manualSteps.value = String(steps);
-        if (manualRescale) manualRescale.value = '0.00';
-        if (typeof selectManualSampler === 'function' && (typeof manualSelectedSampler === 'undefined' || manualSelectedSampler !== sampler)) {
-            selectManualSampler(sampler);
-        }
-        if (typeof selectUcPreset === 'function') selectUcPreset(ucLevel);
-        if (typeof updatePercentageOverlays === 'function') updatePercentageOverlays();
-        if (typeof updateManualPriceDisplay === 'function') updateManualPriceDisplay();
-    }
-    paintManualEffort();
+    // applyModelLocks: public/scripts/comp/utilities.js — same chrome as a model switch
+    if (typeof applyModelLocks === 'function') applyModelLocks();
+    else paintManualEffort();
 }
 
 function syncManualEffortChrome() {
@@ -2315,7 +2303,9 @@ function syncManualEffortChrome() {
         setManualEffort('high');
         return;
     }
-    paintManualEffort();
+    // applyModelLocks: public/scripts/comp/utilities.js
+    if (typeof applyModelLocks === 'function') applyModelLocks();
+    else paintManualEffort();
 }
 
 /**
@@ -4065,9 +4055,6 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
         selectUcPreset(selectedUcPreset);
         renderUcPresetsDropdown();
-        if (resolveGenerationEffort(data) === 'medium' || getManualEffort() === 'medium') {
-            setManualEffort('medium');
-        }
 
         // Note: Character prompts are already handled in the first section above
         // This redundant section has been removed to prevent overwriting loaded character prompts
@@ -4767,6 +4754,8 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         // Pipeline restore recreates variety+ / noise-schedule chrome after model select.
         // updateV3ModelVisibility: public/scripts/comp/utilities.js
         updateV3ModelVisibility();
+        // applyModelLocks: public/scripts/comp/utilities.js — after steps, sampler, rescale, UC, and pipeline stages
+        if (typeof applyModelLocks === 'function') applyModelLocks(data);
     } catch (error) {
         console.error('Error loading into form:', error);
         showError('Failed to load data');
