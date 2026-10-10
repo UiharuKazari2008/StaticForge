@@ -1086,6 +1086,22 @@ function teardownEnhanceDialogClickMenus() {
 
 function wireEnhanceDialogClickMenu(btn, options, selectFn, getSelectedValue, maxHeight) {
     if (!btn) return;
+    if (!btn.dataset.enhanceWheelWired) {
+        btn.dataset.enhanceWheelWired = '1';
+        // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+        const allowTick = createWheelTickGate();
+        btn.addEventListener('wheel', (e) => {
+            if (!guardWheelTick(e, allowTick, { stop: true })) return;
+            const values = (btn._enhanceWheelOptions || []).filter((o) => !o.separator).map((o) => String(o.value));
+            if (!values.length) return;
+            const idx = values.indexOf(String(btn._enhanceWheelGet ? btn._enhanceWheelGet() : ''));
+            const next = Math.max(0, Math.min(values.length - 1, (idx < 0 ? 0 : idx) + (e.deltaY > 0 ? 1 : -1)));
+            if (next !== idx) btn._enhanceWheelSelect(values[next]);
+        }, { passive: false });
+    }
+    btn._enhanceWheelOptions = options;
+    btn._enhanceWheelGet = getSelectedValue;
+    btn._enhanceWheelSelect = selectFn;
     const config = {
         position: 'anchor',
         anchorAlign: 'start',
@@ -1119,12 +1135,13 @@ function wireEnhanceDialogClickMenu(btn, options, selectFn, getSelectedValue, ma
 
 function wireEnhanceMagnitudeInput() {
     const input = document.getElementById('enhanceMagnitudeInput');
-    if (!input) return;
+    if (!input || input.dataset.enhanceWheelWired) return;
+    input.dataset.enhanceWheelWired = '1';
     input.addEventListener('input', () => {
         applyEnhanceMagnitudeOverlays(input.value);
     });
     // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-    const allowEnhanceMagnitudeTick = createWheelTickGate(400);
+    const allowEnhanceMagnitudeTick = createWheelTickGate();
     input.addEventListener('wheel', (e) => {
         if (!guardWheelTick(e, allowEnhanceMagnitudeTick)) return;
         const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.5 : 0.1) : (e.shiftKey ? 0.5 : 0.1);
@@ -1133,6 +1150,26 @@ function wireEnhanceMagnitudeInput() {
         const newValue = Math.max(1.0, Math.min(5.5, currentVal + delta));
         input.value = newValue.toFixed(1);
         input.dispatchEvent(new Event('input'));
+    }, { passive: false });
+}
+
+/** Scroll-wheel stepping for Enhance numeric inputs; respects min/max/step (shift = 10x). */
+function wireEnhanceNumberWheel(input, fallback) {
+    if (!input || input.dataset.enhanceWheelWired) return;
+    input.dataset.enhanceWheelWired = '1';
+    // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+    const allowTick = createWheelTickGate();
+    input.addEventListener('wheel', (e) => {
+        if (!guardWheelTick(e, allowTick, { stop: true })) return;
+        const step = parseFloat(input.step) || 1;
+        const decimals = (String(input.step || '1').split('.')[1] || '').length;
+        const min = input.min !== '' ? parseFloat(input.min) : -Infinity;
+        const max = input.max !== '' ? parseFloat(input.max) : Infinity;
+        const parsed = parseFloat(input.value);
+        const current = Number.isFinite(parsed) ? parsed : fallback;
+        const delta = (e.deltaY > 0 ? -1 : 1) * step * (e.shiftKey ? 10 : 1);
+        input.value = Math.max(min, Math.min(max, current + delta)).toFixed(decimals);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
     }, { passive: false });
 }
 
@@ -1247,6 +1284,11 @@ function wireEnhanceDialog(dialog, scaleOptions) {
     wireEnhancePercentInput('enhanceStrengthInput', 'enhanceStrengthOverlay');
     wireEnhancePercentInput('enhanceNoiseInput', 'enhanceNoiseOverlay');
     wireEnhancePercentInput('enhanceRescaleInput', 'enhanceRescaleOverlay');
+    wireEnhanceNumberWheel(document.getElementById('enhanceStrengthInput'), 0.5);
+    wireEnhanceNumberWheel(document.getElementById('enhanceNoiseInput'), 0);
+    wireEnhanceNumberWheel(document.getElementById('enhanceRescaleInput'), 0);
+    wireEnhanceNumberWheel(document.getElementById('enhanceStepsInput'), 14);
+    wireEnhanceNumberWheel(document.getElementById('enhanceGuidanceInput'), 5);
 
     const advancedToggle = document.getElementById('enhanceAdvancedToggle');
     const advancedSection = document.getElementById('enhanceAdvancedOptions');
@@ -1451,6 +1493,7 @@ function openEnhanceMiniWindow(image, event) {
     magnitudeInput.style.width = '100%';
     magnitudeGroup.appendChild(magnitudeLabel);
     magnitudeGroup.appendChild(magnitudeInput);
+    wireEnhanceNumberWheel(magnitudeInput, 3.0);
 
     const scaleGroup = document.createElement('div');
     scaleGroup.className = 'form-group';
@@ -3652,7 +3695,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rescaleOverlay = document.getElementById('expansionRescaleOverlay');
     if (rescaleInput && rescaleOverlay) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowExpansionRescaleTick = createWheelTickGate(400);
+        const allowExpansionRescaleTick = createWheelTickGate();
         rescaleInput.addEventListener('wheel', function(e) {
             if (!guardWheelTick(e, allowExpansionRescaleTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.05) : (e.shiftKey ? 0.1 : 0.05);
@@ -3671,7 +3714,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const noiseOverlay = document.getElementById('expansionNoiseOverlay');
     if (noiseInput && noiseOverlay) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowExpansionNoiseTick = createWheelTickGate(400);
+        const allowExpansionNoiseTick = createWheelTickGate();
         noiseInput.addEventListener('wheel', function(e) {
             if (!guardWheelTick(e, allowExpansionNoiseTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
@@ -3690,7 +3733,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const stepsInput = document.getElementById('expansionStepsInput');
     if (stepsInput) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowExpansionStepsTick = createWheelTickGate(400);
+        const allowExpansionStepsTick = createWheelTickGate();
         stepsInput.addEventListener('wheel', function(e) {
             if (!guardWheelTick(e, allowExpansionStepsTick)) return;
             const delta = e.deltaY > 0 ? -1 : 1;
@@ -3709,7 +3752,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowExpansionGuidanceTick = createWheelTickGate(400);
+        const allowExpansionGuidanceTick = createWheelTickGate();
         guidanceInput.addEventListener('wheel', function(e) {
             if (!guardWheelTick(e, allowExpansionGuidanceTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);

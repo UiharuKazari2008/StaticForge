@@ -649,7 +649,7 @@ function updateEmphasisEditingFromSlider(value) {
 }
 
 // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-const allowEmphasisEditingTick = createWheelTickGate(400);
+const allowEmphasisEditingTick = createWheelTickGate();
 
 function adjustEmphasisEditingFromWheel(event) {
     if (!guardWheelTick(event, allowEmphasisEditingTick)) return;

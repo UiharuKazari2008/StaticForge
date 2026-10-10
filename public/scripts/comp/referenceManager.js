@@ -1145,7 +1145,7 @@ function buildPreciseReferencePercentageInput(initialValue, sideClass, peerLabel
     };
 
     // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-    const allowRefOverlayTick = createWheelTickGate(400);
+    const allowRefOverlayTick = createWheelTickGate();
     input.addEventListener('wheel', (e) => {
         if (!guardWheelTick(e, allowRefOverlayTick)) return;
         const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.05) : (e.shiftKey ? 0.1 : 0.05);
@@ -2084,7 +2084,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
 
     // Add wheel event for scrolling
     // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-    const allowVibeRatioTick = createWheelTickGate(400);
+    const allowVibeRatioTick = createWheelTickGate();
     ratioInput.addEventListener('wheel', function(e) {
         if (!guardWheelTick(e, allowVibeRatioTick)) return;
         const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
@@ -6862,7 +6862,7 @@ function wireDirectorReferenceListeners() {
     if (directorReferenceFidelityInput && directorReferenceFidelityInput.dataset.wired !== 'true') {
         directorReferenceFidelityInput.dataset.wired = 'true';
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowFidelityTick = createWheelTickGate(400);
+        const allowFidelityTick = createWheelTickGate();
         directorReferenceFidelityInput.addEventListener('wheel', function (e) {
             if (!guardWheelTick(e, allowFidelityTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.05) : (e.shiftKey ? 0.1 : 0.05);
@@ -7205,7 +7205,7 @@ function initializeCacheManager() {
     // Add scroll wheel functionality for IE input
     if (unifiedUploadIeInput) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowUnifiedIeTick = createWheelTickGate(400);
+        const allowUnifiedIeTick = createWheelTickGate();
         unifiedUploadIeInput.addEventListener('wheel', function(e) {
             if (!guardWheelTick(e, allowUnifiedIeTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
@@ -7232,7 +7232,7 @@ function initializeCacheManager() {
     // Add scroll wheel functionality for IE input
     if (vibeEncodingIeInput) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowVibeIeTick = createWheelTickGate(400);
+        const allowVibeIeTick = createWheelTickGate();
         vibeEncodingIeInput.addEventListener('wheel', function(e) {
             if (!guardWheelTick(e, allowVibeIeTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);

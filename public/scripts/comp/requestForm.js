@@ -121,7 +121,7 @@ function requestFormBuildControl(field) {
         if (data.default != null && data.default !== '') input.value = String(data.default);
         if (data.placeholder) input.placeholder = data.placeholder;
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowTick = createWheelTickGate(400);
+        const allowTick = createWheelTickGate();
         input.addEventListener('wheel', (event) => {
             if (!guardWheelTick(event, allowTick, { stop: true })) return;
             const step = Number(input.step) || 1;

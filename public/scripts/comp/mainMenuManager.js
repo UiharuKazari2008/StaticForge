@@ -752,7 +752,7 @@ function setupMainMenuContextMenus() {
     if (mainMenuBar && typeof adjustGalleryColumnSize === 'function') {
         let wheelTimeout = null;
         let lastWheelTime = 0;
-        const wheelThrottle = 500; // ms between wheel adjustments
+        const wheelThrottle = 150; // ms between wheel adjustments
 
         mainMenuBar.addEventListener('wheel', function (e) {
             // Only handle vertical scrolling

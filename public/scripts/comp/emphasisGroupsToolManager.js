@@ -772,7 +772,7 @@ class EmphasisGroupsToolInstance {
         this._gridDelegatedEventsWired = true;
 
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        this._allowCardWeightTick = createWheelTickGate(400);
+        this._allowCardWeightTick = createWheelTickGate();
         this.element.addEventListener('wheel', (e) => {
             const weightEl = e.target.closest('.emphasis-groups-card-weight.emphasis-groups-card-weight-wheelable');
             if (!weightEl || weightEl.classList.contains('hidden') || this._isReadOnly()) return;
@@ -1065,7 +1065,7 @@ class EmphasisGroupsToolInstance {
         const wire = (input) => {
             if (!input) return;
             // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-            const allowRangeTick = createWheelTickGate(400);
+            const allowRangeTick = createWheelTickGate();
             input.addEventListener('wheel', (e) => {
                 if (this.normalizeEnabled && this.autoBandEnabled) return;
                 if (e.target !== input) return;
@@ -2242,7 +2242,7 @@ class EmphasisGroupsToolInstance {
         if (down) down.addEventListener('click', () => nudge(-EMPHASIS_NORMALIZE_RANGE_STEP));
         if (up) up.addEventListener('click', () => nudge(EMPHASIS_NORMALIZE_RANGE_STEP));
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowDirectRangeTick = createWheelTickGate(400);
+        const allowDirectRangeTick = createWheelTickGate();
         input.addEventListener('wheel', (e) => {
             if (!guardWheelTick(e, allowDirectRangeTick, { stop: true })) return;
             const step = e.shiftKey ? 0.01 : EMPHASIS_NORMALIZE_RANGE_STEP;

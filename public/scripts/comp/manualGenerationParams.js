@@ -44,7 +44,7 @@ function attachManualGenerationParamsListeners(signal) {
     if (manualStrengthValue) {
         manualStrengthValue.addEventListener('input', updateManualPriceDisplay, { signal });
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowStrengthTick = createWheelTickGate(400);
+        const allowStrengthTick = createWheelTickGate();
         manualStrengthValue.addEventListener('wheel', function (e) {
             if (!guardWheelTick(e, allowStrengthTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
@@ -66,7 +66,7 @@ function attachManualGenerationParamsListeners(signal) {
     if (manualNoiseValue) {
         manualNoiseValue.addEventListener('input', updateManualPriceDisplay, { signal });
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowNoiseTick = createWheelTickGate(400);
+        const allowNoiseTick = createWheelTickGate();
         manualNoiseValue.addEventListener('wheel', function (e) {
             if (!guardWheelTick(e, allowNoiseTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
@@ -88,7 +88,7 @@ function attachManualGenerationParamsListeners(signal) {
     let manualStepsWheelTimeout = false;
     if (manualSteps) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowStepsTick = createWheelTickGate(400);
+        const allowStepsTick = createWheelTickGate();
         manualSteps.addEventListener('wheel', function (e) {
             // mediumControlIsLocked: public/scripts/comp/utilities.js — Medium steps stay at 14
             if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('steps')) {
@@ -143,7 +143,7 @@ function attachManualGenerationParamsListeners(signal) {
             }
         }, { signal });
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowGuidanceTick = createWheelTickGate(400);
+        const allowGuidanceTick = createWheelTickGate();
         manualGuidance.addEventListener('wheel', function (e) {
             if (!guardWheelTick(e, allowGuidanceTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.01 : 0.1) : (e.shiftKey ? 0.01 : 0.1);
@@ -159,7 +159,7 @@ function attachManualGenerationParamsListeners(signal) {
 
     if (manualRescale) {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowRescaleTick = createWheelTickGate(400);
+        const allowRescaleTick = createWheelTickGate();
         manualRescale.addEventListener('wheel', function (e) {
             if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('rescale')) {
                 e.preventDefault();

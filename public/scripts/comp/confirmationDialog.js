@@ -73,6 +73,7 @@ function handleConfirmationDialogKeydown(e) {
 
     if (/^[1-9]$/.test(e.key)) {
         if (confirmationDialogKeydownInputRef && document.activeElement === confirmationDialogKeydownInputRef) return;
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable)) return;
         const controlsFooter = confirmationDialog.querySelector('#confirmationControls');
         const buttons = controlsFooter ? controlsFooter.querySelectorAll('button:not(:disabled)') : [];
         if (!buttons.length) return;
@@ -91,6 +92,7 @@ function handleConfirmationDialogKeydown(e) {
         if (e.target.tagName === 'TEXTAREA') return;
         if (e.target.tagName === 'SELECT') return;
         if (e.target.isContentEditable) return;
+        if (e.target.closest && e.target.closest('.stage-advanced-controls')) return;
         const controlsFooter = confirmationDialog.querySelector('#confirmationControls');
         if (controlsFooter && e.target.closest('#confirmationControls') === controlsFooter && e.target.tagName === 'BUTTON') {
             return;

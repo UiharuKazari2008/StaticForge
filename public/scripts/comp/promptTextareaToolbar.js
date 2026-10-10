@@ -1840,7 +1840,7 @@ class PromptTextareaToolbar {
         if (!chip || chip.dataset.emphasisChipWheelWired === '1') return;
         chip.dataset.emphasisChipWheelWired = '1';
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowChipTick = createWheelTickGate(400);
+        const allowChipTick = createWheelTickGate();
         chip.addEventListener('wheel', (e) => {
             if (!guardWheelTick(e, allowChipTick, { stop: true })) return;
             const textarea = this.getTextareaFromToolbar(chip);
@@ -2521,7 +2521,7 @@ class PromptTextareaToolbar {
         const valueEl = emphasisElements.querySelector('.emphasis-value');
         if (valueEl && !valueEl.hasAttribute('data-wheel-attached')) {
             // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-            const allowEmphasisValueTick = createWheelTickGate(400);
+            const allowEmphasisValueTick = createWheelTickGate();
             valueEl.addEventListener('wheel', (e) => {
                 if (!toolbar.classList.contains('emphasis-mode')) return;
                 if (!guardWheelTick(e, allowEmphasisValueTick)) return;

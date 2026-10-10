@@ -998,7 +998,7 @@ function wireTimeDateWheelInputs() {
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
         const bindTimeDateWheel = (el, min, max, fallback) => {
             if (!el) return;
-            const allowTick = createWheelTickGate(400);
+            const allowTick = createWheelTickGate();
             el.addEventListener('wheel', function (e) {
                 if (!guardWheelTick(e, allowTick)) return;
                 const delta = e.deltaY > 0 ? -1 : 1;

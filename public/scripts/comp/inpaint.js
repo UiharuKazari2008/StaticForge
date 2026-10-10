@@ -279,7 +279,7 @@ function initializeMaskEditor() {
 
         // Mouse wheel handler for scrolling
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowBrushSizeTick = createWheelTickGate(400);
+        const allowBrushSizeTick = createWheelTickGate();
         brushSizeInput.addEventListener('wheel', function(e) {
             if (!guardWheelTick(e, allowBrushSizeTick)) return;
             const delta = e.deltaY > 0 ? -1 : 1;
@@ -467,7 +467,7 @@ function invertMask() {
 }
 
 // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-const allowCanvasBrushTick = createWheelTickGate(400);
+const allowCanvasBrushTick = createWheelTickGate();
 
 // Handle canvas wheel for brush size adjustment
 function handleCanvasWheel(e) {

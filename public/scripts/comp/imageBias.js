@@ -1811,7 +1811,7 @@ function setupImageBiasAdjustmentListeners() {
         if (input) {
             input.addEventListener('input', handleBiasControlChange);
             // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-            const allowBiasTick = createWheelTickGate(400);
+            const allowBiasTick = createWheelTickGate();
             input.addEventListener('wheel', (e) => {
                 if (!guardWheelTick(e, allowBiasTick)) return;
                 const delta = e.deltaY > 0 ? -1 : 1;

@@ -4,7 +4,7 @@
  * Callers still preventDefault when the control owns the gesture.
  */
 
-var WHEEL_TICK_MS = 400;
+var WHEEL_TICK_MS = 150;
 
 function createWheelTickGate(intervalMs) {
     const parsed = Number(intervalMs);

@@ -1354,7 +1354,7 @@ function renderDatasetDropdown() {
 
                     // Add wheel event for quality bias value span
                     // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-                    const allowQualityBiasTick = createWheelTickGate(400);
+                    const allowQualityBiasTick = createWheelTickGate();
                     qualityBiasValue.addEventListener('wheel', (e) => {
                         if (!guardWheelTick(e, allowQualityBiasTick, { stop: true })) return;
                         const delta = e.deltaY > 0 ? -0.1 : 0.1;
@@ -1438,7 +1438,7 @@ function renderDatasetDropdown() {
 
                 // Add wheel event for bias value span
                 // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-                const allowDatasetBiasTick = createWheelTickGate(400);
+                const allowDatasetBiasTick = createWheelTickGate();
                 biasValueSpan.addEventListener('wheel', (e) => {
                     if (!guardWheelTick(e, allowDatasetBiasTick, { stop: true })) return;
                     const delta = e.deltaY > 0 ? -0.1 : 0.1;
@@ -1695,7 +1695,7 @@ function renderSubTogglesDropdown() {
 
             // Add wheel event for bias value span
             // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-            const allowSubToggleBiasTick = createWheelTickGate(400);
+            const allowSubToggleBiasTick = createWheelTickGate();
             biasValueSpan.addEventListener('wheel', (e) => {
                 if (!guardWheelTick(e, allowSubToggleBiasTick, { stop: true })) return;
                 const delta = e.deltaY > 0 ? -0.1 : 0.1;
@@ -2424,7 +2424,7 @@ function paintNsfwBiasLabels() {
 function bindStudioRowWheel(anchor, onTick) {
     if (!anchor) return;
     // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-    const allowTick = createWheelTickGate(400);
+    const allowTick = createWheelTickGate();
     queueMicrotask(() => {
         const row = anchor.closest('.context-menu-item');
         if (!row || row.dataset.studioRowWheel === '1') return;
@@ -3206,7 +3206,7 @@ function renderNsfwDropdown() {
 
             // Add wheel event for bias value span
             // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-            const allowNsfwBiasTick = createWheelTickGate(400);
+            const allowNsfwBiasTick = createWheelTickGate();
             biasValueSpan.addEventListener('wheel', (e) => {
                 if (!guardWheelTick(e, allowNsfwBiasTick, { stop: true })) return;
                 const delta = e.deltaY > 0 ? -0.1 : 0.1;
@@ -3599,7 +3599,7 @@ function wireManualDimensionInput(el, siblingEl) {
 
     let isWheelUpdating = false;
     // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-    const allowDimensionTick = createWheelTickGate(400);
+    const allowDimensionTick = createWheelTickGate();
 
     el.addEventListener('wheel', function (e) {
         if (!isCustomResolutionMode(manualSelectedResolution) || isWheelUpdating) return;
@@ -3705,8 +3705,8 @@ function stepManualRatioFromCurrent(ratioDir) {
 }
 
 // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-const allowManualRatioTick = createWheelTickGate(400);
-const allowManualSamplerTick = createWheelTickGate(400);
+const allowManualRatioTick = createWheelTickGate();
+const allowManualSamplerTick = createWheelTickGate();
 
 function onManualRatioWheel(e) {
     if (!isCustomRatioMode(manualSelectedResolution)) return;

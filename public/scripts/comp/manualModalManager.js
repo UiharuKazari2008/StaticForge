@@ -162,7 +162,7 @@ function wirePrintsCountInputs() {
         setManualPrintsCount(event.target.value);
     };
     // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-    const allowPrintsTick = createWheelTickGate(400);
+    const allowPrintsTick = createWheelTickGate();
     const onPrintsWheel = (e) => {
         if (!guardWheelTick(e, allowPrintsTick)) return;
         const dir = e.deltaY > 0 ? -1 : 1;

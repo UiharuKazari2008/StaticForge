@@ -454,7 +454,7 @@ function setupExpandCanvasStageEvents(stageId) {
 
         // Add scroll wheel support for resolution cycling (skip custom)
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowResolutionTick = createWheelTickGate(400);
+        const allowResolutionTick = createWheelTickGate();
         resolutionBtn.addEventListener('wheel', (e) => {
             if (!guardWheelTick(e, allowResolutionTick)) return;
 
@@ -544,7 +544,7 @@ function setupExpandCanvasStageEvents(stageId) {
 
         // Add scroll wheel support for bias/position cycling
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowBiasTick = createWheelTickGate(400);
+        const allowBiasTick = createWheelTickGate();
         biasBtn.addEventListener('wheel', (e) => {
             if (!guardWheelTick(e, allowBiasTick)) return;
 
@@ -732,7 +732,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
     };
 
     // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-    const allowWidthTick = createWheelTickGate(400);
+    const allowWidthTick = createWheelTickGate();
     widthInput.addEventListener('wheel', function (e) {
         if (!guardWheelTick(e, allowWidthTick)) return;
         const delta = e.deltaY > 0 ? -64 : 64;
@@ -779,7 +779,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
     };
 
     // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-    const allowHeightTick = createWheelTickGate(400);
+    const allowHeightTick = createWheelTickGate();
     heightInput.addEventListener('wheel', function (e) {
         if (!guardWheelTick(e, allowHeightTick)) return;
         const delta = e.deltaY > 0 ? -64 : 64;
@@ -829,7 +829,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
             updateExpandCanvasStageInsetToggle(stageId);
         };
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowStageRatioTick = createWheelTickGate(400);
+        const allowStageRatioTick = createWheelTickGate();
         const onStageRatioWheel = (e) => {
             if (!isCustomRatioMode(resolutionInput.value)) return;
             if (!guardWheelTick(e, allowStageRatioTick, { stop: true })) return;
@@ -932,7 +932,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
         });
 
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowMagnitudeTick = createWheelTickGate(400);
+        const allowMagnitudeTick = createWheelTickGate();
         magnitudeInput.addEventListener('wheel', (e) => {
             if (!guardWheelTick(e, allowMagnitudeTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.5 : 0.1) : (e.shiftKey ? 0.5 : 0.1);
@@ -972,7 +972,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
         });
 
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowStrengthTick = createWheelTickGate(400);
+        const allowStrengthTick = createWheelTickGate();
         strengthInput.addEventListener('wheel', (e) => {
             if (!guardWheelTick(e, allowStrengthTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
@@ -1032,7 +1032,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
         });
 
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowNoiseTick = createWheelTickGate(400);
+        const allowNoiseTick = createWheelTickGate();
         noiseInput.addEventListener('wheel', (e) => {
             if (!guardWheelTick(e, allowNoiseTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
@@ -1098,7 +1098,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
 
         // Add scroll wheel support for resolution cycling (skip custom)
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowEnhanceResolutionTick = createWheelTickGate(400);
+        const allowEnhanceResolutionTick = createWheelTickGate();
         resolutionBtn.addEventListener('wheel', (e) => {
             if (!guardWheelTick(e, allowEnhanceResolutionTick)) return;
 
@@ -1401,7 +1401,7 @@ function setupStageAdvancedControls(stageId) {
             updateDownstreamStagesInheritedValues(stageId);
         });
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowRescaleTick = createWheelTickGate(400);
+        const allowRescaleTick = createWheelTickGate();
         rescaleInput.addEventListener('wheel', (e) => {
             if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('rescale')) {
                 e.preventDefault();
@@ -1450,7 +1450,7 @@ function setupStageAdvancedControls(stageId) {
         );
 
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowSamplerTick = createWheelTickGate(400);
+        const allowSamplerTick = createWheelTickGate();
         samplerBtn.addEventListener('wheel', (e) => {
             if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('sampler')) {
                 e.preventDefault();
@@ -1501,7 +1501,7 @@ function setupStageAdvancedControls(stageId) {
             updateDownstreamStagesInheritedValues(stageId);
         });
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowStepsTick = createWheelTickGate(400);
+        const allowStepsTick = createWheelTickGate();
         stepsInput.addEventListener('wheel', (e) => {
             if (typeof mediumControlIsLocked === 'function' && mediumControlIsLocked('steps')) {
                 e.preventDefault();
@@ -1568,7 +1568,7 @@ function setupStageAdvancedControls(stageId) {
             updateDownstreamStagesInheritedValues(stageId);
         });
         // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
-        const allowGuidanceTick = createWheelTickGate(400);
+        const allowGuidanceTick = createWheelTickGate();
         guidanceInput.addEventListener('wheel', (e) => {
             if (!guardWheelTick(e, allowGuidanceTick)) return;
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.01 : 0.1) : (e.shiftKey ? 0.01 : 0.1);

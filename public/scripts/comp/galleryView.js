@@ -7113,7 +7113,7 @@ function wireMainMenuBarColumnWheel() {
     mainMenuBar.dataset.columnWheelWired = 'true';
 
     let lastWheelTime = 0;
-    const wheelThrottle = 500;
+    const wheelThrottle = 150;
 
     mainMenuBar.addEventListener('wheel', function (e) {
         if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
