@@ -164,7 +164,51 @@ function applyMediumLocksToOptions(options, lock, ucPresets, modelKey) {
     return next;
 }
 
+/** Split on top-level commas; commas inside ::weight groups:: or brackets stay with their phrase. */
+function splitTopLevelPhrases(text) {
+    const out = [];
+    let buf = '';
+    let depth = 0;
+    let inGroup = false;
+    const src = String(text || '');
+    for (let i = 0; i < src.length; i++) {
+        const ch = src[i];
+        if (ch === ':' && src[i + 1] === ':') { inGroup = !inGroup; buf += '::'; i += 1; continue; }
+        if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+        else if ((ch === ')' || ch === ']' || ch === '}') && depth > 0) depth -= 1;
+        if (ch === ',' && depth === 0 && !inGroup) { out.push(buf); buf = ''; continue; }
+        buf += ch;
+    }
+    out.push(buf);
+    return out.map((part) => part.trim()).filter(Boolean);
+}
+
+/**
+ * V5 Medium sends no user UC, but the inline negative (-1::...:: in the prompt) still works.
+ * Prepend UC phrases to the inline negative, deduped, comma-joined. Empty UC returns inline unchanged.
+ * @param {string} uc
+ * @param {string} inline
+ * @returns {string}
+ */
+function foldUcIntoInlineNegative(uc, inline) {
+    const ucParts = splitTopLevelPhrases(uc);
+    const inlineText = String(inline == null ? '' : inline);
+    if (!ucParts.length) return inlineText;
+    const inlineParts = splitTopLevelPhrases(inlineText);
+    const seen = new Set();
+    const merged = [];
+    ucParts.concat(inlineParts).forEach((part) => {
+        const key = part.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push(part);
+    });
+    return merged.join(', ');
+}
+
 module.exports = {
+    foldUcIntoInlineNegative,
+    splitTopLevelPhrases,
     explicitEffortModelKey,
     UC_PRESET_ID_LEVEL,
     ucPresetLevel,

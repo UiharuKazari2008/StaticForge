@@ -2032,6 +2032,7 @@ function getStudioImageGenerationSettingsMenuConfig() {
                         text: 'UC Preset',
                         // getStudioUcPresetMenuItems: public/scripts/comp/manualDropdownManager.js
                         optionsfn: getStudioUcPresetMenuItems,
+                        hidden: () => studioMediumLocked('uc'),
                         disabled: () => studioMediumLocked('uc'),
                         tooltip: () => (studioMediumLocked('uc') ? STUDIO_MEDIUM_LOCKED_TIP : ''),
                         valueDisplay: function () {

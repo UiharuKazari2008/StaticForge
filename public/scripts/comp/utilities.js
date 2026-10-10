@@ -999,11 +999,24 @@ function applyMediumStudioChrome(lock) {
             rescale.removeAttribute('title');
         }
     }
+    // V5 Medium: hide UC and UC presets; the server folds UC into the inline negative.
+    const ucDropdown = document.getElementById('ucPresetsDropdown');
+    if (ucDropdown) ucDropdown.classList.toggle('hidden', medium);
+    const toggleUcWrap = (field) => {
+        const wrap = field && field.closest ? (field.closest('.prompt-textarea-emphasis-wrap') || field) : null;
+        if (wrap) wrap.classList.toggle('hidden', medium);
+    };
+    const inlineNegTip = 'V5 Medium sends no UC. Your UC is added to this inline negative when you generate.';
+    document.querySelectorAll('#manualModal textarea[id$="romptNegative"]').forEach((field) => {
+        if (medium) field.title = inlineNegTip;
+        else if (field.title === inlineNegTip) field.removeAttribute('title');
+    });
     if (ucBtn) {
         ucBtn.disabled = medium;
         if (medium) ucBtn.title = 'Undesired content is fixed to the heavy preset by V5 Medium. Your UC is not sent.';
         else ucBtn.removeAttribute('title');
     }
+    if (uc) toggleUcWrap(uc);
     if (uc) {
         uc.readOnly = medium;
         if (medium) uc.title = 'Your UC is not sent on V5 Medium. The heavy preset is sent instead.';
@@ -1011,6 +1024,7 @@ function applyMediumStudioChrome(lock) {
     }
     document.querySelectorAll('#manualModal textarea[id$="_uc"]').forEach((field) => {
         if (field === uc) return;
+        toggleUcWrap(field);
         field.readOnly = medium;
         if (medium) field.title = 'Character UC is cleared on V5 Medium.';
         else field.removeAttribute('title');

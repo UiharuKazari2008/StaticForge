@@ -490,4 +490,18 @@ const opsLock = opsSrc.lastIndexOf('applyModelLocks(');
 const opsReturn = opsSrc.lastIndexOf('return enabled.length');
 assert.ok(opsLock > 0 && opsLock < opsReturn, 'apply_studio_changes locks after params are written');
 
+// Medium folds user UC into the inline negative (deduped, raw saved fields untouched).
+{
+    const { foldUcIntoInlineNegative } = require('../modules/v5MediumLock');
+    assert.strictEqual(foldUcIntoInlineNegative('', 'blue'), 'blue');
+    assert.strictEqual(foldUcIntoInlineNegative('red, blurry', ''), 'red, blurry');
+    assert.strictEqual(foldUcIntoInlineNegative('red, Blurry', 'blurry, blue'), 'red, Blurry, blue');
+    assert.strictEqual(foldUcIntoInlineNegative('2::red, hat::, red', 'red'), '2::red, hat::, red');
+    const genSrc = fs.readFileSync(path.join(__dirname, '../modules/imageGeneration.js'), 'utf8');
+    assert.ok(genSrc.includes('effectiveInputPromptNegative ||'), 'inline negative processing uses folded UC');
+    assert.ok(genSrc.includes('input_prompt_negative: rawInputPromptNegative,'), 'saved inline negative stays raw');
+    const utilSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/utilities.js'), 'utf8');
+    assert.ok(utilSrc.includes("getElementById('ucPresetsDropdown')") && utilSrc.includes('toggleUcWrap(uc)'), 'Medium hides UC field and presets');
+}
+
 console.log('test-v5-medium-locks: ok');
