@@ -21,10 +21,15 @@ assert.strictEqual(host.model.modelId, 'grok-4.7-high', 'host switch pins model'
 assert.deepStrictEqual(host.permissions, perms, 'permissions untouched');
 assert.strictEqual(host.authInfo.email, 'x');
 const jail = path.join(SANDBOX, 'wren'); store.restoreAccountAuthFiles('lite', jail);
-assert.strictEqual(JSON.parse(fs.readFileSync(path.join(jail, 'cli-config.json'), 'utf8')).model.modelId, 'grok-4.7-high', 'jail switch pins model');
-assert.strictEqual(store.applyPinnedModel(path.join(jail, 'cli-config.json')), false, 'idempotent');
+assert.strictEqual(JSON.parse(fs.readFileSync(path.join(jail, 'cli-config.json'), 'utf8')).model.modelId, 'grok-4.7-high-fast', 'Wren jail switch pins Fast');
+assert.strictEqual(store.applyPinnedModel(path.join(jail, 'cli-config.json'), store.getPinnedModel('director')), false, 'idempotent');
+assert.strictEqual(host.model.modelId, 'grok-4.7-high', 'host stays High');
 fs.writeFileSync(path.join(SANDBOX, 'secure.config.json'), JSON.stringify({ cursorAccounts: { pinnedModel: 'other-model' } }));
 assert.strictEqual(store.getPinnedModel().modelId, 'other-model', 'string override');
+assert.strictEqual(store.getPinnedModel('director').modelId, 'grok-4.7-high-fast', 'director setting is separate');
+fs.writeFileSync(path.join(SANDBOX, 'secure.config.json'), JSON.stringify({ cursorAccounts: { directorPinnedModel: 'wren-x' } }));
+assert.strictEqual(store.getPinnedModel('director').modelId, 'wren-x', 'director override');
+assert.strictEqual(store.getPinnedModel().modelId, 'grok-4.7-high', 'xi unaffected by director override');
 fs.writeFileSync(path.join(SANDBOX, 'secure.config.json'), JSON.stringify({ cursorAccounts: { pinnedModel: false } }));
 assert.strictEqual(store.getPinnedModel(), null, 'false disables pinning');
 process.chdir(cwd);

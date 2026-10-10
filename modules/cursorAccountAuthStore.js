@@ -29,19 +29,33 @@ const DEFAULT_PINNED_MODEL = {
     maxMode: false
 };
 
-function getPinnedModel() {
+// Wren (Director jail spawns) defaults to the Fast variant; override with
+// secure.config.json cursorAccounts.directorPinnedModel (same forms as pinnedModel).
+const DEFAULT_DIRECTOR_PINNED_MODEL = {
+    ...DEFAULT_PINNED_MODEL,
+    modelId: 'grok-4.7-high-fast',
+    displayModelId: 'grok-4.7-high-fast',
+    displayName: 'Grok 4.7 High Fast',
+    displayNameShort: 'Grok 4.7 High Fast'
+};
+
+/** role 'director' = Wren's jail; anything else = Xi + host-wide. */
+function getPinnedModel(role) {
+    const director = role === 'director';
+    const fallback = director ? DEFAULT_DIRECTOR_PINNED_MODEL : DEFAULT_PINNED_MODEL;
     let v;
     try {
         const data = readJson(path.join(process.cwd(), 'secure.config.json'));
-        v = data && data.cursorAccounts ? data.cursorAccounts.pinnedModel : undefined;
+        const ca = data && data.cursorAccounts;
+        v = ca ? (director ? ca.directorPinnedModel : ca.pinnedModel) : undefined;
     } catch (_) { v = undefined; }
     if (v === false || v === null) return null;
     if (typeof v === 'string' && v.trim()) {
         const id = v.trim();
-        return { ...DEFAULT_PINNED_MODEL, modelId: id, displayModelId: id, displayName: id, displayNameShort: id };
+        return { ...fallback, modelId: id, displayModelId: id, displayName: id, displayNameShort: id };
     }
     if (v && typeof v === 'object' && v.modelId) return { maxMode: false, aliases: [], ...v };
-    return { ...DEFAULT_PINNED_MODEL };
+    return { ...fallback };
 }
 
 /** Rewrite only the `model` field of a cli-config.json to the pinned model. */
@@ -404,7 +418,8 @@ function restoreAccountAuthFiles(accountId, targetConfigDir) {
         if (safeCopyFile(authSrc, path.join(targetConfigDir, 'auth.json'))) copiedAny = true;
         if (safeCopyFile(cliSrc, path.join(targetConfigDir, 'cli-config.json'))) {
             copiedAny = true;
-            applyPinnedModel(path.join(targetConfigDir, 'cli-config.json'));
+            applyPinnedModel(path.join(targetConfigDir, 'cli-config.json'),
+                getPinnedModel(isXiConfigDir(targetConfigDir) ? 'xi' : 'director'));
         }
         if (safeCopyFile(cacheSrc, path.join(targetConfigDir, 'statsig-cache.json'))) copiedAny = true;
     }
@@ -1068,6 +1083,7 @@ function cleanCursorChildEnv(extra, base) {
 
 module.exports = {
     DEFAULT_PINNED_MODEL,
+    DEFAULT_DIRECTOR_PINNED_MODEL,
     getPinnedModel,
     applyPinnedModel,
     cleanCursorChildEnv,
