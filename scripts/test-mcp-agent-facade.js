@@ -768,6 +768,18 @@ for (const name of ['offer_workspace_switch', 'show_chat_image']) {
     assert.strictEqual(_test.rateGroupForTool(name), 'write', `rate group ${name}`);
     assert.ok(require('../modules/mcpModuleRegistry').toolInModule(name, 'core_generation'), `core_generation missing ${name}`);
 }
+const switchAsk = _test.TOOL_DEFS.find((t) => t.name === 'request_workspace_switch');
+assert.ok(switchAsk, 'request_workspace_switch');
+assert.ok(switchAsk.description.includes('90'));
+assert.ok(switchAsk.description.includes('timeout'));
+assert.strictEqual(_test.rateGroupForTool('request_workspace_switch'), 'free');
+assert.ok(require('../modules/mcpModuleRegistry').toolInModule('request_workspace_switch', 'core_generation'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('in_workspace'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('request_workspace_switch'));
+const pairing = require('../modules/sessionWorkspacePairing');
+pairing.setWorkspaceLookupForTests(() => 'atelier');
+assert.strictEqual(_test.pairedWriteWorkspace('other'), 'atelier');
+pairing.setWorkspaceLookupForTests(null);
 const workspaceOffer = _test.TOOL_DEFS.find((t) => t.name === 'offer_workspace_switch');
 assert.ok(workspaceOffer.description.includes('does not move the workspace itself'));
 assert.deepStrictEqual(Object.keys(workspaceOffer.inputSchema.properties).sort(), ['chatId', 'reason', 'workspace', 'workspaceId']);
@@ -812,7 +824,7 @@ assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 'running' }, {}), 'running');
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => null }, {}), null);
 assert.ok(coreNames.includes('update_meal_images'));
-assert.strictEqual(coreNames.length, 105);
+assert.strictEqual(coreNames.length, 106);
 assert.ok(coreNames.includes('ledge'));
 assert.ok(coreNames.includes('generate_nax_tag'));
 assert.ok(coreNames.includes('delete_nax_tag'));

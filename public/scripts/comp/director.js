@@ -812,6 +812,17 @@ class Director {
                     type: 'list',
                     items: [
                         {
+                            text: 'Fork',
+                            icon: 'fas fa-code-branch',
+                            action: 'director-fork-session'
+                        },
+                        {
+                            icon: 'fas fa-planet-ringed',
+                            text: 'Move to workspace',
+                            optionsfn: (target) => this.sessionMoveWorkspaceOptions(target),
+                            handlerfn: (option, target) => this.moveSessionToWorkspace(option, target)
+                        },
+                        {
                             text: 'Delete Session',
                             icon: 'fas fa-trash-alt',
                             action: 'director-delete-session',
@@ -850,20 +861,75 @@ class Director {
         this.paintModelPick();
     }
 
-    handleSessionContextAction(action, target) {
+    sessionFromMenuTarget(target) {
         const sessionItem = target && target.closest ? target.closest('.director-session-item') : null;
-        if (!sessionItem) return;
+        if (!sessionItem || !sessionItem.dataset.sessionId) return null;
         const sessionId = sessionItem.dataset.sessionId;
-        let session = this.directorSessions.find(s => s.id === sessionId);
+        let session = (this.directorSessions || []).find(s => s.id === sessionId);
         if (!session) {
-            const numericSessionId = parseInt(sessionId);
-            session = this.directorSessions.find(s => s.id === numericSessionId);
+            const numericSessionId = parseInt(sessionId, 10);
+            session = (this.directorSessions || []).find(s => s.id === numericSessionId);
         }
+        return session || null;
+    }
+
+    handleSessionContextAction(action, target) {
+        const session = this.sessionFromMenuTarget(target);
         if (!session) return;
         this._suppressSessionOpenUntil = Date.now() + 400;
+        if (action === 'director-fork-session') {
+            this.forkSession(session);
+            return;
+        }
         if (action === 'director-delete-session') {
             this.deleteSessionFromContextMenu(session);
         }
+    }
+
+    sessionMoveWorkspaceOptions(target) {
+        const session = this.sessionFromMenuTarget(target);
+        if (!session || typeof workspaces === 'undefined' || !workspaces) return [];
+        const current = session.workspaceId || '';
+        return Object.values(workspaces).filter((workspace) => workspace && workspace.id && workspace.id !== current).map((workspace) => {
+            const color = /^#[0-9a-fA-F]{3,8}$/.test(workspace.color || '') ? workspace.color : '#6366f1';
+            const name = this.escapeHtml(workspace.name || workspace.id);
+            return {
+                content: `<div class="workspace-option-content"><div class="workspace-color-indicator" style="background-color: ${color}"></div><div class="workspace-name">${name}</div></div>`,
+                value: workspace.id,
+                className: 'custom-dropdown-option'
+            };
+        });
+    }
+
+    moveSessionToWorkspace(option, target) {
+        const session = this.sessionFromMenuTarget(target);
+        const workspaceId = option && option.value;
+        if (!session || !workspaceId) return;
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            showGlassToast('error', 'Director', 'WebSocket not connected');
+            return;
+        }
+        window.wsClient.send({
+            type: 'director_move_session',
+            requestId: Date.now().toString(),
+            persona: this.persona || 'wren',
+            sessionId: session.id,
+            workspaceId
+        });
+    }
+
+    forkSession(session) {
+        if (!session || !session.id) return;
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            showGlassToast('error', 'Director', 'WebSocket not connected');
+            return;
+        }
+        window.wsClient.send({
+            type: 'director_fork_session',
+            requestId: Date.now().toString(),
+            persona: this.persona || 'wren',
+            sessionId: session.id
+        });
     }
 
     handleMessageContextAction(action, target) {
@@ -4825,7 +4891,7 @@ class Director {
     createDirectorCardElement(message) {
         const data = (message && message.data) || {};
         const kind = message && message.message_type;
-        if (kind !== 'chat-image' && kind !== 'workspace-offer') return null;
+        if (kind !== 'chat-image' && kind !== 'workspace-offer' && kind !== 'workspace-switch') return null;
         const card = document.createElement('div');
         card.className = 'director-message event';
         card.dataset.messageKey = String(message.id || message.timestamp || Date.now());
@@ -4852,7 +4918,7 @@ class Director {
                 caption.textContent = data.caption;
                 body.appendChild(caption);
             }
-        } else {
+        } else if (kind === 'workspace-offer') {
             badge.textContent = 'Workspace';
             const open = document.createElement('button');
             open.type = 'button';
@@ -4865,6 +4931,27 @@ class Director {
             header.appendChild(open);
             body.textContent = data.reason || '';
             if (!data.reason) body.classList.add('hidden');
+        } else {
+            badge.textContent = 'Switch';
+            const remain = document.createElement('span');
+            remain.className = 'director-switch-countdown';
+            remain.dataset.remain = '1';
+            remain.textContent = '90s';
+            header.appendChild(remain);
+            const accept = document.createElement('button');
+            accept.type = 'button';
+            accept.className = 'btn-primary btn-small';
+            accept.textContent = 'Switch';
+            const decline = document.createElement('button');
+            decline.type = 'button';
+            decline.className = 'btn-secondary btn-small';
+            decline.textContent = 'Stay';
+            accept.addEventListener('click', () => this.settleWorkspaceSwitch(card, data, 'accepted'));
+            decline.addEventListener('click', () => this.settleWorkspaceSwitch(card, data, 'declined'));
+            header.appendChild(accept);
+            header.appendChild(decline);
+            body.textContent = data.reason || `Switch to ${this.workspaceCardName(data)}?`;
+            this.armWorkspaceSwitch(card, data);
         }
         card.appendChild(header);
         card.appendChild(body);
@@ -4896,28 +4983,102 @@ class Director {
     paintWorkspaceBanner() {
         const banner = document.getElementById('directorWorkspaceBanner');
         const text = document.getElementById('directorWorkspaceBannerText');
-        if (!banner || !text) return;
+        const chat = this.directorSessionChat;
         const session = this.currentSession;
         const meta = session && !session.draft ? this.sessionWorkspaceMeta(session) : null;
+        if (chat) {
+            if (meta) {
+                chat.dataset.workspaceTint = '1';
+                chat.style.setProperty('--director-workspace', meta.color);
+            } else {
+                delete chat.dataset.workspaceTint;
+                chat.style.removeProperty('--director-workspace');
+            }
+        }
+        if (!banner || !text) return;
         if (!meta || meta.id === this.currentWorkspaceId()) {
             banner.classList.add('hidden');
             return;
         }
-        text.textContent = `The session was being used in ${meta.name} planet`;
+        text.textContent = `This session belongs to ${meta.name}`;
         banner.classList.remove('hidden');
     }
 
-    // Sending while the banner is up keeps the chat in the workspace you are in.
-    claimSessionWorkspace() {
-        const here = this.currentWorkspaceId();
+    // Sending does not re-pair the session. A chat with no workspace yet takes the one you are in.
+    sessionWorkspaceIdForSend() {
         const session = this.currentSession;
-        if (!here || !session || session.draft || (session.workspaceId || '') === here) return here;
-        session.workspaceId = here;
-        const listed = (this.directorSessions || []).find((item) => item.id === session.id);
-        if (listed && listed !== session) listed.workspaceId = here;
-        this.paintWorkspaceBanner();
-        this.renderDirectorSessions();
-        return here;
+        const paired = session && typeof session.workspaceId === 'string' ? session.workspaceId.trim() : '';
+        if (paired) return paired;
+        return this.currentWorkspaceId();
+    }
+
+    armWorkspaceSwitch(card, data) {
+        if (!card || !data) return;
+        const deadline = Number(data.deadline) || 0;
+        const remain = card.querySelector('[data-remain]');
+        if (!deadline || deadline <= Date.now()) {
+            this.paintWorkspaceSwitchOutcome(card, 'timeout');
+            return;
+        }
+        const tick = () => {
+            const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+            if (remain) remain.textContent = `${left}s`;
+            if (left <= 0) {
+                this.settleWorkspaceSwitch(card, data, 'timeout');
+                return;
+            }
+            card._switchTimer = setTimeout(tick, 250);
+        };
+        tick();
+    }
+
+    paintWorkspaceSwitchOutcome(card, status) {
+        if (!card) return;
+        if (card._switchTimer) {
+            clearTimeout(card._switchTimer);
+            card._switchTimer = null;
+        }
+        card.querySelectorAll('button').forEach((button) => {
+            button.disabled = true;
+        });
+        const remain = card.querySelector('[data-remain]');
+        if (remain) {
+            remain.textContent = status === 'accepted' ? 'Switched' : (status === 'timeout' ? 'Timed out' : 'Stayed');
+        }
+    }
+
+    settleWorkspaceSwitch(card, data, status) {
+        const id = data && (data.switchId || data.requestId);
+        if (!id) return;
+        if (!this._switchSettled) this._switchSettled = new Set();
+        if (this._switchSettled.has(id)) return;
+        this._switchSettled.add(id);
+        this.paintWorkspaceSwitchOutcome(card, status);
+        const send = (result) => {
+            if (!window.wsClient || !window.wsClient.isConnected()) return;
+            window.wsClient.send({
+                type: 'director_workspace_switch_result',
+                requestId: Date.now().toString(),
+                id,
+                switchId: id,
+                status: result
+            });
+        };
+        if (status === 'accepted' && data.workspaceId) {
+            Promise.resolve(this.jumpToWorkspace(data.workspaceId)).then(() => {
+                if (this.currentWorkspaceId() === data.workspaceId) {
+                    send('accepted');
+                    return;
+                }
+                this.paintWorkspaceSwitchOutcome(card, 'declined');
+                send('declined');
+            }, () => {
+                this.paintWorkspaceSwitchOutcome(card, 'declined');
+                send('declined');
+            });
+            return;
+        }
+        send(status);
     }
 
     // workspaces: public/scripts/comp/workspaceUtils.js — the card carries the name the
@@ -5281,6 +5442,7 @@ class Director {
             get_explore_post: 'Explore post',
             get_explore_image: 'Explore image',
             request_form: 'Form',
+            request_workspace_switch: 'Switch workspace',
             AskQuestion: 'Form',
             ledge: 'Ledge',
             show_chat_image: 'Show image',
@@ -5532,7 +5694,7 @@ class Director {
                 fast: this.fast === true
             };
             this.updateTrayChrome();
-            const stayWorkspace = this.claimSessionWorkspace();
+            const stayWorkspace = this.sessionWorkspaceIdForSend();
             window.wsClient.send({
                 type: 'director_send_message',
                 requestId: Date.now().toString(),
@@ -6090,7 +6252,9 @@ class Director {
             );
             window.directorSessions = director.directorSessions;
             director.renderDirectorSessions();
-            showGlassToast('success', 'Director', 'Forked from that message. The original chat is unchanged.');
+            showGlassToast('success', 'Director', body.fullCopy
+                ? 'Copied the session. The original chat is unchanged.'
+                : 'Forked from that message. The original chat is unchanged.');
             await director.showSessionChat(body.session, { skipLoad: true });
         });
 
@@ -6131,6 +6295,33 @@ class Director {
             if (window.directorInstance) {
                 window.directorInstance.appendChatCard('workspace-offer', data.data || data);
             }
+        });
+
+        // request_workspace_switch: 90s card. Accept switches the open workspace.
+        window.wsClient.on('director_workspace_switch', (data) => {
+            if (window.directorInstance) {
+                window.directorInstance.appendChatCard('workspace-switch', data.data || data);
+            }
+        });
+
+        window.wsClient.on('director_move_session_response', (data) => {
+            const director = window.directorInstance;
+            const body = data && data.data;
+            if (!director || !body || !body.success || !body.session) {
+                showGlassToast('error', 'Director', (body && (body.message || body.error)) || 'Could not move that session');
+                return;
+            }
+            if (director.packetPersona(body) !== director.persona) return;
+            const session = body.session;
+            const listed = (director.directorSessions || []).find((item) => item.id === session.id);
+            if (listed) listed.workspaceId = session.workspaceId;
+            if (director.currentSession && director.currentSession.id === session.id) {
+                director.currentSession.workspaceId = session.workspaceId;
+                director.paintWorkspaceBanner();
+            }
+            director.renderDirectorSessions();
+            const meta = director.sessionWorkspaceMeta(session);
+            showGlassToast('success', 'Director', meta ? `Session now belongs to ${meta.name}` : 'Session moved');
         });
 
         // A print this turn saved — becomes the session thumbnail and joins the session strip

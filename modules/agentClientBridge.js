@@ -818,7 +818,8 @@ function listClients(globalResources, bindKey) {
         const bMs = b.lastActivity ? Date.parse(b.lastActivity) : 0;
         return bMs - aMs;
     });
-    return out;
+    const { annotateClients, lookupRunningSessionWorkspace } = require('./sessionWorkspacePairing');
+    return annotateClients(out, lookupRunningSessionWorkspace());
 }
 
 function getBoundRecord(globalResources, bindKey) {

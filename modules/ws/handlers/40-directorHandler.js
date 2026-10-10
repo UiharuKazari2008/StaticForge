@@ -7,6 +7,7 @@ const {
     handleDirectorOpenWorkspace,
     handleDirectorDeleteSession,
     handleDirectorForkSession,
+    handleDirectorMoveSession,
     handleDirectorSendMessage,
     handleDirectorGetModels,
     handleDirectorAbort,
@@ -25,6 +26,7 @@ const {
     handleDirectorToolDiff,
     handleDirectorToolPayload,
     handleRequestFormSubmit,
+    handleWorkspaceSwitchResult,
     handleLedgeChecks,
     handleDirectorStreamingAck,
     handleDirectorSaveFeedback,
@@ -58,6 +60,7 @@ function registerPackets(handlersCtx) {
     reg('director_get_session', handleDirectorGetSession);
     reg('director_delete_session', handleDirectorDeleteSession, DIRECTOR_DESTRUCTIVE);
     reg('director_fork_session', handleDirectorForkSession, DIRECTOR_DESTRUCTIVE);
+    reg('director_move_session', handleDirectorMoveSession, DIRECTOR_DESTRUCTIVE);
     reg('director_send_message', handleDirectorSendMessage, DIRECTOR_DESTRUCTIVE);
     reg('director_get_models', handleDirectorGetModels);
     reg('director_abort', handleDirectorAbort, DIRECTOR_DESTRUCTIVE);
@@ -65,6 +68,7 @@ function registerPackets(handlersCtx) {
     reg('director_tool_diff', handleDirectorToolDiff);
     reg('director_tool_payload', handleDirectorToolPayload);
     reg('request_form_submit', handleRequestFormSubmit);
+    reg('director_workspace_switch_result', handleWorkspaceSwitchResult);
     reg('ledge_checks', handleLedgeChecks);
     reg('director_streaming_ack', handleDirectorStreamingAck);
     reg('director_get_cursor_usage', handleDirectorGetCursorUsage);

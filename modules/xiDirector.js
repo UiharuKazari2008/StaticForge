@@ -101,6 +101,13 @@ function activeSessionId() {
     return runs.size === 1 ? Array.from(runs.keys())[0] : null;
 }
 
+function readChatWorkspace(sessionId) {
+    const id = String(sessionId || '').trim();
+    if (!id) return '';
+    const chat = readIndex().chats.find((item) => item.id === id);
+    return chat && typeof chat.workspaceId === 'string' ? chat.workspaceId.trim() : '';
+}
+
 function runtimeStatus() {
     const sessionId = activeSessionId();
     let sessionName = null;
@@ -323,6 +330,9 @@ function buildPrompt(chat, userText, files, clientId) {
         'To ask the user anything, call request_form with chatId. AskQuestion is skipped in this window and they never see it. If it returns pending with a formId, call request_form again with only that formId until values come back.',
         'A client reload is normal. Continue this chat. Do not redo a finished step.',
         `Director chat id: ${chat.id}. Pass chatId on session tools.`,
+        chat.workspaceId
+            ? `Dreamscape workspace id: ${chat.workspaceId}. If a client has in_workspace false, do not use Studio. Call request_workspace_switch. Glancewell, Lumen, and show_chat_image are still fine. Writes go to this workspace.`
+            : 'No Dreamscape workspace is paired yet.',
         `Workspace: ${workspacePath(boundGr)}`
     ];
     if (clientId) lines.push(`Studio clientId: ${clientId}. If a tool says not bound, bind_session once with it.`);
@@ -968,8 +978,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 effort: message.effort || 'medium',
                 fast: message.fast === true
             };
-            const stayWorkspace = typeof message.workspaceId === 'string' ? message.workspaceId.trim() : '';
-            if (stayWorkspace && stayWorkspace !== (chat.workspaceId || '')) chat.workspaceId = stayWorkspace;
+            const { keepSessionWorkspace } = require('./sessionWorkspacePairing');
+            keepSessionWorkspace(chat, message.workspaceId);
             chat.messages = chat.messages || [];
             chat.messages.push({
                 id: crypto.randomUUID(),
@@ -1071,17 +1081,22 @@ async function handleDirectorForkSession(handler, ws, message) {
         const chat = index.chats.find((item) => item.id === message.sessionId);
         if (!chat) return null;
         const key = String(message.messageId || '');
-        if (!key || key.startsWith('live:')) return false;
-        const colon = key.indexOf(':');
-        const id = colon > 0 ? key.slice(0, colon) : key;
         const messages = chat.messages || [];
-        const indexAt = messages.findIndex((item) => item && (item.id === id || item.timestamp === id));
-        if (indexAt < 0) return false;
-        const head = messages.slice(0, indexAt + 1).map((item) => JSON.parse(JSON.stringify(item)));
-        if (colon > 0 && Array.isArray(head[head.length - 1].trace)) {
-            const rowIndex = parseInt(key.slice(colon + 1), 10);
-            if (Number.isFinite(rowIndex) && rowIndex >= 0) {
-                head[head.length - 1].trace = head[head.length - 1].trace.slice(0, rowIndex + 1);
+        let head;
+        if (!key) {
+            head = messages.map((item) => JSON.parse(JSON.stringify(item)));
+        } else {
+            if (key.startsWith('live:')) return false;
+            const colon = key.indexOf(':');
+            const id = colon > 0 ? key.slice(0, colon) : key;
+            const indexAt = messages.findIndex((item) => item && (item.id === id || item.timestamp === id));
+            if (indexAt < 0) return false;
+            head = messages.slice(0, indexAt + 1).map((item) => JSON.parse(JSON.stringify(item)));
+            if (colon > 0 && Array.isArray(head[head.length - 1].trace)) {
+                const rowIndex = parseInt(key.slice(colon + 1), 10);
+                if (Number.isFinite(rowIndex) && rowIndex >= 0) {
+                    head[head.length - 1].trace = head[head.length - 1].trace.slice(0, rowIndex + 1);
+                }
             }
         }
         const activeAccId = getActiveXiAccountId(handler.globalResources);
@@ -1109,9 +1124,47 @@ async function handleDirectorForkSession(handler, ws, message) {
         return;
     }
     sendOk(handler, ws, 'director_fork_session_response', message.requestId, {
+        persona: 'xi',
+        fullCopy: !String(message.messageId || '').trim(),
         session: Object.assign(publicXiSession(forked), {
             messages: (forked.messages || []).map(director._test.publicMessage)
         })
+    });
+}
+
+async function handleDirectorMoveSession(handler, ws, message) {
+    if (!assertEnabled(handler, ws, message.requestId)) return;
+    const sessionId = message.sessionId;
+    const workspaceId = typeof message.workspaceId === 'string' ? message.workspaceId.trim() : '';
+    if (!sessionId || !workspaceId) {
+        handler.sendError(ws, 'Session and workspace are required', 'MISSING_PARAMETERS', message.requestId);
+        return;
+    }
+    const gr = handler.globalResources;
+    let known = false;
+    try {
+        const all = gr.getWorkspaceManager().getWorkspaces();
+        known = !!(all && all[workspaceId]);
+    } catch (_err) { known = false; }
+    if (!known) {
+        handler.sendError(ws, 'Workspace not found', 'WORKSPACE_NOT_FOUND', message.requestId);
+        return;
+    }
+    const moved = await enqueue(async () => {
+        const index = readIndex();
+        const chat = index.chats.find((item) => item.id === sessionId);
+        if (!chat) return null;
+        chat.workspaceId = workspaceId;
+        writeIndex(index);
+        return chat;
+    });
+    if (!moved) {
+        handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
+        return;
+    }
+    sendOk(handler, ws, 'director_move_session_response', message.requestId, {
+        persona: 'xi',
+        session: publicXiSession(moved)
     });
 }
 
@@ -1241,6 +1294,7 @@ module.exports = {
     runtimeStatus,
     hasChat,
     activeSessionId,
+    readChatWorkspace,
     chatsDir,
     chatImagesDir,
     setSessionTitle,
@@ -1261,6 +1315,7 @@ module.exports = {
     handleDirectorSendMessage,
     handleDirectorAbort,
     handleDirectorForkSession,
+    handleDirectorMoveSession,
     handleDirectorToolDiff,
     _test: { shouldPark, markToolDiffs, readToolDiffText, buildPrompt, launchPlan }
 };

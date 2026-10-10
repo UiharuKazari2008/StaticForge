@@ -59,6 +59,11 @@ const { buildMcpServerInfo, hashMcpToolsRevision, resolveMcpPublicBaseUrl } = re
 // modules/tagModelCutoff.js — offline tag suggest cutoffs
 const { V45_CUTOFF_MS, V5_CUTOFF_MS, isV5SuggestModel } = require('./tagModelCutoff');
 const { MCP_INSTRUCTIONS } = require('./mcpInstructions');
+const {
+    lookupRunningSessionWorkspace,
+    scopeWriteWorkspace,
+    studioWriteAllowed
+} = require('./sessionWorkspacePairing');
 const { parseAutofillArtistSearchPrefix } = require('./autofillSearchSettings');
 const { readRemoteAccessSettings, clampTurnPrints } = require('./remoteAccessSettings');
 const {
@@ -283,7 +288,7 @@ const STUDIO_PARAM_SCHEMA = {
 
 const WORKSPACE_PLACEMENT_SCHEMA = {
     type: 'string',
-    description: 'Workspace id. Pass the folder they named, or the folder that already holds the source / this job\'s gens. Do not copy the bound Studio tab just because it is focused. Omit is unsafe: the server may fall back to that tab or default.'
+    description: 'Workspace id. Pass the folder they named, or the folder that already holds the source / this job\'s gens. Do not copy the bound Studio tab just because it is focused. Omit is unsafe: the server may fall back to that tab or default. A paired Director session ignores this and writes to that session workspace.'
 };
 
 const GENERATE_IMAGE_PROPERTIES = {
@@ -539,7 +544,7 @@ const TOOL_DEFS = [
     {
         name: 'list_clients',
         core: true,
-        description: 'List open Studio tabs for this application key. Most recently used first. get_studio_state already returns this list when more than one tab is connected.',
+        description: 'List open Studio tabs for this application key. Most recently used first. Each client has in_workspace. false means that tab is not in the paired session workspace: do not use Studio (get_studio_state, apply_studio_changes, print_studio, open_in_studio). Glancewell, Lumen, and show_chat_image are still fine. Call request_workspace_switch to ask the user to switch. get_studio_state already returns this list when more than one tab is connected.',
         scope: 'generation',
         inputSchema: { type: 'object', properties: {} }
     },
@@ -559,7 +564,7 @@ const TOOL_DEFS = [
     {
         name: 'get_studio_state',
         core: true,
-        description: 'Current Studio prompt, UC, characters, params, open filename, dynamicGeneration (Studio Rentan toggles plus resolved time/weather/season/location, baked and bakedUntil; you bake it before an agent print), and attached director prompt. After apply/get the bound tab stores a checkpoint — later calls return only the delta (diff:true). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. Auto-binds the single connected tab. If several tabs are open, returns needsClientChoice and clients (most recently used first) — ask the user which clientId, then bind_session. Also returns settings on a full snapshot: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings. Then use get_generated_image on filename to see the picture. change.tokens is the live prompt and UC token usage (ofLimit, ofRecommended). If dynamicGeneration or director is present you must integrate it. For other open windows (Lumen, Glancewell, Grimoire, gallery selection) call get_open_windows.',
+        description: 'Current Studio prompt, UC, characters, params, open filename, dynamicGeneration (Studio Rentan toggles plus resolved time/weather/season/location, baked and bakedUntil; you bake it before an agent print), and attached director prompt. After apply/get the bound tab stores a checkpoint — later calls return only the delta (diff:true). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. Auto-binds the single connected tab. If several tabs are open, returns needsClientChoice and clients (most recently used first) — ask the user which clientId, then bind_session. Also returns settings on a full snapshot: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings. Then use get_generated_image on filename to see the picture. change.tokens is the live prompt and UC token usage (ofLimit, ofRecommended). If dynamicGeneration or director is present you must integrate it. For other open windows (Lumen, Glancewell, Grimoire, gallery selection) call get_open_windows. Do not call this when a client has in_workspace false. Call request_workspace_switch first. Glancewell, Lumen, and show_chat_image stay available.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -762,7 +767,7 @@ const TOOL_DEFS = [
     {
         name: 'offer_workspace_switch',
         core: true,
-        description: 'Offer the user a jump to another workspace. Puts a card in the Director chat with an "Open <workspace>" button. It does not move the workspace itself, so keep passing workspace on generate_image, get_generated_image, omegasearch and the rest. Use it when the request belongs in a workspace the client does not have open. workspaceId takes an id, a display name, or a nickname from get_workspaces; an unknown workspace is rejected.',
+        description: 'Offer the user a jump to another workspace. Puts a card in the Director chat with an "Open <workspace>" button. It does not move the workspace itself, so keep passing workspace on generate_image, get_generated_image, omegasearch and the rest. Use it when the request belongs in a workspace the client does not have open. workspaceId takes an id, a display name, or a nickname from get_workspaces; an unknown workspace is rejected. To ask them to switch into this session\'s paired workspace so you can use Studio, call request_workspace_switch instead. That one waits.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -776,9 +781,23 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'request_workspace_switch',
+        core: true,
+        description: 'Ask the user to switch to this Director session\'s workspace so you can use Studio. Shows a card with a 90 second countdown. Returns status accepted, declined, or timeout. Timeout counts as declined. Call this when a client has in_workspace false and you need Studio. Do not use Studio while it is false. Glancewell, Lumen, and show_chat_image are still fine without switching. Already in the workspace returns accepted without a card.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                reason: { type: 'string', description: 'One short line on the card: why Studio needs this workspace' },
+                chatId: { type: 'string', description: 'Director chat id. Only needed if the server cannot tell which chat is running.' }
+            }
+        }
+    },
+    {
         name: 'show_chat_image',
         core: true,
-        description: 'Put one picture in the Director chat where the user is reading. Pass filename for a gallery print, path for a file under your own Dreamspace home (~/.cache/dreamscape-director/), or url for a Dreamscape image URL on this host. Use it for a picture they should look at now — a reference you downloaded, one print worth talking about. Do not call it after every generate: the session image strip already tracks prints.',
+        description: 'Put one picture in the Director chat where the user is reading. Pass filename for a gallery print, path for a file under your own Dreamspace home (~/.cache/dreamscape-director/), or url for a Dreamscape image URL on this host. Use it for a picture they should look at now — a reference you downloaded, one print worth talking about. Do not call it after every generate: the session image strip already tracks prints. Still available when in_workspace is false.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -887,7 +906,7 @@ const TOOL_DEFS = [
     {
         name: 'get_session_state',
         core: true,
-        description: 'Session snapshot. Default view=live (clients, windows, Studio) — small enough to call often. Always includes remoteAccess (desktop Remote Access Settings), tagCutoff (tag-suggest date cutoff per model family; read this, do not assume a date), and vfsPath/vfsMount (mounted | absent | unknown for the vfs/ files mount). After apply/get the bound tab stores a checkpoint; later live checks return only the Studio delta (studio.diff). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. view=catalog is slim settings (current-model quality/UC ids, no per-model string dump). view=full is live plus slim catalog plus promptGuide/NAX/memory pointers. Full per-model quality/UC strings live on get_studio_state.settings — do not pull those on every chat. studio.dynamicGeneration includes toggles plus resolved time/weather/season/location. hasClients false or studioReachable false → generate_image. includeImage default false (never attach a Lumen file that is not Studio filename).',
+        description: 'Session snapshot. Default view=live (clients, windows, Studio) — small enough to call often. Always includes remoteAccess (desktop Remote Access Settings), tagCutoff (tag-suggest date cutoff per model family; read this, do not assume a date), and vfsPath/vfsMount (mounted | absent | unknown for the vfs/ files mount). After apply/get the bound tab stores a checkpoint; later live checks return only the Studio delta (studio.diff). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. view=catalog is slim settings (current-model quality/UC ids, no per-model string dump). view=full is live plus slim catalog plus promptGuide/NAX/memory pointers. Full per-model quality/UC strings live on get_studio_state.settings — do not pull those on every chat. studio.dynamicGeneration includes toggles plus resolved time/weather/season/location. hasClients false or studioReachable false → generate_image. clients[].in_workspace is false when that tab is outside the paired session workspace: do not use Studio then, call request_workspace_switch, and keep using Glancewell, Lumen, and show_chat_image. includeImage default false (never attach a Lumen file that is not Studio filename).',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -929,7 +948,7 @@ const TOOL_DEFS = [
     {
         name: 'apply_studio_changes',
         core: true,
-        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/vSlider/dynamicGeneration/director (same keys as Studio). prompt and uc work top-level or inside change (change.prompt / change.uc or change.fields {prompt, uc}) — one apply is enough. A params-only change is enough: model, steps, guidance, sampler, and the other param keys may sit in params or on the change object. Do not resend the prompt just to change those. Characters are the `characters` array (action replace + index). `characterPrompts` is accepted and treated as that full list. `overwrite: true` removes Studio character slots that are not in the list, then writes the list. text_overlays, expanders, vibes, and vSlider replace their lists when present, including empty arrays. To roll a new seed set params.seedLock false; do not ask the user to unlock it. vSlider installs interactive intensity widgets (slider/xypad/star/dropdown) — prefer this over static expanders when they ask for sliders. autoGenerate omitted uses Remote Access Settings (default off). To print without changing anything, call print_studio. After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta.',
+        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/vSlider/dynamicGeneration/director (same keys as Studio). prompt and uc work top-level or inside change (change.prompt / change.uc or change.fields {prompt, uc}) — one apply is enough. A params-only change is enough: model, steps, guidance, sampler, and the other param keys may sit in params or on the change object. Do not resend the prompt just to change those. Characters are the `characters` array (action replace + index). `characterPrompts` is accepted and treated as that full list. `overwrite: true` removes Studio character slots that are not in the list, then writes the list. text_overlays, expanders, vibes, and vSlider replace their lists when present, including empty arrays. To roll a new seed set params.seedLock false; do not ask the user to unlock it. vSlider installs interactive intensity widgets (slider/xypad/star/dropdown) — prefer this over static expanders when they ask for sliders. autoGenerate omitted uses Remote Access Settings (default off). To print without changing anything, call print_studio. After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta. Refused when the bound client has in_workspace false: call request_workspace_switch first.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1021,7 +1040,7 @@ const TOOL_DEFS = [
     {
         name: 'print_studio',
         core: true,
-        description: 'Click Generate on the open Studio tab. Does not change the prompt or settings. Use this when the tab is open and they want a print of what is already in Studio. Returns jobId + filenameBefore. Then await_generation_job or get_generated_image since=apply. Do not treat filenameBefore as the new print. n is the Studio print count (1–8, default 1). If Studio is not open, this fails — do not fall through to generate_image unless the tab is actually offline.',
+        description: 'Click Generate on the open Studio tab. Does not change the prompt or settings. Use this when the tab is open and they want a print of what is already in Studio. Returns jobId + filenameBefore. Then await_generation_job or get_generated_image since=apply. Do not treat filenameBefore as the new print. n is the Studio print count (1–8, default 1). If Studio is not open, this fails — do not fall through to generate_image unless the tab is actually offline. Refused when the bound client has in_workspace false: call request_workspace_switch first.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1949,7 +1968,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'create_note',
-        description: 'Create a notepad note. Wraps notes_create. Mints id when omitted. workspaceId required unless a Studio tab is bound.',
+        description: 'Create a notepad note. Wraps notes_create. Mints id when omitted. workspaceId required unless a Studio tab is bound. A paired Director session writes the note into that session workspace.',
         scope: 'notes',
         inputSchema: {
             type: 'object',
@@ -2052,7 +2071,7 @@ const TOOL_DEFS = [
     {
         name: 'open_in_studio',
         core: true,
-        description: 'Load one gallery image into Studio on the bound tab. Use this after a server generate when Studio is already open. Does not click Generate.',
+        description: 'Load one gallery image into Studio on the bound tab. Use this after a server generate when Studio is already open. Does not click Generate. Do not call this when in_workspace is false. Use open_in_lumen, open_in_glancewell, or show_chat_image instead, or request_workspace_switch first.',
         scope: 'gallery',
         inputSchema: {
             type: 'object',
@@ -2066,7 +2085,7 @@ const TOOL_DEFS = [
     {
         name: 'open_in_lumen',
         core: true,
-        description: 'Open one gallery image in Lumen (the single-image viewer) on a connected client.',
+        description: 'Open one gallery image in Lumen (the single-image viewer) on a connected client. Still available when in_workspace is false.',
         scope: 'gallery',
         inputSchema: {
             type: 'object',
@@ -2081,7 +2100,7 @@ const TOOL_DEFS = [
     {
         name: 'open_in_glancewell',
         core: true,
-        description: 'Open one image or a group in Glancewell (lightbox). Pass filenames for a swipeable set.',
+        description: 'Open one image or a group in Glancewell (lightbox). Pass filenames for a swipeable set. Still available when in_workspace is false.',
         scope: 'gallery',
         inputSchema: {
             type: 'object',
@@ -4449,7 +4468,7 @@ function queueDirectorLongJobNotice(globalResources, req) {
 // index.json (modules/cursorDirector.js), so the user sees them after a reopen.
 const DIRECTOR_SESSION_TOOLS = new Set([
     'set_session_title', 'set_session_type', 'set_session_tasks', 'set_session_task', 'get_session_tasks', 'close_session_tasks',
-    'offer_workspace_switch', 'show_chat_image'
+    'offer_workspace_switch', 'request_workspace_switch', 'show_chat_image'
 ]);
 
 // show_chat_image sources. A gallery print, a file in the Director's own home, or a
@@ -4557,7 +4576,44 @@ function resolveDirectorChat(input) {
     return { director: wren, chatId: asked };
 }
 
-async function runDirectorSessionTool(globalResources, name, input) {
+function pairedWriteWorkspace(requested) {
+    return scopeWriteWorkspace(lookupRunningSessionWorkspace(), requested);
+}
+
+function refuseStudioOutsideWorkspace(globalResources, req) {
+    const paired = lookupRunningSessionWorkspace();
+    const here = inferBoundWorkspaceId(globalResources, req) || '';
+    if (studioWriteAllowed(paired, here)) return null;
+    return mcpTextResult({
+        success: false,
+        code: 'NOT_IN_WORKSPACE',
+        in_workspace: false,
+        workspaceId: paired,
+        error: 'This client is not in the session workspace. Do not use Studio. Call request_workspace_switch. Glancewell, Lumen, and show_chat_image are still available.'
+    }, true);
+}
+
+function workspaceDisplayName(globalResources, workspaceId) {
+    try {
+        const manager = globalResources.getWorkspaceManager();
+        const all = manager && manager.getWorkspaces ? manager.getWorkspaces() : null;
+        const row = all && all[workspaceId];
+        return (row && row.name) || workspaceId;
+    } catch (_err) {
+        return workspaceId;
+    }
+}
+
+function hasConnectedClient(globalResources) {
+    try {
+        const wsServer = globalResources.getWebSocketServer();
+        return !!(wsServer && wsServer.clients && wsServer.clients.size);
+    } catch (_err) {
+        return false;
+    }
+}
+
+async function runDirectorSessionTool(globalResources, name, input, req) {
     const { director, chatId } = resolveDirectorChat(input);
     if (!chatId) {
         return mcpTextResult({
@@ -4590,6 +4646,68 @@ async function runDirectorSessionTool(globalResources, name, input) {
         } catch (error) {
             return mcpTextResult({ success: false, error: error.message, code: error.code || 'DIRECTOR_ERROR', chatId }, true);
         }
+    }
+    if (name === 'request_workspace_switch') {
+        const workspaceId = director.readChatWorkspace ? director.readChatWorkspace(chatId) : '';
+        if (!workspaceId) {
+            return mcpTextResult({
+                success: false,
+                error: 'This chat is not paired to a workspace.',
+                code: 'WORKSPACE_NOT_PAIRED',
+                chatId
+            }, true);
+        }
+        const here = req ? (inferBoundWorkspaceId(globalResources, req) || '') : '';
+        if (here && here === workspaceId) {
+            return mcpTextResult({
+                success: true,
+                status: 'accepted',
+                accepted: true,
+                declined: false,
+                already: true,
+                workspaceId,
+                chatId
+            });
+        }
+        if (!hasConnectedClient(globalResources)) {
+            return mcpTextResult({ success: false, error: 'No client is connected to show the switch card', code: 'NOT_BOUND' }, true);
+        }
+        const { beginWorkspaceSwitch, awaitWorkspaceSwitch, cancelWorkspaceSwitch } = require('./sessionWorkspaceSwitch');
+        const workspaceName = workspaceDisplayName(globalResources, workspaceId);
+        const reason = String(input.reason || '').replace(/\s+/g, ' ').trim().slice(0, director.MAX_CARD_REASON);
+        const started = beginWorkspaceSwitch({ workspaceId, workspaceName, reason });
+        const card = await director.appendSessionCard(globalResources, chatId, {
+            kind: 'workspace-switch',
+            event: 'director_workspace_switch',
+            data: {
+                requestId: started.id,
+                switchId: started.id,
+                workspaceId,
+                workspaceName,
+                reason,
+                deadline: started.deadline,
+                timeoutMs: started.timeoutMs
+            }
+        });
+        if (!card) {
+            cancelWorkspaceSwitch(started.id);
+            return mcpTextResult({ success: false, error: 'Director chat not found', code: 'SESSION_NOT_FOUND', chatId }, true);
+        }
+        const answer = await awaitWorkspaceSwitch(started.id);
+        const declined = answer.declined === true;
+        return mcpTextResult({
+            success: true,
+            status: answer.status,
+            accepted: answer.accepted === true,
+            declined,
+            timedOut: answer.timedOut === true,
+            workspaceId,
+            workspaceName,
+            chatId,
+            next: answer.accepted
+                ? 'They switched into the session workspace. Studio tools are allowed.'
+                : 'They did not switch. Timeout counts as declined. Do not use Studio. Glancewell, Lumen, and show_chat_image are still fine.'
+        });
     }
     if (name === 'offer_workspace_switch') {
         const asked = String(input.workspaceId || input.workspace || '').trim();
@@ -5120,23 +5238,37 @@ async function collectSessionState(globalResources, req, input) {
             ? stateData.workspaceId
             : null) || (windowData && windowData.workspaceId) || null;
         out.studioReachable = true;
+        const pairedWorkspaceId = lookupRunningSessionWorkspace();
+        out.sessionWorkspaceId = pairedWorkspaceId || null;
+        const clientWorkspaceId = out.workspaceId || inferBoundWorkspaceId(globalResources, req) || '';
+        out.in_workspace = studioWriteAllowed(pairedWorkspaceId, clientWorkspaceId);
+        if (pairedWorkspaceId && !out.in_workspace) {
+            out.studio = null;
+            out.studioBlocked = true;
+            out.studioReachable = false;
+            out.next = 'in_workspace is false. Do not use Studio. Call request_workspace_switch. Glancewell, Lumen, and show_chat_image are still fine. Generation and notes already write to the session workspace.';
+        }
         if (view === 'full') {
             out.settings = sessionSettingsCatalog(globalResources, out.studio && out.studio.model);
         }
-        if (isDiff && stateData.unchanged) {
-            out.next = view === 'full'
-                ? 'Studio unchanged since last checkpoint. Keep your last snapshot. Do not also dump memories/NAX/autofill/guide in this turn.'
-                : 'Studio unchanged since last checkpoint. Keep your last snapshot. Apply only this turn\'s requested delta.';
-        } else {
-            out.next = view === 'full'
-                ? 'Slim catalog + live state. Before later edits call view=live. Do not also dump memories/NAX/autofill/guide in this turn. Full quality/UC strings: get_studio_state.settings.'
-                : (isDiff
-                    ? 'Studio delta since last checkpoint. Keep unchanged fields. Apply only this turn\'s requested delta.'
-                    : 'Live Studio + windows only. Later checks return only the delta.');
+        if (!out.studioBlocked) {
+            if (isDiff && stateData.unchanged) {
+                out.next = view === 'full'
+                    ? 'Studio unchanged since last checkpoint. Keep your last snapshot. Do not also dump memories/NAX/autofill/guide in this turn.'
+                    : 'Studio unchanged since last checkpoint. Keep your last snapshot. Apply only this turn\'s requested delta.';
+            } else {
+                out.next = view === 'full'
+                    ? 'Slim catalog + live state. Before later edits call view=live. Do not also dump memories/NAX/autofill/guide in this turn. Full quality/UC strings: get_studio_state.settings.'
+                    : (isDiff
+                        ? 'Studio delta since last checkpoint. Keep unchanged fields. Apply only this turn\'s requested delta.'
+                        : 'Live Studio + windows only. Later checks return only the delta.');
+            }
         }
         const focusedUnchanged = !!(prevCheckpoint && prevCheckpoint.focusedFilename && prevCheckpoint.focusedFilename === focusedFilename);
         const lastGeneratedFilename = (stateData && stateData.lastGeneratedImageName) || null;
-        const studioFilename = (out.studio && out.studio.filename) || (stateData && stateData.filename) || null;
+        const studioFilename = out.studioBlocked
+            ? null
+            : ((out.studio && out.studio.filename) || (stateData && stateData.filename) || null);
         return attachFocusedWindowImage(
             globalResources,
             out,
@@ -6229,6 +6361,8 @@ async function callTool(globalResources, req, name, args) {
         if (!getBoundRecord(globalResources, bind.bindKey)) {
             return mcpBindChoiceResult(bind);
         }
+        const presetRefused = refuseStudioOutsideWorkspace(globalResources, req);
+        if (presetRefused) return presetRefused;
         const loaded = await dispatchPacketTool(globalResources, req, 'load_preset', {
             presetName: input.presetName,
             presetUuid: input.presetUuid
@@ -6279,7 +6413,7 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'create_note') {
         input.id = input.id || crypto.randomUUID();
-        input.workspaceId = resolveNoteWorkspaceId(globalResources, input, req);
+        input.workspaceId = pairedWriteWorkspace(resolveNoteWorkspaceId(globalResources, input, req) || '');
         if (!input.workspaceId) {
             const err = new Error('workspaceId is required (or bind a Studio tab)');
             err.status = 400;
@@ -6293,7 +6427,9 @@ async function callTool(globalResources, req, name, args) {
         if (input.name != null) updates.name = input.name;
         if (input.icon != null) updates.icon = input.icon;
         if (input.color != null) updates.color = input.color;
-        if (input.workspaceId != null) updates.workspaceId = input.workspaceId;
+        if (input.workspaceId != null || updates.workspaceId != null) {
+            updates.workspaceId = pairedWriteWorkspace(resolveWorkspaceId(updates.workspaceId || input.workspaceId, globalResources));
+        }
         return mcpTextResult(await dispatchPacketTool(globalResources, req, 'notes_update', {
             noteId: input.noteId,
             updates
@@ -6328,7 +6464,7 @@ async function callTool(globalResources, req, name, args) {
         if (!filenames.length) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
         }
-        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
+        const workspaceId = pairedWriteWorkspace(resolveWorkspaceId(input.workspace || input.workspaceId, globalResources));
         if (input.remove === true) {
             const results = [];
             for (const filename of filenames) {
@@ -6350,7 +6486,7 @@ async function callTool(globalResources, req, name, args) {
         if (!filenames.length) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
         }
-        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
+        const workspaceId = pairedWriteWorkspace(resolveWorkspaceId(input.workspace || input.workspaceId, globalResources));
         const record = workspaceRecord(globalResources, workspaceId) || {};
         const pinned = Array.isArray(record.pinned) ? record.pinned : [];
         const results = [];
@@ -6382,6 +6518,8 @@ async function callTool(globalResources, req, name, args) {
         if (!bind.bound) {
             return mcpTextResult({ success: false, error: 'No Studio client is bound', code: 'NOT_BOUND' }, true);
         }
+        const studioOpenRefused = refuseStudioOutsideWorkspace(globalResources, req);
+        if (studioOpenRefused) return studioOpenRefused;
         try {
             const data = await sendBoundCommand(globalResources, 'open_image', { filename }, 20000, bind.bindKey);
             return mcpTextResult({ success: true, filename, ...(data || {}) });
@@ -6472,7 +6610,7 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'create_shortcut') {
-        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
+        const workspaceId = pairedWriteWorkspace(resolveWorkspaceId(input.workspace || input.workspaceId, globalResources));
         const dest = pickShortcutString(input, ['dest', 'path']) || '@desktop';
         const wantStudio = input.fromStudio === true || input.fromStudio === 'true'
             || (String(input.type || '') === 'studio-change' && !input.payload && !input.change
@@ -6642,7 +6780,7 @@ async function callTool(globalResources, req, name, args) {
         if (name === 'expand_image') {
             payload = mergeExpansionOverrideParams(payload);
         }
-        payload.workspace = resolveGenerateWorkspaceId(globalResources, req, payload);
+        payload.workspace = pairedWriteWorkspace(resolveGenerateWorkspaceId(globalResources, req, payload));
         payload.mcp_generated = true;
         let qualityDropped = null;
         let qualityInherited = null;
@@ -6816,7 +6954,12 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (def.packet && name !== 'get_generated_image' && name !== 'get_linkxi_persona' && name !== 'save_linkxi_persona') {
-        if (input.workspaceId || input.workspace) {
+        const pairedTarget = pairedWriteWorkspace('');
+        const writesWorkspace = rateGroupForTool(name) === 'write' || rateGroupForTool(name) === 'generate';
+        if (writesWorkspace && pairedTarget) {
+            input.workspaceId = pairedTarget;
+            input.workspace = pairedTarget;
+        } else if (input.workspaceId || input.workspace) {
             input.workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace, globalResources);
             input.workspace = input.workspaceId;
         }
@@ -6960,6 +7103,8 @@ async function callTool(globalResources, req, name, args) {
         if (!bound) {
             return mcpBindChoiceResult(bind);
         }
+        const studioReadRefused = refuseStudioOutsideWorkspace(globalResources, req);
+        if (studioReadRefused) return studioReadRefused;
         const scopePayload = buildAgentScopePayload(req, globalResources);
         try {
             const data = await sendBoundCommand(
@@ -7203,7 +7348,7 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (DIRECTOR_SESSION_TOOLS.has(name)) {
-        return runDirectorSessionTool(globalResources, name, input);
+        return runDirectorSessionTool(globalResources, name, input, req);
     }
 
     if (name === 'deliver_rentan') {
@@ -7237,6 +7382,8 @@ async function callTool(globalResources, req, name, args) {
         if (!getBoundRecord(globalResources, bind.bindKey)) {
             return mcpBindChoiceResult(bind);
         }
+        const applyRefused = refuseStudioOutsideWorkspace(globalResources, req);
+        if (applyRefused) return applyRefused;
         const blocked = await guardStudioAutoGenerateDynagen(globalResources, bind.bindKey, input);
         if (blocked) {
             return mcpTextResult(blocked, true);
@@ -7282,6 +7429,8 @@ async function callTool(globalResources, req, name, args) {
         if (!getBoundRecord(globalResources, bind.bindKey)) {
             return mcpBindChoiceResult(bind);
         }
+        const printRefused = refuseStudioOutsideWorkspace(globalResources, req);
+        if (printRefused) return printRefused;
         const dynagenBlocked = await guardLiveStudioDynagen(globalResources, bind.bindKey);
         if (dynagenBlocked) {
             return mcpTextResult(dynagenBlocked, true);
@@ -7331,6 +7480,8 @@ async function callTool(globalResources, req, name, args) {
         if (!getBoundRecord(globalResources, bind.bindKey)) {
             return mcpBindChoiceResult(bind);
         }
+        const decompileRefused = refuseStudioOutsideWorkspace(globalResources, req);
+        if (decompileRefused) return decompileRefused;
         const data = await sendBoundCommand(globalResources, 'decompile_phasewalker', {
             phase: String(phase),
             autoGenerate: input.autoGenerate === true
@@ -7364,6 +7515,8 @@ async function callTool(globalResources, req, name, args) {
         if (!getBoundRecord(globalResources, bind.bindKey)) {
             return mcpBindChoiceResult(bind);
         }
+        const phaseRefused = refuseStudioOutsideWorkspace(globalResources, req);
+        if (phaseRefused) return phaseRefused;
         const compile = input.compile !== false;
         const data = await sendBoundCommand(globalResources, 'open_phasewalker', {
             state,
@@ -8324,6 +8477,8 @@ module.exports = {
         validateSetCalculatorArgs,
         queueDirectorLongJobNotice,
         runDirectorSessionTool,
+        pairedWriteWorkspace,
+        refuseStudioOutsideWorkspace,
         resolveDirectorChatId,
         DIRECTOR_LONG_JOB_NOTICE,
         splitVfsPath,
