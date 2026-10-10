@@ -50,7 +50,7 @@ const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
 const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacRemoteBridge');
 const { getQwenTokenizerDefinition } = require('./modules/qwenTokenizerAssetCache');
-const { getOpusUsageFromAccountData, SUBSCRIPTION_USAGE_POLL_MS } = require('./modules/opusUsage');
+const { SUBSCRIPTION_USAGE_POLL_MS } = require('./modules/opusUsage');
 const { realClientIp, trustedProxiesFromResources } = require('./modules/clientAddress');
 
 let runtimeCompileComplete = false;
