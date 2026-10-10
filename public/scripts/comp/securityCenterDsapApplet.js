@@ -325,16 +325,17 @@ ${dsapSmfBuildHeader({
       <input type="hidden" id="secCursorAccountIdInput" value="">
       <label>Profile Name<input type="text" id="secCursorAccountNameInput" class="sec-input" placeholder="e.g. Main Account, Work Account"></label>
       <div class="sec-readonly-row"><span class="sec-dsap-setting-hint">Display name</span> <span id="secCursorAccountDisplayName" class="sec-readonly-value">—</span></div>
-      <label>Badge color<input type="text" id="secCursorAccountColorInput" class="sec-input" placeholder="#5b8def" maxlength="7"></label>
+      <label>Badge color<span class="sec-color-row"><input type="color" id="secCursorAccountColorPicker" class="sec-color-swatch" value="#5b8def" aria-label="Badge color picker"><input type="text" id="secCursorAccountColorInput" class="sec-input" placeholder="#5b8def" maxlength="7" spellcheck="false"></span></label>
       <label>Email Address<input type="text" id="secCursorAccountEmailInput" class="sec-input" placeholder="user@example.com (auto-detected if token is pasted)"></label>
       <label>Credential type<select id="secCursorAccountTokenKind" class="sec-input">
         <option value="">Auto (API key or session token)</option>
         <option value="apiKey">API key</option>
         <option value="accessToken">Access token</option>
       </select></label>
-      <label>API Key / Access Token / auth.json JSON<textarea id="secCursorAccountTokenInput" class="sec-input" rows="3" style="font-family: monospace; font-size: 0.85em;" placeholder="Paste a Cursor API key (crsr_…), a session token (eyJ…), or an auth.json object. Leave blank when editing to keep the saved key."></textarea></label>
-      <div class="sec-appkeys-form-actions">
-        <button type="button" id="secCursorAccountCopyToken" class="sec-dsap-action-btn sec-btn-small" title="Copy the token in this field"><i class="fas fa-copy"></i> Copy token</button>
+      <label for="secCursorAccountTokenInput">API Key / Access Token / auth.json JSON</label>
+      <div class="sec-token-row">
+        <textarea id="secCursorAccountTokenInput" class="sec-input" rows="3" style="font-family: monospace; font-size: 0.85em;" placeholder="Paste a Cursor API key (crsr_…), a session token (eyJ…), or an auth.json object. Leave blank when editing to keep the saved key."></textarea>
+        <button type="button" id="secCursorAccountCopyToken" class="sec-dsap-action-btn sec-btn-small" title="Copy the token in this field"><i class="fas fa-copy"></i> Copy</button>
       </div>
       <div class="sec-appkeys-form-actions">
         <button type="button" id="secCursorAccountSubmitSave" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-save"></i> Save Profile</button>
@@ -1359,7 +1360,7 @@ const securityDsapDriver = {
                     root.querySelector('#secCursorAccountNameInput').value = '';
                     const displayName = root.querySelector('#secCursorAccountDisplayName');
                     if (displayName) displayName.textContent = '—';
-                    root.querySelector('#secCursorAccountColorInput').value = '';
+                    this._setCursorAccountColor(root, '');
                     root.querySelector('#secCursorAccountEmailInput').value = '';
                     root.querySelector('#secCursorAccountTokenInput').value = '';
                     const tokenKind = root.querySelector('#secCursorAccountTokenKind');
@@ -1367,6 +1368,17 @@ const securityDsapDriver = {
                     root.querySelector('#secCursorAccountPanelTitle').textContent = 'Add Cursor Account Profile';
                     panel.classList.remove('hidden');
                 }
+            });
+        }
+
+        const colorPicker = root.querySelector('#secCursorAccountColorPicker');
+        const colorText = root.querySelector('#secCursorAccountColorInput');
+        if (colorPicker && colorText && colorPicker.dataset.secWired !== '1') {
+            colorPicker.dataset.secWired = '1';
+            colorPicker.addEventListener('input', () => { colorText.value = colorPicker.value; });
+            colorText.addEventListener('input', () => {
+                const v = colorText.value.trim();
+                if (/^#[0-9a-fA-F]{6}$/.test(v)) colorPicker.value = v.toLowerCase();
             });
         }
 
@@ -1430,6 +1442,11 @@ const securityDsapDriver = {
                 const persona = this._state.cursorAccounts?.capturePersona || 'xi';
                 void this._captureCursorAccountCredentials(root, persona, accId);
             }
+            return;
+        }
+        if (action === 'logout-cursor-profile') {
+            const accId = btn.closest('[data-sec-cursor-acc-id]')?.dataset.secCursorAccId;
+            if (accId && !btn.disabled) void this._logoutCursorProfile(root, accId, btn);
             return;
         }
         if (action === 'edit-cursor-account') {
@@ -2186,7 +2203,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
   <td align="center"><span title="${securityDsapEscapeAttr(usage.costTitle || 'API usage cost')}">${securityDsapEscapeHtml(costLabel)}</span></td>
   <td align="center"><span title="${securityDsapEscapeAttr(daysTitle)}">${securityDsapEscapeHtml(daysText)}</span></td>
   <td class="sec-actions-cell" align="center">
-    ${loginNeeded ? `<button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="login-cursor-account" title="Open Cursor login for this profile"><i class="fas fa-right-to-bracket"></i> Login</button>` : ''}
+    ${loginNeeded ? `<button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="login-cursor-account" title="Open Cursor login for this profile"><i class="fas fa-right-to-bracket"></i> Login</button>` : `<button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="logout-cursor-profile" title="Log out this profile (clears its saved login and key)"><i class="fas fa-right-from-bracket"></i> Logout</button>`}
     <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="capture-cursor-account" title="${securityDsapEscapeAttr(captureTitle)}"${captureOn ? '' : ' disabled'}><i class="fas fa-camera"></i></button>
     <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="copy-cursor-token" title="Copy account token"${acc.token ? '' : ' disabled'}><i class="fas fa-copy"></i></button>
     <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="edit-cursor-account" title="Edit profile"><i class="fas fa-edit"></i></button>
@@ -2262,6 +2279,34 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             if (typeof showGlassToast === 'function') {
                 showGlassToast('error', 'Capture Failed', err.message || 'Failed to capture credentials', false, 5000);
             }
+        }
+    },
+
+    _setCursorAccountColor(root, color) {
+        const v = /^#[0-9a-fA-F]{6}$/.test(color || '') ? color.toLowerCase() : '';
+        const text = root.querySelector('#secCursorAccountColorInput');
+        const picker = root.querySelector('#secCursorAccountColorPicker');
+        if (text) text.value = v;
+        if (picker) picker.value = v || '#5b8def';
+    },
+
+    async _logoutCursorProfile(root, accountId, btn) {
+        if (!accountId || !(await this._ensureWs())) return;
+        const acc = (this._state.cursorAccounts?.accounts || []).find((row) => row.id === accountId);
+        if (!window.confirm(`Log out ${acc?.name || accountId}? This clears its saved Cursor login and API key.`)) return;
+        if (btn) btn.disabled = true;
+        try {
+            const response = await wsClient.sendMessage('logout_cursor_account_profile', { accountId });
+            const data = response?.data || response;
+            if (!data?.success) throw new Error(data?.message || 'Logout failed');
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', 'Logged Out', data.message || `Logged out ${acc?.name || accountId}`, false, 5000, '<i class="fas fa-right-from-bracket"></i>');
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') showGlassToast('error', 'Logout Failed', err.message || 'Logout failed', false, 5000);
+        } finally {
+            if (btn) btn.disabled = false;
+            void this._loadCursorAccounts(root);
         }
     },
 
@@ -2389,7 +2434,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         root.querySelector('#secCursorAccountNameInput').value = acc.name || '';
         const displayName = root.querySelector('#secCursorAccountDisplayName');
         if (displayName) displayName.textContent = acc.displayName ? String(acc.displayName) : '—';
-        root.querySelector('#secCursorAccountColorInput').value = acc.color || '';
+        this._setCursorAccountColor(root, acc.color || '');
         root.querySelector('#secCursorAccountEmailInput').value = acc.email || '';
         root.querySelector('#secCursorAccountTokenInput').value = acc.token || '';
         const tokenKind = root.querySelector('#secCursorAccountTokenKind');

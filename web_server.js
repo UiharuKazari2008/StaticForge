@@ -3543,6 +3543,12 @@ async function handleAdminUnixSocketMessage(message, socket) {
     // Rotate generation log on startup
     globalResources.logger.rotateGenerationLog();
 
+    // Host ~/.config/cursor follows the Xi active Director account.
+    try {
+        const hostSync = require('./modules/cursorAccountAuthStore').syncHostCursorLoginFromXi();
+        if (hostSync && hostSync.synced) globalResources.logger.bootSubStep(`Host Cursor login synced from Xi account ${hostSync.accountId}`);
+    } catch (_) { /* optional */ }
+
     updateServerStage('initializing');
     
     // Preview Synchronization

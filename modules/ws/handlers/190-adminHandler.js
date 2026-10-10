@@ -1459,6 +1459,51 @@ async function handleCaptureCursorAccount(handlersCtx, ws, message, clientInfo, 
     }
 }
 
+async function handleLogoutCursorAccountProfile(handlersCtx, ws, message, clientInfo) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+        const accountId = String(message.accountId || '').trim();
+        const secureConfig = handlersCtx.globalResources.getSecureConfig() || {};
+        const cursorData = secureConfig.cursorAccounts || { wren: {}, xi: {}, accounts: [] };
+        if (!accountId || !(cursorData.accounts || []).some((a) => a.id === accountId)) {
+            handlersCtx.sendError(ws, 'Account profile not found', 'ACCOUNT_NOT_FOUND', message.requestId);
+            return;
+        }
+        const store = require('../../cursorAccountAuthStore');
+        // A persona running on this profile loses its live login too, so it cannot sync it back.
+        for (const persona of ['wren', 'xi']) {
+            if ((cursorData[persona] && cursorData[persona].activeAccountId) === accountId) {
+                try { store.logoutCursorAccount(persona, accountId); } catch (err) { console.warn(`Cursor ${persona} live logout:`, err.message); }
+            }
+        }
+        const cleared = store.clearAccountProfileAuth(cursorData, accountId);
+        const pending = handlersCtx.globalResources.modifyConfig('secureConfig', undefined, { immediate: true }).assign('cursorAccounts', cursorData);
+        if (pending && typeof pending.then === 'function') await pending;
+        let revoked = 0;
+        if (cleared.hadApiKey && cleared.accessToken) {
+            try { revoked = await store.revokeNamedApiKeys(accountId, cleared.accessToken); } catch (err) { console.warn('Cursor key revoke skipped:', err.message); }
+        }
+        try { require('../../cursorUsage').invalidateCursorUsage(); } catch (_) { /* optional */ }
+        handlersCtx.sendToClient(ws, {
+            type: 'logout_cursor_account_profile_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                accountId,
+                revokedKeys: revoked,
+                message: `Logged out ${(cleared.account && cleared.account.name) || accountId}${revoked ? ' and revoked its Dreamscape key' : ''}`
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Cursor profile logout failed:', error);
+        handlersCtx.sendError(ws, 'Failed to log out profile', error.message, message.requestId);
+    }
+}
+
 async function handleLogoutCursorAccount(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
         if (clientInfo.userType !== 'admin') {
@@ -1550,6 +1595,7 @@ function registerPackets(handlersCtx) {
     reg('login_cursor_account', handleLoginCursorAccount, ADMIN_DESTRUCTIVE);
     reg('capture_cursor_account', handleCaptureCursorAccount, ADMIN_DESTRUCTIVE);
     reg('logout_cursor_account', handleLogoutCursorAccount, ADMIN_DESTRUCTIVE);
+    reg('logout_cursor_account_profile', handleLogoutCursorAccountProfile, ADMIN_DESTRUCTIVE);
     reg('delete_cursor_account', handleDeleteCursorAccount, ADMIN_DESTRUCTIVE);
 }
 

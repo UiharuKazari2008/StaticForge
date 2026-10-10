@@ -4,7 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const ACCOUNTS_BASE_DIR = path.join(process.cwd(), '.cache', 'dreamscape-cursor-accounts');
+// Tests point DREAMSCAPE_CURSOR_ACCOUNTS_DIR at a temp dir so they never touch live profiles.
+const ACCOUNTS_BASE_DIR = process.env.DREAMSCAPE_CURSOR_ACCOUNTS_DIR
+    ? path.resolve(process.env.DREAMSCAPE_CURSOR_ACCOUNTS_DIR)
+    : path.join(process.cwd(), '.cache', 'dreamscape-cursor-accounts');
 
 const DIRECTOR_CLI_OVERLAY = {
     permissions: {
@@ -362,7 +365,67 @@ function restoreAccountAuthFiles(accountId, targetConfigDir) {
         if (safeCopyFile(cacheSrc, path.join(targetConfigDir, 'statsig-cache.json'))) copiedAny = true;
     }
 
+    // Xi's active account is the host's global Cursor login.
+    if (copiedAny && isXiConfigDir(targetConfigDir)) syncHostCursorLogin(accountId);
+
     return copiedAny;
+}
+
+function isXiConfigDir(dir) {
+    try {
+        const xiDirector = require('./xiDirector');
+        const xiDir = typeof xiDirector.layout === 'function' ? xiDirector.layout().configDir : null;
+        return !!(xiDir && path.resolve(xiDir) === path.resolve(dir));
+    } catch (_) {
+        return false;
+    }
+}
+
+function hostCursorConfigDir() {
+    return process.env.DREAMSCAPE_HOST_CURSOR_DIR
+        ? path.resolve(process.env.DREAMSCAPE_HOST_CURSOR_DIR)
+        : path.join(os.homedir(), '.config', 'cursor');
+}
+
+function atomicCopy600(src, dest) {
+    const tmp = `${dest}.tmp-${process.pid}-${Date.now()}`;
+    fs.copyFileSync(src, tmp);
+    fs.chmodSync(tmp, 0o600);
+    fs.renameSync(tmp, dest);
+}
+
+/**
+ * Write one profile's auth.json + cli-config.json into the host's shared Cursor dir
+ * (~/.config/cursor, used by the plain `agent` CLI). Atomic, mode 600, previous auth.json
+ * kept as auth.json.bak. Skips when the profile has no credentials or nothing changed.
+ */
+function syncHostCursorLogin(accountId) {
+    const accDir = getAccountDir(accountId || 'default');
+    const authSrc = path.join(accDir, 'auth.json');
+    const auth = readJson(authSrc);
+    if (!auth || !(auth.accessToken || auth.apiKey)) return { synced: false, reason: 'no-credentials' };
+    const hostDir = hostCursorConfigDir();
+    ensureDir(hostDir);
+    const authDest = path.join(hostDir, 'auth.json');
+    let same = false;
+    try { same = fs.readFileSync(authDest, 'utf8') === fs.readFileSync(authSrc, 'utf8'); } catch (_) { /* no host file yet */ }
+    if (!same) {
+        if (fs.existsSync(authDest)) atomicCopy600(authDest, `${authDest}.bak`);
+        atomicCopy600(authSrc, authDest);
+    }
+    const cliSrc = path.join(accDir, 'cli-config.json');
+    if (fs.existsSync(cliSrc)) atomicCopy600(cliSrc, path.join(hostDir, 'cli-config.json'));
+    return { synced: !same, accountId: accountId || 'default', hostDir };
+}
+
+// Boot: make the host login match the current Xi account (repairs a clobbered host file).
+function syncHostCursorLoginFromXi() {
+    try {
+        return syncHostCursorLogin(getActiveAccountId('xi') || 'default');
+    } catch (err) {
+        console.warn('[cursorAccountAuthStore] host login sync failed:', err.message);
+        return { synced: false, reason: err.message };
+    }
 }
 
 /**
@@ -380,6 +443,41 @@ function deleteAccountAuthFiles(accountId) {
         console.warn(`[cursorAccountAuthStore] Delete failed ${accDir}:`, err.message);
     }
     return false;
+}
+
+/**
+ * Log out one stored profile: clear its auth.json, cli-config identity and statsig cache,
+ * plus the token fields on the secure-config entry. Returns the session (if any) so the
+ * caller can try to revoke the minted key. Live persona dirs are handled by the caller.
+ */
+function clearAccountProfileAuth(cursorData, accountId) {
+    const id = String(accountId || '').trim();
+    if (!id) throw new Error('accountId is required');
+    const accDir = getAccountDir(id);
+    const prior = readJson(path.join(accDir, 'auth.json')) || {};
+    if (fs.existsSync(accDir)) {
+        writeJson(path.join(accDir, 'auth.json'), {});
+        const cli = readJson(path.join(accDir, 'cli-config.json')) || {};
+        cli.authInfo = { authId: id, email: '(Logged Out)', displayName: '' };
+        writeJson(path.join(accDir, 'cli-config.json'), cli);
+        try { fs.unlinkSync(path.join(accDir, 'statsig-cache.json')); } catch (_) { /* optional */ }
+    }
+    const accounts = (cursorData && Array.isArray(cursorData.accounts)) ? cursorData.accounts : [];
+    const acc = accounts.find((item) => item && item.id === id) || null;
+    if (acc) {
+        acc.email = '(Logged Out)';
+        acc.token = '';
+        acc.tokenKind = '';
+        acc.isEmpty = true;
+        delete acc.accessToken;
+        delete acc.apiKey;
+        delete acc.refreshToken;
+    }
+    return {
+        account: acc,
+        accessToken: typeof prior.accessToken === 'string' ? prior.accessToken : '',
+        hadApiKey: !!prior.apiKey
+    };
 }
 
 /**
@@ -668,6 +766,23 @@ async function postCursorDashboard(method, accessToken, body, fetchImpl) {
     return data;
 }
 
+// Revoke the dreamscape-<accountId> keys this session minted. Best effort; needs a session.
+async function revokeNamedApiKeys(accountId, accessToken, fetchImpl) {
+    const session = String(accessToken || '').trim();
+    if (!session) return 0;
+    const name = dreamscapeApiKeyName(accountId);
+    const listed = await postCursorDashboard('ListUserApiKeys', session, {}, fetchImpl);
+    let n = 0;
+    for (const row of dashboardKeyList(listed)) {
+        if (String((row && row.name) || '').trim() !== name) continue;
+        const keyId = dashboardKeyId(row);
+        if (keyId == null) continue;
+        await postCursorDashboard('RevokeUserApiKey', session, { id: keyId }, fetchImpl);
+        n += 1;
+    }
+    return n;
+}
+
 // Drop every previously minted dreamscape-<accountId> key, then create a new one.
 async function provisionNamedApiKey(accountId, accessToken, fetchImpl) {
     const session = String(accessToken || '').trim();
@@ -916,6 +1031,11 @@ module.exports = {
     logoutCursorAccount,
     getActiveAccountId,
     publicCursorAccount,
+    syncHostCursorLogin,
+    syncHostCursorLoginFromXi,
+    hostCursorConfigDir,
+    clearAccountProfileAuth,
+    revokeNamedApiKeys,
     accountIdentityLabel,
     normalizeAccountColor,
     beginCursorAccountLogin,

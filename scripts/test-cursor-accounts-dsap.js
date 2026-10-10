@@ -2,6 +2,28 @@
 
 const assert = require('assert');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+// Sandbox: never touch the live profile store or the live Wren/Xi auth dirs.
+const SANDBOX = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-cursor-accounts-test-'));
+process.env.DREAMSCAPE_CURSOR_ACCOUNTS_DIR = path.join(SANDBOX, 'accounts');
+const LIVE_ACCOUNTS = path.resolve(__dirname, '..', '.cache', 'dreamscape-cursor-accounts');
+{
+    const cursorDirector = require('../modules/cursorDirector');
+    const xiDirector = require('../modules/xiDirector');
+    const wrenHome = path.join(SANDBOX, 'wren-home');
+    const xiConfig = path.join(SANDBOX, 'xi-config');
+    fs.mkdirSync(path.join(wrenHome, '.config', 'cursor'), { recursive: true });
+    fs.mkdirSync(xiConfig, { recursive: true });
+    const realWren = typeof cursorDirector.layout === 'function' ? cursorDirector.layout() : {};
+    const realXi = typeof xiDirector.layout === 'function' ? xiDirector.layout() : {};
+    cursorDirector.layout = () => ({ ...realWren, home: wrenHome });
+    xiDirector.layout = () => ({ ...realXi, configDir: xiConfig });
+    process.on('exit', () => { try { fs.rmSync(SANDBOX, { recursive: true, force: true }); } catch (_) {} });
+}
+const store = require('../modules/cursorAccountAuthStore');
+assert.ok(!store.getAccountDir('default').startsWith(LIVE_ACCOUNTS), 'test must not use the live accounts dir');
 
 async function testCursorAccounts() {
     console.log('Testing Cursor accounts DSAP backend handlers...');

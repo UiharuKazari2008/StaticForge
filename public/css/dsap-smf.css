@@ -609,3 +609,40 @@
     border: 1px solid var(--dsap-smf-border-light);
     padding: 0 3px;
 }
+
+/* Director account profile form: token field with its copy button, badge colour picker */
+[data-dsap] .sec-token-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+[data-dsap] .sec-token-row textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+}
+[data-dsap] .sec-token-row .sec-dsap-action-btn {
+    flex: 0 0 auto;
+    margin-left: auto;
+    align-self: center;
+    white-space: nowrap;
+}
+[data-dsap] .sec-color-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+[data-dsap] .sec-color-row .sec-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+[data-dsap] .sec-color-swatch {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--dsap-smf-border, #555);
+    background: none;
+    cursor: pointer;
+}
