@@ -463,6 +463,18 @@ function awaitRentanAttempt(review, timeoutMs) {
         throw error;
     }
     const wait = timeoutMs != null ? timeoutMs : review.waitMs;
+    if (review.closed || review.settled || (review.atCap && review.current && review.current.consumed)) {
+        // No further attempt can arrive: tell Wren to stop instead of returning pending forever.
+        return Promise.resolve({
+            pending: false,
+            done: true,
+            attempt: review.attempts.length,
+            max: review.max,
+            next: review.settled || review.closed
+                ? 'This Rentan review is finished. End your turn now. Do not call await_rentan_attempt again.'
+                : `Attempt ${review.max} of ${review.max} was already returned. finish_rentan with pick set to the best attempt number, then end your turn.`
+        });
+    }
     if (review.current && !review.current.consumed) {
         review.current.consumed = true;
         return Promise.resolve(formatRentanAttempt(review, review.current));
@@ -547,6 +559,7 @@ function finishRentanReview(review, input) {
             throw error;
         }
         const decision = { action: 'save', attempt, approved: true };
+        review.settled = true;
         review.decision = decision;
         wakeReview(review._decisionWaiters, decision);
         return { chatId: review.chatId, approved: true, attempt: attempt.n };
@@ -559,6 +572,7 @@ function finishRentanReview(review, input) {
         }
         const attempt = review.attempts.find((row) => row.n === pick) || review.attempts[review.attempts.length - 1];
         const decision = { action: 'save', attempt, pick: attempt.n };
+        review.settled = true;
         review.decision = decision;
         wakeReview(review._decisionWaiters, decision);
         return { chatId: review.chatId, pick: attempt.n, attempt: attempt.n };
@@ -604,6 +618,7 @@ function forceSaveLastAttempt(review, reason) {
     const message = `Rentan review ${review.chatId || ''}: ${reason || 'Wren did not finish'}. Saving attempt ${attempt.n}.`;
     review.log(message);
     const decision = { action: 'save', attempt, forced: true, reason: message };
+    review.settled = true;
     review.decision = decision;
     wakeReview(review._decisionWaiters, decision);
     return decision;
