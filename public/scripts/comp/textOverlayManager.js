@@ -292,28 +292,21 @@ function wireTextOverlayCustomDisplay(textOverlayId) {
         // handleCharacterAutocompleteKeydown: public/scripts/comp/autocompleteUtils.js
         if (typeof handleCharacterAutocompleteKeydown === 'function') handleCharacterAutocompleteKeydown(e);
     });
-    input.addEventListener('blur', () => {
+    input.addEventListener('blur', (e) => {
         ensureTextOverlayModel(item).customText = input.value.trim();
+        // Focus leaving the box from the Custom input closes the box toolbar like the textarea does.
+        // promptTextareaToolbar: public/scripts/comp/promptTextareaToolbar.js
+        const textarea = document.getElementById(`${textOverlayId}_text`);
+        if (textarea && typeof promptTextareaToolbar !== 'undefined' && promptTextareaToolbar) {
+            promptTextareaToolbar.handleTextareaBlur(textarea, e.relatedTarget);
+        }
     });
 }
 
-function textOverlayCustomExtraHeight(textOverlayId) {
-    const input = document.getElementById(`${textOverlayId}_custom_display`);
-    if (!input || input.classList.contains('hidden')) return 0;
-    const cs = getComputedStyle(input);
-    return input.offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
-}
-
+// The overlay box is sized by CSS (height: auto in app.css), so only the textarea needs sizing here.
 function resizeTextOverlayBox(textOverlayId) {
     const textarea = document.getElementById(`${textOverlayId}_text`);
-    if (!textarea) return;
-    const extra = textOverlayCustomExtraHeight(textOverlayId);
-    autoResizeTextarea(textarea, 10, extra);
-    // syncPromptTextareaContainerMeasurements: public/scripts/comp/utilities.js
-    const container = textarea.closest('.prompt-textarea-container');
-    if (container && typeof syncPromptTextareaContainerMeasurements === 'function') {
-        syncPromptTextareaContainerMeasurements(container, extra);
-    }
+    if (textarea) autoResizeTextarea(textarea, 10);
 }
 
 function syncTextOverlayCustomDisplay(textOverlayId) {

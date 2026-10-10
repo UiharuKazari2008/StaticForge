@@ -4589,6 +4589,16 @@ button::-moz-focus-inner {
     min-width: 220px;
 }
 
+/* Overlay box sizes to its content (textarea, Custom input, toolbar) so siblings reflow. */
+.prompt-textarea-container.text-overlay-prompt,
+.prompt-textarea-container.text-overlay-prompt:not(.textarea-focused):not(.director-prompt):not(.creative-directive-container) {
+    height: auto;
+}
+
+.prompt-textarea-container.text-overlay-prompt:not(.textarea-focused) {
+    padding-bottom: 26px;
+}
+
 .text-overlay-custom-display {
     width: calc(100% - 8px);
     margin: 4px 4px 0;

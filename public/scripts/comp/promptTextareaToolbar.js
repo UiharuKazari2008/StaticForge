@@ -56,7 +56,7 @@ class PromptTextareaToolbar {
 
         document.addEventListener('focusout', (e) => {
             if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
-                this.handleTextareaBlur(e.target);
+                this.handleTextareaBlur(e.target, e.relatedTarget);
             }
         }, true); // Use capture phase for better performance
 
@@ -162,7 +162,7 @@ class PromptTextareaToolbar {
         }
     }
 
-    handleTextareaBlur(textarea) {
+    handleTextareaBlur(textarea, relatedTarget = null) {
         // Add a small delay to allow for button clicks
         if (this.activeTextarea === textarea) {
             const toolbar = this.getToolbarFromTextarea(textarea);
@@ -179,7 +179,8 @@ class PromptTextareaToolbar {
             }
 
             // Check if the new focus target is within the same container
-            const newFocusTarget = document.activeElement;
+            // During focusout activeElement is still <body>; relatedTarget is where focus is going.
+            const newFocusTarget = relatedTarget || document.activeElement;
             const isFocusWithinContainer = container && container.contains(newFocusTarget);
 
             // Hide toolbar if focus is outside container (including other textareas)
