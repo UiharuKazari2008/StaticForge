@@ -17,32 +17,39 @@ const DIRECTOR_CLI_OVERLAY = {
     }
 };
 
-// Single pinned model for every Cursor account (Yukimi, Oct 10 2026). Override with
-// secure.config.json cursorAccounts.pinnedModel (a model id string or a full model block);
-// set it to false to stop pinning. Only the cli-config `model` field is ever touched.
-const DEFAULT_PINNED_MODEL = {
-    modelId: 'grok-4.7-high',
-    displayModelId: 'grok-4.7-high',
-    displayName: 'Grok 4.7 High',
-    displayNameShort: 'Grok 4.7 High',
-    aliases: [],
-    maxMode: false
-};
+// Single pinned model for every Cursor account (Yukimi, Oct 10 2026).
+// Settings (secure.config.json cursorAccounts): pinnedModel (Xi + host-wide) and
+// directorPinnedModel (Wren's jail). Each is a `agent --list-models` id such as
+// "grok-4.7-high" or "grok-4.7-high-fast"; false turns pinning off for that role.
+// The CLI stores a choice as a base id plus parameters (selectedModel/modelParameters),
+// so a bare "grok-4.7-high" in `model` alone is ignored and falls back to Auto.
+// Only the model fields (model, selectedModel, modelParameters[base]) are touched.
+const DEFAULT_PINNED_MODEL_ID = 'grok-4.7-high';
+const DEFAULT_DIRECTOR_PINNED_MODEL_ID = 'grok-4.7-high-fast';
+const EFFORT_LABEL = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra High' };
 
-// Wren (Director jail spawns) defaults to the Fast variant; override with
-// secure.config.json cursorAccounts.directorPinnedModel (same forms as pinnedModel).
-const DEFAULT_DIRECTOR_PINNED_MODEL = {
-    ...DEFAULT_PINNED_MODEL,
-    modelId: 'grok-4.7-high-fast',
-    displayModelId: 'grok-4.7-high-fast',
-    displayName: 'Grok 4.7 High Fast',
-    displayNameShort: 'Grok 4.7 High Fast'
-};
+/** "grok-4.7-high-fast" -> CLI model selection (base id + parameters). */
+function resolveCliModel(listId) {
+    const id = String(listId || '').trim();
+    const m = /^(.*?)-(low|medium|high|xhigh)(-fast)?$/.exec(id);
+    if (!m) {
+        return { id, base: id, parameters: [], model: { modelId: id, displayModelId: id, displayName: id, displayNameShort: id, aliases: [], maxMode: false } };
+    }
+    const base = m[1];
+    const fast = !!m[3];
+    const parameters = [
+        { id: 'context', value: '256k' },
+        { id: 'reasoning_effort', value: m[2] },
+        { id: 'fast', value: fast ? 'true' : 'false' }
+    ];
+    const pretty = base.replace(/^grok-/, 'Grok ');
+    const name = `${pretty} 256K ${EFFORT_LABEL[m[2]]}${fast ? ' Fast' : ''}`;
+    return { id, base, parameters, model: { modelId: base, displayModelId: base, displayName: name, displayNameShort: name, aliases: [], maxMode: false } };
+}
 
-/** role 'director' = Wren's jail; anything else = Xi + host-wide. */
+/** role 'director' = Wren's jail; anything else = Xi + host-wide. Returns null when off. */
 function getPinnedModel(role) {
     const director = role === 'director';
-    const fallback = director ? DEFAULT_DIRECTOR_PINNED_MODEL : DEFAULT_PINNED_MODEL;
     let v;
     try {
         const data = readJson(path.join(process.cwd(), 'secure.config.json'));
@@ -50,21 +57,21 @@ function getPinnedModel(role) {
         v = ca ? (director ? ca.directorPinnedModel : ca.pinnedModel) : undefined;
     } catch (_) { v = undefined; }
     if (v === false || v === null) return null;
-    if (typeof v === 'string' && v.trim()) {
-        const id = v.trim();
-        return { ...fallback, modelId: id, displayModelId: id, displayName: id, displayNameShort: id };
-    }
-    if (v && typeof v === 'object' && v.modelId) return { maxMode: false, aliases: [], ...v };
-    return { ...fallback };
+    const id = (typeof v === 'string' && v.trim()) ? v.trim()
+        : (director ? DEFAULT_DIRECTOR_PINNED_MODEL_ID : DEFAULT_PINNED_MODEL_ID);
+    return resolveCliModel(id);
 }
 
-/** Rewrite only the `model` field of a cli-config.json to the pinned model. */
-function applyPinnedModel(cliPath, model = getPinnedModel()) {
-    if (!model || !cliPath || !fs.existsSync(cliPath)) return false;
+/** Rewrite only the model fields of a cli-config.json to the pinned model. */
+function applyPinnedModel(cliPath, pin = getPinnedModel()) {
+    if (!pin || !cliPath || !fs.existsSync(cliPath)) return false;
     const data = readJson(cliPath);
     if (!data || typeof data !== 'object') return false;
-    if (JSON.stringify(data.model) === JSON.stringify(model)) return false;
-    data.model = { ...model };
+    const before = JSON.stringify([data.model, data.selectedModel, data.modelParameters && data.modelParameters[pin.base]]);
+    data.model = { ...pin.model };
+    data.selectedModel = { modelId: pin.base, parameters: pin.parameters.map(p => ({ ...p })) };
+    data.modelParameters = { ...(data.modelParameters || {}), [pin.base]: pin.parameters.map(p => ({ ...p })) };
+    if (JSON.stringify([data.model, data.selectedModel, data.modelParameters[pin.base]]) === before) return false;
     const tmp = `${cliPath}.tmp-${process.pid}-${Date.now()}`;
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
     fs.chmodSync(tmp, 0o600);
@@ -1082,8 +1089,9 @@ function cleanCursorChildEnv(extra, base) {
 }
 
 module.exports = {
-    DEFAULT_PINNED_MODEL,
-    DEFAULT_DIRECTOR_PINNED_MODEL,
+    DEFAULT_PINNED_MODEL_ID,
+    DEFAULT_DIRECTOR_PINNED_MODEL_ID,
+    resolveCliModel,
     getPinnedModel,
     applyPinnedModel,
     cleanCursorChildEnv,
