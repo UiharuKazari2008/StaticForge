@@ -1,5 +1,5 @@
 /**
- * Model Manager - Handles fetching and managing AI model lists
+ * Model Manager - Handles fetching and managing SI model lists
  */
 
 class ModelManager {

@@ -1,6 +1,6 @@
 /**
- * Unified AI Service Manager
- * Manages all AI services with database persistence and prompt separation
+ * Unified SI Service Manager
+ * Manages all SI services with database persistence and prompt separation
  */
 
 class AIServiceManager {
@@ -30,17 +30,17 @@ class AIServiceManager {
     }
 
     /**
-     * Get or create AI service for a chat session
+     * Get or create SI service for a chat session
      */
     async getOrCreateService(chatId) {
         // Check if service already exists in memory
         if (this.activeServices.has(chatId)) {
-            console.log(`♻️ Reusing existing AI service for ${chatId}`);
+            console.log(`♻️ Reusing existing SI service for ${chatId}`);
             this.resetTimeout(chatId);
             return this.activeServices.get(chatId);
         }
 
-        console.log(`🆕 Creating new AI service for ${chatId}`);
+        console.log(`🆕 Creating new SI service for ${chatId}`);
         
         // Load session data from database
         const sessionData = await this.globalResources.getChatDatabase().getChatSession(chatId);
@@ -60,7 +60,7 @@ class AIServiceManager {
             sessionData.filename
         );
 
-        // Create AI service instance based on provider
+        // Create SI service instance based on provider
         let aiService;
         if (sessionData.provider === 'grok') {
             aiService = await this.globalResources.getGrokService().createPersonaChatSession(sessionData, personaSettings, systemPrompt);
@@ -187,7 +187,7 @@ class AIServiceManager {
      * Clean up a specific service
      */
     cleanupService(chatId) {
-        console.log(`🧹 Cleaning up AI service for ${chatId}`);
+        console.log(`🧹 Cleaning up SI service for ${chatId}`);
         this.activeServices.delete(chatId);
         
         if (this.serviceTimeouts.has(chatId)) {
@@ -200,7 +200,7 @@ class AIServiceManager {
      * Force cleanup of a specific service
      */
     forceCleanupService(chatId) {
-        console.log(`🗑️ Force cleaning up AI service for ${chatId}`);
+        console.log(`🗑️ Force cleaning up SI service for ${chatId}`);
         this.cleanupService(chatId);
     }
 
@@ -222,7 +222,7 @@ class AIServiceManager {
         });
 
         if (expired.length > 0) {
-            console.log(`🧹 Cleaned up ${expired.length} expired AI services`);
+            console.log(`🧹 Cleaned up ${expired.length} expired SI services`);
         }
     }
 
@@ -267,7 +267,7 @@ class AIServiceManager {
      * Clean up all services
      */
     cleanupAllServices() {
-        console.log('🧹 Cleaning up all AI services');
+        console.log('🧹 Cleaning up all SI services');
         for (const chatId of this.activeServices.keys()) {
             this.cleanupService(chatId);
         }
@@ -277,7 +277,7 @@ class AIServiceManager {
      * Restart service (force recreation)
      */
     async restartService(chatId) {
-        console.log(`🔄 Restarting AI service for ${chatId}`);
+        console.log(`🔄 Restarting SI service for ${chatId}`);
         this.forceCleanupService(chatId);
         return await this.getOrCreateService(chatId);
     }

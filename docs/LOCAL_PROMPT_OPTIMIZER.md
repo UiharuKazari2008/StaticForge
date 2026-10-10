@@ -2,20 +2,20 @@
 
 ## Overview
 
-The Local Prompt Optimizer is a pre-processing system that optimizes prompts **before** they are sent to the AI in the dynamic generation system. It uses **Moby Thesaurus** for comprehensive synonym lookups and balances token count reduction with semantic strength improvements while **respecting NovelAI emphasis syntax**.
+The Local Prompt Optimizer is a pre-processing system that optimizes prompts **before** they are sent to the SI in the dynamic generation system. It uses **Moby Thesaurus** for comprehensive synonym lookups and balances token count reduction with semantic strength improvements while **respecting NovelAI emphasis syntax**.
 
-The optimizer provides **multiple ranked alternatives** to the AI, allowing context-aware decision making rather than forcing a single mechanical replacement.
+The optimizer provides **multiple ranked alternatives** to the SI, allowing context-aware decision making rather than forcing a single mechanical replacement.
 
 ## Key Features
 
 - **Moby Thesaurus Integration**: Uses comprehensive synonym database (72 synonyms for "beautiful", 700+ for "good")
 - **Balanced Optimization**: Balances token reduction with semantic strength improvements
 - **NovelAI Emphasis Aware**: Respects `#.#::text::`, `{text}`, and `[text]` emphasis syntax
-- **Multiple Alternatives**: Provides top 5 alternatives to AI for context-aware decisions
+- **Multiple Alternatives**: Provides top 5 alternatives to SI for context-aware decisions
 - **Strength-Based Selection**: Uses T5 tokenizer strength ratings to pick powerful replacements
 - **Capitalization Handling**: Preserves original capitalization patterns (ALL CAPS, Title Case, lowercase)
 - **Context-Aware**: Specialized for image generation prompts (lighting, composition, quality descriptors, etc.)
-- **Fully Local**: No AI calls required - uses Moby Thesaurus and vocabulary lookup
+- **Fully Local**: No SI calls required - uses Moby Thesaurus and vocabulary lookup
 - **Selective on Emphasis**: More selective with emphasized text, protecting intentional weighting
 
 ## Balanced Scoring System
@@ -118,7 +118,7 @@ When optimize is enabled in dynamic generation:
 6. **Balanced Scoring**: Score alternatives using three-tier system
 7. **Multi-Alternative Collection**: Keep top 5 alternatives per phrase
 8. **Best Selection**: Apply highest-scoring alternative locally
-9. **AI Alternatives**: Format all alternatives for AI to reconsider
+9. **SI Alternatives**: Format all alternatives for SI to reconsider
 10. **Token Recalculation**: Update token counts after optimization
 
 ### 3. Integration with Dynamic Generation
@@ -126,7 +126,7 @@ When optimize is enabled in dynamic generation:
 Located in `dynamicGenerationHandlers.js` around line 9292, the optimizer runs:
 
 1. **After** token counting
-2. **Before** AI processing
+2. **Before** SI processing
 3. **Only when** optimize is enabled
 
 ```javascript
@@ -201,12 +201,12 @@ This ensures the token selection remains appropriate for the model (capitalizati
 
 ## Benefits
 
-1. **Reduced Token Count**: Prompts start with fewer tokens before AI processing
-2. **Faster AI Processing**: Shorter prompts = faster AI responses
-3. **More Headroom**: More room for AI to add context and details
+1. **Reduced Token Count**: Prompts start with fewer tokens before SI processing
+2. **Faster SI Processing**: Shorter prompts = faster SI responses
+3. **More Headroom**: More room for SI to add context and details
 4. **Better Quality**: Replacements use stronger tokens with better semantic weight
 5. **Consistent**: Deterministic replacements (same input = same output)
-6. **No AI Costs**: Runs locally without API calls
+6. **No SI Costs**: Runs locally without API calls
 
 ## Example Workflow
 
@@ -223,8 +223,8 @@ Token Count: 14 tokens
 Tokens Saved: 7 tokens
 ```
 
-### Then AI Processing
-The AI receives the optimized prompt and can add more details within the 512 token limit.
+### Then SI Processing
+The SI receives the optimized prompt and can add more details within the 512 token limit.
 
 ## Extending the Optimizer
 
@@ -248,7 +248,7 @@ The optimizer can be extended with custom strategies:
 
 1. **Domain-Specific**: Add replacements specific to your use case
 2. **Style-Specific**: Different replacements for different art styles
-3. **Model-Specific**: Optimize for specific AI models
+3. **Model-Specific**: Optimize for specific SI models
 4. **Language-Specific**: Support for non-English prompts
 
 ## Debugging
@@ -330,5 +330,5 @@ const result = localPromptOptimizer.optimizeGenerationRequest(
 
 ## Conclusion
 
-The Local Prompt Optimizer provides a fast, efficient, and deterministic way to reduce token count in prompts before AI processing. It complements the AI-based optimization by providing an initial reduction pass, giving the AI more room to add context and details within token limits.
+The Local Prompt Optimizer provides a fast, efficient, and deterministic way to reduce token count in prompts before SI processing. It complements the SI-based optimization by providing an initial reduction pass, giving the SI more room to add context and details within token limits.
 

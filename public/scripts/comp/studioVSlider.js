@@ -1,5 +1,5 @@
 /**
- * Studio vSlider — AI intensity widgets (slider / xypad / star / dropdown).
+ * Studio vSlider — SI intensity widgets (slider / xypad / star / dropdown).
  * public/scripts/comp/studioChangeJson.js
  * public/scripts/comp/requestBodyReplacementsModal.js
  * public/scripts/comp/dropdown.js

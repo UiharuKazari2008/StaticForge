@@ -34,7 +34,7 @@
       "required": true,
       "enum": ["replace", "append"]
     },
-    { "path": ["feedback", "entries", "*", "ai_reason"], "type": "string", "label": "AI Reason", "editMode": "modal", "editorType": "textarea" },
+    { "path": ["feedback", "entries", "*", "ai_reason"], "type": "string", "label": "SI Reason", "editMode": "modal", "editorType": "textarea" },
     { "path": ["feedback", "entries", "*", "user_feedback"], "type": "string", "label": "User Feedback", "editMode": "modal", "editorType": "textarea" },
     { "path": ["feedback", "entries", "*", "timestamp"], "type": "string", "label": "Timestamp", "editorType": "input" },
     { "path": ["feedback", "entries", "*", "resolved"], "type": "boolean", "label": "Resolved", "editMode": "inline" },

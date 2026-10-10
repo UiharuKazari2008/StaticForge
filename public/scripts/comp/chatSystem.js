@@ -366,7 +366,7 @@ class ChatSystem {
                 // Load initial messages (streaming events may have already arrived)
                 await this.loadChatMessages();
                 
-                // Show typing indicator while waiting for AI response
+                // Show typing indicator while waiting for SI response
                 this.showTypingIndicator();
                 
                 // Ensure send button is ready after chat creation

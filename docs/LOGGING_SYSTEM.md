@@ -83,9 +83,9 @@ This file contains:
 - Full request data for image generation
 - **System messages** (prompt instructions, context, rules)
 - **User messages** (the actual prompts being processed)
-- **AI responses** (full text replacements, reasoning, and structured output)
+- **SI responses** (full text replacements, reasoning, and structured output)
 - Tool execution parameters and full results
-- AI API call details (model, iteration, message counts)
+- SI API call details (model, iteration, message counts)
 - Context compilation data (time, weather, season)
 - Token counts and analysis
 - Text replacement operations
@@ -117,7 +117,7 @@ Timestamp: 2025-11-09T16:21:34.089Z
     {
       "index": 0,
       "role": "system",
-      "contentPreview": "You are the Director AI for dynamic image generation...",
+      "contentPreview": "You are the Director SI for dynamic image generation...",
       "contentLength": 15234,
       "fullContent": "..." // Full system message stored here
     },
@@ -148,7 +148,7 @@ Timestamp: 2025-11-09T16:21:34.089Z
   "responseLength": 2345,
   "citationCount": 0,
   "citations": [],
-  "fullResponse": "..." // Full AI response text stored here
+  "fullResponse": "..." // Full SI response text stored here
 }
 
 --- [req_1762705294089_eteqzufpj] AI_RESPONSE_PARSED (2025-11-09T16:21:40.789Z) ---
@@ -179,7 +179,7 @@ Error-level messages only.
 🚀 Processing image generation: req_xxx | Model: v4_5 | Resolution: normal_portrait | streaming
 🎭 Dynamic generation: req_xxx | directive
 📊 Context compiled: Waldorf, autumn, daytime
-🤖 Calling AI for dynamic generation
+🤖 Calling SI for dynamic generation
 🔧 Tool: searchTagsBatch | Researching chubby tag for VTuber integration...
    ✅ Completed (1109ms)
 ✅ Replacements validated
@@ -202,10 +202,10 @@ Error-level messages only.
 🌤️ Retrieving weather analysis...
 ⏰ Local time: 11:21 (America/New_York) | 11/9
 📊 Context compiled: Waldorf, autumn, daytime
-🤖 Calling AI for dynamic generation
+🤖 Calling SI for dynamic generation
 🌡️ Temperature: 0.8
 📚 Adding 24 global memories to context
-🎯 AI: grok-4-fast-reasoning | Iter 1/8 | 2 msgs | 16 tools
+🎯 SI: grok-4-fast-reasoning | Iter 1/8 | 2 msgs | 16 tools
 🔧 Tool: searchTagsBatch | Researching chubby tag for VTuber integration...
    🔍 Searching tags batch
    ✅ Completed (1109ms)

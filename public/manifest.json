@@ -1,7 +1,7 @@
 {
   "name": "Dreamscape Workspace",
   "short_name": "Dreamscape",
-  "description": "AI-powered Image Generation Workspace",
+  "description": "SI-powered Image Generation Workspace",
   "start_url": "/launch",
   "display": "standalone",
   "background_color": "#1a1a1a",

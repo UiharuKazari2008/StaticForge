@@ -398,7 +398,7 @@ function closeKnowledgeMemoryDatabase() {
 }
 
 /**
- * List all available knowledge memories (full, for internal/AI use)
+ * List all available knowledge memories (full, for internal/SI use)
  * @returns {Array} Array of memory objects with name, description, category, usage stats
  */
 function listKnowledgeMemories() {
@@ -499,7 +499,7 @@ function listKnowledgeMemoriesPaged({ limit = 25, offset = 0, search = '', categ
 /**
  * Get a specific knowledge memory by name
  * @param {string} name - Memory name
- * @param {boolean} incrementUsage - Whether to increment usage count (default: true for AI access, false for UI viewing)
+ * @param {boolean} incrementUsage - Whether to increment usage count (default: true for SI access, false for UI viewing)
  * @returns {Object|null} Memory object with entities, relations, and observations
  */
 function getKnowledgeMemory(name, incrementUsage = true) {
@@ -549,7 +549,7 @@ function getKnowledgeMemory(name, incrementUsage = true) {
         importance: o.importance
     }));
 
-    // Update usage stats only if requested (for AI access, not UI viewing)
+    // Update usage stats only if requested (for SI access, not UI viewing)
     let usageCount = memory.usage_count;
     let lastUsedAt = memory.last_used_at;
     

@@ -905,7 +905,7 @@ function resolveMultiSegmentIndex(segmentIdxArray, segments, originalText, conte
 /**
  * Resolve a segment index (or array of indices) to select_text from original prompt.
  * 
- * This is the main entry point for converting segment_index values from AI responses
+ * This is the main entry point for converting segment_index values from SI responses
  * into actual select_text that can be used for text replacement.
  * 
  * SUPPORTED FORMATS:
@@ -1179,7 +1179,7 @@ class ChangeContainer {
  * This converts segment indices (0, 1, 2, -1, 0.1, etc.) into actual text from the prompt segments.
  * Performs overlap detection, deconfliction, and type conversion before returning adjusted replacements.
  * 
- * @param {Object} textReplacements - The text_replacements object from AI response (Tanei - dehydrated state)
+ * @param {Object} textReplacements - The text_replacements object from SI response (Tanei - dehydrated state)
  * @param {Object} buildOptions - Build options containing basePrompt, negativePrompt, characterPrompts
  * @returns {Object} { replacements: adjusted text_replacements (Tendai - hydrated state), metadata: { pressure, promptPressure, lockedSegments } }
  */

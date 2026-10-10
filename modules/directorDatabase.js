@@ -269,7 +269,7 @@ function extractAssistantData(rawContent) {
                     } catch (e) {
                         return {
                             type: 'error',
-                            data: { error: 'Invalid Response from AI' }
+                            data: { error: 'Invalid Response from SI' }
                         };
                     }
                 } else {
@@ -291,7 +291,7 @@ function extractAssistantData(rawContent) {
     } catch (e) {
         return {
             type: 'error',
-            data: { error: 'Invalid Response from AI' }
+            data: { error: 'Invalid Response from SI' }
         };
     }
 }
@@ -354,7 +354,7 @@ async function getDirectorMessages(sessionId, limit = 100, offset = 0, includeSy
                         messageObj.data = extractedData.data;
                     } else {
                         // Error case - return error message in 'data' field
-                        messageObj.data = { error: 'Invalid Response from AI' };
+                        messageObj.data = { error: 'Invalid Response from SI' };
                     }
                     delete messageObj.content; // Always remove raw content
                 }
@@ -362,7 +362,7 @@ async function getDirectorMessages(sessionId, limit = 100, offset = 0, includeSy
                 // Add database ID for client-side message identification (separate from message body)
                 return {
                     id: msg.id,  // Database primary key for client-side use
-                    ...messageObj  // Message body for AI (role, content, etc.)
+                    ...messageObj  // Message body for SI (role, content, etc.)
                 };
             } else {
                 return messageObj;

@@ -797,7 +797,7 @@ logger.logGeneration = function(section, data, requestId = null) {
     
     generationLogStream.write(`\n--- ${header}${section} (${timestamp}) ---\n`);
     
-    // Only apply detailed formatting for AI message sections
+    // Only apply detailed formatting for SI message sections
     const isAIMessageSection = section.startsWith('AI_') || 
                                 section === 'DIRECTOR_AI_CALL' ||
                                 section === 'AI_MESSAGES_SENT' ||
@@ -824,7 +824,7 @@ logger.logGeneration = function(section, data, requestId = null) {
                 generationLogStream.write(data.replace(/\\n/g, '\n') + '\n');
             }
         } else {
-            // Non-AI sections: just write the string
+            // Non-SI sections: just write the string
             generationLogStream.write(data + '\n');
         }
     } else if (typeof data === 'object' && data !== null) {
@@ -969,7 +969,7 @@ logger.logGeneration = function(section, data, requestId = null) {
                     });
                 }
                 
-                return; // Skip default AI section formatting
+                return; // Skip default SI section formatting
             }
             
             // Special formatting for AI_MESSAGES_RESPONSE
@@ -1141,7 +1141,7 @@ logger.logGeneration = function(section, data, requestId = null) {
                     generationLogStream.write(JSON.stringify(data.citations, null, 2) + '\n');
                 }
                 
-                return; // Skip default AI section formatting
+                return; // Skip default SI section formatting
             }
             
             // Special formatting for AI_AUTO_COMPLETE - just show JSON or formatted text, not structured breakdown
@@ -1180,7 +1180,7 @@ logger.logGeneration = function(section, data, requestId = null) {
                     }
                 }
                 
-                return; // Skip default AI section formatting
+                return; // Skip default SI section formatting
             }
             
             // First, write the structured data as JSON
@@ -1233,7 +1233,7 @@ logger.logGeneration = function(section, data, requestId = null) {
             // // Extract and format all text/JSON content from the object
             // extractAndFormatContent(data);
         } else {
-            // Non-AI sections: just write the JSON
+            // Non-SI sections: just write the JSON
             generationLogStream.write(JSON.stringify(data, null, 2) + '\n');
         }
     } else {

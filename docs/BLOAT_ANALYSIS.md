@@ -37,10 +37,10 @@ The entire `finalResults` object is saved as `forge_data.dynamic_generation.comp
 ### Internal/Transient Data (not needed in saved metadata)
 - `success` - Internal flag, always true if saved
 - `processed` - Internal flag, always true if saved
-- `errors` - AI-registered errors, not used after generation
-- `warnings` - AI-registered warnings, not used after generation
-- `reasoning` - AI reasoning text, not used after generation
-- `citations` - AI citations, not used after generation
+- `errors` - SI-registered errors, not used after generation
+- `warnings` - SI-registered warnings, not used after generation
+- `reasoning` - SI reasoning text, not used after generation
+- `citations` - SI citations, not used after generation
 - `modifications_made` - Summary of modifications, not used after generation
 
 ### Original Prompts (redundant - compiled versions already in PNG metadata)

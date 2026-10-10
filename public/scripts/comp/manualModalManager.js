@@ -2719,7 +2719,7 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         dynamicData.location = weatherBtn.getAttribute('data-location');
     }
 
-    // Add AI temperature if available
+    // Add SI temperature if available
     if (dynamicCarousel && dynamicCarousel.dataset.aiTemperature) {
         dynamicData.ai_temperature = parseFloat(dynamicCarousel.dataset.aiTemperature);
     }
@@ -4444,7 +4444,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                     dynamicCarousel.setAttribute('data-fast-mode', window.dynamicGenerationData.fast_mode.toString());
                 }
 
-                // Restore AI temperature if present
+                // Restore SI temperature if present
                 if (window.dynamicGenerationData.ai_temperature !== undefined && window.dynamicGenerationData.ai_temperature !== null) {
                     dynamicCarousel.dataset.aiTemperature = window.dynamicGenerationData.ai_temperature.toString();
                 } else {

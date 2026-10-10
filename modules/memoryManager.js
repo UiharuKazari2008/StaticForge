@@ -134,7 +134,7 @@ class MemoryManager {
     }
 
     /**
-     * Extract key memories from AI response (supports both old and new formats)
+     * Extract key memories from SI response (supports both old and new formats)
      */
     extractMemoriesFromResponse(response) {
         try {

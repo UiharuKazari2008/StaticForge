@@ -86,7 +86,7 @@
   margin-top: 4px;
 }
 
-/* AI Messages */
+/* SI Messages */
 .trace-ai-messages {
   margin: 8px 0;
 }
@@ -153,7 +153,7 @@
   border-radius: 6px;
 }
 
-/* AI Response Data */
+/* SI Response Data */
 .trace-ai-response pre {
   background: #222;
   padding: 8px;

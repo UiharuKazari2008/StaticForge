@@ -1,6 +1,6 @@
 /**
  * Streaming Event Processor
- * Handles real-time processing of event-based AI responses
+ * Handles real-time processing of event-based SI responses
  */
 
 class StreamingEventProcessor {

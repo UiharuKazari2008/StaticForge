@@ -2226,7 +2226,7 @@ function createTendaiReplacementRow(replacement, globalIndex, options = {}) {
         ? `<button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn tendai-include-toggle" data-state="${isIncluded ? 'on' : 'off'}" data-global-index="${globalIndex}" title="Include in apply">
                 <i class="${isIncluded ? 'fas fa-check' : 'far fa-square'}"></i>
            </button>`
-        : `<button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn" data-state="${isLocked ? 'on' : 'off'}" data-global-index="${globalIndex}" title="Lock for AI Maintenance">
+        : `<button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn" data-state="${isLocked ? 'on' : 'off'}" data-global-index="${globalIndex}" title="Lock for SI Maintenance">
                 <i class="fas fa-lock"></i>
            </button>`;
 
@@ -2761,7 +2761,7 @@ function toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item) {
     }
 
     // Show feedback
-    const statusText = isLocked ? 'locked for AI maintenance' : 'unlocked';
+    const statusText = isLocked ? 'locked for SI maintenance' : 'unlocked';
     showGlassToast('success', null, `Replacement ${statusText}`, false, 2000, '<i class="fas fa-lock"></i>');
 }
 

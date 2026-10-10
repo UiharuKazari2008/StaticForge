@@ -1,4 +1,4 @@
-# WebSocket: Director (AI learning)
+# WebSocket: Director (SI learning)
 
 Server handler: `modules/ws/handlers/40-directorHandler.js`
 

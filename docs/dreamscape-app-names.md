@@ -54,7 +54,7 @@ Do not use these for the apps above or minor utilities—they are held for highe
 | **Reliquary** | Vault for treasured assets (references, styles, or curated collections) |
 | **Seismograph** | Event/wave instrument (heavy telemetry UI) |
 | **Ledger** | Audit trail / commit history surface |
-| **Oracle** | Prophecy / AI guidance (director-adjacent) |
+| **Oracle** | Prophecy / SI guidance (director-adjacent) |
 | **Prism** | Signal decomposition / pipeline inspector |
 
 ## Rename candidates (not scheduled)

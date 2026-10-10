@@ -434,7 +434,7 @@ class BannerManager {
             'get_chat_messages': 'Get Chat Messages',
             'delete_chat_message': 'Delete Chat Message',
 
-            // AI operations
+            // SI operations
             'cancel_generation': 'Cancel Generation',
             'dynamic_generation_progress': 'Enshutsuka Progress',
             'dynamic_generation_progress_update': 'Enshutsuka Progress Update',

@@ -130,7 +130,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
 | Chat sessions | — | `create_chat_session`, `get_chat_sessions`, … | `chat_streaming_*` | Chat UI |
-| Director AI training | — | `director_*` | `director_*` | Director modals. Marked `MIGRATE-ENSHUTSUKA-MCP` — paid xAI API path; do not add features here. Grok.com + MCP is the requester. |
+| Director SI training | — | `director_*` | `director_*` | Director modals. Marked `MIGRATE-ENSHUTSUKA-MCP` — paid xAI API path; do not add features here. Grok.com + MCP is the requester. |
 | LinkXi persona (MCP) | — | `get_persona_settings`, `save_persona_settings` | — | MCP `get_linkxi_persona` / `save_linkxi_persona`; in-app `dsap://xi.dyna.dreamscape.jp/persona` |
 | MCP connector Grim | — | `resolve_grimoire_url` (`getPage`) | — | `dsap://mcp.dreamscape.jp/` live connector URLs + Enshutsuka project paste-block |
 

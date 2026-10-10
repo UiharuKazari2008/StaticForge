@@ -306,7 +306,7 @@ curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey
 # Override resolution and enable dynamic generation
 curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&resolution=normal_landscape&dyna_tod=true&dyna_weather=true&dyna_season=nearest&dyna_creative=true"
 
-# Skip dynamic generation cache for fresh AI processing
+# Skip dynamic generation cache for fresh SI processing
 curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&dyna_no_cache=true&dyna_weather=true"
 ```
 

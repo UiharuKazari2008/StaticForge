@@ -9,7 +9,7 @@
  * public/scripts/comp/promptTextareaToolbar.js
  * public/scripts/comp/requestBodyReplacementsModal.js
  * docs/studio-change-json.md — bot-facing contract (Hoshino/other agents emit this blob).
- * STUDIO_CHANGE_AI_SPEC — compact copy for in-app Copy AI spec / agentic use.
+ * STUDIO_CHANGE_AI_SPEC — compact copy for in-app Copy SI spec / agentic use.
  * When rules change, update the MD first, then this constant.
  */
 
@@ -2477,7 +2477,7 @@ async function openStudioChangeExportDialog() {
             icon: 'fas fa-brackets-curly',
             buttons: [
                 { text: 'Copy JSON', value: 'copy', className: 'btn-primary', icon: 'fa-regular fa-clipboard', primary: true },
-                { text: 'Copy AI spec', value: 'spec', className: 'btn-secondary', icon: 'fas fa-robot' },
+                { text: 'Copy SI spec', value: 'spec', className: 'btn-secondary', icon: 'fas fa-robot' },
                 { text: 'Cancel', value: null, className: 'btn-secondary' }
             ]
         });
@@ -2485,7 +2485,7 @@ async function openStudioChangeExportDialog() {
         const enabledOps = result.ops.filter((op) => op.enabled !== false);
         const payload = attachStudioSeedEcho(buildPayloadFromOps(enabledOps, ''));
         if (result.action === 'spec') {
-            await copyStudioChangeText(STUDIO_CHANGE_AI_SPEC, 'AI format spec copied');
+            await copyStudioChangeText(STUDIO_CHANGE_AI_SPEC, 'SI format spec copied');
             return;
         }
         if (!enabledOps.length) {

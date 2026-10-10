@@ -1312,13 +1312,13 @@ class GlobalResources {
             this.initializationProgress.promptManager = true;
             console.log('✓ Prompt manager ready');
 
-            // AI service manager (depends on promptManager and memoryManager)
+            // SI service manager (depends on promptManager and memoryManager)
             // Pass globalResources to prevent recursion
             this.aiServiceManager = new AIServiceManager(this);
             this.initializationProgress.aiServiceManager = true;
-            console.log('✓ LLM / AI service manager ready');
+            console.log('✓ LLM / SI service manager ready');
 
-            // Setup cleanup handlers for AI service manager
+            // Setup cleanup handlers for SI service manager
             process.on('SIGINT', () => {
                 this.aiServiceManager.cleanupAllServices();
             });
@@ -2339,7 +2339,7 @@ class GlobalResources {
     }
 
     /**
-     * Get AI Service Manager instance
+     * Get SI Service Manager instance
      */
     getAiServiceManager() {
         if (!this.initialized || !this.aiServiceManager) {

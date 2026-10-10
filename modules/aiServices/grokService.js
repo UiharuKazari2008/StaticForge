@@ -6,7 +6,7 @@ const { toResponsesApiMessages } = require('./responsesApiInput');
 const { DEFAULT_FORGE_MODEL } = require('../modelFeatures');
 
 /**
- * GrokService class - handles all Grok AI service interactions
+ * GrokService class - handles all Grok SI service interactions
  */
 class GrokService {
     constructor(globalResources) {
@@ -446,7 +446,7 @@ class GrokService {
                 validated = ChatResponseSchema.parse(responseData);
             } catch (parseError) {
                 console.error('❌ Failed to parse/validate persona establishment response:', parseError.message);
-                throw new Error('Invalid response format from AI');
+                throw new Error('Invalid response format from SI');
             }
             
             // Store conversation data for context
@@ -518,7 +518,7 @@ class GrokService {
         };
     } catch (error) {
         console.error("Error establishing persona:", error);
-        throw new Error("The AI could not establish the persona. Please check the console for details.");
+        throw new Error("The SI could not establish the persona. Please check the console for details.");
     }
 }
 
@@ -630,7 +630,7 @@ class GrokService {
                 validated = ChatResponseSchema.parse(responseData);
             } catch (parseError) {
                 console.error('❌ Failed to parse/validate non-streaming response:', parseError.message);
-                throw new Error('Invalid response format from AI');
+                throw new Error('Invalid response format from SI');
             }
             
             // Store conversation data for context
@@ -708,7 +708,7 @@ class GrokService {
         };
     } catch (error) {
         console.error("Error continuing conversation:", error);
-        throw new Error("The AI could not generate a response. Please check the console for details.");
+        throw new Error("The SI could not generate a response. Please check the console for details.");
     }
 }
 
@@ -804,7 +804,7 @@ class GrokService {
                 validated = ChatResponseSchema.parse(responseData);
             } catch (parseError) {
                 console.error('❌ Failed to parse/validate context response:', parseError.message);
-                throw new Error('Invalid response format from AI');
+                throw new Error('Invalid response format from SI');
             }
             
             // Store conversation data for context
@@ -882,7 +882,7 @@ class GrokService {
         };
     } catch (error) {
         console.error("Error continuing conversation with context:", error);
-        throw new Error("The AI could not generate a response. Please check the console for details.");
+        throw new Error("The SI could not generate a response. Please check the console for details.");
     }
 }
 
@@ -1164,7 +1164,7 @@ class GrokService {
             } catch (parseError) {
                 console.error('❌ Failed to parse/validate streaming response:', parseError.message);
                 console.error('❌ Completion object:', JSON.stringify(completionObject, null, 2));
-                throw new Error('Invalid response format from AI');
+                throw new Error('Invalid response format from SI');
             }
             
             // Store conversation data for context
@@ -1261,7 +1261,7 @@ class GrokService {
         };
     } catch (error) {
         console.error("Error establishing persona with streaming:", error);
-        throw new Error("The AI could not establish the persona. Please check the console for details.");
+        throw new Error("The SI could not establish the persona. Please check the console for details.");
     }
 }
 
@@ -1521,7 +1521,7 @@ class GrokService {
             } catch (parseError) {
                 console.error('❌ Failed to parse/validate streaming response:', parseError.message);
                 console.error('❌ Completion object:', JSON.stringify(completionObject, null, 2));
-                throw new Error('Invalid response format from AI');
+                throw new Error('Invalid response format from SI');
             }
             
             // Store conversation data for context
@@ -1613,7 +1613,7 @@ class GrokService {
         };
     } catch (error) {
         console.error("Error continuing conversation with streaming:", error);
-        throw new Error("The AI could not generate a response. Please check the console for details.");
+        throw new Error("The SI could not generate a response. Please check the console for details.");
     }
 }
 
@@ -1867,7 +1867,7 @@ class GrokService {
             } catch (parseError) {
                 console.error('❌ Failed to parse/validate streaming response:', parseError.message);
                 console.error('❌ Completion object:', JSON.stringify(completionObject, null, 2));
-                throw new Error('Invalid response format from AI');
+                throw new Error('Invalid response format from SI');
             }
             
             // Store conversation data for context
@@ -1959,7 +1959,7 @@ class GrokService {
         };
     } catch (error) {
         console.error("Error continuing conversation with context streaming:", error);
-        throw new Error("The AI could not generate a response. Please check the console for details.");
+        throw new Error("The SI could not generate a response. Please check the console for details.");
     }
 }
 
@@ -2388,7 +2388,7 @@ class GrokService {
             // Zod schema provided - use structured output
             if (hasTools) {
                 // Tools present: DON'T use text.format or response_format
-                // Let AI call tools freely without structured output constraints
+                // Let SI call tools freely without structured output constraints
                 responseFormat = null;
                 textFormat = null;
                 this.globalResources.getLogger().verbose('🔧 Tools active - structured output disabled until tooling complete');
@@ -2465,7 +2465,7 @@ class GrokService {
 
             // Summarized console output
             const iteration = initialMaxLoops - maxLoops + 1;
-            this.globalResources.getLogger().detailed(`🎯 AI: ${apiConfig.model} | Iter ${iteration}/${initialMaxLoops} | ${apiConfig.input?.length || 0} msgs | ${apiConfig.tools ? apiConfig.tools.length : 0} tools${apiConfig.previous_response_id ? ' | stateful' : ''}`);
+            this.globalResources.getLogger().detailed(`🎯 SI: ${apiConfig.model} | Iter ${iteration}/${initialMaxLoops} | ${apiConfig.input?.length || 0} msgs | ${apiConfig.tools ? apiConfig.tools.length : 0} tools${apiConfig.previous_response_id ? ' | stateful' : ''}`);
             
             // Detailed file logging
             const logRequestId = getRequestId();
@@ -3043,7 +3043,7 @@ class GrokService {
                 if (finalToolCalls && finalToolCalls.length > 0) {
                     this.globalResources.getLogger().detailed(`🔧 Processing ${finalToolCalls.length} tool call(s)`);
                     
-                    // Log raw AI response before tool execution
+                    // Log raw SI response before tool execution
                     this.globalResources.getLogger().logGeneration('AI_MESSAGES_RESPONSE', {
                         model: apiConfig.model,
                         iteration: iteration,
@@ -3473,7 +3473,7 @@ class GrokService {
                     // Summarized console output
                     this.globalResources.getLogger().detailed(`📚 Response received: ${response.length} chars${citations.length > 0 ? ` | ${citations.length} citations` : ''}`);
                     
-                    // Detailed file logging - full AI response
+                    // Detailed file logging - full SI response
                     const responseIteration = initialMaxLoops - maxLoops + 1;
                     this.globalResources.getLogger().logGeneration('AI_MESSAGES_RESPONSE', {
                         model: apiConfig.model,
@@ -3769,7 +3769,7 @@ class GrokService {
                                     }
                                 }
                             } catch (parseError) {
-                                console.warn('⚠️ Failed to parse streaming AI response as JSON:', parseError.message);
+                                console.warn('⚠️ Failed to parse streaming SI response as JSON:', parseError.message);
                                 console.warn('🔍 Raw response preview:', response.substring(0, 200) + (response.length > 200 ? '...' : ''));
 
                                 // Check if response starts with function call wrapper
@@ -3814,7 +3814,7 @@ class GrokService {
                             console.log('✅ Fallback to normal text response');
                         }
                     } else {
-                        parsedResponse = response || { error: 'Empty response from AI' };
+                        parsedResponse = response || { error: 'Empty response from SI' };
                     }
 
                     const streamDuration = Date.now() - streamStartTime;
@@ -3876,7 +3876,7 @@ class GrokService {
                         const totalTokens = finalUsageData.total || 0;
                         const inputTokens = finalUsageData.input || 0;
                         const outputTokens = finalUsageData.output || 0;
-                        this.globalResources.getLogger().detailed(`💾 [Director AI Structured] Cumulative token usage: ${totalTokens} total (${inputTokens} input, ${outputTokens} output)`);
+                        this.globalResources.getLogger().detailed(`💾 [Director SI Structured] Cumulative token usage: ${totalTokens} total (${inputTokens} input, ${outputTokens} output)`);
                     }
                     
                     // NOTE: This only runs on final structured responses, not on tool call responses
@@ -3954,13 +3954,13 @@ class GrokService {
         this.globalResources.getLogger().normal(`⚠️ Max tool loops reached without completing`);
         throw new Error("Max tool calling loops reached without completing");
     } catch (error) {
-        console.error('❌ Error calling Director AI with structured output:', error);
+        console.error('❌ Error calling Director SI with structured output:', error);
         throw error;
     }
 }
 
 /**
- * Director-specific AI function using Chat Completions API
+ * Director-specific SI function using Chat Completions API
  * This is a duplicate created for the director system to avoid breaking the migrated system
  * Uses grok.chat.completions.create() instead of grok.responses.create()
  * MIGRATE-ENSHUTSUKA-MCP: API-billed Director completion. Removable when Enshutsuka
@@ -3991,7 +3991,7 @@ class GrokService {
                 // Zod schema provided - use structured output
                 if (hasTools) {
                     // Tools present: DON'T use response_format
-                    // Let AI call tools freely without structured output constraints
+                    // Let SI call tools freely without structured output constraints
                     responseFormat = null;
                     this.globalResources.getLogger().verbose('🔧 Tools active - structured output disabled until tooling complete');
                 } else {
@@ -4022,7 +4022,7 @@ class GrokService {
 
             // Summarized console output
             const iteration = initialMaxLoops - maxLoops + 1;
-            this.globalResources.getLogger().detailed(`🎯 Director AI (Completions): ${apiConfig.model} | Iter ${iteration}/${initialMaxLoops} | ${apiConfig.messages?.length || 0} msgs | ${apiConfig.tools ? apiConfig.tools.length : 0} tools`);
+            this.globalResources.getLogger().detailed(`🎯 Director SI (Completions): ${apiConfig.model} | Iter ${iteration}/${initialMaxLoops} | ${apiConfig.messages?.length || 0} msgs | ${apiConfig.tools ? apiConfig.tools.length : 0} tools`);
             
             // Detailed file logging
             const logRequestId = options.buildOptions?._requestId || options.requestId || 'unknown';
@@ -4259,7 +4259,7 @@ class GrokService {
                     if (toolCalls && toolCalls.length > 0) {
                         this.globalResources.getLogger().detailed(`🔧 Processing ${toolCalls.length} tool call(s)`);
                         
-                        // Log raw AI response before tool execution
+                        // Log raw SI response before tool execution
                         const completionLogRequestId = options.buildOptions?._requestId || options.requestId || 'unknown';
                         const completionIteration = initialMaxLoops - maxLoops + 1;
                         this.globalResources.getLogger().logGeneration('AI_MESSAGES_RESPONSE', {
@@ -4372,7 +4372,7 @@ class GrokService {
                     } else {
                         // No tool calls - return the response
                         const duration = Date.now() - streamStartTime;
-                        this.globalResources.getLogger().detailed(`✅ AI request completed in ${Math.round(duration/1000)}s`);
+                        this.globalResources.getLogger().detailed(`✅ SI request completed in ${Math.round(duration/1000)}s`);
                         
                         // Accumulate usage data (usage was already logged right after stream ended)
                         // Handle both naming conventions: input_tokens/output_tokens (actual API) or prompt_tokens/completion_tokens (docs)
@@ -4391,7 +4391,7 @@ class GrokService {
                             const totalTokens = finalUsageData.total || 0;
                             const inputTokens = finalUsageData.input || 0;
                             const outputTokens = finalUsageData.output || 0;
-                            this.globalResources.getLogger().detailed(`💾 [Director AI] Cumulative token usage: ${totalTokens} total (${inputTokens} input, ${outputTokens} output)`);
+                            this.globalResources.getLogger().detailed(`💾 [Director SI] Cumulative token usage: ${totalTokens} total (${inputTokens} input, ${outputTokens} output)`);
                         }
                         
                         return {
@@ -4432,7 +4432,7 @@ class GrokService {
         this.globalResources.getLogger().normal(`⚠️ Max tool loops reached without completing`);
         throw new Error("Max tool calling loops reached without completing");
     } catch (error) {
-        console.error('❌ Error calling Director AI with completion:', error);
+        console.error('❌ Error calling Director SI with completion:', error);
         throw error;
     }
     }

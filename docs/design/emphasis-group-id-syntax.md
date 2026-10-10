@@ -99,7 +99,7 @@ Token counting / UC splitters / `stripEmphasisSyntax` must understand **both** f
 | Text replacements / pipeline stages | Replacements run **before** sanitize; ids survive until expand (intended) |
 | Client `presetTokenCount.js` / T5 | **Deferred** — strip delimiters once client has codec mirror |
 | `pngMetadata` forge keys | Already persists `emphasis_normalization`; `groupsById` nested when client writes it |
-| Grok / AI validators | Downstream of expand for gen; workstation prompt edit still classic until client convert |
+| Grok / SI validators | Downstream of expand for gen; workstation prompt edit still classic until client convert |
 | Phase walker / stage prompts | Same sanitize path on final buildOptions; stage drafts may hold ids until then |
 | Request text expanders / DSAP | Same — expand only at NAI-bound sanitize |
 

@@ -3670,7 +3670,7 @@ document.addEventListener('DOMContentLoaded', () => {
         autoSeedToggle.addEventListener('click', toggleAutoSeed);
     }
     
-    // Expand Canvas AI enhance mode removed.
+    // Expand Canvas SI enhance mode removed.
 
     const expansionEditCompiledPromptBtn = document.getElementById('expansionEditCompiledPromptBtn');
     if (expansionEditCompiledPromptBtn) {

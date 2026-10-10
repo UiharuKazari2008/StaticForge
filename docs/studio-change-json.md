@@ -4,7 +4,7 @@ Stable contract so other bots (Hoshino, Sala, Frost, Grok, …) can hand Yukimi 
 
 Yukimi pastes the blob into Dreamscape Studio (or any prompt textarea). Studio parses it, shows a confirm dialog, and applies the selected fields.
 
-In-app copy of this spec: Studio → **Copy change JSON** → **Copy AI spec**, or `window.STUDIO_CHANGE_AI_SPEC`.
+In-app copy of this spec: Studio → **Copy change JSON** → **Copy SI spec**, or `window.STUDIO_CHANGE_AI_SPEC`.
 Source of truth for the rules: this file. Keep `STUDIO_CHANGE_AI_SPEC` in `public/scripts/comp/studioChangeJson.js` in sync.
 
 ---
@@ -359,7 +359,7 @@ and `POST /agent/session/studio`. MCP `apply_studio_changes` / `generate_image` 
 
 ---
 
-## Compact AI spec (keep in sync with `STUDIO_CHANGE_AI_SPEC`)
+## Compact SI spec (keep in sync with `STUDIO_CHANGE_AI_SPEC`)
 
 ```
 Dreamscape studio change JSON. Paste into Studio to apply. Reply with JSON only — no markdown unless fenced as json.

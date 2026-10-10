@@ -1274,7 +1274,7 @@ function transformOpenMeteoData(rawData, options) {
             dewPoint: Math.round(rawData.current.dewpoint_2m * 10) / 10,
             feelsLike: Math.round(rawData.current.apparent_temperature * 10) / 10,
             condition: baseCondition, // For client display (original condition name, e.g., "overcast", "cloudy")
-            generationCondition: reconciledCondition, // For AI generation (translated, e.g., "cloudy sky" or night descriptions)
+            generationCondition: reconciledCondition, // For SI generation (translated, e.g., "cloudy sky" or night descriptions)
             precipitation: rawData.current.precipitation || 0,
             precipitationRate: rawData.current.precipitation || 0,
             rain: currentRain,
@@ -1896,7 +1896,7 @@ async function getWeeklyWeatherForecast(location) {
 
 /**
  * Master function for comprehensive weather analysis
- * Retrieves and analyzes weather data for AI model enhancement
+ * Retrieves and analyzes weather data for SI model enhancement
  * @param {Object} location - Location object with lat/lon
  * @param {Object} options - Configuration options
  * @returns {Promise<Object>} Complete weather analysis
@@ -2085,7 +2085,7 @@ function generateComprehensiveAnalysis(weatherData) {
         }
     }
 
-    // Generate AI prompting recommendations
+    // Generate SI prompting recommendations
     analysis.recommendations.aiPrompting = generateAIPromptingRecommendations(analysis, weatherData);
 
     // Environmental details for scene setting
@@ -2225,10 +2225,10 @@ function analyzeWeeklyWindPattern(weeklyData) {
 }
 
 /**
- * Generate AI prompting recommendations
+ * Generate SI prompting recommendations
  * @param {Object} analysis - Weather analysis
  * @param {Object} weatherData - Raw weather data
- * @returns {Array} AI prompting recommendations
+ * @returns {Array} SI prompting recommendations
  */
 function generateAIPromptingRecommendations(analysis, weatherData) {
     const recommendations = [];
@@ -3537,7 +3537,7 @@ function cleanupPromptSyntax(content) {
 }
 
 /**
- * Expand shorthand tag sections to full keyword forms for AI processing
+ * Expand shorthand tag sections to full keyword forms for SI processing
  * @param {string} content - The content to expand
  * @returns {string} Content with expanded shorthand forms
  */
@@ -3618,7 +3618,7 @@ function tryReconstructSelectText(selectText, replacementHistory, originalConten
  * 1. Reconstruct what the select_text would look like now
  * 2. Find it in the current working content
  * 3. Apply the replacement to the reconstructed version
- * @param {string} selectText - The original select_text from AI
+ * @param {string} selectText - The original select_text from SI
  * @param {string} workingContent - Current state of content after previous replacements
  * @param {Map} replacementHistory - Map tracking what has been replaced
  * @param {string} originalContent - The original unmodified content
@@ -3830,7 +3830,7 @@ function applyDynamicReplacements(globalResources, originalContent, replacements
         const action = typeof rawAction === 'string' ? rawAction.toLowerCase() : rawAction;
         
         // 🎨 NEWLINE TRANSLATION: Convert <br> to \n
-        // AI uses <br> for readability anywhere newlines are needed, server translates to actual newlines
+        // SI uses <br> for readability anywhere newlines are needed, server translates to actual newlines
         if (replace_text) {
             replace_text = replace_text.replace(/<br\s*\/?>/gi, '\n');
         }
@@ -4448,7 +4448,7 @@ function applyDynamicReplacements(globalResources, originalContent, replacements
         const action = typeof rawAction === 'string' ? rawAction.toLowerCase() : rawAction;
         
         // 🎨 NEWLINE TRANSLATION: Convert <br> to \n
-        // AI uses <br> for readability anywhere newlines are needed, server translates to actual newlines
+        // SI uses <br> for readability anywhere newlines are needed, server translates to actual newlines
         if (replace_text) {
             replace_text = replace_text.replace(/<br\s*\/?>/gi, '\n');
         }
@@ -5474,7 +5474,7 @@ function detectSeasonalHolidays(time) {
 /**
  * Generate progressive holiday elements based on intensity level
  * @param {Object} holiday - Holiday object with intensity information
- * @returns {Object} Progressive holiday elements for AI consumption
+ * @returns {Object} Progressive holiday elements for SI consumption
  */
 function generateProgressiveHolidayElements(holiday) {
     const { intensity, decorations, atmosphere, colors, activities } = holiday;
@@ -5536,7 +5536,7 @@ function generateProgressiveHolidayElements(holiday) {
         atmosphere: selectedAtmosphere,
         colors: selectedColors,
         activities: selectedActivities,
-        // Summary for AI consumption
+        // Summary for SI consumption
         elementSummary: `Holiday intensity: ${level} (${description}). Include ${numDecorations} decorations, ${numAtmosphere} atmosphere elements, ${numColors} colors.`
     };
 }
@@ -6208,8 +6208,8 @@ function generateContextualUCGuidelines(weather, currentSeason, timePeriodInfo) 
     ucGuidelines.push('• **UC the OPPOSITE**: Always UC elements that are NOT currently present but could conflict (rain when sunny, snow when warm, etc.)');
     ucGuidelines.push('• **Block Impossible Weather**: UC weather that cannot occur given current conditions (snow in 30°C heat, rain in clear skies)');
     ucGuidelines.push('• **Season + Weather Combo**: Consider both - warm winter day needs different UC than snowy winter');
-    ucGuidelines.push('• **Contextual Intelligence**: Focus UC on preventing conflicting elements that the AI might otherwise add');
-    ucGuidelines.push('• **Balanced Approach**: Add UC strategically without over-constraining the AI');
+    ucGuidelines.push('• **Contextual Intelligence**: Focus UC on preventing conflicting elements that the SI might otherwise add');
+    ucGuidelines.push('• **Balanced Approach**: Add UC strategically without over-constraining the SI');
     ucGuidelines.push('• **APPEND USAGE**: Use `action: "append"` in UC replacements to add conflicting elements to the negative prompt');
     ucGuidelines.push('• **CONSOLIDATE UC**: Always combine all UC additions into a SINGLE Tanei item using `action: "append"`');
     ucGuidelines.push('');
@@ -6419,7 +6419,7 @@ function generateDynamicClothingContext(context) {
 }
 
 /**
- * Compile historical weather report data for AI context
+ * Compile historical weather report data for SI context
  * @param {Object} enhancedWeatherData - Enhanced weather data with temporal and yesterday info
  * @param {Object} weather - Current weather data
  * @param {Object} time - Current time data
@@ -8035,7 +8035,7 @@ async function processDynamicGenerationCore(globalResources, dynamicConfig, cont
 }
 
 /**
- * Resolve dynamic generation context without AI processing
+ * Resolve dynamic generation context without SI processing
  * Returns the actual values that would be used for generation
  * Uses compileContext to avoid duplicating resolution logic
  */

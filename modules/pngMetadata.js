@@ -51,7 +51,7 @@ const STEALTH_SIGNATURES = {
 };
 const STEALTH_SIGNATURE_BITS = 15 * 8;
 // Match NovelAI Explore PNG Title (API embeds "NovelAI generated image")
-const STANDARD_PNG_TITLE = 'AI generated image';
+const STANDARD_PNG_TITLE = 'SI generated image';
 
 /** Python json.dumps default separators: (', ', ': ') */
 function stringifyNaiStyle(obj) {

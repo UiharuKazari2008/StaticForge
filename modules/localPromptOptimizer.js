@@ -1,5 +1,5 @@
 // Local Prompt Optimizer
-// Optimizes prompts locally before AI processing by replacing words/phrases
+// Optimizes prompts locally before SI processing by replacing words/phrases
 // with lower token count alternatives while maintaining semantic strength
 
 const fs = require('fs');
@@ -399,7 +399,7 @@ class LocalPromptOptimizer {
     }
 
     /**
-     * Get tag context data for AI decision-making
+     * Get tag context data for SI decision-making
      * Provides information about what tags exist and their power levels
      */
     getTagContext(text) {
@@ -428,7 +428,7 @@ class LocalPromptOptimizer {
 
     /**
      * Simplified alternative finder - just collect data, don't make decisions
-     * Returns ALL viable alternatives with their metrics for AI to decide
+     * Returns ALL viable alternatives with their metrics for SI to decide
      */
     getTagAlternatives(text, emphasisWeight = 1.0) {
         // Tags just provide context, not replacements
@@ -536,7 +536,7 @@ class LocalPromptOptimizer {
         // 1. NovelAI Tags (golden standard for exact concepts)
         // 2. Common Phrase Patterns (grammatical improvements)
         // 3. Moby Synonyms (semantic alternatives)
-        // Then let AI choose the best based on context
+        // Then let SI choose the best based on context
         
         // SOURCE 1: NovelAI Tags
         const tagAlternatives = this.getTagAlternatives(text, emphasisWeight);
@@ -719,7 +719,7 @@ class LocalPromptOptimizer {
                 // SELECTION STRATEGY FOR LOCAL APPLICATION:
                 // 1. Prefer phrase patterns (always safe, grammatical)
                 // 2. Then high-strength token optimizations (Moby with safeForLocal=true)
-                // 3. Skip tags unless exact match (let AI choose between tags)
+                // 3. Skip tags unless exact match (let SI choose between tags)
                 
                 const phrasePat = alternatives.find(alt => alt.source === 'phrase_pattern');
                 const safeToken = alternatives.find(alt => alt.source === 'moby_thesaurus' && alt.safeForLocal === true && alt.strengthScore >= 8.0);
@@ -727,7 +727,7 @@ class LocalPromptOptimizer {
                 let bestAlt = phrasePat || safeToken;
                 const applyLocally = bestAlt !== undefined;
                 
-                // If no safe alternative, don't apply locally but still track for AI
+                // If no safe alternative, don't apply locally but still track for SI
                 if (!bestAlt) {
                     bestAlt = alternatives[0];
                 }
@@ -748,7 +748,7 @@ class LocalPromptOptimizer {
                         emphasisWeight: emphasisWeight || 1.0,
                         hasEmphasis: hasEmphasis || false,
                         applyLocally: applyLocally,  // Only apply phrase patterns and safe tokens
-                        allAlternatives: alternatives // Store ALL alternatives for AI consumption
+                        allAlternatives: alternatives // Store ALL alternatives for SI consumption
                     });
                 }
             }
@@ -767,7 +767,7 @@ class LocalPromptOptimizer {
 
         for (const replacement of allReplacements) {
             // Skip if not safe for local application
-            // These will still be provided to AI as alternatives
+            // These will still be provided to SI as alternatives
             if (!replacement.applyLocally) {
                 continue;
             }
@@ -811,11 +811,11 @@ class LocalPromptOptimizer {
             totalTokensSaved += replacement.tokensSaved;
         }
         
-        // Also track AI-only suggestions (not applied locally but available for AI)
+        // Also track SI-only suggestions (not applied locally but available for SI)
         const aiOnlySuggestions = allReplacements.filter(r => !r.applyLocally).map(r => ({
             original: r.phrase,
             allAlternatives: r.allAlternatives,
-            reason: 'Not applied locally - semantic verification needed by AI'
+            reason: 'Not applied locally - semantic verification needed by SI'
         }));
 
         // Sort changes by position for logging
@@ -998,8 +998,8 @@ class LocalPromptOptimizer {
     }
 
     /**
-     * Format alternatives for AI consumption
-     * Returns a structured object that the AI can use to make context-aware decisions
+     * Format alternatives for SI consumption
+     * Returns a structured object that the SI can use to make context-aware decisions
      */
     formatAlternativesForAI(optimizationResult) {
         const suggestions = [];
@@ -1129,7 +1129,7 @@ class LocalPromptOptimizer {
     }
 
     /**
-     * Generate tree-formatted prompt analysis for AI (optimized, without token breakdown)
+     * Generate tree-formatted prompt analysis for SI (optimized, without token breakdown)
      * @param {string} prompt - The prompt to analyze
      * @returns {string} Tree-formatted analysis
      */

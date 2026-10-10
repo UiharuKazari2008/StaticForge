@@ -2,13 +2,13 @@
 
 ## Overview
 
-This document explains the **segment_index** system that replaced direct `select_text` usage by the AI in the dynamic generation system. This architectural change prevents the AI from "guessing" text selections and ensures all replacements reference valid prompt segments.
+This document explains the **segment_index** system that replaced direct `select_text` usage by the SI in the dynamic generation system. This architectural change prevents the SI from "guessing" text selections and ensures all replacements reference valid prompt segments.
 
 ## Problem Statement
 
 ### Original Issue
 
-The AI was generating `select_text` values that:
+The SI was generating `select_text` values that:
 - Did not exist verbatim in the original prompts
 - Were syntactically incorrect
 - Sometimes omitted `replace_text` for `replace` actions
@@ -16,14 +16,14 @@ The AI was generating `select_text` values that:
 
 ### Root Cause
 
-Even with strong instructions in the system prompt, the probabilistic nature of LLMs allowed the AI to "invent" text strings instead of using exact substrings from the prompts. The AI could not reliably match text verbatim from complex prompts.
+Even with strong instructions in the system prompt, the probabilistic nature of LLMs allowed the SI to "invent" text strings instead of using exact substrings from the prompts. The SI could not reliably match text verbatim from complex prompts.
 
 ## Solution Architecture
 
 ### Core Concept
 
-**The AI never sees or uses `select_text` directly.** Instead:
-1. The AI provides `segment_index` (0-based index into comma-separated segments)
+**The SI never sees or uses `select_text` directly.** Instead:
+1. The SI provides `segment_index` (0-based index into comma-separated segments)
 2. The server hydrates `segment_index` → `select_text` before any processing
 3. The rest of the system uses `select_text` as before
 
@@ -80,7 +80,7 @@ function parsePromptSegments(text)
 
 **A. Tool Schema (`validateTextReplacement`)**:
 - ✅ Added `segment_index` property (integer, string, or array)
-- ✅ Removed `select_text` from schema (AI never sees it)
+- ✅ Removed `select_text` from schema (SI never sees it)
 - ✅ Removed `fallback_select_text` (deprecated, completely removed)
 - ✅ Updated `alternative_text` description to remove `select_text` references
 
@@ -188,7 +188,7 @@ const hydrateFromSegments = (replacements, segments) => {
 
 **F. Internal Functions**:
 - ✅ `applyDynamicReplacements` handles `select_text` as array (after hydration)
-- ✅ All server-side processing uses hydrated `select_text` (transparent to AI)
+- ✅ All server-side processing uses hydrated `select_text` (transparent to SI)
 
 ### 5. `/modules/systemMessageBuilder.js`
 
@@ -234,9 +234,9 @@ const hydrateFromSegments = (replacements, segments) => {
 ### Complete Call Stack
 
 ```
-1. AI receives user message with segment lists
+1. SI receives user message with segment lists
    ↓
-2. AI calls validateTextReplacement with segment_index values
+2. SI calls validateTextReplacement with segment_index values
    ↓
 3. handleValidateTextReplacement:
    a. Validates segment_index (missing, continuity for REPLACE)
@@ -249,7 +249,7 @@ const hydrateFromSegments = (replacements, segments) => {
    ↓
 6. applyDynamicReplacements (uses hydrated select_text)
    ↓
-7. Return results to AI (with segment_index preserved for errors)
+7. Return results to SI (with segment_index preserved for errors)
 ```
 
 ### Error Flow
@@ -261,14 +261,14 @@ const hydrateFromSegments = (replacements, segments) => {
    ↓
 3. Retry message shows: "segment_index `5` failed validation"
    ↓
-4. AI sees segment_index (never sees select_text)
+4. SI sees segment_index (never sees select_text)
 ```
 
 ## Key Design Decisions
 
 ### 1. Why Keep `segment_index` in Replacement Objects?
 
-- **Error Messages**: AI needs to know which `segment_index` failed
+- **Error Messages**: SI needs to know which `segment_index` failed
 - **Debugging**: Server logs can trace from `segment_index` → `select_text`
 - **Backwards Compatibility**: Old stored replacements might have both
 
@@ -286,15 +286,15 @@ const hydrateFromSegments = (replacements, segments) => {
 
 ### 4. Why Show Segment Lists in User Messages?
 
-- **Transparency**: AI can see exactly what indices are available
+- **Transparency**: SI can see exactly what indices are available
 - **Accuracy**: No guessing which index maps to which text
-- **Debugging**: AI can verify its `segment_index` choices
+- **Debugging**: SI can verify its `segment_index` choices
 
 ## Testing Checklist
 
 When making edits to this system, verify:
 
-- [ ] AI never sees `select_text` in tool schemas
+- [ ] SI never sees `select_text` in tool schemas
 - [ ] User messages show `segment_index` (not `select_text`)
 - [ ] Error messages reference `segment_index`
 - [ ] Hydration happens before validation
@@ -336,7 +336,7 @@ If adding new replacement actions:
 
 ## Common Issues & Solutions
 
-### Issue: AI provides invalid `segment_index`
+### Issue: SI provides invalid `segment_index`
 
 **Solution**: Validation in `validateSegmentIndex` catches this before hydration. Error message shows which `segment_index` failed.
 
@@ -346,7 +346,7 @@ If adding new replacement actions:
 
 ### Issue: REPLACE array fails continuity check
 
-**Solution**: Ensure AI knows REPLACE arrays must be continuous. Check system message documentation.
+**Solution**: Ensure SI knows REPLACE arrays must be continuous. Check system message documentation.
 
 ### Issue: Segment lists don't match actual segments
 
@@ -372,7 +372,7 @@ Old stored replacements with `select_text` are still supported:
 ### To New System (segment_index only)
 
 All new replacements **must** use `segment_index`:
-- Tool schema no longer accepts `select_text` from AI
+- Tool schema no longer accepts `select_text` from SI
 - Zod schema validates `segment_index` only
 - System message explains `segment_index` exclusively
 

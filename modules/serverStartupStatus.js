@@ -40,7 +40,7 @@ const GLOBAL_RESOURCES_STEPS = [
     { id: 'gr_nax_generation', message: 'Loading NAX tag generation config…' },
     { id: 'gr_reference_metadata', message: 'Initializing reference metadata database…' },
     { id: 'gr_generation_quips_db', message: 'Initializing generation quips database…' },
-    { id: 'gr_singleton_managers', message: 'Initializing AI and memory managers…' },
+    { id: 'gr_singleton_managers', message: 'Initializing SI and memory managers…' },
     { id: 'gr_workspace', message: 'Loading workspace system…' },
     { id: 'gr_generation_quips_mgr', message: 'Initializing generation quips manager…' },
     { id: 'gr_novel_handlers', message: 'Initializing novel handlers…' },

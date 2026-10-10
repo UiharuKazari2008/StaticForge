@@ -727,7 +727,7 @@ function mergePromptNegativeFragmentIntoPrompt(processedPrompt, addition) {
     return insertBeforeTextColonOrFirstGroup(processedPrompt, block);
 }
 
-// Dynamic Generation Processing - Uses pre-compiled AI prompts from client
+// Dynamic Generation Processing - Uses pre-compiled SI prompts from client
 
 // Function to convert character reference to base64 JPG with max edge 1500px
 function normalizeCharaReferenceSources(source) {
@@ -2389,7 +2389,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 }
                 if (!text.trim()) {
                     if (body.dynamic_generation !== undefined) {
-                        // Set placeholder for AI to replace
+                        // Set placeholder for SI to replace
                         const resolvedStyle = resolveTextDisplayStyle(type);
                         const typeName = resolvedStyle ? resolvedStyle.name : 'subtitle';
                         const placeholderId = resolvedStyle ? resolvedStyle.id : String(type);
@@ -2545,7 +2545,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             // Can be set independently of optimize - check both locations
             const initialPromptAware = body?.dynamic_generation?.initialPromptAware || false;
 
-            // COMPILE CONTEXT ONCE - will be used for cache validation AND AI processing
+            // COMPILE CONTEXT ONCE - will be used for cache validation AND SI processing
             let dynaRequest = body.dynamic_generation;
             let contextForAI = null;
             if (dynaRequest && typeof dynaRequest === 'object') {
@@ -2607,7 +2607,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     });
                 }
             } else {
-                // Generate context for AI processing
+                // Generate context for SI processing
                 const clientInfo = wsServer?.clients?.get(ws);
                 const clientIP = clientInfo?.clientIP || null;
                 // resolveDynagenWithWren (modules/dynagenWren.js) already compiled this request's context
@@ -2862,7 +2862,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     });
                 }
 
-                // Send progress update indicating AI processing is complete (cached)
+                // Send progress update indicating SI processing is complete (cached)
                 if (ws && handler) {
                     handler.sendGenerationProgress(ws, body.requestId || 'buildOptions', {
                         phase: 'completion',
@@ -2870,14 +2870,14 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     });
                 }
             } else {
-                // Cache invalidated - need to run AI processing
+                // Cache invalidated - need to run SI processing
                 // This happens when:
                 // 1. No compiled prompt exists (new generation)
                 // 2. Prompt hash doesn't match (prompts changed) → preview regenerated
                 // 3. Request hash doesn't match (parameters changed)
                 // 4. Failed to apply text replacements → preview regenerated
                 // 5. Cache expired and not locked
-                console.log('🎭 Dynamic generation cache invalidated - running AI processing');
+                console.log('🎭 Dynamic generation cache invalidated - running SI processing');
 
                 // Check if Initial Prompt Aware is enabled and we need to generate a preview
                 // Preview is regenerated ONLY when cache was invalidated (which means we're here)
@@ -3006,7 +3006,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     }
                 }
 
-                // AI path confirmed (cache/reuse rejected): toast + Rentan overlay use image_generation_progress with same phases as Rentan WS updates
+                // SI path confirmed (cache/reuse rejected): toast + Rentan overlay use image_generation_progress with same phases as Rentan WS updates
                 if (ws && handler) {
                     handler.sendGenerationProgress(ws, body.requestId || 'buildOptions', {
                         phase: 'starting',
@@ -3014,13 +3014,13 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     });
                 }
 
-                // Retry loop for chain rejection - if AI rejects the chain, retry with clean state
+                // Retry loop for chain rejection - if SI rejects the chain, retry with clean state
                 let dynamicResult = null;
                 let chainRetries = 0;
                 const maxChainRetries = 3;
 
-                // Remove append marker from prompts before passing to AI
-                // AI shouldn't see the marker - it's only for internal processing
+                // Remove append marker from prompts before passing to SI
+                // SI shouldn't see the marker - it's only for internal processing
                 const markerRegex = new RegExp(`\\s*,?\\s*${APPEND_MARKER}\\s*,?\\s*`, 'g');
                 const stripAppendMarker = (text) => {
                     if (typeof text !== 'string') return text;
@@ -3081,7 +3081,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             dynaRequest.lastGeneratedImage || null,
                             dynaRequest.stageContext || null,
                             body.dataset_config, // Pass dataset config for NSFW level
-                            appliedPresetControls, // Pass preset controls for AI awareness
+                            appliedPresetControls, // Pass preset controls for SI awareness
                             { // Pass pre-calculated hashes for consistency
                                 promptHash: currentPromptHash,
                                 requestHash: currentRequestHash,
@@ -3111,7 +3111,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         }
 
                         // Check if we have empty or missing text_replacements after validation failure
-                        // This happens when validation fails and AI returns empty response - we should restart instead of falling back
+                        // This happens when validation fails and SI returns empty response - we should restart instead of falling back
                         if (dynamicResult.success) {
                             const hasEmptyTextReplacements = !dynamicResult.text_replacements ||
                                 (!dynamicResult.text_replacements.prompt?.length &&
@@ -3283,16 +3283,16 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         context: dynamicResult.context, // Include weather/time/season context
                         text_replacements: reusedTextReplacements, // Store text replacements (reused or new)
                         dialogs: dynamicResult.dialogs || [], // Store character dialogs for display
-                        character_names: dynamicResult.character_names || null, // Store character names from AI
-                        generated_image_name: dynamicResult.generated_image_name || null, // Store generated image name from AI
+                        character_names: dynamicResult.character_names || null, // Store character names from SI
+                        generated_image_name: dynamicResult.generated_image_name || null, // Store generated image name from SI
                         prompt_hash: currentPromptHash, // Store hash for cache validation
                         request_hash: currentRequestHash, // Store hash for cache validation
                         directive_hash: currentDirectiveHash, // Store hash for cache validation
                         preview_image_hash: body.dynamic_generation?.compiled_prompt?.preview_image_hash,
                         timestamp: Date.now(),
                         error: dynamicResult?.error?.message || 'Dynamic generation processing failed',
-                        errors: dynamicResult.errors || [], // Save AI-registered errors
-                        warnings: dynamicResult.warnings || [], // Save AI-registered warnings
+                        errors: dynamicResult.errors || [], // Save SI-registered errors
+                        warnings: dynamicResult.warnings || [], // Save SI-registered warnings
                         cache_locked: body.dynamic_generation.cache_locked || false,
                         context_locked: body.dynamic_generation.context_locked || false,
                         generation_chain: dynamicResult.generation_chain, // Save generation chain number for incrementing
@@ -3317,16 +3317,16 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         context: dynamicResult.context, // Include weather/time/season context
                         text_replacements: dynamicResult.text_replacements, // Store text replacements for caching
                         dialogs: dynamicResult.dialogs || [], // Store character dialogs for display
-                        character_names: dynamicResult.character_names || null, // Store character names from AI
-                        generated_image_name: dynamicResult.generated_image_name || null, // Store generated image name from AI
+                        character_names: dynamicResult.character_names || null, // Store character names from SI
+                        generated_image_name: dynamicResult.generated_image_name || null, // Store generated image name from SI
                         prompt_hash: currentPromptHash, // Store hash for cache validation
                         request_hash: currentRequestHash, // Store hash for cache validation
                         directive_hash: currentDirectiveHash, // Store hash for cache validation
                         preview_image_hash: body.dynamic_generation?.compiled_prompt?.preview_image_hash,
                         timestamp: now,
                         expiresAt: expiresAt, // Dynamic expiration based on time/weather changes
-                        errors: dynamicResult.errors || [], // Save AI-registered errors
-                        warnings: dynamicResult.warnings || [], // Save AI-registered warnings
+                        errors: dynamicResult.errors || [], // Save SI-registered errors
+                        warnings: dynamicResult.warnings || [], // Save SI-registered warnings
                         cache_locked: body.dynamic_generation.cache_locked || false,
                         context_locked: body.dynamic_generation.context_locked || false,
                         preview_metadata: body.dynamic_generation?.compiled_prompt?.preview_image_hash ? body.dynamic_generation?.compiled_prompt?.preview_metadata : undefined,
@@ -3426,7 +3426,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             }
                         }
 
-                        // Apply character names from AI to character prompts
+                        // Apply character names from SI to character prompts
                         if (dynamicResult.character_names && Array.isArray(dynamicResult.character_names) && dynamicResult.character_names.length > 0) {
                             processedCharacterPrompts = processedCharacterPrompts || [];
                             if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
@@ -7463,7 +7463,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
             throw new Error('Cannot expand: original and target have the same aspect ratio');
         }
 
-        // For staged expansion, we don't use AI - just use the provided prompt
+        // For staged expansion, we don't use SI - just use the provided prompt
         const expansionPrompt = params.prompt || '';
         const expansionReason = 'Staged expansion';
 
@@ -7775,7 +7775,7 @@ function resolveForgeModelFromPngBuffer(imageBuffer, fallback = 'v4_5') {
     return fallback;
 }
 
-// Image expansion function - expands image to new resolution using AI-powered inpainting
+// Image expansion function - expands image to new resolution using SI-powered inpainting
 async function expandImage(globalResources, filename, resolution, imageBias, upscaleAfterComplete = false, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, sourceFilename = null, stepPreviewWidth = null, stepPreviewHeight = null) {
     bindRuntimeGlobalResources(globalResources);
     try {
@@ -8157,7 +8157,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
     }
 }
 
-// Image expansion reroll function - regenerates expanded image without AI call
+// Image expansion reroll function - regenerates expanded image without SI call
 async function rerollExpandedImage(globalResources, filename, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, stepPreviewWidth = null, stepPreviewHeight = null) {
     bindRuntimeGlobalResources(globalResources);
     try {
@@ -8346,7 +8346,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         };
         const genParams = { ...defaultParams, ...overrideParams };
 
-        // 5. Build request WITHOUT calling AI
+        // 5. Build request WITHOUT calling SI
         const requestBody = {
             prompt: expansionPrompt,  // Use stored prompt directly
             uc: originalUc,
@@ -8390,7 +8390,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
             opts.requestId = requestId;
             handler.sendGenerationProgress(ws, requestId, {
                 phase: 'generating',
-                hasDynamicGen: false,  // No AI call
+                hasDynamicGen: false,  // No SI call
                 isUpscaling: genParams.upscale
             });
         }

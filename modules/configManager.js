@@ -528,13 +528,13 @@ class ConfigManager {
             case 'directorConfig':
                 return {
                     version: "1.0.0",
-                    description: "Director AI feedback and learning configuration",
+                    description: "Director SI feedback and learning configuration",
                     feedback: {
                         description: "Collection of past generation issues and lessons learned to improve future generations",
                         entries: []
                     },
                     rules: {
-                        description: "Global rules and constraints for Director AI behavior",
+                        description: "Global rules and constraints for Director SI behavior",
                         entries: []
                     }
                 };

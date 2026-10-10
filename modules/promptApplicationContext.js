@@ -102,7 +102,7 @@ function buildStreamContext(raw, resolved, expanderSeeds, sourceKey, presetContr
 }
 
 /**
- * @param {object} baseline - stashed during buildOptions before AI compile
+ * @param {object} baseline - stashed during buildOptions before SI compile
  */
 function buildPromptApplicationContext(baseline) {
     if (!baseline) {

@@ -1,6 +1,6 @@
 /**
  * Streaming Event Handler
- * Handles real-time processing and display of AI character events
+ * Handles real-time processing and display of SI character events
  */
 
 class StreamingEventHandler {

@@ -79,11 +79,11 @@ function calculateGenerationProgress(progressData) {
     // Normal path with Rentan
     switch (phase) {
         case 'starting':
-            // 0-15%: AI processing starting (client-side timer)
+            // 0-15%: SI processing starting (client-side timer)
             return 0;
 
         case 'streaming':
-            // 16-25%: AI streaming progress
+            // 16-25%: SI streaming progress
             if (totalKeys && totalKeys > 0) {
                 const baseProgress = 16;
                 const keyProgress = (currentKey / totalKeys) * 9; // 9% range for keys
@@ -95,7 +95,7 @@ function calculateGenerationProgress(progressData) {
             return 22;
 
         case 'completion':
-            // 25%: AI processing complete
+            // 25%: SI processing complete
             return 25;
 
         case 'generating':
@@ -136,11 +136,11 @@ function getGenerationStatusMessage(progressData) {
                 ? `Executing tools (${d.currentKey}/${d.totalKeys})...`
                 : 'Executing tools...';
         case 'streaming':
-            return d.status || 'Processing AI response...';
+            return d.status || 'Processing SI response...';
         case 'reviewing':
             return d.status || 'Wren is reviewing...';
         case 'completion':
-            return 'AI processing complete, starting generation...';
+            return 'SI processing complete, starting generation...';
         case 'generating':
             if (d.totalStages != null && d.currentStage != null) {
                 return `Stage ${d.currentStage}/${d.totalStages}: ${d.stageType || 'stage'}`;

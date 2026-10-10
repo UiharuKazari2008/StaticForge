@@ -56,7 +56,7 @@ async function saveDirectorFeedback() {
         });
 
         if (result && result.data && result.data.success) {
-            showGlassToast('success', null, 'Feedback saved successfully. The AI will learn from this.', false, undefined, '<i class="fas fa-check"></i>');
+            showGlassToast('success', null, 'Feedback saved successfully. The SI will learn from this.', false, undefined, '<i class="fas fa-check"></i>');
             closeDirectorFeedbackModal();
         } else {
             throw new Error(result?.data?.message || 'Failed to save feedback');
@@ -298,7 +298,7 @@ function renderDirectorFeedbackList() {
             <div class="empty-state">
                 <i class="fas fa-comment-alt"></i>
                 <p>No feedback entries yet.</p>
-                <p class="text-muted">Feedback entries are created when you report issues with AI replacements.</p>
+                <p class="text-muted">Feedback entries are created when you report issues with SI replacements.</p>
             </div>
         `;
         return;
@@ -331,7 +331,7 @@ ${action ? `<span class="director-feedback-action"><i class="fas fa-exchange-alt
 <div class="director-feedback-details">
 ${selectText ? `<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-arrow-left"></i> Original:</span><span class="detail-value selectable">${escapeHtml(selectText)}</span></div>` : ''}
 ${replaceText ? `<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-arrow-right"></i> Replacement:</span><span class="detail-value selectable">${escapeHtml(replaceText)}</span></div>` : ''}
-<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-robot"></i> AI Reason:</span><span class="detail-value selectable">${escapeHtml(aiReason)}</span></div>
+<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-robot"></i> SI Reason:</span><span class="detail-value selectable">${escapeHtml(aiReason)}</span></div>
 </div>
 </div>
 <div class="director-rule-actions">

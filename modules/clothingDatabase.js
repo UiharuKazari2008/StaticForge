@@ -549,7 +549,7 @@ class ClothingDatabase {
         return recommendations;
     }
 
-    // Generate contextual clothing examples for AI guidance
+    // Generate contextual clothing examples for SI guidance
     generateContextualExamples(context, optionsOverride = null) {
         const options = optionsOverride || this.getClothingOptions(context);
         const examples = [];

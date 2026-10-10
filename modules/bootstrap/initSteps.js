@@ -154,7 +154,7 @@ const INIT_STEPS = [
     },
     {
         id: 'gr_singleton_managers',
-        label: 'Initializing AI and memory managers',
+        label: 'Initializing SI and memory managers',
         sync: true,
         run: (gr) => {
             gr.initializeSingletonManagers();

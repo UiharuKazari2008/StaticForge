@@ -105,7 +105,7 @@ class XaiNativeService {
       maxTokens = 4000,
       enableWebSearch = false,
       webSearchOptions = {},
-      logLabel = 'AI (native)',
+      logLabel = 'SI (native)',
       reasoningEffort = 'low',
       ...rest
     } = options;
@@ -294,7 +294,7 @@ class XaiNativeService {
       maxTokens,
       enableWebSearch = false,
       webSearchOptions = {},
-      logLabel = 'AI (native)',
+      logLabel = 'SI (native)',
       reasoningEffort = 'low',
       ...rest
     } = options;

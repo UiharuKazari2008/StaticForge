@@ -198,7 +198,7 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
 
             // Ensure we have some prompt data
             if (!userPrompt) {
-                userPrompt = 'A character from an AI-generated image';
+                userPrompt = 'A character from an SI-generated image';
                 console.log('⚠️ No prompt data found, using fallback prompt');
             }
 
@@ -291,7 +291,7 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
             const usageData = aiResponse?.usage || null;
             const responseContent = aiResponse?.content || aiResponse || '';
 
-            console.log('📝 Initial AI response received, length:', responseContent.length);
+            console.log('📝 Initial SI response received, length:', responseContent.length);
 
             // Send streaming complete message only if streaming was enabled
             // Don't include requestId here - create_chat_session request was already resolved
@@ -304,7 +304,7 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
                 });
             }
 
-            // Parse the AI response - now expecting event-based format
+            // Parse the SI response - now expecting event-based format
             let parsedResponse;
             try {
                 // Clean the response - remove markdown code blocks if present
@@ -366,7 +366,7 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
                 parsedResponse = extractEventsByType(events);
 
             } catch (parseError) {
-                console.warn('⚠️ Failed to parse AI response as JSON, using fallback:', parseError.message);
+                console.warn('⚠️ Failed to parse SI response as JSON, using fallback:', parseError.message);
                 // Fallback response structure
                 parsedResponse = {
                     actions: [],
@@ -399,7 +399,7 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
             // Extract usage data if not already extracted
             const responseUsageData = usageData || aiResponse?.usage || null;
 
-            // Send the AI response to the client
+            // Send the SI response to the client
             handler.sendToClient(ws, {
                 type: 'chat_message_response',
                 data: {
@@ -497,7 +497,7 @@ async function handleDeleteChatSession(handler, ws, message, clientInfo, wsServe
 
         const success = await handler.globalResources.getChatDatabase().deleteChatSession(chatId);
 
-        // Clean up AI service cache for this chat
+        // Clean up SI service cache for this chat
         if (success) {
             handler.globalResources.getAiServiceManager().forceCleanupService(chatId);
         }
@@ -529,7 +529,7 @@ async function handleRestartChatSession(handler, ws, message, clientInfo, wsServ
 
         const success = await handler.globalResources.getChatDatabase().restartChatSession(chatId);
 
-        // Clean up AI service cache for this chat
+        // Clean up SI service cache for this chat
         if (success) {
             handler.globalResources.getAiServiceManager().forceCleanupService(chatId);
         }
@@ -614,7 +614,7 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
         // Prepare persona data using prompt manager
         const personaData = await handler.globalResources.getPromptManager().preparePersonaData(chatId, session.filename);
 
-        // Use unified AI service manager
+        // Use unified SI service manager
         let aiResponse;
         try {
             // Establish persona if needed (only for first message)
@@ -658,7 +658,7 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
             const usageData = aiResponse?.usage || null;
             const responseContent = aiResponse?.content || aiResponse || '';
 
-            console.log('📝 AI response received, length:', responseContent.length);
+            console.log('📝 SI response received, length:', responseContent.length);
 
             // Send streaming complete message only if streaming was enabled
             if (chatStreamingEnabled(handler)) {
@@ -670,7 +670,7 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
                     usage: usageData || null
                 });
             } else {
-                // Parse AI response for non-streaming mode
+                // Parse SI response for non-streaming mode
                 let parsedResponse;
                 try {
                     // Clean the response - remove markdown code blocks if present
@@ -720,7 +720,7 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
                     parsedResponse = extractEventsByType(events);
 
                 } catch (parseError) {
-                    console.warn('⚠️ Failed to parse AI response as JSON, using fallback:', parseError.message);
+                    console.warn('⚠️ Failed to parse SI response as JSON, using fallback:', parseError.message);
                     parsedResponse = {
                         actions: [],
                         sfx: [],
@@ -746,7 +746,7 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
                     };
                 }
 
-                // Send the AI response to the client (non-streaming mode sends immediately)
+                // Send the SI response to the client (non-streaming mode sends immediately)
                 handler.sendToClient(ws, {
                     type: 'chat_message_response',
                     requestId: message.requestId,
@@ -766,7 +766,7 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
             handler.stopKeepAliveInterval(message.requestId);
 
         } catch (aiError) {
-            console.error('❌ AI service error:', aiError);
+            console.error('❌ SI service error:', aiError);
 
             // Stop keep-alive on error
             handler.stopKeepAliveInterval(message.requestId);

@@ -421,7 +421,7 @@ ${memoriesDsapBuildTabBar(tab)}
         </div>
 
         <div class="memories-static-rules-hint">
-            These are user-defined static rules (Director Rules) and AI feedback entries. Changes save automatically.
+            These are user-defined static rules (Director Rules) and SI feedback entries. Changes save automatically.
         </div>
     </div>
 </div>
@@ -3506,7 +3506,7 @@ const memoriesDsapDriver = {
                         <div class="memories-static-feedback-details">
                             ${sel ? `<div>Original: ${sel}</div>` : ''}
                             ${rep ? `<div>Replaced: ${rep}</div>` : ''}
-                            ${reason ? `<div>AI: ${reason}</div>` : ''}
+                            ${reason ? `<div>SI: ${reason}</div>` : ''}
                         </div>
                         <div style="text-align:right; margin-top:2px;">
                             <button type="button" class="memories-remove-btn" data-feedback-id="${f.id}" title="Delete">✕</button>

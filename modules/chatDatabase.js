@@ -98,12 +98,12 @@ async function createChatTables() {
             chat_session_id INTEGER NOT NULL,
             message_type TEXT NOT NULL, -- 'user' or 'assistant'
             content TEXT NOT NULL,
-            json_data TEXT, -- JSON response data from AI (legacy format)
+            json_data TEXT, -- JSON response data from SI (legacy format)
             event_type TEXT, -- Type of event (actions, speech, memory, etc.)
             event_metadata TEXT, -- Additional event properties (timestamp, weight, intensity, etc.)
-            response_id TEXT, -- AI service response ID for conversation state
+            response_id TEXT, -- SI service response ID for conversation state
             conversation_data TEXT, -- Full conversation state data
-            reasoning_content TEXT, -- AI's reasoning/thinking process (for reasoning models)
+            reasoning_content TEXT, -- SI's reasoning/thinking process (for reasoning models)
             response_output TEXT, -- Full response.output array for 30+ day reconstruction (Responses API)
             created_at INTEGER DEFAULT (strftime('%s', 'now')),
             expires_at INTEGER, -- Timestamp for 30-day retention

@@ -4078,7 +4078,7 @@ class Director {
             try {
                 const parsedObject = JSON.parse(textContent);
                 
-                // Extract the main content from AI response object
+                // Extract the main content from SI response object
                 if (parsedObject.Description) {
                     return parsedObject.Description;
                 } else if (parsedObject.message) {
@@ -4258,7 +4258,7 @@ class Director {
                 // Captions are now displayed as separate quote messages above this message
             } else {
                 // Server couldn't process - show error message from server
-                content = `<div class="director-message-content">${message.content || 'Invalid Response from AI'}</div>`;
+                content = `<div class="director-message-content">${message.content || 'Invalid Response from SI'}</div>`;
             }
         } else {
             // For user messages, show message_type and user_input in 2-row layout
@@ -5824,7 +5824,7 @@ class Director {
         // Extract the actual message content from the response
         let messageContent = data.clientResponse?.Description || data.clientResponse?.message || data.clientResponse?.content || data?.clientResponse || data;
 
-        // If response is an object with Description field (AI analysis response)
+        // If response is an object with Description field (SI analysis response)
         if (typeof messageContent === 'object' && messageContent !== null) {
             messageContent = JSON.stringify(messageContent, null, 2);
         } else {
