@@ -468,7 +468,7 @@ class ReferenceMetadataDatabase {
                 WHERE hash IN (${placeholders})
             `);
             
-            const results = stmt.all(hashes);
+            const results = stmt.all(...hashes);
             
             // Convert to object with hash as key
             const metadataMap = {};
@@ -623,7 +623,7 @@ class ReferenceMetadataDatabase {
                 LEFT JOIN reference_metadata rm ON rm.hash = fc.hash
                 WHERE fc.hash IN (${placeholders})
             `);
-            const results = stmt.all(hashes);
+            const results = stmt.all(...hashes);
             
             const cacheMap = {};
             results.forEach(result => {
@@ -789,7 +789,7 @@ class ReferenceMetadataDatabase {
             
             const placeholders = hashes.map(() => '?').join(',');
             const stmt = this.db.prepare(`SELECT hash, workspace_id FROM reference_workspace_ownership WHERE hash IN (${placeholders})`);
-            const results = stmt.all(hashes);
+            const results = stmt.all(...hashes);
             
             const workspaceMap = {};
             results.forEach(result => {
@@ -1179,7 +1179,7 @@ class ReferenceMetadataDatabase {
                 LEFT JOIN reference_metadata rm ON rm.hash = vm.id
                 WHERE vm.id IN (${placeholders})
             `);
-            const results = stmt.all(vibeIds);
+            const results = stmt.all(...vibeIds);
 
             // Load all encodings for these vibes in one query
             const encodingsStmt = this.db.prepare(`
@@ -1187,7 +1187,7 @@ class ReferenceMetadataDatabase {
                 FROM reference_vibe_encodings 
                 WHERE vibe_id IN (${placeholders})
             `);
-            const allEncodings = encodingsStmt.all(vibeIds);
+            const allEncodings = encodingsStmt.all(...vibeIds);
 
             // Build encodings map: { vibeId: { model: { ie: encoding, ... }, ... }, ... }
             const encodingsMap = {};
@@ -1537,7 +1537,7 @@ class ReferenceMetadataDatabase {
             FROM reference_vibe_encodings 
             WHERE vibe_id IN (${placeholders})
         `);
-        const allEncodings = encodingsStmt.all(vibeIds);
+        const allEncodings = encodingsStmt.all(...vibeIds);
         
         // Build encodings map: { vibeId: { model: { ie: encoding, ... }, ... }, ... }
         const encodingsMap = {};
@@ -1639,7 +1639,7 @@ class ReferenceMetadataDatabase {
             
             const placeholders = vibeIds.map(() => '?').join(',');
             const stmt = this.db.prepare(`SELECT vibe_id, workspace_id FROM reference_vibe_workspace_ownership WHERE vibe_id IN (${placeholders})`);
-            const results = stmt.all(vibeIds);
+            const results = stmt.all(...vibeIds);
             
             const workspaceMap = {};
             results.forEach(result => {
