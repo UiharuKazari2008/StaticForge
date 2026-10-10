@@ -3190,7 +3190,9 @@ async function openManualModalWithContent(content = null, event = null) {
 
     // Handle confirmation if we have content to load and modal is already open
     let shouldLoadContent = hasContentToLoad;
-    if (hasContentToLoad && window.isDesktop && isRunning) {
+    // MCP/WS-driven loads (agentClientBridge.js open_image) pass skipConfirm: always continue.
+    const skipLoadConfirm = !!(content && typeof content === 'object' && content.skipConfirm === true);
+    if (hasContentToLoad && window.isDesktop && isRunning && !skipLoadConfirm) {
         if (!(await checkManualModalBeforeLoad(event))) {
             shouldLoadContent = false;
         }

@@ -992,7 +992,8 @@
         }
         const image = (typeof findImageByFilename === 'function' && findImageByFilename(filename))
             || { filename };
-        await openManualModalWithContent({ type: 'image', image }, null);
+        // MCP open_in_studio: skip the replace-current confirmation (user clicks keep it).
+        await openManualModalWithContent({ type: 'image', image, skipConfirm: true, source: 'mcp' }, null);
         // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
         showAgentSessionTrayNotice('open', commandData);
         return { ok: true, filename };
