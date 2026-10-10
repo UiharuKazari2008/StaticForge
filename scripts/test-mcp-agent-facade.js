@@ -750,6 +750,8 @@ assert.ok(coreNames.includes('list_memories'));
 assert.ok(coreNames.includes('search_memories'));
 assert.ok(coreNames.includes('get_memory'));
 assert.ok(coreNames.includes('save_memory'));
+assert.ok(coreNames.includes('link_memory_image'));
+assert.strictEqual(_test.rateGroupForTool('link_memory_image'), 'write');
 assert.ok(coreNames.includes('saveKnowledgeMemory'));
 assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
@@ -827,7 +829,7 @@ assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 'running' }, {}), 'running');
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => null }, {}), null);
 assert.ok(coreNames.includes('update_meal_images'));
-assert.strictEqual(coreNames.length, 106);
+assert.strictEqual(coreNames.length, 107);
 assert.ok(coreNames.includes('ledge'));
 assert.ok(coreNames.includes('generate_nax_tag'));
 assert.ok(coreNames.includes('delete_nax_tag'));

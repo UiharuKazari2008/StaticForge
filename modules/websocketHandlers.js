@@ -449,6 +449,8 @@ class WebSocketMessageHandlers {
             'delete_knowledge_memories_bulk',
             'delete_knowledge_memories_by_filter',
             'update_knowledge_memory',
+            'link_memory_image',
+            'unlink_memory_image',
             'cancel_pending_requests',
             'cancel_session_pending_requests',
             'get_api_key_services',

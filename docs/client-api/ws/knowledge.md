@@ -15,6 +15,12 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `get_knowledge_memory` | `get_knowledge_memory_response` | session | Handler: handleGetKnowledgeMemory |
 | `list_knowledge_memories` | `list_knowledge_memories_response` | session | Handler: handleListKnowledgeMemories |
 | `update_knowledge_memory` | `update_knowledge_memory_response` | admin/destructive | Handler: handleUpdateKnowledgeMemory |
+| `search_knowledge_memories_fast` | `search_knowledge_memories_fast_response` | session | FTS search; opens a memory for review |
+| `get_memory_mind_map` | `get_memory_mind_map_response` | session | Nodes and edges: category, shared tags, references, links |
+| `list_memory_image_links` | `list_memory_image_links_response` | session | Links for a memory, optional revision |
+| `get_memory_revision_images` | `get_memory_revision_images_response` | session | Per-revision images for DSAP |
+| `link_memory_image` | `link_memory_image_response` | admin/destructive | Manual image link |
+| `unlink_memory_image` | `unlink_memory_image_response` | admin/destructive | Remove one image link |
 
 ## Response envelope
 

@@ -31,7 +31,7 @@ const MODULE_DEFS = {
             'list_clients', 'bind_session', 'apply_studio_changes', 'print_studio', 'run_client_js', 'inspect_elements',
             'update_client', 'restart_client',
             'get_linkxi_persona', 'save_linkxi_persona',
-            'get_prompt_guide', 'list_memories', 'search_memories', 'get_memory', 'save_memory',
+            'get_prompt_guide', 'list_memories', 'search_memories', 'get_memory', 'save_memory', 'link_memory_image',
             'upscale_image', 'expand_image'
         ]
     },

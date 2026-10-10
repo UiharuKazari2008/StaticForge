@@ -1523,7 +1523,7 @@ const TOOL_DEFS = [
     {
         name: 'save_memory',
         core: true,
-        description: 'MCP write — the ONLY way to persist a Dreamscape knowledge memory (the living rules you write after a gen). Alias saveKnowledgeMemory (old paid API). Grok Memory / "I will remember" does not upsert. Same name = UPDATE (refine). SAVE after you try something: what worked, what failed, even when it broke a guide note. (1) Rendering techniques, (2) Character-specific mods, (3) Character traits/patterns, (4) Scenario approaches, (5) Token/tag combos, (6) Tag preferences. The person is user_vibe and user_interests (category taste). get_memory first: observations you send replace the list. Self-contained snake_case names (e.g. miku_hatsune_hair_rendering) — a later session will not have this chat. New=10%; refinement adds 0–25% (max 100%). Omit unchanged graph fields. Set model (v5 default; existing rows keep their stored model).',
+        description: 'MCP write — the ONLY way to persist a Dreamscape knowledge memory (the living rules you write after a gen). Alias saveKnowledgeMemory (old paid API). Grok Memory / "I will remember" does not upsert. Same name = UPDATE (refine). SAVE after you try something: what worked, what failed, even when it broke a guide note. (1) Rendering techniques, (2) Character-specific mods, (3) Character traits/patterns, (4) Scenario approaches, (5) Token/tag combos, (6) Tag preferences. The person is user_vibe and user_interests (category taste). get_memory first: observations you send replace the list. Self-contained snake_case names (e.g. miku_hatsune_hair_rendering) — a later session will not have this chat. New=10%; refinement adds 0–25% (max 100%). Omit unchanged graph fields. Set model (v5 default; existing rows keep their stored model). Images generated in this session since the previous save_memory are linked to the new revision automatically — do not call link_memory_image for those.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1539,6 +1539,23 @@ const TOOL_DEFS = [
                 confidence: { type: 'number', description: 'On create ignored (starts 0.1). On refine, added to current confidence, capped at +0.25 per save.' },
                 model: { type: 'string', description: 'Studio forge model this memory applies to (v5, v4_5, v5_cur, …). Default v5.' },
                 reason: { type: 'string', description: 'Optional. Old API required this; stored only if you also put evidence in observations.' }
+            }
+        }
+    },
+    {
+        name: 'link_memory_image',
+        core: true,
+        description: 'Manually link a gallery image to a knowledge memory revision. Images generated in this session since the previous save_memory are already linked when you save_memory — use this only for an older file or a picture from another session. Defaults to the current revision.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['memory', 'image'],
+            properties: {
+                memory: { type: 'string', description: 'Knowledge memory name' },
+                image: { type: 'string', description: 'Gallery filename or image id' },
+                note: { type: 'string', description: 'Why this image belongs on the memory' },
+                revision: { type: 'number', description: 'Revision to attach. Omit for the current revision.' }
             }
         }
     },
@@ -5343,11 +5360,56 @@ function collectMemoryNames(input) {
     return names;
 }
 
-function runMemoryTool(globalResources, name, input) {
+function noteMcpSessionImages(globalResources, req, filenames, createdAtMs) {
+    const sessionId = resolveBindKey(req);
+    if (!sessionId) return [];
+    const db = resolveKnowledgeMemoryDb(globalResources);
+    if (!db || typeof db.recordSessionGeneratedImage !== 'function') return [];
+    const noted = [];
+    (filenames || []).forEach((imageId) => {
+        if (db.recordSessionGeneratedImage(sessionId, imageId, createdAtMs)) noted.push(imageId);
+    });
+    return noted;
+}
+
+function autoLinkSessionImages(db, sessionId, memoryName, revision, nowMs) {
+    if (!sessionId || revision == null) return [];
+    if (typeof db.takeSessionImagesSinceLastSave !== 'function' || typeof db.linkMemoryImage !== 'function') {
+        return [];
+    }
+    const imageIds = db.takeSessionImagesSinceLastSave(sessionId, nowMs);
+    imageIds.forEach((imageId) => {
+        db.linkMemoryImage({
+            memoryName,
+            imageId,
+            revision,
+            sessionId,
+            source: 'auto'
+        });
+    });
+    return imageIds;
+}
+
+function runMemoryTool(globalResources, name, input, ctx) {
     name = canonMemoryTool(name);
     const db = resolveKnowledgeMemoryDb(globalResources);
     if (!db) {
         return { success: false, error: 'Knowledge memory database is not ready' };
+    }
+    const sessionId = ctx && ctx.sessionId ? String(ctx.sessionId) : null;
+    const nowMs = ctx && ctx.nowMs != null ? Number(ctx.nowMs) : Date.now();
+    if (name === 'link_memory_image') {
+        if (typeof db.linkMemoryImage !== 'function') {
+            return { success: false, error: 'Memory image links are not available' };
+        }
+        return db.linkMemoryImage({
+            memory: input.memory || input.name,
+            image: input.image || input.imageId || input.filename,
+            note: input.note,
+            revision: input.revision,
+            sessionId,
+            source: 'manual'
+        });
     }
     if (name === 'list_memories') {
         const paged = db.listKnowledgeMemoriesPaged({
@@ -5426,14 +5488,18 @@ function runMemoryTool(globalResources, name, input) {
         input.relations !== undefined ? input.relations : ((existing && existing.relations) || []),
         input.observations !== undefined ? input.observations : ((existing && existing.observations) || []),
         confidence,
-        model
+        model,
+        sessionId ? { sessionId } : null
     );
+    const linkedImages = autoLinkSessionImages(db, sessionId, memoryName, saved && saved.revision, nowMs);
     return {
         success: true,
         refined,
         previousConfidence: existing ? existing.confidence : null,
         confidence: saved.confidence,
         model: saved.model,
+        revision: saved.revision,
+        linkedImages,
         needsRefinement: saved.confidence < 0.6,
         memory: saved
     };
@@ -5704,7 +5770,7 @@ function listAdvancedToolDefs(scopes, query, globalResources, options) {
 const ADVANCED_CORE_HINTS = [
     {
         test: (q) => /memor/i.test(q) || /saveknowledgememory|searchknowledgememor|retrieveknowledgememory|listknowledgememor/i.test(q.replace(/[\s_]+/g, '')),
-        names: ['list_memories', 'search_memories', 'get_memory', 'save_memory', 'listKnowledgeMemories', 'searchKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory']
+        names: ['list_memories', 'search_memories', 'get_memory', 'save_memory', 'link_memory_image', 'listKnowledgeMemories', 'searchKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory']
     },
     { test: (q) => /agora|explore|novelai explore|explore gallery/i.test(q), names: ['search_explore', 'count_explore', 'get_explore_post', 'get_explore_image'] },
     { test: (q) => /\bnax\b|top votes|artist tag/i.test(q), names: ['search_nax', 'list_nax_galleries', 'generate_nax_tag', 'delete_nax_tag'] },
@@ -5928,11 +5994,12 @@ async function mcpResultFromGenerationJob(globalResources, job, queue, req, dest
     const result = job.result && typeof job.result === 'object' ? job.result : {};
     const flat = result.flat && typeof result.flat === 'object' ? result.flat : {};
     const merged = { ...snap, ...flat };
-    if (result.success !== false) {
+        if (result.success !== false) {
         const names = collectFilenames({
             filename: merged.filename,
             filenames: merged.filenames
         });
+        noteMcpSessionImages(globalResources, req, names);
         merged.lumen = await maybeOpenGeneratedInLumen(globalResources, req, names);
     }
     return mcpResultFromGenerateFlat(
@@ -6382,8 +6449,10 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'list_memories' || name === 'search_memories' || name === 'get_memory' || name === 'save_memory'
-        || MEMORY_TOOL_ALIASES[name]) {
-        const result = runMemoryTool(globalResources, name, input);
+        || name === 'link_memory_image' || MEMORY_TOOL_ALIASES[name]) {
+        const result = runMemoryTool(globalResources, name, input, {
+            sessionId: resolveBindKey(req)
+        });
         return mcpTextResult(result, !result.success);
     }
 
@@ -6749,12 +6818,13 @@ async function callTool(globalResources, req, name, args) {
             const ready = getApplyGenerateJob(jobId) || applyJob;
             if (ready.status === 'completed' && ready.filename
                 && isApplyJobOwnPrint(globalResources, ready, ready.filename)) {
+                const stageNames = Array.isArray(ready.filenames) ? ready.filenames.filter(Boolean) : [];
+                noteMcpSessionImages(globalResources, req, [ready.filename, ...stageNames]);
                 const imageResult = await callTool(globalResources, req, 'get_generated_image', {
                     filename: ready.filename,
                     workspace: ready.workspaceId,
                     dest_path: pickDestPathInput(input) || ready.destPath
                 });
-                const stageNames = Array.isArray(ready.filenames) ? ready.filenames.filter(Boolean) : [];
                 if (stageNames.length > 1 && imageResult && Array.isArray(imageResult.content) && imageResult.content[0] && imageResult.content[0].text) {
                     try {
                         const meta = JSON.parse(imageResult.content[0].text);
@@ -6892,6 +6962,12 @@ async function callTool(globalResources, req, name, args) {
                         skipGenerationQueue: true
                     });
                     const flat = flattenPacket(packet);
+                    if (packet.success) {
+                        noteMcpSessionImages(globalResources, req, collectFilenames({
+                            filename: flat.filename,
+                            filenames: flat.filenames
+                        }));
+                    }
                     if (packet.success && payload.save_memory) {
                         const title = String(payload.prompt || '').trim().slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'generation_memory';
                         const memoryName = `gen_${Date.now()}_${title}`;
@@ -6907,7 +6983,7 @@ async function callTool(globalResources, req, name, args) {
                                 { content: `Model: ${payload.model || ''}` },
                                 { content: `Seed: ${flat.seed || payload.seed || ''}` }
                             ]
-                        });
+                        }, { sessionId: resolveBindKey(req) });
                         if (memoryResult && memoryResult.success) {
                             flat.saved_memory = memoryResult.memory;
                         }
@@ -6929,6 +7005,12 @@ async function callTool(globalResources, req, name, args) {
 
         const packet = await dispatchPacketTool(globalResources, req, def.packet, payload);
         const flat = flattenPacket(packet);
+        if (packet.success) {
+            noteMcpSessionImages(globalResources, req, collectFilenames({
+                filename: flat.filename,
+                filenames: flat.filenames
+            }));
+        }
         if (packet.success && (name === 'generate_image' || name === 'generate_preset')) {
             const names = collectFilenames({
                 filename: flat.filename,
@@ -6951,7 +7033,7 @@ async function callTool(globalResources, req, name, args) {
                         { content: `Model: ${payload.model || ''}` },
                         { content: `Seed: ${flat.seed || payload.seed || ''}` }
                     ]
-                });
+                }, { sessionId: resolveBindKey(req) });
                 if (memoryResult && memoryResult.success) {
                     flat.saved_memory = memoryResult.memory;
                 }
