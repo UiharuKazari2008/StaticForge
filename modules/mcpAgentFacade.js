@@ -2217,7 +2217,7 @@ const TOOL_DEFS = [
     {
         name: 'vfs_read',
         core: true,
-        description: 'Read a VFS file by path (or systemFileKey / fileId). Small text user files come back inline as text. Binaries and large files return url, plus fsPath vfs/<path> when the vfs/ mount is up (then read it as an ordinary file). System files return their read payload.',
+        description: 'Read a VFS file by path (or systemFileKey / fileId). Text MIME types and .jsonl, .json, .md, .txt, .csv, .yaml, .yml return text inline. offset is a byte offset (default 0); limit is the page size in bytes (default and max 65536). A longer file sets truncated and nextOffset. Binaries return url on the MCP path — GET it with the same MCP credential. When the vfs/ mount is up, fsPath is vfs/<path>. System files return their read payload.',
         scope: 'vfs',
         inputSchema: {
             type: 'object',
@@ -2225,7 +2225,9 @@ const TOOL_DEFS = [
             properties: {
                 path: { type: 'string', description: 'VFS path, e.g. /Workspaces/<id>/Notes/a.txt' },
                 systemFileKey: { type: 'string' },
-                fileId: { type: 'string' }
+                fileId: { type: 'string' },
+                offset: { type: 'number', description: 'Byte offset into a text file (default 0)' },
+                limit: { type: 'number', description: 'Max text bytes to return (default and max 65536)' }
             }
         }
     },
@@ -4879,8 +4881,18 @@ async function runDirectorSessionTool(globalResources, name, input, req) {
 
 const VFS_PATH_TOOLS = new Set(['vfs_read', 'vfs_stat', 'vfs_mkdir', 'vfs_rename', 'vfs_move', 'vfs_copy', 'vfs_write', 'vfs_delete']);
 const VFS_TEXT_INLINE_MAX_BYTES = 64 * 1024;
+const VFS_TEXT_UTF8_LOOKAHEAD = 3;
 const VFS_SOURCE_MAX_BYTES = 64 * 1024 * 1024;
-const VFS_TEXT_MIME = /^(text\/|application\/(json|xml|javascript|yaml|x-yaml|toml|x-sh)\b)/i;
+const VFS_TEXT_MIME = /^(text\/|application\/(jsonl|json|x-ndjson|ndjson|xml|javascript|yaml|x-yaml|csv|toml|x-sh)\b)/i;
+const VFS_TEXT_BY_EXT = {
+    '.jsonl': 'application/x-ndjson',
+    '.json': 'application/json',
+    '.md': 'text/markdown',
+    '.txt': 'text/plain',
+    '.csv': 'text/csv',
+    '.yaml': 'application/yaml',
+    '.yml': 'application/yaml'
+};
 const VFS_MIME_BY_EXT = {
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
@@ -4893,6 +4905,7 @@ const VFS_MIME_BY_EXT = {
     '.csv': 'text/csv',
     '.html': 'text/html',
     '.json': 'application/json',
+    '.jsonl': 'application/x-ndjson',
     '.yaml': 'application/yaml',
     '.yml': 'application/yaml',
     '.pdf': 'application/pdf',
@@ -5007,13 +5020,197 @@ function vfsRenamePacket(item, name) {
     return null;
 }
 
-async function readVfsUserFileText(globalResources, item) {
-    const size = Number(item.size) || 0;
-    const mime = String(item.mimeType || VFS_MIME_BY_EXT[path.extname(String(item.name || '')).toLowerCase()] || '');
-    if (!VFS_TEXT_MIME.test(mime) || size > VFS_TEXT_INLINE_MAX_BYTES) return null;
-    const file = await globalResources.getVfsDatabase().getUserFileById(item.targetId || item.id);
-    if (!file || !file.content_hash) return null;
-    return fs.promises.readFile(globalResources.getVfsManager().getFileBlobPath(file.content_hash), 'utf8');
+function vfsStoredMime(value) {
+    return String(value || '').split(';')[0].trim();
+}
+
+function isVfsTextMime(mime) {
+    return VFS_TEXT_MIME.test(vfsStoredMime(mime));
+}
+
+function vfsInlineTextMime(item) {
+    const name = String((item && (item.name || item.original_name)) || '');
+    const ext = path.extname(name).toLowerCase();
+    const stored = vfsStoredMime(item && (item.mimeType || item.mime_type));
+    if (VFS_TEXT_BY_EXT[ext]) {
+        if (stored && isVfsTextMime(stored) && !/^application\/octet-stream$/i.test(stored)) return stored;
+        return VFS_TEXT_BY_EXT[ext];
+    }
+    if (stored && isVfsTextMime(stored)) return stored;
+    const fromExt = VFS_MIME_BY_EXT[ext];
+    if (fromExt && isVfsTextMime(fromExt)) return fromExt;
+    return null;
+}
+
+function clampVfsTextWindow(input, fileSize) {
+    const size = Math.max(0, Number(fileSize) || 0);
+    let offset = Number(input && input.offset);
+    if (!Number.isFinite(offset) || offset < 0) offset = 0;
+    offset = Math.min(size, Math.floor(offset));
+    let limit = Number(input && input.limit);
+    if (!Number.isFinite(limit) || limit <= 0) limit = VFS_TEXT_INLINE_MAX_BYTES;
+    limit = Math.min(VFS_TEXT_INLINE_MAX_BYTES, Math.floor(limit));
+    const length = Math.min(limit, Math.max(0, size - offset));
+    const lookahead = Math.min(VFS_TEXT_UTF8_LOOKAHEAD, Math.max(0, size - offset - length));
+    return { offset, limit, length, lookahead, size };
+}
+
+function utf8SequenceLength(lead) {
+    if ((lead & 0x80) === 0x00) return 1;
+    if ((lead & 0xe0) === 0xc0) return 2;
+    if ((lead & 0xf0) === 0xe0) return 3;
+    if ((lead & 0xf8) === 0xf0) return 4;
+    return 1;
+}
+
+function extendUtf8End(buf, start, requestedEnd) {
+    if (requestedEnd <= start) return start;
+    let i = requestedEnd - 1;
+    let cont = 0;
+    while (i > start && cont < 3 && (buf[i] & 0xc0) === 0x80) {
+        cont += 1;
+        i -= 1;
+    }
+    if (i < start) return requestedEnd;
+    const lead = buf[i];
+    if ((lead & 0xc0) === 0x80) return requestedEnd;
+    const need = utf8SequenceLength(lead);
+    const have = requestedEnd - i;
+    if (have >= need) return requestedEnd;
+    const full = i + need;
+    if (full <= buf.length) return full;
+    return i;
+}
+
+function sliceUtf8Window(buf, fileOffset, fileSize, requestedLength) {
+    const size = Math.max(0, Number(fileSize) || 0);
+    const bytes = Buffer.isBuffer(buf) ? buf : Buffer.alloc(0);
+    let start = 0;
+    if (fileOffset > 0) {
+        while (start < bytes.length && (bytes[start] & 0xc0) === 0x80) start += 1;
+    }
+    const ask = Math.max(0, Number(requestedLength) || 0);
+    const requestedEnd = Math.min(bytes.length, start + ask);
+    const end = extendUtf8End(bytes, start, requestedEnd);
+    const next = fileOffset + end;
+    const truncated = next < size;
+    return {
+        text: bytes.subarray(start, end).toString('utf8'),
+        offset: fileOffset + start,
+        bytes: end - start,
+        truncated,
+        nextOffset: truncated ? next : undefined
+    };
+}
+
+function safeVfsFileId(raw) {
+    const id = String(raw || '').trim();
+    if (!id || id.length > 200) return null;
+    if (!/^[A-Za-z0-9._-]+$/.test(id)) return null;
+    return id;
+}
+
+function buildMcpVfsFileUrl(globalResources, fileId) {
+    const id = safeVfsFileId(fileId);
+    if (!id) return null;
+    let uuid = '';
+    try {
+        uuid = globalResources && typeof globalResources.getMcpPathUuid === 'function'
+            ? String(globalResources.getMcpPathUuid() || '')
+            : '';
+    } catch (_err) {
+        uuid = '';
+    }
+    if (!uuid) return null;
+    return `${resolveMcpPublicBaseUrl(globalResources)}/${uuid}/vfs/files/${encodeURIComponent(id)}`;
+}
+
+async function readVfsUserFileText(globalResources, item, input) {
+    const fileId = item && (item.targetId || item.id);
+    const file = await globalResources.getVfsDatabase().getUserFileById(fileId);
+    const named = {
+        name: (file && file.original_name) || (item && item.name) || '',
+        mimeType: (file && file.mime_type) || (item && item.mimeType) || ''
+    };
+    const mimeType = vfsInlineTextMime(named);
+    if (!mimeType) return null;
+    if (!file || !file.content_hash) {
+        return { error: 'File content is missing', mimeType, name: named.name };
+    }
+    const blobPath = globalResources.getVfsManager().getFileBlobPath(file.content_hash);
+    let stat;
+    try {
+        stat = await fs.promises.stat(blobPath);
+    } catch (_err) {
+        return { error: 'File blob missing', mimeType, name: named.name };
+    }
+    if (!stat.isFile()) return { error: 'File blob missing', mimeType, name: named.name };
+    const window = clampVfsTextWindow(input, stat.size);
+    const readLength = window.length + window.lookahead;
+    let chunk = Buffer.alloc(0);
+    if (readLength > 0) {
+        const fh = await fs.promises.open(blobPath, 'r');
+        try {
+            const buf = Buffer.alloc(readLength);
+            const got = await fh.read(buf, 0, readLength, window.offset);
+            chunk = buf.subarray(0, got.bytesRead);
+        } finally {
+            await fh.close();
+        }
+    }
+    const sliced = sliceUtf8Window(chunk, window.offset, stat.size, window.length);
+    return {
+        mimeType,
+        name: named.name,
+        size: stat.size,
+        ...sliced
+    };
+}
+
+async function handleMcpVfsFileDownload(globalResources, req, res) {
+    const scopes = req.applicationAuth && req.applicationAuth.applicationScopes;
+    if (Array.isArray(scopes) && scopes.length > 0 && !scopes.includes('vfs') && !scopes.includes('universal')) {
+        return res.status(403).json({ success: false, error: 'Access denied', code: 'INSUFFICIENT_SCOPE' });
+    }
+    const fileId = safeVfsFileId(req.params && req.params.fileId);
+    if (!fileId) return res.status(400).json({ success: false, error: 'Invalid file id' });
+    const vfsDb = globalResources.getVfsDatabase();
+    const file = await vfsDb.getUserFileById(fileId);
+    if (!file || file.trashed_at) return res.status(404).json({ success: false, error: 'File not found' });
+    const workspaceExists = (id) => {
+        try {
+            const workspaces = globalResources.getWorkspaceManager().getWorkspaces();
+            return !!(workspaces && workspaces[id]);
+        } catch (_err) {
+            return false;
+        }
+    };
+    if (typeof vfsDb.canSessionAccessVfsFile === 'function') {
+        const session = {
+            userType: req.userType || (req.applicationAuth && req.applicationAuth.userType) || 'admin',
+            applicationScopes: scopes
+        };
+        if (!vfsDb.canSessionAccessVfsFile(session, file, { workspaceExists })) {
+            return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+    }
+    if (!file.content_hash) return res.status(404).json({ success: false, error: 'File blob missing' });
+    const blobPath = globalResources.getVfsManager().getFileBlobPath(file.content_hash);
+    if (!fs.existsSync(blobPath)) return res.status(404).json({ success: false, error: 'File blob missing' });
+    const filename = encodeURIComponent(file.original_name || 'file');
+    res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Length', String(fs.statSync(blobPath).size));
+    const stream = fs.createReadStream(blobPath);
+    stream.on('error', () => {
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: 'File download failed' });
+        } else {
+            res.destroy();
+        }
+    });
+    return stream.pipe(res);
 }
 
 async function callVfsTool(globalResources, req, name, input) {
@@ -5161,24 +5358,66 @@ async function callVfsTool(globalResources, req, name, input) {
             }));
         }
         if (item && (item.targetKind || item.kind) === 'user-file') {
-            const text = await readVfsUserFileText(globalResources, item).catch(() => null);
-            if (text != null) {
-                return mcpTextResult({ success: true, path: vfsPath, name: item.name || null, mimeType: item.mimeType || null, size: item.size || null, text });
+            const fileId = item.targetId || item.id;
+            let inline = null;
+            try {
+                inline = await readVfsUserFileText(globalResources, item, input);
+            } catch (err) {
+                return mcpTextResult({
+                    success: false,
+                    path: vfsPath,
+                    name: item.name || null,
+                    error: (err && err.message) || 'Could not read file'
+                }, true);
             }
-            const packet = await dispatchPacketTool(globalResources, req, 'vfs_download_file', { fileId: item.targetId || item.id });
-            const downloadUrl = packet.success && packet.data ? packet.data.downloadUrl : null;
+            if (inline && inline.error) {
+                return mcpTextResult({
+                    success: false,
+                    path: vfsPath,
+                    name: inline.name || item.name || null,
+                    mimeType: inline.mimeType || null,
+                    error: inline.error
+                }, true);
+            }
+            if (inline) {
+                return mcpTextResult({
+                    success: true,
+                    path: vfsPath,
+                    name: inline.name || item.name || null,
+                    mimeType: inline.mimeType,
+                    size: inline.size,
+                    text: inline.text,
+                    offset: inline.offset,
+                    bytes: inline.bytes,
+                    truncated: inline.truncated,
+                    nextOffset: inline.nextOffset,
+                    next: inline.truncated
+                        ? `Text continues. Call vfs_read again with offset ${inline.nextOffset}.`
+                        : undefined
+                });
+            }
+            const url = buildMcpVfsFileUrl(globalResources, fileId);
             const mountState = await readVfsMountState();
+            let row = null;
+            try {
+                row = await globalResources.getVfsDatabase().getUserFileById(fileId);
+            } catch (_err) {
+                row = null;
+            }
             return mcpTextResult({
-                success: !!downloadUrl,
+                success: !!url,
                 path: vfsPath,
-                name: item.name || null,
-                mimeType: item.mimeType || null,
-                size: item.size || null,
-                url: downloadUrl ? `${resolveMcpPublicBaseUrl(globalResources)}${downloadUrl}` : null,
+                name: (row && row.original_name) || item.name || null,
+                mimeType: (row && row.mime_type) || item.mimeType || null,
+                size: row && row.size != null ? row.size : (item.size || null),
+                url,
                 fsPath: vfsPath ? vfsFsPath(vfsPath, mountState) : undefined,
                 vfsMount: mountState,
-                error: downloadUrl ? undefined : (packet.error || 'Could not build a download url')
-            }, !downloadUrl);
+                next: url
+                    ? 'GET url with the same MCP credential (Authorization: Bearer or X-StaticForge-App-Key).'
+                    : undefined,
+                error: url ? undefined : 'Could not build a download url'
+            }, !url);
         }
         return mcpTextResult(await dispatchPacketTool(globalResources, req, 'vfs_read_system_file', {
             systemFileKey: input.systemFileKey || input.path,
@@ -8570,6 +8809,24 @@ function registerRoutes(app, { globalResources }) {
         res.setHeader('Access-Control-Allow-Origin', '*');
         return res.status(200).send(row.bytes);
     });
+
+    const vfsFileLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: 120,
+        keyGenerator: (req) => `mcp-vfs-file:${ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'unknown')}`,
+        standardHeaders: true,
+        legacyHeaders: false
+    });
+    app.options(`${prefix}/vfs/files/:fileId`, mcpMiddleware);
+    app.get(`${prefix}/vfs/files/:fileId`, mcpMiddleware, mcpAuth, vfsFileLimiter, async (req, res) => {
+        try {
+            await handleMcpVfsFileDownload(globalResources, req, res);
+        } catch (_err) {
+            if (!res.headersSent) {
+                res.status(500).json({ success: false, error: 'File download failed' });
+            }
+        }
+    });
 }
 
 module.exports = {
@@ -8691,6 +8948,13 @@ module.exports = {
         resolveDirectorSourcePath,
         readVfsMountState,
         statVfsMount,
+        vfsInlineTextMime,
+        clampVfsTextWindow,
+        sliceUtf8Window,
+        readVfsUserFileText,
+        buildMcpVfsFileUrl,
+        handleMcpVfsFileDownload,
+        VFS_TEXT_INLINE_MAX_BYTES,
         TAG_CUTOFF,
         buildTagCutoff
     }

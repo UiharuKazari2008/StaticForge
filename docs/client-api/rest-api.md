@@ -865,6 +865,7 @@ Full contract: [mcp-connector.md](./mcp-connector.md).
 | POST | `/{uuid}/mcp` | Same handler |
 | OPTIONS | same | CORS preflight |
 | GET | same | `405` |
+| GET | `/{uuid}/vfs/files/:fileId` | Stream one VFS user-file blob. Same MCP auth as the JSON-RPC routes (`401` without it). Scope `vfs` or `universal`. `vfs_read` returns this URL for binaries. |
 
 Tools wrap existing `/agent/packet`, `/agent/clients`, `/agent/bind`, `/agent/session/studio`. Named scopes. No parallel generate API.
 

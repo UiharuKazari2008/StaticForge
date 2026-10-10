@@ -92,7 +92,7 @@ Paths are display paths from the VFS root (`/`, `/@desktop`, `/Workspaces/<id>/P
 
 `vfs_delete` moves to the workspace **Trash** (restorable). It is not a permanent delete; nothing in this tool set is.
 
-`vfs_read` on a user file returns `text` inline for text-like mimes up to 64 KB; otherwise `url` (download) and, when the Director `vfs/` mount is live, `fsPath` (`vfs/<path>`) plus `vfsMount`.
+`vfs_read` on a user file returns `text` inline for text MIME types and for `.jsonl`, `.json`, `.md`, `.txt`, `.csv`, `.yaml`, `.yml` (including when the stored type is `application/octet-stream`). `offset` is a byte offset (default 0) and `limit` is the page size (default and max 64 KB). A longer file sets `truncated` and `nextOffset`. Binaries return `url` on `GET /{mcpPathUuid}/vfs/files/:fileId`, which accepts the same MCP credential as the tool call (`Authorization: Bearer` or `X-StaticForge-App-Key`). When the Director `vfs/` mount is live, the result also includes `fsPath` (`vfs/<path>`) plus `vfsMount`.
 
 `get_session_state` always includes `tagCutoff` (offline tag-suggest date cutoff per model family: `v4_5` / `v5` `through` dates, plus `model` / `active` when Studio has a model — read it, do not assume a date) and `vfsPath` (`vfs`) / `vfsMount` (`mounted` | `absent` | `unknown` for the Director `vfs/` files mount, cached 15s). If `vfsMount` is `mounted`, the Director computer can read `vfs/…` directly; the MCP vfs tools still work either way.
 
