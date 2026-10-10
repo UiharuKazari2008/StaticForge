@@ -145,7 +145,7 @@ class StageResultsReviewManager {
             addResizeHandles(this.element);
         }
 
-        document.getElementById('stageResultsReviewCloseBtn').addEventListener('click', () => {
+        document.getElementById('stageResultsReviewCloseBtn')?.addEventListener('click', () => {
             closeModal(this.element);
         });
         this.gallery.addEventListener('click', (event) => this.onGalleryClick(event));

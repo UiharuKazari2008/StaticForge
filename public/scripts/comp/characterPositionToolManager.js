@@ -38,7 +38,7 @@ class CharacterPositionToolManager {
             addResizeHandles(this.element);
         }
 
-        document.getElementById('characterPositionToolCloseBtn').addEventListener('click', () => {
+        document.getElementById('characterPositionToolCloseBtn')?.addEventListener('click', () => {
             void closeModal(this.element);
         });
         const toolBtn = document.getElementById('characterPositionsToolBtn');

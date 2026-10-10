@@ -13,7 +13,7 @@ class GenerationUsageToolManager {
             if (!this.element.querySelector('.resize-handle')) {
                 addResizeHandles(this.element);
             }
-            document.getElementById('generationUsageCloseBtn').addEventListener('click', () => {
+            document.getElementById('generationUsageCloseBtn')?.addEventListener('click', () => {
                 void closeModal(this.element);
             });
         }
