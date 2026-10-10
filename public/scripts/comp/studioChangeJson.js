@@ -51,7 +51,7 @@ Rules:
 - presetName: the Studio name field. It is the file label. Set it when the concept changes. Do not ask them to rename.
 - params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / bake_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
 - dataset_config: include (replace list), bias, settings (e.g. settings.__quality__.no_text.enabled false for in-image text; keep append_quality on), nsfw, nsfw_bias. Echoed on GET /agent/session/state.
-- text_overlays: array of {text, type, target, stages, disabled}. On-image speech, thought, and captions. Replaces the Studio text list. One row per target. Several lines in that row are separated by a blank line and compile to one Text: with the type tags written once in front. Do not add a row per line and do not paste "Text:" into the prompt. Separate bubbles in different places are character slots: the line in double quotes, a blank line, a placement phrase (on the left, / on the right,), and position {x, y}. The full script stays in the one overlay. Judge the print against the compiled prompt; edit this array and the input prompt, not the compiled string.
+- text_overlays: array of {text, type, customText, target, stages, disabled}. type is a display style id (speech, thought, caption, shout, whisper, neon, sign, …, custom). subtitle is an alias of caption. custom injects customText (Danbooru-style tags such as "english text, neon sign") instead of a preset. Empty customText injects no display tag; the letters still compile through Text:. Weighted legacy forms (2.0::english text, speech bubble:: and 2.0::english text, 3.0::caption, subtitle::) still resolve. Replaces the Studio text list. One row per target. Several lines in that row are separated by a blank line and compile to one Text: with the display tags written once in front. Do not add a row per line and do not paste "Text:" into the prompt. Separate bubbles in different places are character slots: the line in double quotes, a blank line, a placement phrase (on the left, / on the right,), and position {x, y}. The full script stays in the one overlay. Judge the print against the compiled prompt; edit this array and the input prompt, not the compiled string. The type enum on generate_image / apply_studio_changes lists every style id.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
 - params.effort: high or medium. V5 Full only. medium is Drafting: steps lock to 14, sampler to Euler Ancestral, rescale off. Custom undesired content is not sent. Token accounting counts the Heavy preset only. Guidance still applies.
@@ -956,7 +956,10 @@ function buildOpsFromPayload(payload) {
             label: 'Text overlays',
             detail: payload.text_overlays.length ? `${payload.text_overlays.length} row${payload.text_overlays.length === 1 ? '' : 's'}` : 'Clear text overlays',
             fromValue: null,
-            toValue: payload.text_overlays,
+            toValue: payload.text_overlays.map((row) => (
+                // normalizeTextOverlayRow: public/scripts/comp/textDisplayStyles.js
+                typeof normalizeTextOverlayRow === 'function' ? normalizeTextOverlayRow(row) : row
+            )),
             enabled: true,
             unchanged: false
         });

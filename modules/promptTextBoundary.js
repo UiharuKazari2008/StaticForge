@@ -2,6 +2,8 @@
  * V5 overlay delimiter `Text:` — match any case, but not substrings like `context:`.
  */
 
+const { tagsForTextOverlay, resolveTextDisplayStyle } = require('../public/scripts/comp/textDisplayStyles');
+
 const TEXT_COLON_LEN = 5;
 
 function findTextColonIndex(text) {
@@ -99,6 +101,12 @@ function textOverlayTagEmphasis(textLength) {
  * Several lines join with a blank line. One overlay keeps its own newlines.
  * applyBias(tags, emphasis) is imageGeneration.applyBiasToText.
  */
+function overlayTypeKey(overlay) {
+    const raw = overlay && overlay.type != null && String(overlay.type).trim() !== '' ? overlay.type : 'speech';
+    const resolved = resolveTextDisplayStyle(raw);
+    return resolved ? resolved.id : String(raw);
+}
+
 function compileTextOverlayAppend(overlays, textTags, applyBias, wrapDisplayText) {
     const lines = [];
     const typeOrder = [];
@@ -110,7 +118,7 @@ function compileTextOverlayAppend(overlays, textTags, applyBias, wrapDisplayText
         if (!text) continue;
         // wrapDisplayText: protectKeyboardDisplayText (exempt from the prompt fold)
         lines.push(typeof wrapDisplayText === 'function' ? wrapDisplayText(text) : text);
-        const type = overlay.type || 'speech';
+        const type = overlayTypeKey(overlay);
         if (!typeTexts[type]) {
             typeTexts[type] = [];
             typeOrder.push(type);
@@ -118,17 +126,25 @@ function compileTextOverlayAppend(overlays, textTags, applyBias, wrapDisplayText
         typeTexts[type].push(text);
     }
     if (!lines.length) return '';
-    const tagsByType = textTags && typeof textTags === 'object' ? textTags : {};
     const tagParts = [];
     for (let i = 0; i < typeOrder.length; i++) {
         const type = typeOrder[i];
-        const spec = tagsByType[type];
-        const tags = (spec && spec.tags) || 'english text, speech bubble';
+        const sameType = list.filter((overlay) => overlayTypeKey(overlay) === type);
+        const sources = sameType.length ? sameType : [{ type }];
+        const parts = [];
+        sources.forEach((overlay) => {
+            const part = tagsForTextOverlay(overlay, textTags);
+            if (part && parts.indexOf(part) === -1) parts.push(part);
+        });
+        const tags = parts.join(', ');
+        if (!tags) continue;
         const emphasis = textOverlayTagEmphasis(typeTexts[type].join('\n\n').length);
         const emphasized = typeof applyBias === 'function' ? applyBias(tags, emphasis) : tags;
         tagParts.push(emphasized);
     }
-    return `, ${tagParts.join(', ')}, Text: ${lines.join('\n\n')}`;
+    const body = lines.join('\n\n');
+    if (!tagParts.length) return `, Text: ${body}`;
+    return `, ${tagParts.join(', ')}, Text: ${body}`;
 }
 
 function qualityPresetStripCandidates(qualityValue) {

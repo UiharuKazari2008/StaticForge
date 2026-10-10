@@ -4585,6 +4585,17 @@ button::-moz-focus-inner {
     font-family: var(--font-quinary);
 }
 
+.text-overlay-type-menu {
+    min-width: 220px;
+}
+
+.text-overlay-custom-display {
+    width: calc(100% - 8px);
+    margin: 4px 4px 0;
+    box-sizing: border-box;
+    font-size: 0.85em;
+}
+
 /* Creative directive container should use normal prompt styling */
 .prompt-textarea-container.creative-directive-container {
     min-height: 80px;

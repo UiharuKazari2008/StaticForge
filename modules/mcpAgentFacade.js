@@ -60,6 +60,11 @@ const { buildMcpServerInfo, hashMcpToolsRevision, resolveMcpPublicBaseUrl } = re
 const { V45_CUTOFF_MS, V5_CUTOFF_MS, isV5SuggestModel } = require('./tagModelCutoff');
 const { MCP_INSTRUCTIONS } = require('./mcpInstructions');
 const {
+    textDisplayStyleEnum,
+    textDisplayStyleListText,
+    textOverlayExtractPattern
+} = require('../public/scripts/comp/textDisplayStyles');
+const {
     lookupRunningSessionWorkspace,
     scopeWriteWorkspace,
     studioWriteAllowed
@@ -300,6 +305,32 @@ const WORKSPACE_PLACEMENT_SCHEMA = {
     description: 'Workspace id. Pass the folder they named, or the folder that already holds the source / this job\'s gens. Do not copy the bound Studio tab just because it is focused. Omit is unsafe: the server may fall back to that tab or default. A paired Director session ignores this and writes to that session workspace.'
 };
 
+const TEXT_OVERLAY_ITEM_SCHEMA = {
+    type: 'object',
+    additionalProperties: true,
+    properties: {
+        text: { type: 'string', description: 'Letters to draw. Do not include Text:.' },
+        type: {
+            type: 'string',
+            enum: textDisplayStyleEnum(),
+            description: 'How the text is shown. This enum is the full style catalog. subtitle is an alias of caption. custom injects customText instead of a preset. Empty customText injects no display tag (the letters still compile through Text:). Weighted legacy forms such as 2.0::english text, speech bubble:: still resolve.'
+        },
+        customText: {
+            type: 'string',
+            description: 'Danbooru-style display tags when type is custom (example: english text, neon sign). Empty or omitted with type custom injects no display tag.'
+        },
+        target: { type: 'number', description: '0 = base prompt, 1+ = character slot.' },
+        stages: { type: 'array', items: { type: 'string' }, description: 'Pipeline stage hex ids, 00, or all.' },
+        disabled: { type: 'boolean' }
+    }
+};
+
+const TEXT_OVERLAYS_SCHEMA = {
+    type: 'array',
+    description: 'On-image text rows. Replaces the Studio text list. type is a display style id; the enum lists every style. custom plus customText sets the injected display tags (Danbooru-style, for example english text, neon sign). Empty customText injects no display tag and the model decides how the letters are shown. One row per target; separate lines with a blank line. They compile to one Text: with the display tags once in front. Do not add a row per line and do not put Text: in the prompt. Separate bubbles are character slots: quoted line, blank line, placement phrase (on the left, / on the right,), and position {x, y}. The full script stays in the one overlay. Styles: ' + textDisplayStyleListText(),
+    items: TEXT_OVERLAY_ITEM_SCHEMA
+};
+
 const GENERATE_IMAGE_PROPERTIES = {
     prompt: { type: 'string', description: 'Positive prompt. If append_quality is true, do not also paste the quality preset string — the server prepends it.' },
     uc: { type: 'string', description: 'Undesired content. If append_uc > 0, do not also paste that UC preset string — the server prepends it.' },
@@ -324,6 +355,7 @@ const GENERATE_IMAGE_PROPERTIES = {
     use_coords: { type: 'boolean' },
     expanders: { type: 'array', description: 'Request !prefix text replacements' },
     text_replacements: { type: 'array' },
+    text_overlays: TEXT_OVERLAYS_SCHEMA,
     vSlider: {
         type: 'array',
         description: 'Intensity widgets (slider/xypad/star/dropdown). Prefer over static expanders when they ask for sliders.'
@@ -390,7 +422,7 @@ const TOOL_DEFS = [
     {
         name: 'generate_image',
         core: true,
-        description: 'Generate on the server. Always returns jobId, allocated before the wait. Default waits on the shared generation FIFO (Studio uses the same stack; 8–20s gap after each job) and returns filename plus a Grok-sized webp (tool channel) and dest_path / bytes / mime / url (no pixels in the JSON). If that wait times out, the response is the same jobId so await_generation_job can continue — there is no generate_image response without a jobId. imageUrl is the original gallery PNG behind the same MCP credential and does not expire; url is only the short-lived grok webp (about 15 min). Pass dest_path (default artifacts/<filename>.webp) then render_file /home/workdir/artifacts/… after curling url if the sandbox file is missing. wrote:false reason remote-sandbox means the caller sandbox was not written; the PNG is still saved in the gallery at imageUrl. async true returns jobId immediately — then get_generation_job or await_generation_job with the same dest_path. list_generation_requests lists past jobs. Full Studio settings (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, n, …) as top-level keys or inside params. n (2–8) is print copies. Paid Anlas/Opus (upscale, expand, large/xlarge/wallpaper) requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. dynamicGeneration enabled:false or omit does not compile and does not 500. Unintegrated toggles return needsIntegration + resolved and do not enqueue. Not the Studio Generate button (use apply_studio_changes autoGenerate).',
+        description: 'Generate on the server. Always returns jobId, allocated before the wait. Default waits on the shared generation FIFO (Studio uses the same stack; 8–20s gap after each job) and returns filename plus a Grok-sized webp (tool channel) and dest_path / bytes / mime / url (no pixels in the JSON). If that wait times out, the response is the same jobId so await_generation_job can continue — there is no generate_image response without a jobId. imageUrl is the original gallery PNG behind the same MCP credential and does not expire; url is only the short-lived grok webp (about 15 min). Pass dest_path (default artifacts/<filename>.webp) then render_file /home/workdir/artifacts/… after curling url if the sandbox file is missing. wrote:false reason remote-sandbox means the caller sandbox was not written; the PNG is still saved in the gallery at imageUrl. async true returns jobId immediately — then get_generation_job or await_generation_job with the same dest_path. list_generation_requests lists past jobs. Full Studio settings (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, n, …) as top-level keys or inside params. text_overlays sets in-image lettering; type is a display-style id and the enum is the full catalog (including custom; empty customText injects no display tag). n (2–8) is print copies. Paid Anlas/Opus (upscale, expand, large/xlarge/wallpaper) requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. dynamicGeneration enabled:false or omit does not compile and does not 500. Unintegrated toggles return needsIntegration + resolved and do not enqueue. Not the Studio Generate button (use apply_studio_changes autoGenerate).',
         scope: 'generation',
         packet: 'generate_image',
         inputSchema: {
@@ -1004,7 +1036,7 @@ const TOOL_DEFS = [
     {
         name: 'apply_studio_changes',
         core: true,
-        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/vSlider/dynamicGeneration/director (same keys as Studio). prompt and uc work top-level or inside change (change.prompt / change.uc or change.fields {prompt, uc}) — one apply is enough. A params-only change is enough: model, steps, guidance, sampler, and the other param keys may sit in params or on the change object. Do not resend the prompt just to change those. Characters are the `characters` array (action replace + index). `characterPrompts` is accepted and treated as that full list. `overwrite: true` removes Studio character slots that are not in the list, then writes the list. text_overlays, expanders, vibes, and vSlider replace their lists when present, including empty arrays. To roll a new seed set params.seedLock false; do not ask the user to unlock it. vSlider installs interactive intensity widgets (slider/xypad/star/dropdown) — prefer this over static expanders when they ask for sliders. autoGenerate omitted uses Remote Access Settings (default off). To print without changing anything, call print_studio. After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta. Refused when the bound client has in_workspace false: call request_workspace_switch first.',
+        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/vSlider/dynamicGeneration/director (same keys as Studio). text_overlays type is a display-style id; the enum lists every style, including custom (empty customText injects no display tag). prompt and uc work top-level or inside change (change.prompt / change.uc or change.fields {prompt, uc}) — one apply is enough. A params-only change is enough: model, steps, guidance, sampler, and the other param keys may sit in params or on the change object. Do not resend the prompt just to change those. Characters are the `characters` array (action replace + index). `characterPrompts` is accepted and treated as that full list. `overwrite: true` removes Studio character slots that are not in the list, then writes the list. text_overlays, expanders, vibes, and vSlider replace their lists when present, including empty arrays. To roll a new seed set params.seedLock false; do not ask the user to unlock it. vSlider installs interactive intensity widgets (slider/xypad/star/dropdown) — prefer this over static expanders when they ask for sliders. autoGenerate omitted uses Remote Access Settings (default off). To print without changing anything, call print_studio. After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta. Refused when the bound client has in_workspace false: call request_workspace_switch first.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1039,10 +1071,7 @@ const TOOL_DEFS = [
                 prompt_negative: { type: 'string', description: 'Alias of promptNegative.' },
                 expanders: { type: 'array', description: '!prefix text replacements (replaces current list with full bodies if sent; not an ambiguous append)' },
                 text_replacements: { type: 'array' },
-                text_overlays: {
-                    type: 'array',
-                    description: 'On-image speech, thought, and caption rows ({text, type, target, stages, disabled}). Replaces the Studio text list. One row per target; separate lines with a blank line. They compile to one Text: with type tags once in front. Do not add a row per line and do not put Text: in the prompt. Separate bubbles are character slots: quoted line, blank line, placement phrase (on the left, / on the right,), and position {x, y}. The full script stays in the one overlay.'
-                },
+                text_overlays: TEXT_OVERLAYS_SCHEMA,
                 vSlider: {
                     type: 'array',
                     description: 'Intensity widgets (slider 1 axis, xypad 2, star 2–8, dropdown presets). Each axis: stops[{at,text}], default, target expander or prompt. Studio Finalise blends N::text:: between stops. Prefer over static expanders when they ask for sliders / body weight / vSlider. See docs/studio-change-json.md.'
@@ -7430,7 +7459,7 @@ async function callTool(globalResources, req, name, args) {
             sanitizeDynagenForGenerate(payload);
 
             if (typeof payload.prompt === 'string') {
-                const existingTextMatch = payload.prompt.match(/,\s*(?:speech bubble|thought bubble|caption|subtitle)?,?\s*Text:\s*(.+?)$/i);
+                const existingTextMatch = payload.prompt.match(textOverlayExtractPattern());
                 if (existingTextMatch) {
                     const content = existingTextMatch[1].trim();
                     if (content.startsWith('"') && content.endsWith('"') && content.length >= 2) {

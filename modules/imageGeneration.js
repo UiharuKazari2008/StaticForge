@@ -11,6 +11,7 @@ const {
     stripNoTextTag,
     compileTextOverlayAppend
 } = require('./promptTextBoundary');
+const { resolveTextDisplayStyle } = require('../public/scripts/comp/textDisplayStyles');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 const { resolveMediumLock, applyMediumLocksToOptions, explicitEffortModelKey } = require('./v5MediumLock');
 const { resolveNekoEnumValue } = require('./nekoEnumResolve');
@@ -2325,11 +2326,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
         // Apply text overlays if any exist
         if (body.text_overlays && Array.isArray(body.text_overlays) && body.text_overlays.length > 0) {
-            const textTags = currentPromptConfig.text_tags || {
-                'speech': { name: 'Speech Bubble', tags: 'english text, speech bubble' },
-                'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
-                'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
-            };
+            const textTags = currentPromptConfig.text_tags || null;
             const textOverlayBuckets = new Map();
 
             body.text_overlays.forEach((overlay, index) => {
@@ -2383,8 +2380,10 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 if (!text.trim()) {
                     if (body.dynamic_generation !== undefined) {
                         // Set placeholder for AI to replace
-                        const typeName = type === 'speech' ? 'speech bubble' : type === 'thought' ? 'thought bubble' : 'subtitle';
-                        text = `[${type.toUpperCase()}_TEXT_INSERT]`;
+                        const resolvedStyle = resolveTextDisplayStyle(type);
+                        const typeName = resolvedStyle ? resolvedStyle.name : 'subtitle';
+                        const placeholderId = resolvedStyle ? resolvedStyle.id : String(type);
+                        text = `[${placeholderId.toUpperCase()}_TEXT_INSERT]`;
                         console.log(`🤖 Empty text overlay with dynamic generation - set placeholder for ${typeName}: ${text}`);
                     } else {
                         return; // Skip empty text without dynamic generation
@@ -2393,7 +2392,13 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
                 const targetIndex = overlay.target || 0;
                 if (!textOverlayBuckets.has(targetIndex)) textOverlayBuckets.set(targetIndex, []);
-                textOverlayBuckets.get(targetIndex).push({ text, type });
+                textOverlayBuckets.get(targetIndex).push({
+                    text,
+                    type,
+                    customText: overlay.customText,
+                    custom: overlay.custom,
+                    display: overlay.display
+                });
                 __runtimeGr.getLogger().detailed(`📝 Applied overlay: "${text.substring(0, 40)}${text.length > 40 ? '...' : ''}" (type: ${type})`);
             });
 

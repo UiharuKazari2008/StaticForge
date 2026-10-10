@@ -53,7 +53,7 @@ function addTextOverlay() {
                             <button type="button" id="${textOverlayId}_type_btn" class="btn-secondary btn-small toolbar-btn" title="Text Type">
                                 <i class="fas fa-comment-lines"></i>
                             </button>
-                            <div id="${textOverlayId}_type_menu" class="custom-dropdown-menu hidden"></div>
+                            <div id="${textOverlayId}_type_menu" class="custom-dropdown-menu text-overlay-type-menu hidden"></div>
                         </div>
                         <div class="divider"></div>
                         <button type="button" class="btn-secondary btn-small toolbar-btn indicator" id="${textOverlayId}_enabled" data-state="on" title="Enable/Disable">
@@ -69,12 +69,14 @@ function addTextOverlay() {
     `;
 
     textOverlaysContainer.appendChild(textOverlayItem);
+    mountTextOverlayCustomDisplay(textOverlayItem);
     textOverlaysContainer.classList.remove('hidden');
     textOverlayItem._overlayModel = {
         text: '',
         target: 0,
         stages: ['00'],
         type: 'speech',
+        customText: '',
         disabled: false
     };
 
@@ -249,47 +251,102 @@ function renderTextOverlayStageDropdown(textOverlayId) {
     }
 }
 
+function textOverlayIconClass(typeKey) {
+    // resolveTextDisplayStyle: public/scripts/comp/textDisplayStyles.js
+    const resolved = typeof resolveTextDisplayStyle === 'function' ? resolveTextDisplayStyle(typeKey) : null;
+    const id = resolved ? resolved.id : typeKey;
+    const configuredIcon = window.optionsData?.text_tags?.[id]?.icon;
+    if (configuredIcon) return configuredIcon;
+    return (resolved && resolved.icon) || 'fas fa-comment-lines';
+}
+
+function textOverlayCustomDisplayMarkup(textOverlayId) {
+    return `<input type="text" id="${textOverlayId}_custom_display" class="form-control hover-show colored text-overlay-custom-display hidden" data-autofill-enable="tags" placeholder="Display tags, e.g. english text, neon sign" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">`;
+}
+
+function mountTextOverlayCustomDisplay(item) {
+    if (!item) return null;
+    let input = document.getElementById(`${item.id}_custom_display`);
+    if (!input) {
+        item.insertAdjacentHTML('beforeend', textOverlayCustomDisplayMarkup(item.id));
+        input = document.getElementById(`${item.id}_custom_display`);
+    }
+    wireTextOverlayCustomDisplay(item.id);
+    return input;
+}
+
+function wireTextOverlayCustomDisplay(textOverlayId) {
+    const input = document.getElementById(`${textOverlayId}_custom_display`);
+    const item = document.getElementById(textOverlayId);
+    if (!input || !item || input.dataset.wired === '1') return;
+    input.dataset.wired = '1';
+    input.addEventListener('input', (e) => {
+        ensureTextOverlayModel(item).customText = input.value.trim();
+        // handleCharacterAutocompleteInput: public/scripts/comp/autocompleteUtils.js
+        if (typeof handleCharacterAutocompleteInput === 'function') handleCharacterAutocompleteInput(e);
+    });
+    input.addEventListener('keydown', (e) => {
+        // handleCharacterAutocompleteKeydown: public/scripts/comp/autocompleteUtils.js
+        if (typeof handleCharacterAutocompleteKeydown === 'function') handleCharacterAutocompleteKeydown(e);
+    });
+    input.addEventListener('blur', () => {
+        ensureTextOverlayModel(item).customText = input.value.trim();
+    });
+}
+
+function syncTextOverlayCustomDisplay(textOverlayId) {
+    const item = document.getElementById(textOverlayId);
+    if (!item) return;
+    const input = mountTextOverlayCustomDisplay(item);
+    if (!input) return;
+    const resolved = typeof resolveTextDisplayStyle === 'function' ? resolveTextDisplayStyle(item.dataset.textType || 'speech') : null;
+    const isCustom = (resolved && resolved.id === 'custom') || item.dataset.textType === 'custom';
+    input.classList.toggle('hidden', !isCustom);
+    const model = ensureTextOverlayModel(item);
+    if (document.activeElement !== input) {
+        input.value = model.customText || '';
+    }
+}
+
 function renderTextOverlayTypeDropdown(textOverlayId) {
     const menu = document.getElementById(`${textOverlayId}_type_menu`);
     const item = document.getElementById(textOverlayId);
     if (!menu || !item) return;
 
-    const selectedValue = item.dataset.textType || 'speech';
+    const selected = typeof resolveTextDisplayStyle === 'function'
+        ? resolveTextDisplayStyle(item.dataset.textType || 'speech')
+        : null;
+    const selectedId = selected ? selected.id : (item.dataset.textType || 'speech');
     menu.innerHTML = '';
 
-    const configuredTextTags = window.optionsData?.text_tags || {};
-    const fallbackTextTags = {
-        speech: { name: 'Speech Bubble', tags: '2.0::english text, speech bubble::', icon: 'fas fa-comment-lines' },
-        thought: { name: 'Thought Bubble', tags: '2.0::english text, thought bubble::', icon: 'fas fa-thought-bubble' },
-        caption: { name: 'Subtitle', tags: '2.0::english text, 3.0::caption, subtitle::', icon: 'fas fa-closed-captioning' }
-    };
-    const textTags = Object.keys(configuredTextTags).length ? configuredTextTags : fallbackTextTags;
-    const fallbackIcons = {
-        speech: 'fas fa-comment-lines',
-        thought: 'fas fa-thought-bubble',
-        caption: 'fas fa-closed-captioning'
-    };
+    // groupTextDisplayStyles: public/scripts/comp/textDisplayStyles.js
+    const configured = window.optionsData?.text_tags || {};
+    const groups = typeof groupTextDisplayStyles === 'function'
+        ? groupTextDisplayStyles(configured)
+        : [{ group: 'Bubbles', styles: [] }];
 
-    Object.keys(textTags).forEach(key => {
-        const type = textTags[key];
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option' + (selectedValue === key ? ' selected' : '');
-        option.dataset.value = key;
-        const nameSpan = document.createElement('span');
-        nameSpan.textContent = type?.name || key;
-        option.appendChild(nameSpan);
-
-        const iconClass = type?.icon || fallbackIcons[key] || 'fas fa-comment-lines';
-        const iconEl = document.createElement('i');
-        iconEl.className = iconClass;
-        iconEl.style.marginLeft = 'auto';
-        option.appendChild(iconEl);
-
-        option.addEventListener('click', () => {
-            selectTextOverlayType(textOverlayId, key, type.name);
-            closeDropdown(menu, document.getElementById(`${textOverlayId}_type_btn`));
+    groups.forEach((group) => {
+        const header = document.createElement('div');
+        header.className = 'custom-dropdown-group';
+        header.textContent = group.group;
+        menu.appendChild(header);
+        (group.styles || []).forEach((style) => {
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + (selectedId === style.id ? ' selected' : '');
+            option.dataset.value = style.id;
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = style.name || style.id;
+            option.appendChild(nameSpan);
+            const iconEl = document.createElement('i');
+            iconEl.className = style.icon || 'fas fa-comment-lines';
+            iconEl.style.marginLeft = 'auto';
+            option.appendChild(iconEl);
+            option.addEventListener('click', () => {
+                selectTextOverlayType(textOverlayId, style.id, style.name);
+                closeDropdown(menu, document.getElementById(`${textOverlayId}_type_btn`));
+            });
+            menu.appendChild(option);
         });
-        menu.appendChild(option);
     });
 }
 
@@ -512,14 +569,10 @@ function selectTextOverlayType(textOverlayId, typeKey, typeName) {
 
     if (item && typeBtn) {
         item.dataset.textType = typeKey;
-        ensureTextOverlayModel(item).type = typeKey;
+        const model = ensureTextOverlayModel(item);
+        model.type = typeKey;
 
-        // Determine icon class based on configured text_tags
-        const configuredIcon = window.optionsData?.text_tags?.[typeKey]?.icon;
-        const typeIconClass = configuredIcon ||
-            (typeKey === 'thought' ? 'fas fa-thought-bubble' :
-                typeKey === 'caption' ? 'fas fa-closed-captioning' :
-                    'fas fa-comment-lines');
+        const typeIconClass = textOverlayIconClass(typeKey);
 
         // Update toolbar button icon
         const icon = typeBtn.querySelector('i');
@@ -534,6 +587,7 @@ function selectTextOverlayType(textOverlayId, typeKey, typeName) {
 
         // Update placeholder based on new type and creative mode state
         updateTextOverlayPlaceholder(textOverlayId);
+        syncTextOverlayCustomDisplay(textOverlayId);
     }
 }
 
@@ -708,6 +762,7 @@ function ensureTextOverlayModel(item) {
             target: parseInt(item.dataset.targetIndex || '0', 10) || 0,
             stages: item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'],
             type: item.dataset.textType || 'speech',
+            customText: item.dataset.customText || '',
             disabled: enabledBtn ? enabledBtn.getAttribute('data-state') !== 'on' : item.classList.contains('text-overlay-disabled')
         };
     }
@@ -748,6 +803,8 @@ function getTextOverlayData() {
         const stagesRaw = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'];
         model.stages = stagesRaw.includes('all') ? ['all'] : stagesRaw;
         model.type = item.dataset.textType || 'speech';
+        const customInput = document.getElementById(`${item.id}_custom_display`);
+        if (customInput) model.customText = customInput.value.trim();
         const enabledBtn = item._enabledBtn || document.getElementById(`${item.id}_enabled`);
         if (enabledBtn) {
             item._enabledBtn = enabledBtn;
@@ -768,13 +825,19 @@ function getTextOverlayData() {
             }
         }
 
-        textOverlays.push({
+        const row = {
             text: text,
             target: model.target,
             stages: model.stages,
             type: model.type,
             disabled: model.disabled
-        });
+        };
+        const resolvedType = typeof resolveTextDisplayStyle === 'function' ? resolveTextDisplayStyle(model.type) : null;
+        if ((resolvedType && resolvedType.id === 'custom') || model.type === 'custom') {
+            row.type = 'custom';
+            row.customText = model.customText || '';
+        }
+        textOverlays.push(row);
     });
 
     return textOverlays;
@@ -793,7 +856,13 @@ function applyTextOverlayDataToCard(item, overlayData) {
     const stagesArray = overlayData.stages || (stageValue === 0 ? [] : [stageValue.toString()]);
     const stagesStored = stagesArray.length === 0 ? '00' : stagesArray.join(',');
     item.dataset.stages = stagesStored;
-    item.dataset.textType = overlayData.type || 'speech';
+    const resolvedIncoming = typeof resolveTextDisplayStyle === 'function'
+        ? resolveTextDisplayStyle(overlayData.type || 'speech')
+        : null;
+    const typeKey = resolvedIncoming ? resolvedIncoming.id : (overlayData.type || 'speech');
+    item.dataset.textType = typeKey;
+    const incomingCustom = overlayData.customText || overlayData.custom || overlayData.display || '';
+    item.dataset.customText = incomingCustom;
 
     if (overlayData.disabled) {
         item.classList.add('text-overlay-disabled');
@@ -815,13 +884,7 @@ function applyTextOverlayDataToCard(item, overlayData) {
         autoResizeTextarea(textarea, 10);
     }
 
-    // Update type icons
-    const typeKey = overlayData.type || 'speech';
-    const configuredIcon = window.optionsData?.text_tags?.[typeKey]?.icon;
-    const typeIconClass = configuredIcon ||
-        (typeKey === 'thought' ? 'fas fa-thought-bubble' :
-            typeKey === 'caption' ? 'fas fa-closed-captioning' :
-                'fas fa-comment-lines');
+    const typeIconClass = textOverlayIconClass(typeKey);
     const typeBtn = document.getElementById(`${textOverlayId}_type_btn`);
     const statusTypeIcon = document.getElementById(`${textOverlayId}_status_type_icon`);
     if (typeBtn) {
@@ -852,8 +915,10 @@ function applyTextOverlayDataToCard(item, overlayData) {
         target: targetIndex,
         stages: stagesArray.length === 0 ? ['00'] : stagesArray.slice(),
         type: typeKey,
+        customText: incomingCustom,
         disabled: !!overlayData.disabled
     };
+    syncTextOverlayCustomDisplay(textOverlayId);
 
     updateTextOverlayStageDisplay(textOverlayId);
     updateTextOverlayPlaceholder(textOverlayId);
@@ -873,15 +938,13 @@ function createTextOverlayFromData(overlayData) {
     const stageValue = overlayData.stage || 0;
     const stagesArray = overlayData.stages || (stageValue === 0 ? [] : [stageValue.toString()]);
     textOverlayItem.dataset.stages = stagesArray.length === 0 ? '00' : stagesArray.join(',');
-    textOverlayItem.dataset.textType = overlayData.type || 'speech';
+    const createdStyle = typeof resolveTextDisplayStyle === 'function'
+        ? resolveTextDisplayStyle(overlayData.type || 'speech')
+        : null;
+    const createdType = createdStyle ? createdStyle.id : (overlayData.type || 'speech');
+    textOverlayItem.dataset.textType = createdType;
+    textOverlayItem.dataset.customText = overlayData.customText || overlayData.custom || overlayData.display || '';
 
-    const textTags = {
-        'speech': { name: 'Speech Bubble', tags: 'english text, speech bubble' },
-        'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
-        'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
-    };
-
-    const typeName = textTags[overlayData.type]?.name || 'Speech Bubble';
     const targetIndex = overlayData.target || 0;
 
     // Get target name
@@ -894,10 +957,7 @@ function createTextOverlayFromData(overlayData) {
         }
     }
 
-    // Determine icon based on text type
-    const typeIcon = overlayData.type === 'thought' ? 'fas fa-thought-bubble' :
-        overlayData.type === 'caption' ? 'fas fa-closed-captioning' :
-            'fas fa-comment-lines';
+    const typeIcon = textOverlayIconClass(createdType);
 
     // Determine stage display text
     const stages = stagesArray.length === 0 ? ['00'] : stagesArray;
@@ -945,7 +1005,7 @@ function createTextOverlayFromData(overlayData) {
                                 <button type="button" id="${textOverlayId}_type_btn" class="btn-secondary btn-small toolbar-btn" title="Text Type">
                                     <i class="${typeIcon}"></i>
                                 </button>
-                                <div id="${textOverlayId}_type_menu" class="custom-dropdown-menu hidden"></div>
+                                <div id="${textOverlayId}_type_menu" class="custom-dropdown-menu text-overlay-type-menu hidden"></div>
                             </div>
                             <div class="divider"></div>
                             <button type="button" class="btn-secondary btn-small toolbar-btn indicator" id="${textOverlayId}_enabled" data-state="${overlayData.disabled ? 'off' : 'on'}" title="Enable/Disable">
@@ -965,9 +1025,12 @@ function createTextOverlayFromData(overlayData) {
         text: (overlayData.text || '').trim(),
         target: targetIndex,
         stages: stagesArray.length === 0 ? ['00'] : stagesArray.slice(),
-        type: overlayData.type || 'speech',
+        type: createdType,
+        customText: textOverlayItem.dataset.customText || '',
         disabled: !!overlayData.disabled
     };
+    mountTextOverlayCustomDisplay(textOverlayItem);
+    syncTextOverlayCustomDisplay(textOverlayId);
     setupTextOverlayDropdowns(textOverlayId);
     setupTextOverlayToolbarHandlers(textOverlayId);
     updateTextOverlayStageDisplay(textOverlayId);
@@ -1025,8 +1088,10 @@ function loadTextOverlays(textOverlays) {
 function extractTextFromPrompt(prompt) {
     if (!prompt) return null;
 
-    // Look for ", Text: " pattern at the end of the prompt
-    const textPattern = /,\s*(?:speech bubble|thought bubble|caption|subtitle)?,?\s*Text:\s*(.+?)$/i;
+    // textOverlayExtractPattern: public/scripts/comp/textDisplayStyles.js
+    const textPattern = typeof textOverlayExtractPattern === 'function'
+        ? textOverlayExtractPattern()
+        : /,\s*(?:speech bubble|thought bubble|caption|subtitle)?,?\s*Text:\s*(.+?)$/i;
     const match = prompt.match(textPattern);
 
     if (match && match[1]) {

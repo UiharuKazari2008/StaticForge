@@ -103,7 +103,23 @@ Echoed by `GET /agent/session/state` / `get_studio_state`. `include` **replaces*
 
 ### `text_overlays` — optional array
 
-On-image speech, thought, and captions. Each row is `{text, type, target, stages, disabled}`. When present, including `[]`, it **replaces** the Studio text list (`loadTextOverlays`). Snapshots (Copy change JSON, `GET /agent/session/state`) echo the current list. Do not also paste `Text:` into the prompt. Several lines on the same target belong in one row, separated by a blank line. They compile to one `Text:` with the type tags written once in front. A second row on that target is joined the same way, so it does not open another `Text:`. Separate bubbles in different places are character slots: the line in double quotes, a blank line, a placement phrase (`on the left,` / `on the right,`), and `position` `{x, y}`. The full script stays in the one overlay. Judge a print against the compiled prompt; edit this array and the input prompt.
+On-image lettering. Each row is `{text, type, customText, target, stages, disabled}`. When present, including `[]`, it **replaces** the Studio text list (`loadTextOverlays`). Snapshots (Copy change JSON, `GET /agent/session/state`) echo the current list. Do not also paste `Text:` into the prompt. Several lines on the same target belong in one row, separated by a blank line. They compile to one `Text:` with the display tags written once in front. A second row on that target is joined the same way, so it does not open another `Text:`. Separate bubbles in different places are character slots: the line in double quotes, a blank line, a placement phrase (`on the left,` / `on the right,`), and `position` `{x, y}`. The full script stays in the one overlay. Judge a print against the compiled prompt; edit this array and the input prompt.
+
+`type` is a display style id from `public/scripts/comp/textDisplayStyles.js`. The same enum is on MCP `generate_image` and `apply_studio_changes` (`text_overlays[].type`). Tags are Danbooru-style (`english text, speech bubble`) and the server wraps them with length emphasis before `Text:`.
+
+`type: "custom"` injects `customText` instead of a preset (example: `"english text, neon sign"`). If `customText` is empty or omitted, **no display tag is injected**; the letters still go through `Text:` (`protectKeyboardDisplayText`) so the model decides how they are shown.
+
+`subtitle` is an alias of `caption`. These weighted legacy forms still resolve: `2.0::speech::`, `2.0::english text, speech bubble::`, `2.0::english text, thought bubble::`, `2.0::english text, 3.0::caption, subtitle::`.
+
+| Group | Ids |
+|-------|-----|
+| Bubbles | `speech`, `thought`, `shout`, `whisper` |
+| Boxes & captions | `caption` (Subtitle; tags `english text, caption, subtitle`), `caption_box`, `narration`, `label` |
+| Signs & surfaces | `sign`, `chalkboard`, `whiteboard`, `neon`, `banner`, `poster`, `storefront`, `road_sign`, `warning` |
+| Screens & messages | `screen`, `phone`, `chat`, `terminal`, `hologram` |
+| Comic & title | `sfx`, `title`, `logo`, `credits` |
+| Worn/applied | `shirt`, `handwritten`, `sticky`, `letter`, `book`, `newspaper`, `graffiti`, `tattoo`, `carved`, `embroidered`, `parchment`, `stamp` |
+| Custom | `custom` plus `customText` |
 
 ### `fields` — base prompt / UC only
 
@@ -377,7 +393,7 @@ Rules:
 - params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field.
 - params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / bake_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
 - dataset_config: include (replace list), bias, settings (e.g. settings.__quality__.no_text.enabled false for in-image text; keep append_quality on), nsfw, nsfw_bias. Echoed on GET /agent/session/state. Omit include (do not send include:[]) to leave the current dataset list.
-- text_overlays: replaces the Studio text list. One row per target; blank line between lines; one compiled Text:. Separate bubbles are character slots with a quoted line, a placement phrase, and position. Do not also put Text: in the prompt. Judge compiled output; edit the input prompt and this array.
+- text_overlays: replaces the Studio text list. type is a display style id (speech, thought, caption, shout, whisper, neon, sign, screen, sfx, shirt, graffiti, tattoo, custom, …). subtitle aliases caption. custom injects customText; empty customText injects no display tag. One row per target; blank line between lines; one compiled Text:. Separate bubbles are character slots with a quoted line, a placement phrase, and position. Do not also put Text: in the prompt. Judge compiled output; edit the input prompt and this array. The MCP type enum lists every id.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
 - Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count, creative, creative_clothing, creative_action, novel}. novel is true/false or {enabled, tone, style, explicitness, persuasiveness, auto_generate}; enabling needs a directive. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
