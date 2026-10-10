@@ -31,6 +31,7 @@ const SCOPE_WS_PACKETS = {
         'workspace_remove_scrap', 'workspace_bulk_add_scrap', 'workspace_bulk_remove_scrap',
         'workspace_bulk_pinned',
         'workspace_get_groups', 'workspace_get_group', 'workspace_get_image_groups',
+        'workspace_update_window_positions',
         'desktop_add_shortcut', 'desktop_update_shortcut',
         'desktop_remove_shortcut', 'desktop_update_positions'
     ],
