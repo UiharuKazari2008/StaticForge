@@ -4986,14 +4986,11 @@ class Director {
         const chat = this.directorSessionChat;
         const session = this.currentSession;
         const meta = session && !session.draft ? this.sessionWorkspaceMeta(session) : null;
+        // Compiled workspace CSS is [data-workspace] on the app root. The same
+        // attribute on the chat root themes this scroll area, glass included.
         if (chat) {
-            if (meta) {
-                chat.dataset.workspaceTint = '1';
-                chat.style.setProperty('--director-workspace', meta.color);
-            } else {
-                delete chat.dataset.workspaceTint;
-                chat.style.removeProperty('--director-workspace');
-            }
+            if (meta && meta.id) chat.setAttribute('data-workspace', meta.id);
+            else chat.removeAttribute('data-workspace');
         }
         if (!banner || !text) return;
         if (!meta || meta.id === this.currentWorkspaceId()) {

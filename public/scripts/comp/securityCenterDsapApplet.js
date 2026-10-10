@@ -2309,9 +2309,9 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             const data = response?.data || response;
             const url = data && data.url;
             if (!data?.success || !url) throw new Error(data?.message || 'Login link did not appear');
-            const opened = window.open(url, '_blank', 'noopener,noreferrer');
+            window.open(url, '_blank', 'noopener,noreferrer');
             if (typeof showGlassToast === 'function') {
-                showGlassToast('info', 'Cursor login', opened ? 'Finish signing in in the new tab. This profile updates when Cursor accepts it.' : 'The browser blocked the tab. Allow popups and click Login again.', false, 7000, '<i class="fas fa-right-to-bracket"></i>');
+                showGlassToast('info', 'Cursor login', 'Finish signing in in the new tab. This profile updates when Cursor accepts it.', false, 7000, '<i class="fas fa-right-to-bracket"></i>');
             }
         } catch (err) {
             if (typeof showGlassToast === 'function') {

@@ -582,46 +582,27 @@ html.disable-blur .director-session-overlay {
     white-space: nowrap;
 }
 
+/* Glass top bar. Colors come from [data-workspace] (--header-bg / --header-border), same as .header. */
 .director-workspace-banner {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin: 10px 12px 0;
+    flex: 0 0 auto;
+    margin: 0;
     padding: 8px 12px;
-    border-radius: 14px;
-    color: var(--text-primary, #fff);
-    background: color-mix(in srgb, var(--director-workspace, #6366f1) 28%, hsl(0 0% 100% / 8%));
-    border: 1px solid color-mix(in srgb, var(--director-workspace, #6366f1) 55%, transparent);
-    box-shadow: 0 8px 24px hsl(0 0% 0% / 18%);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    color: var(--text-primary);
+    background: var(--header-bg, var(--glass-layer-dark-5));
+    border: none;
+    border-bottom: 1px solid var(--header-border, var(--glass-border-2));
+    box-shadow: var(--glass-shadow-2);
+    -webkit-backdrop-filter: var(--glass-blur-2, none);
+    backdrop-filter: var(--glass-blur-2, none);
     z-index: 5;
 }
 
 .director-workspace-banner span {
     flex: 1;
     min-width: 0;
-}
-
-#directorSessionChat[data-workspace-tint="1"] .director-message.user {
-    background: color-mix(in srgb, var(--director-workspace) 26%, var(--glass-layer-3));
-    border-color: color-mix(in srgb, var(--director-workspace) 48%, transparent);
-}
-
-#directorSessionChat[data-workspace-tint="1"] .director-message.assistant {
-    border-color: color-mix(in srgb, var(--director-workspace) 42%, var(--glass-border-2));
-}
-
-#directorSessionChat[data-workspace-tint="1"] .director-chat-input {
-    border-color: color-mix(in srgb, var(--director-workspace) 55%, transparent);
-}
-
-#directorSessionChat[data-workspace-tint="1"] .director-request-type-badge {
-    background: color-mix(in srgb, var(--director-workspace) 55%, var(--badge-bg));
-}
-
-#directorSessionChat[data-workspace-tint="1"] #directorSendBtn {
-    color: var(--director-workspace);
 }
 
 .director-switch-countdown {
