@@ -21,8 +21,9 @@ Treat "Cursor agent" in those rules as "any coding agent, including Claude Code"
 ## Yozora access from Claude Code
 
 - API base: `https://yozora.bluesteel.737.jp.net/api/v1`
-- Token: Claude's own PAT at `~/.secrets/yozora-claude.token`. Until that file
-  exists, fall back to `~/.secrets/yozora-grok.cursor.token` and say in comments
+- Token: Claude's own PAT (login `claude`, display "Claude Code"; scopes cover
+  issues and org project board moves) at `~/.secrets/yozora-claude.token`. If that file
+  is missing, fall back to `~/.secrets/yozora-grok.cursor.token` and say in comments
   that it is a Claude Code session acting through `grok.cursor`. Read the token at
   call time; never echo, print, commit, or paste it into a comment or chat.
 - Identity: a Claude Code agent, not Cursor, not Yukimi. Where the rules say
