@@ -626,13 +626,15 @@ const doveBuildMainPane = function () {
     return pane;
 };
 
-// Rendered/Raw toggle (#6): right-aligned in the viewer's Subject header row — no extra bar.
+// Rendered/Raw toggle (#6): one segmented .button-group (public/css/gallery-core.css) right-aligned
+// in the viewer's Subject header row. The sanitized-HTML indicator is a small shield badge inside
+// the same cluster (doveBuildSanitizedBadge) instead of a full-width bar.
 // Wired with its own click listener rather than relying on doveHandleBodyClick's
 // modal-wide delegation, so it can't double-fire the way toolbar action buttons do.
 const doveBuildBodyViewToggle = function () {
     const viewGroup = document.createElement('div');
-    viewGroup.className = 'button-group dovecote-body-view-toggle';
-    const renderedBtn = doveCreateButton('btn-secondary btn-small btn-toggle', 'Rendered', 'fas fa-code');
+    viewGroup.className = 'button-group button-group-segmented dovecote-body-view-toggle';
+    const renderedBtn = doveCreateButton('btn-secondary btn-small btn-toggle', 'Rendered', 'fas fa-eye');
     renderedBtn.dataset.doveBodyView = 'rendered';
     renderedBtn.dataset.state = 'on';
     const rawBtn = doveCreateButton('btn-secondary btn-small btn-toggle', 'Raw', 'fas fa-file-lines');
@@ -646,6 +648,19 @@ const doveBuildBodyViewToggle = function () {
         doveSetBodyView(btn.dataset.doveBodyView);
     });
     return viewGroup;
+};
+
+// Sanitized-HTML indicator: compact shield badge; the stripped-content summary lives in its tooltip.
+const doveBuildSanitizedBadge = function () {
+    const badge = document.createElement('span');
+    badge.className = 'dovecote-sanitized-badge hidden';
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-shield-halved';
+    const label = document.createElement('span');
+    label.textContent = 'Safe';
+    badge.appendChild(icon);
+    badge.appendChild(label);
+    return badge;
 };
 
 const doveBuildPreviewPane = function () {
@@ -694,15 +709,18 @@ const doveBuildPreviewPane = function () {
         valueEl.id = 'desktopDovecoteOe' + field.charAt(0).toUpperCase() + field.slice(1);
         row.appendChild(labelEl);
         row.appendChild(valueEl);
-        if (field === 'subject') row.appendChild(doveBuildBodyViewToggle());
+        if (field === 'subject') {
+            const tools = document.createElement('span');
+            tools.className = 'dovecote-oe-header-tools';
+            const badge = doveBuildSanitizedBadge();
+            badge.id = 'desktopDovecoteSafetyBar';
+            tools.appendChild(badge);
+            tools.appendChild(doveBuildBodyViewToggle());
+            row.appendChild(tools);
+        }
         header.appendChild(row);
     });
     preview.appendChild(header);
-
-    const safetyBar = document.createElement('div');
-    safetyBar.className = 'dovecote-safety-bar hidden';
-    safetyBar.id = 'desktopDovecoteSafetyBar';
-    preview.appendChild(safetyBar);
 
     const imagesBar = document.createElement('div');
     imagesBar.className = 'dovecote-images-bar hidden';
@@ -1174,7 +1192,7 @@ const doveRenderRenderedBodyInto = async function (els, mail, options) {
 
     const summary = doveSummarizeStrippedCounts(result.strippedCounts);
     els.safetyBar.classList.remove('hidden');
-    els.safetyBar.textContent = '✓ Sanitized HTML' + (summary ? ' — ' + summary : '');
+    els.safetyBar.title = 'Sanitized HTML' + (summary ? ' — ' + summary : '');
 
     const remoteImages = result.remoteImages || [];
     if (remoteImages.length > 0 && !options.allowRemoteImages) {
@@ -1647,14 +1665,17 @@ const doveBuildReaderWindow = function (key) {
         valueEl.className = 'dovecote-oe-header-value';
         row.appendChild(labelEl);
         row.appendChild(valueEl);
+        if (field === 'subject') {
+            const tools = document.createElement('span');
+            tools.className = 'dovecote-oe-header-tools';
+            tools.appendChild(doveBuildSanitizedBadge());
+            row.appendChild(tools);
+        }
         header.appendChild(row);
         fieldEls[field] = valueEl;
     });
     body.appendChild(header);
-
-    const safetyBar = document.createElement('div');
-    safetyBar.className = 'dovecote-safety-bar hidden';
-    body.appendChild(safetyBar);
+    const safetyBar = header.querySelector('.dovecote-sanitized-badge');
 
     const imagesBar = document.createElement('div');
     imagesBar.className = 'dovecote-images-bar hidden';

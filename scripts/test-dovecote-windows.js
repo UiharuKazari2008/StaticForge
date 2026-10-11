@@ -95,7 +95,9 @@ function main() {
     // 7. Rendered/Raw toggle moved into the viewer pane header (#6), out of the main toolbar,
     // with its own click listener (not the toolbar's doveHandleToolbarClick).
     assert.match(dovecoteJs, /const doveBuildBodyViewToggle = function/);
-    assert.match(dovecoteJs, /header\.appendChild\(doveBuildBodyViewToggle\(\)\)/);
+    assert.match(dovecoteJs, /tools\.appendChild\(doveBuildBodyViewToggle\(\)\)/);
+    assert.match(dovecoteJs, /button-group button-group-segmented dovecote-body-view-toggle/);
+    assert.match(dovecoteJs, /const doveBuildSanitizedBadge = function/);
     assert.doesNotMatch(dovecoteJs, /doveBuildToolbar[\s\S]{0,2000}data-dove-body-view/);
 
     // 8. Mail row context menu (#4): Open / Open in Window / Reply / Forward submenu /

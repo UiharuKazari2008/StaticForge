@@ -1062,6 +1062,41 @@ html:not(.disable-blur) .gallery:has(.gallery-item.context-open) .gallery-item:n
     box-shadow: var(--glass-shadow-2);
 }
 
+/* Button groups (app-wide): the group carries the outer glass shadow + radius and its
+   buttons keep the same height/glass/hover/active as standalone standard buttons, joined
+   by a single 1px separator. Hovered/focused/on segments raise above neighbours so their
+   border isn't clipped by the next segment. */
+.button-group {
+    border-radius: var(--border-radius-md);
+    flex-wrap: nowrap;
+}
+
+.button-group > [class^="btn-"],
+.button-group > [class*=" btn-"] {
+    margin: 0;
+    box-shadow: inset 0 0 15px #ffffff2b;
+}
+
+.button-group > [class^="btn-"]:hover:not(:disabled),
+.button-group > [class*=" btn-"]:hover:not(:disabled),
+.button-group > [class^="btn-"]:focus-visible,
+.button-group > [class*=" btn-"]:focus-visible {
+    z-index: var(--z-layer-4, 4);
+}
+
+.button-group > .btn-toggle[data-state="on"],
+.button-group > .btn-toggle[data-state="open"] {
+    z-index: var(--z-layer-3, 3);
+    box-shadow: inset 0 2px 4px var(--toggle-shadow-color-58), inset 0 0 8px var(--toggle-shadow-color-19);
+}
+
+/* Segmented toggle: equal-width segments, label + icon, standard btn-small height. */
+.button-group-segmented > [class^="btn-"],
+.button-group-segmented > [class*=" btn-"] {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
 .main-menu-group {
     display: flex;
     align-items: center;

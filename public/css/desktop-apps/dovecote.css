@@ -105,9 +105,17 @@
     flex: 0 1 35%;
     min-height: 20%;
     max-height: 280px;
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
     overflow: hidden;
+}
+
+/* Inset panels: message list + viewer share Director's recessed panel
+   (.director-content-inner shadow, public/css/director.css) plus the dark inset fill
+   Director uses behind its session list / expandable content. */
+#desktopDovecoteModal .dovecote-message-list-wrap,
+#desktopDovecoteModal .dovecote-preview-pane {
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-4);
+    border-radius: var(--border-radius-md);
 }
 
 #desktopDovecoteModal .dovecote-message-list {
@@ -122,7 +130,7 @@
     grid-template-columns: 1.5em 1.5em 1.3fr 2fr auto;
     align-items: center;
     gap: var(--spacing-sm);
-    padding: 0.3em var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
 }
 
 #desktopDovecoteModal .dovecote-message-header {
@@ -208,9 +216,7 @@
     flex: 1 1 auto;
     min-height: 120px;
     gap: var(--spacing-sm);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    padding: var(--spacing-xs);
+    padding: var(--spacing-sm);
     overflow: hidden;
 }
 
@@ -221,27 +227,57 @@
     display: flex;
     flex: 0 0 auto;
     flex-direction: column;
-    gap: 2px;
-    padding-bottom: var(--spacing-xs);
+    gap: var(--spacing-xs);
+    padding: 0 var(--spacing-xs) var(--spacing-sm);
     border-bottom: 1px solid var(--glass-border-3);
     font-size: 0.85em;
 }
 
+/* Every row the same height as a .btn-small so the Subject row (which holds the
+   toggle) doesn't sit taller than From/To/Date. */
 .dovecote-oe-header-row {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
+    min-height: 26px;
 }
 
-/* Rendered/Raw toggle (#6) — right-aligned inside the Subject row, no bar of its own. */
+/* Right end of the Subject row: sanitized badge + Rendered/Raw segmented toggle. */
+.dovecote-oe-header-tools {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-left: auto;
+    font-size: 1.0625rem;
+}
+
 .dovecote-body-view-toggle {
     flex: 0 0 auto;
-    margin-left: auto;
+}
+
+.dovecote-sanitized-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 2px var(--spacing-sm);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-xl);
+    background: var(--glass-layer-dark-4);
+    color: var(--text-accent-tinted);
+    font-size: 0.7em;
+    font-weight: 600;
+    cursor: help;
+}
+
+.dovecote-sanitized-badge.hidden {
+    display: none;
 }
 
 .dovecote-oe-header-label {
     flex: 0 0 4.5em;
     color: var(--text-muted);
+    text-align: right;
 }
 
 .dovecote-oe-header-value {
@@ -251,15 +287,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-secondary);
-}
-
-.dovecote-safety-bar {
-    flex: 0 0 auto;
-    padding: 0.3em var(--spacing-sm);
-    border-radius: var(--border-radius-md);
-    background: var(--glass-layer-dark-4);
-    color: var(--text-secondary);
-    font-size: 0.8em;
 }
 
 .dovecote-images-bar {
