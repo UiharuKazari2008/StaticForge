@@ -1,0 +1,444 @@
+/* Dovecote: Outlook-Express-style internal mail client (desktop-apps/dovecote.js).
+   Three-pane layout: folder tree (left), message list + preview (right).
+   Mobile layout (list screen / message screen) switches at the breakpoint below,
+   matching the viewport convention used by other narrow-width desktop-app layouts.
+   Link in public/app.html next to the other desktop-apps stylesheets. */
+
+#desktopDovecoteModal {
+    flex-direction: column;
+    width: 760px;
+}
+
+#desktopDovecoteModal > .modal-content {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+#desktopDovecoteModal .modal-body {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: var(--spacing-md);
+}
+
+/* ---- Folder tree ---------------------------------------------------- */
+
+#desktopDovecoteModal .dovecote-folder-tree {
+    display: flex;
+    flex: 0 0 160px;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+#desktopDovecoteModal .dovecote-folder-row,
+#desktopDovecoteModal .dovecote-mobile-folder-drawer .dovecote-folder-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    width: 100%;
+    padding: 0.4em var(--spacing-sm);
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    text-align: left;
+    cursor: pointer;
+}
+
+#desktopDovecoteModal .dovecote-folder-row:hover {
+    background: var(--glass-layer-dark-4);
+}
+
+#desktopDovecoteModal .dovecote-folder-row.selected {
+    background: var(--glass-layer-dark-5);
+    border-color: var(--glass-border-3);
+    color: var(--text-primary);
+}
+
+#desktopDovecoteModal .dovecote-folder-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#desktopDovecoteModal .dovecote-unread-badge {
+    flex: 0 0 auto;
+    padding: 0.1em 0.5em;
+    border-radius: var(--border-radius-xl);
+    background: var(--primary-glass-color);
+    color: var(--text-accent-tinted);
+    font-size: 0.75em;
+    font-weight: 700;
+}
+
+/* ---- Admin (viewAsOwner) banner -------------------------------------- */
+
+#desktopDovecoteModal .dovecote-admin-banner {
+    display: flex;
+    flex: 1 0 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-4);
+    color: var(--text-secondary);
+    order: -1;
+}
+
+#desktopDovecoteModal .dovecote-admin-banner a {
+    color: var(--text-accent-tinted);
+    cursor: pointer;
+}
+
+/* ---- Main pane: message list + preview ------------------------------- */
+
+#desktopDovecoteModal .dovecote-main-pane {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    gap: var(--spacing-md);
+}
+
+#desktopDovecoteModal .dovecote-mobile-list-toolbar,
+#desktopDovecoteModal .dovecote-mobile-message-toolbar {
+    display: none;
+}
+
+#desktopDovecoteModal .dovecote-message-list-wrap {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 40%;
+    min-height: 120px;
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+}
+
+#desktopDovecoteModal .dovecote-message-list {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#desktopDovecoteModal .dovecote-message-row {
+    display: grid;
+    grid-template-columns: 1.5em 1.5em 1.3fr 2fr auto;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: 0.3em var(--spacing-sm);
+}
+
+#desktopDovecoteModal .dovecote-message-header {
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--glass-border-3);
+    background: var(--glass-layer-dark-4);
+    color: var(--text-muted);
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+#desktopDovecoteModal .dovecote-message-header .sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+#desktopDovecoteModal .dovecote-message-header .sortable:hover {
+    color: var(--text-primary);
+}
+
+#desktopDovecoteModal .dovecote-message-rows {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#desktopDovecoteModal .dovecote-message-rows .dovecote-message-row {
+    border-bottom: 1px solid var(--glass-border-3);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+#desktopDovecoteModal .dovecote-message-rows .dovecote-message-row:hover {
+    background: var(--glass-layer-dark-4);
+}
+
+#desktopDovecoteModal .dovecote-message-rows .dovecote-message-row.selected {
+    background: var(--glass-layer-dark-5);
+}
+
+#desktopDovecoteModal .dovecote-message-rows .dovecote-message-row.unread {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+#desktopDovecoteModal .dovecote-col-unread {
+    font-size: 0.5em;
+    color: var(--primary-glass-color);
+    text-align: center;
+}
+
+#desktopDovecoteModal .dovecote-col-attachment {
+    text-align: center;
+}
+
+#desktopDovecoteModal .dovecote-col-from,
+#desktopDovecoteModal .dovecote-col-subject {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#desktopDovecoteModal .dovecote-col-createdAt {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
+/* ---- Preview pane ------------------------------------------------------ */
+
+#desktopDovecoteModal .dovecote-preview-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 50%;
+    min-height: 120px;
+    gap: var(--spacing-sm);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    padding: var(--spacing-sm);
+    overflow: hidden;
+}
+
+#desktopDovecoteModal .dovecote-oe-header {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 2px;
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--glass-border-3);
+    font-size: 0.85em;
+}
+
+#desktopDovecoteModal .dovecote-oe-header-row {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+#desktopDovecoteModal .dovecote-oe-header-label {
+    flex: 0 0 4.5em;
+    color: var(--text-muted);
+}
+
+#desktopDovecoteModal .dovecote-oe-header-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+}
+
+#desktopDovecoteModal .dovecote-safety-bar {
+    flex: 0 0 auto;
+    padding: 0.3em var(--spacing-sm);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-4);
+    color: var(--text-secondary);
+    font-size: 0.8em;
+}
+
+#desktopDovecoteModal .dovecote-images-bar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    padding: 0.3em var(--spacing-sm);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-4);
+    color: var(--text-secondary);
+    font-size: 0.85em;
+}
+
+#desktopDovecoteModal .dovecote-body-wrap {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+}
+
+#desktopDovecoteModal .dovecote-empty-hint {
+    margin: auto;
+}
+
+#desktopDovecoteModal .dovecote-body-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    border: 0;
+    border-radius: var(--border-radius-md);
+    background: #ffffff;
+}
+
+#desktopDovecoteModal .dovecote-raw-body {
+    flex: 1 1 auto;
+    margin: 0;
+    padding: var(--spacing-sm);
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-secondary);
+    font-family: inherit;
+}
+
+/* ---- Status bar --------------------------------------------------------- */
+
+#desktopDovecoteModal .dovecote-status-bar {
+    display: flex;
+    flex: 1 0 100%;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding-top: var(--spacing-xs);
+    border-top: 1px solid var(--glass-border-3);
+    color: var(--text-muted);
+    font-size: 0.8em;
+    order: 10;
+}
+
+#desktopDovecoteModal .dovecote-status-online {
+    margin-left: auto;
+}
+
+#desktopDovecoteModal .dovecote-status-error {
+    color: hsl(0 100% 75%);
+}
+
+/* ---- Compose overlay ----------------------------------------------------- */
+
+#desktopDovecoteModal .dovecote-compose-overlay {
+    display: flex;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-lg);
+    background: hsl(0 0% 0% / 55%);
+    z-index: var(--z-layer-10);
+}
+
+#desktopDovecoteModal .dovecote-compose-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    width: min(480px, 100%);
+    max-height: 100%;
+    padding: var(--spacing-md);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-lg);
+    background: var(--glass-layer-dark-5);
+    overflow: auto;
+}
+
+#desktopDovecoteModal .dovecote-compose-title {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+#desktopDovecoteModal .dovecote-compose-body {
+    flex: 1 1 auto;
+    min-height: 160px;
+    resize: vertical;
+}
+
+#desktopDovecoteModal .dovecote-compose-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+}
+
+/* ---- Mobile folder drawer (popover, no permanent sidebar at narrow widths) */
+
+#desktopDovecoteModal .dovecote-mobile-folder-drawer {
+    display: flex;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: var(--z-layer-9);
+    flex-direction: column;
+    gap: 2px;
+    width: 220px;
+    max-height: 100%;
+    padding: var(--spacing-sm);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-5);
+    overflow-y: auto;
+}
+
+/* ---- Mobile breakpoint: list screen / message screen -------------------
+   Matches the calculator's own-width container-query convention rather than
+   a viewport media query, so the layout responds to the window being resized
+   narrow on desktop too, not just on small physical screens. */
+#desktopDovecoteModal {
+    container-type: inline-size;
+    container-name: desktop-dovecote;
+}
+
+@container desktop-dovecote (max-width: 560px) {
+    #desktopDovecoteModal .dovecote-folder-tree {
+        display: none;
+    }
+
+    #desktopDovecoteModal .dovecote-mobile-list-toolbar {
+        display: flex;
+        flex: 0 0 auto;
+    }
+
+    #desktopDovecoteModal .dovecote-col-from,
+    #desktopDovecoteModal .dovecote-col-createdAt {
+        font-size: 0.8em;
+    }
+
+    #desktopDovecoteModal .dovecote-main-pane {
+        position: relative;
+        overflow: hidden;
+    }
+
+    #desktopDovecoteModal .dovecote-message-list-wrap,
+    #desktopDovecoteModal .dovecote-preview-pane {
+        flex: 1 1 auto;
+    }
+
+    #desktopDovecoteModal .dovecote-preview-pane {
+        display: none;
+    }
+
+    #desktopDovecoteModal .dovecote-mobile-message-toolbar {
+        display: flex;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-sm);
+    }
+
+    #desktopDovecoteModal .dovecote-main-pane.dovecote-mobile-message-open .dovecote-message-list-wrap {
+        display: none;
+    }
+
+    #desktopDovecoteModal .dovecote-main-pane.dovecote-mobile-message-open .dovecote-preview-pane {
+        display: flex;
+    }
+}

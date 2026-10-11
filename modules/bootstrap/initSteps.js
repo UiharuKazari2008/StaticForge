@@ -105,6 +105,12 @@ const INIT_STEPS = [
         run: (gr) => databases.initializeKnowledgeMemoryDb(gr),
     },
     {
+        id: 'gr_dovecote_db',
+        label: 'Initializing Dovecote mail database',
+        sync: true,
+        run: (gr) => databases.initializeDovecoteDb(gr),
+    },
+    {
         id: 'gr_tag_search_db',
         label: 'Initializing tag search database',
         sync: true,

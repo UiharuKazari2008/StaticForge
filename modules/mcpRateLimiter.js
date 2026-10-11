@@ -36,7 +36,8 @@ const MCP_RATE_GROUP_LIMITS = {
     write: { max: 60, windowMs: MCP_RATE_WINDOW_MS },
     studio: { max: 60, windowMs: MCP_RATE_WINDOW_MS },
     generate: { max: 20, windowMs: MCP_RATE_WINDOW_MS },
-    rpc: { max: 300, windowMs: MCP_RATE_WINDOW_MS }
+    rpc: { max: 300, windowMs: MCP_RATE_WINDOW_MS },
+    mail: { max: 120, windowMs: MCP_RATE_WINDOW_MS }
 };
 
 const TOOL_RATE_GROUPS = {
@@ -168,7 +169,12 @@ const TOOL_RATE_GROUPS = {
     remove_work_item: 'write',
     report_issue: 'write',
     get_usage: 'free',
-    lookup_character_age: 'search'
+    lookup_character_age: 'search',
+    send_mail: 'write',
+    forward_mail: 'write',
+    mark_mail: 'mail',
+    list_mail: 'mail',
+    read_mail: 'mail'
 };
 
 const rateGroupHits = new Map();

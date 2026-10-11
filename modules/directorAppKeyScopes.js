@@ -27,7 +27,8 @@ const DIRECTOR_SCOPE_ADDITIONS = Object.freeze([
     'sfapp_cake_pantry',
     'sfapp_apocrypha',
     'sfapp_report_issue',
-    'sfapp_usage'
+    'sfapp_usage',
+    'sfapp_dovecote'
 ]);
 
 const DIRECTOR_MCP_SCOPES = Object.freeze(LEGACY_DIRECTOR_SCOPES.concat(DIRECTOR_SCOPE_ADDITIONS));

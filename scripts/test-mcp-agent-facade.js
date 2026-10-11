@@ -839,7 +839,12 @@ assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => 
 assert.strictEqual(_test.resolveDirectorChatId({ activeDirectorSessionId: () => null }, {}), null);
 assert.ok(coreNames.includes('update_meal_images'));
 assert.ok(coreNames.includes('void_cake_delivery'));
-assert.strictEqual(coreNames.length, 110);
+assert.ok(coreNames.includes('send_mail'));
+assert.ok(coreNames.includes('list_mail'));
+assert.ok(coreNames.includes('read_mail'));
+assert.ok(coreNames.includes('mark_mail'));
+assert.ok(coreNames.includes('forward_mail'));
+assert.strictEqual(coreNames.length, 115);
 assert.ok(coreNames.includes('ledge'));
 assert.ok(coreNames.includes('generate_nax_tag'));
 assert.ok(coreNames.includes('delete_nax_tag'));

@@ -9,6 +9,7 @@ const AnimeTagSearch = require('../animeTagSearch');
 const FurryTagSearch = require('../furryTagSearch');
 const FastTagSearch = require('../fastTagSearch');
 const knowledgeMemoryDb = require('../knowledgeMemoryDatabase');
+const dovecoteDatabase = require('../dovecoteDatabase');
 const tagSearchDatabase = require('../tagSearchDatabase');
 const naxTagsDatabase = require('../naxTagsDatabase');
 const NaxTagGenerationService = require('../naxTagGeneration');
@@ -175,6 +176,21 @@ function initializeKnowledgeMemoryDb(gr) {
     }
 }
 
+function initializeDovecoteDb(gr) {
+    try {
+        const initialized = dovecoteDatabase.initializeDovecoteDatabase(gr.getPath('databases'));
+        if (!initialized) {
+            throw new Error('Failed to initialize dovecote database');
+        }
+        gr.dovecoteDatabase = dovecoteDatabase;
+        gr.initializationProgress.dovecoteDatabase = true;
+        console.log('✓ Dovecote mail database ready');
+    } catch (error) {
+        console.error('  ❌ Failed to load dovecote database:', error);
+        throw error;
+    }
+}
+
 function initializeTagSearchDatabase(gr) {
     try {
         const { initializeTagSearchDatabase: initTagSearchDb } = tagSearchDatabase;
@@ -318,6 +334,7 @@ module.exports = {
     initializeApplicationAuthManager,
     initializeDatabases,
     initializeKnowledgeMemoryDb,
+    initializeDovecoteDb,
     initializeTagSearchDatabase,
     initializeNaxVibesGallery,
     initializeNovelaiExploreGallery,
