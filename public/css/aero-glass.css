@@ -139,8 +139,34 @@ html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) .modal-win
     --aero-sheen: linear-gradient(180deg, hsl(0 0% 100% / 5%) 0, hsl(0 0% 100% / 0%) 28px);
     --aero-sheen-inactive: linear-gradient(180deg, hsl(0 0% 100% / 3%) 0, hsl(0 0% 100% / 0%) 28px);
     --aero-frame-highlight: none;
+    /* Chrome inside the dark frame: quiet borders, no workspace-coloured header line, no caption glow */
+    --glass-border-1: hsl(0 0% 100% / 5%);
+    --glass-border-2: hsl(0 0% 100% / 7%);
+    --glass-border-3: hsl(0 0% 100% / 9%);
+    --glass-border-4: hsl(0 0% 100% / 11%);
+    --glass-border-5: hsl(0 0% 100% / 13%);
+    --header-border: hsl(0 0% 100% / 10%);
+    --hover-show-active-border: hsl(0 0% 100% / 8%);
     border-color: transparent;
     box-shadow: none;
+}
+
+/* Maximized workspace: solid client area (Yukimi). Windowed, the gallery body stays
+   translucent over the frame on purpose; maximized it reads as a full-screen app. */
+#galleryWindow.windowed.modal-maximized .gallery-container-wrapper {
+    background-color: var(--glass-windows-full-bg, hsl(0 0% 10%));
+}
+
+@supports (color: rgb(from red r g b)) {
+    #galleryWindow.windowed.modal-maximized .gallery-container-wrapper {
+        background-color: rgb(from var(--glass-windows-full-bg, hsl(0 0% 10%)) r g b / 1);
+    }
+}
+
+/* The frame paint covers the (transparent) border ring so nothing of the desktop shows at the edges */
+html[data-glass="frosted"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme)::before,
+html[data-glass="basic"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme)::before {
+    inset: -1px;
 }
 
 html[data-glass="frosted"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme),
