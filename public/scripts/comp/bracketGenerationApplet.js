@@ -841,7 +841,7 @@ class BracketGenerationApplet {
         }
 
         this.setupFieldToggle();
-        this.setupKeywordDropdown();
+        this.setupKeywordMenu();
         this.setupGearDropdown();
         this.setupStepTabNavigation();
         this.initializeStepDragDrop();
@@ -989,64 +989,57 @@ class BracketGenerationApplet {
         });
     }
 
-    setupKeywordDropdown() {
-        const dropdown = document.getElementById('bracketGenKeywordDropdown');
+    /** Keyword picker: a click context menu on the toolbar button (like Atelier's dataset
+     *  picker), not a custom dropdown. Items are rebuilt on every open (beforeShow). */
+    setupKeywordMenu() {
         const btn = document.getElementById('bracketGenKeywordDropdownBtn');
-        const menu = document.getElementById('bracketGenKeywordDropdownMenu');
-        // setupDropdown: public/scripts/comp/dropdown.js
-        if (!dropdown || !btn || !menu) return;
-        if (dropdown.getAttribute('data-dropdown-initialized') === 'true') return;
-
-        setupDropdown(
-            dropdown,
-            btn,
-            menu,
-            (selected) => this.renderKeywordMenu(menu, selected),
-            () => this.state.activeKeyword,
-            { preventFocusTransfer: true }
-        );
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        if (!btn || !contextMenu) return;
+        if (btn.dataset.phasewalkerKeywordMenuWired === 'true') return;
+        btn.dataset.phasewalkerKeywordMenuWired = 'true';
+        this.keywordClickMenuConfig = this.buildKeywordMenuConfig();
+        contextMenu.attachClickMenuToElement(btn, this.keywordClickMenuConfig);
     }
 
-    renderKeywordMenu(menu, selected) {
-        menu.innerHTML = '';
+    buildKeywordMenuConfig() {
+        const applet = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 360,
+            beforeShow: () => applet.refreshKeywordMenuItems(),
+            sections: [
+                { type: 'list', items: [{ icon: 'fas fa-plus', text: 'Add Keyword', action: 'pw-add-keyword' }] },
+                { type: 'list', items: [] }
+            ],
+            onAction(action, target, item) {
+                if (action === 'pw-add-keyword') {
+                    void applet.promptAddKeyword();
+                    return;
+                }
+                if (action !== 'pw-select-keyword' || !item || typeof item.keyword !== 'string') return;
+                applet.saveStepTextareasToState();
+                applet.state.activeKeyword = item.keyword;
+                applet.updateKeywordDropdownLabel(item.keyword);
+                applet.renderSteps();
+            }
+        };
+    }
 
-        const addOpt = document.createElement('div');
-        addOpt.className = 'custom-dropdown-option';
-        addOpt.innerHTML = '<i class="fas fa-plus"></i> Add Keyword';
-        addOpt.addEventListener('click', () => {
-            closeDropdown(menu, document.getElementById('bracketGenKeywordDropdownBtn'));
-            void this.promptAddKeyword();
-        });
-        menu.appendChild(addOpt);
-
-        const separator = document.createElement('div');
-        separator.className = 'custom-dropdown-separator';
-        menu.appendChild(separator);
-
-        if (this.state.keywords.length === 0) {
-            const emptyOpt = document.createElement('div');
-            emptyOpt.className = 'custom-dropdown-option disabled';
-            emptyOpt.innerHTML = '<i class="fas fa-tag"></i> No keywords';
-            menu.appendChild(emptyOpt);
-        } else {
-            this.state.keywords.forEach((kw) => {
-                const opt = document.createElement('div');
-                opt.className = 'custom-dropdown-option' + (kw === selected ? ' selected' : '');
-                opt.dataset.value = kw;
-                // escapeHtml: public/scripts/comp/utilities.js
-                opt.innerHTML = `<i class="fas fa-tag"></i> ${escapeHtml(kw)}`;
-                opt.addEventListener('click', () => {
-                    this.saveStepTextareasToState();
-                    this.state.activeKeyword = kw;
-                    this.updateKeywordDropdownLabel(kw);
-                    this.renderSteps();
-                    closeDropdown(menu, document.getElementById('bracketGenKeywordDropdownBtn'));
-                });
-                menu.appendChild(opt);
-            });
-        }
-
-        this.updateKeywordDropdownLabel(selected);
+    refreshKeywordMenuItems() {
+        if (!this.keywordClickMenuConfig) return;
+        const items = this.state.keywords.length === 0
+            ? [{ icon: 'fas fa-tag', text: 'No keywords', disabled: true }]
+            : this.state.keywords.map((kw) => ({
+                icon: 'fas fa-tag',
+                text: kw,
+                action: 'pw-select-keyword',
+                keyword: kw,
+                loadfn: (item) => {
+                    item.highlighted = item.keyword === this.state.activeKeyword;
+                }
+            }));
+        this.keywordClickMenuConfig.sections[1].items = items;
     }
 
     updateKeywordDropdownLabel(selected) {

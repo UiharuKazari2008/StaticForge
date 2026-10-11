@@ -6,9 +6,10 @@
    re-declare these. Frame glass: aero-glass.css. Classic theme: windows-classic-theme.css.
    Linked right before grimoire-browser.css (cascade position of the block moved from there, #404). */
 
-/* Caption-control tokens (#404). The caption buttons read these, so an inactive window dims
-   its minimize / maximize / close in one place instead of per app; aero-glass.css retunes
-   the caption opacity for the frame glass modes. Values are the former literals. */
+/* Window chrome tokens (#404). The caption buttons read the --window-control-* set, so an
+   inactive window dims its minimize / maximize / close in one place instead of per app.
+   The design holds in every glass mode (frosted and basic are cheaper renderings of live,
+   not a different look); aero-glass.css only changes how the frame is painted. */
 .modal {
     --window-control-bg: hsl(0deg 0% 0% / 30%);
     --window-control-fg: var(--text-secondary);
@@ -17,7 +18,20 @@
     --window-control-close-bg: hsl(0deg 76% 40% / 60%);
     --window-control-close-fg: #ffffff;
     --window-control-close-glow: inset 0 0 15px #ff1111b5;
-    --window-caption-inactive-opacity: 0.6;
+    /* resting caption text; 0.6 was too faint on the tinted frame */
+    --window-caption-inactive-opacity: 0.82;
+}
+
+/* Client area: solid by default (the frame is the glass, the window is a tool). app.css reads
+   this on .modal-content.dark / .modal-body.dark. DreamStudio keeps its own translucent body
+   (manual-modal.css); the Director opts back into glass; the windowed workspace is not a
+   .modal-content and stays as it was. */
+body:not(.windows-classic-theme) .modal {
+    --window-body-bg: var(--glass-windows-full-bg, hsl(0 0% 12% / 97%));
+}
+
+body:not(.windows-classic-theme) #directorWindow {
+    --window-body-bg: var(--glass-windows-semi-bg, var(--glass-layer-dark-bg));
 }
 
 /* Inactive: flat, no glow, close stays neutral until hovered (Vista) */

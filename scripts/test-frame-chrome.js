@@ -88,13 +88,14 @@ active.filter((t) => t.startsWith('--window-control-')).forEach((t) => assert.ok
     .forEach((t) => assert.ok(shared.includes(`var(${t})`), `caption controls read ${t}`));
 assert.ok(shared.includes('opacity: var(--window-caption-inactive-opacity)'), 'inactive caption reads its opacity token');
 
-// 5. Frame glass modes: chrome on the frame glass, solid bodies with the Director opt-in.
-const aero = read('public/css/aero-glass.css');
-assert.ok(aero.includes('background: var(--window-caption-fill, none);'), 'frosted/basic caption band has no fill of its own');
-assert.ok(aero.includes('--window-body-bg: var(--glass-windows-full-bg'), 'frosted/basic bodies default to the solid fill');
-assert.ok(/#directorWindow[\s\S]{0,120}--window-body-bg: var\(--glass-windows-semi-bg/.test(aero), 'Director opts into the glass body');
-assert.ok(aero.includes('--window-caption-inactive-opacity: 0.82'), 'frosted/basic inactive caption opacity');
+// 5. Body fill and caption opacity are design tokens that hold in every glass mode
+//    (frosted and basic render live's look cheaper; aero-glass.css paints frames only).
+assert.ok(shared.includes('--window-body-bg: var(--glass-windows-full-bg'), 'bodies default to the solid fill');
+assert.ok(/#directorWindow\s*\{[^}]*--window-body-bg: var\(--glass-windows-semi-bg/.test(shared), 'Director opts into the glass body');
+assert.ok(shared.includes('--window-caption-inactive-opacity: 0.82'), 'inactive caption opacity token');
 assert.ok(read('public/css/app.css').includes('background: var(--window-body-bg, var(--glass-windows-semi-bg'), 'app.css body fill reads --window-body-bg');
+const aero = read('public/css/aero-glass.css');
+assert.ok(!aero.includes('--window-body-bg') && !aero.includes('--window-caption'), 'aero-glass.css paints frames, it does not carry design-only differences');
 
 // 6. No other stylesheet colours the chrome elements themselves (widget sizing inside the toolbar is fine).
 const offenders = [];
@@ -110,18 +111,20 @@ walk('public/css', []).forEach((file) => {
 });
 assert.deepStrictEqual(offenders, [], 'per-app stylesheets must not colour the window chrome');
 
-// 7. Phasewalker: keyword picker and gear menu live on the title toolbar, not in the caption cluster.
+// 7. Phasewalker: keyword picker, Prompt/UC tabs, add, menu, Compile, in that order, as plain
+//    toolbar buttons; the keyword picker and the menu are click context menus, not dropdowns.
 const start = html.indexOf('id="bracketGenerationModal"');
 const end = html.indexOf('class="modal-content bracket-generation-modal-content', start);
 const pw = html.slice(start, end);
 const toolbarAt = pw.indexOf('class="modal-window-title-toolbar"');
 const controlsAt = pw.indexOf('class="modal-window-controls"');
-['bracketGenKeywordDropdown', 'bracketGenGearDropdown'].forEach((id) => {
-    const at = pw.indexOf(`id="${id}"`);
-    assert.ok(at > toolbarAt && at < controlsAt, `${id} sits in the Phasewalker title toolbar`);
-});
-assert.ok(!pw.slice(controlsAt).includes('custom-dropdown'), 'Phasewalker caption cluster holds no dropdowns');
-assert.ok(read('public/css/bracket-generation.css').includes('#bracketGenerationModal .modal-window-title-toolbar {\n    overflow: visible;'), 'Phasewalker toolbar lets its menus drop below');
+const order = ['bracketGenKeywordDropdownBtn', 'bracketGenTabButtons', 'bracketGenAddStepBtn', 'bracketGenGearDropdownBtn', 'bracketGenCompileBtn']
+    .map((id) => pw.indexOf(`id="${id}"`));
+order.forEach((at, i) => assert.ok(at > toolbarAt && at < controlsAt && (i === 0 || at > order[i - 1]), `Phasewalker toolbar order at ${i}`));
+assert.ok(!pw.includes('custom-dropdown'), 'Phasewalker has no custom dropdowns left');
+const applet = read('public/scripts/comp/bracketGenerationApplet.js');
+assert.ok(/attachClickMenuToElement\(btn, this\.keywordClickMenuConfig\)/.test(applet), 'keyword picker is a click context menu');
+assert.ok(!/setupDropdown\(/.test(applet), 'Phasewalker no longer uses setupDropdown');
 
 // 8. Atelier keeps every app control on the title toolbar and only window buttons in the cluster.
 const ns = html.indexOf('id="naxtModal"');

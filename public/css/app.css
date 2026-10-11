@@ -3474,7 +3474,7 @@ body.desktop-mode .modal-backdrop {
     box-shadow: var(--glass-shadow-2);
 }
 
-/* --window-body-bg: solid in the frame glass modes, Director opts into glass (aero-glass.css, #404) */
+/* --window-body-bg: solid by default, Director opts into glass (modal-window-title-toolbar.css, #404) */
 .modal .modal-content.dark,
 .modal .modal-body.dark {
     background: var(--window-body-bg, var(--glass-windows-semi-bg, var(--glass-layer-dark-bg)));
