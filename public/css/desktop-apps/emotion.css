@@ -30,21 +30,15 @@
 
 /* ---- Toolbar ---- */
 
-/* Icon + compact number: muted glyph left of Frames/FPS inputs. */
-#desktopEmotionModal .emotion-toolbar-number {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+/* Muted glyph left of Frames/FPS inputs: a toolbar sibling, not a wrapper. */
+#desktopEmotionModal .modal-window-title-toolbar > .emotion-toolbar-number-icon {
     flex: 0 0 auto;
-}
-
-#desktopEmotionModal .emotion-toolbar-number-icon {
-    color: var(--text-muted);
-    font-size: 0.9em;
+    color: var(--text-secondary, var(--text-muted));
+    font-size: 14px;
     line-height: 1;
+    margin-right: -2px;
     pointer-events: none;
 }
-
 
 #desktopEmotionModal .emotion-toolbar-divider {
     flex: 0 0 1px;
@@ -142,20 +136,15 @@
 
 /* ---- Right: motion prompt, full height ---- */
 
-#desktopEmotionModal .emotion-prompt-panel {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-width: 0;
-    min-height: 0;
-    gap: 6px;
-    padding: var(--spacing-sm);
-}
-
 #desktopEmotionModal .emotion-prompt-input {
+    /* The textarea itself is the right pane (no extra container). */
     flex: 1 1 auto;
-    width: 100%;
+    align-self: stretch;
+    width: auto;
+    height: auto;
+    min-width: 0;
     min-height: 6em;
+    margin: 0;
     resize: none;
 }
 
@@ -178,7 +167,7 @@
         flex: 0 0 auto;
     }
 
-    #desktopEmotionModal .emotion-prompt-panel {
+    #desktopEmotionModal .emotion-prompt-input {
         flex: 1 0 auto;
         min-height: 10em;
     }

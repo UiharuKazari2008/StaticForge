@@ -506,8 +506,6 @@ const ensureDesktopEmotionModal = function () {
     // Compact number inputs like Studio's #manualPrintsCount, with a muted FA icon to the left
     // so Frames vs FPS stay readable without a text label in the toolbar.
     const emotionBuildNumberGroup = (labelText, id, min, max, value, iconClass) => {
-        const wrap = document.createElement('div');
-        wrap.className = 'emotion-toolbar-number';
         const icon = document.createElement('i');
         icon.className = iconClass + ' emotion-toolbar-number-icon';
         icon.setAttribute('aria-hidden', 'true');
@@ -522,9 +520,8 @@ const ensureDesktopEmotionModal = function () {
         input.title = labelText + ' (hover + scroll to adjust)';
         input.setAttribute('aria-label', labelText);
         input.className = 'form-control hover-show colored';
-        wrap.appendChild(icon);
-        wrap.appendChild(input);
-        toolbar.appendChild(wrap);
+        toolbar.appendChild(icon);
+        toolbar.appendChild(input);
         return input;
     };
     const framesInput = emotionBuildNumberGroup('Frames', 'emotionFramesInput', 8, 32, desktopEmotion.frames, 'fas fa-film');
@@ -632,16 +629,13 @@ const ensureDesktopEmotionModal = function () {
     previewPanel.appendChild(progressOverlay);
     previewPanel.appendChild(resultBadge);
 
-    const promptPanel = document.createElement('div');
-    promptPanel.className = 'emotion-prompt-panel emotion-inset-panel';
     const promptInput = document.createElement('textarea');
     promptInput.id = 'emotionPromptInput';
     promptInput.className = 'form-control prompt-textarea textarea-inset emotion-prompt-input';
     promptInput.placeholder = 'Motion prompt, e.g. hair and clothing sway in the wind, camera gently pushes in';
-    promptPanel.appendChild(promptInput);
 
     body.appendChild(previewPanel);
-    body.appendChild(promptPanel);
+    body.appendChild(promptInput);
     content.appendChild(body);
 
     modal.appendChild(title);

@@ -37,7 +37,7 @@ function main() {
     assert.match(emotionJs, /modal-content modal-padding dark/);
     assert.match(emotionJs, /emotion-preview-panel emotion-inset-panel/);
     assert.match(emotionCss, /\.emotion-preview-panel\s*{[^}]*aspect-ratio:\s*1\s*\/\s*1/s);
-    assert.match(emotionJs, /emotion-prompt-panel emotion-inset-panel/);
+    assert.match(emotionJs, /form-control prompt-textarea textarea-inset emotion-prompt-input/);
     assert.doesNotMatch(emotionJs, /emotion-controls-panel|emotion-start-row|emotion-side-col/);
     assert.match(emotionCss, /@media \(max-width: 760px\)[\s\S]*flex-direction:\s*column/);
 
