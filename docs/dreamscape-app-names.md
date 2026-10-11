@@ -40,6 +40,7 @@ User-facing applet and tool names follow a **Dreamscape** style: short, tangible
 | `dynamic-quips` | Dynamic Quips |
 | `desktop-settings` | Personalize (modal title) |
 | `zanzou` | **Zanzou** (Afterimage / similar-image keep-scrap, Control Panel) |
+| `dovecote` | Dovecote (internal mail client) |
 
 ## Reserved for later
 
