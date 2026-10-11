@@ -185,8 +185,31 @@ function normalizeReportType(reportType) {
  * @param {number} [params.severity] - Severity 1-5 (optional, inferred from type)
  * @param {object} [params.metadata] - Additional metadata
  */
-function reportIssue(params) {
+const REPORT_KNOWN_FIELDS = new Set(['type', 'tool', 'message', 'context', 'reporter', 'severity', 'metadata']);
+
+function pickReportText(params, keys) {
+    for (const key of keys) {
+        const v = params[key];
+        if (typeof v === 'string' && v.trim()) return v;
+        if (v && typeof v === 'object') return JSON.stringify(v);
+    }
+    return '';
+}
+
+function reportIssue(rawParams) {
     ensureIssuesDir();
+    let params = rawParams && typeof rawParams === 'object' ? rawParams : {};
+    if (params.arguments && typeof params.arguments === 'object' && !params.message) {
+        params = { ...params.arguments, ...params };
+    }
+    const message = pickReportText(params, ['message', 'description', 'details', 'summary', 'title', 'body', 'text', 'issue', 'report']);
+    if (!message) {
+        return { success: false, error: 'message is required: describe the issue in the message field' };
+    }
+    const extra = {};
+    for (const [k, v] of Object.entries(params)) {
+        if (!REPORT_KNOWN_FIELDS.has(k) && k !== 'arguments') extra[k] = v;
+    }
 
     const config = getReportConfig();
     const rawType = params.type || 'info';
@@ -236,11 +259,11 @@ function reportIssue(params) {
         type: normalizedType,
         rawType,
         tool: params.tool || null,
-        message: params.message || '',
+        message,
         context: params.context || null,
-        reporter: params.reporter || 'unknown',
+        reporter: params.reporter || params.agent || params.persona || 'unknown',
         severity,
-        metadata: params.metadata || null,
+        metadata: params.metadata || (Object.keys(extra).length ? { extra } : null),
         level_recorded_at: config.level
     };
 
