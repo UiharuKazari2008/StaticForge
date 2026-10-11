@@ -297,7 +297,7 @@ class WorkspaceManager {
             }
 
             const imageFiles = fs.readdirSync(this.IMAGES_DIR)
-                .filter(f => f.match(/\.(png|jpg|jpeg)$/i))
+                .filter(f => f.match(/\.(png|jpg|jpeg|gif)$/i))
                 .filter(f => !f.startsWith('.'));
 
             const imageSet = new Set(imageFiles);

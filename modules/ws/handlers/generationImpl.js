@@ -1,10 +1,15 @@
 const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, enhanceImage, maxEnhanceImage, previewExpandImagePrompt, compileDynamicGenerationWebSocket, applyTendaiPreviewWebSocket } = require('../../imageGeneration');
 const { upscaleImageWebSocket } = require('../../imageUpscaling');
+const { animateImageWebSocket } = require('../../imageAnimation');
 const {
     isLocalUpscaler,
     normalizeUpscalerName,
     checkLocalWorkerHealth,
-    LOCAL_UPSCALE_MODELS
+    LOCAL_UPSCALE_MODELS,
+    LOCAL_ANIMATE_BACKENDS,
+    DEFAULT_ANIMATE_BACKEND,
+    DEFAULT_ANIMATE_FRAMES,
+    DEFAULT_ANIMATE_FPS
 } = require('../../localUpscaleWorker');
 const { resolveDynamicContext } = require('../../dynamicGenerationHandlers');
 const { broadcastGalleryMutation } = require('./120-galleryHandler');
@@ -466,6 +471,79 @@ async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer)
                 fallbackBackend: error.fallbackBackend || null
             },
             error: error.message || 'Image upscaling failed',
+            timestamp: new Date().toISOString()
+        });
+    }
+}
+
+async function handleImageAnimation(handlers, ws, message, clientInfo, wsServer) {
+    const requestId = message.requestId || 'unknown';
+
+    try {
+        const { requestId: _, ...data } = message;
+        console.log(`🎞️ Processing image animate request: ${requestId}`);
+
+        handlers.startKeepAliveInterval(ws, requestId, 15000);
+
+        const backend = LOCAL_ANIMATE_BACKENDS.some((row) => row.id === data.backend)
+            ? data.backend
+            : DEFAULT_ANIMATE_BACKEND;
+        const result = await animateImageWebSocket(handlers.globalResources,
+            data.filename,
+            data.workspace,
+            clientInfo.userType,
+            clientInfo.sessionId,
+            {
+                motionPrompt: data.motion_prompt || data.motionPrompt,
+                frames: data.frames || DEFAULT_ANIMATE_FRAMES,
+                fps: data.fps || DEFAULT_ANIMATE_FPS,
+                loop: data.loop === undefined ? true : !!data.loop,
+                backend
+            },
+            ws,
+            handlers,
+            requestId
+        );
+
+        handlers.stopKeepAliveInterval(requestId);
+
+        handlers.sendToClient(ws, {
+            type: 'image_animation_response',
+            requestId: requestId,
+            data: {
+                filename: result.filename,
+                formats: result.formats,
+                metadata: result.metadata,
+                jobId: result.jobId,
+                backend: result.backend,
+                motionPrompt: result.motionPrompt,
+                frames: result.frames,
+                fps: result.fps,
+                loop: result.loop
+            },
+            timestamp: new Date().toISOString()
+        });
+
+        await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
+            viewType: 'images',
+            action: 'append_top',
+            filename: result.filename,
+            workspaceId: data.workspace
+        });
+    } catch (error) {
+        console.error('❌ Image animate error:', error);
+
+        handlers.stopKeepAliveInterval(requestId);
+
+        handlers.sendToClient(ws, {
+            type: 'image_animation_error',
+            requestId: requestId,
+            data: {
+                jobId: error.jobId || null,
+                code: error.code || null,
+                fallbackBackend: error.fallbackBackend || null
+            },
+            error: error.message || 'Image animate failed',
             timestamp: new Date().toISOString()
         });
     }
@@ -1073,10 +1151,45 @@ async function handleLocalUpscaleStatus(handlers, ws, message) {
     }
 }
 
+async function handleLocalAnimateStatus(handlers, ws, message) {
+    const requestId = message.requestId || null;
+    try {
+        const health = await checkLocalWorkerHealth(handlers.globalResources);
+        handlers.sendToClient(ws, {
+            type: 'local_animate_status_response',
+            requestId,
+            data: {
+                online: !!health.online,
+                configured: !!health.configured,
+                reason: health.reason || null,
+                gpu: health.gpu || null,
+                version: health.version || null,
+                queueLength: health.queueLength != null ? health.queueLength : null,
+                backends: (health.animateBackends && health.animateBackends.length) ? health.animateBackends : LOCAL_ANIMATE_BACKENDS,
+                loaded: health.animateLoaded || []
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        handlers.sendToClient(ws, {
+            type: 'local_animate_status_response',
+            requestId,
+            data: {
+                online: false,
+                configured: false,
+                reason: error.message || 'Local animate status failed',
+                backends: LOCAL_ANIMATE_BACKENDS
+            },
+            timestamp: new Date().toISOString()
+        });
+    }
+}
+
 module.exports = {
     handleImageGeneration,
     handleImageReroll,
     handleImageUpscaling,
+    handleImageAnimation,
     handlePreviewExpandImagePrompt,
     handleImageExpansion,
     handleEnhanceImage,
@@ -1088,5 +1201,6 @@ module.exports = {
     handleCompileDynamicGeneration,
     handleApplyTendaiPreview,
     handleResolveTextReplacements,
-    handleLocalUpscaleStatus
+    handleLocalUpscaleStatus,
+    handleLocalAnimateStatus
 };

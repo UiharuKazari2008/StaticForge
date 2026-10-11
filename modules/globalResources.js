@@ -4289,7 +4289,7 @@ class GlobalResources {
         const previewsDir = this.getPath('previews');
         const metadataDb = this.getMetadataDatabase();
 
-        const files = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        const files = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg|gif)$/i));
         const previews = fs.readdirSync(previewsDir).filter(f => f.endsWith('.webp'));
         const baseMap = {};
 

@@ -4,6 +4,7 @@ const {
     handleImageGeneration,
     handleImageReroll,
     handleImageUpscaling,
+    handleImageAnimation,
     handlePreviewExpandImagePrompt,
     handleImageExpansion,
     handleEnhanceImage,
@@ -15,7 +16,8 @@ const {
     handleCompileDynamicGeneration,
     handleApplyTendaiPreview,
     handleResolveTextReplacements,
-    handleLocalUpscaleStatus
+    handleLocalUpscaleStatus,
+    handleLocalAnimateStatus
 } = require('./generationImpl');
 
 const GENERATION_DESTRUCTIVE = { destructive: true, ...WS_DISPATCH_FIFO_CONNECTION };
@@ -39,6 +41,7 @@ function registerPackets(handlersCtx) {
     regFn('generate_image', handleImageGeneration, GENERATION_DESTRUCTIVE);
     regFn('reroll_image', handleImageReroll, GENERATION_DESTRUCTIVE);
     regFn('upscale_image', handleImageUpscaling, GENERATION_DESTRUCTIVE);
+    regFn('animate_image', handleImageAnimation, GENERATION_DESTRUCTIVE);
     regFn('expand_image', handleImageExpansion, GENERATION_DESTRUCTIVE);
     regFn('enhance_image', handleEnhanceImage, GENERATION_DESTRUCTIVE);
     regFn('max_enhance_image', handleMaxEnhanceImage, GENERATION_DESTRUCTIVE);
@@ -51,6 +54,7 @@ function registerPackets(handlersCtx) {
     regFn('apply_tendai_preview', handleApplyTendaiPreview, GENERATION_DESTRUCTIVE);
     regFn('resolve_text_replacements', handleResolveTextReplacements, GENERATION_DESTRUCTIVE);
     regFn('local_upscale_status', handleLocalUpscaleStatus);
+    regFn('local_animate_status', handleLocalAnimateStatus);
 }
 
 module.exports = { registerPackets };

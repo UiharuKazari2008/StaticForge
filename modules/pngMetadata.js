@@ -1254,7 +1254,7 @@ class PngMetadata {
             .replace(/@blur(?=\.)/, '')  // Remove @blur suffix
             .replace(/@lq(?=\.)/, '')  // Remove @lq suffix
             .replace(/@2x(?=\.)/, '')  // Remove @2x suffix
-                .replace(/\.(png|jpg|jpeg)$/i, '');  // Remove file extension
+                .replace(/\.(png|jpg|jpeg|gif)$/i, '');  // Remove file extension
     }
 
     // New comprehensive metadata extraction function for download URL functionality

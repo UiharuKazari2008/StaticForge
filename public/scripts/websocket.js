@@ -160,6 +160,8 @@ class BannerManager {
             'generate_image': 'Generate Image',
             'upscale_image': 'Upscale Image',
             'local_upscale_status': 'Ruiko Upscaler',
+            'animate_image': 'Animate Image',
+            'local_animate_status': 'Ruiko Animate',
             'remote_workers_status': 'Remote Workers',
             'reroll_image': 'Recast Spell',
             'expand_image': 'Expand Canvas',
@@ -6112,6 +6114,21 @@ class WebSocketClient {
             return result;
         } catch (error) {
             console.error('Upscale image error:', error);
+            throw error;
+        }
+    }
+
+    // Method to request image animation (GIF/MP4/WebP via Ruiko) over WebSocket
+    async animateImage(animateParams, requestId = null) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        try {
+            const result = await this.sendMessage('animate_image', animateParams);
+            return result;
+        } catch (error) {
+            console.error('Animate image error:', error);
             throw error;
         }
     }
