@@ -229,7 +229,10 @@
     overflow: hidden;
 }
 
-#desktopDovecoteModal .dovecote-oe-header {
+/* ---- Reading-pane content: shared by the main window's inline preview
+   and the standalone reader window (dovecote.js doveOpenReaderWindow) ---- */
+
+.dovecote-oe-header {
     display: flex;
     flex: 0 0 auto;
     flex-direction: column;
@@ -239,17 +242,17 @@
     font-size: 0.85em;
 }
 
-#desktopDovecoteModal .dovecote-oe-header-row {
+.dovecote-oe-header-row {
     display: flex;
     gap: var(--spacing-sm);
 }
 
-#desktopDovecoteModal .dovecote-oe-header-label {
+.dovecote-oe-header-label {
     flex: 0 0 4.5em;
     color: var(--text-muted);
 }
 
-#desktopDovecoteModal .dovecote-oe-header-value {
+.dovecote-oe-header-value {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -258,7 +261,7 @@
     color: var(--text-secondary);
 }
 
-#desktopDovecoteModal .dovecote-safety-bar {
+.dovecote-safety-bar {
     flex: 0 0 auto;
     padding: 0.3em var(--spacing-sm);
     border-radius: var(--border-radius-md);
@@ -267,7 +270,7 @@
     font-size: 0.8em;
 }
 
-#desktopDovecoteModal .dovecote-images-bar {
+.dovecote-images-bar {
     display: flex;
     flex: 0 0 auto;
     align-items: center;
@@ -280,7 +283,7 @@
     font-size: 0.85em;
 }
 
-#desktopDovecoteModal .dovecote-body-wrap {
+.dovecote-body-wrap {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
@@ -288,11 +291,11 @@
     position: relative;
 }
 
-#desktopDovecoteModal .dovecote-empty-hint {
+.dovecote-empty-hint {
     margin: auto;
 }
 
-#desktopDovecoteModal .dovecote-body-frame {
+.dovecote-body-frame {
     flex: 1 1 auto;
     width: 100%;
     min-height: 0;
@@ -301,7 +304,7 @@
     background: #ffffff;
 }
 
-#desktopDovecoteModal .dovecote-raw-body {
+.dovecote-raw-body {
     flex: 1 1 auto;
     margin: 0;
     padding: var(--spacing-sm);
@@ -337,46 +340,54 @@
     color: hsl(0 100% 75%);
 }
 
-/* ---- Compose overlay ----------------------------------------------------- */
+/* ---- Compose window (desktopDovecoteCompose_*, dovecote.js doveOpenComposeWindow) —
+   its own top-level window, not an overlay inside the main modal. ---- */
 
-#desktopDovecoteModal .dovecote-compose-overlay {
-    display: flex;
-    position: absolute;
-    inset: 0;
-    align-items: center;
-    justify-content: center;
-    padding: var(--spacing-lg);
-    background: hsl(0 0% 0% / 55%);
-    z-index: var(--z-layer-10);
+.dovecote-compose-window > .modal-content {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
 }
 
-#desktopDovecoteModal .dovecote-compose-panel {
+.dovecote-compose-window .modal-body {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     gap: var(--spacing-sm);
-    width: min(480px, 100%);
-    max-height: 100%;
-    padding: var(--spacing-md);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-lg);
-    background: var(--glass-layer-dark-5);
-    overflow: auto;
 }
 
-#desktopDovecoteModal .dovecote-compose-title {
+.dovecote-compose-title {
     color: var(--text-primary);
     font-weight: 700;
 }
 
-#desktopDovecoteModal .dovecote-compose-body {
+.dovecote-compose-body {
     flex: 1 1 auto;
     min-height: 160px;
     resize: vertical;
 }
 
-#desktopDovecoteModal .dovecote-compose-actions {
+.dovecote-compose-actions {
     display: flex;
     justify-content: flex-end;
+    gap: var(--spacing-sm);
+}
+
+/* ---- Reader window (desktopDovecoteReader_*, dovecote.js doveOpenReaderWindow) —
+   reuses the oe-header / safety-bar / images-bar / body-wrap classes above. ---- */
+
+.dovecote-reader-window > .modal-content {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+.dovecote-reader-window .modal-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     gap: var(--spacing-sm);
 }
 
@@ -452,4 +463,27 @@
     #desktopDovecoteModal .dovecote-main-pane.dovecote-mobile-message-open .dovecote-preview-pane {
         display: flex;
     }
+}
+
+/* ---- Taskbar tray icon (#dovecoteTrayIcon, public/app.html) — same
+   .taskbar-tray-icon pattern as directorTrayIcon / naxtBagTrayIcon
+   (public/scripts/comp/systemTrayManager.js), plus an unread-count badge. ---- */
+
+.dovecote-tray-icon {
+    position: relative;
+}
+
+.dovecote-tray-badge {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    min-width: 14px;
+    padding: 0 3px;
+    border-radius: var(--border-radius-xl);
+    background: var(--primary-glass-color);
+    color: var(--text-accent-tinted);
+    font-size: 0.65em;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
 }
