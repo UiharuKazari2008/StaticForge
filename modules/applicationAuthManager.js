@@ -34,7 +34,8 @@ const SCOPE_WS_PACKETS = {
         'workspace_get_groups', 'workspace_get_group', 'workspace_get_image_groups',
         'workspace_update_window_positions',
         'desktop_add_shortcut', 'desktop_update_shortcut',
-        'desktop_remove_shortcut', 'desktop_update_positions'
+        'desktop_remove_shortcut', 'desktop_update_positions',
+        'favorites_add', 'favorites_remove', 'favorites_get'
     ],
     search: [
         'search_tags', 'search_dataset_tags', 'search_files', 'search_characters',
@@ -56,7 +57,9 @@ const SCOPE_WS_PACKETS = {
     presets: [
         'get_presets', 'search_presets', 'load_preset', 'save_preset', 'update_preset',
         'delete_preset', 'get_preset_groups', 'save_preset_group', 'delete_preset_group',
-        'regenerate_preset_uuid'
+        'regenerate_preset_uuid',
+        'get_text_replacements', 'save_text_replacements', 'get_text_replacement_options',
+        'scan_text_replacements', 'delete_text_replacement', 'create_text_replacement'
     ],
     chat: [
         'create_chat_session', 'send_chat_message', 'get_chat_history', 'delete_chat_session',
