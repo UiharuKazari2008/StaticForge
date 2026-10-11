@@ -184,9 +184,14 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     assert.strictEqual(root.style.getPropertyValue('--aero-cover-h'), '1280px');
     assert.strictEqual(root.style.getPropertyValue('--aero-cover-x'), '0px');
     assert.strictEqual(root.style.getPropertyValue('--aero-cover-y'), '-44px');
-    assert.ok(drawCalls.some((c) => /blur\(\d+px\)/.test(c.filter)), 'blur applied through the canvas filter');
+    const blurs = drawCalls.filter((c) => /blur\(\d+px\)/.test(c.filter)).map((c) => parseInt(c.filter.match(/blur\((\d+)px\)/)[1], 10));
+    assert.strictEqual(blurs.length, 2, 'frame copy and lighter taskbar copy each get one blur pass');
+    assert.ok(blurs[1] < blurs[0], 'taskbar copy is blurred less than the frame copy');
     assert.ok(drawCalls.filter((c) => c.filter === 'none').length >= 9, 'image plus clamped edges drawn before the blur pass');
     const firstBlob = root.style.getPropertyValue('--aero-wallpaper');
+    const firstLight = root.style.getPropertyValue('--aero-wallpaper-light');
+    assert.match(firstLight, /^url\("blob:test-\d+"\)$/);
+    assert.notStrictEqual(firstLight, firstBlob);
 
     // same wallpaper again: no rebuild
     const tokenBefore = T.state.buildToken;
@@ -220,6 +225,7 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     assert.strictEqual(root.style.getPropertyValue('--aero-cover-y'), '-404px');
     await sleep(20);
     assert.ok(revoked.includes(firstBlob.slice(5, -2)), 'previous blob URL revoked');
+    assert.ok(revoked.includes(firstLight.slice(5, -2)), 'previous light blob URL revoked');
 
     // ---- resize republishes cover vars ----
     window.innerWidth = 1000; window.innerHeight = 500;
@@ -232,6 +238,7 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     document.body.computedVars['--desktop-wallpaper'] = 'url(/images/bad.png)';
     assert.strictEqual(await api.rebuildWallpaper(), false);
     assert.strictEqual(root.style.getPropertyValue('--aero-wallpaper'), '');
+    assert.strictEqual(root.style.getPropertyValue('--aero-wallpaper-light'), '');
     assert.strictEqual(T.state.failedUrl, 'http://localhost:9220/images/bad.png');
     const tokenAfterFail = T.state.buildToken;
     assert.strictEqual(await T.ensureFrosted({ force: false }), false);

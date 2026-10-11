@@ -3,7 +3,8 @@
  *
  * html[data-glass] = frosted | live | basic (public/css/aero-glass.css).
  *   frosted  once per wallpaper a downscaled, blurred copy is drawn to a canvas and
- *            published as --aero-wallpaper on <html>. Every .modal::before paints it at
+ *            published as --aero-wallpaper on <html> (plus a lighter-blur copy,
+ *            --aero-wallpaper-light, for the taskbar). Every .modal::before paints it at
  *            viewport cover size (--aero-cover-*) offset by the window's own origin
  *            (--aero-x / --aero-y on the modal), so no window pays a per-frame
  *            backdrop-filter. Dragging is handled in CSS via --modal-drag-x / -y.
@@ -30,8 +31,9 @@
 
     const config = {
         frostedMaxWidth: 960,       // source copy is downscaled to at most this wide
-        frostedBlurRatio: 0.016,    // blur radius as a fraction of that width (~15px at 960)
-        frostedMinBlurPx: 6,
+        frostedBlurRatio: 0.011,    // frame blur radius as a fraction of that width (~11px at 960)
+        frostedMinBlurPx: 5,
+        taskbarBlurRatio: 0.4,      // the taskbar copy keeps more detail: this fraction of the frame blur
         jpegQuality: 0.86,
         revokeDelayMs: 2000,        // old blob URL lives long enough for the swap to paint
         resizeDebounceMs: 120,
@@ -47,6 +49,7 @@
         lastGlassMode: 'frosted',
         sourceUrl: null,
         blobUrl: null,
+        blobLightUrl: null,
         imageWidth: 0,
         imageHeight: 0,
         position: { x: 0.5, y: 0.5 },
@@ -322,30 +325,12 @@
         ctx.drawImage(img, nw - 1, nh - 1, 1, 1, pad + width, pad + height, pad, pad);
     }
 
-    function renderFrosted(img) {
-        const nw = img.naturalWidth;
-        const nh = img.naturalHeight;
-        if (!(nw > 0) || !(nh > 0)) return Promise.reject(new Error('wallpaper has no size'));
-        const scale = Math.min(1, config.frostedMaxWidth / nw);
-        const width = Math.max(16, Math.round(nw * scale));
-        const height = Math.max(16, Math.round(nh * scale));
-        const blur = Math.max(config.frostedMinBlurPx, Math.round(width * config.frostedBlurRatio));
-        const pad = blur * 2;
-
-        const source = doc.createElement('canvas');
-        source.width = width + pad * 2;
-        source.height = height + pad * 2;
-        const sourceCtx = source.getContext('2d');
-        if (!sourceCtx) return Promise.reject(new Error('no 2d context'));
-        sourceCtx.imageSmoothingEnabled = true;
-        if ('imageSmoothingQuality' in sourceCtx) sourceCtx.imageSmoothingQuality = 'high';
-        drawClampedSource(sourceCtx, img, width, height, pad);
-
+    function blurInto(source, width, height, pad, blur) {
         const target = doc.createElement('canvas');
         target.width = width;
         target.height = height;
         const ctx = target.getContext('2d', { alpha: false });
-        if (!ctx) return Promise.reject(new Error('no 2d context'));
+        if (!ctx) throw new Error('no 2d context');
         ctx.imageSmoothingEnabled = true;
         if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
         if ('filter' in ctx) {
@@ -354,25 +339,55 @@
             ctx.filter = 'none';
         } else {
             // No canvas filter (older WebKit): shrink hard, then scale back up with smoothing.
+            const shrink = Math.max(2, Math.round(blur * 0.8));
             const small = doc.createElement('canvas');
-            small.width = Math.max(8, Math.round(source.width / 12));
-            small.height = Math.max(8, Math.round(source.height / 12));
+            small.width = Math.max(8, Math.round(source.width / shrink));
+            small.height = Math.max(8, Math.round(source.height / shrink));
             const smallCtx = small.getContext('2d');
             smallCtx.imageSmoothingEnabled = true;
             smallCtx.drawImage(source, 0, 0, small.width, small.height);
             ctx.drawImage(small, -pad, -pad, source.width, source.height);
         }
+        return target;
+    }
 
+    function canvasToBlob(canvas) {
         return new Promise((resolve, reject) => {
             try {
-                target.toBlob((blob) => {
-                    if (blob) resolve({ blob, width: nw, height: nh });
+                canvas.toBlob((blob) => {
+                    if (blob) resolve(blob);
                     else reject(new Error('toBlob returned null'));
                 }, 'image/jpeg', config.jpegQuality);
             } catch (err) {
                 reject(err); // SecurityError from a tainted canvas lands here
             }
         });
+    }
+
+    /** Frame copy plus a lighter taskbar copy from one clamped source draw. */
+    async function renderFrosted(img) {
+        const nw = img.naturalWidth;
+        const nh = img.naturalHeight;
+        if (!(nw > 0) || !(nh > 0)) throw new Error('wallpaper has no size');
+        const scale = Math.min(1, config.frostedMaxWidth / nw);
+        const width = Math.max(16, Math.round(nw * scale));
+        const height = Math.max(16, Math.round(nh * scale));
+        const blur = Math.max(config.frostedMinBlurPx, Math.round(width * config.frostedBlurRatio));
+        const lightBlur = Math.max(2, Math.round(blur * config.taskbarBlurRatio));
+        const pad = blur * 2;
+
+        const source = doc.createElement('canvas');
+        source.width = width + pad * 2;
+        source.height = height + pad * 2;
+        const sourceCtx = source.getContext('2d');
+        if (!sourceCtx) throw new Error('no 2d context');
+        sourceCtx.imageSmoothingEnabled = true;
+        if ('imageSmoothingQuality' in sourceCtx) sourceCtx.imageSmoothingQuality = 'high';
+        drawClampedSource(sourceCtx, img, width, height, pad);
+
+        const blob = await canvasToBlob(blurInto(source, width, height, pad, blur));
+        const blobLight = await canvasToBlob(blurInto(source, width, height, pad, lightBlur));
+        return { blob, blobLight, width: nw, height: nh };
     }
 
     function revokeLater(url) {
@@ -397,13 +412,19 @@
     }
 
     function clearFrosted() {
-        if (root) root.style.removeProperty('--aero-wallpaper');
+        if (root) {
+            root.style.removeProperty('--aero-wallpaper');
+            root.style.removeProperty('--aero-wallpaper-light');
+        }
         const previous = state.blobUrl;
+        const previousLight = state.blobLightUrl;
         state.sourceUrl = null;
         state.blobUrl = null;
+        state.blobLightUrl = null;
         state.imageWidth = 0;
         state.imageHeight = 0;
         revokeLater(previous);
+        revokeLater(previousLight);
     }
 
     async function ensureFrosted(options = {}) {
@@ -443,16 +464,21 @@
             const result = await renderFrosted(img);
             if (token !== state.buildToken) return false;
             const nextUrl = URL.createObjectURL(result.blob);
+            const nextLightUrl = URL.createObjectURL(result.blobLight);
             const previous = state.blobUrl;
+            const previousLight = state.blobLightUrl;
             state.sourceUrl = absolute;
             state.blobUrl = nextUrl;
+            state.blobLightUrl = nextLightUrl;
             state.imageWidth = result.width;
             state.imageHeight = result.height;
             state.failedUrl = null;
             root.style.setProperty('--aero-wallpaper', `url("${nextUrl}")`);
+            root.style.setProperty('--aero-wallpaper-light', `url("${nextLightUrl}")`);
             publishCoverVars();
             syncAllModals();
             revokeLater(previous);
+            revokeLater(previousLight);
             return true;
         } catch (err) {
             if (token !== state.buildToken) return false;

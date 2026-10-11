@@ -15,21 +15,42 @@
    Yozora #400. */
 
 :root {
-    /* Frame tints over the frosted image: inactive is the paler grey Vista inactive
-       frame, maximized is the Vista dark frame with a touch of texture left. */
-    --aero-tint-inactive: hsl(0 0% 72% / 56%);
+    /* Maximized is the Vista dark frame with a touch of texture left. */
     --aero-tint-maximized: hsl(0 0% 5% / 88%);
     --aero-sheen: linear-gradient(180deg, hsl(0 0% 100% / 14%) 0, hsl(0 0% 100% / 5%) 38%, hsl(0 0% 0% / 0%) 60%, hsl(0 0% 0% / 8%) 100%);
+    --aero-sheen-inactive: linear-gradient(180deg, hsl(0 0% 100% / 8%) 0, hsl(0 0% 100% / 3%) 38%, hsl(0 0% 0% / 0%) 60%, hsl(0 0% 0% / 6%) 100%);
     --aero-frame-highlight: inset 0 0 0 1px hsl(0 0% 100% / 17%);
     --aero-frame-radius: calc(var(--border-radius-xl) - 1px);
 }
 
-/* The active tint is computed on the window itself so the workspace theme's
+/* Tints are computed on the window itself so the workspace theme's
    --glass-windows-bg (set on body[data-workspace], not :root) and any per-app
-   override of it are honoured. */
+   override of it are honoured. Inactive keeps a good share of the workspace
+   colour, so it reads as the same frame at rest rather than a grey one, and
+   stays dark enough for the light caption text. */
 .modal {
-    --aero-tint-active: color-mix(in srgb, var(--glass-windows-bg, hsl(0 0% 20% / 75%)) 84%, transparent);
+    --aero-frame-base: var(--glass-windows-bg, hsl(0 0% 20% / 75%));
+    --aero-tint-active: color-mix(in srgb, var(--aero-frame-base) 84%, transparent);
+    --aero-tint-inactive: color-mix(in srgb, var(--aero-frame-base) 45%, hsl(0 0% 66% / 60%));
     --aero-tint: var(--aero-tint-active);
+}
+
+/* Basic (performance mode): opaque, saturated frames, like Vista Basic.
+   html.disable-blur switches the workspace theme to its desaturated solid
+   palette (--glass-windows-bg becomes hsl(h 25% 20%)), which is what read as
+   grey. The frame base is rebuilt from the workspace colour with the same
+   saturation and lightness the glass palette uses (hsl(h 90% 25%)), opaque.
+   The color-mix line is the fallback for engines without relative colours. */
+html[data-glass="basic"] .modal {
+    --aero-frame-base: color-mix(in srgb, var(--workspace-color, var(--active-tab-bg, var(--glass-windows-bg, hsl(0 0% 20%)))) 62%, hsl(0 0% 12%));
+    --aero-tint-active: color-mix(in srgb, var(--aero-frame-base) 92%, white);
+    --aero-tint-inactive: color-mix(in srgb, var(--aero-frame-base) 58%, hsl(0 0% 68%));
+}
+
+@supports (color: hsl(from red h s l)) {
+    html[data-glass="basic"] .modal {
+        --aero-frame-base: hsl(from var(--workspace-color, var(--active-tab-bg, var(--glass-windows-bg, hsl(0 0% 20%)))) h 90% 25% / 1);
+    }
 }
 
 /* ---------- frosted + basic: the frame is painted by ::before ---------- */
@@ -51,7 +72,7 @@ html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-them
     z-index: -1;
     border-radius: var(--aero-frame-radius);
     pointer-events: none;
-    background-color: var(--glass-windows-bg, var(--glass-layer-dark-5));
+    background-color: var(--aero-frame-base);
     background-image:
         var(--aero-sheen),
         linear-gradient(var(--aero-tint), var(--aero-tint));
@@ -78,10 +99,17 @@ html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-th
         calc(var(--aero-cover-y, 0px) - var(--aero-y, 0px) - var(--modal-drag-y, 0px) - 1px);
 }
 
-/* Inactive windows keep faint glass: same image, paler and greyer tint (Vista inactive frame) */
+/* Inactive windows keep faint glass: same image, calmer tint and sheen (Vista inactive frame) */
 html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window),
 html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) {
     --aero-tint: var(--aero-tint-inactive);
+    --aero-sheen: var(--aero-sheen-inactive);
+}
+
+/* Inactive caption: a touch dimmer, still light on the tinted frame */
+html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window) .modal-window-title-main,
+html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) .modal-window-title-main {
+    color: hsl(0 0% 90%);
 }
 
 /* Maximized: square frame (token, so no specificity contest with the ::before rule above) */
@@ -119,14 +147,14 @@ body.desktop-mode:has(.modal.modal-maximized.active-window:not(.hidden):not(.hid
 
 /* ---------- taskbar ---------- */
 
-/* frosted: the same wallpaper copy, pinned to the bottom edge of the viewport */
+/* frosted: the lighter-blur wallpaper copy, pinned to the bottom edge of the viewport */
 html[data-glass="frosted"] .desktop-taskbar::after {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background:
         linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 40%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.35) 100%),
-        linear-gradient(to top, hsl(0 0% 8% / 82%) 0%, hsl(0 0% 12% / 76%) 50%, hsl(0 0% 18% / 72%) 100%),
-        var(--aero-wallpaper, none);
+        linear-gradient(to top, hsl(0 0% 8% / 72%) 0%, hsl(0 0% 12% / 66%) 50%, hsl(0 0% 18% / 62%) 100%),
+        var(--aero-wallpaper-light, var(--aero-wallpaper, none));
     background-size:
         100% 100%,
         100% 100%,

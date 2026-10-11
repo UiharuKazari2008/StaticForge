@@ -375,7 +375,9 @@ function maximizeModalToWorkArea(modal) {
     modal.style.width = `${roundCssPixel(workArea.width)}px`;
     modal.style.height = `${roundCssPixel(workArea.height + nudge)}px`;
     void modal.offsetHeight;
-    setModalOffsetsFromViewportTopLeft(modal, workArea.left, workArea.top - nudge);
+    // skipClamp: the nudge lifts the frame under the caption band on purpose. Clamping to the
+    // work area used to push it back down, so the extra height ended under the taskbar (#400).
+    setModalOffsetsFromViewportTopLeft(modal, workArea.left, workArea.top - nudge, { skipClamp: true });
 
     modal.setAttribute('data-modal-moved', 'true');
     updateModalMaximizeButtonIcon(modal);
@@ -1034,8 +1036,9 @@ function snapModalOffsetsToDevicePixels(modal) {
     const offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
     const offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
 
-    modal.style.setProperty('--modal-offset-x', `${roundCssPixel(offsetX + deltaX)}px`);
-    modal.style.setProperty('--modal-offset-y', `${roundCssPixel(offsetY + deltaY)}px`);
+    // roundCssOffset keeps the half pixel an odd-sized window needs (public/scripts/utils/deviceUtils.js)
+    modal.style.setProperty('--modal-offset-x', `${roundCssOffset(offsetX + deltaX)}px`);
+    modal.style.setProperty('--modal-offset-y', `${roundCssOffset(offsetY + deltaY)}px`);
 }
 
 function setModalOffsetPx(modal, offsetX, offsetY, options) {
@@ -1045,8 +1048,8 @@ function setModalOffsetPx(modal, offsetX, offsetY, options) {
 
     const opts = options || {};
 
-    modal.style.setProperty('--modal-offset-x', `${roundCssPixel(offsetX)}px`);
-    modal.style.setProperty('--modal-offset-y', `${roundCssPixel(offsetY)}px`);
+    modal.style.setProperty('--modal-offset-x', `${roundCssOffset(offsetX)}px`);
+    modal.style.setProperty('--modal-offset-y', `${roundCssOffset(offsetY)}px`);
 
     if (opts.snap !== false) {
         void modal.offsetHeight;
@@ -1813,7 +1816,8 @@ function setModalOffsetsFromViewportTopLeft(modal, left, top, options = {}) {
     const width = layout.width;
     const height = layout.height;
     const restoreClamp = options.allowPartialBottomOverflow ? { allowPartialBottomOverflow: true } : {};
-    const clamped = clampModalViewportRect(left, top, width, height, null, restoreClamp);
+    const unclamped = options.skipClamp === true;
+    const clamped = unclamped ? { left, top } : clampModalViewportRect(left, top, width, height, null, restoreClamp);
     left = clamped.left;
     top = clamped.top;
     const trueInsetTop = getModalTrueInsetTop();
@@ -1822,7 +1826,7 @@ function setModalOffsetsFromViewportTopLeft(modal, left, top, options = {}) {
         const centerX = left + width / 2;
         let offsetX = centerX - window.innerWidth / 2;
         let offsetY = top - trueInsetTop;
-        if (options.allowPartialBottomOverflow) {
+        if (options.allowPartialBottomOverflow || unclamped) {
             setModalOffsetPx(modal, offsetX, offsetY, { snap: true, settle: true });
         } else {
             const offsetClamped = clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height);
@@ -1837,7 +1841,7 @@ function setModalOffsetsFromViewportTopLeft(modal, left, top, options = {}) {
     let offsetX = centerX - window.innerWidth / 2;
     let offsetY = centerY - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
 
-    if (options.allowPartialBottomOverflow) {
+    if (options.allowPartialBottomOverflow || unclamped) {
         setModalOffsetPx(modal, offsetX, offsetY, { snap: true, settle: true });
     } else {
         const offsetClamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);

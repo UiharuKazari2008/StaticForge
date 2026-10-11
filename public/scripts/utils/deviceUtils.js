@@ -27,9 +27,17 @@ function roundToDevicePixel(value) {
     return Math.round(value * dpr) / dpr;
 }
 
-// Whole CSS pixels for sizes/offsets
+// Whole CSS pixels for sizes
 function roundCssPixel(value) {
     return Math.round(value);
+}
+
+// Window offsets keep sub-pixel precision. A centre-anchored window with an odd
+// width or height sits on a half pixel, so whole-pixel offsets could never cancel
+// that out: every snap/settle pass then rounded the half up and the window crept
+// 2-3px down and right on each restore (Yozora #400).
+function roundCssOffset(value) {
+    return Math.round(value * 100) / 100;
 }
 
 // Check if device has high DPI display (retina)
@@ -91,6 +99,7 @@ window.deviceUtils = {
     getDevicePixelRatio,
     roundToDevicePixel,
     roundCssPixel,
+    roundCssOffset,
     isHighDPIDevice,
     getPreviewUrl,
     getGalleryPreviewUrl,
