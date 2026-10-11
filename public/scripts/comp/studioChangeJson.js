@@ -1792,10 +1792,81 @@ function setStudioCharacterName(index, name) {
     if (placeholder) placeholder.textContent = name;
 }
 
+// Mirrors modules/studioDatasetIds.js — agents send "furry"/"fur"; the real id is "fur dataset".
+const STUDIO_DATASET_ID_ALIASES = {
+    furry: 'fur dataset', fur: 'fur dataset', 'furry dataset': 'fur dataset',
+    anime: 'anime dataset', background: 'background dataset', backgrounds: 'background dataset',
+    vn: '__visual_novel__', 'visual novel': '__visual_novel__', visual_novel: '__visual_novel__'
+};
+
+function resolveStudioDatasetId(raw) {
+    const text = String(raw == null ? '' : raw).trim();
+    if (!text) return null;
+    const known = ((window.optionsData && window.optionsData.datasets) || []).map((d) => d && d.value).filter(Boolean);
+    if (!known.length || known.includes(text)) return text;
+    const ci = known.find((id) => id.toLowerCase() === text.toLowerCase());
+    if (ci) return ci;
+    const lower = text.toLowerCase().replace(/[\s_-]+/g, ' ').trim();
+    const alias = STUDIO_DATASET_ID_ALIASES[lower] || STUDIO_DATASET_ID_ALIASES[text.toLowerCase()];
+    if (alias && known.includes(alias)) return alias;
+    const suffixed = known.find((id) => id.toLowerCase() === `${lower} dataset`);
+    if (suffixed) return suffixed;
+    console.warn('[studio change] unknown dataset id ignored:', text);
+    return null;
+}
+
+// Snapshot the live dataset selection before an apply can reopen/clear Studio.
+function captureStudioDatasetSelection() {
+    return {
+        include: Array.isArray(selectedDatasets) ? selectedDatasets.slice() : [],
+        bias: { ...(datasetBias || {}) },
+        settings: JSON.parse(JSON.stringify(window.datasetSettings || {})),
+        nsfw: typeof selectedNsfwValue !== 'undefined' ? selectedNsfwValue : undefined,
+        nsfwBias: typeof nsfwBias !== 'undefined' ? nsfwBias : undefined
+    };
+}
+
+// An apply without dataset_config.include must leave the selection untouched (Wren sev-5).
+function restoreStudioDatasetSelectionUnlessChanged(snapshot, payload) {
+    if (!snapshot) return;
+    const params = payload && payload.params && typeof payload.params === 'object' ? payload.params : {};
+    const cfg = (params.dataset_config && typeof params.dataset_config === 'object' && params.dataset_config)
+        || (payload && payload.dataset_config && typeof payload.dataset_config === 'object' && payload.dataset_config) || null;
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    let changed = false;
+    if (!(cfg && Array.isArray(cfg.include)) && !same(selectedDatasets, snapshot.include)) {
+        selectedDatasets = snapshot.include.slice();
+        changed = true;
+    }
+    if (!(cfg && cfg.bias) && !same(datasetBias, snapshot.bias)) {
+        datasetBias = { ...snapshot.bias };
+        changed = true;
+    }
+    if (!(cfg && cfg.settings) && !same(window.datasetSettings || {}, snapshot.settings)) {
+        window.datasetSettings = JSON.parse(JSON.stringify(snapshot.settings));
+        changed = true;
+    }
+    const nsfwSet = params.nsfw != null || (cfg && cfg.nsfw != null) || (payload && payload.nsfw != null);
+    if (!nsfwSet && snapshot.nsfw !== undefined && typeof selectedNsfwValue !== 'undefined' && selectedNsfwValue !== snapshot.nsfw) {
+        if (typeof selectNsfwValue === 'function') selectNsfwValue(snapshot.nsfw);
+        else selectedNsfwValue = snapshot.nsfw;
+    }
+    if (!(cfg && cfg.nsfw_bias != null) && snapshot.nsfwBias !== undefined && typeof nsfwBias !== 'undefined' && nsfwBias !== snapshot.nsfwBias) {
+        nsfwBias = snapshot.nsfwBias;
+        if (typeof updateNsfwButtonDisplay === 'function') updateNsfwButtonDisplay();
+    }
+    if (changed) {
+        if (typeof updateDatasetDisplay === 'function') updateDatasetDisplay();
+        if (typeof renderDatasetDropdown === 'function') renderDatasetDropdown();
+        if (typeof renderSubTogglesDropdown === 'function') renderSubTogglesDropdown();
+        if (typeof updateSubTogglesButtonState === 'function') updateSubTogglesButtonState();
+    }
+}
+
 function applyStudioDatasetConfig(cfg) {
     if (!studioDatasetConfigHasWork(cfg)) return;
     if (Array.isArray(cfg.include)) {
-        selectedDatasets = cfg.include.map((id) => String(id));
+        selectedDatasets = cfg.include.map(resolveStudioDatasetId).filter((id, i, arr) => id && arr.indexOf(id) === i);
         if (cfg.bias && typeof cfg.bias === 'object' && !Array.isArray(cfg.bias)) {
             Object.keys(cfg.bias).forEach((dataset) => {
                 const n = Number(cfg.bias[dataset]);
@@ -2369,7 +2440,9 @@ async function applyStudioChangePayload(payload, options) {
     if (studioChangeDialogBusy) return false;
     studioChangeDialogBusy = true;
     try {
+        const datasetSnapshot = captureStudioDatasetSelection();
         await ensureStudioOpenForChange();
+        restoreStudioDatasetSelectionUnlessChanged(datasetSnapshot, payload);
         const ops = buildOpsFromPayload(payload);
         const result = await showStudioChangeDialog(ops, {
             dialogTitle: payload.title ? `Apply: ${payload.title}` : 'Apply studio change',
@@ -2400,7 +2473,9 @@ async function applyStudioChangePayloadSilent(payload, options) {
     if (studioChangeDialogBusy) return false;
     studioChangeDialogBusy = true;
     try {
+        const datasetSnapshot = captureStudioDatasetSelection();
         await ensureStudioOpenForChange({ fresh: true });
+        restoreStudioDatasetSelectionUnlessChanged(datasetSnapshot, payload);
         const ops = buildOpsFromPayload(payload);
         const enabledOps = ops.filter((op) => op.enabled !== false);
         let extras = false;

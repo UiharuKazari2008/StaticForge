@@ -2111,6 +2111,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 // modules/modelFeatures.js — V5 remaps "furry dataset" → "fur dataset" in the prompt text
                 const datasetAliases = {
                     'furry dataset': 'fur dataset',
+                    'furry': 'fur dataset',
+                    'fur': 'fur dataset',
                     ...(transparencyCaps?.datasetAliases || {})
                 };
                 const normalizedDatasetConfig = {

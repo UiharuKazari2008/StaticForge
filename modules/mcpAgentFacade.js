@@ -5,6 +5,7 @@
  */
 
 const fs = require('fs');
+const { normalizeDatasetConfig } = require('./studioDatasetIds');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
@@ -6447,6 +6448,32 @@ async function applyStudioChanges(globalResources, rawBody) {
         err.status = 400;
         throw err;
     }
+    // normalizeDatasetConfig: modules/studioDatasetIds.js — alias furry/fur → "fur dataset"; unknown ids error.
+    let datasetRemapped = [];
+    const rawDatasetConfig = assembled.dataset_config
+        || (assembled.params && assembled.params.dataset_config) || null;
+    if (rawDatasetConfig) {
+        let promptDatasets = [];
+        try {
+            promptDatasets = (globalResources && typeof globalResources.getPromptConfig === 'function'
+                && globalResources.getPromptConfig({ path: 'datasets' })) || [];
+        } catch (_err) { promptDatasets = []; }
+        if (!Array.isArray(promptDatasets) || !promptDatasets.length) {
+            try { promptDatasets = require('../prompt.config.json').datasets || []; } catch (_err) { promptDatasets = []; }
+        }
+        const norm = normalizeDatasetConfig(rawDatasetConfig, promptDatasets);
+        if (norm.unknown.length) {
+            const valid = promptDatasets.map((d) => d && d.value).filter(Boolean);
+            const err = new Error(`Unknown dataset id(s) in dataset_config: ${norm.unknown.join(', ')}. Valid ids: ${valid.join(', ')} (aliases: furry/fur → "fur dataset").${norm.hints.length ? ' ' + norm.hints.join(' ') : ''} Nothing was applied.`);
+            err.status = 400;
+            throw err;
+        }
+        datasetRemapped = norm.remapped;
+        assembled.dataset_config = norm.config;
+        if (assembled.params && assembled.params.dataset_config) {
+            assembled.params = { ...assembled.params, dataset_config: norm.config };
+        }
+    }
     if (autoGenerate) {
         const hasN = (body && body.n != null)
             || (body && body.params && body.params.n != null)
@@ -6457,7 +6484,7 @@ async function applyStudioChanges(globalResources, rawBody) {
         const prints = clampTurnPrints(readRemoteAccessSettings(globalResources), assembled.params && assembled.params.n);
         assembled.params = { ...(assembled.params || {}), n: prints };
     }
-    return sendBoundCommand(globalResources, 'apply_studio', {
+    const applyResult = await sendBoundCommand(globalResources, 'apply_studio', {
         change: assembled,
         prompt: body.prompt,
         uc: body.uc,
@@ -6466,6 +6493,10 @@ async function applyStudioChanges(globalResources, rawBody) {
         autoGenerate,
         walk: body.walk === true
     }, undefined, body.bindKey);
+    if (datasetRemapped.length && applyResult && typeof applyResult === 'object') {
+        applyResult.datasetIdsRemapped = datasetRemapped;
+    }
+    return applyResult;
 }
 
 function mcpTextResult(obj, isError) {
