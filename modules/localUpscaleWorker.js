@@ -310,6 +310,11 @@ async function animateBufferWithLocalWorker(globalResources, imageBuffer, option
     const fps = Number.isFinite(Number(options.fps)) ? Math.round(Number(options.fps)) : DEFAULT_ANIMATE_FPS;
     const loop = options.loop === undefined ? true : !!options.loop;
     const backend = isLocalAnimateBackend(options.backend) ? options.backend : DEFAULT_ANIMATE_BACKEND;
+    if (!Array.isArray(health.animateBackends) || !health.animateBackends.some((b) => (b && (b.id || b)) === backend)) {
+        const error = new Error('Local (Ruiko) worker does not support animate backend "' + backend + '"; redeploy the worker (it would otherwise run the job as an upscale).');
+        error.code = 'LOCAL_WORKER_NO_ANIMATE';
+        throw error;
+    }
 
     let posted;
     try {

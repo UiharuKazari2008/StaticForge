@@ -14,7 +14,7 @@ import tempfile
 
 from ruiko_upscaler.catalog import model_dir
 
-ANIMATEDIFF_BASE_MODEL = "stable-diffusion-v1-5/stable-diffusion-v1-5"
+ANIMATEDIFF_BASE_MODEL = os.environ.get("RUIKO_ANIMATEDIFF_BASE", "stablediffusionapi/anything-v5")
 ANIMATEDIFF_MOTION_ADAPTER = "guoyww/animatediff-motion-adapter-v1-5-2"
 WAN_MODEL = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
 
@@ -76,8 +76,8 @@ def _load_animatediff_pipeline():
         ANIMATEDIFF_BASE_MODEL, motion_adapter=adapter, cache_dir=cache_dir, torch_dtype=torch.float16
     )
     pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config)
-    pipeline.enable_vae_slicing()
-    pipeline.enable_vae_tiling()
+    pipeline.vae.enable_slicing()
+    pipeline.vae.enable_tiling()
     pipeline.enable_attention_slicing()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pipeline.to(device)
@@ -94,7 +94,7 @@ def _load_wan_pipeline():
 
     cache_dir = _hf_cache_dir()
     pipeline = WanPipeline.from_pretrained(WAN_MODEL, cache_dir=cache_dir, torch_dtype=torch.float16)
-    pipeline.enable_vae_slicing()
+    pipeline.vae.enable_slicing()
     pipeline.enable_attention_slicing()
     # 1.3B still benefits from CPU offload on an 8 GB card once the VAE and
     # text encoder are counted alongside the transformer.
@@ -168,9 +168,17 @@ def _run_wan(image, motion_prompt, frames, fps, progress):
 
 
 def _encode_gif(frames, fps, loop):
+    from PIL import Image
+
+    # One shared adaptive palette keeps 16 frames at 512px well under ~4 MB.
+    rgb = [f.convert("RGB") for f in frames]
+    palette_src = rgb[len(rgb) // 2].quantize(colors=256, method=Image.Quantize.MEDIANCUT)
+    frames = [f.quantize(palette=palette_src, dither=Image.Dither.FLOYDSTEINBERG) for f in rgb]
     buf = io.BytesIO()
     frames[0].save(
         buf,
+        optimize=True,
+        disposal=1,
         format="GIF",
         save_all=True,
         append_images=frames[1:],
@@ -217,6 +225,22 @@ def _encode_mp4(frames, fps):
             pass
 
 
+class AnimationError(RuntimeError):
+    pass
+
+
+def _check_frames(out_frames, expected):
+    """Fail loudly instead of returning a still dressed up as a GIF."""
+    import numpy as np
+
+    count = len(out_frames or [])
+    if count < 2 or count != int(expected):
+        raise AnimationError("animation produced {0} frames, expected {1}".format(count, expected))
+    first = np.asarray(out_frames[0].convert("RGB"), dtype="int16")
+    if all(np.abs(np.asarray(f.convert("RGB"), dtype="int16") - first).mean() < 0.5 for f in out_frames[1:]):
+        raise AnimationError("animation frames are identical (no motion generated)")
+
+
 def generate_animation_bytes(image_bytes, motion_prompt, frames, fps, loop, backend, progress=None):
     """Animate a still image. Returns {"gif": bytes, "mp4": bytes, "webp": bytes}."""
     from PIL import Image
@@ -230,6 +254,7 @@ def generate_animation_bytes(image_bytes, motion_prompt, frames, fps, loop, back
     else:
         out_frames = _run_animatediff(image, motion_prompt, frames, fps, progress)
 
+    _check_frames(out_frames, frames)
     if progress:
         progress(90)
     result = {
