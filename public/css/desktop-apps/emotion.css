@@ -36,7 +36,6 @@
     color: var(--text-accent-tinted);
     font-size: 14px;
     line-height: 1;
-    margin-right: 4px;
     pointer-events: none;
 }
 
