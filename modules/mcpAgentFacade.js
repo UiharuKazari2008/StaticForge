@@ -1968,6 +1968,27 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'animate_image',
+        core: true,
+        description: 'Animate a gallery still into a GIF (image, saved to the gallery) with MP4/WebP alongside, via the Ruiko GPU worker. Free, no Anlas, no userApprovedPaidRequest needed — there is no paid fallback for this tool. Requires filename and motion_prompt (passed to the backend verbatim — never rewrite or embellish the caller-supplied text). Optional frames (8-32, default 16), fps (4-24, default 8), loop (default true), backend (animatediff default, or wan). Returns jobId and the saved filename. If Ruiko is offline the error has code LOCAL_WORKER_OFFLINE; there is no other backend to retry with.',
+        scope: 'generation',
+        packet: 'animate_image',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['filename', 'motion_prompt'],
+            properties: {
+                filename: { type: 'string' },
+                workspace: WORKSPACE_PLACEMENT_SCHEMA,
+                motion_prompt: { type: 'string', description: 'Describes the motion/animation. Sent to the backend exactly as given — never edited or rewritten.' },
+                frames: { type: 'number', description: '8-32, default 16.' },
+                fps: { type: 'number', description: '4-24, default 8.' },
+                loop: { type: 'boolean', description: 'Default true (GIF/WebP loop forever).' },
+                backend: { type: 'string', description: 'animatediff (default, SD1.5 + motion module) or wan (Wan 2.1 1.3B, experimental, 480p).' }
+            }
+        }
+    },
+    {
         name: 'expand_image',
         core: true,
         description: 'Expand canvas (letterbox + generate into the new area). Paid Anlas — requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. Requires filename, target resolution, and imageBias 0–4 (0=start edge, 2=center, 4=end edge). Top-level prompt/uc override the expand inpaint (compiled-prompt path). Optional Studio param overrides (model, steps, guidance, rescale, sampler, noiseScheduler, noise, seed) as overrideParams or top-level.',
@@ -4257,6 +4278,7 @@ function localUpscaleSelected(payload) {
 }
 
 function wouldSpendPaidCredits(name, payload) {
+    if (name === 'animate_image') return false;
     if (name === 'upscale_image') return !localUpscaleSelected(payload);
     if (name === 'expand_image') return true;
     if (!payload || typeof payload !== 'object') return false;
@@ -6947,8 +6969,11 @@ async function callTool(globalResources, req, name, args) {
     if (name === 'get_note' || name === 'update_note' || name === 'save_note_content') {
         input.noteId = input.noteId || input.id;
     }
-    if (name === 'upscale_image' || name === 'expand_image') {
+    if (name === 'upscale_image' || name === 'expand_image' || name === 'animate_image') {
         input.filename = input.filename || input.image;
+    }
+    if (name === 'animate_image') {
+        input.motion_prompt = input.motion_prompt || input.motionPrompt;
     }
     if (name === 'upscale_image') {
         const backend = String(input.backend || input.upscaler || '').toLowerCase();
@@ -7546,7 +7571,7 @@ async function callTool(globalResources, req, name, args) {
         );
     }
 
-    const generateNames = ['generate_image', 'generate_preset', 'upscale_image', 'expand_image'];
+    const generateNames = ['generate_image', 'generate_preset', 'upscale_image', 'expand_image', 'animate_image'];
     if (generateNames.includes(name)) {
         const destPathHint = pickDestPathInput(input);
         let payload = flattenGenerateToolArgs(input);
