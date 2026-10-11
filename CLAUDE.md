@@ -1,0 +1,41 @@
+# StaticForge / Dreamscape — Claude Code
+
+The Cursor rules in `.cursor/rules/` (nested clone of `DreamScape/cursor-rules`,
+synced by `sync.sh`) are canonical for this repo. Claude Code follows them too.
+Treat "Cursor agent" in those rules as "any coding agent, including Claude Code".
+
+@.cursor/rules/agent-busy-lock.mdc
+@.cursor/rules/keyboard-characters.mdc
+@.cursor/rules/no-dreamscape-restart.mdc
+@.cursor/rules/director-idle-before-restart.mdc
+@.cursor/rules/no-retype-on-move.mdc
+@.cursor/rules/no-stash-to-pretty-commit.mdc
+@.cursor/rules/rename-scope.mdc
+@.cursor/rules/nai-critical-dump.mdc
+@.cursor/rules/client-browser-testing.mdc
+@.cursor/rules/agent-session-client-update.mdc
+@.cursor/rules/agent-session-studio.mdc
+@.cursor/rules/yozora-cursor-agent.mdc
+@.cursor/rules/yozora-ingest-2stage.mdc
+
+## Yozora access from Claude Code
+
+- API base: `https://yozora.bluesteel.737.jp.net/api/v1`
+- Token: Claude's own PAT at `~/.secrets/yozora-claude.token`. Until that file
+  exists, fall back to `~/.secrets/yozora-grok.cursor.token` and say in comments
+  that it is a Claude Code session acting through `grok.cursor`. Read the token at
+  call time; never echo, print, commit, or paste it into a comment or chat.
+- Identity: a Claude Code agent, not Cursor, not Yukimi. Where the rules say
+  "auth as `grok.cursor`" or "Cursor agent (`grok.cursor`)", use the Claude
+  account and wording instead. Every other rule (timers, labels, Done comment,
+  hard stops, credit) applies unchanged.
+
+```bash
+YZ_TOKEN_FILE=~/.secrets/yozora-claude.token
+[ -r "$YZ_TOKEN_FILE" ] || YZ_TOKEN_FILE=~/.secrets/yozora-grok.cursor.token
+curl -sS -H "Authorization: token $(cat "$YZ_TOKEN_FILE")" \
+  "https://yozora.bluesteel.737.jp.net/api/v1/repos/DreamScape/StaticForge/issues?state=open&type=issues&limit=50"
+```
+
+Yukimi has authorized Yozora reads and writes (comments, labels, stopwatch,
+assignees, board moves, new issues) at any time, following `yozora-cursor-agent.mdc`.
