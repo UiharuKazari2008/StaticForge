@@ -85,6 +85,41 @@ async function main() {
     assert.strictEqual(pyraInbox.length, 1);
     assert.strictEqual(pyraInbox[0].from, 'cursor');
 
+    // read_by_recipient starts false on the sender's sent copy and flips once the
+    // recipient reads it — exposed under that exact snake_case name over MCP.
+    const receiptSend = textOf(await callTool(gr, reqFor('Menma'), 'send_mail', { to: 'rook', subject: 'receipt?', body: 'ping' }));
+    const sentList = textOf(await callTool(gr, reqFor('Menma'), 'list_mail', { folder: 'sent' })).mail;
+    const sentRow = sentList.find((m) => m.id === receiptSend.id);
+    assert.strictEqual(sentRow.read_by_recipient, false);
+    const rookInboxForReceipt = textOf(await callTool(gr, reqFor('Rook'), 'list_mail', { folder: 'inbox' })).mail;
+    const toReadId = rookInboxForReceipt.find((m) => m.subject === 'receipt?').id;
+    await callTool(gr, reqFor('Rook'), 'read_mail', { id: toReadId });
+    const sentListAfter = textOf(await callTool(gr, reqFor('Menma'), 'list_mail', { folder: 'sent' })).mail;
+    assert.strictEqual(sentListAfter.find((m) => m.id === receiptSend.id).read_by_recipient, true);
+
+    // Attachments by base64 are stored and come back as metadata on list_mail/read_mail
+    // (no raw bytes inline), scoped to the recipient's own mailbox.
+    const attSend = await callTool(gr, reqFor('Menma'), 'send_mail', {
+        to: 'rook', subject: 'with file', body: 'see attached',
+        attachments: [{ base64: Buffer.from('hello from mcp').toString('base64'), name: 'hi.txt', mimeType: 'text/plain' }]
+    });
+    assert.strictEqual(attSend.isError, false);
+    const rookInboxWithAtt = textOf(await callTool(gr, reqFor('Rook'), 'list_mail', { folder: 'inbox' })).mail;
+    const attMail = rookInboxWithAtt.find((m) => m.subject === 'with file');
+    assert.strictEqual(attMail.attachments.length, 1);
+    assert.strictEqual(attMail.attachments[0].name, 'hi.txt');
+    assert.strictEqual(attMail.attachments[0].data, undefined, 'list_mail must not inline attachment bytes');
+    const attRead = textOf(await callTool(gr, reqFor('Rook'), 'read_mail', { id: attMail.id }));
+    assert.strictEqual(attRead.mail.attachments[0].mimeType, 'text/plain');
+
+    // Oversized attachments are rejected with a clear error, not a partial send.
+    const tooBig = await callTool(gr, reqFor('Menma'), 'send_mail', {
+        to: 'rook', subject: 'too big', body: 'x',
+        attachments: [{ base64: Buffer.alloc(11 * 1024 * 1024).toString('base64'), name: 'big.bin' }]
+    });
+    assert.strictEqual(tooBig.isError, true);
+    assert.strictEqual(textOf(tooBig).code, 'ATTACHMENT_TOO_LARGE');
+
     console.log('dovecote MCP tool tests passed');
 }
 

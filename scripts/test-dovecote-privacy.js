@@ -86,6 +86,54 @@ function main() {
     assert.ok(mail.getAlwaysLoadSenders('yukimi').has('menma'));
     assert.strictEqual(mail.getAlwaysLoadSenders('rook').has('menma'), false);
 
+    // Read receipts: readByRecipient flips on the sender's sent copy only once
+    // the recipient actually opens the message, and stays true afterward.
+    const sent2 = mail.sendMail({ fromOwner: 'menma', to: 'rook', subject: 'ping', body: 'pong2' });
+    assert.strictEqual(mail.listMail('menma', { folder: 'sent' }).find((m) => m.id === sent2.id).readByRecipient, false);
+    const rookInbox2 = mail.listMail('rook', { folder: 'inbox' });
+    const toRead = rookInbox2.find((m) => m.subject === 'ping');
+    mail.readMail('rook', toRead.id);
+    assert.strictEqual(mail.listMail('menma', { folder: 'sent' }).find((m) => m.id === sent2.id).readByRecipient, true);
+    // Marking it unread again afterward does not retract the receipt.
+    mail.markMail('rook', { id: toRead.id, read: false });
+    assert.strictEqual(mail.listMail('menma', { folder: 'sent' }).find((m) => m.id === sent2.id).readByRecipient, true);
+
+    // Attachments: stored bytes are only reachable through a mailbox that actually holds
+    // a message referencing them — not a global by-id lookup.
+    const withAttachment = mail.sendMail({
+        fromOwner: 'menma', to: 'rook', subject: 'file', body: 'see attached',
+        attachments: [{ name: 'note.txt', mimeType: 'text/plain', data: Buffer.from('hello attachment') }]
+    });
+    const rookInboxFile = mail.listMail('rook', { folder: 'inbox' }).find((m) => m.subject === 'file');
+    assert.strictEqual(rookInboxFile.attachments.length, 1);
+    assert.strictEqual(rookInboxFile.attachments[0].name, 'note.txt');
+    assert.strictEqual(rookInboxFile.attachments[0].size, 'hello attachment'.length);
+    const attId = rookInboxFile.attachments[0].id;
+    const fetched = mail.getAttachment('rook', attId);
+    assert.ok(fetched);
+    assert.strictEqual(fetched.data.toString(), 'hello attachment');
+    // The sender's own sent copy references the same attachment id.
+    assert.ok(mail.getAttachment('menma', attId));
+    // Nobody else can fetch it, even knowing the id.
+    assert.strictEqual(mail.getAttachment('hoshino', attId), null);
+
+    // Per-file and per-message size limits are enforced before anything is written.
+    assert.throws(
+        () => mail.sendMail({ fromOwner: 'menma', to: 'rook', subject: 'big', body: 'x', attachments: [{ name: 'big.bin', data: Buffer.alloc(mail.MAX_ATTACHMENT_BYTES + 1) }] }),
+        /ATTACHMENT_TOO_LARGE|exceeds/
+    );
+    assert.throws(
+        () => mail.sendMail({
+            fromOwner: 'menma', to: 'rook', subject: 'big2', body: 'x',
+            attachments: [
+                { name: 'a.bin', data: Buffer.alloc(mail.MAX_ATTACHMENT_BYTES) },
+                { name: 'b.bin', data: Buffer.alloc(mail.MAX_ATTACHMENT_BYTES) },
+                { name: 'c.bin', data: Buffer.alloc(mail.MAX_ATTACHMENT_BYTES) }
+            ]
+        }),
+        /ATTACHMENTS_TOO_LARGE|total/
+    );
+
     console.log('dovecote privacy tests passed');
 }
 
