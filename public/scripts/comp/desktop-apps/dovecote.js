@@ -19,6 +19,11 @@ const DESKTOP_DOVECOTE_FOLDERS = [
     { id: 'archive', label: 'Archive', icon: 'fas fa-box-archive' }
 ];
 
+// Keep in sync with modules/dovecoteMail.js MAX_ATTACHMENT_BYTES / MAX_TOTAL_ATTACHMENT_BYTES —
+// client-side limits are only a fast, friendly check; the server enforces these for real.
+const DOVE_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const DOVE_MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
 // { folder, sortKey, sortDir, viewAsOwner, mail: [], selectedId, mailboxes: [], bodyView, searchOpen, searchText, mobileMessageOpen }
 const desktopDovecote = {
     loaded: false,
@@ -32,7 +37,6 @@ const desktopDovecote = {
     selectedMail: null,
     bodyView: 'rendered',
     allowRemoteImagesOnce: false,
-    searchOpen: false,
     searchText: '',
     mobileMessageOpen: false,
     statusError: null
@@ -206,6 +210,7 @@ const ensureDesktopDovecoteModal = function () {
     doveWireEvents();
     doveRenderMailboxBanner();
     doveRenderFolderTree();
+    doveRenderFolderButton();
     doveRenderToolbarState();
     return modal;
 };
@@ -260,14 +265,17 @@ const doveBuildToolbar = function () {
     refreshBtn.dataset.doveAction = 'refresh';
     toolbar.appendChild(refreshBtn);
 
-    const findBtn = doveCreateButton('btn-secondary btn-toggle', 'Find', 'fas fa-magnifying-glass');
-    findBtn.dataset.doveAction = 'find';
-    findBtn.dataset.state = 'off';
-    toolbar.appendChild(findBtn);
+    toolbar.appendChild(doveBuildFolderButton());
 
+    // Inline live filter, always visible in the same spot the old Find toggle occupied —
+    // no on/off state, it just filters the message list as you type.
     const searchGroup = document.createElement('div');
-    searchGroup.className = 'button-group hidden';
+    searchGroup.className = 'button-group';
     searchGroup.id = 'desktopDovecoteSearchGroup';
+    const searchIcon = document.createElement('i');
+    searchIcon.className = 'fas fa-magnifying-glass dovecote-search-icon';
+    searchIcon.setAttribute('aria-hidden', 'true');
+    searchGroup.appendChild(searchIcon);
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.className = 'form-control';
@@ -275,18 +283,6 @@ const doveBuildToolbar = function () {
     searchInput.placeholder = 'Filter subject, from, snippet…';
     searchGroup.appendChild(searchInput);
     toolbar.appendChild(searchGroup);
-
-    const viewGroup = document.createElement('div');
-    viewGroup.className = 'button-group';
-    const renderedBtn = doveCreateButton('btn-secondary btn-toggle toolbar-input-segment', 'Rendered', 'fas fa-code');
-    renderedBtn.dataset.doveBodyView = 'rendered';
-    renderedBtn.dataset.state = 'on';
-    const rawBtn = doveCreateButton('btn-secondary btn-toggle toolbar-input-segment', 'Raw', 'fas fa-file-lines');
-    rawBtn.dataset.doveBodyView = 'raw';
-    rawBtn.dataset.state = 'off';
-    viewGroup.appendChild(renderedBtn);
-    viewGroup.appendChild(rawBtn);
-    toolbar.appendChild(viewGroup);
 
     toolbar.appendChild(doveBuildMailboxButton());
 
@@ -297,6 +293,44 @@ const doveBuildToolbar = function () {
     });
 
     return toolbar;
+};
+
+// Folder dropdown (#5): shows the active folder's icon/name on the button itself, picks
+// from the same custom click-menu pattern as doveBuildMailboxButton — never a native <select>.
+const doveFolderMenuConfig = {
+    onAction: (action, target, item) => doveLoadFolder(item.doveFolderId),
+    sections: [{
+        type: 'list',
+        initfn: (section) => {
+            section.items = DESKTOP_DOVECOTE_FOLDERS.map((folder) => ({
+                text: folder.label,
+                icon: folder.icon,
+                action: 'dove-folder-pick',
+                doveFolderId: folder.id,
+                showIndicator: true,
+                loadfn: (it) => { it.checked = desktopDovecote.folder === folder.id; }
+            }));
+        }
+    }]
+};
+
+const doveBuildFolderButton = function () {
+    const button = doveCreateButton('btn-secondary dovecote-folder-btn', 'Folder', DESKTOP_DOVECOTE_FOLDERS[0].icon);
+    button.id = 'desktopDovecoteFolderBtn';
+    const label = document.createElement('span');
+    label.textContent = DESKTOP_DOVECOTE_FOLDERS[0].label;
+    button.appendChild(label);
+    // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+    contextMenu.attachClickMenuToElement(button, doveFolderMenuConfig);
+    return button;
+};
+
+const doveRenderFolderButton = function () {
+    const button = document.getElementById('desktopDovecoteFolderBtn');
+    const folder = DESKTOP_DOVECOTE_FOLDERS.find((f) => f.id === desktopDovecote.folder);
+    if (!button || !folder) return;
+    button.querySelector('i').className = folder.icon;
+    button.querySelector('span').textContent = folder.label;
 };
 
 // Mailboxes other than the one currently being viewed — used by the Forward picker.
@@ -367,6 +401,126 @@ const doveMakeForwardMenuConfig = function (getMail) {
 // Main window's own Forward button (toolbar + mobile preview toolbar) forwards whatever is
 // currently selected.
 const doveForwardMenuConfig = doveMakeForwardMenuConfig(() => desktopDovecote.selectedMail);
+
+// ---- Mail row right-click context menu (#4): Open, Open in window, Reply, Forward > (mailbox
+// submenu), Mark read/unread, Archive, Delete. One config attached to the whole rows container
+// (contextMenu.attachToElement call in doveBuildMainPane); beforeShow resolves the row under the
+// cursor into its summary from desktopDovecote.mail (same list the table itself renders from). ----
+
+const doveMailRowMenuConfig = {
+    sections: [],
+    beforeShow: (event) => {
+        const row = event.target.closest('[data-dove-mail-id]');
+        doveMailRowMenuConfig.sections = doveBuildMailRowMenuSections(row ? row.dataset.doveMailId : null);
+    },
+    onAction: (action, target, item) => doveHandleMailRowMenuAction(item)
+};
+
+const doveBuildMailRowMenuSections = function (mailId) {
+    const mail = desktopDovecote.mail.find((m) => String(m.id) === String(mailId));
+    if (!mail) return [];
+    const readOnly = !!desktopDovecote.viewAsOwner;
+    const others = doveOtherMailboxes();
+    return [{
+        type: 'list',
+        items: [
+            { text: 'Open', icon: 'fas fa-envelope-open-text', action: 'dove-row-open', doveMailId: mailId },
+            { text: 'Open in Window', icon: 'fas fa-up-right-from-square', action: 'dove-row-open-window', doveMailId: mailId },
+            { separator: true },
+            { text: 'Reply', icon: 'fas fa-reply', action: 'dove-row-reply', doveMailId: mailId, disabled: readOnly },
+            {
+                text: 'Forward',
+                icon: 'fas fa-share',
+                disabled: readOnly || !others.length,
+                submenu: others.length
+                    ? others.map((box) => ({
+                        text: box.label,
+                        icon: doveIsBotOwner(box.owner) ? 'fas fa-robot' : 'fas fa-user',
+                        action: 'dove-row-forward',
+                        doveMailId: mailId,
+                        doveOwner: box.owner
+                    }))
+                    : [{ text: 'No other mailboxes', disabled: true }]
+            },
+            { separator: true },
+            { text: mail.read ? 'Mark Unread' : 'Mark Read', icon: 'fas fa-envelope', action: 'dove-row-toggle-read', doveMailId: mailId, disabled: readOnly },
+            { text: 'Archive', icon: 'fas fa-box-archive', action: 'dove-row-archive', doveMailId: mailId, disabled: readOnly },
+            { text: 'Delete', icon: 'fas fa-trash', action: 'dove-row-delete', doveMailId: mailId, disabled: readOnly, className: 'context-menu-item-danger' }
+        ]
+    }];
+};
+
+const doveHandleMailRowMenuAction = function (item) {
+    const mailId = item.doveMailId;
+    if (!mailId) return;
+    switch (item.action) {
+        case 'dove-row-open': doveSelectMail(mailId); return;
+        case 'dove-row-open-window': doveOpenReaderWindow(mailId); return;
+        case 'dove-row-reply': doveReplyToMailId(mailId); return;
+        case 'dove-row-forward': doveForwardMailId(mailId, item.doveOwner); return;
+        case 'dove-row-toggle-read': doveToggleReadForId(mailId); return;
+        case 'dove-row-archive': doveMarkMailId(mailId, { archived: true }); return;
+        case 'dove-row-delete': doveMarkMailId(mailId, { deleted: true }); return;
+        default: return;
+    }
+};
+
+// Reply/Forward need the full message body, which the list summaries don't carry —
+// dovecote_get_mail: modules/ws/handlers/250-dovecoteHandler.js (also marks it read).
+const doveFetchMailFull = async function (id) {
+    const request = { id: id };
+    if (desktopDovecote.viewAsOwner) request.viewAsOwner = desktopDovecote.viewAsOwner;
+    try {
+        const result = await wsClient.sendMessage('dovecote_get_mail', request);
+        return result && result.mail;
+    } catch (err) {
+        doveShowError((err && err.message) || 'Could not open message');
+        return null;
+    }
+};
+
+const doveReplyToMailId = async function (id) {
+    if (desktopDovecote.viewAsOwner) return;
+    const mail = await doveFetchMailFull(id);
+    if (mail) doveOpenCompose('reply', mail);
+};
+
+const doveForwardMailId = async function (id, owner) {
+    if (desktopDovecote.viewAsOwner) return;
+    const mail = await doveFetchMailFull(id);
+    if (mail) doveOpenCompose('forward', mail, owner);
+};
+
+const doveToggleReadForId = async function (id) {
+    const mail = desktopDovecote.mail.find((m) => String(m.id) === String(id));
+    if (!mail || desktopDovecote.viewAsOwner) return;
+    try {
+        await wsClient.sendMessage('dovecote_mark_mail', { id: id, read: !mail.read });
+        mail.read = !mail.read;
+        if (desktopDovecote.selectedMail && String(desktopDovecote.selectedMail.id) === String(id)) {
+            desktopDovecote.selectedMail.read = mail.read;
+        }
+        doveRenderMessageList();
+        doveRenderInboxBadgeFromState();
+    } catch (err) {
+        doveShowError((err && err.message) || 'Could not update read state');
+    }
+};
+
+const doveMarkMailId = async function (id, patch) {
+    if (desktopDovecote.viewAsOwner) return;
+    try {
+        await wsClient.sendMessage('dovecote_mark_mail', Object.assign({ id: id }, patch));
+        if (desktopDovecote.selectedId && String(desktopDovecote.selectedId) === String(id)) {
+            desktopDovecote.selectedId = null;
+            desktopDovecote.selectedMail = null;
+            doveRenderPreview();
+        }
+        doveLoadFolder(desktopDovecote.folder);
+    } catch (err) {
+        doveShowError((err && err.message) || 'Could not update message');
+    }
+};
 
 const doveSwitchMailbox = function (owner) {
     desktopDovecote.viewAsOwner = owner === DESKTOP_DOVECOTE_HUMAN_OWNER ? null : owner;
@@ -526,11 +680,40 @@ const doveBuildMainPane = function () {
         if (!row) return;
         doveOpenReaderWindow(row.dataset.doveMailId);
     });
+    // contextMenu.attachToElement: public/scripts/comp/contextMenu.js — one config attached
+    // to the whole rows container, beforeShow resolves which row was targeted (explorerApplet.js
+    // setupExplorerContextMenu's gridHost pattern), same as Director's session list rows.
+    contextMenu.attachToElement(rows, doveMailRowMenuConfig);
 
     listWrap.appendChild(table);
     pane.appendChild(listWrap);
     pane.appendChild(doveBuildPreviewPane());
     return pane;
+};
+
+// Rendered/Raw toggle (#6): lives in the viewer pane header now, not the main toolbar.
+// Wired with its own click listener rather than relying on doveHandleBodyClick's
+// modal-wide delegation, so it can't double-fire the way toolbar action buttons do.
+const doveBuildBodyViewToggle = function () {
+    const headerTop = document.createElement('div');
+    headerTop.className = 'dovecote-oe-header-top';
+    const viewGroup = document.createElement('div');
+    viewGroup.className = 'button-group';
+    const renderedBtn = doveCreateButton('btn-secondary btn-toggle toolbar-input-segment', 'Rendered', 'fas fa-code');
+    renderedBtn.dataset.doveBodyView = 'rendered';
+    renderedBtn.dataset.state = 'on';
+    const rawBtn = doveCreateButton('btn-secondary btn-toggle toolbar-input-segment', 'Raw', 'fas fa-file-lines');
+    rawBtn.dataset.doveBodyView = 'raw';
+    rawBtn.dataset.state = 'off';
+    viewGroup.appendChild(renderedBtn);
+    viewGroup.appendChild(rawBtn);
+    headerTop.appendChild(viewGroup);
+    headerTop.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('[data-dove-body-view]');
+        if (!btn) return;
+        doveSetBodyView(btn.dataset.doveBodyView);
+    });
+    return headerTop;
 };
 
 const doveBuildPreviewPane = function () {
@@ -568,6 +751,7 @@ const doveBuildPreviewPane = function () {
     const header = document.createElement('div');
     header.className = 'dovecote-oe-header';
     header.id = 'desktopDovecoteOeHeader';
+    header.appendChild(doveBuildBodyViewToggle());
     ['from', 'to', 'subject', 'date'].forEach((field) => {
         const row = document.createElement('div');
         row.className = 'dovecote-oe-header-row';
@@ -592,6 +776,11 @@ const doveBuildPreviewPane = function () {
     imagesBar.className = 'dovecote-images-bar hidden';
     imagesBar.id = 'desktopDovecoteImagesBar';
     preview.appendChild(imagesBar);
+
+    const attachmentsBar = document.createElement('div');
+    attachmentsBar.className = 'dovecote-attachments-bar hidden';
+    attachmentsBar.id = 'desktopDovecoteAttachmentsBar';
+    preview.appendChild(attachmentsBar);
 
     const bodyWrap = document.createElement('div');
     bodyWrap.className = 'dovecote-body-wrap';
@@ -641,6 +830,7 @@ const doveCacheEls = function () {
         emptyHint: document.getElementById('desktopDovecoteEmptyHint'),
         safetyBar: document.getElementById('desktopDovecoteSafetyBar'),
         imagesBar: document.getElementById('desktopDovecoteImagesBar'),
+        attachmentsBar: document.getElementById('desktopDovecoteAttachmentsBar'),
         oeFrom: document.getElementById('desktopDovecoteOeFrom'),
         oeTo: document.getElementById('desktopDovecoteOeTo'),
         oeSubject: document.getElementById('desktopDovecoteOeSubject'),
@@ -657,11 +847,6 @@ const doveWireEvents = function () {
 };
 
 const doveHandleToolbarClick = function (ev) {
-    const bodyBtn = ev.target.closest('[data-dove-body-view]');
-    if (bodyBtn) {
-        doveSetBodyView(bodyBtn.dataset.doveBodyView);
-        return;
-    }
     const button = ev.target.closest('[data-dove-action]');
     if (!button) return;
     doveDispatchAction(button.dataset.doveAction);
@@ -682,7 +867,6 @@ const doveDispatchAction = function (action) {
         case 'delete': doveDeleteSelected(); return;
         case 'archive': doveArchiveSelected(); return;
         case 'refresh': doveLoadFolder(desktopDovecote.folder); return;
-        case 'find': doveToggleFind(); return;
         case 'mobileFolders': doveToggleMobileDrawer(); return;
         case 'mobileBack': doveSetMobileMessageOpen(false); return;
         default: return;
@@ -712,6 +896,7 @@ const doveRefreshMailboxes = async function () {
 const doveLoadFolder = async function (folder) {
     desktopDovecote.folder = folder;
     doveRenderFolderTree();
+    doveRenderFolderButton();
     doveShowError(null);
     const request = { folder: folder };
     if (desktopDovecote.viewAsOwner) request.viewAsOwner = desktopDovecote.viewAsOwner;
@@ -753,20 +938,6 @@ const doveSetSort = function (key) {
     doveRenderMessageList();
 };
 
-const doveToggleFind = function () {
-    desktopDovecote.searchOpen = !desktopDovecote.searchOpen;
-    desktopDovecoteEls.searchGroup.classList.toggle('hidden', !desktopDovecote.searchOpen);
-    const findBtn = desktopDovecoteEls.toolbar.querySelector('[data-dove-action="find"]');
-    if (findBtn) findBtn.dataset.state = desktopDovecote.searchOpen ? 'on' : 'off';
-    if (desktopDovecote.searchOpen) {
-        desktopDovecoteEls.searchInput.focus();
-    } else {
-        desktopDovecote.searchText = '';
-        desktopDovecoteEls.searchInput.value = '';
-        doveRenderMessageList();
-    }
-};
-
 const doveToggleMobileDrawer = function () {
     desktopDovecoteEls.mobileDrawer.classList.toggle('hidden');
 };
@@ -778,7 +949,8 @@ const doveSetMobileMessageOpen = function (open) {
 
 const doveSetBodyView = function (view) {
     desktopDovecote.bodyView = view;
-    desktopDovecoteEls.toolbar.querySelectorAll('[data-dove-body-view]').forEach((btn) => {
+    // Lives in the preview pane header now (#6), not the toolbar — query the whole modal.
+    desktopDovecoteEls.modal.querySelectorAll('[data-dove-body-view]').forEach((btn) => {
         btn.dataset.state = btn.dataset.doveBodyView === view ? 'on' : 'off';
     });
     doveRenderPreviewBody();
@@ -828,16 +1000,31 @@ const doveRenderMessageList = function () {
 
         const unreadCell = document.createElement('span');
         unreadCell.className = 'dovecote-col-unread';
-        if (!mail.read) {
+        if (desktopDovecote.folder === 'sent') {
+            // Read receipt (#2): a sent message shows a check once the recipient has opened it.
+            if (mail.readByRecipient) {
+                const check = document.createElement('i');
+                check.className = 'fas fa-check-double dovecote-read-receipt';
+                check.title = 'Read by recipient';
+                check.setAttribute('aria-hidden', 'true');
+                unreadCell.appendChild(check);
+            }
+        } else if (!mail.read) {
             const dot = document.createElement('i');
             dot.className = 'fas fa-circle';
             dot.setAttribute('aria-hidden', 'true');
             unreadCell.appendChild(dot);
         }
 
-        // There are no real attachments in this version; the column exists for layout fidelity only.
         const attachCell = document.createElement('span');
         attachCell.className = 'dovecote-col-attachment';
+        if (mail.attachments && mail.attachments.length) {
+            const clip = document.createElement('i');
+            clip.className = 'fas fa-paperclip';
+            clip.title = mail.attachments.length + ' attachment' + (mail.attachments.length === 1 ? '' : 's');
+            clip.setAttribute('aria-hidden', 'true');
+            attachCell.appendChild(clip);
+        }
 
         const fromCell = document.createElement('span');
         fromCell.className = 'dovecote-col-from';
@@ -898,6 +1085,7 @@ const doveRenderPreview = function () {
     doveRenderOeHeaderInto(desktopDovecoteEls, mail);
     desktopDovecoteEls.safetyBar.classList.add('hidden');
     desktopDovecoteEls.imagesBar.classList.add('hidden');
+    doveRenderAttachmentsInto(desktopDovecoteEls, mail, desktopDovecote.viewAsOwner);
     doveRenderPreviewBody();
 };
 
@@ -920,13 +1108,104 @@ const doveRenderPreviewBody = function () {
 
 // ---- Shared reading-pane rendering (main inline preview + standalone reader windows,
 // doveOpenReaderWindow below) — els is { oeFrom, oeTo, oeSubject, oeDate, safetyBar,
-// imagesBar, bodyWrap }. ----------------------------------------------------------------
+// imagesBar, attachmentsBar, bodyWrap }. ----------------------------------------------------------------
 
 const doveRenderOeHeaderInto = function (els, mail) {
     els.oeFrom.textContent = mail ? mail.from || '' : '';
     els.oeTo.textContent = mail ? mail.to || '' : '';
     els.oeSubject.textContent = mail ? (mail.subject || '(no subject)') : '';
     els.oeDate.textContent = mail ? doveFormatDate(mail.createdAt) : '';
+};
+
+const doveFormatBytes = function (bytes) {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = Number(bytes) || 0;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+    }
+    return (unitIndex === 0 ? value : value.toFixed(1)) + ' ' + units[unitIndex];
+};
+
+const doveBase64ToBlob = function (base64, mimeType) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+};
+
+// dovecote_get_attachment: modules/ws/handlers/250-dovecoteHandler.js — scoped the same
+// way mail reads are (viewAsOwner for the read-only admin view, Yukimi's own mailbox otherwise).
+const doveFetchAttachmentBase64 = async function (attachmentId, viewAsOwner) {
+    const request = { id: attachmentId };
+    if (viewAsOwner) request.viewAsOwner = viewAsOwner;
+    const result = await wsClient.sendMessage('dovecote_get_attachment', request);
+    return result && result.attachment && result.attachment.base64;
+};
+
+// Images render as inline thumbnails (fetched lazily, once per chip); everything else is a
+// download link that only pulls the bytes when clicked. (#3)
+const doveRenderAttachmentsInto = function (els, mail, viewAsOwner) {
+    const bar = els.attachmentsBar;
+    if (!bar) return;
+    bar.replaceChildren();
+    const attachments = (mail && mail.attachments) || [];
+    if (!attachments.length) {
+        bar.classList.add('hidden');
+        return;
+    }
+    bar.classList.remove('hidden');
+    attachments.forEach((att) => {
+        const chip = document.createElement('div');
+        chip.className = 'dovecote-attachment-chip';
+        const isImage = (att.mimeType || '').startsWith('image/');
+        if (isImage) {
+            const thumb = document.createElement('img');
+            thumb.className = 'dovecote-attachment-thumb';
+            thumb.alt = att.name || 'attachment';
+            chip.appendChild(thumb);
+            doveFetchAttachmentBase64(att.id, viewAsOwner).then((base64) => {
+                if (base64) thumb.src = 'data:' + att.mimeType + ';base64,' + base64;
+            }).catch(() => {});
+        } else {
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-file';
+            icon.setAttribute('aria-hidden', 'true');
+            chip.appendChild(icon);
+        }
+        const label = document.createElement('span');
+        label.className = 'dovecote-attachment-name';
+        label.textContent = (att.name || 'attachment') + ' (' + doveFormatBytes(att.size) + ')';
+        chip.appendChild(label);
+        const downloadBtn = document.createElement('button');
+        downloadBtn.type = 'button';
+        downloadBtn.className = 'btn-secondary btn-small';
+        downloadBtn.title = 'Download';
+        const downloadIcon = document.createElement('i');
+        downloadIcon.className = 'fas fa-download';
+        downloadIcon.setAttribute('aria-hidden', 'true');
+        downloadBtn.appendChild(downloadIcon);
+        downloadBtn.addEventListener('click', async () => {
+            try {
+                const base64 = await doveFetchAttachmentBase64(att.id, viewAsOwner);
+                if (!base64) return;
+                const blob = doveBase64ToBlob(base64, att.mimeType);
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = att.name || 'attachment';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                doveShowError((err && err.message) || 'Could not download attachment');
+            }
+        });
+        chip.appendChild(downloadBtn);
+        bar.appendChild(chip);
+    });
 };
 
 // Plain text only: never innerHTML the raw body, it is untrusted and unsanitized here.
@@ -1205,8 +1484,10 @@ const doveBuildComposeWindow = function (key, initial) {
     titleEl.textContent = doveComposeWindowTitle(initial.mode);
     body.appendChild(titleEl);
 
+    // dovecote-compose-field-row: vertically centers the label against the input (the plain
+    // form-row default is top-aligned, which looks off for a single-line label + input pair).
     const toRow = document.createElement('div');
-    toRow.className = 'form-row';
+    toRow.className = 'form-row dovecote-compose-field-row';
     const toLabel = document.createElement('label');
     toLabel.textContent = 'To';
     const toInput = document.createElement('input');
@@ -1218,7 +1499,7 @@ const doveBuildComposeWindow = function (key, initial) {
     body.appendChild(toRow);
 
     const subjectRow = document.createElement('div');
-    subjectRow.className = 'form-row';
+    subjectRow.className = 'form-row dovecote-compose-field-row';
     const subjectLabel = document.createElement('label');
     subjectLabel.textContent = 'Subject';
     const subjectInput = document.createElement('input');
@@ -1234,6 +1515,66 @@ const doveBuildComposeWindow = function (key, initial) {
     bodyTextarea.value = initial.body;
     body.appendChild(bodyTextarea);
 
+    // Attachments (#3): picked files are read client-side to base64 (fileToBase64:
+    // public/scripts/utils/referenceUtils.js) and held in pendingAttachments until Send.
+    const pendingAttachments = [];
+    const attachRow = document.createElement('div');
+    attachRow.className = 'dovecote-compose-attach-row';
+    const attachBtn = doveCreateButton('btn-secondary btn-small', 'Attach files', 'fas fa-paperclip');
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.multiple = true;
+    fileInput.className = 'hidden';
+    const attachList = document.createElement('div');
+    attachList.className = 'dovecote-compose-attach-list';
+    attachRow.appendChild(attachBtn);
+    attachRow.appendChild(fileInput);
+    attachRow.appendChild(attachList);
+    body.appendChild(attachRow);
+
+    const renderAttachList = function () {
+        attachList.replaceChildren();
+        pendingAttachments.forEach((att, index) => {
+            const chip = document.createElement('span');
+            chip.className = 'dovecote-compose-attach-chip';
+            const icon = document.createElement('i');
+            icon.className = (att.mimeType || '').startsWith('image/') ? 'fas fa-image' : 'fas fa-paperclip';
+            icon.setAttribute('aria-hidden', 'true');
+            const name = document.createElement('span');
+            name.textContent = att.name + ' (' + doveFormatBytes(att.size) + ')';
+            const removeBtn = doveCreateButton('btn-secondary btn-small', 'Remove', 'fa-regular fa-xmark');
+            removeBtn.addEventListener('click', () => {
+                pendingAttachments.splice(index, 1);
+                renderAttachList();
+            });
+            chip.appendChild(icon);
+            chip.appendChild(name);
+            chip.appendChild(removeBtn);
+            attachList.appendChild(chip);
+        });
+    };
+
+    attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+        const files = Array.from(fileInput.files || []);
+        fileInput.value = '';
+        for (const file of files) {
+            if (file.size > DOVE_MAX_ATTACHMENT_BYTES) {
+                doveShowError(`"${file.name}" exceeds the ${Math.round(DOVE_MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB per-file limit`);
+                continue;
+            }
+            const totalSoFar = pendingAttachments.reduce((sum, att) => sum + att.size, 0);
+            if (totalSoFar + file.size > DOVE_MAX_TOTAL_ATTACHMENT_BYTES) {
+                doveShowError(`Attachments would exceed the ${Math.round(DOVE_MAX_TOTAL_ATTACHMENT_BYTES / 1024 / 1024)}MB total limit`);
+                continue;
+            }
+            // fileToBase64: public/scripts/utils/referenceUtils.js
+            const base64 = await fileToBase64(file);
+            pendingAttachments.push({ name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size, base64: base64 });
+        }
+        renderAttachList();
+    });
+
     const actions = document.createElement('div');
     actions.className = 'dovecote-compose-actions';
     const cancelBtn = document.createElement('button');
@@ -1245,7 +1586,7 @@ const doveBuildComposeWindow = function (key, initial) {
     sendBtn.type = 'button';
     sendBtn.className = 'btn-primary';
     sendBtn.textContent = 'Send';
-    sendBtn.addEventListener('click', () => doveSendComposeWindow(toInput, subjectInput, bodyTextarea, initial.replyTo, closeCompose));
+    sendBtn.addEventListener('click', () => doveSendComposeWindow(toInput, subjectInput, bodyTextarea, initial.replyTo, pendingAttachments, closeCompose));
     actions.appendChild(cancelBtn);
     actions.appendChild(sendBtn);
     body.appendChild(actions);
@@ -1256,7 +1597,7 @@ const doveBuildComposeWindow = function (key, initial) {
     return modal;
 };
 
-const doveSendComposeWindow = async function (toInput, subjectInput, bodyTextarea, replyTo, onSent) {
+const doveSendComposeWindow = async function (toInput, subjectInput, bodyTextarea, replyTo, attachments, onSent) {
     const to = toInput.value.trim();
     const subject = subjectInput.value.trim();
     const body = bodyTextarea.value;
@@ -1268,6 +1609,9 @@ const doveSendComposeWindow = async function (toInput, subjectInput, bodyTextare
         // dovecote_send_mail: modules/ws/handlers/250-dovecoteHandler.js
         const request = { to: to, subject: subject, body: body, format: 'text' };
         if (replyTo) request.replyTo = replyTo;
+        if (attachments && attachments.length) {
+            request.attachments = attachments.map((att) => ({ name: att.name, mimeType: att.mimeType, base64: att.base64 }));
+        }
         await wsClient.sendMessage('dovecote_send_mail', request);
         onSent();
         if (desktopDovecote.loaded) doveLoadFolder(desktopDovecote.folder);
@@ -1391,6 +1735,10 @@ const doveBuildReaderWindow = function (key) {
     imagesBar.className = 'dovecote-images-bar hidden';
     body.appendChild(imagesBar);
 
+    const attachmentsBar = document.createElement('div');
+    attachmentsBar.className = 'dovecote-attachments-bar hidden';
+    body.appendChild(attachmentsBar);
+
     const bodyWrap = document.createElement('div');
     bodyWrap.className = 'dovecote-body-wrap';
     const loadingHint = document.createElement('p');
@@ -1409,6 +1757,7 @@ const doveBuildReaderWindow = function (key) {
         oeDate: fieldEls.date,
         safetyBar: safetyBar,
         imagesBar: imagesBar,
+        attachmentsBar: attachmentsBar,
         bodyWrap: bodyWrap,
         loadingHint: loadingHint
     };
@@ -1447,6 +1796,7 @@ const doveRenderReaderWindow = function (state) {
     if (!mail) return;
     doveSetWindowTitle(state.modal, mail.subject || '(no subject)', 'fas fa-envelope-open');
     doveRenderOeHeaderInto(state.els, mail);
+    doveRenderAttachmentsInto(state.els, mail, desktopDovecote.viewAsOwner);
     state.els.loadingHint.remove();
     doveRenderReaderToolbarState(state);
     doveRenderReaderBody(state);
