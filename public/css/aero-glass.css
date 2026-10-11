@@ -62,10 +62,14 @@ html[data-glass="basic"] .modal {
     }
 }
 
-/* ---------- frosted + basic: the frame is painted by ::before ---------- */
+/* ---------- frosted + basic: the frame is painted by ::before ----------
+   Excluded: the fullscreen Studio editor (#manualModal without .windowed). It has no
+   frame, pulls its content into the caption area and shows the desktop through the
+   body.editor-open deep-saturation overlay; a frame layer under it drew bands where
+   its panels leave the body translucent. :where() keeps the specificity unchanged. */
 
-html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme),
-html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme) {
+html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed))),
+html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed))) {
     background-color: transparent;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
@@ -73,8 +77,8 @@ html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-them
     box-shadow: 3px 3px 20px 1px #000000a3;
 }
 
-html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme)::before,
-html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme)::before {
+html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before,
+html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -93,7 +97,7 @@ html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-them
 }
 
 /* frosted adds the wallpaper layer under the tint, aligned to the desktop */
-html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme)::before {
+html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before {
     background-image:
         var(--aero-body-shade-layer),
         var(--aero-sheen),
