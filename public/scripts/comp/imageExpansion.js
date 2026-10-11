@@ -1398,7 +1398,7 @@ async function runEnhanceImageRequest(targetFilename, enhanceValues, submitBtn =
                 updateGlassToastComplete(enhanceToastId, {
                     type: 'info',
                     title: 'Using NovelAI',
-                    message: 'Ruiko is offline. NovelAI enhance spends Anlas.',
+                    message: 'Local worker is offline. NovelAI enhance spends Anlas.',
                     showProgress: false
                 });
                 const naiValues = Object.assign({}, enhanceValues);
@@ -1602,11 +1602,11 @@ function openEnhanceMiniWindow(image, event) {
     const animateBtn = document.createElement('button');
     animateBtn.type = 'button';
     animateBtn.className = 'credit-cost-animate-btn btn-secondary';
-    animateBtn.title = 'Animate this image on the Ruiko GPU worker (free)';
+    animateBtn.title = 'Create an animation from this image (free)';
     const animateIcon = document.createElement('i');
     animateIcon.className = 'fas fa-film';
     animateBtn.appendChild(animateIcon);
-    animateBtn.appendChild(document.createTextNode(' Animate (Ruiko)'));
+    animateBtn.appendChild(document.createTextNode(' Create Animation'));
     const confirmBtn = document.createElement('button');
     confirmBtn.type = 'button';
     confirmBtn.className = 'credit-cost-confirm-btn btn-primary';

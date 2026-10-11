@@ -3886,7 +3886,7 @@ function buildGalleryItemContextMenuConfig(image, item) {
                     },
                     {
                         icon: 'fas fa-film',
-                        text: 'Animate (Ruiko)',
+                        text: 'Create Animation',
                         action: 'animate'
                     },
                     buildUnupscaledOriginalContextMenuItem(() => {

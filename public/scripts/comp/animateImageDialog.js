@@ -25,7 +25,7 @@ async function fetchLocalAnimateStatus() {
         online: false,
         configured: false,
         backends: LOCAL_ANIMATE_BACKENDS.slice(),
-        reason: 'Ruiko is offline or not configured.'
+        reason: 'The animation worker is offline or not configured.'
     };
     if (!window.wsClient || typeof window.wsClient.isConnected !== 'function' || !window.wsClient.isConnected()) {
         return fallback;
@@ -71,7 +71,7 @@ function cleanupAnimateImageDialog(dialog) {
     }
 }
 
-// Shows the Animate (Ruiko) dialog and resolves to
+// Shows the Create Animation dialog and resolves to
 // {confirmed, motionPrompt, frames, fps, loop, backend} or false on cancel.
 async function showAnimateImageDialog(event = null) {
     await fetchLocalAnimateStatus();
@@ -90,20 +90,21 @@ async function showAnimateImageDialog(event = null) {
         icon.className = 'fas fa-film';
         header.appendChild(icon);
         const title = document.createElement('span');
-        title.textContent = 'Animate (Ruiko)';
+        title.textContent = 'Create Animation';
         header.appendChild(title);
 
         const message = document.createElement('div');
-        message.className = 'credit-cost-message';
+        message.className = 'credit-cost-message animate-dialog-body';
 
         const promptLabel = document.createElement('div');
-        promptLabel.textContent = 'Motion prompt:';
+        promptLabel.textContent = 'Motion prompt';
+        promptLabel.className = 'animate-dialog-field-label';
         message.appendChild(promptLabel);
 
         const promptInput = document.createElement('textarea');
         promptInput.id = 'animateMotionPrompt';
         promptInput.className = 'form-control hover-show colored animate-dialog-full-width';
-        promptInput.rows = 2;
+        promptInput.rows = 3;
         promptInput.placeholder = 'e.g. hair and clothing sway in the wind, slow blink';
         message.appendChild(promptInput);
 
@@ -116,10 +117,12 @@ async function showAnimateImageDialog(event = null) {
             selectedBackend = backends[0].id;
         }
 
-        const backendLabel = document.createElement('div');
-        backendLabel.textContent = 'Mode:';
-        backendLabel.className = 'animate-dialog-field-label';
-        message.appendChild(backendLabel);
+        const optionsRow = document.createElement('div');
+        optionsRow.className = 'animate-dialog-options-row';
+
+        const backendLabel = document.createElement('label');
+        backendLabel.className = 'animate-dialog-field animate-dialog-mode-field';
+        backendLabel.appendChild(document.createTextNode('Mode '));
 
         const backendDropdown = document.createElement('div');
         backendDropdown.id = 'animateBackendDropdown';
@@ -157,15 +160,14 @@ async function showAnimateImageDialog(event = null) {
         });
         renderBackendLabel();
         backendDropdown.appendChild(backendMenu);
-        message.appendChild(backendDropdown);
+        backendLabel.appendChild(backendDropdown);
+        optionsRow.appendChild(backendLabel);
 
         // setupDropdown: public/scripts/comp/dropdown.js
         setupDropdown(backendDropdown, backendBtn, backendMenu, () => {}, () => ({ backend: selectedBackend }), { preventFocusTransfer: true });
 
-        const optionsRow = document.createElement('div');
-        optionsRow.className = 'credit-cost-options-row animate-dialog-options-row';
-
         const framesLabel = document.createElement('label');
+        framesLabel.className = 'animate-dialog-field';
         framesLabel.appendChild(document.createTextNode('Frames '));
         const framesInput = document.createElement('input');
         framesInput.type = 'number';
@@ -176,6 +178,7 @@ async function showAnimateImageDialog(event = null) {
         framesLabel.appendChild(framesInput);
 
         const fpsLabel = document.createElement('label');
+        fpsLabel.className = 'animate-dialog-field';
         fpsLabel.appendChild(document.createTextNode('FPS '));
         const fpsInput = document.createElement('input');
         fpsInput.type = 'number';
@@ -186,6 +189,7 @@ async function showAnimateImageDialog(event = null) {
         fpsLabel.appendChild(fpsInput);
 
         const loopLabel = document.createElement('label');
+        loopLabel.className = 'animate-dialog-field animate-dialog-loop-field';
         const loopInput = document.createElement('input');
         loopInput.type = 'checkbox';
         loopInput.checked = true;
@@ -196,6 +200,19 @@ async function showAnimateImageDialog(event = null) {
         optionsRow.appendChild(fpsLabel);
         optionsRow.appendChild(loopLabel);
         message.appendChild(optionsRow);
+
+        // Scroll-wheel adjust for numbers — createWheelTickGate/guardWheelTick: public/scripts/utils/wheelTickGate.js
+        [framesInput, fpsInput].forEach((input) => {
+            const allowTick = createWheelTickGate(150);
+            input.addEventListener('wheel', (e) => {
+                if (!guardWheelTick(e, allowTick, { stop: true })) return;
+                const min = parseInt(input.min, 10);
+                const max = parseInt(input.max, 10);
+                const cur = parseInt(input.value, 10) || min;
+                const next = Math.min(max, Math.max(min, cur + (e.deltaY < 0 ? 1 : -1)));
+                input.value = String(next);
+            }, { passive: false });
+        });
 
         const buttons = document.createElement('div');
         buttons.className = 'credit-cost-buttons';
@@ -209,7 +226,7 @@ async function showAnimateImageDialog(event = null) {
         confirmBtn.className = 'credit-cost-confirm-btn btn-primary';
         confirmBtn.type = 'button';
         confirmBtn.setAttribute('data-dialog-primary', '1');
-        confirmBtn.textContent = 'Animate ';
+        confirmBtn.textContent = 'Create ';
         const arrowIcon = document.createElement('i');
         arrowIcon.className = 'fas fa-arrow-right';
         confirmBtn.appendChild(arrowIcon);

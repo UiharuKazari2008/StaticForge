@@ -572,6 +572,11 @@ function createManualPreviewImageContextMenuConfig() {
                         text: 'Upscale',
                         action: 'upscale'
                     },
+                    {
+                        icon: 'fas fa-film',
+                        text: 'Create Animation',
+                        action: 'create-animation'
+                    },
                     buildUnupscaledOriginalContextMenuItem(() => window.currentManualPreviewImage),
                     {
                         icon: 'fas fa-person-to-portal',
@@ -865,6 +870,15 @@ async function handleManualPreviewImageContextMenuAction(event) {
                 upscaleImage(window.currentManualPreviewImage, event);
             } else {
                 showGlassToast('error', 'Upscale Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+            }
+            break;
+
+        case 'create-animation':
+            if (window.currentManualPreviewImage) {
+                // animateImage: public/scripts/comp/galleryActions.js
+                animateImage(window.currentManualPreviewImage, event);
+            } else {
+                showGlassToast('error', 'Create Animation Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
             }
             break;
 
@@ -4927,7 +4941,7 @@ async function handleManualGeneration(e, options = {}) {
         const status = await fetchLocalUpscaleModels();
         if (!status || !status.online) {
             const useNai = typeof confirmNaiUpscaleFallback === 'function'
-                ? await confirmNaiUpscaleFallback(new Error(status && status.reason ? status.reason : 'Ruiko is offline.'))
+                ? await confirmNaiUpscaleFallback(new Error(status && status.reason ? status.reason : 'Local worker is offline.'))
                 : false;
             if (!useNai) {
                 isGenerating = false;

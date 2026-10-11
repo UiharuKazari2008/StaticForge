@@ -833,7 +833,7 @@ class ImageViewer {
                 },
                 {
                     icon: 'fas fa-film',
-                    text: 'Animate (Ruiko)',
+                    text: 'Create Animation',
                     action: 'image-viewer-animate'
                 },
                 buildUnupscaledOriginalContextMenuItem(() => this.metadata, 'image-viewer-'),

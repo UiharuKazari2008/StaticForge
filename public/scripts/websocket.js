@@ -159,9 +159,9 @@ class BannerManager {
             // Core image operations
             'generate_image': 'Generate Image',
             'upscale_image': 'Upscale Image',
-            'local_upscale_status': 'Ruiko Upscaler',
+            'local_upscale_status': 'Local Upscaler',
             'animate_image': 'Animate Image',
-            'local_animate_status': 'Ruiko Animate',
+            'local_animate_status': 'Create Animation',
             'remote_workers_status': 'Remote Workers',
             'reroll_image': 'Recast Spell',
             'expand_image': 'Expand Canvas',

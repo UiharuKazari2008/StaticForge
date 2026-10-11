@@ -168,7 +168,7 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
                     localOption.dataset.model = model.id;
                     localOption.dataset.scale = String(scale);
                     const outputRes = imageWidth && imageHeight ? `${imageWidth * scale}×${imageHeight * scale}` : `${scale}x`;
-                    localOption.textContent = `Local (Ruiko) ${model.name} ${scale}x - Free - ${outputRes}`;
+                    localOption.textContent = `Local ${model.name} ${scale}x - Free - ${outputRes}`;
                     localOption.addEventListener('click', () => {
                         selectUpscaleMethod('local', scale, model.id);
                         closeUpscaleMethodDropdown();
@@ -216,7 +216,7 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
                 const displayText = method === 'novelai'
                     ? 'NovelAI (4x)'
                     : method === 'local'
-                        ? `Local (Ruiko) ${scale}x`
+                        ? `Local ${scale}x`
                         : `ESRGAN (${scale}x)`;
                 methodDropdownBtn.textContent = displayText;
 
@@ -508,7 +508,7 @@ async function fetchLocalUpscaleModels() {
         online: false,
         configured: false,
         models: LOCAL_UPSCALE_MODELS.slice(),
-        reason: 'Ruiko is offline or not configured.'
+        reason: 'The local worker is offline or not configured.'
     };
     if (!window.wsClient || typeof window.wsClient.isConnected !== 'function' || !window.wsClient.isConnected()) {
         return fallback;
@@ -539,7 +539,7 @@ async function fetchLocalUpscaleModels() {
 }
 
 async function confirmNaiUpscaleFallback(error) {
-    const detail = error && error.message ? error.message : 'Ruiko is offline.';
+    const detail = error && error.message ? error.message : 'The local worker is offline.';
     const choice = await showConfirmationDialog(
         detail + ' Use NovelAI upscale instead? This spends Anlas.',
         [
@@ -563,7 +563,7 @@ function fillLocalUpscaleSelect(select, includeNovelAi) {
     knownLocalUpscaleModels().forEach((model) => {
         const option = document.createElement('option');
         option.value = model.id;
-        option.textContent = 'Local (Ruiko) ' + (model.name || model.id);
+        option.textContent = 'Local ' + (model.name || model.id);
         select.appendChild(option);
     });
     const values = Array.from(select.options).map((option) => option.value);

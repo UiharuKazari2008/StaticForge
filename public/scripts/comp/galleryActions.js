@@ -399,7 +399,7 @@ async function animateImage(image, event = null) {
     }
 
     if (!progressToastId) {
-        progressToastId = showGlassToast('info', 'Animating Image', 'Animating on Ruiko (this can take a few minutes)...', true, false, '<i class="fas fa-film"></i>');
+        progressToastId = showGlassToast('info', 'Creating Animation', 'Creating animation (this can take a few minutes)...', true, false, '<i class="fas fa-film"></i>');
     }
 
     let progress = 0;
