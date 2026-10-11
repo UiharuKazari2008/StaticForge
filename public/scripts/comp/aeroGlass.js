@@ -33,7 +33,7 @@
         frostedMaxWidth: 960,       // source copy is downscaled to at most this wide
         frostedBlurRatio: 0.011,    // frame blur radius as a fraction of that width (~11px at 960)
         frostedMinBlurPx: 5,
-        taskbarBlurRatio: 0.4,      // the taskbar copy keeps more detail: this fraction of the frame blur
+        taskbarBlurRatio: 0.85,     // the taskbar copy is a touch sharper: this fraction of the frame blur
         jpegQuality: 0.86,
         revokeDelayMs: 2000,        // old blob URL lives long enough for the swap to paint
         resizeDebounceMs: 120,
@@ -232,12 +232,42 @@
         if (!origin) return false;
         const x = roundToDevicePixel(origin.x);
         const y = roundToDevicePixel(origin.y);
-        if (modal._aeroX === x && modal._aeroY === y) return true;
-        modal._aeroX = x;
-        modal._aeroY = y;
-        modal.style.setProperty('--aero-x', `${x}px`);
-        modal.style.setProperty('--aero-y', `${y}px`);
+        if (modal._aeroX !== x || modal._aeroY !== y) {
+            modal._aeroX = x;
+            modal._aeroY = y;
+            modal.style.setProperty('--aero-x', `${x}px`);
+            modal.style.setProperty('--aero-y', `${y}px`);
+        }
+        syncSurfaces(modal);
         return true;
+    }
+
+    /**
+     * Toolbars and floating buttons inside a window that share the frame glass
+     * ([data-aero-surface], e.g. the workspace header bar and its jump buttons): their own
+     * viewport origin goes to --aero-sx / --aero-sy; drag offsets inherit from the window.
+     */
+    function syncSurfaces(modal) {
+        if (!modal || typeof modal.querySelectorAll !== 'function') return 0;
+        let count = 0;
+        modal.querySelectorAll('[data-aero-surface]').forEach((el) => {
+            const rect = el.getBoundingClientRect();
+            if (!rect.width && !rect.height) return;
+            const x = roundToDevicePixel(rect.left);
+            const y = roundToDevicePixel(rect.top);
+            if (el._aeroSx !== x || el._aeroSy !== y) {
+                el._aeroSx = x;
+                el._aeroSy = y;
+                el.style.setProperty('--aero-sx', `${x}px`);
+                el.style.setProperty('--aero-sy', `${y}px`);
+            }
+            if (!el._aeroSurfaceObserved && typeof ResizeObserver === 'function') {
+                el._aeroSurfaceObserved = true;
+                new ResizeObserver(() => syncSurfaces(modal)).observe(el);
+            }
+            count += 1;
+        });
+        return count;
     }
 
     function syncAllModals() {
@@ -541,6 +571,7 @@
         toggleBasic,
         cycleMode,
         syncModal,
+        syncSurfaces,
         syncAllModals,
         refreshWallpaper: () => scheduleWallpaperRefresh(false),
         rebuildWallpaper: () => ensureFrosted({ force: true }),

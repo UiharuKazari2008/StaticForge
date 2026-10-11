@@ -292,3 +292,51 @@ collisionOffsets = new Map()
 - [ ] Export/import layouts
 - [ ] Per-monitor layouts
 
+---
+
+# Window geometry (desktop windows)
+
+Windows (`.modal` with a title bar, the windowed workspace shell, Lumen, Glancewell…) are
+persisted globally in `windowPositions` (WS `workspace_update_window_positions`). Helpers:
+`public/scripts/comp/windowGeometry.js`; callers in `modalUtils.js`. Yozora #403.
+
+## Entry format
+
+```javascript
+{
+    edges: { left: 0.1, top: 0.1007, right: 0.6, bottom: 0.6007 },   // fractions of the work area
+    topLeft: { index: 1, x: 0.2, y: 0.2 },                            // legacy quadrant pair, still written
+    bottomRight: { index: 4, x: 0.2, y: 0.2 }
+}
+```
+
+- `edges` are fractions of the **work area** (`getModalWorkAreaBounds()`: viewport minus the
+  caption inset and the taskbar), rounded to 4 decimals, clamped to −1…2 so a window that
+  hangs partly off screen keeps its sign. A different resolution, aspect ratio or DPI
+  reproduces the same relative place and size.
+- `topLeft` / `bottomRight` (quadrant percentages of the two corners) are kept for older
+  readers and the server validator; restore prefers `edges` and falls back to them.
+
+## Save rules
+
+- Maximized windows persist their last normal geometry (`_preMaximizeLayout`), never the
+  maximized rect.
+- The fullscreen Studio editor (`#manualModal` without `.windowed`) is not a window and is
+  skipped; its windowed geometry stays as last saved.
+- A rect covering ≥ 97 % of the work area in both directions (`isRemnantGeometry`) is a
+  maximize / fullscreen remnant and is not written; on restore such an entry is ignored and
+  the window opens at its default size.
+
+## Viewport re-layout
+
+`handleDesktopViewportResizePositionSync` runs 500 ms after the last `resize`. It is skipped
+for a hidden tab, a minimised browser (zero outer size) or a viewport under 480×320. Every
+open window then gets its fractions re-applied (`_geometryEdges`, cached at pixel-settle,
+or the saved entry); maximized windows are re-fitted to the new work area; windows without
+fractions are only clamped back into the work area.
+
+## `data-window-fixed-size="true"`
+
+A window with this attribute (or one that does not restore its size) keeps its pixel size
+on restore and on re-layout and is re-centred on the saved centre point instead of being
+scaled. Set it in the markup next to `data-window-min-width` and friends.

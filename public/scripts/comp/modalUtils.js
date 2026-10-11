@@ -331,6 +331,14 @@ function buildWindowPositionEntryFromLayout(modal, layout, containerWidth, conta
     if (!position.topLeft && !position.bottomRight) {
         return null;
     }
+    // Work-area fractions are what restore and viewport re-layout use; the quadrant pair above
+    // stays for older readers and the server validator (public/scripts/comp/windowGeometry.js)
+    if (typeof windowGeometry !== 'undefined' && windowGeometry) {
+        const edges = windowGeometry.computeWindowEdges({ left, top, width, height }, getModalWorkAreaBounds());
+        if (edges) {
+            position.edges = edges;
+        }
+    }
     return position;
 }
 
@@ -593,8 +601,65 @@ function clampModalEdgesWithinWorkAreaSync(modal, edgeMarginPx) {
     return false;
 }
 
+/**
+ * Re-apply a window's saved work-area fractions (public/scripts/comp/windowGeometry.js).
+ * Resizable windows take the scaled rect; data-window-fixed-size windows keep their pixel
+ * size and move to the saved centre. A remnant (maximized / fullscreen rect) is ignored.
+ */
+function applyWindowGeometryEdges(modal, edges) {
+    if (!modal || typeof windowGeometry === 'undefined' || !windowGeometry || !windowGeometry.isEdges(edges)) {
+        return false;
+    }
+    if (windowGeometry.isRemnantGeometry(edges)) {
+        return false;
+    }
+    const workArea = getModalWorkAreaBounds();
+    const fixedSize = modal.dataset.windowFixedSize === 'true'
+        || !windowRestoresSize(modal)
+        || !modal.classList.contains('resizeable-window');
+
+    clearModalPixelAnchor(modal);
+    const measureState = beginModalLayoutMeasure(modal);
+    try {
+        const restoreClamp = { allowPartialBottomOverflow: true };
+        if (fixedSize) {
+            const layout = getModalLayoutDimensions(modal);
+            const rect = windowGeometry.edgesToRect(edges, workArea, { fixedSize: { width: layout.width, height: layout.height } });
+            if (!rect) return false;
+            setModalOffsetsFromViewportTopLeft(modal, rect.left, rect.top, restoreClamp);
+        } else {
+            const rect = windowGeometry.edgesToRect(edges, workArea);
+            if (!rect) return false;
+            const { minWidth, minHeight } = getModalMinDimensions(modal);
+            const maxWidth = modal.dataset.windowMaxWidth ? parseInt(modal.dataset.windowMaxWidth, 10) : Infinity;
+            const maxHeight = modal.dataset.windowMaxHeight ? parseInt(modal.dataset.windowMaxHeight, 10) : Infinity;
+            setModalPositionFromViewportRect(modal, {
+                left: rect.left,
+                top: rect.top,
+                width: Math.min(maxWidth, Math.max(minWidth, rect.width)),
+                height: Math.min(maxHeight, Math.max(minHeight, rect.height))
+            }, restoreClamp);
+        }
+        modal.setAttribute('data-modal-moved', 'true');
+        modal.setAttribute('data-window-position-restored', 'true');
+    } finally {
+        endModalLayoutMeasure(modal, measureState);
+    }
+    return true;
+}
+
 function handleDesktopViewportResizePositionSync() {
     if (!window.isDesktop || !document.body.classList.contains('desktop-mode')) {
+        return;
+    }
+    // A hidden tab, a minimised browser or a collapsed viewport is not a layout to adopt
+    if (typeof windowGeometry !== 'undefined' && windowGeometry && !windowGeometry.shouldRelayoutViewport({
+        hidden: document.hidden,
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        outerWidth: window.outerWidth,
+        outerHeight: window.outerHeight
+    })) {
         return;
     }
 
@@ -604,6 +669,24 @@ function handleDesktopViewportResizePositionSync() {
             return;
         }
         if (!modal.querySelector('.modal-window-title')) {
+            return;
+        }
+        // Fullscreen Studio editor is not a window
+        if (modal.id === 'manualModal' && !modal.classList.contains('windowed')) {
+            return;
+        }
+        if (isModalMaximized(modal)) {
+            // Re-fit to the new work area
+            restoreModalFromMaximize(modal);
+            maximizeModalToWorkArea(modal);
+            positionChanged = true;
+            return;
+        }
+        const windowKey = getWindowPositionKey(modal);
+        const savedEntry = windowKey ? globalWindowPositions[windowKey] : null;
+        const edges = modal._geometryEdges || (savedEntry && savedEntry.edges) || null;
+        if (edges && applyWindowGeometryEdges(modal, edges)) {
+            positionChanged = true;
             return;
         }
         if (clampModalEdgesWithinWorkAreaSync(modal)) {
@@ -817,6 +900,10 @@ function restoreOpenDesktopWindowPositions() {
 
     candidates.forEach((modal) => {
         if (TASKBAR_SYSTEM_MODAL_IDS.has(modal.id)) {
+            return;
+        }
+        // Fullscreen Studio editor: windowed geometry must not be pushed onto it
+        if (modal.id === 'manualModal' && !modal.classList.contains('windowed')) {
             return;
         }
         if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) {
@@ -1084,6 +1171,13 @@ function settleModalPixelAnchor(modal) {
     modal.style.setProperty('--modal-pixel-left', `${roundToDevicePixel(rect.left)}px`);
     modal.style.setProperty('--modal-pixel-top', `${roundToDevicePixel(rect.top)}px`);
     modal.classList.add('modal-pixel-settled');
+    // Fresh work-area fractions for the viewport re-layout (a maximized rect is never a normal geometry)
+    if (!isModalMaximized(modal) && typeof windowGeometry !== 'undefined' && windowGeometry) {
+        const edges = windowGeometry.computeWindowEdges(rect, getModalWorkAreaBounds());
+        if (edges) {
+            modal._geometryEdges = edges;
+        }
+    }
     if (window.aeroGlass) {
         window.aeroGlass.syncModal(modal);
     }
@@ -8107,7 +8201,9 @@ function syncDesktopSettingsNotificationBridgeToggleUI() {
 }
 
 function shouldExitDesktopOnWorkspaceMaximise() {
-    return desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise === true;
+    // Maximizing the workspace window stays in desktop mode so it keeps behaving like a window
+    // (Yukimi, #403). Leaving desktop mode is the explicit MeletonFX Desktop toggle only.
+    return false;
 }
 
 function updateDesktopSettingsExitDesktopOnWorkspaceMaximiseToggleUI(enabled) {
@@ -9659,6 +9755,10 @@ function saveWindowPositions(options = {}) {
         if (!windowRestoresPosition(modal) && !windowRestoresSize(modal)) {
             return;
         }
+        // Fullscreen Studio editor is not a window; its windowed geometry stays as last saved
+        if (modal.id === 'manualModal' && !modal.classList.contains('windowed')) {
+            return;
+        }
 
         // Maximize is a temporary layout override — persist last normal geometry only
         let layoutForSave;
@@ -9675,6 +9775,13 @@ function saveWindowPositions(options = {}) {
                 width: modalRect.width,
                 height: modalRect.height
             };
+            // A rect that covers the work area is a maximize/fullscreen remnant, never a normal geometry
+            if (typeof windowGeometry !== 'undefined' && windowGeometry) {
+                const edgesNow = windowGeometry.computeWindowEdges(layoutForSave, getModalWorkAreaBounds());
+                if (edgesNow && windowGeometry.isRemnantGeometry(edgesNow)) {
+                    return;
+                }
+            }
         }
 
         const position = buildWindowPositionEntryFromLayout(
@@ -9736,6 +9843,17 @@ function restoreWindowPosition(modal) {
 
     // Try to find saved position for this window
     let savedPosition = globalWindowPositions[windowKey];
+
+    // Work-area fractions (public/scripts/comp/windowGeometry.js); the quadrant pair below is the legacy path
+    if (typeof windowGeometry !== 'undefined' && windowGeometry && windowGeometry.isEdgesEntry(savedPosition)) {
+        if (windowGeometry.isRemnantGeometry(savedPosition.edges)) {
+            return; // saved while maximized / fullscreen: let the window open at its default size
+        }
+        if (applyWindowGeometryEdges(modal, savedPosition.edges)) {
+            ensureModalEdgesWithinWorkArea(modal);
+        }
+        return;
+    }
 
     if (savedPosition && savedPosition.topLeft) {
         const containerWidth = window.innerWidth;

@@ -139,6 +139,43 @@ html[data-glass="basic"] .modal {
     transition: none;
 }
 
+/* ---------- surfaces inside windows that share the frame glass ----------
+   [data-aero-surface] (workspace header bar, its jump buttons): aeroGlass.syncModal
+   writes the element's own viewport origin to --aero-sx / --aero-sy; the drag offset
+   and the active/inactive tint inherit from the window. */
+html[data-glass="frosted"] .modal [data-aero-surface],
+html[data-glass="basic"] .modal [data-aero-surface],
+html[data-glass="frosted"] #galleryWindow [data-aero-surface],
+html[data-glass="basic"] #galleryWindow [data-aero-surface] {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-color: var(--aero-frame-base);
+    background-image:
+        var(--aero-sheen),
+        linear-gradient(var(--aero-tint), var(--aero-tint));
+    background-size: 100% 100%, 100% 100%;
+    background-position: 0 0, 0 0;
+    background-repeat: no-repeat;
+}
+
+/* The id form outranks #galleryPageJumps .round-button, which paints its own glass */
+html[data-glass="frosted"] .modal [data-aero-surface],
+html[data-glass="frosted"] #galleryWindow [data-aero-surface] {
+    background-image:
+        var(--aero-sheen),
+        linear-gradient(var(--aero-tint), var(--aero-tint)),
+        var(--aero-wallpaper, none);
+    background-size:
+        100% 100%,
+        100% 100%,
+        var(--aero-cover-w, 100vw) var(--aero-cover-h, 100vh);
+    background-position:
+        0 0,
+        0 0,
+        calc(var(--aero-cover-x, 0px) - var(--aero-sx, 0px) - var(--modal-drag-x, 0px) - 1px)
+        calc(var(--aero-cover-y, 0px) - var(--aero-sy, 0px) - var(--modal-drag-y, 0px) - 1px);
+}
+
 /* ---------- maximized: Vista dark frame, every mode ---------- */
 
 /* Outranks the inactive tint above: a maximized frame stays dark whether or not it has focus */
