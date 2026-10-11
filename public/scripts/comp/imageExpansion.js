@@ -1599,6 +1599,14 @@ function openEnhanceMiniWindow(image, event) {
     cancelBtn.type = 'button';
     cancelBtn.className = 'credit-cost-cancel-btn btn-secondary';
     cancelBtn.textContent = 'Cancel';
+    const animateBtn = document.createElement('button');
+    animateBtn.type = 'button';
+    animateBtn.className = 'credit-cost-animate-btn btn-secondary';
+    animateBtn.title = 'Animate this image on the Ruiko GPU worker (free)';
+    const animateIcon = document.createElement('i');
+    animateIcon.className = 'fas fa-film';
+    animateBtn.appendChild(animateIcon);
+    animateBtn.appendChild(document.createTextNode(' Animate (Ruiko)'));
     const confirmBtn = document.createElement('button');
     confirmBtn.type = 'button';
     confirmBtn.className = 'credit-cost-confirm-btn btn-primary';
@@ -1607,6 +1615,7 @@ function openEnhanceMiniWindow(image, event) {
     confirmIcon.className = 'fas fa-arrow-right';
     confirmBtn.appendChild(confirmIcon);
     buttons.appendChild(cancelBtn);
+    buttons.appendChild(animateBtn);
     buttons.appendChild(confirmBtn);
 
     content.appendChild(header);
@@ -1632,6 +1641,12 @@ function openEnhanceMiniWindow(image, event) {
     cancelBtn.addEventListener('click', (e) => {
         e.preventDefault();
         closeEnhanceMiniDialog();
+    });
+    animateBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeEnhanceMiniDialog();
+        // animateImage: public/scripts/comp/galleryActions.js
+        void animateImage({ filename }, e);
     });
     confirmBtn.addEventListener('click', (e) => {
         e.preventDefault();

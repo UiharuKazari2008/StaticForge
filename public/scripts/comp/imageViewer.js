@@ -831,6 +831,11 @@ class ImageViewer {
                     action: 'image-viewer-upscale',
                     disabled: !!this.metadata.upscaled
                 },
+                {
+                    icon: 'fas fa-film',
+                    text: 'Animate (Ruiko)',
+                    action: 'image-viewer-animate'
+                },
                 buildUnupscaledOriginalContextMenuItem(() => this.metadata, 'image-viewer-'),
                 { separator: true },
                 {
@@ -956,6 +961,9 @@ class ImageViewer {
                 break;
             case 'image-viewer-upscale':
                 this.upscale();
+                break;
+            case 'image-viewer-animate':
+                this.animate(event);
                 break;
             case 'image-viewer-jump-workspace':
                 void this.jumpToInWorkspace();
@@ -1447,6 +1455,12 @@ class ImageViewer {
     upscale() {
         if (typeof upscaleImage === 'function') {
             upscaleImage(this.metadata);
+        }
+    }
+
+    animate(event) {
+        if (typeof animateImage === 'function') {
+            animateImage(this.metadata, event);
         }
     }
 

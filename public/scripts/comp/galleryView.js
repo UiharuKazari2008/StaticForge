@@ -3884,6 +3884,11 @@ function buildGalleryItemContextMenuConfig(image, item) {
                             }
                         }
                     },
+                    {
+                        icon: 'fas fa-film',
+                        text: 'Animate (Ruiko)',
+                        action: 'animate'
+                    },
                     buildUnupscaledOriginalContextMenuItem(() => {
                         const fileIndex = parseInt(item.dataset.fileIndex, 10);
                         return (allImages && allImages[fileIndex]) || image;
@@ -8111,6 +8116,11 @@ function handleGalleryContextMenuAction(event) {
             if (!image.upscaled) {
                 upscaleImage(image, event);
             }
+            break;
+
+        case 'animate':
+            // animateImage: public/scripts/comp/galleryActions.js
+            animateImage(image, event);
             break;
 
         case 'view-image-data':
