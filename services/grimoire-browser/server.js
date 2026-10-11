@@ -538,13 +538,30 @@ function broadcast(session, payload, binary) {
     }
 }
 
+function livePageUrl(session) {
+    try {
+        const current = session.page.url();
+        if (/^(https?:|chrome(-extension)?:)/i.test(current)) return current;
+    } catch (_) {}
+    return '';
+}
+
 function publishLocation(session) {
-    let current = '';
-    try { current = session.page.url(); } catch (_) {}
-    if (/^(https?:|chrome(-extension)?:)/i.test(current)) session.url = current;
+    const live = livePageUrl(session);
+    // While Page.navigate is still outstanding, page.url() is often still the previous page.
+    // Prefer the in-flight target so the address bar does not snap back until commit (or failure).
+    if (live) {
+        if (session.navTarget && session.navigating && live !== session.navTarget) {
+            // keep session.url as the advertised target
+        } else {
+            session.url = live;
+            if (session.navTarget && live === session.navTarget) session.navTarget = '';
+        }
+    }
+    const url = (session.navigating && session.navTarget) || session.url || live || '';
     broadcast(session, {
         type: session.navigating ? 'navigating' : 'location',
-        url: session.url || '',
+        url,
         title: session.title || '',
         navigating: !!session.navigating
     });
@@ -764,7 +781,7 @@ function beginNavigating(session, resetTimer) {
     }
     broadcast(session, {
         type: 'navigating',
-        url: session.url || '',
+        url: session.navTarget || session.url || '',
         title: session.title || '',
         navigating: true
     });
@@ -783,7 +800,17 @@ function endNavigating(session) {
     if (!sessions.get(session.id)) return;
     clearTimeout(session.navSettle);
     session.navSettle = null;
+    // navSettle is only a spinner fallback. If Page.navigate has not committed yet, do not
+    // clear navigating / snap the URL back to the old live page — re-arm briefly instead.
+    if (session.navRunning && session.navTarget) {
+        const live = livePageUrl(session);
+        if (!live || live !== session.navTarget) {
+            session.navSettle = setTimeout(() => endNavigating(session), 2000);
+            return;
+        }
+    }
     session.navigating = false;
+    session.navTarget = '';
     publishLocation(session);
 }
 
@@ -987,7 +1014,12 @@ async function followChromeLink(session, x, y) {
 function requestNavigate(session, url, reload) {
     const gen = ++session.navGen;
     session.dragFrom = null;
-    if (!reload) session.url = url;
+    if (!reload) {
+        session.url = url;
+        session.navTarget = url;
+    } else {
+        session.navTarget = session.url || '';
+    }
     beginNavigating(session, true);
     session.pendingNav = { gen, url, reload: !!reload };
     session.pixels = null;
@@ -1020,6 +1052,7 @@ async function pumpNav(session) {
             console.error('[grimoire-browser] navigate', message);
             if (/ERR_ABORTED/i.test(message)) continue;
             session.navigating = false;
+            session.navTarget = '';
             clearTimeout(session.navSettle);
             session.navSettle = null;
             broadcast(session, { type: 'error', message });
@@ -1498,6 +1531,7 @@ async function createSession(body, adoptedPage) {
         pendingNav: null,
         navRunning: false,
         navigating: false,
+        navTarget: '',
         latestFrame: null,
         pendingAck: null,
         framePump: false,
@@ -1518,6 +1552,13 @@ async function createSession(body, adoptedPage) {
         session.mainFrameId = tree && tree.frameTree && tree.frameTree.frame && tree.frameTree.frame.id || '';
     } catch (_) {}
     cdp.send('Page.setLifecycleEventsEnabled', { enabled: true }).catch(() => {});
+
+    // Chromium gives the main frame a new id on cross-process navigations; keep mainFrameId in sync
+    // so lifecycle / loading events still end the navigating state (otherwise only navSettle fires).
+    cdp.on('Page.frameNavigated', (ev) => {
+        if (!sessions.get(id) || !ev || !ev.frame || ev.frame.parentId) return;
+        session.mainFrameId = ev.frame.id || session.mainFrameId;
+    });
 
     // Isolated world: a page-visible binding (page.exposeFunction) makes Cloudflare Turnstile refuse the click.
     cdp.on('Runtime.bindingCalled', (ev) => {
@@ -1610,7 +1651,22 @@ async function createSession(body, adoptedPage) {
     page.on('framenavigated', (frame) => {
         if (!sessions.get(id) || frame !== page.mainFrame()) return;
         const next = frame.url();
-        if (/^(https?:|chrome(-extension)?:)/i.test(next)) session.url = next;
+        if (/^(https?:|chrome(-extension)?:)/i.test(next)) {
+            // Ignore stale frame URLs while an in-flight target has not committed yet
+            // (stopLoading / aborted navigations can re-emit the previous page).
+            if (!(session.navigating && session.navTarget && next !== session.navTarget)) {
+                session.url = next;
+                if (session.navTarget && next === session.navTarget) {
+                    session.navTarget = '';
+                    // Commit reached even when lifecycle events miss (stale mainFrameId).
+                    if (session.navigating) {
+                        clearTimeout(session.navSettle);
+                        session.navSettle = null;
+                        session.navigating = false;
+                    }
+                }
+            }
+        }
         applySiteUserAgent(session, next);
         grantCapture(next);
         publishLocation(session);
@@ -1627,7 +1683,7 @@ async function createSession(body, adoptedPage) {
 function sessionPublic(session) {
     return {
         id: session.id,
-        url: session.url,
+        url: (session.navigating && session.navTarget) || session.url,
         title: session.title,
         width: session.width,
         height: session.height,
@@ -2043,10 +2099,10 @@ function attachViewer(ws, session) {
     session.sockets.add(ws);
     touch(session);
     if (session.meta) ws.send(JSON.stringify({ type: 'meta', metadata: session.meta }));
-    if (session.url || session.navigating) {
+    if (session.url || session.navigating || session.navTarget) {
         ws.send(JSON.stringify({
             type: session.navigating ? 'navigating' : 'location',
-            url: session.url || '',
+            url: (session.navigating && session.navTarget) || session.url || '',
             title: session.title || '',
             navigating: !!session.navigating
         }));
