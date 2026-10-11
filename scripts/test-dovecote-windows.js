@@ -78,6 +78,52 @@ function main() {
     assert.doesNotMatch(dovecoteJs, /createElement\(['"]select['"]\)/);
     assert.match(dovecoteJs, /contextMenu\.attachClickMenuToElement/);
 
+    // 5. Inline search bar (#1): the old toggle-triggered Find button is gone, the filter
+    // input lives in the same toolbar slot and is never hidden.
+    assert.doesNotMatch(dovecoteJs, /doveToggleFind/);
+    assert.doesNotMatch(dovecoteJs, /searchGroup\.className = 'button-group hidden'/);
+    assert.match(dovecoteJs, /searchGroup\.className = 'button-group'/);
+    assert.match(dovecoteJs, /searchInput\.id = 'desktopDovecoteSearchInput'/);
+
+    // 6. Folder dropdown button (#5): custom click-menu, not a native select, showing the
+    // active folder's icon/label on the button itself.
+    assert.match(dovecoteJs, /const doveBuildFolderButton = function/);
+    assert.match(dovecoteJs, /const doveFolderMenuConfig = \{/);
+    assert.match(dovecoteJs, /contextMenu\.attachClickMenuToElement\(button, doveFolderMenuConfig\)/);
+    assert.match(dovecoteJs, /const doveRenderFolderButton = function/);
+
+    // 7. Rendered/Raw toggle moved into the viewer pane header (#6), out of the main toolbar,
+    // with its own click listener (not the toolbar's doveHandleToolbarClick).
+    assert.match(dovecoteJs, /const doveBuildBodyViewToggle = function/);
+    assert.match(dovecoteJs, /header\.appendChild\(doveBuildBodyViewToggle\(\)\)/);
+    assert.doesNotMatch(dovecoteJs, /doveBuildToolbar[\s\S]{0,2000}data-dove-body-view/);
+
+    // 8. Mail row context menu (#4): Open / Open in Window / Reply / Forward submenu /
+    // Mark read-unread / Archive / Delete, attached to the rows container.
+    assert.match(dovecoteJs, /contextMenu\.attachToElement\(rows, doveMailRowMenuConfig\)/);
+    assert.match(dovecoteJs, /const doveMailRowMenuConfig = \{/);
+    assert.match(dovecoteJs, /action: 'dove-row-open'/);
+    assert.match(dovecoteJs, /action: 'dove-row-open-window'/);
+    assert.match(dovecoteJs, /action: 'dove-row-reply'/);
+    assert.match(dovecoteJs, /action: 'dove-row-forward'/);
+    assert.match(dovecoteJs, /action: 'dove-row-toggle-read'/);
+    assert.match(dovecoteJs, /action: 'dove-row-archive'/);
+    assert.match(dovecoteJs, /action: 'dove-row-delete'/);
+
+    // 9. Read receipts (#2): sent rows show a check once readByRecipient is true.
+    assert.match(dovecoteJs, /mail\.readByRecipient/);
+    assert.match(dovecoteJs, /fa-check-double dovecote-read-receipt/);
+
+    // 10. Attachments (#3): compose has an attach control with client-side size checks
+    // matching the server limits; the reading pane renders thumbnails/download links via
+    // the new dovecote_get_attachment call, which never inlines bytes into list/preview state.
+    assert.match(dovecoteJs, /const DOVE_MAX_ATTACHMENT_BYTES = 10 \* 1024 \* 1024/);
+    assert.match(dovecoteJs, /const DOVE_MAX_TOTAL_ATTACHMENT_BYTES = 25 \* 1024 \* 1024/);
+    assert.match(dovecoteJs, /fileToBase64\(file\)/);
+    assert.match(dovecoteJs, /wsClient\.sendMessage\('dovecote_get_attachment', request\)/);
+    assert.match(dovecoteJs, /const doveRenderAttachmentsInto = function/);
+    assert.match(dovecoteJs, /dovecote-compose-field-row/);
+
     console.log('dovecote windows (compose/reader/tray/menu) tests passed');
 }
 
