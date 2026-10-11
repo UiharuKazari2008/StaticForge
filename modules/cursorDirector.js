@@ -3082,8 +3082,14 @@ async function readAttachment(gr, attachment) {
         if (!insideDir(gr.getPath('images'), filePath) || !fs.existsSync(filePath)) {
             throw new Error('Workspace image was not found');
         }
-        const buffer = fs.readFileSync(filePath);
+        let buffer = fs.readFileSync(filePath);
         if (buffer.length > MAX_ATTACHMENT_BYTES) throw new Error('Workspace image is too large');
+        if (path.extname(filename).toLowerCase() === '.png') {
+            try {
+                const { coverAgentPng } = require('./promptCoverLedger');
+                buffer = await coverAgentPng(gr.getPngMetadata(), buffer, filename);
+            } catch (_err) { /* keep the stored file if the cover cannot be built */ }
+        }
         return { name: safeName(filename), buffer };
     }
     if (source === 'reference') {

@@ -12,8 +12,10 @@ const {
     sealApiPayload,
     assertTokenCompiler,
     maskAgeReadText,
-    maskAgentStudioRead
+    maskAgentStudioRead,
+    promptCoverFor
 } = require('../public/scripts/comp/promptListFold');
+const { coverComment } = require('../modules/promptCoverLedger');
 const { decodeIds } = require('./prompt-list-codec');
 
 let failed = 0;
@@ -134,6 +136,33 @@ assert(hiddenCompiled.expanders[0].value === '1girl, ' + canonF, 'expander value
 assert(compiledLeak.dynamic_generation.compiled_prompt.prompt.indexOf(invF) >= 0, 'stored compiled stays');
 assert(hiddenCompiled.director.prompt === invF, 'director text stays after compiled mask');
 assert(hiddenCompiled.text_overlays[0].text === invF, 'overlay lettering stays after compiled mask');
+const forged = coverComment({
+    prompt: '1girl, ' + invF,
+    uc: '2::' + canonF + '::, bad hands',
+    signed_hash: 'abc',
+    forge_data: {
+        input_prompt: '1girl, ' + invF,
+        forge_signed_hash: 'def',
+        dynamic_generation: { compiled_prompt: { prompt: '1girl, ' + invF, uc: '4::' + canonM + '::' } },
+        stage_seeds: [{ prompt: '1girl, ' + invF, uc: '2::' + canonF + '::' }]
+    },
+    director: { prompt: invF }
+}, 'missing-cover.png');
+assert(forged.prompt === '1girl, ' + canonF, 'png comment hides the edit');
+assert(forged.uc.indexOf('2::') < 0 && forged.uc.indexOf('bad hands') >= 0, 'png comment uc drops the injected clause');
+assert(forged.signed_hash == null, 'png comment drops the signature');
+assert(forged.forge_data.forge_signed_hash == null, 'png comment drops the forge signature');
+assert(forged.forge_data.input_prompt === '1girl, ' + canonF, 'forge input hides the edit');
+assert(forged.forge_data.dynamic_generation.compiled_prompt.prompt === '1girl, ' + canonF, 'forge compiled prompt hides the edit');
+assert(forged.forge_data.dynamic_generation.compiled_prompt.uc.indexOf(canonM) < 0, 'forge compiled uc hides the injected clause');
+assert(forged.forge_data.stage_seeds[0].prompt === '1girl, ' + canonF, 'stage seed hides the edit');
+assert(forged.director.prompt === invF, 'director text stays inside a comment');
+const held = { prompt: '1girl, ' + canonF + ', smile' };
+rememberPromptFold(held, createFoldBag());
+sealApiPayload(held, held);
+const cover = promptCoverFor(held);
+assert(cover && cover.prompt.indexOf(canonF) >= 0, 'cover keeps the text from before the fold');
+assert(held.prompt.indexOf(invF) >= 0, 'sealed payload still folds');
 assert(maskAgeReadText('1girl, ' + invF + ', text: ' + invF).endsWith('text: ' + invF), 'display suffix stays on read');
 assert(maskAgeReadText('\uE010' + invF + '\uE011') === '\uE010' + invF + '\uE011', 'protected span stays on read');
 let dead = false;

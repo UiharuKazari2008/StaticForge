@@ -21,7 +21,35 @@
     flex-wrap: wrap;
     flex: 1 1 auto;
     min-height: 0;
-    gap: var(--spacing-md);
+    gap: var(--spacing-sm);
+}
+
+/* ---- Toolbar: Mailbox picker — same btn-secondary as the rest of the toolbar
+   (public/css/modal-window-title-toolbar.css), just wider and pushed to the end. */
+
+#desktopDovecoteModal .dovecote-mailbox-btn {
+    min-width: 8em;
+    margin-left: auto;
+}
+
+/* ---- Toolbar: Folder dropdown button (#5) — same compact button-with-label
+   treatment as the mailbox picker, just not pushed to the end. */
+
+#desktopDovecoteModal .dovecote-folder-btn {
+    min-width: 7em;
+}
+
+/* ---- Toolbar: inline search bar (#1), always visible in the old Find button's slot. */
+
+#desktopDovecoteModal .dovecote-search-icon {
+    flex: 0 0 auto;
+    padding-left: 0.5em;
+    color: var(--text-accent-tinted);
+    opacity: 0.7;
+}
+
+#desktopDovecoteModal #desktopDovecoteSearchGroup {
+    min-width: 160px;
 }
 
 /* ---- Folder tree ---------------------------------------------------- */
@@ -107,7 +135,7 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    gap: var(--spacing-md);
+    gap: var(--spacing-sm);
 }
 
 #desktopDovecoteModal .dovecote-mobile-list-toolbar,
@@ -189,8 +217,16 @@
     text-align: center;
 }
 
+/* Read receipt check (#2) sits in the same cell as the unread dot (Sent folder only,
+   never shown together) — sized back up since .dovecote-col-unread is 0.5em for the dot. */
+#desktopDovecoteModal .dovecote-read-receipt {
+    font-size: 1.6em;
+    color: var(--text-accent-tinted);
+}
+
 #desktopDovecoteModal .dovecote-col-attachment {
     text-align: center;
+    color: var(--text-muted);
 }
 
 #desktopDovecoteModal .dovecote-col-from,
@@ -217,31 +253,42 @@
     gap: var(--spacing-sm);
     border: 1px solid var(--glass-border-3);
     border-radius: var(--border-radius-md);
-    padding: var(--spacing-sm);
+    padding: var(--spacing-xs);
     overflow: hidden;
 }
 
-#desktopDovecoteModal .dovecote-oe-header {
+/* ---- Reading-pane content: shared by the main window's inline preview
+   and the standalone reader window (dovecote.js doveOpenReaderWindow) ---- */
+
+.dovecote-oe-header {
     display: flex;
     flex: 0 0 auto;
     flex-direction: column;
     gap: 2px;
-    padding-bottom: var(--spacing-sm);
+    padding-bottom: var(--spacing-xs);
     border-bottom: 1px solid var(--glass-border-3);
     font-size: 0.85em;
 }
 
-#desktopDovecoteModal .dovecote-oe-header-row {
+/* Rendered/Raw toggle (#6) — moved here from the main toolbar. */
+.dovecote-oe-header-top {
+    display: flex;
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    padding-bottom: 2px;
+}
+
+.dovecote-oe-header-row {
     display: flex;
     gap: var(--spacing-sm);
 }
 
-#desktopDovecoteModal .dovecote-oe-header-label {
+.dovecote-oe-header-label {
     flex: 0 0 4.5em;
     color: var(--text-muted);
 }
 
-#desktopDovecoteModal .dovecote-oe-header-value {
+.dovecote-oe-header-value {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -250,7 +297,7 @@
     color: var(--text-secondary);
 }
 
-#desktopDovecoteModal .dovecote-safety-bar {
+.dovecote-safety-bar {
     flex: 0 0 auto;
     padding: 0.3em var(--spacing-sm);
     border-radius: var(--border-radius-md);
@@ -259,7 +306,7 @@
     font-size: 0.8em;
 }
 
-#desktopDovecoteModal .dovecote-images-bar {
+.dovecote-images-bar {
     display: flex;
     flex: 0 0 auto;
     align-items: center;
@@ -272,7 +319,42 @@
     font-size: 0.85em;
 }
 
-#desktopDovecoteModal .dovecote-body-wrap {
+/* Attachments (#3): image thumbnails + download chips, shown in both the inline preview
+   and the standalone reader window. */
+.dovecote-attachments-bar {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+}
+
+.dovecote-attachment-chip {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0.3em var(--spacing-sm);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-4);
+    color: var(--text-secondary);
+    font-size: 0.8em;
+}
+
+.dovecote-attachment-thumb {
+    width: 1.6em;
+    height: 1.6em;
+    border-radius: var(--border-radius-sm);
+    object-fit: cover;
+}
+
+.dovecote-attachment-name {
+    max-width: 16em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dovecote-body-wrap {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
@@ -280,11 +362,11 @@
     position: relative;
 }
 
-#desktopDovecoteModal .dovecote-empty-hint {
+.dovecote-empty-hint {
     margin: auto;
 }
 
-#desktopDovecoteModal .dovecote-body-frame {
+.dovecote-body-frame {
     flex: 1 1 auto;
     width: 100%;
     min-height: 0;
@@ -293,7 +375,7 @@
     background: #ffffff;
 }
 
-#desktopDovecoteModal .dovecote-raw-body {
+.dovecote-raw-body {
     flex: 1 1 auto;
     margin: 0;
     padding: var(--spacing-sm);
@@ -304,17 +386,20 @@
     font-family: inherit;
 }
 
-/* ---- Status bar --------------------------------------------------------- */
+/* ---- Status bar: same slim bar as .explorer-statusbar (public/css/explorer.css) ------ */
 
 #desktopDovecoteModal .dovecote-status-bar {
     display: flex;
     flex: 1 0 100%;
+    flex-shrink: 0;
     align-items: center;
-    gap: var(--spacing-md);
-    padding-top: var(--spacing-xs);
-    border-top: 1px solid var(--glass-border-3);
+    gap: var(--spacing-sm);
+    min-width: 0;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-top: 1px solid var(--glass-border-4);
+    background: var(--glass-layer-2);
     color: var(--text-muted);
-    font-size: 0.8em;
+    font-size: 0.8125rem;
     order: 10;
 }
 
@@ -326,46 +411,84 @@
     color: hsl(0 100% 75%);
 }
 
-/* ---- Compose overlay ----------------------------------------------------- */
+/* ---- Compose window (desktopDovecoteCompose_*, dovecote.js doveOpenComposeWindow) —
+   its own top-level window, not an overlay inside the main modal. ---- */
 
-#desktopDovecoteModal .dovecote-compose-overlay {
-    display: flex;
-    position: absolute;
-    inset: 0;
-    align-items: center;
-    justify-content: center;
-    padding: var(--spacing-lg);
-    background: hsl(0 0% 0% / 55%);
-    z-index: var(--z-layer-10);
+.dovecote-compose-window > .modal-content {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
 }
 
-#desktopDovecoteModal .dovecote-compose-panel {
+.dovecote-compose-window .modal-body {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     gap: var(--spacing-sm);
-    width: min(480px, 100%);
-    max-height: 100%;
-    padding: var(--spacing-md);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-lg);
-    background: var(--glass-layer-dark-5);
-    overflow: auto;
 }
 
-#desktopDovecoteModal .dovecote-compose-title {
+.dovecote-compose-title {
     color: var(--text-primary);
     font-weight: 700;
 }
 
-#desktopDovecoteModal .dovecote-compose-body {
+/* To / Subject rows: vertically center the label against the input (#3). */
+.dovecote-compose-field-row {
+    align-items: center;
+}
+
+.dovecote-compose-body {
     flex: 1 1 auto;
     min-height: 160px;
     resize: vertical;
 }
 
-#desktopDovecoteModal .dovecote-compose-actions {
+/* Attachments (#3) */
+.dovecote-compose-attach-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.dovecote-compose-attach-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+}
+
+.dovecote-compose-attach-chip {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0.2em var(--spacing-xs);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-4);
+    color: var(--text-secondary);
+    font-size: 0.8em;
+}
+
+.dovecote-compose-actions {
     display: flex;
     justify-content: flex-end;
+    gap: var(--spacing-sm);
+}
+
+/* ---- Reader window (desktopDovecoteReader_*, dovecote.js doveOpenReaderWindow) —
+   reuses the oe-header / safety-bar / images-bar / body-wrap classes above. ---- */
+
+.dovecote-reader-window > .modal-content {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+.dovecote-reader-window .modal-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     gap: var(--spacing-sm);
 }
 
@@ -441,4 +564,27 @@
     #desktopDovecoteModal .dovecote-main-pane.dovecote-mobile-message-open .dovecote-preview-pane {
         display: flex;
     }
+}
+
+/* ---- Taskbar tray icon (#dovecoteTrayIcon, public/app.html) — same
+   .taskbar-tray-icon pattern as directorTrayIcon / naxtBagTrayIcon
+   (public/scripts/comp/systemTrayManager.js), plus an unread-count badge. ---- */
+
+.dovecote-tray-icon {
+    position: relative;
+}
+
+.dovecote-tray-badge {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    min-width: 14px;
+    padding: 0 3px;
+    border-radius: var(--border-radius-xl);
+    background: var(--primary-glass-color);
+    color: var(--text-accent-tinted);
+    font-size: 0.65em;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
 }

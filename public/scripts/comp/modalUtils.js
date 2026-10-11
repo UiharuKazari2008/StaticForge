@@ -5735,6 +5735,7 @@ const startMenuLaunchables = [
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
     { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'remote_desktop.png', text: 'Remote Desktop', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
+    { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'dovecote.png', text: 'Dovecote', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
 ];
 
 /** Root start menu shell rows (folders + run). */
@@ -5801,7 +5802,6 @@ function buildToolsSubmenuItems() {
         { launchId: 'character-db', icon: 'fas fa-users', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
         { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
         { launchId: 'calculator', icon: 'fas fa-calculator', text: 'Calculator', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
-        { launchId: 'dovecote', icon: 'fas fa-envelope', text: 'Dovecote', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
         { launchId: 'alarm', icon: 'fas fa-alarm-clock', text: 'Alarm', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
         { launchId: 'pomodoro', icon: 'fas fa-timer', text: 'Pomodoro', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
         { launchId: 'music', icon: 'fas fa-music', text: 'Music', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayers.js */ openDesktopMusicPlayer(); } },
@@ -5879,6 +5879,98 @@ function getAllAppsMenuItems() {
     return sortMenuItemsByIndex(candidates, 'appMenuIndex');
 }
 
+// ---- Start menu organizer (order + folders, like Windows' Accessories folder) ----
+// Server storage/validation: modules/startMenuLayout.js, modules/ws/handlers/260-startMenuLayoutHandler.js
+// Editor window: public/scripts/comp/desktop-apps/startMenuOrganizer.js (openStartMenuOrganizer)
+
+// null until fetchStartMenuCustomLayout resolves; stays null forever if Yukimi has never customized it.
+let startMenuCustomLayout = null;
+
+async function fetchStartMenuCustomLayout() {
+    if (!window.wsClient) return;
+    try {
+        // start_menu_get_layout: modules/ws/handlers/260-startMenuLayoutHandler.js
+        const result = await window.wsClient.sendMessage('start_menu_get_layout', {}, false);
+        startMenuCustomLayout = (result && Array.isArray(result.layout)) ? result.layout : null;
+    } catch (e) {
+        console.error('start_menu_get_layout', e);
+        startMenuCustomLayout = null;
+    }
+    if (startMenu) buildStartMenu();
+}
+
+/** Read-only accessor for the organizer window — the editor's own save/reset round-trips update the cache themselves. */
+function getStartMenuCustomLayout() {
+    return startMenuCustomLayout;
+}
+
+/** Called by the organizer window after a successful save/reset round-trip to the server. */
+function setStartMenuCustomLayoutCache(layout) {
+    startMenuCustomLayout = Array.isArray(layout) ? layout : null;
+    if (startMenu) buildStartMenu();
+}
+
+/**
+ * All-Apps items in the user's saved order/folders. Any catalog app not
+ * referenced anywhere in the saved layout (new app, or layout saved before
+ * it existed) is appended at the end in catalog order, so it is never
+ * hidden by an out-of-date layout.
+ */
+function getOrganizedAllAppsMenuItems() {
+    const catalogItems = getAllAppsMenuItems();
+    if (!Array.isArray(startMenuCustomLayout) || !startMenuCustomLayout.length) {
+        return catalogItems;
+    }
+    const byLaunchId = new Map(catalogItems.map((item) => [item.launchId, item]));
+    const used = new Set();
+    const result = [];
+
+    startMenuCustomLayout.forEach((node) => {
+        if (!node || typeof node !== 'object') return;
+        if (node.type === 'item') {
+            const item = byLaunchId.get(node.launchId);
+            if (!item || used.has(node.launchId)) return;
+            used.add(node.launchId);
+            result.push(item);
+        } else if (node.type === 'folder') {
+            const children = (Array.isArray(node.children) ? node.children : [])
+                .map((child) => (child && child.launchId ? byLaunchId.get(child.launchId) : null))
+                .filter((item) => item && !used.has(item.launchId));
+            if (!children.length) return;
+            children.forEach((item) => used.add(item.launchId));
+            result.push({
+                text: node.name,
+                icon: 'fas fa-folder',
+                hasSubmenu: true,
+                appMenu: false,
+                isCustomFolder: true,
+                folderId: node.id,
+                customFolderItems: children
+            });
+        }
+    });
+
+    catalogItems.forEach((item) => {
+        if (!used.has(item.launchId)) result.push(item);
+    });
+    return result;
+}
+
+/** All-Apps flyout content: organized items + a trailing row that opens the editor. */
+function buildAllAppsSubmenuWithOrganizeRow() {
+    const items = getOrganizedAllAppsMenuItems();
+    if (typeof openStartMenuOrganizer !== 'function') return items;
+    return items.concat([
+        { separator: true },
+        {
+            text: 'Organize Start Menu…',
+            icon: 'fas fa-arrows-up-down-left-right',
+            appMenu: false,
+            action: () => openStartMenuOrganizer()
+        }
+    ]);
+}
+
 function startMenuPlanetLaunchId(workspaceId) {
     return `planet-${workspaceId}`;
 }
@@ -5931,7 +6023,7 @@ const startMenuSubmenus = {
     planets: () => buildPlanetsSubmenuItems(),
     tools: () => buildToolsSubmenuItems(),
     toolbox: () => buildToolsSubmenuItems(),
-    'all-apps': () => getAllAppsMenuItems()
+    'all-apps': () => buildAllAppsSubmenuWithOrganizeRow()
 };
 
 const appIconMemoryImages = [];
@@ -6662,6 +6754,7 @@ function positionStartMenuPopout(popout, anchorEl) {
 
 function resolveStartMenuSubmenuItems(item) {
     if (!item) return [];
+    if (item.isCustomFolder) return item.customFolderItems || [];
     if (typeof item.submenu === 'function') {
         return item.submenu() || [];
     }

@@ -15,6 +15,7 @@ const path = require('path');
 
 let dbPath = null;
 let db = null;
+let attachmentsRoot = null;
 
 function initializeDovecoteDatabase(databasesPath) {
     try {
@@ -25,11 +26,53 @@ function initializeDovecoteDatabase(databasesPath) {
         db = new Database(dbPath);
         db.pragma('journal_mode = WAL');
         db.pragma('synchronous = NORMAL');
+        attachmentsRoot = path.join(databasesPath, 'dovecote', 'attachments');
         createDovecoteTables();
+        migrateBlobAttachmentsToFiles();
         return true;
     } catch (error) {
         console.error('Error initializing dovecote database:', error.message);
         return false;
+    }
+}
+
+// One-time migration for installs that still have bytes sitting in the old
+// dovecote_attachment.data BLOB column: write each attachment's bytes out
+// into every message folder that references it, then drop the column.
+// New installs never create that column, so this is a no-op after one run.
+function migrateBlobAttachmentsToFiles() {
+    const columns = db.prepare('PRAGMA table_info(dovecote_attachment)').all().map((row) => row.name);
+    if (!columns.includes('data')) return;
+    const dataById = new Map(
+        db.prepare('SELECT id, data FROM dovecote_attachment').all().map((row) => [row.id, row.data])
+    );
+    const messages = db.prepare('SELECT id, attachments FROM dovecote_message WHERE attachments IS NOT NULL').all();
+    for (const message of messages) {
+        let ids;
+        try {
+            ids = JSON.parse(message.attachments);
+        } catch (_err) {
+            continue;
+        }
+        if (!Array.isArray(ids)) continue;
+        for (const id of ids) {
+            const data = dataById.get(id);
+            if (!data) continue;
+            const dir = path.join(attachmentsRoot, message.id);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, id), data);
+        }
+    }
+    db.exec('ALTER TABLE dovecote_attachment DROP COLUMN data');
+}
+
+// ALTER TABLE ... ADD COLUMN against an already-deployed dovecote.db — new
+// columns must be added this way rather than folded into the CREATE TABLE,
+// or existing installs would keep missing them.
+function addColumnIfMissing(table, column, ddl) {
+    const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
+    if (!existing.includes(column)) {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
     }
 }
 
@@ -56,6 +99,14 @@ function createDovecoteTables() {
             deleted_at TEXT
         )
     `);
+    // paired_message_id: the id of this message's other mailbox copy (sent <-> inbox)
+    // written by sendMail, used to post a read receipt back onto the sent copy without
+    // a thread-wide scan. recipient_read_at: set once, the first time the paired inbox
+    // copy is read — never cleared by a later "mark unread", same as a real mail client's
+    // read receipt. attachments: JSON array of dovecote_attachment ids, or NULL.
+    addColumnIfMissing('dovecote_message', 'paired_message_id', 'paired_message_id TEXT');
+    addColumnIfMissing('dovecote_message', 'recipient_read_at', 'recipient_read_at TEXT');
+    addColumnIfMissing('dovecote_message', 'attachments', 'attachments TEXT');
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_owner_folder ON dovecote_message (owner, folder, created_at);
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_thread ON dovecote_message (thread_id);
@@ -82,6 +133,22 @@ function createDovecoteTables() {
             PRIMARY KEY (owner, sender)
         )
     `);
+    // Only metadata lives in sqlite — the bytes live on disk under
+    // .cache/dovecote/attachments/<message-id>/<attachment-id> (one copy per
+    // mailbox-owning message row, so permanently deleting one message's row
+    // never touches another message's copy of the same attachment id).
+    // Access is enforced by checking the requesting owner holds a
+    // dovecote_message row whose attachments[] includes the id
+    // (modules/dovecoteMail.js getAttachment).
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS dovecote_attachment (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+            size INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    `);
 }
 
 function getDb() {
@@ -89,14 +156,21 @@ function getDb() {
     return db;
 }
 
+function getAttachmentsRoot() {
+    if (!attachmentsRoot) throw new Error('Dovecote database not initialized');
+    return attachmentsRoot;
+}
+
 function resetForTests(databasesPath) {
     db = null;
     dbPath = null;
+    attachmentsRoot = null;
     return initializeDovecoteDatabase(databasesPath);
 }
 
 module.exports = {
     initializeDovecoteDatabase,
     getDb,
+    getAttachmentsRoot,
     resetForTests
 };

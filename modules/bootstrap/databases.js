@@ -10,6 +10,7 @@ const FurryTagSearch = require('../furryTagSearch');
 const FastTagSearch = require('../fastTagSearch');
 const knowledgeMemoryDb = require('../knowledgeMemoryDatabase');
 const dovecoteDatabase = require('../dovecoteDatabase');
+const startMenuLayoutDatabase = require('../startMenuLayoutDatabase');
 const tagSearchDatabase = require('../tagSearchDatabase');
 const naxTagsDatabase = require('../naxTagsDatabase');
 const NaxTagGenerationService = require('../naxTagGeneration');
@@ -148,6 +149,9 @@ async function initializeDatabases(gr) {
                 const labels = widened.keys.filter((key) => key.changed).map((key) => key.label).join(', ');
                 console.log(`✓ Director application keys widened in place: ${labels}`);
             }
+            if (widened && widened.oauthTokensUpdated > 0) {
+                console.log(`✓ OAuth access tokens widened with sfapp_dovecote: ${widened.oauthTokensUpdated}`);
+            }
         } catch (scopeErr) {
             console.error(`Director application key scope migration skipped: ${scopeErr.message}`);
         }
@@ -187,6 +191,21 @@ function initializeDovecoteDb(gr) {
         console.log('✓ Dovecote mail database ready');
     } catch (error) {
         console.error('  ❌ Failed to load dovecote database:', error);
+        throw error;
+    }
+}
+
+function initializeStartMenuLayoutDb(gr) {
+    try {
+        const initialized = startMenuLayoutDatabase.initializeStartMenuLayoutDatabase(gr.getPath('databases'));
+        if (!initialized) {
+            throw new Error('Failed to initialize start menu layout database');
+        }
+        gr.startMenuLayoutDatabase = startMenuLayoutDatabase;
+        gr.initializationProgress.startMenuLayoutDatabase = true;
+        console.log('✓ Start menu layout database ready');
+    } catch (error) {
+        console.error('  ❌ Failed to load start menu layout database:', error);
         throw error;
     }
 }
@@ -335,6 +354,7 @@ module.exports = {
     initializeDatabases,
     initializeKnowledgeMemoryDb,
     initializeDovecoteDb,
+    initializeStartMenuLayoutDb,
     initializeTagSearchDatabase,
     initializeNaxVibesGallery,
     initializeNovelaiExploreGallery,

@@ -111,6 +111,12 @@ const INIT_STEPS = [
         run: (gr) => databases.initializeDovecoteDb(gr),
     },
     {
+        id: 'gr_start_menu_layout_db',
+        label: 'Initializing Start menu layout database',
+        sync: true,
+        run: (gr) => databases.initializeStartMenuLayoutDb(gr),
+    },
+    {
         id: 'gr_tag_search_db',
         label: 'Initializing tag search database',
         sync: true,

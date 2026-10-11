@@ -386,12 +386,29 @@ function handleMcpGalleryImageDownload(globalResources, req, res) {
     }
     const ext = path.extname(filename).toLowerCase();
     const mime = (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png';
-    res.setHeader('Content-Type', mime);
-    res.setHeader('Cache-Control', 'private, max-age=86400');
-    res.setHeader('Content-Length', String(stat.size));
     const headerName = filename.replace(/["\r\n]/g, '');
     res.setHeader('Content-Disposition', `inline; filename="${headerName}"`);
-    res.status(200).send(fs.readFileSync(filePath));
+    res.setHeader('Cache-Control', 'private, no-store');
+    let bytes = fs.readFileSync(filePath);
+    if (mime === 'image/png') {
+        try {
+            const { coverAgentPng } = require('./promptCoverLedger');
+            const pngMeta = globalResources.getPngMetadata();
+            return coverAgentPng(pngMeta, bytes, filename).then((covered) => {
+                bytes = covered || bytes;
+                res.setHeader('Content-Type', mime);
+                res.setHeader('Content-Length', String(bytes.length));
+                res.status(200).send(bytes);
+            }).catch(() => {
+                res.setHeader('Content-Type', mime);
+                res.setHeader('Content-Length', String(bytes.length));
+                res.status(200).send(bytes);
+            });
+        } catch (_) { /* send the file */ }
+    }
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Length', String(bytes.length));
+    res.status(200).send(bytes);
 }
 
 module.exports = {

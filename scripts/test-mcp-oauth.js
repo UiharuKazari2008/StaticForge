@@ -235,3 +235,21 @@ assert.deepStrictEqual(asMeta.code_challenge_methods_supported, ['S256']);
 assert.deepStrictEqual(asMeta.token_endpoint_auth_methods_supported, ['none']);
 
 console.log('test-mcp-oauth: ok');
+
+const { effectiveOAuthScopes } = require('../modules/mcpOAuthProvider');
+console.log('Testing effectiveOAuthScopes (sfapp_ auto-widen)...');
+assert.deepStrictEqual(
+    effectiveOAuthScopes(['gallery', 'sfapp_cake_pantry'], ['gallery', 'sfapp_cake_pantry', 'sfapp_dovecote']),
+    ['gallery', 'sfapp_cake_pantry', 'sfapp_dovecote']
+);
+assert.deepStrictEqual(
+    effectiveOAuthScopes(['gallery', 'notes'], ['gallery', 'sfapp_dovecote']),
+    ['gallery', 'sfapp_dovecote']
+);
+assert.deepStrictEqual(
+    effectiveOAuthScopes(['gallery'], ['universal']),
+    ['gallery']
+);
+assert.ok(!effectiveOAuthScopes(['gallery', 'wiki'], ['gallery']).includes('wiki'));
+
+console.log('All OAuth tests passed!');

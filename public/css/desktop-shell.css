@@ -2069,6 +2069,127 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     object-fit: contain;
 }
 
+/* Start menu organizer (public/scripts/comp/desktop-apps/startMenuOrganizer.js) */
+.start-menu-organizer-content .modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    height: 100%;
+}
+
+.smo-hint {
+    flex: 0 0 auto;
+}
+
+.smo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 auto;
+    overflow-y: auto;
+}
+
+.smo-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 6px 10px;
+    border-radius: var(--border-radius-sm);
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-2);
+}
+
+.smo-row.dragging {
+    opacity: 0.5;
+}
+
+.smo-row i {
+    font-size: 1.1rem;
+    width: 24px;
+    text-align: center;
+    color: var(--text-primary);
+}
+
+.smo-row .icon-image {
+    width: 1.3rem;
+    height: 1.3rem;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.smo-row-label {
+    flex: 1;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.smo-drag-handle {
+    cursor: grab;
+    color: var(--text-secondary);
+    padding: 2px 4px;
+    flex-shrink: 0;
+}
+
+.smo-drag-handle:active {
+    cursor: grabbing;
+}
+
+.smo-folder {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.smo-folder.dragging {
+    opacity: 0.5;
+}
+
+.smo-folder-row {
+    background: var(--glass-layer-3);
+}
+
+.smo-folder-name {
+    flex: 1;
+    min-width: 0;
+}
+
+.smo-folder-name .character-name-input-placeholder,
+.smo-folder-name .character-name-input {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.smo-folder-children {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-left: 28px;
+    padding-left: 10px;
+    border-left: 2px solid var(--glass-border-3);
+    min-height: 8px;
+}
+
+.smo-folder-empty-hint {
+    display: none;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 8px 10px;
+}
+
+.smo-folder-children:not(:has(.smo-row)) .smo-folder-empty-hint {
+    display: block;
+}
+
+.smo-empty-hint {
+    padding: 12px;
+    text-align: center;
+}
+
 /* Adjust body padding when taskbar is visible */
 body.desktop-mode {
     --taskbar-height: 35px;
@@ -2520,3 +2641,5 @@ body.desktop-marquee-active {
     border: 2px solid var(--accent-primary);
     box-shadow: 0 0 16px rgba(var(--accent-primary-rgb), 0.6);
 }
+
+.smo-modal { flex-direction: column; }

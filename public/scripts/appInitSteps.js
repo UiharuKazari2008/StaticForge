@@ -171,6 +171,13 @@ if (window.wsClient) {
         }
     }, true);
 
+    // Priority 0.46: Start menu organizer's saved layout (order + folders) — fetchStartMenuCustomLayout: modalUtils.js
+    window.wsClient.registerInitStep(0.46, 'Loading start menu layout', async () => {
+        if (typeof fetchStartMenuCustomLayout === 'function') {
+            await fetchStartMenuCustomLayout();
+        }
+    }, true);
+
     // Priority 0.5: Load desktop settings early (desktop mode only) - before other initialization
     if (window.isDesktop) {
         window.wsClient.registerInitStep(0.5, 'Loading Desktop Settings', async () => {

@@ -2916,7 +2916,7 @@ const TOOL_DEFS = [
     {
         name: 'send_mail',
         core: true,
-        description: 'Send mail from your own Dovecote mailbox to another bot/job mailbox (Rook, Menma, Hoshino, Ivory, Guren, Chiyo, Frost, Sala, Tifa, Pyra, Cursor, Claude). You cannot send into Yukimi\'s mailbox. Pass replyTo to reply within an existing thread.',
+        description: 'Send mail from your own Dovecote mailbox to another bot/job mailbox (Rook, Menma, Hoshino, Ivory, Guren, Chiyo, Frost, Sala, Tifa, Pyra, Cursor, Claude). You cannot send into Yukimi\'s mailbox. Pass replyTo to reply within an existing thread. Optional attachments, each either a VFS path or raw base64, up to 10MB per file and 25MB per message.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -2927,14 +2927,28 @@ const TOOL_DEFS = [
                 subject: { type: 'string' },
                 body: { type: 'string' },
                 format: { type: 'string', enum: ['text', 'md', 'html'], description: 'Default text' },
-                replyTo: { type: 'string', description: 'Message id (in your own mailbox) this replies to' }
+                replyTo: { type: 'string', description: 'Message id (in your own mailbox) this replies to' },
+                attachments: {
+                    type: 'array',
+                    description: 'Each item is either { vfsPath } or { base64, name }. mimeType is optional, inferred from the name/extension otherwise.',
+                    items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        properties: {
+                            vfsPath: { type: 'string', description: 'VFS path to read the file from, e.g. /Workspaces/<id>/Notes/a.png' },
+                            base64: { type: 'string', description: 'Raw file bytes, base64-encoded' },
+                            name: { type: 'string', description: 'File name; required with base64, optional with vfsPath (defaults to its basename)' },
+                            mimeType: { type: 'string' }
+                        }
+                    }
+                }
             }
         }
     },
     {
         name: 'list_mail',
         core: true,
-        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body) — use read_mail for the full message.',
+        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. read_by_recipient is true once the recipient has opened a message you sent.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -2949,7 +2963,7 @@ const TOOL_DEFS = [
     {
         name: 'read_mail',
         core: true,
-        description: 'Read one message by id from your own Dovecote mailbox (marks it read). Ids from other mailboxes 404 — there is no cross-mailbox access.',
+        description: 'Read one message by id from your own Dovecote mailbox (marks it read). Ids from other mailboxes 404 — there is no cross-mailbox access. Attachments are listed as metadata only (id/name/mimeType/size), not their bytes.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -5208,6 +5222,59 @@ async function resolveVfsItem(globalResources, req, vfsPath) {
         }
     }
     return { error: `Not found: ${parts.path}`, parts };
+}
+
+// Reads one send_mail attachment's raw bytes from either a VFS path (user file or
+// system file) or inline base64. Returns { name, mimeType, data: Buffer } or
+// { error } — never throws, so send_mail can report a clean per-attachment error.
+async function resolveMailAttachment(globalResources, req, spec) {
+    if (spec && spec.base64) {
+        const name = String(spec.name || '').trim();
+        if (!name) return { error: 'name is required when attaching base64 bytes' };
+        let data;
+        try {
+            data = Buffer.from(spec.base64, 'base64');
+        } catch (_err) {
+            return { error: `Could not decode base64 for attachment "${name}"` };
+        }
+        return { name, mimeType: spec.mimeType || VFS_MIME_BY_EXT[path.extname(name).toLowerCase()] || 'application/octet-stream', data };
+    }
+    if (spec && spec.vfsPath) {
+        const found = await resolveVfsItem(globalResources, req, spec.vfsPath);
+        if (found.error) return { error: found.error };
+        const item = found.item;
+        const name = String(spec.name || item.name || path.basename(spec.vfsPath)).trim() || 'attachment';
+        if (item.systemFileKey) {
+            const packet = await dispatchPacketTool(globalResources, req, 'vfs_read_system_file', { systemFileKey: item.systemFileKey });
+            if (!packet.success) return { error: packet.error || `Could not read ${spec.vfsPath}` };
+            const base64 = packet.data && (packet.data.base64 || packet.data.content);
+            if (!base64) return { error: `${spec.vfsPath} has no readable content` };
+            return { name, mimeType: spec.mimeType || (packet.data && packet.data.mimeType) || 'application/octet-stream', data: Buffer.from(base64, 'base64') };
+        }
+        const fileId = item.targetId || item.id;
+        const file = await globalResources.getVfsDatabase().getUserFileById(fileId);
+        if (!file || !file.content_hash) return { error: `${spec.vfsPath} has no file content` };
+        const blobPath = globalResources.getVfsManager().getFileBlobPath(file.content_hash);
+        let data;
+        try {
+            data = await fs.promises.readFile(blobPath);
+        } catch (_err) {
+            return { error: `Could not read file blob for ${spec.vfsPath}` };
+        }
+        return { name, mimeType: spec.mimeType || file.mime_type || VFS_MIME_BY_EXT[path.extname(name).toLowerCase()] || 'application/octet-stream', data };
+    }
+    return { error: 'Each attachment needs vfsPath or base64' };
+}
+
+async function resolveMailAttachments(globalResources, req, specs) {
+    if (!Array.isArray(specs) || !specs.length) return { attachments: undefined };
+    const attachments = [];
+    for (const spec of specs) {
+        const resolved = await resolveMailAttachment(globalResources, req, spec);
+        if (resolved.error) return { error: resolved.error };
+        attachments.push(resolved);
+    }
+    return { attachments };
 }
 
 async function resolveVfsItems(globalResources, req, input) {
@@ -7783,6 +7850,13 @@ async function callTool(globalResources, req, name, args) {
         if (wantFull) {
             try {
                 image = readGalleryImage(globalResources, filename);
+                if (image && image.mimeType === 'image/png' && image.bytes) {
+                    const { coverAgentPng } = require('./promptCoverLedger');
+                    image = {
+                        ...image,
+                        bytes: await coverAgentPng(globalResources.getPngMetadata(), image.bytes, filename)
+                    };
+                }
                 imageKind = 'full';
             } catch (error) {
                 if (error.status === 404) {
@@ -8675,19 +8749,27 @@ async function callTool(globalResources, req, name, args) {
     if (name === 'send_mail' || name === 'list_mail' || name === 'read_mail' || name === 'mark_mail' || name === 'forward_mail') {
         const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
         const dovecoteMail = require('./dovecoteMail');
+        // read_by_recipient: the snake_case name callers look for, alongside the
+        // internal camelCase readByRecipient every other Dovecote surface uses.
+        const withMailReadByRecipientAlias = (mail) => ({ ...mail, read_by_recipient: mail.readByRecipient });
         const owner = resolveDovecoteOwnerFromReq(req);
         if (!owner) {
             return mcpTextResult({ success: false, error: 'Caller identity does not map to a Dovecote mailbox' }, true);
         }
         try {
             if (name === 'send_mail') {
+                const resolvedAttachments = await resolveMailAttachments(globalResources, req, input.attachments);
+                if (resolvedAttachments.error) {
+                    return mcpTextResult({ success: false, error: resolvedAttachments.error }, true);
+                }
                 const result = dovecoteMail.sendMail({
                     fromOwner: owner,
                     to: input.to,
                     subject: input.subject,
                     body: input.body,
                     format: input.format,
-                    replyToId: input.replyTo
+                    replyToId: input.replyTo,
+                    attachments: resolvedAttachments.attachments
                 });
                 return mcpTextResult({ success: true, ...result });
             }
@@ -8696,7 +8778,7 @@ async function callTool(globalResources, req, name, args) {
                     folder: input.folder,
                     unreadOnly: input.unreadOnly === true,
                     limit: input.limit
-                });
+                }).map(withMailReadByRecipientAlias);
                 return mcpTextResult({ success: true, mail });
             }
             if (name === 'read_mail') {
@@ -8706,7 +8788,7 @@ async function callTool(globalResources, req, name, args) {
                     err.status = 404;
                     throw err;
                 }
-                return mcpTextResult({ success: true, mail });
+                return mcpTextResult({ success: true, mail: withMailReadByRecipientAlias(mail) });
             }
             if (name === 'mark_mail') {
                 const mail = dovecoteMail.markMail(owner, {
@@ -9028,7 +9110,7 @@ async function handleJsonRpc(globalResources, req, message) {
                 id,
                 result: {
                     protocolVersion: MCP_PROTOCOL_VERSION,
-                    capabilities: { tools: { listChanged: false } },
+                    capabilities: { tools: { listChanged: true } },
                     serverInfo: buildMcpServerInfo(globalResources, currentMcpToolsRevision()),
                     instructions: MCP_INSTRUCTIONS
                 }

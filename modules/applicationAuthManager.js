@@ -129,7 +129,8 @@ const AVAILABLE_SCOPES = [
     { id: 'sfapp_cake_pantry:consume', label: 'Cake Pantry (Consume)', description: 'Consume cake slices only' },
     { id: 'sfapp_report_issue', label: 'Report Issue', description: 'Development QA reporting (tool failures, errors, reviews)' },
     { id: 'sfapp_usage', label: 'Usage', description: 'NovelAI account usage data (Anlas, Opus meter, generation count)' },
-    { id: 'sfapp_apocrypha', label: 'Apocrypha Publish', description: 'Publish Apocrypha zine content directly' }
+    { id: 'sfapp_apocrypha', label: 'Apocrypha Publish', description: 'Publish Apocrypha zine content directly' },
+    { id: 'sfapp_dovecote', label: 'Dovecote Mail', description: 'Own-mailbox-only internal mail (send, list, read, mark, forward)' }
 ];
 
 const APPLICATION_AUTH_WS_PACKETS = new Set([
