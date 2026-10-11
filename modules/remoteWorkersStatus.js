@@ -131,8 +131,19 @@ function safeDetail(err) {
     return 'unreachable';
 }
 
+function ruikoCapabilitySuffix(health) {
+    const jobTypes = (health && health.jobTypes) || [];
+    if (!jobTypes.length) return '';
+    const parts = [jobTypes.join('+')];
+    const backends = (health && health.animateBackends) || [];
+    if (jobTypes.includes('animate') && backends.length) {
+        parts.push('animate: ' + backends.join(', '));
+    }
+    return ' (' + parts.join(', ') + ')';
+}
+
 async function checkRuiko(globalResources, opts, secrets) {
-    const name = 'Ruiko Upscaler';
+    const name = 'Ruiko Worker';
     const cfg = readLocalWorkerConfig(globalResources);
     const host = publicHostFromUrl(cfg.url);
     const checkedAt = new Date().toISOString();
@@ -196,7 +207,7 @@ async function checkRuiko(globalResources, opts, secrets) {
             status: 'degraded',
             checkedAt: new Date().toISOString(),
             latencyMs,
-            detail: backlog ? 'Queue is backed up' : 'Slow response'
+            detail: (backlog ? 'Queue is backed up' : 'Slow response') + ruikoCapabilitySuffix(health)
         }, secrets);
     }
     return row({
@@ -206,7 +217,7 @@ async function checkRuiko(globalResources, opts, secrets) {
         status: 'healthy',
         checkedAt: new Date().toISOString(),
         latencyMs,
-        detail: ''
+        detail: ('Queue: ' + (Number.isFinite(Number(health.queueLength)) ? health.queueLength : 0) + ruikoCapabilitySuffix(health)).trim()
     }, secrets);
 }
 
