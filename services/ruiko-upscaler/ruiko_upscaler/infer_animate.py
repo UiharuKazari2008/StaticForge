@@ -17,6 +17,7 @@ before switching (see _ensure_vram_for).
 """
 
 import io
+import math
 import os
 import tempfile
 
@@ -192,15 +193,20 @@ def _run_wan(image, motion_prompt, frames, fps, progress):
     return list(output.frames[0])
 
 
+def _ltx_frame_count(frames):
+    """LTX's causal VAE needs num_frames = 8k+1; round UP (ceiling, not
+    floor) to the next valid count so there are at least `frames` to trim
+    back to."""
+    return 8 * math.ceil((max(frames, 9) - 1) / 8) + 1
+
+
 def _run_ltx(image, motion_prompt, frames, fps, progress):
     width, height = _fit_dims(*image.size, max_edge=LTX_MAX_EDGE, multiple=32)
     resized = image.resize((width, height))
     pipeline = _load_ltx_pipeline()
     if progress:
         progress(15)
-    # LTX's causal VAE needs num_frames = 8k+1; round up then trim back to
-    # the requested count so callers see exactly what they asked for.
-    ltx_frames = ((max(frames, 9) - 1) // 8) * 8 + 1
+    ltx_frames = _ltx_frame_count(frames)
     output = pipeline(
         image=resized,
         prompt=motion_prompt,

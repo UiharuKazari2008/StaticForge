@@ -1,0 +1,702 @@
+// eMotion desktop app: image-to-video via the Ruiko animate backend (same wire path as the
+// Studio animate dialog / MCP animate_image — public/scripts/comp/animateImageDialog.js,
+// public/scripts/websocket.js animateImage(), modules/ws/handlers/generationImpl.js
+// handleImageAnimation). Reuses LOCAL_ANIMATE_BACKENDS / knownLocalAnimateBackends /
+// fetchLocalAnimateStatus from animateImageDialog.js (loaded earlier in app.html) instead of
+// redefining the backend catalog.
+// openModal / closeModal / bringModalToFront / restoreMinimizedModal / assignModalZIndex:
+// public/scripts/comp/modalUtils.js
+// setupDropdown / openDropdown / closeDropdown / teardownDropdown: public/scripts/comp/dropdown.js
+// contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+// createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+// Layout: public/css/desktop-apps/emotion.css
+
+const DESKTOP_EMOTION_MODAL_ID = 'desktopEmotionModal';
+
+const desktopEmotion = {
+    sourceFilename: null,
+    sourceWorkspace: null,
+    mode: 'ltx',
+    frames: 16,
+    fps: 8,
+    loop: true,
+    autoPromptViaDirector: false,
+    running: false,
+    requestId: null,
+    result: null // { filename, formats: {gif, mp4, webp} }
+};
+
+let desktopEmotionEls = null;
+
+function openDesktopEmotion() {
+    const modal = ensureDesktopEmotionModal();
+    if (modal.classList.contains('minimised')) {
+        restoreMinimizedModal(modal);
+    }
+    if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) {
+        openModal(modal);
+    }
+    bringModalToFront(modal);
+}
+
+const emotionCreateButton = function (className, title, iconClass) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.title = title;
+    if (iconClass) {
+        const icon = document.createElement('i');
+        icon.className = iconClass;
+        icon.setAttribute('aria-hidden', 'true');
+        button.appendChild(icon);
+    }
+    return button;
+};
+
+// ---- Load image source: Gallery selection / Studio's current image ----------------------
+
+function emotionReadStudioCurrentFilename() {
+    // Mirrors readOpenFilename() in public/scripts/comp/agentClientBridge.js: the manual
+    // preview is what the editor is actually showing; currentEditMetadata/uploadedImageData
+    // are img2img sources and often carry no filename of their own.
+    const fromImageLike = (img) => (img && typeof img === 'object')
+        ? (img.filename || img.original || img.upscaled || img.sourceFilename || null)
+        : null;
+    const showing = fromImageLike(window.currentManualPreviewImage);
+    if (showing) return showing;
+    const loaded = fromImageLike(window.currentEditImage);
+    if (loaded) return loaded;
+    const meta = window.currentEditMetadata;
+    if (meta) {
+        if (meta.sourceFilename) return meta.sourceFilename;
+        if (meta.filename) return meta.filename;
+    }
+    const uploaded = window.uploadedImageData;
+    if (uploaded && uploaded.filename) return uploaded.filename;
+    return null;
+}
+
+function emotionLoadFromGallery() {
+    // getSelectedFilenames: public/scripts/comp/galleryView.js
+    const selected = typeof getSelectedFilenames === 'function' ? getSelectedFilenames() : [];
+    const filename = Array.isArray(selected) && selected.length ? selected[0] : null;
+    if (!filename) {
+        showGlassToast('info', 'eMotion', 'Select an image in the Gallery first.', false, 4000);
+        return;
+    }
+    emotionSetSourceImage(filename, typeof activeWorkspace !== 'undefined' ? activeWorkspace : null);
+}
+
+function emotionLoadFromStudio() {
+    const filename = emotionReadStudioCurrentFilename();
+    if (!filename) {
+        showGlassToast('info', 'eMotion', "Studio doesn't have an image loaded right now.", false, 4000);
+        return;
+    }
+    emotionSetSourceImage(filename, typeof activeWorkspace !== 'undefined' ? activeWorkspace : null);
+}
+
+const emotionLoadImageMenuConfig = {
+    onAction: (action) => {
+        if (action === 'emotion-load-gallery') emotionLoadFromGallery();
+        else if (action === 'emotion-load-studio') emotionLoadFromStudio();
+    },
+    sections: [{
+        type: 'list',
+        initfn: (section) => {
+            section.items = [
+                { text: 'From Gallery selection', icon: 'fas fa-images', action: 'emotion-load-gallery' },
+                { text: "From Studio's current image", icon: 'fas fa-compass-drafting', action: 'emotion-load-studio' }
+            ];
+        }
+    }]
+};
+
+function emotionSetSourceImage(filename, workspace) {
+    desktopEmotion.sourceFilename = filename;
+    desktopEmotion.sourceWorkspace = workspace || null;
+    desktopEmotion.result = null;
+    emotionRenderPreview();
+    if (desktopEmotion.autoPromptViaDirector) {
+        emotionRunAutoPrompt();
+    }
+}
+
+// ---- Auto prompt via Director -------------------------------------------------------------
+// director.sendMessage/pendingAttachments/_running: public/scripts/comp/director.js. Creating
+// a session surfaces the Director window by design (same as createDirectorSessionWithImage in
+// public/scripts/comp/referenceManager.js) — there is no headless Director call in this
+// codebase, every Director turn runs through a visible session.
+
+const EMOTION_DIRECTOR_INSTRUCTION = 'Write a short, vivid motion prompt (one or two sentences) '
+    + 'describing how this image should animate for an image-to-video model. Reply with ONLY '
+    + 'the motion prompt text — no preamble, no quotes, no formatting.';
+
+function emotionWaitForNewDirectorSession(timeoutMs) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            window.wsClient.off('director_create_session_response', handler);
+            reject(new Error('Timed out waiting for Director to start a session'));
+        }, timeoutMs);
+        function handler(data) {
+            const body = data && data.data;
+            if (body && body.success && body.session && body.session.id) {
+                clearTimeout(timer);
+                window.wsClient.off('director_create_session_response', handler);
+                resolve(body.session.id);
+            }
+        }
+        window.wsClient.on('director_create_session_response', handler);
+    });
+}
+
+function emotionWaitForDirectorReply(sessionId, timeoutMs) {
+    return new Promise((resolve, reject) => {
+        const startedAt = Date.now();
+        const tick = () => {
+            const director = window.directorInstance;
+            const session = director && director.currentSession;
+            if (session && session.id === sessionId && Array.isArray(session.messages) && !director._running) {
+                const reply = session.messages.find((m) => m && (m.role === 'assistant' || m.message_type === 'assistant') && m.content);
+                if (reply) {
+                    const text = Array.isArray(reply.content)
+                        ? reply.content.map((part) => (typeof part === 'string' ? part : (part && part.text) || '')).join(' ')
+                        : String(reply.content);
+                    resolve(text.trim());
+                    return;
+                }
+            }
+            if (Date.now() - startedAt > timeoutMs) {
+                reject(new Error('Director did not reply in time'));
+                return;
+            }
+            setTimeout(tick, 750);
+        };
+        tick();
+    });
+}
+
+async function emotionRunAutoPrompt() {
+    if (!desktopEmotion.sourceFilename) return;
+    if (!window.wsClient || !window.wsClient.isConnected()) {
+        showGlassToast('error', 'eMotion', 'WebSocket not connected', false, 4000);
+        return;
+    }
+    if (typeof initializeDirector === 'function' && !window.directorInstance) {
+        await initializeDirector();
+    }
+    const director = window.directorInstance;
+    if (!director) {
+        showGlassToast('error', 'eMotion', 'Director is not available', false, 4000);
+        return;
+    }
+
+    emotionSetPromptBusy(true);
+    try {
+        const sessionPromise = emotionWaitForNewDirectorSession(15000);
+        director.pendingAttachments = [{
+            source: 'workspace',
+            filename: desktopEmotion.sourceFilename,
+            name: desktopEmotion.sourceFilename
+        }];
+        await director.sendMessage(EMOTION_DIRECTOR_INSTRUCTION);
+        const sessionId = await sessionPromise;
+        const reply = await emotionWaitForDirectorReply(sessionId, 90000);
+        if (reply && desktopEmotionEls && desktopEmotionEls.promptInput) {
+            desktopEmotionEls.promptInput.value = reply;
+        }
+    } catch (err) {
+        showGlassToast('error', 'eMotion', (err && err.message) || 'Director prompt failed', false, 5000);
+    } finally {
+        emotionSetPromptBusy(false);
+    }
+}
+
+function emotionSetPromptBusy(busy) {
+    if (!desktopEmotionEls) return;
+    desktopEmotionEls.promptInput.disabled = busy;
+    desktopEmotionEls.promptInput.classList.toggle('emotion-prompt-busy', busy);
+}
+
+// ---- Animate job: start/stop via the same animate_image path as Studio/MCP ---------------
+
+function emotionBuildAnimateParams() {
+    return {
+        filename: desktopEmotion.sourceFilename,
+        workspace: desktopEmotion.sourceWorkspace || (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null),
+        motion_prompt: desktopEmotionEls.promptInput.value.trim(),
+        frames: desktopEmotion.frames,
+        fps: desktopEmotion.fps,
+        loop: desktopEmotion.loop,
+        backend: desktopEmotion.mode
+    };
+}
+
+function emotionStartJob() {
+    if (desktopEmotion.running) return;
+    if (!desktopEmotion.sourceFilename) {
+        showGlassToast('info', 'eMotion', 'Load a source image first.', false, 4000);
+        return;
+    }
+    const motionPrompt = desktopEmotionEls.promptInput.value.trim();
+    if (!motionPrompt) {
+        showGlassToast('info', 'eMotion', 'Write a motion prompt first.', false, 4000);
+        desktopEmotionEls.promptInput.focus();
+        return;
+    }
+    if (!window.wsClient || !window.wsClient.isConnected()) {
+        showGlassToast('error', 'eMotion', 'WebSocket not connected', false, 4000);
+        return;
+    }
+
+    const ws = window.wsClient;
+    const params = emotionBuildAnimateParams();
+
+    // sendMessage()/animateImage() generate their own requestId internally and never return
+    // it — the Promise executor runs synchronously on construction, so the new pendingRequests
+    // entry already exists the instant animateImage() returns. Diffing the key set here is the
+    // only way to learn the requestId for progress/cancel correlation.
+    const beforeKeys = new Set(ws.pendingRequests ? ws.pendingRequests.keys() : []);
+    const resultPromise = ws.animateImage(params);
+    let requestId = null;
+    if (ws.pendingRequests) {
+        for (const key of ws.pendingRequests.keys()) {
+            if (!beforeKeys.has(key)) { requestId = key; break; }
+        }
+    }
+
+    desktopEmotion.running = true;
+    desktopEmotion.requestId = requestId;
+    emotionSetProgress(0, 'Starting…');
+    emotionRenderStartStop();
+
+    // Compare against desktopEmotion.requestId (not a shared "abandoned" flag) when the
+    // promise settles: a shared flag would get reset by a job started after Stop, which
+    // could then wrongly apply to this stale job's result/error.
+    const onKeepAlive = (data) => {
+        if (!data || data.requestId !== requestId) return;
+        emotionSetProgress(Number(data.progress) || 0, data.message || '');
+    };
+    ws.on('request_keep_alive', onKeepAlive);
+
+    resultPromise.then((result) => {
+        if (desktopEmotion.requestId !== requestId) return;
+        desktopEmotion.result = result && result.formats ? { filename: result.filename, formats: result.formats } : null;
+    }).catch((err) => {
+        if (desktopEmotion.requestId !== requestId) return;
+        showGlassToast('error', 'eMotion', (err && err.message) || 'Animate failed', false, 6000);
+    }).finally(() => {
+        ws.off('request_keep_alive', onKeepAlive);
+        if (desktopEmotion.requestId !== requestId) return;
+        desktopEmotion.running = false;
+        desktopEmotion.requestId = null;
+        emotionRenderStartStop();
+        emotionRenderPreview();
+    });
+}
+
+function emotionStopJob() {
+    if (!desktopEmotion.running) return;
+    const requestId = desktopEmotion.requestId;
+    desktopEmotion.running = false;
+    desktopEmotion.requestId = null;
+    if (requestId && window.wsClient && typeof window.wsClient.sendAcklessMessage === 'function') {
+        try {
+            window.wsClient.sendAcklessMessage('cancel_generation', { cancelledRequestIds: [requestId] });
+        } catch (_err) {
+            // Best-effort — Ruiko animate jobs aren't server-cancellable yet, this just
+            // stops the client from waiting on/applying the eventual result.
+        }
+    }
+    emotionRenderStartStop();
+    emotionRenderPreview();
+}
+
+function emotionHandleStartStopClick() {
+    if (desktopEmotion.running) emotionStopJob();
+    else emotionStartJob();
+}
+
+// ---- Rendering -----------------------------------------------------------------------------
+
+function emotionRenderStartStop() {
+    if (!desktopEmotionEls) return;
+    const btn = desktopEmotionEls.startStopBtn;
+    btn.classList.toggle('btn-primary', !desktopEmotion.running);
+    btn.classList.toggle('btn-danger', desktopEmotion.running);
+    btn.innerHTML = '';
+    const icon = document.createElement('i');
+    icon.className = desktopEmotion.running ? 'fas fa-stop' : 'fas fa-play';
+    const label = document.createElement('span');
+    label.textContent = desktopEmotion.running ? ' Stop' : ' Start';
+    btn.appendChild(icon);
+    btn.appendChild(label);
+}
+
+function emotionSetProgress(progress, message) {
+    if (!desktopEmotionEls) return;
+    const pct = Math.max(0, Math.min(100, Math.round(progress)));
+    desktopEmotionEls.progressFill.style.width = pct + '%';
+    desktopEmotionEls.progressLabel.textContent = message || (pct + '%');
+    emotionRenderPreview();
+}
+
+function emotionRenderPreview() {
+    if (!desktopEmotionEls) return;
+    const { previewImg, placeholder, progressOverlay, resultBadge } = desktopEmotionEls;
+
+    progressOverlay.classList.toggle('hidden', !desktopEmotion.running);
+
+    if (desktopEmotion.running) {
+        placeholder.classList.add('hidden');
+        if (desktopEmotion.sourceFilename) {
+            previewImg.src = localGalleryImageUrl(desktopEmotion.sourceFilename);
+            previewImg.classList.remove('hidden');
+        }
+        resultBadge.classList.add('hidden');
+        return;
+    }
+
+    if (desktopEmotion.result && desktopEmotion.result.formats) {
+        const gif = desktopEmotion.result.formats.gif || desktopEmotion.result.filename;
+        previewImg.src = localGalleryImageUrl(gif);
+        previewImg.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        resultBadge.classList.remove('hidden');
+        resultBadge.dataset.mp4 = desktopEmotion.result.formats.mp4 || '';
+        return;
+    }
+
+    resultBadge.classList.add('hidden');
+    if (desktopEmotion.sourceFilename) {
+        previewImg.src = localGalleryImageUrl(desktopEmotion.sourceFilename);
+        previewImg.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+    } else {
+        previewImg.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+    }
+}
+
+// ---- Mode dropdown (loop/wan/ltx) — custom-dropdown, not a native <select> ----------------
+// LOCAL_ANIMATE_BACKENDS / knownLocalAnimateBackends / fetchLocalAnimateStatus:
+// public/scripts/comp/animateImageDialog.js
+
+function emotionBuildModeDropdown() {
+    const wrap = document.createElement('div');
+    wrap.id = 'emotionModeDropdown';
+    wrap.className = 'custom-dropdown dark';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'emotionModeDropdownBtn';
+    btn.className = 'custom-dropdown-btn hover-show colored emotion-mode-dropdown-btn';
+    wrap.appendChild(btn);
+
+    const menu = document.createElement('div');
+    menu.id = 'emotionModeDropdownMenu';
+    menu.className = 'custom-dropdown-menu hidden';
+    wrap.appendChild(menu);
+
+    const renderOptions = () => {
+        const backends = knownLocalAnimateBackends();
+        if (!backends.some((b) => b.id === desktopEmotion.mode)) {
+            desktopEmotion.mode = backends.length ? backends[0].id : desktopEmotion.mode;
+        }
+        menu.innerHTML = '';
+        backends.forEach((backendOpt) => {
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + (backendOpt.id === desktopEmotion.mode ? ' selected' : '');
+            option.dataset.value = backendOpt.id;
+            option.textContent = backendOpt.name;
+            option.addEventListener('click', () => {
+                desktopEmotion.mode = backendOpt.id;
+                renderLabel();
+                menu.querySelectorAll('.custom-dropdown-option').forEach((opt) => {
+                    opt.classList.toggle('selected', opt.dataset.value === desktopEmotion.mode);
+                });
+                closeDropdown(menu, btn);
+            });
+            menu.appendChild(option);
+        });
+    };
+
+    const renderLabel = () => {
+        const match = knownLocalAnimateBackends().find((b) => b.id === desktopEmotion.mode);
+        btn.textContent = match ? match.name : desktopEmotion.mode;
+    };
+
+    renderOptions();
+    renderLabel();
+    fetchLocalAnimateStatus().then(() => {
+        renderOptions();
+        renderLabel();
+    });
+
+    setupDropdown(wrap, btn, menu, () => { renderOptions(); }, () => ({ value: desktopEmotion.mode }), { preventFocusTransfer: true });
+    return wrap;
+}
+
+// ---- Scroll-wheel adjustable number inputs (frames/fps) — <=200ms debounce ----------------
+// createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
+
+function emotionWireWheelNumberInput(input, { min, max, step, onChange }) {
+    const allowTick = createWheelTickGate(150);
+    input.addEventListener('wheel', (e) => {
+        if (!guardWheelTick(e, allowTick)) return;
+        const delta = e.deltaY > 0 ? -step : step;
+        const current = parseInt(input.value, 10) || min;
+        const next = Math.max(min, Math.min(max, current + delta));
+        input.value = String(next);
+        onChange(next);
+    }, { passive: false });
+    input.addEventListener('change', () => {
+        const clamped = Math.max(min, Math.min(max, parseInt(input.value, 10) || min));
+        input.value = String(clamped);
+        onChange(clamped);
+    });
+}
+
+// ---- Modal construction --------------------------------------------------------------------
+
+const ensureDesktopEmotionModal = function () {
+    let modal = document.getElementById(DESKTOP_EMOTION_MODAL_ID);
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = DESKTOP_EMOTION_MODAL_ID;
+    modal.className = 'modal resizeable-window toolbar-visible hidden';
+    modal.dataset.windowIdentifier = 'desktopEmotion';
+    modal.dataset.windowDefaultWidth = '860';
+    modal.dataset.windowDefaultHeight = '560';
+    modal.dataset.windowMinWidth = '640';
+    modal.dataset.windowMinHeight = '420';
+    modal.dataset.windowMaxWidth = '1400';
+    modal.dataset.windowMaxHeight = '1100';
+
+    // ---- Title bar ----
+    const title = document.createElement('div');
+    title.className = 'modal-window-title';
+    const titleMain = document.createElement('div');
+    titleMain.className = 'modal-window-title-main';
+    const titleIcon = document.createElement('i');
+    titleIcon.className = 'fas fa-photo-film';
+    const titleText = document.createElement('span');
+    titleText.textContent = 'eMotion';
+    titleMain.appendChild(titleIcon);
+    titleMain.appendChild(titleText);
+    title.appendChild(titleMain);
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'modal-window-title-toolbar';
+
+    const loadBtn = emotionCreateButton('btn-secondary', 'Load image', 'fas fa-folder-open');
+    const loadLabel = document.createElement('span');
+    loadLabel.textContent = ' Load Image';
+    loadBtn.appendChild(loadLabel);
+    contextMenu.attachClickMenuToElement(loadBtn, emotionLoadImageMenuConfig);
+    toolbar.appendChild(loadBtn);
+
+    const directorToggle = emotionCreateButton('btn-secondary btn-toggle', 'Auto prompt via Director', 'fas fa-wand-magic-sparkles');
+    const directorLabel = document.createElement('span');
+    directorLabel.textContent = ' Auto prompt via Director';
+    directorToggle.appendChild(directorLabel);
+    directorToggle.dataset.state = 'off';
+    directorToggle.addEventListener('click', () => {
+        desktopEmotion.autoPromptViaDirector = !desktopEmotion.autoPromptViaDirector;
+        directorToggle.dataset.state = desktopEmotion.autoPromptViaDirector ? 'on' : 'off';
+        if (desktopEmotion.autoPromptViaDirector && desktopEmotion.sourceFilename) {
+            emotionRunAutoPrompt();
+        }
+    });
+    toolbar.appendChild(directorToggle);
+
+    title.appendChild(toolbar);
+
+    const focusOverlay = document.createElement('div');
+    focusOverlay.className = 'modal-focus-overlay';
+
+    const controls = document.createElement('div');
+    controls.className = 'modal-window-controls';
+    const minimizeBtn = emotionCreateButton('btn-secondary minimize-btn btn-small', 'Minimize', 'fa-regular fa-window-minimize');
+    const maximizeBtn = emotionCreateButton('btn-secondary btn-small modal-work-area-maximize', 'Maximize', 'fa-regular fa-window-maximize');
+    const closeBtn = emotionCreateButton('btn-danger close-btn btn-small', 'Close', 'fa-regular fa-xmark-large');
+    controls.appendChild(minimizeBtn);
+    controls.appendChild(maximizeBtn);
+    controls.appendChild(closeBtn);
+    closeBtn.addEventListener('click', () => {
+        closeModal(modal);
+    });
+
+    // ---- Body: left preview panel, right prompt + controls column ----
+    const content = document.createElement('div');
+    content.className = 'modal-content dark';
+    const body = document.createElement('div');
+    body.className = 'modal-body emotion-body';
+
+    const previewPanel = document.createElement('div');
+    previewPanel.className = 'emotion-preview-panel emotion-inset-panel';
+
+    const placeholder = document.createElement('div');
+    placeholder.className = 'emotion-preview-placeholder';
+    const placeholderIcon = document.createElement('i');
+    placeholderIcon.className = 'fas fa-photo-film';
+    const placeholderText = document.createElement('span');
+    placeholderText.textContent = 'Load an image to begin';
+    placeholder.appendChild(placeholderIcon);
+    placeholder.appendChild(placeholderText);
+
+    const previewImg = document.createElement('img');
+    previewImg.className = 'emotion-preview-image hidden';
+    previewImg.alt = 'Source / result preview';
+
+    const progressOverlay = document.createElement('div');
+    progressOverlay.className = 'emotion-progress-overlay hidden';
+    const progressTrack = document.createElement('div');
+    progressTrack.className = 'emotion-progress-track';
+    const progressFill = document.createElement('div');
+    progressFill.className = 'emotion-progress-fill';
+    progressTrack.appendChild(progressFill);
+    const progressLabel = document.createElement('div');
+    progressLabel.className = 'emotion-progress-label';
+    progressOverlay.appendChild(progressTrack);
+    progressOverlay.appendChild(progressLabel);
+
+    const resultBadge = document.createElement('button');
+    resultBadge.type = 'button';
+    resultBadge.className = 'btn-secondary btn-small emotion-result-badge hidden';
+    resultBadge.title = 'Open MP4';
+    resultBadge.innerHTML = '<i class="fas fa-film"></i> MP4';
+    resultBadge.addEventListener('click', () => {
+        if (resultBadge.dataset.mp4) {
+            window.open(localGalleryImageUrl(resultBadge.dataset.mp4), '_blank', 'noopener');
+        }
+    });
+
+    previewPanel.appendChild(previewImg);
+    previewPanel.appendChild(placeholder);
+    previewPanel.appendChild(progressOverlay);
+    previewPanel.appendChild(resultBadge);
+
+    const sideCol = document.createElement('div');
+    sideCol.className = 'emotion-side-col';
+
+    const promptPanel = document.createElement('div');
+    promptPanel.className = 'emotion-prompt-panel emotion-inset-panel';
+    const promptLabel = document.createElement('div');
+    promptLabel.className = 'form-hint';
+    promptLabel.textContent = 'Motion prompt';
+    const promptInput = document.createElement('textarea');
+    promptInput.id = 'emotionPromptInput';
+    promptInput.className = 'form-control hover-show colored emotion-prompt-input';
+    promptInput.rows = 3;
+    promptInput.placeholder = 'e.g. hair and clothing sway in the wind, camera gently pushes in';
+    promptPanel.appendChild(promptLabel);
+    promptPanel.appendChild(promptInput);
+
+    const controlsPanel = document.createElement('div');
+    controlsPanel.className = 'emotion-controls-panel emotion-inset-panel';
+
+    const modeRow = document.createElement('div');
+    modeRow.className = 'emotion-controls-row';
+    const modeLabel = document.createElement('span');
+    modeLabel.className = 'emotion-field-label';
+    modeLabel.textContent = 'Mode';
+    modeRow.appendChild(modeLabel);
+    modeRow.appendChild(emotionBuildModeDropdown());
+    controlsPanel.appendChild(modeRow);
+
+    const numbersRow = document.createElement('div');
+    numbersRow.className = 'emotion-controls-row';
+
+    const framesLabel = document.createElement('label');
+    framesLabel.className = 'emotion-number-label';
+    framesLabel.appendChild(document.createTextNode('Frames '));
+    const framesInput = document.createElement('input');
+    framesInput.type = 'number';
+    framesInput.id = 'emotionFramesInput';
+    framesInput.min = '8';
+    framesInput.max = '32';
+    framesInput.value = String(desktopEmotion.frames);
+    framesInput.className = 'form-control hover-show colored emotion-number-input';
+    framesLabel.appendChild(framesInput);
+
+    const fpsLabel = document.createElement('label');
+    fpsLabel.className = 'emotion-number-label';
+    fpsLabel.appendChild(document.createTextNode('FPS '));
+    const fpsInput = document.createElement('input');
+    fpsInput.type = 'number';
+    fpsInput.id = 'emotionFpsInput';
+    fpsInput.min = '4';
+    fpsInput.max = '24';
+    fpsInput.value = String(desktopEmotion.fps);
+    fpsInput.className = 'form-control hover-show colored emotion-number-input';
+    fpsLabel.appendChild(fpsInput);
+
+    const loopLabel = document.createElement('label');
+    loopLabel.className = 'emotion-loop-label';
+    const loopInput = document.createElement('input');
+    loopInput.type = 'checkbox';
+    loopInput.id = 'emotionLoopInput';
+    loopInput.checked = desktopEmotion.loop;
+    loopLabel.appendChild(loopInput);
+    loopLabel.appendChild(document.createTextNode(' Loop'));
+
+    numbersRow.appendChild(framesLabel);
+    numbersRow.appendChild(fpsLabel);
+    numbersRow.appendChild(loopLabel);
+    controlsPanel.appendChild(numbersRow);
+
+    const startRow = document.createElement('div');
+    startRow.className = 'emotion-start-row';
+    // Content (icon + label) is owned entirely by emotionRenderStartStop() below.
+    const startStopBtn = emotionCreateButton('btn-primary emotion-start-stop-btn', 'Start', null);
+    startStopBtn.addEventListener('click', emotionHandleStartStopClick);
+    startRow.appendChild(startStopBtn);
+    controlsPanel.appendChild(startRow);
+
+    sideCol.appendChild(promptPanel);
+    sideCol.appendChild(controlsPanel);
+
+    body.appendChild(previewPanel);
+    body.appendChild(sideCol);
+    content.appendChild(body);
+
+    modal.appendChild(title);
+    modal.appendChild(focusOverlay);
+    modal.appendChild(controls);
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    desktopEmotionEls = {
+        modal,
+        previewImg,
+        placeholder,
+        progressOverlay,
+        progressFill,
+        progressLabel,
+        resultBadge,
+        promptInput,
+        framesInput,
+        fpsInput,
+        loopInput,
+        startStopBtn
+    };
+
+    emotionWireWheelNumberInput(framesInput, {
+        min: 8, max: 32, step: 1,
+        onChange: (value) => { desktopEmotion.frames = value; }
+    });
+    emotionWireWheelNumberInput(fpsInput, {
+        min: 4, max: 24, step: 1,
+        onChange: (value) => { desktopEmotion.fps = value; }
+    });
+    loopInput.addEventListener('change', () => {
+        desktopEmotion.loop = !!loopInput.checked;
+    });
+
+    emotionRenderStartStop();
+    emotionRenderPreview();
+
+    return modal;
+};

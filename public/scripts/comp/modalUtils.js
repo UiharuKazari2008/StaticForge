@@ -5819,6 +5819,7 @@ function buildToolsSubmenuItems() {
         { launchId: 'pomodoro', icon: 'fas fa-timer', text: 'Pomodoro', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
         { launchId: 'music', icon: 'fas fa-music', text: 'Music', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayers.js */ openDesktopMusicPlayer(); } },
         { launchId: 'video', icon: 'fas fa-video', text: 'Video', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayers.js */ openDesktopVideoPlayer(); } },
+        { launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion.png', text: 'eMotion', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/emotion.js */ openDesktopEmotion(); } },
     ].filter(isStartMenuEntryEnabled);
     // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
     const dsapAtTools = typeof getDsapStartMenuEntriesAtLocation === 'function'

@@ -171,7 +171,7 @@ async function main() {
         backend: 'not-a-real-backend',
         pollMs: 20
     });
-    assert.strictEqual(defaulted.backend, 'loop');
+    assert.strictEqual(defaulted.backend, 'ltx');
 
     // Full stack: animateImageWebSocket saves gif/mp4/webp and a DB-only receipt.
     const saved = [];
