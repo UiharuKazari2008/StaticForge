@@ -854,7 +854,22 @@ class VfsManager {
         }
         const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces();
         for (const [id, ws] of Object.entries(workspaces)) {
-            if (ws.files?.includes(filename) || ws.scraps?.includes(filename) || ws.pinned?.includes(filename)) {
+            if (ws.files && (ws._filesRef !== ws.files || !ws._filesSet)) {
+                ws._filesRef = ws.files;
+                ws._filesSet = new Set(ws.files);
+            }
+            if (ws.scraps && (ws._scrapsRef !== ws.scraps || !ws._scrapsSet)) {
+                ws._scrapsRef = ws.scraps;
+                ws._scrapsSet = new Set(ws.scraps);
+            }
+            if (ws.pinned && (ws._pinnedRef !== ws.pinned || !ws._pinnedSet)) {
+                ws._pinnedRef = ws.pinned;
+                ws._pinnedSet = new Set(ws.pinned);
+            }
+
+            if ((ws._filesSet && ws._filesSet.has(filename)) ||
+                (ws._scrapsSet && ws._scrapsSet.has(filename)) ||
+                (ws._pinnedSet && ws._pinnedSet.has(filename))) {
                 return id;
             }
         }
