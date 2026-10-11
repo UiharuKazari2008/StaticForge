@@ -183,10 +183,13 @@ function getAttachment(owner, attachmentId) {
     return { id: row.id, name: row.name, mimeType: row.mime_type, size: row.size, data: row.data };
 }
 
-// Posts a read receipt onto a message's paired mailbox copy (sent <-> inbox),
-// the first time only — recipient_read_at is sticky, like a real read receipt.
-function markPairedReadReceipt(row) {
-    if (!row || !row.paired_message_id) return;
+// Posts a read receipt onto a message's paired mailbox copy (sent <-> inbox), the first
+// time only (sticky, like a real read receipt) — and only when the actual recipient
+// (to_owner) is the one doing the reading. Without that check, a sender marking their own
+// already-read sent-folder copy "read" again would wrongly stamp recipient_read_at onto the
+// paired inbox copy, as if the recipient had opened it.
+function markPairedReadReceipt(owner, row) {
+    if (!row || !row.paired_message_id || owner !== row.to_owner) return;
     getDb().prepare(
         `UPDATE dovecote_message SET recipient_read_at = ? WHERE id = ? AND recipient_read_at IS NULL`
     ).run(nowIso(), row.paired_message_id);
@@ -269,7 +272,7 @@ function readMail(owner, id) {
     if (!row.read) {
         getDb().prepare('UPDATE dovecote_message SET read = 1, updated_at = ? WHERE id = ?').run(nowIso(), row.id);
         row.read = 1;
-        markPairedReadReceipt(row);
+        markPairedReadReceipt(owner, row);
     }
     audit(owner, 'read_mail', id, true, null);
     return toFull(row);
@@ -284,7 +287,7 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder }) {
     }
     const updates = { updated_at: nowIso() };
     if (typeof read === 'boolean') updates.read = read ? 1 : 0;
-    if (read === true) markPairedReadReceipt(row);
+    if (read === true) markPairedReadReceipt(owner, row);
     if (deleted === true) {
         updates.folder = 'deleted';
         updates.deleted_at = nowIso();

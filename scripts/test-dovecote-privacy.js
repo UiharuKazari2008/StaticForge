@@ -98,6 +98,13 @@ function main() {
     mail.markMail('rook', { id: toRead.id, read: false });
     assert.strictEqual(mail.listMail('menma', { folder: 'sent' }).find((m) => m.id === sent2.id).readByRecipient, true);
 
+    // The sender re-marking their own already-read sent copy must not forge a receipt onto
+    // the recipient's inbox copy — only the actual recipient reading their own copy can set it.
+    const sent3 = mail.sendMail({ fromOwner: 'menma', to: 'hoshino', subject: 'no receipt yet', body: 'x' });
+    mail.markMail('menma', { id: sent3.id, read: true }); // sent copies start read:true already
+    const hoshinoInboxCopy = mail.listMail('hoshino', { folder: 'inbox' }).find((m) => m.subject === 'no receipt yet');
+    assert.strictEqual(hoshinoInboxCopy.readByRecipient, false);
+
     // Attachments: stored bytes are only reachable through a mailbox that actually holds
     // a message referencing them — not a global by-id lookup.
     const withAttachment = mail.sendMail({
