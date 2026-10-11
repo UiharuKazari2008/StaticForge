@@ -8,7 +8,9 @@
 'use strict';
 
 const crypto = require('crypto');
-const { getDb } = require('./dovecoteDatabase');
+const fs = require('fs');
+const path = require('path');
+const { getDb, getAttachmentsRoot } = require('./dovecoteDatabase');
 
 const HUMAN_OWNER = 'yukimi';
 const BOT_OWNERS = Object.freeze([
@@ -131,13 +133,91 @@ function sanitizeFormat(format) {
     return FORMATS.includes(value) ? value : 'text';
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Every id used as a path segment below is always a crypto.randomUUID() this
+// module minted itself (message ids, attachment ids) — this is defense in
+// depth, not the primary guard, in case a future caller feeds an id in
+// without going through the owner-scoped lookups first.
+function isUuidLike(value) {
+    return typeof value === 'string' && UUID_RE.test(value);
+}
+
+function messageAttachmentDir(messageId) {
+    return path.join(getAttachmentsRoot(), String(messageId));
+}
+
+function writeAttachmentFile(messageId, attachmentId, data) {
+    if (!isUuidLike(messageId) || !isUuidLike(attachmentId)) return;
+    const dir = messageAttachmentDir(messageId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, attachmentId), data);
+}
+
+function readAttachmentFile(messageId, attachmentId) {
+    if (!isUuidLike(messageId) || !isUuidLike(attachmentId)) return null;
+    const filePath = path.join(messageAttachmentDir(messageId), attachmentId);
+    if (!fs.existsSync(filePath)) return null;
+    return fs.readFileSync(filePath);
+}
+
+function copyAttachmentFile(fromMessageId, toMessageId, attachmentId) {
+    const data = readAttachmentFile(fromMessageId, attachmentId);
+    if (data === null) return;
+    writeAttachmentFile(toMessageId, attachmentId, data);
+}
+
+function removeMessageAttachmentDir(messageId) {
+    if (!isUuidLike(messageId)) return;
+    fs.rmSync(messageAttachmentDir(messageId), { recursive: true, force: true });
+}
+
+// Copies every attachment id a message references into another message's
+// cache folder — used to give the paired sent/inbox copy (and forwards)
+// their own on-disk copy, so permanently deleting one never touches another.
+function duplicateMessageAttachments(fromMessageId, toMessageId, attachmentsJson) {
+    if (!attachmentsJson) return;
+    let ids;
+    try {
+        ids = JSON.parse(attachmentsJson);
+    } catch (_err) {
+        return;
+    }
+    if (!Array.isArray(ids)) return;
+    for (const id of ids) {
+        copyAttachmentFile(fromMessageId, toMessageId, id);
+    }
+}
+
+// Deletes an attachment's metadata row once no message references the id
+// anymore. Called after a message is permanently deleted, since that message's
+// own on-disk copy is already gone with its folder.
+function cleanupOrphanedAttachmentMeta(attachmentsJson) {
+    if (!attachmentsJson) return;
+    let ids;
+    try {
+        ids = JSON.parse(attachmentsJson);
+    } catch (_err) {
+        return;
+    }
+    if (!Array.isArray(ids)) return;
+    for (const id of ids) {
+        const stillReferenced = getDb().prepare(
+            `SELECT id FROM dovecote_message WHERE attachments IS NOT NULL AND attachments LIKE ? LIMIT 1`
+        ).get(`%"${id}"%`);
+        if (!stillReferenced) {
+            getDb().prepare('DELETE FROM dovecote_attachment WHERE id = ?').run(id);
+        }
+    }
+}
+
 /**
- * Stores raw attachment bytes (content-addressed id, not owner-scoped) and
- * returns the JSON string to put in a dovecote_message row's attachments
- * column. Enforces per-file and total-per-message size limits up front, so a
- * send fails cleanly rather than partially writing attachment blobs.
+ * Stores attachment metadata in sqlite and the raw bytes under
+ * .cache/dovecote/attachments/<messageId>/<attachmentId>. Enforces per-file
+ * and total-per-message size limits up front, so a send fails cleanly rather
+ * than partially writing attachment files.
  */
-function storeAttachments(attachments) {
+function storeAttachments(messageId, attachments) {
     if (!attachments || !attachments.length) return null;
     let total = 0;
     for (const file of attachments) {
@@ -154,8 +234,9 @@ function storeAttachments(attachments) {
     const ids = attachments.map((file) => {
         const id = crypto.randomUUID();
         getDb().prepare(
-            'INSERT INTO dovecote_attachment (id, name, mime_type, size, data, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-        ).run(id, String(file.name || 'attachment').slice(0, 200), String(file.mimeType || 'application/octet-stream'), file.data.length, file.data, createdAt);
+            'INSERT INTO dovecote_attachment (id, name, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?)'
+        ).run(id, String(file.name || 'attachment').slice(0, 200), String(file.mimeType || 'application/octet-stream'), file.data.length, createdAt);
+        writeAttachmentFile(messageId, id, file.data);
         return id;
     });
     return JSON.stringify(ids);
@@ -165,7 +246,8 @@ function storeAttachments(attachments) {
  * Returns an attachment's bytes, scoped to an owner the same way mail reads
  * are: the owner must hold a message (any folder) whose attachments[]
  * includes this id, or this behaves as a 404 (returns null) rather than
- * leaking existence of the blob.
+ * leaking existence of the blob. Bytes are read from that holder message's
+ * own cache folder, not a global by-id store.
  */
 function getAttachment(owner, attachmentId) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
@@ -177,10 +259,12 @@ function getAttachment(owner, attachmentId) {
         audit(owner, 'get_attachment', id, false, 'not found or not owned');
         return null;
     }
-    const row = getDb().prepare('SELECT * FROM dovecote_attachment WHERE id = ?').get(id);
-    if (!row) return null;
+    const meta = getDb().prepare('SELECT id, name, mime_type, size FROM dovecote_attachment WHERE id = ?').get(id);
+    if (!meta) return null;
+    const data = readAttachmentFile(holder.id, id);
+    if (data === null) return null;
     audit(owner, 'get_attachment', id, true, null);
-    return { id: row.id, name: row.name, mimeType: row.mime_type, size: row.size, data: row.data };
+    return { id: meta.id, name: meta.name, mimeType: meta.mime_type, size: meta.size, data };
 }
 
 // Posts a read receipt onto a message's paired mailbox copy (sent <-> inbox), the first
@@ -209,7 +293,6 @@ function sendMail({ fromOwner, to, subject, body, format, replyToId, attachments
     const subjectText = String(subject || '').slice(0, 300);
     const bodyText = String(body || '');
     const formatValue = sanitizeFormat(format);
-    const attachmentsJson = storeAttachments(attachments);
 
     let threadId = crypto.randomUUID();
     let replyTo = null;
@@ -224,6 +307,10 @@ function sendMail({ fromOwner, to, subject, body, format, replyToId, attachments
     const createdAt = nowIso();
     const sentId = crypto.randomUUID();
     const inboxId = crypto.randomUUID();
+    // Written into the sent copy's folder first, then duplicated into the inbox
+    // copy's folder below — each mailbox copy owns its own on-disk bytes.
+    const attachmentsJson = storeAttachments(sentId, attachments);
+    duplicateMessageAttachments(sentId, inboxId, attachmentsJson);
 
     insertRow({
         id: sentId, owner: fromOwner, folder: 'sent', archive_subfolder: null, thread_id: threadId,
@@ -285,6 +372,12 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder }) {
         audit(owner, 'mark_mail', id, false, 'not found or not owned');
         return null;
     }
+    // Deleting a message that is already in the 'deleted' folder permanently
+    // removes it (and its attachments) — same as hitting Delete on a Trash
+    // item in a real mail client, rather than soft-deleting it again.
+    if (deleted === true && row.folder === 'deleted') {
+        return permanentlyDeleteMail(owner, id);
+    }
     const updates = { updated_at: nowIso() };
     if (typeof read === 'boolean') updates.read = read ? 1 : 0;
     if (read === true) markPairedReadReceipt(owner, row);
@@ -330,8 +423,33 @@ function forwardMail(owner, { id, to }) {
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
         attachments: source.attachments || null
     });
+    // The forwarded row references the same attachment ids as the source, but
+    // needs its own on-disk copy so deleting either message independently
+    // never takes the other's attachments with it.
+    duplicateMessageAttachments(source.id, newId, source.attachments);
     audit(owner, 'forward_mail', newId, true, `to=${toOwner} source=${id}`);
     return { id: newId, to: toOwner };
+}
+
+/**
+ * Hard-deletes a message row and its on-disk attachment folder. Unlike
+ * markMail's soft delete (which just moves the row into the 'deleted'
+ * folder), this cannot be undone — callers trigger it by deleting a message
+ * that is already in the 'deleted' folder (see markMail), matching a mail
+ * client's "delete from Trash" convention.
+ */
+function permanentlyDeleteMail(owner, id) {
+    if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
+    const row = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, owner);
+    if (!row) {
+        audit(owner, 'permanently_delete_mail', id, false, 'not found or not owned');
+        return null;
+    }
+    getDb().prepare('DELETE FROM dovecote_message WHERE id = ?').run(row.id);
+    removeMessageAttachmentDir(row.id);
+    cleanupOrphanedAttachmentMeta(row.attachments);
+    audit(owner, 'permanently_delete_mail', id, true, null);
+    return { id: row.id, permanentlyDeleted: true };
 }
 
 function getAlwaysLoadSenders(owner) {
@@ -376,6 +494,7 @@ module.exports = {
     readMail,
     markMail,
     forwardMail,
+    permanentlyDeleteMail,
     listMailboxes,
     getAlwaysLoadSenders,
     setImagePref,
