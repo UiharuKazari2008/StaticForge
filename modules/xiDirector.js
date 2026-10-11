@@ -129,8 +129,29 @@ function chatIsListed(chat) {
     return (chat.messages || []).some((item) => item && item.role === 'user' && item.message_type !== 'Attachment');
 }
 
+const XI_RUNTIMES = new Set(['cursor', 'claude']);
+
+function sanitizeRuntime(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return XI_RUNTIMES.has(text) ? text : 'cursor';
+}
+
 function publicXiSession(chat) {
-    return Object.assign(director._test.publicSession(chat), { persona: 'xi' });
+    return Object.assign(director._test.publicSession(chat), {
+        persona: 'xi',
+        runtime: sanitizeRuntime(chat && chat.runtime)
+    });
+}
+
+// The picker only runs at creation (handleDirectorCreateSession); every later
+// write path (send message, fork, etc.) must call this before touching chat.runtime.
+function assertRuntimeUnchanged(chat, message) {
+    if (!message || message.runtime === undefined) return;
+    if (sanitizeRuntime(message.runtime) !== sanitizeRuntime(chat.runtime)) {
+        const error = new Error('Xi session runtime cannot change after creation');
+        error.code = 'RUNTIME_LOCKED';
+        throw error;
+    }
 }
 
 function safeId(value) {
@@ -229,6 +250,8 @@ function launchPlan(agentArgs, options) {
         agentArgs: agentArgs || [],
         extraEnv: Object.assign({}, mcpLaunchEnv(), opts.extraEnv || {}),
         detach: opts.detach === true,
+        runtime: opts.runtime,
+        claudeTokenFile: opts.claudeTokenFile,
         secureConfigPath: opts.secureConfigPath,
         accountsDir: opts.accountsDir,
         projectRoot: opts.projectRoot,
@@ -321,8 +344,11 @@ function directorClientId(clientInfo, message) {
 }
 
 function buildPrompt(chat, userText, files, clientId) {
+    const runtime = sanitizeRuntime(chat.runtime);
     const lines = [
-        'You are Xi, the host Cursor agent for this repo. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.',
+        runtime === 'claude'
+            ? 'You are Xi, the host Claude Code agent for this repo. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.'
+            : 'You are Xi, the host Cursor agent for this repo. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.',
         'Be short. A few sentences. Do not explain the obvious. Do not paste large code blocks or long examples. Name the file and the change.',
         'clientLink.clientGeneration no-go means generate_image on the server, show_chat_image, and open_in_studio only if Studio is already open. Resolution stays normal unless they name a size. Wallpaper is finish, not the wallpaper resolution preset. Over 1 megapixel needs userApprovedPaidRequest after they agree.',
         `Detail belongs on a Yozora issue. File or update the issue, then link it (${YOZORA_ISSUE}<number>). The issue is the write-up.`,
@@ -342,6 +368,57 @@ function buildPrompt(chat, userText, files, clientId) {
     }
     lines.push('', 'User request:', userText || 'Look at the attached files.');
     return lines.join('\n');
+}
+
+function readProjectCursorRules(workspace) {
+    const rulesDir = path.join(workspace, '.cursor', 'rules');
+    let names = [];
+    try { names = fs.readdirSync(rulesDir).filter((name) => name.endsWith('.mdc')); } catch (_) { return ''; }
+    return names.sort().map((name) => {
+        let text = '';
+        try { text = fs.readFileSync(path.join(rulesDir, name), 'utf8'); } catch (_) { return ''; }
+        return text.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
+    }).filter(Boolean).join('\n\n');
+}
+
+// Claude Code auto-discovers a project CLAUDE.md, but Xi runs against the real
+// repo (not a jailed copy like Wren's), so writing one there would dirty git
+// status every turn. --append-system-prompt carries the same two sources —
+// this project's own .cursor/rules plus the shared Dreamscape MCP instructions
+// cursor-agent gets implicitly from the MCP server's initialize message —
+// without touching the working tree.
+function claudeProjectPrompt(workspace) {
+    const { MCP_INSTRUCTIONS, ENSHUTSUKA_MODES } = require('./mcpInstructions');
+    const rules = readProjectCursorRules(workspace);
+    return [
+        rules,
+        '## Shared Dreamscape rules (from Enshutsuka)',
+        MCP_INSTRUCTIONS,
+        ENSHUTSUKA_MODES
+    ].filter(Boolean).join('\n\n');
+}
+
+// Same Dreamscape MCP server Cursor loads from .cursor/mcp.json, passed inline
+// so no file needs to exist inside the jail before the process starts. The
+// placeholders are substituted from the jail env (DREAMSCAPE_MCP_URL/_KEY),
+// so the key itself never sits in argv.
+function claudeMcpConfigArg() {
+    return JSON.stringify({
+        mcpServers: {
+            dreamscape: {
+                type: 'http',
+                url: '${DREAMSCAPE_MCP_URL}',
+                headers: { Authorization: 'Bearer ${DREAMSCAPE_MCP_KEY}' }
+            }
+        }
+    });
+}
+
+const CLAUDE_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+
+function sanitizeClaudeEffort(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return CLAUDE_EFFORTS.has(text) ? text : 'medium';
 }
 
 function createCursorChat(workspace) {
@@ -459,6 +536,8 @@ function saveTrace(run) {
         if (!chat) return;
         chat.messages = chat.messages || [];
         chat.updated_at = new Date().toISOString();
+        const claudeSessionId = run.stream && run.stream.sessionId;
+        if (claudeSessionId) chat.claudeSessionId = claudeSessionId;
         const mine = director.printsForMessage(chat, run.draftId);
         if (mine.length) assistant.prints = mine;
         const existing = chat.messages.find((item) => item.id === run.draftId);
@@ -558,6 +637,105 @@ function finishRun(run, why) {
         .catch((err) => console.error(`Xi finish skipped: ${err.message}`));
 }
 
+const CLAUDE_CONTEXT_WINDOW = 200000;
+const TOOL_PAYLOAD_CAP = 200000;
+
+function clipText(value, limit) {
+    const text = String(value == null ? '' : value);
+    const cap = limit || TOOL_PAYLOAD_CAP;
+    return text.length > cap ? `${text.slice(0, cap)}…` : text;
+}
+
+function claudeToolResultText(content) {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content.filter((block) => block && block.type === 'text').map((block) => block.text || '').join('\n');
+    }
+    return content == null ? '' : JSON.stringify(content);
+}
+
+// Claude's `-p --output-format stream-json` (no --include-partial-messages) emits
+// one complete message per line, so there is no live/partial row to assemble —
+// unlike Cursor's cursor-agent, whose consumeStreamLine deals with text deltas.
+// Tool calls arrive as assistant content blocks; their results arrive later as a
+// separate `user` event with tool_result blocks keyed by tool_use_id.
+function consumeClaudeStreamLine(line, state) {
+    let evt;
+    try {
+        evt = JSON.parse(line);
+    } catch (_) {
+        return;
+    }
+    if (!state.rows) state.rows = [];
+    if (!state.openTools) state.openTools = new Map();
+    if (evt.type === 'system' && evt.subtype === 'init') {
+        if (evt.session_id) state.sessionId = evt.session_id;
+        return;
+    }
+    if (evt.type === 'assistant') {
+        const blocks = evt.message && Array.isArray(evt.message.content) ? evt.message.content : [];
+        blocks.forEach((block) => {
+            if (!block) return;
+            if (block.type === 'tool_use' && block.name) {
+                const row = {
+                    type: 'tool',
+                    name: block.name,
+                    label: block.name,
+                    detail: '',
+                    args: clipText(JSON.stringify(block.input || {})),
+                    result: '',
+                    replay: null,
+                    text: block.name,
+                    _closed: false
+                };
+                state.rows.push(row);
+                if (block.id) state.openTools.set(block.id, row);
+                state.tool = block.name;
+            } else if (block.type === 'text' && block.text) {
+                state.rows.push({ type: 'assistant', text: block.text });
+                state.text = `${state.text || ''}${block.text}`;
+            }
+        });
+        return;
+    }
+    if (evt.type === 'user') {
+        const blocks = evt.message && Array.isArray(evt.message.content) ? evt.message.content : [];
+        blocks.forEach((block) => {
+            if (!block || block.type !== 'tool_result') return;
+            const row = block.tool_use_id ? state.openTools.get(block.tool_use_id) : null;
+            if (!row) return;
+            const text = clipText(claudeToolResultText(block.content));
+            row.result = block.is_error ? `Error: ${text}` : text;
+            row._closed = true;
+        });
+        return;
+    }
+    if (evt.type === 'result') {
+        state.finished = true;
+        if (evt.is_error) {
+            state.error = (typeof evt.result === 'string' && evt.result) || 'Claude run failed';
+        } else if (typeof evt.result === 'string' && evt.result.trim() && !state.text) {
+            state.text = evt.result.trim();
+        }
+        if (evt.usage) {
+            const prompt = Number(evt.usage.input_tokens || 0)
+                + Number(evt.usage.cache_read_input_tokens || 0)
+                + Number(evt.usage.cache_creation_input_tokens || 0);
+            if (prompt > 0) {
+                state.context = { tokens: prompt, percent: Math.min(100, Math.round((prompt / CLAUDE_CONTEXT_WINDOW) * 100)) };
+            }
+        }
+    }
+}
+
+function consumeXiStreamLine(runtime, line, state) {
+    if (runtime === 'claude') {
+        consumeClaudeStreamLine(line, state);
+        return;
+    }
+    director._test.consumeStreamLine(line, state);
+}
+
 function readNew(run) {
     let size = 0;
     try { size = fs.statSync(run.log).size; } catch (_) { return false; }
@@ -575,7 +753,7 @@ function readNew(run) {
     const lines = `${run.buffer}${chunk.toString()}`.split('\n');
     run.buffer = lines.pop() || '';
     lines.forEach((line) => {
-        if (line.trim()) director._test.consumeStreamLine(line, run.stream);
+        if (line.trim()) consumeXiStreamLine(run.runtime, line, run.stream);
     });
     return true;
 }
@@ -600,6 +778,7 @@ function startTail(meta) {
         draftId: meta.draftId,
         round: meta.round || null,
         name: meta.name || 'Xi',
+        runtime: sanitizeRuntime(meta.runtime),
         requestId: meta.requestId || null,
         offset: 0,
         buffer: '',
@@ -630,7 +809,7 @@ function startTail(meta) {
     runs.set(run.sessionId, run);
     publish(run);
     if (!pidAlive(run.pid)) {
-        if (run.buffer.trim()) director._test.consumeStreamLine(run.buffer, run.stream);
+        if (run.buffer.trim()) consumeXiStreamLine(run.runtime, run.buffer, run.stream);
         run.buffer = '';
         finishRun(run, 'exit');
         return;
@@ -642,7 +821,7 @@ function startTail(meta) {
         if (grew) run.lastActivity = Date.now();
         if (grew) publish(run);
         if (!pidAlive(run.pid)) {
-            if (run.buffer.trim()) director._test.consumeStreamLine(run.buffer, run.stream);
+            if (run.buffer.trim()) consumeXiStreamLine(run.runtime, run.buffer, run.stream);
             run.buffer = '';
             finishRun(run, 'exit');
             return;
@@ -702,8 +881,8 @@ function prepareXi(gr) {
 
 // PM2 treekill kills every descendant of the server on restart. The shell
 // backgrounds the agent and exits, so the agent reparents off the server.
-function spawnDetached(args, logPath, workspace) {
-    const plan = launchPlan(args, { projectDir: workspace, detach: true });
+function spawnDetached(args, logPath, workspace, options) {
+    const plan = launchPlan(args, Object.assign({ projectDir: workspace, detach: true }, options || {}));
     let out = '';
     try {
         out = execFileSync('/bin/sh', [
@@ -771,8 +950,12 @@ async function handleDirectorCreateSession(handler, ws, message) {
             const created = {
                 id: `xi_${crypto.randomBytes(8).toString('hex')}`,
                 cursorId: null,
+                claudeSessionId: null,
                 accountId: activeAccId,
                 persona: 'xi',
+                // Chosen once, at creation. See assertRuntimeUnchanged — nothing
+                // after this point may write chat.runtime for an existing chat.
+                runtime: sanitizeRuntime(message.runtime),
                 name: (message.description || '').trim().slice(0, 48) || 'Xi',
                 workspaceId,
                 filename: null,
@@ -958,21 +1141,24 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         }
 
         const workspace = workspacePath(gr);
-        director.installUnrestrictedCli(layout().configDir);
+        const runtime = sanitizeRuntime((readIndex().chats.find((item) => item.id === sessionId) || {}).runtime);
+        if (runtime === 'cursor') director.installUnrestrictedCli(layout().configDir);
         await ensureXiMcp(gr);
         const catalog = cachedModels();
-        const runModel = director._test.resolveRunModel(catalog, message);
+        const runModel = runtime === 'cursor' ? director._test.resolveRunModel(catalog, message) : null;
+        const claudeEffort = sanitizeClaudeEffort(message.effort);
         const draftId = crypto.randomUUID();
         const prepared = await enqueue(async () => {
             const index = readIndex();
             const chat = index.chats.find((item) => item.id === sessionId);
             if (!chat) return null;
+            assertRuntimeUnchanged(chat, message);
             const files = await storeAttachments(gr, chat, message.attachments || []);
             const spoken = String(message.content || '').trim() || (files.length ? 'Use the attached files.' : '');
             if (!spoken) throw new Error('Say what you want, or attach a file');
             const userText = message.steer ? `Stop the previous attempt. Do this instead:\n${spoken}` : spoken;
             if ((chat.name === 'Xi' || chat.name === 'Director') && spoken) chat.name = spoken.slice(0, 48);
-            chat.model = runModel;
+            chat.model = runtime === 'claude' ? `claude-${claudeEffort}` : runModel;
             chat.choice = {
                 id: message.model ? String(message.model) : 'auto',
                 effort: message.effort || 'medium',
@@ -991,18 +1177,32 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 data: null
             });
             chat.updated_at = new Date().toISOString();
-            let cursorId = chat.cursorId;
-            const cursorAccountAuthStore = require('./cursorAccountAuthStore');
-            const activeAccountId = cursorAccountAuthStore.getActiveAccountId('xi');
-            if (chat.accountId && chat.accountId !== activeAccountId) {
-                cursorId = null;
+            let cursorId = null;
+            let claudeSessionId = null;
+            let claudeFirstTurn = false;
+            if (runtime === 'cursor') {
+                cursorId = chat.cursorId;
+                const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+                const activeAccountId = cursorAccountAuthStore.getActiveAccountId('xi');
+                if (chat.accountId && chat.accountId !== activeAccountId) {
+                    cursorId = null;
+                }
+                if (!cursorId) {
+                    cursorId = await createCursorChat(workspace);
+                    chat.cursorId = cursorId;
+                    chat.accountId = activeAccountId;
+                }
+            } else {
+                claudeFirstTurn = !chat.claudeSessionId;
+                claudeSessionId = chat.claudeSessionId || crypto.randomUUID();
+                chat.claudeSessionId = claudeSessionId;
             }
-            if (!cursorId) {
-                cursorId = await createCursorChat(workspace);
-                chat.cursorId = cursorId;
-                chat.accountId = activeAccountId;
-            }
-            const round = director._test.roundModelRecord(message.model, message.effort || 'medium', message.fast === true, chat.model);
+            const round = director._test.roundModelRecord(
+                message.model,
+                runtime === 'claude' ? claudeEffort : (message.effort || 'medium'),
+                message.fast === true,
+                chat.model
+            );
             chat.inflight = {
                 model: chat.model,
                 draftId,
@@ -1012,7 +1212,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             const clientId = directorClientId(clientInfo, message);
             const prompt = buildPrompt(chat, userText, files, clientId);
             writeIndex(index);
-            return { prompt, cursorId, model: chat.model, name: chat.name, round };
+            return { prompt, cursorId, claudeSessionId, claudeFirstTurn, model: chat.model, name: chat.name, round, runtime };
         });
         if (!prepared) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
@@ -1023,21 +1223,35 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         fs.mkdirSync(paths.logs, { recursive: true });
         fs.writeFileSync(log, '');
         const metaPath = path.join(paths.runs, `${sessionId}.json`);
-        const args = [
-            '--print',
-            '--output-format', 'stream-json',
-            '--stream-partial-output',
-            '--sandbox', 'disabled',
-            '--trust',
-            '--force',
-            '--approve-mcps',
-            '--workspace', workspace,
-            '--model', prepared.model,
-            '--resume', prepared.cursorId,
-            '--',
-            prepared.prompt
-        ];
-        const started = spawnDetached(args, log, workspace);
+        const args = runtime === 'claude'
+            ? [
+                '-p',
+                '--output-format', 'stream-json',
+                '--verbose',
+                '--permission-mode', 'bypassPermissions',
+                '--strict-mcp-config',
+                '--mcp-config', claudeMcpConfigArg(),
+                '--append-system-prompt', claudeProjectPrompt(workspace),
+                '--effort', claudeEffort,
+                prepared.claudeFirstTurn ? '--session-id' : '--resume', prepared.claudeSessionId,
+                '--',
+                prepared.prompt
+            ]
+            : [
+                '--print',
+                '--output-format', 'stream-json',
+                '--stream-partial-output',
+                '--sandbox', 'disabled',
+                '--trust',
+                '--force',
+                '--approve-mcps',
+                '--workspace', workspace,
+                '--model', prepared.model,
+                '--resume', prepared.cursorId,
+                '--',
+                prepared.prompt
+            ];
+        const started = spawnDetached(args, log, workspace, { runtime });
         const meta = {
             pid: started.pid,
             runHome: started.runHome,
@@ -1046,6 +1260,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             draftId,
             round: prepared.round,
             name: prepared.name,
+            runtime,
             requestId: message.requestId || null,
             startedAt: new Date().toISOString(),
             metaPath
@@ -1103,6 +1318,8 @@ async function handleDirectorForkSession(handler, ws, message) {
         const created = {
             id: `xi_${crypto.randomBytes(8).toString('hex')}`,
             cursorId: null,
+            claudeSessionId: null,
+            runtime: sanitizeRuntime(chat.runtime),
             accountId: chat.accountId || activeAccId,
             name: `${chat.name || 'Xi'} fork`.slice(0, 48),
             workspaceId: chat.workspaceId || null,
@@ -1317,5 +1534,9 @@ module.exports = {
     handleDirectorForkSession,
     handleDirectorMoveSession,
     handleDirectorToolDiff,
-    _test: { shouldPark, markToolDiffs, readToolDiffText, buildPrompt, launchPlan }
+    _test: {
+        shouldPark, markToolDiffs, readToolDiffText, buildPrompt, launchPlan,
+        sanitizeRuntime, assertRuntimeUnchanged, publicXiSession, consumeClaudeStreamLine,
+        claudeProjectPrompt, claudeMcpConfigArg, sanitizeClaudeEffort
+    }
 };

@@ -10,12 +10,14 @@
  * Responses are an allowlisted row. Keys, tokens, and passwords are never copied out.
  */
 
+const fs = require('fs');
+const { spawn } = require('child_process');
 const { checkLocalWorkerHealth, readLocalWorkerConfig } = require('./localUpscaleWorker');
 const { grimoireBrowserConfig } = require('./grimoireBrowserBridge');
 const { canGalleryUseRemoteMaster } = require('./replication/replicationContracts');
 const { httpRequestBuffer } = require('./replicationRemoteFetch');
 
-const REMOTE_WORKER_IDS = Object.freeze(['ruiko', 'grimoire-browser', 'replication-master', 'novelai']);
+const REMOTE_WORKER_IDS = Object.freeze(['ruiko', 'grimoire-browser', 'replication-master', 'novelai', 'claude-xi']);
 const DEFAULT_TIMEOUT_MS = 4000;
 const SLOW_LATENCY_MS = 1500;
 const STATUSES = new Set(['healthy', 'degraded', 'offline', 'unconfigured']);
@@ -440,6 +442,87 @@ async function checkNovelAi(globalResources, opts, secrets) {
     }, secrets);
 }
 
+// Claude is a local subprocess (bwrap + claude.exe), not a network service, so
+// "healthy" means the binary and OAuth token file are both in place and the
+// binary actually runs, not a reachability probe like the other rows.
+function runClaudeVersionProbe(bin, timeoutMs) {
+    return new Promise((resolve, reject) => {
+        let child;
+        try {
+            child = spawn(bin, ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (err) {
+            reject(err);
+            return;
+        }
+        let out = '';
+        const timer = setTimeout(() => {
+            try { child.kill('SIGKILL'); } catch (_) { /* already gone */ }
+            reject(Object.assign(new Error('timed out'), { code: 'TIMEOUT' }));
+        }, timeoutMs);
+        child.stdout.on('data', (buf) => { out += buf.toString(); });
+        child.on('error', (err) => { clearTimeout(timer); reject(err); });
+        child.on('close', (code) => {
+            clearTimeout(timer);
+            if (code === 0) resolve(out);
+            else reject(new Error(`exit ${code}`));
+        });
+    });
+}
+
+async function checkClaudeXi(opts, secrets) {
+    const name = 'Claude Runner (Xi)';
+    const checkedAt = new Date().toISOString();
+    // claudeBin / claudeTokenFile are only ever passed explicitly by tests, to
+    // pin this check's result instead of depending on what is actually
+    // installed on the host running the test.
+    const bin = opts.claudeBin !== undefined ? opts.claudeBin : require('./cursorDirector').findClaude();
+    if (!bin) {
+        return row({
+            id: 'claude-xi',
+            name,
+            host: '',
+            status: 'unconfigured',
+            checkedAt,
+            detail: 'Claude Code CLI is not installed'
+        }, secrets);
+    }
+    const tokenFile = opts.claudeTokenFile !== undefined ? opts.claudeTokenFile : require('./xiLaunch').resolveClaudeTokenFile({});
+    if (!tokenFile || !fs.existsSync(tokenFile)) {
+        return row({
+            id: 'claude-xi',
+            name,
+            host: 'local',
+            status: 'unconfigured',
+            checkedAt,
+            detail: 'Claude OAuth token file is missing'
+        }, secrets);
+    }
+    const started = Date.now();
+    try {
+        const out = await withTimeout(runClaudeVersionProbe(bin, opts.timeoutMs), opts.timeoutMs + 250);
+        const latencyMs = Date.now() - started;
+        return row({
+            id: 'claude-xi',
+            name,
+            host: 'local',
+            status: latencyMs >= opts.slowMs ? 'degraded' : 'healthy',
+            checkedAt: new Date().toISOString(),
+            latencyMs,
+            detail: String(out || '').trim().slice(0, 80)
+        }, secrets);
+    } catch (err) {
+        return row({
+            id: 'claude-xi',
+            name,
+            host: 'local',
+            status: 'offline',
+            checkedAt: new Date().toISOString(),
+            latencyMs: Date.now() - started,
+            detail: safeDetail(err)
+        }, secrets);
+    }
+}
+
 function gatherSecrets(globalResources, grimoire, replication) {
     const secrets = [];
     try {
@@ -456,7 +539,7 @@ async function collectRemoteWorkerStatuses(globalResources, options = {}) {
     const slowMs = Number.isFinite(Number(options.slowMs)) && Number(options.slowMs) > 0
         ? Number(options.slowMs)
         : SLOW_LATENCY_MS;
-    const opts = { timeoutMs, slowMs };
+    const opts = { timeoutMs, slowMs, claudeBin: options.claudeBin, claudeTokenFile: options.claudeTokenFile };
     const grimoire = options.grimoireConfig || grimoireBrowserConfig();
     const replication = readReplicationConfig(globalResources);
     const workerId = options.workerId ? String(options.workerId) : '';
@@ -465,7 +548,8 @@ async function collectRemoteWorkerStatuses(globalResources, options = {}) {
         ['ruiko', () => checkRuiko(globalResources, opts, secrets)],
         ['grimoire-browser', () => checkGrimoire(grimoire, opts, secrets)],
         ['replication-master', () => checkReplication(replication, opts, secrets)],
-        ['novelai', () => checkNovelAi(globalResources, opts, secrets)]
+        ['novelai', () => checkNovelAi(globalResources, opts, secrets)],
+        ['claude-xi', () => checkClaudeXi(opts, secrets)]
     ];
     const selected = workerId ? checks.filter(([id]) => id === workerId) : checks;
     if (workerId && !selected.length) {

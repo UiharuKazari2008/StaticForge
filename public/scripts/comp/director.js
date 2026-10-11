@@ -266,6 +266,7 @@ class Director {
             directorMessageFilterGroup: 'directorMessageFilterGroup',
             directorPersonaGroup: 'directorPersonaGroup',
             directorModelPick: 'directorModelPick',
+            directorRuntimePick: 'directorRuntimePick',
             directorModelPickName: 'directorModelPickName',
             directorModelPickEffort: 'directorModelPickEffort',
             directorAutoGenerateBtn: 'directorAutoGenerateBtn',
@@ -866,6 +867,11 @@ class Director {
             });
         }
         this.paintModelPick();
+        if (this.directorRuntimePick) {
+            this.directorRuntimePick.addEventListener('change', () => {
+                this._nextXiRuntime = this.directorRuntimePick.value === 'claude' ? 'claude' : 'cursor';
+            });
+        }
     }
 
     sessionFromMenuTarget(target) {
@@ -3396,6 +3402,27 @@ class Director {
             if (this.directorSessionPreviewContainer) this.directorSessionPreviewContainer.classList.add('hidden');
             const fresh = document.getElementById('directorHeaderActionsNewSession');
             if (fresh) fresh.classList.add('hidden');
+            this.paintRuntimePicker();
+        } else if (this.directorRuntimePick) {
+            this.directorRuntimePick.classList.add('hidden');
+        }
+    }
+
+    // Shown enabled on a draft (choice still open), then locked once the session
+    // exists — the runtime is picked once, at creation, and cannot change after.
+    paintRuntimePicker() {
+        if (!this.directorRuntimePick) return;
+        const session = this.currentSession;
+        const isDraft = !session || session.draft || !session.id;
+        this.directorRuntimePick.classList.remove('hidden');
+        if (isDraft) {
+            this.directorRuntimePick.disabled = false;
+            this.directorRuntimePick.value = this._nextXiRuntime || 'cursor';
+            this.directorRuntimePick.title = 'Runtime (fixed once the session starts)';
+        } else {
+            this.directorRuntimePick.value = session.runtime === 'claude' ? 'claude' : 'cursor';
+            this.directorRuntimePick.disabled = true;
+            this.directorRuntimePick.title = 'Runtime (fixed for this session)';
         }
     }
 
@@ -4453,6 +4480,7 @@ class Director {
         this._selectedQuickTaskId = null;
         this._welcomeQuip = null;
         this._pendingWorkspaceToken = null;
+        this._nextXiRuntime = null;
         if (this.directorWindowIsOpen()) {
             this.showNewSessionDraft();
             if (this.directorChatInput) this.directorChatInput.focus();
@@ -4480,7 +4508,8 @@ class Director {
             requestId: Date.now().toString(),
             workspaceId: window.currentWorkspace || null,
             persona: this.persona || 'wren',
-            sessionType: this._nextSessionType || null
+            sessionType: this._nextSessionType || null,
+            runtime: this.persona === 'xi' ? (this._nextXiRuntime || 'cursor') : undefined
         });
         this._nextSessionType = null;
         return true;

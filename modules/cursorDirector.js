@@ -75,6 +75,7 @@ const runs = new Map();
 let indexQueue = Promise.resolve();
 let agentBinCache = undefined;
 let bwrapBinCache = undefined;
+let claudeBinCache = undefined;
 // Tray status (#directorTrayIcon). Refreshed on turn start/end/abort/error and
 // when the tray menu asks, never on an interval.
 const TRAY_RECENT_SESSIONS = 3;
@@ -203,6 +204,33 @@ function findBwrap() {
     return null;
 }
 
+// Claude Code ships a single self-contained binary (bin/claude.exe behind the
+// `claude` symlink), so unlike cursor-agent there is no separate node runtime
+// to find on PATH.
+function findClaude() {
+    if (claudeBinCache !== undefined) return claudeBinCache;
+    const names = ['claude'];
+    const dirs = [];
+    if (process.env.HOME) dirs.push(path.join(process.env.HOME, '.npm-global', 'bin'));
+    if (process.env.HOME) dirs.push(path.join(process.env.HOME, '.local', 'bin'));
+    dirs.push('/usr/local/bin');
+    String(process.env.PATH || '').split(path.delimiter).forEach((dir) => {
+        if (dir) dirs.push(dir);
+    });
+    for (const dir of dirs) {
+        for (const name of names) {
+            const full = path.join(dir, name);
+            try {
+                fs.accessSync(full, fs.constants.X_OK);
+                claudeBinCache = full;
+                return full;
+            } catch (_) { /* next */ }
+        }
+    }
+    claudeBinCache = null;
+    return null;
+}
+
 function requireBwrap() {
     const bin = findBwrap();
     if (bin) return bin;
@@ -225,6 +253,14 @@ function agentJailTarget(agentBin) {
         };
     }
     return { hostRoot: path.dirname(real), inJail: `${JAIL_AGENT_ROOT}/${path.basename(real)}` };
+}
+
+// claude.exe is a standalone binary with no versions/ directory, so only its
+// own bin/ folder needs to be bound read-only into the jail.
+function claudeJailTarget(claudeBin, jailRoot) {
+    let real = claudeBin;
+    try { real = fs.realpathSync(claudeBin); } catch (_) { /* symlink target missing */ }
+    return { hostRoot: path.dirname(real), inJail: `${jailRoot}/${path.basename(real)}` };
 }
 
 // /usr and /lib stay read-only so the agent cannot change host packages.
@@ -5434,6 +5470,7 @@ module.exports = {
     layout,
     findAgent,
     findBwrap,
+    findClaude,
     ensureProject,
     prepareDirector,
     syncCursorCliLogin,
@@ -5452,7 +5489,7 @@ module.exports = {
     _test: {
         projectPrompt,
         insideDir, safeName, effortModel, consumeStreamLine, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
-        parseCursorModelLine, agentJailTarget, buildJail, jailEnv, systemBindArgs,
+        parseCursorModelLine, agentJailTarget, claudeJailTarget, buildJail, jailEnv, systemBindArgs,
         publicSession, publicMessage, publicTraceRow, roundModelRecord, watchGeneratedPrints, rememberGeneratedPrint,
         isLinkDrop, continuationPrompt,
         normalizeSessionTasks, readProcStat, directorState, computerReadiness,
