@@ -22,6 +22,7 @@ function prepareSystemTrayBackground() {
         'naxtBagTrayIcon',
         'phasewalkerTrayIcon',
         'directorTrayIcon',
+        'dovecoteTrayIcon',
         'workspaceTrayIcon',
         'serviceWorkerTrayIcon',
         'pingWarningIndicator',
@@ -36,6 +37,9 @@ function prepareSystemTrayBackground() {
     // updateSubscriptionRenewalIndicator, updateFixedCreditsIndicator, updateImageGenerationIndicator: public/scripts/comp/trayIndicators.js
     setInterval(updateSubscriptionRenewalIndicator, 3600000);
     setInterval(updateFixedCreditsIndicator, 60000);
+    // doveRefreshTrayUnread: public/scripts/comp/desktop-apps/dovecote.js — no server push for new
+    // mail, so the unread badge polls like the credits/subscription indicators above.
+    setInterval(doveRefreshTrayUnread, 60000);
 }
 
 async function startBackgroundTrayServices() {
@@ -62,6 +66,8 @@ async function startBackgroundTrayServices() {
     }
     // initializeDirectorTray: public/scripts/comp/director.js
     initializeDirectorTray();
+    // initializeDovecoteTray: public/scripts/comp/desktop-apps/dovecote.js
+    initializeDovecoteTray();
     updateImageGenerationIndicator({ reveal: false });
 
     if (window.wsClient) {
@@ -123,6 +129,12 @@ async function startBackgroundTrayServices() {
                 window.directorInstance.updateTrayChrome();
             }
             return 'directorTrayIcon';
+        },
+        () => {
+            // doveRefreshTrayUnread: public/scripts/comp/desktop-apps/dovecote.js — stays hidden
+            // at 0 unread, same conditional-reveal convention as fixedCreditsIndicator above.
+            doveRefreshTrayUnread({ reveal: true });
+            return 'dovecoteTrayIcon';
         },
         () => {
             if (window.wsClient && typeof window.wsClient.updatePingWarningIcon === 'function') {

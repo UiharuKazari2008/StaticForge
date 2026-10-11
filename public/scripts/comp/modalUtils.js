@@ -5735,6 +5735,7 @@ const startMenuLaunchables = [
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
     { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'remote_desktop.png', text: 'Remote Desktop', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
+    { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'dovecote.png', text: 'Dovecote', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
 ];
 
 /** Root start menu shell rows (folders + run). */
@@ -5801,7 +5802,6 @@ function buildToolsSubmenuItems() {
         { launchId: 'character-db', icon: 'fas fa-users', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
         { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
         { launchId: 'calculator', icon: 'fas fa-calculator', text: 'Calculator', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
-        { launchId: 'dovecote', icon: 'fas fa-envelope', text: 'Dovecote', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
         { launchId: 'alarm', icon: 'fas fa-alarm-clock', text: 'Alarm', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
         { launchId: 'pomodoro', icon: 'fas fa-timer', text: 'Pomodoro', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
         { launchId: 'music', icon: 'fas fa-music', text: 'Music', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayers.js */ openDesktopMusicPlayer(); } },
