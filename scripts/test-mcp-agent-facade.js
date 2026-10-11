@@ -844,7 +844,7 @@ assert.ok(coreNames.includes('list_mail'));
 assert.ok(coreNames.includes('read_mail'));
 assert.ok(coreNames.includes('mark_mail'));
 assert.ok(coreNames.includes('forward_mail'));
-assert.strictEqual(coreNames.length, 115);
+assert.strictEqual(coreNames.length, 116);
 assert.ok(coreNames.includes('ledge'));
 assert.ok(coreNames.includes('generate_nax_tag'));
 assert.ok(coreNames.includes('delete_nax_tag'));
