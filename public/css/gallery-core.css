@@ -1059,42 +1059,10 @@ html:not(.disable-blur) .gallery:has(.gallery-item.context-open) .gallery-item:n
     display: flex;
     align-items: center;
     gap: 0;
-    box-shadow: var(--glass-shadow-2);
-}
-
-/* Button groups (app-wide): the group carries the outer glass shadow + radius and its
-   buttons keep the same height/glass/hover/active as standalone standard buttons, joined
-   by a single 1px separator. Hovered/focused/on segments raise above neighbours so their
-   border isn't clipped by the next segment. */
-.button-group {
+    /* The group owns the single outer drop shadow, so it needs the same outer radius as
+       its end buttons or the shadow paints square corners. */
     border-radius: var(--border-radius-md);
-    flex-wrap: nowrap;
-}
-
-.button-group > [class^="btn-"],
-.button-group > [class*=" btn-"] {
-    margin: 0;
-    box-shadow: inset 0 0 15px #ffffff2b;
-}
-
-.button-group > [class^="btn-"]:hover:not(:disabled),
-.button-group > [class*=" btn-"]:hover:not(:disabled),
-.button-group > [class^="btn-"]:focus-visible,
-.button-group > [class*=" btn-"]:focus-visible {
-    z-index: var(--z-layer-4, 4);
-}
-
-.button-group > .btn-toggle[data-state="on"],
-.button-group > .btn-toggle[data-state="open"] {
-    z-index: var(--z-layer-3, 3);
-    box-shadow: inset 0 2px 4px var(--toggle-shadow-color-58), inset 0 0 8px var(--toggle-shadow-color-19);
-}
-
-/* Segmented toggle: equal-width segments, label + icon, standard btn-small height. */
-.button-group-segmented > [class^="btn-"],
-.button-group-segmented > [class*=" btn-"] {
-    flex: 1 1 0;
-    min-width: 0;
+    box-shadow: var(--glass-shadow-2);
 }
 
 .main-menu-group {
@@ -1108,9 +1076,11 @@ html:not(.disable-blur) .gallery:has(.gallery-item.context-open) .gallery-item:n
     min-width: 48px !important;
 }
 
+/* Segments drop only the per-button OUTER shadow (the group carries it); they keep the
+   standard inset glass glow so a grouped button looks like a standalone one. */
 .workspace-controls .btn-secondary,
 .button-group [class^="btn-"] {
-    box-shadow: none;
+    box-shadow: inset 0 0 15px #ffffff2b;
 }
 
 .workspace-controls .btn-secondary:not(:first-child):not(:last-child),

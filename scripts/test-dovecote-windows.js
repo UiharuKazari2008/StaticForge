@@ -92,11 +92,15 @@ function main() {
     assert.match(dovecoteJs, /contextMenu\.attachClickMenuToElement\(button, doveFolderMenuConfig\)/);
     assert.match(dovecoteJs, /const doveRenderFolderButton = function/);
 
-    // 7. Rendered/Raw toggle moved into the viewer pane header (#6), out of the main toolbar,
-    // with its own click listener (not the toolbar's doveHandleToolbarClick).
+    // 7. Rendered/Raw toggle + Safe badge float in the body pane's top-right corner
+    // (doveBuildBodyTools), out of the main toolbar and out of the header rows, with its own
+    // click listener (not the toolbar's doveHandleToolbarClick).
     assert.match(dovecoteJs, /const doveBuildBodyViewToggle = function/);
+    assert.match(dovecoteJs, /const doveBuildBodyTools = function/);
     assert.match(dovecoteJs, /tools\.appendChild\(doveBuildBodyViewToggle\(\)\)/);
-    assert.match(dovecoteJs, /button-group button-group-segmented dovecote-body-view-toggle/);
+    assert.match(dovecoteJs, /bodyWrap\.appendChild\(doveBuildBodyTools\(/);
+    assert.match(dovecoteJs, /'button-group dovecote-body-view-toggle'/);
+    assert.doesNotMatch(dovecoteJs, /dovecote-oe-header-tools/);
     assert.match(dovecoteJs, /const doveBuildSanitizedBadge = function/);
     assert.doesNotMatch(dovecoteJs, /doveBuildToolbar[\s\S]{0,2000}data-dove-body-view/);
 

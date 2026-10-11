@@ -227,45 +227,66 @@
     display: flex;
     flex: 0 0 auto;
     flex-direction: column;
-    gap: var(--spacing-xs);
-    padding: 0 var(--spacing-xs) var(--spacing-sm);
+    gap: 0;
+    padding: 0 var(--spacing-xs) var(--spacing-xs);
     border-bottom: 1px solid var(--glass-border-3);
     font-size: 0.85em;
+    line-height: 1.35;
 }
 
-/* Every row the same height as a .btn-small so the Subject row (which holds the
-   toggle) doesn't sit taller than From/To/Date. */
+/* Compact mail-client header: rows are just text lines, no fixed height. */
 .dovecote-oe-header-row {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: var(--spacing-sm);
-    min-height: 26px;
 }
 
-/* Right end of the Subject row: sanitized badge + Rendered/Raw segmented toggle. */
-.dovecote-oe-header-tools {
+/* Safe badge + Rendered/Raw: small floating cluster in the body pane's top-right corner,
+   overlaid on the message (dovecote.js doveBuildBodyTools). */
+.dovecote-body-tools {
+    position: absolute;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
+    z-index: var(--z-layer-3, 3);
     display: flex;
-    flex: 0 0 auto;
     align-items: center;
-    gap: var(--spacing-sm);
-    margin-left: auto;
-    font-size: 1.0625rem;
+    gap: var(--spacing-xs);
+    padding: 3px;
+    /* Dark backing so the cluster stays legible over white HTML mail bodies. */
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    background: hsl(0 0% 12% / 78%);
+    box-shadow: var(--glass-shadow-2);
+    pointer-events: none;
+}
+
+.dovecote-body-tools > * {
+    pointer-events: auto;
 }
 
 .dovecote-body-view-toggle {
     flex: 0 0 auto;
 }
 
+.dovecote-body-view-toggle > [class^="btn-"] {
+    min-height: 24px;
+    min-width: 0;
+    padding: 0.2em 0.6em;
+    font-size: 0.75rem;
+}
+
 .dovecote-sanitized-badge {
     display: inline-flex;
     align-items: center;
     gap: var(--spacing-xs);
-    padding: 2px var(--spacing-sm);
+    height: 24px;
+    padding: 0 var(--spacing-sm);
+    box-sizing: border-box;
     border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-xl);
+    border-radius: var(--border-radius-md);
     background: var(--glass-layer-dark-4);
     color: var(--text-accent-tinted);
-    font-size: 0.7em;
+    font-size: 0.7rem;
     font-weight: 600;
     cursor: help;
 }

@@ -121,6 +121,7 @@
     "test:dovecote-runtime": "node scripts/test-dovecote-runtime.js",
     "test:dovecote-mcp-tools": "node scripts/test-dovecote-mcp-tools.js",
     "test:dovecote-windows": "node scripts/test-dovecote-windows.js",
+    "test:dovecote-reader-window": "node scripts/test-dovecote-reader-window.js",
     "test:apocrypha-local-grim": "node --test scripts/test-apocrypha-local-grim.js",
     "test:grimoire-browser": "node scripts/test-grimoire-browser.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",

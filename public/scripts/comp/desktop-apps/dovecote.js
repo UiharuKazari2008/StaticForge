@@ -626,14 +626,13 @@ const doveBuildMainPane = function () {
     return pane;
 };
 
-// Rendered/Raw toggle (#6): one segmented .button-group (public/css/gallery-core.css) right-aligned
-// in the viewer's Subject header row. The sanitized-HTML indicator is a small shield badge inside
-// the same cluster (doveBuildSanitizedBadge) instead of a full-width bar.
+// Rendered/Raw toggle (#6): one .button-group (public/css/gallery-core.css) floating in the
+// top-right corner of the message body (doveBuildBodyTools), next to the Safe shield badge.
 // Wired with its own click listener rather than relying on doveHandleBodyClick's
 // modal-wide delegation, so it can't double-fire the way toolbar action buttons do.
 const doveBuildBodyViewToggle = function () {
     const viewGroup = document.createElement('div');
-    viewGroup.className = 'button-group button-group-segmented dovecote-body-view-toggle';
+    viewGroup.className = 'button-group dovecote-body-view-toggle';
     const renderedBtn = doveCreateButton('btn-secondary btn-small btn-toggle', 'Rendered', 'fas fa-eye');
     renderedBtn.dataset.doveBodyView = 'rendered';
     renderedBtn.dataset.state = 'on';
@@ -661,6 +660,19 @@ const doveBuildSanitizedBadge = function () {
     badge.appendChild(icon);
     badge.appendChild(label);
     return badge;
+};
+
+// Floating cluster overlaid on the body pane's top-right corner (.dovecote-body-tools).
+// Appended into .dovecote-body-wrap, which is position:relative and only ever has its
+// iframe / raw <pre> swapped, so the overlay survives re-renders. Always returns an Element.
+const doveBuildBodyTools = function (options) {
+    const tools = document.createElement('div');
+    tools.className = 'dovecote-body-tools';
+    const badge = doveBuildSanitizedBadge();
+    if (options && options.badgeId) badge.id = options.badgeId;
+    tools.appendChild(badge);
+    if (options && options.withViewToggle) tools.appendChild(doveBuildBodyViewToggle());
+    return tools;
 };
 
 const doveBuildPreviewPane = function () {
@@ -709,15 +721,6 @@ const doveBuildPreviewPane = function () {
         valueEl.id = 'desktopDovecoteOe' + field.charAt(0).toUpperCase() + field.slice(1);
         row.appendChild(labelEl);
         row.appendChild(valueEl);
-        if (field === 'subject') {
-            const tools = document.createElement('span');
-            tools.className = 'dovecote-oe-header-tools';
-            const badge = doveBuildSanitizedBadge();
-            badge.id = 'desktopDovecoteSafetyBar';
-            tools.appendChild(badge);
-            tools.appendChild(doveBuildBodyViewToggle());
-            row.appendChild(tools);
-        }
         header.appendChild(row);
     });
     preview.appendChild(header);
@@ -740,6 +743,7 @@ const doveBuildPreviewPane = function () {
     emptyHint.id = 'desktopDovecoteEmptyHint';
     emptyHint.textContent = 'Select a message to read it.';
     bodyWrap.appendChild(emptyHint);
+    bodyWrap.appendChild(doveBuildBodyTools({ badgeId: 'desktopDovecoteSafetyBar', withViewToggle: true }));
     preview.appendChild(bodyWrap);
 
     return preview;
@@ -1665,17 +1669,10 @@ const doveBuildReaderWindow = function (key) {
         valueEl.className = 'dovecote-oe-header-value';
         row.appendChild(labelEl);
         row.appendChild(valueEl);
-        if (field === 'subject') {
-            const tools = document.createElement('span');
-            tools.className = 'dovecote-oe-header-tools';
-            tools.appendChild(doveBuildSanitizedBadge());
-            row.appendChild(tools);
-        }
         header.appendChild(row);
         fieldEls[field] = valueEl;
     });
     body.appendChild(header);
-    const safetyBar = header.querySelector('.dovecote-sanitized-badge');
 
     const imagesBar = document.createElement('div');
     imagesBar.className = 'dovecote-images-bar hidden';
@@ -1691,6 +1688,9 @@ const doveBuildReaderWindow = function (key) {
     loadingHint.className = 'form-hint dovecote-empty-hint';
     loadingHint.textContent = 'Loading…';
     bodyWrap.appendChild(loadingHint);
+    const bodyTools = doveBuildBodyTools();
+    bodyWrap.appendChild(bodyTools);
+    const safetyBar = bodyTools.querySelector('.dovecote-sanitized-badge');
     body.appendChild(bodyWrap);
 
     content.appendChild(body);
@@ -1714,7 +1714,7 @@ const doveBuildReaderWindow = function (key) {
         doveDispatchReaderAction(state, btn.dataset.doveReaderAction);
     });
 
-    return modal;
+    return state;
 };
 
 const doveLoadReaderMail = async function (state, id) {

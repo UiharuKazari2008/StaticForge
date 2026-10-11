@@ -78,10 +78,6 @@
     user-select: none;
 }
 
-.modal-window-title-toolbar .button-group:not(:has(.form-control, input:not([type="hidden"]))):not(:has(> .toolbar-input-segment)) {
-    box-shadow: none;
-}
-
 .modal-window-title-toolbar .form-control,
 .modal-window-title-toolbar input.form-control,
 .modal-window-title-toolbar>.button-group:has(.form-control, input:not([type="hidden"])),
@@ -102,12 +98,34 @@
     transition: none;
 }
 
-.modal-window-title-toolbar>[class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
-.modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment) {
+.modal-window-title-toolbar>[class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle) {
     background: var(--glass-layer-dark-4);
     border: 1px solid var(--glass-border-3);
     color: var(--text-accent-tinted);
     box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
+}
+
+/* Grouped segments: paint only the fill. No `border` shorthand (it would re-add the
+   border-left that gallery-core's join rules remove) and no outer shadow — every segment
+   is position:relative + z-index, so a per-segment drop shadow paints over its neighbour
+   and splits the group into separate squares. The group carries the outer shadow.
+   Fill tokens match the standalone "popped out" toolbar button that actually wins for direct
+   children (grimoire-browser.css `.modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]`),
+   so grouped and standalone buttons are the same surface. */
+.modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment) {
+    min-height: 32px;
+    height: 32px;
+    background: var(--glass-layer-dark-5);
+    border-color: var(--glass-border-3);
+    color: var(--text-primary);
+    box-shadow: 0 1px 0 hsl(0 0% 100% / 14%) inset;
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment) {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-secondary);
+    box-shadow: none;
 }
 
 .modal-window-title-toolbar>.form-control,
