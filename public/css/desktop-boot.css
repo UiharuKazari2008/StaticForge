@@ -228,6 +228,24 @@ body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-auth-erro
     font-size: 13px;
 }
 
+/* Real init step under the stage headline (desktopBoot.js onStepMessage) */
+.windows-startup-detail {
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.3;
+    min-height: 14px;
+    margin: -4px 0 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.windows-classic-theme .windows-startup-detail {
+    color: var(--GrayText);
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 10px;
+}
+
 /* Windows Startup Modal Specific Styles */
 body.windows-classic-theme .windows-startup-status {
     color: var(--WindowText);
@@ -389,4 +407,83 @@ body.dreamscape-install-wizard .modal:not(#dreamscapeOsInstallWizardModal):not(#
 
 #bootUiDebugWindow {
     z-index: var(--z-modal-top) !important;
+}
+
+/* ---------- Staged desktop reveal (public/scripts/comp/desktopBoot.js) ----------
+   body.boot-staged hides every desktop layer; the cumulative boot-reveal-* classes bring
+   them back in XP order while the startup window reports the stage. Window layers use
+   visibility so an open animation (opacity keyframes) cannot flash a window early. */
+body.desktop-mode.boot-staged .desktop-wallpaper {
+    opacity: 0;
+}
+
+body.desktop-mode.boot-staged.boot-reveal-wallpaper .desktop-wallpaper {
+    opacity: 1;
+    transition: opacity 0.7s ease;
+}
+
+body.desktop-mode.boot-staged .desktop-icons {
+    opacity: 0;
+}
+
+body.desktop-mode.boot-staged.boot-reveal-icons .desktop-icons {
+    opacity: 1;
+    transition: opacity 0.5s ease;
+}
+
+body.desktop-mode.boot-staged .desktop-taskbar {
+    transform: translateY(100%);
+}
+
+body.desktop-mode.boot-staged.boot-reveal-taskbar .desktop-taskbar {
+    transform: none;
+    transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+body.desktop-mode.boot-staged .modal:not(.boot-dialog):not(#confirmationDialog) {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.desktop-mode.boot-staged.boot-reveal-windows .modal:not(.boot-dialog):not(#confirmationDialog) {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.35s ease;
+}
+
+/* ---------- Session lock: server restart after boot (desktopBoot.js suspend/resume) ----------
+   Everything open hides behind the solid colour while the logon dialog shows the server's
+   boot progress; popovers, toasts and tickers stay out until resume. */
+body.desktop-mode.session-suspended {
+    background: teal;
+    background-image: none;
+}
+
+body.desktop-mode.session-suspended .desktop-wallpaper {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+body.desktop-mode.session-suspended .desktop-icons,
+body.desktop-mode.session-suspended .desktop-taskbar,
+body.desktop-mode.session-suspended .modal:not(.boot-dialog),
+body.desktop-mode.session-suspended #startMenu,
+body.desktop-mode.session-suspended .taskbar-group-menu,
+body.desktop-mode.session-suspended [class*="tray-popup"],
+body.desktop-mode.session-suspended #toastContainer,
+body.desktop-mode.session-suspended .websocket-ticker,
+body.desktop-mode.session-suspended .websocket-banner {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.desktop-mode.boot-staged .desktop-wallpaper,
+    body.desktop-mode.boot-staged .desktop-icons,
+    body.desktop-mode.boot-staged .desktop-taskbar,
+    body.desktop-mode.boot-staged .modal {
+        transition: none !important;
+    }
 }

@@ -657,6 +657,10 @@ class WebSocketClient {
 
     static PROGRESS_INIT_BASE = 25; // Base progress percentage for initialization
     static PROGRESS_INIT_STEPS = 75; // Progress percentage allocated to init steps
+    /** /status start time (timestamp − uptime) moving by more than this after boot = server restarted */
+    static SERVER_RESTART_DRIFT_MS = 5000;
+    /** Longest the startup window may wait on the staged reveal after init completes */
+    static TIMEOUT_BOOT_REVEAL_FINISH = 15000;
 
     static CONNECTION_BEATS = {
         initializing: {
@@ -773,6 +777,11 @@ class WebSocketClient {
         this._quietResume = false;
         this._connectEpoch = 0;
         this.preStartupHandoffCompleted = false;
+        /** Server restart detected after boot: desktop locked behind the logon dialog until data is refreshed */
+        this.sessionSuspended = false;
+        this.sessionSuspendReason = null;
+        this._justResumedFromSuspend = false;
+        this._serverStartedAt = null;
         this.preStartupAuthBusy = false;
         this.preStartupAuthHandlersSetup = false;
         this.preStartupMarqueeManualPause = false;
@@ -1221,6 +1230,14 @@ class WebSocketClient {
             return;
         }
         if (window.isDesktop && this.preStartupHandoffCompleted && !this.initializationCompleted) {
+            this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
+            this.updateWebSocketStatus('connected');
+            this._setConnectionPhase('idle');
+            return;
+        }
+        // Unlock after a server restart: the desktop just came back, no Connection Manager beat on top of it
+        if (window.isDesktop && this._justResumedFromSuspend) {
+            this._justResumedFromSuspend = false;
             this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
             this.updateWebSocketStatus('connected');
             this._setConnectionPhase('idle');
@@ -1918,6 +1935,12 @@ class WebSocketClient {
         await this._sleepConnectionBeat(750);
         if (!this._canCompletePreStartupHandoff()) return;
         this.preStartupHandoffCompleted = true;
+        if (this.sessionSuspended) {
+            this._resumeSuspendedSession();
+        } else if (window.desktopBoot) {
+            // XP-style staged reveal from here: solid colour, then wallpaper, icons, taskbar, windows
+            window.desktopBoot.begin();
+        }
     }
 
     _hideConnectionDialModal() {
@@ -2042,6 +2065,20 @@ class WebSocketClient {
                 return;
             }
             this._renderPreStartupDialog();
+            return;
+        }
+
+        // Staged boot: the startup window owns the screen, beats go into it, never a second window
+        // (public/scripts/comp/desktopBoot.js)
+        if (window.isDesktop && this.connectionDialView !== 'status' && !this.initializationCompleted
+            && window.desktopBoot && window.desktopBoot.isBooting()) {
+            if (phase === 'failed' && this._shouldUseConnectivityErrorInsteadOfConnectionDial()) {
+                this._presentConnectivityFailure();
+                this._applyFailedConnectionSideEffects();
+                return;
+            }
+            window.desktopBoot.setConnectionState(phase, this.connectionUi.message);
+            this._hideConnectionDialModal();
             return;
         }
 
@@ -2517,6 +2554,7 @@ class WebSocketClient {
         this.lastServerStartupStatus = data;
         this.serverStartupStatusOk = true;
         this.serverStartupReady = data.isReady === true;
+        this._noteServerInstance(data);
 
         const message = data.stageMessage || 'Server starting…';
         const progress = typeof data.progressPercent === 'number' ? data.progressPercent : null;
@@ -2527,6 +2565,55 @@ class WebSocketClient {
             this._updatePreStartupStageProgress(progress, message);
             this._renderPreStartupDialog();
         }
+    }
+
+    /** Server start time from /status; a jump after boot means the server restarted. */
+    _noteServerInstance(data) {
+        const startedAt = (typeof data.timestamp === 'number' && typeof data.uptime === 'number')
+            ? data.timestamp - data.uptime
+            : null;
+        if (startedAt == null) return;
+        const previous = this._serverStartedAt;
+        const restarted = previous != null
+            && Math.abs(startedAt - previous) > WebSocketClient.SERVER_RESTART_DRIFT_MS;
+        if (previous == null || restarted) {
+            this._serverStartedAt = startedAt;
+        }
+        if (!this.initializationCompleted || this.sessionSuspended) return;
+        if (data.isReady === false || restarted) {
+            this._suspendSession(data.isReady === false ? 'server-booting' : 'server-restarted');
+        }
+    }
+
+    /**
+     * Server restart after boot: lock the desktop like XP (public/scripts/comp/desktopBoot.js),
+     * bring back the logon dialog with the server's own boot progress, and resume once the
+     * reconnect has refreshed data (_completePreStartupHandoff runs after executeRefreshCallbacks).
+     */
+    _suspendSession(reason) {
+        if (this.sessionSuspended || !window.isDesktop) return;
+        this.sessionSuspended = true;
+        this.sessionSuspendReason = reason;
+        this.preStartupHandoffCompleted = false;
+        this.connectionDialView = 'transient';
+        this._stopConnectionStatsTimer();
+        this._hideConnectionDialModal();
+        if (window.desktopBoot) {
+            window.desktopBoot.suspend(reason);
+        }
+        console.log(`🔒 Session suspended (${reason})`);
+        this._renderConnectionDial();
+    }
+
+    _resumeSuspendedSession() {
+        if (!this.sessionSuspended) return;
+        this.sessionSuspended = false;
+        this.sessionSuspendReason = null;
+        this._justResumedFromSuspend = true;
+        if (window.desktopBoot) {
+            window.desktopBoot.resume();
+        }
+        console.log('🔓 Session resumed');
     }
 
     _updatePreStartupStageProgress(progressPercent, message) {
@@ -2709,6 +2796,12 @@ class WebSocketClient {
             this.progressToastId = null;
         }
         if (window.isDesktop) {
+            // Let the staged reveal reach "Welcome" before the startup window closes (desktopBoot.js)
+            if (window.desktopBoot) {
+                try {
+                    await window.desktopBoot.finish({ timeoutMs: WebSocketClient.TIMEOUT_BOOT_REVEAL_FINISH });
+                } catch (_) { /* never block the close */ }
+            }
             await this.hideWindowsStartupModal();
         }
         document.body.classList.remove('initializing');
@@ -2838,8 +2931,14 @@ class WebSocketClient {
             modal.classList.add('active-window');
         }
 
-        statusElement.textContent = message;
-        progressBar.style.width = `${progress}%`;
+        if (window.desktopBoot) {
+            // Stage text owns the headline while staged; the step goes to the detail line (desktopBoot.js)
+            window.desktopBoot.onStepMessage(message, progress);
+            window.desktopBoot.refresh();
+        } else {
+            statusElement.textContent = message;
+            progressBar.style.width = `${progress}%`;
+        }
 
         // Setup advance step button handler if not already set up
         if (advanceBtn && !this.advanceStepHandlerSetup) {
@@ -2859,11 +2958,15 @@ class WebSocketClient {
         const statusElement = document.getElementById('windowsStartupStatus');
         const progressBar = document.getElementById('windowsStartupProgressBar');
 
-        if (statusElement) {
-            statusElement.textContent = message;
-        }
-        if (progressBar) {
-            progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+        if (window.desktopBoot) {
+            window.desktopBoot.onStepMessage(message, progress);
+        } else {
+            if (statusElement) {
+                statusElement.textContent = message;
+            }
+            if (progressBar) {
+                progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+            }
         }
 
         if (document.body.classList.contains('windows-startup') && typeof setActiveWindow === 'function') {
@@ -2893,6 +2996,10 @@ class WebSocketClient {
         document.body.classList.remove('windows-startup');
         document.body.classList.remove('boot-from-launch');
         document.body.classList.remove('no-animation');
+        // Staged reveal classes come off in desktopBoot.finish(); strip them here too so a
+        // missing or failed controller can never leave the desktop hidden
+        document.body.classList.remove('boot-staged', 'boot-reveal-wallpaper', 'boot-reveal-icons', 'boot-reveal-taskbar', 'boot-reveal-windows');
+        delete document.body.dataset.bootStage;
     }
 
     // Windows Update Modal Methods (Desktop Mode Only)
@@ -3180,6 +3287,11 @@ class WebSocketClient {
                     this.initializationLock = false;
                     return;
                 }
+                // Mid-boot reconnect: steps that already finished this boot do not run twice
+                if (!this.initializationCompleted && step._bootCompleted && !step.runOnReconnect) {
+                    this.currentInitStep++;
+                    continue;
+                }
                 this.currentInitStep++;
                 const stepSkipped = this.initializationCompleted && !step.runOnReconnect;
                 // Calculate progress: base percentage + steps percentage
@@ -3187,6 +3299,9 @@ class WebSocketClient {
                     ((this.currentInitStep / this.totalInitSteps) * WebSocketClient.PROGRESS_INIT_STEPS);
                 if (!step.nonBlocking) {
                     this.updateProgressNotification(step.message, stepProgress);
+                }
+                if (window.desktopBoot && !this.initializationCompleted) {
+                    window.desktopBoot.onInitStep(step);
                 }
 
                 // On reconnection, only run steps flagged as runOnReconnect
@@ -3212,8 +3327,27 @@ class WebSocketClient {
                     this.updateStepByStepButton();
                 }
 
+                // Watchdog: past config.stepWatchdogMs the startup window names the step and offers
+                // Skip; the step races that choice (public/scripts/comp/desktopBoot.js)
+                const watch = (window.isDesktop && window.desktopBoot && !this.initializationCompleted)
+                    ? window.desktopBoot.watchStep(step)
+                    : null;
                 try {
-                    await step.stepFunction();   // run the step
+                    if (watch) {
+                        const outcome = await Promise.race([
+                            Promise.resolve().then(() => step.stepFunction()).then(() => ({ skipped: false })),
+                            watch.promise
+                        ]);
+                        if (outcome && outcome.skipped) {
+                            console.warn(`⏭️ Init step skipped by user: ${step.message}`);
+                        }
+                    } else {
+                        await step.stepFunction();   // run the step
+                    }
+                    step._bootCompleted = true;
+                    if (window.desktopBoot && !this.initializationCompleted) {
+                        window.desktopBoot.onStepDone(step);
+                    }
                 } catch (error) {
                     console.error(`❌ Error in init step "${step.message}":`, error);
                     if (this.connectionPhase === 'auth' || !this.isConnected()) {
@@ -3227,6 +3361,8 @@ class WebSocketClient {
                         error && error.message ? error.message : String(error),
                         error && error.stack ? error.stack : ''
                     );
+                } finally {
+                    if (watch) watch.clear();
                 }
             }
 
@@ -4115,6 +4251,7 @@ class WebSocketClient {
     resetInitialization() {
         this.initializationCompleted = false;
         this.initializationLock = false; // Also reset the lock
+        this.initSteps.forEach((step) => { delete step._bootCompleted; });
     }
 
     /**

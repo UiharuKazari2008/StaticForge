@@ -409,6 +409,8 @@
             document.body.classList.add('no-animation');
             document.body.classList.add('windows-startup');
             document.body.classList.add('windows-classic-theme');
+            // Solid colour behind the logon dialog; desktopBoot.js reveals the layers in stages
+            document.body.classList.add('boot-staged');
         }
     </script>
 
@@ -607,7 +609,7 @@
     <div class="desktop-wallpaper" id="desktopWallpaper"></div>
 
     <!-- Desktop Pre-Startup Login/Connection Modal (Desktop Mode Only) -->
-    <div id="desktopPreStartupModal" class="modal hidden on-top">
+    <div id="desktopPreStartupModal" class="modal hidden on-top boot-dialog">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <span>Please wait...</span>
@@ -655,7 +657,7 @@
     </div>
 
     <!-- Windows Startup Modal (Desktop Mode Only) -->
-    <div id="windowsStartupModal" class="modal hidden on-top">
+    <div id="windowsStartupModal" class="modal hidden on-top boot-dialog">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <!-- <i class="fa-light fa-cube"></i> -->
@@ -667,6 +669,7 @@
         <div class="modal-content modal-padding">
             <div class="modal-body">
                 <div class="windows-startup-status" id="windowsStartupStatus">Initializing...</div>
+                <div class="windows-startup-detail" id="windowsStartupDetail"></div>
                 <div role="progressbar" class="animate">
                     <div id="windowsStartupProgressBar"></div>
                 </div>
@@ -674,12 +677,17 @@
                     style="margin-top: 10px; width: 100%;">
                     <i class="fa-light fa-forward"></i> Advance Step
                 </button>
+                <!-- Shown by desktopBoot.js when an init step runs past its watchdog -->
+                <button type="button" id="windowsStartupSkipStepBtn" class="btn-secondary hidden"
+                    style="margin-top: 10px; width: 100%;">
+                    <i class="fa-light fa-forward-step"></i> Skip this step
+                </button>
             </div>
         </div>
     </div>
 
     <!-- Windows Update Dialog (Desktop Mode Only) -->
-    <div id="windowsUpdateModal" class="modal hidden on-top">
+    <div id="windowsUpdateModal" class="modal hidden on-top boot-dialog">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-display-arrow-down"></i>
@@ -717,7 +725,7 @@
     </div>
 
     <!-- Boot UI debug (desktop / key during startup) — public/scripts/comp/bootUiDebug.js -->
-    <div id="bootUiDebugWindow" class="modal toolbar-visible hidden tool-window on-top"
+    <div id="bootUiDebugWindow" class="modal toolbar-visible hidden tool-window on-top boot-dialog"
         data-window-identifier="boot-ui-debug" data-window-min-width="360" data-window-min-height="140"
         data-window-default-width="420" data-window-default-height="180" data-window-position-mode="manual-only">
         <div class="modal-window-title">
@@ -747,7 +755,7 @@
     </div>
 
     <!-- Dreamscape OS Installation Wizard (>20 files, desktop) -->
-    <div id="dreamscapeOsInstallWizardModal" class="modal hidden on-top">
+    <div id="dreamscapeOsInstallWizardModal" class="modal hidden on-top boot-dialog">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <img src="/static_images/logo_icon.png" alt="" class="icon-image" aria-hidden="true">
@@ -789,7 +797,7 @@
     </div>
 
     <!-- Melaton Network Connection (connect / reconnect / link status) -->
-    <div id="connectionDialModal" class="modal hidden on-top connection-dial-modal dialing">
+    <div id="connectionDialModal" class="modal hidden on-top connection-dial-modal dialing boot-dialog">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-network-wired"></i>
@@ -8582,6 +8590,7 @@ Examples:
     <script src="scripts/ws/wsInboundRegistry.js"></script>
     <script src="scripts/ws/inboundHandlerManifest.js"></script>
     <script src="scripts/comp/generationProgress.js"></script>
+    <script src="scripts/comp/desktopBoot.js"></script>
     <script src="scripts/websocket.js"></script>
     <script src="scripts/comp/clientPerfSampler.js"></script>
     <script src="scripts/comp/serviceWorkerManager.js"></script>
