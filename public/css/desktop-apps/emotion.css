@@ -1,6 +1,6 @@
-/* eMotion (image-to-video) desktop app — public/scripts/comp/desktop-apps/emotion.js.
-   Left: 1:1 image preview that doubles as job progress and the GIF/MP4 result.
-   Right: motion prompt editor on top, controls below, Start/Stop bottom-right.
+/* eMotion LIVE (image-to-video) desktop app — public/scripts/comp/desktop-apps/emotion.js.
+   Title-bar toolbar: [Open Image] | Frames FPS Mode Loop <spacer> Auto-prompt Start/Stop.
+   Body (standard .modal-padding): 1:1 preview (left, progress/result) + full-height motion prompt (right).
    Inset-panel recipe matches public/css/director.css .director-expandable-content. */
 
 #desktopEmotionModal {
@@ -28,12 +28,70 @@
     box-shadow: inset var(--glass-shadow-3);
 }
 
+/* ---- Toolbar ---- */
+
+#desktopEmotionModal .emotion-toolbar-divider {
+    flex: 0 0 1px;
+    align-self: stretch;
+    margin: 4px var(--spacing-xs);
+    background: var(--glass-border-3);
+}
+
+#desktopEmotionModal .emotion-toolbar-spacer {
+    flex: 1 1 auto;
+    min-width: var(--spacing-sm);
+}
+
+#desktopEmotionModal .emotion-number-label {
+    pointer-events: none;
+    color: var(--text-secondary);
+}
+
+#desktopEmotionModal .emotion-number-input {
+    width: 3.5em;
+    text-align: center;
+    -moz-appearance: textfield;
+}
+
+#desktopEmotionModal .emotion-number-input::-webkit-inner-spin-button,
+#desktopEmotionModal .emotion-number-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+#desktopEmotionModal .emotion-mode-dropdown-btn {
+    min-width: 5.5em;
+}
+
+#desktopEmotionModal .emotion-indicator-toggle {
+    position: relative;
+}
+
+#desktopEmotionModal .emotion-indicator-toggle::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 3px;
+    width: 10px;
+    height: 2px;
+    margin-left: -5px;
+    border-radius: 1px;
+    background: var(--glass-border-3);
+    transition: background 0.15s ease;
+}
+
+#desktopEmotionModal .emotion-indicator-toggle[data-state="on"]::after {
+    background: var(--text-accent);
+    box-shadow: 0 0 6px var(--text-accent);
+}
+
 /* ---- Left: preview / progress / result ---- */
 
 #desktopEmotionModal .emotion-preview-panel {
     position: relative;
-    flex: 0 0 auto;
-    width: min(44vw, 440px);
+    flex: 0 1 auto;
+    height: 100%;
+    max-width: 60%;
     aspect-ratio: 1 / 1;
     display: flex;
     align-items: center;
@@ -99,77 +157,46 @@
     right: var(--spacing-sm);
 }
 
-/* ---- Right column: prompt editor + controls ---- */
-
-#desktopEmotionModal .emotion-side-col {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-width: 0;
-    gap: var(--spacing-sm);
-}
+/* ---- Right: motion prompt, full height ---- */
 
 #desktopEmotionModal .emotion-prompt-panel {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
     gap: 6px;
     padding: var(--spacing-sm);
-    flex: 0 0 auto;
 }
 
 #desktopEmotionModal .emotion-prompt-input {
+    flex: 1 1 auto;
     width: 100%;
-    resize: vertical;
+    min-height: 6em;
+    resize: none;
 }
 
 #desktopEmotionModal .emotion-prompt-busy {
     opacity: 0.6;
 }
 
-#desktopEmotionModal .emotion-controls-panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm);
-    flex: 1 1 auto;
-    min-height: 0;
-}
+/* ---- Narrow / mobile: stack preview over prompt ---- */
 
-#desktopEmotionModal .emotion-controls-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
+@media (max-width: 760px) {
+    #desktopEmotionModal .emotion-body {
+        flex-direction: column;
+        overflow-y: auto;
+    }
 
-#desktopEmotionModal .emotion-field-label {
-    color: var(--text-secondary);
-    flex: 0 0 auto;
-}
+    #desktopEmotionModal .emotion-preview-panel {
+        width: 100%;
+        height: auto;
+        max-width: none;
+        flex: 0 0 auto;
+    }
 
-#desktopEmotionModal .emotion-mode-dropdown-btn {
-    width: auto;
-    min-width: 10em;
-}
-
-#desktopEmotionModal .emotion-number-label {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-#desktopEmotionModal .emotion-number-input {
-    width: 64px;
-}
-
-#desktopEmotionModal .emotion-loop-label {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-#desktopEmotionModal .emotion-start-row {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: auto;
+    #desktopEmotionModal .emotion-prompt-panel {
+        flex: 1 0 auto;
+        min-height: 10em;
+    }
 }

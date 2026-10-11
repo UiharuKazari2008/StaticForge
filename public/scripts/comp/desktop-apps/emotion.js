@@ -81,7 +81,7 @@ function emotionLoadFromGallery() {
     const selected = typeof getSelectedFilenames === 'function' ? getSelectedFilenames() : [];
     const filename = Array.isArray(selected) && selected.length ? selected[0] : null;
     if (!filename) {
-        showGlassToast('info', 'eMotion', 'Select an image in the Gallery first.', false, 4000);
+        showGlassToast('info', 'eMotion LIVE', 'Select an image in the Gallery first.', false, 4000);
         return;
     }
     emotionSetSourceImage(filename, typeof activeWorkspace !== 'undefined' ? activeWorkspace : null);
@@ -90,7 +90,7 @@ function emotionLoadFromGallery() {
 function emotionLoadFromStudio() {
     const filename = emotionReadStudioCurrentFilename();
     if (!filename) {
-        showGlassToast('info', 'eMotion', "Studio doesn't have an image loaded right now.", false, 4000);
+        showGlassToast('info', 'eMotion LIVE', "Studio doesn't have an image loaded right now.", false, 4000);
         return;
     }
     emotionSetSourceImage(filename, typeof activeWorkspace !== 'undefined' ? activeWorkspace : null);
@@ -179,7 +179,7 @@ function emotionWaitForDirectorReply(sessionId, timeoutMs) {
 async function emotionRunAutoPrompt() {
     if (!desktopEmotion.sourceFilename) return;
     if (!window.wsClient || !window.wsClient.isConnected()) {
-        showGlassToast('error', 'eMotion', 'WebSocket not connected', false, 4000);
+        showGlassToast('error', 'eMotion LIVE', 'WebSocket not connected', false, 4000);
         return;
     }
     if (typeof initializeDirector === 'function' && !window.directorInstance) {
@@ -187,7 +187,7 @@ async function emotionRunAutoPrompt() {
     }
     const director = window.directorInstance;
     if (!director) {
-        showGlassToast('error', 'eMotion', 'Director is not available', false, 4000);
+        showGlassToast('error', 'eMotion LIVE', 'Director is not available', false, 4000);
         return;
     }
 
@@ -206,7 +206,7 @@ async function emotionRunAutoPrompt() {
             desktopEmotionEls.promptInput.value = reply;
         }
     } catch (err) {
-        showGlassToast('error', 'eMotion', (err && err.message) || 'Director prompt failed', false, 5000);
+        showGlassToast('error', 'eMotion LIVE', (err && err.message) || 'Director prompt failed', false, 5000);
     } finally {
         emotionSetPromptBusy(false);
     }
@@ -235,17 +235,17 @@ function emotionBuildAnimateParams() {
 function emotionStartJob() {
     if (desktopEmotion.running) return;
     if (!desktopEmotion.sourceFilename) {
-        showGlassToast('info', 'eMotion', 'Load a source image first.', false, 4000);
+        showGlassToast('info', 'eMotion LIVE', 'Load a source image first.', false, 4000);
         return;
     }
     const motionPrompt = desktopEmotionEls.promptInput.value.trim();
     if (!motionPrompt) {
-        showGlassToast('info', 'eMotion', 'Write a motion prompt first.', false, 4000);
+        showGlassToast('info', 'eMotion LIVE', 'Write a motion prompt first.', false, 4000);
         desktopEmotionEls.promptInput.focus();
         return;
     }
     if (!window.wsClient || !window.wsClient.isConnected()) {
-        showGlassToast('error', 'eMotion', 'WebSocket not connected', false, 4000);
+        showGlassToast('error', 'eMotion LIVE', 'WebSocket not connected', false, 4000);
         return;
     }
 
@@ -284,7 +284,7 @@ function emotionStartJob() {
         desktopEmotion.result = result && result.formats ? { filename: result.filename, formats: result.formats } : null;
     }).catch((err) => {
         if (desktopEmotion.requestId !== requestId) return;
-        showGlassToast('error', 'eMotion', (err && err.message) || 'Animate failed', false, 6000);
+        showGlassToast('error', 'eMotion LIVE', (err && err.message) || 'Animate failed', false, 6000);
     }).finally(() => {
         ws.off('request_keep_alive', onKeepAlive);
         if (desktopEmotion.requestId !== requestId) return;
@@ -385,12 +385,13 @@ function emotionRenderPreview() {
 function emotionBuildModeDropdown() {
     const wrap = document.createElement('div');
     wrap.id = 'emotionModeDropdown';
-    wrap.className = 'custom-dropdown dark';
+    wrap.className = 'custom-dropdown dark emotion-mode-dropdown';
+    wrap.title = 'Mode';
 
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.id = 'emotionModeDropdownBtn';
-    btn.className = 'custom-dropdown-btn hover-show colored emotion-mode-dropdown-btn';
+    btn.className = 'btn-secondary custom-dropdown-btn emotion-mode-dropdown-btn';
     wrap.appendChild(btn);
 
     const menu = document.createElement('div');
@@ -482,7 +483,7 @@ const ensureDesktopEmotionModal = function () {
     const titleIcon = document.createElement('i');
     titleIcon.className = 'fas fa-photo-film';
     const titleText = document.createElement('span');
-    titleText.textContent = 'eMotion';
+    titleText.textContent = 'eMotion LIVE';
     titleMain.appendChild(titleIcon);
     titleMain.appendChild(titleText);
     title.appendChild(titleMain);
@@ -490,26 +491,73 @@ const ensureDesktopEmotionModal = function () {
     const toolbar = document.createElement('div');
     toolbar.className = 'modal-window-title-toolbar';
 
-    const loadBtn = emotionCreateButton('btn-secondary', 'Load image', 'fas fa-folder-open');
+    const loadBtn = emotionCreateButton('btn-secondary', 'Open image', 'fas fa-folder-open');
     const loadLabel = document.createElement('span');
-    loadLabel.textContent = ' Load Image';
+    loadLabel.textContent = ' Open Image';
     loadBtn.appendChild(loadLabel);
     contextMenu.attachClickMenuToElement(loadBtn, emotionLoadImageMenuConfig);
     toolbar.appendChild(loadBtn);
 
-    const directorToggle = emotionCreateButton('btn-secondary btn-toggle', 'Auto prompt via Director', 'fas fa-wand-magic-sparkles');
-    const directorLabel = document.createElement('span');
-    directorLabel.textContent = ' Auto prompt via Director';
-    directorToggle.appendChild(directorLabel);
+    const divider = document.createElement('div');
+    divider.className = 'emotion-toolbar-divider';
+    toolbar.appendChild(divider);
+
+    const emotionBuildNumberGroup = (labelText, id, min, max, value) => {
+        const group = document.createElement('div');
+        group.className = 'button-group emotion-number-group';
+        const label = document.createElement('span');
+        label.className = 'btn-secondary toolbar-input-segment emotion-number-label';
+        label.textContent = labelText;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.id = id;
+        input.min = String(min);
+        input.max = String(max);
+        input.value = String(value);
+        input.title = labelText + ' (hover + scroll to adjust)';
+        input.className = 'form-control colored toolbar-input-segment emotion-number-input';
+        group.appendChild(label);
+        group.appendChild(input);
+        toolbar.appendChild(group);
+        return input;
+    };
+    const framesInput = emotionBuildNumberGroup('Frames', 'emotionFramesInput', 8, 32, desktopEmotion.frames);
+    const fpsInput = emotionBuildNumberGroup('FPS', 'emotionFpsInput', 4, 24, desktopEmotion.fps);
+
+    toolbar.appendChild(emotionBuildModeDropdown());
+
+    const loopToggle = emotionCreateButton('btn-secondary btn-toggle icon-only emotion-indicator-toggle', 'Loop', 'fas fa-repeat');
+    loopToggle.id = 'emotionLoopToggle';
+    loopToggle.dataset.state = desktopEmotion.loop ? 'on' : 'off';
+    loopToggle.setAttribute('aria-pressed', String(desktopEmotion.loop));
+    loopToggle.addEventListener('click', () => {
+        desktopEmotion.loop = !desktopEmotion.loop;
+        loopToggle.dataset.state = desktopEmotion.loop ? 'on' : 'off';
+        loopToggle.setAttribute('aria-pressed', String(desktopEmotion.loop));
+    });
+    toolbar.appendChild(loopToggle);
+
+    const spacer = document.createElement('div');
+    spacer.className = 'emotion-toolbar-spacer';
+    toolbar.appendChild(spacer);
+
+    const directorToggle = emotionCreateButton('btn-secondary btn-toggle icon-only emotion-indicator-toggle', 'Auto prompt via Director', 'fas fa-wand-magic-sparkles');
     directorToggle.dataset.state = 'off';
+    directorToggle.setAttribute('aria-pressed', 'false');
     directorToggle.addEventListener('click', () => {
         desktopEmotion.autoPromptViaDirector = !desktopEmotion.autoPromptViaDirector;
         directorToggle.dataset.state = desktopEmotion.autoPromptViaDirector ? 'on' : 'off';
+        directorToggle.setAttribute('aria-pressed', String(desktopEmotion.autoPromptViaDirector));
         if (desktopEmotion.autoPromptViaDirector && desktopEmotion.sourceFilename) {
             emotionRunAutoPrompt();
         }
     });
     toolbar.appendChild(directorToggle);
+
+    // Content (icon + label) is owned entirely by emotionRenderStartStop() below.
+    const startStopBtn = emotionCreateButton('btn-primary emotion-start-stop-btn', 'Start', null);
+    startStopBtn.addEventListener('click', emotionHandleStartStopClick);
+    toolbar.appendChild(startStopBtn);
 
     title.appendChild(toolbar);
 
@@ -530,7 +578,7 @@ const ensureDesktopEmotionModal = function () {
 
     // ---- Body: left preview panel, right prompt + controls column ----
     const content = document.createElement('div');
-    content.className = 'modal-content dark';
+    content.className = 'modal-content modal-padding dark';
     const body = document.createElement('div');
     body.className = 'modal-body emotion-body';
 
@@ -578,9 +626,6 @@ const ensureDesktopEmotionModal = function () {
     previewPanel.appendChild(progressOverlay);
     previewPanel.appendChild(resultBadge);
 
-    const sideCol = document.createElement('div');
-    sideCol.className = 'emotion-side-col';
-
     const promptPanel = document.createElement('div');
     promptPanel.className = 'emotion-prompt-panel emotion-inset-panel';
     const promptLabel = document.createElement('div');
@@ -589,77 +634,12 @@ const ensureDesktopEmotionModal = function () {
     const promptInput = document.createElement('textarea');
     promptInput.id = 'emotionPromptInput';
     promptInput.className = 'form-control hover-show colored emotion-prompt-input';
-    promptInput.rows = 3;
     promptInput.placeholder = 'e.g. hair and clothing sway in the wind, camera gently pushes in';
     promptPanel.appendChild(promptLabel);
     promptPanel.appendChild(promptInput);
 
-    const controlsPanel = document.createElement('div');
-    controlsPanel.className = 'emotion-controls-panel emotion-inset-panel';
-
-    const modeRow = document.createElement('div');
-    modeRow.className = 'emotion-controls-row';
-    const modeLabel = document.createElement('span');
-    modeLabel.className = 'emotion-field-label';
-    modeLabel.textContent = 'Mode';
-    modeRow.appendChild(modeLabel);
-    modeRow.appendChild(emotionBuildModeDropdown());
-    controlsPanel.appendChild(modeRow);
-
-    const numbersRow = document.createElement('div');
-    numbersRow.className = 'emotion-controls-row';
-
-    const framesLabel = document.createElement('label');
-    framesLabel.className = 'emotion-number-label';
-    framesLabel.appendChild(document.createTextNode('Frames '));
-    const framesInput = document.createElement('input');
-    framesInput.type = 'number';
-    framesInput.id = 'emotionFramesInput';
-    framesInput.min = '8';
-    framesInput.max = '32';
-    framesInput.value = String(desktopEmotion.frames);
-    framesInput.className = 'form-control hover-show colored emotion-number-input';
-    framesLabel.appendChild(framesInput);
-
-    const fpsLabel = document.createElement('label');
-    fpsLabel.className = 'emotion-number-label';
-    fpsLabel.appendChild(document.createTextNode('FPS '));
-    const fpsInput = document.createElement('input');
-    fpsInput.type = 'number';
-    fpsInput.id = 'emotionFpsInput';
-    fpsInput.min = '4';
-    fpsInput.max = '24';
-    fpsInput.value = String(desktopEmotion.fps);
-    fpsInput.className = 'form-control hover-show colored emotion-number-input';
-    fpsLabel.appendChild(fpsInput);
-
-    const loopLabel = document.createElement('label');
-    loopLabel.className = 'emotion-loop-label';
-    const loopInput = document.createElement('input');
-    loopInput.type = 'checkbox';
-    loopInput.id = 'emotionLoopInput';
-    loopInput.checked = desktopEmotion.loop;
-    loopLabel.appendChild(loopInput);
-    loopLabel.appendChild(document.createTextNode(' Loop'));
-
-    numbersRow.appendChild(framesLabel);
-    numbersRow.appendChild(fpsLabel);
-    numbersRow.appendChild(loopLabel);
-    controlsPanel.appendChild(numbersRow);
-
-    const startRow = document.createElement('div');
-    startRow.className = 'emotion-start-row';
-    // Content (icon + label) is owned entirely by emotionRenderStartStop() below.
-    const startStopBtn = emotionCreateButton('btn-primary emotion-start-stop-btn', 'Start', null);
-    startStopBtn.addEventListener('click', emotionHandleStartStopClick);
-    startRow.appendChild(startStopBtn);
-    controlsPanel.appendChild(startRow);
-
-    sideCol.appendChild(promptPanel);
-    sideCol.appendChild(controlsPanel);
-
     body.appendChild(previewPanel);
-    body.appendChild(sideCol);
+    body.appendChild(promptPanel);
     content.appendChild(body);
 
     modal.appendChild(title);
@@ -679,7 +659,7 @@ const ensureDesktopEmotionModal = function () {
         promptInput,
         framesInput,
         fpsInput,
-        loopInput,
+        loopToggle,
         startStopBtn
     };
 
@@ -691,10 +671,6 @@ const ensureDesktopEmotionModal = function () {
         min: 4, max: 24, step: 1,
         onChange: (value) => { desktopEmotion.fps = value; }
     });
-    loopInput.addEventListener('change', () => {
-        desktopEmotion.loop = !!loopInput.checked;
-    });
-
     emotionRenderStartStop();
     emotionRenderPreview();
 

@@ -31,15 +31,30 @@ function main() {
     assert.match(emotionJs, /'btn-danger close-btn btn-small'/);
     assert.match(emotionJs, /closeBtn\.addEventListener\('click', \(\) => \{\s*closeModal\(modal\);/);
 
-    // 2. Mockup layout: 1:1 preview panel (left) that also carries the progress overlay and the
-    // result badge, prompt editor + controls column (right), Start/Stop bottom-right.
+    // 2. Layout: standard modal body padding; body is only the 1:1 preview (left, progress +
+    // result badge) and the full-height motion prompt (right). Controls panel / bottom Start
+    // row are gone; everything lives in the title-bar toolbar. Stacks on narrow screens.
+    assert.match(emotionJs, /modal-content modal-padding dark/);
     assert.match(emotionJs, /emotion-preview-panel emotion-inset-panel/);
     assert.match(emotionCss, /\.emotion-preview-panel\s*{[^}]*aspect-ratio:\s*1\s*\/\s*1/s);
     assert.match(emotionJs, /emotion-prompt-panel emotion-inset-panel/);
-    assert.match(emotionJs, /emotion-controls-panel emotion-inset-panel/);
-    assert.match(emotionJs, /emotion-start-row/);
-    assert.match(emotionJs, /emotionHandleStartStopClick/);
-    assert.match(emotionCss, /\.emotion-start-row\s*{[^}]*justify-content:\s*flex-end/s);
+    assert.doesNotMatch(emotionJs, /emotion-controls-panel|emotion-start-row|emotion-side-col/);
+    assert.match(emotionCss, /@media \(max-width: 760px\)[\s\S]*flex-direction:\s*column/);
+
+    // Toolbar order: Open Image | divider | Frames FPS Mode Loop | spacer | Director Start/Stop.
+    const order = ["'Open image'", 'emotion-toolbar-divider', "'Frames'", "'FPS'", 'emotionBuildModeDropdown()',
+        "'Loop', 'fas fa-repeat'", 'emotion-toolbar-spacer', "'Auto prompt via Director'", 'emotion-start-stop-btn'];
+    const builder = emotionJs.slice(emotionJs.indexOf('const ensureDesktopEmotionModal'));
+    let last = -1;
+    for (const token of order) {
+        const at = builder.indexOf(token);
+        assert.ok(at > last, 'toolbar order: ' + token);
+        last = at;
+    }
+    assert.match(emotionJs, /startStopBtn\.addEventListener\('click', emotionHandleStartStopClick\)/);
+    assert.match(emotionJs, /btn-secondary btn-toggle icon-only emotion-indicator-toggle/);
+    assert.match(emotionCss, /\.emotion-indicator-toggle\[data-state="on"\]::after/);
+    assert.match(emotionJs, /titleText\.textContent = 'eMotion LIVE'/);
 
     // Inset-panel recipe matches director.css's .director-expandable-content (glass-inset-bg-4
     // background, glass-border-4 border, inset glass-shadow-3 box-shadow).
@@ -48,7 +63,7 @@ function main() {
     // 3. No native <select> anywhere; every picker goes through dropdown.js's custom-dropdown
     // or contextMenu.js's click-menu, same as animateImageDialog.js / dovecote.js.
     assert.doesNotMatch(emotionJs, /createElement\(['"]select['"]\)/);
-    assert.match(emotionJs, /className = 'custom-dropdown dark'/);
+    assert.match(emotionJs, /className = 'custom-dropdown dark emotion-mode-dropdown'/);
     assert.match(emotionJs, /setupDropdown\(wrap, btn, menu,/);
     assert.match(emotionJs, /contextMenu\.attachClickMenuToElement\(loadBtn, emotionLoadImageMenuConfig\)/);
 
@@ -107,7 +122,7 @@ function main() {
     // either), and the launcher calls openDesktopEmotion().
     assert.match(
         modalUtilsJs,
-        /\{ launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion\.png', text: 'eMotion', appMenuLocation: 'tools', action: \(\) => \{ \/\* public\/scripts\/comp\/desktop-apps\/emotion\.js \*\/ openDesktopEmotion\(\); \} \},/
+        /\{ launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion\.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: \(\) => \{ \/\* public\/scripts\/comp\/desktop-apps\/emotion\.js \*\/ openDesktopEmotion\(\); \} \},/
     );
     const toolsSubmenuSection = modalUtilsJs.slice(
         modalUtilsJs.indexOf('function buildToolsSubmenuItems'),
