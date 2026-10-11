@@ -503,8 +503,14 @@ const ensureDesktopEmotionModal = function () {
     divider.className = 'emotion-toolbar-divider';
     toolbar.appendChild(divider);
 
-    // Same markup/classes as Studio's #manualPrintsCount (app.html): bare input, label via title/aria-label.
-    const emotionBuildNumberGroup = (labelText, id, min, max, value) => {
+    // Compact number inputs like Studio's #manualPrintsCount, with a muted FA icon to the left
+    // so Frames vs FPS stay readable without a text label in the toolbar.
+    const emotionBuildNumberGroup = (labelText, id, min, max, value, iconClass) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'emotion-toolbar-number';
+        const icon = document.createElement('i');
+        icon.className = iconClass + ' emotion-toolbar-number-icon';
+        icon.setAttribute('aria-hidden', 'true');
         const input = document.createElement('input');
         input.type = 'number';
         input.id = id;
@@ -516,11 +522,13 @@ const ensureDesktopEmotionModal = function () {
         input.title = labelText + ' (hover + scroll to adjust)';
         input.setAttribute('aria-label', labelText);
         input.className = 'form-control hover-show colored';
-        toolbar.appendChild(input);
+        wrap.appendChild(icon);
+        wrap.appendChild(input);
+        toolbar.appendChild(wrap);
         return input;
     };
-    const framesInput = emotionBuildNumberGroup('Frames', 'emotionFramesInput', 8, 32, desktopEmotion.frames);
-    const fpsInput = emotionBuildNumberGroup('FPS', 'emotionFpsInput', 4, 24, desktopEmotion.fps);
+    const framesInput = emotionBuildNumberGroup('Frames', 'emotionFramesInput', 8, 32, desktopEmotion.frames, 'fas fa-film');
+    const fpsInput = emotionBuildNumberGroup('FPS', 'emotionFpsInput', 4, 24, desktopEmotion.fps, 'fas fa-gauge-high');
 
     toolbar.appendChild(emotionBuildModeButton());
 

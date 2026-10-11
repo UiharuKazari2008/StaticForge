@@ -30,6 +30,22 @@
 
 /* ---- Toolbar ---- */
 
+/* Icon + compact number: muted glyph left of Frames/FPS inputs. */
+#desktopEmotionModal .emotion-toolbar-number {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+#desktopEmotionModal .emotion-toolbar-number-icon {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    line-height: 1;
+    pointer-events: none;
+}
+
+
 #desktopEmotionModal .emotion-toolbar-divider {
     flex: 0 0 1px;
     align-self: stretch;
