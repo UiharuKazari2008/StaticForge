@@ -1487,7 +1487,9 @@ html.no-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image
 }
 
 #manualPrintsCount,
-#manualPrintsCountAlt {
+#manualPrintsCountAlt,
+#emotionFramesInput,
+#emotionFpsInput {
     width: 52px;
     min-width: 52px;
     max-width: 52px;

@@ -56,8 +56,10 @@ function main() {
     assert.match(emotionJs, /'btn-secondary icon-only indicator'/);
     assert.doesNotMatch(emotionCss, /emotion-indicator-toggle/);
     // Frames/FPS sized to ~3 chars like Studio's compact number input.
-    assert.match(emotionJs, /form-control hover-show colored toolbar-input-segment emotion-number-input/);
-    assert.match(emotionCss, /width: calc\(3ch \+ 0\.6em\)/);
+    assert.match(emotionJs, /input.className = .form-control hover-show colored.;/);
+    assert.match(emotionJs, /form-control prompt-textarea textarea-inset/);
+    assert.doesNotMatch(emotionJs, /emotion-number-label/);
+    assert.doesNotMatch(emotionCss, /emotion-number-input/);
     assert.match(emotionJs, /titleText\.textContent = 'eMotion LIVE'/);
 
     // Inset-panel recipe matches director.css's .director-expandable-content (glass-inset-bg-4

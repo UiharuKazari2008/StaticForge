@@ -811,7 +811,7 @@
 }
 
 /* Standalone enabled buttons — popped out */
-.modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment):not(:disabled):not([data-state="on"]):not([data-state="open"]),
+.modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment):not(:disabled):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
 .modal.toolbar-visible .modal-window-title-toolbar > input.form-control.toolbar-input-segment:not([type="hidden"]):not(:disabled) {
     min-width: 2.25rem;
     min-height: 32px;
