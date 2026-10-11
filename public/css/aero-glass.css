@@ -116,11 +116,13 @@ html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-th
         calc(var(--aero-cover-y, 0px) - var(--aero-y, 0px) - var(--modal-drag-y, 0px) - 1px);
 }
 
-/* Inactive windows keep faint glass: same image, calmer tint and sheen (Vista inactive frame) */
+/* Inactive windows keep faint glass: same image, calmer tint and sheen (Vista inactive frame).
+   The caption stays readable on it: 0.6 (live) was too faint on the tinted frame (#404). */
 html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window),
 html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) {
     --aero-tint: var(--aero-tint-inactive);
     --aero-sheen: var(--aero-sheen-inactive);
+    --window-caption-inactive-opacity: 0.82;
 }
 
 /* Inactive caption: a touch dimmer, still light on the tinted frame */
@@ -171,6 +173,32 @@ html[data-glass="live"] body:not(.windows-classic-theme) .modal.modal-maximized:
 /* basic never transitions frame paint */
 html[data-glass="basic"] .modal {
     transition: none;
+}
+
+/* ---------- chrome on the frame glass (#404) ----------
+   IE7 on Vista: the caption and the toolbars sit on the frame itself. In frosted / basic
+   the caption band (title row + title toolbar) paints no fill of its own, so the frame's
+   sheen, tint and frosted wallpaper run through it; the bottom edge and the active glow
+   stay. Maximized windows already carry the Vista dark frame. Live keeps the app.css band.
+   --window-caption-fill is the hook if a window needs a band back. */
+html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme) .modal-window-title,
+html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme) .modal-window-title {
+    background: var(--window-caption-fill, none);
+}
+
+/* ---------- client area (#404) ----------
+   Solid bodies by default: the frame is the glass, the window is a tool. app.css reads
+   --window-body-bg on .modal-content.dark / .modal-body.dark. DreamStudio keeps its own
+   translucent body (manual-modal.css); the Director opts back into glass here. The
+   windowed workspace is not a .modal-content and stays as it was. */
+html[data-glass="frosted"] .modal,
+html[data-glass="basic"] .modal {
+    --window-body-bg: var(--glass-windows-full-bg, hsl(0 0% 12% / 97%));
+}
+
+html[data-glass="frosted"] #directorWindow,
+html[data-glass="basic"] #directorWindow {
+    --window-body-bg: var(--glass-windows-semi-bg, var(--glass-layer-dark-bg));
 }
 
 /* ---------- surfaces inside windows that share the frame glass ----------

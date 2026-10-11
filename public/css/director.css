@@ -3319,9 +3319,10 @@ html.disable-blur .director-attach-chip {
 }
 
 /* #directorWindow: the header is the title-bar toolbar row (toolbar-visible),
-   like the Calculator and Atelier. The shared chrome in grimoire-browser.css /
-   modal-window-title-toolbar.css only matches direct toolbar children, and the
-   header nests its controls, so the same rules are repeated here:
+   like the Calculator and Atelier. The shared chrome in modal-window-title-toolbar.css
+   only matches direct toolbar children, and the header nests its controls, so the same
+   rules are repeated here with the double id so they outrank the docked header rules
+   (#404 kept this as a documented variant):
    - buttons: "Standalone enabled buttons - popped out" (+ hover, toggle on, inactive window)
    - status badges: the sunken group shell (.button-group:has(> .toolbar-input-segment)),
      tinted text, no text shadow

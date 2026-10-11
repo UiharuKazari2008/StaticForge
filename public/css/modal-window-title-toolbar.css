@@ -5,6 +5,32 @@
    Per-app stylesheets size their own widgets inside the toolbar; they do not
    re-declare these. Frame glass: aero-glass.css. Classic theme: windows-classic-theme.css.
    Linked right before grimoire-browser.css (cascade position of the block moved from there, #404). */
+
+/* Caption-control tokens (#404). The caption buttons read these, so an inactive window dims
+   its minimize / maximize / close in one place instead of per app; aero-glass.css retunes
+   the caption opacity for the frame glass modes. Values are the former literals. */
+.modal {
+    --window-control-bg: hsl(0deg 0% 0% / 30%);
+    --window-control-fg: var(--text-secondary);
+    --window-control-border: #0000004f;
+    --window-control-glow: inset 0 0 15px #ffffff36;
+    --window-control-close-bg: hsl(0deg 76% 40% / 60%);
+    --window-control-close-fg: #ffffff;
+    --window-control-close-glow: inset 0 0 15px #ff1111b5;
+    --window-caption-inactive-opacity: 0.6;
+}
+
+/* Inactive: flat, no glow, close stays neutral until hovered (Vista) */
+.modal:not(.active-window) {
+    --window-control-bg: hsl(0deg 0% 0% / 16%);
+    --window-control-fg: var(--text-muted);
+    --window-control-border: #00000033;
+    --window-control-glow: none;
+    --window-control-close-bg: hsl(0deg 0% 0% / 16%);
+    --window-control-close-fg: var(--text-muted);
+    --window-control-close-glow: none;
+}
+
 .modal-window-title-toolbar {
     display: flex;
     align-items: center;
@@ -277,6 +303,7 @@
     top: -1px;
     gap: 0;
     padding: 0;
+    user-select: none;
     border: 1px solid var(--glass-border-5);
     border-bottom-left-radius: calc(var(--border-radius-md) + 1px);
     border-bottom-right-radius: calc(var(--border-radius-md) + 1px);
@@ -1223,15 +1250,15 @@ body.user-icons .icon-image {
     min-height: 24px;
     min-width: 38px;
     font-size: 0.75em;
-    border-color: #0000004f;
-    border-bottom-color: #0000004f;
-    color: #ffffff;
-    box-shadow: inset 0 0 15px #ffffff36;
+    border-color: var(--window-control-border);
+    border-bottom-color: var(--window-control-border);
+    color: var(--window-control-close-fg);
+    box-shadow: var(--window-control-glow);
 }
 
 .modal-window-controls button.btn-secondary {
-    background: hsl(0deg 0% 0% / 30%);
-    color: var(--text-secondary);
+    background: var(--window-control-bg);
+    color: var(--window-control-fg);
 }
 
 .modal-window-controls button i,
@@ -1257,11 +1284,11 @@ body.user-icons .icon-image {
 }
 
 .modal-window-controls button:first-child {
-    border-left-color: #0000004f;
+    border-left-color: var(--window-control-border);
 }
 
 .modal-window-controls button:last-child {
-    border-right-color: #0000004f;
+    border-right-color: var(--window-control-border);
 }
 
 .modal-window-controls button:last-child:not(:only-child),
@@ -1275,8 +1302,9 @@ body.user-icons .icon-image {
 .modal-window-controls button.close-btn,
 .modal-window-controls button.modal-close {
     min-width: 58px;
-    background: hsl(0deg 76% 40% / 60%);
-    box-shadow: inset 0 0 15px #ff1111b5;
+    background: var(--window-control-close-bg);
+    color: var(--window-control-close-fg);
+    box-shadow: var(--window-control-close-glow);
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
@@ -1288,17 +1316,18 @@ body.user-icons .icon-image {
     }
 }
 
-/* Non-active window styling */
+/* Non-active window styling (live mode frame; aero-glass.css paints frosted / basic frames) */
 .modal:not(.active-window) {
     box-shadow: 0px 0px 5px 1px #00000021, inset 0 0 0 1px #ffffff14;
     -webkit-backdrop-filter: saturate(1.0) contrast(0.5) brightness(1.0);
     backdrop-filter: saturate(1.0) contrast(0.5) brightness(1.0);
 }
 
+/* Inactive caption: softer outline, glow in text-shadow like the active caption (a
+   drop-shadow filter composited every resting caption, #400 / #404) */
 .modal:not(.active-window) .modal-window-title-main {
-    -webkit-filter: drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.2));
-    filter: drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.2));
-    text-shadow: -1px -1px 0 rgba(0, 0, 0, 0.25),
+    text-shadow: 0 0 5px rgba(0, 0, 0, 0.2),
+        -1px -1px 0 rgba(0, 0, 0, 0.25),
         1px -1px 0 rgba(0, 0, 0, 0.25),
         -1px 1px 0 rgba(0, 0, 0, 0.25),
         1px 1px 0 rgba(0, 0, 0, 0.25),
@@ -1311,16 +1340,7 @@ body.user-icons .icon-image {
 .modal:not(.active-window) .modal-window-title-main span,
 .modal:not(.active-window) .modal-window-title-main i,
 .modal:not(.active-window) .modal-window-title-main img {
-    opacity: 0.6;
-}
-
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .modal:not(.active-window) .modal-window-controls button.close-btn:not(:hover) {
-        background: hsl(0deg 0% 0% / 30%);
-        color: var(--text-secondary);
-        border-color: #0000004f;
-        box-shadow: inset 0 0 15px #ffffff36;
-    }
+    opacity: var(--window-caption-inactive-opacity);
 }
 
 

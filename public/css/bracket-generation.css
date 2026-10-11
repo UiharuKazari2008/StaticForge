@@ -84,6 +84,16 @@
     flex-shrink: 0;
 }
 
+/* Keyword picker and menu live on the title toolbar, right-aligned (#404); the toolbar
+   does not scroll so their menus can drop below it. */
+#bracketGenerationModal .modal-window-title-toolbar {
+    overflow: visible;
+}
+
+#bracketGenerationModal .modal-window-title-toolbar > #bracketGenKeywordDropdown {
+    margin-left: auto;
+}
+
 .bracket-generation-modal-content {
     display: flex;
     flex-direction: column;
