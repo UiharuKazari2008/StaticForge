@@ -37,15 +37,9 @@ function main() {
     // owners are valid, and reads scoped to an owner that doesn't hold the id 404.
     assert.strictEqual(mail.readMail('hoshino', menmaInbox[0].id), null);
 
-    // A bot/job may never write into Yukimi's mailbox, whether sending or forwarding.
-    assert.throws(() => mail.sendMail({ fromOwner: 'menma', to: 'yukimi', subject: 'x', body: 'y' }), /Yukimi/);
-    try {
-        mail.sendMail({ fromOwner: 'menma', to: 'yukimi', subject: 'x', body: 'y' });
-        assert.fail('expected DovecoteError');
-    } catch (err) {
-        assert.ok(err instanceof mail.DovecoteError);
-        assert.strictEqual(err.code, 'FORBIDDEN');
-    }
+    // Bots may send into Yukimi's mailbox (Yukimi 2026-10-10) but still can't read it.
+    mail.sendMail({ fromOwner: 'menma', to: 'yukimi', subject: 'x', body: 'y' });
+    assert.strictEqual(mail.listMail('yukimi', { folder: 'inbox' }).length >= 1, true);
 
     // Bot-to-bot send/forward is fine; it is only Yukimi's mailbox that is walled off.
     mail.sendMail({ fromOwner: 'menma', to: 'rook', subject: 'ping', body: 'pong' });

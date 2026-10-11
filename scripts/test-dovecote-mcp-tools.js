@@ -62,10 +62,9 @@ async function main() {
     assert.strictEqual(ivoryInbox.length, 1);
     assert.strictEqual(ivoryInbox[0].subject, 'Fwd: hi');
 
-    // Bots can never write into Yukimi's mailbox over MCP, by send or forward.
-    const forbiddenSend = await callTool(gr, reqFor('Menma'), 'send_mail', { to: 'yukimi', subject: 'x', body: 'y' });
-    assert.strictEqual(forbiddenSend.isError, true);
-    assert.strictEqual(textOf(forbiddenSend).code, 'FORBIDDEN');
+    // Bots may send to Yukimi over MCP (Yukimi 2026-10-10); forwarding into her box stays blocked.
+    const okSend = await callTool(gr, reqFor('Menma'), 'send_mail', { to: 'yukimi', subject: 'x', body: 'y' });
+    assert.notStrictEqual(okSend.isError, true);
 
     const forbiddenFwd = await callTool(gr, reqFor('Rook'), 'forward_mail', { id: mailId, to: 'yukimi' });
     assert.strictEqual(forbiddenFwd.isError, true);

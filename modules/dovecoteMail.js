@@ -108,17 +108,13 @@ function sanitizeFormat(format) {
 }
 
 /**
- * fromOwner is always server-resolved. A bot/job sender may only target
- * another bot/job mailbox — never Yukimi's, which only she can write to.
+ * fromOwner is always server-resolved. Bots/jobs may send to any mailbox,
+ * including Yukimi's (Yukimi 2026-10-10); they still can never READ hers.
  */
 function sendMail({ fromOwner, to, subject, body, format, replyToId }) {
     if (!isValidOwner(fromOwner)) throw new DovecoteError('Unknown sender mailbox', 'UNKNOWN_SENDER');
     const toOwner = String(to || '').trim().toLowerCase();
     if (!isValidOwner(toOwner)) throw new DovecoteError(`Unknown recipient mailbox: ${to}`, 'UNKNOWN_RECIPIENT');
-    if (isBotOwner(fromOwner) && toOwner === HUMAN_OWNER) {
-        audit(fromOwner, 'send_mail', null, false, 'bot attempted to write to Yukimi mailbox');
-        throw new DovecoteError('Bots and jobs cannot send mail into Yukimi\'s mailbox', 'FORBIDDEN');
-    }
     const subjectText = String(subject || '').slice(0, 300);
     const bodyText = String(body || '');
     const formatValue = sanitizeFormat(format);
