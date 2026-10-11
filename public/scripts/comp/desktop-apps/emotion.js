@@ -503,23 +503,20 @@ const ensureDesktopEmotionModal = function () {
     divider.className = 'emotion-toolbar-divider';
     toolbar.appendChild(divider);
 
+    // Same markup/classes as Studio's #manualPrintsCount (app.html): bare input, label via title/aria-label.
     const emotionBuildNumberGroup = (labelText, id, min, max, value) => {
-        const group = document.createElement('div');
-        group.className = 'button-group emotion-number-group';
-        const label = document.createElement('span');
-        label.className = 'btn-secondary toolbar-input-segment emotion-number-label';
-        label.textContent = labelText;
         const input = document.createElement('input');
         input.type = 'number';
         input.id = id;
         input.min = String(min);
         input.max = String(max);
+        input.step = '1';
         input.value = String(value);
+        input.inputMode = 'numeric';
         input.title = labelText + ' (hover + scroll to adjust)';
-        input.className = 'form-control hover-show colored toolbar-input-segment emotion-number-input';
-        group.appendChild(label);
-        group.appendChild(input);
-        toolbar.appendChild(group);
+        input.setAttribute('aria-label', labelText);
+        input.className = 'form-control hover-show colored';
+        toolbar.appendChild(input);
         return input;
     };
     const framesInput = emotionBuildNumberGroup('Frames', 'emotionFramesInput', 8, 32, desktopEmotion.frames);
@@ -629,14 +626,10 @@ const ensureDesktopEmotionModal = function () {
 
     const promptPanel = document.createElement('div');
     promptPanel.className = 'emotion-prompt-panel emotion-inset-panel';
-    const promptLabel = document.createElement('div');
-    promptLabel.className = 'form-hint';
-    promptLabel.textContent = 'Motion prompt';
     const promptInput = document.createElement('textarea');
     promptInput.id = 'emotionPromptInput';
-    promptInput.className = 'form-control hover-show colored emotion-prompt-input';
-    promptInput.placeholder = 'e.g. hair and clothing sway in the wind, camera gently pushes in';
-    promptPanel.appendChild(promptLabel);
+    promptInput.className = 'form-control prompt-textarea textarea-inset emotion-prompt-input';
+    promptInput.placeholder = 'Motion prompt, e.g. hair and clothing sway in the wind, camera gently pushes in';
     promptPanel.appendChild(promptInput);
 
     body.appendChild(previewPanel);

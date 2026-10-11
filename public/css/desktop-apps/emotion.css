@@ -42,28 +42,6 @@
     min-width: var(--spacing-sm);
 }
 
-#desktopEmotionModal .emotion-number-label {
-    pointer-events: none;
-    color: var(--text-secondary);
-}
-
-#desktopEmotionModal .emotion-number-input {
-    /* Sized like Studio's #manualPrintsCount compact input: ~3 characters. */
-    width: calc(3ch + 0.6em);
-    min-width: 0;
-    max-width: calc(3ch + 0.6em);
-    flex: 0 0 auto;
-    padding: 0.25em 0.3em;
-    text-align: center;
-    -moz-appearance: textfield;
-}
-
-#desktopEmotionModal .emotion-number-input::-webkit-inner-spin-button,
-#desktopEmotionModal .emotion-number-input::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-
 /* Toolbar fits on one row: no wrap, no scroll. */
 #desktopEmotionModal .modal-window-title-toolbar {
     flex-wrap: nowrap;
