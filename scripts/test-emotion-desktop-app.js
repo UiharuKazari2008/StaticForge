@@ -107,7 +107,7 @@ function main() {
     // either), and the launcher calls openDesktopEmotion().
     assert.match(
         modalUtilsJs,
-        /\{ launchId: 'emotion', icon: 'fas fa-photo-film', text: 'eMotion', appMenuLocation: 'tools', action: \(\) => \{ \/\* public\/scripts\/comp\/desktop-apps\/emotion\.js \*\/ openDesktopEmotion\(\); \} \},/
+        /\{ launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion\.png', text: 'eMotion', appMenuLocation: 'tools', action: \(\) => \{ \/\* public\/scripts\/comp\/desktop-apps\/emotion\.js \*\/ openDesktopEmotion\(\); \} \},/
     );
     const toolsSubmenuSection = modalUtilsJs.slice(
         modalUtilsJs.indexOf('function buildToolsSubmenuItems'),
