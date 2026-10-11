@@ -34,7 +34,7 @@ MAX_BYTES = 32 * 1024 * 1024
 MAX_EDGE = 4096
 MAX_QUEUE = 16
 JOB_TYPES = ("upscale", "animate")
-RESULT_FORMATS = {"gif": "image/gif", "mp4": "video/mp4", "webp": "image/webp"}
+RESULT_FORMATS = {"gif": "image/gif", "mp4": "video/mp4", "webp": "image/webp", "webm": "video/webm"}
 
 
 def _env_int(name, default):
@@ -69,6 +69,11 @@ class Job:
         self.backend = fields.get("backend")
         self.status = "queued"
         self.progress = 0
+        self.stage = None
+        self.step = None
+        self.total_steps = None
+        self.preview = None
+        self.preview_seq = 0
         self.error = None
         self.result = None
         self.created = time.time()
@@ -80,6 +85,10 @@ class Job:
             "type": self.type,
             "status": self.status,
             "progress": self.progress,
+            "stage": self.stage,
+            "step": self.step,
+            "total_steps": self.total_steps,
+            "preview_seq": self.preview_seq,
             "error": self.error,
         }
         if self.type == "animate":
@@ -289,10 +298,19 @@ async def worker_loop(app):
             app.state.queue.task_done()
             continue
         job.status = "running"
-        job.progress = 5
+        job.progress = 1
+        job.stage = "starting"
 
-        def on_progress(value):
+        def on_progress(value, stage=None, step=None, total=None, preview=None):
+            # Monotonic: never report a lower percentage than already shown.
             job.progress = max(job.progress, min(99, int(value)))
+            if stage:
+                job.stage = stage
+                job.step = step
+                job.total_steps = total
+            if preview:
+                job.preview = preview
+                job.preview_seq += 1
 
         try:
             _ensure_vram_for(app, job)
@@ -307,6 +325,7 @@ async def worker_loop(app):
                 )
             job.status = "completed"
             job.progress = 100
+            job.stage = "done"
             job.error = None
         except Exception as exc:
             job.status = "failed"
@@ -457,6 +476,19 @@ async def job_status(job_id: str, request: Request):
     return job.public()
 
 
+@app.get("/jobs/{job_id}/preview")
+async def job_preview(job_id: str, request: Request):
+    denied = _auth_or_response(request)
+    if denied:
+        return denied
+    job = app.state.jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "job not found"}, status_code=404)
+    if not job.preview:
+        return JSONResponse({"error": "no preview yet"}, status_code=404)
+    return Response(content=job.preview, media_type="image/jpeg", headers={"X-Preview-Seq": str(job.preview_seq)})
+
+
 @app.get("/jobs/{job_id}/result")
 async def job_result(job_id: str, request: Request, format: str = "gif"):
     denied = _auth_or_response(request)
@@ -472,7 +504,7 @@ async def job_result(job_id: str, request: Request, format: str = "gif"):
     if job.type == "animate":
         fmt = (format or "gif").strip().lower()
         if fmt not in RESULT_FORMATS:
-            return JSONResponse({"error": "format must be one of: gif, mp4, webp"}, status_code=400)
+            return JSONResponse({"error": "format must be one of: gif, mp4, webp, webm"}, status_code=400)
         content = job.result.get(fmt)
         if not content:
             return JSONResponse({"error": "format not available: {0}".format(fmt)}, status_code=404)

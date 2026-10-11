@@ -18,6 +18,7 @@ before switching (see _ensure_vram_for).
 
 import io
 import math
+import traceback
 import os
 import tempfile
 
@@ -29,10 +30,27 @@ WAN_MODEL = os.environ.get("RUIKO_WAN_MODEL", "Wan-AI/Wan2.1-I2V-14B-480P-Diffus
 WAN_GGUF_REPO = os.environ.get("RUIKO_WAN_GGUF_REPO", "city96/Wan2.1-I2V-14B-480P-gguf")
 WAN_GGUF_FILE = os.environ.get("RUIKO_WAN_GGUF_FILE", "wan2.1-i2v-14b-480p-Q4_K_M.gguf")
 LTX_MODEL = os.environ.get("RUIKO_LTX_MODEL", "Lightricks/LTX-Video")
+# Quality path (default): LTX-Video 0.9.8 13B distilled. The 13B transformer is a
+# GGUF quant (QuantStack) run under block-level group offload so only one block
+# sits in VRAM at a time; T5 is reused from the base LTX-Video repo cache.
+# RUIKO_LTX_VARIANT=base restores the old 2B 0.9.1 path (the "before" baseline).
+LTX_VARIANT = os.environ.get("RUIKO_LTX_VARIANT", "13b-distilled")
+LTX13_REPO = os.environ.get("RUIKO_LTX13_REPO", "Lightricks/LTX-Video-0.9.8-13B-distilled")
+LTX13_GGUF_REPO = os.environ.get("RUIKO_LTX13_GGUF_REPO", "QuantStack/LTXV-13B-0.9.8-distilled-GGUF")
+LTX13_GGUF_FILE = os.environ.get("RUIKO_LTX13_GGUF_FILE", "LTXV-13B-0.9.8-distilled-Q8_0.gguf")
+# Distilled schedule from the 0.9.8 model card (guidance off, low decode noise).
+LTX13_TIMESTEPS = [1000, 993, 987, 981, 975, 909, 725, 0.03]
+LTX_NEGATIVE = (
+    "worst quality, low quality, blurry, out of focus, motion blur, smeared, jittery, "
+    "inconsistent motion, distorted face, deformed hands, artifacts, watermark, text"
+)
+# Frame enhance: RealESRGAN anime 6B 4x then Lanczos back down (supersampled sharpen).
+LTX_ENHANCE_MODEL = os.environ.get("RUIKO_LTX_ENHANCE_MODEL", "RealESRGAN_x4plus_anime_6B")
+LTX_ENHANCE = os.environ.get("RUIKO_LTX_ENHANCE", "1") not in ("0", "false", "")
 
 LOOP_MAX_EDGE = 512
 WAN_MAX_EDGE = 480
-LTX_MAX_EDGE = 512
+LTX_MAX_EDGE = int(os.environ.get("RUIKO_LTX_MAX_EDGE", "768" if LTX_VARIANT != "base" else "512"))
 
 _pipelines = {}
 
@@ -149,12 +167,164 @@ def _load_ltx_pipeline():
     return pipeline
 
 
+# Cheap latent previews: no VAE decode (that would cost VRAM/time on an 8 GB
+# card). SD1.5 latents have published latent->RGB factors; LTX/Wan latents
+# get an approximate RGB from their first three channels, min/max normalized.
+SD15_LATENT_RGB = [
+    [0.3512, 0.2297, 0.3227],
+    [0.3250, 0.4974, 0.2350],
+    [-0.2829, 0.1762, 0.2721],
+    [-0.2120, -0.2616, -0.7177],
+]
+PREVIEW_FRAMES = 6
+PREVIEW_HEIGHT = 96
+
+
+def _latents_to_strip(latents, sd15=False):
+    """latents: tensor [B, C, F, H, W]. Returns JPEG bytes of a filmstrip."""
+    import numpy as np
+    from PIL import Image
+
+    lat = latents[0].detach().float().cpu().numpy()  # C, F, H, W
+    channels, count = lat.shape[0], lat.shape[1]
+    picks = sorted(set(int(round(i * (count - 1) / max(1, PREVIEW_FRAMES - 1))) for i in range(min(PREVIEW_FRAMES, count))))
+    tiles = []
+    for idx in picks:
+        frame = lat[:, idx]  # C, H, W
+        if sd15 and channels == 4:
+            rgb = np.einsum("chw,cr->hwr", frame, np.asarray(SD15_LATENT_RGB, dtype="float32"))
+            rgb = np.clip((rgb + 1.0) * 127.5, 0, 255)
+        else:
+            rgb = np.transpose(frame[:3], (1, 2, 0))
+            lo, hi = np.percentile(rgb, 2), np.percentile(rgb, 98)
+            rgb = np.clip((rgb - lo) / max(1e-6, hi - lo) * 255.0, 0, 255)
+        tile = Image.fromarray(rgb.astype("uint8"), "RGB")
+        width = max(1, int(round(tile.width * PREVIEW_HEIGHT / float(tile.height))))
+        tiles.append(tile.resize((width, PREVIEW_HEIGHT), Image.BILINEAR))
+    return _strip_jpeg(tiles)
+
+
+def _frames_to_strip(frames):
+    from PIL import Image
+
+    count = len(frames)
+    picks = sorted(set(int(round(i * (count - 1) / max(1, PREVIEW_FRAMES - 1))) for i in range(min(PREVIEW_FRAMES, count))))
+    tiles = []
+    for idx in picks:
+        tile = frames[idx].convert("RGB")
+        width = max(1, int(round(tile.width * PREVIEW_HEIGHT / float(tile.height))))
+        tiles.append(tile.resize((width, PREVIEW_HEIGHT), Image.BILINEAR))
+    return _strip_jpeg(tiles)
+
+
+def _strip_jpeg(tiles):
+    from PIL import Image
+
+    if not tiles:
+        return None
+    strip = Image.new("RGB", (sum(t.width for t in tiles) + 2 * (len(tiles) - 1), PREVIEW_HEIGHT), (0, 0, 0))
+    x = 0
+    for tile in tiles:
+        strip.paste(tile, (x, 0))
+        x += tile.width + 2
+    buf = io.BytesIO()
+    strip.save(buf, format="JPEG", quality=70)
+    return buf.getvalue()
+
+
+def _report(progress, pct, stage, step=None, total=None, preview=None):
+    if not progress:
+        return
+    try:
+        progress(pct, stage=stage, step=step, total=total, preview=preview)
+    except TypeError:
+        progress(pct)
+
+
+def _step_callback(progress, total, to_strip, lo=10, hi=85):
+    """diffusers callback_on_step_end: per-step progress + a latent preview every N steps."""
+    every = max(1, total // 8)
+
+    def callback(pipe, step_index, timestep, callback_kwargs):
+        step = step_index + 1
+        preview = None
+        if step % every == 0 or step == total:
+            try:
+                preview = to_strip(pipe, callback_kwargs.get("latents"))
+            except Exception:
+                preview = None
+        step = min(step, total)
+        _report(progress, lo + (hi - lo) * step / float(total), "generating", step, total, preview)
+        return callback_kwargs
+
+    return callback
+
+
+def _load_ltx13_pipeline():
+    cached = _pipelines.get("ltx")
+    if cached is not None:
+        return cached
+    import torch
+    from diffusers import GGUFQuantizationConfig, LTXConditionPipeline, LTXVideoTransformer3DModel
+    from diffusers.hooks import apply_group_offloading
+    from huggingface_hub import hf_hub_download
+    from transformers import T5EncoderModel
+
+    cache_dir = _hf_cache_dir()
+    gguf_path = hf_hub_download(LTX13_GGUF_REPO, LTX13_GGUF_FILE, cache_dir=cache_dir)
+    transformer = LTXVideoTransformer3DModel.from_single_file(
+        gguf_path,
+        quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+        torch_dtype=torch.bfloat16,
+        config=LTX13_REPO,
+        subfolder="transformer",
+        cache_dir=cache_dir,
+    )
+    text_encoder = T5EncoderModel.from_pretrained(
+        LTX_MODEL, subfolder="text_encoder", cache_dir=cache_dir, torch_dtype=torch.bfloat16
+    )
+    pipeline = LTXConditionPipeline.from_pretrained(
+        LTX13_REPO, transformer=transformer, text_encoder=text_encoder,
+        cache_dir=cache_dir, torch_dtype=torch.bfloat16,
+    )
+    pipeline.vae.enable_tiling()
+    device = torch.device("cuda")
+    cpu = torch.device("cpu")
+    # GGUF params don't survive sequential offload's meta hook; group offload moves
+    # whole blocks with .to(), which keeps the quant type.
+    apply_group_offloading(transformer, onload_device=device, offload_device=cpu,
+                           offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+    apply_group_offloading(text_encoder, onload_device=device, offload_device=cpu,
+                           offload_type="block_level", num_blocks_per_group=1)
+    pipeline.vae.to(device)
+    _pipelines["ltx"] = pipeline
+    return pipeline
+
+
+def _enhance_frames(frames, progress):
+    """RealESRGAN anime 6B 4x per frame, Lanczos back to the original size."""
+    from PIL import Image
+    from ruiko_upscaler import infer
+
+    out = []
+    for index, frame in enumerate(frames):
+        buf = io.BytesIO()
+        frame.convert("RGB").save(buf, format="PNG")
+        up = infer.upscale_image_bytes(buf.getvalue(), LTX_ENHANCE_MODEL, 4)
+        big = Image.open(io.BytesIO(up)).convert("RGB")
+        out.append(big.resize(frame.size, Image.Resampling.LANCZOS))
+        _report(progress, 85 + 3 * (index + 1) / float(len(frames)), "enhancing", index + 1, len(frames))
+    infer.unload_models()
+    return out
+
+
 def _run_loop(image, motion_prompt, frames, fps, progress):
     width, height = _fit_dims(*image.size, max_edge=LOOP_MAX_EDGE)
     resized = image.resize((width, height))
+    _report(progress, 2, "loading model")
     pipeline = _load_loop_pipeline()
-    if progress:
-        progress(15)
+    steps = 25
+    _report(progress, 10, "generating", 0, steps)
     # Image-conditioned via vid2vid: AnimateDiff has no official img2vid
     # pipeline, so the still is replicated into a "video" and partially
     # re-noised (strength<1) with the motion module guiding the diff. This
@@ -164,32 +334,35 @@ def _run_loop(image, motion_prompt, frames, fps, progress):
         video=video,
         prompt=motion_prompt,
         strength=0.75,
-        num_inference_steps=25,
+        num_inference_steps=steps,
         guidance_scale=7.5,
+        callback_on_step_end=_step_callback(
+            progress, int(steps * 0.75) or steps, lambda pipe, lat: _latents_to_strip(lat, sd15=True)
+        ),
+        callback_on_step_end_tensor_inputs=["latents"],
     )
-    if progress:
-        progress(85)
     return list(output.frames[0])
 
 
 def _run_wan(image, motion_prompt, frames, fps, progress):
     width, height = _fit_dims(*image.size, max_edge=WAN_MAX_EDGE, multiple=16)
     resized = image.resize((width, height))
+    _report(progress, 2, "loading model")
     pipeline = _load_wan_pipeline()
-    if progress:
-        progress(15)
+    steps = 30
+    _report(progress, 10, "generating", 0, steps)
     output = pipeline(
         image=resized,
         prompt=motion_prompt,
         height=height,
         width=width,
         num_frames=frames,
-        num_inference_steps=30,
+        num_inference_steps=steps,
         guidance_scale=5.0,
         output_type="pil",
+        callback_on_step_end=_step_callback(progress, steps, lambda pipe, lat: _latents_to_strip(lat)),
+        callback_on_step_end_tensor_inputs=["latents"],
     )
-    if progress:
-        progress(85)
     return list(output.frames[0])
 
 
@@ -201,12 +374,78 @@ def _ltx_frame_count(frames):
 
 
 def _run_ltx(image, motion_prompt, frames, fps, progress):
+    if LTX_VARIANT == "base":
+        return _run_ltx_base(image, motion_prompt, frames, fps, progress)
+    return _run_ltx13(image, motion_prompt, frames, fps, progress)
+
+
+def _run_ltx13(image, motion_prompt, frames, fps, progress):
+    from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
+
     width, height = _fit_dims(*image.size, max_edge=LTX_MAX_EDGE, multiple=32)
     resized = image.resize((width, height))
-    pipeline = _load_ltx_pipeline()
-    if progress:
-        progress(15)
+    _report(progress, 2, "loading model")
+    pipeline = _load_ltx13_pipeline()
     ltx_frames = _ltx_frame_count(frames)
+    steps = len(LTX13_TIMESTEPS)
+    _report(progress, 10, "generating", 0, steps)
+
+    def ltx_strip(pipe, lat):
+        if lat is not None and lat.dim() == 3:
+            lat = pipe._unpack_latents(
+                lat, (ltx_frames - 1) // pipe.vae_temporal_compression_ratio + 1,
+                height // pipe.vae_spatial_compression_ratio, width // pipe.vae_spatial_compression_ratio,
+                pipe.transformer_spatial_patch_size, pipe.transformer_temporal_patch_size,
+            )
+        return _latents_to_strip(lat)
+
+    output = pipeline(
+        conditions=[LTXVideoCondition(image=resized, frame_index=0)],
+        prompt=motion_prompt,
+        negative_prompt=LTX_NEGATIVE,
+        height=height,
+        width=width,
+        num_frames=ltx_frames,
+        frame_rate=max(1, int(fps)),
+        timesteps=LTX13_TIMESTEPS,
+        guidance_scale=1.0,
+        guidance_rescale=0.7,
+        decode_timestep=0.05,
+        decode_noise_scale=0.025,
+        image_cond_noise_scale=0.0,
+        output_type="pil",
+        callback_on_step_end=_step_callback(progress, steps, ltx_strip, hi=82),
+        callback_on_step_end_tensor_inputs=["latents"],
+    )
+    out_frames = list(output.frames[0])[:frames]
+    if LTX_ENHANCE:
+        try:
+            out_frames = _enhance_frames(out_frames, progress)
+        except Exception:
+            # Enhance is optional polish; never lose a 30-minute generation to it.
+            traceback.print_exc()
+    return out_frames
+
+
+def _run_ltx_base(image, motion_prompt, frames, fps, progress):
+    width, height = _fit_dims(*image.size, max_edge=LTX_MAX_EDGE, multiple=32)
+    resized = image.resize((width, height))
+    _report(progress, 2, "loading model")
+    pipeline = _load_ltx_pipeline()
+    steps = 30
+    ltx_frames = _ltx_frame_count(frames)
+    _report(progress, 10, "generating", 0, steps)
+
+    def ltx_strip(pipe, lat):
+        # LTX latents are packed [B, seq, C]; unpack to [B, C, F, H, W].
+        if lat is not None and lat.dim() == 3:
+            lat = pipe._unpack_latents(
+                lat, (ltx_frames - 1) // pipe.vae_temporal_compression_ratio + 1,
+                height // pipe.vae_spatial_compression_ratio, width // pipe.vae_spatial_compression_ratio,
+                pipe.transformer_spatial_patch_size, pipe.transformer_temporal_patch_size,
+            )
+        return _latents_to_strip(lat)
+
     output = pipeline(
         image=resized,
         prompt=motion_prompt,
@@ -214,11 +453,11 @@ def _run_ltx(image, motion_prompt, frames, fps, progress):
         height=height,
         width=width,
         num_frames=ltx_frames,
-        num_inference_steps=30,
+        num_inference_steps=steps,
         output_type="pil",
+        callback_on_step_end=_step_callback(progress, steps, ltx_strip),
+        callback_on_step_end_tensor_inputs=["latents"],
     )
-    if progress:
-        progress(85)
     return list(output.frames[0])[:frames]
 
 
@@ -227,7 +466,13 @@ def _encode_gif(frames, fps, loop):
 
     # One shared adaptive palette keeps 16 frames at 512px well under ~4 MB.
     rgb = [f.convert("RGB") for f in frames]
-    palette_src = rgb[len(rgb) // 2].quantize(colors=256, method=Image.Quantize.MEDIANCUT)
+    # Palette built from a mosaic of several frames so colors that appear mid-clip survive.
+    picks = rgb[:: max(1, len(rgb) // 6)][:6]
+    thumb_w, thumb_h = max(1, rgb[0].width // 2), max(1, rgb[0].height // 2)
+    mosaic = Image.new("RGB", (thumb_w * len(picks), thumb_h))
+    for i, frame in enumerate(picks):
+        mosaic.paste(frame.resize((thumb_w, thumb_h)), (i * thumb_w, 0))
+    palette_src = mosaic.quantize(colors=256, method=Image.Quantize.MEDIANCUT)
     frames = [f.quantize(palette=palette_src, dither=Image.Dither.FLOYDSTEINBERG) for f in rgb]
     buf = io.BytesIO()
     frames[0].save(
@@ -257,15 +502,26 @@ def _encode_webp(frames, fps, loop):
     return buf.getvalue()
 
 
+def _encode_webm(frames, fps):
+    """VP9 high quality (constant quality CRF 18) -- the primary result format."""
+    return _encode_ffmpeg(frames, fps, ".webm", "libvpx-vp9",
+                          ["-crf", "18", "-b:v", "0", "-deadline", "good", "-cpu-used", "1", "-row-mt", "1"])
+
+
 def _encode_mp4(frames, fps):
+    return _encode_ffmpeg(frames, fps, ".mp4", "libx264", ["-crf", "16", "-preset", "slow"])
+
+
+def _encode_ffmpeg(frames, fps, suffix, codec, params):
     import imageio.v2 as imageio
     import numpy as np
 
-    handle = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     path = handle.name
     handle.close()
     try:
-        writer = imageio.get_writer(path, format="FFMPEG", fps=fps, codec="libx264", pixelformat="yuv420p")
+        writer = imageio.get_writer(path, format="FFMPEG", fps=fps, codec=codec, pixelformat="yuv420p",
+                                    output_params=params, macro_block_size=1)
         try:
             for frame in frames:
                 writer.append_data(np.asarray(frame.convert("RGB")))
@@ -312,13 +568,19 @@ def generate_animation_bytes(image_bytes, motion_prompt, frames, fps, loop, back
         out_frames = _run_loop(image, motion_prompt, frames, fps, progress)
 
     _check_frames(out_frames, frames)
-    if progress:
-        progress(90)
-    result = {
-        "gif": _encode_gif(out_frames, fps, loop),
-        "webp": _encode_webp(out_frames, fps, loop),
-        "mp4": _encode_mp4(out_frames, fps),
-    }
-    if progress:
-        progress(100)
+    try:
+        final_strip = _frames_to_strip(out_frames)
+    except Exception:
+        final_strip = None
+    _report(progress, 88, "encoding", 1, 3, final_strip)
+    gif = _encode_gif(out_frames, fps, loop)
+    _report(progress, 92, "encoding", 2, 3)
+    webp = _encode_webp(out_frames, fps, loop)
+    _report(progress, 96, "encoding", 3, 3)
+    result = {"gif": gif, "webp": webp, "mp4": _encode_mp4(out_frames, fps)}
+    try:
+        result["webm"] = _encode_webm(out_frames, fps)
+    except Exception:
+        traceback.print_exc()
+    _report(progress, 99, "encoding", 3, 3)
     return result

@@ -1,6 +1,6 @@
 const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, enhanceImage, maxEnhanceImage, previewExpandImagePrompt, compileDynamicGenerationWebSocket, applyTendaiPreviewWebSocket } = require('../../imageGeneration');
 const { upscaleImageWebSocket } = require('../../imageUpscaling');
-const { animateImageWebSocket } = require('../../imageAnimation');
+const { animateImageWebSocket, getEmotionJob, publicEmotionJob } = require('../../imageAnimation');
 const {
     isLocalUpscaler,
     normalizeUpscalerName,
@@ -1152,6 +1152,18 @@ async function handleLocalUpscaleStatus(handlers, ws, message) {
     }
 }
 
+// eMotion resume: current or most recent animate job for this session (settings, progress,
+// latest preview filmstrip if the caller's knownPreviewSeq is stale, result when finished).
+async function handleEmotionCurrentJob(handlers, ws, message, clientInfo) {
+    const job = getEmotionJob(clientInfo && clientInfo.sessionId);
+    handlers.sendToClient(ws, {
+        type: 'emotion_current_job_response',
+        requestId: message.requestId || null,
+        data: { job: publicEmotionJob(job, message.knownPreviewSeq != null ? message.knownPreviewSeq : -1) },
+        timestamp: new Date().toISOString()
+    });
+}
+
 async function handleLocalAnimateStatus(handlers, ws, message) {
     const requestId = message.requestId || null;
     try {
@@ -1203,5 +1215,6 @@ module.exports = {
     handleApplyTendaiPreview,
     handleResolveTextReplacements,
     handleLocalUpscaleStatus,
-    handleLocalAnimateStatus
+    handleLocalAnimateStatus,
+    handleEmotionCurrentJob
 };

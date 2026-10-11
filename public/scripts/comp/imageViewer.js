@@ -912,6 +912,9 @@ class ImageViewer {
             });
         }
 
+        // applyAnimatedResultMenuFilter: public/scripts/comp/galleryActions.js
+        applyAnimatedResultMenuFilter(contextMenuConfig, () => this.animatedResultImage(), 'image-viewer-');
+
         // Attach context menu
         contextMenu.attachToElement(container, contextMenuConfig);
 
@@ -926,6 +929,8 @@ class ImageViewer {
 
         // Verify the target is within our modal
         if (!this.element.contains(target)) return;
+
+        if (handleAnimatedResultMenuAction(action, this.animatedResultImage(), 'image-viewer-')) return;
 
         switch (action) {
             case 'image-viewer-copy':
@@ -1047,6 +1052,10 @@ class ImageViewer {
 
     isNaxImage() {
         return !!(this.metadata && this.metadata.naxGallerySlug && this.metadata.naxFilename);
+    }
+
+    animatedResultImage() {
+        return { filename: this.getImageFilename(), metadata: this.metadata };
     }
 
     getImageFilename() {

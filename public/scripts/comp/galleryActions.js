@@ -397,3 +397,139 @@ function animateImage(image, event = null) {
     openEmotion({ filename, source: image });
 }
 
+
+// ---- Animated results (eMotion GIF/WebM/MP4) -----------------------------------------------
+// These have no NovelAI metadata (modules/imageAnimation.js saves the GIF as the gallery file
+// with a DB-only receipt: generation_type 'animated', formats, source_filename), so NAI-only
+// menu actions (Studio, Enhance, Upscale, Properties, Create Animation, Recast...) are hidden
+// for them and replaced by Open in eMotion / Open in Video Player.
+const ANIMATED_RESULT_EXT_RE = /\.(gif|webm|mp4)$/i;
+
+function animatedResultFilename(image) {
+    if (!image) return '';
+    if (typeof image === 'string') return image;
+    return String(image.original || image.filename || image.upscaled || '');
+}
+
+function animatedResultReceipt(image) {
+    const md = image && typeof image === 'object' ? (image.metadata || image) : null;
+    if (!md || typeof md !== 'object') return null;
+    const receipt = md.receipt || md.forge_receipt || md;
+    if (receipt && (receipt.generation_type === 'animated' || receipt.type === 'animate')) return receipt;
+    return null;
+}
+
+function isAnimatedResultImage(image) {
+    return ANIMATED_RESULT_EXT_RE.test(animatedResultFilename(image)) || !!animatedResultReceipt(image);
+}
+
+// Sibling files saved next to the GIF: <source>_animate_<job8>.{gif,webm,mp4,webp}.
+function animatedResultFormats(image) {
+    const receipt = animatedResultReceipt(image);
+    if (receipt && receipt.formats) return receipt.formats;
+    const name = animatedResultFilename(image);
+    const base = name.replace(/\.[^.]+$/, '');
+    if (!/_animate_[0-9a-f]{8}$/i.test(base)) {
+        const ext = (name.match(ANIMATED_RESULT_EXT_RE) || [])[1];
+        return ext ? { [ext.toLowerCase()]: name } : {};
+    }
+    // Older results have no webm; openAnimatedResultInVideoPlayer falls back to mp4.
+    return { gif: base + '.gif', webm: base + '.webm', mp4: base + '.mp4' };
+}
+
+function animatedResultSource(image) {
+    const receipt = animatedResultReceipt(image);
+    if (receipt && receipt.source_filename) return receipt.source_filename;
+    const base = animatedResultFilename(image).replace(/\.[^.]+$/, '');
+    const m = base.match(/^(.*)_animate_[0-9a-f]{8}$/i);
+    return m ? m[1] + '.png' : null;
+}
+
+function openAnimatedResultInEmotion(image) {
+    const source = animatedResultSource(image);
+    // openEmotion: public/scripts/comp/desktop-apps/emotion.js
+    openEmotion(source ? { filename: source } : {});
+}
+
+async function openAnimatedResultInVideoPlayer(image) {
+    const formats = animatedResultFormats(image);
+    const candidates = [formats.webm, formats.mp4].filter(Boolean);
+    for (const name of candidates) {
+        const url = localGalleryImageUrl(name);
+        try {
+            const head = await fetch(url, { method: 'HEAD', credentials: 'same-origin' });
+            if (!head.ok) continue;
+        } catch (_err) {
+            continue;
+        }
+        // openDesktopVideoPlayerUrl: public/scripts/comp/desktop-apps/mediaPlayers.js
+        openDesktopVideoPlayerUrl(url, name);
+        return;
+    }
+    showError('No video copy found for this animation');
+}
+
+// Context-menu items shared by gallery / viewer / Studio preview for animated results.
+function buildAnimatedResultMenuItems(getImage, actionPrefix = '') {
+    return [
+        {
+            icon: 'fas fa-film',
+            text: 'Open in eMotion',
+            action: actionPrefix + 'open-in-emotion',
+            hidden: () => !isAnimatedResultImage(getImage())
+        },
+        {
+            icon: 'fas fa-play',
+            text: 'Open in Video Player',
+            action: actionPrefix + 'open-in-video-player',
+            hidden: () => !isAnimatedResultImage(getImage())
+        }
+    ];
+}
+
+// Actions that need NovelAI metadata or a PNG; hidden for animated results.
+const NAI_ONLY_MENU_ACTIONS = new Set([
+    'reroll', 'copy', 'modify', 'use-as-compare-source', 'expand-canvas', 'enhance', 'upscale',
+    'animate', 'create-animation', 'view-image-data', 'start-chat', 'ask-wren', 'publish-to-explorer',
+    'set-wallpaper', 'create-reference', 'creator', 'inspect-prompts', 'expand', 'copy-lookback',
+    'transparent-background'
+]);
+
+// Mutates a contextMenu config: hides NAI-only items (and the "Original" submenu) when
+// getImage() is an animated result, and inserts Open in eMotion / Open in Video Player
+// right after the "open in window" style entry (or at the top of the first list).
+function applyAnimatedResultMenuFilter(config, getImage, actionPrefix = '') {
+    if (!config || !Array.isArray(config.sections)) return config;
+    const isAnim = () => isAnimatedResultImage(getImage());
+    const strip = (action) => String(action || '').replace(actionPrefix, '');
+    const wrapHidden = (item) => {
+        const prev = item.hidden;
+        item.hidden = () => isAnim() || (typeof prev === 'function' ? prev() : !!prev);
+    };
+    let inserted = false;
+    for (const section of config.sections) {
+        const list = section.items || section.icons;
+        if (!Array.isArray(list)) continue;
+        for (const item of list) {
+            if (!item) continue;
+            const action = strip(item.action);
+            if (NAI_ONLY_MENU_ACTIONS.has(action) || (item.submenu && item.text === 'Original') || item.text === 'Transparent Background' || item.text === 'PhaseWalker') {
+                wrapHidden(item);
+            }
+        }
+        if (!inserted && section.items) {
+            const idx = section.items.findIndex((it) => it && /open-in-window|lightbox/.test(strip(it.action)));
+            section.items.splice(idx >= 0 ? idx + 1 : 0, 0, ...buildAnimatedResultMenuItems(getImage, actionPrefix));
+            inserted = true;
+        }
+    }
+    return config;
+}
+
+// Returns true when the action was an animated-result action and was handled.
+function handleAnimatedResultMenuAction(action, image, actionPrefix = '') {
+    const a = String(action || '').replace(actionPrefix, '');
+    if (a === 'open-in-emotion') { openAnimatedResultInEmotion(image); return true; }
+    if (a === 'open-in-video-player') { void openAnimatedResultInVideoPlayer(image); return true; }
+    return false;
+}

@@ -1715,6 +1715,10 @@ function galleryProgressLeftLabel(viewType) {
 }
 
 function showGalleryDataProgressModal(viewType = 'images') {
+    // planetSwitcher: public/scripts/comp/planetSwitcher.js - owns the loading UI while it is open
+    if (window.planetSwitcher && window.planetSwitcher.isActive()) {
+        return;
+    }
     syncGalleryProgressDialogState();
     if (isGalleryWindowHidden()) {
         return;
@@ -3765,6 +3769,16 @@ function createGalleryItemOverlay(image) {
 }
 
 function buildGalleryItemContextMenuConfig(image, item) {
+    // applyAnimatedResultMenuFilter: public/scripts/comp/galleryActions.js (GIF/WebM/MP4 results
+    // have no NovelAI metadata, so NAI-only actions are hidden for them).
+    const currentImage = () => {
+        const fileIndex = item ? parseInt(item.dataset.fileIndex, 10) : NaN;
+        return (allImages && Number.isFinite(fileIndex) && allImages[fileIndex]) || image;
+    };
+    return applyAnimatedResultMenuFilter(buildGalleryItemContextMenuConfigBase(image, item), currentImage);
+}
+
+function buildGalleryItemContextMenuConfigBase(image, item) {
     return {
         maxHeight: true,
         sections: [
@@ -7995,6 +8009,9 @@ function handleGalleryContextMenuAction(event) {
     }
 
     if (!image) return;
+
+    // handleAnimatedResultMenuAction: public/scripts/comp/galleryActions.js
+    if (handleAnimatedResultMenuAction(action, image)) return;
 
     switch (action) {
         case 'toggle-checkbox':

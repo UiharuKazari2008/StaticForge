@@ -17,7 +17,8 @@ const {
     handleApplyTendaiPreview,
     handleResolveTextReplacements,
     handleLocalUpscaleStatus,
-    handleLocalAnimateStatus
+    handleLocalAnimateStatus,
+    handleEmotionCurrentJob
 } = require('./generationImpl');
 
 const GENERATION_DESTRUCTIVE = { destructive: true, ...WS_DISPATCH_FIFO_CONNECTION };
@@ -55,6 +56,7 @@ function registerPackets(handlersCtx) {
     regFn('resolve_text_replacements', handleResolveTextReplacements, GENERATION_DESTRUCTIVE);
     regFn('local_upscale_status', handleLocalUpscaleStatus);
     regFn('local_animate_status', handleLocalAnimateStatus);
+    regFn('emotion_current_job', handleEmotionCurrentJob);
 }
 
 module.exports = { registerPackets };

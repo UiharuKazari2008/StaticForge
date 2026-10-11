@@ -75,7 +75,10 @@ const desktopEmotion = {
     autoPromptViaDirector: false,
     running: false,
     requestId: null,
-    result: null // { filename, formats: {gif, mp4, webp} }
+    progress: 0, // highest % shown for the running job; progress only moves forward
+    previewSeq: -1, // last latent/frame filmstrip seq received
+    resumePollTimer: null,
+    result: null // { filename, formats: {webm, gif, mp4, webp} }
 };
 
 let desktopEmotionEls = null;
@@ -89,6 +92,109 @@ function openDesktopEmotion() {
         openModal(modal);
     }
     bringModalToFront(modal);
+    emotionResumeJob();
+}
+
+// ---- Resume: the server keeps the current/most recent job per session
+// (modules/imageAnimation.js getEmotionJob, WS emotion_current_job). Reopening eMotion after a
+// reload/reconnect restores the source, prompt, controls, live progress or the result.
+async function emotionFetchCurrentJob() {
+    if (!window.wsClient || !window.wsClient.isConnected || !window.wsClient.isConnected()) return null;
+    try {
+        const data = await Promise.race([
+            window.wsClient.sendMessage('emotion_current_job', { knownPreviewSeq: desktopEmotion.previewSeq }, false),
+            new Promise((resolve) => setTimeout(() => resolve(null), 4000))
+        ]);
+        return data && data.job ? data.job : null;
+    } catch (_err) {
+        return null;
+    }
+}
+
+function emotionRestoreSettings(job) {
+    desktopEmotion.sourceFilename = job.sourceFilename || desktopEmotion.sourceFilename;
+    desktopEmotion.sourceWorkspace = job.workspace || null;
+    if (job.backend) desktopEmotion.mode = job.backend;
+    if (job.frames) desktopEmotion.frames = Number(job.frames);
+    if (job.fps) desktopEmotion.fps = Number(job.fps);
+    if (job.loop !== undefined && job.loop !== null) desktopEmotion.loop = !!job.loop;
+    if (!desktopEmotionEls) return;
+    if (job.motionPrompt) desktopEmotionEls.promptInput.value = job.motionPrompt;
+    desktopEmotionEls.framesInput.value = String(desktopEmotion.frames);
+    desktopEmotionEls.fpsInput.value = String(desktopEmotion.fps);
+    desktopEmotionEls.loopToggle.dataset.state = desktopEmotion.loop ? 'on' : 'off';
+    desktopEmotionEls.loopToggle.setAttribute('aria-pressed', String(desktopEmotion.loop));
+    if (typeof emotionRenderModeButton === 'function') emotionRenderModeButton();
+}
+
+async function emotionResumeJob() {
+    if (desktopEmotion.running) return;
+    const job = await emotionFetchCurrentJob();
+    if (!job || desktopEmotion.running) return;
+    if (job.status === 'running') {
+        emotionRestoreSettings(job);
+        desktopEmotion.running = true;
+        desktopEmotion.requestId = job.requestId || 'resumed';
+        desktopEmotion.result = null;
+        desktopEmotion.progress = 0;
+        emotionRenderStartStop();
+        emotionApplyJobUpdate(job);
+        emotionStartResumePoll(desktopEmotion.requestId);
+    } else if (job.status === 'completed' && job.result && !desktopEmotion.sourceFilename) {
+        emotionRestoreSettings(job);
+        desktopEmotion.result = job.result;
+        emotionRenderPreview();
+    }
+}
+
+// While a job runs, poll the server copy too: it survives socket drops (the original request
+// promise does not) and carries the preview filmstrip.
+function emotionStartResumePoll(requestId) {
+    emotionStopResumePoll();
+    desktopEmotion.resumePollTimer = setInterval(async () => {
+        if (!desktopEmotion.running || desktopEmotion.requestId !== requestId) {
+            emotionStopResumePoll();
+            return;
+        }
+        const job = await emotionFetchCurrentJob();
+        if (!job || desktopEmotion.requestId !== requestId) return;
+        if (job.requestId && requestId !== 'resumed' && job.requestId !== requestId) return;
+        emotionApplyJobUpdate(job);
+        if (job.status === 'completed' || job.status === 'failed') {
+            emotionFinishJob(requestId, job.status === 'completed' ? job.result : null, job.error);
+        }
+    }, 1500);
+}
+
+function emotionStopResumePoll() {
+    if (desktopEmotion.resumePollTimer) clearInterval(desktopEmotion.resumePollTimer);
+    desktopEmotion.resumePollTimer = null;
+}
+
+function emotionFinishJob(requestId, result, error) {
+    if (desktopEmotion.requestId !== requestId) return;
+    emotionStopResumePoll();
+    if (result && result.formats) desktopEmotion.result = { filename: result.filename, formats: result.formats };
+    if (error) showGlassToast('error', 'eMotion LIVE', error, false, 6000);
+    desktopEmotion.running = false;
+    desktopEmotion.requestId = null;
+    emotionRenderStartStop();
+    emotionRenderPreview();
+}
+
+// job: modules/imageAnimation.js publicEmotionJob (progress, stage, step, totalSteps,
+// previewSeq, previewBase64?).
+function emotionApplyJobUpdate(job) {
+    if (!job || !desktopEmotionEls) return;
+    const stage = job.stage ? job.stage.charAt(0).toUpperCase() + job.stage.slice(1) : 'Working';
+    const steps = job.step != null && job.totalSteps ? ' · step ' + job.step + '/' + job.totalSteps : '';
+    const pct = Math.round(Number(job.progress) || 0);
+    emotionSetProgress(pct, stage + steps + ' · ' + Math.max(pct, desktopEmotion.progress) + '%');
+    if (job.previewBase64 && job.previewSeq > desktopEmotion.previewSeq) {
+        desktopEmotion.previewSeq = job.previewSeq;
+        desktopEmotionEls.filmstrip.src = 'data:image/jpeg;base64,' + job.previewBase64;
+        desktopEmotionEls.filmstrip.classList.remove('hidden');
+    }
 }
 
 // Public open API: open (or focus) eMotion LIVE with an image preloaded through the same
@@ -347,37 +453,46 @@ function emotionStartJob() {
 
     desktopEmotion.running = true;
     desktopEmotion.requestId = requestId;
+    desktopEmotion.progress = 0;
+    desktopEmotion.previewSeq = -1;
+    desktopEmotionEls.filmstrip.classList.add('hidden');
+    desktopEmotionEls.filmstrip.removeAttribute('src');
     emotionSetProgress(0, 'Starting…');
     emotionRenderStartStop();
+    emotionStartResumePoll(requestId);
 
     // Compare against desktopEmotion.requestId (not a shared "abandoned" flag) when the
     // promise settles: a shared flag would get reset by a job started after Stop, which
     // could then wrongly apply to this stale job's result/error.
-    const onKeepAlive = (data) => {
-        if (!data || data.requestId !== requestId) return;
-        emotionSetProgress(Number(data.progress) || 0, data.message || '');
+    // The server's 15 s keep-alive interval sends progress: null; it used to be read as 0
+    // and snapped the bar back. Only real per-step updates (image_animation_progress) move it.
+    const onProgress = (message) => {
+        if (!message || message.requestId !== requestId) return;
+        emotionApplyJobUpdate(message.data);
     };
-    ws.on('request_keep_alive', onKeepAlive);
+    ws.on('image_animation_progress', onProgress);
 
     resultPromise.then((result) => {
+        emotionFinishJob(requestId, result, null);
+    }).catch(async (err) => {
         if (desktopEmotion.requestId !== requestId) return;
-        desktopEmotion.result = result && result.formats ? { filename: result.filename, formats: result.formats } : null;
-    }).catch((err) => {
-        if (desktopEmotion.requestId !== requestId) return;
-        showGlassToast('error', 'eMotion LIVE', (err && err.message) || 'Animate failed', false, 6000);
+        // A dropped socket rejects the request but the job keeps running server-side.
+        const job = await emotionFetchCurrentJob();
+        if (job && job.requestId === requestId && job.status === 'running') return; // poll continues
+        if (job && job.requestId === requestId && job.status === 'completed') {
+            emotionFinishJob(requestId, job.result, null);
+            return;
+        }
+        emotionFinishJob(requestId, null, (err && err.message) || 'Animate failed');
     }).finally(() => {
-        ws.off('request_keep_alive', onKeepAlive);
-        if (desktopEmotion.requestId !== requestId) return;
-        desktopEmotion.running = false;
-        desktopEmotion.requestId = null;
-        emotionRenderStartStop();
-        emotionRenderPreview();
+        ws.off('image_animation_progress', onProgress);
     });
 }
 
 function emotionStopJob() {
     if (!desktopEmotion.running) return;
     const requestId = desktopEmotion.requestId;
+    emotionStopResumePoll();
     desktopEmotion.running = false;
     desktopEmotion.requestId = null;
     if (requestId && window.wsClient && typeof window.wsClient.sendAcklessMessage === 'function') {
@@ -415,7 +530,11 @@ function emotionRenderStartStop() {
 
 function emotionSetProgress(progress, message) {
     if (!desktopEmotionEls) return;
-    const pct = Math.max(0, Math.min(100, Math.round(progress)));
+    const raw = Number(progress);
+    if (!Number.isFinite(raw)) return; // keep-alive pings carry no progress
+    // Monotonic within a job (reset to 0 in emotionStartJob / resume).
+    const pct = Math.max(desktopEmotion.progress, Math.max(0, Math.min(100, Math.round(raw))));
+    desktopEmotion.progress = pct;
     desktopEmotionEls.progressFill.style.width = pct + '%';
     desktopEmotionEls.progressLabel.textContent = message || (pct + '%');
     emotionRenderPreview();
@@ -423,9 +542,14 @@ function emotionSetProgress(progress, message) {
 
 function emotionRenderPreview() {
     if (!desktopEmotionEls) return;
-    const { previewImg, placeholder, progressOverlay, resultBadge } = desktopEmotionEls;
+    const { previewImg, placeholder, progressOverlay, resultBadge, resultVideo, filmstrip } = desktopEmotionEls;
 
     progressOverlay.classList.toggle('hidden', !desktopEmotion.running);
+    if (!desktopEmotion.running) filmstrip.classList.add('hidden');
+    if (!(desktopEmotion.result && desktopEmotion.result.formats)) {
+        resultVideo.classList.add('hidden');
+        if (resultVideo.getAttribute('src')) { resultVideo.pause(); resultVideo.removeAttribute('src'); resultVideo.load(); }
+    }
 
     if (desktopEmotion.running) {
         placeholder.classList.add('hidden');
@@ -438,12 +562,21 @@ function emotionRenderPreview() {
     }
 
     if (desktopEmotion.result && desktopEmotion.result.formats) {
-        const gif = desktopEmotion.result.formats.gif || desktopEmotion.result.filename;
-        previewImg.src = localGalleryImageUrl(gif);
-        previewImg.classList.remove('hidden');
+        const formats = desktopEmotion.result.formats;
+        const video = formats.webm || formats.mp4;
         placeholder.classList.add('hidden');
-        resultBadge.classList.remove('hidden');
-        resultBadge.dataset.mp4 = desktopEmotion.result.formats.mp4 || '';
+        if (video) {
+            // WebM (VP9) is the primary result; GIF stays the gallery/thumbnail copy.
+            const url = localGalleryImageUrl(video);
+            if (resultVideo.getAttribute('src') !== url) resultVideo.src = url;
+            resultVideo.classList.remove('hidden');
+            previewImg.classList.add('hidden');
+        } else {
+            previewImg.src = localGalleryImageUrl(formats.gif || desktopEmotion.result.filename);
+            previewImg.classList.remove('hidden');
+        }
+        resultBadge.classList.toggle('hidden', !video);
+        resultBadge.dataset.video = video || '';
         return;
     }
 
@@ -697,16 +830,31 @@ const ensureDesktopEmotionModal = function () {
     const resultBadge = document.createElement('button');
     resultBadge.type = 'button';
     resultBadge.className = 'btn-secondary btn-small emotion-result-badge hidden';
-    resultBadge.title = 'Open MP4';
-    resultBadge.innerHTML = '<i class="fas fa-film"></i> MP4';
+    resultBadge.title = 'Open in Video Player';
+    resultBadge.innerHTML = '<i class="fas fa-film"></i> Video Player';
     resultBadge.addEventListener('click', () => {
-        if (resultBadge.dataset.mp4) {
-            window.open(localGalleryImageUrl(resultBadge.dataset.mp4), '_blank', 'noopener');
+        // openDesktopVideoPlayerUrl: public/scripts/comp/desktop-apps/mediaPlayers.js
+        if (resultBadge.dataset.video && typeof openDesktopVideoPlayerUrl === 'function') {
+            openDesktopVideoPlayerUrl(localGalleryImageUrl(resultBadge.dataset.video), resultBadge.dataset.video);
         }
     });
 
+    const resultVideo = document.createElement('video');
+    resultVideo.className = 'emotion-preview-image hidden';
+    resultVideo.autoplay = true;
+    resultVideo.loop = true;
+    resultVideo.muted = true;
+    resultVideo.playsInline = true;
+
+    // Live latent / frame filmstrip from the worker while a job runs.
+    const filmstrip = document.createElement('img');
+    filmstrip.className = 'emotion-filmstrip hidden';
+    filmstrip.alt = 'Frame previews';
+
     previewPanel.appendChild(previewImg);
+    previewPanel.appendChild(resultVideo);
     previewPanel.appendChild(placeholder);
+    previewPanel.appendChild(filmstrip);
     previewPanel.appendChild(progressOverlay);
     previewPanel.appendChild(resultBadge);
 
@@ -733,6 +881,8 @@ const ensureDesktopEmotionModal = function () {
         progressFill,
         progressLabel,
         resultBadge,
+        resultVideo,
+        filmstrip,
         promptInput,
         framesInput,
         fpsInput,

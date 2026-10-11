@@ -803,3 +803,19 @@ function openDesktopMusicPlayer() {
 function openDesktopVideoPlayer() {
     showDesktopMediaPlayer(ensureDesktopMediaPlayer('video'));
 }
+
+// Open a video URL (e.g. an eMotion WebM/MP4 result from the gallery) in the video player.
+// Used by the gallery / image viewer "Open in Video Player" actions (galleryActions.js).
+function openDesktopVideoPlayerUrl(url, label) {
+    const player = ensureDesktopMediaPlayer('video');
+    showDesktopMediaPlayer(player);
+    if (!url) return;
+    const name = label || desktopMediaNameFromUrl(url);
+    if (!desktopMediaIsStreamable(player, name, '')) {
+        showDesktopMediaAssist(player);
+        return;
+    }
+    assignDesktopMediaSource(player, url, name || url, false);
+    player.media.play().catch(() => {});
+}
+window.openDesktopVideoPlayerUrl = openDesktopVideoPlayerUrl;

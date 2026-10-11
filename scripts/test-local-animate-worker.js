@@ -89,6 +89,10 @@ async function main() {
             jobs.set(jobId, {
                 status: 'completed',
                 progress: 100,
+                stage: 'done',
+                step: 30,
+                total_steps: 30,
+                preview_seq: 1,
                 error: null,
                 backend: payload.backend,
                 frames: payload.frames,
@@ -106,12 +110,19 @@ async function main() {
             res.end(JSON.stringify(job ? { job_id: statusMatch[1], ...job } : { error: 'job not found' }));
             return;
         }
+        if (req.method === 'GET' && /^\/jobs\/[^/]+\/preview$/.test(url)) {
+            hits.previews = (hits.previews || 0) + 1;
+            res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+            res.end(Buffer.from('fake-jpeg'));
+            return;
+        }
         const resultMatch = url.match(/^\/jobs\/([^/]+)\/result$/);
         if (req.method === 'GET' && resultMatch) {
             const format = query.get('format') || 'gif';
             const map = {
                 gif: [GIF_BYTES, 'image/gif'],
                 mp4: [MP4_BYTES, 'video/mp4'],
+                webm: [Buffer.from('fake-webm'), 'video/webm'],
                 webp: [WEBP_BYTES, 'image/webp']
             };
             const [buf, type] = map[format] || map.gif;
@@ -146,7 +157,9 @@ async function main() {
     );
 
     clearLocalWorkerHealthCache();
+    const progressCalls = [];
     const animated = await animateBufferWithLocalWorker(resources(base, 'test-key'), TINY_PNG, {
+        onProgress: (p, status, jobId, detail) => progressCalls.push({ p, status, detail }),
         motionPrompt: 'hair sways in the wind',
         frames: 24,
         fps: 12,
@@ -163,6 +176,11 @@ async function main() {
     assert.ok(animated.buffers.mp4.equals(MP4_BYTES));
     assert.ok(animated.buffers.webp.equals(WEBP_BYTES));
     assert.strictEqual(hits.jobs, 1);
+    // Per-step detail + the latent/frame filmstrip are relayed from the worker.
+    assert.ok(progressCalls.length >= 1);
+    assert.strictEqual(progressCalls[0].detail.stage, 'done');
+    assert.strictEqual(progressCalls[0].detail.totalSteps, 30);
+    assert.strictEqual(progressCalls[0].detail.previewBase64, Buffer.from('fake-jpeg').toString('base64'));
 
     // Unknown backend falls back to the default rather than rejecting.
     clearLocalWorkerHealthCache();
@@ -181,7 +199,7 @@ async function main() {
     fs.mkdirSync(images);
     fs.writeFileSync(path.join(images, 'shot.png'), TINY_PNG);
     const PngMetadata = require('../modules/pngMetadata');
-    const { animateImageWebSocket } = require('../modules/imageAnimation');
+    const { animateImageWebSocket, getEmotionJob, publicEmotionJob } = require('../modules/imageAnimation');
     const gr = {
         getSecureConfig() {
             return { url: base, key: 'test-key' };
@@ -227,7 +245,20 @@ async function main() {
     assert.strictEqual(receipts[0].receiptData.motion_prompt, 'hair sways in the wind');
     assert.strictEqual(receipts[0].receiptData.animate_backend, 'loop');
     assert.strictEqual(receipts[0].receiptData.local_job_id, 'job-animate-1');
-    assert.deepStrictEqual(Object.keys(receipts[0].receiptData.formats).sort(), ['gif', 'mp4', 'webp']);
+    assert.deepStrictEqual(Object.keys(receipts[0].receiptData.formats).sort(), ['gif', 'mp4', 'webm', 'webp']);
+
+    // eMotion resume state: per session, settings + final result, monotonic progress.
+    const job = getEmotionJob('sess');
+    assert.ok(job, 'job state kept for the session');
+    assert.strictEqual(job.status, 'completed');
+    assert.strictEqual(job.progress, 100);
+    assert.strictEqual(job.motionPrompt, 'hair sways in the wind');
+    assert.strictEqual(job.backend, 'loop');
+    assert.strictEqual(job.result.filename, result.filename);
+    assert.strictEqual(getEmotionJob('other-session'), null);
+    assert.ok(publicEmotionJob(job, -1).previewBase64, 'stale seq gets the preview');
+    assert.strictEqual(publicEmotionJob(job, job.previewSeq).previewBase64, undefined);
+    assert.ok(fs.existsSync(path.join(images, result.filename.replace(/\.gif$/, '.webm'))));
 
     const gifPath = path.join(images, result.filename);
     assert.ok(fs.existsSync(gifPath));

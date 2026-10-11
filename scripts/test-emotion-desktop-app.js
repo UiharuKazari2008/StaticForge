@@ -103,11 +103,43 @@ function main() {
     assert.match(emotionJs, /sendAcklessMessage\('cancel_generation', \{ cancelledRequestIds: \[requestId\] \}\)/);
     assert.match(emotionJs, /if \(desktopEmotion\.requestId !== requestId\) return;/);
 
-    // 8. Progress comes from the real server keep-alive channel (request_keep_alive), filtered
-    // by this job's own requestId — not a fake/synthetic timer.
-    assert.match(emotionJs, /ws\.on\('request_keep_alive', onKeepAlive\)/);
-    assert.match(emotionJs, /data\.requestId !== requestId/);
-    assert.doesNotMatch(emotionJs, /setInterval/);
+    // 8. Progress comes from the server's per-step image_animation_progress (filtered by this
+    // job's requestId), never from the null-progress keep-alive pings that used to snap the bar
+    // to 0, and it only moves forward. The only interval is the emotion_current_job resume poll.
+    assert.match(emotionJs, /ws\.on\('image_animation_progress', onProgress\)/);
+    assert.match(emotionJs, /message\.requestId !== requestId/);
+    assert.doesNotMatch(emotionJs, /request_keep_alive', onKeepAlive/);
+    assert.match(emotionJs, /Math\.max\(desktopEmotion\.progress,/);
+    assert.match(emotionJs, /if \(!Number\.isFinite\(raw\)\) return;/);
+    assert.equal((emotionJs.match(/setInterval\(/g) || []).length, 1);
+    assert.match(emotionJs, /sendMessage\('emotion_current_job'/);
+    assert.match(emotionJs, /function emotionResumeJob\(\)/);
+    assert.match(emotionJs, /filmstrip\.src = 'data:image\/jpeg;base64,'/);
+
+    // 8b. Animated results: NAI-only menu actions hidden for GIF/WebM/MP4, Open in eMotion /
+    // Open in Video Player added (galleryActions.js applyAnimatedResultMenuFilter).
+    {
+        const vm2 = require('vm');
+        const ga = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/galleryActions.js'), 'utf8');
+        const start = ga.indexOf('// ---- Animated results');
+        const box = { console };
+        vm2.createContext(box);
+        vm2.runInContext(ga.slice(start) + '\nthis.f = applyAnimatedResultMenuFilter; this.isA = isAnimatedResultImage; this.src = animatedResultSource; this.fm = animatedResultFormats;', box);
+        let current = { filename: 'x_animate_0123abcd.gif' };
+        const cfg = { sections: [
+            { type: 'icons', icons: [{ action: 'download' }, { action: 'reroll' }, { action: 'copy' }] },
+            { type: 'list', items: [{ action: 'open-in-window' }, { action: 'enhance' }, { action: 'upscale' }, { action: 'animate' }, { action: 'view-image-data' }, { action: 'modify' }] },
+            { type: 'list', items: [{ action: 'delete' }, { action: 'scrap' }] }
+        ] };
+        box.f(cfg, () => current);
+        const visible = () => cfg.sections.flatMap((sec) => (sec.items || sec.icons)).filter((it) => !(typeof it.hidden === 'function' ? it.hidden() : it.hidden)).map((it) => it.action);
+        assert.deepStrictEqual(visible(), ['download', 'open-in-window', 'open-in-emotion', 'open-in-video-player', 'delete', 'scrap']);
+        current = { filename: 'shot.png' };
+        assert.deepStrictEqual(visible(), ['download', 'reroll', 'copy', 'open-in-window', 'enhance', 'upscale', 'animate', 'view-image-data', 'modify', 'delete', 'scrap']);
+        assert.equal(box.src({ filename: 'shot_animate_0123abcd.gif' }), 'shot.png');
+        assert.equal(box.src({ filename: 'z.gif', metadata: { generation_type: 'animated', source_filename: 'src.png' } }), 'src.png');
+        assert.equal(box.fm({ filename: 'shot_animate_0123abcd.gif' }).webm, 'shot_animate_0123abcd.webm');
+    }
 
     // 9. Auto prompt via Director: a toggle in the title-bar toolbar that asks the real Director
     // session pipeline (sendMessage/pendingAttachments) to write the motion prompt from the

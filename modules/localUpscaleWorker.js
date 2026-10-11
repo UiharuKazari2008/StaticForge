@@ -29,7 +29,8 @@ const LOCAL_ANIMATE_BACKENDS = [
 const DEFAULT_ANIMATE_BACKEND = 'ltx';
 const DEFAULT_ANIMATE_FRAMES = 16;
 const DEFAULT_ANIMATE_FPS = 8;
-const ANIMATE_RESULT_FORMATS = ['gif', 'mp4', 'webp'];
+const ANIMATE_RESULT_FORMATS = ['webm', 'gif', 'mp4', 'webp'];
+const ANIMATE_OPTIONAL_FORMATS = new Set(['webm']); // older workers lack webm
 
 let healthCache = null;
 
@@ -296,6 +297,21 @@ async function fetchAnimateResult(cfg, jobId, format) {
     return Buffer.from(await result.arrayBuffer());
 }
 
+// Latest latent/frame filmstrip (JPEG) for a running animate job, as base64; null if none yet.
+async function fetchAnimatePreview(cfg, jobId) {
+    try {
+        const res = await fetch(cfg.url + '/jobs/' + jobId + '/preview', {
+            method: 'GET',
+            headers: authHeaders(cfg.key),
+            signal: AbortSignal.timeout(8000)
+        });
+        if (!res.ok) return null;
+        return Buffer.from(await res.arrayBuffer()).toString('base64');
+    } catch (_err) {
+        return null;
+    }
+}
+
 async function animateBufferWithLocalWorker(globalResources, imageBuffer, options = {}) {
     const cfg = readLocalWorkerConfig(globalResources);
     if (!cfg.url || !cfg.key) {
@@ -352,8 +368,10 @@ async function animateBufferWithLocalWorker(globalResources, imageBuffer, option
         throw error;
     }
     const jobId = posted.body.job_id;
-    const deadline = Date.now() + (options.timeoutMs || 20 * 60 * 1000);
+    if (typeof options.onJobId === 'function') options.onJobId(jobId);
+    const deadline = Date.now() + (options.timeoutMs || 30 * 60 * 1000);
     let last = null;
+    let lastPreviewSeq = 0;
     while (Date.now() < deadline) {
         await sleep(options.pollMs || 600);
         let status;
@@ -371,9 +389,21 @@ async function animateBufferWithLocalWorker(globalResources, imageBuffer, option
             continue;
         }
         last = status.body;
+        let previewBase64 = null;
+        const seq = Number(status.body.preview_seq) || 0;
+        if (seq > lastPreviewSeq) {
+            previewBase64 = await fetchAnimatePreview(cfg, jobId);
+            if (previewBase64) lastPreviewSeq = seq;
+        }
         if (typeof options.onProgress === 'function') {
             const progress = Number(status.body.progress);
-            options.onProgress(Number.isFinite(progress) ? progress : 0, status.body.status, jobId);
+            options.onProgress(Number.isFinite(progress) ? progress : 0, status.body.status, jobId, {
+                stage: status.body.stage || null,
+                step: status.body.step != null ? Number(status.body.step) : null,
+                totalSteps: status.body.total_steps != null ? Number(status.body.total_steps) : null,
+                previewSeq: lastPreviewSeq,
+                previewBase64
+            });
         }
         if (status.body.status === 'completed') break;
         if (status.body.status === 'failed') {
@@ -387,7 +417,11 @@ async function animateBufferWithLocalWorker(globalResources, imageBuffer, option
     }
     const buffers = {};
     for (const format of ANIMATE_RESULT_FORMATS) {
-        buffers[format] = await fetchAnimateResult(cfg, jobId, format);
+        try {
+            buffers[format] = await fetchAnimateResult(cfg, jobId, format);
+        } catch (err) {
+            if (!ANIMATE_OPTIONAL_FORMATS.has(format)) throw err;
+        }
     }
     return { buffers, jobId, motionPrompt, frames, fps, loop, backend };
 }
