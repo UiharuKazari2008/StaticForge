@@ -506,7 +506,7 @@ function dataMgmtDsapBuildStorageTableHtml(usage) {
 </table>`;
 }
 
-const DATA_MGMT_REMOTE_WORKER_ORDER = ['ruiko', 'grimoire-browser', 'replication-master', 'novelai'];
+const DATA_MGMT_REMOTE_WORKER_ORDER = ['ruiko', 'grimoire-browser', 'replication-master', 'novelai', 'claude-xi'];
 
 const DATA_MGMT_REMOTE_WORKER_STATUS_LABEL = {
     healthy: 'Healthy',

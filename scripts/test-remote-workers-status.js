@@ -1,13 +1,14 @@
 'use strict';
 
 /**
- * Remote worker status rows: Ruiko, grimoire-browser, replication master, NovelAI.
+ * Remote worker status rows: Ruiko, grimoire-browser, replication master, NovelAI, Claude runner (Xi).
  * No live GPU, no NovelAI, no secrets in the payload.
  */
 
 const assert = require('assert');
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const { clearLocalWorkerHealthCache } = require('../modules/localUpscaleWorker');
 const {
@@ -71,7 +72,7 @@ function assertNoSecrets(value) {
 }
 
 async function main() {
-    assert.deepStrictEqual(REMOTE_WORKER_IDS, ['ruiko', 'grimoire-browser', 'replication-master', 'novelai']);
+    assert.deepStrictEqual(REMOTE_WORKER_IDS, ['ruiko', 'grimoire-browser', 'replication-master', 'novelai', 'claude-xi']);
     assert.strictEqual(publicHostFromUrl('http://user:' + KEY + '@192.168.1.9:8188/health?token=' + GRIM), '192.168.1.9:8188');
     const scrubbed = scrubText('Bearer ' + KEY + ' http://user:' + REPL + '@host/x?token=' + GRIM, [KEY, GRIM, REPL]);
     assert.ok(!scrubbed.includes(KEY));
@@ -143,13 +144,15 @@ async function main() {
         clearLocalWorkerHealthCache();
         const empty = await collectRemoteWorkerStatuses(resources({}), {
             timeoutMs: 500,
+            claudeBin: null,
             grimoireConfig: { origin: '', token: '' }
         });
-        assert.strictEqual(empty.workers.length, 4);
+        assert.strictEqual(empty.workers.length, 5);
         assert.strictEqual(empty.workers.find((row) => row.id === 'ruiko').status, 'unconfigured');
         assert.strictEqual(empty.workers.find((row) => row.id === 'grimoire-browser').status, 'unconfigured');
         assert.strictEqual(empty.workers.find((row) => row.id === 'replication-master').status, 'unconfigured');
         assert.strictEqual(empty.workers.find((row) => row.id === 'novelai').status, 'unconfigured');
+        assert.strictEqual(empty.workers.find((row) => row.id === 'claude-xi').status, 'unconfigured');
         empty.workers.forEach((row) => assert.strictEqual(row.latencyMs, null));
 
         clearLocalWorkerHealthCache();
@@ -184,6 +187,7 @@ async function main() {
             })
         }), {
             timeoutMs: 2000,
+            claudeBin: null,
             grimoireConfig: { origin: 'http://user:' + GRIM + '@127.0.0.1:' + port, token: GRIM }
         });
         assertNoSecrets(healthy);
@@ -252,6 +256,53 @@ async function main() {
         delayMs = 0;
         assert.strictEqual(slow.workers[0].status, 'degraded');
         assert.ok(slow.workers[0].latencyMs >= 150);
+
+        // Claude runner (Xi): binary + OAuth token file presence, not a network probe.
+        // claudeBin/claudeTokenFile overrides keep this deterministic regardless of
+        // whether Claude Code happens to be installed on the host running the test.
+        const missingClaudeBin = await collectRemoteWorkerStatuses(resources({}), {
+            workerId: 'claude-xi',
+            timeoutMs: 1000,
+            claudeBin: null,
+            grimoireConfig: { origin: '', token: '' }
+        });
+        assert.strictEqual(missingClaudeBin.workers[0].status, 'unconfigured');
+        assert.strictEqual(missingClaudeBin.workers[0].latencyMs, null);
+
+        const missingClaudeToken = await collectRemoteWorkerStatuses(resources({}), {
+            workerId: 'claude-xi',
+            timeoutMs: 1000,
+            claudeBin: '/bin/true',
+            claudeTokenFile: path.join(os.tmpdir(), 'xi-claude-token-missing-' + process.pid),
+            grimoireConfig: { origin: '', token: '' }
+        });
+        assert.strictEqual(missingClaudeToken.workers[0].status, 'unconfigured');
+
+        const claudeTokenTmp = path.join(os.tmpdir(), 'xi-claude-token-test-' + process.pid);
+        fs.writeFileSync(claudeTokenTmp, 'test-token\n');
+        try {
+            const claudeHealthy = await collectRemoteWorkerStatuses(resources({}), {
+                workerId: 'claude-xi',
+                timeoutMs: 2000,
+                claudeBin: '/bin/true',
+                claudeTokenFile: claudeTokenTmp,
+                grimoireConfig: { origin: '', token: '' }
+            });
+            assert.strictEqual(claudeHealthy.workers[0].status, 'healthy');
+            assert.ok(claudeHealthy.workers[0].latencyMs >= 0);
+            assertNoSecrets(claudeHealthy);
+
+            const claudeBroken = await collectRemoteWorkerStatuses(resources({}), {
+                workerId: 'claude-xi',
+                timeoutMs: 2000,
+                claudeBin: '/bin/false',
+                claudeTokenFile: claudeTokenTmp,
+                grimoireConfig: { origin: '', token: '' }
+            });
+            assert.strictEqual(claudeBroken.workers[0].status, 'offline');
+        } finally {
+            fs.rmSync(claudeTokenTmp, { force: true });
+        }
 
         const blocked = await collectRemoteWorkerStatuses(resources({
             monitor: novelMonitor({

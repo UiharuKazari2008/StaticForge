@@ -13,6 +13,7 @@ const path = require('path');
 
 const JAIL_HOME = '/home/xi';
 const JAIL_AGENT_ROOT = '/opt/cursor-agent';
+const JAIL_CLAUDE_ROOT = '/opt/claude-code';
 const RUN_PARENT = path.join(os.tmpdir(), 'dreamscape-xi-runs');
 
 const JAIL_ENV_KEYS = [
@@ -30,6 +31,13 @@ function director() {
 
 const JAIL_KEY_DIR = '/tmp/.xi-secret';
 const JAIL_KEY_FILE = `${JAIL_KEY_DIR}/api-key`;
+const JAIL_CLAUDE_TOKEN_FILE = `${JAIL_KEY_DIR}/claude-token`;
+const DEFAULT_CLAUDE_TOKEN_FILE = path.join(os.homedir(), '.secrets', 'claude-max.oauth');
+
+function resolveClaudeTokenFile(options) {
+    const opts = options || {};
+    return opts.claudeTokenFile || process.env.CLAUDE_TOKEN_FILE || DEFAULT_CLAUDE_TOKEN_FILE;
+}
 
 function apiKeyStore() {
     return require('./cursorAccountApiKey');
@@ -166,9 +174,9 @@ function jailEnv(spec) {
         XDG_CONFIG_HOME: `${spec.jailHome}/.config`,
         XDG_CACHE_HOME: `${spec.jailHome}/.cache`,
         XDG_DATA_HOME: `${spec.jailHome}/.local/share`,
-        XDG_RUNTIME_DIR: '/tmp',
-        CURSOR_CONFIG_DIR: spec.jailConfig
+        XDG_RUNTIME_DIR: '/tmp'
     };
+    if (spec.jailConfig) env.CURSOR_CONFIG_DIR = spec.jailConfig;
     const extra = spec.extraEnv || {};
     Object.keys(extra).forEach((key) => {
         if (!JAIL_ENV_ALLOW.has(key)) return;
@@ -233,6 +241,7 @@ function refuseWholeHome(dir) {
 
 function buildLaunch(options) {
     const opts = options || {};
+    const runtime = opts.runtime === 'claude' ? 'claude' : 'cursor';
     const bwrapBin = opts.bwrapBin || director().findBwrap();
     if (!bwrapBin) {
         const error = new Error('bubblewrap (bwrap) is not installed on this host');
@@ -255,23 +264,49 @@ function buildLaunch(options) {
     }
     fs.mkdirSync(homeAccessDir, { recursive: true });
 
-    const useAgent = !(opts.command && opts.command.length) && opts.includeAgent !== false;
+    const useBinary = !(opts.command && opts.command.length) && opts.includeAgent !== false;
     let agent = null;
-    if (useAgent) {
-        const agentBin = opts.agentBin || director().findAgent();
-        if (!agentBin) {
-            const error = new Error('Cursor is not installed on this host');
-            error.code = 'CURSOR_MISSING';
-            throw error;
+    let claudeBin = null;
+    if (useBinary) {
+        if (runtime === 'claude') {
+            claudeBin = opts.agentBin || director().findClaude();
+            if (!claudeBin) {
+                const error = new Error('Claude Code is not installed on this host');
+                error.code = 'CLAUDE_MISSING';
+                throw error;
+            }
+        } else {
+            const agentBin = opts.agentBin || director().findAgent();
+            if (!agentBin) {
+                const error = new Error('Cursor is not installed on this host');
+                error.code = 'CURSOR_MISSING';
+                throw error;
+            }
+            agent = director()._test.agentJailTarget(agentBin);
         }
-        agent = director()._test.agentJailTarget(agentBin);
     }
 
-    const credential = loadActiveCredential(opts);
     const runHome = prepareRunHome(opts);
-    const hostConfig = path.join(runHome, '.config', 'cursor');
-    const authFile = seedConfig(hostConfig, credential);
-    const jailConfig = `${JAIL_HOME}/.config/cursor`;
+
+    // Cursor carries an account credential seeded into a jailed CLI config.
+    // Claude carries no account state here: auth is the mounted token file below.
+    let credential = { accountId: null, auth: {}, keyFile: null, storedKey: '' };
+    let authFile = null;
+    let jailConfig = null;
+    let tokenFile = null;
+    if (runtime === 'claude') {
+        tokenFile = resolveClaudeTokenFile(opts);
+        if (!fs.existsSync(tokenFile)) {
+            const error = new Error('Claude OAuth token file is missing (run `claude setup-token`)');
+            error.code = 'CLAUDE_TOKEN_MISSING';
+            throw error;
+        }
+    } else {
+        credential = loadActiveCredential(opts);
+        const hostConfig = path.join(runHome, '.config', 'cursor');
+        authFile = seedConfig(hostConfig, credential);
+        jailConfig = `${JAIL_HOME}/.config/cursor`;
+    }
 
     const env = jailEnv({
         jailHome: JAIL_HOME,
@@ -280,7 +315,7 @@ function buildLaunch(options) {
         lang: opts.lang,
         extraEnv: opts.extraEnv
     });
-    if (process.env.CURSOR_CONFIG_DIR && env.CURSOR_CONFIG_DIR === process.env.CURSOR_CONFIG_DIR) {
+    if (jailConfig && process.env.CURSOR_CONFIG_DIR && env.CURSOR_CONFIG_DIR === process.env.CURSOR_CONFIG_DIR) {
         throw new Error('Xi launch reused the inherited CURSOR_CONFIG_DIR');
     }
     assertNoInheritedCursor(env);
@@ -292,9 +327,18 @@ function buildLaunch(options) {
     if (credential.keyFile) {
         args.push('--dir', JAIL_KEY_DIR, '--ro-bind', credential.keyFile, JAIL_KEY_FILE);
     }
+    if (tokenFile) {
+        args.push('--dir', JAIL_KEY_DIR, '--ro-bind', tokenFile, JAIL_CLAUDE_TOKEN_FILE);
+    }
     if (agent) {
         args.push('--dir', '/opt', '--dir', JAIL_AGENT_ROOT);
         args.push('--ro-bind', agent.hostRoot, JAIL_AGENT_ROOT);
+    }
+    let claudeTarget = null;
+    if (claudeBin) {
+        claudeTarget = director()._test.claudeJailTarget(claudeBin, JAIL_CLAUDE_ROOT);
+        args.push('--dir', '/opt', '--dir', JAIL_CLAUDE_ROOT);
+        args.push('--ro-bind', claudeTarget.hostRoot, JAIL_CLAUDE_ROOT);
     }
 
     const mounts = [{ src: runHome, dest: JAIL_HOME }];
@@ -308,6 +352,10 @@ function buildLaunch(options) {
         skipDirs.add('/opt');
         skipDirs.add(JAIL_AGENT_ROOT);
     }
+    if (claudeTarget) {
+        skipDirs.add('/opt');
+        skipDirs.add(JAIL_CLAUDE_ROOT);
+    }
     planned.dirArgs.forEach((dir) => {
         if (!skipDirs.has(dir)) args.push('--dir', dir);
     });
@@ -316,13 +364,23 @@ function buildLaunch(options) {
     args.push('--clearenv');
     Object.keys(env).forEach((key) => args.push('--setenv', key, String(env[key] == null ? '' : env[key])));
 
-    let command = (opts.command && opts.command.length)
-        ? opts.command.map((part) => String(part))
-        : [agent.inJail].concat(opts.agentArgs || []).map((part) => String(part));
+    let command;
+    if (opts.command && opts.command.length) {
+        command = opts.command.map((part) => String(part));
+    } else if (claudeTarget) {
+        command = [claudeTarget.inJail].concat(opts.agentArgs || []).map((part) => String(part));
+    } else {
+        command = [agent.inJail].concat(opts.agentArgs || []).map((part) => String(part));
+    }
     if (credential.keyFile) {
         command = ['/bin/sh', '-c',
             `CURSOR_API_KEY="$(cat ${JAIL_KEY_FILE})"; export CURSOR_API_KEY; exec "$@"`,
             'xi-launch'].concat(command);
+    }
+    if (tokenFile) {
+        command = ['/bin/sh', '-c',
+            `CLAUDE_CODE_OAUTH_TOKEN="$(cat ${JAIL_CLAUDE_TOKEN_FILE})"; export CLAUDE_CODE_OAUTH_TOKEN; exec "$@"`,
+            'xi-claude-launch'].concat(command);
     }
     args.push('--');
     command.forEach((part) => args.push(part));
@@ -339,9 +397,11 @@ function buildLaunch(options) {
         env,
         hostEnv,
         runHome,
+        runtime,
         accountId: credential.accountId,
         authFile,
         apiKeyMount: credential.keyFile ? JAIL_KEY_FILE : null,
+        tokenMount: tokenFile ? JAIL_CLAUDE_TOKEN_FILE : null,
         jailHome: JAIL_HOME,
         jailConfig,
         projectDir,
@@ -363,8 +423,11 @@ module.exports = {
     JAIL_ENV_KEYS,
     JAIL_HOME,
     JAIL_KEY_FILE,
+    JAIL_CLAUDE_TOKEN_FILE,
+    DEFAULT_CLAUDE_TOKEN_FILE,
     defaultProjectDir,
     resolveHomeAccess,
+    resolveClaudeTokenFile,
     loadActiveCredential,
     buildLaunch,
     spawnLaunch,
