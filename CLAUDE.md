@@ -26,6 +26,10 @@ Treat "Cursor agent" in those rules as "any coding agent, including Claude Code"
   is missing, fall back to `~/.secrets/yozora-grok.cursor.token` and say in comments
   that it is a Claude Code session acting through `grok.cursor`. Read the token at
   call time; never echo, print, commit, or paste it into a comment or chat.
+- Team: `DreamScape/ClaudeAgents` (code, issues, PRs, projects, wiki write) on
+  StaticForge, nai-prompt-guide, DSApp-Kotlin, cursor-rules.
+- Git push to Yozora as `claude`, never via the checkout's stored credentials:
+  `git -c credential.helper= -c 'credential.helper=!f(){ echo username=claude; echo "password=$(tr -d "[:space:]" < ~/.secrets/yozora-claude.token)"; }; f' push origin <branch>`
 - Identity: a Claude Code agent, not Cursor, not Yukimi. Where the rules say
   "auth as `grok.cursor`" or "Cursor agent (`grok.cursor`)", use the Claude
   account and wording instead. Every other rule (timers, labels, Done comment,
