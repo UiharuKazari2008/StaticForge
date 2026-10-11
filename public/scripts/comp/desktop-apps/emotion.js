@@ -6,7 +6,6 @@
 // redefining the backend catalog.
 // openModal / closeModal / bringModalToFront / restoreMinimizedModal / assignModalZIndex:
 // public/scripts/comp/modalUtils.js
-// setupDropdown / openDropdown / closeDropdown / teardownDropdown: public/scripts/comp/dropdown.js
 // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
 // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
 // Layout: public/css/desktop-apps/emotion.css
@@ -378,64 +377,66 @@ function emotionRenderPreview() {
     }
 }
 
-// ---- Mode dropdown (loop/wan/ltx) — custom-dropdown, not a native <select> ----------------
+// ---- Mode button (loop/wan/ltx) — toolbar button + contextMenu click-menu ----------------
 // LOCAL_ANIMATE_BACKENDS / knownLocalAnimateBackends / fetchLocalAnimateStatus:
 // public/scripts/comp/animateImageDialog.js
 
-function emotionBuildModeDropdown() {
-    const wrap = document.createElement('div');
-    wrap.id = 'emotionModeDropdown';
-    wrap.className = 'custom-dropdown dark emotion-mode-dropdown';
-    wrap.title = 'Mode';
+const EMOTION_MODE_LABELS = { ltx: 'LTX', loop: 'Loop', wan: 'Wan' };
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.id = 'emotionModeDropdownBtn';
-    btn.className = 'btn-secondary custom-dropdown-btn emotion-mode-dropdown-btn';
-    wrap.appendChild(btn);
+// Backends may arrive as {id,name}, {id,label}, {backend} or plain strings from the worker.
+function emotionModeId(b) {
+    if (typeof b === 'string') return b;
+    return (b && (b.id || b.backend || b.key)) || '';
+}
 
-    const menu = document.createElement('div');
-    menu.id = 'emotionModeDropdownMenu';
-    menu.className = 'custom-dropdown-menu hidden';
-    wrap.appendChild(menu);
+function emotionModeLabel(id) {
+    return EMOTION_MODE_LABELS[id] || String(id || '').toUpperCase() || 'Mode';
+}
 
-    const renderOptions = () => {
-        const backends = knownLocalAnimateBackends();
-        if (!backends.some((b) => b.id === desktopEmotion.mode)) {
-            desktopEmotion.mode = backends.length ? backends[0].id : desktopEmotion.mode;
+function emotionModeList() {
+    const ids = knownLocalAnimateBackends().map(emotionModeId).filter(Boolean);
+    return ids.length ? ids : ['ltx', 'loop', 'wan'];
+}
+
+function emotionRenderModeButton() {
+    const btn = document.getElementById('emotionModeBtn');
+    if (!btn) return;
+    const ids = emotionModeList();
+    if (!ids.includes(desktopEmotion.mode)) desktopEmotion.mode = ids.includes('ltx') ? 'ltx' : ids[0];
+    btn.querySelector('.emotion-mode-btn-label').textContent = emotionModeLabel(desktopEmotion.mode);
+}
+
+// Standard toolbar click-menu (same pattern as Dovecote's Folder button) — no custom dropdown.
+const emotionModeMenuConfig = {
+    onAction: (action, target, item) => {
+        desktopEmotion.mode = item.emotionModeId;
+        emotionRenderModeButton();
+    },
+    sections: [{
+        type: 'list',
+        initfn: (section) => {
+            section.items = emotionModeList().map((id) => ({
+                text: emotionModeLabel(id),
+                icon: id === 'loop' ? 'fas fa-repeat' : 'fas fa-film',
+                action: 'emotion-mode-pick',
+                emotionModeId: id,
+                showIndicator: true,
+                loadfn: (it) => { it.checked = desktopEmotion.mode === id; }
+            }));
         }
-        menu.innerHTML = '';
-        backends.forEach((backendOpt) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (backendOpt.id === desktopEmotion.mode ? ' selected' : '');
-            option.dataset.value = backendOpt.id;
-            option.textContent = backendOpt.name;
-            option.addEventListener('click', () => {
-                desktopEmotion.mode = backendOpt.id;
-                renderLabel();
-                menu.querySelectorAll('.custom-dropdown-option').forEach((opt) => {
-                    opt.classList.toggle('selected', opt.dataset.value === desktopEmotion.mode);
-                });
-                closeDropdown(menu, btn);
-            });
-            menu.appendChild(option);
-        });
-    };
+    }]
+};
 
-    const renderLabel = () => {
-        const match = knownLocalAnimateBackends().find((b) => b.id === desktopEmotion.mode);
-        btn.textContent = match ? match.name : desktopEmotion.mode;
-    };
-
-    renderOptions();
-    renderLabel();
-    fetchLocalAnimateStatus().then(() => {
-        renderOptions();
-        renderLabel();
-    });
-
-    setupDropdown(wrap, btn, menu, () => { renderOptions(); }, () => ({ value: desktopEmotion.mode }), { preventFocusTransfer: true });
-    return wrap;
+function emotionBuildModeButton() {
+    const btn = emotionCreateButton('btn-secondary', 'Mode', 'fas fa-film');
+    btn.id = 'emotionModeBtn';
+    const label = document.createElement('span');
+    label.className = 'emotion-mode-btn-label';
+    btn.appendChild(label);
+    contextMenu.attachClickMenuToElement(btn, emotionModeMenuConfig);
+    setTimeout(emotionRenderModeButton, 0);
+    fetchLocalAnimateStatus().then(emotionRenderModeButton);
+    return btn;
 }
 
 // ---- Scroll-wheel adjustable number inputs (frames/fps) — <=200ms debounce ----------------
@@ -515,7 +516,7 @@ const ensureDesktopEmotionModal = function () {
         input.max = String(max);
         input.value = String(value);
         input.title = labelText + ' (hover + scroll to adjust)';
-        input.className = 'form-control colored toolbar-input-segment emotion-number-input';
+        input.className = 'form-control hover-show colored toolbar-input-segment emotion-number-input';
         group.appendChild(label);
         group.appendChild(input);
         toolbar.appendChild(group);
@@ -524,9 +525,9 @@ const ensureDesktopEmotionModal = function () {
     const framesInput = emotionBuildNumberGroup('Frames', 'emotionFramesInput', 8, 32, desktopEmotion.frames);
     const fpsInput = emotionBuildNumberGroup('FPS', 'emotionFpsInput', 4, 24, desktopEmotion.fps);
 
-    toolbar.appendChild(emotionBuildModeDropdown());
+    toolbar.appendChild(emotionBuildModeButton());
 
-    const loopToggle = emotionCreateButton('btn-secondary btn-toggle icon-only emotion-indicator-toggle', 'Loop', 'fas fa-repeat');
+    const loopToggle = emotionCreateButton('btn-secondary icon-only indicator', 'Loop', 'fas fa-repeat');
     loopToggle.id = 'emotionLoopToggle';
     loopToggle.dataset.state = desktopEmotion.loop ? 'on' : 'off';
     loopToggle.setAttribute('aria-pressed', String(desktopEmotion.loop));
@@ -541,7 +542,7 @@ const ensureDesktopEmotionModal = function () {
     spacer.className = 'emotion-toolbar-spacer';
     toolbar.appendChild(spacer);
 
-    const directorToggle = emotionCreateButton('btn-secondary btn-toggle icon-only emotion-indicator-toggle', 'Auto prompt via Director', 'fas fa-wand-magic-sparkles');
+    const directorToggle = emotionCreateButton('btn-secondary icon-only indicator', 'Auto prompt via Director', 'fas fa-wand-magic-sparkles');
     directorToggle.dataset.state = 'off';
     directorToggle.setAttribute('aria-pressed', 'false');
     directorToggle.addEventListener('click', () => {

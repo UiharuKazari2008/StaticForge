@@ -42,7 +42,7 @@ function main() {
     assert.match(emotionCss, /@media \(max-width: 760px\)[\s\S]*flex-direction:\s*column/);
 
     // Toolbar order: Open Image | divider | Frames FPS Mode Loop | spacer | Director Start/Stop.
-    const order = ["'Open image'", 'emotion-toolbar-divider', "'Frames'", "'FPS'", 'emotionBuildModeDropdown()',
+    const order = ["'Open image'", 'emotion-toolbar-divider', "'Frames'", "'FPS'", 'emotionBuildModeButton()',
         "'Loop', 'fas fa-repeat'", 'emotion-toolbar-spacer', "'Auto prompt via Director'", 'emotion-start-stop-btn'];
     const builder = emotionJs.slice(emotionJs.indexOf('const ensureDesktopEmotionModal'));
     let last = -1;
@@ -52,19 +52,25 @@ function main() {
         last = at;
     }
     assert.match(emotionJs, /startStopBtn\.addEventListener\('click', emotionHandleStartStopClick\)/);
-    assert.match(emotionJs, /btn-secondary btn-toggle icon-only emotion-indicator-toggle/);
-    assert.match(emotionCss, /\.emotion-indicator-toggle\[data-state="on"\]::after/);
+    // Toggles reuse Studio's standard .indicator dot (app.css), no custom bar.
+    assert.match(emotionJs, /'btn-secondary icon-only indicator'/);
+    assert.doesNotMatch(emotionCss, /emotion-indicator-toggle/);
+    // Frames/FPS sized to ~3 chars like Studio's compact number input.
+    assert.match(emotionJs, /form-control hover-show colored toolbar-input-segment emotion-number-input/);
+    assert.match(emotionCss, /width: calc\(3ch \+ 0\.6em\)/);
     assert.match(emotionJs, /titleText\.textContent = 'eMotion LIVE'/);
 
     // Inset-panel recipe matches director.css's .director-expandable-content (glass-inset-bg-4
     // background, glass-border-4 border, inset glass-shadow-3 box-shadow).
-    assert.match(emotionCss, /\.emotion-inset-panel\s*{\s*background:\s*var\(--glass-inset-bg-4\);\s*border-radius:\s*8px;\s*border:\s*1px solid var\(--glass-border-4\);\s*box-shadow:\s*inset var\(--glass-shadow-3\);/);
+    assert.match(emotionCss, /background: var\(--glass-layer-dark-4\);\s*border: 1px solid var\(--glass-border-4\);\s*border-radius: var\(--border-radius-md\);/);
 
     // 3. No native <select> anywhere; every picker goes through dropdown.js's custom-dropdown
     // or contextMenu.js's click-menu, same as animateImageDialog.js / dovecote.js.
     assert.doesNotMatch(emotionJs, /createElement\(['"]select['"]\)/);
-    assert.match(emotionJs, /className = 'custom-dropdown dark emotion-mode-dropdown'/);
-    assert.match(emotionJs, /setupDropdown\(wrap, btn, menu,/);
+    // No custom dropdowns in the control toolbar: Mode is a button + standard click menu.
+    assert.doesNotMatch(emotionJs, /custom-dropdown/);
+    assert.match(emotionJs, /contextMenu\.attachClickMenuToElement\(btn, emotionModeMenuConfig\)/);
+    assert.match(emotionJs, /ltx: 'LTX', loop: 'Loop', wan: 'Wan'/);
     assert.match(emotionJs, /contextMenu\.attachClickMenuToElement\(loadBtn, emotionLoadImageMenuConfig\)/);
 
     // 4. Scroll-wheel adjustable number inputs (frames/fps) via the shared wheelTickGate.js

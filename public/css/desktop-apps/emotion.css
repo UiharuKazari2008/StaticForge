@@ -22,10 +22,10 @@
 }
 
 #desktopEmotionModal .emotion-inset-panel {
-    background: var(--glass-inset-bg-4);
-    border-radius: 8px;
+    /* Same inset recipe as Dovecote's list/viewer panes (dovecote.css). */
+    background: var(--glass-layer-dark-4);
     border: 1px solid var(--glass-border-4);
-    box-shadow: inset var(--glass-shadow-3);
+    border-radius: var(--border-radius-md);
 }
 
 /* ---- Toolbar ---- */
@@ -48,7 +48,12 @@
 }
 
 #desktopEmotionModal .emotion-number-input {
-    width: 3.5em;
+    /* Sized like Studio's #manualPrintsCount compact input: ~3 characters. */
+    width: calc(3ch + 0.6em);
+    min-width: 0;
+    max-width: calc(3ch + 0.6em);
+    flex: 0 0 auto;
+    padding: 0.25em 0.3em;
     text-align: center;
     -moz-appearance: textfield;
 }
@@ -59,30 +64,14 @@
     margin: 0;
 }
 
-#desktopEmotionModal .emotion-mode-dropdown-btn {
-    min-width: 5.5em;
+/* Toolbar fits on one row: no wrap, no scroll. */
+#desktopEmotionModal .modal-window-title-toolbar {
+    flex-wrap: nowrap;
+    overflow: visible;
 }
 
-#desktopEmotionModal .emotion-indicator-toggle {
-    position: relative;
-}
-
-#desktopEmotionModal .emotion-indicator-toggle::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    bottom: 3px;
-    width: 10px;
-    height: 2px;
-    margin-left: -5px;
-    border-radius: 1px;
-    background: var(--glass-border-3);
-    transition: background 0.15s ease;
-}
-
-#desktopEmotionModal .emotion-indicator-toggle[data-state="on"]::after {
-    background: var(--text-accent);
-    box-shadow: 0 0 6px var(--text-accent);
+#desktopEmotionModal .emotion-mode-btn-label {
+    margin-left: 4px;
 }
 
 /* ---- Left: preview / progress / result ---- */
