@@ -130,6 +130,18 @@ const MODULE_DEFS = {
         description: 'Publish Apocrypha zine content directly',
         tools: ['publish_apocrypha', 'revoke_apocrypha', 'get_apocrypha']
     },
+    dovecote: {
+        id: 'dovecote',
+        scope: 'sfapp_dovecote',
+        label: 'Dovecote Mail',
+        description: 'Own-mailbox-only internal mail (send, list, read, mark, forward)',
+        tools: ['send_mail', 'list_mail', 'read_mail', 'mark_mail', 'forward_mail'],
+        submodules: {
+            send: ['send_mail', 'forward_mail'],
+            read: ['list_mail', 'read_mail'],
+            mark: ['mark_mail']
+        }
+    },
     report_issue: {
         id: 'report_issue',
         scope: 'sfapp_report_issue',

@@ -101,6 +101,17 @@ function activeSessionId() {
     return runs.size === 1 ? Array.from(runs.keys())[0] : null;
 }
 
+// Runtime of whatever Xi session is currently driving a call through the
+// shared "Xi" MCP key (modules/dovecoteMail.js uses this to tell a Cursor
+// job's mail apart from a Claude job's — they share one application key).
+// null when no Xi session is running (caller should default to 'cursor').
+function activeRuntime() {
+    const sessionId = activeSessionId();
+    if (!sessionId) return null;
+    const chat = readIndex().chats.find((item) => item.id === sessionId);
+    return chat ? sanitizeRuntime(chat.runtime) : null;
+}
+
 function readChatWorkspace(sessionId) {
     const id = String(sessionId || '').trim();
     if (!id) return '';
@@ -1511,6 +1522,8 @@ module.exports = {
     runtimeStatus,
     hasChat,
     activeSessionId,
+    activeRuntime,
+    sanitizeRuntime,
     readChatWorkspace,
     chatsDir,
     chatImagesDir,

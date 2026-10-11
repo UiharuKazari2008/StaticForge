@@ -2888,6 +2888,89 @@ const TOOL_DEFS = [
                 refresh: { type: 'boolean', description: 'Force refresh account data from upstream (default false)' }
             }
         }
+    },
+    // Dovecote mail tools (sfapp_dovecote scope). Caller identity (bot name,
+    // or Cursor/Claude for Xi jobs) resolves server-side to the mailbox owner —
+    // there is no "from"/"owner" input; you only ever act as your own mailbox.
+    {
+        name: 'send_mail',
+        core: true,
+        description: 'Send mail from your own Dovecote mailbox to another bot/job mailbox (Rook, Menma, Hoshino, Ivory, Guren, Chiyo, Frost, Sala, Tifa, Pyra, Cursor, Claude). You cannot send into Yukimi\'s mailbox. Pass replyTo to reply within an existing thread.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['to', 'subject', 'body'],
+            properties: {
+                to: { type: 'string', description: 'Recipient mailbox owner (bot/job identity, lowercase)' },
+                subject: { type: 'string' },
+                body: { type: 'string' },
+                format: { type: 'string', enum: ['text', 'md', 'html'], description: 'Default text' },
+                replyTo: { type: 'string', description: 'Message id (in your own mailbox) this replies to' }
+            }
+        }
+    },
+    {
+        name: 'list_mail',
+        core: true,
+        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body) — use read_mail for the full message.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                folder: { type: 'string', enum: ['inbox', 'outbox', 'sent', 'deleted', 'archive'], description: 'Default: all folders' },
+                unreadOnly: { type: 'boolean' },
+                limit: { type: 'number', description: 'Default 50, max 200' }
+            }
+        }
+    },
+    {
+        name: 'read_mail',
+        core: true,
+        description: 'Read one message by id from your own Dovecote mailbox (marks it read). Ids from other mailboxes 404 — there is no cross-mailbox access.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id'],
+            properties: {
+                id: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'mark_mail',
+        core: true,
+        description: 'Mark a message in your own Dovecote mailbox read/unread, archived, or deleted.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id'],
+            properties: {
+                id: { type: 'string' },
+                read: { type: 'boolean' },
+                archived: { type: 'boolean' },
+                archiveSubfolder: { type: 'string' },
+                deleted: { type: 'boolean' }
+            }
+        }
+    },
+    {
+        name: 'forward_mail',
+        core: true,
+        description: 'Forward a message from your own Dovecote mailbox to another bot/job mailbox as a new copy (new thread — the recipient does not gain access to the original thread or mailbox). You cannot forward into Yukimi\'s mailbox.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'to'],
+            properties: {
+                id: { type: 'string', description: 'Message id in your own mailbox' },
+                to: { type: 'string', description: 'Recipient mailbox owner' }
+            }
+        }
     }
 ];
 
@@ -8562,6 +8645,73 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'get_apocrypha') {
         return mcpTextResult(listApocrypha(input));
+    }
+
+    if (name === 'send_mail' || name === 'list_mail' || name === 'read_mail' || name === 'mark_mail' || name === 'forward_mail') {
+        const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
+        const dovecoteMail = require('./dovecoteMail');
+        const owner = resolveDovecoteOwnerFromReq(req);
+        if (!owner) {
+            return mcpTextResult({ success: false, error: 'Caller identity does not map to a Dovecote mailbox' }, true);
+        }
+        try {
+            if (name === 'send_mail') {
+                const result = dovecoteMail.sendMail({
+                    fromOwner: owner,
+                    to: input.to,
+                    subject: input.subject,
+                    body: input.body,
+                    format: input.format,
+                    replyToId: input.replyTo
+                });
+                return mcpTextResult({ success: true, ...result });
+            }
+            if (name === 'list_mail') {
+                const mail = dovecoteMail.listMail(owner, {
+                    folder: input.folder,
+                    unreadOnly: input.unreadOnly === true,
+                    limit: input.limit
+                });
+                return mcpTextResult({ success: true, mail });
+            }
+            if (name === 'read_mail') {
+                const mail = dovecoteMail.readMail(owner, input.id);
+                if (!mail) {
+                    const err = new Error('Mail not found');
+                    err.status = 404;
+                    throw err;
+                }
+                return mcpTextResult({ success: true, mail });
+            }
+            if (name === 'mark_mail') {
+                const mail = dovecoteMail.markMail(owner, {
+                    id: input.id,
+                    read: typeof input.read === 'boolean' ? input.read : undefined,
+                    archived: typeof input.archived === 'boolean' ? input.archived : undefined,
+                    deleted: typeof input.deleted === 'boolean' ? input.deleted : undefined,
+                    archiveSubfolder: input.archiveSubfolder
+                });
+                if (!mail) {
+                    const err = new Error('Mail not found');
+                    err.status = 404;
+                    throw err;
+                }
+                return mcpTextResult({ success: true, mail });
+            }
+            // forward_mail
+            const result = dovecoteMail.forwardMail(owner, { id: input.id, to: input.to });
+            if (!result) {
+                const err = new Error('Mail not found');
+                err.status = 404;
+                throw err;
+            }
+            return mcpTextResult({ success: true, ...result });
+        } catch (mailError) {
+            if (mailError instanceof dovecoteMail.DovecoteError) {
+                return mcpTextResult({ success: false, error: mailError.message, code: mailError.code }, true);
+            }
+            throw mailError;
+        }
     }
 
     const err = new Error(`Unknown tool: ${name}`);
