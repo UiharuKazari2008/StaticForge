@@ -133,6 +133,7 @@ const TOOL_RATE_GROUPS = {
     await_generation_job: 'free',
     generate_preset: 'generate',
     upscale_image: 'generate',
+    animate_image: 'generate',
     expand_image: 'generate',
     delete_images: 'write',
     scrap_images: 'write',
