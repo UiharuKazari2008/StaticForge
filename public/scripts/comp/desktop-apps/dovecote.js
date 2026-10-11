@@ -36,6 +36,7 @@ const desktopDovecote = {
     selectedId: null,
     selectedMail: null,
     bodyView: 'rendered',
+    inboxUnread: 0,
     allowRemoteImagesOnce: false,
     searchText: '',
     mobileMessageOpen: false,
@@ -190,9 +191,7 @@ const ensureDesktopDovecoteModal = function () {
     const body = document.createElement('div');
     body.className = 'modal-body';
 
-    body.appendChild(doveBuildFolderTree());
     body.appendChild(doveBuildMainPane());
-    body.appendChild(doveBuildMobileFolderDrawer());
 
     content.appendChild(body);
     modal.appendChild(title);
@@ -209,7 +208,6 @@ const ensureDesktopDovecoteModal = function () {
     doveCacheEls();
     doveWireEvents();
     doveRenderMailboxBanner();
-    doveRenderFolderTree();
     doveRenderFolderButton();
     doveRenderToolbarState();
     return modal;
@@ -303,7 +301,10 @@ const doveFolderMenuConfig = {
         type: 'list',
         initfn: (section) => {
             section.items = DESKTOP_DOVECOTE_FOLDERS.map((folder) => ({
-                text: folder.label,
+                // Inbox unread count (was the sidebar badge) — initfn reruns on every open.
+                text: folder.id === 'inbox' && desktopDovecote.inboxUnread > 0
+                    ? folder.label + ' (' + desktopDovecote.inboxUnread + ')'
+                    : folder.label,
                 icon: folder.icon,
                 action: 'dove-folder-pick',
                 doveFolderId: folder.id,
@@ -318,8 +319,13 @@ const doveBuildFolderButton = function () {
     const button = doveCreateButton('btn-secondary dovecote-folder-btn', 'Folder', DESKTOP_DOVECOTE_FOLDERS[0].icon);
     button.id = 'desktopDovecoteFolderBtn';
     const label = document.createElement('span');
+    label.className = 'dovecote-folder-btn-label';
     label.textContent = DESKTOP_DOVECOTE_FOLDERS[0].label;
     button.appendChild(label);
+    // Inbox unread badge (replaces the old sidebar tree badge); doveRenderInboxBadge fills it.
+    const badge = document.createElement('span');
+    badge.className = 'dovecote-unread-badge hidden';
+    button.appendChild(badge);
     // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
     contextMenu.attachClickMenuToElement(button, doveFolderMenuConfig);
     return button;
@@ -330,7 +336,7 @@ const doveRenderFolderButton = function () {
     const folder = DESKTOP_DOVECOTE_FOLDERS.find((f) => f.id === desktopDovecote.folder);
     if (!button || !folder) return;
     button.querySelector('i').className = folder.icon;
-    button.querySelector('span').textContent = folder.label;
+    button.querySelector('.dovecote-folder-btn-label').textContent = folder.label;
 };
 
 // Mailboxes other than the one currently being viewed — used by the Forward picker.
@@ -535,58 +541,12 @@ const doveSwitchMailbox = function (owner) {
     doveLoadFolder(desktopDovecote.folder);
 };
 
-// ---- Folder tree ------------------------------------------------------------
-
-const doveBuildFolderTree = function () {
-    const tree = document.createElement('div');
-    // director-content-inner: public/css/director.css — same recessed panel treatment as
-    // Director's session list (.director-sessions-list.director-content-inner).
-    tree.className = 'dovecote-folder-tree director-content-inner';
-    tree.id = 'desktopDovecoteFolderTree';
-    DESKTOP_DOVECOTE_FOLDERS.forEach((folder) => {
-        tree.appendChild(doveBuildFolderRow(folder));
-    });
-    tree.addEventListener('click', (ev) => {
-        const row = ev.target.closest('[data-dove-folder]');
-        if (!row) return;
-        doveLoadFolder(row.dataset.doveFolder);
-    });
-    return tree;
-};
-
-const doveBuildFolderRow = function (folder) {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'dovecote-folder-row';
-    row.dataset.doveFolder = folder.id;
-    const icon = document.createElement('i');
-    icon.className = folder.icon;
-    icon.setAttribute('aria-hidden', 'true');
-    const label = document.createElement('span');
-    label.className = 'dovecote-folder-label';
-    label.textContent = folder.label;
-    row.appendChild(icon);
-    row.appendChild(label);
-    if (folder.id === 'inbox') {
-        const badge = document.createElement('span');
-        // Class, not id: this row is built twice (sidebar tree + mobile drawer).
-        badge.className = 'dovecote-unread-badge hidden';
-        row.appendChild(badge);
-    }
-    return row;
-};
-
-const doveRenderFolderTree = function () {
-    desktopDovecoteEls.modal.querySelectorAll('[data-dove-folder]').forEach((row) => {
-        row.classList.toggle('selected', row.dataset.doveFolder === desktopDovecote.folder);
-    });
-};
-
 const doveRenderInboxBadge = function (unreadCount) {
     // doveApplyTrayBadge: keeps the taskbar tray badge (#dovecoteTrayIcon) live whenever the
     // main window already knows the human's own inbox unread count — not an admin view of
     // someone else's mailbox, the tray only ever reflects Yukimi's own inbox.
     if (!desktopDovecote.viewAsOwner) doveApplyTrayBadge(unreadCount);
+    desktopDovecote.inboxUnread = unreadCount;
     desktopDovecoteEls.modal.querySelectorAll('.dovecote-unread-badge').forEach((badge) => {
         if (unreadCount > 0) {
             badge.textContent = String(unreadCount);
@@ -595,24 +555,6 @@ const doveRenderInboxBadge = function (unreadCount) {
             badge.classList.add('hidden');
         }
     });
-};
-
-// ---- Mobile folder drawer ---------------------------------------------------
-
-const doveBuildMobileFolderDrawer = function () {
-    const drawer = document.createElement('div');
-    drawer.className = 'dovecote-mobile-folder-drawer hidden';
-    drawer.id = 'desktopDovecoteMobileDrawer';
-    DESKTOP_DOVECOTE_FOLDERS.forEach((folder) => {
-        drawer.appendChild(doveBuildFolderRow(folder));
-    });
-    drawer.addEventListener('click', (ev) => {
-        const row = ev.target.closest('[data-dove-folder]');
-        if (!row) return;
-        drawer.classList.add('hidden');
-        doveLoadFolder(row.dataset.doveFolder);
-    });
-    return drawer;
 };
 
 // ---- Main pane: message list + preview -------------------------------------
@@ -634,13 +576,6 @@ const doveBuildMainPane = function () {
     // director-content-inner: public/css/director.css — recessed panel treatment, same as
     // Director's chat messages container.
     listWrap.className = 'dovecote-message-list-wrap director-content-inner';
-
-    const mobileToolbar = document.createElement('div');
-    mobileToolbar.className = 'dovecote-mobile-list-toolbar';
-    const foldersBtn = doveCreateButton('btn-secondary btn-small', 'Folders', 'fas fa-bars');
-    foldersBtn.dataset.doveAction = 'mobileFolders';
-    mobileToolbar.appendChild(foldersBtn);
-    listWrap.appendChild(mobileToolbar);
 
     const table = document.createElement('div');
     table.className = 'dovecote-message-list';
@@ -691,29 +626,26 @@ const doveBuildMainPane = function () {
     return pane;
 };
 
-// Rendered/Raw toggle (#6): lives in the viewer pane header now, not the main toolbar.
+// Rendered/Raw toggle (#6): right-aligned in the viewer's Subject header row — no extra bar.
 // Wired with its own click listener rather than relying on doveHandleBodyClick's
 // modal-wide delegation, so it can't double-fire the way toolbar action buttons do.
 const doveBuildBodyViewToggle = function () {
-    const headerTop = document.createElement('div');
-    headerTop.className = 'dovecote-oe-header-top';
     const viewGroup = document.createElement('div');
-    viewGroup.className = 'button-group';
-    const renderedBtn = doveCreateButton('btn-secondary btn-toggle toolbar-input-segment', 'Rendered', 'fas fa-code');
+    viewGroup.className = 'button-group dovecote-body-view-toggle';
+    const renderedBtn = doveCreateButton('btn-secondary btn-small btn-toggle', 'Rendered', 'fas fa-code');
     renderedBtn.dataset.doveBodyView = 'rendered';
     renderedBtn.dataset.state = 'on';
-    const rawBtn = doveCreateButton('btn-secondary btn-toggle toolbar-input-segment', 'Raw', 'fas fa-file-lines');
+    const rawBtn = doveCreateButton('btn-secondary btn-small btn-toggle', 'Raw', 'fas fa-file-lines');
     rawBtn.dataset.doveBodyView = 'raw';
     rawBtn.dataset.state = 'off';
     viewGroup.appendChild(renderedBtn);
     viewGroup.appendChild(rawBtn);
-    headerTop.appendChild(viewGroup);
-    headerTop.addEventListener('click', (ev) => {
+    viewGroup.addEventListener('click', (ev) => {
         const btn = ev.target.closest('[data-dove-body-view]');
         if (!btn) return;
         doveSetBodyView(btn.dataset.doveBodyView);
     });
-    return headerTop;
+    return viewGroup;
 };
 
 const doveBuildPreviewPane = function () {
@@ -751,7 +683,6 @@ const doveBuildPreviewPane = function () {
     const header = document.createElement('div');
     header.className = 'dovecote-oe-header';
     header.id = 'desktopDovecoteOeHeader';
-    header.appendChild(doveBuildBodyViewToggle());
     ['from', 'to', 'subject', 'date'].forEach((field) => {
         const row = document.createElement('div');
         row.className = 'dovecote-oe-header-row';
@@ -763,6 +694,7 @@ const doveBuildPreviewPane = function () {
         valueEl.id = 'desktopDovecoteOe' + field.charAt(0).toUpperCase() + field.slice(1);
         row.appendChild(labelEl);
         row.appendChild(valueEl);
+        if (field === 'subject') row.appendChild(doveBuildBodyViewToggle());
         header.appendChild(row);
     });
     preview.appendChild(header);
@@ -837,8 +769,7 @@ const doveCacheEls = function () {
         oeDate: document.getElementById('desktopDovecoteOeDate'),
         searchGroup: document.getElementById('desktopDovecoteSearchGroup'),
         searchInput: document.getElementById('desktopDovecoteSearchInput'),
-        mainPane: document.getElementById('desktopDovecoteMainPane'),
-        mobileDrawer: document.getElementById('desktopDovecoteMobileDrawer')
+        mainPane: document.getElementById('desktopDovecoteMainPane')
     });
 };
 
@@ -867,7 +798,6 @@ const doveDispatchAction = function (action) {
         case 'delete': doveDeleteSelected(); return;
         case 'archive': doveArchiveSelected(); return;
         case 'refresh': doveLoadFolder(desktopDovecote.folder); return;
-        case 'mobileFolders': doveToggleMobileDrawer(); return;
         case 'mobileBack': doveSetMobileMessageOpen(false); return;
         default: return;
     }
@@ -895,7 +825,6 @@ const doveRefreshMailboxes = async function () {
 
 const doveLoadFolder = async function (folder) {
     desktopDovecote.folder = folder;
-    doveRenderFolderTree();
     doveRenderFolderButton();
     doveShowError(null);
     const request = { folder: folder };
@@ -936,10 +865,6 @@ const doveSetSort = function (key) {
         desktopDovecote.sortDir = key === 'createdAt' ? 'desc' : 'asc';
     }
     doveRenderMessageList();
-};
-
-const doveToggleMobileDrawer = function () {
-    desktopDovecoteEls.mobileDrawer.classList.toggle('hidden');
 };
 
 const doveSetMobileMessageOpen = function (open) {

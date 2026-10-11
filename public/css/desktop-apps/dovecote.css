@@ -1,5 +1,5 @@
 /* Dovecote: Outlook-Express-style internal mail client (desktop-apps/dovecote.js).
-   Three-pane layout: folder tree (left), message list + preview (right).
+   Layout: folder dropdown in the toolbar; bounded message list above the preview.
    Mobile layout (list screen / message screen) switches at the breakpoint below,
    matching the viewport convention used by other narrow-width desktop-app layouts.
    Link in public/app.html next to the other desktop-apps stylesheets. */
@@ -52,51 +52,8 @@
     min-width: 160px;
 }
 
-/* ---- Folder tree ---------------------------------------------------- */
-
-#desktopDovecoteModal .dovecote-folder-tree {
-    display: flex;
-    flex: 0 0 160px;
-    flex-direction: column;
-    gap: 2px;
-    min-height: 0;
-    overflow-y: auto;
-}
-
-#desktopDovecoteModal .dovecote-folder-row,
-#desktopDovecoteModal .dovecote-mobile-folder-drawer .dovecote-folder-row {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    width: 100%;
-    padding: 0.4em var(--spacing-sm);
-    border: 1px solid transparent;
-    border-radius: var(--border-radius-md);
-    background: transparent;
-    color: var(--text-secondary);
-    text-align: left;
-    cursor: pointer;
-}
-
-#desktopDovecoteModal .dovecote-folder-row:hover {
-    background: var(--glass-layer-dark-4);
-}
-
-#desktopDovecoteModal .dovecote-folder-row.selected {
-    background: var(--glass-layer-dark-5);
-    border-color: var(--glass-border-3);
-    color: var(--text-primary);
-}
-
-#desktopDovecoteModal .dovecote-folder-label {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 #desktopDovecoteModal .dovecote-unread-badge {
+    margin-left: 0.4em;
     flex: 0 0 auto;
     padding: 0.1em 0.5em;
     border-radius: var(--border-radius-xl);
@@ -138,7 +95,6 @@
     gap: var(--spacing-sm);
 }
 
-#desktopDovecoteModal .dovecote-mobile-list-toolbar,
 #desktopDovecoteModal .dovecote-mobile-message-toolbar {
     display: none;
 }
@@ -146,8 +102,9 @@
 #desktopDovecoteModal .dovecote-message-list-wrap {
     display: flex;
     flex-direction: column;
-    flex: 1 1 40%;
-    min-height: 120px;
+    flex: 0 1 35%;
+    min-height: 20%;
+    max-height: 280px;
     border: 1px solid var(--glass-border-3);
     border-radius: var(--border-radius-md);
     overflow: hidden;
@@ -248,7 +205,7 @@
 #desktopDovecoteModal .dovecote-preview-pane {
     display: flex;
     flex-direction: column;
-    flex: 1 1 50%;
+    flex: 1 1 auto;
     min-height: 120px;
     gap: var(--spacing-sm);
     border: 1px solid var(--glass-border-3);
@@ -270,17 +227,16 @@
     font-size: 0.85em;
 }
 
-/* Rendered/Raw toggle (#6) — moved here from the main toolbar. */
-.dovecote-oe-header-top {
-    display: flex;
-    flex: 0 0 auto;
-    justify-content: flex-end;
-    padding-bottom: 2px;
-}
-
 .dovecote-oe-header-row {
     display: flex;
+    align-items: center;
     gap: var(--spacing-sm);
+}
+
+/* Rendered/Raw toggle (#6) — right-aligned inside the Subject row, no bar of its own. */
+.dovecote-body-view-toggle {
+    flex: 0 0 auto;
+    margin-left: auto;
 }
 
 .dovecote-oe-header-label {
@@ -492,25 +448,6 @@
     gap: var(--spacing-sm);
 }
 
-/* ---- Mobile folder drawer (popover, no permanent sidebar at narrow widths) */
-
-#desktopDovecoteModal .dovecote-mobile-folder-drawer {
-    display: flex;
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: var(--z-layer-9);
-    flex-direction: column;
-    gap: 2px;
-    width: 220px;
-    max-height: 100%;
-    padding: var(--spacing-sm);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    background: var(--glass-layer-dark-5);
-    overflow-y: auto;
-}
-
 /* ---- Mobile breakpoint: list screen / message screen -------------------
    Matches the calculator's own-width container-query convention rather than
    a viewport media query, so the layout responds to the window being resized
@@ -521,15 +458,6 @@
 }
 
 @container desktop-dovecote (max-width: 560px) {
-    #desktopDovecoteModal .dovecote-folder-tree {
-        display: none;
-    }
-
-    #desktopDovecoteModal .dovecote-mobile-list-toolbar {
-        display: flex;
-        flex: 0 0 auto;
-    }
-
     #desktopDovecoteModal .dovecote-col-from,
     #desktopDovecoteModal .dovecote-col-createdAt {
         font-size: 0.8em;
@@ -543,6 +471,7 @@
     #desktopDovecoteModal .dovecote-message-list-wrap,
     #desktopDovecoteModal .dovecote-preview-pane {
         flex: 1 1 auto;
+        max-height: none;
     }
 
     #desktopDovecoteModal .dovecote-preview-pane {
