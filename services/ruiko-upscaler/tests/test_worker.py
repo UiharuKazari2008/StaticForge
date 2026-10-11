@@ -17,7 +17,7 @@ os.environ["RUIKO_JOB_TTL_SECONDS"] = "3600"
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from ruiko_upscaler import infer
+from ruiko_upscaler import infer, infer_animate
 from ruiko_upscaler.app import app, sweep_jobs
 from ruiko_upscaler.auth import keys_match, presented_bearer
 
@@ -228,6 +228,132 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(removed, 1)
         self.assertNotIn("old", jobs)
         self.assertIn("new", jobs)
+
+
+class AnimateApiTests(unittest.TestCase):
+    def setUp(self):
+        self.png = tiny_png()
+        self._ctx = TestClient(app)
+        self.client = self._ctx.__enter__()
+        self.headers = {"Authorization": "Bearer test-key"}
+
+        def fake(image, motion_prompt, frames, fps, loop, backend, progress=None):
+            if progress:
+                progress(50)
+            return {
+                "gif": b"GIF89a" + b"\x00" * 8,
+                "mp4": b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 8,
+                "webp": b"RIFF" + b"\x00" * 8 + b"WEBP",
+            }
+
+        self._orig = infer_animate.generate_animation_bytes
+        infer_animate.generate_animation_bytes = fake
+
+    def tearDown(self):
+        infer_animate.generate_animation_bytes = self._orig
+        self._ctx.__exit__(None, None, None)
+
+    def _post_animate(self, **overrides):
+        payload = {
+            "type": "animate",
+            "image": base64.b64encode(self.png).decode("ascii"),
+            "motion_prompt": "the character waves",
+        }
+        payload.update(overrides)
+        return self.client.post("/jobs", headers=self.headers, json=payload)
+
+    def test_animate_job_roundtrip_defaults(self):
+        res = self._post_animate()
+        self.assertEqual(res.status_code, 200)
+        job_id = res.json()["job_id"]
+        status = None
+        for _ in range(50):
+            status = self.client.get("/jobs/" + job_id, headers=self.headers).json()
+            if status["status"] in ("completed", "failed"):
+                break
+            time.sleep(0.05)
+        self.assertEqual(status["status"], "completed")
+        self.assertEqual(status["type"], "animate")
+        self.assertEqual(status["motion_prompt"], "the character waves")
+        self.assertEqual(status["frames"], 16)
+        self.assertEqual(status["fps"], 8)
+        self.assertTrue(status["loop"])
+        self.assertEqual(status["backend"], "animatediff")
+
+        gif = self.client.get("/jobs/" + job_id + "/result", headers=self.headers)
+        self.assertEqual(gif.status_code, 200)
+        self.assertEqual(gif.headers["content-type"], "image/gif")
+        self.assertTrue(gif.content.startswith(b"GIF89a"))
+
+        mp4 = self.client.get("/jobs/" + job_id + "/result?format=mp4", headers=self.headers)
+        self.assertEqual(mp4.status_code, 200)
+        self.assertEqual(mp4.headers["content-type"], "video/mp4")
+
+        webp = self.client.get("/jobs/" + job_id + "/result?format=webp", headers=self.headers)
+        self.assertEqual(webp.status_code, 200)
+        self.assertEqual(webp.headers["content-type"], "image/webp")
+
+    def test_animate_custom_fields_and_backend(self):
+        res = self._post_animate(frames=24, fps=12, loop=False, backend="wan")
+        self.assertEqual(res.status_code, 200)
+        job_id = res.json()["job_id"]
+        status = None
+        for _ in range(50):
+            status = self.client.get("/jobs/" + job_id, headers=self.headers).json()
+            if status["status"] in ("completed", "failed"):
+                break
+            time.sleep(0.05)
+        self.assertEqual(status["status"], "completed")
+        self.assertEqual(status["frames"], 24)
+        self.assertEqual(status["fps"], 12)
+        self.assertFalse(status["loop"])
+        self.assertEqual(status["backend"], "wan")
+
+    def test_animate_requires_motion_prompt(self):
+        payload = {"type": "animate", "image": base64.b64encode(self.png).decode("ascii")}
+        res = self.client.post("/jobs", headers=self.headers, json=payload)
+        self.assertEqual(res.status_code, 400)
+
+    def test_animate_rejects_bad_backend(self):
+        res = self._post_animate(backend="nope")
+        self.assertEqual(res.status_code, 400)
+
+    def test_animate_rejects_out_of_range_frames_and_fps(self):
+        self.assertEqual(self._post_animate(frames=200).status_code, 400)
+        self.assertEqual(self._post_animate(fps=1).status_code, 400)
+
+    def test_animate_result_format_must_be_known(self):
+        res = self._post_animate()
+        job_id = res.json()["job_id"]
+        for _ in range(50):
+            status = self.client.get("/jobs/" + job_id, headers=self.headers).json()
+            if status["status"] in ("completed", "failed"):
+                break
+            time.sleep(0.05)
+        bad = self.client.get("/jobs/" + job_id + "/result?format=bmp", headers=self.headers)
+        self.assertEqual(bad.status_code, 400)
+
+    def test_animate_multipart_job(self):
+        res = self.client.post(
+            "/jobs",
+            headers=self.headers,
+            files={"image": ("in.png", self.png, "image/png")},
+            data={"type": "animate", "motion_prompt": "slow zoom", "frames": "8", "fps": "6"},
+        )
+        self.assertEqual(res.status_code, 200)
+
+    def test_health_lists_animate_job_type(self):
+        res = self.client.get("/health", headers=self.headers)
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertIn("animate", body["job_types"])
+        self.assertIn("animatediff", body["animate_backends"])
+
+    def test_models_animate_backends(self):
+        res = self.client.get("/models?type=animate", headers=self.headers)
+        self.assertEqual(res.status_code, 200)
+        ids = [row["id"] for row in res.json()["backends"]]
+        self.assertEqual(ids, ["animatediff", "wan"])
 
 
 if __name__ == "__main__":

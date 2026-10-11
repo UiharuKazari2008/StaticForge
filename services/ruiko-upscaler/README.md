@@ -1,8 +1,8 @@
-# Ruiko upscaler
+# Ruiko worker
 
-Local GPU worker for Dreamscape card #393. It runs on **Ruiko** (Windows 11, RTX 2070 Super, 8 GB) and upscales images with spandrel. Dreamscape talks to it over the LAN. Upscales are free (no NovelAI Anlas).
+Local GPU worker for Dreamscape, running on **Ruiko** (Windows 11, RTX 2070 Super, 8 GB). It serves two job types over one API: `upscale` (spandrel, card #393) and `animate` (image-to-GIF/MP4/WebP, card #B23). Dreamscape talks to it over the LAN. Both job types are free (no NovelAI Anlas).
 
-Bind: `0.0.0.0:8188`. One job at a time (in-memory FIFO). Finished jobs are dropped after one hour.
+Bind: `0.0.0.0:8188`. One job at a time across both types (single in-memory FIFO queue) — the upscaler and the animate backends are never resident in VRAM together; the worker unloads whichever model group isn't needed before switching. Finished jobs are dropped after one hour.
 
 ## Auth
 

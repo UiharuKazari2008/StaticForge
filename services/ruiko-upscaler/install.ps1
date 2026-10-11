@@ -1,19 +1,26 @@
-# Ruiko upscaler worker (Windows 11, RTX 2070 Super 8 GB)
+# Ruiko worker (Windows 11, RTX 2070 Super 8 GB): upscale + animate job types.
 # Run from this folder on Ruiko:  powershell -ExecutionPolicy Bypass -File .\install.ps1
+# Pass -PrefetchWan to also download the optional Wan 2.1 1.3B backend (large;
+# it otherwise downloads lazily the first time a job uses backend=wan).
 # Does not open the firewall. The note at the end is the LAN rule to apply yourself.
+
+param(
+    [switch]$PrefetchWan
+)
 
 $ErrorActionPreference = "Stop"
 
 $Root = "F:\dreamscape-worker"
 $Venv = Join-Path $Root "venv"
 $ModelDir = Join-Path $Root "models"
+$HfCacheDir = Join-Path $ModelDir "hf-cache"
 $KeyFile = Join-Path $Root "worker.key"
 $LogDir = Join-Path $Root "logs"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Python = Join-Path $Venv "Scripts\python.exe"
 $Service = "RuikoUpscaler"
 
-New-Item -ItemType Directory -Force -Path $Root, $ModelDir, $LogDir | Out-Null
+New-Item -ItemType Directory -Force -Path $Root, $ModelDir, $HfCacheDir, $LogDir | Out-Null
 
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     throw "Python 3.10+ is required on PATH (Windows 11)."
@@ -48,6 +55,17 @@ foreach ($model in $catalog) {
     }
 }
 
+$env:HF_HOME = $HfCacheDir
+Write-Host "Prefetching AnimateDiff (SD1.5 base + motion adapter) into $HfCacheDir"
+& $Python -c "from diffusers import MotionAdapter; from diffusers import AnimateDiffVideoToVideoPipeline; MotionAdapter.from_pretrained('guoyww/animatediff-motion-adapter-v1-5-2', cache_dir=r'$HfCacheDir'); AnimateDiffVideoToVideoPipeline.from_pretrained('stable-diffusion-v1-5/stable-diffusion-v1-5', cache_dir=r'$HfCacheDir')"
+
+if ($PrefetchWan) {
+    Write-Host "Prefetching Wan 2.1 1.3B into $HfCacheDir (large download)"
+    & $Python -c "from diffusers import WanPipeline; WanPipeline.from_pretrained('Wan-AI/Wan2.1-T2V-1.3B-Diffusers', cache_dir=r'$HfCacheDir')"
+} else {
+    Write-Host "Skipping Wan prefetch (lazy-loads on first backend=wan job). Re-run with -PrefetchWan to cache it now."
+}
+
 if (-not (Test-Path $KeyFile)) {
     $bytes = New-Object byte[] 32
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
@@ -70,7 +88,7 @@ if (-not $nssm) {
     & nssm set $Service Application $Python
     & nssm set $Service AppParameters "-m uvicorn ruiko_upscaler.app:app --host 0.0.0.0 --port 8188"
     & nssm set $Service AppDirectory $Here
-    & nssm set $Service AppEnvironmentExtra "RUIKO_WORKER_KEY_FILE=$KeyFile" "RUIKO_MODEL_DIR=$ModelDir"
+    & nssm set $Service AppEnvironmentExtra "RUIKO_WORKER_KEY_FILE=$KeyFile" "RUIKO_MODEL_DIR=$ModelDir" "HF_HOME=$HfCacheDir"
     & nssm set $Service AppStdout (Join-Path $LogDir "upscaler.out.log")
     & nssm set $Service AppStderr (Join-Path $LogDir "upscaler.err.log")
     & nssm set $Service AppRotateFiles 1

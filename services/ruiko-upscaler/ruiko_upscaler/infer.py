@@ -22,6 +22,12 @@ def loaded_model_ids():
     return list(_loaded_ids)
 
 
+def unload_models():
+    _descriptors.clear()
+    _loaded_ids.clear()
+    empty_cuda_cache()
+
+
 def tiles_for_vram_mb(vram_mb, half):
     """Tile sizes, largest first, that stay inside the given VRAM."""
     if vram_mb is not None and vram_mb >= 14000:
