@@ -40,6 +40,13 @@ function main() {
         { type: 'folder', id: 'f2', name: '  Games  ', children: [] }
     ]);
     assert.strictEqual(withMessyName[0].name, 'Games');
+
+    // Actual control characters (not just whitespace) are stripped too.
+    const withControlChars = startMenuLayout.saveLayout(startMenuLayout.HUMAN_OWNER, [
+        { type: 'folder', id: 'f2b', name: 'Ga\x00m\x1fes\x7f', children: [] }
+    ]);
+    assert.strictEqual(withControlChars[0].name, 'Games');
+
     assert.throws(
         () => startMenuLayout.normalizeLayout([{ type: 'folder', id: 'f3', name: '   ', children: [] }]),
         /empty/
