@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="postWood" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a06a3c"/>
+      <stop offset="0.5" stop-color="#c08a52"/>
+      <stop offset="1" stop-color="#8c5a32"/>
+    </linearGradient>
+    <linearGradient id="boxBrass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8c272"/>
+      <stop offset="0.45" stop-color="#c4904a"/>
+      <stop offset="1" stop-color="#9a6c36"/>
+    </linearGradient>
+    <linearGradient id="boxBrassShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b47f44"/>
+      <stop offset="1" stop-color="#7c5228"/>
+    </linearGradient>
+    <linearGradient id="doorMetal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8a95a0"/>
+      <stop offset="1" stop-color="#5c6b78"/>
+    </linearGradient>
+    <linearGradient id="flagRed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2604a"/>
+      <stop offset="1" stop-color="#b03a28"/>
+    </linearGradient>
+    <radialGradient id="doveBody" cx="0.4" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1eee8"/>
+      <stop offset="1" stop-color="#d9d4c9"/>
+    </radialGradient>
+    <linearGradient id="envelopePaper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffdf6"/>
+      <stop offset="1" stop-color="#ece3cf"/>
+    </linearGradient>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
+      <feOffset dx="0" dy="18" result="off"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.35"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g filter="url(#softShadow)">
+    <!-- ground shadow ellipse -->
+    <ellipse cx="512" cy="872" rx="210" ry="30" fill="#000000" opacity="0.18"/>
+
+    <!-- post -->
+    <rect x="472" y="540" width="80" height="330" rx="14" fill="url(#postWood)"/>
+    <rect x="472" y="540" width="26" height="330" rx="12" fill="#ffffff" opacity="0.12"/>
+
+    <!-- mailbox body (tunnel shape) -->
+    <path d="M330 560 a182 150 0 0 1 364 0 v150 a16 16 0 0 1 -16 16 H346 a16 16 0 0 1 -16 -16 Z"
+          fill="url(#boxBrass)"/>
+    <path d="M330 560 a182 150 0 0 1 364 0 v20 H330 Z" fill="#ffffff" opacity="0.16"/>
+    <path d="M330 690 v20 a16 16 0 0 0 16 16 H678 a16 16 0 0 0 16 -16 v-20 Z" fill="url(#boxBrassShade)"/>
+
+    <!-- door -->
+    <path d="M354 560 a158 128 0 0 1 316 0 v96 H354 Z" fill="url(#doorMetal)"/>
+    <ellipse cx="512" cy="562" rx="10" ry="10" fill="#2f3942"/>
+
+    <!-- flag -->
+    <rect x="690" y="610" width="14" height="86" rx="6" fill="#7c5228"/>
+    <path d="M704 606 h58 a12 12 0 0 1 0 58 h-58 Z" fill="url(#flagRed)"/>
+
+    <!-- envelope poking out of the slightly open door -->
+    <g transform="rotate(-8 560 560)">
+      <rect x="470" y="534" width="150" height="96" rx="6" fill="url(#envelopePaper)" stroke="#d8cdb0" stroke-width="3"/>
+      <path d="M470 540 L545 588 L620 540" fill="none" stroke="#c9bd9c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- dove perched on the roof -->
+    <g transform="translate(560 360)">
+      <ellipse cx="0" cy="56" rx="98" ry="22" fill="#000000" opacity="0.10"/>
+      <!-- tail -->
+      <path d="M-70 10 Q-128 24 -150 4 Q-110 40 -56 32 Z" fill="url(#doveBody)"/>
+      <!-- body -->
+      <ellipse cx="-6" cy="4" rx="78" ry="56" fill="url(#doveBody)"/>
+      <!-- wing -->
+      <path d="M-40 -8 Q10 -34 54 -2 Q10 0 -18 28 Q-34 16 -40 -8 Z" fill="#e4e0d6"/>
+      <!-- head -->
+      <circle cx="66" cy="-30" r="34" fill="url(#doveBody)"/>
+      <!-- beak -->
+      <path d="M96 -30 L124 -24 L96 -16 Z" fill="#e0a55c"/>
+      <!-- eye -->
+      <circle cx="74" cy="-36" r="4.5" fill="#3a3430"/>
+      <!-- feet -->
+      <path d="M-20 50 v14 M-2 54 v14" stroke="#d98a4a" stroke-width="6" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
