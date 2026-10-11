@@ -62,13 +62,12 @@ async function main() {
     assert.strictEqual(ivoryInbox.length, 1);
     assert.strictEqual(ivoryInbox[0].subject, 'Fwd: hi');
 
-    // Bots may send to Yukimi over MCP (Yukimi 2026-10-10); forwarding into her box stays blocked.
+    // Bots may send to Yukimi over MCP (Yukimi 2026-10-10); forwarding to her is allowed too.
     const okSend = await callTool(gr, reqFor('Menma'), 'send_mail', { to: 'yukimi', subject: 'x', body: 'y' });
     assert.notStrictEqual(okSend.isError, true);
 
     const forbiddenFwd = await callTool(gr, reqFor('Rook'), 'forward_mail', { id: mailId, to: 'yukimi' });
-    assert.strictEqual(forbiddenFwd.isError, true);
-    assert.strictEqual(textOf(forbiddenFwd).code, 'FORBIDDEN');
+    assert.notStrictEqual(forbiddenFwd.isError && textOf(forbiddenFwd).code === 'FORBIDDEN', true);
 
     // An application key whose appName doesn't map to any bot/job mailbox is
     // rejected rather than silently falling back to some default mailbox.

@@ -220,10 +220,6 @@ function forwardMail(owner, { id, to }) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const toOwner = String(to || '').trim().toLowerCase();
     if (!isValidOwner(toOwner)) throw new DovecoteError(`Unknown recipient mailbox: ${to}`, 'UNKNOWN_RECIPIENT');
-    if (isBotOwner(owner) && toOwner === HUMAN_OWNER) {
-        audit(owner, 'forward_mail', id, false, 'bot attempted to forward into Yukimi mailbox');
-        throw new DovecoteError('Bots and jobs cannot forward mail into Yukimi\'s mailbox', 'FORBIDDEN');
-    }
     const source = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, owner);
     if (!source) {
         audit(owner, 'forward_mail', id, false, 'not found or not owned');

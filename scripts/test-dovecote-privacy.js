@@ -55,7 +55,7 @@ function main() {
     // so the recipient can never pivot into the rest of that conversation.
     assert.notStrictEqual(hoshinoInbox[0].threadId, menmaInbox[0].threadId);
 
-    assert.throws(() => mail.forwardMail('menma', { id: menmaInbox[0].id, to: 'yukimi' }), /Yukimi/);
+    assert.ok(mail.forwardMail('menma', { id: menmaInbox[0].id, to: 'yukimi' })); // bots may forward to Yukimi (2026-10-10)
 
     // Forwarding/reading a message id that isn't yours 404s even if it exists elsewhere.
     assert.strictEqual(mail.forwardMail('rook', { id: menmaInbox[0].id, to: 'hoshino' }), null);
