@@ -775,11 +775,11 @@ body.desktop-mode .page-background {
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .mask-adjustment-options .btn-primary:hover:not(:disabled) {
-        background: var(--primary-hover);
+        background: var(--btn-hover-bg-primary);
     }
 
     .mask-adjustment-options .btn-secondary:hover:not(:disabled) {
-        background: var(--glass-bg-3);
+        background: var(--glass-layer-3);
         border-color: var(--glass-border-3);
     }
 }

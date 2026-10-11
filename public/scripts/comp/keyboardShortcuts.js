@@ -1406,6 +1406,13 @@ function handleKeyDown(event) {
             startStudioNewSession();
             break;
         }
+        case 'CTRL+ALT+P':
+            // Planet switcher (desktop mode) - openPlanetSwitcher: public/scripts/comp/modalUtils.js
+            if (!window.isDesktop || typeof openPlanetSwitcher !== 'function') break;
+            event.preventDefault();
+            event.stopPropagation();
+            openPlanetSwitcher();
+            break;
         case 'ALT+ESCAPE':
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();

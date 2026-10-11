@@ -124,6 +124,19 @@
         }
       }
     }
+    if (obj.type === 'wheel' || obj.type === 'scroll-to') {
+      var tail = outbound[outbound.length - 1];
+      if (tail && tail.type === obj.type && !!tail.ctrl === !!obj.ctrl) {
+        if (obj.type === 'wheel') {
+          tail.deltaX += obj.deltaX;
+          tail.deltaY += obj.deltaY;
+        }
+        tail.x = obj.x;
+        tail.y = obj.y;
+        pumpOutbound();
+        return;
+      }
+    }
     if (isGesture(obj) || obj.type === 'key' || obj.type === 'wheel') dropQueuedMoves();
     outbound.push(obj);
     pumpOutbound();
@@ -311,13 +324,17 @@
     } else if (msg.type === 'clipboard') {
       var text = msg.text || '';
       if (pendingClipboard) {
-        var resolveClipboard = pendingClipboard;
+        var settleClipboard = pendingClipboard;
         pendingClipboard = null;
-        resolveClipboard(text);
+        settleClipboard.resolve(text);
+        return;
       }
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'grimoire-browser-clipboard', text: text }, '*');
-      }
+      // The page copied by itself (a copy button): this document has focus, so write here; the parent is the fallback.
+      writeLocalClipboard(text);
+    } else if (msg.type === 'scroll') {
+      postParent({ type: 'grimoire-browser-scroll', y: msg.y || 0, height: msg.height || 0, view: msg.view || 0 });
+    } else if (msg.type === 'history-end') {
+      postParent({ type: 'grimoire-browser-history-end', dir: msg.dir === 1 ? 1 : -1 });
     } else if (msg.type === 'download-progress') {
       postParent({ type: 'grimoire-browser-download-progress', id: msg.id || '', filename: msg.filename || 'download', received: msg.received || 0, total: msg.total || 0, canceled: !!msg.canceled });
     } else if (msg.type === 'progress') {
@@ -331,20 +348,55 @@
     }
   }
 
-  function requestClipboardCopy() {
+  function writeLocalClipboard(text) {
+    if (!text) return;
+    var viaParent = function () {
+      postParent({ type: 'grimoire-browser-clipboard', text: text });
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(viaParent);
+        return;
+      }
+    } catch (e) {}
+    viaParent();
+  }
+
+  // The clipboard write starts inside the key press (user activation) and fills in when the remote text arrives.
+  // Without the async Clipboard API (plain http), the parent writes it instead.
+  function requestClipboardCopy(cut) {
+    var started = false;
+    if (pendingClipboard) pendingClipboard.reject(new Error('superseded'));
+    pendingClipboard = null;
     try {
       if (navigator.clipboard && window.ClipboardItem) {
-        var textPromise = new Promise(function (resolve) { pendingClipboard = resolve; });
+        var waiting = {};
+        var textPromise = new Promise(function (resolve, reject) {
+          waiting.resolve = resolve;
+          waiting.reject = reject;
+        });
+        waiting.timer = setTimeout(function () {
+          if (pendingClipboard === waiting) pendingClipboard = null;
+          waiting.reject(new Error('timeout'));
+        }, 4000);
+        pendingClipboard = waiting;
         navigator.clipboard.write([
           new ClipboardItem({
             'text/plain': textPromise.then(function (text) {
-              return new Blob([text || ''], { type: 'text/plain' });
+              clearTimeout(waiting.timer);
+              waiting.text = text;
+              if (!text) throw new Error('empty');
+              return new Blob([text], { type: 'text/plain' });
             })
           })
-        ]).catch(function () {});
+        ]).catch(function () {
+          if (waiting.text) postParent({ type: 'grimoire-browser-clipboard', text: waiting.text });
+        });
+        started = true;
       }
     } catch (e) {}
-    send({ type: 'copy' });
+    if (!started) pendingClipboard = null;
+    send({ type: 'copy', cut: !!cut });
   }
 
   function readLocalClipboard() {
@@ -543,7 +595,13 @@
   var audioTrimTimer = 0;
   var audioUrl = (relay ? '/api/grimoire-browser' : '') + '/sessions/' + encodeURIComponent(sessionId) + '/audio?t=' + encodeURIComponent(token);
 
+  // Also the retry after the stream gave up: any click or key in the page asks again.
   function playAudio() {
+    if (!audio && audioWanted) {
+      audioFails = 0;
+      startAudio();
+      return;
+    }
     if (audio && audio.paused) audio.play().catch(function () {});
   }
 
@@ -570,11 +628,12 @@
     el.volume = audioVolume;
     audio = el;
     el.addEventListener('playing', function () { audioFails = 0; });
+    // Another window taking the stream, an Alchemy restart, or a network drop ends it; keep coming back while wanted.
     var lost = function () {
       if (audio !== el) return;
       stopAudio();
       audioFails += 1;
-      if (audioWanted && audioFails < 4) setTimeout(startAudio, 2000 * audioFails);
+      if (audioWanted && audioFails < 6) setTimeout(startAudio, Math.min(10000, 1000 * audioFails));
     };
     el.addEventListener('error', lost);
     el.addEventListener('ended', lost);
@@ -593,9 +652,27 @@
     else stopAudio();
   }
 
+  // Mouse side buttons are Back / Forward for the remote page, not a click, and never the Dreamscape tab's own history.
+  function sideButton(ev) {
+    return ev.button === 3 || ev.button === 4;
+  }
+  function historyGo(dir) {
+    postParent({ type: 'grimoire-browser-history-intent', dir: dir });
+    send({ type: 'history', dir: dir });
+  }
+  ['mousedown', 'mouseup', 'auxclick'].forEach(function (name) {
+    canvas.addEventListener(name, function (ev) {
+      if (sideButton(ev)) ev.preventDefault();
+    });
+  });
+
   canvas.addEventListener('pointerdown', function (ev) {
     playAudio();
     if (ev.button === 2) return;
+    if (sideButton(ev)) {
+      ev.preventDefault();
+      return;
+    }
     canvas.focus();
     try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
     if (window.parent && window.parent !== window) {
@@ -611,6 +688,10 @@
   canvas.addEventListener('pointerup', function (ev) {
     if (ev.button === 2) return;
     ev.preventDefault();
+    if (sideButton(ev)) {
+      historyGo(ev.button === 3 ? -1 : 1);
+      return;
+    }
     var p = mapPoint(ev);
     var tap = press && press.pointerId === ev.pointerId && press.button === buttonName(ev.button)
       && Math.hypot(p.x - press.x, p.y - press.y) < 6;
@@ -640,9 +721,28 @@
     var p = mapPoint(ev);
     send({ type: 'mouse', kind: 'move', x: p.x, y: p.y });
   });
+  // One wheel message per animation frame, deltas in pixels, at the pointer: a trackpad fires far more often than
+  // the link can carry, and a backlog of tiny scrolls is what made scrolling stutter.
+  var wheelAcc = null;
+  var wheelRaf = 0;
+  function flushWheel() {
+    wheelRaf = 0;
+    var wheel = wheelAcc;
+    wheelAcc = null;
+    if (wheel && (wheel.deltaX || wheel.deltaY)) send(wheel);
+  }
   canvas.addEventListener('wheel', function (ev) {
     ev.preventDefault();
-    send({ type: 'wheel', deltaX: ev.deltaX, deltaY: ev.deltaY });
+    var scale = ev.deltaMode === 1 ? 40 : (ev.deltaMode === 2 ? (meta.deviceHeight || 800) : 1);
+    var p = mapPoint(ev);
+    var ctrl = !!(ev.ctrlKey || ev.metaKey);
+    if (wheelAcc && wheelAcc.ctrl !== ctrl) flushWheel();
+    if (!wheelAcc) wheelAcc = { type: 'wheel', x: p.x, y: p.y, deltaX: 0, deltaY: 0, ctrl: ctrl, shift: !!ev.shiftKey };
+    wheelAcc.x = p.x;
+    wheelAcc.y = p.y;
+    wheelAcc.deltaX += ev.deltaX * scale;
+    wheelAcc.deltaY += ev.deltaY * scale;
+    if (!wheelRaf) wheelRaf = requestAnimationFrame(flushWheel);
   }, { passive: false });
   canvas.addEventListener('contextmenu', function (ev) {
     ev.preventDefault();
@@ -651,23 +751,41 @@
     send({ type: 'inspect', x: p.x, y: p.y });
   });
 
+  // Ctrl+V is left to the browser so a paste event brings the text with no permission prompt (works on plain http);
+  // if none comes, the Clipboard API (or the parent) reads it.
+  var pasteFallback = 0;
+  window.addEventListener('paste', function (ev) {
+    ev.preventDefault();
+    clearTimeout(pasteFallback);
+    pasteFallback = 0;
+    var text = ev.clipboardData ? ev.clipboardData.getData('text/plain') : '';
+    if (text) send({ type: 'paste', text: text });
+  });
+
   window.addEventListener('keydown', function (ev) {
+    playAudio();
     var mod = ev.ctrlKey || ev.metaKey;
-    if (mod && (ev.key === 'c' || ev.key === 'C')) {
+    if (mod && !ev.altKey && (ev.key === 'c' || ev.key === 'C')) {
       ev.preventDefault();
-      requestClipboardCopy();
+      requestClipboardCopy(false);
       return;
     }
-    if (mod && (ev.key === 'v' || ev.key === 'V' || ev.key === 'Insert')) {
-      ev.preventDefault();
-      readLocalClipboard();
+    if ((mod && !ev.altKey && (ev.key === 'v' || ev.key === 'V')) || (ev.shiftKey && ev.key === 'Insert')) {
+      clearTimeout(pasteFallback);
+      pasteFallback = setTimeout(function () {
+        pasteFallback = 0;
+        readLocalClipboard();
+      }, 150);
       return;
     }
-    if (mod && (ev.key === 'x' || ev.key === 'X')) {
+    if (mod && !ev.altKey && (ev.key === 'x' || ev.key === 'X')) {
       ev.preventDefault();
-      requestClipboardCopy();
-      send({ type: 'key', kind: 'down', key: 'Backspace' });
-      send({ type: 'key', kind: 'up', key: 'Backspace' });
+      requestClipboardCopy(true);
+      return;
+    }
+    if ((ev.altKey && !mod && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) || ev.key === 'BrowserBack' || ev.key === 'BrowserForward') {
+      ev.preventDefault();
+      historyGo(ev.key === 'ArrowRight' || ev.key === 'BrowserForward' ? 1 : -1);
       return;
     }
     ev.preventDefault();
@@ -694,6 +812,10 @@
         username: data.username || '',
         password: data.password || ''
       });
+    } else if (data.type === 'grimoire-browser-scroll-to' && typeof data.y === 'number') {
+      send({ type: 'scroll-to', y: data.y });
+    } else if (data.type === 'grimoire-browser-history' && (data.dir === 1 || data.dir === -1)) {
+      historyGo(data.dir);
     } else if (data.type === 'grimoire-browser-audio') {
       setAudio(!!data.on, data.volume);
     } else if (data.type === 'grimoire-browser-select-pick' && typeof data.index === 'number') {

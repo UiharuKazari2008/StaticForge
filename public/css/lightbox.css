@@ -639,7 +639,7 @@
     }
 
     .character-prompt-item-panel .prompt-copy-btn:active {
-        background: var(--bg-quinary);
+        background: var(--glass-layer-4);
         color: var(--primary-color);
     }
 }

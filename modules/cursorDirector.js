@@ -53,6 +53,12 @@ const JAIL_HOME = '/home/director';
 const JAIL_WORKSPACE = '/workspace';
 const JAIL_AGENT_ROOT = '/opt/cursor-agent';
 const JAIL_PLAYWRIGHT = '/opt/ms-playwright';
+// Wren's Claude engine (#395 for Xi). The binary dir and the OAuth token file are
+// bound read-only; the token reaches the CLI through a sh wrapper, never argv.
+const JAIL_CLAUDE_ROOT = '/opt/claude-code';
+const JAIL_CLAUDE_TOKEN = '/opt/claude-auth/token';
+const JAIL_CLAUDE_MCP = `${JAIL_HOME}/.dreamscape/claude-mcp.json`;
+const DIRECTOR_ENGINES = ['cursor', 'claude'];
 const DIRECTOR_BROWSER_PORT = 9333;
 const CLEANUP_DIRS = [
     'tmp',
@@ -877,13 +883,15 @@ function publicModelCatalog(families) {
     return rows;
 }
 
-function roundModelRecord(id, effort, fast, run) {
-    return {
+function roundModelRecord(id, effort, fast, run, engine) {
+    const record = {
         id: id ? String(id) : null,
         effort: effort ? String(effort) : null,
         fast: fast === true,
         run: run ? String(run) : null
     };
+    if (engine) record.engine = sanitizeEngine(engine);
+    return record;
 }
 
 function modelSlot(family, message) {
@@ -952,6 +960,101 @@ function resolveRunModel(catalog, message) {
     }
     if (fast && (slot.fastId || family.fastId)) return slot.fastId || family.fastId;
     return slot.modelId || family.modelId || family.id;
+}
+
+// ---- Claude engine model catalog ----
+// The Claude CLI has no `models` listing, so the families are fixed here. Effort
+// is the CLI --effort flag; fast is the fastMode setting, which only Opus serves.
+const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+// Preferred default first; the first one the installed CLI can run wins.
+const CLAUDE_DEFAULT_MODELS = ['claude-opus-5-5', 'claude-opus-5'];
+// minCli: older CLIs answer 400 "does not support this model" for these.
+const CLAUDE_MODELS = [
+    { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', efforts: CLAUDE_EFFORTS, fast: false, minCli: '2.1.280' },
+    { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', efforts: CLAUDE_EFFORTS, fast: true, minCli: '2.1.280' },
+    { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', efforts: CLAUDE_EFFORTS, fast: false, minCli: '2.1.280' },
+    { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', efforts: [], fast: false, minCli: '2.1.280' },
+    { id: 'claude-fable-5', name: 'Claude Fable 5', efforts: CLAUDE_EFFORTS, fast: false },
+    { id: 'claude-opus-5', name: 'Claude Opus 5', efforts: CLAUDE_EFFORTS, fast: true },
+    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', efforts: CLAUDE_EFFORTS, fast: false },
+    { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', efforts: CLAUDE_EFFORTS, fast: true }
+];
+const CLAUDE_MODEL_INFO = {
+    'claude-haiku-5-5': { provider: 'Anthropic', released: 534, input: 1, output: 5, short: 'Haiku 5.5' }
+};
+
+function sanitizeEngine(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return DIRECTOR_ENGINES.includes(text) ? text : 'cursor';
+}
+
+let claudeCliCache = { at: 0, version: null };
+
+function claudeCliVersion() {
+    if (Date.now() - claudeCliCache.at < MODEL_CACHE_MS) return claudeCliCache.version;
+    let version = null;
+    const bin = findClaude();
+    if (bin) {
+        const out = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 10000 });
+        const match = String(out.stdout || '').match(/(\d+)\.(\d+)\.(\d+)/);
+        if (match) version = match.slice(1, 4).map(Number);
+    }
+    claudeCliCache = { at: Date.now(), version };
+    return version;
+}
+
+function cliAtLeast(version, min) {
+    if (!min) return true;
+    if (!version) return false;
+    const want = String(min).split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        if ((version[i] || 0) !== (want[i] || 0)) return (version[i] || 0) > (want[i] || 0);
+    }
+    return true;
+}
+
+function availableClaudeModels(version) {
+    const cli = version === undefined ? claudeCliVersion() : version;
+    return CLAUDE_MODELS.filter((family) => cliAtLeast(cli, family.minCli));
+}
+
+function defaultClaudeModel(families) {
+    return CLAUDE_DEFAULT_MODELS.map((id) => families.find((item) => item.id === id)).find(Boolean) || families[0];
+}
+
+function publicClaudeCatalog(version) {
+    const families = availableClaudeModels(version);
+    const fallback = defaultClaudeModel(families);
+    return families.map((family) => {
+        const known = DIRECTOR_MODEL_INFO[family.id] || CLAUDE_MODEL_INFO[family.id] || {};
+        const cost = known.input != null ? directorModelCost(known.input, known.output) : null;
+        return {
+            id: family.id,
+            name: family.name,
+            short: known.short || '',
+            provider: 'Anthropic',
+            released: known.released || 0,
+            cost,
+            price: known.input != null ? directorModelPrice(known.input, known.output) : '',
+            fast: !family.efforts.length && family.fast,
+            thinkingToggle: false,
+            contexts: [],
+            default: family === fallback,
+            efforts: family.efforts.map((id) => ({ id, name: EFFORT_LABELS[id] || id, fast: family.fast }))
+        };
+    }).sort((a, b) => b.released - a.released);
+}
+
+// { model, effort, fast } for one Claude turn. Unknown ids fall back to the
+// default family; effort and fast are dropped where the family has none.
+function resolveClaudeRun(message, version) {
+    const requested = String((message && message.model) || '').trim();
+    const families = availableClaudeModels(version);
+    const family = families.find((item) => item.id === requested) || defaultClaudeModel(families);
+    const wanted = String((message && message.effort) || 'medium').trim().toLowerCase();
+    let effort = null;
+    if (family.efforts.length) effort = family.efforts.includes(wanted) ? wanted : 'medium';
+    return { model: family.id, effort, fast: family.fast && !!(message && message.fast === true) };
 }
 
 function refreshCursorModels(jail) {
@@ -1085,6 +1188,7 @@ function sessionChoice(chat) {
     const picked = chat && chat.choice;
     if (picked && picked.id) {
         return {
+            engine: sanitizeEngine(picked.engine),
             id: String(picked.id),
             effort: picked.effort ? String(picked.effort) : 'medium',
             fast: picked.fast === true
@@ -1128,6 +1232,7 @@ function publicSession(chat) {
         tasks: normalizeSessionTasks(chat.tasks),
         created_at: chat.created_at,
         model: chat.model || EFFORT_MODELS.medium,
+        engine: sanitizeEngine(chat.lastEngine),
         choice: sessionChoice(chat),
         ...sessionContext(chat),
         updated_at: chat.updated_at || chat.created_at || null,
@@ -1188,13 +1293,15 @@ function publicMessage(message) {
         timestamp: message.timestamp,
         data: message.data || null,
         changeJson: message.changeJson || null,
+        steer: message.steer === true,
         trace: message.trace || null,
         prints: Array.isArray(message.prints) ? message.prints.filter((name) => typeof name === 'string' && name) : [],
         model: message.model && typeof message.model === 'object' ? roundModelRecord(
             message.model.id,
             message.model.effort,
             message.model.fast,
-            message.model.run
+            message.model.run,
+            message.model.engine
         ) : null
     };
 }
@@ -1520,6 +1627,18 @@ function writeProjectFiles(paths, mcpUrl, appKey, readonlyPaths) {
     const mcpFile = { mcpServers };
     fs.writeFileSync(path.join(cursorDir, 'mcp.json'), JSON.stringify(mcpFile, null, 2));
     fs.chmodSync(path.join(cursorDir, 'mcp.json'), 0o600);
+    // Claude engine: CLAUDE.md imports the same rule, and the MCP servers go
+    // through --strict-mcp-config so no project .mcp.json approval is needed.
+    fs.writeFileSync(path.join(paths.workspace, 'CLAUDE.md'), `# ${PROJECT_NAME}\n\n@.cursor/rules/dreamscape-director.mdc\n`);
+    const claudeServers = {};
+    Object.keys(mcpServers).forEach((name) => {
+        const server = mcpServers[name];
+        claudeServers[name] = server.url ? { type: 'http', ...server } : { type: 'stdio', ...server };
+    });
+    fs.mkdirSync(path.join(paths.home, '.dreamscape'), { recursive: true });
+    const claudeMcp = path.join(paths.home, '.dreamscape', 'claude-mcp.json');
+    fs.writeFileSync(claudeMcp, JSON.stringify({ mcpServers: claudeServers }, null, 2));
+    fs.chmodSync(claudeMcp, 0o600);
     // ~/.cursor/mcp.json is the file in the computer home. The workspace copy
     // is the project one Cursor also loads. Both name the mounted server socket.
     const homeCursor = path.join(paths.home, '.cursor');
@@ -1669,12 +1788,105 @@ async function ensureProject(gr) {
     return { agentBin, paths, jail: buildJail(bwrapBin, agentBin, paths, mounts) };
 }
 
+// ---- Boot-time CLI updates ----
+// Before the computer is checked at boot, cursor-agent and Claude Code update
+// themselves on the host, so Wren's jail binds the new build. Off with
+// config director.autoUpdateClis: false. Skipped while an Xi turn is live.
+const CLI_UPDATE_MS = 3 * 60 * 1000;
+
+function autoUpdateClisEnabled(gr) {
+    try {
+        const cfg = gr && gr.getConfig && gr.getConfig();
+        return !(cfg && cfg.director && cfg.director.autoUpdateClis === false);
+    } catch (_) {
+        return true;
+    }
+}
+
+function cliUpdateEnv() {
+    // Claude is an npm-global install, so its updater needs this node's npm on PATH.
+    const dirs = [path.dirname(process.execPath)];
+    if (process.env.HOME) dirs.push(path.join(process.env.HOME, '.npm-global', 'bin'), path.join(process.env.HOME, '.local', 'bin'));
+    return { ...process.env, PATH: dirs.concat(String(process.env.PATH || '/usr/bin:/bin')).join(path.delimiter), NO_COLOR: '1', CI: '1' };
+}
+
+function cliVersion(bin) {
+    const out = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 15000, env: cliUpdateEnv() });
+    const match = String(out.stdout || '').match(/\d[\w.-]*/);
+    return match ? match[0] : null;
+}
+
+function runCliUpdate(name, bin, args) {
+    return new Promise((resolve) => {
+        const before = cliVersion(bin);
+        let output = '';
+        let child;
+        try {
+            child = spawn(bin, args, { env: cliUpdateEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (err) {
+            resolve({ name, ok: false, before, after: before, error: err.message });
+            return;
+        }
+        const timer = setTimeout(() => {
+            try { child.kill('SIGKILL'); } catch (_) { /* already gone */ }
+        }, CLI_UPDATE_MS);
+        const take = (buf) => { output = `${output}${buf}`.slice(-4000); };
+        child.stdout.on('data', take);
+        child.stderr.on('data', take);
+        child.on('error', (err) => {
+            clearTimeout(timer);
+            resolve({ name, ok: false, before, after: before, error: err.message });
+        });
+        child.on('close', (code, signal) => {
+            clearTimeout(timer);
+            const after = cliVersion(bin) || before;
+            const error = code === 0 ? null : (signal ? `timed out after ${CLI_UPDATE_MS / 1000}s` : output.trim().split('\n').pop() || `exit ${code}`);
+            resolve({ name, ok: code === 0, before, after, error });
+        });
+    });
+}
+
+async function updateAgentClis(gr) {
+    if (!autoUpdateClisEnabled(gr)) return [{ name: 'all', skipped: 'disabled in config' }];
+    try {
+        const live = require('../scripts/director-idle-check').checkIdle().xi;
+        if (live.length) return [{ name: 'all', skipped: `Xi turn running (pid ${live[0].pid})` }];
+    } catch (_) { /* no idle check: update anyway, a live process keeps its old binary */ }
+    const jobs = [];
+    const agentBin = findAgent();
+    if (agentBin) jobs.push(runCliUpdate('cursor-agent', agentBin, ['update']));
+    const claudeBin = findClaude();
+    if (claudeBin) jobs.push(runCliUpdate('claude', claudeBin, ['update']));
+    const results = await Promise.all(jobs);
+    results.forEach((row) => {
+        if (row.ok && row.after !== row.before) {
+            if (row.name === 'cursor-agent') modelCatalogAt = 0;
+            if (row.name === 'claude') claudeCliCache = { at: 0, version: null };
+        }
+    });
+    return results;
+}
+
+function describeCliUpdate(row) {
+    if (row.skipped) return `CLI updates skipped: ${row.skipped}`;
+    if (!row.ok) return `${row.name} update failed: ${row.error}`;
+    return row.after !== row.before
+        ? `${row.name} updated ${row.before || '?'} -> ${row.after}`
+        : `${row.name} is current (${row.after || 'unknown version'})`;
+}
+
 // Boot-time warm-up. Dreamscape has to start on hosts with no bubblewrap and no
 // Cursor, so this never throws — the caller logs the code and carries on.
 async function prepareDirector(gr) {
     if (!findBwrap()) {
         lastPrepare = { ready: false, code: 'BWRAP_MISSING', error: 'bubblewrap is not installed' };
         return lastPrepare;
+    }
+    let cliUpdates = [];
+    try {
+        cliUpdates = (await updateAgentClis(gr)).map(describeCliUpdate);
+    } catch (err) {
+        cliUpdates = [`CLI updates failed: ${err.message}`];
     }
     try {
         await ensureProject(gr);
@@ -1683,10 +1895,10 @@ async function prepareDirector(gr) {
             console.error(`Director resume skipped: ${err.message}`);
         });
         lastPrepare = { ready: true, code: null };
-        return { ready: true, cursorLogin: { ...lastCursorLogin } };
+        return { ready: true, cursorLogin: { ...lastCursorLogin }, cliUpdates };
     } catch (err) {
         lastPrepare = { ready: false, code: err.code || 'DIRECTOR_PREPARE_FAILED', error: err.message };
-        return { ...lastPrepare };
+        return { ...lastPrepare, cliUpdates };
     }
 }
 
@@ -2292,6 +2504,52 @@ function spawnAgent(jail, args) {
     });
 }
 
+// Same jail as cursor-agent plus the Claude binary dir and the OAuth token file,
+// both read-only. Throws CLAUDE_MISSING / CLAUDE_TOKEN_MISSING like Xi does.
+function claudeJail(jail) {
+    const claudeBin = findClaude();
+    if (!claudeBin) {
+        const error = new Error('Claude Code is not installed on this host');
+        error.code = 'CLAUDE_MISSING';
+        throw error;
+    }
+    const tokenFile = require('./xiLaunch').resolveClaudeTokenFile();
+    if (!fs.existsSync(tokenFile)) {
+        const error = new Error('Claude OAuth token file is missing (run `claude setup-token`)');
+        error.code = 'CLAUDE_TOKEN_MISSING';
+        throw error;
+    }
+    const target = claudeJailTarget(claudeBin, JAIL_CLAUDE_ROOT);
+    const args = jail.args.slice();
+    const at = args.indexOf('--chdir');
+    args.splice(at < 0 ? args.length : at, 0,
+        '--ro-bind', target.hostRoot, JAIL_CLAUDE_ROOT,
+        '--ro-bind', tokenFile, JAIL_CLAUDE_TOKEN);
+    return { ...jail, args, claude: target.inJail };
+}
+
+function spawnClaude(cjail, args) {
+    const launch = [
+        '/bin/sh', '-c',
+        `CLAUDE_CODE_OAUTH_TOKEN="$(cat ${JAIL_CLAUDE_TOKEN})"; export CLAUDE_CODE_OAUTH_TOKEN; exec "$@"`,
+        'wren-claude', cjail.claude
+    ];
+    return spawn(cjail.bin, cjail.args.concat(launch, args), {
+        cwd: cjail.root,
+        env: { PATH: process.env.PATH || '/usr/bin:/bin' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true
+    });
+}
+
+// Claude keeps sessions under ~/.claude/projects/<cwd slug>/<id>.jsonl. A turn
+// that died before the CLI wrote one must start with --session-id, not --resume.
+function claudeSessionExists(paths, sessionId) {
+    if (!sessionId) return false;
+    const slug = JAIL_WORKSPACE.replace(/[^a-zA-Z0-9]/g, '-');
+    return fs.existsSync(path.join(paths.home, '.claude', 'projects', slug, `${sessionId}.jsonl`));
+}
+
 // detached: true makes the sandbox its own process group. Kill the group, then
 // every pid still listed under it, so shells and subagents do not keep running.
 function signalProcessTree(pid, signal) {
@@ -2857,6 +3115,156 @@ function consumeStreamLine(line, state) {
     }
 }
 
+// ---- Claude subscription usage ----
+// The setup token cannot read /api/oauth/usage (no user:profile scope), but
+// every `claude -p` turn reports the 5-hour and 7-day windows in a
+// rate_limit_event. Wren and Xi turns both land here; the header badge shows it.
+function claudeUsagePath() {
+    return path.join(directorHome(), 'claude-usage.json');
+}
+
+function noteClaudeUsage(info) {
+    if (!info || typeof info !== 'object') return;
+    try {
+        writeJsonFile(claudeUsagePath(), { at: Date.now(), info });
+    } catch (_) { /* usage is optional */ }
+}
+
+function claudeUsageAt() {
+    const disk = readJsonFile(claudeUsagePath());
+    return disk && disk.info ? Number(disk.at) || 0 : 0;
+}
+
+function claudeUsageSummary(now = Date.now()) {
+    const disk = readJsonFile(claudeUsagePath());
+    const info = disk && disk.info;
+    const base = { success: true, engine: 'claude', persona: 'wren', limited: false, autoPercent: null, apiPercent: null };
+    if (!info) return { ...base, title: 'Claude usage shows after the first Claude turn' };
+    const windows = info.unifiedWindows || {};
+    const pct = (row) => {
+        const n = Number(row && row.utilization);
+        return Number.isFinite(n) ? Math.round(n <= 1 ? n * 100 : n) : null;
+    };
+    const resets = (row) => {
+        const at = Number(row && row.resetsAt);
+        if (!Number.isFinite(at) || at <= 0) return '';
+        const mins = Math.max(0, Math.round((at * 1000 - now) / 60000));
+        if (mins >= 48 * 60) return `resets in ${Math.round(mins / 1440)}d`;
+        return mins >= 120 ? `resets in ${Math.round(mins / 60)}h` : `resets in ${mins}m`;
+    };
+    const fiveHour = pct(windows.five_hour);
+    const sevenDay = pct(windows.seven_day);
+    const ageMin = Math.round((now - Number(disk.at || now)) / 60000);
+    const lines = [
+        'Claude usage',
+        `5 hours: ${fiveHour == null ? '?' : `${fiveHour}%`} ${resets(windows.five_hour)}`.trim(),
+        `7 days: ${sevenDay == null ? '?' : `${sevenDay}%`} ${resets(windows.seven_day)}`.trim(),
+        ageMin > 0 ? `As of the last Claude turn, ${ageMin} min ago` : 'As of the last Claude turn'
+    ];
+    return {
+        ...base,
+        autoPercent: fiveHour,
+        apiPercent: sevenDay,
+        limited: !!info.status && info.status !== 'allowed',
+        title: lines.join('\n')
+    };
+}
+
+// Claude tool names as the cursor-agent rows name them, so labels, summaries,
+// and the apply_studio_changes replay stay the same across engines.
+const CLAUDE_TOOL_NAMES = { Bash: 'Shell', MultiEdit: 'Edit', Write: 'Edit', NotebookEdit: 'Edit' };
+
+function claudeToolName(name) {
+    const raw = String(name || '');
+    const mcp = raw.match(/^mcp__[^_]+(?:_[^_]+)*?__(.+)$/);
+    if (mcp) return mcp[1];
+    return CLAUDE_TOOL_NAMES[raw] || raw;
+}
+
+function claudeToolResultText(content) {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content.filter((block) => block && block.type === 'text').map((block) => block.text || '').join('\n');
+    }
+    return content == null ? '' : JSON.stringify(content);
+}
+
+// `claude -p --output-format stream-json --verbose` emits one whole message per
+// line. Tool calls are assistant tool_use blocks; their results come back as a
+// later user event keyed by tool_use_id, so rows are matched by id, not name.
+function consumeClaudeStreamLine(line, state) {
+    let evt;
+    try {
+        evt = JSON.parse(line);
+    } catch (_) {
+        return;
+    }
+    if (!state.rows) state.rows = [];
+    if (!state.openTools) state.openTools = new Map();
+    const toolCap = state.keepToolBodies ? 200000 : 4000;
+    if (evt.type === 'system' && evt.subtype === 'init') {
+        if (evt.session_id) state.claudeSessionId = evt.session_id;
+        return;
+    }
+    if (evt.type === 'rate_limit_event') {
+        noteClaudeUsage(evt.rate_limit_info);
+        return;
+    }
+    if (evt.type === 'assistant') {
+        noteContext({ usage: evt.message && evt.message.usage }, state);
+        const blocks = evt.message && Array.isArray(evt.message.content) ? evt.message.content : [];
+        blocks.forEach((block) => {
+            if (!block) return;
+            if (block.type === 'thinking' && block.thinking) {
+                closeLiveRow(state);
+                state.rows.push({ type: 'thinking', text: block.thinking });
+            } else if (block.type === 'tool_use' && block.name) {
+                closeLiveRow(state);
+                const described = describeToolEvent({ name: claudeToolName(block.name), input: block.input || {} }, toolCap);
+                const row = {
+                    type: 'tool',
+                    name: described.name,
+                    label: described.label,
+                    detail: described.detail,
+                    args: described.args || '',
+                    result: '',
+                    replay: described.replay,
+                    text: described.detail ? `${described.label}: ${described.detail}` : described.label,
+                    _closed: false
+                };
+                state.rows.push(row);
+                if (block.id) state.openTools.set(block.id, row);
+                state.tool = described.name;
+            } else if (block.type === 'text' && block.text) {
+                closeLiveRow(state);
+                state.rows.push({ type: 'assistant', text: block.text });
+                state.text = block.text;
+            }
+        });
+        return;
+    }
+    if (evt.type === 'user') {
+        const blocks = evt.message && Array.isArray(evt.message.content) ? evt.message.content : [];
+        blocks.forEach((block) => {
+            if (!block || block.type !== 'tool_result') return;
+            const row = block.tool_use_id ? state.openTools.get(block.tool_use_id) : null;
+            if (!row) return;
+            const text = clipToolPayload(claudeToolResultText(block.content), toolCap);
+            row.result = block.is_error ? `Error: ${text}` : text;
+            row._closed = true;
+            state.openTools.delete(block.tool_use_id);
+        });
+        return;
+    }
+    if (evt.type === 'result') {
+        closeLiveRow(state);
+        state.finished = true;
+        if (evt.session_id) state.claudeSessionId = evt.session_id;
+        if (evt.is_error) state.error = (typeof evt.result === 'string' && evt.result) || 'Claude run failed';
+        else if (typeof evt.result === 'string' && evt.result.trim()) settleDirectorResult(state, evt.result.trim());
+    }
+}
+
 function turnDeadline(now, startedAt, lastActivity, limits) {
     const idleMs = limits && limits.idleMs > 0 ? limits.idleMs : RUN_IDLE_MS;
     const hardMs = limits && limits.hardMs > 0 ? limits.hardMs : RUN_HARD_MS;
@@ -2888,6 +3296,51 @@ function killAgentChild(child) {
 }
 
 function runCursorTurn(jail, cursorId, model, prompt, onText, marker, limits) {
+    const args = [
+        '--print',
+        '--output-format', 'stream-json',
+        '--stream-partial-output',
+        '--sandbox', 'enabled',
+        '--trust',
+        '--force',
+        '--approve-mcps',
+        '--workspace', jail.workspace,
+        '--model', model,
+        '--resume', cursorId,
+        '--',
+        prompt
+    ];
+    return runAgentTurn({
+        spawn: () => spawnAgent(jail, args),
+        consume: consumeStreamLine,
+        label: 'Cursor agent'
+    }, onText, marker, limits);
+}
+
+// run: { model, effort, fast, sessionId, first }. first starts the Claude
+// session under our id; later turns resume it.
+function runClaudeTurn(cjail, run, prompt, onText, marker, limits) {
+    const args = [
+        '-p',
+        '--output-format', 'stream-json',
+        '--verbose',
+        '--permission-mode', 'bypassPermissions',
+        '--strict-mcp-config',
+        '--mcp-config', JAIL_CLAUDE_MCP,
+        '--model', run.model,
+        '--settings', JSON.stringify({ fastMode: run.fast === true })
+    ];
+    if (run.effort) args.push('--effort', run.effort);
+    args.push(run.first ? '--session-id' : '--resume', run.sessionId, '--', prompt);
+    return runAgentTurn({
+        spawn: () => spawnClaude(cjail, args),
+        consume: consumeClaudeStreamLine,
+        label: 'Claude'
+    }, onText, marker, limits);
+}
+
+function runAgentTurn(engine, onText, marker, limits) {
+    const consumeStreamLine = engine.consume;
     return new Promise((resolve, reject) => {
         if (marker && marker.cancelled) {
             const error = new Error(marker.steer ? 'Steered' : 'Stopped');
@@ -2898,21 +3351,7 @@ function runCursorTurn(jail, cursorId, model, prompt, onText, marker, limits) {
             return;
         }
         noteDirectorActivity();
-        const args = [
-            '--print',
-            '--output-format', 'stream-json',
-            '--stream-partial-output',
-            '--sandbox', 'enabled',
-            '--trust',
-            '--force',
-            '--approve-mcps',
-            '--workspace', jail.workspace,
-            '--model', model,
-            '--resume', cursorId,
-            '--',
-            prompt
-        ];
-        const child = spawnAgent(jail, args);
+        const child = engine.spawn();
         if (marker) marker.child = child;
         if (marker && marker.cancelled) {
             signalProcessTree(child.pid, 'SIGTERM');
@@ -3002,7 +3441,7 @@ function runCursorTurn(jail, cursorId, model, prompt, onText, marker, limits) {
                 return;
             }
             if (code !== 0 && (!state.text || USAGE_LIMIT_FAILURE.test(stderr))) {
-                const error = new Error((stderr || `Cursor agent exited ${code}`).trim().slice(0, 800));
+                const error = new Error((stderr || `${engine.label} exited ${code}`).trim().slice(0, 800));
                 error.rows = state.rows.slice();
                 error.partialText = state.text || '';
                 error.context = state.context || null;
@@ -3019,10 +3458,13 @@ function runCursorTurn(jail, cursorId, model, prompt, onText, marker, limits) {
     });
 }
 
-function buildPrompt(chat, userText, files, priorMessages, clientId) {
+function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     const lines = [];
-    if (chat.replay && priorMessages.length) {
-        lines.push('The user discarded later turns. Continue from this kept transcript only:');
+    const handoff = !!(options && options.handoff);
+    if ((chat.replay || handoff) && priorMessages.length) {
+        lines.push(chat.replay
+            ? 'The user discarded later turns. Continue from this kept transcript only:'
+            : 'This chat moved to you from another engine. Continue from this transcript:');
         priorMessages.forEach((message) => {
             const body = message.user_input || (message.data && message.data.Description) || message.content || '';
             if (body) lines.push(`${message.role}: ${body}`);
@@ -3031,7 +3473,7 @@ function buildPrompt(chat, userText, files, priorMessages, clientId) {
     }
     // Standing orders are in the project rule (projectPrompt). This is the per-turn state only.
     lines.push('One get_session_state view live opens this turn. studio.diff and tagCutoff come from it. No get_studio_state for the same facts, no get_generated_image latest when you hold the filename, one await_generation_job per jobId, then Read that saved image before you answer. No GetDynamicTools for known tools, search_autofill is not a gate. A print\'s editable state is read_image_metadata. Apply its change (overwrite, characters, not characterPrompts). Judge against compiled and against the pixels. Never shell-parse a PNG, never ask them to unlock the seed, never scrape Danbooru.');
-    if (priorMessages.length && !chat.replay) {
+    if (priorMessages.length && !chat.replay && !handoff) {
         lines.push('Follow-up: next frame. A minor edit patches one piece. A new action, scene, identity, or body change rewrites that field whole: same facts, written once, the old action gone. After the print, Read the image and match the pixels to the ask before you answer. If they say it missed, it missed.');
     }
     if (clientId) lines.push(`Bound Studio clientId: ${clientId}`);
@@ -3969,10 +4411,15 @@ async function handleDirectorRollbackMessage(handler, ws, message) {
             handler.sendError(ws, 'Message not found', 'MESSAGE_NOT_FOUND', message.requestId);
             return;
         }
+        // restore: false keeps the Studio as it is now (Retry/Revert dialog Restore toggle).
+        const restore = message.restore !== false && !!removed.changeJson;
         sendOk(handler, ws, 'director_rollback_message_response', message.requestId, {
-            message: message.retry ? 'Restored the image and queued a retry' : 'Messages rolled back',
+            message: message.retry
+                ? (restore ? 'Restored the Studio and restarted the request' : 'Restarted the request')
+                : (restore ? 'Restored the Studio and rolled back' : 'Messages rolled back'),
             sessionId: message.sessionId,
-            changeJson: removed.changeJson || null,
+            restore,
+            changeJson: restore ? removed.changeJson : null,
             retryText: removed.retryText || ''
         });
     } catch (error) {
@@ -4053,7 +4500,7 @@ async function saveDirectorTrace(paths, sessionId, rows, text, messageId, round)
         data: { Description: text || '' }
     };
     if (round && typeof round === 'object') {
-        assistant.model = roundModelRecord(round.id, round.effort, round.fast, round.run);
+        assistant.model = roundModelRecord(round.id, round.effort, round.fast, round.run, round.engine);
     }
     await enqueue(async () => {
         const index = readIndex(paths.indexPath);
@@ -4128,6 +4575,13 @@ function continuationPrompt(chat) {
     ].filter(Boolean).join('\n\n');
 }
 
+// The engine-side chat an inflight turn resumes into.
+function chatAgentSession(chat) {
+    if (!chat) return null;
+    const engine = sanitizeEngine(chat.inflight && chat.inflight.engine);
+    return engine === 'claude' ? chat.claudeSessionId || null : chat.cursorId || null;
+}
+
 async function clearInflight(sessionId) {
     if (!sessionId) return;
     const paths = layout();
@@ -4144,7 +4598,7 @@ async function inflightCanResume(sessionId) {
     const paths = layout();
     const index = readIndex(paths.indexPath);
     const chat = index.chats.find((item) => item.id === sessionId);
-    if (!chat || !chat.inflight || !chat.cursorId) return false;
+    if (!chat || !chat.inflight || !chatAgentSession(chat)) return false;
     const started = Date.parse(chat.inflight.startedAt || '');
     if (!Number.isFinite(started) || Date.now() - started > INFLIGHT_MAX_AGE_MS) return false;
     return (chat.inflight.resumes || 0) < INFLIGHT_MAX_RESUMES;
@@ -4172,7 +4626,7 @@ async function resumeInterruptedTurns(gr) {
             const inflight = chat.inflight;
             if (!inflight) return;
             const started = Date.parse(inflight.startedAt || '');
-            const stale = !chat.cursorId
+            const stale = !chatAgentSession(chat)
                 || !Number.isFinite(started)
                 || now - started > INFLIGHT_MAX_AGE_MS
                 || (inflight.resumes || 0) >= INFLIGHT_MAX_RESUMES;
@@ -4241,15 +4695,17 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             return;
         }
 
-        const catalog = await listCursorModels(jail);
-        const runModel = resolveRunModel(catalog, message);
+        // Engine is per turn: Retry can pick another one. Resume keeps the inflight engine.
+        const engine = sanitizeEngine(message.engine);
+        const claudeRun = !message.resume && engine === 'claude' ? resolveClaudeRun(message) : null;
+        const runModel = message.resume || engine === 'claude' ? null : resolveRunModel(await listCursorModels(jail), message);
         const freshDraftId = message.resume ? null : crypto.randomUUID();
         prepared = await enqueue(async () => {
             const index = readIndex(paths.indexPath);
             const chat = index.chats.find((item) => item.id === sessionId);
             if (!chat) return null;
             if (message.resume) {
-                if (!chat.inflight || !chat.cursorId) return { expired: true };
+                if (!chat.inflight || !chatAgentSession(chat)) return { expired: true };
                 const started = Date.parse(chat.inflight.startedAt || '');
                 if (!Number.isFinite(started) || Date.now() - started > INFLIGHT_MAX_AGE_MS || (chat.inflight.resumes || 0) >= INFLIGHT_MAX_RESUMES) {
                     delete chat.inflight;
@@ -4262,6 +4718,9 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 const prompt = continuationPrompt(chat);
                 delete chat.inflight.reason;
                 writeIndex(paths.indexPath, index);
+                const resumeEngine = sanitizeEngine(chat.inflight.engine);
+                const resumeRound = roundModelRecord(chat.inflight.modelId, chat.inflight.effort, chat.inflight.fast, chat.model);
+                resumeRound.engine = resumeEngine;
                 return {
                     prompt,
                     cursorId: chat.cursorId,
@@ -4269,7 +4728,11 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                     name: chat.name,
                     draftId: chat.inflight.draftId || crypto.randomUUID(),
                     resume: true,
-                    round: roundModelRecord(chat.inflight.modelId, chat.inflight.effort, chat.inflight.fast, chat.model)
+                    engine: resumeEngine,
+                    claude: resumeEngine === 'claude'
+                        ? { model: chat.model, effort: chat.inflight.effort, fast: chat.inflight.fast === true, sessionId: chat.claudeSessionId }
+                        : null,
+                    round: resumeRound
                 };
             }
             const files = await storeAttachments(gr, chat, message.attachments || []);
@@ -4277,12 +4740,10 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             if (!spoken) throw new Error('Say what you want, or attach a file');
             const userText = message.steer ? `Stop the previous attempt. Do this instead:\n${spoken}` : spoken;
             if (chat.name === 'Director' && spoken) chat.name = spoken.slice(0, 48);
-            chat.model = runModel;
-            chat.choice = {
-                id: message.model ? String(message.model) : 'auto',
-                effort: message.effort || 'medium',
-                fast: message.fast === true
-            };
+            chat.model = engine === 'claude' ? claudeRun.model : runModel;
+            chat.choice = engine === 'claude'
+                ? { engine, id: claudeRun.model, effort: claudeRun.effort || 'medium', fast: claudeRun.fast }
+                : { engine, id: message.model ? String(message.model) : 'auto', effort: message.effort || 'medium', fast: message.fast === true };
             const { keepSessionWorkspace } = require('./sessionWorkspacePairing');
             keepSessionWorkspace(chat, message.workspaceId);
             const userMessage = {
@@ -4295,6 +4756,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 data: null,
                 changeJson: sanitizeChangeJson(message.changeJson)
             };
+            // A steer redirects the running request; Undo Last Message skips it.
+            if (message.steer) userMessage.steer = true;
             chat.messages = chat.messages || [];
             const priorMessages = chat.messages.slice();
             chat.messages.push(userMessage);
@@ -4302,34 +4765,58 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             promoteSessionType(chat);
             const fresh = chat.fresh === true;
             delete chat.fresh;
+            const lastEngine = chat.lastEngine || (chat.cursorId ? 'cursor' : null);
+            const switched = !!lastEngine && lastEngine !== engine;
+            let handoff = switched && !chat.replay;
             let cursorId = chat.cursorId;
-            const cursorAccountAuthStore = require('./cursorAccountAuthStore');
-            const activeAccountId = cursorAccountAuthStore.getActiveAccountId('wren');
-            if (chat.accountId && chat.accountId !== activeAccountId) {
-                cursorId = null; // force new chat since old session belongs to a different account
+            if (engine === 'cursor') {
+                const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+                const activeAccountId = cursorAccountAuthStore.getActiveAccountId('wren');
+                if (chat.accountId && chat.accountId !== activeAccountId) {
+                    cursorId = null; // force new chat since old session belongs to a different account
+                }
+                if (!cursorId) {
+                    cursorId = await createCursorChat(jail);
+                    chat.cursorId = cursorId;
+                    chat.accountId = activeAccountId;
+                }
+            } else if (switched || chat.replay || !chat.claudeSessionId) {
+                // A Claude session only knows its own turns. A new one gets the kept transcript.
+                chat.claudeSessionId = crypto.randomUUID();
+                if (!chat.replay && !fresh && priorMessages.length) handoff = true;
             }
-            if (!cursorId) {
-                cursorId = await createCursorChat(jail);
-                chat.cursorId = cursorId;
-                chat.accountId = activeAccountId;
-            }
-            const round = roundModelRecord(message.model, message.effort || 'medium', message.fast === true, chat.model);
+            chat.lastEngine = engine;
+            const round = engine === 'claude'
+                ? roundModelRecord(claudeRun.model, claudeRun.effort, claudeRun.fast, chat.model)
+                : roundModelRecord(message.model, message.effort || 'medium', message.fast === true, chat.model);
+            round.engine = engine;
             chat.inflight = {
+                engine,
                 model: chat.model,
                 modelId: round.id,
                 effort: round.effort,
                 fast: round.fast,
                 cursorId,
+                claudeSessionId: engine === 'claude' ? chat.claudeSessionId : null,
                 draftId: freshDraftId,
                 startedAt: new Date().toISOString(),
                 resumes: 0,
                 userText: userText.slice(0, 2000)
             };
             const clientId = await bindDirectorTab(handler.globalResources, paths, directorClientId(clientInfo, message));
-            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId);
+            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff });
             chat.replay = false;
             writeIndex(paths.indexPath, index);
-            return { prompt, cursorId, model: chat.model, name: chat.name, draftId: freshDraftId, round };
+            return {
+                prompt,
+                cursorId,
+                model: chat.model,
+                name: chat.name,
+                draftId: freshDraftId,
+                round,
+                engine,
+                claude: engine === 'claude' ? { ...claudeRun, sessionId: chat.claudeSessionId } : null
+            };
         });
         if (!prepared || prepared.expired) {
             if (!prepared && ws) {
@@ -4361,7 +4848,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
         });
         let turned = { text: '', rows: [] };
         try {
-            turned = await runCursorTurn(jail, prepared.cursorId, prepared.model, prepared.prompt, (trace) => {
+            const onTrace = (trace) => {
                 streamUpdate(handler, ws, sessionId, trace, prepared.round);
                 pendingTrace = { rows: trace.rows || [], text: trace.text || '', context: trace.context || null };
                 if (!persistTimer) {
@@ -4370,7 +4857,13 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                         flushDraft(pendingTrace.rows, pendingTrace.text).catch(() => {});
                     }, 2000);
                 }
-            }, marker);
+            };
+            if (prepared.engine === 'claude') {
+                const run = { ...prepared.claude, first: !claudeSessionExists(paths, prepared.claude.sessionId) };
+                turned = await runClaudeTurn(claudeJail(jail), run, prepared.prompt, onTrace, marker);
+            } else {
+                turned = await runCursorTurn(jail, prepared.cursorId, prepared.model, prepared.prompt, onTrace, marker);
+            }
         } finally {
             if (persistTimer) clearTimeout(persistTimer);
             stopBrowserWatch();
@@ -4428,7 +4921,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             });
             return;
         }
-        const usageLimited = isUsageLimit(error);
+        // Auto is a Cursor model, so a Claude usage limit fails the turn instead.
+        const usageLimited = isUsageLimit(error) && !(prepared && prepared.engine === 'claude');
         if (sessionId && !(marker && marker.cancelled) && (usageLimited || isLinkDrop(error)) && await inflightCanResume(sessionId)) {
             if (draftId && Array.isArray(error.rows) && error.rows.length) {
                 try {
@@ -4445,7 +4939,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             }
         }
         await clearInflight(sessionId);
-        noteCursorLoginFailure(error.message);
+        if (!(prepared && prepared.engine === 'claude')) noteCursorLoginFailure(error.message);
         noteTurnState(marker && marker.cancelled ? 'interrupted' : 'failed', sessionId, error.message);
         broadcastDirectorStatus(handler.globalResources);
         let saved = false;
@@ -4891,9 +5385,18 @@ async function rememberContext(paths, sessionId, context) {
 
 async function handleDirectorGetModels(handler, ws, message) {
     try {
+        if (sanitizeEngine(message.engine) === 'claude') {
+            sendOk(handler, ws, 'director_get_models_response', message.requestId, {
+                engine: 'claude',
+                models: publicClaudeCatalog(),
+                available: !!findClaude() && fs.existsSync(require('./xiLaunch').resolveClaudeTokenFile())
+            });
+            return;
+        }
         const { jail } = await ensureProject(handler.globalResources);
         const catalog = await listCursorModels(jail);
         sendOk(handler, ws, 'director_get_models_response', message.requestId, {
+            engine: 'cursor',
             models: publicModelCatalog(catalog)
         });
     } catch (error) {
@@ -5496,6 +5999,9 @@ module.exports = {
         projectPrompt,
         insideDir, safeName, effortModel, consumeStreamLine, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
         parseCursorModelLine, agentJailTarget, claudeJailTarget, buildJail, jailEnv, systemBindArgs,
+        noteClaudeUsage, claudeUsageSummary, claudeUsageAt, availableClaudeModels,
+        updateAgentClis, runCliUpdate, describeCliUpdate, cliAtLeast,
+        sanitizeEngine, resolveClaudeRun, publicClaudeCatalog, consumeClaudeStreamLine, claudeToolName, claudeJail, chatAgentSession,
         publicSession, publicMessage, publicTraceRow, roundModelRecord, watchGeneratedPrints, rememberGeneratedPrint,
         isLinkDrop, continuationPrompt,
         normalizeSessionTasks, readProcStat, directorState, computerReadiness,

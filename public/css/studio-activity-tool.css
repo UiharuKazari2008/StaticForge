@@ -1,0 +1,131 @@
+/* Studio Activity tool window - public/scripts/comp/studioActivityTool.js */
+#studioActivityTool {
+    width: 380px;
+    height: 360px;
+    min-width: 320px;
+    min-height: 220px;
+}
+
+.studio-activity-tool > .modal-content {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.studio-activity-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 0.45rem;
+    padding: 0.55rem 0.65rem 0.5rem;
+    overflow: hidden;
+}
+
+.studio-activity-toolbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+}
+
+.studio-activity-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    opacity: 0.9;
+}
+
+.studio-activity-empty {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    opacity: 0.65;
+    padding: 0.35rem 0.25rem;
+}
+
+.studio-activity-log-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.studio-activity-log-scrollable {
+    height: 100%;
+    overflow: auto;
+    padding: 0.1rem 0.2rem 0.3rem;
+}
+
+.studio-activity-log {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.studio-activity-entry {
+    border-radius: var(--border-radius-sm, 6px);
+    background: rgba(0, 0, 0, 0.28);
+    border-left: 3px solid rgba(255, 255, 255, 0.18);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--text-accent-tinted, #b8c0d8);
+}
+
+.studio-activity-entry.studio-activity-change {
+    border-left-color: var(--accent-color, #6b8cff);
+}
+
+.studio-activity-entry.studio-activity-failed {
+    border-left-color: #e07070;
+}
+
+.studio-activity-entry > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.studio-activity-entry > summary::-webkit-details-marker {
+    display: none;
+}
+
+.studio-activity-source {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0 0.35rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    white-space: nowrap;
+}
+
+.studio-activity-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary, #eee);
+}
+
+.studio-activity-time {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    opacity: 0.6;
+}
+
+.studio-activity-lines {
+    margin: 0;
+    padding: 0 0.6rem 0.45rem 1.6rem;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.74rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}

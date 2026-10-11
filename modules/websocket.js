@@ -250,6 +250,15 @@ class WebSocketServer {
             }
             this.sendToClient(ws, connectionPayload);
 
+            if (clientInfo.authenticated) {
+                // A logged-in client restarts the 6-hourly Claude usage refresh (modules/claudeUsageProbe.js).
+                try {
+                    require('./claudeUsageProbe').noteClientLogin(this.globalResources);
+                } catch (_err) {
+                    // Usage refresh is optional
+                }
+            }
+
             if (clientInfo.authenticated && clientInfo.clientId) {
                 try {
                     const { onAgentClientConnected } = require('./agentClientBridge');

@@ -2384,6 +2384,8 @@ async function applyStudioChangePayload(payload, options) {
             return false;
         }
         const count = await applyStudioChangeOps(enabledOps);
+        // noteStudioActivityChange: public/scripts/comp/studioActivityTool.js
+        if (typeof noteStudioActivityChange === 'function') noteStudioActivityChange(enabledOps, { source: (options && options.source) || 'manual', title: payload.title || '' });
         // refreshStudioTokenCounts: public/scripts/comp/presetTokenCount.js
         await refreshStudioTokenCounts();
         showGlassToast('success', 'Studio change', `Applied ${count} change${count === 1 ? '' : 's'}`, false, 2500, '<i class="fas fa-check"></i>');
@@ -2393,7 +2395,8 @@ async function applyStudioChangePayload(payload, options) {
     }
 }
 
-async function applyStudioChangePayloadSilent(payload) {
+// options.source / options.actorName label the Studio Activity log row.
+async function applyStudioChangePayloadSilent(payload, options) {
     if (studioChangeDialogBusy) return false;
     studioChangeDialogBusy = true;
     try {
@@ -2410,6 +2413,13 @@ async function applyStudioChangePayloadSilent(payload) {
         }
         if (!enabledOps.length && !extras) return false;
         if (enabledOps.length) await applyStudioChangeOps(enabledOps);
+        // noteStudioActivityChange: public/scripts/comp/studioActivityTool.js
+        if (typeof noteStudioActivityChange === 'function') noteStudioActivityChange(enabledOps, {
+            source: (options && options.source) || 'agent',
+            actorName: (options && options.actorName) || '',
+            title: payload.title || '',
+            extras
+        });
         // refreshStudioTokenCounts: public/scripts/comp/presetTokenCount.js
         await refreshStudioTokenCounts();
         return true;
@@ -2418,11 +2428,11 @@ async function applyStudioChangePayloadSilent(payload) {
     }
 }
 
-async function tryApplyStudioChangeJsonFromText(text) {
+async function tryApplyStudioChangeJsonFromText(text, options) {
     const payload = extractStudioChangeJson(text);
     if (!payload) return false;
     try {
-        return await applyStudioChangePayload(payload);
+        return await applyStudioChangePayload(payload, options);
     } catch (err) {
         console.error('Studio change apply failed', err);
         showGlassToast('error', 'Studio change', err.message || 'Failed to apply', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -2459,7 +2469,7 @@ function handleStudioChangePaste(event) {
     if (!text || !extractStudioChangeJson(text)) return;
     event.preventDefault();
     event.stopPropagation();
-    void tryApplyStudioChangeJsonFromText(text);
+    void tryApplyStudioChangeJsonFromText(text, { source: 'paste' });
 }
 
 async function openStudioChangeExportDialog() {

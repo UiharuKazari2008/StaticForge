@@ -31,6 +31,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `workspace_get_scraps` | `workspace_get_scraps_response` | session | Handler: handleWorkspaceGetScraps |
 | `workspace_list` | `workspace_list_response` | session | Handler: handleWorkspaceList |
 | `workspace_move_files` | `workspace_move_files_response` | admin/destructive | Handler: handleWorkspaceMoveFiles |
+| `workspace_preview_samples` | `workspace_preview_samples_response` | session | Handler: handleWorkspacePreviewSamples |
 | `workspace_remove_images_from_group` | `workspace_remove_images_from_group_response` | admin/destructive | Handler: handleWorkspaceRemoveImagesFromGroup |
 | `workspace_remove_pinned` | `workspace_remove_pinned_response` | admin/destructive | Handler: handleWorkspaceRemovePinned |
 | `workspace_remove_scrap` | `workspace_remove_scrap_response` | admin/destructive | Handler: handleWorkspaceRemoveScrap |
@@ -455,6 +456,26 @@ Additional response/push types from handler:
 **Success response:** `workspace_get_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `workspace_preview_samples`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/90-workspaceHandler.js → `handleWorkspacePreviewSamples`
+
+Newest gallery previews per workspace for the planet switcher bubbles (`public/scripts/comp/planetSwitcher.js`). One `LIMIT` query per workspace via `listWorkspaceGalleryItemsPaginated`; never builds a full gallery index and does not change the session's active workspace (unlike `request_gallery` with `workspaceId`).
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `ids` | Optional — workspace ids; defaults to every workspace |
+| `limit` | Optional — samples per workspace, 1-12 (default 6) |
+
+**Success response:** `workspace_preview_samples_response` — `data.limit`, `data.samples` = `{ [workspaceId]: [{ base, preview, blurhash, width, height }] }` (`preview` is `<base>.webp` under `/previews/`; workspaces with no images map to `[]`).
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors).
 
 ### `workspace_get_files`
 

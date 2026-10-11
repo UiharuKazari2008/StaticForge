@@ -223,6 +223,14 @@ class Director {
         // tray menu status line, and the computer's CPU / memory
         this._status = null;
         this.PREFS_KEY = 'staticforge_director_chat_prefs';
+        // Wren's engine (Cursor or Claude). Each engine keeps its own last model
+        // config and model catalog; Xi picks its runtime per session instead.
+        this.ENGINE_KEY = 'staticforge_director_engine';
+        this.engine = 'cursor';
+        try {
+            if (localStorage.getItem(this.ENGINE_KEY) === 'claude') this.engine = 'claude';
+        } catch (_err) { /* default engine */ }
+        this.modelCatalogs = {};
         this.loadChatPrefs();
         this.paintChatPrefs();
         this.loadModelCache();
@@ -340,13 +348,89 @@ class Director {
     }
 
     chatPrefsKey() {
-        return this.persona === 'xi' ? `${this.PREFS_KEY}_xi` : this.PREFS_KEY;
+        if (this.persona === 'xi') return `${this.PREFS_KEY}_xi`;
+        return this.activeEngine() === 'claude' ? `${this.PREFS_KEY}_claude` : this.PREFS_KEY;
+    }
+
+    activeEngine() {
+        return this.persona === 'xi' ? 'cursor' : (this.engine === 'claude' ? 'claude' : 'cursor');
+    }
+
+    // The engine the header shows: Wren's selected engine, or for Xi the
+    // runtime of the open session (the picker's choice on a draft).
+    displayEngine() {
+        if (this.persona !== 'xi') return this.activeEngine();
+        const session = this.currentSession;
+        const draft = !session || session.draft || !session.id;
+        const runtime = draft ? this._nextXiRuntime : session.runtime;
+        return runtime === 'claude' ? 'claude' : 'cursor';
+    }
+
+    // Header badge and usage follow displayEngine; refetch usage when it flips.
+    syncEngineChrome() {
+        const engine = this.displayEngine();
+        // The title mark (public/app.html #directorHeaderTitle / #directorSessionTitle) is the engine's logo.
+        document.querySelectorAll('#directorHeaderTitle .xai-icon, #directorSessionTitle .xai-icon').forEach((icon) => {
+            icon.classList.toggle('engine-claude-mark', engine === 'claude');
+            icon.title = this.engineName(engine);
+        });
+        this.paintAccountBadge();
+        if (engine === this._chromeEngine) return;
+        this._chromeEngine = engine;
+        this.paintCursorUsage(null);
+        this.requestCursorUsage();
+    }
+
+    engineName(engine) {
+        return engine === 'claude' ? 'Claude' : 'Cursor';
+    }
+
+    defaultModel(engine) {
+        return (engine || this.activeEngine()) === 'claude' ? 'claude-opus-5-5' : 'grok-4.7';
+    }
+
+    // Saves the outgoing engine's config, then loads the other engine's last
+    // config and catalog. Send on Enter and the message filter carry over.
+    setEngine(engine, options) {
+        const next = engine === 'claude' ? 'claude' : 'cursor';
+        if (this.persona === 'xi' || next === this.engine) return false;
+        const shared = { sendOnEnter: this.sendOnEnter, messageFilter: this.messageFilter };
+        if (!(options && options.skipSave)) this.saveChatPrefs();
+        this.engine = next;
+        try { localStorage.setItem(this.ENGINE_KEY, next); } catch (_err) { /* storage can be full */ }
+        this.loadChatPrefs();
+        Object.assign(this, shared);
+        this.loadModelCache();
+        this.requestDirectorModels(next, true);
+        if (!(options && options.skipSave)) {
+            this.saveChatPrefs();
+            this.rememberSessionModel();
+        }
+        this.paintChatPrefs();
+        this.syncEngineChrome();
+        return true;
+    }
+
+    engineMenuItem() {
+        const director = this;
+        return {
+            icon: 'fas fa-gears',
+            text: 'Engine',
+            hidden: () => director.persona === 'xi',
+            valueDisplay: () => director.engineName(director.activeEngine()),
+            submenu: ['cursor', 'claude'].map((id) => ({
+                text: director.engineName(id),
+                action: `director-tools-engine-${id}`,
+                showIndicator: true,
+                loadfn: (item) => { item.checked = director.activeEngine() === id; }
+            }))
+        };
     }
 
     // Setup dropdowns
     loadChatPrefs() {
         this.selectedEffort = 'medium';
-        this.selectedModel = 'grok-4.7';
+        this.selectedModel = this.defaultModel();
         this.selectedContext = '';
         this.thinking = false;
         this.fast = false;
@@ -448,7 +532,7 @@ class Director {
         const order = ['Cursor', 'Anthropic', 'OpenAI', 'Google', 'Moonshot', 'Meta', 'Z.ai', 'Other'];
         const models = (this.modelCatalog.length
             ? this.modelCatalog.slice()
-            : [{ id: this.selectedModel || 'grok-4.7', name: this.selectedModelName(), provider: 'Cursor', cost: 2, price: '' }]
+            : [{ id: this.selectedModel || this.defaultModel(), name: this.selectedModelName(), provider: this.activeEngine() === 'claude' ? 'Anthropic' : 'Cursor', cost: 2, price: '' }]
         ).sort((a, b) => {
             const ap = order.indexOf(this.modelProvider(a));
             const bp = order.indexOf(this.modelProvider(b));
@@ -481,14 +565,18 @@ class Director {
 
     selectedModelName() {
         const family = this.modelCatalog.find((item) => item.id === this.selectedModel);
-        return family ? family.name : (this.selectedModel || 'Grok 4.7');
+        return family ? family.name : (this.selectedModel || this.defaultModel());
     }
 
     roundModelName(model) {
         if (!model) return '';
         const id = typeof model === 'string' ? model : (model.id || model.run || '');
         if (!id) return '';
-        const family = this.modelCatalog.find((item) => item.id === id);
+        const engine = model && model.engine
+            ? (model.engine === 'claude' ? 'claude' : 'cursor')
+            : this.engineForModelId(model, this.currentSession);
+        const family = this.catalogFor(engine).find((item) => item.id === id)
+            || this.modelCatalog.find((item) => item.id === id);
         return family ? family.name : id;
     }
 
@@ -678,29 +766,47 @@ class Director {
         });
     }
 
-    loadModelCache() {
-        try {
-            const raw = JSON.parse(localStorage.getItem('staticforge_director_models') || 'null');
-            if (raw && Array.isArray(raw.models) && raw.models.length) this.modelCatalog = raw.models;
-        } catch (_err) { /* keep the empty catalog */ }
+    modelCacheKey(engine) {
+        return engine === 'claude' ? 'staticforge_director_models_claude' : 'staticforge_director_models';
     }
 
-    saveModelCache() {
+    catalogFor(engine) {
+        const id = engine === 'claude' ? 'claude' : 'cursor';
+        if (!this.modelCatalogs[id]) {
+            try {
+                const raw = JSON.parse(localStorage.getItem(this.modelCacheKey(id)) || 'null');
+                if (raw && Array.isArray(raw.models) && raw.models.length) this.modelCatalogs[id] = raw.models;
+            } catch (_err) { /* no cached catalog */ }
+        }
+        return this.modelCatalogs[id] || [];
+    }
+
+    loadModelCache() {
+        this.modelCatalog = this.catalogFor(this.activeEngine());
+    }
+
+    saveModelCache(engine) {
+        const id = engine || this.activeEngine();
         try {
-            localStorage.setItem('staticforge_director_models', JSON.stringify({
+            localStorage.setItem(this.modelCacheKey(id), JSON.stringify({
                 at: Date.now(),
-                models: this.modelCatalog
+                models: this.modelCatalogs[id] || this.modelCatalog
             }));
         } catch (_err) { /* storage can be full */ }
     }
 
-    applyModelCatalog(models) {
+    applyModelCatalog(models, engine) {
         if (!Array.isArray(models) || !models.length) return;
+        const id = engine === 'claude' ? 'claude' : 'cursor';
+        this.modelCatalogs[id] = models;
+        this.saveModelCache(id);
+        if (id !== this.activeEngine()) return;
         this.modelCatalog = models;
-        this.saveModelCache();
-        if (this.selectedModel !== 'auto' && !this.modelCatalog.some((item) => item.id === this.selectedModel)) {
-            const grok = this.modelCatalog.find((item) => item.id === 'grok-4.7');
-            this.selectedModel = grok ? grok.id : this.modelCatalog[0].id;
+        const auto = this.selectedModel === 'auto' && id === 'cursor';
+        if (!auto && !this.modelCatalog.some((item) => item.id === this.selectedModel)) {
+            const fallback = this.modelCatalog.find((item) => item.id === this.defaultModel(id))
+                || this.modelCatalog.find((item) => item.default === true);
+            this.selectedModel = fallback ? fallback.id : this.modelCatalog[0].id;
         }
         const efforts = this.effortsForSelected();
         if (efforts.length && !efforts.some((item) => item.id === this.selectedEffort)) {
@@ -711,13 +817,18 @@ class Director {
         this.saveChatPrefs();
     }
 
-    requestDirectorModels() {
+    requestDirectorModels(engine, force) {
         if (!window.wsClient || !window.wsClient.isConnected()) return;
-        if (this._modelsRequested && (Date.now() - this._modelsRequested) < 60000 && this.modelCatalog.length) return;
-        this._modelsRequested = Date.now();
+        const id = engine === 'claude' || engine === 'cursor' ? engine : this.activeEngine();
+        this._modelsRequestedAt = this._modelsRequestedAt || {};
+        const at = id === this.activeEngine() ? this._modelsRequested : this._modelsRequestedAt[id];
+        if (!force && at && (Date.now() - at) < 60000 && this.catalogFor(id).length) return;
+        if (id === this.activeEngine()) this._modelsRequested = Date.now();
+        this._modelsRequestedAt[id] = Date.now();
         window.wsClient.send({
             type: 'director_get_models',
-            requestId: Date.now().toString()
+            requestId: Date.now().toString(),
+            engine: id
         });
     }
 
@@ -992,7 +1103,8 @@ class Director {
         const messageKey = row && row.dataset.messageKey;
         if (!messageKey) return;
         if (action === 'director-message-retry') {
-            this.rollbackToMessage(messageKey, { retry: true, skipConfirm: true });
+            // Restart dialog: engine / model / reasoning / fast and Restore (the inline buttons are gone).
+            this.rollbackToMessage(messageKey, { retry: true });
             return;
         }
         if (action === 'director-message-revert') {
@@ -1068,6 +1180,7 @@ class Director {
                         { separator: true },
                         ...director.computerMenuItems(),
                         { separator: true },
+                        director.engineMenuItem(),
                         ...director.modelPrefItems().map((item) => {
                             const ownHidden = item.hidden;
                             return {
@@ -1124,16 +1237,24 @@ class Director {
                         },
                         { separator: true },
                         {
+                            icon: 'fas fa-arrows-rotate',
+                            text: 'Restart Session',
+                            tooltip: 'Restart from the first message',
+                            action: 'director-tools-restart-session',
+                            disabled: () => director._running || !director.firstUserMessageKey()
+                        },
+                        {
                             icon: 'fas fa-rotate-right',
-                            text: 'Retry',
+                            text: 'Retry Last Message',
                             action: 'director-tools-retry',
                             disabled: () => director._running || !director.lastUserMessageKey()
                         },
                         {
                             icon: 'fas fa-undo',
-                            text: 'Revert',
+                            text: 'Undo Last Message',
+                            tooltip: 'Steers are part of the request before them and are undone with it',
                             action: 'director-tools-revert',
-                            disabled: () => director._running || !director.lastUserMessageKey()
+                            disabled: () => director._running || !director.lastUserMessageKey({ skipSteers: true })
                         },
                         {
                             icon: 'fas fa-stop',
@@ -1143,7 +1264,7 @@ class Director {
                         },
                         {
                             icon: 'fas fa-trash',
-                            text: 'Delete Chat',
+                            text: 'Delete Session',
                             action: 'director-tools-delete',
                             className: 'text-danger',
                             disabled: () => !director.currentSession || !director.currentSession.id
@@ -1155,6 +1276,13 @@ class Director {
     }
 
     handleToolsAction(action) {
+        if (action.startsWith('director-tools-engine-')) {
+            const engine = action.slice('director-tools-engine-'.length);
+            if (this.setEngine(engine)) {
+                showGlassToast('info', 'Director', `Engine: ${this.engineName(this.activeEngine())}`, false, 1200, '<i class="fas fa-gears"></i>');
+            }
+            return;
+        }
         if (action.startsWith('director-tools-filter-')) {
             const filter = action.slice('director-tools-filter-'.length);
             if (filter === 'chat' || filter === 'chat-tools' || filter === 'all') this.setMessageFilter(filter);
@@ -1264,13 +1392,18 @@ class Director {
                 this.sendOnEnter = !this.sendOnEnter;
                 this.saveChatPrefs();
                 break;
+            case 'director-tools-restart-session': {
+                const firstKey = this.firstUserMessageKey();
+                if (firstKey && this.revealMessageKey(firstKey)) this.retryMessage(firstKey);
+                break;
+            }
             case 'director-tools-retry': {
                 const retryKey = this.lastUserMessageKey();
                 if (retryKey && this.revealMessageKey(retryKey)) this.retryMessage(retryKey);
                 break;
             }
             case 'director-tools-revert': {
-                const revertKey = this.lastUserMessageKey();
+                const revertKey = this.lastUserMessageKey({ skipSteers: true });
                 if (revertKey && this.revealMessageKey(revertKey)) this.rollbackToMessage(revertKey);
                 break;
             }
@@ -1285,13 +1418,24 @@ class Director {
         }
     }
 
-    lastUserMessageKey() {
+    // skipSteers: a steer only redirects the request before it, so undo goes
+    // back to that request (which removes the steer with it).
+    lastUserMessageKey(options) {
+        const skipSteers = !!(options && options.skipSteers);
         const messages = this.currentSession && Array.isArray(this.currentSession.messages) ? this.currentSession.messages : [];
         for (let i = messages.length - 1; i >= 0; i--) {
             const message = messages[i];
-            if (message && message.role === 'user') return String(message.id || message.timestamp || '');
+            if (!message || message.role !== 'user' || message.message_type === 'Attachment') continue;
+            if (skipSteers && message.steer === true) continue;
+            return String(message.id || message.timestamp || '');
         }
         return null;
+    }
+
+    firstUserMessageKey() {
+        const messages = this.currentSession && Array.isArray(this.currentSession.messages) ? this.currentSession.messages : [];
+        const first = messages.find((message) => message && message.role === 'user' && message.message_type !== 'Attachment');
+        return first ? String(first.id || first.timestamp || '') : null;
     }
 
     revealMessageKey(messageKey) {
@@ -1336,6 +1480,7 @@ class Director {
             const row = all[sessionId];
             if (!row || typeof row.model !== 'string' || !row.model.trim()) return null;
             return {
+                engine: row.engine === 'claude' ? 'claude' : (row.engine === 'cursor' ? 'cursor' : null),
                 id: row.model.trim(),
                 effort: row.effort || 'medium',
                 fast: row.fast === true,
@@ -1351,6 +1496,7 @@ class Director {
         const id = sessionId || (this.currentSession && this.currentSession.id);
         if (!id) return;
         const choice = {
+            engine: this.activeEngine(),
             id: this.selectedModel || 'auto',
             effort: this.selectedEffort || 'medium',
             fast: this.fast === true,
@@ -1361,6 +1507,7 @@ class Director {
         try {
             const all = JSON.parse(localStorage.getItem(this.SESSION_MODEL_KEY) || '{}');
             all[id] = {
+                engine: choice.engine,
                 model: choice.id,
                 effort: choice.effort,
                 fast: choice.fast,
@@ -1390,22 +1537,35 @@ class Director {
 
     applySessionModel(session) {
         if (!session || session.draft || !session.id) {
+            // A Claude draft starts from Claude's last config; Cursor drafts start on Auto.
+            if (this.activeEngine() === 'claude') {
+                this.loadChatPrefs();
+                this.paintModelPick();
+                this.syncEngineChrome();
+                return;
+            }
             this.selectedModel = 'auto';
             this.selectedEffort = 'medium';
             this.selectedContext = '';
             this.thinking = false;
             this.fast = false;
             this.paintModelPick();
+            this.syncEngineChrome();
             return;
         }
         const choice = this.readSessionModel(session.id) || session.choice || this.choiceFromMessages(session.messages);
-        this.selectedModel = choice && choice.id ? choice.id : 'auto';
+        // A session continues on the engine it last ran on: the local choice for
+        // it if one was saved with an engine, otherwise the server's record.
+        const engine = (choice && choice.engine) || (session.engine === 'claude' ? 'claude' : 'cursor');
+        if (this.persona !== 'xi') this.setEngine(engine, { skipSave: true });
+        this.selectedModel = choice && choice.id ? choice.id : (this.activeEngine() === 'claude' ? this.defaultModel() : 'auto');
         this.selectedEffort = choice && choice.effort ? choice.effort : 'medium';
         this.selectedContext = choice && choice.context ? choice.context : '';
         this.thinking = !!(choice && choice.thinking);
         this.fast = !!(choice && choice.fast);
         if (!this.fastAvailable()) this.fast = false;
         this.paintModelPick();
+        this.syncEngineChrome();
     }
 
     takeComposerAttachments() {
@@ -1527,9 +1687,11 @@ class Director {
         }
         this.persona = 'wren';
         this.loadChatPrefs();
+        this.loadModelCache();
         this.paintChatPrefs();
         this.currentSession = null;
         window.currentSession = null;
+        this.syncEngineChrome();
         this.paintPersonaToggle();
     }
 
@@ -1544,10 +1706,12 @@ class Director {
         this._personaSession[this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
         this.persona = next;
         this.loadChatPrefs();
+        this.loadModelCache();
         this.paintChatPrefs();
         this.paintPersonaToggle();
         this.currentSession = null;
         window.currentSession = null;
+        this.syncEngineChrome();
         try { await this.loadDirectorSessions(); } catch (_) { /* list refresh is best effort */ }
         const remembered = this._personaSession[next];
         const found = remembered && (this.directorSessions || []).find((item) => item.id === remembered);
@@ -1887,6 +2051,14 @@ class Director {
 
         this.registerComposerHotkeys();
 
+        // Lite refresh on a workspace switch or a workspace colour/name edit
+        // (workspaceUtils.js): ownership banner, window theme, and list dots.
+        // No message reload.
+        const workspaceRefresh = () => this.refreshWorkspaceChrome();
+        document.addEventListener('workspaceChanged', workspaceRefresh);
+        document.addEventListener('workspaceUpdated', workspaceRefresh);
+        document.addEventListener('workspaceActivated', workspaceRefresh);
+
         const workspaceSwitchBtn = document.getElementById('directorWorkspaceSwitchBtn');
         if (workspaceSwitchBtn) {
             workspaceSwitchBtn.addEventListener('click', () => {
@@ -2084,7 +2256,9 @@ class Director {
             this._hideTimer = null;
         }
         if (this.directorCommonHeader) {
-            this.directorWindowChat.appendChild(this.directorCommonHeader);
+            // Title-bar toolbar row of #directorWindow (public/app.html), as in the Calculator.
+            const toolbar = document.getElementById('directorWindowToolbar');
+            (toolbar || this.directorWindowChat).appendChild(this.directorCommonHeader);
             this.directorCommonHeader.classList.remove('hidden');
         }
         this.directorWindowChat.appendChild(this.directorContainer);
@@ -2092,6 +2266,7 @@ class Director {
         this.directorContainer.classList.add('director-open');
         this.updateHeaderForView(this.currentView);
         this.renderSessionImages();
+        this.paintWorkspaceBanner();
     }
 
     mountDirectorInStudio() {
@@ -3438,6 +3613,7 @@ class Director {
             this.directorRuntimePick.disabled = true;
             this.directorRuntimePick.title = 'Runtime (fixed for this session)';
         }
+        this.syncEngineChrome();
     }
 
     async loadDirectorSessions() {
@@ -3577,7 +3753,9 @@ class Director {
 
         const activeAccId = this.activeAccountId || 'default';
         const sessionAccId = session.accountId || 'default';
-        const isInactiveAccount = sessionAccId !== activeAccId;
+        const engine = this.sessionEngine(session);
+        // Claude sessions are not tied to a Cursor profile, so they are never dimmed for one.
+        const isInactiveAccount = engine === 'cursor' && sessionAccId !== activeAccId;
 
         if (isInactiveAccount) {
             item.dataset.inactiveAccount = '1';
@@ -3596,13 +3774,13 @@ class Director {
             ? ''
             : `<img class="director-session-preview" src="${this.getSessionPreviewImage(session)}" alt="Session preview" loading="lazy">`;
 
-        const accountBadge = this.accountBadgeHtml(sessionAccId, isInactiveAccount);
+        const accountBadge = engine === 'cursor' ? this.accountBadgeHtml(sessionAccId, isInactiveAccount) : '';
 
         item.innerHTML = `
             ${preview}
             <div class="director-session-info">
-                <div class="director-session-name"><span>${this.escapeHtml(session.name)}</span>${accountBadge}${this.workspaceDot(session)}</div>
-                <div class="director-session-date">${formattedDate}</div>
+                <div class="director-session-name">${this.engineIconHtml(engine)}<span>${this.escapeHtml(session.name)}</span></div>
+                <div class="director-session-date"><span class="director-session-date-text">${formattedDate}</span><span class="director-session-marks">${accountBadge}${this.workspaceDot(session)}</span></div>
             </div>
         `;
         if (this.persona !== 'xi') this.bindSessionPreviewFallback(item.querySelector('.director-session-preview'), session.filename || '');
@@ -3660,9 +3838,15 @@ class Director {
         return `<span class="director-account-badge" style="background:${this.escapeHtml(color)}" title="${this.escapeHtml(title)}">${this.escapeHtml(letter)}</span>`;
     }
 
+    // Header profile badge: the active Cursor profile. Hidden on Claude, which
+    // uses no Cursor profile; the title logo shows the engine instead.
     paintAccountBadge() {
         const el = document.getElementById('directorAccountBadge');
         if (!el) return;
+        if (this.displayEngine() === 'claude') {
+            el.classList.add('hidden');
+            return;
+        }
         const account = this.accountProfile(this.activeAccountId || 'default');
         el.textContent = this.accountLetter(account);
         el.style.background = this.accountColor(account);
@@ -4328,12 +4512,6 @@ class Director {
             content = `<div class="director-message-content">
                 <div class="director-user-message-header">
                     <span class="director-request-type-badge">${requestType}</span>
-                    <button type="button" class="director-rollback-btn" onclick="window.directorInstance.retryMessage('${messageKey}')">
-                        <i class="fas fa-rotate-right"></i> Retry
-                    </button>
-                    <button type="button" class="director-rollback-btn" onclick="window.directorInstance.rollbackToMessage('${messageKey}')">
-                        <i class="nai-dot-reset"></i> Rollback
-                    </button>
                 </div>
                 <div class="director-user-message-input">${userInput}</div>
             </div>`;
@@ -4927,7 +5105,12 @@ class Director {
             if (used) {
                 const badge = document.createElement('span');
                 badge.className = 'director-request-type-badge';
-                badge.textContent = used;
+                // Rounds record their engine since the Claude engine; older ones ran on Cursor.
+                const engine = (model && model.engine)
+                    || (this.persona === 'xi' && this.currentSession ? this.currentSession.runtime : null)
+                    || this.engineForModelId(model, this.currentSession);
+                badge.insertAdjacentHTML('beforeend', this.engineIconHtml(engine));
+                badge.append(document.createTextNode(used));
                 header.appendChild(badge);
             }
         }
@@ -5060,16 +5243,29 @@ class Director {
         return `<div class="workspace-color-indicator" style="background-color: ${meta.color}" title="${this.escapeHtml(meta.name)}"></div>`;
     }
 
+    refreshWorkspaceChrome() {
+        this.paintWorkspaceBanner();
+        if (Array.isArray(this.directorSessions) && this.directorSessions.length) this.renderDirectorSessions();
+    }
+
     paintWorkspaceBanner() {
         const banner = document.getElementById('directorWorkspaceBanner');
         const text = document.getElementById('directorWorkspaceBannerText');
         const chat = this.directorSessionChat;
         const session = this.currentSession;
         const meta = session && !session.draft ? this.sessionWorkspaceMeta(session) : null;
-        // Compiled workspace CSS is [data-workspace] on the app root. The same
-        // attribute on the chat root themes this scroll area, glass included.
+        // Compiled workspace CSS is [data-workspace] on the app root. In the
+        // Director window the whole window takes the session's workspace, so its
+        // one glass layer (background, blur, darkness) is that workspace's and
+        // nothing stacks. Docked in the Studio, only the chat root re-scopes the
+        // variables, since the Studio window paints the ground there.
+        const inWindow = this.directorDockedInWindow();
+        if (this.directorWindow) {
+            if (inWindow && meta && meta.id) this.directorWindow.setAttribute('data-workspace', meta.id);
+            else this.directorWindow.removeAttribute('data-workspace');
+        }
         if (chat) {
-            if (meta && meta.id) chat.setAttribute('data-workspace', meta.id);
+            if (!inWindow && meta && meta.id) chat.setAttribute('data-workspace', meta.id);
             else chat.removeAttribute('data-workspace');
         }
         if (!banner || !text) return;
@@ -5206,7 +5402,7 @@ class Director {
     async reapplyStudioChange(payload) {
         // applyStudioChangePayloadSilent: public/scripts/comp/studioChangeJson.js
         try {
-            const applied = await applyStudioChangePayloadSilent(payload);
+            const applied = await applyStudioChangePayloadSilent(payload, { source: 'director' });
             showGlassToast(applied ? 'success' : 'error', null, applied ? 'Studio changes applied' : 'Studio changes were not applied');
         } catch (err) {
             showGlassToast('error', null, err && err.message ? err.message : 'Studio changes were not applied');
@@ -5337,7 +5533,8 @@ class Director {
         window.wsClient.send({
             type: 'director_get_cursor_usage',
             requestId: Date.now().toString(),
-            persona: this.persona || 'wren'
+            persona: this.persona || 'wren',
+            engine: this.displayEngine()
         });
     }
 
@@ -5412,11 +5609,12 @@ class Director {
         if (split) split.classList.toggle('hidden', !showSplit);
         autoEl.textContent = auto == null ? '—' : `${auto}%`;
         if (otherEl) otherEl.textContent = other == null ? '—' : `${other}%`;
-        host.title = data.title || 'Cursor usage';
+        host.title = data.title || (this.displayEngine() === 'claude' ? 'Claude usage' : 'Cursor usage');
         host.classList.toggle('low-credits', data.limited === true);
         this.paintAccountBadge();
         if (iconEl) {
-            iconEl.className = data.limited ? 'fas fa-battery-empty' : 'fas fa-battery-three-quarters';
+            // Pie: share of the plan used. Turns into the warning mark at the limit.
+            iconEl.className = data.limited ? 'fas fa-triangle-exclamation' : 'fas fa-chart-pie';
         }
     }
 
@@ -5483,9 +5681,13 @@ class Director {
         return null;
     }
 
+    // Taken before the agent runs, so Restore can put the Studio back. Only when
+    // the Studio is open: a closed Studio has nothing the agent's turn could change.
     snapshotStudioChange() {
         // buildStudioChangeSnapshot: public/scripts/comp/studioChangeJson.js
         if (typeof buildStudioChangeSnapshot !== 'function') return null;
+        const studio = document.getElementById('manualModal');
+        if (!studio || studio.classList.contains('hidden')) return null;
         try {
             return buildStudioChangeSnapshot();
         } catch (_err) {
@@ -5767,7 +5969,8 @@ class Director {
             this._settledSessionId = null;
             this._turnPrints = 0;
             this._turnModel = {
-                id: this.selectedModel || 'grok-4.7',
+                engine: this.activeEngine(),
+                id: this.selectedModel || this.defaultModel(),
                 effort: this.selectedEffort || 'medium',
                 fast: this.fast === true
             };
@@ -5779,9 +5982,10 @@ class Director {
                 persona: this.persona || 'wren',
                 sessionId: this.currentSession.id,
                 content: content,
+                engine: this.activeEngine(),
                 effort: this.selectedEffort || 'medium',
                 fast: this.fast === true,
-                model: this.selectedModel || 'grok-4.7',
+                model: this.selectedModel || this.defaultModel(),
                 context: this.selectedContext || '',
                 thinking: this.thinkingToggle() ? this.thinking === true : this.selectedEffort !== 'none',
                 attachments: attachments,
@@ -5991,7 +6195,7 @@ class Director {
         // Handle Director sessions response
         window.wsClient.on('director_get_models_response', (data) => {
             if (window.directorInstance && data.data && Array.isArray(data.data.models)) {
-                window.directorInstance.applyModelCatalog(data.data.models);
+                window.directorInstance.applyModelCatalog(data.data.models, data.data.engine);
             }
         });
 
@@ -6001,6 +6205,7 @@ class Director {
             const body = data.data || {};
             const asked = director.persona || 'wren';
             if (body.persona && body.persona !== asked) return;
+            if ((body.engine || 'cursor') !== director.displayEngine()) return;
             director.paintCursorUsage(body);
         });
 
@@ -6339,9 +6544,9 @@ class Director {
         window.wsClient.on('director_rollback_message_response', async (data) => {
             if (data.data && data.data.success) {
                 showGlassToast('success', null, data.data.message || 'Messages rolled back successfully');
-                if (data.data.changeJson && typeof applyStudioChangePayloadSilent === 'function') {
+                if (data.data.changeJson && data.data.restore !== false && typeof applyStudioChangePayloadSilent === 'function') {
                     // applyStudioChangePayloadSilent: public/scripts/comp/studioChangeJson.js
-                    await applyStudioChangePayloadSilent(data.data.changeJson);
+                    await applyStudioChangePayloadSilent(data.data.changeJson, { source: 'director' });
                 }
                 if (window.directorInstance && window.currentSession) {
                     window.directorInstance.loadSessionMessages(window.currentSession.id);
@@ -6502,9 +6707,223 @@ class Director {
         if (index >= 0) messages.splice(index);
     }
 
+    // The user message a rollback cuts at (a retry on a reply uses the ask before it).
+    rollbackSourceMessage(messageId, retry) {
+        const messages = (this.currentSession && this.currentSession.messages) || [];
+        let at = messages.findIndex((item) => item && (String(item.id) === messageId || String(item.timestamp) === messageId));
+        if (at < 0) return null;
+        if (retry) {
+            while (at >= 0 && messages[at].role !== 'user') at -= 1;
+        }
+        return at >= 0 ? messages[at] : null;
+    }
+
+    engineIconHtml(engine) {
+        const id = engine === 'claude' ? 'claude' : 'cursor';
+        return `<span class="director-engine-icon engine-${id}" role="img" aria-label="${this.engineName(id)}" title="${this.engineName(id)}"></span>`;
+    }
+
+    // Older rounds have no engine. An id only the Claude catalog has ran on
+    // Claude; so did a bare family id (run === id) in a chat last run on Claude,
+    // since Cursor runs record a variant id (effort / thinking suffix) as run.
+    engineForModelId(model, session) {
+        const id = model && (typeof model === 'string' ? model : model.id);
+        if (!id || !this.catalogFor('claude').some((item) => item.id === id)) return 'cursor';
+        if (!this.catalogFor('cursor').some((item) => item.id === id)) return 'claude';
+        const run = model && typeof model === 'object' ? model.run : null;
+        return run === id && session && session.engine === 'claude' ? 'claude' : 'cursor';
+    }
+
+    sessionEngine(session) {
+        if (!session) return 'cursor';
+        const engine = this.persona === 'xi' ? session.runtime : session.engine;
+        return engine === 'claude' ? 'claude' : 'cursor';
+    }
+
     retryMessage(messageKey) {
         this._rollbackRetry = true;
         this.rollbackToMessage(messageKey);
+    }
+
+    // ---- Retry engine / model choice (the Restart message dialog) ----
+    // Starts from the composer's current choice. Confirming Revert makes it the
+    // composer's choice, so the retried turn and the ones after it use it.
+    retryFamily(choice) {
+        return this.catalogFor(choice.engine).find((item) => item.id === choice.model) || null;
+    }
+
+    retryEfforts(choice) {
+        const family = this.retryFamily(choice);
+        return family && Array.isArray(family.efforts) ? family.efforts : [];
+    }
+
+    retryFastAvailable(choice) {
+        const family = this.retryFamily(choice);
+        if (!family) return false;
+        const efforts = this.retryEfforts(choice);
+        if (efforts.length) {
+            const row = efforts.find((item) => item.id === choice.effort) || efforts[0];
+            return !!(row && row.fast);
+        }
+        return family.fast === true;
+    }
+
+    normalizeRetryChoice(choice) {
+        const models = this.catalogFor(choice.engine);
+        const auto = choice.engine === 'cursor' && choice.model === 'auto';
+        if (models.length && !auto && !models.some((item) => item.id === choice.model)) {
+            const fallback = models.find((item) => item.id === this.defaultModel(choice.engine))
+                || models.find((item) => item.default === true) || models[0];
+            choice.model = fallback.id;
+        }
+        const efforts = this.retryEfforts(choice);
+        if (efforts.length && !efforts.some((item) => item.id === choice.effort)) {
+            const medium = efforts.find((item) => item.id === 'medium');
+            choice.effort = medium ? medium.id : efforts[0].id;
+        }
+        if (!this.retryFastAvailable(choice)) choice.fast = false;
+        return choice;
+    }
+
+    // The other engine's last saved config, as setEngine would load it.
+    savedEngineChoice(engine) {
+        const key = engine === 'claude' ? `${this.PREFS_KEY}_claude` : this.PREFS_KEY;
+        let raw = {};
+        try { raw = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (_err) { raw = {}; }
+        return {
+            engine,
+            model: typeof raw.model === 'string' && raw.model.trim() ? raw.model.trim() : this.defaultModel(engine),
+            effort: typeof raw.effort === 'string' && raw.effort.trim() ? raw.effort.trim() : 'medium',
+            fast: raw.fast === true
+        };
+    }
+
+    retryChoiceLabel(choice) {
+        const family = this.retryFamily(choice);
+        const auto = choice.model === 'auto';
+        const name = auto ? 'Auto' : ((family && (family.short || family.name)) || choice.model);
+        const effort = this.retryEfforts(choice).find((item) => item.id === choice.effort);
+        const bits = [];
+        if (this.persona !== 'xi') bits.push(this.engineName(choice.engine));
+        bits.push(name);
+        if (effort) bits.push(effort.name);
+        if (choice.fast) bits.push('Fast');
+        return bits.join(' / ');
+    }
+
+    retryMenuConfig(choice, repaint) {
+        const director = this;
+        const familyItems = () => {
+            const models = director.catalogFor(choice.engine);
+            if (!models.length) {
+                director.requestDirectorModels(choice.engine);
+                return [{ text: 'Loading models...', disabled: () => true }];
+            }
+            const items = [];
+            let provider = '';
+            models.forEach((model) => {
+                const group = director.modelProvider(model);
+                if (group !== provider) {
+                    items.push({ separator: true, text: group });
+                    provider = group;
+                }
+                items.push({
+                    text: model.name,
+                    action: `retry-model-${model.id}`,
+                    dots: model.cost || 0,
+                    tooltip: model.price || '',
+                    showIndicator: true,
+                    loadfn: (item) => { item.checked = choice.model === model.id; }
+                });
+            });
+            return items;
+        };
+        return {
+            onAction: (action) => {
+                if (action.startsWith('retry-engine-')) {
+                    const engine = action.slice('retry-engine-'.length) === 'claude' ? 'claude' : 'cursor';
+                    if (engine !== choice.engine) {
+                        Object.assign(choice, engine === director.activeEngine()
+                            ? { engine, model: director.selectedModel, effort: director.selectedEffort, fast: director.fast === true }
+                            : director.savedEngineChoice(engine));
+                        director.requestDirectorModels(engine);
+                    }
+                } else if (action.startsWith('retry-model-')) {
+                    choice.model = action.slice('retry-model-'.length);
+                } else if (action.startsWith('retry-effort-')) {
+                    choice.effort = action.slice('retry-effort-'.length);
+                } else if (action === 'retry-fast') {
+                    if (director.retryFastAvailable(choice)) choice.fast = !choice.fast;
+                }
+                director.normalizeRetryChoice(choice);
+                repaint();
+            },
+            sections: [{
+                type: 'list',
+                items: [
+                    {
+                        icon: 'fas fa-gears',
+                        text: 'Engine',
+                        hidden: () => director.persona === 'xi',
+                        valueDisplay: () => director.engineName(choice.engine),
+                        submenu: ['cursor', 'claude'].map((id) => ({
+                            text: director.engineName(id),
+                            action: `retry-engine-${id}`,
+                            showIndicator: true,
+                            loadfn: (item) => { item.checked = choice.engine === id; }
+                        }))
+                    },
+                    {
+                        icon: 'fas fa-microchip',
+                        text: 'Model',
+                        valueDisplay: () => {
+                            const family = director.retryFamily(choice);
+                            return choice.model === 'auto' ? 'Auto' : ((family && family.name) || choice.model);
+                        },
+                        optionsfn: familyItems
+                    },
+                    {
+                        icon: 'fas fa-lightbulb',
+                        text: 'Reasoning',
+                        hidden: () => director.retryEfforts(choice).length === 0,
+                        valueDisplay: () => {
+                            const row = director.retryEfforts(choice).find((item) => item.id === choice.effort);
+                            return row ? row.name : '';
+                        },
+                        optionsfn: () => director.retryEfforts(choice).map((level) => ({
+                            text: level.name,
+                            action: `retry-effort-${level.id}`,
+                            showIndicator: true,
+                            loadfn: (item) => { item.checked = choice.effort === level.id; }
+                        }))
+                    },
+                    {
+                        icon: 'fas fa-bolt',
+                        text: 'Fast',
+                        action: 'retry-fast',
+                        keepMenuOpen: true,
+                        showIndicator: true,
+                        disabled: () => !director.retryFastAvailable(choice),
+                        tooltip: 'Only some models have a fast mode',
+                        loadfn: (item) => { item.checked = choice.fast === true; }
+                    }
+                ]
+            }]
+        };
+    }
+
+    applyRetryChoice(choice) {
+        if (choice.engine !== this.activeEngine()) this.setEngine(choice.engine);
+        this.selectedModel = choice.model;
+        this.selectedEffort = choice.effort || 'medium';
+        this.fast = choice.fast === true;
+        const contexts = this.contextsForSelected();
+        if (contexts.length && !contexts.some((slot) => slot.id === this.selectedContext)) this.selectedContext = contexts[0].id;
+        if (!contexts.length) this.selectedContext = '';
+        if (!this.thinkingToggle()) this.thinking = this.selectedEffort !== 'none';
+        if (!this.fastAvailable()) this.fast = false;
+        this.saveChatPrefs();
+        this.rememberSessionModel();
     }
 
     async rollbackToMessage(messageKey, options) {
@@ -6528,20 +6947,78 @@ class Director {
             return;
         }
 
+        // Restore puts the Studio back to the snapshot taken when that message was
+        // sent. No snapshot (Studio was closed then): nothing to restore, no toggle.
+        const source = this.rollbackSourceMessage(messageId, retry);
+        const canRestore = !!(source && source.changeJson);
+        let restore = canRestore;
         if (!skipConfirm) {
-            const choice = await showConfirmationDialog(
-                retry
-                    ? 'Keep this reply, revert to this message and ask again, or cancel.'
-                    : 'Keep this reply, revert to this message, or cancel.',
-                [
-                    { text: 'Keep', value: 'keep', className: 'btn-primary' },
-                    { text: 'Revert', value: 'revert', className: 'btn-danger' },
-                    { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
-                ],
-                null,
-                { title: retry ? 'Restart message' : 'Revert message', icon: 'fas fa-undo' }
+            const retryChoice = retry ? this.normalizeRetryChoice({
+                engine: this.activeEngine(),
+                model: this.selectedModel || this.defaultModel(),
+                effort: this.selectedEffort || 'medium',
+                fast: this.fast === true
+            }) : null;
+            const buttons = [];
+            if (retry) {
+                if (this.persona !== 'xi') this.requestDirectorModels(retryChoice.engine === 'claude' ? 'cursor' : 'claude');
+                buttons.push({
+                    id: 'directorRetryChoiceBtn',
+                    text: this.retryChoiceLabel(retryChoice),
+                    icon: 'fas fa-microchip',
+                    title: 'Engine, model, reasoning, and fast mode for this restart',
+                    className: 'btn-secondary director-retry-choice-btn',
+                    value: 'choice',
+                    closeOnClick: false,
+                    onClick: () => {}
+                });
+            }
+            buttons.push({
+                id: 'directorRollbackRestoreBtn',
+                text: 'Restore',
+                icon: 'fas fa-clock-rotate-left',
+                title: 'Put the Studio back the way it was before this message',
+                className: 'btn-secondary indicator director-rollback-restore-btn',
+                value: 'restore',
+                hidden: !canRestore,
+                closeOnClick: false,
+                onClick: (event) => {
+                    restore = !restore;
+                    const btn = event && event.currentTarget;
+                    if (btn) btn.dataset.state = restore ? 'on' : 'off';
+                }
+            });
+            buttons.push(
+                { text: retry ? 'Restart' : 'Revert', value: 'go', className: 'btn-primary', icon: retry ? 'fas fa-rotate-right' : 'fas fa-undo' },
+                { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
             );
-            if (choice !== 'revert') return;
+            const pending = showConfirmationDialog(
+                retry
+                    ? 'Restart this request from here with the options below. Later messages are removed.'
+                    : 'Revert the chat to this message. Later messages are removed.',
+                buttons,
+                null,
+                { title: retry ? 'Restart message' : 'Revert message', icon: retry ? 'fas fa-rotate-right' : 'fas fa-undo' }
+            );
+            const restoreBtn = document.getElementById('directorRollbackRestoreBtn');
+            if (restoreBtn) restoreBtn.dataset.state = restore ? 'on' : 'off';
+            const choiceBtn = retry ? document.getElementById('directorRetryChoiceBtn') : null;
+            if (choiceBtn && window.contextMenu) {
+                const repaint = () => {
+                    choiceBtn.replaceChildren();
+                    choiceBtn.insertAdjacentHTML('beforeend', this.engineIconHtml(retryChoice.engine));
+                    choiceBtn.append(document.createTextNode(` ${this.retryChoiceLabel(retryChoice)} `));
+                    const caret = document.createElement('i');
+                    caret.className = 'fas fa-caret-down';
+                    choiceBtn.append(caret);
+                };
+                repaint();
+                window.contextMenu.attachClickMenuToElement(choiceBtn, this.retryMenuConfig(retryChoice, repaint));
+            }
+            const choice = await pending;
+            if (choiceBtn && window.contextMenu) window.contextMenu.detachClickMenuFromElement(choiceBtn);
+            if (choice !== 'go') return;
+            if (retryChoice) this.applyRetryChoice(retryChoice);
         }
         this.dropFromMessage(key);
 
@@ -6553,7 +7030,8 @@ class Director {
                 persona: this.persona || 'wren',
                 sessionId: this.currentSession.id,
                 messageId: messageId,
-                retry: retry
+                retry: retry,
+                restore: restore
             });
 
             showGlassToast('info', null, 'Rolling back messages...');

@@ -441,9 +441,16 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
                 res.status(413).json({ error: 'file is empty or too large' });
                 return;
             }
-            const name = path.basename(String(body.filename || 'download')).replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_').slice(0, 200) || 'download';
-            const ext = (name.match(/\.([a-z0-9]+)$/i) || [])[1] || '';
+            let name = path.basename(String(body.filename || 'download')).replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_').slice(0, 200) || 'download';
             const upstreamType = String(upstream.headers.get('content-type') || '').split(';')[0].trim();
+            // CDN image URLs often end without an extension; the remote browser's filename (Content-Disposition) has one.
+            if (!/\.[a-z0-9]{2,5}$/i.test(name)) {
+                const served = /filename="([^"]+)"/i.exec(String(upstream.headers.get('content-disposition') || ''));
+                const servedExt = served && (served[1].match(/\.([a-z0-9]{2,5})$/i) || [])[1];
+                const typeExt = Object.keys(DOWNLOAD_MIME_BY_EXT).find((key) => DOWNLOAD_MIME_BY_EXT[key] === upstreamType.toLowerCase());
+                if (servedExt || typeExt) name = name.slice(0, 190) + '.' + (servedExt || typeExt);
+            }
+            const ext = (name.match(/\.([a-z0-9]+)$/i) || [])[1] || '';
             const mimeType = upstreamType && upstreamType !== 'application/octet-stream'
                 ? upstreamType
                 : (DOWNLOAD_MIME_BY_EXT[ext.toLowerCase()] || 'application/octet-stream');

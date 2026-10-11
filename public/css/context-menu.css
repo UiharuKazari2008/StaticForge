@@ -1078,13 +1078,13 @@ span.context-menu-item-state {
 
 /* Danger items in context menu */
 .context-menu-item.danger {
-    color: var(--error-color);
+    color: hsl(0 100% 75% / 1);
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .context-menu-item.danger:hover:not(:disabled) {
-        background-color: var(--error-color);
-        color: var(--bg-color);
+        background-color: var(--btn-hover-bg-danger);
+        color: var(--btn-hover-text-danger);
     }
 }
 

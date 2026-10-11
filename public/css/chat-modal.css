@@ -724,7 +724,7 @@
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .profile-photo-preview:hover:not(:disabled) {
-        border-color: var(--accent-primary);
+        border-color: var(--glass-border-4);
         background: var(--glass-layer-dark-3);
     }
 }

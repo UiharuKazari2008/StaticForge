@@ -1043,7 +1043,7 @@
     .pswp__button--custom:disabled:hover:not(:disabled) {
         transform: none;
         background: var(--bg-secondary);
-        border-color: var(--border-color);
+        border-color: var(--glass-border-2);
     }
 }
 
@@ -1452,7 +1452,7 @@ div#manualResolutionDropdownMenu {
 .clear-search-link {
     background: none;
     border: none;
-    color: var(--accent-color);
+    color: var(--text-accent-tinted);
     text-decoration: underline;
     padding: 0;
     font-size: 14px;
@@ -1461,7 +1461,7 @@ div#manualResolutionDropdownMenu {
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .clear-search-link:hover:not(:disabled) {
-        color: var(--accent-text);
+        color: var(--text-primary);
         text-decoration: none;
     }
 }

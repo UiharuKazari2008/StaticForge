@@ -547,8 +547,8 @@ html.disable-blur .director-session-overlay {
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .director-session-item:hover:not(:disabled) {
-        background: var(--bg-hover);
-        border-color: var(--accent-color);
+        background: var(--glass-layer-4);
+        border-color: var(--glass-border-4);
     }
 }
 
@@ -1406,8 +1406,8 @@ html.disable-blur .director-attach-chip {
 
 .measurements-tab {
     padding: 8px 16px;
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-2);
     border-bottom: none;
     border-radius: 4px 4px 0 0;
     margin-right: 2px;
@@ -1419,22 +1419,22 @@ html.disable-blur .director-attach-chip {
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .measurements-tab:hover:not(:disabled) {
-        background: var(--hover-bg-color);
-        border-color: var(--accent-color);
+        background: var(--glass-layer-4);
+        border-color: var(--glass-border-4);
     }
 }
 
 .measurements-tab.active {
-    background: var(--accent-color);
-    color: white;
-    border-color: var(--accent-color);
+    background: var(--toggle-on-bg);
+    color: var(--text-primary);
+    border-color: var(--glass-border-3);
     position: relative;
     z-index: 1;
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .measurements-tab.active:hover:not(:disabled) {
-        background: var(--accent-color-hover, #2563eb);
+        background: var(--toggle-on-hover-bg);
     }
 }
 
@@ -1443,16 +1443,16 @@ html.disable-blur .director-attach-chip {
     justify-content: space-between;
     align-items: center;
     padding: 4px 6px;
-    background: var(--background-secondary);
+    background: var(--glass-layer-2);
     border-radius: 3px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--glass-border-2);
     transition: var(--transition-tray-menu);
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .measurement-item:hover:not(:disabled) {
-        background: var(--background-tertiary);
-        border-color: var(--primary-color);
+        background: var(--glass-layer-3);
+        border-color: var(--glass-border-4);
     }
 }
 
@@ -2539,38 +2539,6 @@ html.disable-blur .director-attach-chip {
     font-variation-settings: "wght" 600;
 }
 
-.director-rollback-btn {
-    background: rgb(220 53 69 / 0%);
-    border: 1px solid rgba(220, 53, 69, 0.0);
-    color: rgb(255 187 193 / 30%);
-    padding: 2px 6px 2px 6px;
-    border-radius: 2px;
-    font-size: 12px;
-    font-weight: 500;
-    transition: var(--transition-tray-menu);
-    display: flex;
-    gap: 4px;
-    font-variation-settings: "wght" 500;
-    align-items: center;
-}
-
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .director-rollback-btn:hover:not(:disabled) {
-        background: rgba(220, 53, 69, 0.2);
-        border-color: #dc3545;
-        color: #dc3545;
-    }
-}
-
-.director-rollback-btn:active {
-    background: rgba(220, 53, 69, 0.3);
-    transform: translateY(1px);
-}
-
-.director-rollback-btn i {
-    font-size: 10px;
-}
-
 .director-user-message-input {
     font-size: 14px;
     line-height: 1.5;
@@ -3290,4 +3258,183 @@ html.disable-blur .director-attach-chip {
 
 .director-tray-icon.offline i {
     color: #e57373;
+}
+
+/* Engine marks (Cursor / Claude) - director.js engineIconHtml. Mask icons in
+   currentColor, so they take the text colour like the title mark (.xai-icon). */
+.director-engine-icon {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    background: currentColor;
+    -webkit-mask: url('/dist/custom-icons/cursor-icon.svg') no-repeat center/contain;
+    mask: url('/dist/custom-icons/cursor-icon.svg') no-repeat center/contain;
+}
+
+.director-engine-icon.engine-claude,
+.xai-icon.engine-claude-mark {
+    -webkit-mask-image: url('/dist/custom-icons/claude-icon.svg');
+    mask-image: url('/dist/custom-icons/claude-icon.svg');
+}
+
+.director-request-type-badge .director-engine-icon {
+    margin-right: 0.3em;
+}
+
+/* Engine mark sits tight against the title it labels (header title and session row). */
+#directorHeaderTitle,
+#directorSessionTitle {
+    gap: 0.3em;
+}
+
+/* Session row: engine mark + title on the first line; date left, profile
+   badge and workspace dot right on the second, so the title gets the width. */
+.director-session-name {
+    gap: 0.3em;
+}
+
+.director-session-date {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 18px;
+}
+
+.director-session-date-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.director-session-marks {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+/* #directorWindow: the header is the title-bar toolbar row (toolbar-visible),
+   like the Calculator and Atelier. The shared chrome in grimoire-browser.css /
+   modal-window-title-toolbar.css only matches direct toolbar children, and the
+   header nests its controls, so the same rules are repeated here:
+   - buttons: "Standalone enabled buttons - popped out" (+ hover, toggle on, inactive window)
+   - status badges: the sunken group shell (.button-group:has(> .toolbar-input-segment)),
+     tinted text, no text shadow
+   .modal-window-title sets font-size 0.75em; the toolbar row puts it back. */
+#directorWindowToolbar {
+    font-size: calc(1em / 0.75);
+    overflow: visible;
+}
+
+#directorWindowToolbar > #directorCommonHeader {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    gap: var(--spacing-xs);
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+#directorWindowToolbar #directorCommonHeader .director-header-left,
+#directorWindowToolbar #directorCommonHeader .director-header-right {
+    gap: var(--spacing-xs);
+}
+
+#directorWindowToolbar #directorCommonHeader [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(:disabled):not([data-state="on"]):not([data-state="open"]) {
+    min-width: 2.25rem;
+    min-height: 32px;
+    height: 32px;
+    padding: 0 0.55em;
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-5);
+    box-shadow: var(--glass-shadow-2), 0 1px 0 hsl(0 0% 100% / 14%) inset;
+    color: var(--text-accent-tinted);
+    line-height: 1;
+    box-sizing: border-box;
+}
+
+#directorWindowToolbar #directorCommonHeader .btn-toggle[data-state="on"],
+#directorWindowToolbar #directorCommonHeader .btn-toggle[data-state="open"],
+#directorWindowToolbar #directorCommonHeader .indicator[data-state="on"][class^="btn-"] {
+    min-height: 32px;
+    height: 32px;
+    border-radius: var(--border-radius-md);
+    background: var(--toggle-on-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--glass-border-3);
+    box-shadow: inset 0 2px 5px hsl(0 0% 0% / 40%), inset 0 0 10px var(--toggle-shadow-color-19), 0 0 0 1px rgb(0 0 0 / 30%);
+}
+
+#directorWindowToolbar #directorCommonHeader [class^="btn-"]:disabled:not(.btn-primary):not(.btn-danger) {
+    min-height: 32px;
+    height: 32px;
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-2);
+    box-shadow: inset 0 2px 6px hsl(0 0% 0% / 40%);
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+#directorWindowToolbar #directorCommonHeader .inset-badge,
+#directorWindowToolbar #directorCommonHeader .gallery-toggle-group {
+    height: 32px;
+    min-height: 32px;
+    box-sizing: border-box;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--glass-border-3);
+    background: var(--glass-layer-dark-4);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+}
+
+#directorWindowToolbar #directorCommonHeader .inset-badge,
+#directorWindowToolbar #directorCommonHeader .inset-badge * {
+    color: var(--text-accent-tinted);
+    text-shadow: none;
+}
+
+/* Menubar title and engine mark: the window title's 1px outline and shadow
+   (.modal-window-title-main). The filter sits on the h3, not the mark: a filter
+   on a masked element runs before the mask, which would clip the outline away. */
+#directorWindowToolbar #directorCommonHeader h3 {
+    color: var(--text-primary);
+    filter: drop-shadow(1px 0 0 rgba(0, 0, 0, 0.45)) drop-shadow(-1px 0 0 rgba(0, 0, 0, 0.45))
+        drop-shadow(0 1px 0 rgba(0, 0, 0, 0.45)) drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.45))
+        drop-shadow(0 0 5px rgba(0, 0, 0, 0.4));
+}
+
+.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader [class^="btn-"]:not(.btn-primary):not(.btn-danger) {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    box-shadow: inset var(--glass-shadow-2);
+    color: var(--text-secondary);
+}
+
+.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader .inset-badge,
+.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader .gallery-toggle-group {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    box-shadow: inset var(--glass-shadow-2);
+}
+
+.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader .inset-badge,
+.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader .inset-badge * {
+    color: var(--text-secondary);
+}
+
+/* Session row: room between the title line and the date line. */
+.director-session-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
 }

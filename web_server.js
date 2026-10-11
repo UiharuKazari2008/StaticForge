@@ -3763,10 +3763,21 @@ async function handleAdminUnixSocketMessage(message, socket) {
         globalResources.logger.bootSubStep(`Server listening on port ${globalResources.getConfig().port}`);
     });
 
+    // Claude usage figures: ping/pong refresh every 6 hours while a client is around.
+    try {
+        require('./modules/claudeUsageProbe').armClaudeUsageProbe(globalResources);
+    } catch (err) {
+        globalResources.logger.warn(`Claude usage refresh not armed: ${err.message}`);
+    }
+
     // Director computer warm-up. Hosts without bubblewrap still boot; Director just stays offline.
     try {
         await globalResources.logger.bootStep('Director Computer', async () => {
             const prepared = await cursorDirector.prepareDirector(globalResources);
+            (prepared.cliUpdates || []).forEach((line) => {
+                if (/failed/.test(line)) globalResources.logger.warn(`Director: ${line}`);
+                else globalResources.logger.bootSubStep(line);
+            });
             if (prepared.ready) {
                 globalResources.logger.bootSubStep('Director computer ready');
                 if (prepared.cursorLogin && prepared.cursorLogin.ok === false) {

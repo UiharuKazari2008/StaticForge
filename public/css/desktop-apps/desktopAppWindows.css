@@ -4,8 +4,7 @@
    pomodoro) and lay out the calculator's keypads and history tape.
    Link before hidden.css in public/app.html:
    <link rel="stylesheet" href="/css/desktop-apps/desktopAppWindows.css">
-   alarmPomodoro.js also sets its flex inline; calculator.js relies on
-   this file.
+   Alarm and pomodoro share the .desktop-timer-* face below.
 */
 
 #desktopCalculatorModal,
@@ -23,7 +22,7 @@
 
 #desktopAlarmModal,
 #desktopPomodoroModal {
-    width: 380px;
+    width: 340px;
 }
 
 #desktopCalculatorModal > .modal-content,
@@ -36,9 +35,7 @@
 
 #desktopCalculatorModal .modal-body,
 #desktopCalculatorModal #desktopCalculatorPad,
-#desktopCalculatorModal [data-calc-pad],
-#desktopAlarmModal .form-section,
-#desktopPomodoroModal .form-section {
+#desktopCalculatorModal [data-calc-pad] {
     flex: 1 1 auto;
     min-height: 0;
 }
@@ -194,19 +191,54 @@
     }
 }
 
-#desktopAlarmRemain,
-#desktopPomodoroRemain {
+/* Alarm and pomodoro (alarmPomodoro.js). Same reading order as the
+   calculator: caption, sunken readout, then the 7.css progress bar from
+   cache-browser.css. Buttons sit in the colored command strip at the
+   bottom, like a Vista dialog. The readout grows with the window. */
+.desktop-timer-window > .modal-content > .desktop-timer-body {
+    flex: 1 1 auto;
+    gap: var(--spacing-md);
+    min-height: 0;
+    padding: var(--spacing-md);
+}
+
+.desktop-timer-body > .desktop-timer-face {
+    flex: 1 1 auto;
+    gap: var(--spacing-xs);
+    min-height: 0;
+}
+
+.desktop-timer-face > .form-hint {
+    flex: 0 0 auto;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.desktop-timer-face > .desktop-timer-readout {
+    display: flex;
     flex: 1 1 auto;
     align-items: center;
     justify-content: center;
-    margin-bottom: 0;
+    min-height: 72px;
+    font-size: 2.75rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    letter-spacing: 0.04em;
 }
 
-#desktopAlarmModal .form-section > .form-row,
-#desktopAlarmModal .form-section > .section-header,
-#desktopPomodoroModal .form-section > .form-row,
-#desktopPomodoroModal .form-section > .section-header {
+.desktop-timer-face > [role=progressbar] {
     flex: 0 0 auto;
+}
+
+.desktop-timer-body > .form-row {
+    flex: 0 0 auto;
+}
+
+.desktop-timer-window > .modal-content > .desktop-timer-footer {
+    flex: 0 0 auto;
+    width: auto;
 }
 
 /* Remote desktop session (guacRemote.js): the badge shows while keys are not

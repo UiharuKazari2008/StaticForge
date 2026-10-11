@@ -1747,6 +1747,10 @@ async function dumpWorkspace(sourceId, targetId) {
 
 // Show workspace switching progress modal
 function showWorkspaceProgressModal(workspaceName) {
+    // planetSwitcher: public/scripts/comp/planetSwitcher.js - owns the loading UI while open
+    if (window.planetSwitcher && window.planetSwitcher.isActive()) {
+        return;
+    }
     if (!window.isDesktop) {
         // Fall back to toast for non-desktop mode
         workspaceToastId = showGlassToast('info', 'Teleporting', `Switching to ${workspaceName} planet...`, false, false, '<img class="loading" src="/static_images/azuspin.gif" alt="Loading" style="width: 34px; height: 34px;">');
@@ -1923,6 +1927,11 @@ function applyGalleryProgressBarState(container, bar, progress, modeSwitchedRef)
 
 // Update workspace progress modal
 function updateWorkspaceProgress(progress) {
+    // planetSwitcher: public/scripts/comp/planetSwitcher.js
+    if (window.planetSwitcher && window.planetSwitcher.isActive()) {
+        window.planetSwitcher.updateProgress(progress);
+        return;
+    }
     if (!workspaceProgressModal) return;
 
     const modeRef = { value: workspaceProgressModeSwitched };
@@ -2040,6 +2049,9 @@ async function setActiveWorkspace(id) {
         // Clear the workspace switching flag on error
         isWorkspaceSwitching = false;
         window.isWorkspaceSwitching = false;
+        document.dispatchEvent(new CustomEvent('workspaceSwitchFailed', {
+            detail: { workspaceId: id, error: error.message }
+        }));
     }
 }
 
@@ -3360,7 +3372,15 @@ function initializeWebSocketWorkspaceEvents() {
         // Clear the workspace switching flag
         isWorkspaceSwitching = false;
         window.isWorkspaceSwitching = false;
+        notifyWorkspaceSwitchComplete(activeWorkspace);
     });
+}
+
+// Fired once a workspace switch has fully loaded (gallery data in). planetSwitcher.js waits for this.
+function notifyWorkspaceSwitchComplete(workspaceId) {
+    document.dispatchEvent(new CustomEvent('workspaceSwitchComplete', {
+        detail: { workspaceId: workspaceId }
+    }));
 }
 
 // Function to complete workspace switching after gallery data is received
@@ -3387,6 +3407,7 @@ function completeWorkspaceSwitch() {
     // Clear the workspace switching flag
     isWorkspaceSwitching = false;
     window.isWorkspaceSwitching = false;
+    notifyWorkspaceSwitchComplete(activeWorkspace);
 }
 
 // Initialize drag and drop functionality for workspace reordering

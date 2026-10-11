@@ -931,7 +931,7 @@
         const studioWasClosed = !modal || modal.classList.contains('hidden');
         let applied = false;
         try {
-            applied = !!await window.applyStudioChangePayloadSilent(payload);
+            applied = !!await window.applyStudioChangePayloadSilent(payload, { source: 'mcp', actorName: data.actorName || '' });
         } catch (err) {
             return {
                 ok: false,

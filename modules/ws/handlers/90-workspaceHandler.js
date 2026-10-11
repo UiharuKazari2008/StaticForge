@@ -369,6 +369,59 @@ class WorkspaceWebSocketHandlers {
         }
     }
 
+    /**
+     * Newest preview samples per workspace for the planet switcher bubbles.
+     * One SQL LIMIT query per workspace (listWorkspaceGalleryItemsPaginated); never builds a full index.
+     * Request: { ids?: string[] (default: every workspace), limit?: number (1-12, default 6) }
+     * Response data: { limit, samples: { [workspaceId]: [{ base, preview, blurhash, width, height }] } }
+     */
+    async handleWorkspacePreviewSamples(ws, message, clientInfo, wsServer) {
+        try {
+            const { ids, limit } = message;
+            const workspaceManager = this.globalResources.getWorkspaceManager();
+            const metadataDb = this.globalResources.getMetadataDatabase();
+            const sampleLimit = Math.max(1, Math.min(12, Number(limit) || 6));
+            const requestedIds = Array.isArray(ids) && ids.length > 0
+                ? ids
+                : Object.keys(workspaceManager.getWorkspaces() || {});
+            const samples = {};
+
+            for (const rawId of requestedIds) {
+                const workspaceId = String(rawId || '');
+                if (!workspaceId || samples[workspaceId] || !workspaceManager.getWorkspace(workspaceId)) {
+                    continue;
+                }
+                let items = [];
+                if (metadataDb && typeof metadataDb.listWorkspaceGalleryItemsPaginated === 'function') {
+                    const page = await metadataDb.listWorkspaceGalleryItemsPaginated(workspaceId, 'images', 0, sampleLimit);
+                    items = Array.isArray(page && page.items) ? page.items : [];
+                }
+                samples[workspaceId] = items
+                    .filter((item) => item && item.base)
+                    .map((item) => ({
+                        base: item.base,
+                        preview: `${item.base}.webp`,
+                        blurhash: item.blurhash || null,
+                        width: item.width || null,
+                        height: item.height || null
+                    }));
+            }
+
+            this.handlers.sendToClient(ws, {
+                type: 'workspace_preview_samples_response',
+                requestId: message.requestId,
+                data: {
+                    limit: sampleLimit,
+                    samples
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Workspace preview samples error:', error);
+            this.handlers.sendError(ws, 'Failed to get workspace preview samples', error.message, message.requestId);
+        }
+    }
+
     async handleWorkspaceMoveFiles(ws, message, clientInfo, wsServer) {
         try {
             const { id, filenames, sourceWorkspaceId, moveType = 'files' } = message;
@@ -1415,6 +1468,7 @@ function registerPackets(handlersCtx) {
     reg('workspace_activate', 'handleWorkspaceActivate');
     reg('workspace_dump', 'handleWorkspaceDump');
     reg('workspace_get_files', 'handleWorkspaceGetFiles');
+    reg('workspace_preview_samples', 'handleWorkspacePreviewSamples');
     reg('workspace_move_files', 'handleWorkspaceMoveFiles', WORKSPACE_DESTRUCTIVE);
     reg('workspace_get_scraps', 'handleWorkspaceGetScraps');
     reg('workspace_get_pinned', 'handleWorkspaceGetPinned');

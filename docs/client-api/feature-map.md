@@ -61,6 +61,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Pin / scrap | — | `workspace_add_pinned`, `workspace_remove_pinned`, `workspace_add_scrap`, `workspace_remove_scrap`, `workspace_bulk_add_scrap`, `workspace_bulk_remove_scrap`, … | `workspace_updated` | — |
 | Move between workspaces | — | `workspace_move_files` | `workspace_image_added` | — |
 | Workspace CRUD | — | `workspace_list`, `workspace_create`, … | `workspace_updated`, `workspace_activated` | Color/fonts/wallpaper UI |
+| Planet switcher (ring view) | — | `workspace_preview_samples` (newest previews per workspace, LIMIT per id), then `workspace_activate` | `workspace_activated` | Desktop-only lazy feature `planet_switcher` (`planetSwitcher.js`): glass bubbles on a ring over a star field, WAAPI scale/opacity on `#desktopWallpaper` / `#desktopIcons` / `#desktopTaskbar` / open windows, waits for `workspaceSwitchComplete` + `workspaceChanged` before zooming back. Launch only: start menu **Planets** row (click; right-click lists planets for a direct switch), Run `planets`, `Ctrl+Alt+P`. Every other workspace switch (tray Planets list, Run `ws:`, Cartograph, viewer) stays a direct `setActiveWorkspace` without the view |
 | Gallery scroll restore | — | `gallery_position_hint` | `gallery_scroll_state` | — |
 | Sequenzia export | — | `send_to_sequenzia_bulk` | — | — |
 | Update image preset tag | — | `update_image_preset_bulk` | — | — |

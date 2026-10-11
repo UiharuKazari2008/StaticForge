@@ -124,6 +124,7 @@
     "test:dovecote-reader-window": "node scripts/test-dovecote-reader-window.js",
     "test:apocrypha-local-grim": "node --test scripts/test-apocrypha-local-grim.js",
     "test:grimoire-browser": "node scripts/test-grimoire-browser.js",
+    "test:planet-switcher": "node scripts/test-planet-switcher-ring.js && node scripts/test-planet-switcher-flow.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
     "icon:app": "node scripts/generate-app-icon.js",

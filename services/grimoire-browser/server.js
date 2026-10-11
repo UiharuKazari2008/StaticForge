@@ -137,6 +137,66 @@ function watchSelects() {
     }, true);
 }
 
+// Runs in the 'alchemy' isolated world, every frame: a copy or cut (keyboard, menu, or the page's own execCommand)
+// means the browser clipboard may have changed, so the server reads it and hands it to the viewer.
+function watchClipboard() {
+    const note = () => setTimeout(() => {
+        try { globalThis.__alchemyClipboard(''); } catch (_) {}
+    }, 30);
+    addEventListener('copy', note, true);
+    addEventListener('cut', note, true);
+}
+
+// Runs in the 'alchemy' isolated world, top frame only: Chromium's scrollbars are hidden (Emulation.setScrollbarsHidden),
+// so the viewer draws the Dreamscape one from these numbers. The scroller is the document, or a large element
+// the user last scrolled (apps that scroll a full-height div instead of the page).
+function watchScroll() {
+    if (window !== window.top) return;
+    let target = null;
+    let last = '';
+    let queued = false;
+    const big = (el) => el.clientHeight >= innerHeight * 0.5 && el.clientWidth >= innerWidth * 0.5;
+    const scroller = () => (target && target.isConnected ? target : (document.scrollingElement || document.documentElement));
+    const report = () => {
+        queued = false;
+        const el = scroller();
+        if (!el) return;
+        const next = Math.round(el.scrollTop) + ':' + Math.round(el.scrollHeight) + ':' + Math.round(el.clientHeight);
+        if (next === last) return;
+        last = next;
+        try { globalThis.__alchemyScroll(next); } catch (_) {}
+    };
+    const queue = () => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(report);
+        setTimeout(() => { if (queued) report(); }, 100);
+    };
+    globalThis.__alchemyScrollTo = (y) => {
+        const el = scroller();
+        if (el) el.scrollTo({ top: Number(y) || 0, behavior: 'instant' });
+    };
+    addEventListener('scroll', (ev) => {
+        const el = ev.target;
+        if (el === document || el === document.documentElement || el === document.body) target = null;
+        else if (el instanceof Element && big(el)) target = el;
+        else return;
+        queue();
+    }, true);
+    addEventListener('resize', queue);
+    const observe = () => {
+        queue();
+        if (typeof ResizeObserver === 'function') {
+            const sizes = new ResizeObserver(queue);
+            sizes.observe(document.documentElement);
+            if (document.body) sizes.observe(document.body);
+        }
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe, { once: true });
+    else observe();
+    addEventListener('load', queue);
+}
+
 function sessionSettings(input, base) {
     const src = input && typeof input === 'object' ? input : {};
     const pick = (key, min, max) => clampSize(src[key], base[key], min, max);
@@ -302,6 +362,19 @@ function filenameFromUrl(parsed) {
     return safeFilename(parsed.pathname.split('/').pop() || 'download');
 }
 
+const EXTENSION_BY_TYPE = {
+    'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif',
+    'image/svg+xml': 'svg', 'image/bmp': 'bmp', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico',
+    'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/mpeg': 'mp3', 'audio/ogg': 'ogg', 'application/pdf': 'pdf'
+};
+
+// CDN image paths often have no extension (pbs.twimg.com/media/X?format=jpg); the saved file needs one to open.
+function withExtension(name, type) {
+    const ext = EXTENSION_BY_TYPE[String(type || '').toLowerCase()];
+    if (!ext || /\.[a-z0-9]{2,5}$/i.test(name)) return name;
+    return safeFilename((name === 'download' && /^image\//i.test(type) ? 'image' : name) + '.' + ext);
+}
+
 function noteDownload(session, id, filename, filePath) {
     if (!session || !filePath) return;
     let resolved;
@@ -442,10 +515,33 @@ async function readPageResource(session, targetUrl) {
         throw error;
     }
     const ownExtension = parsed.protocol === 'chrome-extension:' && session.page.url().startsWith('chrome-extension://' + parsed.host + '/');
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'data:' && !ownExtension) {
+    const pageBlob = parsed.protocol === 'blob:' && (() => {
+        try { return new URL(parsed.pathname).origin === new URL(session.page.url()).origin; } catch (_) { return false; }
+    })();
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'data:' && !ownExtension && !pageBlob) {
         const error = new Error('unsupported url');
         error.status = 400;
         throw error;
+    }
+    const filename = (type) => withExtension(filenameFromUrl(parsed), type);
+    if (parsed.protocol === 'data:') {
+        const match = /^data:([^;,]*)((?:;[^;,]*)*?)(;base64)?,(.*)$/s.exec(targetUrl);
+        if (!match) {
+            const error = new Error('bad data url');
+            error.status = 400;
+            throw error;
+        }
+        const type = headerSafe(match[1], 'application/octet-stream');
+        const buffer = match[3] ? Buffer.from(match[4], 'base64') : Buffer.from(decodeURIComponent(match[4]), 'utf8');
+        return { type, buffer, filename: filename(type) };
+    }
+    // Chromium's own copy first: the page already loaded the image, and an in-page fetch() is refused by CORS / connect-src.
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        const viaCdp = await readResourceViaCdp(session, targetUrl).catch(() => null);
+        if (viaCdp) {
+            const type = headerSafe(String(viaCdp.type || '').split(';')[0], 'application/octet-stream');
+            return { type, buffer: viaCdp.buffer, filename: filenameFromDisposition(viaCdp.disposition) || filename(type) };
+        }
     }
     const result = await session.page.evaluate(async (href) => {
         const res = await fetch(href, { credentials: 'include' });
@@ -468,11 +564,72 @@ async function readPageResource(session, targetUrl) {
         error.status = 502;
         throw error;
     }
+    const type = headerSafe(String(result.type || '').split(';')[0], 'application/octet-stream');
     return {
-        type: headerSafe(String(result.type || '').split(';')[0], 'application/octet-stream'),
+        type,
         buffer: Buffer.from(result.data, 'base64'),
-        filename: filenameFromDisposition(result.disposition) || filenameFromUrl(parsed)
+        filename: filenameFromDisposition(result.disposition) || filename(type)
     };
+}
+
+const RESOURCE_MAX_BYTES = 20 * 1024 * 1024;
+
+function findFrameResource(tree, url) {
+    if (!tree) return null;
+    const hit = (tree.resources || []).find((r) => r.url === url);
+    if (hit) return { frameId: tree.frame.id, mimeType: hit.mimeType || '' };
+    for (const child of tree.childFrames || []) {
+        const found = findFrameResource(child, url);
+        if (found) return found;
+    }
+    return null;
+}
+
+// Page.getResourceContent serves what the page already has (no network, works for CDN images);
+// Network.loadNetworkResource fetches in the page's frame with its cookies but outside CORS.
+async function readResourceViaCdp(session, url) {
+    const cdp = session.cdp;
+    let tree = null;
+    try { tree = (await cdp.send('Page.getResourceTree')).frameTree; } catch (_) {}
+    const known = findFrameResource(tree, url);
+    if (known) {
+        try {
+            const body = await cdp.send('Page.getResourceContent', { frameId: known.frameId, url });
+            const buffer = Buffer.from(body.content || '', body.base64Encoded ? 'base64' : 'utf8');
+            if (buffer.length && buffer.length <= RESOURCE_MAX_BYTES) return { type: known.mimeType, buffer, disposition: '' };
+        } catch (_) {}
+    }
+    const frameId = (tree && tree.frame && tree.frame.id) || session.mainFrameId;
+    if (!frameId) return null;
+    const loaded = await cdp.send('Network.loadNetworkResource', {
+        frameId,
+        url,
+        options: { disableCache: false, includeCredentials: true }
+    });
+    const resource = loaded && loaded.resource;
+    if (!resource || !resource.success || !resource.stream || (resource.httpStatusCode && resource.httpStatusCode >= 400)) {
+        if (resource && resource.stream) cdp.send('IO.close', { handle: resource.stream }).catch(() => {});
+        return null;
+    }
+    const chunks = [];
+    let total = 0;
+    try {
+        for (;;) {
+            const part = await cdp.send('IO.read', { handle: resource.stream, size: 1024 * 1024 });
+            const chunk = Buffer.from(part.data || '', part.base64Encoded ? 'base64' : 'utf8');
+            total += chunk.length;
+            if (total > RESOURCE_MAX_BYTES) return null;
+            chunks.push(chunk);
+            if (part.eof) break;
+        }
+    } finally {
+        cdp.send('IO.close', { handle: resource.stream }).catch(() => {});
+    }
+    const headers = {};
+    for (const [key, value] of Object.entries(resource.headers || {})) headers[key.toLowerCase()] = String(value);
+    const buffer = Buffer.concat(chunks);
+    if (!buffer.length) return null;
+    return { type: headers['content-type'] || '', buffer, disposition: headers['content-disposition'] || '' };
 }
 
 // Icon candidates for a desktop shortcut: large icons, then og:image, then small icons, then /favicon.ico.
@@ -580,9 +737,17 @@ function noteClientRtt(session, ms) {
     session.rttMs = sample;
 }
 
+// Scrolling moves every pixel: run at maxFps for a moment instead of the RTT pace, so the page glides instead of stepping.
+const SCROLL_BURST_MS = 600;
+
+function scrollBurst(session) {
+    return Date.now() < (session.scrollBurstUntil || 0);
+}
+
 function frameIntervalMs(session) {
     const rtt = session.rttMs || 50;
     const fastest = Math.round(1000 / session.settings.maxFps);
+    if (scrollBurst(session)) return fastest;
     const slowest = Math.round(1000 / session.settings.minFps);
     return Math.max(fastest, Math.min(Math.round(rtt), slowest));
 }
@@ -726,7 +891,8 @@ function pumpFrames(session) {
         return;
     }
     session.painted = frame;
-    if (session.framePump) {
+    // A scrolled frame differs everywhere; diffing it only delays it.
+    if (session.framePump || scrollBurst(session)) {
         broadcast(session, frame, true);
         session.packGen = (session.packGen || 0) + 1;
         session.pixels = null;
@@ -1088,6 +1254,8 @@ async function closeSession(id) {
     session.frameTimer = null;
     clearTimeout(session.healthTimer);
     session.healthTimer = null;
+    clearTimeout(session.clipboardCheck);
+    session.clipboardCheck = null;
     if (session.dialog) clearTimeout(session.dialog.timer);
     session.dialog = null;
     session.closing = true;
@@ -1274,7 +1442,8 @@ function streamAudio(res) {
     if (audioListener) audioListener();
     const ff = spawn(FFMPEG_BIN, [
         '-hide_banner', '-loglevel', 'error', '-fragment_size', '3840', '-f', 'pulse', '-i', 'alchemy.monitor',
-        '-ac', '2', '-ar', '48000', '-c:a', 'libopus', '-b:a', '128k', '-frame_duration', '20',
+        // Constant bitrate: VBR silence is ~1 KB/s, and <audio> waits on its first buffer for 10s+ before it plays anything.
+        '-ac', '2', '-ar', '48000', '-c:a', 'libopus', '-b:a', '128k', '-vbr', 'off', '-frame_duration', '20',
         '-f', 'ogg', '-page_duration', '20000', '-flush_packets', '1', 'pipe:1'
     ], { stdio: ['ignore', 'pipe', 'ignore'], env: Object.assign({}, process.env, { PULSE_SERVER: 'unix:' + path.join(pulseDir, 'native') }) });
     res.writeHead(200, { 'Content-Type': 'audio/ogg', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
@@ -1343,13 +1512,69 @@ const grantedCaptureOrigins = new Set();
 
 // The camera / mic prompt would open on the invisible X display, so each http(s) origin is granted on its first visit
 // (Browser.setPermission without an origin is ignored). Screen share still prompts.
+// Clipboard read/write is granted too: the viewer's clipboard is synced through the page (readRemoteClipboard).
 function grantCapture(url) {
     let origin = '';
     try { origin = new URL(url).origin; } catch (_) { return Promise.resolve(); }
     if (!/^https?:/.test(origin) || !browserClient || grantedCaptureOrigins.has(origin)) return Promise.resolve();
     grantedCaptureOrigins.add(origin);
-    return Promise.all(['camera', 'microphone'].map((name) => browserClient.send('Browser.setPermission', { permission: { name }, setting: 'granted', origin })))
-        .catch(() => grantedCaptureOrigins.delete(origin));
+    const grants = ['camera', 'microphone'].map((name) => browserClient.send('Browser.setPermission', { permission: { name }, setting: 'granted', origin }));
+    grants.push(browserClient.send('Browser.grantPermissions', { origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] }));
+    return Promise.all(grants).catch(() => grantedCaptureOrigins.delete(origin));
+}
+
+// One Chromium, one clipboard: the last text seen there, so only real changes reach the viewer (and a paste does not echo back).
+let remoteClipboard = null;
+
+async function readRemoteClipboard(session) {
+    const result = await session.cdp.send('Runtime.evaluate', {
+        expression: 'navigator.clipboard.readText()',
+        awaitPromise: true,
+        returnByValue: true,
+        userGesture: true,
+        timeout: 1500
+    });
+    if (!result || result.exceptionDetails || !result.result || typeof result.result.value !== 'string') return null;
+    return result.result.value.slice(0, 100000);
+}
+
+async function writeRemoteClipboard(session, text) {
+    const result = await session.cdp.send('Runtime.evaluate', {
+        expression: 'navigator.clipboard.writeText(' + JSON.stringify(text) + ').then(() => true)',
+        awaitPromise: true,
+        returnByValue: true,
+        userGesture: true,
+        timeout: 1500
+    });
+    return !!(result && !result.exceptionDetails && result.result && result.result.value === true);
+}
+
+// force: the user asked to copy, so send the text even when it equals the last one.
+async function syncRemoteClipboard(session, force) {
+    let text = null;
+    try { text = await readRemoteClipboard(session); } catch (_) {}
+    if (text === null) return false;
+    const changed = remoteClipboard !== null && text !== remoteClipboard;
+    remoteClipboard = text;
+    if ((changed || force) && text && sessions.get(session.id)) broadcast(session, { type: 'clipboard', text });
+    return true;
+}
+
+// The first read only learns what is there (it may be from long ago); primed on the first loaded page so the next change counts.
+async function primeRemoteClipboard(session) {
+    if (remoteClipboard !== null) return;
+    let text = null;
+    try { text = await readRemoteClipboard(session); } catch (_) {}
+    if (text !== null && remoteClipboard === null) remoteClipboard = text;
+}
+
+// Copy buttons call navigator.clipboard.writeText, which fires no copy event: look again shortly after a click.
+function checkClipboardSoon(session) {
+    clearTimeout(session.clipboardCheck);
+    session.clipboardCheck = setTimeout(() => {
+        session.clipboardCheck = null;
+        if (sessions.get(session.id)) syncRemoteClipboard(session, false).catch(() => {});
+    }, 400);
 }
 
 // Chromium reads enable_do_not_track from the profile at launch (DNT: 1 and navigator.doNotTrack). An unreadable file is left alone.
@@ -1570,6 +1795,19 @@ async function createSession(body, adoptedPage) {
             broadcast(session, { type: 'select', options: picked.options, selected: picked.selected, x: Number(picked.x) || 0, y: Number(picked.y) || 0 });
             return;
         }
+        if (ev && ev.name === '__alchemyClipboard' && sessions.get(id)) {
+            // The viewer's own Ctrl+C reads and sends the clipboard itself.
+            if (!session.copying) syncRemoteClipboard(session, false).catch(() => {});
+            return;
+        }
+        if (ev && ev.name === '__alchemyScroll' && sessions.get(id)) {
+            const [y, height, view] = String(ev.payload || '').split(':').map(Number);
+            if (![y, height, view].every(Number.isFinite)) return;
+            session.scrollContextId = ev.executionContextId;
+            session.scroll = { type: 'scroll', y, height, view };
+            broadcast(session, session.scroll);
+            return;
+        }
         if (!ev || ev.name !== '__alchemyTitle' || !sessions.get(id)) return;
         const title = String(ev.payload || '').slice(0, 300);
         if (title === session.title) return;
@@ -1582,6 +1820,12 @@ async function createSession(body, adoptedPage) {
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: '(' + watchTitle + ')()', worldName: 'alchemy' });
     await cdp.send('Runtime.addBinding', { name: '__alchemySelect', executionContextName: 'alchemy' });
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: '(' + watchSelects + ')()', worldName: 'alchemy' });
+    await cdp.send('Runtime.addBinding', { name: '__alchemyClipboard', executionContextName: 'alchemy' });
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: '(' + watchClipboard + ')()', worldName: 'alchemy' });
+    await cdp.send('Runtime.addBinding', { name: '__alchemyScroll', executionContextName: 'alchemy' });
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: '(' + watchScroll + ')()', worldName: 'alchemy' });
+    // The viewer draws the scrollbar (customScrollbar look); Chromium's own would sit inside the picture.
+    await cdp.send('Emulation.setScrollbarsHidden', { hidden: true }).catch(() => {});
 
     cdp.on('Page.screencastFrame', (event) => {
         const current = sessions.get(id);
@@ -1668,7 +1912,7 @@ async function createSession(body, adoptedPage) {
             }
         }
         applySiteUserAgent(session, next);
-        grantCapture(next);
+        grantCapture(next).then(() => (remoteClipboard === null ? primeRemoteClipboard(session) : null)).catch(() => {});
         publishLocation(session);
     });
 
@@ -1798,15 +2042,64 @@ async function onViewerMessage(session, raw) {
         });
         return;
     }
+    // A real Ctrl+C / Ctrl+X in Chromium, so pages that shape their copy (and cut deleting the selection) behave as at home;
+    // then the browser clipboard goes to the viewer. The selection is the fallback when the clipboard cannot be read.
     if (msg.type === 'copy') {
+        const cut = !!msg.cut;
+        session.copying = true;
+        try {
+            try { await page.keyboard.press(cut ? 'x' : 'c', { text: '', commands: [cut ? 'cut' : 'copy'] }); } catch (_) {}
+            await new Promise((resolve) => setTimeout(resolve, 60));
+            if (await syncRemoteClipboard(session, true).catch(() => false)) return;
+        } finally {
+            setTimeout(() => { session.copying = false; }, 100);
+        }
         let text = '';
         try { text = await readSelection(page); } catch (_) {}
         broadcast(session, { type: 'clipboard', text: String(text || '').slice(0, 100000) });
         return;
     }
+    // The viewer's clipboard becomes Chromium's, then a real paste: the page sees a paste event (rich editors, uploads).
     if (msg.type === 'paste' && typeof msg.text === 'string') {
         const text = msg.text.slice(0, 100000);
-        if (text) await session.cdp.send('Input.insertText', { text });
+        if (!text) return;
+        let pasted = false;
+        try {
+            if (await writeRemoteClipboard(session, text)) {
+                remoteClipboard = text;
+                await page.keyboard.press('v', { text: '', commands: ['paste'] });
+                pasted = true;
+            }
+        } catch (_) {}
+        if (!pasted) await session.cdp.send('Input.insertText', { text });
+        return;
+    }
+    if (msg.type === 'scroll-to') {
+        const y = Number(msg.y);
+        if (!Number.isFinite(y) || !session.scrollContextId) return;
+        session.scrollBurstUntil = Date.now() + SCROLL_BURST_MS;
+        await session.cdp.send('Runtime.evaluate', { expression: '__alchemyScrollTo(' + Math.max(0, Math.round(y)) + ')', contextId: session.scrollContextId }).catch(() => {});
+        return;
+    }
+    // Back / Forward from the viewer (mouse side buttons, Alt+Arrow, BrowserBack) walk Chromium's own history, so
+    // in-page history (SPAs) and form state come back. At either end the Grimoire window takes over (history-end).
+    if (msg.type === 'history') {
+        const dir = msg.dir === 1 ? 1 : -1;
+        let nav = null;
+        try { nav = await session.cdp.send('Page.getNavigationHistory'); } catch (_) {}
+        const entry = nav && nav.entries && nav.entries[nav.currentIndex + dir];
+        if (!entry || !/^(https?:|chrome(-extension)?:)/i.test(entry.url || '')) {
+            broadcast(session, { type: 'history-end', dir });
+            return;
+        }
+        session.navGen += 1;
+        session.pendingNav = null;
+        session.dragFrom = null;
+        session.navTarget = '';
+        beginNavigating(session, true);
+        await session.cdp.send('Page.navigateToHistoryEntry', { entryId: entry.id }).catch((err) => {
+            console.error('[grimoire-browser] history', err && err.message);
+        });
         return;
     }
     if (msg.type === 'mouse') {
@@ -1814,6 +2107,7 @@ async function onViewerMessage(session, raw) {
         const y = Number(msg.y);
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
         const button = msg.button === 'right' || msg.button === 'middle' ? msg.button : 'left';
+        session.wheelAt = null;
         if (msg.kind === 'move') {
             await page.mouse.move(x, y);
         } else if (msg.kind === 'down' || msg.kind === 'click') {
@@ -1834,6 +2128,7 @@ async function onViewerMessage(session, raw) {
                 await releaseClickModifiers(page, session.clickKeys);
                 session.clickKeys = null;
                 if (button === 'left' && !msg.ctrl && !msg.meta) followChromeLink(session, x, y).catch(() => {});
+                checkClipboardSoon(session);
             }
         } else if (msg.kind === 'up') {
             await page.mouse.move(x, y);
@@ -1845,10 +2140,19 @@ async function onViewerMessage(session, raw) {
             const click = button === 'left' && !msg.ctrl && !msg.meta && (!from || Math.hypot(x - from.x, y - from.y) < 6);
             if (from && button === 'left' && !click) await selectDraggedText(page, from, { x, y });
             if (click) followChromeLink(session, x, y).catch(() => {});
+            checkClipboardSoon(session);
         }
         return;
     }
     if (msg.type === 'wheel') {
+        session.scrollBurstUntil = Date.now() + SCROLL_BURST_MS;
+        const x = Number(msg.x);
+        const y = Number(msg.y);
+        // Wheel scrolls what is under the pointer; moves are throttled, so put the pointer there first.
+        if (Number.isFinite(x) && Number.isFinite(y) && (!session.wheelAt || session.wheelAt.x !== x || session.wheelAt.y !== y)) {
+            session.wheelAt = { x, y };
+            await page.mouse.move(x, y);
+        }
         await page.mouse.wheel({
             deltaX: Number(msg.deltaX) || 0,
             deltaY: Number(msg.deltaY) || 0
@@ -2111,6 +2415,7 @@ function attachViewer(ws, session) {
         ws.send(JSON.stringify({ type: 'status', state: session.health, url: session.url || '' }));
     }
     if (session.dialog) ws.send(JSON.stringify(session.dialog.ask));
+    if (session.scroll) ws.send(JSON.stringify(session.scroll));
     if (!session.popup) flushOrphans(session);
     if (session.painted) {
         try { ws.send(session.painted); } catch (_) {}
@@ -2151,6 +2456,30 @@ function attachViewer(ws, session) {
             return;
         }
         if (gesture) session.pendingMove = null;
+        // Trackpads send ~60 wheel events a second; while one is waiting its turn, later ones add to it instead of queueing.
+        if (preview && (preview.type === 'wheel' || preview.type === 'scroll-to')) {
+            session.scrollBurstUntil = Date.now() + SCROLL_BURST_MS;
+            const queued = session.pendingScroll;
+            if (queued && queued.type === preview.type && (preview.type === 'scroll-to'
+                || (!!queued.ctrl === !!preview.ctrl && !!queued.shift === !!preview.shift))) {
+                if (preview.type === 'wheel') {
+                    queued.deltaX += Number(preview.deltaX) || 0;
+                    queued.deltaY += Number(preview.deltaY) || 0;
+                }
+                queued.x = preview.x;
+                queued.y = preview.y;
+                return;
+            }
+            const next = Object.assign({}, preview, { deltaX: Number(preview.deltaX) || 0, deltaY: Number(preview.deltaY) || 0 });
+            session.pendingScroll = next;
+            session.inputChain = session.inputChain.then(() => {
+                if (session.pendingScroll === next) session.pendingScroll = null;
+                return onViewerMessage(session, JSON.stringify(next));
+            }).catch((err) => {
+                console.error('[grimoire-browser] input', err && err.message);
+            });
+            return;
+        }
         session.inputChain = session.inputChain.then(() => onViewerMessage(session, raw)).catch((err) => {
             console.error('[grimoire-browser] input', err && err.message);
             if (ws.readyState === 1) {

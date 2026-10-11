@@ -84,6 +84,10 @@ const FEATURE_MANIFEST = {
     },
     tag_sets: {
         scripts: ['scripts/comp/tagSets.js']
+    },
+    planet_switcher: {
+        styles: ['css/planet-switcher.css'],
+        scripts: ['scripts/comp/planetSwitcher.js']
     }
 };
 

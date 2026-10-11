@@ -321,7 +321,8 @@ async function grimoireSaveToDownloads(shell, ref, filename, progressToastId) {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(Object.assign({ filename, workspaceId: currentWorkspace }, ref))
+            // activeWorkspace: public/scripts/comp/workspaceUtils.js (currentWorkspace is only set by one boot path)
+            body: JSON.stringify(Object.assign({ filename, workspaceId: activeWorkspace }, ref))
         });
         const info = await res.json().catch(() => ({}));
         removeGlassToast(progressToastId);
@@ -343,12 +344,129 @@ async function grimoireCopyText(text) {
         await navigator.clipboard.writeText(value);
         return;
     } catch (e) {}
+    // Plain http has no async Clipboard API; the textarea takes focus for a moment, so hand it back (the Alchemy frame).
+    const before = document.activeElement;
     const area = document.createElement('textarea');
     area.value = value;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
     document.body.appendChild(area);
     area.select();
     document.execCommand('copy');
     area.remove();
+    if (before && before !== document.body && typeof before.focus === 'function') before.focus();
+}
+
+// Alchemy hides Chromium's scrollbars (server.js watchScroll); this is the Dreamscape one (custom-scrollbar.css) over the frame.
+// Drag the thumb, click the track to page, or wheel over it; positions go back to the page as scroll-to.
+const GRIMOIRE_SCROLL_THUMB = 80;
+
+function grimoireRemoteScrollbar(found) {
+    const area = found.shell.displayArea;
+    let bar = area.querySelector(':scope > .alchemy-scrollbar');
+    if (bar) return bar;
+    bar = document.createElement('div');
+    bar.className = 'custom-scrollbar alchemy-scrollbar hidden';
+    const thumb = document.createElement('div');
+    thumb.className = 'custom-scrollbar-thumb';
+    bar.appendChild(thumb);
+    area.appendChild(bar);
+    const shell = found.shell;
+    let raf = 0;
+    let wantY = null;
+    const scrollTo = (y) => {
+        const state = shell._alchemyScroll;
+        if (!state) return;
+        const max = Math.max(0, state.height - state.view);
+        wantY = Math.max(0, Math.min(max, Math.round(y)));
+        state.y = wantY;
+        grimoirePlaceScrollThumb(bar, state);
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+            raf = 0;
+            const frame = grimoireRemoteFrame(shell);
+            if (frame && frame.contentWindow && wantY !== null) frame.contentWindow.postMessage({ type: 'grimoire-browser-scroll-to', y: wantY }, location.origin);
+            wantY = null;
+        });
+    };
+    let drag = null;
+    thumb.addEventListener('pointerdown', (ev) => {
+        const state = shell._alchemyScroll;
+        if (!state || ev.button !== 0) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        thumb.setPointerCapture(ev.pointerId);
+        drag = { pointerId: ev.pointerId, startY: ev.clientY, startTop: thumb.offsetTop };
+        bar.classList.add('dragging');
+    });
+    thumb.addEventListener('pointermove', (ev) => {
+        const state = shell._alchemyScroll;
+        if (!drag || ev.pointerId !== drag.pointerId || !state) return;
+        const travel = Math.max(1, bar.clientHeight - GRIMOIRE_SCROLL_THUMB);
+        const ratio = Math.max(0, Math.min(1, (drag.startTop + ev.clientY - drag.startY) / travel));
+        scrollTo(ratio * Math.max(0, state.height - state.view));
+    });
+    const endDrag = (ev) => {
+        if (!drag || ev.pointerId !== drag.pointerId) return;
+        drag = null;
+        bar.classList.remove('dragging');
+        grimoireIndicateScrollbar(bar);
+    };
+    thumb.addEventListener('pointerup', endDrag);
+    thumb.addEventListener('pointercancel', endDrag);
+    bar.addEventListener('pointerdown', (ev) => {
+        const state = shell._alchemyScroll;
+        if (!state || ev.target !== bar || ev.button !== 0) return;
+        ev.preventDefault();
+        const above = ev.clientY < thumb.getBoundingClientRect().top;
+        scrollTo(state.y + (above ? -1 : 1) * state.view * 0.9);
+    });
+    bar.addEventListener('wheel', (ev) => {
+        const state = shell._alchemyScroll;
+        if (!state) return;
+        ev.preventDefault();
+        scrollTo(state.y + ev.deltaY * (ev.deltaMode === 1 ? 40 : (ev.deltaMode === 2 ? state.view : 1)));
+    }, { passive: false });
+    return bar;
+}
+
+function grimoirePlaceScrollThumb(bar, state) {
+    const max = state.height - state.view;
+    const travel = Math.max(0, bar.clientHeight - GRIMOIRE_SCROLL_THUMB);
+    const ratio = max > 0 ? Math.max(0, Math.min(1, state.y / max)) : 0;
+    bar.firstElementChild.style.top = Math.round(ratio * travel) + 'px';
+}
+
+function grimoireIndicateScrollbar(bar) {
+    bar.classList.add('scrollbar-indicating');
+    clearTimeout(bar._indicateTimer);
+    bar._indicateTimer = setTimeout(() => bar.classList.remove('scrollbar-indicating'), 900);
+}
+
+function grimoireUpdateRemoteScrollbar(found, data) {
+    const shell = found.shell;
+    const state = { y: Number(data.y) || 0, height: Number(data.height) || 0, view: Number(data.view) || 0 };
+    const before = shell._alchemyScroll;
+    shell._alchemyScroll = state;
+    const bar = grimoireRemoteScrollbar(found);
+    const needed = state.height > state.view + 1;
+    bar.classList.toggle('hidden', !needed);
+    if (!needed || bar.classList.contains('dragging')) return;
+    grimoirePlaceScrollThumb(bar, state);
+    if (before && before.y !== state.y) grimoireIndicateScrollbar(bar);
+}
+
+// Back / Forward the viewer sent to Chromium: when the page lands on the neighbouring Grimoire entry, step to it
+// instead of adding a new one, so the toolbar arrows stay in step with the remote history.
+function grimoireFollowRemoteHistory(shell, url) {
+    const dir = shell._alchemyHistoryDir;
+    if (!dir || Date.now() - (shell._alchemyHistoryAt || 0) > 15000) return false;
+    const neighbour = shell.history && shell.history[shell.historyIndex + dir];
+    if (!neighbour || neighbour.type !== 'web' || neighbour.url !== url) return false;
+    shell._alchemyHistoryDir = 0;
+    shell.historyIndex += dir;
+    return true;
 }
 
 function grimoireBlobToPng(blob) {
@@ -597,7 +715,7 @@ function grimoireApplyRemoteLocation(found, data) {
     grimoireStopNavigationSpinner(host);
     const top = shell.history && shell.history[shell.historyIndex];
     if (data.url && shell.addToHistory && (!top || top.type !== 'web' || top.url !== data.url)) {
-        shell.addToHistory({ type: 'web', url: data.url, title: data.title || data.url });
+        if (!grimoireFollowRemoteHistory(shell, data.url)) shell.addToHistory({ type: 'web', url: data.url, title: data.title || data.url });
         if (host.updateNavigationButtons) host.updateNavigationButtons();
     }
 }
@@ -664,9 +782,30 @@ function grimoireBindRemoteBrowserMessages() {
             return;
         }
         if (data.type === 'grimoire-browser-paste-request' && found.frame.contentWindow) {
+            if (!navigator.clipboard || !navigator.clipboard.readText) {
+                showGlassToast('info', null, 'Paste with Ctrl+V: this connection cannot read the clipboard', false, 4000);
+                return;
+            }
             navigator.clipboard.readText().then((text) => {
                 found.frame.contentWindow.postMessage({ type: 'grimoire-browser-paste', text: text || '' }, '*');
             }).catch(() => {});
+            return;
+        }
+        if (data.type === 'grimoire-browser-scroll') {
+            grimoireUpdateRemoteScrollbar(found, data);
+            return;
+        }
+        if (data.type === 'grimoire-browser-history-intent') {
+            found.shell._alchemyHistoryDir = data.dir === 1 ? 1 : -1;
+            found.shell._alchemyHistoryAt = Date.now();
+            return;
+        }
+        // Chromium has no further history that way: the Grimoire window steps instead (a wiki page before the site).
+        if (data.type === 'grimoire-browser-history-end') {
+            found.shell._alchemyHistoryDir = 0;
+            if (data.dir === 1) found.shell.goForward();
+            else found.shell.goBack();
+            if (found.host.updateNavigationButtons) found.host.updateNavigationButtons();
             return;
         }
         if (data.type === 'grimoire-browser-menu') {
@@ -980,6 +1119,9 @@ function grimoireCloseRemoteBrowser(shell) {
     if (bar) bar.removeAttribute('data-alchemy-loading');
     const frame = grimoireRemoteFrame(shell);
     if (frame) frame.remove();
+    const scrollbar = shell.displayArea && shell.displayArea.querySelector(':scope > .alchemy-scrollbar');
+    if (scrollbar) scrollbar.remove();
+    shell._alchemyScroll = null;
     grimoireSyncAudio();
     if (!id) return;
     fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id), {
@@ -1161,6 +1303,7 @@ async function grimoireOpenRemoteBrowser(shell, url, options) {
     frame.src = payload.viewUrl;
     frame.setAttribute('title', 'Web');
     frame.setAttribute('referrerpolicy', 'no-referrer');
+    frame.setAttribute('allow', 'autoplay; clipboard-read; clipboard-write');
     shell.displayArea.appendChild(frame);
     grimoireSetAudioShell(shell);
 

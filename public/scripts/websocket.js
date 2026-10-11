@@ -233,6 +233,7 @@ class BannerManager {
             'workspace_activate': 'Activate Workspace',
             'workspace_dump': 'Dump Workspace',
             'workspace_get_files': 'Get Workspace Files',
+            'workspace_preview_samples': 'Get Workspace Previews',
             'workspace_move_files': 'Move Files',
             'workspace_get_scraps': 'Get Scraps',
             'workspace_get_pinned': 'Get Pinned',
@@ -584,6 +585,7 @@ class WebSocketClient {
         'get_chat_session',
         'get_chat_messages',
         'workspace_list',
+        'workspace_preview_samples',
         'desktop_get_shortcuts',
         'request_image_metadata',
         'stage_chain_files',
@@ -5819,7 +5821,7 @@ class WebSocketClient {
             const studioModal = document.getElementById('manualModal');
             if (data?.change && studioModal && !studioModal.classList.contains('hidden')) {
                 // applyStudioChangePayloadSilent: public/scripts/comp/studioChangeJson.js
-                void applyStudioChangePayloadSilent(data.change);
+                void applyStudioChangePayloadSilent(data.change, { source: 'rentan' });
             }
             return;
         }
@@ -6720,6 +6722,11 @@ class WebSocketClient {
 
     async getWorkspaceFiles(id) {
         return this.sendMessage('workspace_get_files', { id });
+    }
+
+    /** Newest preview samples per workspace for the planet switcher bubbles (ids default: all). */
+    async getWorkspacePreviewSamples(ids = [], limit = 6) {
+        return this.sendMessage('workspace_preview_samples', { ids, limit }, false);
     }
 
     async moveFilesToWorkspace(filenames, targetWorkspaceId, sourceWorkspaceId = null, moveType = 'files') {

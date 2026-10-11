@@ -139,7 +139,7 @@
 }
 
 .text-replacement-lock-item {
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--glass-border-2);
     transition: background-color 0.2s ease;
 }
 
@@ -149,12 +149,12 @@
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .text-replacement-lock-item:hover:not(:disabled) {
-        background: var(--hover-bg);
+        background: var(--glass-layer-3);
     }
 }
 
 .text-replacement-lock-item.selected {
-    background: var(--accent-bg);
+    background: var(--toggle-on-bg);
 }
 
 .text-replacement-lock-content {
@@ -518,7 +518,7 @@
 
 /* Dynamic replacement type indicator */
 .text-replacement-lock-item.dynamic-replacement-type {
-    border-left: 3px solid var(--accent-primary);
+    border-left: 3px solid var(--primary-color);
 }
 
 .text-replacement-lock-item.dynamic-replacement-type .text-replacement-lock-content {

@@ -683,6 +683,10 @@ function consumeClaudeStreamLine(line, state) {
         if (evt.session_id) state.sessionId = evt.session_id;
         return;
     }
+    if (evt.type === 'rate_limit_event') {
+        director._test.noteClaudeUsage(evt.rate_limit_info);
+        return;
+    }
     if (evt.type === 'assistant') {
         const blocks = evt.message && Array.isArray(evt.message.content) ? evt.message.content : [];
         blocks.forEach((block) => {

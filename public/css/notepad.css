@@ -354,7 +354,7 @@
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .note-selection-item:hover:not(:disabled) {
         background: var(--glass-layer-4);
-        border-color: var(--accent-primary);
+        border-color: var(--glass-border-4);
     }
 }
 

@@ -230,6 +230,8 @@ function recordMcpActivity(data) {
     updateImageGenerationIndicator({ reveal: true });
     updateMcpActivityIndicator();
     notifyMcpActivityLogViewer(entry);
+    // noteStudioActivityMcp: public/scripts/comp/studioActivityTool.js
+    if (typeof noteStudioActivityMcp === 'function') noteStudioActivityMcp(entry);
 }
 
 function resolveViewerImage(filename) {

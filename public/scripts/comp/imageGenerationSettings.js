@@ -1999,6 +1999,11 @@ function getStudioImageGenerationSettingsMenuConfig() {
                         action: 'studio-vslider'
                     },
                     {
+                        icon: 'fas fa-list-check',
+                        text: 'Studio Activity',
+                        action: 'studio-activity'
+                    },
+                    {
                         icon: 'ri-pencil-ai-2-fill',
                         text: 'Rentan',
                         // getRentanSystemSubmenuItems: public/scripts/comp/dynamicGenerationManager.js
@@ -2426,6 +2431,11 @@ function handleImageGenerationSettingsMenuAction(action, target, item) {
     if (action === 'studio-weight-rack') {
         const textarea = studioEditPromptTarget();
         if (textarea && emphasisGroupsToolManager) emphasisGroupsToolManager.openForTextarea(textarea);
+        return true;
+    }
+    if (action === 'studio-activity') {
+        // openStudioActivityTool: public/scripts/comp/studioActivityTool.js
+        openStudioActivityTool();
         return true;
     }
     if (action === 'studio-vslider') {

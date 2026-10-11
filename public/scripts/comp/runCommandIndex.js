@@ -67,6 +67,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['wallpaper', 'desktop', 'background'], launchIds: ['desktop-settings'] },
     { aliases: ['websocket', 'ws', 'network monitor', 'requests'], launchIds: ['websocket-requests'] },
     { aliases: ['solar system', 'workspaces', 'manage workspaces', 'data management'], launchIds: ['data-management'] },
+    { aliases: ['planets', 'planet switcher', 'switch planet', 'switch workspace', 'orrery', 'ring'], launchIds: ['planet-switcher'] },
     { aliases: ['favorites', 'favourite', 'stars'], launchIds: ['data-management'] },
     { aliases: ['memories', 'knowledge', 'dna'], launchIds: ['memories'] },
     { aliases: ['rules', 'director'], launchIds: ['rules'] },

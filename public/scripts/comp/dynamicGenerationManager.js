@@ -823,7 +823,7 @@ function handleDynamicGenerationContextMenuAction(e) {
                     ...(original.characters.length ? {
                         characters: original.characters.map((row) => ({ index: row.index, action: 'replace', prompt: row.prompt }))
                     } : {})
-                }).then((applied) => {
+                }, { source: 'rentan' }).then((applied) => {
                     if (applied) showGlassToast('success', null, 'Input prompt restored', false, 2500, '<i class="fas fa-rotate-left"></i>');
                 });
             }

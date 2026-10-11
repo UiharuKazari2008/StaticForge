@@ -5736,6 +5736,8 @@ const startMenuLaunchables = [
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
     { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'remote_desktop.png', text: 'Remote Desktop', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
     { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'dovecote.png', text: 'Dovecote', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
+    // Run-only launch (`planets`); the start menu entry is the Planets shell row below
+    { launchId: 'planet-switcher', icon: 'fas fa-planet-moon', imageIcon: 'planet.png', text: 'Planet Switcher', desktopOnly: true, appMenu: false, action: async () => { await openPlanetSwitcher(); } },
 ];
 
 /** Root start menu shell rows (folders + run). */
@@ -5747,9 +5749,10 @@ const startMenuShellConfig = [
         imageIcon: 'planet.png',
         text: 'Planets',
         desktopOnly: true,
-        hasSubmenu: true,
-        submenu: 'planets',
-        appMenu: false
+        appMenu: false,
+        // Click: planet switcher view. Right-click: direct planet list (attachStartMenuPlanetsContextMenu)
+        contextSubmenu: 'planets',
+        action: () => { openPlanetSwitcher(); }
     },
     { icon: 'fas fa-toolbox', imageIcon: 'toolbox.png', text: 'Toolbox', hasSubmenu: true, submenu: 'tools', appMenu: false },
     { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'search.png', text: 'Run', appMenu: false, action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('run'); runApplet.open(); } },
@@ -5977,6 +5980,19 @@ function startMenuPlanetLaunchId(workspaceId) {
 
 function isStartMenuPlanetLaunchId(launchId) {
     return typeof launchId === 'string' && launchId.startsWith('planet-');
+}
+
+/** Planet switcher (ring of workspace bubbles over a star field) - lazy feature planet_switcher. */
+async function openPlanetSwitcher() {
+    if (!isDesktopStartMenuEnvironment()) {
+        showGlassToast('info', 'Planets', 'Desktop mode required', false, 2500);
+        return;
+    }
+    if (window.planetSwitcher && window.planetSwitcher.isActive()) return;
+    // public/scripts/comp/featureLoader.js
+    await featureLoader.loadFeature('planet_switcher');
+    // planetSwitcher: public/scripts/comp/planetSwitcher.js
+    if (window.planetSwitcher) await window.planetSwitcher.open();
 }
 
 function buildPlanetsSubmenuItems() {
@@ -6943,7 +6959,9 @@ function createStartMenuRowElement(item, options = {}) {
             closeStartMenu();
         });
 
-        if (item.launchId) {
+        if (item.contextSubmenu === 'planets') {
+            attachStartMenuPlanetsContextMenu(menuItem);
+        } else if (item.launchId) {
             attachStartMenuItemContextMenu(menuItem, item);
         }
     }
@@ -7121,6 +7139,56 @@ function toggleStartMenu() {
 }
 
 // Attach context menu to start menu items
+/** Right-click on the start menu "Planets" row: direct workspace change, no switcher animation. */
+function attachStartMenuPlanetsContextMenu(element) {
+    if (!contextMenu || !element) return;
+    const rows = buildPlanetsSubmenuItems();
+    const actions = new Map();
+    const items = rows.map((ws, index) => {
+        if (typeof ws.action !== 'function') {
+            return { icon: ws.icon || 'fas fa-planet-ringed', text: ws.text, disabled: true };
+        }
+        const actionId = `planet-direct-${ws.launchId || index}`;
+        actions.set(actionId, ws.action);
+        const entry = { text: ws.text, action: actionId };
+        if (ws.color) {
+            entry.content = () => {
+                const container = document.createElement('div');
+                container.className = 'workspace-option-content';
+                container.style.display = 'flex';
+                container.style.alignItems = 'center';
+                container.style.gap = '8px';
+                const dot = document.createElement('div');
+                dot.className = 'workspace-color-indicator';
+                dot.style.width = '12px';
+                dot.style.height = '12px';
+                dot.style.borderRadius = '50%';
+                dot.style.flexShrink = '0';
+                dot.style.backgroundColor = ws.color;
+                const label = document.createElement('span');
+                label.className = 'context-menu-item-text';
+                label.textContent = ws.text;
+                container.appendChild(dot);
+                container.appendChild(label);
+                return container;
+            };
+        } else {
+            entry.icon = ws.icon || 'fas fa-planet-ringed';
+        }
+        return entry;
+    });
+
+    contextMenu.attachToElement(element, {
+        sections: [{ type: 'list', title: 'Planets', items }],
+        onAction: (action) => {
+            const run = actions.get(action);
+            if (!run) return;
+            closeStartMenu({ immediate: true });
+            run();
+        }
+    });
+}
+
 function attachStartMenuItemContextMenu(element, item) {
     if (!contextMenu || !item.launchId) return;
 

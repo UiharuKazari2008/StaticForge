@@ -450,7 +450,11 @@ async function getCursorUsageForAccount(accountId) {
 async function handleDirectorGetCursorUsage(handler, ws, message) {
     try {
         const persona = message && message.persona ? message.persona : 'wren';
-        const usage = await getCursorUsage(persona);
+        // Claude engine (Wren) or runtime (Xi): subscription windows from the last Claude call.
+        // Xi Claude sessions share the same subscription figures.
+        const usage = message && message.engine === 'claude'
+            ? { ...require('./cursorDirector')._test.claudeUsageSummary(), persona }
+            : await getCursorUsage(persona);
         handler.sendToClient(ws, {
             type: 'director_get_cursor_usage_response',
             requestId: message.requestId || null,

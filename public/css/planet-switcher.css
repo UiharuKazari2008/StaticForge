@@ -1,0 +1,354 @@
+/* Planet switcher - scripts/comp/planetSwitcher.js (lazy feature planet_switcher)
+   Three layers while open:
+   - Layer 3 (.planet-switcher-backdrop, z -2): black backdrop + star field canvas, under the wallpaper
+   - desktop layers (#desktopWallpaper, #desktopIcons, #desktopTaskbar) and open windows are shrunk/faded
+     by the Web Animations API (scale + opacity only, never width/height)
+   - Layer 2 (.planet-switcher, high z): ring of workspace bubbles, cancel button, black fade cover */
+
+:root {
+    --planet-switcher-z: calc(var(--z-shutdown-overlay, 2910) + 10);
+    --planet-size: clamp(118px, 17vmin, 212px);
+}
+
+/* ---------- body state ---------- */
+
+body.planet-switcher-active {
+    overflow: hidden;
+}
+
+/* The body vignette sits above the wallpaper at z -1; lift it so the star field stays clean */
+body.planet-switcher-active::after {
+    opacity: 0;
+    transition: opacity 2.95s ease;
+}
+
+/* Nothing underneath reacts to the pointer while the switcher owns the screen */
+body.planet-switcher-active .desktop-wallpaper,
+body.planet-switcher-active .desktop-icons,
+body.planet-switcher-active .desktop-taskbar,
+body.planet-switcher-active .modal,
+body.planet-switcher-active #galleryWindow {
+    pointer-events: none !important;
+}
+
+/* Pause every CSS animation under the shrinking layers (transitions cannot pause; they just finish) */
+body.planet-switcher-active .desktop-wallpaper *,
+body.planet-switcher-active .desktop-icons *,
+body.planet-switcher-active .desktop-taskbar *,
+body.planet-switcher-active .modal *,
+body.planet-switcher-active #galleryWindow * {
+    animation-play-state: paused !important;
+}
+
+/* ---------- Layer 3: backdrop + star field ---------- */
+
+.planet-switcher-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background: #000;
+    overflow: hidden;
+    pointer-events: none;
+    contain: strict;
+}
+
+.planet-switcher-nebula {
+    position: absolute;
+    inset: -8%;
+    opacity: 0;
+    background:
+        radial-gradient(ellipse 55% 42% at 28% 38%, hsl(228 72% 32% / 0.42), transparent 70%),
+        radial-gradient(ellipse 48% 38% at 74% 64%, hsl(282 58% 30% / 0.34), transparent 70%),
+        radial-gradient(ellipse 36% 30% at 56% 20%, hsl(196 70% 36% / 0.22), transparent 70%),
+        radial-gradient(ellipse 85% 65% at 50% 52%, hsl(216 60% 11% / 0.75), transparent 78%);
+    transform: translateZ(0);
+}
+
+.planet-switcher-stars {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 0;
+}
+
+/* ---------- Layer 2: overlay ---------- */
+
+.planet-switcher {
+    position: fixed;
+    inset: 0;
+    z-index: var(--planet-switcher-z);
+    overflow: hidden;
+    opacity: 0;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    color: var(--text-primary, #f4f6ff);
+    font-family: var(--font-primary, system-ui, sans-serif);
+    contain: layout paint;
+    outline: none;
+}
+
+.planet-switcher-holder {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    perspective: 1400px;
+    transform: translateZ(0);
+}
+
+.planet-switcher-ring {
+    position: relative;
+    width: 0;
+    height: 0;
+    animation: planetSwitcherSway 11s ease-in-out infinite alternate;
+}
+
+.planet-switcher.is-selecting .planet-switcher-ring,
+.planet-switcher.is-zooming .planet-switcher-ring {
+    animation-play-state: paused;
+}
+
+@keyframes planetSwitcherSway {
+    from { transform: translate3d(-24px, 0, 0); }
+    to { transform: translate3d(24px, 0, 0); }
+}
+
+.planet-switcher-planet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    width: max(var(--planet-size), 200px);
+    margin-left: calc(max(var(--planet-size), 200px) / -2);
+    margin-top: calc(var(--planet-size) / -2);
+    cursor: pointer;
+    will-change: transform, opacity;
+    transform-origin: 50% calc(var(--planet-size) / 2);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.planet-switcher-planet:focus-visible {
+    outline: none;
+}
+
+.planet-switcher-bubble {
+    --planet-color: #6366f1;
+    position: relative;
+    width: var(--planet-size);
+    height: var(--planet-size);
+    border-radius: 50%;
+    overflow: hidden;
+    isolation: isolate;
+    border: 2px solid color-mix(in srgb, var(--planet-color) 78%, white 22%);
+    background:
+        radial-gradient(circle at 50% 55%, color-mix(in srgb, var(--planet-color) 38%, #0a0e1b), #05070e 76%);
+    background-size: cover;
+    background-position: center;
+    box-shadow:
+        0 0 30px -4px color-mix(in srgb, var(--planet-color) 55%, transparent),
+        0 20px 44px -18px rgba(0, 0, 0, 0.85),
+        inset 0 0 36px rgba(255, 255, 255, 0.07),
+        inset -14px -20px 42px rgba(0, 0, 0, 0.55);
+    transform: translateZ(0) scale(1);
+    transition: box-shadow 0.28s ease, transform 0.28s ease, border-color 0.28s ease;
+}
+
+.planet-switcher-planet:hover .planet-switcher-bubble,
+.planet-switcher-planet.is-focused .planet-switcher-bubble {
+    transform: translateZ(0) scale(1.06);
+    border-color: color-mix(in srgb, var(--planet-color) 60%, white 40%);
+    box-shadow:
+        0 0 54px -2px color-mix(in srgb, var(--planet-color) 85%, white 10%),
+        0 0 120px -20px color-mix(in srgb, var(--planet-color) 70%, transparent),
+        0 20px 44px -18px rgba(0, 0, 0, 0.85),
+        inset 0 0 40px rgba(255, 255, 255, 0.12),
+        inset -14px -20px 42px rgba(0, 0, 0, 0.5);
+}
+
+.planet-switcher-planet.is-current .planet-switcher-bubble {
+    border-width: 3px;
+}
+
+.planet-switcher.is-selecting .planet-switcher-planet.is-selected .planet-switcher-bubble {
+    transform: translateZ(0) scale(1);
+    animation: planetSwitcherPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes planetSwitcherPulse {
+    0%, 100% {
+        box-shadow:
+            0 0 54px -2px color-mix(in srgb, var(--planet-color) 85%, white 10%),
+            0 0 120px -20px color-mix(in srgb, var(--planet-color) 70%, transparent),
+            inset 0 0 40px rgba(255, 255, 255, 0.12);
+    }
+    50% {
+        box-shadow:
+            0 0 80px 2px color-mix(in srgb, var(--planet-color) 95%, white 20%),
+            0 0 180px -10px color-mix(in srgb, var(--planet-color) 85%, transparent),
+            inset 0 0 56px rgba(255, 255, 255, 0.2);
+    }
+}
+
+.planet-switcher.is-zooming .planet-switcher-planet.is-selected .planet-switcher-bubble {
+    animation: none;
+    transition: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.planet-switcher-slides {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+.planet-switcher-slide {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 1.4s ease;
+    transform: translateZ(0);
+    pointer-events: none;
+}
+
+.planet-switcher-slide.is-visible {
+    opacity: 1;
+}
+
+/* Workspace tint: colour blend plus a light veil so dark photos still read as that planet */
+.planet-switcher-tint {
+    position: absolute;
+    inset: 0;
+    background: var(--planet-color);
+    mix-blend-mode: color;
+    opacity: 0.64;
+    pointer-events: none;
+}
+
+.planet-switcher-veil {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--planet-color) 22%, transparent);
+    pointer-events: none;
+}
+
+/* Glass: top-left highlight, rim light, soft bottom shadow */
+.planet-switcher-gloss {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 54% 36% at 32% 20%, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.1) 52%, transparent 70%),
+        radial-gradient(circle at 50% 50%, transparent 56%, rgba(0, 0, 0, 0.5) 100%);
+    box-shadow:
+        inset 0 -18px 32px -12px color-mix(in srgb, var(--planet-color) 55%, transparent),
+        inset 0 2px 2px rgba(255, 255, 255, 0.4);
+}
+
+.planet-switcher-name {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-shadow:
+        0 0 16px color-mix(in srgb, var(--planet-color, #6366f1) 75%, transparent),
+        0 2px 6px rgba(0, 0, 0, 0.85);
+}
+
+.planet-switcher-status {
+    font-size: 0.78rem;
+    min-height: 1.1em;
+    opacity: 0.82;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+}
+
+/* ---------- chrome ---------- */
+
+.planet-switcher-cancel {
+    position: absolute;
+    left: 50%;
+    bottom: max(44px, 7vh);
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 22px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06) 50%, rgba(0, 0, 0, 0.2));
+    color: var(--text-primary, #f4f6ff);
+    font: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+    box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    transition: background 0.2s ease, transform 0.2s ease, opacity 0.3s ease;
+}
+
+.planet-switcher-cancel:hover {
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.1) 50%, rgba(0, 0, 0, 0.2));
+    transform: translateX(-50%) translateY(-1px);
+}
+
+.planet-switcher-cancel kbd {
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 1px 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.planet-switcher.is-selecting .planet-switcher-cancel,
+.planet-switcher.is-zooming .planet-switcher-cancel {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.planet-switcher-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+    opacity: 0.55;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.planet-switcher.is-selecting .planet-switcher-hint,
+.planet-switcher.is-zooming .planet-switcher-hint {
+    opacity: 0;
+}
+
+/* Black cover used for the zoom-into-bubble fade */
+.planet-switcher-fade {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .planet-switcher-ring {
+        animation: none;
+    }
+    .planet-switcher.is-selecting .planet-switcher-planet.is-selected .planet-switcher-bubble {
+        animation: none;
+    }
+}

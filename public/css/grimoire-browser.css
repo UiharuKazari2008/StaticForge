@@ -781,11 +781,17 @@
     font-family: inherit;
 }
 
-/* Enabled segment buttons — popped out (available) */
+/* Enabled segment buttons — popped out (available). Workspace-tinted at rest,
+   white on hover and when on (pressed), so the state change still reads. */
 .modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment:not(:disabled):not([data-state="on"]):not([data-state="open"]),
 .modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:not(:disabled):not([data-state="on"]):not([data-state="open"]) {
     background: var(--glass-layer-dark-5);
     box-shadow: var(--glass-shadow-2), 0 1px 0 hsl(0 0% 100% / 14%) inset;
+    color: var(--text-accent-tinted);
+}
+
+/* Typed text in a segment input stays plain white. */
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > input.toolbar-input-segment:not(:disabled):not([data-state="on"]):not([data-state="open"]) {
     color: var(--text-primary);
 }
 
@@ -815,9 +821,14 @@
     border-radius: var(--border-radius-md);
     background: var(--glass-layer-dark-5);
     box-shadow: var(--glass-shadow-2), 0 1px 0 hsl(0 0% 100% / 14%) inset;
-    color: var(--text-primary);
+    color: var(--text-accent-tinted);
     line-height: 1;
     box-sizing: border-box;
+}
+
+/* Standalone text inputs keep plain white typed text (buttons above are tinted). */
+.modal.toolbar-visible .modal-window-title-toolbar > input.form-control.toolbar-input-segment:not([type="hidden"]):not(:disabled) {
+    color: var(--text-primary);
 }
 
 /* Standalone disabled buttons — sunken */
@@ -1882,4 +1893,29 @@ body.user-icons .icon-image {
         text-decoration: underline;
     }
 
+}
+/* Alchemy page scrollbar: Chromium's are hidden, this one (custom-scrollbar.css look) sits over the frame
+   (grimoireRemoteBrowser.js grimoireRemoteScrollbar). Shown on hover, while the page scrolls, and while dragged. */
+.tag-wiki-display-content:has(> .alchemy-scrollbar) {
+    position: relative;
+}
+
+.alchemy-scrollbar {
+    cursor: default;
+    touch-action: none;
+}
+
+.tag-wiki-display-content:hover > .alchemy-scrollbar,
+.alchemy-scrollbar.scrollbar-indicating,
+.alchemy-scrollbar.dragging {
+    opacity: 1;
+}
+
+.alchemy-scrollbar.dragging .custom-scrollbar-thumb {
+    transition: background 0.2s ease;
+    background: var(--primary-color-light);
+}
+
+.alchemy-scrollbar .custom-scrollbar-thumb {
+    transition: top 0.08s linear, background 0.2s ease;
 }

@@ -9,6 +9,7 @@ const desktopAlarm = {
     modal: null,
     ticker: null,
     deadline: 0,
+    armedAt: 0,
     armed: false,
     fired: false,
     armedHours: 0,
@@ -16,7 +17,11 @@ const desktopAlarm = {
     hoursInput: null,
     minutesInput: null,
     remainEl: null,
-    statusEl: null
+    statusEl: null,
+    barEl: null,
+    fillEl: null,
+    startBtn: null,
+    cancelBtn: null
 };
 
 const desktopPomodoro = {
@@ -26,8 +31,11 @@ const desktopPomodoro = {
     remainingMs: DESKTOP_POMODORO_FOCUS_MS,
     phase: 'focus',
     running: false,
+    sessions: 0,
     remainEl: null,
     phaseEl: null,
+    barEl: null,
+    fillEl: null,
     startBtn: null,
     pauseBtn: null
 };
@@ -67,13 +75,12 @@ function desktopUtilityNotify(type, title, message, iconClass) {
 function desktopUtilityCreateModal(spec) {
     const modal = document.createElement('div');
     modal.id = spec.id;
-    modal.className = 'modal hidden resizeable-window';
+    modal.className = 'modal hidden resizeable-window desktop-timer-window';
     modal.dataset.windowIdentifier = spec.identifier;
     modal.dataset.windowMinWidth = spec.minWidth;
     modal.dataset.windowDefaultWidth = spec.width;
     modal.dataset.windowMaxWidth = '720';
     modal.dataset.windowMaxHeight = '640';
-    modal.style.flexDirection = 'column';
     modal.innerHTML = ''
         + '<div class="modal-window-title">'
         + '<div class="modal-window-title-main">'
@@ -93,10 +100,8 @@ function desktopUtilityCreateModal(spec) {
         + '</div>'
         + '<div class="modal-content dark"></div>';
     const content = modal.querySelector('.modal-content');
-    content.style.flex = '1 1 auto';
-    content.style.height = 'auto';
-    content.style.minHeight = '0';
     content.appendChild(spec.body);
+    content.appendChild(spec.footer);
     modal.querySelector('.close-btn').addEventListener('click', () => {
         // Hide only. Alarm and pomodoro keep running until cancel, pause, or reset.
         // closeModal: public/scripts/comp/modalUtils.js
@@ -106,6 +111,81 @@ function desktopUtilityCreateModal(spec) {
     // desktopAppApplyContentHeight: public/scripts/comp/desktop-apps/calculator.js
     desktopAppApplyContentHeight(modal);
     return modal;
+}
+
+// Shared face for both windows, the calculator's layout: caption line,
+// sunken readout, then the 7.css progress bar (cache-browser.css).
+function desktopUtilityBuildFace(prefix, initialText) {
+    const body = document.createElement('div');
+    body.className = 'modal-body form-col desktop-timer-body';
+
+    const face = document.createElement('div');
+    face.className = 'form-col desktop-timer-face';
+
+    const status = document.createElement('div');
+    status.id = prefix + 'Status';
+    status.className = 'form-hint';
+
+    const remain = document.createElement('div');
+    remain.id = prefix + 'Remain';
+    remain.className = 'form-control desktop-timer-readout';
+    remain.setAttribute('role', 'timer');
+    remain.setAttribute('aria-atomic', 'true');
+    remain.textContent = initialText;
+
+    const bar = document.createElement('div');
+    bar.id = prefix + 'Progress';
+    bar.setAttribute('role', 'progressbar');
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', '100');
+    bar.setAttribute('aria-valuenow', '0');
+    const fill = document.createElement('div');
+    bar.appendChild(fill);
+
+    face.appendChild(status);
+    face.appendChild(remain);
+    face.appendChild(bar);
+    body.appendChild(face);
+    return { body: body, status: status, remain: remain, bar: bar, fill: fill };
+}
+
+// state: 'idle' | 'running' | 'paused' | 'done'
+function desktopUtilityRenderBar(bar, fill, fraction, state) {
+    const pct = Math.round(Math.min(1, Math.max(0, fraction)) * 1000) / 10;
+    fill.style.width = pct + '%';
+    bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+    bar.classList.toggle('animate', state === 'running');
+    bar.classList.toggle('paused', state === 'paused' || state === 'done');
+}
+
+// Command strip: optional left group, then the dialog buttons on the right.
+function desktopUtilityBuildFooter(leftButtons, rightButtons) {
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer modal-footer-colored desktop-timer-footer';
+    const left = document.createElement('div');
+    left.className = 'modal-footer-left';
+    leftButtons.forEach((btn) => left.appendChild(btn));
+    const right = document.createElement('div');
+    right.className = 'modal-footer-right';
+    rightButtons.forEach((btn) => right.appendChild(btn));
+    footer.appendChild(left);
+    footer.appendChild(right);
+    return footer;
+}
+
+function desktopUtilityButton(id, className, text, iconClass) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = id;
+    button.className = className;
+    const icon = document.createElement('i');
+    icon.className = iconClass;
+    icon.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.textContent = text;
+    button.appendChild(icon);
+    button.appendChild(label);
+    return button;
 }
 
 function desktopUtilityReveal(modal) {
@@ -150,21 +230,37 @@ function desktopAlarmNextDeadline(hours, minutes) {
     return target.getTime();
 }
 
+function desktopAlarmSyncControls() {
+    if (!desktopAlarm.startBtn) return;
+    desktopAlarm.startBtn.disabled = desktopAlarm.armed;
+    desktopAlarm.cancelBtn.disabled = !desktopAlarm.armed && !desktopAlarm.fired;
+    desktopAlarm.hoursInput.disabled = desktopAlarm.armed;
+    desktopAlarm.minutesInput.disabled = desktopAlarm.armed;
+}
+
 function desktopAlarmRender() {
     if (!desktopAlarm.remainEl) return;
+    desktopAlarmSyncControls();
+    const armedClock = desktopUtilityFormatClock(desktopAlarm.armedHours, desktopAlarm.armedMinutes);
     if (desktopAlarm.fired) {
-        desktopAlarm.remainEl.textContent = 'Alarm';
-        desktopAlarm.statusEl.textContent = 'Fired';
+        desktopAlarm.remainEl.textContent = '00:00';
+        desktopAlarm.statusEl.textContent = 'Alarm went off at ' + armedClock;
+        desktopUtilityRenderBar(desktopAlarm.barEl, desktopAlarm.fillEl, 1, 'done');
         return;
     }
     if (desktopAlarm.armed) {
-        desktopAlarm.remainEl.textContent = desktopUtilityFormatRemain(desktopAlarm.deadline - Date.now());
-        desktopAlarm.statusEl.textContent = 'Rings at ' + desktopUtilityFormatClock(desktopAlarm.armedHours, desktopAlarm.armedMinutes);
+        const now = Date.now();
+        const span = desktopAlarm.deadline - desktopAlarm.armedAt;
+        desktopAlarm.remainEl.textContent = desktopUtilityFormatRemain(desktopAlarm.deadline - now);
+        desktopAlarm.statusEl.textContent = 'Rings at ' + armedClock;
+        desktopUtilityRenderBar(desktopAlarm.barEl, desktopAlarm.fillEl,
+            span > 0 ? (now - desktopAlarm.armedAt) / span : 0, 'running');
         return;
     }
     const clock = desktopAlarmReadClock(false);
     desktopAlarm.remainEl.textContent = desktopUtilityFormatClock(clock.hours, clock.minutes);
-    desktopAlarm.statusEl.textContent = 'Set a time';
+    desktopAlarm.statusEl.textContent = 'Alarm is off';
+    desktopUtilityRenderBar(desktopAlarm.barEl, desktopAlarm.fillEl, 0, 'idle');
 }
 
 function desktopAlarmStopTicker() {
@@ -203,6 +299,7 @@ function desktopAlarmStart() {
     desktopAlarm.armed = true;
     desktopAlarm.armedHours = clock.hours;
     desktopAlarm.armedMinutes = clock.minutes;
+    desktopAlarm.armedAt = Date.now();
     desktopAlarm.deadline = desktopAlarmNextDeadline(clock.hours, clock.minutes);
     desktopAlarmEnsureTicker();
     desktopAlarmRender();
@@ -212,6 +309,7 @@ function desktopAlarmCancel() {
     desktopAlarm.armed = false;
     desktopAlarm.fired = false;
     desktopAlarm.deadline = 0;
+    desktopAlarm.armedAt = 0;
     desktopAlarmStopTicker();
     desktopAlarmRender();
 }
@@ -222,106 +320,63 @@ function desktopAlarmSeedClock() {
     desktopAlarm.minutesInput.value = String(next.getMinutes());
 }
 
-function desktopAlarmBuildBody() {
-    const section = document.createElement('div');
-    section.className = 'form-section';
-    section.style.flex = '1 1 auto';
-    section.style.minHeight = '0';
+function desktopAlarmBuildTimeGroup(id, text, max) {
+    const group = document.createElement('div');
+    group.className = 'form-group';
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    label.textContent = text;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.id = id;
+    input.className = 'form-control hover-show colored';
+    input.min = '0';
+    input.max = String(max);
+    input.step = '1';
+    group.appendChild(label);
+    group.appendChild(input);
+    return { group: group, input: input };
+}
 
-    const remain = document.createElement('h2');
-    remain.id = 'desktopAlarmRemain';
-    remain.textContent = '00:00';
-    remain.style.flex = '1 1 auto';
-    remain.style.alignItems = 'center';
-    remain.style.justifyContent = 'center';
-    remain.style.marginBottom = '0';
+function desktopAlarmBuildBody() {
+    const face = desktopUtilityBuildFace('desktopAlarm', '00:00');
 
     const row = document.createElement('div');
     row.className = 'form-row';
-    row.style.flex = '0 0 auto';
+    const hours = desktopAlarmBuildTimeGroup('desktopAlarmHours', 'Hour', 23);
+    const minutes = desktopAlarmBuildTimeGroup('desktopAlarmMinutes', 'Minute', 59);
+    row.appendChild(hours.group);
+    row.appendChild(minutes.group);
+    face.body.appendChild(row);
 
-    const hoursGroup = document.createElement('div');
-    hoursGroup.className = 'form-group';
-    const hoursLabel = document.createElement('label');
-    hoursLabel.htmlFor = 'desktopAlarmHours';
-    hoursLabel.textContent = 'Hours';
-    const hoursInput = document.createElement('input');
-    hoursInput.type = 'number';
-    hoursInput.id = 'desktopAlarmHours';
-    hoursInput.className = 'form-control hover-show colored';
-    hoursInput.min = '0';
-    hoursInput.max = '23';
-    hoursInput.step = '1';
-    hoursGroup.appendChild(hoursLabel);
-    hoursGroup.appendChild(hoursInput);
+    const startBtn = desktopUtilityButton('desktopAlarmStartBtn', 'btn-primary', 'Start', 'fas fa-bell');
+    const cancelBtn = desktopUtilityButton('desktopAlarmCancelBtn', 'btn-secondary', 'Cancel', 'fas fa-bell-slash');
+    const footer = desktopUtilityBuildFooter([], [startBtn, cancelBtn]);
 
-    const minutesGroup = document.createElement('div');
-    minutesGroup.className = 'form-group';
-    const minutesLabel = document.createElement('label');
-    minutesLabel.htmlFor = 'desktopAlarmMinutes';
-    minutesLabel.textContent = 'Minutes';
-    const minutesInput = document.createElement('input');
-    minutesInput.type = 'number';
-    minutesInput.id = 'desktopAlarmMinutes';
-    minutesInput.className = 'form-control hover-show colored';
-    minutesInput.min = '0';
-    minutesInput.max = '59';
-    minutesInput.step = '1';
-    minutesGroup.appendChild(minutesLabel);
-    minutesGroup.appendChild(minutesInput);
+    desktopAlarm.remainEl = face.remain;
+    desktopAlarm.statusEl = face.status;
+    desktopAlarm.barEl = face.bar;
+    desktopAlarm.fillEl = face.fill;
+    desktopAlarm.hoursInput = hours.input;
+    desktopAlarm.minutesInput = minutes.input;
+    desktopAlarm.startBtn = startBtn;
+    desktopAlarm.cancelBtn = cancelBtn;
 
-    row.appendChild(hoursGroup);
-    row.appendChild(minutesGroup);
-
-    const status = document.createElement('h3');
-    status.id = 'desktopAlarmStatus';
-    status.className = 'section-header';
-    status.textContent = 'Set a time';
-    status.style.flex = '0 0 auto';
-
-    const actions = document.createElement('div');
-    actions.className = 'form-row';
-    actions.style.flex = '0 0 auto';
-    const startBtn = document.createElement('button');
-    startBtn.type = 'button';
-    startBtn.id = 'desktopAlarmStartBtn';
-    startBtn.className = 'btn-primary';
-    startBtn.textContent = 'Start';
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.id = 'desktopAlarmCancelBtn';
-    cancelBtn.className = 'btn-secondary';
-    cancelBtn.textContent = 'Cancel';
-    actions.appendChild(startBtn);
-    actions.appendChild(cancelBtn);
-
-    section.appendChild(remain);
-    section.appendChild(row);
-    section.appendChild(status);
-    section.appendChild(actions);
-
-    desktopAlarm.remainEl = remain;
-    desktopAlarm.statusEl = status;
-    desktopAlarm.hoursInput = hoursInput;
-    desktopAlarm.minutesInput = minutesInput;
-
-    hoursInput.addEventListener('input', () => {
-        if (!desktopAlarm.armed && !desktopAlarm.fired) desktopAlarmRender();
-    });
-    minutesInput.addEventListener('input', () => {
-        if (!desktopAlarm.armed && !desktopAlarm.fired) desktopAlarmRender();
-    });
-    hoursInput.addEventListener('change', () => {
-        desktopAlarmReadClock(true);
-        if (!desktopAlarm.armed && !desktopAlarm.fired) desktopAlarmRender();
-    });
-    minutesInput.addEventListener('change', () => {
-        desktopAlarmReadClock(true);
-        if (!desktopAlarm.armed && !desktopAlarm.fired) desktopAlarmRender();
+    [hours.input, minutes.input].forEach((input) => {
+        input.addEventListener('input', () => {
+            if (!desktopAlarm.armed && !desktopAlarm.fired) desktopAlarmRender();
+        });
+        input.addEventListener('change', () => {
+            desktopAlarmReadClock(true);
+            if (!desktopAlarm.armed && !desktopAlarm.fired) desktopAlarmRender();
+        });
+        input.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter' && !desktopAlarm.armed) desktopAlarmStart();
+        });
     });
     startBtn.addEventListener('click', desktopAlarmStart);
     cancelBtn.addEventListener('click', desktopAlarmCancel);
-    return section;
+    return { body: face.body, footer: footer };
 }
 
 function desktopAlarmEnsure() {
@@ -331,17 +386,19 @@ function desktopAlarmEnsure() {
         desktopAlarm.modal = existing;
         return existing;
     }
+    const parts = desktopAlarmBuildBody();
+    desktopAlarmSeedClock();
+    desktopAlarmRender();
     desktopAlarm.modal = desktopUtilityCreateModal({
         id: 'desktopAlarmModal',
         identifier: 'desktop-alarm',
         title: 'Alarm',
         iconClass: 'fas fa-bell',
         minWidth: '300',
-        width: '380',
-        body: desktopAlarmBuildBody()
+        width: '340',
+        body: parts.body,
+        footer: parts.footer
     });
-    desktopAlarmSeedClock();
-    desktopAlarmRender();
     return desktopAlarm.modal;
 }
 
@@ -368,8 +425,20 @@ function desktopPomodoroSyncControls() {
 function desktopPomodoroRender(ms) {
     if (!desktopPomodoro.remainEl) return;
     const remain = ms == null ? desktopPomodoro.remainingMs : ms;
+    const total = desktopPomodoroPhaseMs();
+    const fresh = !desktopPomodoro.running && remain >= total;
+    let state = 'paused';
+    if (desktopPomodoro.running) state = 'running';
+    else if (fresh) state = 'idle';
+    let status = desktopPomodoroPhaseLabel();
+    if (state === 'paused') status += ' (paused)';
+    if (desktopPomodoro.sessions > 0) {
+        status += ' \u00b7 ' + desktopPomodoro.sessions
+            + (desktopPomodoro.sessions === 1 ? ' session' : ' sessions') + ' done';
+    }
     desktopPomodoro.remainEl.textContent = desktopUtilityFormatRemain(remain);
-    desktopPomodoro.phaseEl.textContent = desktopPomodoroPhaseLabel();
+    desktopPomodoro.phaseEl.textContent = status;
+    desktopUtilityRenderBar(desktopPomodoro.barEl, desktopPomodoro.fillEl, 1 - remain / total, state);
 }
 
 function desktopPomodoroStopTicker() {
@@ -385,6 +454,7 @@ function desktopPomodoroEnsureTicker() {
 
 function desktopPomodoroAdvance() {
     const finishedFocus = desktopPomodoro.phase !== 'break';
+    if (finishedFocus) desktopPomodoro.sessions += 1;
     desktopPomodoro.phase = finishedFocus ? 'break' : 'focus';
     desktopPomodoro.remainingMs = finishedFocus ? DESKTOP_POMODORO_BREAK_MS : DESKTOP_POMODORO_FOCUS_MS;
     desktopPomodoro.deadline = Date.now() + desktopPomodoro.remainingMs;
@@ -434,6 +504,7 @@ function desktopPomodoroPause() {
 function desktopPomodoroReset() {
     desktopPomodoro.running = false;
     desktopPomodoro.phase = 'focus';
+    desktopPomodoro.sessions = 0;
     desktopPomodoro.remainingMs = DESKTOP_POMODORO_FOCUS_MS;
     desktopPomodoro.deadline = 0;
     desktopPomodoroStopTicker();
@@ -442,64 +513,27 @@ function desktopPomodoroReset() {
 }
 
 function desktopPomodoroBuildBody() {
-    const section = document.createElement('div');
-    section.className = 'form-section';
-    section.style.flex = '1 1 auto';
-    section.style.minHeight = '0';
+    const face = desktopUtilityBuildFace('desktopPomodoro', '25:00');
+    // Phase caption keeps its old id for anything that already reads it.
+    face.status.id = 'desktopPomodoroPhase';
 
-    const remain = document.createElement('h2');
-    remain.id = 'desktopPomodoroRemain';
-    remain.textContent = '25:00';
-    remain.style.flex = '1 1 auto';
-    remain.style.alignItems = 'center';
-    remain.style.justifyContent = 'center';
-    remain.style.marginBottom = '0';
-
-    const phase = document.createElement('h3');
-    phase.id = 'desktopPomodoroPhase';
-    phase.className = 'section-header';
-    phase.textContent = 'Focus';
-    phase.style.flex = '0 0 auto';
-
-    const actions = document.createElement('div');
-    actions.className = 'form-row';
-    actions.style.flex = '0 0 auto';
-
-    const startBtn = document.createElement('button');
-    startBtn.type = 'button';
-    startBtn.id = 'desktopPomodoroStartBtn';
-    startBtn.className = 'btn-primary';
-    startBtn.textContent = 'Start';
-
-    const pauseBtn = document.createElement('button');
-    pauseBtn.type = 'button';
-    pauseBtn.id = 'desktopPomodoroPauseBtn';
-    pauseBtn.className = 'btn-secondary';
-    pauseBtn.textContent = 'Pause';
+    const resetBtn = desktopUtilityButton('desktopPomodoroResetBtn', 'btn-secondary', 'Reset', 'fas fa-rotate-left');
+    const startBtn = desktopUtilityButton('desktopPomodoroStartBtn', 'btn-primary', 'Start', 'fas fa-play');
+    const pauseBtn = desktopUtilityButton('desktopPomodoroPauseBtn', 'btn-secondary', 'Pause', 'fas fa-pause');
     pauseBtn.disabled = true;
+    const footer = desktopUtilityBuildFooter([resetBtn], [startBtn, pauseBtn]);
 
-    const resetBtn = document.createElement('button');
-    resetBtn.type = 'button';
-    resetBtn.id = 'desktopPomodoroResetBtn';
-    resetBtn.className = 'btn-secondary';
-    resetBtn.textContent = 'Reset';
-
-    actions.appendChild(startBtn);
-    actions.appendChild(pauseBtn);
-    actions.appendChild(resetBtn);
-    section.appendChild(remain);
-    section.appendChild(phase);
-    section.appendChild(actions);
-
-    desktopPomodoro.remainEl = remain;
-    desktopPomodoro.phaseEl = phase;
+    desktopPomodoro.remainEl = face.remain;
+    desktopPomodoro.phaseEl = face.status;
+    desktopPomodoro.barEl = face.bar;
+    desktopPomodoro.fillEl = face.fill;
     desktopPomodoro.startBtn = startBtn;
     desktopPomodoro.pauseBtn = pauseBtn;
 
     startBtn.addEventListener('click', desktopPomodoroStart);
     pauseBtn.addEventListener('click', desktopPomodoroPause);
     resetBtn.addEventListener('click', desktopPomodoroReset);
-    return section;
+    return { body: face.body, footer: footer };
 }
 
 function desktopPomodoroEnsure() {
@@ -509,17 +543,20 @@ function desktopPomodoroEnsure() {
         desktopPomodoro.modal = existing;
         return existing;
     }
+    const parts = desktopPomodoroBuildBody();
+    desktopPomodoroRender(desktopPomodoro.remainingMs);
+    desktopPomodoroSyncControls();
     desktopPomodoro.modal = desktopUtilityCreateModal({
         id: 'desktopPomodoroModal',
         identifier: 'desktop-pomodoro',
         title: 'Pomodoro',
         iconClass: 'fas fa-clock',
         minWidth: '300',
-        width: '380',
-        body: desktopPomodoroBuildBody()
+        width: '340',
+        body: parts.body,
+        footer: parts.footer
     });
-    desktopPomodoroRender(DESKTOP_POMODORO_FOCUS_MS);
-    desktopPomodoroSyncControls();
+    desktopPomodoroRender(desktopPomodoro.remainingMs);
     return desktopPomodoro.modal;
 }
 
