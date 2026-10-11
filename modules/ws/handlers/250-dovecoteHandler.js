@@ -148,6 +148,17 @@ async function handleMarkMail(handlersCtx, ws, message) {
     }
 }
 
+// message.attachments (optional): [{ name, mimeType, base64 }] — the compose window
+// reads the user's picked files client-side (fileToBase64) and sends raw base64 here.
+function decodeAttachments(list) {
+    if (!Array.isArray(list) || !list.length) return undefined;
+    return list.map((file) => ({
+        name: file && file.name,
+        mimeType: file && file.mimeType,
+        data: Buffer.from((file && file.base64) || '', 'base64')
+    }));
+}
+
 async function handleSendMail(handlersCtx, ws, message) {
     try {
         if (!message.to || !message.body) {
@@ -160,7 +171,8 @@ async function handleSendMail(handlersCtx, ws, message) {
             subject: message.subject,
             body: message.body,
             format: message.format,
-            replyToId: message.replyTo
+            replyToId: message.replyTo,
+            attachments: decodeAttachments(message.attachments)
         });
         handlersCtx.sendToClient(ws, {
             type: 'dovecote_send_mail_response',
@@ -221,6 +233,37 @@ async function handleSetImagePref(handlersCtx, ws, message) {
     }
 }
 
+async function handleGetAttachment(handlersCtx, ws, message) {
+    try {
+        if (!message.id) {
+            handlersCtx.sendError(ws, 'Attachment id is required', 'dovecote_get_attachment', message.requestId);
+            return;
+        }
+        const owner = resolveViewOwner(message);
+        const attachment = dovecoteMail.getAttachment(owner, message.id);
+        if (!attachment) {
+            handlersCtx.sendError(ws, 'Attachment not found', 'ATTACHMENT_NOT_FOUND', message.requestId);
+            return;
+        }
+        handlersCtx.sendToClient(ws, {
+            type: 'dovecote_get_attachment_response',
+            requestId: message.requestId,
+            data: {
+                attachment: {
+                    id: attachment.id,
+                    name: attachment.name,
+                    mimeType: attachment.mimeType,
+                    size: attachment.size,
+                    base64: attachment.data.toString('base64')
+                }
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        handlersCtx.sendError(ws, 'Failed to read attachment', error.message, message.requestId);
+    }
+}
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) {
         console.warn('[250-dovecoteHandler] registerPackets: missing handlersCtx');
@@ -237,6 +280,7 @@ function registerPackets(handlersCtx) {
     reg('dovecote_list_mail', handleListMail);
     reg('dovecote_get_mail', handleGetMail);
     reg('dovecote_render_body', handleRenderBody);
+    reg('dovecote_get_attachment', handleGetAttachment);
     reg('dovecote_mark_mail', handleMarkMail, DOVECOTE_DESTRUCTIVE);
     reg('dovecote_send_mail', handleSendMail, DOVECOTE_DESTRUCTIVE);
     reg('dovecote_forward_mail', handleForwardMail, DOVECOTE_DESTRUCTIVE);

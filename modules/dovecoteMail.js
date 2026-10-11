@@ -20,6 +20,9 @@ const ALL_OWNERS = new Set([HUMAN_OWNER, ...BOT_OWNERS]);
 const FOLDERS = Object.freeze(['inbox', 'outbox', 'sent', 'deleted', 'archive']);
 const FORMATS = Object.freeze(['text', 'md', 'html']);
 
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // per file
+const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024; // per message
+
 class DovecoteError extends Error {
     constructor(message, code) {
         super(message);
@@ -79,6 +82,8 @@ function toSummary(row) {
         read: !!row.read,
         flagged: !!row.flagged,
         fwdFromOwner: row.fwd_from_owner || null,
+        readByRecipient: !!row.recipient_read_at,
+        attachments: attachmentsMetaOf(row.attachments),
         createdAt: row.created_at,
         updatedAt: row.updated_at
     };
@@ -88,18 +93,37 @@ function toFull(row) {
     return Object.assign(toSummary(row), { body: row.body, replyToId: row.reply_to_id || null });
 }
 
+function attachmentsMetaOf(json) {
+    if (!json) return [];
+    let ids;
+    try {
+        ids = JSON.parse(json);
+    } catch (_err) {
+        return [];
+    }
+    if (!Array.isArray(ids) || !ids.length) return [];
+    const rows = getDb().prepare(
+        `SELECT id, name, mime_type, size FROM dovecote_attachment WHERE id IN (${ids.map(() => '?').join(',')})`
+    ).all(...ids);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return ids.map((id) => {
+        const row = byId.get(id);
+        return row ? { id: row.id, name: row.name, mimeType: row.mime_type, size: row.size } : null;
+    }).filter(Boolean);
+}
+
 function insertRow(row) {
     getDb().prepare(`
         INSERT INTO dovecote_message (
             id, owner, folder, archive_subfolder, thread_id, from_owner, to_owner,
             subject, body, format, reply_to_id, fwd_from_owner, fwd_from_message_id,
-            read, flagged, created_at, updated_at, deleted_at
+            read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments
         ) VALUES (
             @id, @owner, @folder, @archive_subfolder, @thread_id, @from_owner, @to_owner,
             @subject, @body, @format, @reply_to_id, @fwd_from_owner, @fwd_from_message_id,
-            @read, @flagged, @created_at, @updated_at, @deleted_at
+            @read, @flagged, @created_at, @updated_at, @deleted_at, @paired_message_id, @attachments
         )
-    `).run(row);
+    `).run(Object.assign({ paired_message_id: null, attachments: null }, row));
 }
 
 function sanitizeFormat(format) {
@@ -108,16 +132,81 @@ function sanitizeFormat(format) {
 }
 
 /**
+ * Stores raw attachment bytes (content-addressed id, not owner-scoped) and
+ * returns the JSON string to put in a dovecote_message row's attachments
+ * column. Enforces per-file and total-per-message size limits up front, so a
+ * send fails cleanly rather than partially writing attachment blobs.
+ */
+function storeAttachments(attachments) {
+    if (!attachments || !attachments.length) return null;
+    let total = 0;
+    for (const file of attachments) {
+        const size = file.data ? file.data.length : 0;
+        if (size > MAX_ATTACHMENT_BYTES) {
+            throw new DovecoteError(`Attachment "${file.name || 'file'}" exceeds the ${MAX_ATTACHMENT_BYTES} byte per-file limit`, 'ATTACHMENT_TOO_LARGE');
+        }
+        total += size;
+    }
+    if (total > MAX_TOTAL_ATTACHMENT_BYTES) {
+        throw new DovecoteError(`Attachments total ${total} bytes, exceeding the ${MAX_TOTAL_ATTACHMENT_BYTES} byte per-message limit`, 'ATTACHMENTS_TOO_LARGE');
+    }
+    const createdAt = nowIso();
+    const ids = attachments.map((file) => {
+        const id = crypto.randomUUID();
+        getDb().prepare(
+            'INSERT INTO dovecote_attachment (id, name, mime_type, size, data, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run(id, String(file.name || 'attachment').slice(0, 200), String(file.mimeType || 'application/octet-stream'), file.data.length, file.data, createdAt);
+        return id;
+    });
+    return JSON.stringify(ids);
+}
+
+/**
+ * Returns an attachment's bytes, scoped to an owner the same way mail reads
+ * are: the owner must hold a message (any folder) whose attachments[]
+ * includes this id, or this behaves as a 404 (returns null) rather than
+ * leaking existence of the blob.
+ */
+function getAttachment(owner, attachmentId) {
+    if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
+    const id = String(attachmentId || '');
+    const holder = getDb().prepare(
+        `SELECT id FROM dovecote_message WHERE owner = ? AND attachments IS NOT NULL AND attachments LIKE ? LIMIT 1`
+    ).get(owner, `%"${id}"%`);
+    if (!holder) {
+        audit(owner, 'get_attachment', id, false, 'not found or not owned');
+        return null;
+    }
+    const row = getDb().prepare('SELECT * FROM dovecote_attachment WHERE id = ?').get(id);
+    if (!row) return null;
+    audit(owner, 'get_attachment', id, true, null);
+    return { id: row.id, name: row.name, mimeType: row.mime_type, size: row.size, data: row.data };
+}
+
+// Posts a read receipt onto a message's paired mailbox copy (sent <-> inbox),
+// the first time only — recipient_read_at is sticky, like a real read receipt.
+function markPairedReadReceipt(row) {
+    if (!row || !row.paired_message_id) return;
+    getDb().prepare(
+        `UPDATE dovecote_message SET recipient_read_at = ? WHERE id = ? AND recipient_read_at IS NULL`
+    ).run(nowIso(), row.paired_message_id);
+}
+
+/**
  * fromOwner is always server-resolved. Bots/jobs may send to any mailbox,
  * including Yukimi's (Yukimi 2026-10-10); they still can never READ hers.
+ * attachments (optional): [{ name, mimeType, data: Buffer }], already resolved
+ * to raw bytes by the caller (WS handler decodes base64, MCP facade resolves
+ * VFS paths or base64) — this layer only enforces size limits and storage.
  */
-function sendMail({ fromOwner, to, subject, body, format, replyToId }) {
+function sendMail({ fromOwner, to, subject, body, format, replyToId, attachments }) {
     if (!isValidOwner(fromOwner)) throw new DovecoteError('Unknown sender mailbox', 'UNKNOWN_SENDER');
     const toOwner = String(to || '').trim().toLowerCase();
     if (!isValidOwner(toOwner)) throw new DovecoteError(`Unknown recipient mailbox: ${to}`, 'UNKNOWN_RECIPIENT');
     const subjectText = String(subject || '').slice(0, 300);
     const bodyText = String(body || '');
     const formatValue = sanitizeFormat(format);
+    const attachmentsJson = storeAttachments(attachments);
 
     let threadId = crypto.randomUUID();
     let replyTo = null;
@@ -137,13 +226,15 @@ function sendMail({ fromOwner, to, subject, body, format, replyToId }) {
         id: sentId, owner: fromOwner, folder: 'sent', archive_subfolder: null, thread_id: threadId,
         from_owner: fromOwner, to_owner: toOwner, subject: subjectText, body: bodyText, format: formatValue,
         reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
-        read: 1, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null
+        read: 1, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+        paired_message_id: inboxId, attachments: attachmentsJson
     });
     insertRow({
         id: inboxId, owner: toOwner, folder: 'inbox', archive_subfolder: null, thread_id: threadId,
         from_owner: fromOwner, to_owner: toOwner, subject: subjectText, body: bodyText, format: formatValue,
         reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
-        read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null
+        read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+        paired_message_id: sentId, attachments: attachmentsJson
     });
 
     audit(fromOwner, 'send_mail', inboxId, true, `to=${toOwner}`);
@@ -178,6 +269,7 @@ function readMail(owner, id) {
     if (!row.read) {
         getDb().prepare('UPDATE dovecote_message SET read = 1, updated_at = ? WHERE id = ?').run(nowIso(), row.id);
         row.read = 1;
+        markPairedReadReceipt(row);
     }
     audit(owner, 'read_mail', id, true, null);
     return toFull(row);
@@ -192,6 +284,7 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder }) {
     }
     const updates = { updated_at: nowIso() };
     if (typeof read === 'boolean') updates.read = read ? 1 : 0;
+    if (read === true) markPairedReadReceipt(row);
     if (deleted === true) {
         updates.folder = 'deleted';
         updates.deleted_at = nowIso();
@@ -231,7 +324,8 @@ function forwardMail(owner, { id, to }) {
         id: newId, owner: toOwner, folder: 'inbox', archive_subfolder: null, thread_id: crypto.randomUUID(),
         from_owner: source.from_owner, to_owner: toOwner, subject: `Fwd: ${source.subject}`, body: source.body,
         format: source.format, reply_to_id: null, fwd_from_owner: owner, fwd_from_message_id: source.id,
-        read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null
+        read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+        attachments: source.attachments || null
     });
     audit(owner, 'forward_mail', newId, true, `to=${toOwner} source=${id}`);
     return { id: newId, to: toOwner };
@@ -268,6 +362,8 @@ module.exports = {
     BOT_OWNERS,
     FOLDERS,
     FORMATS,
+    MAX_ATTACHMENT_BYTES,
+    MAX_TOTAL_ATTACHMENT_BYTES,
     DovecoteError,
     isValidOwner,
     isBotOwner,
@@ -280,5 +376,6 @@ module.exports = {
     listMailboxes,
     getAlwaysLoadSenders,
     setImagePref,
+    getAttachment,
     audit
 };

@@ -33,6 +33,16 @@ function initializeDovecoteDatabase(databasesPath) {
     }
 }
 
+// ALTER TABLE ... ADD COLUMN against an already-deployed dovecote.db — new
+// columns must be added this way rather than folded into the CREATE TABLE,
+// or existing installs would keep missing them.
+function addColumnIfMissing(table, column, ddl) {
+    const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
+    if (!existing.includes(column)) {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+    }
+}
+
 function createDovecoteTables() {
     db.exec(`
         CREATE TABLE IF NOT EXISTS dovecote_message (
@@ -56,6 +66,14 @@ function createDovecoteTables() {
             deleted_at TEXT
         )
     `);
+    // paired_message_id: the id of this message's other mailbox copy (sent <-> inbox)
+    // written by sendMail, used to post a read receipt back onto the sent copy without
+    // a thread-wide scan. recipient_read_at: set once, the first time the paired inbox
+    // copy is read — never cleared by a later "mark unread", same as a real mail client's
+    // read receipt. attachments: JSON array of dovecote_attachment ids, or NULL.
+    addColumnIfMissing('dovecote_message', 'paired_message_id', 'paired_message_id TEXT');
+    addColumnIfMissing('dovecote_message', 'recipient_read_at', 'recipient_read_at TEXT');
+    addColumnIfMissing('dovecote_message', 'attachments', 'attachments TEXT');
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_owner_folder ON dovecote_message (owner, folder, created_at);
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_thread ON dovecote_message (thread_id);
@@ -80,6 +98,19 @@ function createDovecoteTables() {
             sender TEXT NOT NULL,
             always_load INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (owner, sender)
+        )
+    `);
+    // Attachment bytes are content-addressed and not owner-scoped by themselves —
+    // access is enforced by checking the requesting owner holds a dovecote_message
+    // row whose attachments[] includes the id (modules/dovecoteMail.js getAttachment).
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS dovecote_attachment (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+            size INTEGER NOT NULL,
+            data BLOB NOT NULL,
+            created_at TEXT NOT NULL
         )
     `);
 }
