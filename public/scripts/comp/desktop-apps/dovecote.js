@@ -132,7 +132,6 @@ const ensureDesktopDovecoteModal = function () {
     body.appendChild(doveBuildFolderTree());
     body.appendChild(doveBuildMainPane());
     body.appendChild(doveBuildMobileFolderDrawer());
-    body.appendChild(doveBuildStatusBar());
 
     content.appendChild(body);
     modal.appendChild(title);
@@ -613,9 +612,8 @@ const doveDispatchAction = function (action) {
 
 const doveShowError = function (message) {
     desktopDovecote.statusError = message;
-    if (desktopDovecoteEls.statusError) {
-        desktopDovecoteEls.statusError.textContent = message || '';
-        desktopDovecoteEls.statusError.classList.toggle('hidden', !message);
+    if (message && typeof showGlassToast === 'function') {
+        showGlassToast('error', 'Dovecote', message, false, 6000, '<i class="fas fa-dove"></i>');
     }
 };
 
@@ -785,6 +783,7 @@ const doveRenderMessageList = function () {
 const doveRenderStatusCounts = function () {
     const total = desktopDovecote.mail.length;
     const unread = desktopDovecote.mail.filter((m) => !m.read).length;
+    if (!desktopDovecoteEls.statusCounts) return;
     desktopDovecoteEls.statusCounts.textContent = total + ' message' + (total === 1 ? '' : 's') + ', ' + unread + ' unread';
 };
 
