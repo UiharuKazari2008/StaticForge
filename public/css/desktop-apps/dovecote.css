@@ -32,6 +32,26 @@
     margin-left: auto;
 }
 
+/* ---- Toolbar: Folder dropdown button (#5) — same compact button-with-label
+   treatment as the mailbox picker, just not pushed to the end. */
+
+#desktopDovecoteModal .dovecote-folder-btn {
+    min-width: 7em;
+}
+
+/* ---- Toolbar: inline search bar (#1), always visible in the old Find button's slot. */
+
+#desktopDovecoteModal .dovecote-search-icon {
+    flex: 0 0 auto;
+    padding-left: 0.5em;
+    color: var(--text-accent-tinted);
+    opacity: 0.7;
+}
+
+#desktopDovecoteModal #desktopDovecoteSearchGroup {
+    min-width: 160px;
+}
+
 /* ---- Folder tree ---------------------------------------------------- */
 
 #desktopDovecoteModal .dovecote-folder-tree {
@@ -197,8 +217,16 @@
     text-align: center;
 }
 
+/* Read receipt check (#2) sits in the same cell as the unread dot (Sent folder only,
+   never shown together) — sized back up since .dovecote-col-unread is 0.5em for the dot. */
+#desktopDovecoteModal .dovecote-read-receipt {
+    font-size: 1.6em;
+    color: var(--text-accent-tinted);
+}
+
 #desktopDovecoteModal .dovecote-col-attachment {
     text-align: center;
+    color: var(--text-muted);
 }
 
 #desktopDovecoteModal .dovecote-col-from,
@@ -242,6 +270,14 @@
     font-size: 0.85em;
 }
 
+/* Rendered/Raw toggle (#6) — moved here from the main toolbar. */
+.dovecote-oe-header-top {
+    display: flex;
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    padding-bottom: 2px;
+}
+
 .dovecote-oe-header-row {
     display: flex;
     gap: var(--spacing-sm);
@@ -281,6 +317,41 @@
     background: var(--glass-layer-dark-4);
     color: var(--text-secondary);
     font-size: 0.85em;
+}
+
+/* Attachments (#3): image thumbnails + download chips, shown in both the inline preview
+   and the standalone reader window. */
+.dovecote-attachments-bar {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+}
+
+.dovecote-attachment-chip {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0.3em var(--spacing-sm);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-4);
+    color: var(--text-secondary);
+    font-size: 0.8em;
+}
+
+.dovecote-attachment-thumb {
+    width: 1.6em;
+    height: 1.6em;
+    border-radius: var(--border-radius-sm);
+    object-fit: cover;
+}
+
+.dovecote-attachment-name {
+    max-width: 16em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .dovecote-body-wrap {
@@ -362,10 +433,40 @@
     font-weight: 700;
 }
 
+/* To / Subject rows: vertically center the label against the input (#3). */
+.dovecote-compose-field-row {
+    align-items: center;
+}
+
 .dovecote-compose-body {
     flex: 1 1 auto;
     min-height: 160px;
     resize: vertical;
+}
+
+/* Attachments (#3) */
+.dovecote-compose-attach-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.dovecote-compose-attach-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+}
+
+.dovecote-compose-attach-chip {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0.2em var(--spacing-xs);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-4);
+    color: var(--text-secondary);
+    font-size: 0.8em;
 }
 
 .dovecote-compose-actions {
