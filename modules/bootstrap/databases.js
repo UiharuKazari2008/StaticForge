@@ -10,6 +10,7 @@ const FurryTagSearch = require('../furryTagSearch');
 const FastTagSearch = require('../fastTagSearch');
 const knowledgeMemoryDb = require('../knowledgeMemoryDatabase');
 const dovecoteDatabase = require('../dovecoteDatabase');
+const startMenuLayoutDatabase = require('../startMenuLayoutDatabase');
 const tagSearchDatabase = require('../tagSearchDatabase');
 const naxTagsDatabase = require('../naxTagsDatabase');
 const NaxTagGenerationService = require('../naxTagGeneration');
@@ -194,6 +195,21 @@ function initializeDovecoteDb(gr) {
     }
 }
 
+function initializeStartMenuLayoutDb(gr) {
+    try {
+        const initialized = startMenuLayoutDatabase.initializeStartMenuLayoutDatabase(gr.getPath('databases'));
+        if (!initialized) {
+            throw new Error('Failed to initialize start menu layout database');
+        }
+        gr.startMenuLayoutDatabase = startMenuLayoutDatabase;
+        gr.initializationProgress.startMenuLayoutDatabase = true;
+        console.log('✓ Start menu layout database ready');
+    } catch (error) {
+        console.error('  ❌ Failed to load start menu layout database:', error);
+        throw error;
+    }
+}
+
 function initializeTagSearchDatabase(gr) {
     try {
         const { initializeTagSearchDatabase: initTagSearchDb } = tagSearchDatabase;
@@ -338,6 +354,7 @@ module.exports = {
     initializeDatabases,
     initializeKnowledgeMemoryDb,
     initializeDovecoteDb,
+    initializeStartMenuLayoutDb,
     initializeTagSearchDatabase,
     initializeNaxVibesGallery,
     initializeNovelaiExploreGallery,
