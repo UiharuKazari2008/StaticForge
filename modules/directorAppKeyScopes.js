@@ -14,6 +14,9 @@
  * get_latest_image, get_generated_image) and memory images (link_memory_image)
  * already sit on generation and gallery. Explore, cake, work items, Apocrypha,
  * report, usage, and the NAX packet scope were not on the minted list.
+ *
+ * Dovecote (sfapp_dovecote) is also widened onto the named bot MCP keys
+ * (Menma, Guren, Chiyo, Ivory, Hoshino) so mail tools appear in their tool lists.
  */
 
 const LEGACY_DIRECTOR_SCOPES = Object.freeze([
@@ -38,6 +41,17 @@ const DIRECTOR_KEY_TARGETS = Object.freeze([
     { persona: 'xi', label: 'Xi' }
 ]);
 
+/** Bot MCP keys that need Dovecote mail tools after the module shipped. */
+const DOVECOTE_BOT_KEY_TARGETS = Object.freeze([
+    { persona: 'menma', label: 'Menma' },
+    { persona: 'guren', label: 'Guren' },
+    { persona: 'chiyo', label: 'Chiyo' },
+    { persona: 'ivory', label: 'Ivory' },
+    { persona: 'hoshino', label: 'Hoshino' }
+]);
+
+const DOVECOTE_SCOPE = 'sfapp_dovecote';
+
 function parseStoredScopes(raw) {
     try {
         const parsed = JSON.parse(raw);
@@ -52,16 +66,17 @@ function directorScopeReport() {
         before: LEGACY_DIRECTOR_SCOPES.slice(),
         after: DIRECTOR_MCP_SCOPES.slice(),
         added: DIRECTOR_SCOPE_ADDITIONS.slice(),
-        personas: DIRECTOR_KEY_TARGETS.map((target) => ({ persona: target.persona, label: target.label }))
+        personas: DIRECTOR_KEY_TARGETS.map((target) => ({ persona: target.persona, label: target.label })),
+        dovecoteBots: DOVECOTE_BOT_KEY_TARGETS.map((target) => ({ persona: target.persona, label: target.label }))
     };
 }
 
 /**
- * Widen Wren and Xi keys by label, then update each row by id.
+ * Widen labeled keys by app_name, ensuring each has the given scopes.
  * Idempotent. Does not reissue. Leaves every other key alone.
  * Universal keys already cover the tools and are not rewritten.
  */
-async function widenDirectorApplicationKeys(manager) {
+async function widenLabeledApplicationKeys(manager, targets, scopesToEnsure, source) {
     if (!manager || typeof manager.updateApplicationKey !== 'function') {
         throw new Error('Application auth manager is not ready');
     }
@@ -69,7 +84,7 @@ async function widenDirectorApplicationKeys(manager) {
     const rows = await getDb().all(
         `SELECT id, app_name, scopes, status, revoked_at FROM application_keys`
     );
-    const byLabel = new Map(DIRECTOR_KEY_TARGETS.map((target) => [target.label, target.persona]));
+    const byLabel = new Map(targets.map((target) => [target.label, target.persona]));
     const keys = [];
     let updated = 0;
     for (const row of rows || []) {
@@ -99,7 +114,7 @@ async function widenDirectorApplicationKeys(manager) {
             });
             continue;
         }
-        const missing = DIRECTOR_MCP_SCOPES.filter((scope) => !before.includes(scope));
+        const missing = scopesToEnsure.filter((scope) => !before.includes(scope));
         if (!missing.length) {
             keys.push({
                 id: row.id,
@@ -114,7 +129,7 @@ async function widenDirectorApplicationKeys(manager) {
         const result = await manager.updateApplicationKey(row.id, {
             scopes: before.concat(missing)
         }, {
-            source: 'director_scope_migration',
+            source,
             actor: 'startup'
         });
         if (!result || result.success !== true) {
@@ -140,11 +155,33 @@ async function widenDirectorApplicationKeys(manager) {
             changed: result.unchanged !== true
         });
     }
+    return { updated, keys };
+}
+
+/**
+ * Widen Wren and Xi keys to the full director MCP scope list, then add
+ * sfapp_dovecote onto the named bot MCP keys. Idempotent; audit-logged.
+ */
+async function widenDirectorApplicationKeys(manager) {
+    const director = await widenLabeledApplicationKeys(
+        manager,
+        DIRECTOR_KEY_TARGETS,
+        DIRECTOR_MCP_SCOPES,
+        'director_scope_migration'
+    );
+    const bots = await widenLabeledApplicationKeys(
+        manager,
+        DOVECOTE_BOT_KEY_TARGETS,
+        [DOVECOTE_SCOPE],
+        'dovecote_scope_migration'
+    );
     return {
-        updated,
-        keys,
+        updated: director.updated + bots.updated,
+        keys: director.keys.concat(bots.keys),
         beforeScopes: LEGACY_DIRECTOR_SCOPES.slice(),
-        afterScopes: DIRECTOR_MCP_SCOPES.slice()
+        afterScopes: DIRECTOR_MCP_SCOPES.slice(),
+        directorUpdated: director.updated,
+        dovecoteBotUpdated: bots.updated
     };
 }
 
@@ -153,6 +190,9 @@ module.exports = {
     DIRECTOR_SCOPE_ADDITIONS,
     DIRECTOR_MCP_SCOPES,
     DIRECTOR_KEY_TARGETS,
+    DOVECOTE_BOT_KEY_TARGETS,
+    DOVECOTE_SCOPE,
     directorScopeReport,
+    widenLabeledApplicationKeys,
     widenDirectorApplicationKeys
 };

@@ -42,9 +42,14 @@ async function main() {
         assert.ok(!report.before.includes(scope), scope);
         assert.ok(report.after.includes(scope), scope);
     });
-    ['explore', 'nax', 'sfapp_cake_pantry', 'sfapp_apocrypha', 'sfapp_report_issue', 'sfapp_usage'].forEach((scope) => {
+    ['explore', 'nax', 'sfapp_cake_pantry', 'sfapp_apocrypha', 'sfapp_report_issue', 'sfapp_usage', 'sfapp_dovecote'].forEach((scope) => {
         assert.ok(report.added.includes(scope));
     });
+    const { AVAILABLE_SCOPES } = require('../modules/applicationAuthManager');
+    assert.ok(AVAILABLE_SCOPES.some((s) => s.id === 'sfapp_dovecote'), 'AVAILABLE_SCOPES must list sfapp_dovecote');
+    const { DOVECOTE_BOT_KEY_TARGETS, DOVECOTE_SCOPE } = require('../modules/directorAppKeyScopes');
+    assert.strictEqual(DOVECOTE_SCOPE, 'sfapp_dovecote');
+    assert.deepStrictEqual(DOVECOTE_BOT_KEY_TARGETS.map((t) => t.label), ['Menma', 'Guren', 'Chiyo', 'Ivory', 'Hoshino']);
 
     const tools = toolScopesFromFacade();
     const scopeOf = (name) => {
@@ -306,6 +311,24 @@ async function main() {
 
     const otherRow = await getDb().get('SELECT scopes FROM application_keys WHERE id = ?', [other.summary.id]);
     assert.strictEqual(otherRow.scopes, '["gallery"]');
+
+    const menma = await manager.createApplicationKey({
+        appName: 'Menma',
+        userAgent: 'Menma/1.0 (StaticForge; mcp)',
+        scopes: ['gallery', 'sfapp_apocrypha', 'sfapp_cake_pantry'],
+        userType: 'admin'
+    });
+    const menmaWiden = await widenDirectorApplicationKeys(manager);
+    assert.ok(menmaWiden.dovecoteBotUpdated >= 1);
+    const menmaRow = menmaWiden.keys.find((key) => key.id === menma.summary.id);
+    assert.ok(menmaRow.after.includes('sfapp_dovecote'));
+    assert.strictEqual(menmaRow.changed, true);
+    const menmaAudits = await getDb().all(
+        `SELECT source, changes FROM application_key_audit WHERE application_key_id = ? AND source = 'dovecote_scope_migration'`,
+        [menma.summary.id]
+    );
+    assert.strictEqual(menmaAudits.length, 1);
+    assert.ok(menmaAudits[0].changes.includes('sfapp_dovecote'));
 
     const second = await widenDirectorApplicationKeys(manager);
     assert.strictEqual(second.updated, 0);
