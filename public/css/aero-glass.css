@@ -129,9 +129,25 @@ html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) .modal-win
     color: hsl(0 0% 90%);
 }
 
-/* Maximized: square frame (token, so no specificity contest with the ::before rule above) */
-.modal.modal-maximized {
+/* Maximized: square, near-solid Vista frame. The frosted copy and the sheen stop showing
+   through, the inner highlight goes, and the side/bottom borders turn transparent since
+   on Vista they sit off-screen. Tokens, so no specificity contest with ::before above. */
+.modal.modal-maximized,
+#galleryWindow.modal-maximized {
     --aero-frame-radius: 0px;
+    --aero-tint-maximized: hsl(0 0% 4% / 96%);
+    --aero-sheen: linear-gradient(180deg, hsl(0 0% 100% / 5%) 0, hsl(0 0% 100% / 0%) 28px);
+    --aero-sheen-inactive: linear-gradient(180deg, hsl(0 0% 100% / 3%) 0, hsl(0 0% 100% / 0%) 28px);
+    --aero-frame-highlight: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+html[data-glass="frosted"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme),
+html[data-glass="basic"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme),
+html[data-glass="live"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme) {
+    border-color: transparent;
+    box-shadow: none;
 }
 
 /* basic never transitions frame paint */
