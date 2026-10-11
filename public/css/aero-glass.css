@@ -183,6 +183,10 @@ html[data-glass="frosted"] #galleryWindow [data-aero-surface],
 html[data-glass="basic"] #galleryWindow [data-aero-surface] {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+    /* The surface has a translucent 1px border: paint from the border edge and under it, or the
+       ring shows whatever sits behind the element instead of the frost */
+    background-origin: border-box;
+    background-clip: border-box;
     background-color: var(--aero-frame-base);
     background-image:
         var(--aero-sheen),
@@ -206,8 +210,8 @@ html[data-glass="frosted"] #galleryWindow [data-aero-surface] {
     background-position:
         0 0,
         0 0,
-        calc(var(--aero-cover-x, 0px) - var(--aero-sx, 0px) - var(--modal-drag-x, 0px) - 1px)
-        calc(var(--aero-cover-y, 0px) - var(--aero-sy, 0px) - var(--modal-drag-y, 0px) - 1px);
+        calc(var(--aero-cover-x, 0px) - var(--aero-sx, 0px) - var(--modal-drag-x, 0px))
+        calc(var(--aero-cover-y, 0px) - var(--aero-sy, 0px) - var(--modal-drag-y, 0px));
 }
 
 /* ---------- maximized: Vista dark frame, every mode ---------- */
