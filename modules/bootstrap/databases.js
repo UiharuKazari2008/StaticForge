@@ -148,6 +148,9 @@ async function initializeDatabases(gr) {
                 const labels = widened.keys.filter((key) => key.changed).map((key) => key.label).join(', ');
                 console.log(`✓ Director application keys widened in place: ${labels}`);
             }
+            if (widened && widened.oauthTokensUpdated > 0) {
+                console.log(`✓ OAuth access tokens widened with sfapp_dovecote: ${widened.oauthTokensUpdated}`);
+            }
         } catch (scopeErr) {
             console.error(`Director application key scope migration skipped: ${scopeErr.message}`);
         }

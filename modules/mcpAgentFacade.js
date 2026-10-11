@@ -9010,7 +9010,7 @@ async function handleJsonRpc(globalResources, req, message) {
                 id,
                 result: {
                     protocolVersion: MCP_PROTOCOL_VERSION,
-                    capabilities: { tools: { listChanged: false } },
+                    capabilities: { tools: { listChanged: true } },
                     serverInfo: buildMcpServerInfo(globalResources, currentMcpToolsRevision()),
                     instructions: MCP_INSTRUCTIONS
                 }

@@ -22,6 +22,31 @@ function parseScopesJson(raw) {
     }
 }
 
+/**
+ * Effective scopes for an OAuth access token.
+ * Consent snapshot stays the base, but sfapp_* module scopes follow the
+ * current application key so bot connectors pick up new modules (Dovecote)
+ * without a fresh grant. Named scopes stay at the snapshot (minus anything
+ * removed from the key). Universal keys keep the token list as-is.
+ */
+function effectiveOAuthScopes(tokenScopes, keyScopes) {
+    const token = Array.isArray(tokenScopes) ? tokenScopes.map(String) : [];
+    const key = Array.isArray(keyScopes) ? keyScopes.map(String) : [];
+    if (key.includes('universal')) return token.length ? token.slice() : ['universal'];
+    const allowed = new Set(key);
+    const next = [];
+    for (const scope of token) {
+        if (!allowed.has(scope)) continue;
+        if (!next.includes(scope)) next.push(scope);
+    }
+    for (const scope of key) {
+        if (!scope.startsWith('sfapp_')) continue;
+        if (!next.includes(scope)) next.push(scope);
+    }
+    return next;
+}
+
+
 function getDb() {
     // Lazy load to avoid loading native modules at import time
     // applicationAuthDatabase.js
@@ -350,11 +375,17 @@ class McpOAuthProvider {
             return { success: false, error: 'invalid_grant', error_description: 'Application key no longer valid' };
         }
 
-        const currentScopes = JSON.parse(row.scopes || '[]');
+        const currentScopes = effectiveOAuthScopes(JSON.parse(row.scopes || '[]'), keyScopes);
         let grantedScopes = currentScopes;
         if (scope) {
             const requestedScopes = parseScopes(scope);
-            grantedScopes = requestedScopes.filter(s => currentScopes.includes(s));
+            grantedScopes = requestedScopes.filter((s) => currentScopes.includes(s));
+            // Keep auto-widened sfapp_* modules even when the client re-requests a subset.
+            for (const keyScope of keyScopes) {
+                if (!String(keyScope).startsWith('sfapp_')) continue;
+                if (!grantedScopes.includes(keyScope)) grantedScopes.push(keyScope);
+            }
+            if (!grantedScopes.length) grantedScopes = currentScopes.slice();
         }
 
         await getDb().run(
@@ -411,10 +442,11 @@ class McpOAuthProvider {
             return { valid: false, code: 'KEY_INVALID' };
         }
 
+        const tokenScopes = JSON.parse(row.scopes || '[]');
         return {
             valid: true,
             userType: row.user_type || 'admin',
-            scopes: JSON.parse(row.scopes || '[]'),
+            scopes: effectiveOAuthScopes(tokenScopes, keyScopes),
             applicationKeyId: row.application_key_id,
             appName: row.app_name || null,
             clientId: row.client_id,
@@ -444,6 +476,7 @@ class McpOAuthProvider {
 
 module.exports = {
     McpOAuthProvider,
+    effectiveOAuthScopes,
     OAUTH_ACCESS_TOKEN_PREFIX,
     OAUTH_REFRESH_TOKEN_PREFIX,
     isOAuthAccessTokenFormat,

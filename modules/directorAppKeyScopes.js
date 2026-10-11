@@ -175,14 +175,83 @@ async function widenDirectorApplicationKeys(manager) {
         [DOVECOTE_SCOPE],
         'dovecote_scope_migration'
     );
+    const tokens = await widenDovecoteOAuthAccessTokens(manager);
     return {
         updated: director.updated + bots.updated,
         keys: director.keys.concat(bots.keys),
         beforeScopes: LEGACY_DIRECTOR_SCOPES.slice(),
         afterScopes: DIRECTOR_MCP_SCOPES.slice(),
         directorUpdated: director.updated,
-        dovecoteBotUpdated: bots.updated
+        dovecoteBotUpdated: bots.updated,
+        oauthTokensUpdated: tokens.updated,
+        oauthTokenKeys: tokens.keys
     };
+}
+
+
+/**
+ * Widen live OAuth access-token scope snapshots with sfapp_dovecote when the
+ * parent application key already has it. Idempotent. Audit-logs per key.
+ */
+async function widenDovecoteOAuthAccessTokens(manager) {
+    const { getDb } = require('./applicationAuthDatabase');
+    const db = getDb();
+    const nowSec = Math.floor(Date.now() / 1000);
+    const labels = new Set(
+        DIRECTOR_KEY_TARGETS.map((t) => t.label).concat(
+            DOVECOTE_BOT_KEY_TARGETS.map((t) => t.label)
+        )
+    );
+    const rows = await db.all(
+        `SELECT t.token_hash, t.scopes AS token_scopes, t.application_key_id, k.app_name, k.scopes AS key_scopes
+         FROM oauth_access_tokens t
+         JOIN application_keys k ON k.id = t.application_key_id
+         WHERE t.revoked_at IS NULL AND t.expires_at > ?
+           AND k.status = 'active' AND k.revoked_at IS NULL`,
+        [nowSec]
+    );
+    let updated = 0;
+    const keys = [];
+    const touched = new Set();
+    for (const row of rows || []) {
+        if (!labels.has(row.app_name)) continue;
+        let tokenScopes = [];
+        let keyScopes = [];
+        try { tokenScopes = JSON.parse(row.token_scopes || '[]'); } catch (_) { tokenScopes = []; }
+        try { keyScopes = JSON.parse(row.key_scopes || '[]'); } catch (_) { keyScopes = []; }
+        if (!keyScopes.includes(DOVECOTE_SCOPE) && !keyScopes.includes('universal')) continue;
+        if (tokenScopes.includes(DOVECOTE_SCOPE) || tokenScopes.includes('universal')) continue;
+        const next = tokenScopes.concat([DOVECOTE_SCOPE]);
+        await db.run(
+            `UPDATE oauth_access_tokens SET scopes = ? WHERE token_hash = ? AND revoked_at IS NULL`,
+            [JSON.stringify(next), row.token_hash]
+        );
+        updated += 1;
+        if (!touched.has(row.application_key_id) && manager && typeof manager._writeApplicationKeyAudit === 'function') {
+            // fall through — use updateApplicationKey audit path via a no-op scopes rewrite? Prefer direct audit insert.
+        }
+        if (!touched.has(row.application_key_id)) {
+            touched.add(row.application_key_id);
+            keys.push({ id: row.application_key_id, label: row.app_name, changed: true });
+            try {
+                await db.run(
+                    `INSERT INTO application_key_audit
+                        (created_at, application_key_id, app_name, event, actor, source, changes)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        nowSec,
+                        row.application_key_id,
+                        row.app_name,
+                        'oauth_token_scopes_widened',
+                        'startup',
+                        'oauth_token_scope_migration',
+                        JSON.stringify({ added: [DOVECOTE_SCOPE] })
+                    ]
+                );
+            } catch (_) { /* audit table may lack columns on old DBs — migration still applied */ }
+        }
+    }
+    return { updated, keys };
 }
 
 module.exports = {
@@ -194,5 +263,6 @@ module.exports = {
     DOVECOTE_SCOPE,
     directorScopeReport,
     widenLabeledApplicationKeys,
-    widenDirectorApplicationKeys
+    widenDirectorApplicationKeys,
+    widenDovecoteOAuthAccessTokens
 };
