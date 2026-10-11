@@ -324,7 +324,8 @@ def _run_loop(image, motion_prompt, frames, fps, progress):
     _report(progress, 2, "loading model")
     pipeline = _load_loop_pipeline()
     steps = 25
-    _report(progress, 10, "generating", 0, steps)
+    # vid2vid at strength 0.75 only runs the last 75% of the schedule.
+    _report(progress, 10, "generating", 0, int(steps * 0.75) or steps)
     # Image-conditioned via vid2vid: AnimateDiff has no official img2vid
     # pipeline, so the still is replicated into a "video" and partially
     # re-noised (strength<1) with the motion module guiding the diff. This
