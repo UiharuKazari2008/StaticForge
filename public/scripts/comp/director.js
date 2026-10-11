@@ -267,6 +267,7 @@ class Director {
             directorPersonaGroup: 'directorPersonaGroup',
             directorModelPick: 'directorModelPick',
             directorRuntimePick: 'directorRuntimePick',
+            directorRuntimePickName: 'directorRuntimePickName',
             directorModelPickName: 'directorModelPickName',
             directorModelPickEffort: 'directorModelPickEffort',
             directorAutoGenerateBtn: 'directorAutoGenerateBtn',
@@ -868,8 +869,19 @@ class Director {
         }
         this.paintModelPick();
         if (this.directorRuntimePick) {
-            this.directorRuntimePick.addEventListener('change', () => {
-                this._nextXiRuntime = this.directorRuntimePick.value === 'claude' ? 'claude' : 'cursor';
+            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+            contextMenu.attachClickMenuToElement(this.directorRuntimePick, {
+                onAction: (action, target, item) => {
+                    this._nextXiRuntime = item.runtimeId;
+                    this.paintRuntimePicker();
+                },
+                sections: [{
+                    type: 'list',
+                    items: [
+                        { text: 'Cursor', action: 'director-runtime-cursor', runtimeId: 'cursor', showIndicator: true, loadfn: (it) => { it.checked = (this._nextXiRuntime || 'cursor') === 'cursor'; } },
+                        { text: 'Claude', action: 'director-runtime-claude', runtimeId: 'claude', showIndicator: true, loadfn: (it) => { it.checked = this._nextXiRuntime === 'claude'; } }
+                    ]
+                }]
             });
         }
     }
@@ -3415,12 +3427,14 @@ class Director {
         const session = this.currentSession;
         const isDraft = !session || session.draft || !session.id;
         this.directorRuntimePick.classList.remove('hidden');
+        const runtime = isDraft ? (this._nextXiRuntime || 'cursor') : (session.runtime === 'claude' ? 'claude' : 'cursor');
+        if (this.directorRuntimePickName) {
+            this.directorRuntimePickName.textContent = runtime === 'claude' ? 'Claude' : 'Cursor';
+        }
         if (isDraft) {
             this.directorRuntimePick.disabled = false;
-            this.directorRuntimePick.value = this._nextXiRuntime || 'cursor';
             this.directorRuntimePick.title = 'Runtime (fixed once the session starts)';
         } else {
-            this.directorRuntimePick.value = session.runtime === 'claude' ? 'claude' : 'cursor';
             this.directorRuntimePick.disabled = true;
             this.directorRuntimePick.title = 'Runtime (fixed for this session)';
         }

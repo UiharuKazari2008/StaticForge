@@ -3,7 +3,7 @@
 // modules/dovecoteMail.js, modules/dovecoteRender.js, modules/dovecoteSanitize.js,
 // modules/ws/handlers/250-dovecoteHandler.js. This file is the desktop window only.
 // openModal / bringModalToFront / restoreMinimizedModal / closeModal: public/scripts/comp/modalUtils.js
-// setupDropdown / openDropdown / closeDropdown / teardownDropdown: public/scripts/comp/dropdown.js
+// contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js (Mailbox + Forward pickers)
 // escapeHtml / escapeHtmlAttribute: public/scripts/comp/utilities.js
 // wsClient.sendMessage: public/scripts/websocket.js
 // Layout and mobile breakpoint: public/css/desktop-apps/dovecote.css
@@ -175,9 +175,11 @@ const doveBuildToolbar = function () {
     const replyAllBtn = doveCreateButton('btn-secondary', 'Reply All', 'fas fa-reply-all');
     replyAllBtn.dataset.doveAction = 'replyAll';
     replyAllBtn.dataset.doveMutating = 'true';
+    // Forward opens a mailbox picker (doveForwardMenuConfig) instead of a plain data-dove-action.
     const forwardBtn = doveCreateButton('btn-secondary', 'Forward', 'fas fa-share');
-    forwardBtn.dataset.doveAction = 'forward';
     forwardBtn.dataset.doveMutating = 'true';
+    // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+    contextMenu.attachClickMenuToElement(forwardBtn, doveForwardMenuConfig);
     replyGroup.appendChild(replyBtn);
     replyGroup.appendChild(replyAllBtn);
     replyGroup.appendChild(forwardBtn);
@@ -230,8 +232,7 @@ const doveBuildToolbar = function () {
     viewGroup.appendChild(rawBtn);
     toolbar.appendChild(viewGroup);
 
-    toolbar.appendChild(doveBuildMailboxDropdown());
-    toolbar.appendChild(doveBuildForwardToBotDropdown());
+    toolbar.appendChild(doveBuildMailboxButton());
 
     toolbar.addEventListener('click', doveHandleToolbarClick);
     searchInput.addEventListener('input', () => {
@@ -242,120 +243,65 @@ const doveBuildToolbar = function () {
     return toolbar;
 };
 
-const doveBuildMailboxDropdown = function () {
-    const container = document.createElement('div');
-    container.className = 'custom-dropdown dark';
-    container.id = 'desktopDovecoteMailboxDropdown';
+// Mailboxes other than the one currently being viewed — used by the Forward picker.
+const doveOtherMailboxes = function () {
+    const current = desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER;
+    return desktopDovecote.mailboxes.filter((box) => box.owner !== current);
+};
 
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'custom-dropdown-btn';
-    button.id = 'desktopDovecoteMailboxDropdownBtn';
-    const icon = document.createElement('i');
-    icon.className = 'fas fa-inbox';
-    icon.setAttribute('aria-hidden', 'true');
+// contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js — items rebuilt on
+// every open via initfn so the menu always reflects the live mailbox list.
+const doveMailboxMenuConfig = {
+    onAction: (action, target, item) => doveSwitchMailbox(item.doveOwner),
+    sections: [{
+        type: 'list',
+        initfn: (section) => {
+            section.items = desktopDovecote.mailboxes.length
+                ? desktopDovecote.mailboxes.map((box) => ({
+                    text: box.label + (box.unread ? ' (' + box.unread + ')' : ''),
+                    icon: doveIsBotOwner(box.owner) ? 'fas fa-robot' : 'fas fa-user',
+                    action: 'dove-mailbox-pick',
+                    doveOwner: box.owner,
+                    showIndicator: true,
+                    loadfn: (it) => { it.checked = (desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER) === box.owner; }
+                }))
+                : [{ text: 'Loading…', disabled: true }]
+        }
+    }]
+};
+
+const doveBuildMailboxButton = function () {
+    const button = doveCreateButton('btn-secondary dovecote-mailbox-btn', 'Mailbox', 'fas fa-inbox');
     const label = document.createElement('span');
     label.textContent = 'Mailbox';
-    button.appendChild(icon);
     button.appendChild(label);
-    container.appendChild(button);
-
-    const menu = document.createElement('div');
-    menu.className = 'custom-dropdown-menu hidden';
-    menu.id = 'desktopDovecoteMailboxDropdownMenu';
-    container.appendChild(menu);
-
-    setupDropdown(container, button, menu, () => doveRenderMailboxMenu(menu), () => desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER);
-    return container;
+    // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+    contextMenu.attachClickMenuToElement(button, doveMailboxMenuConfig);
+    return button;
 };
 
-const doveBuildForwardToBotDropdown = function () {
-    const container = document.createElement('div');
-    container.className = 'custom-dropdown dark';
-    container.id = 'desktopDovecoteFwdDropdown';
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'custom-dropdown-btn';
-    button.id = 'desktopDovecoteFwdDropdownBtn';
-    button.title = 'Forward to Bot';
-    button.dataset.doveMutating = 'true';
-    const icon = document.createElement('i');
-    icon.className = 'fas fa-robot';
-    icon.setAttribute('aria-hidden', 'true');
-    const label = document.createElement('span');
-    label.textContent = 'Fwd to Bot';
-    button.appendChild(icon);
-    button.appendChild(label);
-    container.appendChild(button);
-
-    const menu = document.createElement('div');
-    menu.className = 'custom-dropdown-menu hidden';
-    menu.id = 'desktopDovecoteFwdDropdownMenu';
-    container.appendChild(menu);
-
-    setupDropdown(container, button, menu, () => doveRenderForwardMenu(menu), () => null);
-    return container;
-};
-
-const doveRenderMailboxMenu = function (menu) {
-    menu.replaceChildren();
-    desktopDovecote.mailboxes.forEach((box) => {
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option';
-        if ((desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER) === box.owner) option.classList.add('selected');
-        const icon = document.createElement('i');
-        icon.className = doveIsBotOwner(box.owner) ? 'fas fa-robot' : 'fas fa-user';
-        icon.setAttribute('aria-hidden', 'true');
-        const text = document.createElement('span');
-        text.textContent = box.label + (box.unread ? ' (' + box.unread + ')' : '');
-        option.appendChild(icon);
-        option.appendChild(text);
-        option.addEventListener('click', () => {
-            closeDropdown(menu, menu._dropdownContainer ? menu._dropdownContainer._dropdownButton : null);
-            doveSwitchMailbox(box.owner);
-        });
-        menu.appendChild(option);
-    });
-    if (!desktopDovecote.mailboxes.length) {
-        const empty = document.createElement('div');
-        empty.className = 'custom-dropdown-option disabled';
-        empty.textContent = 'Loading…';
-        menu.appendChild(empty);
-    }
-};
-
-const doveRenderForwardMenu = function (menu) {
-    menu.replaceChildren();
-    const bots = desktopDovecote.mailboxes.filter((box) => doveIsBotOwner(box.owner));
-    if (!bots.length) {
-        const empty = document.createElement('div');
-        empty.className = 'custom-dropdown-option disabled';
-        empty.textContent = 'No bot mailboxes';
-        menu.appendChild(empty);
-        return;
-    }
-    bots.forEach((box) => {
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option';
-        const icon = document.createElement('i');
-        icon.className = 'fas fa-robot';
-        icon.setAttribute('aria-hidden', 'true');
-        const text = document.createElement('span');
-        text.textContent = box.label;
-        option.appendChild(icon);
-        option.appendChild(text);
-        // Read-only admin view: forwarding someone else's mail is still a mutation, same as Reply/Delete/Archive.
-        if (!desktopDovecote.selectedMail || desktopDovecote.viewAsOwner) {
-            option.classList.add('disabled');
-        } else {
-            option.addEventListener('click', () => {
-                closeDropdown(menu, menu._dropdownContainer ? menu._dropdownContainer._dropdownButton : null);
-                doveForwardToBot(box.owner);
-            });
+// Picking a mailbox autofills the compose "To" field (doveOpenCompose's presetTo) instead of
+// sending immediately — Forward now goes through the normal compose/review flow for any mailbox,
+// not just bots, and there is no separate one-click "Fwd to Bot" action.
+const doveForwardMenuConfig = {
+    onAction: (action, target, item) => doveOpenCompose('forward', item.doveOwner),
+    sections: [{
+        type: 'list',
+        initfn: (section) => {
+            // Read-only admin view: forwarding someone else's mail is still a mutation, same as Reply/Delete/Archive.
+            const disabled = !desktopDovecote.selectedMail || !!desktopDovecote.viewAsOwner;
+            const others = doveOtherMailboxes();
+            section.items = others.length
+                ? others.map((box) => ({
+                    text: box.label,
+                    icon: doveIsBotOwner(box.owner) ? 'fas fa-robot' : 'fas fa-user',
+                    action: 'dove-forward-pick',
+                    doveOwner: box.owner,
+                    disabled: disabled
+                }))
+                : [{ text: 'No other mailboxes', disabled: true }]
         }
-        menu.appendChild(option);
-    });
+    }]
 };
 
 const doveSwitchMailbox = function (owner) {
@@ -372,7 +318,9 @@ const doveSwitchMailbox = function (owner) {
 
 const doveBuildFolderTree = function () {
     const tree = document.createElement('div');
-    tree.className = 'dovecote-folder-tree';
+    // director-content-inner: public/css/director.css — same recessed panel treatment as
+    // Director's session list (.director-sessions-list.director-content-inner).
+    tree.className = 'dovecote-folder-tree director-content-inner';
     tree.id = 'desktopDovecoteFolderTree';
     DESKTOP_DOVECOTE_FOLDERS.forEach((folder) => {
         tree.appendChild(doveBuildFolderRow(folder));
@@ -458,7 +406,9 @@ const doveBuildMainPane = function () {
     pane.id = 'desktopDovecoteMainPane';
 
     const listWrap = document.createElement('div');
-    listWrap.className = 'dovecote-message-list-wrap';
+    // director-content-inner: public/css/director.css — recessed panel treatment, same as
+    // Director's chat messages container.
+    listWrap.className = 'dovecote-message-list-wrap director-content-inner';
 
     const mobileToolbar = document.createElement('div');
     mobileToolbar.className = 'dovecote-mobile-list-toolbar';
@@ -509,7 +459,9 @@ const doveBuildMainPane = function () {
 
 const doveBuildPreviewPane = function () {
     const preview = document.createElement('div');
-    preview.className = 'dovecote-preview-pane';
+    // director-content-inner: public/css/director.css — recessed panel treatment, same as
+    // Director's chat messages container.
+    preview.className = 'dovecote-preview-pane director-content-inner';
     preview.id = 'desktopDovecotePreviewPane';
 
     const mobileBackBar = document.createElement('div');
@@ -526,7 +478,12 @@ const doveBuildPreviewPane = function () {
         const icons = { reply: 'fas fa-reply', replyAll: 'fas fa-reply-all', forward: 'fas fa-share', archive: 'fas fa-box-archive', delete: 'fas fa-trash' };
         const titles = { reply: 'Reply', replyAll: 'Reply All', forward: 'Forward', archive: 'Archive', delete: 'Delete' };
         const btn = doveCreateButton('btn-secondary btn-small', titles[action], icons[action]);
-        btn.dataset.doveAction = action;
+        if (action === 'forward') {
+            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+            contextMenu.attachClickMenuToElement(btn, doveForwardMenuConfig);
+        } else {
+            btn.dataset.doveAction = action;
+        }
         mobileActions.appendChild(btn);
     });
     mobileBackBar.appendChild(mobileActions);
@@ -641,7 +598,6 @@ const doveDispatchAction = function (action) {
         case 'create': doveOpenCompose('create'); return;
         case 'reply': doveOpenCompose('reply'); return;
         case 'replyAll': doveOpenCompose('replyAll'); return;
-        case 'forward': doveOpenCompose('forward'); return;
         case 'toggleRead': doveToggleRead(); return;
         case 'delete': doveDeleteSelected(); return;
         case 'archive': doveArchiveSelected(); return;
@@ -1052,20 +1008,10 @@ const doveArchiveSelected = async function () {
     }
 };
 
-const doveForwardToBot = async function (botOwner) {
-    const mail = desktopDovecote.selectedMail;
-    if (!mail || desktopDovecote.viewAsOwner) return;
-    try {
-        // dovecote_forward_mail: modules/ws/handlers/250-dovecoteHandler.js (unmodified one-click forward)
-        await wsClient.sendMessage('dovecote_forward_mail', { id: mail.id, to: botOwner });
-    } catch (err) {
-        doveShowError((err && err.message) || 'Could not forward message');
-    }
-};
-
 // ---- Compose -------------------------------------------------------------------
 
-const doveOpenCompose = function (mode) {
+// presetTo: recipient picked from doveForwardMenuConfig, used only in 'forward' mode.
+const doveOpenCompose = function (mode, presetTo) {
     if (desktopDovecote.viewAsOwner) return;
     const mail = desktopDovecote.selectedMail;
     if (mode !== 'create' && !mail) return;
@@ -1080,7 +1026,7 @@ const doveOpenCompose = function (mode) {
         subject = /^re:/i.test(mail.subject || '') ? mail.subject : 'Re: ' + (mail.subject || '');
         replyTo = mail.id;
     } else if (mode === 'forward') {
-        to = '';
+        to = presetTo || '';
         subject = /^fwd:/i.test(mail.subject || '') ? mail.subject : 'Fwd: ' + (mail.subject || '');
         body = mail.body || '';
     }
