@@ -29,6 +29,24 @@ def tiny_png(width=2, height=2, color=(10, 20, 30)):
     return buf.getvalue()
 
 
+class LtxFrameCountTests(unittest.TestCase):
+    def test_rounds_up_not_down(self):
+        # 16 must round UP to 17 (8*2+1), not down to 9 (8*1+1) — a floor
+        # div here previously under-produced frames and failed fail-loud.
+        self.assertEqual(infer_animate._ltx_frame_count(16), 17)
+
+    def test_already_valid_stays(self):
+        self.assertEqual(infer_animate._ltx_frame_count(9), 9)
+        self.assertEqual(infer_animate._ltx_frame_count(17), 17)
+
+    def test_clamps_below_minimum(self):
+        self.assertEqual(infer_animate._ltx_frame_count(8), 9)
+
+    def test_result_always_covers_request(self):
+        for frames in range(8, 33):
+            self.assertGreaterEqual(infer_animate._ltx_frame_count(frames), frames)
+
+
 class TileTests(unittest.TestCase):
     def test_vram_ladder_for_8gb(self):
         self.assertEqual(infer.tiles_for_vram_mb(8192, True)[0], 256)
@@ -278,7 +296,7 @@ class AnimateApiTests(unittest.TestCase):
         self.assertEqual(status["frames"], 16)
         self.assertEqual(status["fps"], 8)
         self.assertTrue(status["loop"])
-        self.assertEqual(status["backend"], "loop")
+        self.assertEqual(status["backend"], "ltx")
 
         gif = self.client.get("/jobs/" + job_id + "/result", headers=self.headers)
         self.assertEqual(gif.status_code, 200)

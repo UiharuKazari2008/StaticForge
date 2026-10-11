@@ -24,7 +24,9 @@ const LOCAL_ANIMATE_BACKENDS = [
     { id: 'ltx', name: 'LTX-Video I2V' }
 ];
 
-const DEFAULT_ANIMATE_BACKEND = 'loop';
+// ltx is the best *working* true image-to-video mode on Ruiko's 8 GB card;
+// wan is real I2V too but ran 2.5+ hours without finishing in the bakeoff.
+const DEFAULT_ANIMATE_BACKEND = 'ltx';
 const DEFAULT_ANIMATE_FRAMES = 16;
 const DEFAULT_ANIMATE_FPS = 8;
 const ANIMATE_RESULT_FORMATS = ['gif', 'mp4', 'webp'];

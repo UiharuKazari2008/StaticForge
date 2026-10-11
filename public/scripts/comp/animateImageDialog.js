@@ -109,8 +109,10 @@ async function showAnimateImageDialog(event = null) {
 
         // Mode picker (backend on the wire) — custom-dropdown (dropdown.js), not a native <select>.
         // loop (AnimateDiff) is fast but loops the still; wan/ltx are true
-        // image-to-video and continue the scene instead.
-        let selectedBackend = 'loop';
+        // image-to-video and continue the scene instead. ltx is the default:
+        // it's the best working true-I2V mode on Ruiko's 8 GB card (wan ran
+        // 2.5+ hours without finishing in the bakeoff).
+        let selectedBackend = 'ltx';
         const backends = knownLocalAnimateBackends();
         if (backends.length && !backends.some((b) => b.id === selectedBackend)) {
             selectedBackend = backends[0].id;
