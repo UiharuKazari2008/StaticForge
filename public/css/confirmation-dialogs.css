@@ -396,6 +396,31 @@
     justify-content: flex-end;
 }
 
+/* Animate (Ruiko) dialog — public/scripts/comp/animateImageDialog.js */
+.animate-dialog-full-width {
+    width: 100%;
+}
+
+.animate-dialog-field-label {
+    margin-top: var(--spacing-sm);
+}
+
+.animate-dialog-dropdown-btn {
+    width: 100%;
+    max-width: 300px;
+}
+
+.animate-dialog-options-row {
+    display: flex;
+    gap: 12px;
+    margin-top: var(--spacing-sm);
+    align-items: center;
+}
+
+.animate-dialog-number-input {
+    width: 64px;
+}
+
 /* Studio change JSON — public/scripts/comp/studioChangeJson.js */
 #confirmationDialog.studio-change-dialog-modal {
     max-width: min(560px, calc(90vw - calc(2 * var(--spacing-md))));

@@ -1,8 +1,22 @@
 # Ruiko worker
 
-Local GPU worker for Dreamscape, running on **Ruiko** (Windows 11, RTX 2070 Super, 8 GB). It serves two job types over one API: `upscale` (spandrel, card #393) and `animate` (image-to-GIF/MP4/WebP, card #B23). Dreamscape talks to it over the LAN. Both job types are free (no NovelAI Anlas).
+Local GPU worker for Dreamscape, running on **Ruiko** (Windows 11, RTX 2070 Super, 8 GB). It serves two job types over one API: `upscale` (spandrel, card #393) and `animate` (image-to-GIF/MP4/WebP, card #B23/#B25). Dreamscape talks to it over the LAN. Both job types are free (no NovelAI Anlas).
 
 Bind: `0.0.0.0:8188`. One job at a time across both types (single in-memory FIFO queue) — the upscaler and the animate backends are never resident in VRAM together; the worker unloads whichever model group isn't needed before switching. Finished jobs are dropped after one hour.
+
+## Animate backends
+
+`animate` jobs pick a `backend`:
+
+| Backend | Tech | Image-to-video? | Max edge | Notes |
+| --- | --- | --- | --- | --- |
+| `loop` (default) | AnimateDiff (anime SD1.5 + motion module) | No — vid2vid-seeded from the still, loops around it | 512 | Fast, cheap, fits 8 GB easily. Does not continue the scene. |
+| `wan` | Wan 2.1 I2V 14B 480p (`WanImageToVideoPipeline`) | Yes | 480 | True image-to-video. The 14B transformer is GGUF-quantized (city96 Q4_K_M by default) to fit VRAM; the rest of the pipeline runs under `enable_model_cpu_offload()` (GGUF tensors don't survive the meta-device hook `enable_sequential_cpu_offload()` uses — diffusers' dequant lookup throws `KeyError: None`). Slow on an 8 GB card. |
+| `ltx` | LTX-Video I2V (`LTXImageToVideoPipeline`) | Yes | 512 | True image-to-video, smaller than Wan 14B. Also runs under `enable_sequential_cpu_offload()`. `num_frames` is rounded up to `8k+1` for the causal VAE, then trimmed back to the requested count. |
+
+Only one backend's weights are resident at a time; switching backends (or to/from `upscale`) unloads the previous group first. Failures (OOM, no motion detected, wrong frame count) fail the job loudly — `animate` never returns a still disguised as a GIF.
+
+Override the Wan/LTX/loop model repos with `RUIKO_ANIMATEDIFF_BASE`, `RUIKO_WAN_MODEL`, `RUIKO_WAN_GGUF_REPO`, `RUIKO_WAN_GGUF_FILE`, `RUIKO_LTX_MODEL`.
 
 ## Auth
 
@@ -45,7 +59,7 @@ Weights load through spandrel. On an 8 GB card, fp16 tiles start at 256 px with 
 2. Install Python 3.11+ and [NSSM](https://nssm.cc/).
 3. `powershell -ExecutionPolicy Bypass -File .\install.ps1`
 
-That creates `F:\dreamscape-worker\venv`, installs the CUDA 12.4 PyTorch wheel (Turing sm_75), installs `requirements.txt`, downloads the three weights into `F:\dreamscape-worker\models` and checks SHA256, generates `worker.key` if it is missing, and registers the NSSM service `RuikoUpscaler` with a 5 second auto-restart.
+That creates `F:\dreamscape-worker\venv`, installs the CUDA 12.4 PyTorch wheel (Turing sm_75), installs `requirements.txt`, downloads the three weights into `F:\dreamscape-worker\models` and checks SHA256, prefetches the `loop` (AnimateDiff) backend, generates `worker.key` if it is missing, and registers the NSSM service `RuikoUpscaler` with a 5 second auto-restart. Pass `-PrefetchWan` and/or `-PrefetchLtx` to also download those backends up front instead of lazily on the first job.
 
 The script does **not** open the firewall. It prints a Private-profile rule for TCP 8188 limited to the LAN. Do not publish 8188 on the internet.
 

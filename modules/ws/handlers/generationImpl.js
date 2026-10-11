@@ -485,8 +485,9 @@ async function handleImageAnimation(handlers, ws, message, clientInfo, wsServer)
 
         handlers.startKeepAliveInterval(ws, requestId, 15000);
 
-        const backend = LOCAL_ANIMATE_BACKENDS.some((row) => row.id === data.backend)
-            ? data.backend
+        const requestedBackend = data.backend || data.mode;
+        const backend = LOCAL_ANIMATE_BACKENDS.some((row) => row.id === requestedBackend)
+            ? requestedBackend
             : DEFAULT_ANIMATE_BACKEND;
         const result = await animateImageWebSocket(handlers.globalResources,
             data.filename,

@@ -1970,7 +1970,7 @@ const TOOL_DEFS = [
     {
         name: 'animate_image',
         core: true,
-        description: 'Animate a gallery still into a GIF (image, saved to the gallery) with MP4/WebP alongside, via the Ruiko GPU worker. Free, no Anlas, no userApprovedPaidRequest needed — there is no paid fallback for this tool. Requires filename and motion_prompt (passed to the backend verbatim — never rewrite or embellish the caller-supplied text). Optional frames (8-32, default 16), fps (4-24, default 8), loop (default true), backend (animatediff default, or wan). Returns jobId and the saved filename. If Ruiko is offline the error has code LOCAL_WORKER_OFFLINE; there is no other backend to retry with.',
+        description: 'Animate a gallery still into a GIF (image, saved to the gallery) with MP4/WebP alongside, via the Ruiko GPU worker. Free, no Anlas, no userApprovedPaidRequest needed — there is no paid fallback for this tool. Requires filename and motion_prompt (passed to the backend verbatim — never rewrite or embellish the caller-supplied text). Optional frames (8-32, default 16), fps (4-24, default 8), loop (default true), backend/mode (loop default, or wan/ltx for true image-to-video that continues the scene instead of looping). Returns jobId and the saved filename. If Ruiko is offline the error has code LOCAL_WORKER_OFFLINE; there is no other backend to retry with.',
         scope: 'generation',
         packet: 'animate_image',
         inputSchema: {
@@ -1984,7 +1984,8 @@ const TOOL_DEFS = [
                 frames: { type: 'number', description: '8-32, default 16.' },
                 fps: { type: 'number', description: '4-24, default 8.' },
                 loop: { type: 'boolean', description: 'Default true (GIF/WebP loop forever).' },
-                backend: { type: 'string', description: 'animatediff (default, SD1.5 + motion module) or wan (Wan 2.1 1.3B, experimental, 480p).' }
+                backend: { type: 'string', description: 'loop (default, AnimateDiff SD1.5 + motion module, loops rather than continuing the scene), wan (Wan 2.1 I2V 14B 480p, true image-to-video), or ltx (LTX-Video I2V, true image-to-video). Alias of mode.' },
+                mode: { type: 'string', description: 'Same as backend.' }
             }
         }
     },
@@ -7041,6 +7042,7 @@ async function callTool(globalResources, req, name, args) {
     }
     if (name === 'animate_image') {
         input.motion_prompt = input.motion_prompt || input.motionPrompt;
+        input.backend = input.backend || input.mode;
     }
     if (name === 'upscale_image') {
         const backend = String(input.backend || input.upscaler || '').toLowerCase();

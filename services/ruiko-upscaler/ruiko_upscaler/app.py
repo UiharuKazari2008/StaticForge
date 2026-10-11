@@ -5,6 +5,7 @@ import base64
 import io
 import os
 import time
+import traceback
 import uuid
 from contextlib import asynccontextmanager
 
@@ -208,6 +209,8 @@ def _parse_loop(value):
 
 def _parse_backend(value):
     backend = (value or DEFAULT_BACKEND).strip().lower()
+    if backend == "animatediff":
+        backend = "loop"  # legacy id
     if backend not in ALLOWED_BACKENDS:
         raise ValueError("backend must be one of: {0}".format(", ".join(ALLOWED_BACKENDS)))
     return backend
@@ -308,6 +311,9 @@ async def worker_loop(app):
         except Exception as exc:
             job.status = "failed"
             job.error = str(exc) or type(exc).__name__
+            # str(exc) alone is often too thin to debug (e.g. "None"); the
+            # worker's stderr log needs the full traceback.
+            traceback.print_exc()
         finally:
             job.image = None
             job.finished = time.time()
@@ -394,14 +400,19 @@ async def models(request: Request, type: str = "upscale"):
         return {
             "backends": [
                 {
-                    "id": "animatediff",
-                    "name": "AnimateDiff (SD1.5)",
-                    "max_edge": infer_animate.ANIMATEDIFF_MAX_EDGE,
+                    "id": "loop",
+                    "name": "AnimateDiff Loop (SD1.5)",
+                    "max_edge": infer_animate.LOOP_MAX_EDGE,
                 },
                 {
                     "id": "wan",
-                    "name": "Wan 2.1 1.3B (480p, experimental)",
+                    "name": "Wan 2.1 I2V 14B (480p)",
                     "max_edge": infer_animate.WAN_MAX_EDGE,
+                },
+                {
+                    "id": "ltx",
+                    "name": "LTX-Video I2V",
+                    "max_edge": infer_animate.LTX_MAX_EDGE,
                 },
             ],
             "default_backend": DEFAULT_BACKEND,

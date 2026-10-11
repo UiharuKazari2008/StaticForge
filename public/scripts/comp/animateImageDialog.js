@@ -6,8 +6,9 @@
 let animateImageDialogActive = false;
 
 const LOCAL_ANIMATE_BACKENDS = [
-    { id: 'animatediff', name: 'AnimateDiff (SD1.5)' },
-    { id: 'wan', name: 'Wan 2.1 1.3B (480p, experimental)' }
+    { id: 'loop', name: 'AnimateDiff Loop (SD1.5)' },
+    { id: 'wan', name: 'Wan 2.1 I2V 14B (480p)' },
+    { id: 'ltx', name: 'LTX-Video I2V' }
 ];
 
 let localAnimateBackendCache = null;
@@ -101,22 +102,23 @@ async function showAnimateImageDialog(event = null) {
 
         const promptInput = document.createElement('textarea');
         promptInput.id = 'animateMotionPrompt';
-        promptInput.className = 'form-control hover-show colored';
+        promptInput.className = 'form-control hover-show colored animate-dialog-full-width';
         promptInput.rows = 2;
-        promptInput.style.width = '100%';
         promptInput.placeholder = 'e.g. hair and clothing sway in the wind, slow blink';
         message.appendChild(promptInput);
 
-        // Backend picker — custom-dropdown (dropdown.js), not a native <select>.
-        let selectedBackend = 'animatediff';
+        // Mode picker (backend on the wire) — custom-dropdown (dropdown.js), not a native <select>.
+        // loop (AnimateDiff) is fast but loops the still; wan/ltx are true
+        // image-to-video and continue the scene instead.
+        let selectedBackend = 'loop';
         const backends = knownLocalAnimateBackends();
         if (backends.length && !backends.some((b) => b.id === selectedBackend)) {
             selectedBackend = backends[0].id;
         }
 
         const backendLabel = document.createElement('div');
-        backendLabel.textContent = 'Backend:';
-        backendLabel.style.marginTop = '8px';
+        backendLabel.textContent = 'Mode:';
+        backendLabel.className = 'animate-dialog-field-label';
         message.appendChild(backendLabel);
 
         const backendDropdown = document.createElement('div');
@@ -126,9 +128,7 @@ async function showAnimateImageDialog(event = null) {
         const backendBtn = document.createElement('button');
         backendBtn.type = 'button';
         backendBtn.id = 'animateBackendDropdownBtn';
-        backendBtn.className = 'custom-dropdown-btn hover-show colored';
-        backendBtn.style.width = '100%';
-        backendBtn.style.maxWidth = '300px';
+        backendBtn.className = 'custom-dropdown-btn hover-show colored animate-dialog-dropdown-btn';
         backendDropdown.appendChild(backendBtn);
 
         const backendMenu = document.createElement('div');
@@ -163,11 +163,7 @@ async function showAnimateImageDialog(event = null) {
         setupDropdown(backendDropdown, backendBtn, backendMenu, () => {}, () => ({ backend: selectedBackend }), { preventFocusTransfer: true });
 
         const optionsRow = document.createElement('div');
-        optionsRow.className = 'credit-cost-options-row';
-        optionsRow.style.display = 'flex';
-        optionsRow.style.gap = '12px';
-        optionsRow.style.marginTop = '8px';
-        optionsRow.style.alignItems = 'center';
+        optionsRow.className = 'credit-cost-options-row animate-dialog-options-row';
 
         const framesLabel = document.createElement('label');
         framesLabel.appendChild(document.createTextNode('Frames '));
@@ -176,8 +172,7 @@ async function showAnimateImageDialog(event = null) {
         framesInput.min = '8';
         framesInput.max = '32';
         framesInput.value = '16';
-        framesInput.className = 'form-control hover-show colored';
-        framesInput.style.width = '64px';
+        framesInput.className = 'form-control hover-show colored animate-dialog-number-input';
         framesLabel.appendChild(framesInput);
 
         const fpsLabel = document.createElement('label');
@@ -187,8 +182,7 @@ async function showAnimateImageDialog(event = null) {
         fpsInput.min = '4';
         fpsInput.max = '24';
         fpsInput.value = '8';
-        fpsInput.className = 'form-control hover-show colored';
-        fpsInput.style.width = '64px';
+        fpsInput.className = 'form-control hover-show colored animate-dialog-number-input';
         fpsLabel.appendChild(fpsInput);
 
         const loopLabel = document.createElement('label');

@@ -13,10 +13,12 @@ MODELS = {entry["id"]: entry for entry in MODEL_LIST}
 DEFAULT_MODEL = "RealESRGAN_x4plus"
 ALLOWED_SCALES = (2, 4)
 
-# Animate job type (AnimateDiff default, Wan optional). Kept separate from the
-# upscale model catalog above since these are backends, not weight files.
-ALLOWED_BACKENDS = ("animatediff", "wan")
-DEFAULT_BACKEND = "animatediff"
+# Animate job type: loop (AnimateDiff, fast), wan (Wan 2.1 I2V 14B, true
+# image-to-video), ltx (LTX-Video I2V, true image-to-video). Kept separate
+# from the upscale model catalog above since these are backends, not weight
+# files.
+ALLOWED_BACKENDS = ("loop", "wan", "ltx")
+DEFAULT_BACKEND = "loop"
 DEFAULT_FRAMES = 16
 MIN_FRAMES = 8
 MAX_FRAMES = 32

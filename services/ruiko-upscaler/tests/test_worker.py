@@ -278,7 +278,7 @@ class AnimateApiTests(unittest.TestCase):
         self.assertEqual(status["frames"], 16)
         self.assertEqual(status["fps"], 8)
         self.assertTrue(status["loop"])
-        self.assertEqual(status["backend"], "animatediff")
+        self.assertEqual(status["backend"], "loop")
 
         gif = self.client.get("/jobs/" + job_id + "/result", headers=self.headers)
         self.assertEqual(gif.status_code, 200)
@@ -347,13 +347,26 @@ class AnimateApiTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         body = res.json()
         self.assertIn("animate", body["job_types"])
-        self.assertIn("animatediff", body["animate_backends"])
+        self.assertIn("loop", body["animate_backends"])
 
     def test_models_animate_backends(self):
         res = self.client.get("/models?type=animate", headers=self.headers)
         self.assertEqual(res.status_code, 200)
         ids = [row["id"] for row in res.json()["backends"]]
-        self.assertEqual(ids, ["animatediff", "wan"])
+        self.assertEqual(ids, ["loop", "wan", "ltx"])
+
+    def test_animate_ltx_backend(self):
+        res = self._post_animate(backend="ltx")
+        self.assertEqual(res.status_code, 200)
+        job_id = res.json()["job_id"]
+        status = None
+        for _ in range(50):
+            status = self.client.get("/jobs/" + job_id, headers=self.headers).json()
+            if status["status"] in ("completed", "failed"):
+                break
+            time.sleep(0.05)
+        self.assertEqual(status["status"], "completed")
+        self.assertEqual(status["backend"], "ltx")
 
 
 if __name__ == "__main__":

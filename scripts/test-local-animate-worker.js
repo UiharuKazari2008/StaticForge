@@ -66,7 +66,7 @@ async function main() {
                     queue_length: jobs.size,
                     loaded_models: [],
                     job_types: ['upscale', 'animate'],
-                    animate_backends: ['animatediff', 'wan'],
+                    animate_backends: ['loop', 'wan', 'ltx'],
                     animate_loaded: []
                 }
                 : { ok: true, service: 'ruiko-upscaler', version: '1.0.0', auth: 'required' };
@@ -171,7 +171,7 @@ async function main() {
         backend: 'not-a-real-backend',
         pollMs: 20
     });
-    assert.strictEqual(defaulted.backend, 'animatediff');
+    assert.strictEqual(defaulted.backend, 'loop');
 
     // Full stack: animateImageWebSocket saves gif/mp4/webp and a DB-only receipt.
     const saved = [];
@@ -216,7 +216,7 @@ async function main() {
         frames: 16,
         fps: 8,
         loop: true,
-        backend: 'animatediff'
+        backend: 'loop'
     });
     assert.strictEqual(result.jobId, 'job-animate-1');
     assert.ok(result.filename.startsWith('shot_animate_'));
@@ -225,7 +225,7 @@ async function main() {
     assert.strictEqual(receipts.length, 1);
     assert.strictEqual(receipts[0].filename, result.filename);
     assert.strictEqual(receipts[0].receiptData.motion_prompt, 'hair sways in the wind');
-    assert.strictEqual(receipts[0].receiptData.animate_backend, 'animatediff');
+    assert.strictEqual(receipts[0].receiptData.animate_backend, 'loop');
     assert.strictEqual(receipts[0].receiptData.local_job_id, 'job-animate-1');
     assert.deepStrictEqual(Object.keys(receipts[0].receiptData.formats).sort(), ['gif', 'mp4', 'webp']);
 

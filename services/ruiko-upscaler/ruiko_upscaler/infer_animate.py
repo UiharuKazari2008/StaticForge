@@ -1,11 +1,19 @@
-"""AnimateDiff / Wan image-to-video inference sized for an 8 GB RTX 2070 Super.
+"""Image-to-video inference sized for an 8 GB RTX 2070 Super: three modes.
+
+- loop: AnimateDiff (SD1.5 + motion module), vid2vid-seeded from the still.
+  Cheap and fast; loops rather than truly continuing the scene.
+- wan: Wan 2.1 I2V 14B 480p, true image-to-video (WanImageToVideoPipeline).
+  The 14B transformer is GGUF-quantized (city96 Q4/Q5) to fit VRAM; the rest
+  of the pipeline runs under sequential CPU offload.
+- ltx: LTX-Video I2V (LTXImageToVideoPipeline), also true image-to-video,
+  smaller than Wan 14B; sequential CPU offload keeps it inside 8 GB too.
 
 Diffusers and torch import only when a real animation runs. Tests mock
 generate_animation_bytes and exercise request validation without a GPU.
 
-Wan is lazily loaded on first use and is never held in VRAM at the same time
-as AnimateDiff or the upscaler; app.py unloads the previous backend before
-switching (see _ensure_vram_for).
+wan/ltx are lazily loaded on first use and are never held in VRAM at the
+same time as loop or the upscaler; app.py unloads the previous backend
+before switching (see _ensure_vram_for).
 """
 
 import io
@@ -16,10 +24,14 @@ from ruiko_upscaler.catalog import model_dir
 
 ANIMATEDIFF_BASE_MODEL = os.environ.get("RUIKO_ANIMATEDIFF_BASE", "stablediffusionapi/anything-v5")
 ANIMATEDIFF_MOTION_ADAPTER = "guoyww/animatediff-motion-adapter-v1-5-2"
-WAN_MODEL = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+WAN_MODEL = os.environ.get("RUIKO_WAN_MODEL", "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers")
+WAN_GGUF_REPO = os.environ.get("RUIKO_WAN_GGUF_REPO", "city96/Wan2.1-I2V-14B-480P-gguf")
+WAN_GGUF_FILE = os.environ.get("RUIKO_WAN_GGUF_FILE", "wan2.1-i2v-14b-480p-Q4_K_M.gguf")
+LTX_MODEL = os.environ.get("RUIKO_LTX_MODEL", "Lightricks/LTX-Video")
 
-ANIMATEDIFF_MAX_EDGE = 512
+LOOP_MAX_EDGE = 512
 WAN_MAX_EDGE = 480
+LTX_MAX_EDGE = 512
 
 _pipelines = {}
 
@@ -53,16 +65,16 @@ def _hf_cache_dir():
     return path
 
 
-def _fit_dims(width, height, max_edge):
-    """Scale to fit max_edge, rounded to a multiple of 8 for the SD/Wan VAE."""
+def _fit_dims(width, height, max_edge, multiple=8):
+    """Scale to fit max_edge, rounded to a multiple of the VAE's temporal/spatial stride."""
     scale = min(1.0, float(max_edge) / float(max(width, height)))
-    new_w = max(8, int(round(width * scale / 8.0)) * 8)
-    new_h = max(8, int(round(height * scale / 8.0)) * 8)
+    new_w = max(multiple, int(round(width * scale / multiple)) * multiple)
+    new_h = max(multiple, int(round(height * scale / multiple)) * multiple)
     return new_w, new_h
 
 
-def _load_animatediff_pipeline():
-    cached = _pipelines.get("animatediff")
+def _load_loop_pipeline():
+    cached = _pipelines.get("loop")
     if cached is not None:
         return cached
     import torch
@@ -81,7 +93,7 @@ def _load_animatediff_pipeline():
     pipeline.enable_attention_slicing()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pipeline.to(device)
-    _pipelines["animatediff"] = pipeline
+    _pipelines["loop"] = pipeline
     return pipeline
 
 
@@ -90,28 +102,62 @@ def _load_wan_pipeline():
     if cached is not None:
         return cached
     import torch
-    from diffusers import WanPipeline
+    from diffusers import GGUFQuantizationConfig, WanImageToVideoPipeline, WanTransformer3DModel
+    from huggingface_hub import hf_hub_download
 
     cache_dir = _hf_cache_dir()
-    pipeline = WanPipeline.from_pretrained(WAN_MODEL, cache_dir=cache_dir, torch_dtype=torch.float16)
+    gguf_path = hf_hub_download(WAN_GGUF_REPO, WAN_GGUF_FILE, cache_dir=cache_dir)
+    # The 14B transformer is the part that can't fit an 8 GB card at full
+    # precision; GGUF-quantize just that submodule and load the rest (VAE,
+    # UMT5 text encoder, CLIP image encoder) from the reference repo.
+    transformer = WanTransformer3DModel.from_single_file(
+        gguf_path,
+        quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+        torch_dtype=torch.bfloat16,
+        config=WAN_MODEL,
+        subfolder="transformer",
+    )
+    pipeline = WanImageToVideoPipeline.from_pretrained(
+        WAN_MODEL, transformer=transformer, cache_dir=cache_dir, torch_dtype=torch.bfloat16
+    )
     pipeline.vae.enable_slicing()
-    pipeline.enable_attention_slicing()
-    # 1.3B still benefits from CPU offload on an 8 GB card once the VAE and
-    # text encoder are counted alongside the transformer.
+    pipeline.vae.enable_tiling()
+    # enable_sequential_cpu_offload() moves GGUFParameter tensors through a
+    # meta-device hook that drops their quant_type (diffusers' GGUF dequant
+    # table lookup then does KeyError: None) — GGUF-quantized pipelines need
+    # the coarser whole-submodule offload instead.
     pipeline.enable_model_cpu_offload()
     _pipelines["wan"] = pipeline
     return pipeline
 
 
-def _run_animatediff(image, motion_prompt, frames, fps, progress):
-    width, height = _fit_dims(*image.size, max_edge=ANIMATEDIFF_MAX_EDGE)
+def _load_ltx_pipeline():
+    cached = _pipelines.get("ltx")
+    if cached is not None:
+        return cached
+    import torch
+    from diffusers import LTXImageToVideoPipeline
+
+    cache_dir = _hf_cache_dir()
+    pipeline = LTXImageToVideoPipeline.from_pretrained(
+        LTX_MODEL, cache_dir=cache_dir, torch_dtype=torch.bfloat16
+    )
+    pipeline.vae.enable_tiling()
+    pipeline.enable_sequential_cpu_offload()
+    _pipelines["ltx"] = pipeline
+    return pipeline
+
+
+def _run_loop(image, motion_prompt, frames, fps, progress):
+    width, height = _fit_dims(*image.size, max_edge=LOOP_MAX_EDGE)
     resized = image.resize((width, height))
-    pipeline = _load_animatediff_pipeline()
+    pipeline = _load_loop_pipeline()
     if progress:
         progress(15)
     # Image-conditioned via vid2vid: AnimateDiff has no official img2vid
     # pipeline, so the still is replicated into a "video" and partially
-    # re-noised (strength<1) with the motion module guiding the diff.
+    # re-noised (strength<1) with the motion module guiding the diff. This
+    # loops around the source rather than truly continuing the scene.
     video = [resized] * frames
     output = pipeline(
         video=video,
@@ -126,45 +172,48 @@ def _run_animatediff(image, motion_prompt, frames, fps, progress):
 
 
 def _run_wan(image, motion_prompt, frames, fps, progress):
-    """Wan 2.1 1.3B ships text-to-video only; the source image seeds the
-    first-frame latent so motion stays anchored to it. Experimental —
-    strength/steps need tuning against real output on Ruiko's GPU.
-    """
-    import numpy as np
-    import torch
-
-    width, height = _fit_dims(*image.size, max_edge=WAN_MAX_EDGE)
+    width, height = _fit_dims(*image.size, max_edge=WAN_MAX_EDGE, multiple=16)
     resized = image.resize((width, height))
     pipeline = _load_wan_pipeline()
     if progress:
         progress(15)
-
-    with torch.no_grad():
-        array = (np.asarray(resized).astype("float32") / 127.5) - 1.0
-        tensor = torch.from_numpy(array).permute(2, 0, 1).unsqueeze(0).unsqueeze(2)
-        tensor = tensor.to(pipeline.vae.device, dtype=pipeline.vae.dtype)
-        first_latent = pipeline.vae.encode(tensor).latent_dist.sample()
-        first_latent = first_latent * pipeline.vae.config.scaling_factor
-
-    latent_frames = first_latent.shape[2]
-    if latent_frames < frames:
-        pad = first_latent[:, :, -1:].repeat(1, 1, frames - latent_frames, 1, 1)
-        init_latents = torch.cat([first_latent, pad], dim=2)
-    else:
-        init_latents = first_latent[:, :, :frames]
-
     output = pipeline(
+        image=resized,
         prompt=motion_prompt,
-        num_frames=frames,
         height=height,
         width=width,
+        num_frames=frames,
         num_inference_steps=30,
         guidance_scale=5.0,
-        latents=init_latents,
+        output_type="pil",
     )
     if progress:
         progress(85)
     return list(output.frames[0])
+
+
+def _run_ltx(image, motion_prompt, frames, fps, progress):
+    width, height = _fit_dims(*image.size, max_edge=LTX_MAX_EDGE, multiple=32)
+    resized = image.resize((width, height))
+    pipeline = _load_ltx_pipeline()
+    if progress:
+        progress(15)
+    # LTX's causal VAE needs num_frames = 8k+1; round up then trim back to
+    # the requested count so callers see exactly what they asked for.
+    ltx_frames = ((max(frames, 9) - 1) // 8) * 8 + 1
+    output = pipeline(
+        image=resized,
+        prompt=motion_prompt,
+        negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted",
+        height=height,
+        width=width,
+        num_frames=ltx_frames,
+        num_inference_steps=30,
+        output_type="pil",
+    )
+    if progress:
+        progress(85)
+    return list(output.frames[0])[:frames]
 
 
 def _encode_gif(frames, fps, loop):
@@ -251,8 +300,10 @@ def generate_animation_bytes(image_bytes, motion_prompt, frames, fps, loop, back
 
     if backend == "wan":
         out_frames = _run_wan(image, motion_prompt, frames, fps, progress)
+    elif backend == "ltx":
+        out_frames = _run_ltx(image, motion_prompt, frames, fps, progress)
     else:
-        out_frames = _run_animatediff(image, motion_prompt, frames, fps, progress)
+        out_frames = _run_loop(image, motion_prompt, frames, fps, progress)
 
     _check_frames(out_frames, frames)
     if progress:

@@ -19,11 +19,12 @@ const LOCAL_UPSCALE_MODELS = [
 const DEFAULT_LOCAL_MODEL = 'RealESRGAN_x4plus';
 
 const LOCAL_ANIMATE_BACKENDS = [
-    { id: 'animatediff', name: 'AnimateDiff (SD1.5)' },
-    { id: 'wan', name: 'Wan 2.1 1.3B (480p, experimental)' }
+    { id: 'loop', name: 'AnimateDiff Loop (SD1.5)' },
+    { id: 'wan', name: 'Wan 2.1 I2V 14B (480p)' },
+    { id: 'ltx', name: 'LTX-Video I2V' }
 ];
 
-const DEFAULT_ANIMATE_BACKEND = 'animatediff';
+const DEFAULT_ANIMATE_BACKEND = 'loop';
 const DEFAULT_ANIMATE_FRAMES = 16;
 const DEFAULT_ANIMATE_FPS = 8;
 const ANIMATE_RESULT_FORMATS = ['gif', 'mp4', 'webp'];
