@@ -7758,6 +7758,13 @@ async function callTool(globalResources, req, name, args) {
         if (wantFull) {
             try {
                 image = readGalleryImage(globalResources, filename);
+                if (image && image.mimeType === 'image/png' && image.bytes) {
+                    const { coverAgentPng } = require('./promptCoverLedger');
+                    image = {
+                        ...image,
+                        bytes: await coverAgentPng(globalResources.getPngMetadata(), image.bytes, filename)
+                    };
+                }
                 imageKind = 'full';
             } catch (error) {
                 if (error.status === 404) {

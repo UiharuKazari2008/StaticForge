@@ -18,6 +18,7 @@ const {
     createFoldBag,
     rememberPromptFold,
     sealApiPayload,
+    promptCoverFor,
     assertTokenCompiler
 } = require('../public/scripts/comp/promptListFold');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
@@ -5119,6 +5120,13 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
 
         if (shouldSave) {
             fs.writeFileSync(path.join(__runtimeGr.getPath('images'), name), finalBuffer);
+            try {
+                const { rememberPromptCover } = require('./promptCoverLedger');
+                const cover = promptCoverFor(opts);
+                if (cover) rememberPromptCover(name, cover);
+            } catch (coverErr) {
+                console.error('Prompt cover ledger failed:', coverErr.message);
+            }
             __runtimeGr.getLogger().normal(`💾 Saved: ${name}`);
 
             // Add file to workspace

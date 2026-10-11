@@ -593,7 +593,7 @@ function foldPromptList(text) {
     let suffix = split.suffix;
     if (!String(tags || '').trim() && suffix.charAt(0) === ',') suffix = suffix.replace(/^,\s*/, '');
     const joined = (tags + suffix).replace(/[ \t]{2,}/g, ' ');
-    return { text: joined.trim(), marks: marks, gender: gender };
+    return { text: joined.trim(), marks: marks, gender: gender, before: text };
 }
 
 function emptySlot() {
@@ -614,6 +614,10 @@ function mergeMarks(dst, src) {
 function noteFold(bag, hint, folded) {
     if (!bag || !folded) return;
     const hintStr = String(hint || '');
+    if (typeof folded.before === 'string') {
+        if (!bag.shown) bag.shown = {};
+        if (!Object.prototype.hasOwnProperty.call(bag.shown, hintStr)) bag.shown[hintStr] = folded.before;
+    }
     const cm = /character_(\d+)/.exec(hintStr);
     let slot;
     if (cm) {
@@ -752,6 +756,33 @@ function sealApiPayload(apiOpts, source) {
     return apiOpts;
 }
 
+function promptCoverFor(obj) {
+    const bag = obj && folds.get(obj);
+    if (!bag || !bag.shown) return null;
+    const shown = bag.shown;
+    const characters = [];
+    Object.keys(shown).forEach((key) => {
+        let match = /^character_(\d+)$/.exec(key);
+        if (match) {
+            const index = Number(match[1]);
+            if (!characters[index]) characters[index] = {};
+            characters[index].prompt = shown[key];
+            return;
+        }
+        match = /^character_(\d+)_uc$/.exec(key);
+        if (match) {
+            const index = Number(match[1]);
+            if (!characters[index]) characters[index] = {};
+            characters[index].uc = shown[key];
+        }
+    });
+    const out = {};
+    if (typeof shown.prompt === 'string') out.prompt = shown.prompt;
+    if (typeof shown.uc === 'string') out.uc = shown.uc;
+    if (characters.length) out.characters = characters;
+    return Object.keys(out).length ? out : null;
+}
+
 function assertTokenCompiler(apiOpts) {
     if (!apiOpts || typeof apiOpts !== 'object' || !compiledPayloads.has(apiOpts)) {
         console.error('Illegal Operation, Token compiler failed to run');
@@ -854,6 +885,12 @@ function maskAgentStudioRead(node, compiledSide) {
     ['dynamic_generation', 'dynamicGeneration'].forEach((key) => {
         if (out[key] && typeof out[key] === 'object') out[key] = maskAgentStudioRead(out[key], false);
     });
+    if (out.forge_data && typeof out.forge_data === 'object' && !Array.isArray(out.forge_data)) {
+        out.forge_data = maskAgentStudioRead(out.forge_data, compiledSide);
+    }
+    if (Array.isArray(out.stage_seeds)) {
+        out.stage_seeds = out.stage_seeds.map((row) => maskAgentStudioRead(row, true));
+    }
     ['text_replacements', 'expanders', 'dg_expanders'].forEach((key) => {
         if (Array.isArray(out[key])) out[key] = out[key].map(maskReplacementRow);
     });
@@ -879,6 +916,7 @@ if (typeof module !== 'undefined' && module.exports) {
         noteFold,
         rememberPromptFold,
         sealApiPayload,
+        promptCoverFor,
         assertTokenCompiler,
         maskAgeReadText,
         maskCompiledReadText,
