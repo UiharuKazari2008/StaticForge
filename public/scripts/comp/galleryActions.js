@@ -385,65 +385,15 @@ async function upscaleImage(image, event = null) {
     }
 }
 
-// showAnimateImageDialog: public/scripts/comp/animateImageDialog.js
-async function animateImage(image, event = null) {
-    const confirmed = await showAnimateImageDialog(event);
-    if (!confirmed) {
-        return;
-    }
-
-    const filename = image.original || image.filename || image.upscaled;
+// Create Animation entry point (gallery, image viewer, Studio preview menu, Enhance):
+// opens the eMotion LIVE desktop app with the image preloaded instead of a popup.
+// openEmotion: public/scripts/comp/desktop-apps/emotion.js
+function animateImage(image, event = null) {
+    const filename = image && (image.original || image.filename || image.upscaled);
     if (!filename) {
         showError('No valid filename found in image object');
         return;
     }
-
-    if (!progressToastId) {
-        progressToastId = showGlassToast('info', 'Creating Animation', 'Creating animation (this can take a few minutes)...', true, false, '<i class="fas fa-film"></i>');
-    }
-
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-        progress = Math.min(99, progress + 1);
-        updateGlassToastProgress(progressToastId, progress);
-    }, 2000);
-
-    try {
-        const result = await window.wsClient.animateImage({
-            filename,
-            workspace: activeWorkspace || null,
-            motion_prompt: confirmed.motionPrompt,
-            frames: confirmed.frames,
-            fps: confirmed.fps,
-            loop: confirmed.loop,
-            backend: confirmed.backend
-        });
-
-        if (!result || !result.filename) {
-            throw new Error('Invalid response from WebSocket');
-        }
-
-        clearInterval(progressInterval);
-        updateGlassToastProgress(progressToastId, 100);
-        updateGlassToastComplete(progressToastId, {
-            type: 'success',
-            title: 'Animate Complete',
-            message: 'Saved ' + result.filename,
-            customIcon: '<i class="nai-check"></i>',
-            showProgress: false
-        });
-        progressToastId = null;
-    } catch (error) {
-        console.error('Animate error:', error);
-        clearInterval(progressInterval);
-        updateGlassToastComplete(progressToastId, {
-            type: 'error',
-            title: 'Animate Failed',
-            message: (error && error.message) || 'Image animate failed. Please try again.',
-            customIcon: '<i class="nai-cross"></i>',
-            showProgress: false
-        });
-        progressToastId = null;
-    }
+    openEmotion({ filename, source: image });
 }
 

@@ -67,7 +67,7 @@ function main() {
     assert.match(emotionCss, /background: var\(--glass-layer-dark-4\);\s*border: 1px solid var\(--glass-border-4\);\s*border-radius: var\(--border-radius-md\);/);
 
     // 3. No native <select> anywhere; every picker goes through dropdown.js's custom-dropdown
-    // or contextMenu.js's click-menu, same as animateImageDialog.js / dovecote.js.
+    // or contextMenu.js's click-menu, same as dovecote.js.
     assert.doesNotMatch(emotionJs, /createElement\(['"]select['"]\)/);
     // No custom dropdowns in the control toolbar: Mode is a button + standard click menu.
     assert.doesNotMatch(emotionJs, /custom-dropdown/);
@@ -82,11 +82,11 @@ function main() {
     assert.match(emotionJs, /emotionWireWheelNumberInput\(framesInput,/);
     assert.match(emotionJs, /emotionWireWheelNumberInput\(fpsInput,/);
 
-    // 5. Mode picker reuses the Studio animate dialog's backend catalog (loop/wan/ltx) instead
-    // of redefining it — public/scripts/comp/animateImageDialog.js.
+    // 5. eMotion owns the backend catalog (loop/wan/ltx) now that the Create Animation popup
+    // (animateImageDialog.js) is retired.
     assert.match(emotionJs, /knownLocalAnimateBackends\(\)/);
     assert.match(emotionJs, /fetchLocalAnimateStatus\(\)/);
-    assert.doesNotMatch(emotionJs, /LOCAL_ANIMATE_BACKENDS\s*=\s*\[/);
+    assert.match(emotionJs, /const LOCAL_ANIMATE_BACKENDS\s*=\s*\[/);
 
     // 6. Animate job goes through the same wsClient.animateImage() wire path as Studio/MCP, with
     // mode/frames/fps/loop and no fabricated "seed" control (the animate backend has no seed
@@ -141,6 +141,39 @@ function main() {
     // 12. Wired into app.html: stylesheet + script tag, both after the other desktop-apps assets.
     assert.match(appHtml, /<link rel="stylesheet" href="\/css\/desktop-apps\/emotion\.css">/);
     assert.match(appHtml, /<script src="scripts\/comp\/desktop-apps\/emotion\.js"><\/script>/);
+
+    // 13. Create Animation opens eMotion LIVE (no popup): openEmotion() API reuses the Load
+    // Image path; the gallery/viewer/Studio/Enhance context-menu action calls it.
+    assert.match(emotionJs, /function openEmotion\(options = \{\}\)/);
+    assert.match(emotionJs, /window\.openEmotion = openEmotion/);
+    const openEmotionBody = emotionJs.slice(emotionJs.indexOf('function openEmotion('), emotionJs.indexOf('window.openEmotion'));
+    assert.match(openEmotionBody, /openDesktopEmotion\(\)/);
+    assert.match(openEmotionBody, /emotionSetSourceImage\(filename, workspace\)/);
+    assert.ok(!fs.existsSync(path.join(__dirname, '..', 'public/scripts/comp/animateImageDialog.js')));
+    assert.doesNotMatch(appHtml, /animateImageDialog/);
+    assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'public/css/confirmation-dialogs.css'), 'utf8'), /animate-dialog|animateImageDialog/);
+
+    // Behavioural: run galleryActions.js's animateImage (the context-menu action handler) and
+    // the viewer/gallery menu handlers' call into it, with a stub opener.
+    const vm = require('vm');
+    const galleryJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/galleryActions.js'), 'utf8');
+    const fnSrc = galleryJs.slice(galleryJs.indexOf('function animateImage('), galleryJs.indexOf('\n}\n', galleryJs.indexOf('function animateImage(')) + 2);
+    const calls = [];
+    const sandbox = { openEmotion: (o) => calls.push(o), showError: (m) => calls.push({ error: m }) };
+    vm.createContext(sandbox);
+    vm.runInContext(fnSrc + '\nthis.animateImage = animateImage;', sandbox);
+    sandbox.animateImage({ filename: 'a.png' }, null);
+    sandbox.animateImage({ original: 'b.png', upscaled: 'b_up.png' }, null);
+    assert.deepStrictEqual(calls.map((c) => c.filename), ['a.png', 'b.png']);
+    for (const [file, re] of [
+        ['public/scripts/comp/galleryView.js', /animateImage\(image, event\)/],
+        ['public/scripts/comp/imageViewer.js', /animateImage\(this\.metadata, event\)/],
+        ['public/scripts/comp/manualModalManager.js', /animateImage\(window\.currentManualPreviewImage, event\)/],
+        ['public/scripts/comp/imageExpansion.js', /animateImage\(\{ filename \}, e\)/]
+    ]) {
+        assert.match(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), re, file + ' Create Animation -> animateImage -> openEmotion');
+    }
+    assert.doesNotMatch(galleryJs, /showAnimateImageDialog/);
 
     console.log('✅ test-emotion-desktop-app.js passed');
 }

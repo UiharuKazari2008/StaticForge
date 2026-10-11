@@ -1,14 +1,67 @@
 // eMotion desktop app: image-to-video via the Ruiko animate backend (same wire path as the
-// Studio animate dialog / MCP animate_image — public/scripts/comp/animateImageDialog.js,
-// public/scripts/websocket.js animateImage(), modules/ws/handlers/generationImpl.js
-// handleImageAnimation). Reuses LOCAL_ANIMATE_BACKENDS / knownLocalAnimateBackends /
-// fetchLocalAnimateStatus from animateImageDialog.js (loaded earlier in app.html) instead of
-// redefining the backend catalog.
+// MCP animate_image — public/scripts/websocket.js animateImage(),
+// modules/ws/handlers/generationImpl.js handleImageAnimation). Owns the local animate backend
+// catalog (LOCAL_ANIMATE_BACKENDS / knownLocalAnimateBackends / fetchLocalAnimateStatus).
+// Every "Create Animation" entry point (gallery, image viewer, Studio preview menu, Enhance)
+// goes through animateImage() in galleryActions.js -> openEmotion({ filename }) below.
 // openModal / closeModal / bringModalToFront / restoreMinimizedModal / assignModalZIndex:
 // public/scripts/comp/modalUtils.js
 // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
 // createWheelTickGate / guardWheelTick: public/scripts/utils/wheelTickGate.js
 // Layout: public/css/desktop-apps/emotion.css
+
+// ---- Local animate backend catalog (shared with nothing else; moved from the retired
+// Create Animation popup) ----
+
+const LOCAL_ANIMATE_BACKENDS = [
+    { id: 'loop', name: 'AnimateDiff Loop (SD1.5)' },
+    { id: 'wan', name: 'Wan 2.1 I2V 14B (480p)' },
+    { id: 'ltx', name: 'LTX-Video I2V' }
+];
+
+let localAnimateBackendCache = null;
+
+function knownLocalAnimateBackends() {
+    if (localAnimateBackendCache && Array.isArray(localAnimateBackendCache.backends) && localAnimateBackendCache.backends.length) {
+        return localAnimateBackendCache.backends;
+    }
+    return LOCAL_ANIMATE_BACKENDS.slice();
+}
+
+async function fetchLocalAnimateStatus() {
+    const fallback = {
+        online: false,
+        configured: false,
+        backends: LOCAL_ANIMATE_BACKENDS.slice(),
+        reason: 'The animation worker is offline or not configured.'
+    };
+    if (!window.wsClient || typeof window.wsClient.isConnected !== 'function' || !window.wsClient.isConnected()) {
+        return fallback;
+    }
+    try {
+        const pending = window.wsClient.sendMessage('local_animate_status', {}, false);
+        const data = await Promise.race([
+            pending,
+            new Promise((resolve) => setTimeout(() => resolve(null), 1200))
+        ]);
+        if (!data || !Array.isArray(data.backends) || !data.backends.length) {
+            return localAnimateBackendCache || fallback;
+        }
+        localAnimateBackendCache = {
+            online: !!data.online,
+            configured: !!data.configured,
+            backends: data.backends,
+            reason: data.reason || null,
+            gpu: data.gpu || null
+        };
+        return localAnimateBackendCache;
+    } catch (err) {
+        return {
+            ...fallback,
+            reason: err && err.message ? err.message : fallback.reason
+        };
+    }
+}
 
 const DESKTOP_EMOTION_MODAL_ID = 'desktopEmotionModal';
 
@@ -37,6 +90,34 @@ function openDesktopEmotion() {
     }
     bringModalToFront(modal);
 }
+
+// Public open API: open (or focus) eMotion LIVE with an image preloaded through the same
+// emotionSetSourceImage() path the Open Image menu uses.
+// source: an image object ({ original | filename | upscaled }), filename string, or imageUrl.
+function emotionFilenameFromUrl(url) {
+    if (!url || typeof url !== 'string') return null;
+    const clean = url.split('#')[0].split('?')[0];
+    const last = clean.split('/').filter(Boolean).pop();
+    return last ? decodeURIComponent(last) : null;
+}
+
+function openEmotion(options = {}) {
+    const opts = (typeof options === 'string') ? { filename: options } : (options || {});
+    const src = opts.source && typeof opts.source === 'object' ? opts.source : null;
+    const filename = opts.filename
+        || (src && (src.original || src.filename || src.upscaled))
+        || (typeof opts.source === 'string' ? opts.source : null)
+        || emotionFilenameFromUrl(opts.imageUrl);
+    openDesktopEmotion();
+    if (filename) {
+        const workspace = opts.workspace !== undefined
+            ? opts.workspace
+            : (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null);
+        emotionSetSourceImage(filename, workspace);
+    }
+    return filename || null;
+}
+window.openEmotion = openEmotion;
 
 const emotionCreateButton = function (className, title, iconClass) {
     const button = document.createElement('button');
