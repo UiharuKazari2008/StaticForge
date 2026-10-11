@@ -90,6 +90,21 @@ const doveCreateButton = function (className, title, iconClass) {
     return button;
 };
 
+// Display-only address style: mailboxes are stored/sent as bare names (yukimi, menma);
+// the UI shows them as name@dream.co.jp. doveBareAddress strips the suffix back off input.
+const DOVE_ADDRESS_DOMAIN = '@dream.co.jp';
+const doveDisplayAddress = function (name) {
+    const bare = String(name || '').trim();
+    if (!bare) return '';
+    return bare.includes('@') ? bare : bare + DOVE_ADDRESS_DOMAIN;
+};
+const doveBareAddress = function (value) {
+    return String(value || '').split(',').map((part) => {
+        const t = part.trim();
+        return t.toLowerCase().endsWith(DOVE_ADDRESS_DOMAIN) ? t.slice(0, -DOVE_ADDRESS_DOMAIN.length) : t;
+    }).filter(Boolean).join(', ');
+};
+
 const doveIsBotOwner = function (owner) {
     return owner !== DESKTOP_DOVECOTE_HUMAN_OWNER;
 };
@@ -284,7 +299,9 @@ const doveBuildToolbar = function () {
 
     toolbar.appendChild(doveBuildMailboxButton());
 
-    toolbar.addEventListener('click', doveHandleToolbarClick);
+    // No toolbar click listener: the toolbar lives inside the modal's title bar, so
+    // doveWireEvents' modal-wide delegate (doveHandleBodyClick) already sees these clicks.
+    // A second listener here made every data-dove-action fire twice (two compose windows).
     searchInput.addEventListener('input', () => {
         desktopDovecote.searchText = searchInput.value;
         doveRenderMessageList();
@@ -569,7 +586,7 @@ const DESKTOP_DOVECOTE_LIST_COLUMNS = [
 
 const doveBuildMainPane = function () {
     const pane = document.createElement('div');
-    pane.className = 'dovecote-main-pane';
+    pane.className = 'dovecote-main-pane dovecote-no-selection';
     pane.id = 'desktopDovecoteMainPane';
 
     const listWrap = document.createElement('div');
@@ -626,11 +643,11 @@ const doveBuildMainPane = function () {
     return pane;
 };
 
-// Rendered/Raw toggle (#6): one .button-group (public/css/gallery-core.css) floating in the
-// top-right corner of the message body (doveBuildBodyTools), next to the Safe shield badge.
+// Rendered/Raw toggle (#6): one .button-group (public/css/gallery-core.css) in the header
+// tools column (doveBuildOeHeader), under the Safe shield badge.
 // Wired with its own click listener rather than relying on doveHandleBodyClick's
 // modal-wide delegation, so it can't double-fire the way toolbar action buttons do.
-const doveBuildBodyViewToggle = function () {
+const doveBuildBodyViewToggle = function (onChange) {
     const viewGroup = document.createElement('div');
     viewGroup.className = 'button-group dovecote-body-view-toggle';
     const renderedBtn = doveCreateButton('btn-secondary btn-small btn-toggle', 'Rendered', 'fas fa-eye');
@@ -644,7 +661,7 @@ const doveBuildBodyViewToggle = function () {
     viewGroup.addEventListener('click', (ev) => {
         const btn = ev.target.closest('[data-dove-body-view]');
         if (!btn) return;
-        doveSetBodyView(btn.dataset.doveBodyView);
+        (onChange || doveSetBodyView)(btn.dataset.doveBodyView);
     });
     return viewGroup;
 };
@@ -662,17 +679,49 @@ const doveBuildSanitizedBadge = function () {
     return badge;
 };
 
-// Floating cluster overlaid on the body pane's top-right corner (.dovecote-body-tools).
-// Appended into .dovecote-body-wrap, which is position:relative and only ever has its
-// iframe / raw <pre> swapped, so the overlay survives re-renders. Always returns an Element.
-const doveBuildBodyTools = function (options) {
+// Message header block shared by the inline preview and reader windows: the four compact
+// From/To/Subject/Date rows on the left, and a right-aligned tools column (Safe badge +
+// Rendered/Raw) spanning those rows, vertically centred. Nothing overlays the body.
+// options: { idPrefix, badgeId, onBodyView(view) }. Returns { header, fieldEls, safetyBar, viewToggle }.
+const doveBuildOeHeader = function (options) {
+    const opts = options || {};
+    const header = document.createElement('div');
+    header.className = 'dovecote-oe-header';
+    const fields = document.createElement('div');
+    fields.className = 'dovecote-oe-header-fields';
+    const fieldEls = {};
+    ['from', 'to', 'subject', 'date'].forEach((field) => {
+        const cap = field.charAt(0).toUpperCase() + field.slice(1);
+        const row = document.createElement('div');
+        row.className = 'dovecote-oe-header-row';
+        const labelEl = document.createElement('span');
+        labelEl.className = 'dovecote-oe-header-label';
+        labelEl.textContent = cap + ':';
+        const valueEl = document.createElement('span');
+        valueEl.className = 'dovecote-oe-header-value';
+        if (opts.idPrefix) valueEl.id = opts.idPrefix + cap;
+        row.appendChild(labelEl);
+        row.appendChild(valueEl);
+        fields.appendChild(row);
+        fieldEls[field] = valueEl;
+    });
+    header.appendChild(fields);
+
     const tools = document.createElement('div');
-    tools.className = 'dovecote-body-tools';
+    tools.className = 'dovecote-oe-header-tools';
     const badge = doveBuildSanitizedBadge();
-    if (options && options.badgeId) badge.id = options.badgeId;
+    if (opts.badgeId) badge.id = opts.badgeId;
     tools.appendChild(badge);
-    if (options && options.withViewToggle) tools.appendChild(doveBuildBodyViewToggle());
-    return tools;
+    const viewToggle = doveBuildBodyViewToggle(opts.onBodyView);
+    tools.appendChild(viewToggle);
+    header.appendChild(tools);
+    return { header: header, fieldEls: fieldEls, safetyBar: badge, viewToggle: viewToggle };
+};
+
+const doveSetViewToggleState = function (root, view) {
+    root.querySelectorAll('[data-dove-body-view]').forEach((btn) => {
+        btn.dataset.state = btn.dataset.doveBodyView === view ? 'on' : 'off';
+    });
 };
 
 const doveBuildPreviewPane = function () {
@@ -707,22 +756,9 @@ const doveBuildPreviewPane = function () {
     mobileBackBar.appendChild(mobileActions);
     preview.appendChild(mobileBackBar);
 
-    const header = document.createElement('div');
-    header.className = 'dovecote-oe-header';
+    const built = doveBuildOeHeader({ idPrefix: 'desktopDovecoteOe', badgeId: 'desktopDovecoteSafetyBar' });
+    const header = built.header;
     header.id = 'desktopDovecoteOeHeader';
-    ['from', 'to', 'subject', 'date'].forEach((field) => {
-        const row = document.createElement('div');
-        row.className = 'dovecote-oe-header-row';
-        const labelEl = document.createElement('span');
-        labelEl.className = 'dovecote-oe-header-label';
-        labelEl.textContent = field.charAt(0).toUpperCase() + field.slice(1) + ':';
-        const valueEl = document.createElement('span');
-        valueEl.className = 'dovecote-oe-header-value';
-        valueEl.id = 'desktopDovecoteOe' + field.charAt(0).toUpperCase() + field.slice(1);
-        row.appendChild(labelEl);
-        row.appendChild(valueEl);
-        header.appendChild(row);
-    });
     preview.appendChild(header);
 
     const imagesBar = document.createElement('div');
@@ -743,7 +779,6 @@ const doveBuildPreviewPane = function () {
     emptyHint.id = 'desktopDovecoteEmptyHint';
     emptyHint.textContent = 'Select a message to read it.';
     bodyWrap.appendChild(emptyHint);
-    bodyWrap.appendChild(doveBuildBodyTools({ badgeId: 'desktopDovecoteSafetyBar', withViewToggle: true }));
     preview.appendChild(bodyWrap);
 
     return preview;
@@ -797,12 +832,6 @@ const doveCacheEls = function () {
 
 const doveWireEvents = function () {
     desktopDovecoteEls.modal.addEventListener('click', doveHandleBodyClick);
-};
-
-const doveHandleToolbarClick = function (ev) {
-    const button = ev.target.closest('[data-dove-action]');
-    if (!button) return;
-    doveDispatchAction(button.dataset.doveAction);
 };
 
 const doveHandleBodyClick = function (ev) {
@@ -911,7 +940,7 @@ const doveFilteredSortedMail = function () {
     if (query) {
         list = list.filter((m) => (
             (m.subject || '').toLowerCase().includes(query)
-            || (m.from || '').toLowerCase().includes(query)
+            || doveDisplayAddress(m.from).toLowerCase().includes(query)
             || (m.snippet || '').toLowerCase().includes(query)
         ));
     }
@@ -975,7 +1004,7 @@ const doveRenderMessageList = function () {
 
         const fromCell = document.createElement('span');
         fromCell.className = 'dovecote-col-from';
-        fromCell.textContent = mail.from || '';
+        fromCell.textContent = doveDisplayAddress(mail.from);
 
         const subjectCell = document.createElement('span');
         subjectCell.className = 'dovecote-col-subject';
@@ -1028,6 +1057,8 @@ const doveSelectMail = async function (id) {
 
 const doveRenderPreview = function () {
     const mail = desktopDovecote.selectedMail;
+    // No selection: the viewer pane is hidden entirely and the list takes the space.
+    desktopDovecoteEls.mainPane.classList.toggle('dovecote-no-selection', !mail);
     desktopDovecoteEls.emptyHint.classList.toggle('hidden', !!mail);
     doveRenderOeHeaderInto(desktopDovecoteEls, mail);
     desktopDovecoteEls.safetyBar.classList.add('hidden');
@@ -1058,8 +1089,8 @@ const doveRenderPreviewBody = function () {
 // imagesBar, attachmentsBar, bodyWrap }. ----------------------------------------------------------------
 
 const doveRenderOeHeaderInto = function (els, mail) {
-    els.oeFrom.textContent = mail ? mail.from || '' : '';
-    els.oeTo.textContent = mail ? mail.to || '' : '';
+    els.oeFrom.textContent = mail ? doveDisplayAddress(mail.from) : '';
+    els.oeTo.textContent = mail ? doveDisplayAddress(mail.to) : '';
     els.oeSubject.textContent = mail ? (mail.subject || '(no subject)') : '';
     els.oeDate.textContent = mail ? doveFormatDate(mail.createdAt) : '';
 };
@@ -1229,7 +1260,7 @@ const doveRenderImagesBarInto = function (els, mail, onLoadImages) {
     const alwaysBtn = document.createElement('button');
     alwaysBtn.type = 'button';
     alwaysBtn.className = 'btn-secondary btn-small';
-    alwaysBtn.textContent = 'Always load images from ' + (mail.from || 'sender');
+    alwaysBtn.textContent = 'Always load images from ' + (doveDisplayAddress(mail.from) || 'sender');
     alwaysBtn.addEventListener('click', async () => {
         try {
             // dovecote_set_image_pref: modules/ws/handlers/250-dovecoteHandler.js
@@ -1440,7 +1471,8 @@ const doveBuildComposeWindow = function (key, initial) {
     const toInput = document.createElement('input');
     toInput.type = 'text';
     toInput.className = 'form-control';
-    toInput.value = initial.to;
+    toInput.value = doveDisplayAddress(initial.to);
+    toInput.placeholder = 'name' + DOVE_ADDRESS_DOMAIN;
     toRow.appendChild(toLabel);
     toRow.appendChild(toInput);
     body.appendChild(toRow);
@@ -1545,7 +1577,8 @@ const doveBuildComposeWindow = function (key, initial) {
 };
 
 const doveSendComposeWindow = async function (toInput, subjectInput, bodyTextarea, replyTo, attachments, onSent) {
-    const to = toInput.value.trim();
+    // Accepts 'menma' or 'menma@dream.co.jp'; the server only ever sees the bare mailbox name.
+    const to = doveBareAddress(toInput.value);
     const subject = subjectInput.value.trim();
     const body = bodyTextarea.value;
     if (!to) {
@@ -1628,7 +1661,7 @@ const doveBuildReaderWindow = function (key) {
     const modalId = 'desktopDovecoteReader_' + key.replace(/[^A-Za-z0-9_-]/g, '_');
     const modal = document.createElement('div');
     modal.id = modalId;
-    modal.className = 'modal resizeable-window dovecote-reader-window hidden';
+    modal.className = 'modal resizeable-window toolbar-visible dovecote-reader-window hidden';
     modal.dataset.windowIdentifier = 'desktopDovecoteReader';
     modal.dataset.windowDefaultWidth = '640';
     modal.dataset.windowDefaultHeight = '560';
@@ -1656,22 +1689,15 @@ const doveBuildReaderWindow = function (key) {
     const body = document.createElement('div');
     body.className = 'modal-body';
 
-    const header = document.createElement('div');
-    header.className = 'dovecote-oe-header';
-    const fieldEls = {};
-    ['from', 'to', 'subject', 'date'].forEach((field) => {
-        const row = document.createElement('div');
-        row.className = 'dovecote-oe-header-row';
-        const labelEl = document.createElement('span');
-        labelEl.className = 'dovecote-oe-header-label';
-        labelEl.textContent = field.charAt(0).toUpperCase() + field.slice(1) + ':';
-        const valueEl = document.createElement('span');
-        valueEl.className = 'dovecote-oe-header-value';
-        row.appendChild(labelEl);
-        row.appendChild(valueEl);
-        header.appendChild(row);
-        fieldEls[field] = valueEl;
+    const built = doveBuildOeHeader({
+        onBodyView: (view) => {
+            state.bodyView = view;
+            doveSetViewToggleState(built.viewToggle, view);
+            if (state.mail) doveRenderReaderBody(state);
+        }
     });
+    const header = built.header;
+    const fieldEls = built.fieldEls;
     body.appendChild(header);
 
     const imagesBar = document.createElement('div');
@@ -1688,9 +1714,7 @@ const doveBuildReaderWindow = function (key) {
     loadingHint.className = 'form-hint dovecote-empty-hint';
     loadingHint.textContent = 'Loading…';
     bodyWrap.appendChild(loadingHint);
-    const bodyTools = doveBuildBodyTools();
-    bodyWrap.appendChild(bodyTools);
-    const safetyBar = bodyTools.querySelector('.dovecote-sanitized-badge');
+    const safetyBar = built.safetyBar;
     body.appendChild(bodyWrap);
 
     content.appendChild(body);

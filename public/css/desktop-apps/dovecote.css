@@ -99,6 +99,16 @@
     display: none;
 }
 
+/* Nothing selected: hide the viewer entirely and let the list fill the pane. */
+#desktopDovecoteModal .dovecote-main-pane.dovecote-no-selection .dovecote-preview-pane {
+    display: none;
+}
+
+#desktopDovecoteModal .dovecote-main-pane.dovecote-no-selection .dovecote-message-list-wrap {
+    flex: 1 1 auto;
+    max-height: none;
+}
+
 #desktopDovecoteModal .dovecote-message-list-wrap {
     display: flex;
     flex-direction: column;
@@ -224,10 +234,11 @@
    and the standalone reader window (dovecote.js doveOpenReaderWindow) ---- */
 
 .dovecote-oe-header {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: var(--spacing-sm);
     flex: 0 0 auto;
-    flex-direction: column;
-    gap: 0;
     padding: 0 var(--spacing-xs) var(--spacing-xs);
     border-bottom: 1px solid var(--glass-border-3);
     font-size: 0.85em;
@@ -241,27 +252,21 @@
     gap: var(--spacing-sm);
 }
 
-/* Safe badge + Rendered/Raw: small floating cluster in the body pane's top-right corner,
-   overlaid on the message (dovecote.js doveBuildBodyTools). */
-.dovecote-body-tools {
-    position: absolute;
-    top: var(--spacing-sm);
-    right: var(--spacing-sm);
-    z-index: var(--z-layer-3, 3);
+/* Header block: compact field rows on the left, tools column (Safe badge + Rendered/Raw)
+   right-aligned and vertically centred across all rows (dovecote.js doveBuildOeHeader).
+   Nothing is overlaid on the message body. */
+.dovecote-oe-header-fields {
     display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    padding: 3px;
-    /* Dark backing so the cluster stays legible over white HTML mail bodies. */
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    background: hsl(0 0% 12% / 78%);
-    box-shadow: var(--glass-shadow-2);
-    pointer-events: none;
+    flex-direction: column;
+    min-width: 0;
 }
 
-.dovecote-body-tools > * {
-    pointer-events: auto;
+.dovecote-oe-header-tools {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: var(--spacing-xs);
 }
 
 .dovecote-body-view-toggle {

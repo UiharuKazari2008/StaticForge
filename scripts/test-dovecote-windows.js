@@ -33,7 +33,7 @@ function main() {
     assert.match(dovecoteJs, /rows\.addEventListener\('dblclick'/);
     assert.match(dovecoteJs, /doveOpenReaderWindow\(row\.dataset\.doveMailId\)/);
     assert.match(dovecoteJs, /doveOpenReaderWindow = function/);
-    assert.match(dovecoteJs, /modal\.className = 'modal resizeable-window dovecote-reader-window/);
+    assert.match(dovecoteJs, /modal\.className = 'modal resizeable-window toolbar-visible dovecote-reader-window/);
     assert.match(dovecoteJs, /modal\.dataset\.windowIdentifier = 'desktopDovecoteReader'/);
     // Reply / Reply All / Forward are available from the reader's own toolbar.
     assert.match(dovecoteJs, /doveBuildReaderToolbar/);
@@ -92,15 +92,13 @@ function main() {
     assert.match(dovecoteJs, /contextMenu\.attachClickMenuToElement\(button, doveFolderMenuConfig\)/);
     assert.match(dovecoteJs, /const doveRenderFolderButton = function/);
 
-    // 7. Rendered/Raw toggle + Safe badge float in the body pane's top-right corner
-    // (doveBuildBodyTools), out of the main toolbar and out of the header rows, with its own
-    // click listener (not the toolbar's doveHandleToolbarClick).
+    // 7. Rendered/Raw toggle + Safe badge live in the header block's right-aligned tools
+    // column (doveBuildOeHeader), never overlaid on the body, and not in the main toolbar.
     assert.match(dovecoteJs, /const doveBuildBodyViewToggle = function/);
-    assert.match(dovecoteJs, /const doveBuildBodyTools = function/);
-    assert.match(dovecoteJs, /tools\.appendChild\(doveBuildBodyViewToggle\(\)\)/);
-    assert.match(dovecoteJs, /bodyWrap\.appendChild\(doveBuildBodyTools\(/);
+    assert.match(dovecoteJs, /const doveBuildOeHeader = function/);
+    assert.match(dovecoteJs, /'dovecote-oe-header-tools'/);
+    assert.doesNotMatch(dovecoteJs, /dovecote-body-tools/);
     assert.match(dovecoteJs, /'button-group dovecote-body-view-toggle'/);
-    assert.doesNotMatch(dovecoteJs, /dovecote-oe-header-tools/);
     assert.match(dovecoteJs, /const doveBuildSanitizedBadge = function/);
     assert.doesNotMatch(dovecoteJs, /doveBuildToolbar[\s\S]{0,2000}data-dove-body-view/);
 

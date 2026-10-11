@@ -106,7 +106,7 @@ const context = vm.createContext(new Proxy(sandbox, {
     get: (t, k) => (k in t ? t[k] : (typeof k === 'string' ? noop : undefined))
 }));
 
-const { doveOpenReaderWindow, doveReaderWindows } = vm.runInContext(src + '\n;({ doveOpenReaderWindow, doveReaderWindows });', context, { filename: 'dovecote.js' });
+const { doveOpenReaderWindow, doveReaderWindows, ensureDesktopDovecoteModal, doveDisplayAddress, doveBareAddress } = vm.runInContext(src + '\n;({ doveOpenReaderWindow, doveReaderWindows, ensureDesktopDovecoteModal, doveDisplayAddress, doveBareAddress });', context, { filename: 'dovecote.js' });
 
 function main() {
     // Opening from the mail-row menu must not throw and must mount one reader window.
@@ -119,12 +119,37 @@ function main() {
     // Reading-pane wiring: badge + body tools are real elements inside the body pane.
     assert.ok(state.els.safetyBar instanceof FakeNode, 'safetyBar is an element');
     assert.ok(state.els.safetyBar.classList.contains('dovecote-sanitized-badge'));
-    assert.ok(state.els.bodyWrap.querySelector('.dovecote-body-tools'), 'Safe badge floats in the body pane, not the header');
-    assert.strictEqual(readers[0].querySelector('.dovecote-oe-header').querySelector('.dovecote-body-tools'), null);
+    const hdr = readers[0].querySelector('.dovecote-oe-header');
+    assert.ok(hdr.querySelector('.dovecote-oe-header-tools').querySelector('.dovecote-sanitized-badge'), 'Safe badge sits in the header tools column');
+    assert.ok(hdr.querySelector('.dovecote-body-view-toggle'), 'reader has its own Rendered/Raw toggle in the header');
+    assert.strictEqual(state.els.bodyWrap.querySelector('.dovecote-oe-header-tools'), null, 'nothing overlays the body');
+    assert.ok(readers[0].classList.contains('toolbar-visible'), 'reader title-bar toolbar gets its own row (toolbar-visible)');
 
     // Re-opening the same mail focuses the existing window instead of mounting a second one.
     assert.doesNotThrow(() => doveOpenReaderWindow('mail-42'));
     assert.strictEqual(body.querySelectorAll('.dovecote-reader-window').length, 1);
+
+    // Double compose regression: one click on Create Mail must open exactly ONE compose window.
+    // Bubble a click from the button through every ancestor's listeners like a real DOM would.
+    const modal = ensureDesktopDovecoteModal();
+    const createBtn = modal.querySelectorAll('button').find((b) => b.dataset.doveAction === 'create');
+    assert.ok(createBtn, 'Create Mail button exists');
+    const ev = {
+        target: { closest: (sel) => (sel === '[data-dove-action]' ? createBtn : null) },
+        preventDefault() {}, stopPropagation() {}
+    };
+    for (let n = createBtn; n; n = n.parentNode) (n.listeners.click || []).forEach((fn) => fn(ev));
+    assert.strictEqual(body.querySelectorAll('.dovecote-compose-window').length, 1, 'one click -> one compose window');
+
+    // Preview hidden with nothing selected.
+    assert.ok(modal.querySelector('.dovecote-main-pane').classList.contains('dovecote-no-selection'));
+
+    // Display-only @dream.co.jp suffix; input with or without it maps back to the bare name.
+    assert.strictEqual(doveDisplayAddress('menma'), 'menma@dream.co.jp');
+    assert.strictEqual(doveDisplayAddress(''), '');
+    assert.strictEqual(doveBareAddress('yukimi@dream.co.jp'), 'yukimi');
+    assert.strictEqual(doveBareAddress(' menma '), 'menma');
+    assert.strictEqual(doveBareAddress('Menma@Dream.co.jp'), 'Menma');
 
     console.log('dovecote reader window open tests passed');
 }
