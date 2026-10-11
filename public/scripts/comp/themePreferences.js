@@ -32,6 +32,11 @@ function runWithThemeSwitchOverlay(applyFn) {
 }
 
 function switchTheme() {
+    // Liquid Glass menu toggle: basic ↔ last glass mode (public/scripts/comp/aeroGlass.js)
+    if (window.aeroGlass) {
+        window.aeroGlass.toggleBasic();
+        return Promise.resolve();
+    }
     return runWithThemeSwitchOverlay(() => {
         const isBlurDisabled = document.documentElement.classList.contains('disable-blur');
         if (isBlurDisabled) {
@@ -70,6 +75,10 @@ function loadBlurPreference() {
         }
     } catch (e) {
         console.error('Error loading blur preference:', e);
+    }
+    // aero-glass-mode owns html.disable-blur now; re-assert after the legacy key (aeroGlass.js)
+    if (window.aeroGlass) {
+        window.aeroGlass.init();
     }
 }
 

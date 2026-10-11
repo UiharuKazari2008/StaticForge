@@ -12,7 +12,7 @@
     will-change: background-color, border-color, box-shadow;
 }
 .taskbar-start-button:not(.orb):hover:not(:disabled) {
-    will-change: background-color, border-color, box-shadow, backdrop-filter, transform;
+    will-change: background-color, border-color, box-shadow, transform;
 }
 .taskbar-tray-icon:hover:not(:disabled) {
     will-change: background-color, opacity;
@@ -339,8 +339,9 @@ body:not(.desktop-mode) .desktop-taskbar {
             color-mix(in srgb, var(--primary-glass-color) 80%, transparent) 0%,
             color-mix(in srgb, var(--primary-glass-color) 70%, transparent) 50%,
             color-mix(in srgb, var(--primary-glass-color) 60%, transparent) 100%);
-    -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
-    backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    /* The taskbar's own ::after already blurs these pixels; a second pass only costs (#400) */
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-top-color: rgba(255, 255, 255, 0.22);
 

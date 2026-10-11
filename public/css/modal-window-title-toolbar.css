@@ -340,9 +340,9 @@
     min-height: 26px;
     min-width: 0;
     padding-right: 150px;
-    -webkit-filter: drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.4));
-    filter: drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.4));
-    text-shadow: -1px -1px 0 rgba(0, 0, 0, 0.45),
+    /* glow lives in text-shadow; a drop-shadow filter forced a composited layer per caption (#400) */
+    text-shadow: 0 0 5px rgba(0, 0, 0, 0.45),
+        -1px -1px 0 rgba(0, 0, 0, 0.45),
         1px -1px 0 rgba(0, 0, 0, 0.45),
         -1px 1px 0 rgba(0, 0, 0, 0.45),
         1px 1px 0 rgba(0, 0, 0, 0.45),

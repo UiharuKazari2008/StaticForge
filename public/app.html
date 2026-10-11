@@ -340,6 +340,7 @@
     <link rel="stylesheet" href="/css/desktop-apps/desktopAppWindows.css">
     <link rel="stylesheet" href="/css/desktop-apps/dovecote.css">
     <!-- Terminal: global .hidden — must stay last in the stylesheet stack -->
+    <link rel="stylesheet" href="/css/aero-glass.css">
     <link rel="stylesheet" href="/css/hidden.css">
     <script src="/scripts/comp/blockContainer.js"></script>
     <script src="/scripts/utils/deviceUtils.js"></script>
@@ -7765,6 +7766,33 @@ Examples:
                         </div>
                     </div>
 
+                    <!-- Global: Window glass (public/scripts/comp/aeroGlass.js). Applies at once, stored per browser. -->
+                    <div class="settings-section hidden" data-desktop-settings-scope="global">
+                        <h3 class="section-header"><i class="fas fa-window-frame"></i> Window Glass</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Frame glass</label>
+                                <div id="desktopSettingsGlassModeToggle"
+                                    class="gallery-toggle-group desktop-settings-glass-mode-toggle three-tabs"
+                                    data-active="live">
+                                    <button type="button" class="gallery-toggle-btn" data-glass-mode="frosted">
+                                        <span class="tab-text">Frosted</span>
+                                    </button>
+                                    <button type="button" class="gallery-toggle-btn active" data-glass-mode="live">
+                                        <span class="tab-text">Live</span>
+                                    </button>
+                                    <button type="button" class="gallery-toggle-btn" data-glass-mode="basic">
+                                        <span class="tab-text">Basic</span>
+                                    </button>
+                                    <div class="gallery-toggle-slider"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="desktop-settings-hint">Frosted paints a pre-blurred copy of the wallpaper under
+                            every frame, so windows stop paying for live blur. Live is the real-time blur. Basic
+                            is the performance mode: no glass, same frames.</p>
+                    </div>
+
                     <!-- Global: Taskbar -->
                     <div class="settings-section hidden" data-desktop-settings-scope="global">
                         <h3 class="section-header"><i class="fas fa-bars"></i> Taskbar</h3>
@@ -8688,6 +8716,7 @@ Examples:
     <script src="scripts/comp/windowControlsOverlay.js"></script>
     <script src="scripts/comp/errorDisplay.js"></script>
     <script src="scripts/comp/themePreferences.js"></script>
+    <script src="scripts/comp/aeroGlass.js"></script>
     <script src="scripts/comp/appBootstrap.js"></script>
     <script src="scripts/comp/balanceDisplay.js"></script>
     <script src="scripts/comp/dynamicGenerationOverrides.js"></script>

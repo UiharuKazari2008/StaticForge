@@ -224,6 +224,10 @@ function applyDesktopWallpaperInline(wallpaperPath, wallpaperPosition) {
     document.body.style.setProperty('--desktop-wallpaper-position', position);
     // preloadWallpaperIntoMemory: this file
     preloadWallpaperIntoMemory(wallpaperUrl);
+    // Frosted frames rebuild from the new wallpaper (public/scripts/comp/aeroGlass.js)
+    if (window.aeroGlass) {
+        window.aeroGlass.refreshWallpaper();
+    }
     return true;
 }
 
@@ -325,6 +329,9 @@ function clearEarlyWorkspaceThemeInline() {
     document.documentElement.style.removeProperty('--desktop-wallpaper-position');
     document.body.style.removeProperty('--desktop-wallpaper');
     document.body.style.removeProperty('--desktop-wallpaper-position');
+    if (window.aeroGlass) {
+        window.aeroGlass.refreshWallpaper();
+    }
 }
 
 // Generate all workspace styles in a single style element

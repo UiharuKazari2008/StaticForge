@@ -1,0 +1,153 @@
+/* Aero glass engine — frame glass for every .modal window and the taskbar.
+   public/scripts/comp/aeroGlass.js sets html[data-glass] and the --aero-* tokens.
+
+   Modes
+     frosted  a pre-blurred copy of the wallpaper (--aero-wallpaper, built once per
+              wallpaper by aeroGlass.js) is painted under each frame at viewport cover
+              size, offset by the window's own origin (--aero-x / --aero-y). Dragging
+              adds --modal-drag-x / -y in CSS. No window pays a per-frame backdrop-filter.
+     live     the backdrop-filter path app.css ships; untouched here except the
+              maximized dark frame.
+     basic    performance mode: static tinted frames with the same geometry, borders
+              and shadows. html.disable-blur is kept in sync so older rules still apply.
+
+   Link after desktop-shell.css and windows-classic-theme.css, before hidden.css.
+   Yozora #400. */
+
+:root {
+    /* Frame tints over the frosted image: inactive is the paler grey Vista inactive
+       frame, maximized is the Vista dark frame with a touch of texture left. */
+    --aero-tint-inactive: hsl(0 0% 72% / 56%);
+    --aero-tint-maximized: hsl(0 0% 5% / 88%);
+    --aero-sheen: linear-gradient(180deg, hsl(0 0% 100% / 14%) 0, hsl(0 0% 100% / 5%) 38%, hsl(0 0% 0% / 0%) 60%, hsl(0 0% 0% / 8%) 100%);
+    --aero-frame-highlight: inset 0 0 0 1px hsl(0 0% 100% / 17%);
+    --aero-frame-radius: calc(var(--border-radius-xl) - 1px);
+}
+
+/* The active tint is computed on the window itself so the workspace theme's
+   --glass-windows-bg (set on body[data-workspace], not :root) and any per-app
+   override of it are honoured. */
+.modal {
+    --aero-tint-active: color-mix(in srgb, var(--glass-windows-bg, hsl(0 0% 20% / 75%)) 84%, transparent);
+    --aero-tint: var(--aero-tint-active);
+}
+
+/* ---------- frosted + basic: the frame is painted by ::before ---------- */
+
+html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme),
+html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme) {
+    background-color: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    /* the inset highlight moves to ::before so it stays above the frame paint */
+    box-shadow: 3px 3px 20px 1px #000000a3;
+}
+
+html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme)::before,
+html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme)::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: var(--aero-frame-radius);
+    pointer-events: none;
+    background-color: var(--glass-windows-bg, var(--glass-layer-dark-5));
+    background-image:
+        var(--aero-sheen),
+        linear-gradient(var(--aero-tint), var(--aero-tint));
+    background-size: 100% 100%, 100% 100%;
+    background-position: 0 0, 0 0;
+    background-repeat: no-repeat;
+    box-shadow: var(--aero-frame-highlight);
+}
+
+/* frosted adds the wallpaper layer under the tint, aligned to the desktop */
+html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme)::before {
+    background-image:
+        var(--aero-sheen),
+        linear-gradient(var(--aero-tint), var(--aero-tint)),
+        var(--aero-wallpaper, none);
+    background-size:
+        100% 100%,
+        100% 100%,
+        var(--aero-cover-w, 100vw) var(--aero-cover-h, 100vh);
+    background-position:
+        0 0,
+        0 0,
+        calc(var(--aero-cover-x, 0px) - var(--aero-x, 0px) - var(--modal-drag-x, 0px) - 1px)
+        calc(var(--aero-cover-y, 0px) - var(--aero-y, 0px) - var(--modal-drag-y, 0px) - 1px);
+}
+
+/* Inactive windows keep faint glass: same image, paler and greyer tint (Vista inactive frame) */
+html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window),
+html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) {
+    --aero-tint: var(--aero-tint-inactive);
+}
+
+/* Maximized: square frame (token, so no specificity contest with the ::before rule above) */
+.modal.modal-maximized {
+    --aero-frame-radius: 0px;
+}
+
+/* basic never transitions frame paint */
+html[data-glass="basic"] .modal {
+    transition: none;
+}
+
+/* ---------- maximized: Vista dark frame, every mode ---------- */
+
+/* Outranks the inactive tint above: a maximized frame stays dark whether or not it has focus */
+html[data-glass="frosted"] body .modal.modal-maximized,
+html[data-glass="basic"] body .modal.modal-maximized,
+html[data-glass="frosted"] body.desktop-mode .modal.modal-maximized:not(.active-window),
+html[data-glass="basic"] body.desktop-mode .modal.modal-maximized:not(.active-window) {
+    --aero-tint: var(--aero-tint-maximized);
+}
+
+/* live keeps its blur (the "touch of glass") under a near-black fill */
+html[data-glass="live"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme) {
+    background-color: var(--aero-tint-maximized);
+}
+
+/* The taskbar follows the foreground maximized window, as Vista did */
+body.desktop-mode:has(.modal.modal-maximized.active-window:not(.hidden):not(.hidden-alt):not(.minimised)) .desktop-taskbar::after {
+    background:
+        linear-gradient(to bottom, hsl(0 0% 100% / 6%) 0%, hsl(0 0% 100% / 2%) 40%, hsl(0 0% 0% / 25%) 50%, hsl(0 0% 0% / 40%) 100%),
+        linear-gradient(hsl(0 0% 3% / 96%), hsl(0 0% 3% / 96%));
+    opacity: 1;
+}
+
+/* ---------- taskbar ---------- */
+
+/* frosted: the same wallpaper copy, pinned to the bottom edge of the viewport */
+html[data-glass="frosted"] .desktop-taskbar::after {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background:
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 40%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.35) 100%),
+        linear-gradient(to top, hsl(0 0% 8% / 82%) 0%, hsl(0 0% 12% / 76%) 50%, hsl(0 0% 18% / 72%) 100%),
+        var(--aero-wallpaper, none);
+    background-size:
+        100% 100%,
+        100% 100%,
+        var(--aero-cover-w, 100vw) var(--aero-cover-h, 100vh);
+    background-position:
+        0 0,
+        0 0,
+        var(--aero-cover-x, 0px) calc(var(--aero-cover-y, 0px) - (var(--aero-vh, 100vh) - var(--taskbar-height, 35px)));
+    background-repeat: no-repeat;
+}
+
+/* basic: no blur anywhere on the shell; html.disable-blur already lifts the taskbar opacity */
+html[data-glass="basic"] .desktop-taskbar::after,
+html[data-glass="basic"] .taskbar-start-button {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+/* The start button sits on the taskbar's own glass; a second blur on the same pixels
+   costs a full pass and changes nothing visible. */
+.taskbar-start-button:not(.luna):not(.orb) {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}

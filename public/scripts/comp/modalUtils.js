@@ -1055,6 +1055,9 @@ function setModalOffsetPx(modal, offsetX, offsetY, options) {
 
     if (opts.settle) {
         settleModalPixelAnchor(modal);
+    } else if (window.aeroGlass) {
+        // Frosted frames track the window origin (public/scripts/comp/aeroGlass.js); settle syncs itself
+        window.aeroGlass.syncModal(modal);
     }
 }
 
@@ -1078,6 +1081,9 @@ function settleModalPixelAnchor(modal) {
     modal.style.setProperty('--modal-pixel-left', `${roundToDevicePixel(rect.left)}px`);
     modal.style.setProperty('--modal-pixel-top', `${roundToDevicePixel(rect.top)}px`);
     modal.classList.add('modal-pixel-settled');
+    if (window.aeroGlass) {
+        window.aeroGlass.syncModal(modal);
+    }
 }
 
 // Debounced updateTaskbarWindows - only called max every 250ms
@@ -2924,6 +2930,10 @@ function openModal(modal) {
         modal.classList.remove('hidden-alt');
     }
     modal.classList.remove('hidden');
+    if (window.aeroGlass) {
+        // Frosted frame origin before the open animation scales the box (aeroGlass.js)
+        window.aeroGlass.syncModal(modal);
+    }
 
     modal.classList.remove('opening');
     void modal.offsetWidth;
@@ -7745,6 +7755,40 @@ function setupDesktopSettingsStartMenuStyleToggle() {
     desktopSettingsStartMenuStyleWired = true;
 }
 
+// Personalize → Window Glass. Client-only preference applied at once (public/scripts/comp/aeroGlass.js)
+let desktopSettingsGlassModeWired = false;
+
+function syncDesktopSettingsGlassModeUI() {
+    const toggle = document.getElementById('desktopSettingsGlassModeToggle');
+    if (!toggle || !window.aeroGlass) return;
+    const mode = window.aeroGlass.getMode();
+    toggle.setAttribute('data-active', mode);
+    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.glassMode === mode);
+    });
+}
+
+function setupDesktopSettingsGlassModeToggle() {
+    if (desktopSettingsGlassModeWired) {
+        return;
+    }
+    const toggle = document.getElementById('desktopSettingsGlassModeToggle');
+    if (!toggle) return;
+
+    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const mode = btn.dataset.glassMode;
+            if (!mode || !window.aeroGlass) return;
+            window.aeroGlass.setMode(mode);
+            syncDesktopSettingsGlassModeUI();
+        });
+    });
+    document.addEventListener('aeroGlassModeChanged', syncDesktopSettingsGlassModeUI);
+    syncDesktopSettingsGlassModeUI();
+    desktopSettingsGlassModeWired = true;
+}
+
 function setupDesktopSettingsStartMenuTextDropdown() {
     if (desktopSettingsStartMenuTextWired) {
         return;
@@ -8479,6 +8523,7 @@ function initializeDesktopSettingsModal() {
     setupDesktopSettingsDropdowns();
     setupDesktopSettingsStartMenuTextDropdown();
     setupDesktopSettingsStartMenuStyleToggle();
+    setupDesktopSettingsGlassModeToggle();
 
     // Setup button handlers
     setupDesktopSettingsButtonHandlers();

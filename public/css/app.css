@@ -582,8 +582,9 @@ body::after {
     width: 100%;
     height: 100%;
     background: radial-gradient(hsl(0 0% 0% / 0%), hsl(0 0% 0% / 29%));
-    -webkit-filter: saturate(1.0) contrast(1.0);
-    filter: saturate(1.0) contrast(1.0);
+    /* An identity filter still keeps a full-viewport filter layer alive; only editor-open needs one (#400) */
+    -webkit-filter: none;
+    filter: none;
     z-index: -1;
     transition: var(--transition-body-overlay);
 }
@@ -3446,7 +3447,9 @@ body.desktop-mode .modal-backdrop {
     transform: translateZ(0) translate(-50%, -50%) scale(1);
     /* will-change only on opening/closing/minimising/drag — not permanently (layer cost) */
     contain: layout;
-    transition: var(--transition-modal-glass);
+    /* No frame transitions: tweening box-shadow or backdrop-filter repaints the whole
+       window every frame on each focus change; Vista switches instantly (#400) */
+    transition: none;
 }
 
 .modal.toolbar-visible {
@@ -3722,7 +3725,7 @@ body.is-window-dragging #galleryWindow:not([data-dragging="true"]):not([data-res
  * Inactive windows keep the solid glass fill; active-window / on-top / animating keep blur.
  */
 body.desktop-mode .modal {
-    transition: box-shadow var(--transition-normal), background-color var(--transition-slow);
+    transition: none;
 }
 
 body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.minimising):not(.unminimising):not([data-dragging="true"]):not([data-resizing="true"]) {
