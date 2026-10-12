@@ -63,11 +63,11 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | [mcp-connector.md](./mcp-connector.md) | Public MCP / Grok connector on `/{mcpPathUuid}` — Streamable HTTP wrap of `/agent` + WS; Bearer `sfapp_`; unknown UA bypass + capture |
 | [README-CHILD.md](../README-CHILD.md) | Child/ephemeral replication deployment (master pairing, bootstrap, daily ops) |
 
-### WebSocket domains (~336 unique request types)
+### WebSocket domains (~385 unique request types)
 
 | Domain | File | Packets |
 |--------|------|---------|
-| Generation | [ws/generation.md](./ws/generation.md) | 14 |
+| Generation | [ws/generation.md](./ws/generation.md) | 18 |
 | Gallery | [ws/gallery.md](./ws/gallery.md) | 11 |
 | Presets | [ws/presets.md](./ws/presets.md) | 11 |
 | Workspaces | [ws/workspace.md](./ws/workspace.md) | 35 |

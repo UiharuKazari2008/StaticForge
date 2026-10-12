@@ -28,20 +28,41 @@ Set `RUIKO_WORKER_KEY` or point `RUIKO_WORKER_KEY_FILE` at a file (install.ps1 w
 | `GET /models` | Bearer required. |
 | `POST /jobs` | Bearer required. |
 | `GET /jobs/{id}` | Bearer required. |
-| `GET /jobs/{id}/result` | Bearer required. PNG bytes. |
+| `GET /jobs/{id}/preview` | Bearer required. Animate jobs only; latest JPEG filmstrip preview. |
+| `GET /jobs/{id}/result` | Bearer required. PNG bytes for upscale; GIF/MP4/WebP/WebM for animate via `?format=`. |
 
 If no key is configured, authed routes return 503.
 
 ## API
 
-`POST /jobs` accepts either:
+`POST /jobs` accepts JSON or multipart.
+
+Upscale job:
 
 - JSON: `{"image": "<base64>", "model": "RealESRGAN_x4plus", "scale": 4}`
 - multipart: fields `image` (file), `model`, `scale`
 
 Response: `{"job_id": "..."}` immediately. Scales are `2` or `4` (models are native 4x; scale 2 resizes after). Images are limited to 32 MB and a 4096 px edge. The queue holds 16 jobs.
 
-`GET /jobs/{id}` returns `status` (`queued`, `running`, `completed`, `failed`), `progress`, `error`, `model`, `scale`.
+Animate job:
+
+- JSON: `{"type": "animate", "image": "<base64>", "motion_prompt": "hair sways in the wind", "frames": 16, "fps": 8, "loop": true, "backend": "ltx"}`
+- multipart: fields `type=animate`, `image` (file), `motion_prompt`, `frames`, `fps`, `loop`, `backend`
+
+`motion_prompt` is required and capped at 2000 characters. `frames` is 8-32
+(default 16), `fps` is 4-24 (default 8), and `backend` is `ltx`, `loop`, or
+`wan` (`animatediff` is accepted as the legacy alias for `loop`). The response
+is the same `{"job_id": "..."}` shape.
+
+`GET /jobs/{id}` returns `status` (`queued`, `running`, `completed`, `failed`),
+`progress`, `stage`, `step`, `total_steps`, `preview_seq`, and `error`. Upscale
+jobs also include `model` and `scale`; animate jobs include `motion_prompt`,
+`frames`, `fps`, `loop`, and `backend`.
+
+For animate jobs, `GET /jobs/{id}/preview` returns the latest JPEG filmstrip when
+available, with `X-Preview-Seq`. `GET /jobs/{id}/result?format=gif|mp4|webp|webm`
+returns the requested completed output. `webm` is optional because older workers
+may not have produced it.
 
 Models:
 

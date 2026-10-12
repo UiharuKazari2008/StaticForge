@@ -509,7 +509,9 @@ committed configuration.
 
 All authentication values (`devLoginKey`, `loginKey`, `loginPin`,
 `readOnlyPin`, `sessionSecret`, and `localWorker.key`) belong in gitignored `secure.config.json`.
-`localWorker.url` and `localWorker.key` point Dreamscape at the Ruiko upscaler (`services/ruiko-upscaler/`). Do not commit either value.
+`localWorker.url` and `localWorker.key` point Dreamscape at the Ruiko worker
+(`services/ruiko-upscaler/`) used by local upscale and animate jobs. Do not
+commit either value.
 Only the non-secret `enable_dev` and `userPinLoginEnabled` switches belong in
 `config.json`. A missing development key returns
 `DEV_LOGIN_KEY_NOT_CONFIGURED` without logging or returning key material.
