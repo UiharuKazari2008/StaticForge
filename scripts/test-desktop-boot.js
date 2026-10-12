@@ -19,10 +19,19 @@ class ClassList {
     list() { return [...this.set]; }
 }
 class Element {
-    constructor(id) { this.id = id; this.classList = new ClassList(); this.dataset = {}; this.style = {}; this.textContent = ''; this.listeners = {}; }
+    constructor(id) { this.id = id; this.classList = new ClassList(); this.dataset = {}; this.style = {}; this.textContent = ''; this.listeners = {}; this.attrs = {}; }
     addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
     click() { (this.listeners.click || []).forEach((fn) => fn({})); }
+    setAttribute(k, v) { this.attrs[k] = v; }
+    appendChild(child) { if (child.id) els[child.id] = child; return child; }
 }
+class FakeVideo {
+    constructor(paused, inBootDialog) { this.paused = paused; this.inBootDialog = inBootDialog; this.isConnected = true; this.plays = 0; }
+    pause() { this.paused = true; }
+    play() { this.paused = false; this.plays++; return Promise.resolve(); }
+    closest(sel) { return sel === '.boot-dialog' && this.inBootDialog ? {} : null; }
+}
+const videos = [];
 const els = {};
 ['windowsStartupStatus', 'windowsStartupDetail', 'windowsStartupProgressBar', 'windowsStartupSkipStepBtn', 'startMenu'].forEach((id) => { els[id] = new Element(id); });
 els.windowsStartupSkipStepBtn.classList.add('hidden');
@@ -31,6 +40,8 @@ const events = [];
 const document = {
     body: new Element('body'),
     getElementById: (id) => els[id] || null,
+    createElement: () => new Element(null),
+    querySelectorAll: (sel) => (sel === 'video' ? videos : []),
     dispatchEvent(ev) { events.push(ev.type + (ev.detail && ev.detail.stage ? ':' + ev.detail.stage : '')); return true; }
 };
 if (typeof global.CustomEvent !== 'function') {
@@ -147,8 +158,15 @@ boot.config.stepWatchdogMs = 30;
     assert.ok(!body.classList.contains('boot-staged'));
 
     // ---- session lock after boot: Classic theme on the lock layer, off again on resume ----
+    boot.config.lockSwitchMs = 20;
+    boot.config.unlockSwitchMs = 40;
     assert.ok(!body.classList.contains('windows-classic-theme'));
     assert.strictEqual(boot.suspend('server-booting'), true);
+    const overlay = els.sessionSwitchOverlay;
+    assert.ok(overlay && overlay.classList.contains('active'), 'lock cuts to black first');
+    assert.ok(boot.isSwitching());
+    await sleep(30);
+    assert.ok(!overlay.classList.contains('active'), 'black lifts after lockSwitchMs, lock screen shows');
     assert.ok(body.classList.contains('session-suspended'));
     assert.ok(body.classList.contains('windows-classic-theme'), 'logon dialog is Classic like the first logon');
     assert.strictEqual(boot.isSuspended(), true);
@@ -162,6 +180,48 @@ boot.config.stepWatchdogMs = 30;
     boot.resume();
     assert.ok(body.classList.contains('windows-classic-theme'), 'Classic that was already on stays on');
     body.classList.remove('windows-classic-theme');
+    await sleep(50);
+
+    // ---- unlock: black for unlockSwitchMs, lock layers already gone under it ----
+    boot.suspend('server-restarted');
+    await sleep(30);
+    boot.resume();
+    assert.ok(overlay.classList.contains('active'), 'unlock cuts to black');
+    assert.ok(!body.classList.contains('session-suspended') && !body.classList.contains('windows-classic-theme'),
+        'cover and Classic come off under the black');
+    await sleep(20);
+    assert.ok(overlay.classList.contains('active'), 'still black before unlockSwitchMs');
+    await sleep(35);
+    assert.ok(!overlay.classList.contains('active'), 'desktop cuts in after unlockSwitchMs');
+    assert.ok(events.includes('desktopSessionSwitchDone'));
+
+    // ---- paused while locked: videos, planet switcher loop, registered hooks; work untouched ----
+    const playing = new FakeVideo(false, false);
+    const idle = new FakeVideo(true, false);
+    const bootDialogVideo = new FakeVideo(false, true);
+    videos.push(playing, idle, bootDialogVideo);
+    const ps = { raf: 7, state: 'open', stops: 0, starts: 0, stopLoop() { this.stops++; this.raf = 0; }, startLoop() { this.starts++; this.raf = 9; } };
+    window.planetSwitcher = ps;
+    const hookLog = [];
+    boot.registerPauseHook({ pause: () => hookLog.push('pause'), resume: () => hookLog.push('resume') });
+    boot.registerPauseHook(() => { hookLog.push('fn-pause'); return () => hookLog.push('fn-resume'); });
+    boot.suspend('server-unreachable');
+    assert.ok(playing.paused && idle.paused && !bootDialogVideo.paused, 'playing videos pause, boot dialog video keeps going');
+    assert.strictEqual(ps.stops, 1, 'planet switcher render loop stops');
+    assert.deepStrictEqual(hookLog, ['pause', 'fn-pause']);
+    boot.resume();
+    assert.strictEqual(playing.plays, 1, 'video the lock paused plays again');
+    assert.strictEqual(idle.plays, 0, 'a video that was already paused stays paused');
+    assert.strictEqual(ps.starts, 1, 'planet switcher loop restarts');
+    assert.deepStrictEqual(hookLog, ['pause', 'fn-pause', 'resume', 'fn-resume']);
+    ps.state = 'idle';
+    ps.raf = 0;
+    boot.suspend('x');
+    boot.resume();
+    assert.strictEqual(ps.stops, 1, 'a closed planet switcher is left alone');
+    videos.length = 0;
+    delete window.planetSwitcher;
+    await sleep(50);
     boot.begin();
     assert.strictEqual(boot.suspend('server-booting'), false, 'no lock while the staged boot runs');
     boot.reset();
@@ -184,6 +244,10 @@ function testRevealCss() {
     assert.ok(!/translateY/.test(boot), 'taskbar does not slide');
     assert.ok(/session-suspended::before\s*\{[^}]*position:\s*fixed[^}]*inset:\s*0/.test(boot), 'lock cover spans the viewport');
     assert.ok(/session-suspended[^{]*\.gallery,/.test(boot), 'gallery grids (visibility: visible) are hidden under the lock');
+    assert.ok(/session-suspended \*:not\(\.boot-dialog, \.boot-dialog \*\)[^{]*\{\s*animation-play-state:\s*paused !important/.test(boot),
+        'every animation outside the boot dialogs pauses while locked');
+    assert.ok(/#sessionSwitchOverlay\s*\{[^}]*background:\s*#000[^}]*z-index:\s*2147482500/.test(boot), 'session switch is black above the lock dialogs');
+    assert.ok(/progress\.paused > div\s*\{\s*animation-play-state:\s*paused !important/.test(css), 'logon marquee pause beats its running !important');
 }
 
 // ---------- websocket.js: when the lock engages ----------
@@ -301,6 +365,21 @@ async function testLockTriggers(body) {
     assert.strictEqual(c.lastServerStartupStatus.timestamp, NEW + 60000);
     assert.deepStrictEqual(c.beats, ['Starting Dreamscape…'], 'stage text goes to the logon dialog');
     window.desktopBoot.resume();
+
+    // Unlock order: black cut (resume) before the logon dialog closes; no teal pause in between
+    const handoff = liftMethod(src, '_completePreStartupHandoff')(WebSocketClient);
+    const order = [];
+    const h = Object.assign(Object.create(proto), {
+        sessionSuspended: true, preStartupHandoffCompleted: false, connectionDialView: 'transient',
+        connectionPhase: 'dialing', socketAuthenticated: true, connectionUi: {},
+        _setConnectionPhase: () => {}, _sleepConnectionBeat: async (ms) => { order.push(`sleep${ms}`); },
+        _canCompletePreStartupHandoff() { return this._shouldUsePreStartupDialog() && this.socketAuthenticated === true; },
+        _resumeSuspendedSession() { order.push('resume'); this.sessionSuspended = false; },
+        _hidePreStartupDialog: async () => { order.push('hide'); }
+    });
+    await handoff.call(h);
+    assert.deepStrictEqual(order, ['sleep1000', 'resume', 'hide'], 'unlock: Preparing… then black, dialog closes under it');
+    assert.strictEqual(h.preStartupHandoffCompleted, true);
 
     // First boot (not initialised): an unreachable server is the normal logon wait, no lock
     c = client([refused(), status(NEW, true, 'Starting Dreamscape…', 100)]);

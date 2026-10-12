@@ -1931,13 +1931,19 @@ class WebSocketClient {
         });
         await this._sleepConnectionBeat(1000);
         if (!this._canCompletePreStartupHandoff()) return;
+        if (this.sessionSuspended) {
+            // Session switch back: cut to black first (desktopBoot.resume); the logon dialog
+            // closes and the lock comes off under the black, then the desktop cuts in
+            this.preStartupHandoffCompleted = true;
+            this._resumeSuspendedSession();
+            await this._hidePreStartupDialog();
+            return;
+        }
         await this._hidePreStartupDialog();
         await this._sleepConnectionBeat(750);
         if (!this._canCompletePreStartupHandoff()) return;
         this.preStartupHandoffCompleted = true;
-        if (this.sessionSuspended) {
-            this._resumeSuspendedSession();
-        } else if (window.desktopBoot) {
+        if (window.desktopBoot) {
             // XP-style staged reveal from here: solid colour, then wallpaper, icons, taskbar, windows
             window.desktopBoot.begin();
         }

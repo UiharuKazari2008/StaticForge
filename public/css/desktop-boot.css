@@ -78,8 +78,10 @@
     animation-timing-function: linear;
 }
 
+/* JS pauses the marquee when nothing is in flight (password form, failed); the extra class
+   beats the running !important above */
 #desktopPreStartupModal .desktop-prestartup-progress.paused > div {
-    animation-play-state: paused;
+    animation-play-state: paused !important;
 }
 
 #desktopPreStartupModal .desktop-prestartup-main {
@@ -477,4 +479,28 @@ body.desktop-mode.session-suspended .websocket-banner {
     visibility: hidden !important;
     pointer-events: none !important;
     transition: none !important;
+}
+
+/* Everything under the lock stands still: every animation outside the boot dialogs pauses
+   (the logon marquee keeps running). JS loops pause through desktopBoot pause hooks. Work in
+   progress is not touched; a paused open/close animation just finishes after unlock. */
+body.desktop-mode.session-suspended *:not(.boot-dialog, .boot-dialog *),
+body.desktop-mode.session-suspended *:not(.boot-dialog, .boot-dialog *)::before,
+body.desktop-mode.session-suspended *:not(.boot-dialog, .boot-dialog *)::after {
+    animation-play-state: paused !important;
+}
+
+/* Session switch (desktopBoot.js cutToBlack): one black cut over everything, lock dialogs
+   included, both ways; no fade in or out. Below the fatal error page (2147483000). */
+#sessionSwitchOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 2147482500;
+    pointer-events: auto;
+}
+
+#sessionSwitchOverlay.active {
+    display: block;
 }

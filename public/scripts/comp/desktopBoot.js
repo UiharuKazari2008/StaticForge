@@ -25,9 +25,13 @@
  *                           puts a solid-colour cover over every window, the taskbar,
  *                           icons, popovers and toasts while the logon dialog shows the
  *                           server's own boot progress, in Windows Classic like the first
- *                           logon; resume() once data is reloaded
+ *                           logon; resume() once data is reloaded. Both ways go through a
+ *                           black session-switch cut (#sessionSwitchOverlay); the lock and
+ *                           the Aero swap happen under the black. While locked every
+ *                           animation and render loop is paused (CSS + pause hooks), work
+ *                           in progress keeps running.
  *
- * Test: scripts/test-desktop-boot.js. Yozora #401, #410.
+ * Test: scripts/test-desktop-boot.js. Yozora #401, #410, #412.
  */
 (function () {
     'use strict';
@@ -56,7 +60,9 @@
         stepWatchdogMs: 25000,
         connectionWaitText: 'Waiting for the server…',
         connectionFailedText: 'The server is not responding…',
-        suspendText: 'Restoring your session…'
+        suspendText: 'Restoring your session…',
+        lockSwitchMs: 500,   // black cut before the lock screen shows
+        unlockSwitchMs: 1500 // black while the desktop comes back under it
     };
 
     const doc = typeof document !== 'undefined' ? document : null;
@@ -80,6 +86,8 @@
         suspended: false,
         suspendReason: null,
         suspendAddedClassic: false,
+        switchTimer: null,
+        pausedBy: [],         // resume functions from the pause hooks, run on unlock
         lastStepMessage: '',
         lastProgress: 0
     };
@@ -389,6 +397,97 @@
         if (state.active) advance();
     }
 
+    // ---------- session switch: one black cut over everything ----------
+
+    function switchOverlay() {
+        let el = byId('sessionSwitchOverlay');
+        if (!el && doc && typeof doc.createElement === 'function' && doc.body) {
+            el = doc.createElement('div');
+            el.id = 'sessionSwitchOverlay';
+            el.setAttribute('aria-hidden', 'true');
+            doc.body.appendChild(el);
+        }
+        return el;
+    }
+
+    /** Black at once, lifted (no fade) after ms; a newer cut replaces the pending lift. */
+    function cutToBlack(ms) {
+        const el = switchOverlay();
+        clearTimeout(state.switchTimer);
+        state.switchTimer = null;
+        if (!el) return;
+        el.classList.add('active');
+        state.switchTimer = setTimeout(() => {
+            state.switchTimer = null;
+            el.classList.remove('active');
+            dispatch('desktopSessionSwitchDone', { locked: state.suspended });
+        }, Math.max(0, ms));
+    }
+
+    function isSwitching() {
+        return !!state.switchTimer;
+    }
+
+    // ---------- pause while locked ----------
+    // CSS animations pause through body.session-suspended (desktop-boot.css). Hooks cover
+    // JS-driven motion; each pause() returns its own resume function (or nothing). Only
+    // rendering stops: timers, alarms, network and generation keep running.
+
+    const pauseHooks = [
+        function pauseVideos() {
+            if (!doc || typeof doc.querySelectorAll !== 'function') return null;
+            const playing = Array.from(doc.querySelectorAll('video')).filter((v) => !v.paused
+                && !(typeof v.closest === 'function' && v.closest('.boot-dialog')));
+            playing.forEach((v) => v.pause());
+            if (!playing.length) return null;
+            return () => playing.forEach((v) => {
+                if (v.isConnected === false || !v.paused) return;
+                const p = v.play();
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            });
+        },
+        function pausePlanetSwitcher() {
+            const ps = win && win.planetSwitcher;
+            if (!ps || !ps.raf || typeof ps.stopLoop !== 'function') return null;
+            ps.stopLoop();
+            return () => {
+                if (ps.state !== 'idle' && !ps.raf && typeof ps.startLoop === 'function') ps.startLoop();
+            };
+        }
+    ];
+
+    /** Features add { pause() → resume fn | void } to stop their own render loops while locked. */
+    function registerPauseHook(hook) {
+        if (typeof hook === 'function') pauseHooks.push(hook);
+        else if (hook && typeof hook.pause === 'function') {
+            pauseHooks.push(() => {
+                const r = hook.pause();
+                if (typeof r === 'function') return r;
+                return typeof hook.resume === 'function' ? () => hook.resume() : null;
+            });
+        }
+    }
+
+    function pauseSession() {
+        state.pausedBy = [];
+        pauseHooks.forEach((hook) => {
+            try {
+                const undo = hook();
+                if (typeof undo === 'function') state.pausedBy.push(undo);
+            } catch (err) {
+                if (typeof console !== 'undefined' && console.warn) console.warn('Session pause hook failed:', err);
+            }
+        });
+    }
+
+    function resumeSession() {
+        state.pausedBy.splice(0).forEach((undo) => {
+            try { undo(); } catch (err) {
+                if (typeof console !== 'undefined' && console.warn) console.warn('Session resume hook failed:', err);
+            }
+        });
+    }
+
     // ---------- session lock (server restart after boot) ----------
 
     function suspend(reason) {
@@ -396,6 +495,8 @@
         if (state.suspended) return true;
         state.suspended = true;
         state.suspendReason = reason || 'server-restart';
+        // Session switch: black first, the lock screen is built under it
+        cutToBlack(config.lockSwitchMs);
         const b = body();
         if (b) {
             // The lock layer is the first logon again: Windows Classic. Everything else sits
@@ -412,6 +513,7 @@
                 win.closeStartMenu();
             }
         } catch (_) { /* best effort */ }
+        pauseSession();
         dispatch('desktopSessionSuspended', { reason: state.suspendReason });
         return true;
     }
@@ -421,12 +523,16 @@
         state.suspended = false;
         const reason = state.suspendReason;
         state.suspendReason = null;
+        // Session switch back: black for unlockSwitchMs; the cover, Classic → Aero and the
+        // resumed loops all settle under it, then the desktop cuts in
+        cutToBlack(config.unlockSwitchMs);
         const b = body();
         if (b) {
             b.classList.remove('session-suspended');
             if (state.suspendAddedClassic) b.classList.remove(CLASSIC_THEME_CLASS);
         }
         state.suspendAddedClassic = false;
+        resumeSession();
         dispatch('desktopSessionResumed', { reason });
         return true;
     }
@@ -453,6 +559,8 @@
         suspend,
         resume,
         isSuspended,
+        isSwitching,
+        registerPauseHook,
         _test: { state, stageIndex, REVEAL_CLASS, BOOT_CLASSES }
     };
 

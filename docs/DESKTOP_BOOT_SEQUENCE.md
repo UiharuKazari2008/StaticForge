@@ -1,7 +1,7 @@
 # Desktop boot sequence (MeletonFX)
 
 How the desktop (`window.isDesktop`, `body.desktop-mode`) comes up, in the order the user
-sees it, and which code owns each step. Yozora #401, #410 (parent #399).
+sees it, and which code owns each step. Yozora #401, #410, #412 (parent #399; plan #411).
 
 ## Order on screen
 
@@ -89,9 +89,27 @@ shows its plain dial beat, never the server's "Starting Dreamscape…" stage.
    locked. The dialog shows "Waiting for server…", the new server's boot stage and
    progress, the dial beats, or the password form if the new server wants a login.
 3. On reconnect `onopen` runs `setActiveWorkspace` and every refresh callback first,
-   then `_completePreStartupHandoff` ("Preparing MeletonFX…", dialog closes) calls
-   `_resumeSuspendedSession()` → `desktopBoot.resume()`, which drops the cover and the
-   Classic theme it added in one step; the desktop returns as it was.
+   then `_completePreStartupHandoff` shows "Preparing MeletonFX…" for a second and calls
+   `_resumeSuspendedSession()` → `desktopBoot.resume()` *before* the logon dialog closes,
+   so the dialog, the cover and the Classic theme all go under the black cut below; the
+   desktop returns as it was.
+
+**Session switch.** Both ways go through one black cut, `#sessionSwitchOverlay` (created
+by `desktopBoot`, z 2147482500: above the lock dialogs, below the fatal error page):
+lock = black for `config.lockSwitchMs` (500 ms) while the lock screen is built under it;
+unlock = black for `config.unlockSwitchMs` (1.5 s) while the cover comes off, Classic swaps
+back to Aero and paused loops restart. No fades either way. `desktopSessionSwitchDone`
+fires when the black lifts.
+
+**Paused while locked.** `body.session-suspended *:not(.boot-dialog, .boot-dialog *)` (and
+their `::before` / `::after`) get `animation-play-state: paused !important`, so the logon
+marquee is the only thing moving. `desktopBoot` pause hooks stop JS motion: playing
+`<video>` elements (resumed on unlock, only those the lock paused) and the planet
+switcher's render loop. Features add their own with
+`desktopBoot.registerPauseHook({ pause, resume })` or a function returning its resume
+function. Timers, alarms, network, generation and local work are not touched; a window
+open/close animation caught by the lock finishes after unlock (`closeModal` resolves on
+its 600 ms fallback).
 
 The lock is a no-op while the staged boot itself is running and in non-desktop mode.
 Locking and unlocking each cost one full style pass (~150 ms on Yukimi's box), once per
@@ -105,5 +123,5 @@ restart.
   is; `desktopBoot._test.state` holds the queue.
 - Events on `document`: `desktopBootBegin`, `desktopBootStage` (`detail.stage`),
   `desktopBootStepStalled`, `desktopBootDone`, `desktopSessionSuspended`,
-  `desktopSessionResumed`.
+  `desktopSessionResumed`, `desktopSessionSwitchDone` (`detail.locked`).
 - Tests: `npm run test:desktop-boot`.
