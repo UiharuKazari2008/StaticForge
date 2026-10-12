@@ -225,10 +225,6 @@
             ev.preventDefault();
             runAction(target.dataset.cplAction, target.dataset.cplArg);
         });
-        modal.addEventListener('dblclick', (ev) => {
-            const item = ev.target.closest('[data-cpl-item]');
-            if (item) openItem(item.dataset.cplItem);
-        });
         modal.addEventListener('keydown', (ev) => {
             const item = ev.target.closest && ev.target.closest('[data-cpl-item]');
             if (item && ev.key === 'Enter') {
@@ -250,6 +246,14 @@
         switch (action) {
             case 'nav': navigate(arg); break;
             case 'item': openItem(arg); break;
+            // one click opens an item (Yukimi: Classic View's double-click felt like nothing happened)
+            case 'open': {
+                const node = el(`[data-cpl-item="${arg}"]`);
+                modal.querySelectorAll('.cpl-item.selected').forEach((n) => n.classList.remove('selected'));
+                if (node) node.classList.add('selected');
+                openItem(arg);
+                break;
+            }
             case 'select': {
                 const node = el(`[data-cpl-item="${arg}"]`);
                 modal.querySelectorAll('.cpl-item.selected').forEach((n) => n.classList.remove('selected'));
@@ -384,7 +388,7 @@
             }
             return `<div class="cpl-items" role="list">${shown.map((i) => `
                 <div class="cpl-item" role="listitem" tabindex="0" data-cpl-item="${esc(i.id)}"
-                    data-cpl-action="select" data-cpl-arg="${esc(i.id)}" title="${esc(i.description || i.name)}">
+                    data-cpl-action="open" data-cpl-arg="${esc(i.id)}" title="${esc(i.description || i.name)}">
                     ${i.image ? `<img src="${esc(i.image)}" alt="" draggable="false">` : `<i class="${esc(i.icon || 'fas fa-gear')}"></i>`}
                     <span>${esc(i.name)}</span>
                 </div>`).join('')}</div>`;

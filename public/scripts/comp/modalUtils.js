@@ -9175,6 +9175,10 @@ function registerDesktopSettingsControlPanelPages() {
     });
 }
 
+// Register as soon as every script is in (melatonControlPanel.js loads after this file), so the
+// Personalization and Global Settings items work when Control Panel is opened first.
+document.addEventListener('DOMContentLoaded', () => registerDesktopSettingsControlPanelPages());
+
 // Parse wallpaper position string into state
 function parseWallpaperPosition(position) {
     const parts = position.split(' ');

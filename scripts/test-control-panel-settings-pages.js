@@ -40,4 +40,7 @@ const mcp = read('public/scripts/comp/melatonControlPanel.js');
 assert.ok(/unmountPage\(\);\s*const main = el\('\.cpl-main'\);/.test(mcp), 'pages unmount before every re-render');
 assert.ok(/function close\(\) \{\s*stopTimers\(\);\s*unmountPage\(\);/.test(mcp), 'and when the window closes');
 
+assert.ok(js.includes("document.addEventListener('DOMContentLoaded', () => registerDesktopSettingsControlPanelPages());"), 'the pages exist before the old opener ever runs (Control Panel opened first)');
+assert.ok(mcp.includes('data-cpl-action="open"') && !mcp.includes("modal.addEventListener('dblclick'"), 'one click opens an item, no double open');
+
 console.log('test-control-panel-settings-pages: ok');
