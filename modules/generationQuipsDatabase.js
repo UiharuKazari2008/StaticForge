@@ -367,6 +367,79 @@ class GenerationQuipsDatabase {
         return { quipCount, workspaceCount, extractedTermRows: termRows, versionHash: this.getVersionHash() };
     }
 
+    // JULES: Batch query added to fix N+1 performance bottleneck
+    getWorkspaceQuipStatsBatch(workspaceIds) {
+        if (!workspaceIds || workspaceIds.length === 0) return {};
+
+        const results = {};
+        for (const id of workspaceIds) {
+            results[id] = {
+                termCount: 0,
+                phraseCount: 0,
+                extractedTermCount: 0,
+                minPhrasesPerTerm: null,
+                maxPhrasesPerTerm: 0,
+                lastGeneratedAt: null
+            };
+        }
+
+        const placeholders = workspaceIds.map(() => '?').join(',');
+
+        // 1. Term counts and Max Generated At
+        const termRows = this.db.prepare(`
+            SELECT workspace_id, COUNT(*) AS c, MAX(generated_at) AS ts
+            FROM dynamic_quips
+            WHERE workspace_id IN (${placeholders})
+            GROUP BY workspace_id
+        `).all(...workspaceIds);
+
+        for (const row of termRows) {
+            if (results[row.workspace_id]) {
+                results[row.workspace_id].termCount = row.c;
+                results[row.workspace_id].lastGeneratedAt = row.ts || null;
+            }
+        }
+
+        // 2. Phrase counts
+        const phraseRows = this.db.prepare(`
+            SELECT workspace_id, phrases FROM dynamic_quips
+            WHERE workspace_id IN (${placeholders})
+        `).all(...workspaceIds);
+
+        for (const row of phraseRows) {
+            if (!results[row.workspace_id]) continue;
+            try {
+                const phrases = JSON.parse(row.phrases);
+                if (!Array.isArray(phrases)) continue;
+                results[row.workspace_id].phraseCount += phrases.length;
+                if (results[row.workspace_id].minPhrasesPerTerm === null || phrases.length < results[row.workspace_id].minPhrasesPerTerm) {
+                    results[row.workspace_id].minPhrasesPerTerm = phrases.length;
+                }
+                if (phrases.length > results[row.workspace_id].maxPhrasesPerTerm) {
+                    results[row.workspace_id].maxPhrasesPerTerm = phrases.length;
+                }
+            } catch {
+                continue;
+            }
+        }
+
+        // 3. Extracted term counts
+        const extractedRows = this.db.prepare(`
+            SELECT workspace_id, COUNT(*) AS c
+            FROM extracted_terms
+            WHERE workspace_id IN (${placeholders})
+            GROUP BY workspace_id
+        `).all(...workspaceIds);
+
+        for (const row of extractedRows) {
+            if (results[row.workspace_id]) {
+                results[row.workspace_id].extractedTermCount = row.c;
+            }
+        }
+
+        return results;
+    }
+
     getWorkspaceQuipStats(workspaceId) {
         const termCount = this.db.prepare(`
             SELECT COUNT(*) AS c FROM dynamic_quips WHERE workspace_id IS ?

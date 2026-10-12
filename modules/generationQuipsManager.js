@@ -596,8 +596,12 @@ class GenerationQuipsManager {
         const workspaceSummaries = [];
         const autoUpdateByWorkspace = {};
 
+        // JULES: Use batched lookup for O(1) stats retrieval instead of looping
+        const allWorkspaceIds = Object.keys(workspaces);
+        const batchedStats = allWorkspaceIds.length > 0 ? db.getWorkspaceQuipStatsBatch(allWorkspaceIds) : {};
+
         for (const [id, ws] of Object.entries(workspaces)) {
-            const wsQuips = db.getWorkspaceQuipStats(id);
+            const wsQuips = batchedStats[id] || db.getWorkspaceQuipStats(id);
             let needsGeneration = wsQuips.termCount === 0;
             let generationStaleReason = needsGeneration ? 'none' : null;
 
@@ -1525,8 +1529,12 @@ class GenerationQuipsManager {
         const nowSec = Math.floor(Date.now() / 1000);
 
         const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces();
+        // JULES: Use batched lookup for O(1) stats retrieval instead of looping
+        const allWorkspaceIds = Object.keys(workspaces);
+        const batchedStats = allWorkspaceIds.length > 0 ? db.getWorkspaceQuipStatsBatch(allWorkspaceIds) : {};
+
         const workspaceSummaries = Object.entries(workspaces).map(([id, ws]) => {
-            const wsQuips = db.getWorkspaceQuipStats(id);
+            const wsQuips = batchedStats[id] || db.getWorkspaceQuipStats(id);
             let needsGeneration = wsQuips.termCount === 0;
             let generationStaleReason = needsGeneration ? 'none' : null;
 
