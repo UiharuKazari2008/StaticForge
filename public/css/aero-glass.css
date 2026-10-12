@@ -49,7 +49,16 @@
     /* Declared here, not on :root: --modal-title-chrome-height is set per window
        (75px with a toolbar), and var() inside a custom property resolves where it
        is declared. */
-    --aero-body-shade-layer: linear-gradient(to bottom, hsl(0 0% 0% / 0%) var(--modal-title-chrome-height, 27px), var(--aero-body-shade) var(--modal-title-chrome-height, 27px));
+    --aero-body-shade-layer: linear-gradient(var(--aero-body-shade), var(--aero-body-shade));
+    /* The client box inside the frame: below the title chrome, inside the Vista border
+       (--window-frame-inset, modal-window-title-toolbar.css; 0 outside desktop mode). */
+    --aero-client-size: calc(100% - 2 * var(--window-frame-inset, 0px)) calc(100% - var(--modal-title-chrome-height, 27px) - var(--window-frame-inset, 0px));
+    --aero-client-pos: var(--window-frame-inset, 0px) var(--modal-title-chrome-height, 27px);
+    /* The border strips below the chrome carry the caption band's glass wash, so the frame
+       reads as one piece of glass around the client (#407). Left, right, bottom. */
+    --aero-frame-wash: linear-gradient(hsl(0 0% 100% / 25%), hsl(0 0% 100% / 25%));
+    --aero-strip-side-size: var(--window-frame-inset, 0px) calc(100% - var(--modal-title-chrome-height, 27px));
+    --aero-strip-bottom-size: calc(100% - 2 * var(--window-frame-inset, 0px)) var(--window-frame-inset, 0px);
     --aero-frame-base: var(--glass-windows-bg, hsl(0 0% 20% / 75%));
     --aero-tint-active: color-mix(in srgb, var(--aero-frame-base) 84%, transparent);
     --aero-tint-inactive: color-mix(in srgb, var(--aero-frame-base) 45%, hsl(0 0% 66% / 60%));
@@ -112,14 +121,19 @@ html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-them
     pointer-events: none;
     background-color: var(--aero-frame-base);
     background-image:
+        var(--aero-frame-wash), var(--aero-frame-wash), var(--aero-frame-wash),
         var(--aero-body-shade-layer),
         var(--aero-sheen),
         var(--aero-wedges),
         var(--aero-streaks),
         var(--aero-shade),
         linear-gradient(var(--aero-tint), var(--aero-tint));
-    background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, var(--aero-streaks-size), 100% 100%, 100% 100%;
-    background-position: 0 0, 0 0, 0 0, 0 0, var(--aero-streaks-pos), 0 0, 0 0;
+    background-size:
+        var(--aero-strip-side-size), var(--aero-strip-side-size), var(--aero-strip-bottom-size),
+        var(--aero-client-size), 100% 100%, 100% 100%, 100% 100%, var(--aero-streaks-size), 100% 100%, 100% 100%;
+    background-position:
+        0 var(--modal-title-chrome-height, 27px), 100% var(--modal-title-chrome-height, 27px), var(--window-frame-inset, 0px) 100%,
+        var(--aero-client-pos), 0 0, 0 0, 0 0, var(--aero-streaks-pos), 0 0, 0 0;
     background-repeat: no-repeat;
     box-shadow: var(--aero-frame-highlight);
 }
@@ -127,6 +141,7 @@ html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-them
 /* frosted adds the wallpaper layer under the tint, aligned to the desktop */
 html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before {
     background-image:
+        var(--aero-frame-wash), var(--aero-frame-wash), var(--aero-frame-wash),
         var(--aero-body-shade-layer),
         var(--aero-sheen),
         var(--aero-wedges),
@@ -135,7 +150,8 @@ html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-th
         linear-gradient(var(--aero-tint), var(--aero-tint)),
         var(--aero-wallpaper, none);
     background-size:
-        100% 100%,
+        var(--aero-strip-side-size), var(--aero-strip-side-size), var(--aero-strip-bottom-size),
+        var(--aero-client-size),
         100% 100%,
         100% 100%, 100% 100%,
         var(--aero-streaks-size),
@@ -143,7 +159,8 @@ html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-th
         100% 100%,
         var(--aero-cover-w, 100vw) var(--aero-cover-h, 100vh);
     background-position:
-        0 0,
+        0 var(--modal-title-chrome-height, 27px), 100% var(--modal-title-chrome-height, 27px), var(--window-frame-inset, 0px) 100%,
+        var(--aero-client-pos),
         0 0,
         0 0, 0 0,
         var(--aero-streaks-pos),
@@ -157,11 +174,16 @@ html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-th
    (app.css keeps the background-color and the blur) */
 html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed))) {
     background-image:
+        var(--aero-frame-wash), var(--aero-frame-wash), var(--aero-frame-wash),
         var(--aero-wedges),
         var(--aero-streaks),
         var(--aero-shade);
-    background-size: 100% 100%, 100% 100%, var(--aero-streaks-size), 100% 100%;
-    background-position: 0 0, 0 0, var(--aero-streaks-pos), 0 0;
+    background-size:
+        var(--aero-strip-side-size), var(--aero-strip-side-size), var(--aero-strip-bottom-size),
+        100% 100%, 100% 100%, var(--aero-streaks-size), 100% 100%;
+    background-position:
+        0 var(--modal-title-chrome-height, 27px), 100% var(--modal-title-chrome-height, 27px), var(--window-frame-inset, 0px) 100%,
+        0 0, 0 0, var(--aero-streaks-pos), 0 0;
     background-repeat: no-repeat;
 }
 
