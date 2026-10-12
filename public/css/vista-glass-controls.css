@@ -657,103 +657,25 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal div#dynamicGeneration
     border-top: 0;
 }
 
-/* ---------- Studio: the balance holder (#445) ----------
-   Token count, 24 h generations / usage, and the print's cost with the Anlas balances. Vista's
-   readouts on dark glass (the notification area, Media Player's info pane) are neutral sunken
-   black glass with white Segoe UI and etched dividers; colour only where it means something:
-   the cost (amber, green when the print is free) and the token warnings. The old look tinted
-   each well with its state colour, drew the dividers dotted and dimmed the whole cost well
-   (icon, dot, divider) to 31 % when the print was free. */
-body:not(.windows-classic-theme) #manualModal .character-prompts-controls .inset-badge {
-    --balance-text: hsl(0 0% 95%);
-    --balance-figure: var(--balance-text);
-    background-color: hsl(0 0% 0% / 42%);
-    background-image: linear-gradient(hsl(0 0% 100% / 4%), hsl(0 0% 100% / 1%) 50%, transparent 51%);
-    border: 1px solid hsl(0 0% 0% / 65%);
-    border-radius: 3px;
-    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 60%), inset 0 0 0 1px hsl(0 0% 0% / 12%), 0 1px 0 hsl(0 0% 100% / 12%);
-    color: var(--balance-text);
-    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
-    font-variation-settings: normal;
+/* the cost inset's "free" figures were drawn at 31 % and read as disabled: same strength as
+   the other insets (its own green) */
+body:not(.windows-classic-theme) #manualModal .inset-badge.price-display .price-list {
+    color: rgb(152 255 138 / 92%);
+    border-color: rgb(152 255 138 / 40%);
 }
 
-body:not(.windows-classic-theme) #manualModal .character-prompts-controls .inset-badge .price-list {
-    color: var(--balance-figure);
-    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
-    margin-bottom: 0;
+/* free: the Anlas icon, the divider and the dot between the balances at the figures' strength too (the
+   free class dimmed the whole well to 31 %, so they read as disabled next to the figures) */
+body:not(.windows-classic-theme) #manualModal .inset-badge.price-display.free :is(.nai-anla, .manual-balance-dot) {
+    color: rgb(152 255 138 / 92%);
 }
 
-/* the cost: amber while the print costs Anlas, green when it is free; the balances stay white */
-body:not(.windows-classic-theme) #manualModal .character-prompts-controls .inset-badge.price-display {
-    --balance-cost: #ffd36b;
+body:not(.windows-classic-theme) #manualModal .inset-badge.price-display.free .nai-anla {
+    background-color: rgb(152 255 138 / 92%);
 }
 
-body:not(.windows-classic-theme) #manualModal .character-prompts-controls .inset-badge.price-display.free {
-    --balance-cost: #8ef08a;
-}
-
-body:not(.windows-classic-theme) #manualModal .character-prompts-controls .inset-badge.price-display :is(#manualPriceList, .nai-anla) {
-    color: var(--balance-cost);
-}
-
-body:not(.windows-classic-theme) #manualModal .character-prompts-controls .inset-badge.price-display .nai-anla {
-    background-color: var(--balance-cost);
-}
-
-body:not(.windows-classic-theme) #manualModal .character-prompts-controls .inset-badge.token-free-warning {
-    --balance-figure: #ffd54f;
-}
-
-body:not(.windows-classic-theme) #manualModal .character-prompts-controls .inset-badge.token-free-critical {
-    --balance-figure: #ff8a8a;
-}
-
-body:not(.windows-classic-theme) #manualModal .character-prompts-controls .inset-badge :is(i, .manual-balance-dot) {
-    opacity: 1;
-}
-
-body:not(.windows-classic-theme) #manualModal #manualTokenFreeIcon {
-    color: var(--balance-figure);
-}
-
-body:not(.windows-classic-theme) #manualModal .manual-balance-dot {
-    color: hsl(0 0% 100% / 55%);
-}
-
-/* the clickable count: Vista's hot well, a faint lift of the glass instead of a brightness filter */
-body:not(.windows-classic-theme) #manualModal .character-prompts-controls .inset-badge.clickable:hover {
-    filter: none;
-    background-color: hsl(0 0% 100% / 6%);
-    border-color: hsl(0 0% 0% / 75%);
-}
-
-/* the dividers between figures: an etched line (dark, then light) the height of the well,
-   not the 2 px dotted rule */
-body:not(.windows-classic-theme) :is(#manualBalanceSplit, #innerBalanceDisplay, #manualGenUsageSplit, #directorUsageSplit) {
-    align-self: stretch;
-    margin: 3px 0;
-    border-left: 1px solid hsl(0 0% 0% / 60%);
-    box-shadow: inset 1px 0 0 hsl(0 0% 100% / 14%);
-    padding-left: calc(var(--spacing-sm) + 1px);
-}
-
-/* Studio's red buttons (delete): Vista has no red buttons. A standard glass button with a red
-   glyph, red glass only under the pointer (the caption Close grammar). */
-body:not(.windows-classic-theme) #manualModal .btn-danger:not(.round-button):not(.hover-show):not(.modal-window-controls > button) {
-    background-color: hsl(0 0% 100% / 8%);
-    color: #ff6b5e;
-}
-
-@media (hover: hover) {
-    body:not(.windows-classic-theme) #manualModal .btn-danger:not(.round-button):not(.hover-show):not(.modal-window-controls > button):hover:not(:disabled) {
-        background-color: #c4281c;
-        color: #fff;
-        box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 0 7px 1px hsl(5 90% 55% / 55%), 0 1px 2px hsl(0 0% 0% / 35%);
-    }
+body:not(.windows-classic-theme) #manualModal .inset-badge.price-display.free #manualBalanceSplit {
+    border-left-color: rgb(152 255 138 / 92%);
 }
 
 /* the Dynamic Generation strip carries the box's edge on its sides and bottom */
