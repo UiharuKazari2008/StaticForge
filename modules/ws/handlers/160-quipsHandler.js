@@ -2,6 +2,8 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 const { withBuiltinPresets } = require('../../backgroundOnlyPreset');
 
 const QUIPS_DESTRUCTIVE = { destructive: true };
+// Longest get_app_options waits on a live balance refresh before answering with what it has
+const APP_OPTIONS_BALANCE_BUDGET_MS = 1500;
 
 async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServer) {
     const startTime = Date.now();
@@ -9,9 +11,15 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
     try {
         const currentPromptConfig = handlersCtx.globalResources.getPromptConfig();
 
-        // Pull /user/subscription so Opus usage battery is present (userdata alone often lacks it)
+        // Pull /user/subscription so Opus usage battery is present (userdata alone often lacks it).
+        // Bounded: with NovelAI unreachable the refresh retries for seconds while the client's
+        // critical get_app_options timeout is 3 s, so the boot never got its options. The
+        // refresh keeps running in the background past the budget (Yozora #421).
         try {
-            await handlersCtx.globalResources.refreshBalance(false);
+            await Promise.race([
+                handlersCtx.globalResources.refreshBalance(false).catch(() => {}),
+                new Promise((resolve) => setTimeout(resolve, APP_OPTIONS_BALANCE_BUDGET_MS))
+            ]);
         } catch (_err) {
             // Non-fatal — options still return; usage may be null until next balance refresh
         }
