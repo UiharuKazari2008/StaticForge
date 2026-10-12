@@ -31,7 +31,14 @@
  *                           animation and render loop is paused (CSS + pause hooks), work
  *                           in progress keeps running.
  *
- * Test: scripts/test-desktop-boot.js. Yozora #401, #410, #412.
+ *   isTaskbarVisible()      the taskbar is on screen: not the logon, not before the staged
+ *                           taskbar reveal, not under a lock or the black switch. Tray
+ *                           balloons go through this (#435): popoverManager.showPopover,
+ *                           serviceWorkerManager._showServiceWorkerTrayPopup, the latency
+ *                           warning. whenTaskbarVisible(key, fn) queues one per key (the
+ *                           latest wins) and runs it once the taskbar is back.
+ *
+ * Test: scripts/test-desktop-boot.js. Yozora #401, #410, #412, #435.
  */
 (function () {
     'use strict';
@@ -528,6 +535,87 @@
                 win.closeStartMenu();
             }
         } catch (_) { /* best effort */ }
+        // Tray flyouts would come back after the unlock (melatonControlPanel.js, walletTray.js)
+        try {
+            if (win.melatonControlPanel && typeof win.melatonControlPanel.hideTrayFlyout === 'function') {
+                win.melatonControlPanel.hideTrayFlyout();
+            }
+            if (win.walletTray && typeof win.walletTray.hideFlyout === 'function') win.walletTray.hideFlyout();
+        } catch (_) { /* best effort */ }
+    }
+
+    // ---------- taskbar visibility gate for tray balloons (#435) ----------
+
+    /**
+     * True when the taskbar is on screen: not the logon screen (#desktopTaskbar still hidden),
+     * not before the staged taskbar reveal, not under the restart lock, the workstation lock or
+     * the black session switch. Outside desktop mode there is no taskbar to anchor to: true.
+     */
+    function isTaskbarVisible() {
+        if (!doc || !isDesktop()) return true;
+        const taskbar = byId('desktopTaskbar');
+        const body = doc.body;
+        if (!taskbar || taskbar.classList.contains('hidden')) return false;
+        if (body.classList.contains('boot-staged') && !body.classList.contains(REVEAL_CLASS.taskbar)) return false;
+        if (body.classList.contains('session-suspended') || body.classList.contains('workstation-locked')) return false;
+        if (isSwitching()) return false;
+        return true;
+    }
+
+    const taskbarQueue = new Map();
+    let taskbarWatch = null;
+
+    function flushTaskbarQueue() {
+        if (!taskbarQueue.size || !isTaskbarVisible()) return;
+        const pending = [...taskbarQueue.values()];
+        taskbarQueue.clear();
+        stopTaskbarWatch();
+        pending.forEach((fn) => {
+            try {
+                fn();
+            } catch (error) {
+                console.warn('[boot] deferred tray notice failed:', error);
+            }
+        });
+    }
+
+    function startTaskbarWatch() {
+        if (taskbarWatch || !doc || typeof MutationObserver === 'undefined') return;
+        // Class changes on body / the taskbar cover every way it comes back (staged reveal,
+        // resume, unlock, the hideWindowsStartupModal fallback that skips desktopBootDone)
+        taskbarWatch = new MutationObserver(() => {
+            // after the switch-overlay classes settle in the same frame
+            setTimeout(flushTaskbarQueue, 0);
+        });
+        taskbarWatch.observe(doc.body, { attributes: true, attributeFilter: ['class'] });
+        const taskbar = byId('desktopTaskbar');
+        if (taskbar) taskbarWatch.observe(taskbar, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    function stopTaskbarWatch() {
+        if (taskbarWatch) taskbarWatch.disconnect();
+        taskbarWatch = null;
+    }
+
+    /**
+     * Run fn now if the taskbar is visible, otherwise once it is. One entry per key: a newer
+     * notice of the same kind replaces the queued one. Returns true when it ran now.
+     */
+    function whenTaskbarVisible(key, fn) {
+        if (typeof fn !== 'function') return false;
+        if (isTaskbarVisible()) {
+            fn();
+            return true;
+        }
+        taskbarQueue.delete(key);
+        taskbarQueue.set(key, fn);
+        startTaskbarWatch();
+        return false;
+    }
+
+    function dropTaskbarQueued(key) {
+        taskbarQueue.delete(key);
+        if (!taskbarQueue.size) stopTaskbarWatch();
     }
 
     // ---------- session lock (server restart after boot) ----------
@@ -626,7 +714,10 @@
         lockWorkstation,
         unlockWorkstation,
         isWorkstationLocked,
-        _test: { state, stageIndex, REVEAL_CLASS, BOOT_CLASSES }
+        isTaskbarVisible,
+        whenTaskbarVisible,
+        dropTaskbarQueued,
+        _test: { state, stageIndex, REVEAL_CLASS, BOOT_CLASSES, taskbarQueue, flushTaskbarQueue }
     };
 
     if (win) win.desktopBoot = api;

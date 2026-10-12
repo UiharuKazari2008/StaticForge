@@ -198,19 +198,24 @@ const small = ui.logonWindowOffset('connecting', { w: 380, h: 130 }, { vw: 640, 
 assert.strictEqual(small.y + 240 + 65, 480 - 16, 'clamped inside a small screen');
 assert.strictEqual(small.x + 320 + 190, 640 - 16);
 
-// ---- Desktop: the Connecting dialog sits bottom-left of the work area, beside desktop icons ----
+// ---- Desktop: the Connecting dialog sits bottom-right of the work area, clear of desktop icons ----
 const iconRect = (left, top) => ({ left, top, right: left + 92, bottom: top + 112, width: 92, height: 112 });
 const grid = [14, 130, 246, 362, 478, 594, 710, 826, 942].map((t) => iconRect(14, t)).concat([iconRect(110, 14), iconRect(110, 594)]);
 const area = { left: 0, top: 0, right: 1920, bottom: 1117 };
+const vp1920 = { vw: 1920, vh: 1152 };
 const toRect = (o, w, h) => ({ left: o.x + 960 - w / 2, top: o.y + 576 - h / 2 });
-const plain = toRect(ui.desktopWindowOffset({ w: 380, h: 130 }, area, [], { vw: 1920, vh: 1152 }), 380, 130);
-assert.strictEqual(plain.left, 35, 'padded from the left edge (1.8% of the width)');
-assert.strictEqual(plain.top + 130, 1117 - 35, 'padded above the taskbar');
-const beside = toRect(ui.desktopWindowOffset({ w: 380, h: 130 }, area, grid, { vw: 1920, vh: 1152 }), 380, 130);
-assert.strictEqual(beside.left, 106 + 35, 'stepped right of the icon column in its band');
-const twoCols = grid.concat([iconRect(110, 942)]);
-assert.strictEqual(toRect(ui.desktopWindowOffset({ w: 380, h: 130 }, area, twoCols, { vw: 1920, vh: 1152 }), 380, 130).left, 202 + 35,
-    'past both columns when both reach the band');
+const corner = toRect(ui.desktopWindowOffset({ w: 380, h: 130 }, area, grid, vp1920), 380, 130);
+assert.strictEqual(corner.left + 380, 1920 - 35, 'bottom-right, padded from the right edge (1.8% of the width)');
+assert.strictEqual(corner.top + 130, 1117 - 35, 'padded above the taskbar');
+const rightIcons = [iconRect(1814, 942), iconRect(1718, 942)];
+assert.strictEqual(toRect(ui.desktopWindowOffset({ w: 380, h: 130 }, area, rightIcons, vp1920), 380, 130).left + 380, 1718 - 35,
+    'stepped left of icons in its band');
+const aboveBand = [iconRect(1814, 422)];
+assert.strictEqual(toRect(ui.desktopWindowOffset({ w: 380, h: 130 }, area, aboveBand, vp1920), 380, 130).left + 380, 1920 - 35,
+    'icons higher up do not move it');
+// side 'left' mirrors it: beside the left icon column
+const leftSide = toRect(ui.desktopWindowOffset({ w: 380, h: 130 }, area, grid, vp1920, 'left'), 380, 130);
+assert.strictEqual(leftSide.left, 106 + 35, 'left variant steps right of the icon column');
 const tinyOffset = ui.desktopWindowOffset({ w: 380, h: 130 }, { left: 0, top: 0, right: 400, bottom: 300 }, [], { vw: 400, vh: 300 });
 const tinyLeft = tinyOffset.x + 200 - 190;
 assert.ok(tinyLeft >= 16 && tinyLeft + 380 <= 400, 'kept on a small screen');

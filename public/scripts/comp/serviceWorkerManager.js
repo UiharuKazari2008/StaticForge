@@ -827,6 +827,21 @@ class ServiceWorkerManager {
             return false;
         }
 
+        // No tray balloon while the taskbar is hidden (boot, logon, locks; Yozora #435).
+        // Progress / checking is noise then; the restart prompt, "updates available" and a
+        // compile failure wait for the taskbar (latest per kind)
+        const boot = window.desktopBoot;
+        if (boot && typeof boot.isTaskbarVisible === 'function' && !boot.isTaskbarVisible()) {
+            const popupKind = kind !== null ? kind : this.trayPopup.kind;
+            const keep = (popupKind === 'sw-update' && (nextState === 'complete' || nextState === 'available'))
+                || (popupKind === 'runtime-compile' && nextState === 'checking');
+            if (keep) {
+                const args = [nextState, { message, progress, filesTotal, kind }];
+                boot.whenTaskbarVisible(`sw-tray:${popupKind}`, () => this._showServiceWorkerTrayPopup(...args));
+            }
+            return false;
+        }
+
         if (kind !== null) {
             this.trayPopup.kind = kind;
         }
@@ -1411,8 +1426,9 @@ class ServiceWorkerManager {
                     this.showCheckingForUpdatesToast();
                 }
                 
-                // Update existing checking toast to show download progress
-                this.showUpdateToastFromChecking(filesToUpdate);
+                // Update existing checking toast to show download progress (a silent check keeps
+                // the state but shows no popup until it completes, #435)
+                this.showUpdateToastFromChecking(filesToUpdate, { silent: noToast });
 
                 // Start background caching
                 this.swRegistration.active.postMessage({
@@ -1916,14 +1932,14 @@ class ServiceWorkerManager {
     }
 
     // Methods to update the existing checking toast instead of replacing it
-    showUpdateToastFromChecking(files) {
+    showUpdateToastFromChecking(files, { silent = false } = {}) {
         // Convert checking toast to download progress toast (isUpdating set on STATIC_CACHE_STARTED)
         this.updateAvailable = true;
         this.updateProgress = 0;
 
         // Desktop mode: tray popup
         if (this._isDesktopTrayMode()) {
-            this.trayPopup.dismissedUntilComplete = false;
+            this.trayPopup.dismissedUntilComplete = silent;
             this._showServiceWorkerTrayPopup('downloading', { message: `Downloading ${files.length} files…`, progress: 0, filesTotal: files.length });
             this.updateToastId = 'service-worker-tray-popup';
             this.checkingToastId = null;
@@ -2145,6 +2161,8 @@ class ServiceWorkerManager {
 
         if (this._isPreStartupUpdatePhase()) {
             this._setPreStartupUpdateStageMessage(label);
+            // The logon line reports it; no tray balloon over the logon screen (#435)
+            if (this._isDesktopTrayMode()) return;
         }
 
         if (this._isDesktopTrayMode()) {

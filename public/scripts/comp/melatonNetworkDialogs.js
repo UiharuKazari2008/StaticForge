@@ -175,27 +175,29 @@
     }
 
     /**
-     * On the desktop the Connecting dialog keeps out of the way (Yukimi, 2026-10-12): bottom-left
-     * of the work area (above the taskbar), padded in proportion to the screen, and stepped to the
-     * right of any desktop icons that sit in that band. obstacles are icon rects.
+     * On the desktop the Connecting dialog keeps out of the way (Yukimi, 2026-10-12): bottom-right
+     * of the work area (above the taskbar, by the tray), padded in proportion to the screen, and
+     * stepped clear of any desktop icons in that band. side 'left' mirrors it. obstacles are
+     * icon rects.
      */
-    function desktopWindowOffset(size, area, obstacles = [], viewport = null) {
+    function desktopWindowOffset(size, area, obstacles = [], viewport = null, side = 'right') {
         const vw = viewport ? viewport.vw : area.right;
         const vh = viewport ? viewport.vh : area.bottom;
         const pad = Math.round(Math.max(16, Math.min(40, (area.right - area.left) * 0.018)));
         const bottom = area.bottom - pad;
         const top = Math.max(area.top + pad, bottom - size.h);
-        let left = area.left + pad;
+        const fromRight = side !== 'left';
+        let left = fromRight ? area.right - pad - size.w : area.left + pad;
         const inBand = obstacles
             .filter((r) => r && r.width > 0 && r.height > 0 && r.bottom > top && r.top < bottom)
-            .sort((a, b) => a.left - b.left);
-        // Icons in the band push the dialog right until it fits beside them
+            .sort((a, b) => (fromRight ? b.right - a.right : a.left - b.left));
+        // Icons in the band push the dialog away from the corner until it fits beside them
         let moved = true;
         while (moved) {
             moved = false;
             for (const r of inBand) {
                 if (r.left < left + size.w && r.right > left) {
-                    left = r.right + pad;
+                    left = fromRight ? r.left - pad - size.w : r.right + pad;
                     moved = true;
                 }
             }

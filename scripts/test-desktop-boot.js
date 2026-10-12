@@ -252,6 +252,7 @@ boot.config.stepWatchdogMs = 30;
     assert.strictEqual(boot.isBooting(), false);
 
     testRevealCss();
+    testTaskbarGate(body);
     await testLockTriggers(body);
 
     console.log('✅ test-desktop-boot: all assertions passed');
@@ -261,6 +262,42 @@ boot.config.stepWatchdogMs = 30;
 });
 
 // ---------- desktop-boot.css: every reveal is instant, the lock has a cover ----------
+// Tray balloons wait for the taskbar (#435): desktopBoot.isTaskbarVisible / whenTaskbarVisible
+function testTaskbarGate(body) {
+    const saved = body.classList.list();
+    body.classList.set.clear();
+    els.desktopTaskbar = new Element('desktopTaskbar');
+    const tb = els.desktopTaskbar;
+    tb.classList.add('hidden');
+    assert.strictEqual(boot.isTaskbarVisible(), false, 'logon: the taskbar is still hidden');
+    tb.classList.remove('hidden');
+    body.classList.add('boot-staged');
+    assert.strictEqual(boot.isTaskbarVisible(), false, 'staged boot before the taskbar stage');
+    const ran = [];
+    assert.strictEqual(boot.whenTaskbarVisible('popover:wallet', () => ran.push('old')), false);
+    assert.strictEqual(boot.whenTaskbarVisible('popover:wallet', () => ran.push('new')), false, 'same key: latest wins');
+    boot.whenTaskbarVisible('sw-tray:sw-update', () => ran.push('restart prompt'));
+    boot._test.flushTaskbarQueue();
+    assert.deepStrictEqual(ran, [], 'nothing runs while hidden');
+    body.classList.add('boot-reveal-taskbar');
+    assert.strictEqual(boot.isTaskbarVisible(), true);
+    boot._test.flushTaskbarQueue();
+    assert.deepStrictEqual(ran, ['new', 'restart prompt'], 'queued notices run once the taskbar is up');
+    assert.strictEqual(boot._test.taskbarQueue.size, 0);
+    body.classList.remove('boot-staged', 'boot-reveal-taskbar');
+    body.classList.add('workstation-locked');
+    assert.strictEqual(boot.isTaskbarVisible(), false, 'workstation lock');
+    body.classList.remove('workstation-locked');
+    body.classList.add('session-suspended');
+    assert.strictEqual(boot.isTaskbarVisible(), false, 'restart lock');
+    body.classList.remove('session-suspended');
+    assert.strictEqual(boot.whenTaskbarVisible('now', () => ran.push('now')), true, 'visible: runs at once');
+    assert.strictEqual(ran[ran.length - 1], 'now');
+    delete els.desktopTaskbar;
+    body.classList.set.clear();
+    saved.forEach((c) => body.classList.add(c));
+}
+
 function testRevealCss() {
     const css = fs.readFileSync(path.join(__dirname, '../public/css/desktop-boot.css'), 'utf8');
     const boot = css.slice(css.indexOf('Staged desktop reveal'));

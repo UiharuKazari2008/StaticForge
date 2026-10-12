@@ -153,8 +153,8 @@ wording is VPN, not modem: Connecting / Reconnecting, "Reconnect attempt n of m"
   (L-PPoP)'...", `negotiation` → "Verifying user name and password...", `establishing` →
   "Registering your computer on the network...", plus "Reconnect attempt n of m." On the
   desktop it keeps out of the way (#434, `placeDesktopWindow` / `desktopWindowOffset`):
-  bottom-left of the work area above the taskbar, padded 1.8 % of the width (16–40 px), and
-  stepped right of any desktop icons in that band. Cancel (or the title close / Esc) calls
+  bottom-right of the work area above the taskbar (by the tray), padded 1.8 % of the width
+  (16–40 px), and stepped clear of any desktop icons in that band. Cancel (or the title close / Esc) calls
   `wsClient.cancelConnectionFromUser()`: no more reconnects, offline until Connect / Reconnect.
 - **Server errors** (#434): on the desktop a WebSocket `error` packet is no longer a toast but
   the **MeletonFX Framework** unhandled-exception window (`mainframeExceptionDialog.js`, .NET's
@@ -206,6 +206,30 @@ wording is VPN, not modem: Connecting / Reconnecting, "Reconnect attempt n of m"
   `melatonControlPanel.registerItem({ id, name, image | icon, description, open })`.
 
 Test: `npm run test:melaton-network`.
+
+## Tray balloons and the taskbar (Yozora #435)
+
+A balloon anchored to a tray icon is only shown while the taskbar is on screen
+(`desktopBoot.isTaskbarVisible()`: `#desktopTaskbar` not hidden, the staged boot past
+`boot-reveal-taskbar`, no `session-suspended` / `workstation-locked`, no black switch). Before,
+a balloon fired at the logon screen or during the staged boot landed in the top-left corner
+(its anchor had no box). The gate sits in the two places every automatic balloon goes through:
+
+- `PopoverManager.showPopover`: anchors inside `#desktopTaskbar`. Wallet receipts are dropped
+  (the wallet shows the balance; `onHide` still runs so toastManager clears its entry), Generation
+  Complete is dropped during boot and deferred under a lock, the latency warning is deferred during
+  boot and dropped under a lock, everything else (Remote Access, …) is deferred.
+- `serviceWorkerManager._showServiceWorkerTrayPopup`: checking / downloading progress and runtime
+  compile progress / success are dropped; the restart prompt ("Updates complete"), "Updates
+  available" and a compile failure are deferred. Silent update checks no longer show the download
+  popup, and compile progress at the logon screen only updates the logon line.
+
+`desktopBoot.whenTaskbarVisible(key, fn)` keeps one deferred notice per key (the latest wins) and
+runs it when the taskbar is back (a MutationObserver on the body / taskbar classes, so every path
+back counts: staged reveal, resume, unlock). Locks also hide `.popover`, `.network-flyout` and
+`.wallet-flyout`, and close the network / wallet flyouts. The notices that should become a dialog
+when they fire during startup (the restart prompt, User Data Error, the agent client update
+countdown) are listed in #435.
 
 ## Logon-phase init steps (Yozora #421)
 

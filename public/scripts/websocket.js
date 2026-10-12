@@ -2300,8 +2300,8 @@ class WebSocketClient {
                 modal.classList.remove('hidden');
             }
             // At the logon screen it sits in the bottom-right quadrant over the logon dialog, off
-            // the grid (placeLogonWindow); on the desktop it keeps out of the way in the bottom-left
-            // of the work area, beside any desktop icons there (placeDesktopWindow)
+            // the grid (placeLogonWindow); on the desktop it keeps out of the way in the bottom-right
+            // of the work area by the tray, clear of desktop icons there (placeDesktopWindow)
             if (text) {
                 if (logon) text.placeLogonWindow(modal, 'connecting');
                 else text.placeDesktopWindow(modal);

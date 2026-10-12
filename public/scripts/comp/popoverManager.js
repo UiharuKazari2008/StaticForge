@@ -8,6 +8,28 @@ const HOVER_HIDE_DELAY_MS = 100;
 const HOVER_MAX_SHOW_MS = 10000;
 const TRAY_NOTIFICATION_DEFAULT_TIMEOUT_MS = 8000;
 
+/**
+ * Tray balloons while the taskbar is hidden (boot, logon, staged reveal, locks; Yozora #435):
+ * a balloon anchored in #desktopTaskbar would land in the top-left corner (its anchor has no
+ * box). Per anchor: 'drop' = stale by the time the desktop is back (receipts: the wallet shows
+ * the balance; a finished generation during boot), anything else is deferred, the latest per
+ * anchor wins (desktopBoot.whenTaskbarVisible).
+ */
+const TRAY_BALLOON_WHEN_HIDDEN = {
+    walletTrayIcon: 'drop',
+    imageGenerationIndicator: 'drop-unless-locked', // finished during boot: the gallery has it
+    pingWarningIndicator: 'defer-unless-locked'     // measured again after the lock
+};
+
+function trayBalloonPolicy(anchor) {
+    const rule = TRAY_BALLOON_WHEN_HIDDEN[anchor.id] || 'defer';
+    const body = document.body;
+    const locked = body.classList.contains('session-suspended') || body.classList.contains('workstation-locked');
+    if (rule === 'drop-unless-locked') return locked ? 'defer' : 'drop';
+    if (rule === 'defer-unless-locked') return locked ? 'drop' : 'defer';
+    return rule;
+}
+
 const PopoverManager = {
     activePopovers: new Map(),
     
@@ -29,6 +51,20 @@ const PopoverManager = {
      */
     showPopover(element, type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null, options = {}) {
         if (!element) return null;
+
+        // No tray balloon while the taskbar is hidden (desktopBoot.isTaskbarVisible, #435)
+        const boot = window.desktopBoot;
+        if (!options.hoverOnly && boot && typeof boot.isTaskbarVisible === 'function'
+            && !boot.isTaskbarVisible() && element.closest && element.closest('#desktopTaskbar')) {
+            if (trayBalloonPolicy(element) !== 'drop') {
+                const args = [element, type, title, message, showProgress, timeout, customIcon, buttons, options];
+                boot.whenTaskbarVisible(`popover:${element.id || title}`, () => this.showPopover(...args));
+            } else if (typeof options.onHide === 'function') {
+                // toastManager drops its entry for the balloon that never showed
+                try { options.onHide(); } catch (_) { /* best effort */ }
+            }
+            return null;
+        }
         
         const {
             position = 'top',
