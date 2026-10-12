@@ -1,4 +1,10 @@
 // Login page functionality
+
+/** /launch for desktop starts (Melaton boot, public/scripts/launch/desktopStart.js), else /app */
+function appEntryPath() {
+    return window.melatonDesktopStart ? window.melatonDesktopStart.appEntryPath(window) : '/app';
+}
+
 class LoginPage {
     constructor() {
         this.errorMessage = document.getElementById('errorMessage');
@@ -485,8 +491,8 @@ class LoginPage {
                 
                 // Wait a moment for user to see success, then redirect
                 setTimeout(() => {
-                    // Redirect to app immediately - let the app handle its own caching
-                    window.location.href = '/app';
+                    // Desktop starts boot through /launch (Melaton boot), others go straight to /app
+                    window.location.href = appEntryPath();
                 }, 800);
                 
             } else {
@@ -594,7 +600,7 @@ class LoginPage {
                     localStorage.setItem('logViewerPathUuid', response.logViewerPathUuid);
                 }
                 console.log('🔐 User already authenticated, redirecting...');
-                window.location.href = response.redirect;
+                window.location.href = response.redirect === '/app' ? appEntryPath() : response.redirect;
             }
         } catch (error) {
             console.error('❌ Error sending telemetry ping:', error);

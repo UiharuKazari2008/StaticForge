@@ -1,14 +1,14 @@
 # Desktop boot sequence (MeletonFX)
 
 How the desktop (`window.isDesktop`, `body.desktop-mode`) comes up, in the order the user
-sees it, and which code owns each step. Yozora #401, #410, #412 (parent #399; plan #411).
+sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417 (parent #399; plan #411).
 
 ## Order on screen
 
 | # | What the user sees | Owner |
 |---|--------------------|-------|
-| 1 | `/launch` splash, black handoff into `/app` (`body.boot-from-launch`) | `public/launch.html`, inline script in `app.html` |
-| 2 | Solid colour (teal, `body.windows-startup`) with the logon dialog `#desktopPreStartupModal`: server status polling, dial beats (Initializing → Dialing → Negotiation → Establishing), password form when the socket is not authenticated | `serviceWorkerManager.js` (`_waitForServerReady`, `_showBootUiEarly`), `websocket.js` (`connect`, `pingHost`, `_renderPreStartupDialog`) |
+| 1 | Melaton boot on `/launch` (every desktop start, PWA and tabs): Vista boot screen with the Enso while the server and session are checked; on failure the boot menu; on success a cut to teal and `/app` | `public/launch.html`, `public/scripts/launch/melatonBoot.js` (see below) |
+| 2 | Teal (`body.windows-startup`); after max(2 s from the cut, `/app`'s own startup) the logon dialog `#desktopPreStartupModal`: dial beats (Initializing → Dialing → Negotiation → Establishing), password form when the socket is not authenticated | `app.html` teal handoff, `websocket.js` (`_deferPreStartupForTealHold`, `connect`, `pingHost`, `_renderPreStartupDialog`), `serviceWorkerManager.js` (`_waitForServerReady`, `_showBootUiEarly`) |
 | 3 | System Update dialog `#windowsUpdateModal` or the install wizard when the service worker has files to fetch | `serviceWorkerManager.js` (`_isPreStartupUpdatePhase`) |
 | 4 | "Preparing MeletonFX…", logon dialog closes | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()` |
 | 5 | Solid colour only, then the small top-left startup window `#windowsStartupModal` | `desktopBoot.js` stage `session`, `websocket.js` `showWindowsStartupModal` |
@@ -21,6 +21,38 @@ stage simply waits for it. The headline in the startup window belongs to the sta
 ("Loading your personal settings…", "Applying your personal settings…", "Preparing your
 desktop…", "Restoring your windows…"); the real init step runs on the small detail line
 underneath, so nothing is hidden from a developer.
+
+## Melaton boot (`/launch`)
+
+`login.js` (PIN login and the already-signed-in redirect) sends desktop starts to `/launch`;
+the PWA starts there (`manifest.json` start_url). `public/scripts/launch/desktopStart.js`
+applies `app.html`'s desktop rule (viewport ≥ 1200 px and gallery window mode windowed);
+a desktop start gets `html.melaton-boot`, narrow / phone starts keep the old card and go
+straight on to `/app`.
+
+| Screen | What it is |
+|--------|------------|
+| boot | Vista boot screen: black, the Enso (`logo_icon.png`) at 40 % height, Vista's green marquee at 62 %, "© Dreamscape" at the bottom. Shown at least `minBootMs` (2.5 s). F8 opens the menu (no countdown). |
+| teal | Success: cut to teal, `sessionStorage` `dreamscapeLaunchHandoff=teal` + `dreamscapeBootTealHoldUntil` (cut + 2 s), `location.replace('/app')`. `app.html` puts up a teal `#launchHandoff` (removed without a fade) and sets `window.dreamscapeTealHoldUntil`; `websocket.js` holds the logon dialog (and "Preparing MeletonFX…") until then while startup runs underneath. |
+| menu | Failure: cut to black, then the Boot Manager text screen ("Melaton Boot Manager"): **Dreamscape Melaton** (retry: black → boot screen → checks) and **Melaton Recovery (Reinstall)**, a 10 s countdown to the highlighted entry, an `Info:` line with the reason, `ENTER=Choose`. ↑/↓/Enter; any key or press stops the countdown; a tap chooses. |
+| confirm | Recovery confirm (ENTER continue / ESC back to the menu). |
+| recover | Clean install, each step printed: Cache Storage, SW registrations, localStorage + sessionStorage, IndexedDB (`indexedDB.databases()`, 2 s per database). A failed step does not stop the rest. Then black and `/launch` again. |
+
+Checks under the boot screen (`runChecks`):
+
+- `navigator.onLine === false` → menu (offline).
+- `OPTIONS /status` every 2 s with a 4 s timeout. **Any JSON answer counts as connected**: a
+  server that is starting keeps the marquee running until it reports `isReady`, however
+  long that takes. A client-side timeout means alive but busy (a restarting server's event
+  loop is blocked for a while); only `busyTimeoutMs` (2 min) of timeouts with no answer goes
+  to the menu. Network errors and proxy error pages (502 …) count up; `maxFailures` (6, ~12 s)
+  in a row → menu. An answer resets both.
+- `OPTIONS /app` (session): 200 → teal; 401 / 403 → the login page; anything else → menu.
+
+Design mode: `/` on `/launch` (or `/launch?design=1`) pauses the checks; the HUD has a
+preset per screen and `/launch?design=1&screen=menu` (`boot`, `menu`, `menu-info`,
+`confirm`, `recover`, `teal`, `black`) opens one directly. Recovery in design mode never
+wipes and nothing navigates. Test: `npm run test:melaton-boot`.
 
 ## Stage triggers
 

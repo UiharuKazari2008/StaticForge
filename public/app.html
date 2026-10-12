@@ -112,6 +112,14 @@
         #launchHandoff.launch-handoff--fade {
             opacity: 0;
         }
+
+        /* Melaton boot cut to teal (/launch, melatonBoot.js): same colour as the desktop
+           startup fill, removed at once (no fade) */
+        #launchHandoff.launch-handoff--teal {
+            background: teal;
+            transition: none;
+            view-transition-name: none;
+        }
     </style>
 
     <!-- PWA Icons -->
@@ -354,9 +362,16 @@
     <script>
         (function () {
             try {
-                if (sessionStorage.getItem('dreamscapeLaunchHandoff') === '1') {
+                var launchHandoff = sessionStorage.getItem('dreamscapeLaunchHandoff');
+                if (launchHandoff === '1') {
                     document.write('<div id="launchHandoff" aria-hidden="true"></div>');
                     document.body.classList.add('boot-from-launch');
+                } else if (launchHandoff === 'teal') {
+                    // Melaton boot cut to teal: the logon dialog waits until this time
+                    // (websocket.js _deferPreStartupForTealHold)
+                    document.write('<div id="launchHandoff" class="launch-handoff--teal" aria-hidden="true"></div>');
+                    window.dreamscapeTealHoldUntil = Number(sessionStorage.getItem('dreamscapeBootTealHoldUntil')) || 0;
+                    sessionStorage.removeItem('dreamscapeBootTealHoldUntil');
                 }
             } catch (e) { /* ignore */ }
         })();
@@ -379,9 +394,11 @@
                     try { sessionStorage.removeItem('dreamscapeLaunchHandoff'); } catch (e) { /* ignore */ }
                     resolve();
                 }
-                // body.initializing.no-animation disables transitions — transitionend never fires
-                var skipTransition = document.body.classList.contains('initializing')
-                    && document.body.classList.contains('no-animation');
+                // body.initializing.no-animation disables transitions — transitionend never fires;
+                // the teal cut has no fade at all (the desktop startup fill is the same teal)
+                var skipTransition = el.classList.contains('launch-handoff--teal')
+                    || (document.body.classList.contains('initializing')
+                        && document.body.classList.contains('no-animation'));
                 if (!skipTransition) {
                     el.addEventListener('transitionend', function te(ev) {
                         if (ev.propertyName === 'opacity') {

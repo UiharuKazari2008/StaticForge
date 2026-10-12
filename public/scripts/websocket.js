@@ -1685,9 +1685,34 @@ class WebSocketClient {
         }
     }
 
+    /**
+     * Melaton boot cut to teal (/launch → app.html sets window.dreamscapeTealHoldUntil): the
+     * logon dialog stays away until then while startup runs underneath, then renders with
+     * whatever state the connection reached. True while held.
+     */
+    _deferPreStartupForTealHold() {
+        const wait = (Number(window.dreamscapeTealHoldUntil) || 0) - Date.now();
+        if (wait <= 0) return false;
+        if (!this._tealHoldTimer) {
+            this._tealHoldTimer = setTimeout(() => {
+                this._tealHoldTimer = null;
+                if (this._shouldUsePreStartupDialog()) this._renderPreStartupDialog();
+            }, wait);
+        }
+        return true;
+    }
+
+    _waitForTealHold() {
+        const wait = (Number(window.dreamscapeTealHoldUntil) || 0) - Date.now();
+        return wait > 0 ? new Promise((resolve) => setTimeout(resolve, wait)) : Promise.resolve();
+    }
+
     _renderPreStartupDialog() {
         // serviceWorkerManager._isInstallWizardActive: public/scripts/comp/serviceWorkerManager.js
         if (window.serviceWorkerManager && window.serviceWorkerManager._isInstallWizardActive()) {
+            return;
+        }
+        if (this._deferPreStartupForTealHold()) {
             return;
         }
 
@@ -1922,6 +1947,8 @@ class WebSocketClient {
         if (window.bootUiDebug) {
             await window.bootUiDebug.gate('pre-startup', { detail: this.connectionUi.message });
         }
+        // Melaton boot teal hold: the logon dialog shows before it says goodbye
+        await this._waitForTealHold();
         if (!this._canCompletePreStartupHandoff()) return;
 
         this.connectionUi.message = 'Preparing MeletonFX...';

@@ -127,6 +127,7 @@
     "test:planet-switcher": "node scripts/test-planet-switcher-ring.js && node scripts/test-planet-switcher-flow.js",
     "test:aero-glass": "node scripts/test-aero-glass.js",
     "test:desktop-boot": "node scripts/test-desktop-boot.js",
+    "test:melaton-boot": "node scripts/test-melaton-boot.js",
     "test:window-geometry": "node scripts/test-window-geometry.js",
     "test:frame-chrome": "node scripts/test-frame-chrome.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",

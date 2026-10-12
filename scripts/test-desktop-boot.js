@@ -373,13 +373,31 @@ async function testLockTriggers(body) {
         sessionSuspended: true, preStartupHandoffCompleted: false, connectionDialView: 'transient',
         connectionPhase: 'dialing', socketAuthenticated: true, connectionUi: {},
         _setConnectionPhase: () => {}, _sleepConnectionBeat: async (ms) => { order.push(`sleep${ms}`); },
+        _waitForTealHold: async () => { order.push('hold'); },
         _canCompletePreStartupHandoff() { return this._shouldUsePreStartupDialog() && this.socketAuthenticated === true; },
         _resumeSuspendedSession() { order.push('resume'); this.sessionSuspended = false; },
         _hidePreStartupDialog: async () => { order.push('hide'); }
     });
     await handoff.call(h);
-    assert.deepStrictEqual(order, ['sleep1000', 'resume', 'hide'], 'unlock: Preparing… then black, dialog closes under it');
+    assert.deepStrictEqual(order, ['hold', 'sleep1000', 'resume', 'hide'], 'unlock: Preparing… then black, dialog closes under it');
     assert.strictEqual(h.preStartupHandoffCompleted, true);
+
+    // Melaton boot teal hold (#416): the logon dialog stays away until dreamscapeTealHoldUntil
+    const defer = liftMethod(src, '_deferPreStartupForTealHold')(WebSocketClient);
+    const waitHold = liftMethod(src, '_waitForTealHold')(WebSocketClient);
+    const renders = [];
+    const d = { _shouldUsePreStartupDialog: () => true, _renderPreStartupDialog() { renders.push(Date.now()); } };
+    window.dreamscapeTealHoldUntil = Date.now() + 40;
+    assert.strictEqual(defer.call(d), true, 'held while the teal hold runs');
+    assert.strictEqual(defer.call(d), true, 'a second render during the hold just waits');
+    const holdStart = Date.now();
+    await waitHold.call(d);
+    assert.ok(Date.now() - holdStart >= 35, '_waitForTealHold waits out the hold');
+    await sleep(20);
+    assert.strictEqual(renders.length, 1, 'one deferred render when the hold ends');
+    assert.strictEqual(defer.call(d), false, 'after the hold the dialog renders normally');
+    delete window.dreamscapeTealHoldUntil;
+    assert.strictEqual(defer.call(d), false, 'no hold without the Melaton boot');
 
     // First boot (not initialised): an unreachable server is the normal logon wait, no lock
     c = client([refused(), status(NEW, true, 'Starting Dreamscape…', 100)]);

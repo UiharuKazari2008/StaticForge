@@ -56,6 +56,12 @@
             }
 
             function dreamscapeLaunchDesignApplyPreset(preset) {
+                if (preset.indexOf('melaton:') === 0) {
+                    if (window.melatonBoot && typeof window.melatonBoot.preview === 'function') {
+                        window.melatonBoot.preview(preset.slice('melaton:'.length));
+                    }
+                    return;
+                }
                 var loading = document.getElementById('loading');
                 var errEl = document.getElementById('errorMessage');
                 var verEl = document.getElementById('versionWarning');
@@ -128,11 +134,17 @@
                 }
                 var wrap = document.createElement('div');
                 wrap.id = 'dreamscapeLaunchDesignHud';
+                var melatonPresets = document.documentElement.classList.contains('melaton-boot')
+                    ? [['boot', 'Boot screen'], ['menu', 'Boot menu'], ['menu-info', 'Boot menu + Info'], ['confirm', 'Recovery confirm'], ['recover', 'Recovery progress'], ['teal', 'Teal cut'], ['black', 'Black cut']]
+                        .map(function (p) {
+                            return '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="melaton:' + p[0] + '">Melaton: ' + p[1] + '</button>';
+                        }).join('')
+                    : '';
                 wrap.innerHTML =
                     '<div class="dreamscape-launch-design-hud-inner">' +
                     '<div class="dreamscape-launch-design-hud-title">Design mode (launch)</div>' +
                     '<p class="dreamscape-launch-design-hud-note">Validation is paused. Toggles only affect this page. App is unchanged.</p>' +
-                    '<div class="dreamscape-launch-design-presets">' +
+                    '<div class="dreamscape-launch-design-presets">' + melatonPresets +
                     '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="splash">View: splash</button>' +
                     '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="error">View: error</button>' +
                     '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="errorRescue">View: error + rescue</button>' +
@@ -201,6 +213,17 @@
             }
         })();
     </script>
+
+    <!-- Melaton boot (desktop starts, PWA and tabs): Vista boot screen, boot menu, recovery.
+         public/scripts/launch/melatonBoot.js, Yozora #411. Narrow / phone starts keep the card. -->
+    <script src="/scripts/launch/desktopStart.js"></script>
+    <script>
+        if (window.melatonDesktopStart && window.melatonDesktopStart.isDesktopStart(window)) {
+            document.documentElement.classList.add('melaton-boot');
+            window.melatonBootActive = true;
+        }
+    </script>
+    <link rel="stylesheet" href="/css/launch-boot.css">
 
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#000000">
@@ -721,6 +744,19 @@
         </div>
     </div>
 
+    <!-- Melaton boot (html.melaton-boot only): boot screen, then teal or the boot menu -->
+    <div id="melatonBoot" data-screen="boot" aria-live="polite">
+        <div class="melaton-boot-screen">
+            <img class="melaton-boot-enso" src="/static_images/logo_icon.png" alt="" draggable="false">
+            <div class="melaton-boot-bar" role="progressbar" aria-label="Starting MeletonFX">
+                <div class="melaton-boot-bar-blocks"><i></i><i></i><i></i></div>
+            </div>
+            <div class="melaton-boot-copyright">&copy; Dreamscape</div>
+        </div>
+        <div id="melatonBootText"></div>
+    </div>
+    <script src="/scripts/launch/melatonBoot.js"></script>
+
     <script>
         let validationInProgress = false;
         /** Earliest time normal validation may run (splash visible); paired with design-mode inline script in <head> */
@@ -1014,6 +1050,10 @@
 
         // Start validation when page loads (mandatory 1s splash hold so / can be caught; design mode skips validation)
         document.addEventListener('DOMContentLoaded', () => {
+            // Desktop starts boot through melatonBoot.js instead of this card
+            if (window.melatonBootActive) {
+                return;
+            }
             dreamscapeLaunchSplashHoldUntilMs = Date.now() + 1000;
             if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
                 if (serverReadinessInterval) {
@@ -1027,7 +1067,7 @@
 
         // Handle online/offline events
         window.addEventListener('online', () => {
-            if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
+            if (window.melatonBootActive || (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive)) {
                 return;
             }
             if (document.getElementById('errorMessage').classList.contains('hidden')) {
@@ -1036,6 +1076,9 @@
         });
 
         window.addEventListener('offline', () => {
+            if (window.melatonBootActive) {
+                return;
+            }
             showError('Connection lost. Please check your network and try again.');
         });
     </script>
