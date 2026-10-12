@@ -69,7 +69,7 @@ async function handleManualImageUploadInternal(file) {
         document.getElementById('manualImg2ImgGroup').classList.remove('hidden');
         updateUploadDeleteButtonVisibility();
         updateInpaintButtonState();
-        showGlassToast('success', null, 'Reference Image Added');
+        showGlassToast('success', 'Reference Image Added', '');
 
     } catch (error) {
         console.error('Manual upload error:', error);
