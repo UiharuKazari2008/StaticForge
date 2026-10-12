@@ -8636,7 +8636,9 @@ function setDesktopSettingsScope(scope) {
         });
     }
 
-    modal.querySelectorAll('[data-desktop-settings-scope]').forEach((section) => {
+    // the layout lives in this window or in a Control Panel page (Personalization, Global Settings)
+    const layout = document.getElementById('desktopSettingsLayout') || modal;
+    layout.querySelectorAll('[data-desktop-settings-scope]').forEach((section) => {
         if (section.id === 'desktopSettingsNotificationBridgeSection') {
             const bridgeVisible = typeof isAndroidNotificationBridgeDetected === 'function'
                 && isAndroidNotificationBridgeDetected();
@@ -8926,12 +8928,39 @@ function setupDesktopSettingsScopeToggle() {
 }
 
 // Open Desktop Settings Modal with optional wallpaper path (format: "type:id")
-async function openDesktopSettingsModal(wallpaperPath = null) {
+/**
+ * Personalization (this workspace) and Global Settings (every workspace) are Control Panel pages
+ * (Yukimi, 2026-10-12: "move personalise into control panel and move global settings into a new
+ * page"). The forms are still the #desktopSettingsModal layout: the pages host it
+ * (registerDesktopSettingsControlPanelPages), so every handler below keeps working. Without
+ * Control Panel the window opens as before.
+ * @param {string|null} wallpaperPath a wallpaper to preview (file:… / cache:…)
+ * @param {'workspace'|'global'} [scope]
+ */
+let desktopSettingsPendingWallpaper = null;
+
+async function openDesktopSettingsModal(wallpaperPath = null, scope = 'workspace') {
+    registerDesktopSettingsControlPanelPages();
+    const cpl = window.melatonControlPanel;
+    if (cpl && cpl.registerPage && document.getElementById('desktopSettingsLayout')) {
+        desktopSettingsPendingWallpaper = wallpaperPath;
+        cpl.open(scope === 'global' ? 'global' : 'personalization');
+        return;
+    }
     const modal = document.getElementById('desktopSettingsModal');
     if (!modal) {
         console.error('Desktop settings modal not found');
         return;
     }
+    await prepareDesktopSettingsForm(wallpaperPath);
+    setDesktopSettingsScope(scope === 'global' ? 'global' : 'workspace');
+    openModal(modal);
+}
+
+/** Fill the settings forms from the workspace and the global preferences. */
+async function prepareDesktopSettingsForm(wallpaperPath = null) {
+    const modal = document.getElementById('desktopSettingsModal');
+    if (!modal) return;
 
     const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';
     const workspace = workspaces[currentWorkspace];
@@ -9062,9 +9091,88 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
 
     // Update preview
     updateDesktopSettingsPreview();
+}
 
-    // Open the modal
-    openModal(modal);
+// ---- the Control Panel pages that host the settings forms ----
+
+let desktopSettingsCplRegistered = false;
+
+/** Close the settings window if it is the one showing; in Control Panel the page stays (Vista's Apply). */
+function finishDesktopSettingsDialog() {
+    const modal = document.getElementById('desktopSettingsModal');
+    if (modal && !modal.classList.contains('hidden')) closeModal(modal);
+}
+
+function mountDesktopSettingsInControlPanel(main, scope) {
+    const layout = document.getElementById('desktopSettingsLayout');
+    const host = main.querySelector('.cpl-settings-host');
+    if (!layout || !host) return;
+    host.appendChild(layout);
+    const wallpaper = desktopSettingsPendingWallpaper;
+    desktopSettingsPendingWallpaper = null;
+    prepareDesktopSettingsForm(wallpaper).then(() => setDesktopSettingsScope(scope));
+    setDesktopSettingsScope(scope);
+    const save = main.querySelector('.cpl-settings-save');
+    if (save) {
+        save.addEventListener('click', async () => {
+            setDesktopSettingsScope(scope);
+            await saveDesktopSettings();
+        });
+    }
+}
+
+/** Put the forms back in their (hidden) window so nothing is lost when the page goes away. */
+function unmountDesktopSettingsFromControlPanel() {
+    const layout = document.getElementById('desktopSettingsLayout');
+    const modal = document.getElementById('desktopSettingsModal');
+    const content = modal && modal.querySelector('.modal-content');
+    if (!layout || !content || content.contains(layout)) return;
+    const footer = content.querySelector('.desktop-settings-footer');
+    content.insertBefore(layout, footer || null);
+}
+
+function desktopSettingsPageBody(heading, intro) {
+    return `
+        <div class="cpl-settings-page">
+            <h1 class="cpl-page-title">${escapeHtml(heading)}</h1>
+            <p class="cpl-intro">${escapeHtml(intro)}</p>
+            <div class="cpl-settings-host"></div>
+            <div class="cpl-settings-actions">
+                <button type="button" class="btn-secondary cpl-settings-save"><span>Save changes</span></button>
+            </div>
+        </div>`;
+}
+
+function registerDesktopSettingsControlPanelPages() {
+    if (desktopSettingsCplRegistered) return;
+    const cpl = window.melatonControlPanel;
+    if (!cpl || typeof cpl.registerPage !== 'function') return;
+    desktopSettingsCplRegistered = true;
+    const tasks = (others) => `
+        <div class="cpl-task-group">
+            <h3 class="cpl-task-heading">Tasks</h3>
+            <ul class="cpl-task-list">${others.map(([label, arg]) => cpl.taskLinkHtml(label, 'nav', arg)).join('')}</ul>
+        </div>
+        <div class="cpl-task-group">
+            <h3 class="cpl-task-heading">See also</h3>
+            <ul class="cpl-task-list">${cpl.taskLinkHtml('Remote Access', 'item', 'remote-access')}</ul>
+        </div>`;
+    cpl.registerPage('personalization', {
+        title: () => 'Personalization',
+        tasks: () => tasks([['Global Settings', 'global']]),
+        body: () => desktopSettingsPageBody('Personalize this workspace',
+            "Change the workspace's name and colours, its fonts, and its desktop background."),
+        mount: (main) => mountDesktopSettingsInControlPanel(main, 'workspace'),
+        unmount: unmountDesktopSettingsFromControlPanel
+    });
+    cpl.registerPage('global', {
+        title: () => 'Global Settings',
+        tasks: () => tasks([['Personalization', 'personalization']]),
+        body: () => desktopSettingsPageBody('Settings for every workspace',
+            'Windows and their glass, program sounds, the taskbar and start button, startup, notifications and input.'),
+        mount: (main) => mountDesktopSettingsInControlPanel(main, 'global'),
+        unmount: unmountDesktopSettingsFromControlPanel
+    });
 }
 
 // Parse wallpaper position string into state
@@ -9532,8 +9640,7 @@ function setupDesktopSettingsButtonHandlers() {
 
         newRemoveBtn.addEventListener('click', async () => {
             await clearDesktopWallpaper();
-            const modal = document.getElementById('desktopSettingsModal');
-            closeModal(modal);
+            finishDesktopSettingsDialog();
         });
     }
 
@@ -10015,8 +10122,7 @@ async function saveDesktopGlobalSettings() {
         && (!bridgeDetected
             || (notificationBridgeEnabled === previousNotificationBridgeEnabled
                 && bypassNotificationBridgeInDesktopMode === previousBypassNotificationBridgeInDesktopMode))) {
-        const modal = document.getElementById('desktopSettingsModal');
-        closeModal(modal);
+        finishDesktopSettingsDialog();
         showGlassToast('info', null, 'No changes to save', false, 2000, '<i class="fa-light fa-info-circle"></i>');
         return;
     }
@@ -10053,8 +10159,7 @@ async function saveDesktopGlobalSettings() {
         return;
     }
 
-    const modal = document.getElementById('desktopSettingsModal');
-    closeModal(modal);
+    finishDesktopSettingsDialog();
     showGlassToast('success', null, 'Global Settings Saved', false, 3000, '<i class="fa-light fa-check"></i>');
 }
 
@@ -10121,8 +10226,7 @@ async function saveDesktopWorkspaceSettings() {
 
     // Only update if something changed
     if (!nameChanged && !colorChanged && !bgColorChanged && !primaryFontChanged && !textareaFontChanged && !wallpaperChanged && !positionChanged) {
-        const modal = document.getElementById('desktopSettingsModal');
-        closeModal(modal);
+        finishDesktopSettingsDialog();
         showGlassToast('info', null, 'No changes to save', false, 2000, '<i class="fa-light fa-info-circle"></i>');
         return;
     }
@@ -10164,8 +10268,7 @@ async function saveDesktopWorkspaceSettings() {
             await wsClient.updateWorkspaceSettings(currentWorkspace, settings);
         }
 
-        const modal = document.getElementById('desktopSettingsModal');
-        closeModal(modal);
+        finishDesktopSettingsDialog();
 
         // Show appropriate message based on what changed
         const changes = [];

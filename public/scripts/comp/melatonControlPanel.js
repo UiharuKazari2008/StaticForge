@@ -15,6 +15,10 @@
  *
  *   melatonControlPanel.open(page = 'home')    'home' | 'network'
  *   melatonControlPanel.registerItem({ id, name, icon, image, description, open })
+ *   melatonControlPanel.registerPage(id, { title(), tasks(), body(), mount(main)?, unmount()? })
+ *       a page that hosts live DOM (Personalization, Global Settings: the desktop settings forms,
+ *       modalUtils.js) moves it in on mount and back out on unmount, before every re-render and
+ *       when the window closes, so the forms keep their handlers
  *   melatonControlPanel.toggleTrayFlyout(anchor) / attachTrayMenu(anchor)
  *
  * Names: config.json userGlobalSettings.desktop.domainName (the network / domain, default
@@ -32,6 +36,7 @@
     const pages = {};
     let modal = null;
     let current = null;
+    let mountedPage = null; // the page whose mount() ran last (unmount before the next render)
     const back = [];
     const forward = [];
     let liveTimer = null;
@@ -107,8 +112,15 @@
         id: 'personalization',
         name: 'Personalization',
         image: '/static_images/app_icons/colors.png',
-        description: 'Change the desktop background, start button and other settings.',
-        open: () => callGlobal('openDesktopSettingsModal')
+        description: "Change this workspace's name, colours, fonts and desktop background.",
+        open: () => navigate('personalization')
+    });
+    registerItem({
+        id: 'global-settings',
+        name: 'Global Settings',
+        image: '/static_images/app_icons/slider.png',
+        description: 'Windows, glass, sounds, the taskbar and start button, startup and input for every workspace.',
+        open: () => navigate('global')
     });
     registerItem({
         id: 'remote-access',
@@ -268,8 +280,16 @@
         startTimers();
     }
 
+    function unmountPage() {
+        if (mountedPage && typeof mountedPage.unmount === 'function') {
+            try { mountedPage.unmount(); } catch (err) { console.error('Control Panel page unmount', err); }
+        }
+        mountedPage = null;
+    }
+
     function close() {
         stopTimers();
+        unmountPage();
         if (!modal) return;
         if (typeof root.closeModal === 'function') root.closeModal(modal);
         else modal.classList.add('hidden');
@@ -310,8 +330,22 @@
         el('.cpl-forward').disabled = forward.length === 0;
         el('.cpl-address').innerHTML = renderAddress(page);
         el('.cpl-tasks').innerHTML = page.tasks();
-        el('.cpl-main').innerHTML = page.body();
+        unmountPage();
+        const main = el('.cpl-main');
+        main.innerHTML = page.body();
+        if (typeof page.mount === 'function') {
+            mountedPage = page;
+            try { page.mount(main); } catch (err) { console.error('Control Panel page mount', err); }
+        }
         modal.dataset.page = current;
+    }
+
+    /** A page from outside (see the header): ids already taken are refused. */
+    function registerPage(id, page) {
+        if (!id || pages[id] || !page || typeof page.title !== 'function' || typeof page.body !== 'function') return false;
+        pages[id] = { tasks: () => '', ...page };
+        if (modal && current === id) render();
+        return true;
     }
 
     function renderAddress(page) {
@@ -1006,6 +1040,8 @@
         close,
         navigate,
         registerItem,
+        registerPage,
+        taskLinkHtml: (label, action, arg) => taskLink(label, action, arg),
         openStatusDialog,
         openCustomizeDialog,
         diagnose,
