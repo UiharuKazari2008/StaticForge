@@ -10,7 +10,7 @@ sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417, #42
 | 1 | Melaton boot on `/launch` (every desktop start, PWA and tabs): Vista boot screen with the Enso while the server and session are checked; on failure the boot menu; on success a cut to teal and `/app` | `public/launch.html`, `public/scripts/launch/melatonBoot.js` (see below) |
 | 2 | Teal (`body.windows-startup`); after max(2 s from the cut, `/app`'s own startup) the logon dialog `#desktopPreStartupModal`: dial beats (Initializing → Dialing → Negotiation → Establishing), password form when the socket is not authenticated | `app.html` teal handoff, `websocket.js` (`_deferPreStartupForTealHold`, `connect`, `pingHost`, `_renderPreStartupDialog`), `serviceWorkerManager.js` (`_waitForServerReady`, `_showBootUiEarly`) |
 | 3 | System Update dialog `#windowsUpdateModal` or the install wizard when the service worker has files to fetch | `serviceWorkerManager.js` (`_isPreStartupUpdatePhase`) |
-| 3b | Logon-phase init steps in the logon dialog (desktop first boot): every step up to priority 1, through **Loading Application Data**, with the step name and its share of the stage bar. A critical failure keeps the dialog in an error state with Retry / Restart and the desktop never starts | `websocket.js` `_runLogonInitSteps` (see below) |
+| 3b | Logon-phase init steps in the logon dialog (desktop first boot): user global settings and **Loading Application Data** (`{ logon: true }`), one status line, no progress bar. A critical failure keeps the dialog on its line and opens a Windows message box (Retry / Restart); the desktop never starts | `websocket.js` `_runLogonInitSteps`, `bootMessageBox.js` (see below) |
 | 4 | "Preparing MeletonFX…", logon dialog closes | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()` |
 | 5 | Solid colour only, then the small top-left startup window `#windowsStartupModal` | `desktopBoot.js` stage `session`, `websocket.js` `showWindowsStartupModal` |
 | 6 | Staged reveal while init steps run: wallpaper, icons, taskbar, windows, each appearing at once like Windows (no fade, no slide) | `desktopBoot.js` stages `settings` → `wallpaper` → `icons` → `taskbar` → `windows` |
@@ -34,7 +34,7 @@ straight on to `/app`.
 | Screen | What it is |
 |--------|------------|
 | boot | Vista's boot screen on a 640×480 stage scaled to fit (letterbox black), sizes in stage pixels as measured from the stock Vista boot screen: two-tone bar frame at x 257–378, y 353–363 (#737373 / #424242), 120×9 interior, a cluster of six 2 px stripes with 2 px gaps (rows #F1F5E1 ×2, #A3B16E ×2, #4D5622 ×5) sliding across in 2 px steps (`--melaton-sweep` 2 s per pass, the one estimated value), "© Dreamscape" centred at y 389–400. The Enso takes the Windows 7 logo's place: 84 px, centred at y 205. Shown at least `minBootMs` (2.5 s). F8 opens the menu (no countdown). |
-| teal | Success: cut to teal, `sessionStorage` `dreamscapeLaunchHandoff=teal` + `dreamscapeBootTealHoldUntil` (cut + 2 s), `location.replace('/app')`. `app.html` puts up a teal `#launchHandoff` (removed without a fade) and sets `window.dreamscapeTealHoldUntil`; `websocket.js` holds the logon dialog (and "Preparing MeletonFX…") until then while startup runs underneath. |
+| teal | Success: cut to black for `modeSwitchMs` (1.5 s, Windows switching graphics modes), then `sessionStorage` `dreamscapeLaunchHandoff=teal` + `dreamscapeBootTealHoldUntil` (now + 2 s) and `location.replace('/app')`, which opens on teal. `app.html` puts up a teal `#launchHandoff` (removed without a fade) and sets `window.dreamscapeTealHoldUntil`; `websocket.js` holds the logon dialog (and "Preparing MeletonFX…") until then while startup runs underneath. |
 | menu | Failure: cut to black, then the Boot Manager text screen ("Melaton Boot Manager"): **Dreamscape Melaton** (retry: black → boot screen → checks) and **Melaton Recovery (Reinstall)**, a 10 s countdown to the highlighted entry, an `Info:` line with the reason, `ENTER=Choose`. ↑/↓/Enter; any key or press stops the countdown; a tap chooses. |
 | confirm | Recovery confirm: ENTER continue / ESC back to the menu. Chosen by touch or pen (no keyboard to assume): a two-item menu, **Continue** / **Return to Boot Menu** (tap, or arrows + Enter). |
 | recover | "Formatting startup disk..." and a progress bar while the clean install runs: Cache Storage (45 %), SW registrations (10 %), localStorage + sessionStorage (10 %), IndexedDB (35 %; `indexedDB.databases()`, 2 s per database), moving per cache / database inside a step. A failed step does not stop the rest. Then black and `/launch` again. |
@@ -75,18 +75,24 @@ Test: `npm run test:melaton-restart`.
 ## Logon-phase init steps (Yozora #421)
 
 Application data is mission-critical for the desktop, so on a desktop first boot the init
-steps with priority ≤ `WebSocketClient.LOGON_INIT_PRIORITY_MAX` (1) run inside the logon
-dialog after the SW boot gate and authentication, before "Preparing MeletonFX…":
-0.45 user global settings, 0.46 start menu layout, 0.5 desktop settings, 0.55 icons,
-1 **Loading Application Data** (`critical: true`).
+steps registered with `{ logon: true }` run inside the logon dialog after the SW boot gate
+and authentication, before "Preparing MeletonFX…": 0.45 user global settings and
+1 **Loading Application Data** (`critical: true`, `failureText`). Everything that builds the
+desktop (0.46 start menu layout, 0.5 desktop settings, 0.55 icons, …) stays in the startup
+window.
 
-- `_runLogonInitSteps` shows each step ("Loading Application Data...") with its share of
-  the stage bar; finished steps get `_logonPhase` and `_bootCompleted`.
+- `_runLogonInitSteps` shows the step on the dialog's status line, no progress bar;
+  finished steps get `_logonPhase` and `_bootCompleted`.
 - A critical step that throws (`appInitSteps` rethrows `loadOptions` failures while
   `wsClient.isLogonInitPhase()`, instead of its old confirmation dialog) leaves the logon
-  dialog in an error state: the failure text, **Retry** (`retryLogonInitSteps`: the steps
-  again, then the normal handoff) and **Restart** (`restartClientNavigate`, a full restart
-  through `/launch`). `_canCompletePreStartupHandoff` refuses while the error is up.
+  dialog on its status line (marquee paused) and opens a Windows message box over it
+  (`public/scripts/comp/bootMessageBox.js`: error icon, "MeletonFX could not load your
+  application data.", "DETAIL - <reason>", centred 75×23 **Retry** / **Restart**). Retry =
+  `retryLogonInitSteps` (the steps again, then the normal handoff); Restart =
+  `restartClientNavigate`, a full restart through `/launch`. `_canCompletePreStartupHandoff`
+  refuses while the error is up.
+- The logon dialog opens only when it is not up yet and keeps an open prompt above it, so
+  `loadOptions`' own account-data prompt (account data unavailable) stays reachable.
 - A non-critical step that throws is reported as before (application error) and the boot
   goes on.
 - `executeInitSteps` then runs only the steps without `_logonPhase`; the small startup

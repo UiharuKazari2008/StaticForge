@@ -7,8 +7,9 @@
  *            timeout means alive but busy (menu after busyTimeoutMs without an answer).
  *            Network / proxy errors: menu after maxFailures in a row. Then the session
  *            (OPTIONS /app: 401/403 → login page, other errors → menu). F8 opens the menu.
- *   teal     success: cut to teal and hand off to /app; the logon dialog waits until
- *            tealHoldMs after the cut (app.html + websocket.js _deferPreStartupForTealHold)
+ *   handoff  success: cut to black for modeSwitchMs (Windows switching graphics modes),
+ *            then /app, which opens on teal; the logon dialog waits until tealHoldMs after
+ *            that (app.html + websocket.js _deferPreStartupForTealHold)
  *   menu     failure: cut to black, Boot Manager text screen, countdownSec → retry
  *   confirm  Melaton Recovery: ENTER continue / ESC back; chosen by touch, a two-item menu
  *            (Continue / Return to Boot Menu) since there is no keyboard to assume
@@ -29,6 +30,7 @@
         maxFailures: 6,         // network / proxy errors in a row (~12 s) before the menu
         busyTimeoutMs: 120000,  // client timeouts with no answer before the menu
         blackCutMs: 600,
+        modeSwitchMs: 1500,     // black between the boot screen and /app (graphics mode switch)
         countdownSec: 10,
         tealHoldMs: 2000,
         recoverStepMs: 350      // each recovery line stays at least this long
@@ -252,9 +254,11 @@
             else show('menu', menuData());
         }
 
-        function cutToTeal() {
-            show('teal');
+        /** Boot screen → black (the graphics mode switch) → /app, which opens on teal. */
+        async function handOff() {
+            show('black');
             if (env.designMode) return;
+            await env.sleep(config.modeSwitchMs);
             try {
                 env.sessionStorage.setItem('dreamscapeLaunchHandoff', 'teal');
                 env.sessionStorage.setItem('dreamscapeBootTealHoldUntil', String(env.now() + config.tealHoldMs));
@@ -311,7 +315,8 @@
                 env.location.replace('/');
                 return 'login';
             }
-            cutToTeal();
+            await handOff();
+            if (run !== ctl.runId) return 'cancelled';
             return 'teal';
         }
 
@@ -469,7 +474,7 @@
             return null;
         }
 
-        Object.assign(ctl, { runChecks, openMenu, retry, choose, confirmOption, handleKey, handlePointer, preview, recover, stopCountdown, cutToTeal });
+        Object.assign(ctl, { runChecks, openMenu, retry, choose, confirmOption, handleKey, handlePointer, preview, recover, stopCountdown, handOff });
         return ctl;
     }
 

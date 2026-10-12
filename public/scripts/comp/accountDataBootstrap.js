@@ -113,7 +113,9 @@ async function retryAccountDataWithProgress() {
         const result = await wsClient.retryAccountData();
         return result;
     } finally {
-        hideConfirmationDialog();
+        // Await the close: the next prompt reuses #confirmationDialog, and a close still in
+        // flight would hide it and drop its resolver, leaving the boot waiting forever
+        await hideConfirmationDialog();
         if (progressPromise && typeof progressPromise.then === 'function') {
             progressPromise.then(() => {}).catch(() => {});
         }

@@ -131,23 +131,8 @@
     transition: width 0.35s ease;
 }
 
-#desktopPreStartupModal.auth-active .desktop-prestartup-stage-progress,
-#desktopPreStartupModal.init-error .desktop-prestartup-stage-progress {
+#desktopPreStartupModal.auth-active .desktop-prestartup-stage-progress {
     display: none !important;
-}
-
-/* Logon init step failure (websocket.js _showLogonInitError): error text, Retry / Restart */
-#desktopPreStartupModal.init-error .desktop-prestartup-main {
-    min-height: 102px;
-}
-
-#desktopPreStartupModal .desktop-prestartup-init-error .desktop-prestartup-auth-error {
-    min-height: 0;
-    word-break: break-word;
-}
-
-#desktopPreStartupModal .desktop-prestartup-init-error .desktop-prestartup-auth-actions {
-    gap: 6px;
 }
 
 #desktopPreStartupModal .desktop-prestartup-auth {
@@ -518,4 +503,67 @@ body.desktop-mode.session-suspended *:not(.boot-dialog, .boot-dialog *)::after {
 
 #sessionSwitchOverlay.active {
     display: block;
+}
+
+/* Boot message box (public/scripts/comp/bootMessageBox.js): a Windows message box for boot
+   and lock errors. Icon left, message + "DETAIL - ..." line, centred 75x23 buttons; the
+   frame is whatever theme the boot is in (Classic until the workspaces load). */
+#bootMessageBox {
+    width: auto;
+    min-width: 300px;
+    max-width: min(520px, calc(100vw - 48px));
+}
+
+#bootMessageBox .boot-message-box-content {
+    padding: 14px 12px 12px;
+    background: var(--ButtonFace, #d4d0c8);
+    color: var(--WindowText, #000);
+    font-family: Tahoma, 'MS Sans Serif', 'Segoe UI', sans-serif;
+    font-size: 11px;
+}
+
+#bootMessageBox .boot-message-box-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+#bootMessageBox .boot-message-box-icon {
+    flex: 0 0 32px;
+}
+
+#bootMessageBox .boot-message-box-icon svg {
+    display: block;
+    width: 32px;
+    height: 32px;
+}
+
+#bootMessageBox .boot-message-box-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-top: 2px;
+}
+
+#bootMessageBox .boot-message-box-text p {
+    margin: 0 0 10px;
+    line-height: 1.35;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+#bootMessageBox .boot-message-box-detail:empty {
+    display: none;
+}
+
+#bootMessageBox .boot-message-box-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+#bootMessageBox .boot-message-box-buttons button {
+    min-width: 75px;
+    height: 23px;
+    padding: 0 10px;
 }

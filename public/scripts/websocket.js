@@ -657,9 +657,6 @@ class WebSocketClient {
 
     static PROGRESS_INIT_BASE = 25; // Base progress percentage for initialization
     static PROGRESS_INIT_STEPS = 75; // Progress percentage allocated to init steps
-    // Desktop: init steps up to this priority (through Loading Application Data) run in the
-    // logon dialog before the desktop starts (_runLogonInitSteps, Yozora #421)
-    static LOGON_INIT_PRIORITY_MAX = 1;
     /** /status start time (timestamp − uptime) moving by more than this after boot = server restarted */
     static SERVER_RESTART_DRIFT_MS = 5000;
     /** Longest the startup window may wait on the staged reveal after init completes */
@@ -1649,24 +1646,6 @@ class WebSocketClient {
         if (this.preStartupAuthHandlersSetup) return;
         this.preStartupAuthHandlersSetup = true;
 
-        // Logon init error state (_showLogonInitError): Retry the steps, or a full restart
-        const retryBtn = document.getElementById('desktopPreStartupRetryBtn');
-        const restartBtn = document.getElementById('desktopPreStartupRestartBtn');
-        if (retryBtn) {
-            retryBtn.addEventListener('click', () => {
-                this.retryLogonInitSteps();
-            });
-        }
-        if (restartBtn) {
-            restartBtn.addEventListener('click', () => {
-                // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
-                if (typeof restartClientNavigate === 'function') {
-                    restartClientNavigate();
-                } else {
-                    location.reload();
-                }
-            });
-        }
 
         const loginBtn = document.getElementById('desktopPreStartupLoginBtn');
         const passwordInput = document.getElementById('desktopPreStartupPassword');
@@ -1791,12 +1770,11 @@ class WebSocketClient {
         ) {
             statusMessage = bootStatus?.stageMessage || 'Waiting for server…';
         }
-        // Logon-phase init steps (_runLogonInitSteps): the step on screen, or its failure
+        // Logon-phase init steps (_runLogonInitSteps): the status line; on a failure it stays
+        // put (marquee paused) under the message box
         const logonStatus = this._logonInitStatus;
         const logonError = this._logonInitError;
-        if (logonError) {
-            statusMessage = logonError.message;
-        } else if (logonStatus && !serverBooting) {
+        if (logonStatus && !serverBooting) {
             statusMessage = logonStatus.message;
         }
 
@@ -1812,16 +1790,8 @@ class WebSocketClient {
         statusEl.textContent = statusMessage;
         progressWrap.classList.toggle('paused', shouldPauseMarquee);
 
-        const initErrorSection = document.getElementById('desktopPreStartupInitError');
-        const initErrorText = document.getElementById('desktopPreStartupInitErrorText');
-        modal.classList.toggle('init-error', !!logonError);
-        if (initErrorSection) initErrorSection.classList.toggle('hidden', !logonError);
-        if (initErrorText) initErrorText.textContent = logonError ? logonError.detail : '';
-
         if (serverBooting) {
             this._updatePreStartupStageProgress(bootStatus.progressPercent, statusMessage);
-        } else if (logonStatus && !logonError) {
-            this._updatePreStartupStageProgress(logonStatus.percent, statusMessage);
         } else {
             this._updatePreStartupStageProgress(null, statusMessage);
         }
@@ -1989,17 +1959,21 @@ class WebSocketClient {
         return this._logonInitRunning === true;
     }
 
-    /** Init steps that belong to the logon dialog this boot (desktop first boot only). */
+    /**
+     * Init steps that belong to the logon dialog this boot (desktop first boot only): the ones
+     * registered with { logon: true } (user settings, Loading Application Data). Desktop parts
+     * (start menu, desktop settings, icons, ...) stay in the startup window.
+     */
     _logonInitSteps() {
         if (!window.isDesktop || this.initializationCompleted || !this._shouldUsePreStartupDialog()) return [];
-        return this.initSteps.filter((step) => step.priority <= WebSocketClient.LOGON_INIT_PRIORITY_MAX);
+        return this.initSteps.filter((step) => step.logon === true);
     }
 
     /**
-     * Run the logon-phase init steps (through Loading Application Data) inside the logon
-     * dialog, each step and its share of the stage bar on screen. Returns false when the boot
-     * must stop here: disconnected, auth required, or a critical step failed (error state with
-     * Retry / Restart). Steps done earlier this boot are skipped unless runOnReconnect.
+     * Run the logon-phase init steps inside the logon dialog (no progress bar: one Windows
+     * status line). Returns false when the boot must stop here: disconnected, auth required,
+     * or a critical step failed (message box with Retry / Restart, _showLogonInitError).
+     * Steps done earlier this boot are skipped unless runOnReconnect.
      */
     async _runLogonInitSteps() {
         const steps = this._logonInitSteps();
@@ -2040,20 +2014,42 @@ class WebSocketClient {
     }
 
     _setLogonInitStatus(message, fraction) {
-        this._logonInitStatus = message
-            ? { message: `${message}...`, percent: Math.round(Math.max(0, Math.min(1, fraction)) * 100) }
-            : null;
+        this._logonInitStatus = message ? { message: `${message}...`, fraction } : null;
         if (this._shouldUsePreStartupDialog()) this._renderPreStartupDialog();
     }
 
+    /**
+     * Critical logon step failed: the logon dialog stays on its status line (marquee paused)
+     * and a Windows message box over it offers Retry (the logon steps again, then the boot)
+     * or Restart (a full restart through /launch). bootMessageBox.js; a confirmation dialog
+     * when it is missing.
+     */
     _showLogonInitError(step, error) {
         const detail = error && error.message ? error.message : String(error || 'Unknown error');
-        this._logonInitStatus = null;
-        this._logonInitError = {
-            message: `MeletonFX could not finish "${step.message}".`,
-            detail
-        };
+        const message = step.failureText || `MeletonFX could not finish "${step.message}".`;
+        this._logonInitError = { message, detail };
         if (this._shouldUsePreStartupDialog()) this._renderPreStartupDialog();
+        const choose = window.bootMessageBox
+            ? window.bootMessageBox.show({
+                title: 'MeletonFX',
+                icon: 'error',
+                message,
+                detail: `DETAIL - ${detail}`,
+                buttons: [{ label: 'Retry', value: 'retry', default: true }, { label: 'Restart', value: 'restart' }]
+            })
+            : showConfirmationDialog(`${message}\n\nDETAIL - ${detail}`, [
+                { text: 'Retry', value: 'retry', className: 'btn-primary' },
+                { text: 'Restart', value: 'restart', className: 'btn-secondary' }
+            ], null, { title: 'MeletonFX', icon: 'fas fa-circle-xmark' });
+        Promise.resolve(choose).then((value) => {
+            if (value === 'restart') {
+                // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
+                if (typeof restartClientNavigate === 'function') restartClientNavigate();
+                else location.reload();
+                return;
+            }
+            this.retryLogonInitSteps();
+        });
     }
 
     /** Logon error state → Retry: run the logon steps again and continue the boot. */
@@ -3352,14 +3348,18 @@ class WebSocketClient {
 
     registerInitStep(priority, message, stepFunction, runOnReconnect = false, options = {}) {
         const nonBlocking = options && options.nonBlocking === true;
-        // critical: a failure in the logon phase stops the boot there (Retry / Restart)
+        // logon: runs in the desktop logon dialog before the desktop starts (_runLogonInitSteps);
+        // critical: a failure there stops the boot (message box: Retry / Restart);
+        // failureText: that message box's first line
+        const logon = options && options.logon === true;
         const critical = options && options.critical === true;
+        const failureText = options && typeof options.failureText === 'string' ? options.failureText : null;
         // Check if step with same message already exists
         const existingStepIndex = this.initSteps.findIndex(step => step.message === message);
         if (existingStepIndex !== -1) {
-            this.initSteps[existingStepIndex] = { priority, message, stepFunction, runOnReconnect, nonBlocking, critical };
+            this.initSteps[existingStepIndex] = { priority, message, stepFunction, runOnReconnect, nonBlocking, logon, critical, failureText };
         } else {
-            this.initSteps.push({ priority, message, stepFunction, runOnReconnect, nonBlocking, critical });
+            this.initSteps.push({ priority, message, stepFunction, runOnReconnect, nonBlocking, logon, critical, failureText });
         }
 
         // Sort by priority

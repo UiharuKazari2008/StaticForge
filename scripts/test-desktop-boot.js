@@ -399,24 +399,28 @@ async function testLockTriggers(body) {
     delete window.dreamscapeTealHoldUntil;
     assert.strictEqual(defer.call(d), false, 'no hold without the Melaton boot');
 
-    // ---- Logon-phase init steps (#421): through Loading Application Data in the logon dialog ----
-    const LWSC = { ...WebSocketClient, LOGON_INIT_PRIORITY_MAX: 1, PROGRESS_INIT_BASE: 25, PROGRESS_INIT_STEPS: 75 };
+    // ---- Logon-phase init steps (#421): { logon: true } steps run in the logon dialog ----
+    const LWSC = { ...WebSocketClient, PROGRESS_INIT_BASE: 25, PROGRESS_INIT_STEPS: 75 };
     const logonProto = {};
     ['_logonInitSteps', '_runLogonInitSteps', '_setLogonInitStatus', '_showLogonInitError', 'retryLogonInitSteps',
         'isLogonInitPhase', '_canCompletePreStartupHandoff', '_shouldUsePreStartupDialog', '_initProgressRange',
         'updateCurrentInitStepProgress'].forEach((name) => { logonProto[name] = liftMethod(src, name)(LWSC); });
     const appErrors = [];
     global.presentDreamscapeApplicationError = (title) => appErrors.push(title);
+    const boxes = [];
+    let answerBox = null;
+    window.bootMessageBox = { show: (opts) => { boxes.push(opts); return new Promise((resolve) => { answerBox = resolve; }); } };
     function logonClient(stepFns) {
         const ran = [];
         const c = Object.assign(Object.create(logonProto), {
             initializationCompleted: false, preStartupHandoffCompleted: false, connectionDialView: 'transient',
             connectionPhase: 'dialing', socketAuthenticated: true, statuses: [], renders: 0, started: 0,
             isConnected: () => true,
-            _renderPreStartupDialog() { this.renders++; this.statuses.push(this._logonInitStatus && this._logonInitStatus.percent); },
+            _renderPreStartupDialog() { this.renders++; this.statuses.push(this._logonInitStatus && this._logonInitStatus.message); },
             _startAfterLogon: async function () { this.started++; },
             initSteps: stepFns.map(([priority, message, fn, opts]) => ({
-                priority, message, runOnReconnect: true, critical: !!(opts && opts.critical),
+                priority, message, runOnReconnect: true,
+                logon: !!(opts && opts.logon), critical: !!(opts && opts.critical), failureText: (opts && opts.failureText) || null,
                 stepFunction: async () => { ran.push(message); if (fn) await fn(); }
             }))
         });
@@ -424,37 +428,45 @@ async function testLockTriggers(body) {
     }
     let failAppData = true;
     let lc = logonClient([
-        [0.45, 'Loading user global settings'], [0.5, 'Loading Desktop Settings'],
-        [1, 'Loading Application Data', () => { if (failAppData) throw new Error('options timed out'); }, { critical: true }],
+        [0.45, 'Loading user global settings', null, { logon: true }],
+        [0.46, 'Loading start menu layout'], [0.5, 'Loading Desktop Settings'], [0.55, 'Preloading icons'],
+        [1, 'Loading Application Data', () => { if (failAppData) throw new Error('options timed out'); },
+            { logon: true, critical: true, failureText: 'MeletonFX could not load your application data.' }],
         [5, 'Initializing Tokenizer']
     ]);
     assert.strictEqual(await lc.c._runLogonInitSteps(), false, 'a critical failure stops the boot in the logon dialog');
-    assert.deepStrictEqual(lc.ran, ['Loading user global settings', 'Loading Desktop Settings', 'Loading Application Data'], 'step 5 is not a logon step');
-    assert.ok(lc.c._logonInitError && /Loading Application Data/.test(lc.c._logonInitError.message));
-    assert.strictEqual(lc.c._logonInitError.detail, 'options timed out');
+    assert.deepStrictEqual(lc.ran, ['Loading user global settings', 'Loading Application Data'],
+        'only { logon: true } steps; start menu, desktop settings and icons stay in the startup window');
+    assert.deepStrictEqual(lc.c.statuses.slice(0, 2), ['Loading user global settings...', 'Loading Application Data...']);
+    assert.ok(lc.c._logonInitStatus && lc.c._logonInitStatus.percent === undefined, 'no progress bar for the logon steps');
+    assert.strictEqual(boxes.length, 1, 'a Windows message box over the logon dialog');
+    assert.deepStrictEqual({ icon: boxes[0].icon, message: boxes[0].message, detail: boxes[0].detail, buttons: boxes[0].buttons.map((b) => b.label) },
+        { icon: 'error', message: 'MeletonFX could not load your application data.', detail: 'DETAIL - options timed out', buttons: ['Retry', 'Restart'] });
     assert.strictEqual(lc.c._canCompletePreStartupHandoff(), false, 'no handoff to the desktop while the error is up');
-    assert.deepStrictEqual(lc.c.statuses.slice(0, 3), [0, 33, 67], 'stage bar: each logon step its share');
-    assert.ok(lc.c.initSteps[0]._logonPhase && !lc.c.initSteps[2]._logonPhase && !lc.c.initSteps[3]._logonPhase);
+    assert.ok(lc.c.initSteps[0]._logonPhase && !lc.c.initSteps[1]._logonPhase && !lc.c.initSteps[4]._logonPhase);
     failAppData = false;
     lc.ran.length = 0;
-    await lc.c.retryLogonInitSteps();
-    assert.deepStrictEqual(lc.ran, ['Loading user global settings', 'Loading Desktop Settings', 'Loading Application Data'], 'Retry runs the logon steps again (runOnReconnect)');
+    answerBox('retry');
+    for (let i = 0; i < 10 && !lc.c.started; i++) await new Promise((r) => setImmediate(r));
+    assert.deepStrictEqual(lc.ran, ['Loading user global settings', 'Loading Application Data'], 'Retry runs the logon steps again (runOnReconnect)');
     assert.strictEqual(lc.c._logonInitError, null);
     assert.strictEqual(lc.c.started, 1, 'Retry continues the boot');
     assert.strictEqual(lc.c._logonInitStatus, null, 'status cleared before Preparing MeletonFX');
     assert.strictEqual(lc.c._canCompletePreStartupHandoff(), true);
 
-    lc = logonClient([[0.46, 'Loading start menu layout', () => { throw new Error('layout 500'); }], [1, 'Loading Application Data', null, { critical: true }]]);
+    lc = logonClient([[0.45, 'Loading user global settings', () => { throw new Error('settings 500'); }, { logon: true }],
+        [1, 'Loading Application Data', null, { logon: true, critical: true }]]);
     assert.strictEqual(await lc.c._runLogonInitSteps(), true, 'a non-critical failure is reported and the boot goes on');
-    assert.ok(appErrors.includes('Init step failed: Loading start menu layout'));
+    assert.ok(appErrors.includes('Init step failed: Loading user global settings'));
 
     window.isDesktop = false;
-    lc = logonClient([[1, 'Loading Application Data', null, { critical: true }]]);
+    lc = logonClient([[1, 'Loading Application Data', null, { logon: true, critical: true }]]);
     assert.strictEqual(await lc.c._runLogonInitSteps(), true);
     assert.deepStrictEqual(lc.ran, [], 'non-desktop: nothing runs in a logon dialog');
     assert.deepStrictEqual(lc.c._initProgressRange(), { base: 25, span: 75 }, 'the toast keeps the connection base');
     window.isDesktop = true;
     assert.deepStrictEqual(lc.c._initProgressRange(), { base: 0, span: 100 }, 'the startup window runs 0-100 over its own steps');
+    delete window.bootMessageBox;
 
     // the startup window's sub-progress reads the list executeInitSteps runs, not initSteps
     const shown = [];

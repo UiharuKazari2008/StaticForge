@@ -73,11 +73,11 @@ const flush = () => new Promise((r) => setImmediate(r));
     // ---------- a starting server is a connection: boot screen until ready, then teal ----------
     let h = harness([json(false), json(false), json(false), json(true)]);
     assert.strictEqual(await h.ctl.runChecks(), 'teal');
-    assert.deepStrictEqual(h.t.screens(), ['boot', 'teal'], 'never leaves the boot screen while the server starts');
+    assert.deepStrictEqual(h.t.screens(), ['boot', 'black'], 'never leaves the boot screen while the server starts, then black');
     assert.deepStrictEqual(h.t.replaced, ['/app']);
     assert.strictEqual(h.t.storage.dreamscapeLaunchHandoff, 'teal');
-    assert.strictEqual(Number(h.t.storage.dreamscapeBootTealHoldUntil), h.t.now + boot.config.tealHoldMs, 'logon dialog waits 2 s after the cut');
-    assert.ok(h.t.now >= boot.config.minBootMs, 'boot screen shows at least minBootMs');
+    assert.strictEqual(Number(h.t.storage.dreamscapeBootTealHoldUntil), h.t.now + boot.config.tealHoldMs, 'logon dialog waits 2 s after /app takes over');
+    assert.ok(h.t.now >= boot.config.minBootMs + boot.config.modeSwitchMs, 'boot screen at least minBootMs, then the black mode switch');
 
     h = harness([...Array(400).fill(json(false)), json(true)]);
     assert.strictEqual(await h.ctl.runChecks(), 'teal', 'no cap on a server that keeps answering while it starts');
@@ -244,8 +244,8 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.deepStrictEqual(wiped, [], 'design-mode recovery never wipes');
     assert.deepStrictEqual(h.t.replaced, [], 'design mode never navigates');
     h.ctl.preview('menu');
-    h.ctl.cutToTeal();
-    assert.deepStrictEqual(h.t.storage, {}, 'design-mode teal leaves no handoff');
+    await h.ctl.handOff();
+    assert.deepStrictEqual(h.t.storage, {}, 'design-mode handoff leaves no handoff');
 
     console.log('✅ test-melaton-boot: all assertions passed');
 })().catch((err) => {

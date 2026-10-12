@@ -164,14 +164,15 @@ if (window.wsClient) {
     window.handleRuntimeCompileProgressBroadcast = handleRuntimeCompileProgressBroadcast;
     window.handleRuntimeCompileCompleteBroadcast = handleRuntimeCompileCompleteBroadcast;
 
-    // Priorities 0.45-1 run in the desktop logon dialog before the desktop starts
-    // (websocket.js _runLogonInitSteps, LOGON_INIT_PRIORITY_MAX); the rest in the startup window.
+    // { logon: true } steps run in the desktop logon dialog before the desktop starts (user
+    // settings and application data, websocket.js _runLogonInitSteps); everything that builds
+    // the desktop (start menu, desktop settings, icons, ...) runs in the startup window.
     // Priority 0.45: User global settings (startup behaviour, Atelier, etc.) from server config
     window.wsClient.registerInitStep(0.45, 'Loading user global settings', async () => {
         if (typeof loadUserGlobalSettingsFromServer === 'function') {
             await loadUserGlobalSettingsFromServer();
         }
-    }, true);
+    }, true, { logon: true });
 
     // Priority 0.46: Start menu organizer's saved layout (order + folders) — fetchStartMenuCustomLayout: modalUtils.js
     window.wsClient.registerInitStep(0.46, 'Loading start menu layout', async () => {
@@ -244,7 +245,7 @@ if (window.wsClient) {
                 return; // Don't continue with initialization
             }
         }
-    }, true, { critical: true });
+    }, true, { logon: true, critical: true, failureText: 'MeletonFX could not load your application data.' });
 
     window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
         // ensurePromptTokenizerForModel: public/scripts/comp/utilities.js
