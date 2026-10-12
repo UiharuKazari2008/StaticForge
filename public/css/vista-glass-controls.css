@@ -687,6 +687,65 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-
     color: #fff;
 }
 
+/* ---------- Studio: the Quick Start / Explorer switch (#445) ----------
+   It was web-style underline tabs; every other selector in the app is the sunken glass well
+   with the glass slider, so it takes that look. The underline element becomes the slider (it
+   already slides with data-active, manual-modal.css); the workspace colour like the gallery's
+   Images slider. */
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-quickstart-switch {
+    padding: 2px;
+    margin-bottom: 5px;
+    background: var(--glass-layer-dark-3);
+    border: 1px solid var(--vista-glass-edge, hsl(0 0% 0% / 55%));
+    border-radius: 4px;
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 45%), 0 1px 0 hsl(0 0% 100% / 14%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-quickstart-switch-btn {
+    position: relative;
+    z-index: 2;
+    padding: 5px 12px;
+    opacity: 0.55;
+    color: var(--text-accent-tinted, var(--text-primary));
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-quickstart-switch-btn.active,
+html.can-hover body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-quickstart-switch:hover .manual-quickstart-switch-btn.active {
+    opacity: 1;
+    color: var(--text-primary);
+    text-shadow: none;
+}
+
+html.can-hover body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-quickstart-switch:hover .manual-quickstart-switch-btn:hover:not(.active) {
+    opacity: 0.85;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-quickstart-switch-underline,
+html.can-hover body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-quickstart-switch:hover .manual-quickstart-switch-underline {
+    top: 2px;
+    bottom: auto;
+    left: 2px;
+    width: calc(50% - 2px);
+    height: calc(100% - 4px);
+    z-index: 1;
+    overflow: hidden;
+    background: var(--header-bg, var(--glass-layer-3));
+    border: 1px solid var(--header-border, var(--glass-border-3));
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px hsl(0 0% 0% / 55%), 0 1px 2px hsl(0 0% 0% / 35%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-quickstart-switch-underline::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(hsl(0 0% 100% / 30%), hsl(0 0% 100% / 12%) calc(50% - 1px), hsl(0 0% 0% / 14%) 50%, hsl(0 0% 0% / 4%) 85%, hsl(0 0% 100% / 14%));
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 26%);
+}
+
 /* ---------- Studio character prompts (#445) ----------
    Each character is a pane of Studio's glass: the dark edge and inner light line of the other
    glass controls around a faint sheen; its header is the same black-glass strip as the prompt
