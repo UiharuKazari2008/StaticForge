@@ -180,7 +180,8 @@ const serverManagement = {
             if (options.onStatus) {
                 options.onStatus('Server disconnected — restarting application…');
             }
-            await runClientShutdownSequence(() => location.reload());
+            // Full restart through the Melaton boot (modalUtils.restartClientNavigate)
+            await runClientShutdownSequence(() => restartClientNavigate());
             return true;
         } catch (error) {
             showGlassToast('error', 'System', error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');

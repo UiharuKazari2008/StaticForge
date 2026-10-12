@@ -357,7 +357,8 @@
     function restartClientFromCommand() {
         const sw = window.serviceWorkerManager;
         if (sw && typeof sw.forceRestart === 'function') {
-            sw.forceRestart();
+            // Test restart: reload in place (no shutdown fade / Melaton boot) so reattach stays quick
+            sw.forceRestart({ direct: true });
             return { ok: true, restarting: true };
         }
         if (typeof bypassConfirmation !== 'undefined') {

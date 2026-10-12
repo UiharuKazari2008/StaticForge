@@ -55,6 +55,22 @@ preset per screen and `/launch?design=1&screen=menu` (`boot`, `menu`, `menu-info
 size; `&hud=0` hides the HUD (clean screenshots). Recovery in design mode never wipes and
 nothing navigates. Test: `npm run test:melaton-boot`.
 
+## Restart (Yozora #420)
+
+A restart is a Windows restart: the shutdown sequence (`modalUtils.runClientShutdownSequence`:
+windows close one by one, then a fade to black), then the full Melaton boot on `/launch`
+(`restartClientNavigate`; narrow / non-desktop mode reloads in place instead).
+
+| Path | Behaviour |
+|------|-----------|
+| Start menu **Restart** (`runClientRestartDirect`), restart prompts that call it (`accountDataBootstrap`) | shutdown fade → `/launch` |
+| Update **Restart** / **Restart Now**, the agent System Update dialog (`serviceWorkerManager.forceRestart()`) | desktop up: shutdown fade → `/launch`; during boot: straight to `/launch` |
+| Spectator error window **Restart** (`fatalErrorBootstrap.restartApplication`) and the reload after a DSS server restart (`serverManagement`) | shutdown fade → `/launch` (the boot screen then covers the server start) |
+| Agent `restart_client` (`agentClientBridge.restartClientFromCommand`) | `forceRestart({ direct: true })`: in-place reload, so test reattach stays quick |
+
+Browser refresh (F5 confirm) and the Connection Manager's Reload button stay plain reloads.
+Test: `npm run test:melaton-restart`.
+
 ## Stage triggers
 
 | Stage | Triggered by | Body classes |

@@ -615,11 +615,15 @@
         if (typeof bypassConfirmation !== 'undefined') {
             bypassConfirmation = true;
         }
+        // Full restart: shutdown fade, then the Melaton boot on the desktop (modalUtils.js)
+        var navigate = typeof restartClientNavigate === 'function'
+            ? function () { restartClientNavigate(); }
+            : function () { location.reload(); };
         if (typeof runClientShutdownSequence === 'function') {
-            runClientShutdownSequence(function () { location.reload(); });
+            runClientShutdownSequence(navigate);
             return;
         }
-        location.reload();
+        navigate();
     }
 
     function retryConnectivityRecovery() {

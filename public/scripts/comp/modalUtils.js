@@ -6658,9 +6658,34 @@ async function runClientShutdownSequence(finalAction) {
     }
 }
 
+/**
+ * Where a full restart lands: the Melaton boot on /launch for the desktop (boot screen,
+ * teal, logon, Yozora #420), an in-place reload otherwise.
+ */
+function restartClientNavigate() {
+    try {
+        suppressWebSocketReconnectForReload();
+    } catch (_) { /* reload anyway */ }
+    if (typeof bypassConfirmation !== 'undefined') {
+        bypassConfirmation = true;
+    }
+    if (window.isDesktop) {
+        location.replace('/launch');
+    } else {
+        location.reload();
+    }
+}
+window.restartClientNavigate = restartClientNavigate;
+
+/** Restart like Windows: windows close, fade to black (the shutdown), then the full boot. */
+async function runClientRestartSequence() {
+    await runClientShutdownSequence(() => restartClientNavigate());
+}
+window.runClientRestartSequence = runClientRestartSequence;
+
 async function runClientRestartDirect() {
     closeStartMenuAfterPowerAction();
-    await runClientShutdownSequence(() => location.reload());
+    await runClientRestartSequence();
 }
 
 async function runRestartDssDirect() {

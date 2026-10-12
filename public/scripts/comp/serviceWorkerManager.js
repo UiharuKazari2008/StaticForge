@@ -3610,8 +3610,13 @@ class ServiceWorkerManager {
         }
     }
     
-    // Force restart with bypass confirmation
-    forceRestart() {
+    /**
+     * Restart to apply updates. With the desktop up it is a Windows restart: windows close,
+     * fade to black, then the Melaton boot on /launch (modalUtils runClientRestartSequence,
+     * Yozora #420); during boot it goes straight there. options.direct = in-place reload
+     * (agent test restarts, agentClientBridge.js).
+     */
+    forceRestart(options = {}) {
         console.log('🔄 Force restarting application...');
         this.resetPendingUpdateFuse();
 
@@ -3620,11 +3625,27 @@ class ServiceWorkerManager {
             suppressWebSocketReconnectForReload();
             // Set bypass confirmation to true to avoid confirmation dialogs
             bypassConfirmation = true;
-            
+
+            const desktopUp = !options.direct
+                && window.isDesktop
+                && window.wsClient && window.wsClient.initializationCompleted
+                && typeof window.runClientRestartSequence === 'function';
+            if (desktopUp) {
+                window.runClientRestartSequence().catch((err) => {
+                    console.error('❌ Restart sequence failed, reloading:', err);
+                    window.location.reload();
+                });
+                return;
+            }
+
             // Small delay to ensure bypass confirmation is set
             setTimeout(() => {
                 try {
-                    window.location.reload();
+                    if (!options.direct && typeof window.restartClientNavigate === 'function') {
+                        window.restartClientNavigate();
+                    } else {
+                        window.location.reload();
+                    }
                 } catch (e1) {
                     window.location.href = window.location.href;
                 }

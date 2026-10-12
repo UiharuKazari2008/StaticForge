@@ -128,6 +128,7 @@
     "test:aero-glass": "node scripts/test-aero-glass.js",
     "test:desktop-boot": "node scripts/test-desktop-boot.js",
     "test:melaton-boot": "node scripts/test-melaton-boot.js",
+    "test:melaton-restart": "node scripts/test-melaton-restart.js",
     "test:window-geometry": "node scripts/test-window-geometry.js",
     "test:frame-chrome": "node scripts/test-frame-chrome.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
