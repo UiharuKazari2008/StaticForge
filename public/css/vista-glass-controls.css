@@ -48,7 +48,7 @@ body:not(.windows-classic-theme) .main-menu-bar-outer::before {
 
 /* ---------- buttons in a bar ---------- */
 
-body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button) {
+body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):not(.gallery-toggle-btn) {
     /* at rest the same glass box as the hovered / toggled button, calmer (Yukimi) */
     background-image: var(--vista-glass-button-rest);
     border: 1px solid hsl(0 0% 0% / 45%);
@@ -58,25 +58,25 @@ body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button) 
 }
 
 /* icons a shade darker until hovered or on */
-body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button) > i {
+body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):not(.gallery-toggle-btn) > i {
     color: color-mix(in srgb, currentColor 80%, #000);
     transition: color 0.1s linear;
 }
 
-body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):is(:hover, :active, .active, [data-state="on"]) > i {
+body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):not(.gallery-toggle-btn):is(:hover, :active, .active, [data-state="on"]) > i {
     color: inherit;
 }
 
 @media (hover: hover) {
-    body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):hover:not(:disabled) {
+    body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):not(.gallery-toggle-btn):hover:not(:disabled) {
         background-image: var(--vista-glass-button-hover);
         border-color: var(--vista-glass-edge);
         box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 30%), 0 0 6px 1px hsl(195 85% 65% / 35%);
     }
 }
 
-body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):active:not(:disabled),
-body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):is(.active, [data-state="on"]) {
+body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):not(.gallery-toggle-btn):active:not(:disabled),
+body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):not(.gallery-toggle-btn):is(.active, [data-state="on"]) {
     background-image: var(--vista-glass-button-pressed);
     border-color: var(--vista-glass-edge);
     box-shadow: inset 0 1px 2px hsl(0 0% 0% / 45%), inset 0 0 0 1px hsl(0 0% 100% / 12%);
@@ -86,6 +86,26 @@ body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):
 body:not(.windows-classic-theme) .main-menu-bar-outer .gallery-toggle-group {
     border-color: var(--vista-glass-edge);
     box-shadow: inset 0 1px 3px hsl(0 0% 0% / 45%), 0 1px 0 hsl(0 0% 100% / 14%);
+}
+
+/* Toggle groups (gallery Scraps / Images / Pinned / Upscaled, Studio's mode toggles): the
+   resting buttons wear the sliding highlight's own fill, border and radius
+   (.gallery-toggle-slider, gallery-core.css) instead of fading to 45 %, and their icons are
+   a darker shade of the hover colour (Yukimi). The slider stays the coloured "on" state. */
+body:not(.windows-classic-theme) .gallery-toggle-group .gallery-toggle-btn:not(.active) {
+    background: var(--glass-layer-3);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    margin: 2px 1px;
+    opacity: 1;
+    color: color-mix(in srgb, var(--text-accent-tinted) 70%, #000);
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) .gallery-toggle-group .gallery-toggle-btn:not(.active):hover:not(:disabled) {
+        color: var(--text-accent-tinted);
+        border-color: var(--glass-border-5, var(--glass-border-3));
+    }
 }
 
 /* ---------- round buttons ----------
