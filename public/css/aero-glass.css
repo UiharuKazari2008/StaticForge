@@ -240,13 +240,14 @@ body.desktop-mode:has(.modal.modal-maximized.active-window:not(.hidden):not(.hid
 
 /* ---------- taskbar ---------- */
 
-/* frosted: the lighter-blur wallpaper copy, pinned to the bottom edge of the viewport */
+/* frosted: the lighter-blur wallpaper copy, pinned to the bottom edge of the viewport, under
+   the same dark fill as live (95/92/90 %, Yukimi 2026-10-12: frosted is an optimised live) */
 html[data-glass="frosted"] .desktop-taskbar::after {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background:
         linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 40%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.35) 100%),
-        linear-gradient(to top, hsl(0 0% 8% / 72%) 0%, hsl(0 0% 12% / 66%) 50%, hsl(0 0% 18% / 62%) 100%),
+        linear-gradient(to top, hsl(0 0% 8% / 95%) 0%, hsl(0 0% 12% / 92%) 50%, hsl(0 0% 18% / 90%) 100%),
         var(--aero-wallpaper-light, var(--aero-wallpaper, none));
     background-size:
         100% 100%,
