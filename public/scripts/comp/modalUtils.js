@@ -2415,9 +2415,39 @@ function getWindowUsageStack() {
 
 
 // Set the active window by adding/removing active-window class
+/**
+ * Vista taskbar alert (#443): a window that wants attention flashes its taskbar button amber,
+ * then stays amber until it is brought to the front. No-op for a hidden window or the
+ * window already in front of a focused page.
+ */
+function requestWindowAttention(modalId) {
+    const modal = typeof modalId === 'string' ? document.getElementById(modalId) : modalId;
+    if (!modal || !modal.classList.contains('modal') || modal.classList.contains('hidden')) return false;
+    const inFront = modal.classList.contains('active-window') && !modal.classList.contains('minimised');
+    if (inFront && document.hasFocus()) return false;
+    if (modal.dataset.windowAttention === 'true') return true;
+    modal.dataset.windowAttention = 'true';
+    debouncedUpdateTaskbarWindows();
+    return true;
+}
+
+function clearWindowAttention(modalId) {
+    const modal = typeof modalId === 'string' ? document.getElementById(modalId) : modalId;
+    if (!modal || modal.dataset.windowAttention !== 'true') return;
+    delete modal.dataset.windowAttention;
+    debouncedUpdateTaskbarWindows();
+}
+
+window.requestWindowAttention = requestWindowAttention;
+window.clearWindowAttention = clearWindowAttention;
+
 function setActiveWindow(modalId) {
     if (modalId) {
         const modal = typeof modalId === 'string' ? document.getElementById(modalId) : modalId;
+        // Bringing a window to the front answers its taskbar alert
+        if (modal && modal.dataset && modal.dataset.windowAttention === 'true') {
+            clearWindowAttention(modal);
+        }
         if (!modal || !modal.classList.contains('modal')) {
             currentActiveWindowId = null;
             debouncedUpdateTaskbarWindows();
@@ -4967,6 +4997,19 @@ function updateTaskbarWindows() {
                 taskbarWindows.appendChild(item);
             }
         }
+    });
+
+    // Taskbar alert: the state lives on the window, so it survives every rebuild of the items
+    taskbarWindows.querySelectorAll('.taskbar-window-item').forEach((item) => {
+        let ids = item.dataset.modalId ? [item.dataset.modalId] : [];
+        if (!ids.length && item.dataset.groupedModals) {
+            try { ids = JSON.parse(item.dataset.groupedModals) || []; } catch (_) { ids = []; }
+        }
+        const wants = ids.some((id) => {
+            const m = document.getElementById(id);
+            return !!(m && m.dataset.windowAttention === 'true');
+        });
+        item.classList.toggle('attention', wants);
     });
 
     // Broadcast taskbar/window state changes so other UI controls can stay in sync.

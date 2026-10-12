@@ -4082,6 +4082,11 @@ class WebSocketClient {
                         disconnectMessage += `: ${event.reason}`;
                     }
 
+                    if (event.code === 1006 || event.code === 1011) {
+                        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+                        desktopSounds.play('critical-stop');
+                    }
+
                     if (!this.circuitBreaker) {
                         const startupMessage = this.lastServerStartupStatus?.stageMessage;
                         const reconnectSuffix = this._shouldShowStartupReconnectMessage()
@@ -7141,7 +7146,10 @@ class WebSocketClient {
     }
 
     async addScrap(id, filename) {
-        return this.sendMessage('workspace_add_scrap', { id, filename });
+        const result = await this.sendMessage('workspace_add_scrap', { id, filename });
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('recycle');
+        return result;
     }
 
     async removeScrap(id, filename) {
@@ -7232,7 +7240,10 @@ class WebSocketClient {
     }
 
     async addScrapBulk(id, filenames) {
-        return this.sendMessage('workspace_bulk_add_scrap', { id, filenames });
+        const result = await this.sendMessage('workspace_bulk_add_scrap', { id, filenames });
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('recycle');
+        return result;
     }
 
     async removeScrapBulk(id, filenames) {
@@ -7248,11 +7259,19 @@ class WebSocketClient {
     }
 
     async deleteImagesBulk(filenames) {
-        return this.sendMessage('delete_images_bulk', { filenames });
+        const result = await this.sendMessage('delete_images_bulk', { filenames });
+        if (result && result.successful > 0) {
+            // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            desktopSounds.play('recycle');
+        }
+        return result;
     }
 
     async deleteUnupscaledOriginal(filename) {
-        return this.sendMessage('delete_unupscaled_original', { filename });
+        const result = await this.sendMessage('delete_unupscaled_original', { filename });
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('recycle');
+        return result;
     }
 
     async sendToSequenziaBulk(filenames) {
@@ -9472,6 +9491,12 @@ class WebSocketClient {
             const generationRequestTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
             if (generationRequestTypes.has(request.type)) {
                 this.cleanupGenerationProgressState(requestId);
+            }
+            // desktopSounds.playPrint: public/scripts/comp/desktopSounds.js
+            desktopSounds.playPrint(request.type, error);
+            // A print that lands while Studio is not in front flashes its taskbar button (#443)
+            if (generationRequestTypes.has(request.type) && !error && typeof requestWindowAttention === 'function') {
+                requestWindowAttention('manualModal');
             }
 
             // Clear timeout safely
