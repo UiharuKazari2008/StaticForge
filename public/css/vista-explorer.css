@@ -400,3 +400,78 @@ body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar::before
     background: hsl(210 90% 82% / 70%);
     box-shadow: none;
 }
+
+/* ---------- Vista's own folder and file icons (imageres.dll 3 folder, 1 file, 125 picture,
+   13 text, 49 Recycle Bin; extracted from the VM at 256 / 96 / 64 / 48 / 32 / 16 px) in place
+   of the Font Awesome glyphs. App shortcuts keep their app icons. ---------- */
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open) {
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/folder-256.png') 1x);
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-96.png') 1x, url('/static_images/vista-icons/explorer/folder-256.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/folder-32.png') 1x, url('/static_images/vista-icons/explorer/folder-64.png') 2x);
+    --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/vista-icons/explorer/folder-32.png') 2x);
+}
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-file) {
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/file-256.png') 1x);
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/file-96.png') 1x, url('/static_images/vista-icons/explorer/file-256.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/file-32.png') 1x, url('/static_images/vista-icons/explorer/file-64.png') 2x);
+    --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/file-16.png') 1x, url('/static_images/vista-icons/explorer/file-32.png') 2x);
+}
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-file-image, .fa-image) {
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/image-256.png') 1x);
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/image-96.png') 1x, url('/static_images/vista-icons/explorer/image-256.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/image-32.png') 1x, url('/static_images/vista-icons/explorer/image-64.png') 2x);
+    --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/image-16.png') 1x, url('/static_images/vista-icons/explorer/image-32.png') 2x);
+}
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-file-lines, .fa-file-code) {
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/text-256.png') 1x);
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/text-96.png') 1x, url('/static_images/vista-icons/explorer/text-256.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/text-32.png') 1x, url('/static_images/vista-icons/explorer/text-64.png') 2x);
+    --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/text-16.png') 1x, url('/static_images/vista-icons/explorer/text-32.png') 2x);
+}
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-bin-recycle, .fa-trash-can) {
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/recycle-256.png') 1x);
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/recycle-96.png') 1x, url('/static_images/vista-icons/explorer/recycle-256.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/recycle-32.png') 1x, url('/static_images/vista-icons/explorer/recycle-64.png') 2x);
+    --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/recycle-16.png') 1x, url('/static_images/vista-icons/explorer/recycle-32.png') 2x);
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can) {
+    display: block;
+    width: 96px;
+    height: 96px;
+    font-size: 0 !important;
+    color: transparent;
+    background: var(--ex-icon-lg) no-repeat center / contain;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can)::before {
+    content: none;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can) {
+    width: 160px;
+    height: 160px;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can) {
+    width: 72px;
+    height: 72px;
+    background-image: var(--ex-icon-md);
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can) {
+    width: 32px;
+    height: 32px;
+    background-image: var(--ex-icon-sm);
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-row .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can) {
+    width: 16px;
+    height: 16px;
+    background-image: var(--ex-icon-row);
+}
+
+/* the icon box's own dark tile goes on the white page */
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box:not(.has-preview) {
+    background: none;
+}
