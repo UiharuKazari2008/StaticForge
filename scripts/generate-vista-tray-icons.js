@@ -9,9 +9,9 @@
  *   node scripts/generate-vista-tray-icons.js --only account-manager,dovecote
  *   node scripts/generate-vista-tray-icons.js --out-dir /tmp/tray --quality high
  *
- * Writes <name>-src.png (the model's 1024 px original) into --out-dir and, unless
- * --no-install, <name>-16.png / <name>-32.png / <name>-48.png into
- * public/static_images/vista-icons/ (sharp, Lanczos). Key: modules/appIconGenerator.js
+ * Writes <name>-<size>-src.png (the model's 1024 px pixel-art original) into --out-dir and,
+ * unless --no-install, <name>-16.png / <name>-32.png into public/static_images/vista-icons/
+ * (one sample per pixel cell, so the icons are crisp at the size they are shown). Key: modules/appIconGenerator.js
  * resolveOpenAiKey (OPENAI_API_KEY or secure.config.json).
  */
 const fs = require('fs');
@@ -26,7 +26,11 @@ const DEFAULT_MODEL = 'gpt-image-2.5-sunburst';
 // Vista's own tray icons (ripped from the VM) as style references
 const REF_DIR = path.join(__dirname, 'assets/vista-tray-refs');
 // the flat tray set: network, volume, limited network (Yukimi: flat flat, like those)
-const REFERENCES = ['net-internet-32.png', 'volume-32.png', 'net-limited-32.png'];
+const REFERENCE_NAMES = ['net-internet', 'volume', 'net-limited'];
+// Pixel grid mode (Yukimi: downscaled art is blurry, generate at the size it is shown): the model
+// draws true N x N pixel art on the 1024 canvas (N x N equal cells), the references are Vista's
+// own N px tray icons enlarged pixel for pixel, and each cell's centre is sampled back to N px.
+const PIXEL_SIZES = [16, 32];
 
 const STYLE = 'A single Windows Vista notification area (system tray) icon, drawn exactly like the reference tray icons '
     + '(Vista network and volume icons): FLAT, a handful of solid colours, at most a very soft single gradient per shape, '
@@ -57,16 +61,37 @@ function parseArgs(argv) {
     return opts;
 }
 
-async function referenceFiles() {
+async function referenceFiles(size) {
     const files = [];
-    for (const name of REFERENCES) {
+    for (const base of REFERENCE_NAMES) {
+        const name = `${base}-${size}.png`;
         const p = path.join(REF_DIR, name);
         if (!fs.existsSync(p)) continue;
-        // upscale the 32 px originals so the model sees the pixels, not mush
-        const buf = await sharp(p).resize(256, 256, { kernel: 'nearest' }).png().toBuffer();
+        // enlarge pixel for pixel to the canvas, so the model sees the grid it must draw on
+        const buf = await sharp(p).resize(1024, 1024, { kernel: 'nearest' }).png().toBuffer();
         files.push(await OpenAI.toFile(buf, name, { type: 'image/png' }));
     }
     return files;
+}
+
+/** Sample the centre of each of the N x N cells of a 1024 px pixel-art image. */
+async function sampleGrid(src, size) {
+    const { data, info } = await sharp(src).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const out = Buffer.alloc(size * size * 4);
+    const cell = info.width / size;
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const sx = Math.min(info.width - 1, Math.floor((x + 0.5) * cell));
+            const sy = Math.min(info.height - 1, Math.floor((y + 0.5) * cell));
+            const si = (sy * info.width + sx) * 4;
+            const di = (y * size + x) * 4;
+            data.copy(out, di, si, si + 4);
+            // clean the edges: nearly transparent is transparent, nearly opaque is opaque
+            if (out[di + 3] < 40) out[di + 3] = 0;
+            else if (out[di + 3] > 215) out[di + 3] = 255;
+        }
+    }
+    return sharp(out, { raw: { width: size, height: size, channels: 4 } }).png().toBuffer();
 }
 
 async function main() {
@@ -74,37 +99,35 @@ async function main() {
     const { apiKey, source } = resolveOpenAiKey(ROOT);
     const client = new OpenAI({ apiKey, timeout: 240000 });
     fs.mkdirSync(opts.outDir, { recursive: true });
-    const refs = await referenceFiles();
     const names = opts.only || Object.keys(ICONS);
     const done = [];
-    for (const name of names) {
-        if (!ICONS[name]) throw new Error(`Unknown icon ${name}`);
-        const prompt = `${STYLE} Subject: ${ICONS[name]}`;
-        const result = await client.images.edit({
-            model: opts.model,
-            image: refs,
-            prompt,
-            size: '1024x1024',
-            quality: opts.quality,
-            background: 'transparent',
-            output_format: 'png'
-        });
-        const b64 = result && result.data && result.data[0] && result.data[0].b64_json;
-        if (!b64) throw new Error(`No image for ${name}`);
-        const src = Buffer.from(b64, 'base64');
-        fs.writeFileSync(path.join(opts.outDir, `${name}-src.png`), src);
-        if (opts.install) {
-            // trim the transparent margin first so the object fills the small sizes
-            const trimmed = await sharp(src).trim({ threshold: 1 }).toBuffer();
-            for (const size of [16, 32, 48]) {
-                await sharp(trimmed)
-                    .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 }, kernel: 'lanczos3' })
-                    .png()
-                    .toFile(path.join(ICON_DIR, `${name}-${size}.png`));
+    for (const size of PIXEL_SIZES) {
+        const refs = await referenceFiles(size);
+        for (const name of names) {
+            if (!ICONS[name]) throw new Error(`Unknown icon ${name}`);
+            const prompt = `${STYLE} Draw it as true ${size}x${size} pixel art: the whole square canvas is a grid of `
+                + `${size} by ${size} equal square cells, every cell one flat colour or fully transparent, hard pixel edges, `
+                + `no anti-aliasing, no sub-cell detail, exactly like the reference images, which are ${size}x${size} Vista `
+                + `tray icons enlarged pixel for pixel. Use the whole grid like they do. Subject: ${ICONS[name]}`;
+            const result = await client.images.edit({
+                model: opts.model,
+                image: refs,
+                prompt,
+                size: '1024x1024',
+                quality: opts.quality,
+                background: 'transparent',
+                output_format: 'png'
+            });
+            const b64 = result && result.data && result.data[0] && result.data[0].b64_json;
+            if (!b64) throw new Error(`No image for ${name} @${size}`);
+            const src = Buffer.from(b64, 'base64');
+            fs.writeFileSync(path.join(opts.outDir, `${name}-${size}-src.png`), src);
+            if (opts.install) {
+                fs.writeFileSync(path.join(ICON_DIR, `${name}-${size}.png`), await sampleGrid(src, size));
             }
+            done.push(`${name}@${size}`);
+            console.log(`generated ${name} @${size}`);
         }
-        done.push(name);
-        console.log(`generated ${name}`);
     }
     console.log(JSON.stringify({ model: opts.model, keySource: source, done }));
 }

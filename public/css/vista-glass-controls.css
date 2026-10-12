@@ -205,7 +205,6 @@ body:not(.windows-classic-theme) .indicator:is([data-state="partial"], [data-sta
 body:not(.windows-classic-theme) .indicator:is([data-state="compiled"], [data-state="asc"], [data-state="desc"]) { --lit: 120 200 255; }
 
 body:not(.windows-classic-theme) .round-button.indicator:is([data-state="on"], [data-state="onhigh"], [data-state="partial"], [data-state="open"], [data-state="armed"], [data-state="compiled"]) {
-    transform: translateY(1px);
     box-shadow: inset 0 2px 5px hsl(0 0% 0% / 80%), inset 0 0 0 1px hsl(0 0% 100% / 15%), 0 1px 0 hsl(0 0% 100% / 15%);
 }
 
@@ -218,7 +217,6 @@ body:not(.windows-classic-theme) .round-button.indicator:is([data-state="on"], [
 
 /* square toolbar / toggle buttons in Studio latch the same way (Studio first, #445) */
 body:not(.windows-classic-theme) #manualModal :is(.toolbar-btn, .toggle-btn):is(.active, .indicator[data-state="on"], .indicator[data-state="onhigh"], .indicator[data-state="partial"], .indicator[data-state="open"], .indicator[data-state="compiled"]):not(.round-button) {
-    transform: translateY(1px);
     border-color: hsl(0 0% 0% / 65%);
     background-image:
         linear-gradient(hsl(0 0% 0% / 22%), hsl(0 0% 0% / 14%) calc(50% - 1px), hsl(0 0% 0% / 26%) 50%, hsl(0 0% 0% / 18%) 85%, hsl(0 0% 100% / 10%)),
@@ -226,14 +224,11 @@ body:not(.windows-classic-theme) #manualModal :is(.toolbar-btn, .toggle-btn):is(
     box-shadow: inset 0 2px 4px hsl(0 0% 0% / 70%), inset 0 0 0 1px hsl(0 0% 100% / 12%), 0 1px 0 hsl(0 0% 100% / 14%);
 }
 
-/* every press travels a little, like a real key */
+/* presses and latches show depth with shadows only, so buttons never move (Yukimi) */
 body:not(.windows-classic-theme) :is(.round-button, .toolbar-btn, .toggle-btn) {
     transition-property: background-color, border-color, box-shadow, opacity, color, transform;
 }
 
-body:not(.windows-classic-theme) :is(.round-button, .toolbar-btn, .toggle-btn):active:not(:disabled) {
-    transform: translateY(1px);
-}
 
 /* ---------- taskbar buttons, 1:1 with Vista (slice 5, #443) ----------
    Measured on the Vista Aero VM (2026-10-12):
@@ -463,30 +458,26 @@ body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWsSta
 
 /* ---------- Studio: Vista text fields, status insets, badges, prompt glass (#445) ----------
    Hover inputs (steps, guidance, seed, size, prints, … .hover-show) stay bare text at rest;
-   on hover a sunken Vista field fades in (dark well, inner shadow, light lower rim); focused,
-   Vista's blue focus glow. Only background / border colour / shadow change: no metrics. */
-body:not(.windows-classic-theme) #manualModal .hover-show {
-    transition: background-color 0.15s linear, border-color 0.15s linear, box-shadow 0.15s linear, color 0.15s linear;
-}
-
+   on hover a lighter glass field fades in (contrast against the dark window, Yukimi), with
+   the app's own hover-show transition; focused, Vista's blue focus glow. No metrics change. */
 @media (hover: hover) {
     body:not(.windows-classic-theme) #manualModal :is(.hover-show, .form-control.hover-show, .percentage-input-container.hover-show):hover:not(:disabled) {
-        background: linear-gradient(hsl(0 0% 0% / 38%), hsl(0 0% 0% / 24%));
-        border-color: hsl(0 0% 0% / 65%);
-        box-shadow: inset 0 1px 3px hsl(0 0% 0% / 55%), 0 1px 0 hsl(0 0% 100% / 14%);
+        background: linear-gradient(hsl(0 0% 100% / 17%), hsl(0 0% 100% / 9%) calc(50% - 1px), hsl(0 0% 100% / 4%) 50%, hsl(0 0% 100% / 10%));
+        border-color: hsl(0 0% 100% / 30%);
+        box-shadow: inset 0 1px 2px hsl(0 0% 0% / 35%), 0 0 0 1px hsl(0 0% 0% / 40%);
     }
 }
 
 body:not(.windows-classic-theme) #manualModal :is(input.hover-show, textarea.hover-show, select.hover-show, .form-control.hover-show):focus:not(:disabled),
 body:not(.windows-classic-theme) #manualModal .percentage-input-container.hover-show:focus-within {
-    background: linear-gradient(hsl(0 0% 0% / 45%), hsl(0 0% 0% / 30%));
+    background: linear-gradient(hsl(0 0% 100% / 14%), hsl(0 0% 100% / 7%) calc(50% - 1px), hsl(0 0% 100% / 3%) 50%, hsl(0 0% 100% / 8%));
     border-color: hsl(205 65% 58%);
     box-shadow: inset 0 1px 3px hsl(0 0% 0% / 50%), 0 0 0 1px hsl(197 80% 60% / 30%), 0 0 6px 1px hsl(197 85% 60% / 45%);
 }
 
 /* Status insets (gen count, price, token-free, Director usage): a Vista well that keeps its
    state tint (orange, green, …): dark edge, inner shadow, light lower rim, faint top glass */
-body:not(.windows-classic-theme) .inset-badge {
+body:not(.windows-classic-theme) :is(.inset-badge, .inset-badge.price-display) {
     background-image: linear-gradient(hsl(0 0% 100% / 6%), hsl(0 0% 100% / 2%) 50%, transparent 51%);
     border-color: hsl(0 0% 0% / 60%);
     box-shadow: inset 0 1px 3px hsl(0 0% 0% / 55%), inset 0 0 0 1px hsl(0 0% 0% / 12%), 0 1px 0 hsl(0 0% 100% / 13%);
@@ -514,7 +505,16 @@ body:not(.windows-classic-theme) #manualModal .prompt-textarea-container::after 
 }
 
 body:not(.windows-classic-theme) #manualModal .prompt-textarea-container.textarea-focused::after {
+    /* the glow marks the text area, not the toolbar strip under it (Yukimi) */
+    bottom: var(--prompt-toolbar-height, 43px);
+    border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
     box-shadow: 0 0 0 1px hsl(205 65% 58%), 0 0 6px 2px hsl(197 85% 60% / 40%), inset 0 1px 0 hsl(0 0% 100% / 10%);
+}
+
+/* with Dynamic Generation on, the box has no bottom edge: the strip below carries it */
+body:not(.windows-classic-theme) #manualModal .prompt-tabs:has(#dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container:not(.textarea-focused)::after {
+    clip-path: inset(-4px -4px 0 -4px);
+    border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
 }
 
 /* ---------- Studio: standard buttons, sliders, token meter (#445) ---------- */
@@ -537,34 +537,22 @@ body:not(.windows-classic-theme) #manualModal :where(.btn-secondary, .btn-primar
 }
 
 body:not(.windows-classic-theme) #manualModal :where(.btn-secondary, .btn-primary, .btn-danger, .btn-warning):not(.round-button):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(.modal-window-controls > button):active:not(:disabled) {
-    transform: translateY(1px);
     background-image: linear-gradient(hsl(0 0% 0% / 20%), hsl(0 0% 0% / 12%) calc(50% - 1px), hsl(0 0% 0% / 22%) 50%, hsl(0 0% 0% / 14%) 85%, hsl(0 0% 100% / 8%));
     box-shadow: inset 0 2px 4px hsl(0 0% 0% / 60%), inset 0 0 0 1px hsl(0 0% 100% / 10%);
-}
-
-/* Mode sliders and toggle groups in Studio: a sunken well, the sliding pill is glass */
-body:not(.windows-classic-theme) #manualModal :is(.mode-slider-container, .gallery-toggle-group) {
-    border-color: hsl(0 0% 0% / 60%);
-    box-shadow: inset 0 1px 4px hsl(0 0% 0% / 65%), inset 0 0 12px hsl(0 0% 0% / 40%), 0 1px 0 hsl(0 0% 100% / 13%);
-}
-
-body:not(.windows-classic-theme) #manualModal :is(.mode-slider-track, .gallery-toggle-slider) {
-    background-image: linear-gradient(hsl(0 0% 100% / 24%), hsl(0 0% 100% / 9%) calc(50% - 1px), hsl(0 0% 0% / 6%) 50%, hsl(0 0% 100% / 6%));
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 22%), 0 1px 3px hsl(0 0% 0% / 45%);
 }
 
 /* Token meter: Vista's progress bar (7.css [role=progressbar], darkened): sunken track,
    green glass fill with the fold, same 6 px height */
 body:not(.windows-classic-theme) #manualModal .prompt-token-progress .token-progress-bar {
-    background: linear-gradient(hsl(0 0% 0% / 45%), hsl(0 0% 0% / 30%));
-    border-radius: 2px;
-    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 70%), 0 1px 0 hsl(0 0% 100% / 14%), 0 0 0 1px hsl(0 0% 0% / 45%);
+    background: linear-gradient(hsl(0 0% 0% / 62%), hsl(0 0% 0% / 48%));
+    border-radius: 1px;
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 70%), 0 0 0 1px hsl(0 0% 0% / 55%);
 }
 
 body:not(.windows-classic-theme) #manualModal .prompt-token-progress .token-progress-bar .token-progress-fill {
     background-color: #2ea82e;
     background-image: linear-gradient(hsl(120 70% 85% / 75%), hsl(120 60% 60% / 30%) 45%, transparent 50%, hsl(120 70% 70% / 25%));
-    border-radius: 1px;
+    border-radius: 0;
     box-shadow: inset 0 0 0 1px hsl(120 50% 20% / 40%);
 }
 
@@ -647,14 +635,42 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-cont
     border-color: rgba(0, 110, 190, 0.65);
 }
 
-/* the toolbar strip keeps the dark glass and its own light text */
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .prompt-textarea-toolbar {
+/* Toolbar strips (the focused prompt toolbar, the Dynamic Generation group below it): Vista's
+   black glass (the taskbar's pressed-button glass: #474848 to #323333 above the middle,
+   #0c0d0d below) with a light top line, and their own light text (Yukimi). */
+body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container .prompt-textarea-toolbar, div#dynamicGenerationGroup) {
     --text-primary: #ffffff;
     --text-color: #ffffff;
-    --text-muted: #888888;
+    --text-muted: #9a9a9a;
     --primary-color-light: var(--btn-hover-border-primary, #ffcbb3);
-    background: linear-gradient(hsl(0 0% 100% / 10%), hsl(0 0% 100% / 3%) 50%, transparent 51%), var(--glass-layer-alt-5, rgb(32 32 32 / 92%));
-    border-top-color: hsl(0 0% 0% / 55%);
+    background: linear-gradient(hsl(0 0% 28% / 94%), hsl(0 0% 20% / 94%) calc(50% - 1px), hsl(0 0% 5% / 96%) 50%, hsl(0 0% 4% / 96%));
+    border-top-color: hsl(0 0% 100% / 26%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 12%);
     color: #fff;
+}
+
+/* the Dynamic Generation strip carries the box's edge on its sides and bottom */
+body.desktop-mode:not(.windows-classic-theme) #manualModal div#dynamicGenerationGroup {
+    border-color: hsl(0 0% 0% / 58%);
+    border-top: 1px solid hsl(0 0% 100% / 26%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 12%), 0 1px 0 hsl(0 0% 100% / 14%);
+}
+
+/* Pills and badges (sampler ANCESTRAL / curated badges, count badges): glass with the sharp
+   centre line over their own colour, as a layer so their fill stays (Yukimi) */
+body:not(.windows-classic-theme) .custom-dropdown-badge {
+    position: relative;
+    isolation: isolate;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 26%), 0 0 0 1px hsl(0 0% 0% / 40%);
+}
+
+body:not(.windows-classic-theme) .custom-dropdown-badge::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(hsl(0 0% 100% / 38%), hsl(0 0% 100% / 14%) calc(50% - 0.5px), transparent 50%, hsl(0 0% 100% / 10%));
 }
 

@@ -56,10 +56,29 @@ function lightSurfaceChannel(r, g, b) {
     return (r > 195 && g > 195 && b > 195) ? [92, 92, 92] : [r, g, b];
 }
 
+// Flipped for dark text (Yukimi): the dark box put white text on deep colour; on the white box
+// the colour becomes a pastel fill (mixed toward white) inside a darker ring of the same hue.
+function lightSurfacePastel(r, g, b, amount) {
+    const t = Number.isFinite(amount) ? amount : 0.62;
+    return [Math.round(r + (255 - r) * t), Math.round(g + (255 - g) * t), Math.round(b + (255 - b) * t)];
+}
+
+function lightSurfaceDeep(r, g, b) {
+    return [Math.round(r * 0.62), Math.round(g * 0.62), Math.round(b * 0.62)];
+}
+
 function lightSurfaceChip(hex) {
     if (!emphasisLightSurface || typeof hex !== 'string' || !/^#[0-9a-f]{6}$/i.test(hex)) return hex;
     const n = parseInt(hex.slice(1), 16);
-    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, 0.42)`;
+    const [pr, pg, pb] = lightSurfacePastel((n >> 16) & 255, (n >> 8) & 255, n & 255, 0.6);
+    return `rgb(${pr}, ${pg}, ${pb})`;
+}
+
+function lightSurfaceChipEdge(hex) {
+    if (!emphasisLightSurface || typeof hex !== 'string' || !/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+    const n = parseInt(hex.slice(1), 16);
+    const [dr, dg, db] = lightSurfaceDeep((n >> 16) & 255, (n >> 8) & 255, n & 255);
+    return `rgb(${dr}, ${dg}, ${db})`;
 }
 
 function getEmphasisHighlightCacheSignature(textarea, value) {
@@ -898,11 +917,14 @@ function highlightEmphasisInText(text, weightSource) {
     function getEmphasisColors(weight) {
         const c = computeEmphasisWeightColor(weight);
         if (emphasisLightSurface) {
-            const [br, bg, bb] = lightSurfaceChannel(c.borderR, c.borderG, c.borderB);
-            const [fr, fg, fb] = lightSurfaceChannel(c.r, c.g, c.b);
+            const neutral = c.borderR > 195 && c.borderG > 195 && c.borderB > 195;
+            const [br, bg, bb] = neutral ? [92, 92, 92] : lightSurfaceDeep(c.borderR, c.borderG, c.borderB);
+            // pastel fill: stronger weights (higher backgroundA) keep more of their colour
+            const [fr, fg, fb] = lightSurfacePastel(c.r, c.g, c.b, 0.78 - Math.min(0.9, c.backgroundA) * 0.3);
+            const fillA = c.backgroundA <= 0.02 ? 0 : Math.min(0.95, 0.55 + c.backgroundA * 0.45);
             return {
-                background: `rgba(${fr}, ${fg}, ${fb}, ${Math.min(0.36, c.backgroundA * 0.6).toFixed(2)})`,
-                border: `rgba(${br}, ${bg}, ${bb}, ${Math.max(0.45, c.borderA).toFixed(2)})`,
+                background: `rgba(${fr}, ${fg}, ${fb}, ${fillA.toFixed(2)})`,
+                border: `rgba(${br}, ${bg}, ${bb}, ${Math.max(0.55, c.borderA).toFixed(2)})`,
                 caret: `rgb(${br}, ${bg}, ${bb})`
             };
         }
@@ -981,7 +1003,8 @@ function highlightEmphasisInText(text, weightSource) {
     function applyReplacementSyntaxHighlights(chunk) {
         let out = chunk;
         out = out.replace(EMPHASIS_PATTERNS.bracketedIncrementing, (match) => {
-            const backgroundColor = lightSurfaceChip('#e91e63');
+            const backgroundHex = '#e91e63';
+            const backgroundColor = lightSurfaceChip(backgroundHex);
             const escapedMatch = match.replace(/!/g, '&#33;')
                 .replace(/\[/g, '&#91;')
                 .replace(/\]/g, '&#93;')
@@ -989,42 +1012,48 @@ function highlightEmphasisInText(text, weightSource) {
                 .replace(/\+/g, '&#43;')
                 .replace(/_/g, '&#95;')
                 .replace(/#/g, '&#35;');
-            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${emphasisLightSurface ? lightSurfaceChipEdge(backgroundHex) : backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.bracketedReplacement, (match) => {
-            const backgroundColor = lightSurfaceChip('#9c27b0');
+            const backgroundHex = '#9c27b0';
+            const backgroundColor = lightSurfaceChip(backgroundHex);
             const escapedMatch = match.replace(/!/g, '&#33;')
                 .replace(/\[/g, '&#91;')
                 .replace(/\]/g, '&#93;')
                 .replace(/~/g, '&#126;')
                 .replace(/\+/g, '&#43;')
                 .replace(/_/g, '&#95;');
-            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${emphasisLightSurface ? lightSurfaceChipEdge(backgroundHex) : backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.incrementingSyntax, (match) => {
-            const backgroundColor = lightSurfaceChip('#ff9800');
+            const backgroundHex = '#ff9800';
+            const backgroundColor = lightSurfaceChip(backgroundHex);
             const escapedMatch = match.replace(/!/g, '&#33;');
-            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${emphasisLightSurface ? lightSurfaceChipEdge(backgroundHex) : backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.pickCombineIncrementing, (match) => {
-            const backgroundColor = lightSurfaceChip('#ff9800');
+            const backgroundHex = '#ff9800';
+            const backgroundColor = lightSurfaceChip(backgroundHex);
             const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;').replace(/\+/g, '&#43;').replace(/#/g, '&#35;');
-            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${emphasisLightSurface ? lightSurfaceChipEdge(backgroundHex) : backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.pickIncrementingSuffix, (match) => {
-            const backgroundColor = lightSurfaceChip('#f57c00');
+            const backgroundHex = '#f57c00';
+            const backgroundColor = lightSurfaceChip(backgroundHex);
             const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;').replace(/#/g, '&#35;');
-            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${emphasisLightSurface ? lightSurfaceChipEdge(backgroundHex) : backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.pickReplacement, (match) => {
-            const backgroundColor = lightSurfaceChip('#628a33');
+            const backgroundHex = '#628a33';
+            const backgroundColor = lightSurfaceChip(backgroundHex);
             const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;').replace(/\+/g, '&#43;');
-            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${emphasisLightSurface ? lightSurfaceChipEdge(backgroundHex) : backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.regularReplacement, (match) => {
-            const backgroundColor = '#8bc34a8a';
+            const backgroundHex = '#8bc34a8a';
+            const backgroundColor = backgroundHex;
             const escapedMatch = match.replace(/!/g, '&#33;');
-            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+            return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${emphasisLightSurface ? lightSurfaceChipEdge(backgroundHex) : backgroundColor};">${escapedMatch}</span>`;
         });
         return out;
     }
