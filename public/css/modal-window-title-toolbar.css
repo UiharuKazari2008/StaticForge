@@ -1373,24 +1373,24 @@ body:not(.desktop-mode) .modal .modal-window-controls .modal-maximize-auto {
    1 px window edge (.modal border), 1 px inner highlight (--aero-frame-highlight), 4 px of
    glass, then a 1 px light and a 1 px dark line around the client area (::after below).
    Windows only (a caption), desktop mode only; maximized frames sit off-screen, so no inset.
-   Studio (fullscreen and windowed: its own caption with the menu bar and indicator toggles,
-   own padding), Glancewell and the virtual keyboard are left out entirely, as is any window
-   with data-window-frame="flush"; aero-glass.css then sees no --window-frame-inset (0). */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal, #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])) {
+   Windowed Studio takes the border too (its padding is set by id, so it gets its own rule
+   below); the fullscreen Studio editor, Glancewell and the virtual keyboard are left out, as
+   is any window with data-window-frame="flush" (aero-glass.css then sees no inset, 0). */
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])) {
     --window-frame-inset: 7px;
     padding-left: var(--window-frame-inset);
     padding-right: var(--window-frame-inset);
     padding-bottom: var(--window-frame-inset);
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal.modal-maximized:where(:has(> .modal-window-title)):where(:not(#manualModal, #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])) {
+body.desktop-mode:not(.windows-classic-theme) .modal.modal-maximized:where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])) {
     --window-frame-inset: 0px;
 }
 
 /* The client edge: light outside, dark inside, in the 2 px just outside the client box.
    Under the window's children (z-index -1, after the frame paint in ::before), so the
    caption band covers its top edge and only the sides and bottom show. */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal, #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized)::after {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized)::after {
     content: '';
     position: absolute;
     z-index: -1;
@@ -1416,14 +1416,14 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-
     --window-frame-wash: hsl(0 0% 100% / 30%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal, #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title {
     left: 0;
     width: 100%;
     border-bottom-color: transparent;
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal, #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::before {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::before {
     content: '';
     position: absolute;
     z-index: -1;
@@ -1438,13 +1438,13 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-
     opacity: 0.55;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):where(:has(> .modal-window-title)):where(:not(#manualModal, #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::before {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::before {
     opacity: 0;
 }
 
 /* Client top edge, continuing the side lines of .modal::after: light at the caption's
    second-to-last row, dark on its last row, both over the client width */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal, #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::after {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::after {
     content: '';
     position: absolute;
     pointer-events: none;
@@ -1458,9 +1458,20 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-
     box-shadow: inset 1px 1px 0 hsl(0 0% 0% / 55%), inset -1px 0 0 hsl(0 0% 0% / 55%);
 }
 
+/* Windowed Studio: manual-modal.css sets padding: 27px 0 0 by id; the client is #manualForm */
+body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed {
+    padding-left: var(--window-frame-inset, 0px);
+    padding-right: var(--window-frame-inset, 0px);
+    padding-bottom: var(--window-frame-inset, 0px);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed:not(.modal-maximized) > #manualForm {
+    border-radius: 0;
+}
+
 /* The client area is square inside the frame (Vista) */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal, #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-content,
-body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal, #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-body {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-content,
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-body {
     border-radius: 0;
 }
 
@@ -1494,8 +1505,9 @@ body:not(.windows-classic-theme) .modal.active-window .modal-window-controls > b
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 30%);
 }
 
-/* Glyphs: Vista's own bitmaps (copied pixel for pixel from a Vista Aero VM, #407): a #535666
-   outline around a white-to-grey fill, drawn as crisp SVG so they stay sharp at any DPR. The
+/* Glyphs: Vista's own (traced from the bitmaps of a Vista Aero VM into vector SVGs in
+   static_images/window-controls/, #407): a #535666 outline around a white-to-grey fill on
+   half-pixel paths, so they are pixel-exact at 1x and smooth at 2x. The
    Font Awesome glyph they replace looked soft under its 8-way text-shadow outline (Yukimi).
    Only the window glyphs swap; indicators and app buttons in a cluster keep their icons.
    Revert = delete this block. */
@@ -1512,25 +1524,25 @@ body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed)))
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-minimize {
     width: 12px;
     height: 5px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='5' viewBox='0 0 12 5' shape-rendering='crispEdges'%3E%3Cdefs%3E%3ClinearGradient id='f' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='1' stop-color='%23d4d4d4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url%28%23f%29' d='M1 1h10v1h-10zM1 2h10v1h-10zM1 3h10v1h-10z'/%3E%3Cpath fill='%23535666' d='M1 0h10v1h-10zM0 1h1v1h-1zM11 1h1v1h-1zM0 2h1v1h-1zM11 2h1v1h-1zM0 3h1v1h-1zM11 3h1v1h-1zM1 4h10v1h-10z'/%3E%3C/svg%3E");
+    background-image: url("/static_images/window-controls/vista-minimize.svg");
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-maximize {
     width: 12px;
     height: 10px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='10' viewBox='0 0 12 10' shape-rendering='crispEdges'%3E%3Cdefs%3E%3ClinearGradient id='f' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='1' stop-color='%23d4d4d4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url%28%23f%29' d='M1 1h10v1h-10zM1 2h10v1h-10zM1 3h2v1h-2zM9 3h2v1h-2zM1 4h2v1h-2zM9 4h2v1h-2zM1 5h2v1h-2zM9 5h2v1h-2zM1 6h2v1h-2zM9 6h2v1h-2zM1 7h10v1h-10zM1 8h10v1h-10z'/%3E%3Cpath fill='%23535666' d='M1 0h10v1h-10zM0 1h1v1h-1zM11 1h1v1h-1zM0 2h1v1h-1zM11 2h1v1h-1zM0 3h1v1h-1zM3 3h6v1h-6zM11 3h1v1h-1zM0 4h1v1h-1zM3 4h1v1h-1zM8 4h1v1h-1zM11 4h1v1h-1zM0 5h1v1h-1zM3 5h1v1h-1zM8 5h1v1h-1zM11 5h1v1h-1zM0 6h1v1h-1zM3 6h6v1h-6zM11 6h1v1h-1zM0 7h1v1h-1zM11 7h1v1h-1zM0 8h1v1h-1zM11 8h1v1h-1zM1 9h10v1h-10z'/%3E%3C/svg%3E");
+    background-image: url("/static_images/window-controls/vista-maximize.svg");
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-restore {
     width: 12px;
     height: 12px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cdefs%3E%3ClinearGradient id='f' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='1' stop-color='%23d4d4d4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url%28%23f%29' d='M3 1h8v1h-8zM10 2h1v1h-1zM1 3h8v1h-8zM10 3h1v1h-1zM1 4h8v1h-8zM10 4h1v1h-1zM1 5h2v1h-2zM7 5h2v1h-2zM10 5h1v1h-1zM1 6h2v1h-2zM7 6h2v1h-2zM10 6h1v1h-1zM1 7h2v1h-2zM7 7h2v1h-2zM10 7h1v1h-1zM1 8h2v1h-2zM7 8h2v1h-2zM10 8h1v1h-1zM1 9h8v1h-8zM1 10h8v1h-8z'/%3E%3Cpath fill='%23535666' d='M3 0h8v1h-8zM2 1h1v1h-1zM11 1h1v1h-1zM0 2h9v1h-9zM11 2h1v1h-1zM0 3h1v1h-1zM9 3h1v1h-1zM11 3h1v1h-1zM0 4h1v1h-1zM9 4h1v1h-1zM11 4h1v1h-1zM0 5h1v1h-1zM3 5h4v1h-4zM9 5h1v1h-1zM11 5h1v1h-1zM0 6h1v1h-1zM3 6h1v1h-1zM6 6h1v1h-1zM9 6h1v1h-1zM11 6h1v1h-1zM0 7h1v1h-1zM3 7h1v1h-1zM6 7h1v1h-1zM9 7h1v1h-1zM11 7h1v1h-1zM0 8h1v1h-1zM3 8h4v1h-4zM9 8h1v1h-1zM11 8h1v1h-1zM0 9h1v1h-1zM9 9h3v1h-3zM0 10h1v1h-1zM9 10h1v1h-1zM0 11h10v1h-10z'/%3E%3C/svg%3E");
+    background-image: url("/static_images/window-controls/vista-restore.svg");
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-xmark-large {
     width: 11px;
     height: 10px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='10' viewBox='0 0 11 10' shape-rendering='crispEdges'%3E%3Cdefs%3E%3ClinearGradient id='f' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='1' stop-color='%23d4d4d4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url%28%23f%29' d='M1 1h3v1h-3zM7 1h3v1h-3zM2 2h3v1h-3zM6 2h3v1h-3zM3 3h5v1h-5zM4 4h3v1h-3zM4 5h3v1h-3zM3 6h5v1h-5zM2 7h3v1h-3zM6 7h3v1h-3zM1 8h3v1h-3zM7 8h3v1h-3z'/%3E%3Cpath fill='%23535666' d='M1 0h3v1h-3zM7 0h3v1h-3zM0 1h1v1h-1zM4 1h1v1h-1zM6 1h1v1h-1zM10 1h1v1h-1zM1 2h1v1h-1zM5 2h1v1h-1zM9 2h1v1h-1zM2 3h1v1h-1zM8 3h1v1h-1zM3 4h1v1h-1zM7 4h1v1h-1zM3 5h1v1h-1zM7 5h1v1h-1zM2 6h1v1h-1zM8 6h1v1h-1zM1 7h1v1h-1zM5 7h1v1h-1zM9 7h1v1h-1zM0 8h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM10 8h1v1h-1zM1 9h3v1h-3zM7 9h3v1h-3z'/%3E%3C/svg%3E");
+    background-image: url("/static_images/window-controls/vista-close.svg");
 }
 
 /* The bloom layer: under the glyph, faded in on hover */
@@ -1577,5 +1589,33 @@ body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.clos
     background:
         radial-gradient(circle at 50% 100%, #efc827, transparent 55%),
         linear-gradient(#d3ab95, #a0503a 25% 50%, #7d0d01 50%);
+}
+
+/* Caption button size (Yukimi: the buttons were too tall for the caption). Vista Aero
+   measured: an 18 px row hanging from the top edge, minimize / maximize 26 px and Close
+   43 px wide (shared borders included); glyphs sit 3 px above the bottom border. The whole
+   cluster takes the height, so app buttons and indicators (Studio's toggles) line up.
+   Desktop only (touch layouts keep 24 px); the fullscreen Studio editor keeps its own. */
+body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button,
+body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > .custom-dropdown > button {
+    min-height: 18px;
+    height: 18px;
+    padding-top: 0;
+    padding-bottom: 0;
+    line-height: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):has(> i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large)) {
+    display: inline-flex;
+    align-items: flex-end;
+    justify-content: center;
+    min-width: 26px;
+    width: 26px;
+    padding: 0 0 3px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button:is(.close-btn, .modal-close):has(> i.fa-xmark-large) {
+    min-width: 43px;
+    width: 43px;
 }
 
