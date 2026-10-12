@@ -690,31 +690,6 @@ class WebSocketClient {
         }
     };
 
-    /** Deterministic dial number from server hostname (FQDN). */
-    static fqdnToDialNumber(fqdn) {
-        const host = String(fqdn || window.location.hostname || 'localhost')
-            .toLowerCase()
-            .replace(/^www\./, '')
-            .split(':')[0];
-        let hash = 0;
-        for (let i = 0; i < host.length; i++) {
-            hash = ((hash << 5) - hash + host.charCodeAt(i)) | 0;
-        }
-        hash = Math.abs(hash);
-        const area = 200 + (hash % 800);
-        const prefix = 100 + ((hash >> 10) % 900);
-        const line = hash % 10000;
-        const pad = (n, w) => String(n).padStart(w, '0');
-        return `1-${area}-${pad(prefix, 3)}-${pad(line, 4)}`;
-    }
-
-    /**
-     * Creates a new WebSocket client instance
-     *
-     * Initializes all connection management, request tracking, and UI notification systems.
-     * The client will automatically attempt to connect on initialization and handle
-     * reconnections transparently.
-     */
     constructor() {
         // Client version for compatibility checking
         this.clientVersion = '1.0.2'; // Update this when making breaking changes to client
@@ -767,7 +742,6 @@ class WebSocketClient {
         this.initStartupUiDismissed = false;
         /** Connection dial UI — single source of truth for connect/reconnect/failure dialog. */
         this.connectionPhase = 'idle'; // idle | dialing | failed | connected | auth
-        this.connectionDialView = 'transient'; // transient | status
         /**
          * Post-init reconnect (bfcache / focus regain) — update modem tray + WS indicator only.
          * Do not open the connection manager dial or glass toast dial UI.
@@ -800,12 +774,12 @@ class WebSocketClient {
         this.connectionStats = {
             messagesIn: 0,
             messagesOut: 0,
-            connectedAt: null,
-            dialNumber: WebSocketClient.fqdnToDialNumber(window.location.hostname)
+            connectedAt: null
         };
         this._wasPingWarning = false;
         this._latencyPopupDisplayed = false;
         this._initializingBeatComplete = false;
+        this._userCancelledConnect = false; // Cancel in "Connecting to <domain>..." (cancelConnectionFromUser)
         this._connectionStatsTimer = null;
         this._melatonTrafficUp = null;
         this._melatonTrafficDown = null;
@@ -924,9 +898,6 @@ class WebSocketClient {
         if (!this.initializationCompleted) {
             return;
         }
-        if (this.connectionDialView === 'status') {
-            return;
-        }
         this._trayOnlyReconnect = true;
         if (source) {
             console.log(`📡 Tray-only reconnect armed (${source})`);
@@ -939,11 +910,10 @@ class WebSocketClient {
 
     /**
      * True when reconnect UI should stay in the modem tray (bfcache / focus regain).
-     * Auth still uses full UI. User-opened status view still uses the dial.
+     * Auth still uses full UI.
      */
     _shouldSuppressConnectionDialUi() {
         if (!this._trayOnlyReconnect) return false;
-        if (this.connectionDialView === 'status') return false;
         if (this.connectionPhase === 'auth') return false;
         if (!this.initializationCompleted) return false;
         return true;
@@ -975,6 +945,9 @@ class WebSocketClient {
     }
 
     _setConnectionBeat(beat, patch = {}) {
+        // The attempt the user cancelled keeps running to its next isManualClose check; its
+        // beats must not bring "Connecting to <domain>..." back (cancelConnectionFromUser)
+        if (this._userCancelledConnect) return;
         const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
         const merged = {
             beat,
@@ -1083,7 +1056,6 @@ class WebSocketClient {
         } else {
             this.connectionStats.messagesIn++;
         }
-        this._updateConnectionStatsDisplay();
     }
 
     formatConnectionUptime(ms) {
@@ -1101,111 +1073,33 @@ class WebSocketClient {
         return !!(window.isDesktop || document.body.classList.contains('desktop-mode'));
     }
 
-    _shouldShowConnectionStats() {
-        return this.connectionDialView === 'status' && this.isConnected();
-    }
-
-    _updateConnectionStatsDisplay() {
-        const statsEl = document.getElementById('connectionDialStats');
-        if (!statsEl) return;
-        if (!this._shouldShowConnectionStats()) {
-            statsEl.classList.add('hidden');
-            return;
-        }
-        statsEl.classList.remove('hidden');
-        const uptimeEl = document.getElementById('connectionDialStatUptime');
-        const outEl = document.getElementById('connectionDialStatOut');
-        const inEl = document.getElementById('connectionDialStatIn');
-        const pingEl = document.getElementById('connectionDialStatPing');
-        const varEl = document.getElementById('connectionDialStatVariability');
-        const uptimeMs = this.connectionStats.connectedAt && this.isConnected()
-            ? Date.now() - this.connectionStats.connectedAt
-            : 0;
-        if (uptimeEl) {
-            uptimeEl.textContent = uptimeMs > 0 ? this.formatConnectionUptime(uptimeMs) : '—';
-        }
-        if (outEl) outEl.textContent = String(this.connectionStats.messagesOut);
-        if (inEl) inEl.textContent = String(this.connectionStats.messagesIn);
-        if (pingEl) {
-            if (this.isConnected() && this.currentRtt !== null) {
-                const roundedRtt = Math.round(this.currentRtt / 10) * 10;
-                pingEl.textContent = `${roundedRtt}ms`;
-            } else {
-                pingEl.textContent = '—';
-            }
-        }
-        if (varEl) {
-            if (this.isConnected() && this.rttVariability !== null && this.currentRtt > 0) {
-                const variabilityPercent = Math.round((this.rttVariability / this.currentRtt) * 100);
-                varEl.textContent = `${variabilityPercent}%`;
-            } else {
-                varEl.textContent = '—';
-            }
-        }
-    }
-
-    _startConnectionStatsTimer() {
-        this._stopConnectionStatsTimer();
-        this._connectionStatsTimer = setInterval(() => {
-            this._updateConnectionStatsDisplay();
-            this._updateConnectionDialDetails();
-            this._updateServiceWorkerTrayIcon();
-            this._updateModemTrayIcon();
-        }, 1000);
-    }
-
-    _stopConnectionStatsTimer() {
-        if (this._connectionStatsTimer) {
-            clearInterval(this._connectionStatsTimer);
-            this._connectionStatsTimer = null;
-        }
-    }
-
+    /**
+     * The network tray icon (and the narrow-mode latency toast) open the Network and Server
+     * Center in the Control Panel (public/scripts/comp/melatonControlPanel.js, Yozora #428).
+     */
     openConnectionDialStatus() {
-        this.connectionDialView = 'status';
-        this._clearTrayOnlyReconnect();
-        if (this.connectionPhase === 'failed') {
-            this._renderConnectionDial();
-        } else if (this.isConnected()) {
-            this._setConnectionBeat('connected');
-        } else if (this.connectionPhase === 'idle') {
-            this._setConnectionPhase('failed', {
-                message: 'NO CARRIER — Not connected to server.'
-            });
-        } else {
-            this._setConnectionBeat(this.connectionUi.beat || 'dialing');
+        if (window.melatonControlPanel) {
+            window.melatonControlPanel.open('network');
         }
-        this._updateConnectionDialDetails();
-        this._updateServiceWorkerTrayIcon();
-        this._startConnectionStatsTimer();
     }
 
     /**
-     * User-initiated disconnect from the network status dialog.
-     * Keeps the dial modal open, shows reconnect UI, and auto-redials.
+     * Cancel in "Connecting to <domain>..." and Disconnect in the Network and Server Center
+     * (Yozora #427): stop dialing and stay offline until the user connects again, like Windows.
+     * Connect to <domain> / Redial (manualReconnect) brings the session back.
      */
-    _userDisconnectFromDialog() {
-        this.connectionDialView = 'transient';
-        this._stopConnectionStatsTimer();
-        this.isManualClose = false;
-        this.reconnectAttempts = 0;
-        this.reconnectDelay = 1000;
-        this.circuitBreaker = false;
-        this.lastConnectionAttempt = 0;
+    cancelConnectionFromUser() {
+        this._userCancelledConnect = true;
+        this.suppressAutoReconnect();
         this._releaseConnectLock();
-
-        this.disconnect(false);
-
-        this._setConnectionPhase('failed', {
-            message: 'NO CARRIER — Disconnected from server.'
-        });
-
-        this.reconnect();
+        this.disconnect(true);
+        this.updateWebSocketStatus('disconnected');
+        this._setConnectionPhase('idle', { message: 'Disconnected.' });
+        this.bannerManager.showWebSocketTicker('error', 'Disconnected', 'fa-phone-slash', false);
     }
 
+    /** Close in "Error Connecting to <domain>": the failure stays in the tray until a redial. */
     closeConnectionDialStatus() {
-        this.connectionDialView = 'transient';
-        this._stopConnectionStatsTimer();
         const modal = document.getElementById('connectionDialModal');
         if (modal && !modal.classList.contains('hidden') && typeof closeModal === 'function') {
             closeModal(modal);
@@ -1218,12 +1112,6 @@ class WebSocketClient {
     }
 
     async _completeConnectionDialHandoff() {
-        if (this.connectionDialView === 'status') {
-            this._setConnectionBeat('connected');
-            this._updateConnectionDialDetails();
-            this._updateServiceWorkerTrayIcon();
-            return;
-        }
         if (this._shouldSuppressConnectionDialUi() || this._trayOnlyReconnect) {
             this.updateWebSocketStatus('connected');
             this._setConnectionPhase('idle');
@@ -1263,47 +1151,6 @@ class WebSocketClient {
         if (userType === 'readonly') return 'Read-only';
         if (userType) return userType;
         return '—';
-    }
-
-    _getConnectionEncryptionLabel() {
-        if (window.location.protocol === 'https:') {
-            return 'TLS (HTTPS)';
-        }
-        return 'None (HTTP)';
-    }
-
-    _updateConnectionDialDetails() {
-        const phoneEl = document.getElementById('connectionDialDetailPhone');
-        const serverEl = document.getElementById('connectionDialDetailServer');
-        const encryptionEl = document.getElementById('connectionDialDetailEncryption');
-        const usernameEl = document.getElementById('connectionDialDetailUsername');
-        if (!phoneEl || !serverEl || !encryptionEl || !usernameEl) return;
-
-        phoneEl.textContent = this.connectionStats.dialNumber || '—';
-        serverEl.textContent = window.location.hostname || '—';
-        encryptionEl.textContent = this._getConnectionEncryptionLabel();
-        usernameEl.textContent = this._getConnectionUsername();
-    }
-
-    _updateConnectionDialProgress(beat, phase) {
-        const wrapEl = document.getElementById('connectionDialProgressWrap');
-        const barEl = document.getElementById('connectionDialProgressBar');
-        const fillEl = document.getElementById('connectionDialProgressFill');
-        if (!wrapEl || !barEl || !fillEl) return;
-
-        const progressBeats = new Set(['initializing', 'dialing', 'negotiation', 'establishing']);
-        const isTasking = progressBeats.has(beat) && phase !== 'failed' && phase !== 'idle' && phase !== 'auth';
-
-        if (!isTasking) {
-            barEl.classList.add('hidden');
-            return;
-        }
-
-        const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
-        const progress = beatDef.progress != null ? beatDef.progress : 0;
-        barEl.classList.remove('hidden');
-        fillEl.style.width = `${progress}%`;
-        barEl.setAttribute('aria-valuenow', String(progress));
     }
 
     _updateServiceWorkerTrayIcon() {
@@ -1369,32 +1216,30 @@ class WebSocketClient {
         const glyph = document.getElementById('modemTrayIconGlyph');
         if (!icon || !glyph) return;
 
-        let title = 'MeletonFX Network Connection';
+        // Vista network tray tooltips: the domain network and its access (melatonNetworkDialogs.js)
+        const text = window.melatonNetworkDialogs;
+        const domain = text ? text.connectionInfo().domain : 'DREAMSCAPE';
+        let title;
 
         if (this.isConnected()) {
             glyph.className = 'fa-regular fa-globe';
             const uptimeMs = this.connectionStats.connectedAt
                 ? Date.now() - this.connectionStats.connectedAt
                 : 0;
-            title = uptimeMs > 0
-                ? `MeletonFX Network: Connected (${this.formatConnectionUptime(uptimeMs)})`
-                : 'MeletonFX Network: Connected';
+            title = `${domain}\nAccess: Local and Internet`;
+            if (uptimeMs > 0) title += `\nDuration: ${this.formatConnectionUptime(uptimeMs)}`;
+        } else if (this.connectionPhase === 'failed') {
+            glyph.className = 'fas fa-phone-slash';
+            title = `Not connected\nError connecting to ${domain}`;
+        } else if (this.connectionPhase === 'auth') {
+            glyph.className = 'fas fa-phone-slash';
+            title = `${domain}\nLogon required`;
+        } else if (this.connectionPhase === 'dialing' || this.isConnecting) {
+            glyph.className = 'fas fa-sync-alt fa-spin';
+            title = `Connecting to ${domain}...`;
         } else {
-            if (this.connectionPhase === 'failed') {
-                glyph.className = 'fas fa-phone-slash';
-                title = 'MeletonFX Network: NO CARRIER';
-            } else if (this.connectionPhase === 'dialing' || this.isConnecting) {
-                glyph.className = 'fas fa-sync-alt fa-spin';
-                const bootStatus = this.lastServerStartupStatus;
-                if (bootStatus && !this.serverStartupReady && bootStatus.stageMessage) {
-                    title = `MeletonFX Network: ${bootStatus.stageMessage}`;
-                } else {
-                    title = `MeletonFX Network: ${this.connectionUi.message || 'Dialing…'}`;
-                }
-            } else {
-                glyph.className = 'fas fa-phone-slash';
-                title = 'MeletonFX Network: Not connected';
-            }
+            glyph.className = 'fas fa-phone-slash';
+            title = 'Not connected';
         }
 
         icon.setAttribute('title', title);
@@ -1443,29 +1288,23 @@ class WebSocketClient {
         if (this.connectionDialHandlersSetup) return;
         this.connectionDialHandlersSetup = true;
 
-        const redialBtn = document.getElementById('connectionDialRedialBtn');
-        const reloadBtn = document.getElementById('connectionDialReloadBtn');
-        const forceBtn = document.getElementById('connectionDialDisconnectBtn');
+        const on = (id, handler) => {
+            const button = document.getElementById(id);
+            if (button) button.addEventListener('click', handler);
+        };
+        on('connectionDialRedialBtn', () => this.manualReconnect());
+        on('connectionDialCloseBtn', () => this.closeConnectionDialStatus());
+        on('connectionDialCancelBtn', () => this.cancelConnectionFromUser());
+        on('connectionDialMoreInfoBtn', () => {
+            const more = document.getElementById('connectionDialMoreInfo');
+            if (more && more.textContent) more.classList.toggle('hidden');
+        });
+        // Title bar close: Close on the error, Cancel while connecting
         const closeBtn = document.querySelector('.connection-dial-close-btn');
-
-        if (redialBtn) {
-            redialBtn.addEventListener('click', () => {
-                this.manualReconnect();
-            });
-        }
-        if (reloadBtn) {
-            reloadBtn.addEventListener('click', () => {
-                location.reload();
-            });
-        }
-        if (forceBtn) {
-            forceBtn.addEventListener('click', () => {
-                this._userDisconnectFromDialog();
-            });
-        }
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
-                this.closeConnectionDialStatus();
+                if (this.connectionPhase === 'failed') this.closeConnectionDialStatus();
+                else this.cancelConnectionFromUser();
             });
         }
 
@@ -1603,13 +1442,12 @@ class WebSocketClient {
     }
 
     _shouldUsePreStartupDialog() {
-        return Boolean(window.isDesktop && !this.preStartupHandoffCompleted && this.connectionDialView !== 'status');
+        return Boolean(window.isDesktop && !this.preStartupHandoffCompleted);
     }
 
     _shouldUseConnectivityErrorInsteadOfConnectionDial() {
         if (!window.isDesktop) return false;
         if (this.connectionPhase !== 'failed') return false;
-        if (this.connectionDialView === 'status') return false;
         if (!this.circuitBreaker) return false;
         if (this._shouldUsePreStartupDialog()) return true;
         return Boolean(this.preStartupHandoffCompleted);
@@ -2287,7 +2125,7 @@ class WebSocketClient {
 
         // Staged boot: the startup window owns the screen, beats go into it, never a second window
         // (public/scripts/comp/desktopBoot.js)
-        if (window.isDesktop && this.connectionDialView !== 'status' && !this.initializationCompleted
+        if (window.isDesktop && !this.initializationCompleted
             && window.desktopBoot && window.desktopBoot.isBooting()) {
             if (phase === 'failed' && this._shouldUseConnectivityErrorInsteadOfConnectionDial()) {
                 this._presentConnectivityFailure();
@@ -2299,18 +2137,21 @@ class WebSocketClient {
             return;
         }
 
-        if (!window.isDesktop && this.connectionDialView !== 'status') {
+        if (!window.isDesktop) {
             this._renderConnectionDialToast();
             return;
         }
 
+        // Connecting to <domain>... / Error Connecting to <domain> (Vista VPN dialog, Yozora #427;
+        // wording from public/scripts/comp/melatonNetworkDialogs.js)
         const modal = document.getElementById('connectionDialModal');
+        const titleEl = document.getElementById('connectionDialTitle');
         const statusEl = document.getElementById('connectionDialStatus');
         const attemptEl = document.getElementById('connectionDialAttempt');
+        const moreInfoEl = document.getElementById('connectionDialMoreInfo');
+        const errorIconEl = document.getElementById('connectionDialErrorIcon');
         const actionsEl = document.getElementById('connectionDialActions');
-        const statusActionsEl = document.getElementById('connectionDialStatusActions');
-        const statsEl = document.getElementById('connectionDialStats');
-        const closeBtn = modal?.querySelector('.connection-dial-close-btn');
+        const cancelActionsEl = document.getElementById('connectionDialCancelActions');
 
         if (!modal || !statusEl) {
             console.warn('Connection dial modal elements not found');
@@ -2322,15 +2163,13 @@ class WebSocketClient {
         const ui = this.connectionUi;
         const beat = ui.beat || 'initializing';
         const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
+        const text = window.melatonNetworkDialogs || null;
+        const info = text ? text.connectionInfo() : null;
 
-        modal.classList.remove('dialing', 'failed', 'connected-beat', 'status-view');
-        if (this.connectionDialView === 'status') {
-            modal.classList.add('status-view');
-        }
+        modal.classList.remove('dialing', 'failed', 'connected-beat');
 
         const hideModal = async () => {
             if (modal.classList.contains('hidden')) return;
-            this._stopConnectionStatsTimer();
             if (typeof closeModal === 'function') {
                 await closeModal(modal);
             } else {
@@ -2339,9 +2178,7 @@ class WebSocketClient {
         };
 
         if (phase === 'idle' || phase === 'auth') {
-            if (this.connectionDialView !== 'status') {
-                hideModal();
-            }
+            hideModal();
             if (phase === 'auth') {
                 this.bannerManager.showWebSocketTicker('error', 'Authentication Required', 'fa-lock', false);
                 this.updateWebSocketStatus('disconnected');
@@ -2362,55 +2199,42 @@ class WebSocketClient {
             modal.classList.remove('hidden');
         }
 
-        this._updateConnectionDialDetails();
-
-        statusEl.textContent = ui.message || beatDef.message || 'Connecting…';
-        this._updateConnectionDialProgress(beat, phase);
-
         if (phase === 'failed') {
             modal.classList.add('failed');
+            const error = text
+                ? text.errorFor(ui.message, { online: typeof navigator !== 'undefined' ? navigator.onLine : true })
+                : null;
+            if (titleEl) titleEl.textContent = text ? text.errorTitle(info) : 'Error Connecting';
+            statusEl.textContent = error ? error.text : (ui.message || 'The connection failed.');
+            if (moreInfoEl) {
+                moreInfoEl.textContent = ui.message || '';
+                moreInfoEl.classList.add('hidden');
+            }
+            if (errorIconEl && window.bootMessageBox && window.bootMessageBox.ICONS) {
+                errorIconEl.innerHTML = window.bootMessageBox.ICONS.error;
+            }
             if (attemptEl) attemptEl.classList.add('hidden');
             if (actionsEl) actionsEl.classList.remove('hidden');
-            if (statusActionsEl) statusActionsEl.classList.add('hidden');
-            if (statsEl) statsEl.classList.add('hidden');
-            if (closeBtn) closeBtn.disabled = false;
-            this._updateConnectionDialProgress(beat, phase);
+            if (cancelActionsEl) cancelActionsEl.classList.add('hidden');
             this._applyFailedConnectionSideEffects();
             return;
         }
 
-        if (phase === 'connected') {
-            modal.classList.add('connected-beat');
-        } else {
-            modal.classList.add('dialing');
-        }
-
+        modal.classList.add(phase === 'connected' ? 'connected-beat' : 'dialing');
+        if (titleEl) titleEl.textContent = text ? text.connectingTitle(info) : 'Connecting...';
+        statusEl.textContent = text
+            ? text.connectingText(beat, info)
+            : (ui.message || beatDef.message || 'Connecting…');
+        if (moreInfoEl) moreInfoEl.classList.add('hidden');
         if (attemptEl) {
-            if (ui.attempt > 0) {
-                attemptEl.textContent = `Redial attempt ${ui.attempt} of ${ui.maxAttempts}`;
-                attemptEl.classList.remove('hidden');
-            } else {
-                attemptEl.textContent = '';
-                attemptEl.classList.add('hidden');
-            }
+            const attemptLine = text
+                ? text.attemptText(ui)
+                : (ui.attempt > 0 ? `Redial attempt ${ui.attempt} of ${ui.maxAttempts}` : '');
+            attemptEl.textContent = attemptLine;
+            attemptEl.classList.toggle('hidden', !attemptLine);
         }
-
-        if (this.connectionDialView === 'status') {
-            if (actionsEl) actionsEl.classList.add('hidden');
-            if (statusActionsEl) statusActionsEl.classList.remove('hidden');
-            if (this._shouldShowConnectionStats()) {
-                if (statsEl) statsEl.classList.remove('hidden');
-                this._updateConnectionStatsDisplay();
-            } else if (statsEl) {
-                statsEl.classList.add('hidden');
-            }
-            if (closeBtn) closeBtn.disabled = false;
-        } else {
-            if (actionsEl) actionsEl.classList.add('hidden');
-            if (statusActionsEl) statusActionsEl.classList.add('hidden');
-            if (statsEl) statsEl.classList.add('hidden');
-            if (closeBtn) closeBtn.disabled = true;
-        }
+        if (actionsEl) actionsEl.classList.add('hidden');
+        if (cancelActionsEl) cancelActionsEl.classList.remove('hidden');
 
         const tickerMessage = ui.message || beatDef.message || 'Dialing…';
         this.bannerManager.showWebSocketTicker(
@@ -2536,7 +2360,6 @@ class WebSocketClient {
         // Update ping warning tray icon
         this.updatePingWarningIcon();
         this._updateMelatonLinkIndicators();
-        this._updateConnectionStatsDisplay();
     }
 
     /**
@@ -2771,6 +2594,10 @@ class WebSocketClient {
         // Restart check first: a lock drops the previous server's status before this one lands
         this._noteServerInstance(data);
         this.lastServerStartupStatus = data;
+        // Domain name + WAN / Ethernet for the connection dialogs (modules/melatonNetwork.js)
+        if (data.melaton && typeof data.melaton === 'object') {
+            this.melatonConnection = data.melaton;
+        }
         this.serverStartupStatusOk = true;
         this.serverStartupReady = data.isReady === true;
 
@@ -2826,7 +2653,6 @@ class WebSocketClient {
         this.sessionSuspended = true;
         this.sessionSuspendReason = reason;
         this.preStartupHandoffCompleted = false;
-        this.connectionDialView = 'transient';
         // That /status came from the server that went away: wait for this one like a first boot
         // (pingHost keeps polling instead of failing to NO CARRIER, no stale stage text)
         this.lastServerStartupStatus = null;
@@ -2834,7 +2660,6 @@ class WebSocketClient {
         this.serverStartupReady = false;
         // The lock always shows its logon dialog, even when the reconnect started tray-only
         this._clearTrayOnlyReconnect();
-        this._stopConnectionStatsTimer();
         this._hideConnectionDialModal();
         if (window.desktopBoot) {
             window.desktopBoot.suspend(reason);
@@ -3787,6 +3612,7 @@ class WebSocketClient {
         this.connectionLock = true;
         this.isConnecting = true;
         this._connectingSince = 0;
+        this._userCancelledConnect = false; // a new attempt shows its beats again
         const connectEpoch = ++this._connectEpoch;
         this._resetSocketAuthState();
         this._resetConnectionStatsSession();
@@ -4398,6 +4224,7 @@ class WebSocketClient {
         this.disconnectedDueToInactivity = false;
         this.lastUserActivity = Date.now();
         this.isManualClose = false;
+        this._userCancelledConnect = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
         this.circuitBreaker = false; // Reset circuit breaker
@@ -4416,6 +4243,7 @@ class WebSocketClient {
         this.disconnectedDueToInactivity = false;
         this.lastUserActivity = Date.now();
         this.isManualClose = false;
+        this._userCancelledConnect = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
         this.circuitBreaker = false;
@@ -4551,7 +4379,6 @@ class WebSocketClient {
             this.bannerManager.hideWebSocketTicker();
         }
 
-        this._stopConnectionStatsTimer();
         this._setConnectionPhase('idle');
 
         console.log('✅ WebSocket client destroyed');
@@ -7110,9 +6937,9 @@ class WebSocketClient {
         return this.sendMessage('workspace_get_files', { id });
     }
 
-    /** Newest preview samples per workspace for the planet switcher bubbles (ids default: all). */
-    async getWorkspacePreviewSamples(ids = [], limit = 6) {
-        return this.sendMessage('workspace_preview_samples', { ids, limit }, false);
+    /** Preview samples + sprite sheet per workspace for the planet switcher bubbles (ids default: all). */
+    async getWorkspacePreviewSamples(ids = [], limit = 6, tile = 192) {
+        return this.sendMessage('workspace_preview_samples', { ids, limit, tile }, false);
     }
 
     async moveFilesToWorkspace(filenames, targetWorkspaceId, sourceWorkspaceId = null, moveType = 'files') {
@@ -8829,8 +8656,8 @@ class WebSocketClient {
         if (node === document.body) return true;
         if (node.classList?.contains('modal')) return true;
         if (node.classList?.contains('websocket-indicator')) return true;
-        if (node.id === 'connectionDialModal' || node.id === 'connectionDialStats') return true;
-        return !!node.closest?.('.websocket-indicator, #connectionDialModal, #connectionDialStats');
+        if (node.id === 'connectionDialModal' || node.id === 'melatonConnectionStatusModal') return true;
+        return !!node.closest?.('.websocket-indicator, #connectionDialModal, #melatonConnectionStatusModal');
     }
 
     // Rebuild cached list of visible traffic arrows (called on interval and when indicators refresh).

@@ -20,7 +20,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Session check | `OPTIONS /app`, `POST /` ping | `connection` | — | localStorage sync |
 | Client performance telemetry | — | `report_client_perf`, `get_telemetry` | — | FPS/long-task/heap and UI-size sampling; Security Center details |
 | Logout | `POST /` logout | disconnect | — | Clear local state |
-| Server readiness | `OPTIONS /status` | — | — | Connection dial UI |
+| Server readiness | `OPTIONS /status` | — | — | Connecting dialog, Network and Server Center (`melaton`: domain, WAN / Ethernet) |
 | Bearer API key | `?auth=` / `Authorization` | — | — | — |
 | Application key | `X-StaticForge-App-Key` + UA | `authenticate_application`, refresh, temp tokens | — | Security Center appkeys tab |
 | WS reconnect | — | — | `connection`, `gallery_hint`, restore msgs | Circuit breaker, refresh callbacks; `gallery_hint` is the add/update probe (`total`, `lastGalleryUpdatedAt`, `latestFilename`) |
@@ -61,7 +61,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Pin / scrap | — | `workspace_add_pinned`, `workspace_remove_pinned`, `workspace_add_scrap`, `workspace_remove_scrap`, `workspace_bulk_add_scrap`, `workspace_bulk_remove_scrap`, … | `workspace_updated` | — |
 | Move between workspaces | — | `workspace_move_files` | `workspace_image_added` | — |
 | Workspace CRUD | — | `workspace_list`, `workspace_create`, … | `workspace_updated`, `workspace_activated` | Color/fonts/wallpaper UI |
-| Planet switcher (ring view) | — | `workspace_preview_samples` (newest previews per workspace, LIMIT per id), then `workspace_activate` | `workspace_activated` | Desktop-only lazy feature `planet_switcher` (`planetSwitcher.js`): glass bubbles on a ring over a star field, WAAPI scale/opacity on `#desktopWallpaper` / `#desktopIcons` / `#desktopTaskbar` / open windows, waits for `workspaceSwitchComplete` + `workspaceChanged` before zooming back. Launch only: start menu **Planets** row (click; right-click lists planets for a direct switch), Run `planets`, `Ctrl+Alt+P`. Every other workspace switch (tray Planets list, Run `ws:`, Cartograph, viewer) stays a direct `setActiveWorkspace` without the view |
+| Planet switcher (ring view) | `GET /planet-sheets/<key>.webp` (lazy, sharp-baked tinted strip per workspace) | `workspace_preview_samples` (recent + favourites per workspace, LIMIT per id, registers the strip), then `workspace_activate` | `workspace_activated` | Desktop-only lazy feature `planet_switcher` (`planetSwitcher.js`): glass bubbles on a ring over a star field, WAAPI scale/opacity on `#desktopWallpaper` / `#desktopIcons` / `#desktopTaskbar` / open windows, waits for `workspaceSwitchComplete` + `workspaceChanged` before zooming back. Launch only: start menu **Planets** row (click; right-click lists planets for a direct switch), Run `planets`, `Ctrl+Alt+P`. Every other workspace switch (tray Planets list, Run `ws:`, Cartograph, viewer) stays a direct `setActiveWorkspace` without the view |
 | Gallery scroll restore | — | `gallery_position_hint` | `gallery_scroll_state` | — |
 | Sequenzia export | — | `send_to_sequenzia_bulk` | — | — |
 | Update image preset tag | — | `update_image_preset_bulk` | — | — |

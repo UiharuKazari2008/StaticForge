@@ -557,6 +557,8 @@ class ConfigManager {
                     port: 9220,
                     userGlobalSettings: {
                         desktop: {
+                            // Melaton's domain (the server as domain controller), modules/melatonNetwork.js
+                            domainName: 'DREAMSCAPE',
                             autoLaunchWorkspace: true,
                             liveWindowRepositioning: false,
                             exitDesktopOnWorkspaceMaximise: false,

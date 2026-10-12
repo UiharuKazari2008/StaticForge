@@ -1,3 +1,4 @@
+const melatonNetwork = require('./melatonNetwork');
 const { WebSocketServer } = require('./websocket');
 const VfsWebSocketHandlers = require('./vfsWebSocketHandlers');
 const {
@@ -590,7 +591,9 @@ class WebSocketMessageHandlers {
             exitDesktopOnWorkspaceMaximise: desktop.exitDesktopOnWorkspaceMaximise === true,
             notificationBridgeEnabled: desktop.notificationBridgeEnabled !== false,
             bypassNotificationBridgeInDesktopMode: desktop.bypassNotificationBridgeInDesktopMode === true,
-            startMenuButton: this.normalizeStartMenuButtonSetting(desktop)
+            startMenuButton: this.normalizeStartMenuButtonSetting(desktop),
+            // Melaton's domain name (personalisation), modules/melatonNetwork.js
+            domainName: melatonNetwork.domainName({ userGlobalSettings: { desktop } })
         };
         if (pinned !== undefined) {
             desktopOut.startMenuPinned = pinned;
@@ -627,6 +630,9 @@ class WebSocketMessageHandlers {
             }
             if (typeof patch.desktop.bypassNotificationBridgeInDesktopMode === 'boolean') {
                 out.desktop.bypassNotificationBridgeInDesktopMode = patch.desktop.bypassNotificationBridgeInDesktopMode;
+            }
+            if (typeof patch.desktop.domainName === 'string') {
+                out.desktop.domainName = melatonNetwork.domainName({ userGlobalSettings: { desktop: { domainName: patch.desktop.domainName } } });
             }
             if (patch.desktop.startMenuButton && typeof patch.desktop.startMenuButton === 'object') {
                 out.desktop.startMenuButton = this.normalizeStartMenuButtonSetting({

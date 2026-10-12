@@ -46,6 +46,7 @@ const mcpRequestLog = require('./modules/mcpRequestLog');
 const apocryphaSite = require('./modules/apocryphaSite');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
+const melatonNetwork = require('./modules/melatonNetwork');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
 const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacRemoteBridge');
@@ -1615,6 +1616,11 @@ app.use('/previews/:preview', authMiddleware, (req, res) => {
         res.status(err.code === 'ENOENT' ? 404 : 500).end();
     });
 });
+// Planet switcher sprite sheets: built on first request from the recipe registered by
+// workspace_preview_samples, cached under .cache/planet-sheets/ (modules/planetSheets.js)
+app.get('/planet-sheets/:key.webp', authMiddleware, (req, res) => {
+    require('./modules/planetSheets').getPlanetSheetService(globalResources).serve(req, res);
+});
 app.get('/naxCache/:gallerySlug/:filename', authMiddleware, (req, res) => {
     handleNaxImageRequest(globalResources, req, res, cacheDir);
 });
@@ -2032,6 +2038,8 @@ app.options('/', (req, res) => {
 // Server status endpoint - available once HTTP server is listening
 app.options('/status', (req, res) => {
     res.json(serverStartupStatus.getPublicStatus({
+        // Domain name + WAN / Ethernet for the client's connection dialogs (modules/melatonNetwork.js)
+        melaton: melatonNetwork.describeConnection(getRealIP(req), globalResources.getConfig()),
         runtimeCompileComplete,
         runtimeCompile: runtimeAssetService.getPublicStatus(),
         runtimeAutoRecompile: getRuntimeAutoRecompileConfig()

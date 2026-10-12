@@ -330,7 +330,6 @@ async function testLockTriggers(body) {
             initializationCompleted: true,
             preStartupHandoffCompleted: true,
             sessionSuspended: false,
-            connectionDialView: 'transient',
             _trayOnlyReconnect: true,
             _serverStartedAt: OLD,
             lastServerStartupStatus: status(OLD, true, 'Starting Dreamscape…', 100),
@@ -349,7 +348,6 @@ async function testLockTriggers(body) {
         c._renderPreStartupDialog = () => {};
         c._updatePreStartupStageProgress = () => {};
         c._clearTrayOnlyReconnect = () => { c._trayOnlyReconnect = false; };
-        c._stopConnectionStatsTimer = () => {};
         c._hideConnectionDialModal = () => {};
         return c;
     }
@@ -394,7 +392,7 @@ async function testLockTriggers(body) {
     const handoff = liftMethod(src, '_completePreStartupHandoff')(WebSocketClient);
     const order = [];
     const h = Object.assign(Object.create(proto), {
-        sessionSuspended: true, preStartupHandoffCompleted: false, connectionDialView: 'transient',
+        sessionSuspended: true, preStartupHandoffCompleted: false,
         connectionPhase: 'dialing', socketAuthenticated: true, connectionUi: {},
         _setConnectionPhase: () => {}, _sleepConnectionBeat: async (ms) => { order.push(`sleep${ms}`); },
         _waitForTealHold: async () => { order.push('hold'); },
@@ -437,7 +435,7 @@ async function testLockTriggers(body) {
     function logonClient(stepFns) {
         const ran = [];
         const c = Object.assign(Object.create(logonProto), {
-            initializationCompleted: false, preStartupHandoffCompleted: false, connectionDialView: 'transient',
+            initializationCompleted: false, preStartupHandoffCompleted: false,
             connectionPhase: 'dialing', socketAuthenticated: true, statuses: [], renders: 0, started: 0,
             isConnected: () => true,
             _renderPreStartupDialog() { this.renders++; this.statuses.push(this._logonInitStatus && this._logonInitStatus.message); },

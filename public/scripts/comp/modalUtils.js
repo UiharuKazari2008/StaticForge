@@ -36,6 +36,7 @@ const TASKBAR_SYSTEM_MODAL_IDS = new Set([
     'windowsStartupModal',
     'windowsUpdateModal',
     'connectionDialModal',
+    'domainConnectModal',
     'desktopPreStartupModal',
     'dreamscapeOsInstallWizardModal',
     'confirmationDialog',
@@ -9274,6 +9275,7 @@ function buildUserGlobalSettingsSnapshotFromClient() {
             notificationBridgeEnabled: readDesktopSettingsNotificationBridgeEnabledPreference(),
             bypassNotificationBridgeInDesktopMode: readDesktopSettingsBypassNotificationBridgeDesktopPreference(),
             startMenuButton,
+            domainName: melatonDomainName(),
             ...(startMenuPinnedLaunchIds === null
                 ? {}
                 : { startMenuPinned: startMenuPinnedLaunchIds.slice() })
@@ -9286,6 +9288,18 @@ function buildUserGlobalSettingsSnapshotFromClient() {
         imageGeneration: { ...getImageGenerationSettings() }
     };
 }
+
+/**
+ * Melaton's domain name (the server as its domain controller; config.json
+ * userGlobalSettings.desktop.domainName): the user settings once loaded, before that what the
+ * server's public /status said (websocket.js melatonConnection), then the default.
+ */
+function melatonDomainName() {
+    return desktopSettingsGlobalState.domainName
+        || (window.wsClient && window.wsClient.melatonConnection && window.wsClient.melatonConnection.domain)
+        || 'DREAMSCAPE';
+}
+window.melatonDomainName = melatonDomainName;
 
 function applyUserGlobalSettingsToClient(settings) {
     if (!settings || typeof settings !== 'object') {
@@ -9331,6 +9345,9 @@ function applyUserGlobalSettingsToClient(settings) {
                 desktopSettingsGlobalState.notificationBridgeEnabled !== false,
                 desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode === true
             );
+        }
+        if (typeof desktop.domainName === 'string' && desktop.domainName.trim()) {
+            desktopSettingsGlobalState.domainName = desktop.domainName.trim().slice(0, 64);
         }
         if (desktop.startMenuButton && typeof desktop.startMenuButton === 'object') {
             const preset = normalizeStartMenuButtonPresetClient(desktop.startMenuButton.preset);

@@ -500,11 +500,17 @@ during that `dev_admin` session may use a 120-second private HTTP cache after
   "timestamp": 1234567890123,
   "runtimeCompileComplete": true,
   "runtimeCompile": { },
-  "runtimeAutoRecompile": { "autoRecompile": false }
+  "runtimeAutoRecompile": { "autoRecompile": false },
+  "melaton": { "domain": "DREAMSCAPE", "connectionType": "WAN", "device": "L-PPoP" }
 }
 ```
 
 Use before login if server may still be compiling runtime assets.
+
+`melaton` (`modules/melatonNetwork.js`) feeds the desktop's domain connection dialogs:
+`domain` is `config.json` `userGlobalSettings.desktop.domainName` (default `DREAMSCAPE`),
+`connectionType` is `Ethernet` when the trusted client IP (`getRealIP`, `modules/clientAddress.js`)
+is private / loopback / CGNAT and `WAN` otherwise, `device` is the load balancer (`L-PPoP`).
 
 ### `OPTIONS /`
 

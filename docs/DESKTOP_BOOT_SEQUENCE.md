@@ -100,7 +100,7 @@ windows close one by one, then a fade to black), then the full Melaton boot on `
 | Spectator error window **Restart** (`fatalErrorBootstrap.restartApplication`) and the reload after a DSS server restart (`serverManagement`) | shutdown fade → `/launch` (the boot screen then covers the server start) |
 | Agent `restart_client` (`agentClientBridge.restartClientFromCommand`) | `forceRestart({ direct: true })`: in-place reload, so test reattach stays quick |
 
-Browser refresh (F5 confirm) and the Connection Manager's Reload button stay plain reloads.
+Browser refresh (F5 confirm) stays a plain reload.
 Test: `npm run test:melaton-restart`.
 
 ## Workstation lock (Yozora #423)
@@ -113,7 +113,8 @@ reaches a page) lock the desktop like Windows XP Classic:
   wallpaper (the wallpaper stays, like Windows), Classic theme, animations and render loops
   paused (the same pause hooks as the restart lock; pauses nest when both locks are up).
 - `public/scripts/comp/workstationLock.js` shows **Computer Locked** (banner, padlock, "This
-  computer is in use and has been locked.", `DREAMSCAPE\Administrator`, "Press
+  computer is in use and has been locked.", `<domain>\Administrator` (the configured domain
+  name), "Press
   Ctrl+Alt+Delete to unlock this computer."). Ctrl+Alt+Delete where the browser passes it,
   Ctrl+Alt+End (the Remote Desktop stand-in), Enter or a click / tap opens **Unlock
   Computer** (user name, password, OK / Cancel; Escape goes back). The password is checked
@@ -127,6 +128,38 @@ reaches a page) lock the desktop like Windows XP Classic:
   and a successful logon clears it.
 - The restart lock (teal) wins while both are up; when the server is back the workstation is
   still locked.
+
+## Domain connection dialogs (Yozora #427, #428)
+
+The client is a PC joined to a domain; the server is its domain controller. The domain name is
+`config.json` `userGlobalSettings.desktop.domainName` (default `DREAMSCAPE`; Network and Server
+Center → Customize writes it through `persistUserGlobalSettingsPatch`). The public
+`OPTIONS /status` carries `melaton: { domain, connectionType, device }` (`modules/melatonNetwork.js`):
+`Ethernet` when the trusted client IP is private (the LAN through the local nginx), `WAN` over
+the Internet; `L-PPoP` is the LANTIS Public Point of Presence (FireStorm load balancer).
+
+- **Connecting to <domain>...** (`#connectionDialModal`, Vista VPN dialog) for connects and
+  redials after boot: `dialing` → "Connecting to <fqdn> using '<type> Miniport (L-PPoP)'...",
+  `negotiation` → "Verifying user name and password...", `establishing` → "Registering your
+  computer on the network...", plus "Redial attempt n of m." Cancel (or the title close / Esc)
+  calls `wsClient.cancelConnectionFromUser()`: no more redials, offline until Connect / Redial.
+- **Error Connecting to <domain>**: the same window with a RAS error for the failure message
+  (800 unreachable, 629 closed by the remote computer, 619 connection failed, 868 offline) and
+  Redial / Close / More Info (the raw message). Circuit-breaker failures still go to the
+  connectivity error page.
+- **Connect <domain>**: when the session needs the password again after boot
+  (`handleAuthError` / `ensureSessionValid` → `showPinModal`, which routes to
+  `melatonNetworkDialogs.connect.show()` on the desktop). Wrong password → Error 691 message box.
+  Cancel closes it but the prompt stays pending; Network and Server Center → "Log on to
+  <domain>..." opens it again.
+- **Control Panel** (`melatonControlPanel.js`, Classic View): Network and Server Center opens
+  from the network tray icon; Personalization, Remote Access, Runes, System and Dreamscape
+  Services open their existing windows. Settings move in with
+  `melatonControlPanel.registerItem({ id, name, image | icon, description, open })`.
+- Tray tooltip: "<domain> / Access: Local and Internet", "Connecting to <domain>...",
+  "Not connected".
+
+Test: `npm run test:melaton-network`.
 
 ## Logon-phase init steps (Yozora #421)
 
@@ -183,7 +216,7 @@ open animation's opacity keyframes cannot flash a window before its stage).
   reads "Still working on: <step>" and shows **Skip this step**; skipping resolves the race
   and boot continues. Nothing is skipped automatically.
 - **Connection drop during boot.** `_renderConnectionDial` routes dial beats into the
-  startup window while `desktopBoot.isBooting()`, so the Connection Manager window never
+  startup window while `desktopBoot.isBooting()`, so the Connecting dialog never
   opens over the splash. The stage queue holds while the phase is `dialing`, `failed` or
   `auth` and continues on `idle`/`connected`. Circuit-breaker failures still go to the
   connectivity error page.
@@ -195,7 +228,7 @@ open animation's opacity keyframes cannot flash a window before its stage).
 
 ## Session lock on server restart
 
-After boot, a socket drop sends the Connection Manager through its redial; `pingHost` then
+After boot, a socket drop sends the Connecting dialog through its redial; `pingHost` then
 asks `/status`. The session locks when:
 
 - `/status` fails, times out or is not OK (`_suspendIfServerUnreachable`, reason
@@ -207,14 +240,14 @@ asks `/status`. The session locks when:
   recorded at boot (`server-restarted`), checked in `_noteServerInstance` before the new
   status is stored.
 
-The same server answering ready (a network blip) does not lock; the Connection Manager
-shows its plain dial beat, never the server's "Starting Dreamscape…" stage.
+The same server answering ready (a network blip) does not lock; the Connecting dialog
+shows its plain dial line, never the server's "Starting Dreamscape…" stage.
 
 1. `_suspendSession(reason)` sets `sessionSuspended`, clears `preStartupHandoffCompleted`,
    drops the previous server's status (`lastServerStartupStatus`, `serverStartupStatusOk`,
    `serverStartupReady`) so `pingHost` waits like a first boot instead of failing to
    NO CARRIER, clears a tray-only reconnect so the lock dialog always shows, closes the
-   Connection Manager window and calls `desktopBoot.suspend()`.
+   Connecting dialog and calls `desktopBoot.suspend()`.
 2. `body.session-suspended` puts a teal cover (`body::before`, just under the boot
    dialogs) over everything, and hides every window, gallery grid, the taskbar, desktop
    icons, the start menu, menus, tray popups, toasts and tickers under it, instantly.

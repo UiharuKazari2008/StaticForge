@@ -302,6 +302,8 @@
     <link rel="stylesheet"
         href="/css/connection-dial.css">
     <link rel="stylesheet"
+        href="/css/melaton-network.css">
+    <link rel="stylesheet"
         href="/css/websocket-requests.css">
     <link rel="stylesheet"
         href="/css/requestBodyReplacements.css">
@@ -813,96 +815,44 @@
         </div>
     </div>
 
-    <!-- Melaton Network Connection (connect / reconnect / link status) -->
-    <div id="connectionDialModal" class="modal hidden on-top connection-dial-modal dialing boot-dialog">
+    <!-- Connecting to <domain>... : the Vista VPN connection dialog for connects and redials (Yozora #427).
+         websocket.js _renderConnectionDial fills it with the text from scripts/comp/melatonNetworkDialogs.js;
+         a failure turns it into "Error Connecting to <domain>" (Redial / Close / More Info). -->
+    <div id="connectionDialModal" class="modal hidden on-top connection-dial-modal vpn-dialog dialing boot-dialog">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
-                <i class="fas fa-network-wired"></i>
-                <span>MeletonFX Connection Manager</span>
+                <i class="fas fa-network-wired icon-fa"></i>
+                <img src="/static_images/melaton/net-globe.png" alt="" class="icon-image">
+                <span id="connectionDialTitle">Connecting...</span>
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" class="btn-danger close-btn btn-small connection-dial-close-btn" title="Close"
-                disabled>
+            <button type="button" class="btn-danger close-btn btn-small connection-dial-close-btn" title="Close">
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content connection-dial-content">
-            <div class="connection-dial-layout">
-                <div class="connection-dial-art">
-                    <img src="/static_images/web-banner.png" alt="" class="connection-dial-art-image">
+        <div class="modal-content vpn-dialog-content">
+            <div class="vpn-connecting">
+                <div class="vpn-connecting-art" aria-hidden="true">
+                    <img src="/static_images/melaton/net-laptop.png" alt="" class="vpn-art-laptop" draggable="false">
+                    <span class="vpn-art-dots"><i></i><i></i><i></i></span>
+                    <img src="/static_images/melaton/net-server.png" alt="" class="vpn-art-server" draggable="false">
+                    <span class="vpn-art-error" id="connectionDialErrorIcon"></span>
                 </div>
-                <div class="connection-dial-main">
-                    <div class="modal-body connection-dial-body">
-                        <div class="connection-dial-upper">
-                            <div id="connectionDialStatus" class="connection-dial-status">Initializing…</div>
-                            <div id="connectionDialAttempt" class="connection-dial-attempt hidden"></div>
-                            <div class="connection-dial-details" id="connectionDialDetails">
-                                <div class="connection-dial-detail">
-                                    <span class="connection-dial-detail-label">Phone number</span>
-                                    <span class="connection-dial-detail-value" id="connectionDialDetailPhone">—</span>
-                                </div>
-                                <div class="connection-dial-detail">
-                                    <span class="connection-dial-detail-label">Server name</span>
-                                    <span class="connection-dial-detail-value" id="connectionDialDetailServer">—</span>
-                                </div>
-                                <div class="connection-dial-detail">
-                                    <span class="connection-dial-detail-label">Encryption</span>
-                                    <span class="connection-dial-detail-value"
-                                        id="connectionDialDetailEncryption">—</span>
-                                </div>
-                                <div class="connection-dial-detail">
-                                    <span class="connection-dial-detail-label">Username</span>
-                                    <span class="connection-dial-detail-value"
-                                        id="connectionDialDetailUsername">—</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div id="connectionDialProgressWrap" class="connection-dial-progress-wrap">
-                            <div id="connectionDialProgressBar" class="connection-dial-progress hidden"
-                                role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                                <div id="connectionDialProgressFill" class="connection-dial-progress-fill"></div>
-                            </div>
-                        </div>
-                        <div id="connectionDialStats" class="connection-dial-stats hidden">
-                            <div class="connection-dial-stat">
-                                <span class="connection-dial-stat-label">Uptime</span>
-                                <span id="connectionDialStatUptime" class="connection-dial-stat-value">—</span>
-                            </div>
-                            <div class="connection-dial-stat">
-                                <span class="connection-dial-stat-label">Sent</span>
-                                <span class="connection-dial-stat-value connection-dial-stat-value-row">
-                                    <i class="fas fa-arrow-up websocket-arrow-up" id="connectionTrafficUp"></i>
-                                    <span id="connectionDialStatOut">0</span>
-                                </span>
-                            </div>
-                            <div class="connection-dial-stat">
-                                <span class="connection-dial-stat-label">Received</span>
-                                <span class="connection-dial-stat-value connection-dial-stat-value-row">
-                                    <i class="fas fa-arrow-down websocket-arrow-down" id="connectionTrafficDown"></i>
-                                    <span id="connectionDialStatIn">0</span>
-                                </span>
-                            </div>
-                            <div class="connection-dial-stat">
-                                <span class="connection-dial-stat-label">Ping</span>
-                                <span id="connectionDialStatPing" class="connection-dial-stat-value">—</span>
-                            </div>
-                            <div class="connection-dial-stat">
-                                <span class="connection-dial-stat-label">Variation</span>
-                                <span id="connectionDialStatVariability" class="connection-dial-stat-value">—</span>
-                            </div>
-                        </div>
-                    </div>
+                <div class="vpn-connecting-text">
+                    <p id="connectionDialStatus" class="connection-dial-status">Connecting...</p>
+                    <p id="connectionDialAttempt" class="connection-dial-attempt hidden"></p>
+                    <p id="connectionDialMoreInfo" class="connection-dial-more-info hidden"></p>
                 </div>
             </div>
-            <div class="connection-dial-footer-sep"></div>
-            <div class="connection-dial-footer">
+            <div class="vpn-buttons">
                 <div id="connectionDialActions" class="connection-dial-actions hidden">
-                    <button type="button" class="btn-standard" id="connectionDialRedialBtn">Redial</button>
-                    <button type="button" class="btn-standard" id="connectionDialReloadBtn">Reload Page</button>
+                    <button type="button" class="btn-standard" id="connectionDialRedialBtn"><u>R</u>edial</button>
+                    <button type="button" class="btn-standard" id="connectionDialCloseBtn">Close</button>
+                    <button type="button" class="btn-standard" id="connectionDialMoreInfoBtn"><u>M</u>ore Info</button>
                 </div>
-                <div id="connectionDialStatusActions" class="connection-dial-actions hidden">
-                    <button type="button" class="btn-standard" id="connectionDialDisconnectBtn">Disconnect</button>
+                <div id="connectionDialCancelActions" class="connection-dial-actions">
+                    <button type="button" class="btn-standard" id="connectionDialCancelBtn">Cancel</button>
                 </div>
             </div>
         </div>
@@ -8124,11 +8074,6 @@ Examples:
                 <span id="bracketGenTitleLabel">Phasewalker</span>
             </div>
             <div class="modal-window-title-toolbar">
-                <button type="button" id="bracketGenKeywordDropdownBtn" class="btn-secondary"
-                    title="Keyword (Alt+K to add)">
-                    <i class="fas fa-tag"></i>
-                    <span id="bracketGenKeywordSelected">No keywords</span>
-                </button>
                 <div id="bracketGenTabButtons" class="gallery-toggle-group two-tabs" data-active="prompt">
                     <button type="button" class="gallery-toggle-btn active" data-tab="prompt" title="Prompt (F1)">
                         <i class="ri-code-block"></i>
@@ -8138,6 +8083,11 @@ Examples:
                     </button>
                     <div class="gallery-toggle-slider"></div>
                 </div>
+                <button type="button" id="bracketGenKeywordDropdownBtn" class="btn-secondary"
+                    title="Keyword (Alt+K to add)">
+                    <i class="fas fa-tag"></i>
+                    <span id="bracketGenKeywordSelected">No keywords</span>
+                </button>
                 <button type="button" id="bracketGenAddStepBtn" class="btn-secondary" title="Add stage (Alt+A)">
                     <i class="fas fa-plus"></i>
                 </button>
@@ -8542,7 +8492,7 @@ Examples:
                 </div>
                 <!-- Modem / Network Connection -->
                 <div class="modem-tray-icon taskbar-tray-icon hidden" id="modemTrayIcon"
-                    title="MeletonFX Network Connection">
+                    title="Network">
                     <i class="fa-regular fa-globe" id="modemTrayIconGlyph"></i>
                 </div>
                 <!-- WebSocket Indicator -->
@@ -8591,6 +8541,8 @@ Examples:
     <script src="scripts/comp/desktopBoot.js"></script>
     <script src="scripts/comp/bootMessageBox.js"></script>
     <script src="scripts/comp/workstationLock.js"></script>
+    <script src="scripts/comp/melatonNetworkDialogs.js"></script>
+    <script src="scripts/comp/melatonControlPanel.js"></script>
     <script src="scripts/websocket.js"></script>
     <script src="scripts/comp/clientPerfSampler.js"></script>
     <script src="scripts/comp/serviceWorkerManager.js"></script>

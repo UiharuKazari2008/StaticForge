@@ -229,6 +229,12 @@ class PinModal {
 let pinModalInstance = null;
 
 function showPinModal() {
+    // Desktop: the session asks for the password again in the Vista "Connect <domain>" dialog
+    // (public/scripts/comp/melatonNetworkDialogs.js, Yozora #427). Cancel keeps the promise
+    // waiting; the Network and Server Center can open the dialog again.
+    if (window.isDesktop && window.melatonNetworkDialogs) {
+        return window.melatonNetworkDialogs.connect.show();
+    }
     if (!pinModalInstance) {
         pinModalInstance = new PinModal();
     }

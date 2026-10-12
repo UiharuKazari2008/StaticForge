@@ -18,7 +18,7 @@
     'use strict';
 
     const STORAGE_KEY = 'melatonWorkstationLocked';
-    const DOMAIN = 'DREAMSCAPE';
+    const DOMAIN = 'DREAMSCAPE'; // fallback; the configured name comes from melatonDomainName()
     const USER = 'Administrator';
 
     const LOCK_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true">'
@@ -72,7 +72,7 @@
                     <div class="workstation-lock-icon">${LOCK_ICON}</div>
                     <div class="workstation-lock-text">
                         <p>This computer is in use and has been locked.</p>
-                        <p>Only ${DOMAIN}\\${USER} or an administrator can unlock this computer.</p>
+                        <p class="workstation-lock-who"></p>
                         <p class="workstation-lock-hint">Press Ctrl+Alt+Delete to unlock this computer.</p>
                         <form class="workstation-lock-form" autocomplete="off">
                             <label class="workstation-lock-row"><span>User name:</span>
@@ -102,9 +102,14 @@
         return modal;
     }
 
+    function domainName() {
+        return typeof root.melatonDomainName === 'function' ? root.melatonDomainName() : DOMAIN;
+    }
+
     function showView(view) {
         if (!ensureModal()) return;
         modal.dataset.view = view;
+        el('.workstation-lock-who').textContent = `Only ${domainName()}\\${USER} or an administrator can unlock this computer.`;
         el('.workstation-lock-title').textContent = view === 'unlock' ? 'Unlock Computer' : 'Computer Locked';
         const password = el('.workstation-lock-password');
         password.value = '';

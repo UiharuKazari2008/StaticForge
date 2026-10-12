@@ -1,0 +1,775 @@
+/* Melaton network UI (Yozora #427 / #428): the Vista VPN dialogs (Connecting to <domain>...,
+   Error Connecting to <domain>, Connect <domain>, <domain> Status, Set Network Location) and the
+   Control Panel window with the Network and Server Center. System dialogs keep Vista's light
+   face under the glass frame (like the logon dialog); Windows Classic swaps in ButtonFace. */
+
+.vpn-dialog {
+    --vpn-face: #f0f0f0;
+    --vpn-text: #000000;
+    --vpn-muted: #444444;
+    --vpn-heading: #003399;
+    --vpn-link: #0066cc;
+    --vpn-link-hover: #3399ff;
+    --vpn-line: #d5dfe5;
+    --vpn-field-border: #abadb3;
+    --vpn-font: 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
+    width: 400px;
+    max-width: calc(100vw - 32px);
+}
+
+.vpn-dialog .vpn-dialog-content {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--vpn-face);
+    color: var(--vpn-text);
+    font-family: var(--vpn-font);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.vpn-dialog .hidden {
+    display: none !important;
+}
+
+/* emphasis-manager.css greys and centres every .modal-content p */
+.vpn-dialog .vpn-dialog-content :where(p) {
+    color: inherit;
+    text-align: left;
+}
+
+.vpn-dialog .vpn-buttons {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px 12px;
+}
+
+.vpn-dialog .vpn-buttons .btn-standard {
+    min-width: 75px;
+    min-height: 23px;
+    font-family: var(--vpn-font);
+    font-size: 12px;
+}
+
+.vpn-dialog .connection-dial-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* ---- Connecting to <domain>... / Error Connecting to <domain> ---------------------------- */
+
+#connectionDialModal {
+    width: 410px;
+}
+
+.vpn-connecting {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 18px 16px 6px;
+    min-height: 58px;
+}
+
+.vpn-connecting-art {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.vpn-connecting-art img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+}
+
+.vpn-art-dots {
+    display: inline-flex;
+    gap: 3px;
+    padding: 0 2px;
+}
+
+.vpn-art-dots i {
+    width: 4px;
+    height: 4px;
+    border-radius: 1px;
+    background: #2e8b2e;
+    opacity: 0.2;
+    animation: vpn-dial-dot 1.2s steps(1, end) infinite;
+}
+
+.vpn-art-dots i:nth-child(2) { animation-delay: 0.3s; }
+.vpn-art-dots i:nth-child(3) { animation-delay: 0.6s; }
+
+@keyframes vpn-dial-dot {
+    0% { opacity: 1; }
+    50% { opacity: 0.2; }
+}
+
+#connectionDialModal.connected-beat .vpn-art-dots i {
+    animation: none;
+    opacity: 1;
+}
+
+.vpn-art-error {
+    display: none;
+    width: 32px;
+    height: 32px;
+}
+
+.vpn-art-error svg {
+    width: 100%;
+    height: 100%;
+}
+
+#connectionDialModal.failed .vpn-art-laptop,
+#connectionDialModal.failed .vpn-art-dots,
+#connectionDialModal.failed .vpn-art-server {
+    display: none;
+}
+
+#connectionDialModal.failed .vpn-art-error {
+    display: block;
+}
+
+.vpn-connecting-text {
+    flex: 1;
+    min-width: 0;
+    padding-top: 2px;
+}
+
+.vpn-connecting-text p {
+    margin: 0 0 6px;
+    overflow-wrap: anywhere;
+}
+
+#connectionDialModal .connection-dial-attempt {
+    color: var(--vpn-muted);
+}
+
+#connectionDialModal .connection-dial-more-info {
+    color: var(--vpn-muted);
+    font-size: 11px;
+    padding-top: 6px;
+    border-top: 1px solid var(--vpn-line);
+}
+
+/* ---- Connect <domain> --------------------------------------------------------------------- */
+
+#domainConnectModal {
+    width: 360px;
+}
+
+.vpn-banner {
+    height: 74px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: linear-gradient(180deg, #ffffff 0%, #eaf2fb 50%, #cfe0f2 100%);
+    border-bottom: 1px solid #a9c1db;
+}
+
+.vpn-banner img {
+    width: 54px;
+    height: 54px;
+    object-fit: contain;
+    user-select: none;
+}
+
+.vpn-banner .vpn-banner-globe {
+    width: 46px;
+    height: 46px;
+}
+
+.vpn-banner-link {
+    width: 48px;
+    border-top: 2px dotted #5b87b8;
+}
+
+.vpn-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 14px 0;
+    margin: 0;
+}
+
+.vpn-form .vpn-buttons {
+    padding: 4px 0 12px;
+}
+
+.vpn-form-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.vpn-form-row > span:first-child {
+    flex: 0 0 82px;
+}
+
+/* beats emphasis-manager.css .modal-content input:not(radio):not(checkbox) { font-size: 1rem } */
+.vpn-dialog .vpn-dialog-content input.vpn-input:not([type="checkbox"]) {
+    flex: 1;
+    min-width: 0;
+    height: 21px;
+    box-sizing: border-box;
+    padding: 1px 4px;
+    border: 1px solid var(--vpn-field-border);
+    border-top-color: #8e8f8f;
+    border-radius: 0;
+    background: #ffffff;
+    color: var(--vpn-text);
+    font-family: var(--vpn-font);
+    font-size: 12px;
+}
+
+.vpn-dialog .vpn-dialog-content input.vpn-input:focus {
+    outline: none;
+    border-color: #3d7bad;
+}
+
+.vpn-dialog .vpn-dialog-content input.vpn-input[readonly] {
+    color: #333333;
+}
+
+.vpn-dialog .vpn-form-status {
+    min-height: 17px;
+    margin: 0;
+    color: var(--vpn-muted);
+}
+
+#domainConnectModal.busy .vpn-form-status::after {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-left: 6px;
+    vertical-align: -1px;
+    border: 2px solid #9fbfe0;
+    border-top-color: #2c6db5;
+    border-radius: 50%;
+    animation: vpn-spin 0.8s linear infinite;
+}
+
+@keyframes vpn-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---- <domain> Status ------------------------------------------------------------------------ */
+
+#melatonConnectionStatusModal {
+    width: 350px;
+}
+
+.vpn-tabs {
+    display: flex;
+    padding: 9px 8px 0;
+}
+
+.vpn-tab {
+    position: relative;
+    top: 1px;
+    padding: 2px 10px 3px;
+    border: 1px solid #898c95;
+    border-bottom: none;
+    border-radius: 2px 2px 0 0;
+    background: #ffffff;
+}
+
+.vpn-tab-page {
+    margin: 0 8px;
+    padding: 10px;
+    border: 1px solid #898c95;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.vpn-group {
+    margin: 0;
+    padding: 4px 10px 8px;
+    border: 1px solid var(--vpn-line);
+    border-radius: 3px;
+    min-width: 0;
+}
+
+.vpn-group legend {
+    padding: 0 4px;
+    color: var(--vpn-heading);
+}
+
+.vpn-kv {
+    display: grid;
+    grid-template-columns: 104px 1fr;
+    gap: 6px;
+    padding: 1px 0;
+}
+
+.vpn-kv > span:last-child {
+    overflow-wrap: anywhere;
+}
+
+.cs-activity {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    text-align: center;
+    padding: 4px 0;
+}
+
+.cs-activity-art {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cs-activity-art img {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+}
+
+.cs-activity-art .websocket-arrow-up,
+.cs-activity-art .websocket-arrow-down {
+    font-size: 11px;
+    color: #9a9a9a;
+    transition: color 0.25s ease;
+}
+
+.cs-activity-art .websocket-arrow-up.active,
+.cs-activity-art .websocket-arrow-up.active-http,
+.cs-activity-art .websocket-arrow-up.streaming-up {
+    color: #2e9b3e;
+}
+
+.cs-activity-art .websocket-arrow-down.active,
+.cs-activity-art .websocket-arrow-down.active-http,
+.cs-activity-art .websocket-arrow-down.streaming-down {
+    color: #1f6fd1;
+}
+
+.cs-activity-counts {
+    display: grid;
+    grid-template-columns: 1fr auto 1px auto 1fr;
+    align-items: center;
+    gap: 10px;
+    padding-top: 4px;
+    border-top: 1px solid var(--vpn-line);
+}
+
+.cs-activity-counts > span:first-child {
+    grid-column: 1;
+}
+
+.cs-activity-counts .cs-out {
+    grid-column: 2;
+    text-align: right;
+}
+
+.cs-activity-counts .cs-sep {
+    grid-column: 3;
+    height: 14px;
+    background: var(--vpn-line);
+}
+
+.cs-activity-counts .cs-in {
+    grid-column: 4;
+}
+
+.vpn-dialog .vpn-buttons--left {
+    justify-content: flex-start;
+    padding: 0;
+}
+
+/* ---- Set Network Location ------------------------------------------------------------------- */
+
+#domainCustomizeModal {
+    width: 430px;
+}
+
+.vpn-dialog .vpn-dialog-content h2.vpn-heading {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: normal;
+    color: var(--vpn-heading);
+}
+
+.vpn-static {
+    color: var(--vpn-text);
+}
+
+.vpn-dialog .vpn-note {
+    margin: 0;
+    color: var(--vpn-muted);
+    font-size: 11px;
+}
+
+/* ---- Control Panel window ------------------------------------------------------------------- */
+
+#melatonControlPanelModal {
+    --cpl-link: #0066cc;
+    --cpl-link-hover: #3399ff;
+    --cpl-heading: #003399;
+    --cpl-line: #d5dfe5;
+    --cpl-font: 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
+}
+
+#melatonControlPanelModal .cpl-address-group {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#melatonControlPanelModal .cpl-address {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-address-icon {
+    opacity: 0.85;
+    margin-right: 2px;
+}
+
+#melatonControlPanelModal .cpl-crumb {
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    padding: 0 3px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+#melatonControlPanelModal .cpl-crumb:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+#melatonControlPanelModal .cpl-crumb-sep {
+    font-size: 9px;
+    opacity: 0.7;
+}
+
+#melatonControlPanelModal .cpl-search {
+    width: 170px;
+}
+
+#melatonControlPanelModal .cpl-content {
+    padding: 0;
+    display: flex;
+    flex-direction: row;
+    min-height: 0;
+    background: #ffffff;
+    color: #000000;
+    font-family: var(--cpl-font);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+#melatonControlPanelModal .cpl-tasks {
+    flex: 0 0 200px;
+    overflow: auto;
+    padding: 14px 12px;
+    background: linear-gradient(180deg, #f1f6fc 0%, #dce8f6 100%);
+    border-right: 1px solid #c6d4e6;
+}
+
+#melatonControlPanelModal .cpl-content h3.cpl-task-heading {
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #2a4a7a;
+}
+
+#melatonControlPanelModal .cpl-task-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+#melatonControlPanelModal .cpl-task-current {
+    font-weight: 600;
+}
+
+#melatonControlPanelModal .cpl-task-bullet {
+    padding-left: 12px;
+    position: relative;
+}
+
+#melatonControlPanelModal .cpl-task-bullet::before {
+    content: '\2022';
+    position: absolute;
+    left: 2px;
+}
+
+#melatonControlPanelModal .cpl-task-group--see-also {
+    margin-top: 26px;
+    padding-top: 10px;
+    border-top: 1px solid #c6d4e6;
+}
+
+#melatonControlPanelModal .cpl-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--cpl-link);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+#melatonControlPanelModal .cpl-link:hover {
+    color: var(--cpl-link-hover);
+    text-decoration: underline;
+}
+
+#melatonControlPanelModal .cpl-main {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    padding: 16px 22px 20px;
+}
+
+#melatonControlPanelModal .cpl-content p {
+    color: inherit;
+    text-align: left;
+}
+
+#melatonControlPanelModal .cpl-empty {
+    color: #555555;
+}
+
+#melatonControlPanelModal .cpl-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 4px;
+}
+
+#melatonControlPanelModal .cpl-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: default;
+    user-select: none;
+    outline: none;
+}
+
+#melatonControlPanelModal .cpl-item img,
+#melatonControlPanelModal .cpl-item > i {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    object-fit: contain;
+    font-size: 24px;
+    line-height: 32px;
+    text-align: center;
+    color: #2c6db5;
+}
+
+#melatonControlPanelModal .cpl-item:hover {
+    background: linear-gradient(180deg, #fafdfe, #e8f5fd);
+    border-color: #d8f0fa;
+}
+
+#melatonControlPanelModal .cpl-item.selected {
+    background: linear-gradient(180deg, #dcebfc, #c1dcfc);
+    border-color: #7da2ce;
+}
+
+#melatonControlPanelModal .cpl-content h1.cpl-page-title {
+    margin: 0 0 4px;
+    font-size: 16px;
+    font-weight: normal;
+    color: var(--cpl-heading);
+}
+
+#melatonControlPanelModal .cpl-content h2.cpl-section-title {
+    margin: 16px 0 6px;
+    font-size: 13px;
+    font-weight: normal;
+    color: var(--cpl-heading);
+}
+
+#melatonControlPanelModal .cpl-map {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 14px 0 18px;
+}
+
+#melatonControlPanelModal .cpl-map-node {
+    flex: 0 0 120px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 2px;
+}
+
+#melatonControlPanelModal .cpl-map-node img {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    user-select: none;
+}
+
+#melatonControlPanelModal .cpl-map-sub {
+    font-size: 11px;
+    color: #666666;
+}
+
+#melatonControlPanelModal .cpl-map-link {
+    flex: 1 1 60px;
+    max-width: 130px;
+    height: 56px;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+#melatonControlPanelModal .cpl-map-line {
+    width: 100%;
+    height: 0;
+    border-top: 3px solid #5aa55a;
+}
+
+#melatonControlPanelModal .cpl-map-link--unknown .cpl-map-line {
+    border-top: 3px dashed #b0b0b0;
+}
+
+#melatonControlPanelModal .cpl-map-link--busy .cpl-map-line {
+    border-top: 3px dashed #5aa55a;
+    animation: cpl-map-busy 1s linear infinite;
+}
+
+@keyframes cpl-map-busy {
+    50% { border-top-color: #b6d9b6; }
+}
+
+#melatonControlPanelModal .cpl-map-link--down .cpl-map-line {
+    border-top: 3px solid #b0b0b0;
+}
+
+#melatonControlPanelModal .cpl-map-x {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    padding: 0 3px;
+    background: #ffffff;
+    color: #d01010;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+#melatonControlPanelModal .cpl-box {
+    border: 1px solid var(--cpl-line);
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+}
+
+#melatonControlPanelModal .cpl-box-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 6px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #e3e9ef;
+}
+
+#melatonControlPanelModal .cpl-box-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+}
+
+#melatonControlPanelModal .cpl-box-title {
+    font-weight: 600;
+}
+
+#melatonControlPanelModal .cpl-box-kind {
+    font-weight: normal;
+    color: #444444;
+}
+
+#melatonControlPanelModal .cpl-box-action {
+    margin-left: auto;
+}
+
+#melatonControlPanelModal .cpl-row {
+    display: grid;
+    grid-template-columns: 150px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+}
+
+#melatonControlPanelModal .cpl-row-label {
+    color: #333333;
+}
+
+#melatonControlPanelModal .cpl-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    margin-right: 6px;
+    border-radius: 50%;
+    vertical-align: -1px;
+    background: #9e9e9e;
+    box-shadow: inset 0 -1px 1px rgba(0, 0, 0, 0.25);
+}
+
+#melatonControlPanelModal .cpl-dot--on {
+    background: #3ca33c;
+}
+
+#melatonControlPanelModal .cpl-dot--busy {
+    background: #e0a000;
+}
+
+/* ---- Windows Classic -------------------------------------------------------------------------- */
+
+body.windows-classic-theme .vpn-dialog {
+    --vpn-face: var(--ButtonFace, #d4d0c8);
+    --vpn-heading: #000080;
+    --vpn-line: var(--ButtonShadow, #808080);
+    --vpn-field-border: var(--ButtonShadow, #808080);
+    --vpn-font: Tahoma, 'MS Sans Serif', sans-serif;
+}
+
+body.windows-classic-theme .vpn-dialog .vpn-dialog-content,
+body.windows-classic-theme .vpn-dialog .vpn-dialog-content input.vpn-input:not([type="checkbox"]),
+body.windows-classic-theme .vpn-dialog .vpn-buttons .btn-standard {
+    font-size: 11px;
+}
+
+body.windows-classic-theme .vpn-banner {
+    background: #ffffff;
+    border-bottom-color: var(--ButtonShadow, #808080);
+}
+
+body.windows-classic-theme #melatonControlPanelModal .cpl-content {
+    font-family: Tahoma, 'MS Sans Serif', sans-serif;
+    font-size: 11px;
+}
+
+body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
+    background: var(--ButtonFace, #d4d0c8);
+    border-right-color: var(--ButtonShadow, #808080);
+}
