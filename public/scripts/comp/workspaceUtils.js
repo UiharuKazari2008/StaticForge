@@ -1089,8 +1089,10 @@ async function loadWorkspaces() {
         // Set initial workspace theme first, then update background (this will also notify desktop shortcuts)
         await switchWorkspaceTheme(activeWorkspace, isFirstLoad);
 
-        // If desktop mode, switch from Windows Classic to Aero theme
-        if (document.body.classList.contains('windows-classic-theme')) {
+        // If desktop mode, switch from Windows Classic to Aero theme. Not under the server-restart
+        // lock: it owns Classic for its logon dialog and drops it on resume (desktopBoot.js)
+        const sessionLocked = !!(window.desktopBoot && window.desktopBoot.isSuspended());
+        if (document.body.classList.contains('windows-classic-theme') && !sessionLocked) {
             // runWithThemeSwitchOverlay: public/scripts/comp/themePreferences.js
             await runWithThemeSwitchOverlay(() => {
                 loadBlurPreference();

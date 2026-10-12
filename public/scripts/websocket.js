@@ -2551,15 +2551,19 @@ class WebSocketClient {
             return;
         }
 
+        // Restart check first: a lock drops the previous server's status before this one lands
+        this._noteServerInstance(data);
         this.lastServerStartupStatus = data;
         this.serverStartupStatusOk = true;
         this.serverStartupReady = data.isReady === true;
-        this._noteServerInstance(data);
 
         const message = data.stageMessage || 'Server starting…';
         const progress = typeof data.progressPercent === 'number' ? data.progressPercent : null;
 
-        this._setConnectionBeat('dialing', { message });
+        // The same server answering after a socket drop is not starting: plain dial beat in the
+        // Connection Manager, never its "Starting Dreamscape…" stage (a restart locks above)
+        const sameServerReconnect = this.serverStartupReady && this.initializationCompleted && !this.sessionSuspended;
+        this._setConnectionBeat('dialing', sameServerReconnect ? {} : { message });
 
         if (this._shouldUsePreStartupDialog()) {
             this._updatePreStartupStageProgress(progress, message);
@@ -2586,6 +2590,16 @@ class WebSocketClient {
     }
 
     /**
+     * /status failed or timed out while reconnecting after boot: the server is down or still
+     * loading (a restart), so lock now instead of leaving the Connection Manager on the old
+     * server's last stage ("Starting Dreamscape…"). Same server back → plain unlock.
+     */
+    _suspendIfServerUnreachable() {
+        if (!this.initializationCompleted || this.sessionSuspended || !window.isDesktop) return;
+        this._suspendSession('server-unreachable');
+    }
+
+    /**
      * Server restart after boot: lock the desktop like XP (public/scripts/comp/desktopBoot.js),
      * bring back the logon dialog with the server's own boot progress, and resume once the
      * reconnect has refreshed data (_completePreStartupHandoff runs after executeRefreshCallbacks).
@@ -2596,6 +2610,13 @@ class WebSocketClient {
         this.sessionSuspendReason = reason;
         this.preStartupHandoffCompleted = false;
         this.connectionDialView = 'transient';
+        // That /status came from the server that went away: wait for this one like a first boot
+        // (pingHost keeps polling instead of failing to NO CARRIER, no stale stage text)
+        this.lastServerStartupStatus = null;
+        this.serverStartupStatusOk = false;
+        this.serverStartupReady = false;
+        // The lock always shows its logon dialog, even when the reconnect started tray-only
+        this._clearTrayOnlyReconnect();
         this._stopConnectionStatsTimer();
         this._hideConnectionDialModal();
         if (window.desktopBoot) {
@@ -2668,6 +2689,7 @@ class WebSocketClient {
 
                 if (!data) {
                     unreachableAttempts += 1;
+                    this._suspendIfServerUnreachable();
                     this._setConnectionBeat('dialing', {
                         message: `Waiting for server status… (${unreachableAttempts})`
                     });
@@ -2715,6 +2737,9 @@ class WebSocketClient {
 
                 await new Promise((resolve) => setTimeout(resolve, bootPollInterval));
             } catch (error) {
+                // Before the checks below: the lock resets serverStartupStatusOk, so a refused
+                // connection keeps polling (boot wait) instead of throwing to NO CARRIER
+                this._suspendIfServerUnreachable();
                 if (error && error.name === 'TimeoutError') {
                     unreachableAttempts += 1;
                 } else if (this.serverStartupStatusOk) {

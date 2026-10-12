@@ -411,79 +411,70 @@ body.dreamscape-install-wizard .modal:not(#dreamscapeOsInstallWizardModal):not(#
 
 /* ---------- Staged desktop reveal (public/scripts/comp/desktopBoot.js) ----------
    body.boot-staged hides every desktop layer; the cumulative boot-reveal-* classes bring
-   them back in XP order while the startup window reports the stage. Window layers use
-   visibility so an open animation (opacity keyframes) cannot flash a window early. */
-body.desktop-mode.boot-staged .desktop-wallpaper {
-    opacity: 0;
-}
-
-body.desktop-mode.boot-staged.boot-reveal-wallpaper .desktop-wallpaper {
-    opacity: 1;
-    transition: opacity 0.7s ease;
-}
-
-body.desktop-mode.boot-staged .desktop-icons {
-    opacity: 0;
-}
-
-body.desktop-mode.boot-staged.boot-reveal-icons .desktop-icons {
-    opacity: 1;
-    transition: opacity 0.5s ease;
-}
-
-body.desktop-mode.boot-staged .desktop-taskbar {
-    transform: translateY(100%);
-}
-
-body.desktop-mode.boot-staged.boot-reveal-taskbar .desktop-taskbar {
-    transform: none;
-    transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
+   them back in XP order while the startup window reports the stage. Each layer appears at
+   once like Windows: no fade, no slide, transitions off for the whole staged boot. Hidden
+   layers use opacity (children with their own `visibility: visible`, e.g. .gallery, stay
+   hidden) plus visibility (no hits; an opacity open animation cannot flash a window early). */
+body.desktop-mode.boot-staged .desktop-wallpaper,
+body.desktop-mode.boot-staged .desktop-icons,
+body.desktop-mode.boot-staged .desktop-taskbar,
+body.desktop-mode.boot-staged .gallery-window,
 body.desktop-mode.boot-staged .modal:not(.boot-dialog):not(#confirmationDialog) {
+    transition: none;
+}
+
+body.desktop-mode.boot-staged:not(.boot-reveal-wallpaper) .desktop-wallpaper,
+body.desktop-mode.boot-staged:not(.boot-reveal-icons) .desktop-icons,
+body.desktop-mode.boot-staged:not(.boot-reveal-taskbar) .desktop-taskbar,
+body.desktop-mode.boot-staged:not(.boot-reveal-windows) .gallery-window,
+body.desktop-mode.boot-staged:not(.boot-reveal-windows) .modal:not(.boot-dialog):not(#confirmationDialog) {
     visibility: hidden;
     opacity: 0;
     pointer-events: none;
 }
 
-body.desktop-mode.boot-staged.boot-reveal-windows .modal:not(.boot-dialog):not(#confirmationDialog) {
-    visibility: visible;
-    opacity: 1;
-    pointer-events: auto;
-    transition: opacity 0.35s ease;
-}
-
 /* ---------- Session lock: server restart after boot (desktopBoot.js suspend/resume) ----------
-   Everything open hides behind the solid colour while the logon dialog shows the server's
-   boot progress; popovers, toasts and tickers stay out until resume. */
+   A solid cover sits over everything but the boot dialogs, so no layer can show through,
+   whatever its own z-index or visibility (gallery grids force `visibility: visible`). The
+   layers under it are hidden too, so nothing under the cover paints, takes focus or a click.
+   desktopBoot.suspend() also puts body in Windows Classic for the lock: the logon dialog
+   looks like the first logon. Hide and show are instant (visibility, no transition). */
 body.desktop-mode.session-suspended {
     background: teal;
     background-image: none;
 }
 
-body.desktop-mode.session-suspended .desktop-wallpaper {
-    opacity: 0;
-    transition: opacity 0.3s ease;
+body.desktop-mode.session-suspended::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: teal;
+    z-index: 2147482000;
+    pointer-events: auto;
 }
 
+/* :is() carries the id specificity, so this beats the dialogs' own `#id { z-index: … !important }` */
+body.desktop-mode.session-suspended :is(.modal.boot-dialog, #windowsStartupModal, #dreamscapeOsInstallWizardModal, #bootUiDebugWindow) {
+    z-index: 2147482001 !important;
+}
+
+body.desktop-mode.session-suspended .desktop-wallpaper,
 body.desktop-mode.session-suspended .desktop-icons,
 body.desktop-mode.session-suspended .desktop-taskbar,
 body.desktop-mode.session-suspended .modal:not(.boot-dialog),
+body.desktop-mode.session-suspended .gallery-window,
+body.desktop-mode.session-suspended .gallery,
+body.desktop-mode.session-suspended #title-bar,
+body.desktop-mode.session-suspended #main-controls-bar,
 body.desktop-mode.session-suspended #startMenu,
 body.desktop-mode.session-suspended .taskbar-group-menu,
 body.desktop-mode.session-suspended [class*="tray-popup"],
+body.desktop-mode.session-suspended .context-menu,
+body.desktop-mode.session-suspended .context-menu-overlay,
 body.desktop-mode.session-suspended #toastContainer,
 body.desktop-mode.session-suspended .websocket-ticker,
 body.desktop-mode.session-suspended .websocket-banner {
     visibility: hidden !important;
     pointer-events: none !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    body.desktop-mode.boot-staged .desktop-wallpaper,
-    body.desktop-mode.boot-staged .desktop-icons,
-    body.desktop-mode.boot-staged .desktop-taskbar,
-    body.desktop-mode.boot-staged .modal {
-        transition: none !important;
-    }
+    transition: none !important;
 }

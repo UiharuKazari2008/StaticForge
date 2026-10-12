@@ -1,7 +1,7 @@
 # Desktop boot sequence (MeletonFX)
 
 How the desktop (`window.isDesktop`, `body.desktop-mode`) comes up, in the order the user
-sees it, and which code owns each step. Yozora #401 (parent #399).
+sees it, and which code owns each step. Yozora #401, #410 (parent #399).
 
 ## Order on screen
 
@@ -12,7 +12,7 @@ sees it, and which code owns each step. Yozora #401 (parent #399).
 | 3 | System Update dialog `#windowsUpdateModal` or the install wizard when the service worker has files to fetch | `serviceWorkerManager.js` (`_isPreStartupUpdatePhase`) |
 | 4 | "Preparing MeletonFX…", logon dialog closes | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()` |
 | 5 | Solid colour only, then the small top-left startup window `#windowsStartupModal` | `desktopBoot.js` stage `session`, `websocket.js` `showWindowsStartupModal` |
-| 6 | Staged reveal while init steps run: wallpaper fades in, icons, taskbar slides up, windows | `desktopBoot.js` stages `settings` → `wallpaper` → `icons` → `taskbar` → `windows` |
+| 6 | Staged reveal while init steps run: wallpaper, icons, taskbar, windows, each appearing at once like Windows (no fade, no slide) | `desktopBoot.js` stages `settings` → `wallpaper` → `icons` → `taskbar` → `windows` |
 | 7 | "Welcome", startup window closes last | `desktopBoot.finish()` awaited by `hideProgressNotification` |
 
 Each stage holds for at least `desktopBoot.config.dwellMs[stage]` so the sequence reads
@@ -34,10 +34,12 @@ underneath, so nothing is hidden from a developer.
 | `windows` | step 31 `Loading Gallery` starts | `boot-reveal-windows`; `no-animation` removed |
 | `done` | `finish()` | all boot classes removed when the dwell ends |
 
-`public/css/desktop-boot.css` hides the wallpaper, icons, taskbar and every `.modal`
-without `.boot-dialog` while `body.boot-staged` is set and reveals them per class.
-Windows are gated with `visibility` as well as opacity so an open animation (opacity
-keyframes) cannot flash one before its stage.
+`public/css/desktop-boot.css` hides the wallpaper, icons, taskbar, `.gallery-window` and
+every `.modal` without `.boot-dialog` while `body.boot-staged` is set, and drops each hide
+rule when its `boot-reveal-*` class lands. Transitions are off on those layers for the whole
+staged boot, so every reveal is instant. Hidden layers use opacity (a child with its own
+`visibility: visible`, such as `.gallery`, stays hidden) plus `visibility` (no hits, and an
+open animation's opacity keyframes cannot flash a window before its stage).
 
 ## Hardening
 
@@ -58,22 +60,42 @@ keyframes) cannot flash one before its stage.
 
 ## Session lock on server restart
 
-After boot, `_applyServerStartupStatus` compares the server start time from `/status`
-(`timestamp − uptime`) with the one recorded at boot. A jump larger than
-`SERVER_RESTART_DRIFT_MS` (5 s), or `isReady: false`, means the server restarted:
+After boot, a socket drop sends the Connection Manager through its redial; `pingHost` then
+asks `/status`. The session locks when:
+
+- `/status` fails, times out or is not OK (`_suspendIfServerUnreachable`, reason
+  `server-unreachable`): the server is down or still loading. During a real restart its
+  event loop is busy and `/status` times out for most of the boot, so this is the usual
+  trigger, about 2 s after the drop.
+- `/status` says `isReady: false` (`server-booting`), or its start time
+  (`timestamp − uptime`) jumped more than `SERVER_RESTART_DRIFT_MS` (5 s) from the one
+  recorded at boot (`server-restarted`), checked in `_noteServerInstance` before the new
+  status is stored.
+
+The same server answering ready (a network blip) does not lock; the Connection Manager
+shows its plain dial beat, never the server's "Starting Dreamscape…" stage.
 
 1. `_suspendSession(reason)` sets `sessionSuspended`, clears `preStartupHandoffCompleted`,
-   closes the Connection Manager window and calls `desktopBoot.suspend()`.
-2. `body.session-suspended` hides every window, the taskbar, desktop icons, the start
-   menu, taskbar group menus, tray popups, toasts and tickers behind the solid colour.
-   The logon dialog comes back and shows the server's own boot stage and progress
-   ("Starting Dreamscape…"), the dial beats, or the password form if the new server
-   wants a login.
+   drops the previous server's status (`lastServerStartupStatus`, `serverStartupStatusOk`,
+   `serverStartupReady`) so `pingHost` waits like a first boot instead of failing to
+   NO CARRIER, clears a tray-only reconnect so the lock dialog always shows, closes the
+   Connection Manager window and calls `desktopBoot.suspend()`.
+2. `body.session-suspended` puts a teal cover (`body::before`, just under the boot
+   dialogs) over everything, and hides every window, gallery grid, the taskbar, desktop
+   icons, the start menu, menus, tray popups, toasts and tickers under it, instantly.
+   `desktopBoot.suspend()` also adds `windows-classic-theme` to body (only when it was
+   not on), so the logon dialog is Windows Classic like the first logon; the layers under
+   the cover never show it, and `loadWorkspaces` skips its Classic → Aero swap while
+   locked. The dialog shows "Waiting for server…", the new server's boot stage and
+   progress, the dial beats, or the password form if the new server wants a login.
 3. On reconnect `onopen` runs `setActiveWorkspace` and every refresh callback first,
    then `_completePreStartupHandoff` ("Preparing MeletonFX…", dialog closes) calls
-   `_resumeSuspendedSession()` → `desktopBoot.resume()`; the desktop returns as it was.
+   `_resumeSuspendedSession()` → `desktopBoot.resume()`, which drops the cover and the
+   Classic theme it added in one step; the desktop returns as it was.
 
 The lock is a no-op while the staged boot itself is running and in non-desktop mode.
+Locking and unlocking each cost one full style pass (~150 ms on Yukimi's box), once per
+restart.
 
 ## Debugging
 

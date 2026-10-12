@@ -7,12 +7,13 @@
  *   settings → "Loading your personal settings…" (init steps < 12)
  *   wallpaper→ "Applying your personal settings…" (after step 12 Loading Workspaces)
  *   icons    → "Preparing your desktop…"
- *   taskbar  → taskbar slides up (after step 16 Starting Taskbar)
+ *   taskbar  → taskbar appears (after step 16 Starting Taskbar)
  *   windows  → "Restoring your windows…" (step 31 Loading Gallery)
  *   done     → "Welcome", splash closes last (hideProgressNotification awaits finish())
  * Each stage holds for at least config.dwellMs[stage] so the sequence is visible even
  * when the real init steps finish in a few hundred milliseconds. body.boot-staged plus
- * the cumulative body.boot-reveal-* classes drive public/css/desktop-boot.css.
+ * the cumulative body.boot-reveal-* classes drive public/css/desktop-boot.css; each layer
+ * appears at once, like Windows (no fade, no slide).
  *
  * Hardening:
  *   watchStep(step)         after config.stepWatchdogMs the splash names the step and
@@ -20,12 +21,13 @@
  *                           against the skip promise)
  *   setConnectionState()    while booting, connection beats go into the splash instead
  *                           of the Connection Manager window, and the stage queue holds
- *   suspend() / resume()    server restart detected after boot: body.session-suspended
- *                           hides every window, the taskbar, icons, popovers and toasts
- *                           behind the solid colour while the logon dialog shows the
- *                           server's own boot progress; resume() once data is reloaded
+ *   suspend() / resume()    server restarting or unreachable after boot: body.session-suspended
+ *                           puts a solid-colour cover over every window, the taskbar,
+ *                           icons, popovers and toasts while the logon dialog shows the
+ *                           server's own boot progress, in Windows Classic like the first
+ *                           logon; resume() once data is reloaded
  *
- * Test: scripts/test-desktop-boot.js. Yozora #401.
+ * Test: scripts/test-desktop-boot.js. Yozora #401, #410.
  */
 (function () {
     'use strict';
@@ -47,6 +49,7 @@
         done: 'Welcome'
     };
     const BOOT_CLASSES = ['boot-staged', ...Object.values(REVEAL_CLASS)];
+    const CLASSIC_THEME_CLASS = 'windows-classic-theme';
 
     const config = {
         dwellMs: { session: 600, settings: 0, wallpaper: 700, icons: 450, taskbar: 450, windows: 500, done: 350 },
@@ -76,6 +79,7 @@
         skipWired: false,
         suspended: false,
         suspendReason: null,
+        suspendAddedClassic: false,
         lastStepMessage: '',
         lastProgress: 0
     };
@@ -393,7 +397,14 @@
         state.suspended = true;
         state.suspendReason = reason || 'server-restart';
         const b = body();
-        if (b) b.classList.add('session-suspended');
+        if (b) {
+            // The lock layer is the first logon again: Windows Classic. Everything else sits
+            // under the cover, so the theme only shows on that layer; resume() takes it off
+            // unless it was already on.
+            state.suspendAddedClassic = !b.classList.contains(CLASSIC_THEME_CLASS);
+            if (state.suspendAddedClassic) b.classList.add(CLASSIC_THEME_CLASS);
+            b.classList.add('session-suspended');
+        }
         // Close transient surfaces so nothing pops back over the lock screen
         try {
             const startMenu = byId('startMenu');
@@ -411,7 +422,11 @@
         const reason = state.suspendReason;
         state.suspendReason = null;
         const b = body();
-        if (b) b.classList.remove('session-suspended');
+        if (b) {
+            b.classList.remove('session-suspended');
+            if (state.suspendAddedClassic) b.classList.remove(CLASSIC_THEME_CLASS);
+        }
+        state.suspendAddedClassic = false;
         dispatch('desktopSessionResumed', { reason });
         return true;
     }
