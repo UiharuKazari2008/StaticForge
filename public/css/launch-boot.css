@@ -32,9 +32,24 @@ html.melaton-boot #melatonBoot {
     background: teal;
 }
 
-/* ---------- Vista boot screen, with the Enso the later versions added ---------- */
+/* ---------- Vista boot screen, with the Enso the later versions added ----------
+   Vista draws its boot screen at 640x480 in 16 colours. .melaton-boot-stage is that screen,
+   scaled uniformly to fit (the letterbox is black like the rest) and every size below is in
+   its pixels (--vpx). Measured from the stock Vista boot screen (640x480 capture):
+     frame      x 257-378, y 353-363 (122 x 11), 1 px, two-tone: #737373 on the top edge
+                and the upper five rows of the sides, #424242 below
+     interior   120 x 9, black
+     cluster    6 stripes, 2 px wide with 2 px gaps (22 px); rows 2 x #F1F5E1,
+                2 x #A3B16E, 5 x #4D5622; slides left to right in 2 px steps and comes
+                round again
+     copyright  centred, glyphs y 389-400 (about 12 px Segoe UI), white
+   The Enso takes the Windows 7 logo's place and size (its 200 px animation frame at
+   1024x768 is 125 px here; the visible logo inside it about 84 px), centred at y 205.
+   --melaton-sweep is one pass of the cluster (not measurable from a still; tune here). */
 
 .melaton-boot-screen {
+    --vpx: min(calc(100vw / 640), calc(100vh / 480));
+    --melaton-sweep: 2s;
     display: none;
     position: absolute;
     inset: 0;
@@ -44,61 +59,73 @@ html.melaton-boot #melatonBoot {
     display: block;
 }
 
-.melaton-boot-enso {
+.melaton-boot-stage {
     position: absolute;
     left: 50%;
-    top: 40%;
-    width: clamp(72px, 14vh, 168px);
-    height: auto;
+    top: 50%;
+    width: calc(640 * var(--vpx));
+    height: calc(480 * var(--vpx));
     transform: translate(-50%, -50%);
+}
+
+.melaton-boot-enso {
+    position: absolute;
+    left: calc(276 * var(--vpx));
+    top: calc(161 * var(--vpx));
+    width: calc(88 * var(--vpx));
+    height: calc(88 * var(--vpx));
     -webkit-user-drag: none;
     pointer-events: none;
 }
 
 .melaton-boot-bar {
-    --bar-w: clamp(150px, 14vw, 280px);
     position: absolute;
-    left: 50%;
-    top: 62%;
-    width: var(--bar-w);
-    height: calc(var(--bar-w) / 13);
-    min-height: 11px;
-    transform: translateX(-50%);
-    box-sizing: border-box;
-    border: 1px solid #9c9c9c;
-    border-radius: 4px;
-    background: linear-gradient(#111, #050505);
-    box-shadow: inset 0 0 0 1px #000, 0 0 1px rgba(255, 255, 255, 0.25);
+    left: calc(257 * var(--vpx));
+    top: calc(353 * var(--vpx));
+    width: calc(122 * var(--vpx));
+    height: calc(11 * var(--vpx));
+    background: linear-gradient(to bottom, #737373 0 calc(5 * var(--vpx)), #424242 calc(5 * var(--vpx)) 100%);
+}
+
+.melaton-boot-bar-track {
+    position: absolute;
+    left: var(--vpx);
+    top: var(--vpx);
+    width: calc(120 * var(--vpx));
+    height: calc(9 * var(--vpx));
+    background: #000;
     overflow: hidden;
 }
 
-/* Three glossy green blocks sweep left to right and come round again, like Vista's */
-.melaton-boot-bar-blocks {
+.melaton-boot-bar-cluster {
     position: absolute;
-    top: 2px;
-    bottom: 2px;
+    top: 0;
     left: 0;
     display: flex;
-    gap: calc(var(--bar-w) / 70);
-    animation: melatonBootSweep 2.1s linear infinite;
+    gap: calc(2 * var(--vpx));
+    height: 100%;
+    animation: melatonBootSweep var(--melaton-sweep) steps(72, jump-none) infinite;
     will-change: transform;
 }
 
-.melaton-boot-bar-blocks i {
+.melaton-boot-bar-cluster i {
     display: block;
-    width: calc(var(--bar-w) / 17);
-    border-radius: 1px;
-    background: linear-gradient(to bottom, #e3ffdc 0%, #7af46a 16%, #27cc21 44%, #0d9810 72%, #19b819 100%);
-    box-shadow: 0 0 3px rgba(80, 255, 80, 0.35);
+    width: calc(2 * var(--vpx));
+    height: 100%;
+    background: linear-gradient(to bottom,
+            #F1F5E1 0 calc(2 * var(--vpx)),
+            #A3B16E calc(2 * var(--vpx)) calc(4 * var(--vpx)),
+            #4D5622 calc(4 * var(--vpx)) 100%);
 }
 
+/* From fully left of the track (-22) to fully right of it (120): 142 px in 2 px steps */
 @keyframes melatonBootSweep {
     from {
-        transform: translateX(-100%);
+        transform: translateX(calc(-22 * var(--vpx)));
     }
 
     to {
-        transform: translateX(var(--bar-w));
+        transform: translateX(calc(120 * var(--vpx)));
     }
 }
 
@@ -106,11 +133,13 @@ html.melaton-boot #melatonBoot {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 4.5vh;
+    top: calc(386 * var(--vpx));
     text-align: center;
-    font: 400 clamp(11px, 1.1vw, 16px) 'Segoe UI', Tahoma, Arial, sans-serif;
-    color: #b8b8b8;
-    letter-spacing: 0.01em;
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    font-size: calc(12 * var(--vpx));
+    line-height: calc(16 * var(--vpx));
+    font-weight: 400;
+    color: #fff;
 }
 
 /* ---------- Boot Manager text mode (menu, recovery confirm, recovery progress) ---------- */
@@ -201,19 +230,22 @@ html.melaton-boot #melatonBoot {
     margin-bottom: 0 !important;
 }
 
-.melaton-recover-line {
-    display: flex;
-    justify-content: space-between;
-    max-width: 56ch;
-    margin: 0 0 0.35em !important;
+/* "Formatting startup disk..." bar, in the manner of Boot Manager's "Windows is loading
+   files..." bar: light fill in a thin grey frame, jumps with the work (no easing) */
+.melaton-format-bar {
+    width: min(60ch, 100%);
+    height: 0.85em;
+    margin-top: 0.65em;
+    box-sizing: border-box;
+    border: max(1px, 0.07em) solid #808080;
+    padding: max(1px, 0.07em);
+    background: #000;
 }
 
-.melaton-recover-line.is-pending {
-    visibility: hidden;
-}
-
-.melaton-recover-state {
-    color: #fff;
+.melaton-format-bar-fill {
+    height: 100%;
+    width: 0;
+    background: #e8e8e8;
 }
 
 .melaton-recover-restart {

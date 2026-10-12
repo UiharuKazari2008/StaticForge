@@ -135,7 +135,7 @@
                 var wrap = document.createElement('div');
                 wrap.id = 'dreamscapeLaunchDesignHud';
                 var melatonPresets = document.documentElement.classList.contains('melaton-boot')
-                    ? [['boot', 'Boot screen'], ['menu', 'Boot menu'], ['menu-info', 'Boot menu + Info'], ['confirm', 'Recovery confirm'], ['recover', 'Recovery progress'], ['teal', 'Teal cut'], ['black', 'Black cut']]
+                    ? [['boot', 'Boot screen'], ['menu', 'Boot menu'], ['menu-info', 'Boot menu + Info'], ['confirm', 'Recovery confirm'], ['confirm-touch', 'Recovery confirm (touch)'], ['recover', 'Formatting progress'], ['teal', 'Teal cut'], ['black', 'Black cut']]
                         .map(function (p) {
                             return '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="melaton:' + p[0] + '">Melaton: ' + p[1] + '</button>';
                         }).join('')
@@ -203,7 +203,12 @@
 
             if (dreamscapeDesignModeActive) {
                 function onDomReady() {
-                    dreamscapeLaunchDesignMountHud();
+                    // &hud=0: clean review links / screenshots
+                    var hideHud = false;
+                    try { hideHud = new URLSearchParams(location.search || '').get('hud') === '0'; } catch (e) { /* ignore */ }
+                    if (!hideHud) {
+                        dreamscapeLaunchDesignMountHud();
+                    }
                 }
                 if (document.readyState === 'loading') {
                     document.addEventListener('DOMContentLoaded', onDomReady);
@@ -218,10 +223,17 @@
          public/scripts/launch/melatonBoot.js, Yozora #411. Narrow / phone starts keep the card. -->
     <script src="/scripts/launch/desktopStart.js"></script>
     <script>
-        if (window.melatonDesktopStart && window.melatonDesktopStart.isDesktopStart(window)) {
-            document.documentElement.classList.add('melaton-boot');
-            window.melatonBootActive = true;
-        }
+        (function () {
+            // Review links (/launch?design=1&screen=…) show the Melaton screens at any size
+            var reviewScreen = false;
+            try {
+                reviewScreen = !!(window.dreamscapeDesignModeActive && new URLSearchParams(location.search || '').get('screen'));
+            } catch (e) { /* ignore */ }
+            if (reviewScreen || (window.melatonDesktopStart && window.melatonDesktopStart.isDesktopStart(window))) {
+                document.documentElement.classList.add('melaton-boot');
+                window.melatonBootActive = true;
+            }
+        })();
     </script>
     <link rel="stylesheet" href="/css/launch-boot.css">
 
@@ -746,12 +758,17 @@
 
     <!-- Melaton boot (html.melaton-boot only): boot screen, then teal or the boot menu -->
     <div id="melatonBoot" data-screen="boot" aria-live="polite">
+        <!-- 640x480 stage scaled to fit: Vista's boot screen geometry (launch-boot.css) -->
         <div class="melaton-boot-screen">
-            <img class="melaton-boot-enso" src="/static_images/logo_icon.png" alt="" draggable="false">
-            <div class="melaton-boot-bar" role="progressbar" aria-label="Starting MeletonFX">
-                <div class="melaton-boot-bar-blocks"><i></i><i></i><i></i></div>
+            <div class="melaton-boot-stage">
+                <img class="melaton-boot-enso" src="/static_images/logo_icon.png" alt="" draggable="false">
+                <div class="melaton-boot-bar" role="progressbar" aria-label="Starting MeletonFX">
+                    <div class="melaton-boot-bar-track">
+                        <div class="melaton-boot-bar-cluster"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                    </div>
+                </div>
+                <div class="melaton-boot-copyright">&copy; Dreamscape</div>
             </div>
-            <div class="melaton-boot-copyright">&copy; Dreamscape</div>
         </div>
         <div id="melatonBootText"></div>
     </div>

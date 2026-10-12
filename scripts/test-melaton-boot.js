@@ -147,12 +147,25 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(h.ctl.screen, 'menu', 'retry ran the checks again and failed again');
     assert.ok(h.t.screens().includes('boot'));
 
-    // ---------- touch: tap = choose ----------
+    // ---------- touch: tap = choose; Recovery by touch gets a two-item menu ----------
     h = harness([networkErr()]);
     await h.ctl.runChecks();
-    h.ctl.handlePointer('choose', 1);
+    h.ctl.handlePointer('choose', 1, 'mouse');
     assert.strictEqual(h.ctl.screen, 'confirm');
-    h.ctl.handlePointer('cancel');
+    assert.strictEqual(h.t.last().data.mode, 'keyboard', 'a mouse implies a keyboard: ENTER / ESC prompt');
+    h.ctl.handlePointer('cancel', undefined, 'mouse');
+    assert.strictEqual(h.ctl.screen, 'menu');
+    h.ctl.handlePointer('choose', 1, 'touch');
+    assert.strictEqual(h.t.last().data.mode, 'touch', 'touch: no keyboard to assume');
+    assert.deepStrictEqual(h.t.last().data.options.map((o) => o.label), ['Continue', 'Return to Boot Menu']);
+    assert.strictEqual(h.t.last().data.selected, 0);
+    h.ctl.handlePointer('option', 1, 'touch');
+    assert.strictEqual(h.ctl.screen, 'menu', 'Return to Boot Menu');
+    h.ctl.handlePointer('choose', 1, 'pen');
+    assert.strictEqual(h.t.last().data.mode, 'touch', 'a pen counts as touch');
+    h.ctl.handleKey('ArrowDown');
+    assert.strictEqual(h.t.last().data.selected, 1, 'the touch menu also takes arrows');
+    h.ctl.handleKey('Enter');
     assert.strictEqual(h.ctl.screen, 'menu');
 
     // ---------- F8 on the boot screen: menu, no countdown, the running check is dropped ----------
@@ -196,17 +209,22 @@ const flush = () => new Promise((r) => setImmediate(r));
     const recoverRenders = h.t.renders.filter((r) => r.screen === 'recover');
     const finalRecover = recoverRenders[recoverRenders.length - 1].data;
     assert.ok(finalRecover.restarting, '"Restarting..." shown');
-    assert.deepStrictEqual(finalRecover.lines.map((l) => l.state), ['done', 'done', 'done', 'done']);
+    assert.strictEqual(finalRecover.progress, 1, 'formatting bar full');
+    const fractions = recoverRenders.map((r) => r.data.progress);
+    assert.ok(fractions.every((f, i) => i === 0 || f >= fractions[i - 1]), 'the formatting bar only moves forward');
+    assert.ok(fractions.some((f) => f > 0 && f < boot.RECOVERY_STEPS[0].weight), 'it moves per cache inside a step');
     assert.deepStrictEqual(h.t.replaced, ['/launch'], 'reboots into /launch');
     assert.strictEqual(h.t.screens().slice(-1)[0], 'black');
 
     // a failing step does not stop the rest
     const partial = [];
+    const progress = [];
     const results = await boot.cleanInstall({ now: () => 0, sleep: async () => {}, window: {
         caches: { keys: async () => { throw new Error('denied'); } },
         localStorage: { clear: () => partial.push('local') },
         sessionStorage: { clear: () => partial.push('session') }
-    } }, () => {});
+    } }, () => {}, (f) => progress.push(f));
+    assert.strictEqual(progress[progress.length - 1], 1, 'a failed step still completes the bar');
     assert.deepStrictEqual(results, { caches: false, serviceWorker: true, storage: true, indexedDb: true });
     assert.deepStrictEqual(partial, ['local', 'session']);
 
@@ -215,10 +233,12 @@ const flush = () => new Promise((r) => setImmediate(r));
     wiped.length = 0;
     assert.strictEqual(await h.ctl.runChecks(), 'design');
     assert.strictEqual(h.t.fetches.length, 0, 'no network in design mode');
-    for (const name of ['menu', 'menu-info', 'confirm', 'recover', 'teal', 'black', 'boot']) {
+    for (const name of ['menu', 'menu-info', 'confirm', 'confirm-touch', 'recover', 'teal', 'black', 'boot']) {
         h.ctl.preview(name);
-        assert.strictEqual(h.ctl.screen, name.replace('-info', ''));
+        assert.strictEqual(h.ctl.screen, name.replace(/-(info|touch)$/, ''));
     }
+    h.ctl.preview('confirm-touch');
+    assert.strictEqual(h.t.last().data.mode, 'touch');
     h.ctl.preview('confirm');
     await h.ctl.recover();
     assert.deepStrictEqual(wiped, [], 'design-mode recovery never wipes');

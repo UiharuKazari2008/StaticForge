@@ -10,8 +10,10 @@
  *   teal     success: cut to teal and hand off to /app; the logon dialog waits until
  *            tealHoldMs after the cut (app.html + websocket.js _deferPreStartupForTealHold)
  *   menu     failure: cut to black, Boot Manager text screen, countdownSec → retry
- *   confirm  Melaton Recovery: ENTER continue / ESC back
- *   recover  clean install (Cache Storage, SW, local/session storage, IndexedDB) → /launch
+ *   confirm  Melaton Recovery: ENTER continue / ESC back; chosen by touch, a two-item menu
+ *            (Continue / Return to Boot Menu) since there is no keyboard to assume
+ *   recover  "Formatting startup disk..." + progress bar while the clean install runs
+ *            (Cache Storage, SW, local/session storage, IndexedDB) → /launch
  *
  * Design mode (/launch?design=1) previews every screen: no checks, no wipe, no navigation.
  * Yozora #411 (plan), #416 (S2), #417 (S3). Test: scripts/test-melaton-boot.js.
@@ -44,11 +46,17 @@
         session: 'The server could not confirm this session.'
     };
 
+    // weight = share of the formatting progress bar
     const RECOVERY_STEPS = [
-        { id: 'caches', label: 'Removing downloaded files' },
-        { id: 'serviceWorker', label: 'Removing the offline service' },
-        { id: 'storage', label: 'Clearing settings' },
-        { id: 'indexedDb', label: 'Removing local databases' }
+        { id: 'caches', label: 'Removing downloaded files', weight: 0.45 },
+        { id: 'serviceWorker', label: 'Removing the offline service', weight: 0.1 },
+        { id: 'storage', label: 'Clearing settings', weight: 0.1 },
+        { id: 'indexedDb', label: 'Removing local databases', weight: 0.35 }
+    ];
+
+    const CONFIRM_OPTIONS = [
+        { id: 'continue', label: 'Continue' },
+        { id: 'menu', label: 'Return to Boot Menu' }
     ];
 
     function timeoutSignal(ms) {
@@ -111,14 +119,30 @@
     /**
      * Clean install: everything this device holds for Dreamscape. onStep(id, state) reports
      * 'start' / 'done' / 'failed' per RECOVERY_STEPS entry; a failed step does not stop the rest.
+     * onProgress(fraction 0..1) drives the formatting bar (step weights, per cache / database
+     * inside the big steps).
      */
-    async function cleanInstall(env, onStep) {
+    async function cleanInstall(env, onStep, onProgress) {
         const w = env.window || {};
+        let base = 0;
+        let current = null;
+        const report = (within) => {
+            if (!onProgress || !current) return;
+            onProgress(Math.min(1, base + current.weight * Math.max(0, Math.min(1, within))));
+        };
+        const eachWithProgress = async (items, fn) => {
+            let done = 0;
+            await Promise.all(items.map(async (item) => {
+                await fn(item);
+                done += 1;
+                report(done / items.length);
+            }));
+        };
         const actions = {
             async caches() {
                 if (!w.caches) return;
                 const names = await w.caches.keys();
-                await Promise.all(names.map((name) => w.caches.delete(name)));
+                await eachWithProgress(names, (name) => w.caches.delete(name));
             },
             async serviceWorker() {
                 const sw = w.navigator && w.navigator.serviceWorker;
@@ -133,16 +157,18 @@
             async indexedDb() {
                 const idb = w.indexedDB;
                 if (!idb || typeof idb.databases !== 'function') return;
-                const dbs = await idb.databases();
-                await Promise.all(dbs.filter((db) => db && db.name).map((db) => withTimeout(new Promise((resolve) => {
+                const dbs = (await idb.databases()).filter((db) => db && db.name);
+                await eachWithProgress(dbs, (db) => withTimeout(new Promise((resolve) => {
                     const req = idb.deleteDatabase(db.name);
                     req.onsuccess = req.onerror = req.onblocked = () => resolve();
-                }), 2000)));
+                }), 2000));
             }
         };
         const results = {};
         for (const step of RECOVERY_STEPS) {
+            current = step;
             if (onStep) onStep(step.id, 'start');
+            report(0);
             const started = env.now();
             let ok = true;
             try {
@@ -154,8 +180,11 @@
             const rest = config.recoverStepMs - (env.now() - started);
             if (rest > 0) await env.sleep(rest);
             results[step.id] = ok;
+            report(1);
+            base += step.weight;
             if (onStep) onStep(step.id, ok ? 'done' : 'failed');
         }
+        if (onProgress) onProgress(1);
         return results;
     }
 
@@ -167,7 +196,9 @@
             countdown: null,
             countdownTimer: null,
             info: null,
-            recoverLines: [],
+            confirmMode: 'keyboard',
+            confirmSelected: 0,
+            recoverProgress: 0,
             lastProbe: null,
             serverStatus: null
         };
@@ -290,29 +321,41 @@
             return runChecks();
         }
 
-        function showConfirm() {
+        function confirmData() {
+            return { mode: ctl.confirmMode, options: CONFIRM_OPTIONS, selected: ctl.confirmSelected };
+        }
+
+        /** mode 'touch': a two-item menu (no keyboard to assume); 'keyboard': ENTER / ESC */
+        function showConfirm(mode) {
             stopCountdown();
-            show('confirm');
+            ctl.confirmMode = mode === 'touch' ? 'touch' : 'keyboard';
+            ctl.confirmSelected = 0;
+            show('confirm', confirmData());
+        }
+
+        function backToMenu() {
+            show('menu', menuData());
+            return null;
         }
 
         async function recover() {
-            ctl.recoverLines = RECOVERY_STEPS.map((s) => ({ id: s.id, label: s.label, state: 'pending' }));
-            show('recover', { lines: ctl.recoverLines, restarting: false });
-            const onStep = (id, state) => {
-                const line = ctl.recoverLines.find((l) => l.id === id);
-                if (line) line.state = state;
-                show('recover', { lines: ctl.recoverLines, restarting: false });
+            ctl.recoverProgress = 0;
+            show('recover', { progress: 0, restarting: false });
+            const onProgress = (fraction) => {
+                ctl.recoverProgress = fraction;
+                show('recover', { progress: fraction, restarting: false });
             };
             if (env.designMode) {
+                let base = 0;
                 for (const step of RECOVERY_STEPS) {
-                    onStep(step.id, 'start');
                     await env.sleep(config.recoverStepMs);
-                    onStep(step.id, 'done');
+                    base += step.weight;
+                    onProgress(base);
                 }
             } else {
-                await cleanInstall(env, onStep);
+                await cleanInstall(env, null, onProgress);
             }
-            show('recover', { lines: ctl.recoverLines, restarting: true });
+            show('recover', { progress: 1, restarting: true });
             await env.sleep(config.blackCutMs);
             await cutToBlack();
             if (env.designMode) return 'design';
@@ -320,14 +363,20 @@
             return 'restart';
         }
 
-        function choose(index) {
+        function choose(index, mode) {
             const entry = ENTRIES[index];
             if (!entry || ctl.screen !== 'menu') return null;
             ctl.selected = index;
             stopCountdown();
             if (entry.id === 'melaton') return retry();
-            showConfirm();
+            showConfirm(mode);
             return null;
+        }
+
+        function confirmOption(index) {
+            const option = CONFIRM_OPTIONS[index];
+            if (!option) return null;
+            return option.id === 'continue' ? recover() : backToMenu();
         }
 
         /** Keyboard: returns true when the key was used. */
@@ -354,12 +403,24 @@
                 return true;
             }
             if (ctl.screen === 'confirm') {
-                if (key === 'Enter') {
-                    recover();
+                if (key === 'Escape') {
+                    backToMenu();
                     return true;
                 }
-                if (key === 'Escape') {
-                    show('menu', menuData());
+                if (ctl.confirmMode === 'touch') {
+                    if (key === 'ArrowUp' || key === 'ArrowDown') {
+                        ctl.confirmSelected = key === 'ArrowUp' ? 0 : CONFIRM_OPTIONS.length - 1;
+                        show('confirm', confirmData());
+                        return true;
+                    }
+                    if (key === 'Enter') {
+                        confirmOption(ctl.confirmSelected);
+                        return true;
+                    }
+                    return false;
+                }
+                if (key === 'Enter') {
+                    recover();
                     return true;
                 }
                 return false;
@@ -367,16 +428,21 @@
             return false;
         }
 
-        /** Touch / mouse: a tap on an entry chooses it; any press on the menu stops the countdown. */
-        function handlePointer(action, index) {
+        /**
+         * Touch / mouse: a tap on an entry chooses it; any press on the menu stops the countdown.
+         * pointerType 'touch' / 'pen' choosing Recovery gets the touch confirm menu.
+         */
+        function handlePointer(action, index, pointerType) {
+            const mode = pointerType === 'touch' || pointerType === 'pen' ? 'touch' : 'keyboard';
             if (ctl.screen === 'menu') {
                 stopCountdown();
-                if (action === 'choose') return choose(typeof index === 'number' ? index : ctl.selected);
+                if (action === 'choose') return choose(typeof index === 'number' ? index : ctl.selected, mode);
                 return null;
             }
             if (ctl.screen === 'confirm') {
+                if (action === 'option' && typeof index === 'number') return confirmOption(index);
                 if (action === 'continue') return recover();
-                if (action === 'cancel') show('menu', menuData());
+                if (action === 'cancel') return backToMenu();
             }
             return null;
         }
@@ -394,17 +460,16 @@
                 ctl.countdown = config.countdownSec;
                 return show('menu', menuData());
             }
-            if (name === 'confirm') return show('confirm');
-            if (name === 'recover') {
-                return show('recover', {
-                    lines: RECOVERY_STEPS.map((s, i) => ({ id: s.id, label: s.label, state: i < 2 ? 'done' : (i === 2 ? 'start' : 'pending') })),
-                    restarting: false
-                });
+            if (name === 'confirm' || name === 'confirm-touch') {
+                ctl.confirmMode = name === 'confirm-touch' ? 'touch' : 'keyboard';
+                ctl.confirmSelected = 0;
+                return show('confirm', confirmData());
             }
+            if (name === 'recover') return show('recover', { progress: 0.42, restarting: false });
             return null;
         }
 
-        Object.assign(ctl, { runChecks, openMenu, retry, choose, handleKey, handlePointer, preview, recover, stopCountdown, cutToTeal });
+        Object.assign(ctl, { runChecks, openMenu, retry, choose, confirmOption, handleKey, handlePointer, preview, recover, stopCountdown, cutToTeal });
         return ctl;
     }
 
@@ -464,20 +529,38 @@
                     if (data.info) nodes.push(el(doc, 'p', 'melaton-boot-info', `Info: ${data.info}`));
                     textEl.replaceChildren(textScreen(doc, 'Melaton Boot Manager', nodes, [['ENTER=Choose', 'choose']]));
                 } else if (screen === 'confirm') {
-                    textEl.replaceChildren(textScreen(doc, 'Melaton Recovery', [
+                    const intro = [
                         el(doc, 'p', null, 'Melaton Recovery will remove MeletonFX from this device and install it again.'),
-                        el(doc, 'p', null, 'Everything stored on this device is deleted: downloaded files, the offline service, settings and local databases. Your images and data on the server are not affected. You may have to sign in again.'),
-                        el(doc, 'p', null, 'Press ENTER to continue, or ESC to return to the boot menu.')
-                    ], [['ENTER=Continue', 'continue'], ['ESC=Cancel', 'cancel']]));
+                        el(doc, 'p', null, 'Everything stored on this device is deleted: downloaded files, the offline service, settings and local databases. Your images and data on the server are not affected. You may have to sign in again.')
+                    ];
+                    if (data.mode === 'touch') {
+                        const list = el(doc, 'ul', 'melaton-boot-entries melaton-confirm-options');
+                        list.setAttribute('role', 'listbox');
+                        data.options.forEach((option, i) => {
+                            const li = el(doc, 'li', i === data.selected ? 'selected' : '', option.label);
+                            li.dataset.option = String(i);
+                            li.setAttribute('role', 'option');
+                            li.setAttribute('aria-selected', i === data.selected ? 'true' : 'false');
+                            list.appendChild(li);
+                        });
+                        textEl.replaceChildren(textScreen(doc, 'Melaton Recovery', [...intro, list], [['ENTER=Choose', 'option-selected']]));
+                    } else {
+                        textEl.replaceChildren(textScreen(doc, 'Melaton Recovery', [
+                            ...intro,
+                            el(doc, 'p', null, 'Press ENTER to continue, or ESC to return to the boot menu.')
+                        ], [['ENTER=Continue', 'continue'], ['ESC=Cancel', 'cancel']]));
+                    }
                 } else if (screen === 'recover') {
-                    const nodes = data.lines.map((line) => {
-                        const p = el(doc, 'p', `melaton-recover-line is-${line.state}`);
-                        p.appendChild(el(doc, 'span', 'melaton-recover-label', `${line.label}...`));
-                        p.appendChild(el(doc, 'span', 'melaton-recover-state',
-                            line.state === 'done' ? 'done' : (line.state === 'failed' ? 'skipped' : '')));
-                        return p;
-                    });
-                    nodes.unshift(el(doc, 'p', null, 'Please wait while Melaton Recovery removes MeletonFX from this device.'));
+                    const pct = Math.round(Math.max(0, Math.min(1, data.progress || 0)) * 1000) / 10;
+                    const bar = el(doc, 'div', 'melaton-format-bar');
+                    bar.setAttribute('role', 'progressbar');
+                    bar.setAttribute('aria-valuemin', '0');
+                    bar.setAttribute('aria-valuemax', '100');
+                    bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+                    const fill = el(doc, 'div', 'melaton-format-bar-fill');
+                    fill.style.width = `${pct}%`;
+                    bar.appendChild(fill);
+                    const nodes = [el(doc, 'p', 'melaton-text-tight', 'Formatting startup disk...'), bar];
                     if (data.restarting) nodes.push(el(doc, 'p', 'melaton-recover-restart', 'Restarting...'));
                     textEl.replaceChildren(textScreen(doc, 'Melaton Recovery', nodes, []));
                 } else {
@@ -515,15 +598,27 @@
         });
         const text = doc.getElementById('melatonBootText');
         if (text) {
-            text.addEventListener('pointerdown', () => ctl.stopCountdown());
+            let lastPointerType = 'mouse';
+            text.addEventListener('pointerdown', (ev) => {
+                lastPointerType = ev.pointerType || 'mouse';
+                ctl.stopCountdown();
+            });
             text.addEventListener('click', (ev) => {
+                const pointerType = ev.pointerType || lastPointerType;
                 const entry = ev.target.closest('[data-index]');
                 if (entry) {
-                    ctl.handlePointer('choose', Number(entry.dataset.index));
+                    ctl.handlePointer('choose', Number(entry.dataset.index), pointerType);
+                    return;
+                }
+                const option = ev.target.closest('[data-option]');
+                if (option) {
+                    ctl.handlePointer('option', Number(option.dataset.option), pointerType);
                     return;
                 }
                 const key = ev.target.closest('[data-action]');
-                if (key) ctl.handlePointer(key.dataset.action);
+                if (!key) return;
+                if (key.dataset.action === 'option-selected') ctl.handleKey('Enter');
+                else ctl.handlePointer(key.dataset.action, undefined, pointerType);
             });
         }
         ctl.runChecks();
@@ -536,7 +631,7 @@
         return ctl;
     }
 
-    const api = { config, ENTRIES, INFO, RECOVERY_STEPS, probeStatus, checkSession, cleanInstall, createController, createDomView, start };
+    const api = { config, ENTRIES, INFO, RECOVERY_STEPS, CONFIRM_OPTIONS, probeStatus, checkSession, cleanInstall, createController, createDomView, start };
     if (root) {
         root.melatonBoot = Object.assign(root.melatonBoot || {}, api);
         const doc = root.document;

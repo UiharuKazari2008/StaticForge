@@ -32,11 +32,11 @@ straight on to `/app`.
 
 | Screen | What it is |
 |--------|------------|
-| boot | Vista boot screen: black, the Enso (`logo_icon.png`) at 40 % height, Vista's green marquee at 62 %, "© Dreamscape" at the bottom. Shown at least `minBootMs` (2.5 s). F8 opens the menu (no countdown). |
+| boot | Vista's boot screen on a 640×480 stage scaled to fit (letterbox black), sizes in stage pixels as measured from the stock Vista boot screen: two-tone bar frame at x 257–378, y 353–363 (#737373 / #424242), 120×9 interior, a cluster of six 2 px stripes with 2 px gaps (rows #F1F5E1 ×2, #A3B16E ×2, #4D5622 ×5) sliding across in 2 px steps (`--melaton-sweep` 2 s per pass, the one estimated value), "© Dreamscape" centred at y 389–400. The Enso takes the Windows 7 logo's place: 84 px, centred at y 205. Shown at least `minBootMs` (2.5 s). F8 opens the menu (no countdown). |
 | teal | Success: cut to teal, `sessionStorage` `dreamscapeLaunchHandoff=teal` + `dreamscapeBootTealHoldUntil` (cut + 2 s), `location.replace('/app')`. `app.html` puts up a teal `#launchHandoff` (removed without a fade) and sets `window.dreamscapeTealHoldUntil`; `websocket.js` holds the logon dialog (and "Preparing MeletonFX…") until then while startup runs underneath. |
 | menu | Failure: cut to black, then the Boot Manager text screen ("Melaton Boot Manager"): **Dreamscape Melaton** (retry: black → boot screen → checks) and **Melaton Recovery (Reinstall)**, a 10 s countdown to the highlighted entry, an `Info:` line with the reason, `ENTER=Choose`. ↑/↓/Enter; any key or press stops the countdown; a tap chooses. |
-| confirm | Recovery confirm (ENTER continue / ESC back to the menu). |
-| recover | Clean install, each step printed: Cache Storage, SW registrations, localStorage + sessionStorage, IndexedDB (`indexedDB.databases()`, 2 s per database). A failed step does not stop the rest. Then black and `/launch` again. |
+| confirm | Recovery confirm: ENTER continue / ESC back to the menu. Chosen by touch or pen (no keyboard to assume): a two-item menu, **Continue** / **Return to Boot Menu** (tap, or arrows + Enter). |
+| recover | "Formatting startup disk..." and a progress bar while the clean install runs: Cache Storage (45 %), SW registrations (10 %), localStorage + sessionStorage (10 %), IndexedDB (35 %; `indexedDB.databases()`, 2 s per database), moving per cache / database inside a step. A failed step does not stop the rest. Then black and `/launch` again. |
 
 Checks under the boot screen (`runChecks`):
 
@@ -51,8 +51,9 @@ Checks under the boot screen (`runChecks`):
 
 Design mode: `/` on `/launch` (or `/launch?design=1`) pauses the checks; the HUD has a
 preset per screen and `/launch?design=1&screen=menu` (`boot`, `menu`, `menu-info`,
-`confirm`, `recover`, `teal`, `black`) opens one directly. Recovery in design mode never
-wipes and nothing navigates. Test: `npm run test:melaton-boot`.
+`confirm`, `confirm-touch`, `recover`, `teal`, `black`) opens one directly at any window
+size; `&hud=0` hides the HUD (clean screenshots). Recovery in design mode never wipes and
+nothing navigates. Test: `npm run test:melaton-boot`.
 
 ## Stage triggers
 
