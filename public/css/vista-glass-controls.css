@@ -379,8 +379,8 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 }
 
 /* ---------- tray icons: Vista's own (ripped from the VM, static_images/vista-icons/) ----------
-   netshell.dll 65-70 (network: 68 idle, 66 / 67 one screen lit, 70 disconnected) and
-   146 / 147 (activity arrows), imageres.dll 166 (search) and 26 (hard drive), user32.dll 1
+   pnidui.dll 24-26 / 19 (Vista's network icon: internet idle, sending, receiving,
+   disconnected; netshell's 16 px art is the XP set), netshell.dll 146 / 147 (arrows), imageres.dll 166 (search) and 26 (hard drive), user32.dll 1
    (warning), explorer.exe 18 (Switch between windows). The Font Awesome glyph element stays
    (scripts still switch its classes for state); its glyph is hidden and the icon is painted
    on it. Activity keeps working through the existing opacity rules. */
@@ -405,22 +405,79 @@ body.desktop-mode:not(.windows-classic-theme) #workspaceTrayIcon > i.fa-clone { 
 body.desktop-mode:not(.windows-classic-theme) #taskbarWebsocketIndicator .websocket-arrow-up { background-image: image-set(url("/static_images/vista-icons/net-arrow-up-16.png") 1x, url("/static_images/vista-icons/net-arrow-up-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #taskbarWebsocketIndicator .websocket-arrow-down { background-image: image-set(url("/static_images/vista-icons/net-arrow-down-16.png") 1x, url("/static_images/vista-icons/net-arrow-down-32.png") 2x); }
 
-/* network: connected idle, down (failed / logon / not connected), connecting (screens trade) */
-body.desktop-mode:not(.windows-classic-theme) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-68-16.png") 1x, url("/static_images/vista-icons/net-68-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) #modemTrayIconGlyph.fa-link-slash { background-image: image-set(url("/static_images/vista-icons/net-70-16.png") 1x, url("/static_images/vista-icons/net-70-32.png") 2x); }
+/* network: connected idle, down (failed / logon / not connected), connecting (screens trade);
+   Vista lights one screen at a time, so a burst both ways shows sending */
+body.desktop-mode:not(.windows-classic-theme) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-16.png") 1x, url("/static_images/vista-icons/net-internet-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #modemTrayIconGlyph.fa-link-slash { background-image: image-set(url("/static_images/vista-icons/net-disconnected-16.png") 1x, url("/static_images/vista-icons/net-disconnected-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #modemTrayIconGlyph.fa-sync-alt {
-    background-image: image-set(url("/static_images/vista-icons/net-66-16.png") 1x, url("/static_images/vista-icons/net-66-32.png") 2x);
+    background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x);
     animation: vistaNetConnecting 0.9s steps(1, end) infinite;
 }
 
 @keyframes vistaNetConnecting {
-    0% { background-image: image-set(url("/static_images/vista-icons/net-66-16.png") 1x, url("/static_images/vista-icons/net-66-32.png") 2x); }
-    50% { background-image: image-set(url("/static_images/vista-icons/net-67-16.png") 1x, url("/static_images/vista-icons/net-67-32.png") 2x); }
+    0% { background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x); }
+    50% { background-image: image-set(url("/static_images/vista-icons/net-internet-recv-16.png") 1x, url("/static_images/vista-icons/net-internet-recv-32.png") 2x); }
 }
 
 /* traffic lights the screens, like Vista: a WebSocket burst shows both lit */
 body.desktop-mode:not(.windows-classic-theme) #taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active) #modemTrayIconGlyph.fa-globe,
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-66-16.png") 1x, url("/static_images/vista-icons/net-66-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-down.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-67-16.png") 1x, url("/static_images/vista-icons/net-67-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active):has(#taskbarWebsocketIndicator .websocket-arrow-down.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-65-16.png") 1x, url("/static_images/vista-icons/net-65-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-down.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-recv-16.png") 1x, url("/static_images/vista-icons/net-internet-recv-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active):has(#taskbarWebsocketIndicator .websocket-arrow-down.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x); }
+
+/* ---------- Studio: Vista text fields, status insets, badges, prompt glass (#445) ----------
+   Hover inputs (steps, guidance, seed, size, prints, … .hover-show) stay bare text at rest;
+   on hover a sunken Vista field fades in (dark well, inner shadow, light lower rim); focused,
+   Vista's blue focus glow. Only background / border colour / shadow change: no metrics. */
+body:not(.windows-classic-theme) #manualModal .hover-show {
+    transition: background-color 0.15s linear, border-color 0.15s linear, box-shadow 0.15s linear, color 0.15s linear;
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) #manualModal :is(.hover-show, .form-control.hover-show, .percentage-input-container.hover-show):hover:not(:disabled) {
+        background: linear-gradient(hsl(0 0% 0% / 38%), hsl(0 0% 0% / 24%));
+        border-color: hsl(0 0% 0% / 65%);
+        box-shadow: inset 0 1px 3px hsl(0 0% 0% / 55%), 0 1px 0 hsl(0 0% 100% / 14%);
+    }
+}
+
+body:not(.windows-classic-theme) #manualModal :is(input.hover-show, textarea.hover-show, select.hover-show, .form-control.hover-show):focus:not(:disabled),
+body:not(.windows-classic-theme) #manualModal .percentage-input-container.hover-show:focus-within {
+    background: linear-gradient(hsl(0 0% 0% / 45%), hsl(0 0% 0% / 30%));
+    border-color: hsl(205 65% 58%);
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 50%), 0 0 0 1px hsl(197 80% 60% / 30%), 0 0 6px 1px hsl(197 85% 60% / 45%);
+}
+
+/* Status insets (gen count, price, token-free, Director usage): a Vista well that keeps its
+   state tint (orange, green, …): dark edge, inner shadow, light lower rim, faint top glass */
+body:not(.windows-classic-theme) .inset-badge {
+    background-image: linear-gradient(hsl(0 0% 100% / 6%), hsl(0 0% 100% / 2%) 50%, transparent 51%);
+    border-color: hsl(0 0% 0% / 60%);
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 55%), inset 0 0 0 1px hsl(0 0% 0% / 12%), 0 1px 0 hsl(0 0% 100% / 13%);
+}
+
+/* Count badges: a small glossy Vista pill over their own colour */
+body:not(.windows-classic-theme) :is(.badge, .taskbar-group-count) {
+    background-image: linear-gradient(hsl(0 0% 100% / 42%), hsl(0 0% 100% / 12%) 50%, transparent 51%, hsl(0 0% 100% / 8%));
+    border: 1px solid hsl(0 0% 0% / 45%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 1px 2px hsl(0 0% 0% / 40%);
+}
+
+/* Prompt boxes: a glass edge painted around the container only. The textarea, its padding,
+   borders and font are untouched, so the auto-height calculator (static pixel values) and
+   the emphasis overlay keep their numbers. Focused: Vista's blue glow on the same ring. */
+body:not(.windows-classic-theme) #manualModal .prompt-textarea-container::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    border-radius: var(--border-radius-md);
+    pointer-events: none;
+    box-shadow: 0 0 0 1px hsl(0 0% 0% / 58%), 0 1px 0 1px hsl(0 0% 100% / 14%), inset 0 1px 0 hsl(0 0% 100% / 10%);
+    transition: box-shadow 0.15s linear;
+}
+
+body:not(.windows-classic-theme) #manualModal .prompt-textarea-container.textarea-focused::after {
+    box-shadow: 0 0 0 1px hsl(205 65% 58%), 0 0 6px 2px hsl(197 85% 60% / 40%), inset 0 1px 0 hsl(0 0% 100% / 10%);
+}
 
