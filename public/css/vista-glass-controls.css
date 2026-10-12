@@ -18,6 +18,7 @@
     --vista-glass-edge: hsl(0 0% 0% / 62%);
     --vista-glass-inner: hsl(0 0% 100% / 24%);
     --vista-glass-pane: linear-gradient(hsl(0 0% 100% / 15%), hsl(0 0% 100% / 7%) calc(50% - 1px), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 0%) 85%, hsl(0 0% 100% / 6%));
+    --vista-glass-button-rest: linear-gradient(hsl(0 0% 100% / 14%), hsl(0 0% 100% / 7%) calc(50% - 1px), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 6%) 80%, hsl(0 0% 100% / 10%));
     --vista-glass-button-hover: linear-gradient(hsl(0 0% 100% / 30%), hsl(0 0% 100% / 16%) calc(50% - 1px), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 6%) 80%, hsl(0 0% 100% / 22%));
     --vista-glass-button-pressed: linear-gradient(hsl(0 0% 0% / 22%), hsl(0 0% 0% / 14%) calc(50% - 1px), hsl(0 0% 0% / 26%) 50%, hsl(0 0% 0% / 18%) 85%, hsl(0 0% 100% / 10%));
     --vista-glass-orb: linear-gradient(hsl(0 0% 100% / 34%), hsl(0 0% 100% / 12%) calc(50% - 1px), hsl(0 0% 0% / 12%) 50%, hsl(0 0% 0% / 0%) 100%);
@@ -48,9 +49,22 @@ body:not(.windows-classic-theme) .main-menu-bar-outer::before {
 /* ---------- buttons in a bar ---------- */
 
 body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button) {
-    border: 1px solid transparent;
+    /* at rest the same glass box as the hovered / toggled button, calmer (Yukimi) */
+    background-image: var(--vista-glass-button-rest);
+    border: 1px solid hsl(0 0% 0% / 45%);
     border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 14%);
     transition: background-color 0.1s linear, box-shadow 0.1s linear, border-color 0.1s linear;
+}
+
+/* icons a shade darker until hovered or on */
+body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button) > i {
+    color: color-mix(in srgb, currentColor 80%, #000);
+    transition: color 0.1s linear;
+}
+
+body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):is(:hover, :active, .active, [data-state="on"]) > i {
+    color: inherit;
 }
 
 @media (hover: hover) {
@@ -78,6 +92,14 @@ body:not(.windows-classic-theme) .main-menu-bar-outer .gallery-toggle-group {
    The orb is a ::before overlay, so it lies on whatever paints the button: its own colour or
    the frame glass of [data-aero-surface] buttons (the workspace page jumps). Every round
    button is position: relative with a z-index, so the overlay stays inside it. */
+
+/* Every round button wears the window's frame glass like the workspace page jumps
+   (Yukimi: the others did not match); danger keeps its red, wide pills (Generate) their fill */
+body:not(.windows-classic-theme) .round-button:not(.wide-button):not(.btn-danger) {
+    background-color: var(--aero-frame-base, var(--glass-windows-bg));
+    background-image: var(--aero-sheen, none), linear-gradient(var(--aero-tint, transparent), var(--aero-tint, transparent));
+    color: var(--text-accent-tinted);
+}
 
 body:not(.windows-classic-theme) .round-button {
     isolation: isolate;
@@ -112,4 +134,18 @@ body:not(.windows-classic-theme) .round-button:active:not(:disabled) {
 
 body:not(.windows-classic-theme) .round-button:active:not(:disabled)::before {
     background: linear-gradient(hsl(0 0% 0% / 18%), hsl(0 0% 0% / 8%) calc(50% - 1px), hsl(0 0% 0% / 22%) 50%, hsl(0 0% 0% / 10%) 100%), var(--vista-glass-orb-bloom);
+}
+
+/* Hover show: Studio's preview strips its buttons while the preview is not hovered
+   (manual-modal.css); gallery cards do the same while the card is not hovered. The orb is a
+   pseudo layer, so it is hidden with them, or it would paint on the bare buttons. */
+html.can-hover body:not(.windows-classic-theme) .manual-preview-content:not(:hover) .round-button:not(:hover)::before,
+html.can-hover body:not(.windows-classic-theme) .gallery-item:not(:hover) .gallery-actions .round-button::before {
+    opacity: 0;
+}
+
+html.can-hover body:not(.windows-classic-theme) .gallery-item:not(:hover) .gallery-actions .round-button {
+    background: none;
+    border-color: transparent;
+    box-shadow: none;
 }

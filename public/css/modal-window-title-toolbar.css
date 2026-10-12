@@ -1553,11 +1553,12 @@ body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has
         linear-gradient(#e0a197e5, #cf796a 25% var(--window-caption-edge), #d54f36 var(--window-caption-edge));
 }
 
-/* App icons and labels in the cluster: white with the Vista glyph outline */
+/* App icons and labels in the cluster (Studio's indicators, app buttons): drawn like the window glyphs */
 body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > button > :is(i, span):not(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large),
 body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button > :is(i, span) {
-    color: #f4f4f4;
-    text-shadow: -1px 0 0 #535666b3, 1px 0 0 #535666b3, 0 -1px 0 #535666b3, 0 1px 0 #535666b3;
+    /* the Vista glyph look of minimize / maximize / close: white-to-grey fill, #535666 edge */
+    color: #ececec;
+    text-shadow: -1px 0 0 #535666, 1px 0 0 #535666, 0 -1px 0 #535666, 0 1px 0 #535666;
 }
 
 /* Glyphs: Vista's own (traced from the bitmaps of a Vista Aero VM into vector SVGs in
