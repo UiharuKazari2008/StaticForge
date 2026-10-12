@@ -18,7 +18,6 @@
     --vista-glass-edge: hsl(0 0% 0% / 62%);
     --vista-glass-inner: hsl(0 0% 100% / 24%);
     --vista-glass-pane: linear-gradient(hsl(0 0% 100% / 15%), hsl(0 0% 100% / 7%) calc(50% - 1px), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 0%) 85%, hsl(0 0% 100% / 6%));
-    --vista-glass-button-rest: linear-gradient(hsl(0 0% 100% / 14%), hsl(0 0% 100% / 7%) calc(50% - 1px), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 6%) 80%, hsl(0 0% 100% / 10%));
     --vista-glass-button-hover: linear-gradient(hsl(0 0% 100% / 30%), hsl(0 0% 100% / 16%) calc(50% - 1px), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 6%) 80%, hsl(0 0% 100% / 22%));
     --vista-glass-button-pressed: linear-gradient(hsl(0 0% 0% / 22%), hsl(0 0% 0% / 14%) calc(50% - 1px), hsl(0 0% 0% / 26%) 50%, hsl(0 0% 0% / 18%) 85%, hsl(0 0% 100% / 10%));
     --vista-glass-orb: linear-gradient(hsl(0 0% 100% / 34%), hsl(0 0% 100% / 12%) calc(50% - 1px), hsl(0 0% 0% / 12%) 50%, hsl(0 0% 0% / 0%) 100%);
@@ -49,11 +48,9 @@ body:not(.windows-classic-theme) .main-menu-bar-outer::before {
 /* ---------- buttons in a bar ---------- */
 
 body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):not(.gallery-toggle-btn) {
-    /* at rest the same glass box as the hovered / toggled button, calmer (Yukimi) */
-    background-image: var(--vista-glass-button-rest);
-    border: 1px solid hsl(0 0% 0% / 45%);
+    /* bare at rest (Yukimi): no border, no shine; glass only on hover / pressed / on */
+    border: 1px solid transparent;
     border-radius: 3px;
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 14%);
     transition: background-color 0.1s linear, box-shadow 0.1s linear, border-color 0.1s linear;
 }
 
@@ -89,23 +86,17 @@ body:not(.windows-classic-theme) .main-menu-bar-outer .gallery-toggle-group {
 }
 
 /* Toggle groups (gallery Scraps / Images / Pinned / Upscaled, Studio's mode toggles): the
-   resting buttons wear the sliding highlight's own fill, border and radius
-   (.gallery-toggle-slider, gallery-core.css) instead of fading to 45 %, and their icons are
-   a darker shade of the hover colour (Yukimi). The slider stays the coloured "on" state. */
-body:not(.windows-classic-theme) .gallery-toggle-group .gallery-toggle-btn:not(.active) {
-    background: var(--glass-layer-3);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    margin: 2px 1px;
-    opacity: 1;
-    color: color-mix(in srgb, var(--text-accent-tinted) 70%, #000);
+   group keeps its hover background (gallery-core.css .gallery-toggle-group:hover,
+   --glass-layer-dark-3) at rest too, and the resting icons are a slightly darker version of
+   the group-hover icons (accent colour at 55 % instead of the 45 % fade; group hover is
+   65 %, a hovered button 100 %). Buttons stay bare; the slider is the "on" state (Yukimi). */
+body:not(.windows-classic-theme) .gallery-toggle-group {
+    background: var(--glass-layer-dark-3);
 }
 
-@media (hover: hover) {
-    body:not(.windows-classic-theme) .gallery-toggle-group .gallery-toggle-btn:not(.active):hover:not(:disabled) {
-        color: var(--text-accent-tinted);
-        border-color: var(--glass-border-5, var(--glass-border-3));
-    }
+body:not(.windows-classic-theme) .gallery-toggle-group .gallery-toggle-btn:not(.active) {
+    color: var(--text-accent-tinted);
+    opacity: 0.55;
 }
 
 /* ---------- round buttons ----------
