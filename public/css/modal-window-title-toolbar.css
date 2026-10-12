@@ -1361,3 +1361,9 @@ body.user-icons .icon-image {
 .modal-window-controls .custom-dropdown-menu .custom-dropdown-option {
     font-size: 0.9em;
 }
+
+/* Maximize box added to every resizable window (#440, ensureModalMaximizeButton in modalUtils.js).
+   Desktop only: outside desktop mode those windows keep minimize / close as before. */
+body:not(.desktop-mode) .modal .modal-window-controls .modal-maximize-auto {
+    display: none;
+}

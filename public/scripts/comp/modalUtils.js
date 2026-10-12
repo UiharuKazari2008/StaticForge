@@ -150,6 +150,8 @@ const MODAL_RESTORE_MAX_BOTTOM_OVERFLOW_RATIO = 0.1;
 const MODAL_EDGE_MARGIN_PX = 0;
 // WCO / Android: nudge maximized bounds up slightly so the window meets the caption (few px gap).
 const MODAL_MAXIMIZE_CAPTION_NUDGE_PX = 3;
+// Vista: a maximized window stays put until the caption drag passes a few px, then restores under the pointer
+const MAXIMIZED_DRAG_RESTORE_THRESHOLD_PX = 4;
 
 function getDesktopModalTopBias() {
     return window.isDesktop ? MODAL_DESKTOP_TOP_BIAS_PX : 0;
@@ -436,10 +438,49 @@ function toggleModalMaximize(modal) {
     }
 }
 
+// Windows whose caption already carries their own maximize (gallery mode, Glancewell fullscreen, Studio editor)
+const MODAL_CUSTOM_MAXIMIZE_SELECTOR = '#maximizeGalleryBtn, #maximizePhotoSwipeBtn, #restoreManualBtn';
+
+/**
+ * Slice 3 (#440): every resizable window with a minimize box gets a work-area maximize box
+ * between minimize and close. Opt out with data-window-no-maximize="true".
+ */
+function ensureModalMaximizeButton(modal) {
+    if (!modal || !modal.classList.contains('modal') || !modal.classList.contains('resizeable-window')) {
+        return null;
+    }
+    if (modal.dataset.windowNoMaximize === 'true' || modal.dataset.windowFixedSize === 'true') {
+        return null;
+    }
+    const controls = modal.querySelector('.modal-window-controls');
+    if (!controls || !modal.querySelector('.modal-window-title')) {
+        return null;
+    }
+    const existing = controls.querySelector('.modal-work-area-maximize');
+    if (existing) {
+        return existing;
+    }
+    if (controls.querySelector(MODAL_CUSTOM_MAXIMIZE_SELECTOR)) {
+        return null;
+    }
+    const minimizeBtn = Array.from(controls.children).find((el) => el.classList.contains('minimize-btn'));
+    if (!minimizeBtn) {
+        return null;
+    }
+    const maxBtn = document.createElement('button');
+    maxBtn.type = 'button';
+    maxBtn.className = 'btn-secondary btn-small modal-work-area-maximize modal-maximize-auto';
+    maxBtn.title = 'Maximize';
+    maxBtn.innerHTML = '<i class="fa-regular fa-window-maximize"></i>';
+    minimizeBtn.after(maxBtn);
+    return maxBtn;
+}
+
 function wireModalMaximizeButton(modal) {
     if (!modal) {
         return;
     }
+    ensureModalMaximizeButton(modal);
     const maxBtn = modal.querySelector('.modal-window-controls .modal-work-area-maximize');
     if (!maxBtn || maxBtn.dataset.modalMaximizeWired === 'true') {
         return;
@@ -469,6 +510,63 @@ function handleWindowMaximizeAction(modal) {
     // Glancewell (PhotoSwipe shell) — fullscreen via togglePhotoSwipeShellWindowed, not work-area maximize
     if (modal.id === 'photoSwipeWindow' && typeof togglePhotoSwipeShellWindowed === 'function') {
         togglePhotoSwipeShellWindowed();
+    }
+}
+
+/**
+ * The draggable caption band: inside .modal-window-title, above its title toolbar, not on a control.
+ * Shared by drag start and caption double-click.
+ */
+function getModalCaptionBandTitleBar(e) {
+    const titleBar = e.target.closest('.modal-window-title');
+    if (!titleBar) return null;
+    if (e.target.closest('.modal-window-title-toolbar')) return null;
+    if (e.target.closest('button, input, select, textarea, a, [role="button"]')) return null;
+
+    const toolbar = titleBar.querySelector('.modal-window-title-toolbar');
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const bandBottom = toolbar
+        ? toolbar.getBoundingClientRect().top
+        : titleBar.getBoundingClientRect().bottom;
+    return clientY < bandBottom ? titleBar : null;
+}
+
+function isModalCaptionControlUsable(btn) {
+    return !!(btn && !btn.disabled && !btn.classList.contains('hidden') && getComputedStyle(btn).display !== 'none');
+}
+
+/** Caption double-click (#440): maximize / restore; a window without a maximize box minimizes. */
+function handleModalCaptionDoubleClick(e) {
+    if (!document.body.classList.contains('desktop-mode')) return;
+    const titleBar = getModalCaptionBandTitleBar(e);
+    if (!titleBar) return;
+    const modal = titleBar.closest('.modal');
+    if (!modal || modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')
+        || modal.classList.contains('minimised') || modal.classList.contains('minimising')
+        || modal.classList.contains('opening') || modal.classList.contains('closing')) {
+        return;
+    }
+    // Fullscreen Studio editor is not a window
+    if (modal.id === 'manualModal' && !modal.classList.contains('windowed')) return;
+
+    const controls = modal.querySelector('.modal-window-controls');
+    if (!controls) return;
+    const maxBtn = controls.querySelector('.modal-work-area-maximize');
+    const customMaxBtn = controls.querySelector(MODAL_CUSTOM_MAXIMIZE_SELECTOR);
+    if (isModalCaptionControlUsable(maxBtn)) {
+        e.preventDefault();
+        toggleModalMaximize(modal);
+        return;
+    }
+    if (isModalCaptionControlUsable(customMaxBtn)) {
+        e.preventDefault();
+        customMaxBtn.click();
+        return;
+    }
+    const minimizeBtn = controls.querySelector('.minimize-btn');
+    if (isModalCaptionControlUsable(minimizeBtn)) {
+        e.preventDefault();
+        minimizeModalProgrammatically(modal);
     }
 }
 
@@ -2159,6 +2257,10 @@ function ensureModalEdgesWithinWorkArea(modal, edgeMarginPx) {
         if (!modal || modal.classList.contains('hidden') || isModalMaximized(modal)) {
             return;
         }
+        // A drag that restored a maximized window owns the position until it ends (#440)
+        if (modal.hasAttribute('data-dragging') || modal.hasAttribute('data-resizing')) {
+            return;
+        }
 
         const rect = modal.getBoundingClientRect();
         if (!rect.width || !rect.height) {
@@ -2284,6 +2386,7 @@ function initializeModalDragging() {
     // focus, visibilitychange — focus grace period (top of modalUtils.js)
     // mousedown/touchstart — drag/resize start (below); desktop-mode gesture (down≠focus)
     // click — minimize button, desktop empty-space clear-active (below)
+    // dblclick — caption band maximize / restore / minimize (handleModalCaptionDoubleClick)
     // contextMenuAction — taskbar context menu (initializeDesktopTaskbar)
     // DOMContentLoaded — bootstrap dragging, taskbar, start menu (bottom of modalUtils.js)
     // Gallery window resize — attachModalListeners(galleryWindow) in activateGalleryResizeListener
@@ -2293,6 +2396,9 @@ function initializeModalDragging() {
     // Desktop-mode pointer: down starts the shared gesture (no focus); up may activate
     document.addEventListener('mousedown', handleModalInteraction);
     document.addEventListener('touchstart', handleModalInteraction, { passive: false });
+
+    // Caption double-click: maximize / restore, or minimize without a maximize box (#440)
+    document.addEventListener('dblclick', handleModalCaptionDoubleClick);
 
     // Add global minimize button handler
     document.addEventListener('click', (e) => {
@@ -2418,20 +2524,10 @@ function handleModalInteractionEnd(e) {
 }
 
 function handleModalDragStart(e) {
-    // Check if clicked element is a modal title bar
-    const titleBar = e.target.closest('.modal-window-title');
+    // Check if clicked element is the caption band of a modal title bar
+    const titleBar = getModalCaptionBandTitleBar(e);
     if (!titleBar) return;
-
-    if (e.target.closest('.modal-window-title-toolbar')) return;
-    if (e.target.closest('button, input, select, textarea, a, [role="button"]')) return;
-
-    const toolbar = titleBar.querySelector('.modal-window-title-toolbar');
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const bandBottom = toolbar
-        ? toolbar.getBoundingClientRect().top
-        : titleBar.getBoundingClientRect().bottom;
-
-    if (clientY >= bandBottom) return;
 
     const modal = titleBar.closest('.modal');
     if (!modal) return;
@@ -2452,7 +2548,11 @@ function handleModalDragStart(e) {
         endModalInteractionSession();
     }
 
-    prepareModalForDragOrResize(modal);
+    // A maximized window stays maximized until the pointer moves (a double-click must not restore it twice)
+    const pendingMaximizeRestore = isModalMaximized(modal);
+    if (!pendingMaximizeRestore) {
+        prepareModalForDragOrResize(modal);
+    }
 
     // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -2494,13 +2594,14 @@ function handleModalDragStart(e) {
         previewOffsetX: modalStartOffsetX,
         previewOffsetY: modalStartOffsetY,
         moved: modal.hasAttribute('data-modal-moved'),
+        pendingMaximizeRestore,
         rafId: 0,
         pendingVisual: null
     };
 
     titleBar.classList.add('dragging');
 
-    if (livePreview) {
+    if (livePreview && !pendingMaximizeRestore) {
         showWindowFrameForModal(modal);
     }
 
@@ -2520,6 +2621,49 @@ function handleModalDragStart(e) {
     return true;
 }
 
+/**
+ * Vista: dragging a maximized caption restores the window under the pointer, keeping the
+ * pointer at the same fraction of the caption width, then the drag carries on from there.
+ */
+function restoreMaximizedModalUnderPointer(session, clientX, clientY) {
+    const modal = session.modal;
+    session.pendingMaximizeRestore = false;
+    const maxRect = modal.getBoundingClientRect();
+    const relX = maxRect.width > 0 ? Math.min(1, Math.max(0, (session.startX - maxRect.left) / maxRect.width)) : 0.5;
+    const grabY = Math.max(0, session.startY - maxRect.top);
+
+    restoreModalFromMaximize(modal);
+    const restored = modal.getBoundingClientRect();
+    setModalPositionFromViewportRect(modal, {
+        left: clientX - relX * restored.width,
+        top: clientY - grabY,
+        width: restored.width,
+        height: restored.height
+    }, { allowPartialBottomOverflow: true });
+    prepareModalForDragOrResize(modal);
+
+    const computedStyle = getComputedStyle(modal);
+    const offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
+    const offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
+    const rect = modal.getBoundingClientRect();
+    session.startX = clientX;
+    session.startY = clientY;
+    session.startOffsetX = offsetX;
+    session.startOffsetY = offsetY;
+    session.previewOffsetX = offsetX;
+    session.previewOffsetY = offsetY;
+    session.width = rect.width;
+    session.height = rect.height;
+    session.topAnchored = isModalTopAnchored(modal);
+    modal.setAttribute('data-drag-start-x', clientX);
+    modal.setAttribute('data-drag-start-y', clientY);
+    modal.setAttribute('data-modal-start-offset-x', offsetX);
+    modal.setAttribute('data-modal-start-offset-y', offsetY);
+    if (session.livePreview) {
+        showWindowFrameForModal(modal);
+    }
+}
+
 function handleModalDrag(e, draggedModal) {
     const session = activeModalInteraction;
     if (!session || session.type !== 'drag' || session.modal !== draggedModal) return;
@@ -2528,6 +2672,13 @@ function handleModalDrag(e, draggedModal) {
 
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    if (session.pendingMaximizeRestore) {
+        if (Math.hypot(clientX - session.startX, clientY - session.startY) < MAXIMIZED_DRAG_RESTORE_THRESHOLD_PX) {
+            return;
+        }
+        restoreMaximizedModalUnderPointer(session, clientX, clientY);
+    }
 
     let newOffsetX = session.startOffsetX + (clientX - session.startX);
     let newOffsetY = session.startOffsetY + (clientY - session.startY);
@@ -2581,6 +2732,20 @@ function handleModalDragEnd(e, draggedModal) {
     const titleBar = draggedModal.querySelector('.modal-window-title');
     if (titleBar) {
         titleBar.classList.remove('dragging');
+    }
+
+    // Press and release on a maximized caption without moving: nothing to commit
+    if (session && session.pendingMaximizeRestore) {
+        activeModalInteraction = null;
+        clearModalDragTransform(draggedModal);
+        draggedModal.removeAttribute('data-dragging');
+        setWindowInteractionPaintLock(false);
+        draggedModal.removeAttribute('data-drag-start-x');
+        draggedModal.removeAttribute('data-drag-start-y');
+        draggedModal.removeAttribute('data-modal-start-offset-x');
+        draggedModal.removeAttribute('data-modal-start-offset-y');
+        updateBackdropVisibility();
+        return;
     }
 
     let offsetX;
@@ -6650,9 +6815,16 @@ async function runClientShutdownSequence(finalAction) {
     try {
         suppressWebSocketReconnectForReload();
         dismissTransientUIForShutdown();
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        const soundDone = desktopSounds.play('shutdown');
         await closeAllModalsForShutdown();
         await delayForClientShutdown(150);
-        await fadeClientShutdownOverlayAsync(finalAction);
+        await fadeClientShutdownOverlayAsync();
+        await Promise.race([
+            Promise.resolve(soundDone),
+            delayForClientShutdown(desktopSounds.SHUTDOWN_WAIT_MAX_MS)
+        ]);
+        if (finalAction) finalAction();
     } catch (error) {
         clientShutdownSequenceRunning = false;
         throw error;
@@ -8200,6 +8372,12 @@ function updateDesktopSettingsVirtualKeyboardToggleUI(enabled) {
     updateDesktopSettingsGlobalToggleUI(btn, enabled === true);
 }
 
+function updateDesktopSettingsSoundsToggleUI(enabled) {
+    const btn = document.getElementById('desktopSettingsSoundsBtn');
+    if (!btn) return;
+    updateDesktopSettingsGlobalToggleUI(btn, enabled !== false);
+}
+
 function readDesktopSettingsNotificationBridgeEnabledPreference() {
     // readNotificationBridgeEnabledPreference — public/scripts/comp/toastManager.js
     if (typeof readNotificationBridgeEnabledPreference === 'function') {
@@ -8366,6 +8544,17 @@ function setupDesktopSettingsScopeToggle() {
         });
     }
 
+    const soundsBtn = document.getElementById('desktopSettingsSoundsBtn');
+    if (soundsBtn) {
+        soundsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const nextOn = soundsBtn.dataset.state !== 'on';
+            // desktopSounds.setEnabled: public/scripts/comp/desktopSounds.js
+            desktopSounds.setEnabled(nextOn);
+            updateDesktopSettingsSoundsToggleUI(desktopSounds.isEnabled());
+        });
+    }
+
     const virtualKeyboardBtn = document.getElementById('desktopSettingsVirtualKeyboardBtn');
     if (virtualKeyboardBtn) {
         virtualKeyboardBtn.addEventListener('click', (e) => {
@@ -8518,6 +8707,8 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
     updateDesktopSettingsExitDesktopOnWorkspaceMaximiseToggleUI(desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise);
     desktopSettingsGlobalState.virtualKeyboardEnabled = readDesktopSettingsVirtualKeyboardPreference();
     updateDesktopSettingsVirtualKeyboardToggleUI(desktopSettingsGlobalState.virtualKeyboardEnabled);
+    // desktopSounds.isEnabled: public/scripts/comp/desktopSounds.js
+    updateDesktopSettingsSoundsToggleUI(desktopSounds.isEnabled());
     // syncImageGenerationSettingsUI: public/scripts/comp/imageGenerationSettings.js
     syncImageGenerationSettingsUI();
     if (typeof isAndroidNotificationBridgeDetected === 'function' && isAndroidNotificationBridgeDetected()) {

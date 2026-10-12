@@ -3584,6 +3584,11 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
     z-index: 10;
 }
 
+/* A maximized window has no sizing border (Vista); restore first (#440) */
+.modal.modal-maximized > .resize-handle {
+    display: none;
+}
+
 .modal .resize-handle.nw {
     top: -2px;
     left: -2px;
