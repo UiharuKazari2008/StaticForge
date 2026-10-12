@@ -1,7 +1,7 @@
 # Desktop boot sequence (MeletonFX)
 
 How the desktop (`window.isDesktop`, `body.desktop-mode`) comes up, in the order the user
-sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417 (parent #399; plan #411).
+sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417, #420, #421 (parent #399; plan #411).
 
 ## Order on screen
 
@@ -10,6 +10,7 @@ sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417 (par
 | 1 | Melaton boot on `/launch` (every desktop start, PWA and tabs): Vista boot screen with the Enso while the server and session are checked; on failure the boot menu; on success a cut to teal and `/app` | `public/launch.html`, `public/scripts/launch/melatonBoot.js` (see below) |
 | 2 | Teal (`body.windows-startup`); after max(2 s from the cut, `/app`'s own startup) the logon dialog `#desktopPreStartupModal`: dial beats (Initializing → Dialing → Negotiation → Establishing), password form when the socket is not authenticated | `app.html` teal handoff, `websocket.js` (`_deferPreStartupForTealHold`, `connect`, `pingHost`, `_renderPreStartupDialog`), `serviceWorkerManager.js` (`_waitForServerReady`, `_showBootUiEarly`) |
 | 3 | System Update dialog `#windowsUpdateModal` or the install wizard when the service worker has files to fetch | `serviceWorkerManager.js` (`_isPreStartupUpdatePhase`) |
+| 3b | Logon-phase init steps in the logon dialog (desktop first boot): every step up to priority 1, through **Loading Application Data**, with the step name and its share of the stage bar. A critical failure keeps the dialog in an error state with Retry / Restart and the desktop never starts | `websocket.js` `_runLogonInitSteps` (see below) |
 | 4 | "Preparing MeletonFX…", logon dialog closes | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()` |
 | 5 | Solid colour only, then the small top-left startup window `#windowsStartupModal` | `desktopBoot.js` stage `session`, `websocket.js` `showWindowsStartupModal` |
 | 6 | Staged reveal while init steps run: wallpaper, icons, taskbar, windows, each appearing at once like Windows (no fade, no slide) | `desktopBoot.js` stages `settings` → `wallpaper` → `icons` → `taskbar` → `windows` |
@@ -71,12 +72,35 @@ windows close one by one, then a fade to black), then the full Melaton boot on `
 Browser refresh (F5 confirm) and the Connection Manager's Reload button stay plain reloads.
 Test: `npm run test:melaton-restart`.
 
+## Logon-phase init steps (Yozora #421)
+
+Application data is mission-critical for the desktop, so on a desktop first boot the init
+steps with priority ≤ `WebSocketClient.LOGON_INIT_PRIORITY_MAX` (1) run inside the logon
+dialog after the SW boot gate and authentication, before "Preparing MeletonFX…":
+0.45 user global settings, 0.46 start menu layout, 0.5 desktop settings, 0.55 icons,
+1 **Loading Application Data** (`critical: true`).
+
+- `_runLogonInitSteps` shows each step ("Loading Application Data...") with its share of
+  the stage bar; finished steps get `_logonPhase` and `_bootCompleted`.
+- A critical step that throws (`appInitSteps` rethrows `loadOptions` failures while
+  `wsClient.isLogonInitPhase()`, instead of its old confirmation dialog) leaves the logon
+  dialog in an error state: the failure text, **Retry** (`retryLogonInitSteps`: the steps
+  again, then the normal handoff) and **Restart** (`restartClientNavigate`, a full restart
+  through `/launch`). `_canCompletePreStartupHandoff` refuses while the error is up.
+- A non-critical step that throws is reported as before (application error) and the boot
+  goes on.
+- `executeInitSteps` then runs only the steps without `_logonPhase`; the small startup
+  window's progress is 0–100 % over those (`_initProgressRange`; the non-desktop toast keeps
+  its 25 % connection base). `updateCurrentInitStepProgress` reads the list being run.
+- Non-desktop starts and reconnects after boot are unchanged; `resetInitialization()` clears
+  the flags.
+
 ## Stage triggers
 
 | Stage | Triggered by | Body classes |
 |-------|--------------|--------------|
 | `session` | `begin()` after the logon handoff | `boot-staged`, `data-boot-stage="session"`; `boot-from-launch` removed |
-| `settings` | any init step with priority < 12 | — |
+| `settings` | any init step with priority < 12 (from 5 on the desktop; ≤ 1 ran in the logon dialog) | — |
 | `wallpaper` | step 12 `Loading Workspaces` finished (`onStepDone`) | `boot-reveal-wallpaper` |
 | `icons` | queued right after wallpaper | `boot-reveal-icons` |
 | `taskbar` | step 16 `Starting Taskbar` finished | `boot-reveal-taskbar` |

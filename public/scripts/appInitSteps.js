@@ -164,6 +164,8 @@ if (window.wsClient) {
     window.handleRuntimeCompileProgressBroadcast = handleRuntimeCompileProgressBroadcast;
     window.handleRuntimeCompileCompleteBroadcast = handleRuntimeCompileCompleteBroadcast;
 
+    // Priorities 0.45-1 run in the desktop logon dialog before the desktop starts
+    // (websocket.js _runLogonInitSteps, LOGON_INIT_PRIORITY_MAX); the rest in the startup window.
     // Priority 0.45: User global settings (startup behaviour, Atelier, etc.) from server config
     window.wsClient.registerInitStep(0.45, 'Loading user global settings', async () => {
         if (typeof loadUserGlobalSettingsFromServer === 'function') {
@@ -217,6 +219,12 @@ if (window.wsClient) {
             }
             console.error('❌ Critical: Failed to load application data:', error);
 
+            // Desktop: the logon dialog owns this failure (Retry / Restart there, websocket.js
+            // _runLogonInitSteps); the desktop does not start without application data
+            if (window.wsClient && typeof window.wsClient.isLogonInitPhase === 'function' && window.wsClient.isLogonInitPhase()) {
+                throw error;
+            }
+
             const confirmed = await showConfirmationDialog(
                 'Failed to load application data. This may be due to a server issue or connection problem.',
                 [
@@ -236,7 +244,7 @@ if (window.wsClient) {
                 return; // Don't continue with initialization
             }
         }
-    }, true);
+    }, true, { critical: true });
 
     window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
         // ensurePromptTokenizerForModel: public/scripts/comp/utilities.js

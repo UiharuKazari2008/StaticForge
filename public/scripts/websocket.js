@@ -657,6 +657,9 @@ class WebSocketClient {
 
     static PROGRESS_INIT_BASE = 25; // Base progress percentage for initialization
     static PROGRESS_INIT_STEPS = 75; // Progress percentage allocated to init steps
+    // Desktop: init steps up to this priority (through Loading Application Data) run in the
+    // logon dialog before the desktop starts (_runLogonInitSteps, Yozora #421)
+    static LOGON_INIT_PRIORITY_MAX = 1;
     /** /status start time (timestamp − uptime) moving by more than this after boot = server restarted */
     static SERVER_RESTART_DRIFT_MS = 5000;
     /** Longest the startup window may wait on the staged reveal after init completes */
@@ -1646,6 +1649,25 @@ class WebSocketClient {
         if (this.preStartupAuthHandlersSetup) return;
         this.preStartupAuthHandlersSetup = true;
 
+        // Logon init error state (_showLogonInitError): Retry the steps, or a full restart
+        const retryBtn = document.getElementById('desktopPreStartupRetryBtn');
+        const restartBtn = document.getElementById('desktopPreStartupRestartBtn');
+        if (retryBtn) {
+            retryBtn.addEventListener('click', () => {
+                this.retryLogonInitSteps();
+            });
+        }
+        if (restartBtn) {
+            restartBtn.addEventListener('click', () => {
+                // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
+                if (typeof restartClientNavigate === 'function') {
+                    restartClientNavigate();
+                } else {
+                    location.reload();
+                }
+            });
+        }
+
         const loginBtn = document.getElementById('desktopPreStartupLoginBtn');
         const passwordInput = document.getElementById('desktopPreStartupPassword');
         const usernameInput = document.getElementById('desktopPreStartupUsername');
@@ -1731,10 +1753,21 @@ class WebSocketClient {
 
         this._setupPreStartupModalHandlers();
 
-        if (typeof openModal === 'function') {
-            openModal(modal);
-        } else {
-            modal.classList.remove('hidden');
+        // Open only when it is not up yet: openModal also brings a window to the front, and
+        // re-raising on every status render buried prompts opened during the logon phase
+        // (the account-data dialog in loadOptions) so the boot waited on an invisible choice
+        const needsOpen = modal.classList.contains('hidden') || modal.classList.contains('closing');
+        if (needsOpen) {
+            if (typeof openModal === 'function') {
+                openModal(modal);
+            } else {
+                modal.classList.remove('hidden');
+            }
+            // A prompt already waiting for an answer stays above the logon dialog
+            const prompt = document.getElementById('confirmationDialog');
+            if (prompt && !prompt.classList.contains('hidden') && typeof bringModalToFront === 'function') {
+                bringModalToFront(prompt);
+            }
         }
         if (!modal.dataset.prestartupOpened) {
             this.preStartupMarqueeManualPause = false;
@@ -1758,20 +1791,37 @@ class WebSocketClient {
         ) {
             statusMessage = bootStatus?.stageMessage || 'Waiting for server…';
         }
+        // Logon-phase init steps (_runLogonInitSteps): the step on screen, or its failure
+        const logonStatus = this._logonInitStatus;
+        const logonError = this._logonInitError;
+        if (logonError) {
+            statusMessage = logonError.message;
+        } else if (logonStatus && !serverBooting) {
+            statusMessage = logonStatus.message;
+        }
 
         const authVisible = phase === 'auth';
         const isTasking = phase !== 'failed'
             && phase !== 'auth'
             && phase !== 'idle'
             && (!this.preStartupHandoffCompleted || beat !== 'connected' || statusMessage === 'Preparing MeletonFX...')
-            && !this.preStartupAuthBusy;
+            && !this.preStartupAuthBusy
+            && !logonError;
         const shouldPauseMarquee = !isTasking;
 
         statusEl.textContent = statusMessage;
         progressWrap.classList.toggle('paused', shouldPauseMarquee);
 
+        const initErrorSection = document.getElementById('desktopPreStartupInitError');
+        const initErrorText = document.getElementById('desktopPreStartupInitErrorText');
+        modal.classList.toggle('init-error', !!logonError);
+        if (initErrorSection) initErrorSection.classList.toggle('hidden', !logonError);
+        if (initErrorText) initErrorText.textContent = logonError ? logonError.detail : '';
+
         if (serverBooting) {
             this._updatePreStartupStageProgress(bootStatus.progressPercent, statusMessage);
+        } else if (logonStatus && !logonError) {
+            this._updatePreStartupStageProgress(logonStatus.percent, statusMessage);
         } else {
             this._updatePreStartupStageProgress(null, statusMessage);
         }
@@ -1934,10 +1984,118 @@ class WebSocketClient {
         });
     }
 
+    /** True while the logon-phase init steps run (appInitSteps rethrows critical errors to it). */
+    isLogonInitPhase() {
+        return this._logonInitRunning === true;
+    }
+
+    /** Init steps that belong to the logon dialog this boot (desktop first boot only). */
+    _logonInitSteps() {
+        if (!window.isDesktop || this.initializationCompleted || !this._shouldUsePreStartupDialog()) return [];
+        return this.initSteps.filter((step) => step.priority <= WebSocketClient.LOGON_INIT_PRIORITY_MAX);
+    }
+
+    /**
+     * Run the logon-phase init steps (through Loading Application Data) inside the logon
+     * dialog, each step and its share of the stage bar on screen. Returns false when the boot
+     * must stop here: disconnected, auth required, or a critical step failed (error state with
+     * Retry / Restart). Steps done earlier this boot are skipped unless runOnReconnect.
+     */
+    async _runLogonInitSteps() {
+        const steps = this._logonInitSteps();
+        if (!steps.length) return true;
+        if (this._logonInitRunning) return false;
+        this._logonInitRunning = true;
+        this._logonInitError = null;
+        try {
+            for (let i = 0; i < steps.length; i++) {
+                const step = steps[i];
+                if (this.connectionPhase === 'auth' || !this.isConnected()) return false;
+                if (step._logonPhase && !step.runOnReconnect) continue;
+                this._setLogonInitStatus(step.message, i / steps.length);
+                try {
+                    await step.stepFunction();
+                } catch (error) {
+                    if (this.connectionPhase === 'auth' || !this.isConnected()) return false;
+                    console.error(`❌ Logon init step "${step.message}" failed:`, error);
+                    if (step.critical) {
+                        this._showLogonInitError(step, error);
+                        return false;
+                    }
+                    // scripts/comp/fatalErrorBootstrap.js — presentDreamscapeApplicationError
+                    presentDreamscapeApplicationError(
+                        'Init step failed: ' + step.message,
+                        error && error.message ? error.message : String(error),
+                        error && error.stack ? error.stack : ''
+                    );
+                }
+                step._logonPhase = true;
+                step._bootCompleted = true;
+            }
+            this._setLogonInitStatus(null, 1);
+            return true;
+        } finally {
+            this._logonInitRunning = false;
+        }
+    }
+
+    _setLogonInitStatus(message, fraction) {
+        this._logonInitStatus = message
+            ? { message: `${message}...`, percent: Math.round(Math.max(0, Math.min(1, fraction)) * 100) }
+            : null;
+        if (this._shouldUsePreStartupDialog()) this._renderPreStartupDialog();
+    }
+
+    _showLogonInitError(step, error) {
+        const detail = error && error.message ? error.message : String(error || 'Unknown error');
+        this._logonInitStatus = null;
+        this._logonInitError = {
+            message: `MeletonFX could not finish "${step.message}".`,
+            detail
+        };
+        if (this._shouldUsePreStartupDialog()) this._renderPreStartupDialog();
+    }
+
+    /** Logon error state → Retry: run the logon steps again and continue the boot. */
+    async retryLogonInitSteps() {
+        if (!this._logonInitError || this._logonInitRunning) return;
+        this._logonInitError = null;
+        if (!(await this._runLogonInitSteps())) return;
+        await this._startAfterLogon();
+    }
+
+    /** After authentication (and the logon steps): hand off to the desktop, then the remaining init steps. */
+    async _startAfterLogon() {
+        await this._completePreStartupHandoff();
+        await this._completeConnectionDialHandoff();
+
+        if (!this.initializationCompleted) {
+            // surfaceBootRuntimeCompileErrorsFromStatus: public/scripts/appInitSteps.js
+            if (typeof surfaceBootRuntimeCompileErrorsFromStatus === 'function') {
+                surfaceBootRuntimeCompileErrorsFromStatus();
+            }
+            // Complete any remaining initialization steps (includes authentication)
+            // Now with RTT data available for dynamic timeout adjustment
+            this.executeInitSteps();
+        }
+    }
+
+    /**
+     * Progress range the init steps fill: the desktop's small startup window runs 0-100 over
+     * the steps it shows (the connection and logon steps finished in the logon dialog); the
+     * non-desktop toast keeps the connection base.
+     */
+    _initProgressRange() {
+        return window.isDesktop
+            ? { base: 0, span: 100 }
+            : { base: WebSocketClient.PROGRESS_INIT_BASE, span: WebSocketClient.PROGRESS_INIT_STEPS };
+    }
+
     _canCompletePreStartupHandoff() {
         return this._shouldUsePreStartupDialog()
             && this.connectionPhase !== 'auth'
-            && this.socketAuthenticated === true;
+            && this.socketAuthenticated === true
+            && !this._logonInitError;
     }
 
     async _completePreStartupHandoff() {
@@ -2941,16 +3099,16 @@ class WebSocketClient {
     // Allow initialization steps to update their progress dynamically
     updateCurrentInitStepProgress(subProgress = 0) {
         if (this.currentInitStep > 0 && this.totalInitSteps > 0) {
+            const range = this._initProgressRange();
             // Calculate base progress for current step
-            const baseProgressForStep = WebSocketClient.PROGRESS_INIT_BASE +
-                (((this.currentInitStep - 1) / this.totalInitSteps) * WebSocketClient.PROGRESS_INIT_STEPS);
+            const baseProgressForStep = range.base + (((this.currentInitStep - 1) / this.totalInitSteps) * range.span);
 
             // Add sub-progress within this step (0-1 range expected)
-            const stepRange = WebSocketClient.PROGRESS_INIT_STEPS / this.totalInitSteps;
+            const stepRange = range.span / this.totalInitSteps;
             const totalProgress = baseProgressForStep + (subProgress * stepRange);
 
-            // Get current step message
-            const currentStep = this.initSteps[this.currentInitStep - 1];
+            // Get current step message (from the list executeInitSteps is running)
+            const currentStep = (this._runStepList || this.initSteps)[this.currentInitStep - 1];
             if (currentStep) {
                 this.updateProgressNotification(currentStep.message, Math.min(totalProgress, 100));
             }
@@ -3194,12 +3352,14 @@ class WebSocketClient {
 
     registerInitStep(priority, message, stepFunction, runOnReconnect = false, options = {}) {
         const nonBlocking = options && options.nonBlocking === true;
+        // critical: a failure in the logon phase stops the boot there (Retry / Restart)
+        const critical = options && options.critical === true;
         // Check if step with same message already exists
         const existingStepIndex = this.initSteps.findIndex(step => step.message === message);
         if (existingStepIndex !== -1) {
-            this.initSteps[existingStepIndex] = { priority, message, stepFunction, runOnReconnect, nonBlocking };
+            this.initSteps[existingStepIndex] = { priority, message, stepFunction, runOnReconnect, nonBlocking, critical };
         } else {
-            this.initSteps.push({ priority, message, stepFunction, runOnReconnect, nonBlocking });
+            this.initSteps.push({ priority, message, stepFunction, runOnReconnect, nonBlocking, critical });
         }
 
         // Sort by priority
@@ -3330,8 +3490,12 @@ class WebSocketClient {
             return;
         }
 
+        // Steps the logon dialog already ran this boot are not part of the startup window
+        const runSteps = this.initSteps.filter((step) => !step._logonPhase);
+        this._runStepList = runSteps;
+        const range = this._initProgressRange();
         this.currentInitStep = 0;
-        this.totalInitSteps = this.initSteps.length;
+        this.totalInitSteps = runSteps.length;
         this.initStartupUiDismissed = false;
 
         try {
@@ -3339,7 +3503,7 @@ class WebSocketClient {
             if (window.bootUiDebug && window.bootUiDebug.active && window.isDesktop) {
                 await window.bootUiDebug.gate('startup-splash', { detail: 'Initializing...' });
             }
-            for (const step of this.initSteps) {
+            for (const step of runSteps) {
                 if (this.connectionPhase === 'auth' || !this.isConnected()) {
                     console.log('⚠️ Initialization paused/aborted: auth required or disconnected');
                     this.initializationLock = false;
@@ -3352,9 +3516,8 @@ class WebSocketClient {
                 }
                 this.currentInitStep++;
                 const stepSkipped = this.initializationCompleted && !step.runOnReconnect;
-                // Calculate progress: base percentage + steps percentage
-                const stepProgress = WebSocketClient.PROGRESS_INIT_BASE +
-                    ((this.currentInitStep / this.totalInitSteps) * WebSocketClient.PROGRESS_INIT_STEPS);
+                // Calculate progress over the steps this window runs
+                const stepProgress = range.base + ((this.currentInitStep / this.totalInitSteps) * range.span);
                 if (!step.nonBlocking) {
                     this.updateProgressNotification(step.message, stepProgress);
                 }
@@ -3768,18 +3931,12 @@ class WebSocketClient {
                     return;
                 }
 
-                await this._completePreStartupHandoff();
-                await this._completeConnectionDialHandoff();
-
-                if (!this.initializationCompleted) {
-                    // surfaceBootRuntimeCompileErrorsFromStatus: public/scripts/appInitSteps.js
-                    if (typeof surfaceBootRuntimeCompileErrorsFromStatus === 'function') {
-                        surfaceBootRuntimeCompileErrorsFromStatus();
-                    }
-                    // Complete any remaining initialization steps (includes authentication)
-                    // Now with RTT data available for dynamic timeout adjustment
-                    this.executeInitSteps();
+                // Desktop first boot: the mission-critical steps run in the logon dialog; a
+                // failure stays there (Retry / Restart) and the desktop never starts
+                if (!(await this._runLogonInitSteps())) {
+                    return;
                 }
+                await this._startAfterLogon();
             };
 
             this.ws.onmessage = (event) => {
@@ -4309,7 +4466,7 @@ class WebSocketClient {
     resetInitialization() {
         this.initializationCompleted = false;
         this.initializationLock = false; // Also reset the lock
-        this.initSteps.forEach((step) => { delete step._bootCompleted; });
+        this.initSteps.forEach((step) => { delete step._bootCompleted; delete step._logonPhase; });
     }
 
     /**

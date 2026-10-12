@@ -131,8 +131,23 @@
     transition: width 0.35s ease;
 }
 
-#desktopPreStartupModal.auth-active .desktop-prestartup-stage-progress {
+#desktopPreStartupModal.auth-active .desktop-prestartup-stage-progress,
+#desktopPreStartupModal.init-error .desktop-prestartup-stage-progress {
     display: none !important;
+}
+
+/* Logon init step failure (websocket.js _showLogonInitError): error text, Retry / Restart */
+#desktopPreStartupModal.init-error .desktop-prestartup-main {
+    min-height: 102px;
+}
+
+#desktopPreStartupModal .desktop-prestartup-init-error .desktop-prestartup-auth-error {
+    min-height: 0;
+    word-break: break-word;
+}
+
+#desktopPreStartupModal .desktop-prestartup-init-error .desktop-prestartup-auth-actions {
+    gap: 6px;
 }
 
 #desktopPreStartupModal .desktop-prestartup-auth {
