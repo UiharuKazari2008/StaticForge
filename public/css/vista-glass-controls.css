@@ -80,7 +80,8 @@ body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):
 }
 
 /* the toggle group inside the bar is a sunken well of the same glass */
-body:not(.windows-classic-theme) .main-menu-bar-outer .gallery-toggle-group {
+/* the same well for Studio's prompt tab selector (Yukimi: it must match the gallery's) */
+body:not(.windows-classic-theme) :is(.main-menu-bar-outer, #manualModal) .gallery-toggle-group {
     border-color: var(--vista-glass-edge);
     box-shadow: inset 0 1px 3px hsl(0 0% 0% / 45%), 0 1px 0 hsl(0 0% 100% / 14%);
 }
