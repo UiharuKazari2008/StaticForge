@@ -39,7 +39,35 @@ function promptNeedsFullSyntaxHighlight(text) {
     return /::|[{}[\]|]|<|>|!|\u2060/.test(text);
 }
 
+// Light prompt surface (Vista white text box, vista-glass-controls.css sets --prompt-surface:
+// light on the container): the highlight colours were tuned for a dark box, so near-white rings
+// and carets go mid-grey, strong fills are capped so dark text stays readable, and the solid
+// syntax chips become tints. Only colours change; the overlay's metrics are untouched.
+let emphasisLightSurface = false;
+
+function isLightPromptSurface(textarea) {
+    const host = textarea && textarea.closest ? textarea.closest('.prompt-textarea-container') : null;
+    if (!host || typeof getComputedStyle !== 'function') return false;
+    return getComputedStyle(host).getPropertyValue('--prompt-surface').trim() === 'light';
+}
+
+function lightSurfaceChannel(r, g, b) {
+    // near-white (the neutral 232 grey and friends) reads as nothing on white: use mid-grey
+    return (r > 195 && g > 195 && b > 195) ? [92, 92, 92] : [r, g, b];
+}
+
+function lightSurfaceChip(hex) {
+    if (!emphasisLightSurface || typeof hex !== 'string' || !/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, 0.42)`;
+}
+
 function getEmphasisHighlightCacheSignature(textarea, value) {
+    const surface = isLightPromptSurface(textarea) ? 'L\0' : '';
+    return surface + getEmphasisHighlightCacheSignatureForSurface(textarea, value);
+}
+
+function getEmphasisHighlightCacheSignatureForSurface(textarea, value) {
     // resolveEmphasisBagForTextarea: public/scripts/comp/emphasisGroupIdCodec.js
     const bag = typeof resolveEmphasisBagForTextarea === 'function'
         ? resolveEmphasisBagForTextarea(textarea)
@@ -231,7 +259,12 @@ function updateEmphasisHighlighting(textarea) {
         const bag = typeof resolveEmphasisBagForTextarea === 'function'
             ? resolveEmphasisBagForTextarea(textarea)
             : null;
-        overlay.innerHTML = highlightEmphasisInText(paintValue, bag);
+        emphasisLightSurface = isLightPromptSurface(textarea);
+        try {
+            overlay.innerHTML = highlightEmphasisInText(paintValue, bag);
+        } finally {
+            emphasisLightSurface = false;
+        }
     }
     invalidateEmphasisSpanIndex(overlay);
 
@@ -864,6 +897,15 @@ function highlightEmphasisInText(text, weightSource) {
     // Function to calculate dynamic colors based on weight
     function getEmphasisColors(weight) {
         const c = computeEmphasisWeightColor(weight);
+        if (emphasisLightSurface) {
+            const [br, bg, bb] = lightSurfaceChannel(c.borderR, c.borderG, c.borderB);
+            const [fr, fg, fb] = lightSurfaceChannel(c.r, c.g, c.b);
+            return {
+                background: `rgba(${fr}, ${fg}, ${fb}, ${Math.min(0.36, c.backgroundA * 0.6).toFixed(2)})`,
+                border: `rgba(${br}, ${bg}, ${bb}, ${Math.max(0.45, c.borderA).toFixed(2)})`,
+                caret: `rgb(${br}, ${bg}, ${bb})`
+            };
+        }
         return {
             background: `rgba(${c.r}, ${c.g}, ${c.b}, ${c.backgroundA.toFixed(2)})`,
             border: `rgba(${c.borderR}, ${c.borderG}, ${c.borderB}, ${Math.max(0.32, c.borderA).toFixed(2)})`,
@@ -872,12 +914,12 @@ function highlightEmphasisInText(text, weightSource) {
     }
 
     function ensureEmphasisGroupOutlineBorder(borderCss) {
-        return borderCss || 'rgba(232, 232, 232, 0.32)';
+        return borderCss || (emphasisLightSurface ? 'rgba(0, 0, 0, 0.25)' : 'rgba(232, 232, 232, 0.32)');
     }
 
     function groupHighlightStyle(colors) {
         const border = ensureEmphasisGroupOutlineBorder(colors.border);
-        const caret = colors.caret || 'rgb(232, 232, 232)';
+        const caret = colors.caret || (emphasisLightSurface ? 'rgb(92, 92, 92)' : 'rgb(232, 232, 232)');
         return `background: ${colors.background}; box-shadow: inset 0 0 0 1px ${border}; --emphasis-group-caret: ${caret};`;
     }
 
@@ -906,7 +948,9 @@ function highlightEmphasisInText(text, weightSource) {
             { border: 'rgba(75, 192, 192, 0.75)', background: 'rgba(75, 192, 192, 0.1)' },
             { border: 'rgba(153, 102, 255, 0.75)', background: 'rgba(153, 102, 255, 0.1)' },
             { border: 'rgba(255, 159, 64, 0.75)', background: 'rgba(255, 159, 64, 0.1)' },
-            { border: 'rgba(199, 199, 199, 0.75)', background: 'rgba(199, 199, 199, 0.1)' },
+            emphasisLightSurface
+                ? { border: 'rgba(110, 110, 110, 0.75)', background: 'rgba(110, 110, 110, 0.08)' }
+                : { border: 'rgba(199, 199, 199, 0.75)', background: 'rgba(199, 199, 199, 0.1)' },
             { border: 'rgba(83, 102, 255, 0.75)', background: 'rgba(83, 102, 255, 0.1)' }
         ];
         return colors[groupIndex % colors.length];
@@ -937,7 +981,7 @@ function highlightEmphasisInText(text, weightSource) {
     function applyReplacementSyntaxHighlights(chunk) {
         let out = chunk;
         out = out.replace(EMPHASIS_PATTERNS.bracketedIncrementing, (match) => {
-            const backgroundColor = '#e91e63';
+            const backgroundColor = lightSurfaceChip('#e91e63');
             const escapedMatch = match.replace(/!/g, '&#33;')
                 .replace(/\[/g, '&#91;')
                 .replace(/\]/g, '&#93;')
@@ -948,7 +992,7 @@ function highlightEmphasisInText(text, weightSource) {
             return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.bracketedReplacement, (match) => {
-            const backgroundColor = '#9c27b0';
+            const backgroundColor = lightSurfaceChip('#9c27b0');
             const escapedMatch = match.replace(/!/g, '&#33;')
                 .replace(/\[/g, '&#91;')
                 .replace(/\]/g, '&#93;')
@@ -958,22 +1002,22 @@ function highlightEmphasisInText(text, weightSource) {
             return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.incrementingSyntax, (match) => {
-            const backgroundColor = '#ff9800';
+            const backgroundColor = lightSurfaceChip('#ff9800');
             const escapedMatch = match.replace(/!/g, '&#33;');
             return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.pickCombineIncrementing, (match) => {
-            const backgroundColor = '#ff9800';
+            const backgroundColor = lightSurfaceChip('#ff9800');
             const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;').replace(/\+/g, '&#43;').replace(/#/g, '&#35;');
             return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.pickIncrementingSuffix, (match) => {
-            const backgroundColor = '#f57c00';
+            const backgroundColor = lightSurfaceChip('#f57c00');
             const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;').replace(/#/g, '&#35;');
             return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
         });
         out = out.replace(EMPHASIS_PATTERNS.pickReplacement, (match) => {
-            const backgroundColor = '#628a33';
+            const backgroundColor = lightSurfaceChip('#628a33');
             const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;').replace(/\+/g, '&#43;');
             return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
         });
@@ -1039,7 +1083,7 @@ function highlightEmphasisInText(text, weightSource) {
                                          .replace(/\//g, '&#47;');
 
         highlightedText = highlightedText.replace(block.id, 
-            `<span class="emphasis-highlight" style="background: ${DISABLE_SYNTAX_HIGHLIGHT.background}; box-shadow: inset 0 0 0 1px ${DISABLE_SYNTAX_HIGHLIGHT.border};">${escapedMatch}</span>`
+            `<span class="emphasis-highlight" style="background: ${DISABLE_SYNTAX_HIGHLIGHT.background}; box-shadow: inset 0 0 0 1px ${emphasisLightSurface ? 'rgba(110, 110, 110, 0.9)' : DISABLE_SYNTAX_HIGHLIGHT.border};">${escapedMatch}</span>`
         );
     });
 
@@ -1048,7 +1092,7 @@ function highlightEmphasisInText(text, weightSource) {
         const escapedMatch = block.original.replace(/!/g, '&#33;')
                                          .replace(/\//g, '&#47;');
         highlightedText = highlightedText.replace(block.id,
-            `<span class="emphasis-highlight" style="background: ${DISABLE_SYNTAX_HIGHLIGHT.background}; box-shadow: inset 0 0 0 1px ${DISABLE_SYNTAX_HIGHLIGHT.border};">${escapedMatch}</span>`
+            `<span class="emphasis-highlight" style="background: ${DISABLE_SYNTAX_HIGHLIGHT.background}; box-shadow: inset 0 0 0 1px ${emphasisLightSurface ? 'rgba(110, 110, 110, 0.9)' : DISABLE_SYNTAX_HIGHLIGHT.border};">${escapedMatch}</span>`
         );
     });
 

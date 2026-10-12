@@ -603,3 +603,58 @@ body:not(.windows-classic-theme) #characterAutocompleteOverlay > .character-auto
     text-shadow: 0 0 3px hsl(0 0% 0% / 80%);
 }
 
+/* ---------- Studio prompt boxes: a light Vista text box (#445) ----------
+   Yukimi: the prompt areas can be white with a very light black tint. The box you see is the
+   container (the textarea stays transparent: the emphasis overlay is painted beneath it), so
+   the light fill goes on the container, the text tokens flip to dark there, and
+   --prompt-surface: light tells emphasisHighlight.js to switch its highlight palette to the
+   light-surface variant (grey rings, capped fills, tinted syntax chips). Colours only: fonts,
+   padding and line-height stay identical, so the overlays keep lining up with the text.
+   The focused toolbar strip at the bottom stays dark glass with its own light text. */
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container {
+    --prompt-surface: light;
+    --text-primary: #141414;
+    --text-color: #141414;
+    --text-muted: #6d6d6d;
+    --primary-color-light: #1e395b;
+    background: rgb(247 247 247 / 96%);
+    border-color: hsl(0 0% 0% / 55%);
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 22%);
+    caret-color: #141414;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container.textarea-focused {
+    background: #fff;
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 18%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container textarea {
+    color: #141414;
+    caret-color: #141414;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container textarea::placeholder {
+    color: #7a7a7a;
+}
+
+/* highlight bits that are not inline-coloured */
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .emphasis-highlight {
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .search-highlight {
+    background: rgba(0, 140, 220, 0.22);
+    border-color: rgba(0, 110, 190, 0.65);
+}
+
+/* the toolbar strip keeps the dark glass and its own light text */
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .prompt-textarea-toolbar {
+    --text-primary: #ffffff;
+    --text-color: #ffffff;
+    --text-muted: #888888;
+    --primary-color-light: var(--btn-hover-border-primary, #ffcbb3);
+    background: linear-gradient(hsl(0 0% 100% / 10%), hsl(0 0% 100% / 3%) 50%, transparent 51%), var(--glass-layer-alt-5, rgb(32 32 32 / 92%));
+    border-top-color: hsl(0 0% 0% / 55%);
+    color: #fff;
+}
+
