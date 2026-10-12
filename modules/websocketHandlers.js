@@ -429,6 +429,7 @@ class WebSocketMessageHandlers {
             'max_enhance_image',
             'reroll_image',
             'expand_image',
+            'animate_image',
             'preview_expand_image_prompt',
             'reroll_expanded_image',
             'update_image_preset_bulk',
