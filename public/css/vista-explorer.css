@@ -1,0 +1,291 @@
+/* Cartograph as Vista's Windows Explorer (Yukimi, 2026-10-12: "update file explorer ... to be
+   IE"). Colours measured from a Vista Aero VM (Recycle Bin window): the command bar's teal
+   (#b6d2d9 to #488d9f over the top half, the fold at #156477, rising to #54a1ab, #777e85 above
+   and #0b3742 below), the white content (#fcfcfc), near-white column headers with the sorted
+   column pale blue, the details pane (#c8dde8 edge, #e3f3f8 to #ecfbfe).
+     caption     back / forward as Vista's blue glass orbs, the light address box with the
+                 refresh arrows in it, the search box with the magnifier
+     command bar the teal glass strip, bare buttons that light under the pointer
+     content     a light window: white file area, Vista's hot and selected item boxes
+     status bar  the details pane
+   explorerApplet.js and its markup are unchanged (app.html marks the window light). */
+
+body:not(.windows-classic-theme) #explorerModal {
+    --vista-ex-text: #000;
+}
+
+/* ---- caption: navigation orbs, address box, search box ---- */
+
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .naxt-nav-group {
+    gap: 2px;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn) {
+    width: 27px;
+    min-width: 27px;
+    height: 27px;
+    min-height: 27px;
+    padding: 0;
+    border: 1px solid hsl(216 80% 18%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 26%, hsl(205 100% 93%) 0, hsl(205 95% 80%) 18%, hsl(208 78% 58%) 48%, hsl(214 78% 38%) 78%, hsl(216 82% 27%) 100%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 55%), 0 1px 2px hsl(0 0% 0% / 45%);
+    color: #fff;
+    text-shadow: 0 1px 1px hsl(216 80% 15% / 80%);
+    transition: filter 0.2s, box-shadow 0.2s;
+}
+
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn) i {
+    color: #fff;
+    font-size: 12px;
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn):hover:not(:disabled) {
+        filter: brightness(1.15);
+        box-shadow: inset 0 1px 0 hsl(0 0% 100% / 60%), 0 0 6px 1px hsl(200 100% 70% / 60%), 0 1px 2px hsl(0 0% 0% / 45%);
+    }
+}
+
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn):disabled,
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn).disabled {
+    filter: grayscale(1) brightness(1.15);
+    opacity: 0.75;
+}
+
+/* Up: Vista has none; a bare glyph next to the orbs */
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerUpBtn {
+    min-width: 24px;
+    height: 27px;
+    padding: 0 4px;
+    background: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/* the address and search boxes: Vista's light boxes on the glass */
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(> #explorerAddressBar),
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(> #explorerSearchBar) {
+    height: 25px;
+    padding: 0;
+    background: linear-gradient(#fff, #f4f7fb);
+    border: 1px solid hsl(210 8% 45%);
+    border-radius: 2px;
+    box-shadow: inset 0 1px 1px hsl(0 0% 0% / 8%), 0 0 0 1px hsl(0 0% 100% / 25%);
+}
+
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar) {
+    height: 23px;
+    min-height: 0;
+    padding: 0 6px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    color: #000;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 12px;
+    text-shadow: none;
+}
+
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar)::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerSearchBar {
+    padding-right: 24px;
+    background: url('/static_images/vista-start/search-glyph.png') no-repeat right 6px center;
+}
+
+/* the refresh arrows sit in the address box's right end */
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerRefreshBtn {
+    width: 24px;
+    min-width: 24px;
+    height: 23px;
+    min-height: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-left: 1px solid hsl(210 10% 82%);
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerRefreshBtn i {
+    color: #2f7d3b;
+    font-size: 11px;
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerRefreshBtn:hover {
+        background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    }
+}
+
+/* ---- the command bar ---- */
+
+body:not(.windows-classic-theme) #explorerModal .explorer-actions-header.naxt-search-header {
+    --text-primary: #fff;
+    --text-color: #fff;
+    min-height: 32px;
+    padding: 0 6px;
+    background: linear-gradient(#b6d2d9, #85b3bf 8%, #488d9f 49%, #156477 50%, #1c677a 62%, #4b94a1 92%, #99c9cf 97%, #99c9cf);
+    border-top: 1px solid #777e85;
+    border-bottom: 1px solid #0b3742;
+    box-shadow: none;
+    color: #fff;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-actions-header :is(.button-group, .explorer-toolbar-right) {
+    gap: 1px;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-actions-header button:is(.btn-secondary, .btn-primary) {
+    min-height: 26px;
+    height: 26px;
+    padding: 0 7px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    color: #fff;
+    text-shadow: 0 1px 1px hsl(195 70% 12% / 70%);
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-actions-header button:is(.btn-secondary, .btn-primary) i {
+    color: #fff;
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) #explorerModal .explorer-actions-header button:is(.btn-secondary, .btn-primary):hover:not(:disabled) {
+        background: linear-gradient(hsl(0 0% 100% / 38%), hsl(0 0% 100% / 16%) 49%, hsl(0 0% 100% / 4%) 50%, hsl(0 0% 100% / 18%));
+        border-color: hsl(195 60% 12% / 70%);
+        box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 45%);
+    }
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-actions-header button:is(.btn-secondary, .btn-primary):active:not(:disabled) {
+    background: linear-gradient(hsl(195 60% 12% / 35%), hsl(195 60% 12% / 20%));
+    border-color: hsl(195 60% 12% / 80%);
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 45%);
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-actions-header button:disabled {
+    opacity: 0.45;
+}
+
+/* ---- the light window: white file area, Vista's column headers and item boxes ---- */
+
+body:not(.windows-classic-theme) #explorerModal .explorer-grid-host {
+    background: #fcfcfc;
+    color: var(--vista-ex-text);
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-details-header {
+    padding: 0 var(--spacing-sm);
+    background: linear-gradient(#fff, #f1f4f8);
+    border-bottom: 1px solid #d5d5d5;
+    color: #4c607a;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-weight: 400;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-details-header .explorer-details-sort-col {
+    height: 24px;
+    padding: 0 6px;
+    border-right: 1px solid #e2e5ea;
+    color: #4c607a;
+    font-weight: 400;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-details-header .explorer-details-sort-col.active {
+    background: #ecf5fc;
+    color: #000;
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) #explorerModal .explorer-details-header .explorer-details-sort-col:hover {
+        background: linear-gradient(#e3f4fc, #d3edf9);
+        color: #000;
+    }
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-item {
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: var(--vista-ex-text);
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) #explorerModal .explorer-item:hover {
+        background: linear-gradient(#fafbfd, #ebf3fd);
+        border-color: #b8d6fb;
+    }
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-item.selected {
+    background: linear-gradient(#dcebfc, #c1dcf3);
+    border-color: #84acdd;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-item.selected:hover {
+    border-color: #7da2ce;
+}
+
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-label, .explorer-item-list-label, .explorer-item-name) {
+    color: var(--vista-ex-text);
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+}
+
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-date, .explorer-item-type, .explorer-item-size) {
+    color: #6d6d6d;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon {
+    color: #2b5797;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-selection-marquee {
+    background: hsl(210 80% 60% / 18%);
+    border: 1px solid hsl(212 70% 55%);
+}
+
+/* ---- the status bar: Vista's details pane ---- */
+
+body:not(.windows-classic-theme) #explorerModal .explorer-statusbar {
+    min-height: 34px;
+    padding: 4px 10px;
+    background: linear-gradient(#e3f3f8, #ecfbfe 18%, #ecfbfe);
+    border-top: 1px solid #c8dde8;
+    color: #000;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 12px;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-statusbar .explorer-status-text {
+    color: #000;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-statusbar .explorer-view-toggle {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-statusbar .explorer-view-toggle i {
+    color: #2b5797;
+}
+
+body:not(.windows-classic-theme) #explorerModal .explorer-statusbar .explorer-view-toggle.active {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+}
