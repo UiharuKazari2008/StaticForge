@@ -1276,6 +1276,8 @@ class WebSocketClient {
                 : 0;
             title = `${name}\nAccess: Local and Internet`;
             if (uptimeMs > 0) title += `\nDuration: ${this.formatConnectionUptime(uptimeMs)}`;
+            // the network icon carries what the WebSocket status dot showed (hidden on the desktop)
+            if (this.currentRtt !== null && this.currentRtt !== undefined) title += `\nPing: ${Math.round(this.currentRtt)} ms`;
         } else if (this.connectionPhase === 'failed') {
             glyph.className = 'fas fa-link-slash';
             title = 'Not connected\nError connecting to domain controller';
@@ -2482,6 +2484,7 @@ class WebSocketClient {
         // Update ping warning tray icon
         this.updatePingWarningIcon();
         this._updateMelatonLinkIndicators();
+        this._updateModemTrayIcon();
     }
 
     /**

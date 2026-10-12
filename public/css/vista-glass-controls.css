@@ -379,12 +379,12 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 }
 
 /* ---------- tray icons: Vista's own (ripped from the VM, static_images/vista-icons/) ----------
-   pnidui.dll 24-26 / 19 (Vista's network icon: internet idle, sending, receiving,
-   disconnected; netshell's 16 px art is the XP set), netshell.dll 146 / 147 (arrows), imageres.dll 166 (search) and 26 (hard drive), user32.dll 1
+   pnidui.dll 24-26 / 19 / 30 (Vista's network icon: internet idle, sending, receiving,
+   disconnected, limited; netshell's 16 px art is the XP set), imageres.dll 166 (search) and 26 (hard drive), user32.dll 1
    (warning), explorer.exe 18 (Switch between windows). The Font Awesome glyph element stays
    (scripts still switch its classes for state); its glyph is hidden and the icon is painted
-   on it. Activity keeps working through the existing opacity rules. */
-body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph.fa-hard-drive, #modemTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone, #taskbarWebsocketIndicator .websocket-arrow-up, #taskbarWebsocketIndicator .websocket-arrow-down) {
+   on it. */
+body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph.fa-hard-drive, #modemTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone) {
     display: inline-block;
     width: 16px;
     height: 16px;
@@ -402,8 +402,6 @@ body.desktop-mode:not(.windows-classic-theme) #searchIndexingIndicator > i.fa-ma
 body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIconGlyph.fa-hard-drive { background-image: image-set(url("/static_images/vista-icons/drive-26-16.png") 1x, url("/static_images/vista-icons/drive-26-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #devWarningsTrayIcon > i.fa-triangle-exclamation { background-image: image-set(url("/static_images/vista-icons/warning-16.png") 1x, url("/static_images/vista-icons/warning-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #workspaceTrayIcon > i.fa-clone { background-image: image-set(url("/static_images/vista-icons/switch-windows-16.png") 1x, url("/static_images/vista-icons/switch-windows-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) #taskbarWebsocketIndicator .websocket-arrow-up { background-image: image-set(url("/static_images/vista-icons/net-arrow-up-16.png") 1x, url("/static_images/vista-icons/net-arrow-up-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) #taskbarWebsocketIndicator .websocket-arrow-down { background-image: image-set(url("/static_images/vista-icons/net-arrow-down-16.png") 1x, url("/static_images/vista-icons/net-arrow-down-32.png") 2x); }
 
 /* network: connected idle, down (failed / logon / not connected), connecting (screens trade);
    Vista lights one screen at a time, so a burst both ways shows sending */
@@ -419,11 +417,19 @@ body.desktop-mode:not(.windows-classic-theme) #modemTrayIconGlyph.fa-sync-alt {
     50% { background-image: image-set(url("/static_images/vista-icons/net-internet-recv-16.png") 1x, url("/static_images/vista-icons/net-internet-recv-32.png") 2x); }
 }
 
-/* traffic lights the screens, like Vista: a WebSocket burst shows both lit */
-body.desktop-mode:not(.windows-classic-theme) #taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active) #modemTrayIconGlyph.fa-globe,
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-down.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-recv-16.png") 1x, url("/static_images/vista-icons/net-internet-recv-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active):has(#taskbarWebsocketIndicator .websocket-arrow-down.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x); }
+/* The network icon is the last tray icon and carries everything the WebSocket indicator
+   showed (Yukimi): its arrows' traffic lights a screen (WebSocket burst, HTTP pulse or a live
+   stream: sending lights the front screen, receiving the back one; Vista lights one at a time),
+   a slow ping shows Vista's limited connectivity, the ping is in its tooltip and the old click
+   is "Network activity" in its menu. The indicator stays in the DOM (websocket.js drives it)
+   but is not shown on the desktop. */
+body.desktop-mode:not(.windows-classic-theme) #taskbarWebsocketIndicator {
+    display: none !important;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up))) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-down:is(.active, .active-http, .streaming-down:not(.streaming-stalled-down))) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-recv-16.png") 1x, url("/static_images/vista-icons/net-internet-recv-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWsStatus.ping-response-wait) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-limited-16.png") 1x, url("/static_images/vista-icons/net-limited-32.png") 2x); }
 
 /* ---------- Studio: Vista text fields, status insets, badges, prompt glass (#445) ----------
    Hover inputs (steps, guidance, seed, size, prints, … .hover-show) stay bare text at rest;

@@ -978,6 +978,8 @@
                         }
                     },
                     { icon: 'fas fa-sliders', text: 'Network and Server Center', action: 'network-center' },
+                    // the WebSocket indicator's old click: requests in Periscope's task list
+                    { icon: 'fas fa-arrow-right-arrow-left', text: 'Network activity', action: 'network-activity' },
                     { separator: true },
                     { icon: 'fas fa-stethoscope', text: 'Diagnose and repair', action: 'network-diagnose' }
                 ]
@@ -992,6 +994,8 @@
                     open('network');
                 } else if (action === 'network-diagnose') {
                     diagnose();
+                } else if (action === 'network-activity') {
+                    if (root.wsClient && typeof root.wsClient.openRequestsModal === 'function') root.wsClient.openRequestsModal();
                 }
             }
         });
