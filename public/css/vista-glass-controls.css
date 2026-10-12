@@ -245,3 +245,66 @@ body:not(.windows-classic-theme) :is(.round-button, .toolbar-btn, .toggle-btn):a
     transform: translateY(1px);
 }
 
+/* ---------- taskbar buttons, 1:1 with Vista (slice 5, #443) ----------
+   Measured on the Vista Aero VM (2026-10-12):
+   - rest: no fill of its own, the bar's glass shows through (glossy upper half, sharp edge
+     at the middle, near-black lower half); the button is a three-line bevel: light outer,
+     dark middle, light inner, 3 px corners.
+   - hover: the glass lights up (brighter upper half) and a blue-teal bloom rises from the
+     bottom edge (#3e6457 to #6fa7c4).
+   - active (the foreground window): pressed black glass, #000 top line, #474848 to
+     #323333 above the middle, #0c0d0d below.
+   Heights stay ours (Yukimi). Hover and active fade through the item's ::before layer. */
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item {
+    background: none;
+    border: 1px solid hsl(0 0% 0% / 78%);
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px hsl(0 0% 100% / 20%), inset 0 0 0 1px hsl(0 0% 100% / 16%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item::before {
+    inset: -1px;
+    border: 0;
+    border-radius: inherit;
+    background:
+        radial-gradient(ellipse 90% 75% at 50% 100%, hsl(197 55% 60% / 80%), hsl(170 35% 28% / 45%) 55%, transparent 80%),
+        linear-gradient(hsl(0 0% 100% / 26%), hsl(0 0% 100% / 12%) calc(50% - 1px), hsl(0 0% 100% / 4%) 50%, transparent 100%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 26%);
+    transition: opacity 0.2s linear;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item:hover:not(:disabled) {
+        background: none;
+        border-color: hsl(0 0% 0% / 78%);
+        box-shadow: 0 0 0 1px hsl(0 0% 100% / 28%), inset 0 0 0 1px hsl(0 0% 100% / 16%);
+    }
+
+    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item:hover:not(:disabled)::before {
+        opacity: 1;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active {
+    border-color: #000;
+    background: linear-gradient(#474848, #323333 calc(50% - 1px), #0c0d0d 50%, #0b0b0c 100%);
+    box-shadow: 0 0 0 1px hsl(0 0% 100% / 18%), inset 0 1px 0 hsl(0 0% 100% / 10%), inset 0 2px 4px hsl(0 0% 0% / 55%);
+    color: #fff;
+}
+
+/* the active button is pressed: no hover bloom on top of it */
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active::before {
+    opacity: 0;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active:hover:not(:disabled)::before {
+        opacity: 0.35;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item .taskbar-window-item-content {
+    color: #fff;
+    text-shadow: 0 0 4px hsl(0 0% 0% / 90%), 0 1px 1px hsl(0 0% 0% / 80%);
+}
+
