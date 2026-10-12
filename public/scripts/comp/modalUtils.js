@@ -6156,8 +6156,10 @@ const startMenuLaunchables = [
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
     { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'remote_desktop.png', text: 'Remote Desktop', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
     { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'dovecote.png', text: 'Dovecote', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
-    // Run-only launch (`planets`); the start menu entry is the Planets shell row below
-    { launchId: 'planet-switcher', icon: 'fas fa-planet-moon', imageIcon: 'planet.png', text: 'Planet Switcher', desktopOnly: true, appMenu: false, action: async () => { await openPlanetSwitcher(); } },
+    // Teleport (Yukimi, 2026-10-12): the planet switcher. All Programs, the places column under
+    // Workspaces, and the power menu where Vista has Switch User; the start menu lists no planets.
+    // Run: `planets`, `teleport`.
+    { launchId: 'planet-switcher', icon: 'fas fa-planet-moon', imageIcon: 'planet.png', text: 'Teleport', desktopOnly: true, appMenu: true, action: async () => { await openPlanetSwitcher(); } },
 ];
 
 /** Root start menu shell rows (folders + run). */
@@ -7054,6 +7056,7 @@ function getStartMenuPowerMenuItems() {
     const isAdmin = localStorage.getItem('userType') === 'admin';
     const desktop = isDesktopStartMenuEnvironment();
     const items = [
+        { id: 'teleport', text: 'Teleport', desktopOnly: true, action: () => runTeleportDirect() },
         { id: 'logout', text: 'Log Off', action: () => runLogoutDirect() },
         { id: 'lock', text: 'Lock', desktopOnly: true, action: () => runClientLockDirect() },
         { separator: true },
@@ -7064,6 +7067,12 @@ function getStartMenuPowerMenuItems() {
         { id: 'restart-dss', text: 'Restart Server', adminOnly: true, action: () => runRestartDssDirect() },
     ].filter((item) => !(item.desktopOnly && !desktop) && !(item.adminOnly && !isAdmin));
     return items.filter((item, i) => !item.separator || (i > 0 && i < items.length - 1 && !items[i - 1].separator));
+}
+
+/** Teleport (the planet switcher) from the power menu; the switcher closes the start menu itself. */
+function runTeleportDirect() {
+    const item = findStartMenuLaunchableById('planet-switcher');
+    if (item) launchStartMenuItem(item);
 }
 
 /** The arrow next to Lock: a click menu (contextMenu.js), rebuilt each time the menu is built. */
@@ -7095,6 +7104,9 @@ function handleStartMenuOutsideClick(e) {
     if (startMenu.contains(e.target)) return;
     if (e.target.closest('#taskbarStartBtn')) return;
     if (e.target.closest('.context-menu, .context-menu-overlay')) return;
+    // A click menu opened from inside (power arrow, Recent Items) opens on mousedown; its overlay
+    // takes the mouseup, so the click lands on the page body. Not a click outside.
+    if (typeof contextMenu !== 'undefined' && contextMenu && contextMenu.isOpen) return;
     closeStartMenu();
 }
 
@@ -7224,6 +7236,11 @@ function isStartMenuItemLaunchable(item) {
     return Boolean(item && isStartMenuEntryEnabled(item) && !(item.desktopOnly && !isDesktopStartMenuEnvironment()));
 }
 
+/** The start menu shows no planets (Teleport opens the switcher), even pinned or launched ones. */
+function isStartMenuListedItem(item) {
+    return isStartMenuItemLaunchable(item) && !isStartMenuPlanetLaunchId(item.launchId);
+}
+
 function getStartMenuFrequentItems() {
     const activity = readStartMenuActivity();
     const pinned = new Set(getStartMenuPinnedLaunchIds());
@@ -7233,7 +7250,7 @@ function getStartMenuFrequentItems() {
         if (out.length >= START_MENU_FREQUENT_LIMIT || seen.has(launchId) || pinned.has(launchId)) return;
         if (activity[launchId] && activity[launchId].hidden) return;
         const item = findStartMenuLaunchableById(launchId);
-        if (!isStartMenuItemLaunchable(item)) return;
+        if (!isStartMenuListedItem(item)) return;
         seen.add(launchId);
         out.push({ ...item, frequent: true });
     };
@@ -7251,7 +7268,7 @@ function getStartMenuRecentItems() {
         .filter((id) => (activity[id].t || 0) > 0)
         .sort((a, b) => activity[b].t - activity[a].t)
         .map((id) => findStartMenuLaunchableById(id))
-        .filter(isStartMenuItemLaunchable)
+        .filter(isStartMenuListedItem)
         .slice(0, START_MENU_RECENT_LIMIT);
 }
 
@@ -7278,13 +7295,7 @@ function getStartMenuAccessoriesItems() {
         .sort(byStartMenuLabel);
 }
 
-function getStartMenuPlanetsItems() {
-    const switcher = findStartMenuLaunchableById('planet-switcher');
-    return (switcher ? [switcher] : [])
-        .concat(buildPlanetsSubmenuItems().filter((item) => typeof item.action === 'function'));
-}
-
-/** Apps by name (or in the organizer's order), then the folders, like Vista's All Programs. */
+/** Apps by name (or in the organizer's order, Teleport among them), then the folders, like Vista's All Programs. */
 function getStartMenuProgramsTree() {
     const custom = Array.isArray(startMenuCustomLayout) && startMenuCustomLayout.length > 0;
     const entries = getOrganizedAllAppsMenuItems().map((item) => (item.isCustomFolder
@@ -7292,9 +7303,6 @@ function getStartMenuProgramsTree() {
         : item));
     if (!custom) entries.sort(byStartMenuLabel);
     entries.push({ folder: true, folderId: 'accessories', text: 'Accessories', children: getStartMenuAccessoriesItems() });
-    if (isDesktopStartMenuEnvironment()) {
-        entries.push({ folder: true, folderId: 'planets', text: 'Planets', children: getStartMenuPlanetsItems() });
-    }
     return entries.filter((entry) => !entry.folder || entry.children.length > 0);
 }
 
@@ -7318,7 +7326,7 @@ function toggleStartMenuFolder(folderId) {
 
 // ---- rows ----
 
-/** The 48 px picture a row puts in the account frame while hovered (Vista swaps it the same way). */
+/** The icon a hovered place shows instead of the account frame (Vista: the frame goes, the item's icon fills its spot). */
 function startMenuItemPictureUrl(item) {
     if (!item) return '';
     if (item.image) return item.image;
@@ -7390,7 +7398,6 @@ function createStartMenuListRow(item, kind, options = {}) {
         });
         if (item.launchId && kind !== 'result') attachStartMenuItemContextMenu(row, item);
     }
-    wireStartMenuTileHover(row, item);
     return row;
 }
 
@@ -7402,7 +7409,7 @@ function createStartMenuSeparator(className = 'start-menu-separator') {
 }
 
 function renderStartMenuHome(list) {
-    const pinned = getStartMenuPinnedItems();
+    const pinned = getStartMenuPinnedItems().filter(isStartMenuListedItem);
     pinned.forEach((item) => list.appendChild(createStartMenuListRow(item, 'pinned')));
     const frequent = getStartMenuFrequentItems();
     if (pinned.length && frequent.length) list.appendChild(createStartMenuSeparator());
@@ -7567,7 +7574,8 @@ function getStartMenuPlaces() {
         { id: 'cartograph', text: 'Cartograph', imageIcon: 'explorer.png', action: launch('explorer') },
         { id: 'gallery', text: 'Gallery', imageIcon: 'art.png', desktopOnly: true, action: launch('workspace') },
         { id: 'notion', text: 'Notion', imageIcon: 'notebook.png', action: launch('notebook') },
-        { id: 'workspaces', text: 'Workspaces', imageIcon: 'planet.png', desktopOnly: true, action: () => openPlanetSwitcher() },
+        { id: 'workspaces', text: 'Workspaces', imageIcon: 'planet.png', action: () => showWorkspaceManagementModal() },
+        { id: 'teleport', text: 'Teleport', imageIcon: 'planet.png', desktopOnly: true, action: launch('planet-switcher') },
         { separator: true },
         { id: 'recent', text: 'Recent Items', flyout: true },
         { id: 'network', text: 'Network and Server Center', image: '/static_images/melaton/net-globe.png', action: controlPanel('network') },
@@ -7622,6 +7630,7 @@ function renderStartMenuPlaces() {
         row.setAttribute('role', 'menuitem');
         row.tabIndex = -1;
         row.textContent = place.text;
+        row.title = place.text;
         if (place.flyout) {
             attachStartMenuRecentItemsMenu(row);
         } else {

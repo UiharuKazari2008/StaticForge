@@ -1463,6 +1463,11 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
 #startMenu.start-menu {
     --start-menu-h: min(635px, calc(100vh - var(--taskbar-height, 35px) - 48px));
     --start-menu-pane-w: 318px;
+    --start-menu-places-w: 181px;
+    /* Vista's glass lets about half the backdrop through at the top (measured over a white
+       window in the VM: #717376 there), darkening to near black at the power buttons */
+    --start-menu-shade: linear-gradient(to bottom, hsl(0 0% 0% / 18%) 0%, hsl(0 0% 0% / 55%) 38%, hsl(210 20% 2% / 88%) 72%, hsl(210 30% 2% / 95%) 100%);
+    --start-menu-tint: color-mix(in srgb, var(--glass-windows-bg, hsl(0 0% 20% / 75%)) 55%, transparent);
     --start-menu-pad: 7px;
     --start-menu-font: 'Segoe UI', Tahoma, var(--font-family, sans-serif);
     position: fixed;
@@ -1474,8 +1479,8 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     max-width: 100vw;
     height: var(--start-menu-h);
     display: grid;
-    /* the places column is as wide as its longest name, like Vista's */
-    grid-template-columns: var(--start-menu-pane-w) minmax(181px, max-content);
+    /* Vista's fixed places column; a name that does not fit gets an ellipsis */
+    grid-template-columns: var(--start-menu-pane-w) var(--start-menu-places-w);
     grid-template-rows: minmax(0, 1fr) 30px;
     grid-template-areas:
         "pane places"
@@ -1486,9 +1491,9 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     /* Vista: the frame glass darkening to near black toward the power buttons, the Aero
        streaks pinned to the screen (aero-glass.css) */
     background:
-        linear-gradient(to bottom, hsl(0 0% 0% / 42%) 0%, hsl(0 0% 0% / 78%) 38%, hsl(210 20% 2% / 94%) 72%, hsl(210 30% 2% / 97%) 100%),
+        var(--start-menu-shade),
         var(--aero-streaks, none),
-        linear-gradient(var(--glass-windows-bg, hsl(0 0% 20% / 75%)), var(--glass-windows-bg, hsl(0 0% 20% / 75%)));
+        linear-gradient(var(--start-menu-tint), var(--start-menu-tint));
     background-size:
         100% 100%,
         var(--aero-vw, 100vw) var(--aero-vh, 100vh),
@@ -1517,9 +1522,9 @@ html[data-glass="frosted"] #startMenu.start-menu {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background:
-        linear-gradient(to bottom, hsl(0 0% 0% / 42%) 0%, hsl(0 0% 0% / 78%) 38%, hsl(210 20% 2% / 94%) 72%, hsl(210 30% 2% / 97%) 100%),
+        var(--start-menu-shade),
         var(--aero-streaks, none),
-        linear-gradient(var(--glass-windows-bg, hsl(0 0% 20% / 75%)), var(--glass-windows-bg, hsl(0 0% 20% / 75%))),
+        linear-gradient(var(--start-menu-tint), var(--start-menu-tint)),
         var(--aero-wallpaper-light, var(--aero-wallpaper, none));
     background-size:
         100% 100%,
@@ -1781,7 +1786,8 @@ html[data-glass="basic"] #startMenu.start-menu {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding: 39px 7px 0 6px;
+    /* the first row sits 15 px under the account frame (Vista, 12 px at 96 DPI) */
+    padding: 46px 7px 0 6px;
     overflow: hidden;
 }
 
@@ -1789,14 +1795,14 @@ html[data-glass="basic"] #startMenu.start-menu {
     position: relative;
     flex: none;
     box-sizing: border-box;
-    display: flex;
-    align-items: center;
+    display: block;
     height: 42px;
     margin: 1px 0;
     padding: 0 18px 0 10px;
     border: 1px solid transparent;
     border-radius: 3px;
     color: #fff;
+    line-height: 40px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1834,14 +1840,17 @@ html[data-glass="basic"] #startMenu.start-menu {
     background: linear-gradient(to bottom, hsl(0 0% 0% / 50%) 0 1px, hsl(0 0% 100% / 14%) 1px 2px);
 }
 
-/* ---- the account picture over the top edge ---- */
+/* ---- the account picture over the top edge ----
+   Vista's start menu frame (authui.dll 11201) at 120 DPI: 80 px, the picture 60 px in its
+   opening, overhanging the menu top by 34 px. A hovered place hides the frame and shows its
+   own icon at the frame's size instead (Vista; left-pane rows leave the picture alone). */
 
 .start-menu-user-tile {
     position: absolute;
-    top: -27px;
-    left: calc(var(--start-menu-pad) + var(--start-menu-pane-w) + (100% - var(--start-menu-pad) - var(--start-menu-pane-w) - 64px) / 2);
-    width: 64px;
-    height: 64px;
+    top: -34px;
+    left: calc(var(--start-menu-pad) + var(--start-menu-pane-w) + (100% - var(--start-menu-pad) - var(--start-menu-pane-w) - 80px) / 2);
+    width: 80px;
+    height: 80px;
     pointer-events: none;
 }
 
@@ -1849,23 +1858,27 @@ html[data-glass="basic"] #startMenu.start-menu {
     content: '';
     position: absolute;
     inset: 0;
-    background: url('/static_images/vista-start/user-frame.png') no-repeat;
+    background: url('/static_images/vista-start/user-frame.png') no-repeat 0 0 / 80px 80px;
+    transition: opacity 0.2s ease;
 }
 
 .start-menu-user-tile img {
     position: absolute;
-    left: 7px;
-    top: 7px;
-    width: 48px;
-    height: 48px;
     transition: opacity 0.2s ease;
 }
 
 .start-menu-user-tile-picture {
+    left: 9px;
+    top: 9px;
+    width: 60px;
+    height: 60px;
     object-fit: cover;
 }
 
 .start-menu-user-tile-item {
+    inset: 0;
+    width: 80px;
+    height: 80px;
     object-fit: contain;
     opacity: 0;
 }
@@ -1874,7 +1887,8 @@ html[data-glass="basic"] #startMenu.start-menu {
     opacity: 1;
 }
 
-.start-menu-user-tile.show-item .start-menu-user-tile-picture {
+.start-menu-user-tile.show-item .start-menu-user-tile-picture,
+.start-menu-user-tile.show-item::after {
     opacity: 0;
 }
 

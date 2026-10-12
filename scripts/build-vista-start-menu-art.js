@@ -10,6 +10,7 @@
  *   arrow-glyph.png                            aero.msstyles IMAGE 713: the power menu arrow, 3 x 9 px
  *                                              states (rest, hover, pressed)
  *   user-frame.png                             authui.dll IMAGE 11201: the start menu account frame
+ *                                              (Vista ships it at 96 DPI only and scales it: 64 -> 80 px here)
  *
  * Each button becomes one sprite with its three states stacked (rest, hover, pressed), so CSS
  * moves background-position only. The arrow button Vista draws next to Lock is not in the strip;
@@ -110,7 +111,6 @@ async function main() {
 
     // the rest are used as they are
     const copies = {
-        'user-frame.png': 'user-frame.png',
         'usertile-kitten.png': 'usertile-kitten.png',
         'search-glyph.png': 'search-glyph.png',
         'programs-arrow-a.png': 'programs-arrow.png',
@@ -119,7 +119,9 @@ async function main() {
         'folder-40.png': 'folder-40.png'
     };
     for (const [from, to] of Object.entries(copies)) fs.copyFileSync(path.join(PARTS, from), path.join(OUT, to));
-    console.log(`wrote ${path.relative(ROOT, OUT)}: shutdown, lock, arrow sprites + ${Object.keys(copies).length} parts`);
+    // the account frame at 120 DPI (the menu's scale): 64 px x 1.25, the picture opening 48 -> 60 px
+    await sharp(path.join(PARTS, 'user-frame.png')).resize(80, 80, { kernel: 'lanczos3' }).png({ compressionLevel: 9 }).toFile(path.join(OUT, 'user-frame.png'));
+    console.log(`wrote ${path.relative(ROOT, OUT)}: shutdown, lock, arrow sprites + ${Object.keys(copies).length} parts + the 120 DPI account frame`);
 }
 
 main().catch((err) => {
