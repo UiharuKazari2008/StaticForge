@@ -40,6 +40,41 @@ class ReferenceMetadataDatabase {
         }
     }
 
+    /**
+     * Delete metadata for multiple references in a single transaction
+     * @param {Array<string>} hashes - Array of reference hashes
+     * @returns {number} Number of references successfully deleted
+     */
+    deleteMetadataBatch(hashes) {
+        // JULES: Batch metadata deletion
+        if (!hashes || !hashes.length) return 0;
+        try {
+            const metadataStmt = this.db.prepare(`DELETE FROM reference_metadata WHERE hash = ?`);
+            const fileCacheStmt = this.db.prepare(`DELETE FROM reference_file_cache WHERE hash = ?`);
+            const workspaceOwnershipStmt = this.db.prepare(`DELETE FROM reference_workspace_ownership WHERE hash = ?`);
+
+            const deleteTx = this.db.transaction((batch) => {
+                let deletedCount = 0;
+                for (const hash of batch) {
+                    const mRes = metadataStmt.run(hash);
+                    const fRes = fileCacheStmt.run(hash);
+                    const wRes = workspaceOwnershipStmt.run(hash);
+
+                    if (mRes.changes > 0 || fRes.changes > 0 || wRes.changes > 0) {
+                        deletedCount++;
+                        this._recordReferenceChangelog('reference_metadata', hash, 'DELETE', { hash });
+                    }
+                }
+                return deletedCount;
+            });
+
+            return deleteTx(hashes);
+        } catch (error) {
+            console.error('Error batch deleting reference metadata:', error);
+            throw error;
+        }
+    }
+
     // modules/replicationChangelog.js — reference_metadata.db uses better-sqlite3, not sqliteAsyncWrapper
     _recordReferenceChangelog(tableName, rowKey, operation, payload = null) {
         let replicationChangelog;

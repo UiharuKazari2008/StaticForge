@@ -1149,9 +1149,10 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
                     allFilenamesToRemoveFromWorkspaces.add(fn);
                 }
 
-                // Delete reference metadata for deleted files
-                for (const filename of filenamesToRemoveFromWorkspaces) {
-                    handlers.globalResources.getReferenceMetadataDatabase().deleteMetadata(filename);
+                // JULES: Delete reference metadata for deleted files using batch method
+                const fnsToRemoveArray = Array.from(filenamesToRemoveFromWorkspaces);
+                if (fnsToRemoveArray.length > 0) {
+                    handlers.globalResources.getReferenceMetadataDatabase().deleteMetadataBatch(fnsToRemoveArray);
                 }
 
                 // Delete all related files
@@ -1451,9 +1452,9 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
                     // Remove metadata from cache
                     await handlers.globalResources.getMetadataDatabase().removeImageMetadata(filenamesToRemoveFromWorkspaces);
 
-                    // Delete reference metadata for moved files
-                    for (const fn of filenamesToRemoveFromWorkspaces) {
-                        handlers.globalResources.getReferenceMetadataDatabase().deleteMetadata(fn);
+                    // JULES: Delete reference metadata for moved files using batch method
+                    if (filenamesToRemoveFromWorkspaces.length > 0) {
+                        handlers.globalResources.getReferenceMetadataDatabase().deleteMetadataBatch(Array.from(filenamesToRemoveFromWorkspaces));
                     }
                 }
 
