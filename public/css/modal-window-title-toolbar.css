@@ -1522,26 +1522,26 @@ body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed)))
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-minimize {
-    width: 12px;
-    height: 5px;
+    width: 15px;
+    height: 6px;
     background-image: url("/static_images/window-controls/vista-minimize.svg");
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-maximize {
-    width: 12px;
-    height: 10px;
+    width: 15px;
+    height: 12px;
     background-image: url("/static_images/window-controls/vista-maximize.svg");
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-restore {
-    width: 12px;
-    height: 12px;
+    width: 15px;
+    height: 15px;
     background-image: url("/static_images/window-controls/vista-restore.svg");
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-xmark-large {
-    width: 11px;
-    height: 10px;
+    width: 14px;
+    height: 12px;
     background-image: url("/static_images/window-controls/vista-close.svg");
 }
 
@@ -1591,15 +1591,16 @@ body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.clos
         linear-gradient(#d3ab95, #a0503a 25% 50%, #7d0d01 50%);
 }
 
-/* Caption button size (Yukimi: the buttons were too tall for the caption). Vista Aero
-   measured: an 18 px row hanging from the top edge, minimize / maximize 26 px and Close
-   43 px wide (shared borders included); glyphs sit 3 px above the bottom border. The whole
-   cluster takes the height, so app buttons and indicators (Studio's toggles) line up.
-   Desktop only (touch layouts keep 24 px); the fullscreen Studio editor keeps its own. */
+/* Caption button size. Vista Aero at 96 DPI is an 18 px row, 26 / 26 / 43 wide (measured);
+   that read as tiny next to our caption fonts (Yukimi), so the buttons use Vista's 125 %
+   (120 DPI) proportions: a 22 px row hanging from the top edge, minimize / maximize 32 px,
+   Close 53 px, glyphs (redrawn on that grid, 1 px outline) 4 px above the bottom border.
+   The whole cluster takes the height, so app buttons and indicators (Studio's toggles)
+   line up. Desktop only (touch layouts keep 24 px); the fullscreen Studio editor keeps its own. */
 body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button,
 body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > .custom-dropdown > button {
-    min-height: 18px;
-    height: 18px;
+    min-height: 22px;
+    height: 22px;
     padding-top: 0;
     padding-bottom: 0;
     line-height: 1;
@@ -1609,13 +1610,13 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not
     display: inline-flex;
     align-items: flex-end;
     justify-content: center;
-    min-width: 26px;
-    width: 26px;
-    padding: 0 0 3px;
+    min-width: 32px;
+    width: 32px;
+    padding: 0 0 4px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button:is(.close-btn, .modal-close):has(> i.fa-xmark-large) {
-    min-width: 43px;
-    width: 43px;
+    min-width: 53px;
+    width: 53px;
 }
 
