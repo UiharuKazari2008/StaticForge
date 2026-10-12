@@ -2225,14 +2225,19 @@ body.desktop-mode #manualModal #windowListEditorBtn {
     display: inline-flex !important;
 }
 
-/* Desktop Wallpaper */
+/* Desktop Wallpaper. A workspace with no wallpaper of its own shows the default (Yozora #424);
+   the teal boot / lock covers are separate and stay. */
+:root {
+    --desktop-wallpaper-default: url('/static_images/wallpapers/aurora.webp');
+}
+
 .desktop-wallpaper {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-image: var(--desktop-wallpaper, none);
+    background-image: var(--desktop-wallpaper, var(--desktop-wallpaper-default, none));
     background-position: var(--desktop-wallpaper-position, center);
     background-size: cover;
     background-repeat: no-repeat;

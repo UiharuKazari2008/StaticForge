@@ -73,8 +73,19 @@ upscaled:
 | `aurora-plain.webp` | The same aurora without the logo |
 | `aurora-blue.webp`, `aurora-dusk.webp`, `aurora-emerald.webp` | The other palettes, offered as default wallpapers to pick from |
 
-Wiring them in as the fallback for workspaces with no wallpaper and as picker choices is
-part of S4.
+**Default** (Yozora #424): `desktop-shell.css` defines `--desktop-wallpaper-default` (the
+`aurora.webp` URL) on `:root`, and `.desktop-wallpaper`, the workstation-lock cover and the
+Aero frosted glass (`aeroGlass.readWallpaperUrl`) use it whenever a workspace has no
+wallpaper (the server then emits no `--desktop-wallpaper` for it). Nothing is stored for the
+default. The teal boot / restart-lock cover stays as it is: it is the "you are not at your
+desktop" screen.
+
+**Personalize → Select**: the old "Custom" button is a click menu (`contextMenu`):
+**Upload...** (the existing custom upload) and **Stock** ▸ Melaton Aurora (default), Aurora,
+Blue Aurora, Dusk Aurora, Emerald Aurora (`STOCK_DESKTOP_WALLPAPERS` in `modalUtils.js`; the
+current one is highlighted). A stock pick sets the preview and saves on Save as
+`url:/static_images/wallpapers/<file>`; "default" clears the workspace's own wallpaper. The
+preview shows the default when the workspace has none.
 
 ## Restart (Yozora #420)
 

@@ -8584,6 +8584,18 @@ function getBackgroundPositionValue() {
 }
 
 // Update the preview
+// Stock wallpapers (public/static_images/wallpapers, Yozora #424). A workspace with no
+// wallpaper shows the default through the --desktop-wallpaper-default fallback (desktop-shell.css);
+// picking "default" clears the workspace's own wallpaper.
+const DEFAULT_DESKTOP_WALLPAPER_URL = '/static_images/wallpapers/aurora.webp';
+const STOCK_DESKTOP_WALLPAPERS = [
+    { name: 'Melaton Aurora (default)', url: null },
+    { name: 'Aurora', url: '/static_images/wallpapers/aurora-plain.webp' },
+    { name: 'Blue Aurora', url: '/static_images/wallpapers/aurora-blue.webp' },
+    { name: 'Dusk Aurora', url: '/static_images/wallpapers/aurora-dusk.webp' },
+    { name: 'Emerald Aurora', url: '/static_images/wallpapers/aurora-emerald.webp' }
+];
+
 function updateDesktopSettingsPreview() {
     const preview = document.getElementById('desktopSettingsPreview');
     if (!preview) {
@@ -8597,9 +8609,45 @@ function updateDesktopSettingsPreview() {
         preview.style.backgroundImage = `url('${desktopSettingsState.wallpaperUrl}')`;
         preview.style.backgroundPosition = position;
     } else {
-        preview.style.backgroundImage = 'none';
+        // No wallpaper of its own: the workspace shows the default (as the desktop does)
+        preview.style.backgroundImage = `url('${DEFAULT_DESKTOP_WALLPAPER_URL}')`;
         preview.style.backgroundPosition = 'center center';
     }
+}
+
+/** Personalize → Select: a click menu with Upload and Stock ▸ the stock wallpapers. */
+function buildWallpaperSelectMenuConfig(uploadInput) {
+    return {
+        position: 'anchor',
+        anchorAlign: 'start',
+        sections: [{
+            type: 'list',
+            items: [
+                { icon: 'fas fa-upload', text: 'Upload...', action: 'desktop-wallpaper-upload' },
+                {
+                    icon: 'fas fa-images',
+                    text: 'Stock',
+                    optionsfn: () => STOCK_DESKTOP_WALLPAPERS.map((wallpaper) => ({
+                        icon: 'fas fa-image',
+                        text: wallpaper.name,
+                        action: 'desktop-wallpaper-stock',
+                        stockUrl: wallpaper.url,
+                        highlighted: (desktopSettingsState.wallpaperUrl || null) === wallpaper.url
+                    }))
+                }
+            ]
+        }],
+        onAction(action, target, item) {
+            if (action === 'desktop-wallpaper-upload') {
+                uploadInput.click();
+                return;
+            }
+            if (action === 'desktop-wallpaper-stock') {
+                desktopSettingsState.wallpaperUrl = item && item.stockUrl ? item.stockUrl : null;
+                updateDesktopSettingsPreview();
+            }
+        }
+    };
 }
 
 // Initialize modal (dropdowns and button handlers)
@@ -9006,9 +9054,8 @@ function setupDesktopSettingsButtonHandlers() {
         const newUploadInput = uploadInput.cloneNode(true);
         uploadInput.parentNode.replaceChild(newUploadInput, uploadInput);
 
-        newUploadBtn.addEventListener('click', () => {
-            newUploadInput.click();
-        });
+        // Select: Upload / Stock (contextMenu.js click menu)
+        contextMenu.attachClickMenuToElement(newUploadBtn, buildWallpaperSelectMenuConfig(newUploadInput));
 
         newUploadInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];

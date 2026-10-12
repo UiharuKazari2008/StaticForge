@@ -461,7 +461,7 @@ body.desktop-mode.workstation-locked::before {
     z-index: 2147482000;
     pointer-events: auto;
     background-color: #000;
-    background-image: var(--desktop-wallpaper, none);
+    background-image: var(--desktop-wallpaper, var(--desktop-wallpaper-default, none));
     background-position: var(--desktop-wallpaper-position, center);
     background-size: cover;
     background-repeat: no-repeat;

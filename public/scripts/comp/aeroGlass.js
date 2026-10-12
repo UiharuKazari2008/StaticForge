@@ -292,7 +292,8 @@
     }
 
     function readWallpaperUrl() {
-        return parseCssUrl(readComputedVar('--desktop-wallpaper'));
+        // A workspace without its own wallpaper shows the default (desktop-shell.css)
+        return parseCssUrl(readComputedVar('--desktop-wallpaper') || readComputedVar('--desktop-wallpaper-default'));
     }
 
     function readWallpaperPosition() {
