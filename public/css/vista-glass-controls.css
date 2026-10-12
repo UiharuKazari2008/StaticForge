@@ -381,10 +381,13 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 /* ---------- tray icons: Vista's own (ripped from the VM, static_images/vista-icons/) ----------
    pnidui.dll 24-26 / 19 / 30 (Vista's network icon: internet idle, sending, receiving,
    disconnected, limited; netshell's 16 px art is the XP set), imageres.dll 166 (search) and 26 (hard drive), user32.dll 1
-   (warning), explorer.exe 18 (Switch between windows). The Font Awesome glyph element stays
+   (warning), plus icons generated for tray items Vista never had, with Vista's own icons as
+   style references (scripts/generate-vista-tray-icons.js): workspace switcher, service
+   worker, developer warnings, Account Manager (rolodex), Dovecote, Remote Access. The Font
+   Awesome glyph element stays
    (scripts still switch its classes for state); its glyph is hidden and the icon is painted
    on it. */
-body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph.fa-hard-drive, #modemTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone) {
+body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph.fa-hard-drive, #modemTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone, #walletTrayIcon > i.fa-wallet, #dovecoteTrayIcon > i.fa-envelope, #mcpActivityIndicator > i.fa-screencast) {
     display: inline-block;
     width: 16px;
     height: 16px;
@@ -399,9 +402,25 @@ body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.f
 }
 
 body.desktop-mode:not(.windows-classic-theme) #searchIndexingIndicator > i.fa-magnifying-glass { background-image: image-set(url("/static_images/vista-icons/search-16.png") 1x, url("/static_images/vista-icons/search-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIconGlyph.fa-hard-drive { background-image: image-set(url("/static_images/vista-icons/drive-26-16.png") 1x, url("/static_images/vista-icons/drive-26-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) #devWarningsTrayIcon > i.fa-triangle-exclamation { background-image: image-set(url("/static_images/vista-icons/warning-16.png") 1x, url("/static_images/vista-icons/warning-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) #workspaceTrayIcon > i.fa-clone { background-image: image-set(url("/static_images/vista-icons/switch-windows-16.png") 1x, url("/static_images/vista-icons/switch-windows-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIconGlyph.fa-hard-drive { background-image: image-set(url("/static_images/vista-icons/service-worker-16.png") 1x, url("/static_images/vista-icons/service-worker-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #devWarningsTrayIcon > i.fa-triangle-exclamation { background-image: image-set(url("/static_images/vista-icons/dev-warnings-16.png") 1x, url("/static_images/vista-icons/dev-warnings-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #workspaceTrayIcon > i.fa-clone { background-image: image-set(url("/static_images/vista-icons/workspace-switcher-16.png") 1x, url("/static_images/vista-icons/workspace-switcher-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #walletTrayIcon > i.fa-wallet { background-image: image-set(url("/static_images/vista-icons/account-manager-16.png") 1x, url("/static_images/vista-icons/account-manager-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #dovecoteTrayIcon > i.fa-envelope { background-image: image-set(url("/static_images/vista-icons/dovecote-16.png") 1x, url("/static_images/vista-icons/dovecote-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #mcpActivityIndicator > i.fa-screencast { background-image: image-set(url("/static_images/vista-icons/remote-access-16.png") 1x, url("/static_images/vista-icons/remote-access-32.png") 2x); }
+
+/* the Account Manager alert mark is Vista's small warning, over the lower right of the rolodex */
+body.desktop-mode:not(.windows-classic-theme) #walletTrayIcon > i.wallet-tray-alert {
+    position: absolute;
+    right: 0;
+    bottom: 2px;
+    width: 10px;
+    height: 10px;
+    font-size: 0 !important;
+    color: transparent !important;
+    background: no-repeat center / 10px 10px;
+    background-image: image-set(url("/static_images/vista-icons/warning-16.png") 1x, url("/static_images/vista-icons/warning-32.png") 2x);
+}
 
 /* network: connected idle, down (failed / logon / not connected), connecting (screens trade);
    Vista lights one screen at a time, so a burst both ways shows sending */
