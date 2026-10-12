@@ -354,6 +354,7 @@
     <link rel="stylesheet" href="/css/desktop-apps/emotion.css">
     <!-- Terminal: global .hidden — must stay last in the stylesheet stack -->
     <link rel="stylesheet" href="/css/aero-glass.css">
+    <link rel="stylesheet" href="/css/vista-glass-controls.css">
     <link rel="stylesheet" href="/css/hidden.css">
     <script src="/scripts/comp/blockContainer.js"></script>
     <script src="/scripts/utils/deviceUtils.js"></script>
@@ -7755,6 +7756,26 @@ Examples:
                             is the performance mode: no glass, same frames.</p>
                     </div>
 
+                    <!-- Global: Sounds (public/scripts/comp/desktopSounds.js). Applies at once, stored per browser. -->
+                    <div class="settings-section hidden" data-desktop-settings-scope="global">
+                        <h3 class="section-header"><i class="fas fa-volume-high"></i> Sounds</h3>
+                        <div class="desktop-settings-options-grid">
+                            <div class="desktop-settings-option">
+                                <button type="button" id="desktopSettingsSoundsBtn"
+                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
+                                    data-state="on" title="Play Vista program sounds for dialogs, session, and navigate">
+                                    <i class="fas fa-volume-high"></i>
+                                </button>
+                                <div class="desktop-settings-option-body">
+                                    <span class="desktop-settings-option-label">Program sounds</span>
+                                    <p class="desktop-settings-hint">Windows Vista sounds for dialogs, errors, lock,
+                                        logon, shutdown, Explorer / Grimoire navigate, and the planet switcher.
+                                        On by default.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Global: Taskbar -->
                     <div class="settings-section hidden" data-desktop-settings-scope="global">
                         <h3 class="section-header"><i class="fas fa-bars"></i> Taskbar</h3>
@@ -8534,6 +8555,7 @@ Examples:
     <script src="scripts/ws/inboundHandlerManifest.js"></script>
     <script src="scripts/comp/generationProgress.js"></script>
     <script src="scripts/comp/desktopBoot.js"></script>
+    <script src="scripts/comp/desktopSounds.js"></script>
     <script src="scripts/comp/bootMessageBox.js"></script>
     <script src="scripts/comp/workstationLock.js"></script>
     <script src="scripts/comp/melatonNetworkDialogs.js"></script>

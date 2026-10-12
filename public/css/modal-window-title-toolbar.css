@@ -1420,6 +1420,17 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-
     --window-caption-edge: 13px;
 }
 
+/* Caption-control glass, 7.css's structure with its whites lowered for our dark frames
+   (Yukimi: the exact light-blue values read too bright). Declared on the window so the
+   fold resolves against its --window-caption-edge. */
+.modal {
+    --vista-ctl-wash: hsl(0 0% 100% / 12%);
+    --vista-ctl-hairline: hsl(0 0% 100% / 42%);
+    --vista-ctl-inner: hsl(0 0% 100% / 38%);
+    --vista-ctl-inner-inactive: hsl(0 0% 100% / 20%);
+    --vista-ctl-fold: linear-gradient(hsl(0 0% 100% / 32%), hsl(0 0% 100% / 19%) calc(var(--window-caption-edge) - 1px), hsl(0 0% 0% / 12%) var(--window-caption-edge), hsl(0 0% 0% / 12%) 75%, hsl(0 0% 100% / 28%));
+}
+
 body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title {
     left: 0;
     width: 100%;
@@ -1489,11 +1500,11 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-
    (--window-caption-edge), so buttons and frame break at the same pixel. Hover fades a bloom
    in (0.1 s) and out (0.3 s); pressed darkens. Indicator dots stay in ::after. */
 body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) {
-    background: #fff3;
+    background: var(--vista-ctl-wash);
     border: 1px solid #0000004d;
     border-top: 0;
     border-radius: 0 0 5px 5px;
-    box-shadow: 0 1px 0 #fffa, 1px 0 0 #fffa, -1px 0 0 #fffa;
+    box-shadow: 0 1px 0 var(--vista-ctl-hairline), 1px 0 0 var(--vista-ctl-hairline), -1px 0 0 var(--vista-ctl-hairline);
 }
 
 body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) {
@@ -1508,14 +1519,14 @@ body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn,
     border-right: 1px solid #0000004d;
     border-radius: 0;
     background: none;
-    box-shadow: inset 0 0 0 1px #fff5;
+    box-shadow: inset 0 0 0 1px var(--vista-ctl-inner-inactive);
     color: #f4f4f4;
 }
 
 body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button,
 body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
     border-right-color: #000000b3;
-    box-shadow: inset 0 0 0 1px #fffa;
+    box-shadow: inset 0 0 0 1px var(--vista-ctl-inner);
 }
 
 body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > button:first-child,
@@ -1531,12 +1542,12 @@ body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn,
 
 body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:not(:is(.close-btn, .modal-close)),
 body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
-    background: linear-gradient(#ffffff80, #ffffff4d calc(var(--window-caption-edge) - 1px), #0000001a var(--window-caption-edge), #0000001a 75%, #ffffff80);
+    background: var(--vista-ctl-fold);
 }
 
 body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close) {
     background:
-        linear-gradient(#ffffff80, #ffffff4d calc(var(--window-caption-edge) - 1px), #0000001a var(--window-caption-edge), #0000001a 75%, #ffffff80),
+        var(--vista-ctl-fold),
         radial-gradient(circle at -60% 50%, #0007 5% 10%, #0000 50%),
         radial-gradient(circle at 160% 50%, #0007 5% 10%, #0000 50%),
         linear-gradient(#e0a197e5, #cf796a 25% var(--window-caption-edge), #d54f36 var(--window-caption-edge));
@@ -1603,17 +1614,17 @@ body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has
     background:
         radial-gradient(circle at bottom, #2aceda, transparent 65%),
         linear-gradient(#b6d9ee var(--window-caption-edge), #1a6ca1 var(--window-caption-edge));
-    box-shadow: 0 0 7px 3px #5dc4f0, inset 0 0 0 1px #fffa;
+    box-shadow: 0 0 7px 3px #5dc4f0, inset 0 0 0 1px var(--vista-ctl-inner);
 }
 
 body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close)::before {
     background:
-        linear-gradient(#ffffff80, #ffffff4d calc(var(--window-caption-edge) - 1px), #0000001a var(--window-caption-edge), #0000001a 75%, #ffffff80),
+        var(--vista-ctl-fold),
         radial-gradient(circle at 50% 170%, #f4e676 10% 20%, #0000 60%),
         radial-gradient(circle at -60% 50%, #000a 5% 10%, #0000 50%),
         radial-gradient(circle at 160% 50%, #000a 5% 10%, #0000 50%),
         linear-gradient(#fb9d8b, #ee6d56 25% var(--window-caption-edge), #d42809 var(--window-caption-edge));
-    box-shadow: 0 0 7px 3px #e68e75, inset 0 0 0 1px #fffa;
+    box-shadow: 0 0 7px 3px #e68e75, inset 0 0 0 1px var(--vista-ctl-inner);
 }
 
 @media (hover: hover) {
@@ -1637,7 +1648,7 @@ body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has
     opacity: 1;
     transition: none;
     background:
-        linear-gradient(#ffffff80, #ffffff4d calc(var(--window-caption-edge) - 1px), #0000001a var(--window-caption-edge), #0000001a 75%, #ffffff80),
+        var(--vista-ctl-fold),
         radial-gradient(circle at 50% 170%, #dcc03f 10% 20%, #0000 60%),
         radial-gradient(circle at -60% 50%, #000 5% 10%, #0000 50%),
         radial-gradient(circle at 160% 50%, #000 5% 10%, #0000 50%),

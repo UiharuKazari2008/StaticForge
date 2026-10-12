@@ -149,6 +149,8 @@ body:not(.windows-classic-theme) .manual-preview-container::before {
         var(--aero-streaks, none);
     background-size: 100% 100%;
     background-repeat: no-repeat;
+    /* lowered again (Yukimi, twice): a hint of glass, not a pattern */
+    opacity: 0.45;
 }
 
 .manual-preview-image-container-inner {

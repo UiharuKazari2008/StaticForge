@@ -1,0 +1,115 @@
+/* Vista glass controls (#407): the shared look for floating control bars, the buttons in
+   them and round buttons, so they read as Aero glass like the window frames.
+
+   - .main-menu-bar-outer (workspace bottom bar and the other floating bars): a pane of glass
+     on top of its own tint (the frame glass via [data-aero-surface] where it has it): sharp
+     reflection line at the middle, dark edge, white inner line.
+   - buttons in a bar: Vista toolbar buttons, bare at rest; hover lights a glass fold with
+     the dark edge, pressed / toggled-on sinks it.
+   - .round-button: a glass orb over the button's own colour (accent, danger, secondary keep
+     their meaning): top highlight cut at the middle, bottom glow, dark edge, inner ring;
+     hover adds the Vista blue bloom.
+
+   Values follow 7.css (khang-nd/7.css, MIT) with the whites lowered for dark tints, like the
+   caption controls (--vista-ctl-*, modal-window-title-toolbar.css). Classic theme untouched.
+   Linked right after aero-glass.css. */
+
+:root {
+    --vista-glass-edge: hsl(0 0% 0% / 62%);
+    --vista-glass-inner: hsl(0 0% 100% / 24%);
+    --vista-glass-pane: linear-gradient(hsl(0 0% 100% / 15%), hsl(0 0% 100% / 7%) calc(50% - 1px), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 0%) 85%, hsl(0 0% 100% / 6%));
+    --vista-glass-button-hover: linear-gradient(hsl(0 0% 100% / 30%), hsl(0 0% 100% / 16%) calc(50% - 1px), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 6%) 80%, hsl(0 0% 100% / 22%));
+    --vista-glass-button-pressed: linear-gradient(hsl(0 0% 0% / 22%), hsl(0 0% 0% / 14%) calc(50% - 1px), hsl(0 0% 0% / 26%) 50%, hsl(0 0% 0% / 18%) 85%, hsl(0 0% 100% / 10%));
+    --vista-glass-orb: linear-gradient(hsl(0 0% 100% / 34%), hsl(0 0% 100% / 12%) calc(50% - 1px), hsl(0 0% 0% / 12%) 50%, hsl(0 0% 0% / 0%) 100%);
+    --vista-glass-orb-glow: radial-gradient(ellipse 70% 45% at 50% 100%, hsl(0 0% 100% / 22%), transparent 70%);
+    --vista-glass-orb-bloom: radial-gradient(ellipse 80% 60% at 50% 100%, hsl(190 95% 68% / 55%), transparent 72%);
+}
+
+/* ---------- control bar ---------- */
+
+body:not(.windows-classic-theme) .main-menu-bar-outer {
+    position: relative;
+    isolation: isolate;
+    border-color: var(--vista-glass-edge);
+    border-radius: 6px;
+}
+
+body:not(.windows-classic-theme) .main-menu-bar-outer::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--vista-glass-pane);
+    box-shadow: inset 0 0 0 1px var(--vista-glass-inner);
+}
+
+/* ---------- buttons in a bar ---------- */
+
+body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button) {
+    border: 1px solid transparent;
+    border-radius: 3px;
+    transition: background-color 0.1s linear, box-shadow 0.1s linear, border-color 0.1s linear;
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):hover:not(:disabled) {
+        background-image: var(--vista-glass-button-hover);
+        border-color: var(--vista-glass-edge);
+        box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 30%), 0 0 6px 1px hsl(195 85% 65% / 35%);
+    }
+}
+
+body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):active:not(:disabled),
+body:not(.windows-classic-theme) .main-menu-bar-outer button:not(.round-button):is(.active, [data-state="on"]) {
+    background-image: var(--vista-glass-button-pressed);
+    border-color: var(--vista-glass-edge);
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 45%), inset 0 0 0 1px hsl(0 0% 100% / 12%);
+}
+
+/* the toggle group inside the bar is a sunken well of the same glass */
+body:not(.windows-classic-theme) .main-menu-bar-outer .gallery-toggle-group {
+    border-color: var(--vista-glass-edge);
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 45%), 0 1px 0 hsl(0 0% 100% / 14%);
+}
+
+/* ---------- round buttons ----------
+   The orb is a ::before overlay, so it lies on whatever paints the button: its own colour or
+   the frame glass of [data-aero-surface] buttons (the workspace page jumps). Every round
+   button is position: relative with a z-index, so the overlay stays inside it. */
+
+body:not(.windows-classic-theme) .round-button {
+    isolation: isolate;
+    border-color: var(--vista-glass-edge);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 3px 10px hsl(0 0% 0% / 45%);
+    transition: box-shadow 0.1s linear;
+}
+
+body:not(.windows-classic-theme) .round-button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--vista-glass-orb), var(--vista-glass-orb-glow);
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) .round-button:hover:not(:disabled) {
+        box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 36%), 0 0 8px 2px hsl(195 85% 65% / 60%), 0 3px 10px hsl(0 0% 0% / 45%);
+    }
+
+    body:not(.windows-classic-theme) .round-button:hover:not(:disabled)::before {
+        background: var(--vista-glass-orb), var(--vista-glass-orb-bloom);
+    }
+}
+
+body:not(.windows-classic-theme) .round-button:active:not(:disabled) {
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 50%), 0 0 6px 1px hsl(195 85% 65% / 50%);
+}
+
+body:not(.windows-classic-theme) .round-button:active:not(:disabled)::before {
+    background: linear-gradient(hsl(0 0% 0% / 18%), hsl(0 0% 0% / 8%) calc(50% - 1px), hsl(0 0% 0% / 22%) 50%, hsl(0 0% 0% / 10%) 100%), var(--vista-glass-orb-bloom);
+}
