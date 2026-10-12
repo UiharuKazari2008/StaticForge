@@ -25,20 +25,21 @@ const ICON_DIR = path.join(ROOT, 'public/static_images/vista-icons');
 const DEFAULT_MODEL = 'gpt-image-2.5-sunburst';
 // Vista's own tray icons (ripped from the VM) as style references
 const REF_DIR = path.join(__dirname, 'assets/vista-tray-refs');
-const REFERENCES = ['net-internet-32.png', 'search-32.png', 'warning-32.png', 'drive-26-32.png', 'switch-windows-32.png'];
+// the flat tray set: network, volume, limited network (Yukimi: flat flat, like those)
+const REFERENCES = ['net-internet-32.png', 'volume-32.png', 'net-limited-32.png'];
 
-const STYLE = 'A single Windows Vista notification area (system tray) icon, in exactly the style of the reference icons: '
-    + 'Vista system icon art, simple bold shapes with a thin dark outline, a few flat colours with a soft glossy '
-    + 'highlight, slight 3/4 perspective, designed to stay readable at 16x16 pixels. One centred object filling the '
-    + 'square, no text, no letters, no background, no shadow plate, transparent background.';
+const STYLE = 'A single Windows Vista notification area (system tray) icon, drawn exactly like the reference tray icons '
+    + '(Vista network and volume icons): FLAT, a handful of solid colours, at most a very soft single gradient per shape, '
+    + 'a thin dark grey outline, no glossy 3D rendering, no bevels, no drop shadow, simple geometric shapes, pixel-aligned, '
+    + 'built to read at 16x16 pixels. One centred subject filling the square, no text, no letters, transparent background.';
 
 const ICONS = {
-    'workspace-switcher': 'Two overlapping desktop windows, the front one showing a small blue planet with a ring, like switching between workspaces.',
-    'service-worker': 'A silver hard drive with a small green circular sync arrow on its corner, meaning the app is cached for offline use.',
-    'dev-warnings': 'A small grey gear with a yellow warning triangle overlapping its lower right, meaning developer warnings.',
-    'account-manager': 'A rolodex card file: a small rotary index of cream cards on a dark chrome stand, the front card with a tiny blue person silhouette. Account Manager.',
-    'dovecote': 'A white dove carrying a small closed envelope, mail program tray icon, envelope cream with a blue edge.',
-    'remote-access': 'A small computer monitor with a blue screen and two curved blue connection waves above it, meaning remote access by an agent.'
+    'workspace-switcher': 'Two square panes of light blue glass in a staggered arrangement: one at the top right and one at the bottom left, overlapping a little. The lower (back) pane is hollowed out, only its glass frame with an empty centre; the upper (front) pane is solid glass.',
+    'service-worker': 'A flat grey hard drive seen from the front at a slight angle, with a small flat green circular arrow on its lower right corner (offline cache).',
+    'dev-warnings': 'A flat grey gear with a small flat yellow warning triangle with a black exclamation mark overlapping its lower right.',
+    'account-manager': 'A flat rolodex card file: a few cream index cards on a small dark rotary stand, the front card with a tiny flat blue person silhouette.',
+    'dovecote': 'A flat white dove in profile carrying a small cream envelope with a blue edge.',
+    'remote-access': 'Only the top right corner of a computer monitor (cropped by the icon edge like the reference network icon), blue screen, with two flat curved signal waves coming out of its corner.'
 };
 
 function parseArgs(argv) {

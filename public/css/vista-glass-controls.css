@@ -155,8 +155,8 @@ body:not(.windows-classic-theme) .round-button:active:not(:disabled)::before {
 
 /* Hover show: Studio's preview strips its buttons while the preview is not hovered
    (manual-modal.css); gallery cards do the same while the card is not hovered. The glass
-   layer fades out with them. Primary buttons (Generate) keep their full style always. */
-html.can-hover body:not(.windows-classic-theme) .manual-preview-content:not(:hover) .round-button:not(:hover):not(.btn-primary):not(.btn-danger)::before,
+   layer fades out with them, Delete included (Yukimi); Generate keeps its full style. */
+html.can-hover body:not(.windows-classic-theme) .manual-preview-content:not(:hover) .round-button:not(:hover):not(.btn-primary)::before,
 html.can-hover body:not(.windows-classic-theme) .gallery-item:not(:hover) .gallery-actions .round-button::before {
     opacity: 0;
 }
@@ -164,16 +164,6 @@ html.can-hover body:not(.windows-classic-theme) .gallery-item:not(:hover) .galle
 html.can-hover body:not(.windows-classic-theme) .manual-preview-content:not(:hover) .btn-primary:not(:hover) {
     opacity: 1;
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 3px 10px hsl(0 0% 0% / 45%);
-}
-
-/* Danger stays crimson glass whether or not the preview is hovered, so it always reads as
-   dangerous (Studio's hover show used to strip it to a bare icon) */
-html.can-hover body:not(.windows-classic-theme) .manual-preview-content:not(:hover) .btn-danger:not(:hover) {
-    opacity: 1;
-    background: var(--danger-glass-color, hsl(350 75% 32% / 85%));
-    border-color: var(--vista-glass-edge);
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 3px 10px hsl(0 0% 0% / 45%);
-    color: hsl(0 100% 85%);
 }
 
 html.can-hover body:not(.windows-classic-theme) .gallery-item:not(:hover) .gallery-actions .round-button {
@@ -387,7 +377,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
    Awesome glyph element stays
    (scripts still switch its classes for state); its glyph is hidden and the icon is painted
    on it. */
-body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph.fa-hard-drive, #modemTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone, #walletTrayIcon > i.fa-wallet, #dovecoteTrayIcon > i.fa-envelope, #mcpActivityIndicator > i.fa-screencast) {
+body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph, #modemTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone, #walletTrayIcon > i.fa-wallet, #dovecoteTrayIcon > i.fa-envelope, #mcpActivityIndicator > i.fa-screencast) {
     display: inline-block;
     width: 16px;
     height: 16px;
@@ -402,7 +392,28 @@ body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.f
 }
 
 body.desktop-mode:not(.windows-classic-theme) #searchIndexingIndicator > i.fa-magnifying-glass { background-image: image-set(url("/static_images/vista-icons/search-16.png") 1x, url("/static_images/vista-icons/search-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIconGlyph.fa-hard-drive { background-image: image-set(url("/static_images/vista-icons/service-worker-16.png") 1x, url("/static_images/vista-icons/service-worker-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIconGlyph { position: relative; background-image: image-set(url("/static_images/vista-icons/service-worker-16.png") 1x, url("/static_images/vista-icons/service-worker-32.png") 2x); }
+/* unavailable: the drive greyed out; not responding: Vista's small warning on it */
+body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIconGlyph.fa-times-circle { filter: grayscale(1); opacity: 0.6; }
+body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIconGlyph.fa-exclamation-triangle::after {
+    content: '';
+    position: absolute;
+    right: -2px;
+    bottom: -1px;
+    width: 10px;
+    height: 10px;
+    background: no-repeat center / 10px 10px;
+    background-image: image-set(url("/static_images/vista-icons/warning-16.png") 1x, url("/static_images/vista-icons/warning-32.png") 2x);
+}
+/* updates: Vista's own Windows Update icon (wucltux.dll 0), pulsing while it downloads,
+   steady once the update is ready to apply (Yukimi: updates get their own icon) */
+body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIconGlyph.fa-laptop-arrow-down { background-image: image-set(url("/static_images/vista-icons/windows-update-16.png") 1x, url("/static_images/vista-icons/windows-update-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIcon.sw-update-downloading #serviceWorkerTrayIconGlyph { animation: vistaUpdatePulse 1.6s ease-in-out infinite; }
+
+@keyframes vistaUpdatePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
 body.desktop-mode:not(.windows-classic-theme) #devWarningsTrayIcon > i.fa-triangle-exclamation { background-image: image-set(url("/static_images/vista-icons/dev-warnings-16.png") 1x, url("/static_images/vista-icons/dev-warnings-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #workspaceTrayIcon > i.fa-clone { background-image: image-set(url("/static_images/vista-icons/workspace-switcher-16.png") 1x, url("/static_images/vista-icons/workspace-switcher-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #walletTrayIcon > i.fa-wallet { background-image: image-set(url("/static_images/vista-icons/account-manager-16.png") 1x, url("/static_images/vista-icons/account-manager-32.png") 2x); }
@@ -504,5 +515,91 @@ body:not(.windows-classic-theme) #manualModal .prompt-textarea-container::after 
 
 body:not(.windows-classic-theme) #manualModal .prompt-textarea-container.textarea-focused::after {
     box-shadow: 0 0 0 1px hsl(205 65% 58%), 0 0 6px 2px hsl(197 85% 60% / 40%), inset 0 1px 0 hsl(0 0% 100% / 10%);
+}
+
+/* ---------- Studio: standard buttons, sliders, token meter (#445) ---------- */
+
+/* Standard buttons: Vista glass over their own fill. :where keeps these below the latch rules
+   (pushed-in buttons stay pushed in). Not the caption cluster, toggle-group / mode-slider
+   buttons, round buttons (orbs) or hover-show fields, which have their own rules. */
+body:not(.windows-classic-theme) #manualModal :where(.btn-secondary, .btn-primary, .btn-danger, .btn-warning):not(.round-button):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(.modal-window-controls > button) {
+    background-image: linear-gradient(hsl(0 0% 100% / 16%), hsl(0 0% 100% / 7%) calc(50% - 1px), hsl(0 0% 0% / 8%) 50%, hsl(0 0% 0% / 4%) 85%, hsl(0 0% 100% / 9%));
+    border-color: hsl(0 0% 0% / 55%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 16%), 0 1px 2px hsl(0 0% 0% / 35%);
+    transition: background-color 0.15s linear, border-color 0.15s linear, box-shadow 0.15s linear, color 0.15s linear, transform 0.08s ease;
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) #manualModal :where(.btn-secondary, .btn-primary, .btn-danger, .btn-warning):not(.round-button):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(.modal-window-controls > button):hover:not(:disabled) {
+        background-image: linear-gradient(hsl(0 0% 100% / 26%), hsl(0 0% 100% / 13%) calc(50% - 1px), hsl(0 0% 0% / 6%) 50%, hsl(0 0% 0% / 2%) 85%, hsl(0 0% 100% / 16%));
+        box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 26%), 0 0 6px 1px hsl(195 85% 65% / 40%), 0 1px 2px hsl(0 0% 0% / 35%);
+    }
+}
+
+body:not(.windows-classic-theme) #manualModal :where(.btn-secondary, .btn-primary, .btn-danger, .btn-warning):not(.round-button):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(.modal-window-controls > button):active:not(:disabled) {
+    transform: translateY(1px);
+    background-image: linear-gradient(hsl(0 0% 0% / 20%), hsl(0 0% 0% / 12%) calc(50% - 1px), hsl(0 0% 0% / 22%) 50%, hsl(0 0% 0% / 14%) 85%, hsl(0 0% 100% / 8%));
+    box-shadow: inset 0 2px 4px hsl(0 0% 0% / 60%), inset 0 0 0 1px hsl(0 0% 100% / 10%);
+}
+
+/* Mode sliders and toggle groups in Studio: a sunken well, the sliding pill is glass */
+body:not(.windows-classic-theme) #manualModal :is(.mode-slider-container, .gallery-toggle-group) {
+    border-color: hsl(0 0% 0% / 60%);
+    box-shadow: inset 0 1px 4px hsl(0 0% 0% / 65%), inset 0 0 12px hsl(0 0% 0% / 40%), 0 1px 0 hsl(0 0% 100% / 13%);
+}
+
+body:not(.windows-classic-theme) #manualModal :is(.mode-slider-track, .gallery-toggle-slider) {
+    background-image: linear-gradient(hsl(0 0% 100% / 24%), hsl(0 0% 100% / 9%) calc(50% - 1px), hsl(0 0% 0% / 6%) 50%, hsl(0 0% 100% / 6%));
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 22%), 0 1px 3px hsl(0 0% 0% / 45%);
+}
+
+/* Token meter: Vista's progress bar (7.css [role=progressbar], darkened): sunken track,
+   green glass fill with the fold, same 6 px height */
+body:not(.windows-classic-theme) #manualModal .prompt-token-progress .token-progress-bar {
+    background: linear-gradient(hsl(0 0% 0% / 45%), hsl(0 0% 0% / 30%));
+    border-radius: 2px;
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 70%), 0 1px 0 hsl(0 0% 100% / 14%), 0 0 0 1px hsl(0 0% 0% / 45%);
+}
+
+body:not(.windows-classic-theme) #manualModal .prompt-token-progress .token-progress-bar .token-progress-fill {
+    background-color: #2ea82e;
+    background-image: linear-gradient(hsl(120 70% 85% / 75%), hsl(120 60% 60% / 30%) 45%, transparent 50%, hsl(120 70% 70% / 25%));
+    border-radius: 1px;
+    box-shadow: inset 0 0 0 1px hsl(120 50% 20% / 40%);
+}
+
+/* ---------- autofill popup: a glass window with the list set into it (#445) ----------
+   Like a Vista popup: a pane of frame glass (tint, sheen, the screen-anchored streaks) with a
+   thick 6 px glass border, and the scrolling list in a sunken, solid well inside it, so it is
+   clear the content scrolls within the box. The key guide sits on the glass below the well. */
+body:not(.windows-classic-theme) #characterAutocompleteOverlay {
+    padding: 6px;
+    gap: 5px;
+    background-color: var(--glass-windows-bg, hsl(0 0% 20% / 80%));
+    background-image:
+        linear-gradient(135deg, hsl(0 0% 100% / 14%) 70px, transparent 100px),
+        linear-gradient(225deg, hsl(0 0% 100% / 14%) 70px, transparent 100px),
+        var(--aero-streaks, none),
+        linear-gradient(180deg, hsl(0 0% 100% / 14%) 0, hsl(0 0% 100% / 5%) 38%, hsl(0 0% 0% / 0%) 60%, hsl(0 0% 0% / 8%) 100%);
+    background-attachment: scroll, scroll, fixed, scroll;
+    background-size: 100% 100%, 100% 100%, 100vw 100vh, 100% 100%;
+    background-repeat: no-repeat;
+    border: 1px solid hsl(0 0% 0% / 70%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 22%), 0 8px 25px hsl(0 0% 0% / 55%);
+}
+
+body:not(.windows-classic-theme) #characterAutocompleteOverlay > .character-autocomplete-list {
+    background: var(--glass-windows-full-bg, hsl(0 0% 12% / 97%));
+    border: 1px solid hsl(0 0% 0% / 65%);
+    border-radius: 3px;
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 55%), 0 1px 0 hsl(0 0% 100% / 14%), 0 0 0 1px hsl(0 0% 100% / 6%);
+}
+
+body:not(.windows-classic-theme) #characterAutocompleteOverlay > .character-autocomplete-keyguide {
+    background: none;
+    border-top: 0;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    text-shadow: 0 0 3px hsl(0 0% 0% / 80%);
 }
 
