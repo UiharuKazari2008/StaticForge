@@ -534,6 +534,7 @@ class WebSocketClient {
     static DELAY_CONNECTION_COOLDOWN = 60000; // Circuit breaker cooldown (1 minute)
     static DELAY_PING_INTERVAL = 30000; // Ping interval (30 seconds)
     static DELAY_PING_HOST = 2000; // Host ping interval (2 seconds)
+    static TIMEOUT_BOOT_STREAM_IDLE = 30000; // /status/stream: no line (status, heartbeat) for this long = stalled
     static DELAY_HEALTH_MONITORING = 5000; // Health monitoring start delay (5 seconds)
 
     static ATTEMPTS_MAX_RECONNECT = 5; // Maximum reconnect attempts
@@ -1090,6 +1091,7 @@ class WebSocketClient {
      */
     cancelConnectionFromUser() {
         this._userCancelledConnect = true;
+        if (this._bootStreamController) this._bootStreamController.abort();
         this.suppressAutoReconnect();
         this._releaseConnectLock();
         this.disconnect(true);
@@ -2292,14 +2294,15 @@ class WebSocketClient {
         // Open only when it is not up yet (openModal re-raises an open window, which would bury a
         // prompt that opened during the connect; the dialog is .on-top anyway)
         if (modal.classList.contains('hidden') || modal.classList.contains('closing')) {
-            // At the logon screen it is a centered window over the logon dialog (setModalOffsetPx:
-            // modalUtils.js; data-window-restore-position="false" keeps it from a saved spot)
-            if (logon && typeof setModalOffsetPx === 'function') setModalOffsetPx(modal, 0, 0, { snap: false });
             if (typeof openModal === 'function') {
                 openModal(modal);
             } else {
                 modal.classList.remove('hidden');
             }
+            // At the logon screen it sits in the bottom-right quadrant over the logon dialog, off
+            // the grid (melatonNetworkDialogs.placeLogonWindow); on the desktop it stays centered
+            if (logon && text) text.placeLogonWindow(modal, 'connecting');
+            else if (typeof setModalOffsetPx === 'function') setModalOffsetPx(modal, 0, 0, { snap: false });
         }
         if (logon) {
             const logonDialog = document.getElementById('desktopPreStartupModal');
@@ -2800,47 +2803,69 @@ class WebSocketClient {
     }
 
     /**
-     * Long tasks with progress at the logon screen (the server's own boot) get a small window off
-     * to the side, top-left like the desktop's startup window; the logon dialog never shows a bar
-     * (Yukimi, 2026-10-12). null hides it.
+     * Long tasks with progress at the logon screen (the server's own boot) get their own window,
+     * Dreamscape Mainframe Server (public/scripts/comp/mainframeServerWindow.js), in the
+     * bottom-right quadrant; the logon dialog never shows a bar. null hides it.
      */
     _updatePreStartupStageProgress(progressPercent, message) {
+        const win = window.mainframeServerWindow;
+        if (!win) return;
         const show = typeof progressPercent === 'number' && Number.isFinite(progressPercent)
             && window.isDesktop && this._shouldUsePreStartupDialog();
-        let modal = document.getElementById('logonTaskProgressModal');
-        if (!show) {
-            if (modal && !modal.classList.contains('hidden')) {
-                if (typeof closeModal === 'function') closeModal(modal);
-                else modal.classList.add('hidden');
+        if (show) win.update(progressPercent, message);
+        else win.hide();
+    }
+
+    /**
+     * GET /status/stream (modules/statusStream.js, Yozora #431): NDJSON boot progress, applied
+     * line by line. Resolves 'done' on the server's done packet, 'ended' when the stream closes
+     * without one (the server went down again), 'stalled' after TIMEOUT_BOOT_STREAM_IDLE with no
+     * line, 'unsupported' on 404 (an older server), 'failed' otherwise.
+     */
+    async _followServerBootStream() {
+        const controller = new AbortController();
+        this._bootStreamController = controller;
+        let idleTimer = null;
+        const armIdle = () => {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => controller.abort(), WebSocketClient.TIMEOUT_BOOT_STREAM_IDLE);
+        };
+        try {
+            armIdle();
+            const response = await fetch('/status/stream', { cache: 'no-store', signal: controller.signal });
+            if (response.status === 404) return 'unsupported';
+            if (!response.ok || !response.body) return 'failed';
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) return 'ended';
+                armIdle();
+                buffer += decoder.decode(value, { stream: true });
+                let at;
+                while ((at = buffer.indexOf('\n')) >= 0) {
+                    const line = buffer.slice(0, at).trim();
+                    buffer = buffer.slice(at + 1);
+                    if (!line) continue;
+                    let data;
+                    try {
+                        data = JSON.parse(line);
+                    } catch (_) {
+                        continue;
+                    }
+                    this._applyServerStartupStatus(data);
+                    if (data.type === 'done') {
+                        try { reader.cancel(); } catch (_) { /* already closed */ }
+                        return 'done';
+                    }
+                }
             }
-            return;
-        }
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'logonTaskProgressModal';
-            modal.className = 'modal hidden on-top boot-dialog logon-task-progress';
-            modal.dataset.windowRestorePosition = 'false';
-            modal.innerHTML = `
-                <div class="modal-window-title">
-                    <div class="modal-window-title-main"><span>DreamScape MeletonFX</span></div>
-                </div>
-                <div class="modal-window-controls"></div>
-                <div class="modal-content modal-padding">
-                    <div class="modal-body">
-                        <div class="logon-task-heading">Waiting for the domain controller...</div>
-                        <div class="logon-task-status"></div>
-                        <div role="progressbar"><div class="logon-task-bar"></div></div>
-                    </div>
-                </div>`;
-            document.body.appendChild(modal);
-        }
-        const pct = Math.max(0, Math.min(100, Math.round(progressPercent)));
-        const stage = String(message || '').replace(/\s*\(\d+%\)\s*$/, '');
-        modal.querySelector('.logon-task-status').textContent = stage ? `${stage} (${pct}%)` : `${pct}%`;
-        modal.querySelector('.logon-task-bar').style.width = `${pct}%`;
-        if (modal.classList.contains('hidden') || modal.classList.contains('closing')) {
-            if (typeof openModal === 'function') openModal(modal);
-            else modal.classList.remove('hidden');
+        } catch (_) {
+            return controller.signal.aborted ? 'stalled' : 'failed';
+        } finally {
+            clearTimeout(idleTimer);
+            if (this._bootStreamController === controller) this._bootStreamController = null;
         }
     }
 
@@ -2917,6 +2942,15 @@ class WebSocketClient {
 
                 if (bootPollAttempts % 5 === 0) {
                     console.log(`[startup] ${data.stageMessage} (${data.progressPercent != null ? data.progressPercent + '%' : '…'})`);
+                }
+
+                // Booting (#431): follow /status/stream instead of polling; every status lands in
+                // _applyServerStartupStatus as it happens. "done" = ready: one more /status, then on
+                // with the connect. A stream that drops or stalls falls back to the poll below.
+                if (!this._bootStreamUnsupported) {
+                    const outcome = await this._followServerBootStream();
+                    if (outcome === 'done') continue;
+                    if (outcome === 'unsupported') this._bootStreamUnsupported = true;
                 }
 
                 await new Promise((resolve) => setTimeout(resolve, bootPollInterval));

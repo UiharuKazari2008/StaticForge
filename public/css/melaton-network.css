@@ -751,42 +751,59 @@
     background: #e0a000;
 }
 
-/* ---- Logon screen: long task progress off to the side (websocket.js _updatePreStartupStageProgress) */
+/* ---- Dreamscape Mainframe Server (mainframeServerWindow.js): the server's boot at the logon
+   screen, a vendor-style window with the animated building-blocks icon ---------------------- */
 
-#logonTaskProgressModal {
-    position: fixed;
-    top: calc(var(--true-inset-top, 0px) + 20px);
-    left: 20px;
-    transform: none;
-    width: 320px;
+#mainframeServerModal {
+    width: 360px;
 }
 
-#logonTaskProgressModal.modal-pixel-settled:not(.opening):not(.closing) {
-    left: 20px;
-    top: calc(var(--true-inset-top, 0px) + 20px);
-    transform: none;
-    margin: 0;
+#mainframeServerModal .mainframe-content {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px 12px 12px;
 }
 
-#logonTaskProgressModal .logon-task-heading {
-    margin-bottom: 2px;
-    font-size: 13px;
+#mainframeServerModal .mainframe-blocks {
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
 }
 
-#logonTaskProgressModal .logon-task-status {
-    margin-bottom: 8px;
-    font-size: 12px;
-    opacity: 0.8;
+#mainframeServerModal .mainframe-text {
+    flex: 1;
+    min-width: 0;
 }
 
-#logonTaskProgressModal .logon-task-bar {
+#mainframeServerModal .mainframe-text p {
+    margin: 0 0 3px;
+}
+
+#mainframeServerModal .mainframe-heading {
+    font-weight: 600;
+}
+
+#mainframeServerModal .mainframe-sub,
+#mainframeServerModal .mainframe-stage {
+    color: var(--vpn-muted);
+}
+
+#mainframeServerModal .mainframe-stage {
+    margin-top: 6px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#mainframeServerModal .mainframe-progress {
+    margin-top: 6px;
+}
+
+#mainframeServerModal .mainframe-bar {
     transition: width 0.35s ease;
-}
-
-body.windows-classic-theme #logonTaskProgressModal .logon-task-heading,
-body.windows-classic-theme #logonTaskProgressModal .logon-task-status {
-    font-family: Tahoma, 'MS Sans Serif', sans-serif;
-    font-size: 11px;
 }
 
 /* ---- Network tray flyout (one click on the tray icon) ------------------------------------------ */

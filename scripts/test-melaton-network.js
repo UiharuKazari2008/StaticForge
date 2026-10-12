@@ -108,7 +108,10 @@ function liftMethod(src, name) {
         if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue; }
         if (ch === '{') depth++;
         if (ch === '}' && --depth === 0) {
-            return new Function('WebSocketClient', `return function ${src.slice(at + 1, i + 1).trim()}`);
+            const text = src.slice(at + 1, i + 1).trim();
+            return new Function('WebSocketClient', text.startsWith('async ')
+                ? `return async function ${text.slice(6)}`
+                : `return function ${text}`);
         }
     }
     throw new Error(`unbalanced ${name}`);
@@ -164,4 +167,60 @@ assert.strictEqual(logon({ connectionPhase: 'idle' }), false);
 assert.strictEqual(logon({ connectionPhase: 'failed' }), true, 'failures show Error Connecting to domain controller');
 assert.strictEqual(logon({ preStartupAuthBusy: true }), false);
 
-console.log('melaton network: ok');
+// ---- Logon-screen placement: bottom-right quadrant, off the grid, under the logon dialog ----
+const vp = { vw: 1920, vh: 1080 };
+const conn = ui.logonWindowOffset('connecting', { w: 380, h: 130 }, vp, null);
+assert.deepStrictEqual(conn, { x: Math.round(1920 * 0.69 + 13 - 960), y: Math.round(1080 * 0.70 + 7 - 540) });
+const main = ui.logonWindowOffset('mainframe', { w: 360, h: 120 }, vp, null);
+assert.ok(main.x !== conn.x && main.y !== conn.y, 'the two windows get different spots');
+assert.ok(conn.x > 0 && conn.y > 0 && main.x > 0 && main.y > 0, 'both in the bottom-right quadrant');
+const below = ui.logonWindowOffset('connecting', { w: 380, h: 130 }, vp, { bottom: 800, height: 230 });
+assert.strictEqual(below.y + 540 - 65, 800 + 18, 'pushed below the logon dialog');
+const small = ui.logonWindowOffset('connecting', { w: 380, h: 130 }, { vw: 640, vh: 480 }, { bottom: 460, height: 230 });
+assert.strictEqual(small.y + 240 + 65, 480 - 16, 'clamped inside a small screen');
+assert.strictEqual(small.x + 320 + 190, 640 - 16);
+
+// ---- Dreamscape Mainframe Server: the building-blocks tiling always fills the well exactly ----
+const mainframe = require('../public/scripts/comp/mainframeServerWindow.js');
+for (let run = 0; run < 200; run++) {
+    const pieces = mainframe.tileWell(8, 8);
+    const grid = Array.from({ length: 8 }, () => new Array(8).fill(-1));
+    pieces.forEach((p, n) => p.cells.forEach(([cx, cy]) => {
+        const x = p.x + cx;
+        const y = p.y + cy;
+        assert.ok(x >= 0 && x < 8 && y >= 0 && y < 8, 'no block past the rim');
+        assert.strictEqual(grid[y][x], -1, 'no overlap');
+        assert.ok(y === 0 || (grid[y - 1][x] >= 0 && grid[y - 1][x] <= n), 'rests on the floor or blocks below');
+        grid[y][x] = n;
+    }));
+    assert.ok(grid.every((row) => row.every((c) => c >= 0)), 'the well ends exactly full');
+}
+assert.strictEqual(mainframe.tileWell(3, 3), null, 'sizes that cannot be tiled are refused');
+
+// ---- /status/stream reader (websocket.js _followServerBootStream) ----
+(async () => {
+    const follow = liftMethod(wsSrc, '_followServerBootStream')({ TIMEOUT_BOOT_STREAM_IDLE: 2000 });
+    const enc = new TextEncoder();
+    const streamOf = (chunks) => new ReadableStream({
+        start(controller) {
+            chunks.forEach((chunk) => controller.enqueue(enc.encode(chunk)));
+            controller.close();
+        }
+    });
+    const reader = (chunks, status = 200) => async () => new Response(status === 200 ? streamOf(chunks) : 'nope', { status });
+    const applied = [];
+    const ws = { _applyServerStartupStatus: (d) => applied.push(`${d.type}:${d.progressPercent}`) };
+    global.fetch = reader(['{"type":"status","progressPercent":10}\n{"type":"sta', 'tus","progressPercent":50}\n\n', '{"type":"done","progressPercent":100}\n']);
+    assert.strictEqual(await follow.call(ws), 'done');
+    assert.deepStrictEqual(applied, ['status:10', 'status:50', 'done:100'], 'lines split across chunks are joined');
+    global.fetch = reader(['{"type":"status","progressPercent":5}\n']);
+    assert.strictEqual(await follow.call(ws), 'ended', 'closed without done (the server went down again)');
+    global.fetch = reader([], 404);
+    assert.strictEqual(await follow.call(ws), 'unsupported');
+    global.fetch = async () => { throw new TypeError('Failed to fetch'); };
+    assert.strictEqual(await follow.call(ws), 'failed');
+    console.log('melaton network: ok');
+})().catch((error) => {
+    console.error(error);
+    process.exit(1);
+});

@@ -466,8 +466,8 @@ body.desktop-mode.workstation-locked :is(.modal.boot-dialog, #windowsStartupModa
 
 /* Over the logon dialog under the lock: the Connecting dialog (melaton-network.css, #429), then
    message boxes (bootMessageBox.js) above both; same layer, so DOM order no longer decides */
-body.desktop-mode.session-suspended #connectionDialModal,
-body.desktop-mode.workstation-locked #connectionDialModal {
+body.desktop-mode.session-suspended :is(#connectionDialModal, #mainframeServerModal),
+body.desktop-mode.workstation-locked :is(#connectionDialModal, #mainframeServerModal) {
     z-index: 2147482002 !important;
 }
 

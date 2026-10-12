@@ -1,3 +1,6 @@
+// Bind the HTTP port before ~3 s of module loading so a restarting server answers /status and
+// /status/stream from the start instead of refusing connections (Yozora #431)
+const earlyHttpServer = require('./modules/earlyHttpServer').bindEarly(__dirname);
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -47,6 +50,7 @@ const apocryphaSite = require('./modules/apocryphaSite');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
 const melatonNetwork = require('./modules/melatonNetwork');
+const { handleStatusStream } = require('./modules/statusStream');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
 const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacRemoteBridge');
@@ -76,6 +80,13 @@ function broadcastRuntimeCompileErrors(result) {
 }
 
 function broadcastRuntimeCompileProgress(progress) {
+    // During boot the compile is a phase with its own progress (/status, /status/stream)
+    if (!serverStartupStatus.isReady() && progress && progress.total > 0) {
+        serverStartupStatus.setStageProgress(
+            progress.current / progress.total,
+            `Compiling client files… (${progress.current}/${progress.total})`
+        );
+    }
     try {
         const plumbing = globalResources.getDataPlumbing();
         plumbing.publish('ws:broadcast:runtimeCompileProgress', {
@@ -1065,7 +1076,7 @@ async function refreshBalance(force = false) {
     }
 }
 
-const { app, server } = globalResources.initializeExpressApp();
+const { app, server } = globalResources.initializeExpressApp(null, null, { server: earlyHttpServer });
 
 // Security and performance middleware
 app.use(helmet({
@@ -1092,6 +1103,9 @@ const limiter = rateLimit({
         if (req.method === 'OPTIONS') {
             const allowedPaths = ['/', '/app', '/status'];
             return allowedPaths.includes(req.path);
+        }
+        if (req.method === 'GET' && req.path === '/status/stream') {
+            return true;
         }
         if (req.path === '/agent' || req.path.startsWith('/agent/')) {
             return true;
@@ -1133,6 +1147,9 @@ const speedLimiter = slowDown({
         if (req.method === 'OPTIONS') {
             const allowedPaths = ['/', '/app', '/status'];
             return allowedPaths.includes(req.path);
+        }
+        if (req.method === 'GET' && req.path === '/status/stream') {
+            return true;
         }
         if (req.path === '/agent' || req.path.startsWith('/agent/')) {
             return true;
@@ -2035,15 +2052,24 @@ app.options('/', (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-// Server status endpoint - available once HTTP server is listening
-app.options('/status', (req, res) => {
-    res.json(serverStartupStatus.getPublicStatus({
+// Server status endpoint - available once HTTP server is listening (bound at process start,
+// modules/earlyHttpServer.js)
+function publicStatusExtras(req) {
+    return {
         // Domain name + WAN / Ethernet for the client's connection dialogs (modules/melatonNetwork.js)
         melaton: melatonNetwork.describeConnection(getRealIP(req), globalResources.getConfig()),
         runtimeCompileComplete,
         runtimeCompile: runtimeAssetService.getPublicStatus(),
         runtimeAutoRecompile: getRuntimeAutoRecompileConfig()
-    }));
+    };
+}
+app.options('/status', (req, res) => {
+    res.json(serverStartupStatus.getPublicStatus(publicStatusExtras(req)));
+});
+// Live boot progress for clients waiting on a restart: NDJSON status lines, then "done" and the
+// end of the response; an up server answers "done" at once (modules/statusStream.js)
+app.get('/status/stream', (req, res) => {
+    handleStatusStream(req, res, publicStatusExtras);
 });
 
 // Boot-critical static assets — available as soon as HTTP listens (before full static middleware)

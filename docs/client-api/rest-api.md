@@ -513,6 +513,22 @@ Use before login if server may still be compiling runtime assets.
 `connectionType` is `Ethernet` when the trusted client IP (`getRealIP`, `modules/clientAddress.js`)
 is private / loopback / CGNAT and `WAN` otherwise, `device` is the load balancer (`L-PPoP`).
 
+### `GET /status/stream`
+
+**No auth.** Live boot progress (`modules/statusStream.js`), `application/x-ndjson`, not compressed,
+`X-Accel-Buffering: no`. One JSON object per line, each the `OPTIONS /status` body plus `type`:
+
+```json
+{"type":"status","isReady":false,"stage":"runtime_compile","stageMessage":"Compiling client files… (120/450)","progressPercent":66,...}
+{"type":"done","isReady":true,"stage":"ready","progressPercent":100,...}
+```
+
+`status` lines go out on every boot change (at most every 150 ms) and as a 5 s heartbeat; when the
+boot completes the server sends `done` and ends the response. A server that is already up answers a
+single `done` line and closes. The HTTP port is bound at process start
+(`modules/earlyHttpServer.js`), so a restarting server answers `/status` and this stream within
+its first seconds; the boot steps yield to the event loop between steps and per compiled file.
+
 ### `OPTIONS /`
 
 **No auth.** Returns service worker static file manifest via `buildServiceWorkerCacheManifest()`.

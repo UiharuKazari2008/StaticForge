@@ -130,6 +130,8 @@
     "test:melaton-boot": "node scripts/test-melaton-boot.js",
     "test:melaton-restart": "node scripts/test-melaton-restart.js",
     "test:melaton-network": "node scripts/test-melaton-network.js",
+    "test:status-stream": "node scripts/test-status-stream.js",
+    "test:wallet-tray": "node scripts/test-wallet-tray.js",
     "test:window-geometry": "node scripts/test-window-geometry.js",
     "test:frame-chrome": "node scripts/test-frame-chrome.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",

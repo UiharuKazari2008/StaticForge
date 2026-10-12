@@ -1,9 +1,12 @@
 /**
  * Server boot status — stage tracking, progress percent, step timing, capabilities.
- * Used by /status and globalResources.initialize() reporting.
+ * Used by /status, /status/stream (modules/statusStream.js: subscribe() feeds it every change)
+ * and globalResources.initialize() reporting. The clock starts at process start, so a restart
+ * shows up as a new start time from the very first answer.
  */
 
 const BOOT_PHASES = [
+    { id: 'loading_modules', message: 'Loading server modules…', weight: 3 },
     { id: 'binding', message: 'Starting HTTP server…', weight: 2 },
     { id: 'loading_global_resources', message: 'Loading global resources…', weight: 52 },
     { id: 'syncing_previews', message: 'Syncing previews…', weight: 8 },
@@ -62,14 +65,17 @@ const PHASE_MESSAGES = Object.fromEntries(BOOT_PHASES.map((p) => [p.id, p.messag
 const GR_STEP_MESSAGES = Object.fromEntries(GLOBAL_RESOURCES_STEPS.map((s) => [s.id, s.message]));
 const TOTAL_WEIGHT = BOOT_PHASES.reduce((sum, p) => sum + p.weight, 0);
 
+const PROCESS_START = Date.now() - Math.round(process.uptime() * 1000);
+
 const state = {
     isReady: false,
-    stage: 'binding',
+    stage: 'loading_modules',
     subStage: null,
     subStageMessage: null,
-    startTime: Date.now(),
+    stageFraction: 0,
+    startTime: PROCESS_START,
     lastUpdate: Date.now(),
-    stageStartedAt: Date.now(),
+    stageStartedAt: PROCESS_START,
     capabilities: {
         http: false,
         status: false,
@@ -83,8 +89,39 @@ const state = {
     grTotalSteps: GLOBAL_RESOURCES_STEPS.length
 };
 
+const listeners = new Set();
+let notifyQueued = false;
+
+/** Listeners hear every change once per event-loop turn (setImmediate batches bursts). */
+function notify() {
+    if (!listeners.size || notifyQueued) return;
+    notifyQueued = true;
+    setImmediate(() => {
+        notifyQueued = false;
+        for (const listener of [...listeners]) {
+            try {
+                listener();
+            } catch (error) {
+                console.warn('[serverStartupStatus] listener failed:', error.message);
+            }
+        }
+    });
+}
+
 function touch() {
     state.lastUpdate = Date.now();
+    notify();
+}
+
+/** Called after every status change; returns an unsubscribe function. */
+function subscribe(listener) {
+    if (typeof listener !== 'function') return () => {};
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+}
+
+function isReady() {
+    return state.isReady === true;
 }
 
 function getStageMessage(stage, subStage) {
@@ -112,6 +149,7 @@ function getProgressPercent() {
                     completed += slice * 0.35;
                 }
             }
+            completed += phase.weight * state.stageFraction;
             break;
         }
         completed += phase.weight;
@@ -127,10 +165,22 @@ function setCapability(key, value) {
     }
 }
 
+/**
+ * Progress inside the current phase (0..1), e.g. runtime compile file n of m, with an optional
+ * line that replaces the phase message until the next stage.
+ */
+function setStageProgress(fraction, message = null) {
+    const value = Number(fraction);
+    state.stageFraction = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    if (message) state.subStageMessage = message;
+    touch();
+}
+
 function updateStage(stage, options = {}) {
     if (stage !== state.stage) {
         state.stage = stage;
         state.stageStartedAt = Date.now();
+        state.stageFraction = 0;
         if (stage !== 'loading_global_resources') {
             state.subStage = null;
             state.subStageMessage = null;
@@ -227,9 +277,10 @@ function getPublicStatus(extra = {}) {
 
 function resetForTests() {
     state.isReady = false;
-    state.stage = 'binding';
+    state.stage = 'loading_modules';
     state.subStage = null;
     state.subStageMessage = null;
+    state.stageFraction = 0;
     state.startTime = Date.now();
     state.lastUpdate = Date.now();
     state.stageStartedAt = Date.now();
@@ -249,8 +300,11 @@ module.exports = {
     BOOT_PHASES,
     GLOBAL_RESOURCES_STEPS,
     updateStage,
+    setStageProgress,
     setCapability,
     reportGlobalResourcesStep,
+    subscribe,
+    isReady,
     getPublicStatus,
     getProgressPercent,
     getStageMessage,

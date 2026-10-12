@@ -865,6 +865,8 @@ class GlobalResources {
                 } else {
                     await this._runInitStep(step.id, step.label, () => step.run(this, options));
                 }
+                // Let queued /status and /status/stream requests through between steps (#431)
+                await new Promise((resolve) => setImmediate(resolve));
             }
 
             // Mark ready before workspace SQL/filesystem reconcile — sync uses getMetadataDatabase().
@@ -882,6 +884,7 @@ class GlobalResources {
                 } else {
                     await this._runInitStep(step.id, step.label, () => step.run(this, options));
                 }
+                await new Promise((resolve) => setImmediate(resolve));
             }
 
             this.initEndTime = Date.now();
@@ -4741,7 +4744,14 @@ class GlobalResources {
      * @param {Function} setupRoutes - Callback to set up routes
      * @returns {Object} { app, server }
      */
-    initializeExpressApp(setupMiddleware = null, setupRoutes = null) {
+    /**
+     * @param {Function|null} setupMiddleware
+     * @param {Function|null} setupRoutes
+     * @param {Object} [options]
+     * @param {http.Server} [options.server] an already-bound server (modules/earlyHttpServer.js):
+     *   the app becomes its request handler instead of a new server
+     */
+    initializeExpressApp(setupMiddleware = null, setupRoutes = null, options = {}) {
         if (this.expressApp) {
             console.warn('⚠️ Express app already initialized');
             return { app: this.expressApp, server: this.httpServer };
@@ -4751,7 +4761,13 @@ class GlobalResources {
         const http = require('http');
 
         const app = express();
-        const server = http.createServer(app);
+        let server = options && options.server;
+        if (server) {
+            server.removeAllListeners('request');
+            server.on('request', app);
+        } else {
+            server = http.createServer(app);
+        }
         console.log('✓ HTTP Server ready');
 
         this.expressApp = app;
@@ -4884,6 +4900,20 @@ class GlobalResources {
         }
 
         const listenPort = port || this.getConfig({ path: 'port' });
+
+        // Bound at the top of web_server.js already (modules/earlyHttpServer.js)
+        if (this.httpServer.earlyListen) {
+            await this.httpServer.earlyListen;
+        }
+        if (this.httpServer.listening) {
+            const address = this.httpServer.address();
+            const boundPort = address && typeof address === 'object' ? address.port : listenPort;
+            console.log(`✓ HTTP server listening on port ${boundPort} (bound at process start)`);
+            if (Number(boundPort) !== Number(listenPort)) {
+                console.warn(`⚠️ Configured port ${listenPort} differs from the early-bound port ${boundPort}`);
+            }
+            return;
+        }
 
         return new Promise((resolve, reject) => {
             this.httpServer.listen(listenPort, (error) => {

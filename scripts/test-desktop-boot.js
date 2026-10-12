@@ -338,11 +338,15 @@ async function testLockTriggers(body) {
             beats: [],
             dialRenders: 0
         });
+        c.statusFetches = 0;
         c._fetchServerStartupStatus = async () => {
+            c.statusFetches++;
             const next = responses.shift();
             if (next instanceof Error) throw next;
             return next;
         };
+        // An older server without /status/stream: pingHost keeps polling (#431)
+        c._followServerBootStream = async () => 'unsupported';
         c._setConnectionBeat = (beat, patch) => c.beats.push(patch && patch.message);
         c._renderConnectionDial = () => { c.dialRenders++; };
         c._renderPreStartupDialog = () => {};
@@ -377,6 +381,21 @@ async function testLockTriggers(body) {
     assert.deepStrictEqual(c.beats, ['Waiting for server… (1)', 'Waiting for server… (2)', 'Syncing previews…', 'Starting Dreamscape…'],
         'old server\'s "Starting Dreamscape…" never shows while the new one is down');
     assert.strictEqual(c._serverStartedAt, NEW);
+    window.desktopBoot.resume();
+
+    // Booting (#431): pingHost follows /status/stream instead of polling; its statuses go through
+    // _applyServerStartupStatus, "done" sends one more /status and the connect goes on
+    c = client([status(NEW, false, 'Loading global resources…', 10), status(NEW, true, 'Starting Dreamscape…', 100)]);
+    const streamed = [];
+    c._followServerBootStream = async function () {
+        [status(NEW, false, 'Compiling client files… (40/80)', 64), status(NEW, true, 'Starting Dreamscape…', 100)]
+            .forEach((s) => { streamed.push(s.stageMessage); this._applyServerStartupStatus(s); });
+        return 'done';
+    };
+    assert.strictEqual(await quiet(() => c.pingHost()), true);
+    assert.strictEqual(c.statusFetches, 2, 'one /status to find the boot, one after done; no polling in between');
+    assert.strictEqual(c.sessionSuspendReason, 'server-booting');
+    assert.deepStrictEqual(streamed, ['Compiling client files… (40/80)', 'Starting Dreamscape…']);
     window.desktopBoot.resume();
 
     // /status timing out (server busy) does not lock by itself: the same server back = no lock

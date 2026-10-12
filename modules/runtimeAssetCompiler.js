@@ -605,6 +605,9 @@ async function compileRuntimeAssets(projectRoot, options = {}) {
                 console.error(`[Runtime Compile] ${rel}: ${err.message}`);
                 errors.push({ file: rel, error: err.message });
             }
+            // Minifiers run synchronously: give the event loop a turn per file so /status and
+            // /status/stream keep answering while a boot compiles (Yozora #431)
+            await new Promise((resolve) => setImmediate(resolve));
         }
 
         finalizeStats(stats);

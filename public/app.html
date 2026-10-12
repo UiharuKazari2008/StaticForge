@@ -304,6 +304,8 @@
     <link rel="stylesheet"
         href="/css/melaton-network.css">
     <link rel="stylesheet"
+        href="/css/wallet-tray.css">
+    <link rel="stylesheet"
         href="/css/websocket-requests.css">
     <link rel="stylesheet"
         href="/css/requestBodyReplacements.css">
@@ -8433,10 +8435,6 @@ Examples:
                     title="Replication">
                     <i class="fas fa-clone"></i>
                 </div>
-                <!-- Managed RunPod GPU pods -->
-                <div class="runpod-tray-icon taskbar-tray-icon hidden" id="runpodTrayIcon" title="RunPod">
-                    <i class="fas fa-server"></i>
-                </div>
                 <!-- Phasewalker pipeline data -->
                 <div class="phasewalker-tray-icon taskbar-tray-icon hidden" id="phasewalkerTrayIcon"
                     title="Phasewalker">
@@ -8461,13 +8459,12 @@ Examples:
                     title="No Status Available">
                     <i class="fas fa-rotate-exclamation"></i>
                 </div>
-                <!-- Subscription Renewal Indicator -->
-                <div class="subscription-renewal-indicator taskbar-tray-icon hidden" id="subscriptionRenewalIndicator">
-                    <i class="fas fa-hand-holding-circle-dollar"></i>
-                </div>
-                <!-- Fixed Credits Indicator -->
-                <div class="fixed-credits-indicator taskbar-tray-icon hidden" id="fixedCreditsIndicator">
-                    <i class="nai-anla"></i>
+                <!-- Wallet: usage and balance of every account and API key (walletTray.js, #430). Click =
+                     Alerts / Status flyout, right-click = menu; replaces the NovelAI credits, renewal and
+                     RunPod icons. The triangle shows while there are alerts. -->
+                <div class="wallet-tray-icon taskbar-tray-icon hidden" id="walletTrayIcon" title="Wallet">
+                    <i class="fas fa-wallet"></i>
+                    <i class="fas fa-triangle-exclamation wallet-tray-alert hidden" aria-hidden="true"></i>
                 </div>
                 <!-- Workspace Icon -->
                 <div class="workspace-tray-icon taskbar-tray-icon hidden" id="workspaceTrayIcon" title="Workspace">
@@ -8540,6 +8537,7 @@ Examples:
     <script src="scripts/comp/bootMessageBox.js"></script>
     <script src="scripts/comp/workstationLock.js"></script>
     <script src="scripts/comp/melatonNetworkDialogs.js"></script>
+    <script src="scripts/comp/mainframeServerWindow.js"></script>
     <script src="scripts/comp/melatonControlPanel.js"></script>
     <script src="scripts/websocket.js"></script>
     <script src="scripts/comp/clientPerfSampler.js"></script>
@@ -8672,6 +8670,7 @@ Examples:
     <script src="scripts/comp/mcpActivityClient.js"></script>
     <script src="scripts/comp/studioActivityTool.js"></script>
     <script src="scripts/comp/runpodTray.js"></script>
+    <script src="scripts/comp/walletTray.js"></script>
     <script src="scripts/comp/systemTrayManager.js"></script>
     <script src="scripts/comp/windowControlsOverlay.js"></script>
     <script src="scripts/comp/errorDisplay.js"></script>

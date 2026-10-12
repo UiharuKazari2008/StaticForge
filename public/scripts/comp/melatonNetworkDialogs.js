@@ -131,6 +131,49 @@
         return `The system cannot log you on now because the domain ${(info || connectionInfo()).domain} is not available.`;
     }
 
+    /**
+     * Logon-screen windows (the Connecting dialog, Dreamscape Mainframe Server) sit in the
+     * bottom-right quadrant, a little off any grid, the way a logon hook pops its windows up
+     * (Yukimi, 2026-10-12), and below the centered logon dialog where the screen allows. Call
+     * after the window is open (it needs its size); setModalOffsetPx is modalUtils.js.
+     */
+    const LOGON_SPOTS = {
+        connecting: { fx: 0.69, fy: 0.70, dx: 13, dy: 7 },
+        mainframe: { fx: 0.635, fy: 0.765, dx: -9, dy: 4 }
+    };
+
+    function logonWindowOffset(slot, size, viewport, logonRect) {
+        const spot = LOGON_SPOTS[slot] || LOGON_SPOTS.connecting;
+        const margin = 16;
+        const { w, h } = size;
+        const { vw, vh } = viewport;
+        let cx = vw * spot.fx + spot.dx;
+        let cy = vh * spot.fy + spot.dy;
+        if (logonRect && logonRect.height) cy = Math.max(cy, logonRect.bottom + 18 + h / 2);
+        cx = Math.min(Math.max(cx, w / 2 + margin), vw - w / 2 - margin);
+        cy = Math.min(Math.max(cy, h / 2 + margin), vh - h / 2 - margin);
+        return { x: Math.round(cx - vw / 2), y: Math.round(cy - vh / 2) };
+    }
+
+    function placeLogonWindow(modal, slot = 'connecting') {
+        if (!modal || !root.document) return null;
+        const logon = root.document.getElementById('desktopPreStartupModal');
+        const logonRect = logon && !logon.classList.contains('hidden') ? logon.getBoundingClientRect() : null;
+        const offset = logonWindowOffset(
+            slot,
+            { w: modal.offsetWidth || 380, h: modal.offsetHeight || 140 },
+            { vw: root.innerWidth, vh: root.innerHeight },
+            logonRect
+        );
+        if (typeof root.setModalOffsetPx === 'function') {
+            root.setModalOffsetPx(modal, offset.x, offset.y, { snap: false });
+        } else {
+            modal.style.setProperty('--modal-offset-x', `${offset.x}px`);
+            modal.style.setProperty('--modal-offset-y', `${offset.y}px`);
+        }
+        return offset;
+    }
+
     // ---- Connect <connection> --------------------------------------------------------------
 
     const doc = typeof document !== 'undefined' ? document : null;
@@ -313,6 +356,8 @@
         errorFor,
         errorTitle,
         domainUnavailableText,
+        logonWindowOffset,
+        placeLogonWindow,
         connect: {
             show: showConnect,
             open: openConnect,

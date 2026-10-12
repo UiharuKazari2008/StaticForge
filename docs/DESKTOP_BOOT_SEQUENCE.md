@@ -156,11 +156,20 @@ wording is VPN, not modem: Connecting / Reconnecting, "Reconnect attempt n of m"
   more reconnects, offline until Connect / Reconnect.
 - **At the logon screen** (before the handoff and during the restart lock,
   `_shouldShowLogonConnectingDialog`): the connection test (`/status`) and the WebSocket connect
-  show the same small dialog, centered on top of the logon dialog, which stays up with "Please
-  wait...". A starting server, the password prompt, the logon steps and the handoff need no
-  dialog on top; the socket coming up closes it. The logon dialog has no progress bar: a long task
-  with progress (the server's own boot, `/status` `progressPercent`) gets a small
-  `#logonTaskProgressModal` in the top-left corner (`_updatePreStartupStageProgress`). Cancel there gives XP's Logon Message "The system cannot
+  show the same small dialog on top of the logon dialog, which stays up with "Please wait...".
+  Logon-screen windows sit in the bottom-right quadrant, a little off any grid and below the
+  logon dialog where the screen allows (`melatonNetworkDialogs.placeLogonWindow`; the Connecting
+  dialog and the Mainframe Server window get different spots). A starting server, the password
+  prompt, the logon steps and the handoff need no dialog on top; the socket coming up closes it.
+- **Dreamscape Mainframe Server** (`mainframeServerWindow.js`): the logon dialog has no progress
+  bar; the server's own boot (`/status` `progressPercent`) shows in this vendor-style window ("The
+  domain controller is starting. Logons are held until the directory is ready.", stage, bar), with
+  an animated 256-colour "building blocks" icon: tetrominoes fall into an 8 × 8 well until it is
+  exactly full (a fresh gravity-valid tiling per round, `tileWell`), flash, clear, repeat.
+- **Boot stream**: once `/status` says the server is booting, `pingHost` stops polling and follows
+  `GET /status/stream` (`_followServerBootStream`): NDJSON status lines as the boot moves, then a
+  `done` line and the end; "done" sends one more `/status` and the connect goes on. A stream that
+  ends early or stalls for 30 s falls back to the 2 s poll; a 404 (older server) disables it. Cancel there gives XP's Logon Message "The system cannot
   log you on now because the domain <domain> is not available." with Retry / Restart; an error
   has no Close (nothing behind it).
 - **Error Connecting to domain controller**: the same window with a RAS error for the failure
