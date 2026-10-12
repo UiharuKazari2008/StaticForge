@@ -806,6 +806,100 @@
     transition: width 0.35s ease;
 }
 
+/* ---- MeletonFX Framework exception dialog (mainframeExceptionDialog.js): .NET's unhandled
+   exception window for WebSocket server errors on the desktop ------------------------------- */
+
+#mainframeExceptionDialog {
+    width: 470px;
+}
+
+#mainframeExceptionDialog .dotnet-content {
+    padding: 0;
+}
+
+#mainframeExceptionDialog .dotnet-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 14px 4px;
+}
+
+#mainframeExceptionDialog .dotnet-icon {
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+}
+
+#mainframeExceptionDialog .dotnet-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+#mainframeExceptionDialog .dotnet-text {
+    flex: 1;
+    min-width: 0;
+}
+
+#mainframeExceptionDialog .dotnet-text p {
+    margin: 0 0 10px;
+}
+
+#mainframeExceptionDialog .dotnet-message {
+    overflow-wrap: anywhere;
+}
+
+#mainframeExceptionDialog .dotnet-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px 10px;
+}
+
+#mainframeExceptionDialog .dotnet-buttons .btn-standard {
+    min-width: 75px;
+    min-height: 23px;
+    font-family: var(--vpn-font);
+    font-size: 12px;
+}
+
+#mainframeExceptionDialog .dotnet-more {
+    flex: 1;
+    color: var(--vpn-muted);
+    font-size: 11px;
+}
+
+#mainframeExceptionDialog .dotnet-arrow {
+    font-size: 9px;
+    margin-left: 2px;
+}
+
+#mainframeExceptionDialog textarea.dotnet-details {
+    display: block;
+    box-sizing: border-box;
+    width: calc(100% - 24px);
+    height: 170px;
+    margin: 0 12px 12px;
+    padding: 4px 6px;
+    resize: vertical;
+    border: 1px solid var(--vpn-field-border);
+    border-top-color: #8e8f8f;
+    border-radius: 0;
+    background: #ffffff;
+    color: #000000;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.3;
+    white-space: pre;
+}
+
+#mainframeExceptionDialog textarea.dotnet-details.hidden {
+    display: none;
+}
+
+body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standard {
+    font-size: 11px;
+}
+
 /* ---- Network tray flyout (one click on the tray icon) ------------------------------------------ */
 
 .network-flyout {

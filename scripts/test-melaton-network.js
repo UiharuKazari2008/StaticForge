@@ -149,6 +149,24 @@ assert.strictEqual(c._userCancelledConnect, false);
 assert.strictEqual(c.isManualClose, false);
 assert.strictEqual(c.connectionPhase, 'dialing');
 
+// ---- Dreamscape Mainframe Server only while the server really boots (Yukimi: it popped twice at a
+//      normal logon with the server already up) ----
+const stageProgress = liftMethod(wsSrc, '_updatePreStartupStageProgress')(FakeClient);
+const winCalls = [];
+const hadWindow = 'window' in global;
+global.window = global.window || {};
+global.window.isDesktop = true;
+global.window.mainframeServerWindow = { update: (p) => winCalls.push(`update:${p}`), hide: () => winCalls.push('hide') };
+const sp = (state, pct) => stageProgress.call(Object.assign({ _shouldUsePreStartupDialog: () => true }, state), pct, 'Starting Dreamscape…');
+sp({ lastServerStartupStatus: { isReady: true, progressPercent: 100 } }, 100);
+assert.deepStrictEqual(winCalls.splice(0), ['hide'], 'an up server never opens it');
+sp({ lastServerStartupStatus: { isReady: false, progressPercent: 40 } }, 40);
+assert.deepStrictEqual(winCalls.splice(0), ['update:40'], 'a booting server does');
+sp({ lastServerStartupStatus: null }, 0);
+assert.deepStrictEqual(winCalls.splice(0), ['hide'], 'no status yet: nothing to show');
+delete global.window.mainframeServerWindow;
+if (!hadWindow) delete global.window;
+
 // ---- Logon screen: the small Connecting dialog during the connection test + WebSocket connect ----
 const logon = (state) => Object.assign(Object.create(proto), {
     connectionPhase: 'dialing',
@@ -179,6 +197,44 @@ assert.strictEqual(below.y + 540 - 65, 800 + 18, 'pushed below the logon dialog'
 const small = ui.logonWindowOffset('connecting', { w: 380, h: 130 }, { vw: 640, vh: 480 }, { bottom: 460, height: 230 });
 assert.strictEqual(small.y + 240 + 65, 480 - 16, 'clamped inside a small screen');
 assert.strictEqual(small.x + 320 + 190, 640 - 16);
+
+// ---- Desktop: the Connecting dialog sits bottom-left of the work area, beside desktop icons ----
+const iconRect = (left, top) => ({ left, top, right: left + 92, bottom: top + 112, width: 92, height: 112 });
+const grid = [14, 130, 246, 362, 478, 594, 710, 826, 942].map((t) => iconRect(14, t)).concat([iconRect(110, 14), iconRect(110, 594)]);
+const area = { left: 0, top: 0, right: 1920, bottom: 1117 };
+const toRect = (o, w, h) => ({ left: o.x + 960 - w / 2, top: o.y + 576 - h / 2 });
+const plain = toRect(ui.desktopWindowOffset({ w: 380, h: 130 }, area, [], { vw: 1920, vh: 1152 }), 380, 130);
+assert.strictEqual(plain.left, 35, 'padded from the left edge (1.8% of the width)');
+assert.strictEqual(plain.top + 130, 1117 - 35, 'padded above the taskbar');
+const beside = toRect(ui.desktopWindowOffset({ w: 380, h: 130 }, area, grid, { vw: 1920, vh: 1152 }), 380, 130);
+assert.strictEqual(beside.left, 106 + 35, 'stepped right of the icon column in its band');
+const twoCols = grid.concat([iconRect(110, 942)]);
+assert.strictEqual(toRect(ui.desktopWindowOffset({ w: 380, h: 130 }, area, twoCols, { vw: 1920, vh: 1152 }), 380, 130).left, 202 + 35,
+    'past both columns when both reach the band');
+const tinyOffset = ui.desktopWindowOffset({ w: 380, h: 130 }, { left: 0, top: 0, right: 400, bottom: 300 }, [], { vw: 400, vh: 300 });
+const tinyLeft = tinyOffset.x + 200 - 190;
+assert.ok(tinyLeft >= 16 && tinyLeft + 380 <= 400, 'kept on a small screen');
+
+// ---- MeletonFX Framework exception dialog: server errors in Windows language ----
+const exceptions = require('../public/scripts/comp/mainframeExceptionDialog.js');
+const tr = (packet) => exceptions.translateServerError(packet);
+assert.deepStrictEqual(tr({ message: 'Unknown message type', details: 'foo' }), { exception: 'IllegalPacketOperationException', text: 'Illegal Operation in Packet' });
+assert.strictEqual(tr({ message: 'Invalid message format' }).text, 'Malformed Packet');
+assert.strictEqual(tr({ message: 'Packet handler failed', details: 'x is undefined' }).text, 'Packet Handler Fault');
+assert.strictEqual(tr({ message: 'Authentication required', code: 'AUTH_REQUIRED' }).text, 'Access Denied');
+assert.strictEqual(tr({ message: 'Non-Administrator Login: This operation is not allowed', code: 'READONLY_RESTRICTED' }).text, 'Operation Not Permitted');
+assert.strictEqual(tr({ message: 'Workspace not found' }).text, 'Object Not Found');
+assert.strictEqual(tr({ message: 'Request timed out' }).text, 'Operation Timed Out');
+assert.strictEqual(tr({ message: 'Missing required parameter: id' }).text, 'Invalid Argument in Packet');
+assert.strictEqual(tr({ message: 'Something odd', code: 'INTERNAL_ERROR' }).text, 'Internal Error');
+const report = exceptions.buildReport([{
+    packet: { message: 'Unknown message type', details: 'workspace_x', requestId: 'r1', requestType: 'workspace_x' },
+    translated: tr({ message: 'Unknown message type' }), at: new Date(2026, 9, 12, 6, 5, 9), repeats: 3
+}]);
+assert.ok(report.includes('Dreamscape.Mainframe.IllegalPacketOperationException: Illegal Operation in Packet'));
+assert.ok(report.includes('Type: workspace_x') && report.includes('Request ID: r1'));
+assert.ok(report.includes('Received: 2026-10-12 06:05:09 (3 times)'));
+assert.ok(report.includes('Connection: Home VPN (Ethernet Miniport (L-PPoP))'), 'connection facts from melatonNetworkDialogs');
 
 // ---- Dreamscape Mainframe Server: the building-blocks tiling always fills the well exactly ----
 const mainframe = require('../public/scripts/comp/mainframeServerWindow.js');

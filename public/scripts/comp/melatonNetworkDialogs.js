@@ -174,6 +174,65 @@
         return offset;
     }
 
+    /**
+     * On the desktop the Connecting dialog keeps out of the way (Yukimi, 2026-10-12): bottom-left
+     * of the work area (above the taskbar), padded in proportion to the screen, and stepped to the
+     * right of any desktop icons that sit in that band. obstacles are icon rects.
+     */
+    function desktopWindowOffset(size, area, obstacles = [], viewport = null) {
+        const vw = viewport ? viewport.vw : area.right;
+        const vh = viewport ? viewport.vh : area.bottom;
+        const pad = Math.round(Math.max(16, Math.min(40, (area.right - area.left) * 0.018)));
+        const bottom = area.bottom - pad;
+        const top = Math.max(area.top + pad, bottom - size.h);
+        let left = area.left + pad;
+        const inBand = obstacles
+            .filter((r) => r && r.width > 0 && r.height > 0 && r.bottom > top && r.top < bottom)
+            .sort((a, b) => a.left - b.left);
+        // Icons in the band push the dialog right until it fits beside them
+        let moved = true;
+        while (moved) {
+            moved = false;
+            for (const r of inBand) {
+                if (r.left < left + size.w && r.right > left) {
+                    left = r.right + pad;
+                    moved = true;
+                }
+            }
+        }
+        left = Math.min(left, area.right - pad - size.w);
+        left = Math.max(area.left + pad, left);
+        return { x: Math.round(left + size.w / 2 - vw / 2), y: Math.round(top + size.h / 2 - vh / 2) };
+    }
+
+    function placeDesktopWindow(modal) {
+        if (!modal || !root.document) return null;
+        const d = root.document;
+        const vw = root.innerWidth;
+        const vh = root.innerHeight;
+        let bottom = vh;
+        const taskbar = d.getElementById('desktopTaskbar');
+        if (taskbar && !taskbar.classList.contains('hidden')) {
+            const r = taskbar.getBoundingClientRect();
+            if (r.height > 0 && r.top > vh / 2) bottom = r.top;
+        }
+        const icons = [...d.querySelectorAll('#desktopIcons .desktop-icon, #desktopIcons .desktop-shortcut')]
+            .map((icon) => icon.getBoundingClientRect());
+        const offset = desktopWindowOffset(
+            { w: modal.offsetWidth || 380, h: modal.offsetHeight || 140 },
+            { left: 0, top: 0, right: vw, bottom },
+            icons,
+            { vw, vh }
+        );
+        if (typeof root.setModalOffsetPx === 'function') {
+            root.setModalOffsetPx(modal, offset.x, offset.y, { snap: false });
+        } else {
+            modal.style.setProperty('--modal-offset-x', `${offset.x}px`);
+            modal.style.setProperty('--modal-offset-y', `${offset.y}px`);
+        }
+        return offset;
+    }
+
     // ---- Connect <connection> --------------------------------------------------------------
 
     const doc = typeof document !== 'undefined' ? document : null;
@@ -358,6 +417,8 @@
         domainUnavailableText,
         logonWindowOffset,
         placeLogonWindow,
+        desktopWindowOffset,
+        placeDesktopWindow,
         connect: {
             show: showConnect,
             open: openConnect,

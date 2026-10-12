@@ -2300,9 +2300,12 @@ class WebSocketClient {
                 modal.classList.remove('hidden');
             }
             // At the logon screen it sits in the bottom-right quadrant over the logon dialog, off
-            // the grid (melatonNetworkDialogs.placeLogonWindow); on the desktop it stays centered
-            if (logon && text) text.placeLogonWindow(modal, 'connecting');
-            else if (typeof setModalOffsetPx === 'function') setModalOffsetPx(modal, 0, 0, { snap: false });
+            // the grid (placeLogonWindow); on the desktop it keeps out of the way in the bottom-left
+            // of the work area, beside any desktop icons there (placeDesktopWindow)
+            if (text) {
+                if (logon) text.placeLogonWindow(modal, 'connecting');
+                else text.placeDesktopWindow(modal);
+            }
         }
         if (logon) {
             const logonDialog = document.getElementById('desktopPreStartupModal');
@@ -2729,7 +2732,9 @@ class WebSocketClient {
         this._setConnectionBeat('dialing', sameServerReconnect ? {} : { message });
 
         if (this._shouldUsePreStartupDialog()) {
-            this._updatePreStartupStageProgress(progress, message);
+            // Dreamscape Mainframe Server only while the server really boots; an up server's
+            // status (100%, "Starting Dreamscape…") at a normal logon must not pop it
+            this._updatePreStartupStageProgress(data.isReady === false ? progress : null, message);
             this._renderConnectionDial();
         }
     }
@@ -2810,8 +2815,9 @@ class WebSocketClient {
     _updatePreStartupStageProgress(progressPercent, message) {
         const win = window.mainframeServerWindow;
         if (!win) return;
+        const booting = !!(this.lastServerStartupStatus && this.lastServerStartupStatus.isReady === false);
         const show = typeof progressPercent === 'number' && Number.isFinite(progressPercent)
-            && window.isDesktop && this._shouldUsePreStartupDialog();
+            && booting && window.isDesktop && this._shouldUsePreStartupDialog();
         if (show) win.update(progressPercent, message);
         else win.hide();
     }
@@ -4858,6 +4864,8 @@ class WebSocketClient {
             // If this error has a requestId, resolve the pending request with the error
             if (message.requestId && this.pendingRequests && this.pendingRequests.has(message.requestId)) {
                 const pending = this.pendingRequests.get(message.requestId);
+                // The packet that failed, for the exception report (mainframeExceptionDialog.js)
+                message.requestType = pending.type;
                 const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
                 if (generationTypes.has(pending.type)) {
                     this.clearStreamingStepQueues(null, true);

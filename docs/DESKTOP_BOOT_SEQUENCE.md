@@ -152,8 +152,20 @@ wording is VPN, not modem: Connecting / Reconnecting, "Reconnect attempt n of m"
   `_renderVpnConnectionDialog`): `dialing` → "Connecting to <fqdn> using '<type> Miniport
   (L-PPoP)'...", `negotiation` → "Verifying user name and password...", `establishing` →
   "Registering your computer on the network...", plus "Reconnect attempt n of m." On the
-  desktop, Cancel (or the title close / Esc) calls `wsClient.cancelConnectionFromUser()`: no
-  more reconnects, offline until Connect / Reconnect.
+  desktop it keeps out of the way (#434, `placeDesktopWindow` / `desktopWindowOffset`):
+  bottom-left of the work area above the taskbar, padded 1.8 % of the width (16–40 px), and
+  stepped right of any desktop icons in that band. Cancel (or the title close / Esc) calls
+  `wsClient.cancelConnectionFromUser()`: no more reconnects, offline until Connect / Reconnect.
+- **Server errors** (#434): on the desktop a WebSocket `error` packet is no longer a toast but
+  the **MeletonFX Framework** unhandled-exception window (`mainframeExceptionDialog.js`, .NET's
+  ThreadExceptionDialog): "Unhandled exception has occurred in a component in your
+  application…" plus the error in Windows language ("Unknown message type" → "Dreamscape
+  Mainframe Server Exception: Illegal Operation in Packet"; malformed packet, packet handler
+  fault, access denied, operation not permitted, server busy, timed out, object not found,
+  invalid argument, internal error). Details ▼ shows a .NET-style report (exception, packet
+  type and request id from the pending request, connection); Continue closes, Quit restarts
+  through `/launch`. Errors arriving while it is open add to the report (+N more). Logon / boot
+  errors, `AUTH_REQUIRED` and narrow mode keep the banner.
 - **At the logon screen** (before the handoff and during the restart lock,
   `_shouldShowLogonConnectingDialog`): the connection test (`/status`) and the WebSocket connect
   show the same small dialog on top of the logon dialog, which stays up with "Please wait...".
@@ -162,7 +174,8 @@ wording is VPN, not modem: Connecting / Reconnecting, "Reconnect attempt n of m"
   dialog and the Mainframe Server window get different spots). A starting server, the password
   prompt, the logon steps and the handoff need no dialog on top; the socket coming up closes it.
 - **Dreamscape Mainframe Server** (`mainframeServerWindow.js`): the logon dialog has no progress
-  bar; the server's own boot (`/status` `progressPercent`) shows in this vendor-style window ("The
+  bar; the server's own boot (`/status` `progressPercent`, only while `isReady: false`; an up
+  server at a normal logon never opens it) shows in this vendor-style window ("The
   domain controller is starting. Logons are held until the directory is ready.", stage, bar), with
   an animated 256-colour "building blocks" icon: tetrominoes fall into an 8 × 8 well until it is
   exactly full (a fresh gravity-valid tiling per round, `tileWell`), flash, clear, repeat.
