@@ -762,8 +762,10 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal .character-prompt-ite
 body.desktop-mode:not(.windows-classic-theme) #manualModal .character-prompt-item .character-prompt-tabs > .tab-header {
     --text-primary: #ffffff;
     --text-color: #ffffff;
+    /* the same 4 px around everything in the strip, so the buttons keep off the card's frame */
     margin: calc(-1 * var(--spacing-xs)) calc(-1 * var(--spacing-xs)) 0;
-    padding: 3px var(--spacing-xs) 3px 2px;
+    padding: 4px;
+    gap: 4px;
     background: linear-gradient(hsl(0 0% 28% / 94%), hsl(0 0% 20% / 94%) calc(50% - 1px), hsl(0 0% 5% / 96%) 50%, hsl(0 0% 4% / 96%));
     border-bottom: 1px solid hsl(0 0% 0% / 70%);
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 16%);

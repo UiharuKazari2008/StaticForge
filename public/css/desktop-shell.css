@@ -234,6 +234,9 @@ body:not(.desktop-mode) #titlebar-grab-area-container .window-handle-icon {
     z-index: var(--z-taskbar);
     isolation: isolate;
     /* Create stacking context for layering */
+    /* Layout containment like .modal (app.css): a change inside the taskbar never relays
+       out the windows, and vice versa. Its popups (start menu, flyouts) live outside it. */
+    contain: layout;
 }
 
 body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .desktop-taskbar {
@@ -1461,7 +1464,9 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
    scripts/build-vista-start-menu-art.js. */
 
 #startMenu.start-menu {
-    --start-menu-h: min(635px, calc(100vh - var(--taskbar-height, 35px) - 48px));
+    /* sits over the taskbar's top edge by 1 px, like Vista's (no seam at any display scale) */
+    --start-menu-bottom: calc(var(--taskbar-height, 35px) - 1px);
+    --start-menu-h: min(635px, calc(100vh - var(--start-menu-bottom) - 48px));
     --start-menu-pane-w: 318px;
     --start-menu-places-w: 181px;
     /* Vista's glass lets about half the backdrop through at the top (measured over a white
@@ -1472,7 +1477,7 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     --start-menu-font: 'Segoe UI', Tahoma, var(--font-family, sans-serif);
     position: fixed;
     left: 0;
-    bottom: var(--taskbar-height, 35px);
+    bottom: var(--start-menu-bottom);
     z-index: var(--z-start-menu);
     box-sizing: border-box;
     width: max-content;
@@ -1500,7 +1505,7 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
         100% 100%;
     background-position:
         0 0,
-        -1px calc(-1px - (var(--aero-vh, 100vh) - var(--taskbar-height, 35px) - var(--start-menu-h))),
+        -1px calc(-1px - (var(--aero-vh, 100vh) - var(--start-menu-bottom) - var(--start-menu-h))),
         0 0;
     background-repeat: no-repeat;
     -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
@@ -1508,8 +1513,12 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     border: 1px solid hsl(210 60% 2% / 92%);
     border-bottom: 0;
     border-radius: 6px 6px 0 0;
+    /* the inner highlight on the top and sides only: along the bottom it read as a gap above
+       the taskbar */
     box-shadow:
-        inset 0 0 0 1px hsl(0 0% 100% / 34%),
+        inset 0 1px 0 hsl(0 0% 100% / 34%),
+        inset 1px 0 0 hsl(0 0% 100% / 34%),
+        inset -1px 0 0 hsl(0 0% 100% / 34%),
         0 0 18px hsl(0 0% 0% / 50%);
     color: #fff;
     opacity: 1;
@@ -1533,9 +1542,9 @@ html[data-glass="frosted"] #startMenu.start-menu {
         var(--aero-cover-w, 100vw) var(--aero-cover-h, 100vh);
     background-position:
         0 0,
-        -1px calc(-1px - (var(--aero-vh, 100vh) - var(--taskbar-height, 35px) - var(--start-menu-h))),
+        -1px calc(-1px - (var(--aero-vh, 100vh) - var(--start-menu-bottom) - var(--start-menu-h))),
         0 0,
-        calc(var(--aero-cover-x, 0px) - 1px) calc(var(--aero-cover-y, 0px) - 1px - (var(--aero-vh, 100vh) - var(--taskbar-height, 35px) - var(--start-menu-h)));
+        calc(var(--aero-cover-x, 0px) - 1px) calc(var(--aero-cover-y, 0px) - 1px - (var(--aero-vh, 100vh) - var(--start-menu-bottom) - var(--start-menu-h)));
     background-repeat: no-repeat;
 }
 

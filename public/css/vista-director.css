@@ -183,7 +183,7 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat #directorComp
 }
 
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input {
-    padding: 3px;
+    padding: 4px;
     background: #fff;
     border: 1px solid hsl(0 0% 0% / 60%);
     border-radius: 3px;
@@ -329,4 +329,89 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-ses
 body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-session-date {
     color: #6d6d6d;
     font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+}
+
+/* ---- the Director window: a light Vista window, its controls on a black-glass command bar ----
+   (Yukimi: the standalone Director "should move its controls from the titlebar to a Vista black
+   glass bar and the window should be a light version".) app.html: data-window-client="light",
+   no toolbar row in the caption; #directorWindowToolbar is the first row of the client
+   (director.js mountDirectorInWindow puts the header there), the chat, prints and browser panes
+   sit in .director-window-body under it. */
+
+body:not(.windows-classic-theme) #directorWindow > .modal-content.director-window-content {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 14px;
+}
+
+#directorWindow .director-window-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: row;
+    min-width: 0;
+    min-height: 0;
+}
+
+body:not(.windows-classic-theme) #directorWindow #directorWindowToolbar.director-window-command-bar {
+    --text-primary: #ffffff;
+    --text-color: #ffffff;
+    --text-secondary: #d0d0d0;
+    --text-muted: #9a9a9a;
+    /* the light client flips the accent text to navy; the bar is dark glass, so its accent
+       text is the workspace colour again (model picker, usage wells, menu button) */
+    --text-accent-tinted: var(--primary-color, #9fd3ff);
+    --primary-color-light: var(--primary-color, #9fd3ff);
+    flex: none;
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 5px 8px;
+    font-size: 1em;
+    background: linear-gradient(hsl(0 0% 28% / 96%), hsl(0 0% 20% / 96%) calc(50% - 1px), hsl(0 0% 5% / 98%) 50%, hsl(0 0% 4% / 98%));
+    border-bottom: 1px solid hsl(0 0% 0% / 75%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 16%);
+    color: #fff;
+    text-shadow: none;
+}
+
+body:not(.windows-classic-theme) #directorWindow #directorWindowToolbar > #directorCommonHeader {
+    height: auto;
+}
+
+/* the light client between the panes (Vista's #f0f0f0 window face) */
+body:not(.windows-classic-theme) #directorWindow .director-window-chat {
+    background: #f0f0f0;
+}
+
+body:not(.windows-classic-theme) #directorWindow :is(.director-session-images-pane, .director-browser-pane) {
+    background: #fff;
+    border-left: 1px solid #a0a0a0;
+}
+
+body:not(.windows-classic-theme) #directorWindow .director-session-images-pane.is-collapsed {
+    background: transparent;
+    border: 0;
+}
+
+body:not(.windows-classic-theme) #directorWindow .director-session-images .director-session-preview {
+    border: 1px solid #c3c3c3;
+    border-radius: 2px;
+    background: #f0f0f0;
+}
+
+body:not(.windows-classic-theme) #directorWindow #directorSessionImagesToggle {
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #8e8f8f;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+    color: #2b5797;
+}
+
+/* the workspace banner and task list on the light face */
+body:not(.windows-classic-theme) #directorWindow .director-task-list {
+    background: #fff;
+    border: 1px solid #a0a0a0;
+    border-radius: 3px;
 }

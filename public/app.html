@@ -4366,7 +4366,9 @@
     </div>
 
     <!-- Director desktop window: hosts #directorCommonHeader + #directorContainer when undocked from Studio -->
-    <div id="directorWindow" class="modal hidden resizeable-window toolbar-visible" data-window-identifier="director"
+    <!-- Vista (#445): a light window with its controls on a black-glass command bar under a plain caption -->
+    <div id="directorWindow" class="modal hidden resizeable-window" data-window-identifier="director"
+        data-window-client="light"
         data-window-min-width="640" data-window-min-height="440" data-window-max-width="2200"
         data-window-max-height="1500" data-window-default-width="1180" data-window-default-height="760">
         <div class="modal-window-title">
@@ -4374,8 +4376,6 @@
                 <i class="fas fa-clapperboard"></i>
                 <span id="directorWindowTitle">Director</span>
             </div>
-            <!-- #directorCommonHeader mounts here in the window (director.js mountDirectorInWindow), like the Calculator toolbar -->
-            <div id="directorWindowToolbar" class="modal-window-title-toolbar"></div>
         </div>
         <div class="modal-window-controls">
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
@@ -4388,17 +4388,21 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dark">
-            <div id="directorWindowChat" class="director-window-chat"></div>
-            <!-- Prints this session generated, newest first (director.js renderSessionImages) -->
-            <div id="directorSessionImagesPane" class="director-session-images-pane hidden">
-                <button type="button" id="directorSessionImagesToggle" class="btn-secondary btn-small" title="Prints">
-                    <i class="fas fa-chevron-right"></i>
-                </button>
-                <div id="directorSessionImages" class="director-session-images form-section-scroll" data-custom-scrollbar></div>
-            </div>
-            <div id="directorBrowserPane" class="director-browser-pane hidden">
-                <img id="directorBrowserPreview" class="director-browser-preview" alt="Director browser">
+        <div class="modal-content director-window-content">
+            <!-- #directorCommonHeader mounts here (director.js mountDirectorInWindow): the black-glass command bar -->
+            <div id="directorWindowToolbar" class="director-window-command-bar"></div>
+            <div class="director-window-body">
+                <div id="directorWindowChat" class="director-window-chat"></div>
+                <!-- Prints this session generated, newest first (director.js renderSessionImages) -->
+                <div id="directorSessionImagesPane" class="director-session-images-pane hidden">
+                    <button type="button" id="directorSessionImagesToggle" class="btn-secondary btn-small" title="Prints">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <div id="directorSessionImages" class="director-session-images form-section-scroll" data-custom-scrollbar></div>
+                </div>
+                <div id="directorBrowserPane" class="director-browser-pane hidden">
+                    <img id="directorBrowserPreview" class="director-browser-preview" alt="Director browser">
+                </div>
             </div>
         </div>
     </div>

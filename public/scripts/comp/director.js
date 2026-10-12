@@ -2281,7 +2281,7 @@ class Director {
             this._hideTimer = null;
         }
         if (this.directorCommonHeader) {
-            // Title-bar toolbar row of #directorWindow (public/app.html), as in the Calculator.
+            // The black-glass command bar at the top of #directorWindow (public/app.html, Vista #445).
             const toolbar = document.getElementById('directorWindowToolbar');
             (toolbar || this.directorWindowChat).appendChild(this.directorCommonHeader);
             this.directorCommonHeader.classList.remove('hidden');
