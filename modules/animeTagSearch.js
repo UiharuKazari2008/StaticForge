@@ -142,11 +142,12 @@ class AnimeTagSearch {
     }
 
     buildSearchIndex() {
-        this.searchIndex = {};
-        this.wordIndex = {}; // Index for word-based searching
-        this.prefixIndex = {}; // Index for prefix matching
-        this.suffixIndex = {}; // Index for suffix matching
-        this.wordsIndex = {}; // Index for the "words" array in anime tags
+        // JULES: perf optimization — use Sets for O(1) deduplication during index build instead of O(N) .includes() scans
+        const searchIndexSets = {};
+        const wordIndexSets = {};
+        const prefixIndexSets = {};
+        const suffixIndexSets = {};
+        const wordsIndexSets = {};
         
         Object.keys(this.tagData).forEach(tagName => {
             const tagInfo = this.tagData[tagName];
@@ -154,33 +155,27 @@ class AnimeTagSearch {
             
             // Index by individual words for word-based matching
             words.forEach(word => {
-                if (!this.wordIndex[word] || !Array.isArray(this.wordIndex[word])) {
-                    this.wordIndex[word] = [];
+                if (!wordIndexSets[word]) {
+                    wordIndexSets[word] = new Set();
                 }
-                if (!this.wordIndex[word].includes(tagName)) {
-                    this.wordIndex[word].push(tagName);
-                }
+                wordIndexSets[word].add(tagName);
                 
                 // Index word prefixes for better partial matching
                 for (let i = 1; i <= word.length; i++) {
                     const prefix = word.substring(0, i);
-                    if (!this.prefixIndex[prefix] || !Array.isArray(this.prefixIndex[prefix])) {
-                        this.prefixIndex[prefix] = [];
+                    if (!prefixIndexSets[prefix]) {
+                        prefixIndexSets[prefix] = new Set();
                     }
-                    if (!this.prefixIndex[prefix].includes(tagName)) {
-                        this.prefixIndex[prefix].push(tagName);
-                    }
+                    prefixIndexSets[prefix].add(tagName);
                 }
 
                 // Index word suffixes for better partial matching
                 for (let i = 1; i <= word.length; i++) {
                     const suffix = word.substring(word.length - i);
-                    if (!this.suffixIndex[suffix] || !Array.isArray(this.suffixIndex[suffix])) {
-                        this.suffixIndex[suffix] = [];
+                    if (!suffixIndexSets[suffix]) {
+                        suffixIndexSets[suffix] = new Set();
                     }
-                    if (!this.suffixIndex[suffix].includes(tagName)) {
-                        this.suffixIndex[suffix].push(tagName);
-                    }
+                    suffixIndexSets[suffix].add(tagName);
                 }
             });
             
@@ -188,24 +183,32 @@ class AnimeTagSearch {
             if (tagInfo.words && Array.isArray(tagInfo.words)) {
                 tagInfo.words.forEach(word => {
                     const wordLower = word.toLowerCase();
-                    if (!this.wordsIndex[wordLower] || !Array.isArray(this.wordsIndex[wordLower])) {
-                        this.wordsIndex[wordLower] = [];
+                    if (!wordsIndexSets[wordLower]) {
+                        wordsIndexSets[wordLower] = new Set();
                     }
-                    if (!this.wordsIndex[wordLower].includes(tagName)) {
-                        this.wordsIndex[wordLower].push(tagName);
-                    }
+                    wordsIndexSets[wordLower].add(tagName);
                 });
             }
             
             // Index by full tag name for exact matches
             const fullTagName = tagName.toLowerCase();
-            if (!this.searchIndex[fullTagName]) {
-                this.searchIndex[fullTagName] = [];
+            if (!searchIndexSets[fullTagName]) {
+                searchIndexSets[fullTagName] = new Set();
             }
-            if (!this.searchIndex[fullTagName].includes(tagName)) {
-                this.searchIndex[fullTagName].push(tagName);
-            }
+            searchIndexSets[fullTagName].add(tagName);
         });
+
+        // Convert Sets back to Arrays for public index properties
+        this.searchIndex = {};
+        for (const k in searchIndexSets) this.searchIndex[k] = Array.from(searchIndexSets[k]);
+        this.wordIndex = {};
+        for (const k in wordIndexSets) this.wordIndex[k] = Array.from(wordIndexSets[k]);
+        this.prefixIndex = {};
+        for (const k in prefixIndexSets) this.prefixIndex[k] = Array.from(prefixIndexSets[k]);
+        this.suffixIndex = {};
+        for (const k in suffixIndexSets) this.suffixIndex[k] = Array.from(suffixIndexSets[k]);
+        this.wordsIndex = {};
+        for (const k in wordsIndexSets) this.wordsIndex[k] = Array.from(wordsIndexSets[k]);
         
         // Build complete
     }
