@@ -378,3 +378,49 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     font-variation-settings: normal;
 }
 
+/* ---------- tray icons: Vista's own (ripped from the VM, static_images/vista-icons/) ----------
+   netshell.dll 65-70 (network: 68 idle, 66 / 67 one screen lit, 70 disconnected) and
+   146 / 147 (activity arrows), imageres.dll 166 (search) and 26 (hard drive), user32.dll 1
+   (warning), explorer.exe 18 (Switch between windows). The Font Awesome glyph element stays
+   (scripts still switch its classes for state); its glyph is hidden and the icon is painted
+   on it. Activity keeps working through the existing opacity rules. */
+body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph.fa-hard-drive, #modemTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone, #taskbarWebsocketIndicator .websocket-arrow-up, #taskbarWebsocketIndicator .websocket-arrow-down) {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    font-size: 0 !important;
+    line-height: 0;
+    color: transparent !important;
+    text-shadow: none;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 16px 16px;
+    vertical-align: middle;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #searchIndexingIndicator > i.fa-magnifying-glass { background-image: image-set(url("/static_images/vista-icons/search-16.png") 1x, url("/static_images/vista-icons/search-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIconGlyph.fa-hard-drive { background-image: image-set(url("/static_images/vista-icons/drive-26-16.png") 1x, url("/static_images/vista-icons/drive-26-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #devWarningsTrayIcon > i.fa-triangle-exclamation { background-image: image-set(url("/static_images/vista-icons/warning-16.png") 1x, url("/static_images/vista-icons/warning-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #workspaceTrayIcon > i.fa-clone { background-image: image-set(url("/static_images/vista-icons/switch-windows-16.png") 1x, url("/static_images/vista-icons/switch-windows-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #taskbarWebsocketIndicator .websocket-arrow-up { background-image: image-set(url("/static_images/vista-icons/net-arrow-up-16.png") 1x, url("/static_images/vista-icons/net-arrow-up-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #taskbarWebsocketIndicator .websocket-arrow-down { background-image: image-set(url("/static_images/vista-icons/net-arrow-down-16.png") 1x, url("/static_images/vista-icons/net-arrow-down-32.png") 2x); }
+
+/* network: connected idle, down (failed / logon / not connected), connecting (screens trade) */
+body.desktop-mode:not(.windows-classic-theme) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-68-16.png") 1x, url("/static_images/vista-icons/net-68-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #modemTrayIconGlyph.fa-link-slash { background-image: image-set(url("/static_images/vista-icons/net-70-16.png") 1x, url("/static_images/vista-icons/net-70-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #modemTrayIconGlyph.fa-sync-alt {
+    background-image: image-set(url("/static_images/vista-icons/net-66-16.png") 1x, url("/static_images/vista-icons/net-66-32.png") 2x);
+    animation: vistaNetConnecting 0.9s steps(1, end) infinite;
+}
+
+@keyframes vistaNetConnecting {
+    0% { background-image: image-set(url("/static_images/vista-icons/net-66-16.png") 1x, url("/static_images/vista-icons/net-66-32.png") 2x); }
+    50% { background-image: image-set(url("/static_images/vista-icons/net-67-16.png") 1x, url("/static_images/vista-icons/net-67-32.png") 2x); }
+}
+
+/* traffic lights the screens, like Vista: a WebSocket burst shows both lit */
+body.desktop-mode:not(.windows-classic-theme) #taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active) #modemTrayIconGlyph.fa-globe,
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-66-16.png") 1x, url("/static_images/vista-icons/net-66-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-down.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-67-16.png") 1x, url("/static_images/vista-icons/net-67-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up.active):has(#taskbarWebsocketIndicator .websocket-arrow-down.active) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-65-16.png") 1x, url("/static_images/vista-icons/net-65-32.png") 2x); }
+
