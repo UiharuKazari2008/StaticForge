@@ -5280,6 +5280,31 @@ async function getCachedWeatherData(cacheKey, fetchFunction) {
  * Get current location based on IP address or configured coordinates
  * @returns {Promise<Object>} Location data with lat, lon, city, country
  */
+function isPrivateOrLocalIP(ip) {
+    const v = String(ip || '').trim().replace(/^::ffff:/i, '');
+    if (!v || v === 'unknown') return true;
+    if (v === '::1' || v === 'localhost' || /^fe80:/i.test(v) || /^f[cd][0-9a-f]{2}:/i.test(v)) return true;
+    const m = v.match(/^(\d+)\.(\d+)\.\d+\.\d+$/);
+    if (!m) return false;
+    const a = Number(m[1]), b = Number(m[2]);
+    return a === 10 || a === 127 || a === 0 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31)
+        || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+}
+
+/** Configured home coordinates from secure.config.json (location.latitude/longitude), or null. */
+function getConfiguredLocation() {
+    try {
+        const location = __runtimeGr.getSecureConfig({ path: 'location' });
+        if (location && location.latitude != null && location.longitude != null) {
+            const lat = parseFloat(location.latitude);
+            const lon = parseFloat(location.longitude);
+            if (isNaN(lat) || isNaN(lon)) return null;
+            return { lat, lon, city: 'Configured Location', country: 'Configured', timezone: getTimezoneByCoordinates(lat, lon), configured: true };
+        }
+    } catch (_e) { /* no secure config */ }
+    return null;
+}
+
 async function getCurrentLocation() {
     // Check for configured latitude/longitude first
     try {
@@ -6721,11 +6746,16 @@ async function compileContext(globalResources, dynamicConfig, clientIP = null) {
             if (location === 'CLIENT') {
                 // Bound tab clientIP or MCP request IP — never Dreamscape host geo
                 console.log('📍 Using client IP for weather location');
-                if (clientIP) {
+                if (clientIP && !isPrivateOrLocalIP(clientIP)) {
                     currentLocation = await getClientIPLocation(clientIP);
                     console.log(`📍 Using client IP for weather location: ${clientIP}`);
-                } else {
-                    console.warn('⚠️ No client IP for location=CLIENT; leaving location empty (not server geo)');
+                }
+                if (!currentLocation) {
+                    // LAN/loopback clients (e.g. 192.168.x) cannot be IP-geolocated. Use the
+                    // configured home coordinates (secure.config.json location), never host IP geo.
+                    currentLocation = getConfiguredLocation();
+                    if (currentLocation) console.log(`📍 location=CLIENT unresolvable (${clientIP || 'no IP'}); using configured coordinates`);
+                    else console.warn('⚠️ No usable client IP for location=CLIENT and no configured coordinates; leaving location empty (not server geo)');
                 }
             } else {
                 // Parse location in "LONG_LAT" format
@@ -8112,5 +8142,7 @@ module.exports = {
     resolveDynamicContext,
     compileContext,
     formatContextForCarousel,
-    calculateDynamicExpiration
+    calculateDynamicExpiration,
+    isPrivateOrLocalIP,
+    getConfiguredLocation
 };

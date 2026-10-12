@@ -76,6 +76,20 @@ function main() {
 
     // resolveOwnerFromActor never maps to the human mailbox, whatever the actor name looks like.
     assert.strictEqual(mail.resolveOwnerFromActor('Menma'), 'menma');
+    // Director chat (Wren) callers map to the 'wren' bot mailbox, never the human one.
+    assert.strictEqual(mail.resolveOwnerFromActor('Dreamscape Director'), 'wren');
+    assert.strictEqual(mail.resolveOwnerFromActor('DreamscapeDirector'), 'wren');
+    assert.strictEqual(mail.resolveOwnerFromActor('Wren'), 'wren');
+    {
+        const w = mail.sendMail({ fromOwner: 'wren', to: 'menma', subject: 'Bug', body: 'weather null', format: 'text' });
+        assert.ok(w.id);
+        assert.ok(mail.listMail('menma', { folder: 'inbox' }).some((m) => m.subject === 'Bug'));
+        mail.sendMail({ fromOwner: 'yukimi', to: 'wren', subject: 'ForWren', body: 'x', format: 'text' });
+        const wrenInbox = mail.listMail('wren', { folder: 'inbox' });
+        assert.ok(wrenInbox.some((m) => m.subject === 'ForWren'));
+        assert.ok(!wrenInbox.some((m) => m.subject === 'Bug'));
+        assert.strictEqual(mail.readMail('menma', wrenInbox[0].id), null);
+    }
     assert.strictEqual(mail.resolveOwnerFromActor('YUKIMI'), null);
     assert.strictEqual(mail.resolveOwnerFromActor('yukimi'), null);
     assert.strictEqual(mail.resolveOwnerFromActor('grok'), null);

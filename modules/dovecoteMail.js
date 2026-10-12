@@ -14,8 +14,16 @@ const { getDb, getAttachmentsRoot } = require('./dovecoteDatabase');
 
 const HUMAN_OWNER = 'yukimi';
 const BOT_OWNERS = Object.freeze([
-    'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra', 'cursor', 'claude'
+    'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra', 'cursor', 'claude', 'wren'
 ]);
+// Caller app names that are not bot names themselves but belong to a bot
+// mailbox. Director chat (modules/cursorDirector.js app key "Dreamscape
+// Director") runs as Wren, so it reads/sends as the 'wren' bot mailbox.
+const ACTOR_ALIASES = Object.freeze({
+    'dreamscape director': 'wren',
+    dreamscapedirector: 'wren',
+    director: 'wren'
+});
 const BOT_OWNER_SET = new Set(BOT_OWNERS);
 const ALL_OWNERS = new Set([HUMAN_OWNER, ...BOT_OWNERS]);
 
@@ -46,8 +54,10 @@ function isBotOwner(owner) {
 // hardcodes owner to 'yukimi' itself rather than calling this.
 function resolveOwnerFromActor(actorName) {
     if (!actorName) return null;
-    const lower = String(actorName).trim().toLowerCase();
-    return BOT_OWNER_SET.has(lower) ? lower : null;
+    const lower = String(actorName).trim().toLowerCase().replace(/\s+/g, ' ');
+    if (BOT_OWNER_SET.has(lower)) return lower;
+    const alias = ACTOR_ALIASES[lower] || ACTOR_ALIASES[lower.replace(/\s+/g, '')];
+    return alias && BOT_OWNER_SET.has(alias) ? alias : null;
 }
 
 function nowIso() {
