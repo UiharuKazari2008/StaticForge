@@ -105,7 +105,7 @@ body:not(.windows-classic-theme) .gallery-toggle-group .gallery-toggle-btn:not(.
    fill), the orb highlight and the bottom glow. Hover show (Studio's preview, gallery cards)
    then fades the layer's opacity and the base colour instead of swapping gradients in one
    frame (Yukimi: there was no transition). Every round button is position: relative with a
-   z-index, so the layer stays inside it. */
+   z-index, so the layer stays inside it. Wide pills ("Modify") wear the same frame glass. */
 
 body:not(.windows-classic-theme) .round-button {
     --vista-orb-tint: none;
@@ -115,7 +115,9 @@ body:not(.windows-classic-theme) .round-button {
     transition: background-color 0.25s linear, border-color 0.25s linear, box-shadow 0.25s linear, opacity 0.25s linear, color 0.25s linear;
 }
 
-body:not(.windows-classic-theme) .round-button:not(.wide-button):not(.btn-danger) {
+/* frame glass on every round button and pill except primary (Generate) and danger, which
+   keep their own fill under the glass layer (Yukimi: "Modify" looked off in grey) */
+body:not(.windows-classic-theme) .round-button:not(.btn-primary):not(.btn-danger) {
     --vista-orb-tint: linear-gradient(var(--aero-tint, transparent), var(--aero-tint, transparent));
     background-color: var(--aero-frame-base, var(--glass-windows-bg));
     background-image: none;
@@ -154,7 +156,7 @@ body:not(.windows-classic-theme) .round-button:active:not(:disabled)::before {
 /* Hover show: Studio's preview strips its buttons while the preview is not hovered
    (manual-modal.css); gallery cards do the same while the card is not hovered. The glass
    layer fades out with them. Primary buttons (Generate) keep their full style always. */
-html.can-hover body:not(.windows-classic-theme) .manual-preview-content:not(:hover) .round-button:not(:hover):not(.btn-primary)::before,
+html.can-hover body:not(.windows-classic-theme) .manual-preview-content:not(:hover) .round-button:not(:hover):not(.btn-primary):not(.btn-danger)::before,
 html.can-hover body:not(.windows-classic-theme) .gallery-item:not(:hover) .gallery-actions .round-button::before {
     opacity: 0;
 }
@@ -164,8 +166,82 @@ html.can-hover body:not(.windows-classic-theme) .manual-preview-content:not(:hov
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 3px 10px hsl(0 0% 0% / 45%);
 }
 
+/* Danger stays crimson glass whether or not the preview is hovered, so it always reads as
+   dangerous (Studio's hover show used to strip it to a bare icon) */
+html.can-hover body:not(.windows-classic-theme) .manual-preview-content:not(:hover) .btn-danger:not(:hover) {
+    opacity: 1;
+    background: var(--danger-glass-color, hsl(350 75% 32% / 85%));
+    border-color: var(--vista-glass-edge);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 3px 10px hsl(0 0% 0% / 45%);
+    color: hsl(0 100% 85%);
+}
+
 html.can-hover body:not(.windows-classic-theme) .gallery-item:not(:hover) .gallery-actions .round-button {
     background: none;
     border-color: transparent;
     box-shadow: none;
 }
+
+/* ---------- indicator lamps (Yukimi approved the mockup, 2026-10-12) ----------
+   The state dot becomes a glass lamp in a sunken socket: the lens colour still comes from
+   each state rule (app.css .indicator[data-state=…]::after sets background / border / glow),
+   this adds the lens shading and specular highlight over it and the socket ring around it.
+   Off (#141414e0) reads as smoked glass; on keeps its own halo. Round buttons carry the lamp
+   in the lower rim of the orb. */
+body:not(.windows-classic-theme) .indicator::after,
+body:not(.windows-classic-theme) :is(#dynamicGenerationViewBtn, #creativeBtn, #nsfwToggleBtn, #varietyBtn, #manualPreviewUseAsSourceBtn, #characterPositionsToolBtn).indicator.indicator::after {
+    border-radius: 50%;
+    background-image:
+        radial-gradient(circle at 35% 30%, hsl(0 0% 100% / 80%) 0 18%, transparent 42%),
+        radial-gradient(circle at 50% 55%, transparent 35%, hsl(0 0% 0% / 38%) 100%);
+    outline: 1px solid hsl(0 0% 0% / 70%);
+    outline-offset: 0;
+}
+
+body:not(.windows-classic-theme) .round-button.indicator::after {
+    width: 4px;
+    height: 4px;
+    bottom: 4px;
+    border-radius: 50%;
+}
+
+/* ---------- latching buttons ----------
+   A button that shows its state by staying on (indicator lit, toggle active) is pushed in:
+   it sinks 1 px, the fold inverts so the face reads concave, its drop shadow becomes an inner
+   shadow, and the lamp back-lights the glass in its own colour (--lit). */
+body:not(.windows-classic-theme) .indicator[data-state="on"],
+body:not(.windows-classic-theme) .indicator[data-state="onhigh"] { --lit: 126 255 126; }
+body:not(.windows-classic-theme) .indicator:is([data-state="partial"], [data-state="open"], [data-state="armed"]) { --lit: 255 205 80; }
+body:not(.windows-classic-theme) .indicator:is([data-state="compiled"], [data-state="asc"], [data-state="desc"]) { --lit: 120 200 255; }
+
+body:not(.windows-classic-theme) .round-button.indicator:is([data-state="on"], [data-state="onhigh"], [data-state="partial"], [data-state="open"], [data-state="armed"], [data-state="compiled"]) {
+    transform: translateY(1px);
+    box-shadow: inset 0 2px 5px hsl(0 0% 0% / 80%), inset 0 0 0 1px hsl(0 0% 100% / 15%), 0 1px 0 hsl(0 0% 100% / 15%);
+}
+
+body:not(.windows-classic-theme) .round-button.indicator:is([data-state="on"], [data-state="onhigh"], [data-state="partial"], [data-state="open"], [data-state="armed"], [data-state="compiled"])::before {
+    background:
+        linear-gradient(hsl(0 0% 0% / 30%), hsl(0 0% 0% / 12%) calc(50% - 1px), hsl(0 0% 100% / 7%) 50%, hsl(0 0% 100% / 15%)),
+        radial-gradient(circle at 50% 85%, rgb(var(--lit) / 35%), transparent 65%),
+        var(--vista-orb-tint);
+}
+
+/* square toolbar / toggle buttons in Studio latch the same way (Studio first, #445) */
+body:not(.windows-classic-theme) #manualModal :is(.toolbar-btn, .toggle-btn):is(.active, .indicator[data-state="on"], .indicator[data-state="onhigh"], .indicator[data-state="partial"], .indicator[data-state="open"], .indicator[data-state="compiled"]):not(.round-button) {
+    transform: translateY(1px);
+    border-color: hsl(0 0% 0% / 65%);
+    background-image:
+        linear-gradient(hsl(0 0% 0% / 22%), hsl(0 0% 0% / 14%) calc(50% - 1px), hsl(0 0% 0% / 26%) 50%, hsl(0 0% 0% / 18%) 85%, hsl(0 0% 100% / 10%)),
+        radial-gradient(ellipse 80% 70% at 50% 100%, rgb(var(--lit, 255 205 160) / 26%), transparent 70%);
+    box-shadow: inset 0 2px 4px hsl(0 0% 0% / 70%), inset 0 0 0 1px hsl(0 0% 100% / 12%), 0 1px 0 hsl(0 0% 100% / 14%);
+}
+
+/* every press travels a little, like a real key */
+body:not(.windows-classic-theme) :is(.round-button, .toolbar-btn, .toggle-btn) {
+    transition-property: background-color, border-color, box-shadow, opacity, color, transform;
+}
+
+body:not(.windows-classic-theme) :is(.round-button, .toolbar-btn, .toggle-btn):active:not(:disabled) {
+    transform: translateY(1px);
+}
+
