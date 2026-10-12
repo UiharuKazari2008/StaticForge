@@ -6170,7 +6170,7 @@ const startMenuShellConfig = [
         text: 'Planets',
         desktopOnly: true,
         appMenu: false,
-        // Click: planet switcher view. Right-click: direct planet list (attachStartMenuPlanetsContextMenu)
+        // Planet switcher view (the start menu lists the planets in All Programs > Planets)
         contextSubmenu: 'planets',
         action: () => { openPlanetSwitcher(); }
     },
@@ -6762,7 +6762,10 @@ function collectStartMenuLaunchables() {
             icon: item.icon,
             imageIcon: item.imageIcon,
             keywords: [item.text, item.fullName, item.launchId].filter(Boolean),
-            execute: () => item.action()
+            execute: () => {
+                recordStartMenuLaunch(item.launchId);
+                return item.action();
+            }
         });
     });
     return out;
@@ -6874,7 +6877,6 @@ async function waitForServerDisconnect(options = {}) {
 }
 
 function dismissTransientUIForShutdown() {
-    closeAllStartMenuPopouts();
     if (startMenu && !startMenu.classList.contains('hidden')) {
         closeStartMenu({ immediate: true });
     }
@@ -6895,7 +6897,6 @@ function dismissTransientUIForShutdown() {
         && typeof hideConfirmationDialog === 'function') {
         hideConfirmationDialog();
     }
-    closeStartMenuPowerDropdown();
 }
 
 function getModalsForShutdownClose() {
@@ -7048,81 +7049,42 @@ function runLogoutDirect() {
     }
 }
 
-let startMenuPowerDropdown = null;
-let startMenuPowerMenu = null;
-let startMenuPowerToggle = null;
-
+/** Vista's power arrow menu (Yozora #443): the power button shuts down, the arrow has the rest. */
 function getStartMenuPowerMenuItems() {
     const isAdmin = localStorage.getItem('userType') === 'admin';
+    const desktop = isDesktopStartMenuEnvironment();
     const items = [
-        { id: 'shutdown', icon: 'fas fa-power-off', text: 'Shutdown', danger: true, action: () => runClientShutdownDirect() },
-        { id: 'restart', icon: 'fas fa-rotate-right', text: 'Restart', action: () => runClientRestartDirect() },
-        { id: 'leave-desktop', icon: 'fas fa-window-maximize', text: 'Leave Desktop Mode', desktopOnly: true, action: () => runLeaveDesktopModeDirect() },
-        { id: 'logout', icon: 'fas fa-right-from-bracket', text: 'Sign Out', action: () => runLogoutDirect() },
-        { id: 'lock', icon: 'fas fa-lock', text: 'Lock', desktopOnly: true, action: () => runClientLockDirect() },
-        { id: 'restart-dss', icon: 'fas fa-rotate-right', text: 'Restart (Remote)', danger: true, adminOnly: true, action: () => runRestartDssDirect() },
-    ];
-    return items.filter((item) => {
-        if (item.desktopOnly && !isDesktopStartMenuEnvironment()) return false;
-        if (item.adminOnly && !isAdmin) return false;
-        return true;
+        { id: 'logout', text: 'Log Off', action: () => runLogoutDirect() },
+        { id: 'lock', text: 'Lock', desktopOnly: true, action: () => runClientLockDirect() },
+        { separator: true },
+        { id: 'restart', text: 'Restart', action: () => runClientRestartDirect() },
+        { id: 'shutdown', text: 'Shut Down', action: () => runClientShutdownDirect() },
+        { separator: true },
+        { id: 'leave-desktop', text: 'Leave Desktop Mode', desktopOnly: true, action: () => runLeaveDesktopModeDirect() },
+        { id: 'restart-dss', text: 'Restart Server', adminOnly: true, action: () => runRestartDssDirect() },
+    ].filter((item) => !(item.desktopOnly && !desktop) && !(item.adminOnly && !isAdmin));
+    return items.filter((item, i) => !item.separator || (i > 0 && i < items.length - 1 && !items[i - 1].separator));
+}
+
+/** The arrow next to Lock: a click menu (contextMenu.js), rebuilt each time the menu is built. */
+function attachStartMenuPowerMenu(button) {
+    if (typeof contextMenu === 'undefined' || !contextMenu || !button) return;
+    const items = getStartMenuPowerMenuItems();
+    const byId = new Map(items.filter((item) => !item.separator).map((item) => [item.id, item]));
+    contextMenu.detachClickMenuFromElement(button);
+    contextMenu.attachClickMenuToElement(button, {
+        sections: [{
+            type: 'list',
+            items: items.map((item) => (item.separator ? { separator: true } : { text: item.text, action: item.id }))
+        }],
+        onAction: (action) => {
+            const item = byId.get(action);
+            if (item) item.action();
+        }
     });
-}
-
-function renderStartMenuPowerDropdown(menu) {
-    menu.innerHTML = '';
-    getStartMenuPowerMenuItems().forEach((item) => {
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option' + (item.danger ? ' start-menu-power-option-danger' : '');
-        option.tabIndex = 0;
-        option.dataset.value = item.id;
-        option.innerHTML = `<i class="${item.icon}"></i><span>${item.text}</span>`;
-        const action = () => {
-            item.action();
-        };
-        option.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-        });
-        option.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeDropdown(menu, startMenuPowerToggle);
-            action();
-        });
-        touchSlopUtils.registerTouchSlopTracking(option);
-        option.addEventListener('touchend', (e) => {
-            const maxDelta = touchSlopUtils.finalizeTouchSlop(option, e);
-            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-            e.preventDefault();
-            closeDropdown(menu, startMenuPowerToggle);
-            action();
-        }, { passive: false });
-        menu.appendChild(option);
-    });
-}
-
-function setupStartMenuPowerDropdown() {
-    if (!startMenuPowerDropdown || !startMenuPowerToggle || !startMenuPowerMenu) return;
-    // setupDropdown — public/scripts/comp/dropdown.js
-    setupDropdown(
-        startMenuPowerDropdown,
-        startMenuPowerToggle,
-        startMenuPowerMenu,
-        () => renderStartMenuPowerDropdown(startMenuPowerMenu),
-        () => null,
-        { preventFocusTransfer: true }
-    );
-}
-
-function closeStartMenuPowerDropdown() {
-    if (startMenuPowerMenu && startMenuPowerToggle) {
-        closeDropdown(startMenuPowerMenu, startMenuPowerToggle);
-    }
 }
 
 function closeStartMenuAfterPowerAction() {
-    closeAllStartMenuSubmenus();
-    closeStartMenuPowerDropdown();
     closeStartMenu();
 }
 
@@ -7132,7 +7094,7 @@ function handleStartMenuOutsideClick(e) {
     if (!startMenu || startMenu.classList.contains('hidden')) return;
     if (startMenu.contains(e.target)) return;
     if (e.target.closest('#taskbarStartBtn')) return;
-    if (e.target.closest('.start-menu-popout')) return;
+    if (e.target.closest('.context-menu, .context-menu-overlay')) return;
     closeStartMenu();
 }
 
@@ -7176,337 +7138,579 @@ function initializeStartMenu() {
     }
 }
 
-let startMenuPopoutStack = [];
-let startMenuPopoutTimers = { open: null, close: null };
-const START_MENU_POPOUT_OPEN_DELAY = 120;
-const START_MENU_POPOUT_CLOSE_DELAY = 220;
+// ---- Vista start menu (Yozora #443) ------------------------------------------------------------
+// Left, a white pane: the pinned apps, the most used apps, and All Programs, which swaps the pane
+// for the full list in place (apps, then the Accessories / Planets / organizer folders, opening in
+// place), with Start Search under it (the Run index, runCommandIndex.js). Right, on the glass: the
+// account picture, the places column, and Vista's power, lock and arrow buttons. Markup: #startMenu
+// in app.html; art: scripts/build-vista-start-menu-art.js; styles: desktop-shell.css.
 
-function isStartMenuPopoutHoverEnabled() {
+const START_MENU_ACTIVITY_KEY = 'startMenuActivity';
+const START_MENU_ACTIVITY_MAX = 40;
+const START_MENU_FREQUENT_LIMIT = 8;
+const START_MENU_RECENT_LIMIT = 12;
+// The most used list until the launch history fills it (Vista ships a starting list too)
+const START_MENU_DEFAULT_FREQUENT = ['director', 'bracket-generation', 'encyclopedia', 'spellbook', 'reference', 'chat'];
+// The domain logon's account (workstationLock.js)
+const START_MENU_USER_NAME = 'Administrator';
+const START_MENU_ART = '/static_images/vista-start';
+
+let startMenuView = 'home'; // 'home' | 'programs' | 'search'
+const startMenuOpenFolders = new Set();
+let startMenuSearchSeq = 0;
+let startMenuSearchEntries = [];
+let startMenuEls = null;
+
+function startMenuHasFinePointer() {
     if (!window.matchMedia) return true;
     return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 }
 
-function clearStartMenuPopoutTimers() {
-    if (startMenuPopoutTimers.open) {
-        clearTimeout(startMenuPopoutTimers.open);
-        startMenuPopoutTimers.open = null;
-    }
-    if (startMenuPopoutTimers.close) {
-        clearTimeout(startMenuPopoutTimers.close);
-        startMenuPopoutTimers.close = null;
+function startMenuLabel(item) {
+    return (item && (item.fullName || item.text)) || '';
+}
+
+function byStartMenuLabel(a, b) {
+    return startMenuLabel(a).localeCompare(startMenuLabel(b));
+}
+
+// ---- launch history: the most used list and Recent Items (this browser only) ----
+
+function readStartMenuActivity() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(START_MENU_ACTIVITY_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_) {
+        return {};
     }
 }
 
-function closeAllStartMenuPopouts() {
-    clearStartMenuPopoutTimers();
-    if (startMenu) {
-        startMenu.querySelectorAll('.start-menu-item.popout-open').forEach((el) => el.classList.remove('popout-open'));
-    }
-    while (startMenuPopoutStack.length) {
-        const el = startMenuPopoutStack.pop();
-        if (el && el.parentNode) el.parentNode.removeChild(el);
-    }
+function writeStartMenuActivity(activity) {
+    const kept = {};
+    Object.keys(activity)
+        .sort((a, b) => (activity[b].t || 0) - (activity[a].t || 0))
+        .slice(0, START_MENU_ACTIVITY_MAX)
+        .forEach((id) => { kept[id] = activity[id]; });
+    try {
+        localStorage.setItem(START_MENU_ACTIVITY_KEY, JSON.stringify(kept));
+    } catch (_) { /* the history is a convenience */ }
 }
 
-function positionStartMenuPopout(popout, anchorEl) {
-    const anchorRect = anchorEl.getBoundingClientRect();
-    const menuEl = startMenu || document.getElementById('startMenu');
-    const menuRight = menuEl ? menuEl.getBoundingClientRect().right : anchorRect.right;
-
-    popout.style.position = 'fixed';
-    popout.style.left = `${Math.round(menuRight)}px`;
-    popout.style.top = `${Math.round(anchorRect.top)}px`;
-    popout.style.maxHeight = `${Math.min(Math.round(window.innerHeight * 0.72), window.innerHeight - 16)}px`;
-
-    requestAnimationFrame(() => {
-        const popRect = popout.getBoundingClientRect();
-        if (popRect.bottom > window.innerHeight - 8) {
-            const adjust = popRect.bottom - (window.innerHeight - 8);
-            popout.style.top = `${Math.max(8, anchorRect.top - adjust)}px`;
-        }
-        if (popRect.right > window.innerWidth - 8) {
-            popout.style.left = `${Math.max(8, anchorRect.left - popRect.width)}px`;
-        }
-    });
+/** Count a launch (start menu, Start Search, Run) for the most used list and Recent Items. */
+function recordStartMenuLaunch(launchId) {
+    if (!launchId) return;
+    const activity = readStartMenuActivity();
+    const prev = activity[launchId] || {};
+    activity[launchId] = { n: (prev.n || 0) + 1, t: Date.now() };
+    writeStartMenuActivity(activity);
 }
 
-function resolveStartMenuSubmenuItems(item) {
-    if (!item) return [];
-    if (item.isCustomFolder) return item.customFolderItems || [];
-    if (typeof item.submenu === 'function') {
-        return item.submenu() || [];
-    }
-    if (item.submenu && startMenuSubmenus[item.submenu]) {
-        const submenuData = startMenuSubmenus[item.submenu];
-        return typeof submenuData === 'function' ? submenuData() : submenuData;
-    }
-    return [];
+/** "Remove from this list": off the most used list until it is launched again. */
+function hideStartMenuFrequentItem(launchId) {
+    if (!launchId) return;
+    const activity = readStartMenuActivity();
+    activity[launchId] = { ...(activity[launchId] || {}), n: 0, hidden: true };
+    writeStartMenuActivity(activity);
+    if (startMenuView === 'home') renderStartMenuList();
 }
 
-function createStartMenuPopoutRow(item, level) {
+function clearStartMenuRecentItems() {
+    const activity = readStartMenuActivity();
+    Object.keys(activity).forEach((id) => { activity[id] = { ...activity[id], t: 0 }; });
+    writeStartMenuActivity(activity);
+}
+
+function isStartMenuItemLaunchable(item) {
+    return Boolean(item && isStartMenuEntryEnabled(item) && !(item.desktopOnly && !isDesktopStartMenuEnvironment()));
+}
+
+function getStartMenuFrequentItems() {
+    const activity = readStartMenuActivity();
+    const pinned = new Set(getStartMenuPinnedLaunchIds());
+    const out = [];
+    const seen = new Set();
+    const add = (launchId) => {
+        if (out.length >= START_MENU_FREQUENT_LIMIT || seen.has(launchId) || pinned.has(launchId)) return;
+        if (activity[launchId] && activity[launchId].hidden) return;
+        const item = findStartMenuLaunchableById(launchId);
+        if (!isStartMenuItemLaunchable(item)) return;
+        seen.add(launchId);
+        out.push({ ...item, frequent: true });
+    };
+    Object.keys(activity)
+        .filter((id) => (activity[id].n || 0) > 0)
+        .sort((a, b) => (activity[b].n - activity[a].n) || ((activity[b].t || 0) - (activity[a].t || 0)))
+        .forEach(add);
+    START_MENU_DEFAULT_FREQUENT.forEach(add);
+    return out;
+}
+
+function getStartMenuRecentItems() {
+    const activity = readStartMenuActivity();
+    return Object.keys(activity)
+        .filter((id) => (activity[id].t || 0) > 0)
+        .sort((a, b) => activity[b].t - activity[a].t)
+        .map((id) => findStartMenuLaunchableById(id))
+        .filter(isStartMenuItemLaunchable)
+        .slice(0, START_MENU_RECENT_LIMIT);
+}
+
+/** Launch a row's app; launchId rows count toward the history (Start Search results count in Run's execute). */
+function launchStartMenuItem(item) {
+    if (!item || typeof item.action !== 'function') return;
+    if (item.launchId) recordStartMenuLaunch(item.launchId);
+    closeStartMenu();
+    Promise.resolve()
+        .then(() => item.action())
+        .catch((err) => {
+            console.error('Start menu launch failed:', err);
+            showGlassToast('error', startMenuLabel(item) || 'Start', (err && err.message) || 'Could not open', false, 3000);
+        });
+}
+
+// ---- All Programs ----
+
+function getStartMenuAccessoriesItems() {
+    const run = startMenuShellConfig.find((item) => item.launchId === 'run');
+    return flattenToolsSubmenuItems(buildToolsSubmenuItems())
+        .concat(run ? [run] : [])
+        .filter((item) => item && !item.separator && typeof item.action === 'function' && isStartMenuItemLaunchable(item))
+        .sort(byStartMenuLabel);
+}
+
+function getStartMenuPlanetsItems() {
+    const switcher = findStartMenuLaunchableById('planet-switcher');
+    return (switcher ? [switcher] : [])
+        .concat(buildPlanetsSubmenuItems().filter((item) => typeof item.action === 'function'));
+}
+
+/** Apps by name (or in the organizer's order), then the folders, like Vista's All Programs. */
+function getStartMenuProgramsTree() {
+    const custom = Array.isArray(startMenuCustomLayout) && startMenuCustomLayout.length > 0;
+    const entries = getOrganizedAllAppsMenuItems().map((item) => (item.isCustomFolder
+        ? { folder: true, folderId: `custom-${item.folderId}`, text: item.text, children: item.customFolderItems || [] }
+        : item));
+    if (!custom) entries.sort(byStartMenuLabel);
+    entries.push({ folder: true, folderId: 'accessories', text: 'Accessories', children: getStartMenuAccessoriesItems() });
+    if (isDesktopStartMenuEnvironment()) {
+        entries.push({ folder: true, folderId: 'planets', text: 'Planets', children: getStartMenuPlanetsItems() });
+    }
+    return entries.filter((entry) => !entry.folder || entry.children.length > 0);
+}
+
+function toggleStartMenuFolder(folderId) {
+    const opening = !startMenuOpenFolders.has(folderId);
+    if (opening) startMenuOpenFolders.add(folderId);
+    else startMenuOpenFolders.delete(folderId);
+    const list = startMenuEls && startMenuEls.list;
+    const scrollTop = list ? list.scrollTop : 0;
+    renderStartMenuList();
+    if (!list) return;
+    list.scrollTop = scrollTop;
+    const row = list.querySelector(`.start-menu-row[data-folder-id="${CSS.escape(folderId)}"]`);
+    if (!row) return;
+    row.classList.add('is-hot');
+    // bring the opened folder's contents into view, keeping the folder row visible
+    const children = list.querySelectorAll(`.start-menu-row[data-parent-folder="${CSS.escape(folderId)}"]`);
+    if (opening && children.length) children[children.length - 1].scrollIntoView({ block: 'nearest' });
+    row.scrollIntoView({ block: 'nearest' });
+}
+
+// ---- rows ----
+
+/** The 48 px picture a row puts in the account frame while hovered (Vista swaps it the same way). */
+function startMenuItemPictureUrl(item) {
+    if (!item) return '';
+    if (item.image) return item.image;
+    if (item.folder) return `${START_MENU_ART}/folder-40.png`;
+    return item.imageIcon ? resolveAppIconPath(item.imageIcon, 128) : '';
+}
+
+function setStartMenuTilePicture(item) {
+    if (!startMenuEls) return;
+    const url = startMenuItemPictureUrl(item);
+    if (url) startMenuEls.itemPicture.src = url;
+    startMenuEls.tile.classList.toggle('show-item', Boolean(url));
+}
+
+function wireStartMenuTileHover(element, item) {
+    element.addEventListener('mouseenter', () => setStartMenuTilePicture(item));
+    element.addEventListener('mouseleave', () => setStartMenuTilePicture(null));
+}
+
+/** kind: 'pinned' | 'frequent' (large rows), 'program' | 'result' (small rows). */
+function createStartMenuListRow(item, kind, options = {}) {
     const row = document.createElement('div');
-    row.className = 'start-menu-popout-item' + (item.hasSubmenu ? ' has-submenu' : '');
+    row.className = `start-menu-row start-menu-row-${kind}`;
+    row.setAttribute('role', 'menuitem');
+    if (options.depth) row.style.setProperty('--start-menu-depth', String(options.depth));
+    if (options.parentFolder) row.dataset.parentFolder = options.parentFolder;
 
-    const label = item.fullName ? item.fullName : item.text;
-    if (item.color) {
-        row.innerHTML = `
-            <div class="workspace-color-indicator" style="background-color: ${item.color}"></div>
-            <span>${label}</span>
-        `;
+    const icon = document.createElement('span');
+    icon.className = 'start-menu-row-icon';
+    if (item.folder) {
+        icon.innerHTML = `<img src="${START_MENU_ART}/folder-20.png" srcset="${START_MENU_ART}/folder-20.png 1x, ${START_MENU_ART}/folder-40.png 2x" alt="">`;
+    } else if (item.color) {
+        const dot = document.createElement('span');
+        dot.className = 'workspace-color-indicator';
+        dot.style.backgroundColor = item.color;
+        icon.appendChild(dot);
     } else {
-        row.innerHTML = `
-            ${getIconHTML(item.icon, item.imageIcon)}
-            <span>${label}</span>
-        `;
+        icon.innerHTML = getIconHTML(item.icon, item.imageIcon || null);
     }
+    row.appendChild(icon);
 
-    if (item.hasSubmenu) {
-        const openNestedPopout = () => {
-            showStartMenuPopout(row, () => resolveStartMenuSubmenuItems(item), level + 1);
-        };
+    const text = document.createElement('span');
+    text.className = 'start-menu-row-text';
+    const title = document.createElement('span');
+    title.className = 'start-menu-row-title';
+    // pinned rows: what it is in bold, the program under it (Vista's "Internet / Internet Explorer")
+    title.textContent = kind === 'pinned' ? (item.text || startMenuLabel(item)) : startMenuLabel(item);
+    text.appendChild(title);
+    if (kind === 'pinned' && item.fullName && item.fullName !== item.text) {
+        const sub = document.createElement('span');
+        sub.className = 'start-menu-row-sub';
+        sub.textContent = item.fullName;
+        text.appendChild(sub);
+    }
+    row.appendChild(text);
 
-        if (isStartMenuPopoutHoverEnabled()) {
-            row.addEventListener('mouseenter', () => {
-                clearStartMenuPopoutTimers();
-                startMenuPopoutTimers.open = setTimeout(openNestedPopout, START_MENU_POPOUT_OPEN_DELAY);
-            });
-            row.addEventListener('mouseleave', (e) => {
-                const nextPopout = startMenuPopoutStack[level + 1];
-                if (nextPopout && e.relatedTarget && nextPopout.contains(e.relatedTarget)) return;
-                clearStartMenuPopoutTimers();
-                startMenuPopoutTimers.close = setTimeout(() => {
-                    while (startMenuPopoutStack.length > level + 1) {
-                        const el = startMenuPopoutStack.pop();
-                        if (el && el.parentNode) el.parentNode.removeChild(el);
-                    }
-                    row.classList.remove('popout-open');
-                }, START_MENU_POPOUT_CLOSE_DELAY);
-            });
-        }
-
+    if (item.folder) {
+        row.classList.add('is-folder');
+        row.dataset.folderId = item.folderId;
+        row.setAttribute('aria-expanded', startMenuOpenFolders.has(item.folderId) ? 'true' : 'false');
         row.addEventListener('click', (e) => {
             e.stopPropagation();
-            openNestedPopout();
+            toggleStartMenuFolder(item.folderId);
         });
     } else {
         row.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (item.action) item.action();
-            closeStartMenu();
+            launchStartMenuItem(item);
         });
-        if (item.launchId) {
-            attachStartMenuItemContextMenu(row, item);
-        }
+        if (item.launchId && kind !== 'result') attachStartMenuItemContextMenu(row, item);
     }
-
+    wireStartMenuTileHover(row, item);
     return row;
 }
 
-function showStartMenuPopout(anchorEl, itemsSource, level = 0) {
-    while (startMenuPopoutStack.length > level) {
-        const el = startMenuPopoutStack.pop();
-        if (el && el.parentNode) el.parentNode.removeChild(el);
+function createStartMenuSeparator(className = 'start-menu-separator') {
+    const sep = document.createElement('div');
+    sep.className = className;
+    sep.setAttribute('role', 'separator');
+    return sep;
+}
+
+function renderStartMenuHome(list) {
+    const pinned = getStartMenuPinnedItems();
+    pinned.forEach((item) => list.appendChild(createStartMenuListRow(item, 'pinned')));
+    const frequent = getStartMenuFrequentItems();
+    if (pinned.length && frequent.length) list.appendChild(createStartMenuSeparator());
+    frequent.forEach((item) => list.appendChild(createStartMenuListRow(item, 'frequent')));
+}
+
+function renderStartMenuPrograms(list) {
+    getStartMenuProgramsTree().forEach((entry) => {
+        list.appendChild(createStartMenuListRow(entry, 'program'));
+        if (!entry.folder || !startMenuOpenFolders.has(entry.folderId)) return;
+        entry.children.forEach((child) => {
+            list.appendChild(createStartMenuListRow(child, 'program', { depth: 1, parentFolder: entry.folderId }));
+        });
+    });
+}
+
+// ---- Start Search ----
+
+const START_MENU_SEARCH_GROUPS = { app: 'Programs', workspace: 'Planets', note: 'Notes', shortcut: 'Shortcuts' };
+
+function renderStartMenuSearchResults(list) {
+    const query = startMenuEls ? startMenuEls.search.value.trim() : '';
+    if (!startMenuSearchEntries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'start-menu-search-empty';
+        empty.textContent = 'No items match your search.';
+        list.appendChild(empty);
     }
+    const appItems = new Map(collectStartMenuLaunchableDescriptors().map((item) => [item.launchId, item]));
+    const groups = new Map();
+    startMenuSearchEntries.forEach((entry) => {
+        const label = START_MENU_SEARCH_GROUPS[entry.category]
+            || (window.RUN_CATEGORY_LABELS && window.RUN_CATEGORY_LABELS[entry.category])
+            || 'Other';
+        if (!groups.has(label)) groups.set(label, []);
+        groups.get(label).push(entry);
+    });
+    groups.forEach((entries, label) => {
+        const header = document.createElement('div');
+        header.className = 'start-menu-group-header';
+        header.textContent = label;
+        list.appendChild(header);
+        entries.forEach((entry) => {
+            const app = entry.launchId ? appItems.get(entry.launchId) : null;
+            list.appendChild(createStartMenuListRow({
+                text: entry.label,
+                icon: entry.icon || (window.RUN_CATEGORY_ICONS && window.RUN_CATEGORY_ICONS[entry.category]) || 'fas fa-circle',
+                imageIcon: app ? app.imageIcon : null,
+                action: entry.execute
+            }, 'result'));
+        });
+    });
+    list.appendChild(createStartMenuSeparator());
+    list.appendChild(createStartMenuListRow({
+        text: 'See all results',
+        icon: 'fas fa-magnifying-glass',
+        action: () => openRunWithStartSearch(query)
+    }, 'result'));
+    const first = list.querySelector('.start-menu-row');
+    if (first) first.classList.add('is-hot');
+}
 
-    const items = typeof itemsSource === 'function' ? itemsSource() : itemsSource;
-    if (!Array.isArray(items) || items.length === 0) return;
+/** "See all results": the Run window with the query (network results, the action panel). */
+async function openRunWithStartSearch(query) {
+    await featureLoader.loadFeature('run');
+    runApplet.open();
+    if (!query || !runApplet.input) return;
+    runApplet.input.value = query;
+    runApplet.input.dispatchEvent(new Event('input', { bubbles: true }));
+}
 
-    const popout = document.createElement('div');
-    popout.className = 'start-menu-popout';
-    popout.dataset.level = String(level);
+function onStartMenuSearchInput() {
+    const query = startMenuEls.search.value.trim();
+    const seq = ++startMenuSearchSeq;
+    if (!query) {
+        startMenuSearchEntries = [];
+        if (startMenuView === 'search') setStartMenuView('home');
+        return;
+    }
+    if (typeof searchRunCommands !== 'function') return;
+    searchRunCommands(query, (results) => {
+        if (seq !== startMenuSearchSeq) return;
+        // network results stay in Run ("See all results")
+        startMenuSearchEntries = (results || []).filter((entry) => typeof entry.execute === 'function' && !entry.isDeferredNetwork);
+        startMenuView = 'search';
+        renderStartMenuList();
+    });
+}
 
+// ---- keyboard: typing goes to Start Search, arrows move through the left pane ----
+
+function moveStartMenuHot(delta) {
+    const rows = [...startMenuEls.list.querySelectorAll('.start-menu-row')];
+    if (!rows.length) return;
+    let index = rows.findIndex((row) => row.classList.contains('is-hot'));
+    rows.forEach((row) => row.classList.remove('is-hot'));
+    index = index < 0 ? (delta > 0 ? 0 : rows.length - 1) : (index + delta + rows.length) % rows.length;
+    rows[index].classList.add('is-hot');
+    rows[index].scrollIntoView({ block: 'nearest' });
+}
+
+function onStartMenuSearchKeydown(e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        moveStartMenuHot(e.key === 'ArrowDown' ? 1 : -1);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const hot = startMenuEls.list.querySelector('.start-menu-row.is-hot');
+        if (hot) hot.click();
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (startMenuEls.search.value) {
+            startMenuEls.search.value = '';
+            onStartMenuSearchInput();
+        } else if (startMenuView !== 'home') {
+            setStartMenuView('home');
+        } else {
+            closeStartMenu();
+        }
+    }
+}
+
+// ---- views ----
+
+function setStartMenuView(view) {
+    startMenuView = view;
+    if (view !== 'search' && startMenuEls && startMenuEls.search.value) {
+        startMenuEls.search.value = '';
+        startMenuSearchEntries = [];
+    }
+    renderStartMenuList();
+}
+
+function renderStartMenuList() {
+    if (!startMenuEls) return;
+    const { list, menu, allPrograms, allProgramsLabel } = startMenuEls;
+    list.textContent = '';
+    list.scrollTop = 0;
+    menu.dataset.view = startMenuView;
+    if (startMenuView === 'search') renderStartMenuSearchResults(list);
+    else if (startMenuView === 'programs') renderStartMenuPrograms(list);
+    else renderStartMenuHome(list);
+    const back = startMenuView !== 'home';
+    allPrograms.classList.toggle('is-back', back);
+    allProgramsLabel.textContent = back ? 'Back' : 'All Programs';
+}
+
+// ---- right column ----
+
+function getStartMenuPlaces() {
     const desktop = isDesktopStartMenuEnvironment();
-    items.forEach((item) => {
-        if (!item) return;
-        if (item.separator) {
-            const separator = document.createElement('div');
-            separator.className = 'start-menu-popout-separator';
-            popout.appendChild(separator);
+    const launch = (launchId) => () => {
+        const item = findStartMenuLaunchableById(launchId);
+        if (item) launchStartMenuItem(item);
+    };
+    const controlPanel = (page) => () => {
+        if (window.melatonControlPanel) window.melatonControlPanel.open(page);
+    };
+    return [
+        { id: 'user', text: START_MENU_USER_NAME, action: () => openExplorerApplet() },
+        { id: 'cartograph', text: 'Cartograph', imageIcon: 'explorer.png', action: launch('explorer') },
+        { id: 'gallery', text: 'Gallery', imageIcon: 'art.png', desktopOnly: true, action: launch('workspace') },
+        { id: 'notion', text: 'Notion', imageIcon: 'notebook.png', action: launch('notebook') },
+        { id: 'workspaces', text: 'Workspaces', imageIcon: 'planet.png', desktopOnly: true, action: () => openPlanetSwitcher() },
+        { separator: true },
+        { id: 'recent', text: 'Recent Items', flyout: true },
+        { id: 'network', text: 'Network and Server Center', image: '/static_images/melaton/net-globe.png', action: controlPanel('network') },
+        { separator: true },
+        { id: 'control-panel', text: 'Control Panel', imageIcon: 'controlpanel.png', action: controlPanel('home') },
+        { id: 'remote-access', text: 'Remote Access', imageIcon: 'remote_desktop.png', action: () => openRemoteAccessSettingsModal() },
+        { id: 'help', text: 'Help and Support', imageIcon: 'books.png', action: () => openGrimoireApplet() },
+    ].filter((place) => !(place.desktopOnly && !desktop));
+}
+
+/** Recent Items: a click menu of the latest launches, rebuilt as the pointer reaches it. */
+function attachStartMenuRecentItemsMenu(row) {
+    if (typeof contextMenu === 'undefined' || !contextMenu) return;
+    const refresh = () => {
+        const recent = getStartMenuRecentItems();
+        const byId = new Map(recent.map((item) => [item.launchId, item]));
+        const items = recent.length
+            ? recent.map((item) => ({ icon: item.icon, text: startMenuLabel(item), action: `recent:${item.launchId}` }))
+            : [{ text: '(Empty)', disabled: true }];
+        contextMenu.detachClickMenuFromElement(row);
+        contextMenu.attachClickMenuToElement(row, {
+            sections: [{
+                type: 'list',
+                items: items.concat([{ separator: true }, { text: 'Clear Recent Items list', action: 'clear-recent', disabled: !recent.length }])
+            }],
+            onAction: (action) => {
+                if (action === 'clear-recent') {
+                    clearStartMenuRecentItems();
+                    return;
+                }
+                const item = byId.get(String(action).slice('recent:'.length));
+                if (item) launchStartMenuItem(item);
+            }
+        });
+    };
+    row.addEventListener('pointerenter', refresh);
+    row.addEventListener('pointerdown', refresh, true);
+    row.addEventListener('focus', refresh);
+    refresh();
+}
+
+function renderStartMenuPlaces() {
+    const container = startMenuEls.places;
+    container.textContent = '';
+    getStartMenuPlaces().forEach((place) => {
+        if (place.separator) {
+            container.appendChild(createStartMenuSeparator('start-menu-place-separator'));
             return;
         }
-        if (item.desktopOnly && !desktop) return;
-        popout.appendChild(createStartMenuPopoutRow(item, level));
-    });
-
-    if (!popout.childElementCount) return;
-
-    document.body.appendChild(popout);
-    positionStartMenuPopout(popout, anchorEl);
-    startMenuPopoutStack.push(popout);
-    anchorEl.classList.add('popout-open');
-
-    if (isStartMenuPopoutHoverEnabled()) {
-        popout.addEventListener('mouseenter', () => clearStartMenuPopoutTimers());
-        popout.addEventListener('mouseleave', () => {
-            clearStartMenuPopoutTimers();
-            startMenuPopoutTimers.close = setTimeout(() => {
-                while (startMenuPopoutStack.length > level) {
-                    const el = startMenuPopoutStack.pop();
-                    if (el && el.parentNode) el.parentNode.removeChild(el);
-                }
-                anchorEl.classList.remove('popout-open');
-            }, START_MENU_POPOUT_CLOSE_DELAY);
-        });
-    }
-}
-
-function wireStartMenuFolderItem(menuItemEl, item) {
-    const openPopout = () => {
-        showStartMenuPopout(menuItemEl, () => resolveStartMenuSubmenuItems(item), 0);
-    };
-
-    if (isStartMenuPopoutHoverEnabled()) {
-        menuItemEl.addEventListener('mouseenter', () => {
-            clearStartMenuPopoutTimers();
-            startMenuPopoutTimers.open = setTimeout(openPopout, START_MENU_POPOUT_OPEN_DELAY);
-        });
-        menuItemEl.addEventListener('mouseleave', (e) => {
-            const popout = startMenuPopoutStack[0];
-            if (popout && e.relatedTarget && popout.contains(e.relatedTarget)) return;
-            clearStartMenuPopoutTimers();
-            startMenuPopoutTimers.close = setTimeout(() => {
-                closeAllStartMenuPopouts();
-            }, START_MENU_POPOUT_CLOSE_DELAY);
-        });
-    }
-
-    menuItemEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (menuItemEl.classList.contains('popout-open')) {
-            closeAllStartMenuPopouts();
+        const row = document.createElement('div');
+        row.className = 'start-menu-place' + (place.flyout ? ' has-flyout' : '') + (place.id === 'user' ? ' is-user' : '');
+        row.setAttribute('role', 'menuitem');
+        row.tabIndex = -1;
+        row.textContent = place.text;
+        if (place.flyout) {
+            attachStartMenuRecentItemsMenu(row);
         } else {
-            openPopout();
+            row.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeStartMenu();
+                Promise.resolve().then(() => place.action()).catch((err) => console.error(`Start menu ${place.id}:`, err));
+            });
         }
+        wireStartMenuTileHover(row, place);
+        container.appendChild(row);
     });
 }
 
-function createStartMenuRowElement(item, options = {}) {
-    const menuItem = document.createElement('div');
-    menuItem.className = 'start-menu-item'
-        + (item.hasSubmenu ? ' has-submenu' : '')
-        + (item.rightAction ? ' has-right-action' : '')
-        + (options.pinned ? ' is-pinned' : '');
+function buildStartMenuPower() {
+    const container = startMenuEls.power;
+    container.textContent = '';
+    const button = (className, title, onClick) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `start-menu-power-button ${className}`;
+        btn.title = title;
+        btn.setAttribute('aria-label', title);
+        if (onClick) btn.addEventListener('click', onClick);
+        container.appendChild(btn);
+        return btn;
+    };
+    button('is-shutdown', 'Shut down', () => runClientShutdownDirect());
+    if (isDesktopStartMenuEnvironment()) button('is-lock', 'Lock this computer', () => runClientLockDirect());
+    attachStartMenuPowerMenu(button('is-arrow', 'Show more options'));
+}
 
-    const label = item.fullName ? item.fullName : item.text;
-    if (item.color) {
-        menuItem.innerHTML = `
-            <div class="workspace-color-indicator" style="background-color: ${item.color}"></div>
-            <span>${label}</span>
-            ${item.rightAction ? `<button class="start-menu-right-btn" title="${item.rightAction.tooltip || ''}">${getIconHTML(item.rightAction.icon, item.rightAction.imageIcon)}</button>` : ''}
-        `;
-    } else {
-        menuItem.innerHTML = `
-            ${getIconHTML(item.icon, item.imageIcon)}
-            <span>${label}</span>
-            ${item.rightAction ? `<button class="start-menu-right-btn" title="${item.rightAction.tooltip || ''}">${getIconHTML(item.rightAction.icon, item.rightAction.imageIcon)}</button>` : ''}
-        `;
+// ---- build ----
+
+function ensureStartMenuElements() {
+    if (!startMenu) startMenu = document.getElementById('startMenu');
+    if (startMenuEls || !startMenu) return startMenuEls;
+    const q = (selector) => startMenu.querySelector(selector);
+    startMenuEls = {
+        menu: startMenu,
+        list: q('#startMenuItems'),
+        allPrograms: q('.start-menu-all-programs'),
+        allProgramsLabel: q('.start-menu-all-programs-label'),
+        search: q('#startMenuSearchInput'),
+        places: q('.start-menu-places'),
+        power: q('.start-menu-power'),
+        tile: q('.start-menu-user-tile'),
+        itemPicture: q('.start-menu-user-tile-item')
+    };
+    if (Object.values(startMenuEls).some((el) => !el)) {
+        console.error('Start menu markup is incomplete (app.html #startMenu)');
+        startMenuEls = null;
+        return null;
     }
-
-    if (item.hasSubmenu) {
-        wireStartMenuFolderItem(menuItem, item);
-    } else {
-        if (item.rightAction) {
-            const rightBtn = menuItem.querySelector('.start-menu-right-btn');
-            if (rightBtn) {
-                rightBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if (item.rightAction.action) item.rightAction.action();
-                    closeStartMenu();
-                });
+    startMenuEls.allPrograms.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setStartMenuView(startMenuView === 'home' ? 'programs' : 'home');
+        if (startMenuHasFinePointer()) startMenuEls.search.focus();
+    });
+    if (typeof openStartMenuOrganizer === 'function' && typeof contextMenu !== 'undefined' && contextMenu) {
+        contextMenu.attachToElement(startMenuEls.allPrograms, {
+            sections: [{ type: 'list', items: [{ icon: 'fas fa-arrows-up-down-left-right', text: 'Organize Start Menu…', action: 'organize' }] }],
+            onAction: () => {
+                closeStartMenu();
+                openStartMenuOrganizer();
             }
-        }
-
-        menuItem.addEventListener('click', () => {
-            if (item.action) item.action();
-            closeStartMenu();
         });
-
-        if (item.contextSubmenu === 'planets') {
-            attachStartMenuPlanetsContextMenu(menuItem);
-        } else if (item.launchId) {
-            attachStartMenuItemContextMenu(menuItem, item);
-        }
     }
-
-    return menuItem;
+    startMenuEls.search.addEventListener('input', onStartMenuSearchInput);
+    startMenuEls.search.addEventListener('keydown', onStartMenuSearchKeydown);
+    startMenuEls.list.addEventListener('mousemove', (e) => {
+        const row = e.target.closest('.start-menu-row');
+        if (!row || row.classList.contains('is-hot')) return;
+        startMenuEls.list.querySelectorAll('.start-menu-row.is-hot').forEach((el) => el.classList.remove('is-hot'));
+    });
+    return startMenuEls;
 }
 
 function buildStartMenu() {
-    if (!startMenuItems) return;
-
-    closeAllStartMenuPopouts();
-    // teardownDropdown: public/scripts/comp/dropdown.js — power menu rebuilt below
-    if (startMenuPowerDropdown) {
-        teardownDropdown(startMenuPowerDropdown);
-        startMenuPowerDropdown = null;
-        startMenuPowerToggle = null;
-        startMenuPowerMenu = null;
-    }
-    startMenuItems.innerHTML = '';
-
-    const desktop = isDesktopStartMenuEnvironment();
-    const pinnedItems = getStartMenuPinnedItems();
-
-    if (pinnedItems.length > 0) {
-        pinnedItems.forEach((item) => {
-            startMenuItems.appendChild(createStartMenuRowElement(item, { pinned: true }));
-        });
-    }
-
-    getFilteredStartMenuConfig({ excludeAppRootOnly: desktop }).forEach(item => {
-        if (item.separator) {
-            const separator = document.createElement('div');
-            separator.className = 'start-menu-separator';
-            startMenuItems.appendChild(separator);
-        } else {
-            startMenuItems.appendChild(createStartMenuRowElement(item));
-        }
-    });
-
-    const iconRow = document.createElement('div');
-    iconRow.className = 'start-menu-icons-row';
-
-    const powerGroup = document.createElement('div');
-    powerGroup.className = 'start-menu-power-group btn-group';
-
-    const shutdownMainBtn = document.createElement('button');
-    shutdownMainBtn.type = 'button';
-    shutdownMainBtn.className = 'start-menu-action-btn start-menu-action-danger';
-    shutdownMainBtn.innerHTML = '<i class="fas fa-power-off"></i><span>Shutdown</span>';
-    shutdownMainBtn.title = 'Shut down and close this tab';
-    shutdownMainBtn.addEventListener('click', () => {
-        runClientShutdownDirect();
-    });
-
-    startMenuPowerDropdown = document.createElement('div');
-    startMenuPowerDropdown.id = 'startMenuPowerDropdown';
-    startMenuPowerDropdown.className = 'custom-dropdown dropup dark dropright start-menu-power-dropdown';
-
-    startMenuPowerToggle = document.createElement('button');
-    startMenuPowerToggle.type = 'button';
-    startMenuPowerToggle.id = 'startMenuPowerDropdownBtn';
-    startMenuPowerToggle.className = 'start-menu-action-btn start-menu-action-danger start-menu-power-toggle';
-    startMenuPowerToggle.innerHTML = '<i class="fas fa-chevron-up"></i>';
-    startMenuPowerToggle.title = 'More power options';
-
-    startMenuPowerMenu = document.createElement('div');
-    startMenuPowerMenu.id = 'startMenuPowerDropdownMenu';
-    startMenuPowerMenu.className = 'custom-dropdown-menu hidden';
-
-    startMenuPowerDropdown.appendChild(startMenuPowerToggle);
-    startMenuPowerDropdown.appendChild(startMenuPowerMenu);
-
-    powerGroup.appendChild(shutdownMainBtn);
-    powerGroup.appendChild(startMenuPowerDropdown);
-    iconRow.appendChild(powerGroup);
-    startMenuItems.appendChild(iconRow);
-
-    setupStartMenuPowerDropdown();
+    if (!ensureStartMenuElements()) return;
+    renderStartMenuList();
+    renderStartMenuPlaces();
+    buildStartMenuPower();
 }
 
 function closeAllStartMenuSubmenus() {
-    closeStartMenuPowerDropdown();
-    closeAllStartMenuPopouts();
+    if (typeof contextMenu !== 'undefined' && contextMenu && contextMenu.hideMenu) {
+        contextMenu.hideMenu();
+    }
 }
 
 const START_MENU_FADE_OUT_MS = 320;
@@ -7520,6 +7724,15 @@ function openStartMenu() {
     startMenu.classList.remove('hidden', 'start-menu-closing');
     const startBtn = document.getElementById('taskbarStartBtn');
     if (startBtn) startBtn.classList.add('active');
+
+    if (ensureStartMenuElements()) {
+        startMenuOpenFolders.clear();
+        setStartMenuView('home');
+        renderStartMenuPlaces();
+        buildStartMenuPower();
+        setStartMenuTilePicture(null);
+        if (startMenuHasFinePointer()) startMenuEls.search.focus({ preventScroll: true });
+    }
 
     startMenu.classList.remove('start-menu-opening');
     void startMenu.offsetWidth;
@@ -7600,57 +7813,7 @@ function toggleStartMenu() {
     }
 }
 
-// Attach context menu to start menu items
-/** Right-click on the start menu "Planets" row: direct workspace change, no switcher animation. */
-function attachStartMenuPlanetsContextMenu(element) {
-    if (!contextMenu || !element) return;
-    const rows = buildPlanetsSubmenuItems();
-    const actions = new Map();
-    const items = rows.map((ws, index) => {
-        if (typeof ws.action !== 'function') {
-            return { icon: ws.icon || 'fas fa-planet-ringed', text: ws.text, disabled: true };
-        }
-        const actionId = `planet-direct-${ws.launchId || index}`;
-        actions.set(actionId, ws.action);
-        const entry = { text: ws.text, action: actionId };
-        if (ws.color) {
-            entry.content = () => {
-                const container = document.createElement('div');
-                container.className = 'workspace-option-content';
-                container.style.display = 'flex';
-                container.style.alignItems = 'center';
-                container.style.gap = '8px';
-                const dot = document.createElement('div');
-                dot.className = 'workspace-color-indicator';
-                dot.style.width = '12px';
-                dot.style.height = '12px';
-                dot.style.borderRadius = '50%';
-                dot.style.flexShrink = '0';
-                dot.style.backgroundColor = ws.color;
-                const label = document.createElement('span');
-                label.className = 'context-menu-item-text';
-                label.textContent = ws.text;
-                container.appendChild(dot);
-                container.appendChild(label);
-                return container;
-            };
-        } else {
-            entry.icon = ws.icon || 'fas fa-planet-ringed';
-        }
-        return entry;
-    });
-
-    contextMenu.attachToElement(element, {
-        sections: [{ type: 'list', title: 'Planets', items }],
-        onAction: (action) => {
-            const run = actions.get(action);
-            if (!run) return;
-            closeStartMenu({ immediate: true });
-            run();
-        }
-    });
-}
-
+/** Right-click on a start menu row: pin / unpin, order, remove from the most used list, desktop. */
 function attachStartMenuItemContextMenu(element, item) {
     if (!contextMenu || !item.launchId) return;
 
@@ -7661,13 +7824,19 @@ function attachStartMenuItemContextMenu(element, item) {
                 items: [
                     {
                         icon: 'fas fa-thumbtack',
-                        text: 'Show in Start Menu',
+                        text: 'Pin to Start Menu',
                         action: 'toggle-start-menu-pin',
                         hidden: () => !isStartMenuEntryEnabled(item),
                         loadfn: (ctxItem) => {
                             const pinned = isStartMenuItemPinned(item.launchId);
-                            ctxItem.text = pinned ? 'Unpin from Start Menu' : 'Show in Start Menu';
+                            ctxItem.text = pinned ? 'Unpin from Start Menu' : 'Pin to Start Menu';
                         }
+                    },
+                    {
+                        icon: 'fas fa-xmark',
+                        text: 'Remove from this list',
+                        action: 'remove-frequent',
+                        hidden: () => !item.frequent
                     },
                     {
                         icon: 'fas fa-arrow-up',
@@ -7709,6 +7878,10 @@ function attachStartMenuItemContextMenu(element, item) {
         onAction: async (action) => {
             if (action === 'toggle-start-menu-pin') {
                 await setStartMenuItemPinned(item.launchId, !isStartMenuItemPinned(item.launchId));
+                return;
+            }
+            if (action === 'remove-frequent') {
+                hideStartMenuFrequentItem(item.launchId);
                 return;
             }
             if (action === 'pin-move-up') {

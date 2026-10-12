@@ -1218,6 +1218,15 @@
     <!-- Manual Modal Splash Screen -->
     <div id="manualModalSplash" class="manual-modal-splash hidden">
         <div class="splash-background"></div>
+        <div class="splash-shards" aria-hidden="true">
+            <img class="splash-shard splash-shard-1" src="/static_images/splash/shard-a-02.webp" alt="">
+            <img class="splash-shard splash-shard-2" src="/static_images/splash/shard-b-01.webp" alt="">
+            <img class="splash-shard splash-shard-3" src="/static_images/splash/shard-b-03.webp" alt="">
+            <img class="splash-shard splash-shard-4" src="/static_images/splash/shard-a-03.webp" alt="">
+            <img class="splash-shard splash-shard-5" src="/static_images/splash/shard-b-04.webp" alt="">
+            <img class="splash-shard splash-shard-6" src="/static_images/splash/shard-a-05.webp" alt="">
+            <img class="splash-shard splash-shard-7" src="/static_images/splash/shard-b-06.webp" alt="">
+        </div>
         <div class="splash-content">
             <div class="splash-title-container">
                 <span class="splash-title-main">DreamStudio</span>
@@ -8414,15 +8423,27 @@ Examples:
         </div>
     </div>
 
-    <!-- Start Menu (only visible in windowed mode) -->
-    <div id="startMenu" class="start-menu hidden">
-        <div class="start-menu-branding">
-            <span class="start-menu-brand-text">MeletonFX Desktop</span>
-        </div>
-        <div class="start-menu-content">
-            <div class="start-menu-items" id="startMenuItems">
-                <!-- Menu items will be dynamically created here -->
+    <!-- Start Menu: Vista's two columns (modalUtils.js buildStartMenu, desktop-shell.css, Yozora #443) -->
+    <div id="startMenu" class="start-menu hidden" role="menu" aria-label="Start menu" data-view="home">
+        <div class="start-menu-pane">
+            <!-- pinned + most used / All Programs / Start Search results -->
+            <div class="start-menu-items" id="startMenuItems"></div>
+            <div class="start-menu-pane-foot">
+                <button type="button" class="start-menu-all-programs">
+                    <span class="start-menu-all-programs-arrow" aria-hidden="true"></span>
+                    <span class="start-menu-all-programs-label">All Programs</span>
+                </button>
             </div>
+        </div>
+        <div class="start-menu-search">
+            <input type="text" id="startMenuSearchInput" class="start-menu-search-input" placeholder="Start Search"
+                aria-label="Start Search" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">
+        </div>
+        <div class="start-menu-places"></div>
+        <div class="start-menu-power"></div>
+        <div class="start-menu-user-tile" aria-hidden="true">
+            <img class="start-menu-user-tile-picture" src="/static_images/vista-start/usertile-kitten.png" alt="">
+            <img class="start-menu-user-tile-item" alt="">
         </div>
     </div>
 

@@ -1098,55 +1098,7 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     }
 }
 
-/* Subscription Renewal Indicator */
-.subscription-renewal-indicator {
-    color: #ffa726;
-}
-
-.subscription-renewal-indicator.warning {
-    color: #ff9800;
-    animation: pulse-subscription 2s ease-in-out infinite;
-}
-
-.subscription-renewal-indicator.critical {
-    color: #ffaba5;
-    animation: pulse-subscription 1s ease-in-out infinite;
-}
-
-@keyframes pulse-subscription {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.5;
-    }
-}
-
-/* Fixed Credits Indicator */
-.fixed-credits-indicator {
-    color: var(--text-secondary);
-    /* Default color */
-}
-
-.fixed-credits-indicator.low-credits {
-    color: #ff9800;
-    /* Less than 250 credits */
-    animation: pulse-credits 2s ease-in-out infinite;
-}
-
-.fixed-credits-indicator.no-credits {
-    color: #f44336;
-    /* 0 credits - all requests are paid */
-}
-
-.fixed-credits-indicator.expiring-credits {
-    color: #ffbd9d;
-    /* More than 250 credits but subscription expiring */
-}
-
+/* Also used by service-worker-tray.css */
 @keyframes pulse-credits {
 
     0%,
@@ -1225,22 +1177,6 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
 
 .replication-tray-indicator.active i {
     animation: pulse-generation 1.5s ease-in-out infinite;
-}
-
-.runpod-tray-icon {
-    color: var(--text-secondary);
-}
-
-.runpod-tray-icon.running i {
-    color: #81c784;
-}
-
-.runpod-tray-icon.busy i {
-    color: #ffb74d;
-}
-
-.runpod-tray-icon.error i {
-    color: #e57373;
 }
 
 /* Search Indexing Indicator */
@@ -1517,90 +1453,107 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
-/* Start Menu Styles */
-.start-menu {
+/* ---------- Start menu: Vista's two columns (Yozora #443) ----------
+   modalUtils.js buildStartMenu, markup #startMenu in app.html. Geometry is the Vista Aero start
+   menu at 120 DPI (measured from a Vista VM at 96 DPI, x 1.25): a 318 px white pane with Start
+   Search under it, a 181 px places column on the glass with the power buttons under it, the account
+   frame over the top edge. Art (Vista's own pixels): /static_images/vista-start/, built by
+   scripts/build-vista-start-menu-art.js. */
+
+#startMenu.start-menu {
+    --start-menu-h: min(635px, calc(100vh - var(--taskbar-height, 35px) - 48px));
+    --start-menu-pane-w: 318px;
+    --start-menu-pad: 7px;
+    --start-menu-font: 'Segoe UI', Tahoma, var(--font-family, sans-serif);
     position: fixed;
-    bottom: var(--taskbar-height, 35px);
     left: 0;
-    width: 350px;
-    max-height: calc(100vh - calc(var(--titlebar-area-height) + 64px));
-    transform-origin: left bottom;
-    /* Vista-style gradient with sharper center scumophic edge - matching taskbar */
+    bottom: var(--taskbar-height, 35px);
+    z-index: var(--z-start-menu);
+    box-sizing: border-box;
+    width: max-content;
+    max-width: 100vw;
+    height: var(--start-menu-h);
+    display: grid;
+    /* the places column is as wide as its longest name, like Vista's */
+    grid-template-columns: var(--start-menu-pane-w) minmax(181px, max-content);
+    grid-template-rows: minmax(0, 1fr) 30px;
+    grid-template-areas:
+        "pane places"
+        "search power";
+    row-gap: 8px;
+    padding: var(--start-menu-pad) 0 var(--start-menu-pad) var(--start-menu-pad);
+    font: 15px/1.25 var(--start-menu-font);
+    /* Vista: the frame glass darkening to near black toward the power buttons, the Aero
+       streaks pinned to the screen (aero-glass.css) */
     background:
-        linear-gradient(to bottom,
-            rgba(255, 255, 255, 0.08) 0%,
-            rgba(255, 255, 255, 0.04) 40%,
-            rgba(0, 0, 0, 0.2) 50%,
-            rgba(0, 0, 0, 0.35) 100%),
-        linear-gradient(to top,
-            hsl(0 0% 8% / 85%) 0%,
-            hsl(0 0% 12% / 82%) 50%,
-            hsl(0 0% 18% / 80%) 100%);
+        linear-gradient(to bottom, hsl(0 0% 0% / 42%) 0%, hsl(0 0% 0% / 78%) 38%, hsl(210 20% 2% / 94%) 72%, hsl(210 30% 2% / 97%) 100%),
+        var(--aero-streaks, none),
+        linear-gradient(var(--glass-windows-bg, hsl(0 0% 20% / 75%)), var(--glass-windows-bg, hsl(0 0% 20% / 75%)));
+    background-size:
+        100% 100%,
+        var(--aero-vw, 100vw) var(--aero-vh, 100vh),
+        100% 100%;
+    background-position:
+        0 0,
+        -1px calc(-1px - (var(--aero-vh, 100vh) - var(--taskbar-height, 35px) - var(--start-menu-h))),
+        0 0;
+    background-repeat: no-repeat;
     -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
     backdrop-filter: saturate(2.5) var(--glass-blur-4);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-bottom: none;
-    border-top-right-radius: var(--border-radius-xxl);
-    /* Vista-style inner shadow for depth */
+    border: 1px solid hsl(210 60% 2% / 92%);
+    border-bottom: 0;
+    border-radius: 6px 6px 0 0;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.15),
-        inset 0 -1px 1px rgba(0, 0, 0, 0.3),
-        0px 8px 32px 2px hsl(0deg 0% 0% / 50%);
-    z-index: var(--z-start-menu);
-    display: flex;
-    flex-direction: row;
-    overflow: hidden;
+        inset 0 0 0 1px hsl(0 0% 100% / 34%),
+        0 0 18px hsl(0 0% 0% / 50%);
+    color: #fff;
     opacity: 1;
+    overflow: visible;
+    transform-origin: left bottom;
+}
+
+/* frosted: the wallpaper copy under the same fills, pinned to the screen like the taskbar */
+html[data-glass="frosted"] #startMenu.start-menu {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background:
+        linear-gradient(to bottom, hsl(0 0% 0% / 42%) 0%, hsl(0 0% 0% / 78%) 38%, hsl(210 20% 2% / 94%) 72%, hsl(210 30% 2% / 97%) 100%),
+        var(--aero-streaks, none),
+        linear-gradient(var(--glass-windows-bg, hsl(0 0% 20% / 75%)), var(--glass-windows-bg, hsl(0 0% 20% / 75%))),
+        var(--aero-wallpaper-light, var(--aero-wallpaper, none));
+    background-size:
+        100% 100%,
+        var(--aero-vw, 100vw) var(--aero-vh, 100vh),
+        100% 100%,
+        var(--aero-cover-w, 100vw) var(--aero-cover-h, 100vh);
+    background-position:
+        0 0,
+        -1px calc(-1px - (var(--aero-vh, 100vh) - var(--taskbar-height, 35px) - var(--start-menu-h))),
+        0 0,
+        calc(var(--aero-cover-x, 0px) - 1px) calc(var(--aero-cover-y, 0px) - 1px - (var(--aero-vh, 100vh) - var(--taskbar-height, 35px) - var(--start-menu-h)));
+    background-repeat: no-repeat;
+}
+
+/* basic: Vista Basic's opaque menu */
+html[data-glass="basic"] #startMenu.start-menu {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: linear-gradient(to bottom, hsl(210 10% 22%) 0%, hsl(210 12% 10%) 40%, hsl(210 20% 4%) 100%);
 }
 
 @keyframes startMenuFadeIn {
-    0% {
-        opacity: 0;
-        max-height: calc((100vh - calc(var(--titlebar-area-height) + 64px)) * 0.75);
-    }
-
-    100% {
-        opacity: 1;
-        max-height: calc(100vh - calc(var(--titlebar-area-height) + 64px));
-    }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 @keyframes startMenuFadeOut {
-    0% {
-        opacity: 1;
-        max-height: calc(100vh - calc(var(--titlebar-area-height) + 64px));
-    }
-
-    100% {
-        opacity: 0;
-        max-height: calc((100vh - calc(var(--titlebar-area-height) + 64px)) * 0.75);
-    }
+    from { opacity: 1; }
+    to { opacity: 0; }
 }
 
 #startMenu.start-menu.start-menu-opening,
 #startMenu.start-menu.start-menu-closing {
-    overflow: hidden;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
     pointer-events: none;
-}
-
-#startMenu.start-menu.start-menu-opening::-webkit-scrollbar,
-#startMenu.start-menu.start-menu-closing::-webkit-scrollbar {
-    display: none;
-}
-
-#startMenu.start-menu.start-menu-opening .start-menu-content,
-#startMenu.start-menu.start-menu-closing .start-menu-content {
-    overflow: hidden;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    pointer-events: none;
-}
-
-#startMenu.start-menu.start-menu-opening .start-menu-content::-webkit-scrollbar,
-#startMenu.start-menu.start-menu-closing .start-menu-content::-webkit-scrollbar {
-    display: none;
 }
 
 #startMenu.start-menu.start-menu-opening {
@@ -1609,400 +1562,363 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
 
 #startMenu.start-menu.start-menu-closing {
     animation: startMenuFadeOut var(--animation-panel-fade-out) forwards;
-    pointer-events: none;
 }
 
-.start-menu-content {
-    display: flex;
-    flex-direction: column-reverse;
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    border-top-right-radius: var(--border-radius-xxl);
-}
+/* ---- left: the white pane ---- */
 
-.start-menu-branding {
+.start-menu-pane {
+    grid-area: pane;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    width: 32px;
-    background: linear-gradient(to bottom, var(--primary-color), var(--primary-color-dark));
-    padding: 12px 8px;
-    border-right: 1px solid var(--glass-border-4);
-    position: relative;
+    min-height: 0;
+    background: #fff;
+    border: 1px solid #3a3a3a;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px hsl(0 0% 100% / 42%);
+    color: #000;
     overflow: hidden;
 }
 
-/* Vista-style glass overlay on branding strip */
-.start-menu-branding::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg,
-            var(--glass-layer-5) 0%,
-            transparent 50%,
-            var(--glass-layer-dark-3) 100%);
-    pointer-events: none;
-}
-
-.start-menu-logo {
-    width: 24px;
-    height: 24px;
-    object-fit: contain;
-    -webkit-filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-    z-index: 1;
-}
-
-.start-menu-brand-text {
-    font-family: 'Oxanium';
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    font-size: 0.875rem;
-    font-weight: 600;
-    font-variation-settings: "wght" 600;
-    letter-spacing: 0.05em;
-    color: white;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-    z-index: 1;
-}
-
 .start-menu-items {
-    display: flex;
-    flex-direction: column;
-}
-
-.start-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    height: 46px;
-    padding: 10px 18px;
-    transition: var(--transition-tray-menu);
-    border-bottom: 1px solid transparent;
-    position: relative;
-}
-
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .start-menu-item:hover:not(:disabled) {
-        background: var(--glass-layer-3);
-        border-bottom-color: var(--glass-border-3);
-    }
-}
-
-.start-menu-item i {
-    font-size: 1.5rem;
-    width: 32px;
-    text-align: center;
-    color: var(--text-primary);
-}
-
-.start-menu-item .icon-image {
-    width: 32px;
-    height: 32px;
-    object-fit: contain;
-    flex-shrink: 0;
-}
-
-.start-menu-item .icon-image {
-    width: 1.75rem;
-    height: 1.75rem;
-    object-fit: contain;
-    display: inline-block !important;
-    /* Always show image icon if available */
-}
-
-/* Hide Font Awesome icon in desktop icons when image icon is present */
-.start-menu-item:has(.icon-image) .icon-fa,
-.start-menu-item:has(.icon-image) i.icon-fa {
-    display: none !important;
-}
-
-.start-menu-item span {
     flex: 1;
-    font-size: 0.875rem;
-    color: var(--text-primary);
-}
-
-.start-menu-item.has-submenu::after {
-    content: '\f054';
-    font-family: 'Font Awesome 6 Pro';
-    font-weight: 300;
-    font-variation-settings: "wght" 300;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    margin-left: auto;
-    transition: transform var(--transition-fast);
-}
-
-.start-menu-item.has-submenu.expanded::after {
-    transform: rotate(90deg);
-}
-
-.start-menu-right-btn {
-    margin-left: auto;
-    padding: 4px 8px;
-    background: var(--glass-layer-3);
-    border: 1px solid var(--glass-border-2);
-    border-radius: var(--border-radius-sm);
-    transition: var(--transition-tray-menu);
-    color: var(--text-primary);
-    font-size: 0.875rem;
-}
-
-.start-menu-right-btn:hover:not(:disabled) {
-    background: var(--glass-layer-4);
-    border-color: var(--glass-border-4);
-}
-
-.start-menu-item.has-right-action span {
-    flex: 1;
-}
-
-.start-menu-item.has-submenu.popout-open::after,
-.start-menu-popout-item.has-submenu.popout-open::after {
-    color: var(--primary-color);
-}
-
-.start-menu-item.is-pinned:not(.has-submenu)::after {
-    content: '\f08d';
-    font-family: 'Font Awesome 6 Pro';
-    font-weight: 900;
-    font-size: 0.65rem;
-    color: var(--text-secondary);
-    margin-left: auto;
-    margin-right: 4px;
-}
-
-.start-menu-popout {
-    position: fixed;
-    z-index: calc(var(--z-start-menu) + 1);
-    display: flex;
-    flex-direction: column;
-    min-width: min(320px, 28vw);
-    max-width: min(400px, 34vw);
-    overflow-y: auto;
+    min-height: 0;
     overflow-x: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: var(--border-radius-md);
-    background:
-        linear-gradient(to bottom,
-            rgba(255, 255, 255, 0.08) 0%,
-            rgba(255, 255, 255, 0.04) 40%,
-            rgba(0, 0, 0, 0.2) 50%,
-            rgba(0, 0, 0, 0.35) 100%),
-        linear-gradient(to top,
-            hsl(0 0% 8% / 92%) 0%,
-            hsl(0 0% 12% / 90%) 50%,
-            hsl(0 0% 18% / 88%) 100%);
-    -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
-    backdrop-filter: saturate(2.5) var(--glass-blur-4);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.12),
-        0 8px 28px rgba(0, 0, 0, 0.45);
+    overflow-y: auto;
+    padding: 2px;
 }
 
-.start-menu-popout-item {
+.start-menu-row,
+.start-menu-all-programs {
+    box-sizing: border-box;
     display: flex;
     align-items: center;
-    gap: 12px;
-    min-height: 42px;
-    padding: 9px 16px;
-    transition: var(--transition-tray-menu);
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #000;
     cursor: default;
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .start-menu-popout-item:hover {
-        background: var(--glass-layer-3);
-    }
+/* Vista's hot item: the light blue rounded highlight */
+.start-menu-row:hover,
+.start-menu-row.is-hot,
+.start-menu-all-programs:hover {
+    border-color: #9adffe;
+    background: linear-gradient(to bottom, #eef8fe, #d6f0fd);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 60%);
 }
 
-.start-menu-popout-item i {
-    font-size: 1.25rem;
-    width: 28px;
-    text-align: center;
-    color: var(--text-primary);
+.start-menu-items:hover .start-menu-row.is-hot:not(:hover) {
+    border-color: transparent;
+    background: none;
+    box-shadow: none;
 }
 
-.start-menu-popout-item .icon-image {
-    width: 1.75rem;
-    height: 1.75rem;
+.start-menu-row-pinned,
+.start-menu-row-frequent {
+    gap: 6px;
+    height: 48px;
+    padding: 0 6px 0 4px;
+}
+
+.start-menu-row-program,
+.start-menu-row-result {
+    gap: 6px;
+    height: 24px;
+    padding: 0 6px 0 calc(4px + var(--start-menu-depth, 0) * 24px);
+}
+
+.start-menu-row-icon {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+}
+
+.start-menu-row-program .start-menu-row-icon,
+.start-menu-row-result .start-menu-row-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.start-menu-row-icon img,
+.start-menu-row-icon .icon-image {
+    display: block !important;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
-    flex-shrink: 0;
-    display: inline-block !important;
 }
 
-.start-menu-popout-item:has(.icon-image) .icon-fa,
-.start-menu-popout-item:has(.icon-image) i.icon-fa {
+.start-menu-row-icon:has(.icon-image) .icon-fa {
     display: none !important;
 }
 
-.start-menu-popout-item span {
-    flex: 1;
-    font-size: 0.85rem;
-    color: var(--text-primary);
+.start-menu-row-icon i {
+    font-size: 28px;
+    color: #2b5797;
 }
 
-.start-menu-popout-item.has-submenu::after {
-    content: '\f054';
-    font-family: 'Font Awesome 6 Pro';
-    font-weight: 300;
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    margin-left: auto;
+.start-menu-row-program .start-menu-row-icon i,
+.start-menu-row-result .start-menu-row-icon i {
+    font-size: 15px;
 }
 
-.start-menu-popout-separator {
-    height: 1px;
-    background: var(--glass-border-3);
-    margin: 4px 0;
+.start-menu-row-icon .workspace-color-indicator {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 0% / 25%);
 }
 
-.start-menu-submenu {
+.start-menu-row-text {
     display: flex;
     flex-direction: column;
-    background: var(--glass-layer-1);
-    border-left: 2px solid var(--primary-color);
+    min-width: 0;
 }
 
-.start-menu-item.submenu-item {
-    padding-left: 32px;
-    font-size: 0.825rem;
+.start-menu-row-title,
+.start-menu-row-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.start-menu-item.submenu-item i {
-    font-size: 0.9rem;
+.start-menu-row-pinned .start-menu-row-title {
+    font-weight: 700;
 }
 
-.start-menu-item .workspace-color-indicator {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    flex-shrink: 0;
+.start-menu-row-sub {
+    color: #6d6d6d;
 }
 
 .start-menu-separator {
     height: 1px;
-    background: var(--glass-border-3);
-    margin: 4px 0;
+    margin: 4px 7px 4px 12px;
+    background: #e2e2e2;
 }
 
-.start-menu-action-bar {
+.start-menu-group-header {
+    margin: 6px 6px 2px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid #e2e2e2;
+    color: #1e3287;
+    font-weight: 700;
+}
+
+.start-menu-search-empty {
+    padding: 10px 12px;
+    color: #6d6d6d;
+}
+
+.start-menu-pane-foot {
+    flex: none;
+    padding: 0 2px 2px;
+}
+
+.start-menu-pane-foot::before {
+    content: '';
+    display: block;
+    height: 1px;
+    margin: 0 7px 0 12px;
+    background: #e2e2e2;
+}
+
+.start-menu-all-programs {
+    width: 100%;
+    height: 34px;
+    margin-top: 1px;
+    padding: 0;
+    background: none;
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+}
+
+.start-menu-all-programs-arrow {
+    flex: none;
+    width: 47px;
+    height: 23px;
+    background: url('/static_images/vista-start/programs-arrow.png') no-repeat 4px center;
+}
+
+.start-menu-all-programs.is-back .start-menu-all-programs-arrow {
+    background-image: url('/static_images/vista-start/back-arrow.png');
+}
+
+/* ---- Start Search ---- */
+
+.start-menu-search {
+    grid-area: search;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 7px;
-    border-top: 1px solid var(--glass-border-3);
-    background: var(--glass-layer-2);
 }
 
-.start-menu-action-btn {
-    flex: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4em;
-    min-height: 28px;
-    padding: 0.25em 0.6em;
-    font-size: 0.78rem;
-    background: var(--glass-layer-3);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: var(--transition-tray-menu);
-}
-
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .start-menu-action-btn:hover:not(:disabled) {
-        background: var(--glass-layer-4);
-        border-color: var(--glass-border-4);
-    }
-}
-
-.start-menu-action-btn.start-menu-action-danger {
-    color: #fecaca;
-    border-color: rgba(239, 68, 68, 0.45);
-}
-
-.start-menu-power-group.btn-group {
-    position: relative;
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
-    gap: 0;
-    flex: 0 1 auto;
-    max-width: 100%;
-    overflow: visible;
-    border-radius: var(--border-radius-md);
-    background: hsl(0deg 100% 50% / 34%);
-    border: 1px solid rgba(239, 68, 68, 39%);
+.start-menu-search-input {
     box-sizing: border-box;
-}
-
-.start-menu-power-group.btn-group > .start-menu-action-btn,
-.start-menu-power-group.btn-group .start-menu-power-toggle {
-    flex: 0 0 auto;
+    width: 100%;
+    height: 30px;
     margin: 0;
-    box-shadow: none;
-    background: transparent;
-    border: none;
-    border-radius: 0;
+    padding: 0 28px 0 6px;
+    border: 1px solid #414243;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px hsl(0 0% 100% / 30%);
+    background: #fff url('/static_images/vista-start/search-glyph.png') no-repeat right 8px center;
+    color: #000;
+    font: 15px var(--start-menu-font);
+    outline: none;
 }
 
-.start-menu-power-group.btn-group > .start-menu-action-btn.start-menu-action-danger,
-.start-menu-power-group.btn-group .start-menu-power-toggle.start-menu-action-danger {
-    border-color: transparent;
+.start-menu-search-input::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
+    opacity: 1;
 }
 
-.start-menu-power-group.btn-group > .start-menu-action-btn:first-of-type {
-    flex: 1 1 auto;
-    border-top-left-radius: var(--border-radius-md);
-    border-bottom-left-radius: var(--border-radius-md);
-    border-right: 1px solid rgba(239, 68, 68, 39%);
-}
+/* ---- right: places on the glass ---- */
 
-.start-menu-power-group.btn-group > .start-menu-power-dropdown.custom-dropdown {
-    flex: 0 0 auto;
-    width: auto;
-    position: relative;
+.start-menu-places {
+    grid-area: places;
     display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 39px 7px 0 6px;
+    overflow: hidden;
 }
 
-.start-menu-power-group.btn-group .start-menu-power-toggle {
-    border-top-right-radius: var(--border-radius-md);
-    border-bottom-right-radius: var(--border-radius-md);
-    padding: 0.25em 0.55em;
+.start-menu-place {
+    position: relative;
+    flex: none;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    height: 42px;
+    margin: 1px 0;
+    padding: 0 18px 0 10px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
 }
 
-.start-menu-power-group.btn-group .start-menu-power-toggle.active {
-    background: var(--glass-layer-4);
+/* Vista's place highlight: dark line, inner light line, a glass wash over the top half and a
+   dark fold under it (measured from the VM against the same spot at rest) */
+.start-menu-place:hover {
+    border-color: hsl(0 0% 0% / 88%);
+    background: linear-gradient(to bottom,
+            hsl(0 0% 100% / 25%) 0%, hsl(0 0% 100% / 6%) 48%,
+            hsl(0 0% 0% / 17%) 48%, hsl(0 0% 0% / 5%) 70%,
+            hsl(0 0% 100% / 0%) 74%, hsl(0 0% 100% / 8%) 100%);
+    box-shadow:
+        0 0 0 1px hsl(0 0% 100% / 20%),
+        inset 0 0 0 1px hsl(0 0% 100% / 40%);
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .start-menu-power-group.btn-group > .start-menu-action-btn:hover:not(:disabled),
-    .start-menu-power-group.btn-group .start-menu-power-toggle:hover:not(:disabled) {
-        background: var(--glass-layer-4);
-    }
+.start-menu-place.has-flyout::after {
+    content: '';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    margin-top: -5px;
+    border-left: 5px solid #fff;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
 }
 
-.start-menu-power-dropdown .custom-dropdown-menu {
-    min-width: 11.5rem;
-    margin-bottom: 6px;
+.start-menu-place-separator {
+    flex: none;
+    height: 2px;
+    margin: 3px 2px 3px 4px;
+    background: linear-gradient(to bottom, hsl(0 0% 0% / 50%) 0 1px, hsl(0 0% 100% / 14%) 1px 2px);
 }
 
-.start-menu-power-dropdown .custom-dropdown-option {
-    gap: 0.45em;
+/* ---- the account picture over the top edge ---- */
+
+.start-menu-user-tile {
+    position: absolute;
+    top: -27px;
+    left: calc(var(--start-menu-pad) + var(--start-menu-pane-w) + (100% - var(--start-menu-pad) - var(--start-menu-pane-w) - 64px) / 2);
+    width: 64px;
+    height: 64px;
+    pointer-events: none;
 }
 
-.start-menu-power-dropdown .custom-dropdown-option.start-menu-power-option-danger {
-    color: #fecaca;
+.start-menu-user-tile::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url('/static_images/vista-start/user-frame.png') no-repeat;
+}
+
+.start-menu-user-tile img {
+    position: absolute;
+    left: 7px;
+    top: 7px;
+    width: 48px;
+    height: 48px;
+    transition: opacity 0.2s ease;
+}
+
+.start-menu-user-tile-picture {
+    object-fit: cover;
+}
+
+.start-menu-user-tile-item {
+    object-fit: contain;
+    opacity: 0;
+}
+
+.start-menu-user-tile.show-item .start-menu-user-tile-item {
+    opacity: 1;
+}
+
+.start-menu-user-tile.show-item .start-menu-user-tile-picture {
+    opacity: 0;
+}
+
+/* ---- power, lock, more options ---- */
+
+.start-menu-power {
+    grid-area: power;
+    display: flex;
+    align-items: flex-start;
+    padding-left: 6px;
+}
+
+.start-menu-power-button {
+    flex: none;
+    width: 70px;
+    height: 30px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: url('/static_images/vista-start/shutdown.png') no-repeat 0 0;
+    cursor: default;
+}
+
+.start-menu-power-button.is-lock {
+    background-image: url('/static_images/vista-start/lock.png');
+}
+
+.start-menu-power-button.is-arrow {
+    width: 28px;
+    background-image: url('/static_images/vista-start/arrow.png');
+}
+
+.start-menu-power-button:hover {
+    background-position: 0 -30px;
+}
+
+.start-menu-power-button:active {
+    background-position: 0 -60px;
+}
+
+.start-menu-power-button:focus-visible {
+    outline: 1px dotted #fff;
+    outline-offset: -4px;
 }
 
 .client-shutdown-overlay {
@@ -2019,49 +1935,6 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
 .client-shutdown-overlay.show {
     opacity: 1;
     pointer-events: auto;
-}
-
-.start-menu-icons-row {
-    display: flex;
-    flex-direction: row;
-    justify-content: flex-end;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 7px 7px;
-    border-top: 1px solid var(--glass-border-3);
-    background: var(--glass-layer-2);
-}
-
-.start-menu-icon-btn {
-    position: relative;
-    height: 31px;
-    width: 42px;
-    background: var(--glass-layer-3);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-primary);
-    transition: var(--transition-tray-menu);
-}
-
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .start-menu-icon-btn:hover:not(:disabled) {
-        background: var(--glass-layer-4);
-        border-color: var(--glass-border-4);
-    }
-}
-
-.start-menu-icon-btn i {
-    font-size: 1rem;
-}
-
-.start-menu-icon-btn .icon-image {
-    width: 1rem;
-    height: 1rem;
-    object-fit: contain;
 }
 
 /* Start menu organizer (public/scripts/comp/desktop-apps/startMenuOrganizer.js) */
