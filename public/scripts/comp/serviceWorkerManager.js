@@ -4111,6 +4111,29 @@ class ServiceWorkerManager {
         return result;
     }
 
+    /**
+     * A large update found at the /app boot gate on the desktop: reboot into /launch, whose
+     * installer (melatonBoot.js + updateEngine.js) takes it. Not twice within a few minutes
+     * (the installer's own reboot, or a /launch that could not install): then the old wizard
+     * here finishes the job, so the two pages never bounce. Returns true when navigating.
+     */
+    _rebootIntoInstaller(count) {
+        if (!window.isDesktop) return false;
+        let last = 0;
+        try {
+            last = Number(sessionStorage.getItem('melatonInstallRebootAt')) || 0;
+        } catch (_) { /* no guard then: one reboot is still safe */ }
+        if (Date.now() - last < 3 * 60 * 1000) return false;
+        try {
+            sessionStorage.setItem('melatonInstallRebootAt', String(Date.now()));
+        } catch (_) { /* best effort */ }
+        console.log(`[boot] ${count} files to update: rebooting into the installer (/launch)`);
+        // restartClientNavigate: public/scripts/comp/modalUtils.js (desktop → /launch)
+        if (typeof restartClientNavigate === 'function') restartClientNavigate();
+        else location.replace('/launch');
+        return true;
+    }
+
     async runBootSequence() {
         if (this.bootComplete) {
             return;
@@ -4174,6 +4197,10 @@ class ServiceWorkerManager {
                 }
 
                 if (filesToUpdate.length > WIZARD_FILE_THRESHOLD || installWizardUsed) {
+                    // Desktop: large updates install in /launch's Setup now (Yozora #419)
+                    if (!installWizardUsed && this._rebootIntoInstaller(filesToUpdate.length)) {
+                        return;
+                    }
                     installWizardUsed = true;
                     this.installWizardUsed = true;
                     this.bootPhase = 'wizard';

@@ -61,6 +61,44 @@ preset per screen and `/launch?design=1&screen=menu` (`boot`, `menu`, `menu-info
 size; `&hud=0` hides the HUD (clean screenshots). Recovery in design mode never wipes and
 nothing navigates. Test: `npm run test:melaton-boot`.
 
+## Updates at boot and the installer (Yozora #419)
+
+After `/launch` confirms the session it checks for updates under the boot screen
+(`public/scripts/launch/updateEngine.js`): it makes sure `/sw.js` is registered and controls the
+page (the worker claims clients on activate), fetches the manifest (`OPTIONS /`) and diffs it
+against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNeedingUpdate`
+(`x-file-hash` per path, `/` ↔ `/index.html`, Vary / `?sha=` siblings).
+
+- **Nothing to do**, no controlling worker, or no manifest (runtime compile 503): the normal
+  handoff to `/app`.
+- **Up to 20 files**: downloaded silently through the worker (`CACHE_STATIC_FILES`) while the
+  marquee keeps running, then the handoff.
+- **More than 20, or an install a reload interrupted** (`localStorage.melatonInstall`): cut to
+  black and **Install MeletonFX**, Windows Setup in Classic on the plain aurora
+  (`#melatonInstall`, `css/launch-install.css`). "Installing MeletonFX...", Vista's checklist and
+  two-step strip (1 Collecting information ✓, 2 Installing MeletonFX), each line doing real work:
+  - Copying MeletonFX files: the worker download, byte-weighted progress, 60 s without progress
+    = stalled.
+  - Expanding MeletonFX files: every file checked in the cache, one more pass for stragglers. A
+    few the worker will not keep (≤ max(10, 10 %)) do not fail the install; they are remembered in
+    `melatonInstallRecord.stragglers` so later boots never reopen Setup for them.
+  - Installing features: `registration.update()` for the offline service.
+  - Installing updates: the manifest again, downloading whatever changed meanwhile.
+  - Completing installation: the install record, `navigator.storage.persist()`, the old wizard's
+    session key cleared.
+  Failure: a Classic message box (Retry stays in Setup and resumes; Cancel → the boot menu with
+  "The installation of MeletonFX was cancelled."). Done: the window closes, 3 s on the aurora,
+  black, `/launch` again, which then hands off normally.
+- **`/app`**: its boot gate (the safety net for starts that skipped `/launch`) reboots into
+  `/launch` for more than 20 files on the desktop instead of opening the old install wizard. A
+  second time within 3 minutes (`sessionStorage.melatonInstallRebootAt`, also set by the
+  installer) it finishes in place with the old wizard, so the pages never bounce. Narrow mode keeps
+  the wizard.
+
+Design previews: `/launch?design=1&screen=install` (also `install-expand`, `install-updates`,
+`install-error`, `install-linger`). Tests: `npm run test:melaton-boot` (flows),
+`npm run test:update-engine` (diff, threshold, download driver).
+
 ## Default wallpapers (Yozora #419)
 
 `public/static_images/wallpapers/` (3840×2160 WebP), generated with

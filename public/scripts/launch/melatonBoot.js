@@ -15,9 +15,20 @@
  *            (Continue / Return to Boot Menu) since there is no keyboard to assume
  *   recover  "Formatting startup disk..." + progress bar while the clean install runs
  *            (Cache Storage, SW, local/session storage, IndexedDB) → /launch
+ *   updates  after the session check, under the boot screen (updateEngine.js): the worker's
+ *            cache diffed against the server manifest. Up to 20 files download silently behind
+ *            the marquee, then the handoff. More (or an install a reload interrupted) cut to
+ *            black and open the installer.
+ *   install  Windows Setup in Classic on the aurora: "Install MeletonFX", Installing
+ *            MeletonFX..., the automatic checklist (Copying files = the download, Expanding
+ *            files = hash check + one retry, Installing features = the offline service update,
+ *            Installing updates = what changed on the server meanwhile, Completing installation
+ *            = install record + persistent storage), Vista's two-step strip. Failure: a Classic
+ *            message box, Retry / Cancel (→ boot menu). Done: the window closes, it lingers,
+ *            cuts to black and reboots /launch, which then boots normally.
  *
  * Design mode (/launch?design=1) previews every screen: no checks, no wipe, no navigation.
- * Yozora #411 (plan), #416 (S2), #417 (S3). Test: scripts/test-melaton-boot.js.
+ * Yozora #411 (plan), #416 (S2), #417 (S3), #419 (S4). Test: scripts/test-melaton-boot.js.
  */
 (function (root) {
     'use strict';
@@ -33,7 +44,26 @@
         modeSwitchMs: 1500,     // black between the boot screen and /app (graphics mode switch)
         countdownSec: 10,
         tealHoldMs: 2000,
-        recoverStepMs: 350      // each recovery line stays at least this long
+        recoverStepMs: 350,     // each recovery line stays at least this long
+        installStepMs: 900,     // each installer checklist line stays at least this long
+        installTolerance: 10,   // files still missing after Expanding that do not fail the install
+        installLingerMs: 3000   // after the installer window closes, before the black + reboot
+    };
+
+    // Vista "Installing Windows..." checklist; weight = share of the strip's second bar
+    const INSTALL_STEPS = [
+        { id: 'copy', label: 'Copying MeletonFX files', weight: 0.8 },
+        { id: 'expand', label: 'Expanding MeletonFX files', weight: 0.08 },
+        { id: 'features', label: 'Installing features', weight: 0.03 },
+        { id: 'updates', label: 'Installing updates', weight: 0.06 },
+        { id: 'complete', label: 'Completing installation', weight: 0.03 }
+    ];
+
+    const INSTALL_ERRORS = {
+        download: 'MeletonFX could not copy the files it needs to install. The connection to the server was interrupted.',
+        stalled: 'MeletonFX could not copy the files it needs to install. The server stopped sending files.',
+        verify: 'MeletonFX could not expand the installation files. Some files did not arrive intact.',
+        worker: 'MeletonFX could not start the offline service it installs into.'
     };
 
     const ENTRIES = [
@@ -45,7 +75,8 @@
         offline: 'This device is not connected to a network.',
         unreachable: 'The server did not respond.',
         busy: 'The server stopped responding while it was starting.',
-        session: 'The server could not confirm this session.'
+        session: 'The server could not confirm this session.',
+        install: 'The installation of MeletonFX was cancelled.'
     };
 
     // weight = share of the formatting progress bar
@@ -202,7 +233,8 @@
             confirmSelected: 0,
             recoverProgress: 0,
             lastProbe: null,
-            serverStatus: null
+            serverStatus: null,
+            install: null
         };
 
         function show(screen, data) {
@@ -315,9 +347,204 @@
                 env.location.replace('/');
                 return 'login';
             }
+            const updated = await runUpdates(run);
+            if (updated !== 'handoff') return updated;
             await handOff();
             if (run !== ctl.runId) return 'cancelled';
             return 'teal';
+        }
+
+        // ---------- updates and the installer (updateEngine.js, #419) ----------
+
+        /** 'handoff' (boot on), 'reboot' (installed), 'error' (message box up) or 'cancelled'. */
+        async function runUpdates(run) {
+            const engine = env.engine;
+            if (!engine || env.designMode) return 'handoff';
+            const resumed = engine.readState(env);
+            const workerOk = await engine.ensureWorker(env);
+            if (run !== ctl.runId) return 'cancelled';
+            if (!workerOk) {
+                // No controlling worker on this page: /app's boot gate takes the update
+                if (resumed) engine.writeState(env, null);
+                return 'handoff';
+            }
+            const found = await engine.check(env);
+            if (run !== ctl.runId) return 'cancelled';
+            if (found.skipped || !found.files.length) {
+                if (resumed) engine.writeState(env, null);
+                return 'handoff';
+            }
+            if (!engine.needsInstaller(env, found.files)) {
+                // A few files: behind the boot screen, the marquee keeps running
+                await engine.download(env, found.files, { silent: true });
+                return run === ctl.runId ? 'handoff' : 'cancelled';
+            }
+            return install(found, run);
+        }
+
+        function installData(extra = {}) {
+            const st = ctl.install;
+            return {
+                steps: st.steps.map((s) => ({ ...s })),
+                overall: st.overall,
+                phase: st.phase,
+                error: st.error,
+                ...extra
+            };
+        }
+
+        function setStep(id, state, fraction = null) {
+            const st = ctl.install;
+            let overall = 0;
+            st.steps.forEach((step) => {
+                if (step.id === id) {
+                    step.state = state;
+                    step.fraction = state === 'active' ? fraction : null;
+                }
+                const def = INSTALL_STEPS.find((d) => d.id === step.id);
+                if (step.state === 'done') overall += def.weight;
+                else if (step.state === 'active' && typeof step.fraction === 'number') overall += def.weight * step.fraction;
+            });
+            st.overall = Math.min(1, overall);
+            show('install', installData());
+        }
+
+        async function stepAtLeast(started) {
+            const rest = config.installStepMs - (env.now() - started);
+            if (rest > 0) await env.sleep(rest);
+        }
+
+        function installFailed(reason, detail) {
+            const st = ctl.install;
+            st.phase = 'error';
+            st.error = { reason, message: INSTALL_ERRORS[reason] || INSTALL_ERRORS.download, detail: detail || null };
+            show('install', installData());
+            return 'error';
+        }
+
+        async function install(found, run) {
+            const engine = env.engine;
+            const resumed = !!engine.readState(env);
+            engine.writeState(env, { startedAt: env.now(), total: found.files.length, bytes: found.bytes });
+            if (ctl.screen !== 'install') await cutToBlack();
+            ctl.install = {
+                steps: INSTALL_STEPS.map((s) => ({ id: s.id, label: s.label, state: 'pending', fraction: null })),
+                overall: 0,
+                phase: 'installing',
+                error: null,
+                resumed
+            };
+            show('install', installData());
+
+            // 1 Copying: the download, by bytes
+            let started = env.now();
+            setStep('copy', 'active', 0);
+            const copied = await engine.download(env, found.files, {
+                onProgress: (p) => { if (run === ctl.runId) setStep('copy', 'active', p.fraction); }
+            });
+            if (run !== ctl.runId) return 'cancelled';
+            if (!copied.ok) return installFailed(copied.stalled ? 'stalled' : 'download', copied.errors && copied.errors[0]);
+            await stepAtLeast(started);
+            setStep('copy', 'done');
+
+            // 2 Expanding: every file in the cache with the right hash; one more pass for stragglers
+            started = env.now();
+            setStep('expand', 'active', 0);
+            let missing = await engine.verify(env, found.files);
+            if (missing.length) {
+                await engine.download(env, missing, {
+                    onProgress: (p) => { if (run === ctl.runId) setStep('expand', 'active', 0.5 * p.fraction); }
+                });
+                missing = await engine.verify(env, missing);
+            }
+            if (run !== ctl.runId) return 'cancelled';
+            // A few files the worker will not keep (like /app's old wizard tolerated) do not stop
+            // the install; they are fetched at runtime and remembered so later boots stay silent
+            if (missing.length > Math.max(config.installTolerance, Math.ceil(found.files.length * 0.1))) {
+                return installFailed('verify', `${missing.length} file(s): ${missing.slice(0, 3).map((f) => f.url).join(', ')}`);
+            }
+            ctl.install.stragglers = missing.map((f) => f.url);
+            await stepAtLeast(started);
+            setStep('expand', 'done');
+
+            // 3 Installing features: the offline service picks up its own update
+            started = env.now();
+            setStep('features', 'active');
+            try {
+                const reg = env.navigator && env.navigator.serviceWorker
+                    ? await env.navigator.serviceWorker.getRegistration()
+                    : null;
+                if (reg && typeof reg.update === 'function') await reg.update();
+            } catch (_) { /* the next start picks it up */ }
+            await stepAtLeast(started);
+            setStep('features', 'done');
+
+            // 4 Installing updates: whatever changed on the server while this ran
+            started = env.now();
+            setStep('updates', 'active', 0);
+            const again = await engine.check(env);
+            if (again.files && again.files.length) {
+                await engine.download(env, again.files, {
+                    onProgress: (p) => { if (run === ctl.runId) setStep('updates', 'active', p.fraction); }
+                });
+            }
+            if (run !== ctl.runId) return 'cancelled';
+            await stepAtLeast(started);
+            setStep('updates', 'done');
+
+            // 5 Completing installation: the install record, storage the browser keeps
+            started = env.now();
+            setStep('complete', 'active');
+            engine.writeRecord(env, {
+                completedAt: env.now(),
+                files: found.files.length,
+                bytes: found.bytes,
+                stragglers: ctl.install.stragglers || []
+            });
+            try {
+                const storage = env.navigator && env.navigator.storage;
+                if (storage && typeof storage.persist === 'function') await storage.persist();
+            } catch (_) { /* best effort */ }
+            try {
+                // The old /app install wizard's resume key and its reboot guard
+                env.sessionStorage.removeItem('dreamscapeOsInstallWizard');
+                env.sessionStorage.setItem('melatonInstallRebootAt', String(env.now()));
+            } catch (_) { /* best effort */ }
+            engine.writeState(env, null);
+            await stepAtLeast(started);
+            setStep('complete', 'done');
+
+            // The window closes, a few seconds on the bare aurora, black, reboot
+            ctl.install.phase = 'linger';
+            show('install', installData());
+            await env.sleep(config.installLingerMs);
+            if (run !== ctl.runId) return 'cancelled';
+            await cutToBlack();
+            if (!env.designMode) env.location.replace('/launch');
+            return 'reboot';
+        }
+
+        /**
+         * Message box on the installer: Retry stays in Setup and runs the update work again (the
+         * files that already landed are skipped); nothing left to install → the normal handoff.
+         */
+        async function installRetry() {
+            if (!ctl.install || ctl.install.phase !== 'error') return null;
+            const run = ++ctl.runId;
+            ctl.install.error = null;
+            ctl.install.phase = 'installing';
+            show('install', installData());
+            const outcome = await runUpdates(run);
+            if (outcome !== 'handoff') return outcome;
+            await handOff();
+            return run === ctl.runId ? 'teal' : 'cancelled';
+        }
+
+        function installCancel() {
+            if (!ctl.install || ctl.install.phase !== 'error') return null;
+            env.engine.writeState(env, null);
+            ctl.install = null;
+            return openMenu('install');
         }
 
         async function retry() {
@@ -386,6 +613,13 @@
 
         /** Keyboard: returns true when the key was used. */
         function handleKey(key) {
+            if (ctl.screen === 'install') {
+                if (ctl.install && ctl.install.phase === 'error') {
+                    if (key === 'Enter') { installRetry(); return true; }
+                    if (key === 'Escape') { installCancel(); return true; }
+                }
+                return true; // the installer runs by itself
+            }
             if (ctl.screen === 'boot') {
                 if (key === 'F8') {
                     // Asked for: no countdown, nothing starts until a choice is made
@@ -439,6 +673,11 @@
          */
         function handlePointer(action, index, pointerType) {
             const mode = pointerType === 'touch' || pointerType === 'pen' ? 'touch' : 'keyboard';
+            if (ctl.screen === 'install') {
+                if (action === 'install-retry') return installRetry();
+                if (action === 'install-cancel') return installCancel();
+                return null;
+            }
             if (ctl.screen === 'menu') {
                 stopCountdown();
                 if (action === 'choose') return choose(typeof index === 'number' ? index : ctl.selected, mode);
@@ -471,10 +710,37 @@
                 return show('confirm', confirmData());
             }
             if (name === 'recover') return show('recover', { progress: 0.42, restarting: false });
+            if (name.startsWith('install')) {
+                const steps = INSTALL_STEPS.map((s) => ({ id: s.id, label: s.label, state: 'pending', fraction: null }));
+                ctl.install = { steps, overall: 0, phase: 'installing', error: null };
+                const at = { install: 'copy', 'install-expand': 'expand', 'install-updates': 'updates', 'install-error': 'copy', 'install-linger': null }[name];
+                const fraction = { copy: 0.42, expand: 0.6, updates: 0.3 };
+                let reached = at == null;
+                steps.forEach((step) => {
+                    if (step.id === at) { reached = true; step.state = 'active'; step.fraction = fraction[at]; }
+                    else if (!reached) step.state = 'done';
+                });
+                if (name === 'install-linger') {
+                    steps.forEach((step) => { step.state = 'done'; });
+                    ctl.install.phase = 'linger';
+                }
+                if (name === 'install-error') {
+                    ctl.install.phase = 'error';
+                    ctl.install.error = { reason: 'stalled', message: INSTALL_ERRORS.stalled, detail: '/scripts/comp/modalUtils.js' };
+                }
+                let overall = 0;
+                steps.forEach((step) => {
+                    const def = INSTALL_STEPS.find((d) => d.id === step.id);
+                    if (step.state === 'done') overall += def.weight;
+                    else if (step.state === 'active') overall += def.weight * (step.fraction || 0);
+                });
+                ctl.install.overall = overall;
+                return show('install', installData());
+            }
             return null;
         }
 
-        Object.assign(ctl, { runChecks, openMenu, retry, choose, confirmOption, handleKey, handlePointer, preview, recover, stopCountdown, handOff });
+        Object.assign(ctl, { runChecks, runUpdates, install, installRetry, installCancel, openMenu, retry, choose, confirmOption, handleKey, handlePointer, preview, recover, stopCountdown, handOff });
         return ctl;
     }
 
@@ -505,6 +771,46 @@
         return frag;
     }
 
+    function percentText(fraction) {
+        return `${Math.max(0, Math.min(100, Math.floor((fraction || 0) * 100)))}%`;
+    }
+
+    /** Windows Setup in Classic on the aurora (#melatonInstall in launch.html). */
+    function renderInstall(doc, data) {
+        const host = doc.getElementById('melatonInstall');
+        if (!host) return;
+        host.dataset.phase = data.phase;
+        const list = host.querySelector('.mi-steps');
+        if (list) {
+            list.replaceChildren(...data.steps.map((step) => {
+                const li = el(doc, 'li', `mi-step mi-step--${step.state}`);
+                const mark = el(doc, 'span', 'mi-step-mark');
+                mark.setAttribute('aria-hidden', 'true');
+                li.appendChild(mark);
+                const label = step.state === 'active' && typeof step.fraction === 'number'
+                    ? `${step.label} (${percentText(step.fraction)})`
+                    : step.label;
+                li.appendChild(el(doc, 'span', 'mi-step-label', label));
+                return li;
+            }));
+        }
+        const bar = host.querySelector('.mi-bar-install > i');
+        if (bar) bar.style.width = `${Math.round((data.overall || 0) * 1000) / 10}%`;
+        const box = host.querySelector('.mi-msgbox');
+        if (box) {
+            const err = data.phase === 'error' ? data.error : null;
+            box.hidden = !err;
+            if (err) {
+                const msg = box.querySelector('.mi-msgbox-message');
+                const detail = box.querySelector('.mi-msgbox-detail');
+                if (msg) msg.textContent = err.message;
+                if (detail) detail.textContent = err.detail ? `Details: ${err.detail}` : '';
+                const retry = box.querySelector('[data-action="install-retry"]');
+                if (retry && doc.activeElement !== retry) setTimeout(() => retry.focus(), 0);
+            }
+        }
+    }
+
     function createDomView(doc) {
         const rootEl = doc.getElementById('melatonBoot');
         const textEl = doc.getElementById('melatonBootText');
@@ -512,6 +818,11 @@
             render(screen, data) {
                 if (!rootEl) return;
                 rootEl.dataset.screen = screen;
+                if (screen === 'install') {
+                    renderInstall(doc, data);
+                    if (textEl) textEl.replaceChildren();
+                    return;
+                }
                 if (!textEl) return;
                 if (screen === 'menu') {
                     const list = el(doc, 'ul', 'melaton-boot-entries');
@@ -587,6 +898,9 @@
             fetch: win.fetch.bind(win),
             navigator: win.navigator,
             sessionStorage: win.sessionStorage,
+            localStorage: (() => { try { return win.localStorage; } catch (_) { return null; } })(),
+            caches: win.caches || null,
+            engine: win.melatonUpdateEngine || null,
             location: win.location,
             now: () => Date.now(),
             sleep,
@@ -626,6 +940,13 @@
                 else ctl.handlePointer(key.dataset.action, undefined, pointerType);
             });
         }
+        const installer = doc.getElementById('melatonInstall');
+        if (installer) {
+            installer.addEventListener('click', (ev) => {
+                const btn = ev.target.closest('[data-action]');
+                if (btn) ctl.handlePointer(btn.dataset.action, undefined, ev.pointerType || 'mouse');
+            });
+        }
         ctl.runChecks();
         if (env.designMode) {
             // /launch?design=1&screen=menu opens one screen directly (review links, screenshots)
@@ -636,7 +957,7 @@
         return ctl;
     }
 
-    const api = { config, ENTRIES, INFO, RECOVERY_STEPS, CONFIRM_OPTIONS, probeStatus, checkSession, cleanInstall, createController, createDomView, start };
+    const api = { config, ENTRIES, INFO, RECOVERY_STEPS, CONFIRM_OPTIONS, INSTALL_STEPS, INSTALL_ERRORS, probeStatus, checkSession, cleanInstall, createController, createDomView, start };
     if (root) {
         root.melatonBoot = Object.assign(root.melatonBoot || {}, api);
         const doc = root.document;

@@ -135,7 +135,7 @@
                 var wrap = document.createElement('div');
                 wrap.id = 'dreamscapeLaunchDesignHud';
                 var melatonPresets = document.documentElement.classList.contains('melaton-boot')
-                    ? [['boot', 'Boot screen'], ['menu', 'Boot menu'], ['menu-info', 'Boot menu + Info'], ['confirm', 'Recovery confirm'], ['confirm-touch', 'Recovery confirm (touch)'], ['recover', 'Formatting progress'], ['teal', 'Teal cut'], ['black', 'Black cut']]
+                    ? [['boot', 'Boot screen'], ['menu', 'Boot menu'], ['menu-info', 'Boot menu + Info'], ['confirm', 'Recovery confirm'], ['confirm-touch', 'Recovery confirm (touch)'], ['recover', 'Formatting progress'], ['install', 'Installer: copying'], ['install-expand', 'Installer: expanding'], ['install-updates', 'Installer: updates'], ['install-error', 'Installer: error'], ['install-linger', 'Installer: linger'], ['teal', 'Teal cut'], ['black', 'Black cut']]
                         .map(function (p) {
                             return '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="melaton:' + p[0] + '">Melaton: ' + p[1] + '</button>';
                         }).join('')
@@ -236,6 +236,7 @@
         })();
     </script>
     <link rel="stylesheet" href="/css/launch-boot.css">
+    <link rel="stylesheet" href="/css/launch-install.css">
 
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#000000">
@@ -771,7 +772,43 @@
             </div>
         </div>
         <div id="melatonBootText"></div>
+        <!-- Windows Setup in Classic on the aurora (melatonBoot.js installer, launch-install.css, #419) -->
+        <div id="melatonInstall" data-phase="installing">
+            <div class="mi-window" role="dialog" aria-labelledby="miTitle">
+                <div class="mi-title"><span id="miTitle">Install MeletonFX</span><span class="mi-title-close" aria-hidden="true">&times;</span></div>
+                <div class="mi-body">
+                    <h1 class="mi-heading">Installing MeletonFX...</h1>
+                    <p class="mi-lead">That's all the information we need right now. Your computer will restart when the installation is complete.</p>
+                    <ul class="mi-steps"></ul>
+                </div>
+                <div class="mi-strip">
+                    <div class="mi-phases">
+                        <div class="mi-phase mi-phase--done"><span class="mi-phase-num">1</span>Collecting information</div>
+                        <div class="mi-phase mi-phase--active"><span class="mi-phase-num">2</span>Installing MeletonFX</div>
+                    </div>
+                    <div class="mi-bars">
+                        <div class="mi-bar mi-bar-collect"><i style="width: 100%"></i></div>
+                        <div class="mi-bar mi-bar-install" role="progressbar" aria-label="Installing MeletonFX"><i></i></div>
+                    </div>
+                </div>
+            </div>
+            <div class="mi-msgbox" role="alertdialog" aria-labelledby="miMsgTitle" hidden>
+                <div class="mi-title"><span id="miMsgTitle">Install MeletonFX</span></div>
+                <div class="mi-msgbox-body">
+                    <span class="mi-msgbox-icon" aria-hidden="true">&times;</span>
+                    <div class="mi-msgbox-text">
+                        <p class="mi-msgbox-message"></p>
+                        <p class="mi-msgbox-detail"></p>
+                    </div>
+                </div>
+                <div class="mi-msgbox-buttons">
+                    <button type="button" data-action="install-retry">Retry</button>
+                    <button type="button" data-action="install-cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
     </div>
+    <script src="/scripts/launch/updateEngine.js"></script>
     <script src="/scripts/launch/melatonBoot.js"></script>
 
     <script>

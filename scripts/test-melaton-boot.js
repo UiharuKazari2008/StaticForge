@@ -37,6 +37,7 @@ function harness(statusAnswers, opts = {}) {
         location: { replace: (url) => t.replaced.push(url) },
         designMode: !!opts.designMode,
         window: opts.window || {},
+        engine: opts.engine || null,
         fetch: async (url) => {
             t.fetches.push(url);
             if (url === '/app') {
@@ -246,6 +247,122 @@ const flush = () => new Promise((r) => setImmediate(r));
     h.ctl.preview('menu');
     await h.ctl.handOff();
     assert.deepStrictEqual(h.t.storage, {}, 'design-mode handoff leaves no handoff');
+
+    // ---------- updates under the boot screen and the installer (#419) ----------
+    const files = (n) => Array.from({ length: n }, (_, i) => ({ url: `/f${i}.js`, hash: `h${i}`, size: 100 }));
+    function fakeEngine(plan) {
+        const store = { state: plan.resume ? { active: true, total: 9 } : null, record: null };
+        const calls = [];
+        const engine = {
+            readState: () => store.state,
+            writeState: (_env, st) => { store.state = st ? { ...st, active: true } : null; },
+            writeRecord: (_env, rec) => { store.record = rec; },
+            ensureWorker: async () => plan.worker !== false,
+            check: async () => {
+                calls.push('check');
+                return plan.checks.length > 1 ? plan.checks.shift() : plan.checks[0];
+            },
+            needsInstaller: (_env, list) => !!store.state || list.length > 20,
+            download: async (_env, list, opts = {}) => {
+                calls.push(`download:${list.length}${opts.silent ? ':silent' : ''}`);
+                if (opts.onProgress) {
+                    opts.onProgress({ completed: list.length / 2, total: list.length, fraction: 0.5 });
+                    opts.onProgress({ completed: list.length, total: list.length, fraction: 1 });
+                }
+                return plan.download ? plan.download(list) : { ok: true, errors: [] };
+            },
+            verify: async (_env, list) => (plan.verify ? plan.verify(list) : [])
+        };
+        return { engine, store, calls };
+    }
+    const runWith = async (plan, opts = {}) => {
+        const fe = fakeEngine(plan);
+        const hh = harness([json(true)], { ...opts, engine: fe.engine });
+        const result = await hh.ctl.runChecks();
+        return { ...hh, ...fe, result };
+    };
+
+    // nothing to update: straight to teal
+    let u = await runWith({ checks: [{ files: [], bytes: 0 }] });
+    assert.strictEqual(u.result, 'teal');
+    assert.deepStrictEqual(u.calls, ['check'], 'checked, nothing downloaded');
+
+    // a few files: silently behind the boot screen, then teal
+    u = await runWith({ checks: [{ files: files(5), bytes: 500 }] });
+    assert.strictEqual(u.result, 'teal');
+    assert.deepStrictEqual(u.calls, ['check', 'download:5:silent']);
+    assert.ok(!u.t.screens().includes('install'), 'no installer for a small update');
+
+    // no worker controlling the page: /app's boot gate takes it
+    u = await runWith({ worker: false, checks: [{ files: files(50), bytes: 5000 }] });
+    assert.strictEqual(u.result, 'teal');
+    assert.deepStrictEqual(u.calls, [], 'not even checked');
+
+    // a large update: black, Setup, the checklist, linger, black, reboot /launch
+    u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
+    assert.strictEqual(u.result, 'reboot');
+    assert.deepStrictEqual(u.t.screens(), ['boot', 'black', 'install', 'black'], 'boot → black → Setup → black');
+    assert.deepStrictEqual(u.t.replaced, ['/launch'], 'reboots into /launch, not /app');
+    const installs = u.t.renders.filter((r) => r.screen === 'install');
+    assert.ok(installs.some((r) => r.data.steps[0].state === 'active' && r.data.steps[0].fraction === 0.5), 'Copying shows its progress');
+    const lastInstall = installs[installs.length - 1].data;
+    assert.strictEqual(lastInstall.phase, 'linger', 'the window closes before the black');
+    assert.ok(lastInstall.steps.every((step) => step.state === 'done'), 'every checklist line ticked');
+    assert.ok(Math.abs(lastInstall.overall - 1) < 1e-9, 'second bar full');
+    assert.strictEqual(u.store.state, null, 'install state cleared');
+    assert.strictEqual(u.store.record.files, 50);
+    assert.deepStrictEqual(u.calls, ['check', 'download:50', 'check'], 'Installing updates checks the server again');
+    assert.ok(u.t.now >= boot.config.installLingerMs + 5 * boot.config.installStepMs, 'each line readable, then the linger');
+
+    // the download stalls: a Classic message box; Retry stays in Setup and finishes
+    let fails = 1;
+    u = await runWith({
+        checks: [{ files: files(50), bytes: 5000 }],
+        download: () => (fails-- > 0 ? { ok: false, stalled: true, errors: [] } : { ok: true, errors: [] })
+    });
+    assert.strictEqual(u.result, 'error');
+    let screenData = u.t.last().data;
+    assert.strictEqual(screenData.phase, 'error');
+    assert.strictEqual(screenData.error.reason, 'stalled');
+    assert.ok(u.store.state && u.store.state.active, 'install state kept for a retry or a reload');
+    assert.strictEqual(u.ctl.handleKey('a'), true, 'the installer swallows keys');
+    const retried = await u.ctl.installRetry();
+    assert.strictEqual(retried, 'reboot', 'Retry finishes the install');
+    assert.ok(!u.t.renders.slice(-12).some((r) => r.screen === 'boot'), 'Retry does not go back to the boot screen');
+
+    // Cancel: back to the boot menu, install state dropped
+    u = await runWith({ checks: [{ files: files(50), bytes: 5000 }], download: () => ({ ok: false, errors: ['/f1.js: HTTP 500'] }) });
+    assert.strictEqual(u.t.last().data.error.reason, 'download');
+    assert.strictEqual(u.t.last().data.error.detail, '/f1.js: HTTP 500');
+    await u.ctl.installCancel();
+    assert.strictEqual(u.t.last().screen, 'menu');
+    assert.strictEqual(u.t.last().data.info, boot.INFO.install);
+    assert.strictEqual(u.store.state, null);
+
+    // a few files the worker will not keep do not stop the install; they are remembered
+    u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }], verify: (list) => list.slice(0, 3) });
+    assert.strictEqual(u.result, 'reboot');
+    assert.deepStrictEqual(u.store.record.stragglers, ['/f0.js', '/f1.js', '/f2.js']);
+    assert.ok(u.calls.includes('download:3'), 'one more pass for the stragglers');
+    // but many missing files fail
+    u = await runWith({ checks: [{ files: files(50), bytes: 5000 }], verify: (list) => list.slice(0, 30) });
+    assert.strictEqual(u.result, 'error');
+    assert.strictEqual(u.t.last().data.error.reason, 'verify');
+
+    // a reload mid-install goes back into Setup even for a few files
+    u = await runWith({ resume: true, checks: [{ files: files(3), bytes: 300 }, { files: [], bytes: 0 }] });
+    assert.strictEqual(u.result, 'reboot');
+    assert.ok(u.t.screens().includes('install'));
+
+    // design previews of the installer
+    h = harness([json(true)], { designMode: true });
+    h.ctl.preview('install');
+    assert.strictEqual(h.t.last().screen, 'install');
+    assert.strictEqual(h.t.last().data.steps[0].state, 'active');
+    h.ctl.preview('install-error');
+    assert.strictEqual(h.t.last().data.phase, 'error');
+    h.ctl.preview('install-linger');
+    assert.strictEqual(h.t.last().data.phase, 'linger');
 
     console.log('✅ test-melaton-boot: all assertions passed');
 })().catch((err) => {
