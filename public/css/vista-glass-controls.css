@@ -343,3 +343,38 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.attention::af
     }
 }
 
+/* ---------- light client windows (#444) ----------
+   data-window-client="light" on a window + .win7 on its .modal-content: a Vista client area
+   (#f0f0f0, black text, Segoe UI 9pt) whose native controls are styled by 7.css as is
+   (public/css/7.scoped.css: buttons, text boxes, select, progress bars, list boxes, tables).
+   Our text tokens flip to dark on the client only, so the glass caption keeps light text.
+   Used by: the startup and Windows Update dialogs, Run, Dovecote. */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] {
+    --window-body-bg: #f0f0f0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content {
+    --text-primary: #000;
+    --text-color: #000;
+    --text-secondary: #333;
+    --text-muted: #6d6d6d;
+    --text-accent-tinted: #1e395b;
+    --primary-color-light: #1e395b;
+    background: #f0f0f0;
+    color: #000;
+    text-shadow: none;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content :is(.modal-body, label, span, p, div) {
+    text-shadow: none;
+}
+
+/* our button classes inside a light client take 7.css's native look, not the dark glass */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7 button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning) {
+    color: #000;
+    text-shadow: none;
+    font-weight: 400;
+    font-variation-settings: normal;
+}
+

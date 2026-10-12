@@ -675,7 +675,7 @@
     </div>
 
     <!-- Windows Startup Modal (Desktop Mode Only) -->
-    <div id="windowsStartupModal" class="modal hidden on-top boot-dialog">
+    <div id="windowsStartupModal" class="modal hidden on-top boot-dialog" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <!-- <i class="fa-light fa-cube"></i> -->
@@ -684,7 +684,7 @@
         </div>
         <div class="modal-window-controls">
         </div>
-        <div class="modal-content modal-padding">
+        <div class="modal-content modal-padding win7">
             <div class="modal-body">
                 <div class="windows-startup-status" id="windowsStartupStatus">Initializing...</div>
                 <div class="windows-startup-detail" id="windowsStartupDetail"></div>
@@ -705,7 +705,7 @@
     </div>
 
     <!-- Windows Update Dialog (Desktop Mode Only) -->
-    <div id="windowsUpdateModal" class="modal hidden on-top boot-dialog">
+    <div id="windowsUpdateModal" class="modal hidden on-top boot-dialog" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-display-arrow-down"></i>
@@ -717,7 +717,7 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding dark">
+        <div class="modal-content modal-padding dark win7">
             <div class="modal-body windows-update-status">
                 <div id="windowsUpdateStatus">Preparing to install updates...</div>
                 <div class="windows-update-progress-container">
@@ -1186,7 +1186,7 @@
     <div id="runModal" class="modal hidden transient tool-window on-top resizeable-window run-applet"
         data-window-max-width="720" data-window-min-width="560" data-window-min-height="100"
         data-window-max-height="520" data-window-content-anchor="top" data-window-position-mode="run-open"
-        data-window-restore-position="false" data-window-restore-size="false">
+        data-window-restore-position="false" data-window-restore-size="false" data-window-client="light">
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -1200,7 +1200,7 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dark run-applet-content">
+        <div class="modal-content win7 run-applet-content">
             <div class="run-applet-search-row">
                 <i class="fas fa-magnifying-glass run-applet-search-icon"></i>
                 <input type="text" id="runAppletInput" class="form-control run-applet-input"

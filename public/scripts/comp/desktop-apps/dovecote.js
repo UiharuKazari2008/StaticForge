@@ -163,6 +163,7 @@ const ensureDesktopDovecoteModal = function () {
     modal = document.createElement('div');
     modal.id = DESKTOP_DOVECOTE_MODAL_ID;
     modal.className = 'modal resizeable-window toolbar-visible hidden';
+    modal.dataset.windowClient = 'light';
     modal.dataset.windowIdentifier = 'desktopDovecote';
     modal.dataset.windowDefaultWidth = '760';
     modal.dataset.windowDefaultHeight = '520';
@@ -202,7 +203,8 @@ const ensureDesktopDovecoteModal = function () {
     });
 
     const content = document.createElement('div');
-    content.className = 'modal-content modal-padding dark';
+    // Vista light client with 7.css controls (#444): standard styling, no Dovecote-only chrome
+    content.className = 'modal-content modal-padding win7';
     const body = document.createElement('div');
     body.className = 'modal-body';
 
@@ -1436,6 +1438,7 @@ const doveBuildComposeWindow = function (key, initial) {
     const modal = document.createElement('div');
     modal.id = modalId;
     modal.className = 'modal resizeable-window dovecote-compose-window hidden';
+    modal.dataset.windowClient = 'light';
     modal.dataset.windowIdentifier = 'desktopDovecoteCompose';
     modal.dataset.windowDefaultWidth = '480';
     modal.dataset.windowDefaultHeight = '520';
@@ -1453,7 +1456,8 @@ const doveBuildComposeWindow = function (key, initial) {
     modal.appendChild(doveBuildWindowControls(modal, closeCompose));
 
     const content = document.createElement('div');
-    content.className = 'modal-content modal-padding dark';
+    // Vista light client with 7.css controls (#444): standard styling, no Dovecote-only chrome
+    content.className = 'modal-content modal-padding win7';
     const body = document.createElement('div');
     body.className = 'modal-body';
 
@@ -1662,6 +1666,7 @@ const doveBuildReaderWindow = function (key) {
     const modal = document.createElement('div');
     modal.id = modalId;
     modal.className = 'modal resizeable-window toolbar-visible dovecote-reader-window hidden';
+    modal.dataset.windowClient = 'light';
     modal.dataset.windowIdentifier = 'desktopDovecoteReader';
     modal.dataset.windowDefaultWidth = '640';
     modal.dataset.windowDefaultHeight = '560';
@@ -1685,7 +1690,8 @@ const doveBuildReaderWindow = function (key) {
     modal.appendChild(doveBuildWindowControls(modal, closeReader));
 
     const content = document.createElement('div');
-    content.className = 'modal-content modal-padding dark';
+    // Vista light client with 7.css controls (#444): standard styling, no Dovecote-only chrome
+    content.className = 'modal-content modal-padding win7';
     const body = document.createElement('div');
     body.className = 'modal-body';
 
@@ -1851,6 +1857,8 @@ const doveReaderMarkSelected = async function (state, patch) {
 // unread-count badge, hidden entirely at zero.
 
 let doveTrayInitialized = false;
+let doveLastUnread = null;
+let doveHasAnnouncedMail = false;
 
 // options: { reveal } — same two-phase boot convention as updateFixedCreditsIndicator
 // (public/scripts/comp/trayIndicators.js): reveal:false sets state without showing,
@@ -1862,15 +1870,23 @@ const doveApplyTrayBadge = function (unread, options) {
     const opts = options || {};
     // isDesktopTrayBootPending: public/scripts/comp/trayIndicators.js
     const reveal = opts.reveal !== false && !isDesktopTrayBootPending();
+    const prev = doveLastUnread;
+    doveLastUnread = unread;
     if (unread > 0) {
         badge.textContent = unread > 99 ? '99+' : String(unread);
         badge.classList.remove('hidden');
         icon.title = 'Dovecote — ' + unread + ' unread';
         icon.classList.toggle('hidden', !reveal);
+        if (reveal && (!doveHasAnnouncedMail || (prev != null && unread > prev))) {
+            // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            desktopSounds.play('notify');
+            doveHasAnnouncedMail = true;
+        }
     } else {
         badge.classList.add('hidden');
         icon.title = 'Dovecote';
         icon.classList.add('hidden');
+        doveHasAnnouncedMail = false;
     }
 };
 
