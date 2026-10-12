@@ -1,0 +1,332 @@
+/* Director in the Vista design (#445, Yukimi 2026-10-12: "the inline director needs to be
+   redesigned for the vista design"). The same #directorSessionChat lives in Studio (inline) and
+   in #directorWindow, so these rules dress both.
+
+   Vista's chat is Windows Live Messenger of its time: the conversation in a white, sunken pane,
+   the sender on a line of its own above what they said, the reply box a white text box, plain
+   standard buttons. That is Studio's language too (light text boxes in black-glass chrome):
+     transcript   the light text box (#fff, dark edge, inner shadow); the text tokens flip dark
+                  inside it, so markdown, rows and badges follow
+     messages     Director's replies plain on the page; yours in Vista's pale blue selection
+                  box; the sender / model pills become the grey sender line
+     trace rows   thinking / tool rows as quiet grey detail lines
+     buttons      inside the pane: Vista's standard light button (7.css, khang-nd/7.css, MIT)
+     composer     the floating reply box as a white Vista text box with the blue focus edge
+   Linked after director.css and vista-glass-controls.css. Desktop mode, not Classic. */
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat {
+    --vista-light-text: #141414;
+    --vista-light-muted: #6d6d6d;
+    --vista-link: #0066cc;
+}
+
+/* ---- the transcript: a light, sunken pane ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container {
+    --text-primary: var(--vista-light-text);
+    --text-color: var(--vista-light-text);
+    --text-secondary: #3c3c3c;
+    --text-muted: var(--vista-light-muted);
+    --bg-quaternary: #eef0f3;
+    background: #fff;
+    border: 1px solid hsl(0 0% 0% / 55%);
+    border-radius: 3px;
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 22%), 0 1px 0 hsl(0 0% 100% / 12%);
+    color: var(--vista-light-text);
+}
+
+/* ---- messages ---- */
+
+/* every row starts plain on the page (the glass bubble the base style draws read as a tinted
+   blob on white); replies and yours get their own looks below */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message {
+    background: none;
+    border-color: transparent;
+    border-radius: 3px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    color: var(--vista-light-text);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message[data-older] {
+    padding: 4px;
+}
+
+/* Director's reply: plain text on the page under its sender line */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message.assistant {
+    padding: 4px 8px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+}
+
+/* yours: Vista's pale blue selection box */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message.user {
+    padding: 6px 10px;
+    background: linear-gradient(#f4f9fe, #e2eefb);
+    border: 1px solid #b9d1ec;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 60%);
+    color: var(--vista-light-text);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-user-message-input {
+    color: var(--vista-light-text);
+}
+
+/* the sender / model pills: Messenger's grey sender line */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-request-type-badge {
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    color: #4a5a6e;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    font-variation-settings: normal;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message.assistant .director-request-type-badge + .director-request-type-badge {
+    color: var(--vista-light-muted);
+    font-weight: 400;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-request-type-badge .director-engine-icon {
+    background-color: currentColor;
+}
+
+/* thinking / tool rows: quiet grey detail lines */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) {
+    color: var(--vista-light-muted);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) .director-request-type-badge {
+    color: var(--vista-light-muted);
+    font-size: 1em;
+    font-weight: 600;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) .director-expand-button {
+    color: var(--vista-light-muted);
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+
+/* markdown on the light page */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message-content a {
+    color: var(--vista-link);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message-content code {
+    background: #eef0f3;
+    color: #8a2b1a;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message-content pre {
+    background: #f5f6f8;
+    border: 1px solid #d5d9df;
+    border-radius: 3px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message-content pre code {
+    background: none;
+    color: var(--vista-light-text);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-image {
+    background: #f0f0f0;
+    border-color: #c9c9c9;
+}
+
+/* ---- buttons on the light page and in the reply box: Vista's standard button (7.css) ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input) button:is(.btn-secondary, .btn-primary):not(.director-expand-button),
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorAttachDropdownBtn {
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #8e8f8f;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+    color: #222;
+    text-shadow: none;
+    transition: border-color 0.3s, background 0.3s;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input) button:is(.btn-secondary, .btn-primary):not(.director-expand-button):hover:not(:disabled),
+    body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorAttachDropdownBtn:hover:not(:disabled) {
+        background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+        border-color: #3c7fb1;
+        box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input) button:is(.btn-secondary, .btn-primary):not(.director-expand-button):active:not(:disabled),
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorAttachDropdownBtn:active:not(:disabled) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+    box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input) button:is(.btn-secondary, .btn-primary) i {
+    color: #2b5797;
+}
+
+/* ---- the reply box: a white Vista text box, blue edge while typing ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat #directorComposer {
+    --text-primary: var(--vista-light-text);
+    --text-color: var(--vista-light-text);
+    --text-muted: var(--vista-light-muted);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input {
+    padding: 3px;
+    background: #fff;
+    border: 1px solid hsl(0 0% 0% / 60%);
+    border-radius: 3px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 14%), 0 0 0 1px hsl(0 0% 100% / 30%), 0 6px 18px hsl(0 0% 0% / 30%);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input:focus-within {
+    border-color: #3d7bad;
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 10%), 0 0 0 1px hsl(203 70% 70% / 55%), 0 6px 18px hsl(0 0% 0% / 30%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorChatInput.form-control {
+    color: var(--vista-light-text);
+    caret-color: var(--vista-light-text);
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorChatInput::placeholder {
+    color: #7a7a7a;
+    font-style: italic;
+}
+
+/* attach and send: square standard buttons inside the box instead of round bubbles */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input :is(#directorAttachDropdownBtn, #directorSendBtn) {
+    width: 30px;
+    height: 26px;
+    border-radius: 3px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorAttachDropdownBtn i {
+    color: #2b5797;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat #directorComposer [data-quick-note] {
+    color: var(--vista-light-muted);
+}
+
+/* ---- sessions: Explorer's navigation list ----
+   The Studio overlay and the Director window's sidebar are the same #directorSessionList: a white
+   list pane under a black-glass strip ("Sessions", new session), flat rows (thumbnail, name, grey
+   date), Vista's hot highlight on hover and its blue selection on the open session
+   (data-current, director.js markCurrentSessionItem); "Archives" is a group header. */
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList {
+    --text-primary: var(--vista-light-text, #141414);
+    --text-color: var(--vista-light-text, #141414);
+    --text-muted: #6d6d6d;
+    background: #fff;
+    border-right: 1px solid hsl(0 0% 0% / 55%);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: 3px 0 14px hsl(0 0% 0% / 32%);
+    color: #141414;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorWindow #directorSessionList {
+    background: #fff;
+    box-shadow: inset -1px 0 0 hsl(0 0% 100% / 40%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList > .director-header {
+    --text-primary: #ffffff;
+    --text-color: #ffffff;
+    padding: 5px 6px 5px 10px;
+    background: linear-gradient(hsl(0 0% 28% / 94%), hsl(0 0% 20% / 94%) calc(50% - 1px), hsl(0 0% 5% / 96%) 50%, hsl(0 0% 4% / 96%));
+    border-bottom: 1px solid hsl(0 0% 0% / 70%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 16%);
+    color: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList > .director-header::before {
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList :is(.director-sessions-list:not(:has(.scrollable-content)), .director-sessions-list .scrollable-content) {
+    gap: 1px;
+    padding: 3px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-session-item {
+    padding: 3px 6px 3px 3px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #141414;
+    cursor: default;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-session-item[data-session-id]:hover {
+        background: linear-gradient(#fafbfd, #ebf3fd);
+        border-color: #b8d6fb;
+        box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-session-item[data-current="1"] {
+    background: linear-gradient(#dcebfc, #c1dcf3);
+    border-color: #84acdd;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 50%);
+}
+
+/* "Archives" / "No sessions yet": Vista's group header */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-session-item:not([data-session-id]) {
+    margin-top: 6px;
+    padding: 2px 4px;
+    border: 0;
+    border-bottom: 1px solid #e2e2e2;
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-session-item:not([data-session-id]) .director-session-name {
+    color: #1e3287;
+    font-weight: 700;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-session-preview {
+    width: 40px;
+    height: 40px;
+    margin-right: 8px;
+    border: 1px solid #c3c3c3;
+    border-radius: 2px;
+    background: #f0f0f0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-session-name {
+    color: #141414;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    font-variation-settings: normal;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-session-name .director-engine-icon {
+    background-color: #4a5a6e;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-session-date {
+    color: #6d6d6d;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+}

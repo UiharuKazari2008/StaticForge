@@ -223,12 +223,12 @@ class Director {
         // tray menu status line, and the computer's CPU / memory
         this._status = null;
         this.PREFS_KEY = 'staticforge_director_chat_prefs';
-        // Wren's engine (Cursor or Claude). Each engine keeps its own last model
-        // config and model catalog; Xi picks its runtime per session instead.
+        // Wren's engine (Cursor, Claude, or TokenRouter). Each engine keeps its own
+        // last model config and model catalog; Xi picks its runtime per session instead.
         this.ENGINE_KEY = 'staticforge_director_engine';
         this.engine = 'cursor';
         try {
-            if (localStorage.getItem(this.ENGINE_KEY) === 'claude') this.engine = 'claude';
+            this.engine = this.normalizeEngine(localStorage.getItem(this.ENGINE_KEY));
         } catch (_err) { /* default engine */ }
         this.modelCatalogs = {};
         this.loadChatPrefs();
@@ -349,11 +349,26 @@ class Director {
 
     chatPrefsKey() {
         if (this.persona === 'xi') return `${this.PREFS_KEY}_xi`;
-        return this.activeEngine() === 'claude' ? `${this.PREFS_KEY}_claude` : this.PREFS_KEY;
+        return this.enginePrefsKey(this.activeEngine());
+    }
+
+    // Cursor keeps the original key; the others add their engine id.
+    enginePrefsKey(engine) {
+        const id = this.normalizeEngine(engine);
+        return id === 'cursor' ? this.PREFS_KEY : `${this.PREFS_KEY}_${id}`;
+    }
+
+    // Wren's engines, in menu order.
+    get ENGINES() {
+        return ['cursor', 'claude', 'tokenrouter'];
+    }
+
+    normalizeEngine(engine) {
+        return engine === 'claude' || engine === 'tokenrouter' ? engine : 'cursor';
     }
 
     activeEngine() {
-        return this.persona === 'xi' ? 'cursor' : (this.engine === 'claude' ? 'claude' : 'cursor');
+        return this.persona === 'xi' ? 'cursor' : this.normalizeEngine(this.engine);
     }
 
     // The engine the header shows: Wren's selected engine, or for Xi the
@@ -372,6 +387,7 @@ class Director {
         // The title mark (public/app.html #directorHeaderTitle / #directorSessionTitle) is the engine's logo.
         document.querySelectorAll('#directorHeaderTitle .xai-icon, #directorSessionTitle .xai-icon').forEach((icon) => {
             icon.classList.toggle('engine-claude-mark', engine === 'claude');
+            icon.classList.toggle('engine-tokenrouter-mark', engine === 'tokenrouter');
             icon.title = this.engineName(engine);
         });
         this.paintAccountBadge();
@@ -382,17 +398,20 @@ class Director {
     }
 
     engineName(engine) {
-        return engine === 'claude' ? 'Claude' : 'Cursor';
+        if (engine === 'claude') return 'Claude';
+        return engine === 'tokenrouter' ? 'TokenRouter' : 'Cursor';
     }
 
     defaultModel(engine) {
-        return (engine || this.activeEngine()) === 'claude' ? 'claude-opus-5-5' : 'grok-4.7';
+        const id = engine || this.activeEngine();
+        if (id === 'claude') return 'claude-opus-5-5';
+        return id === 'tokenrouter' ? 'moonshotai/kimi-k3' : 'grok-4.7';
     }
 
     // Saves the outgoing engine's config, then loads the other engine's last
     // config and catalog. Send on Enter and the message filter carry over.
     setEngine(engine, options) {
-        const next = engine === 'claude' ? 'claude' : 'cursor';
+        const next = this.normalizeEngine(engine);
         if (this.persona === 'xi' || next === this.engine) return false;
         const shared = { sendOnEnter: this.sendOnEnter, messageFilter: this.messageFilter };
         if (!(options && options.skipSave)) this.saveChatPrefs();
@@ -418,7 +437,7 @@ class Director {
             text: 'Engine',
             hidden: () => director.persona === 'xi',
             valueDisplay: () => director.engineName(director.activeEngine()),
-            submenu: ['cursor', 'claude'].map((id) => ({
+            submenu: director.ENGINES.map((id) => ({
                 text: director.engineName(id),
                 action: `director-tools-engine-${id}`,
                 showIndicator: true,
@@ -532,13 +551,18 @@ class Director {
         const order = ['Cursor', 'Anthropic', 'OpenAI', 'Google', 'Moonshot', 'Meta', 'Z.ai', 'Other'];
         const models = (this.modelCatalog.length
             ? this.modelCatalog.slice()
-            : [{ id: this.selectedModel || this.defaultModel(), name: this.selectedModelName(), provider: this.activeEngine() === 'claude' ? 'Anthropic' : 'Cursor', cost: 2, price: '' }]
+            : [{ id: this.selectedModel || this.defaultModel(), name: this.selectedModelName(), provider: { claude: 'Anthropic', tokenrouter: 'Other' }[this.activeEngine()] || 'Cursor', cost: 2, price: '' }]
         ).sort((a, b) => {
             const ap = order.indexOf(this.modelProvider(a));
             const bp = order.indexOf(this.modelProvider(b));
             const ai = ap < 0 ? order.length : ap;
             const bi = bp < 0 ? order.length : bp;
             if (ai !== bi) return ai - bi;
+            // TokenRouter brings providers past the known list; keep each one together.
+            if (ai === order.length) {
+                const byProvider = this.modelProvider(a).localeCompare(this.modelProvider(b));
+                if (byProvider) return byProvider;
+            }
             const released = (Number(b.released) || 0) - (Number(a.released) || 0);
             if (released) return released;
             return String(a.name || '').localeCompare(String(b.name || ''));
@@ -573,7 +597,7 @@ class Director {
         const id = typeof model === 'string' ? model : (model.id || model.run || '');
         if (!id) return '';
         const engine = model && model.engine
-            ? (model.engine === 'claude' ? 'claude' : 'cursor')
+            ? this.normalizeEngine(model.engine)
             : this.engineForModelId(model, this.currentSession);
         const family = this.catalogFor(engine).find((item) => item.id === id)
             || this.modelCatalog.find((item) => item.id === id);
@@ -767,11 +791,12 @@ class Director {
     }
 
     modelCacheKey(engine) {
-        return engine === 'claude' ? 'staticforge_director_models_claude' : 'staticforge_director_models';
+        const id = this.normalizeEngine(engine);
+        return id === 'cursor' ? 'staticforge_director_models' : `staticforge_director_models_${id}`;
     }
 
     catalogFor(engine) {
-        const id = engine === 'claude' ? 'claude' : 'cursor';
+        const id = this.normalizeEngine(engine);
         if (!this.modelCatalogs[id]) {
             try {
                 const raw = JSON.parse(localStorage.getItem(this.modelCacheKey(id)) || 'null');
@@ -797,7 +822,7 @@ class Director {
 
     applyModelCatalog(models, engine) {
         if (!Array.isArray(models) || !models.length) return;
-        const id = engine === 'claude' ? 'claude' : 'cursor';
+        const id = this.normalizeEngine(engine);
         this.modelCatalogs[id] = models;
         this.saveModelCache(id);
         if (id !== this.activeEngine()) return;
@@ -819,7 +844,7 @@ class Director {
 
     requestDirectorModels(engine, force) {
         if (!window.wsClient || !window.wsClient.isConnected()) return;
-        const id = engine === 'claude' || engine === 'cursor' ? engine : this.activeEngine();
+        const id = this.ENGINES.includes(engine) ? engine : this.activeEngine();
         this._modelsRequestedAt = this._modelsRequestedAt || {};
         const at = id === this.activeEngine() ? this._modelsRequested : this._modelsRequestedAt[id];
         if (!force && at && (Date.now() - at) < 60000 && this.catalogFor(id).length) return;
@@ -1480,7 +1505,7 @@ class Director {
             const row = all[sessionId];
             if (!row || typeof row.model !== 'string' || !row.model.trim()) return null;
             return {
-                engine: row.engine === 'claude' ? 'claude' : (row.engine === 'cursor' ? 'cursor' : null),
+                engine: this.ENGINES.includes(row.engine) ? row.engine : null,
                 id: row.model.trim(),
                 effort: row.effort || 'medium',
                 fast: row.fast === true,
@@ -1537,8 +1562,8 @@ class Director {
 
     applySessionModel(session) {
         if (!session || session.draft || !session.id) {
-            // A Claude draft starts from Claude's last config; Cursor drafts start on Auto.
-            if (this.activeEngine() === 'claude') {
+            // A Claude or TokenRouter draft starts from that engine's last config; Cursor drafts start on Auto.
+            if (this.activeEngine() !== 'cursor') {
                 this.loadChatPrefs();
                 this.paintModelPick();
                 this.syncEngineChrome();
@@ -1556,9 +1581,9 @@ class Director {
         const choice = this.readSessionModel(session.id) || session.choice || this.choiceFromMessages(session.messages);
         // A session continues on the engine it last ran on: the local choice for
         // it if one was saved with an engine, otherwise the server's record.
-        const engine = (choice && choice.engine) || (session.engine === 'claude' ? 'claude' : 'cursor');
+        const engine = (choice && choice.engine) || this.normalizeEngine(session.engine);
         if (this.persona !== 'xi') this.setEngine(engine, { skipSave: true });
-        this.selectedModel = choice && choice.id ? choice.id : (this.activeEngine() === 'claude' ? this.defaultModel() : 'auto');
+        this.selectedModel = choice && choice.id ? choice.id : (this.activeEngine() !== 'cursor' ? this.defaultModel() : 'auto');
         this.selectedEffort = choice && choice.effort ? choice.effort : 'medium';
         this.selectedContext = choice && choice.context ? choice.context : '';
         this.thinking = !!(choice && choice.thinking);
@@ -3415,6 +3440,7 @@ class Director {
         this.currentView = 'sessionChat';
         this.currentSession = session;
         window.currentSession = session; // Keep global reference for compatibility
+        this.markCurrentSessionItem();
         if (session && session.id) this._welcomeQuip = null;
 
         // Store the last opened session in localStorage
@@ -3731,6 +3757,16 @@ class Director {
         this.safeReinitializeScrollbars();
     }
 
+    /** Move the selected-row mark to the open session (the window keeps its list open). */
+    markCurrentSessionItem() {
+        if (!this.directorSessionList) return;
+        const currentId = this.currentSession && this.currentSession.id != null ? String(this.currentSession.id) : null;
+        this.directorSessionList.querySelectorAll('.director-session-item[data-session-id]').forEach((item) => {
+            if (currentId && item.dataset.sessionId === currentId) item.dataset.current = '1';
+            else delete item.dataset.current;
+        });
+    }
+
     createNoSessionsItem() {
         const item = document.createElement('div');
         item.className = 'director-session-item';
@@ -3750,6 +3786,8 @@ class Director {
         item.className = 'director-session-item';
         item.dataset.sessionId = session.id; // Add data attribute for easier identification
         if (session.archived) item.dataset.archived = '1';
+        // the open session: the list's selected row (vista-director.css)
+        if (this.currentSession && String(this.currentSession.id) === String(session.id)) item.dataset.current = '1';
 
         const activeAccId = this.activeAccountId || 'default';
         const sessionAccId = session.accountId || 'default';
@@ -3838,12 +3876,12 @@ class Director {
         return `<span class="director-account-badge" style="background:${this.escapeHtml(color)}" title="${this.escapeHtml(title)}">${this.escapeHtml(letter)}</span>`;
     }
 
-    // Header profile badge: the active Cursor profile. Hidden on Claude, which
-    // uses no Cursor profile; the title logo shows the engine instead.
+    // Header profile badge: the active Cursor profile. Hidden on Claude and
+    // TokenRouter, which use no Cursor profile; the title logo shows the engine instead.
     paintAccountBadge() {
         const el = document.getElementById('directorAccountBadge');
         if (!el) return;
-        if (this.displayEngine() === 'claude') {
+        if (this.displayEngine() !== 'cursor') {
             el.classList.add('hidden');
             return;
         }
@@ -5605,16 +5643,19 @@ class Director {
         const other = Number.isFinite(Number(data.apiPercent)) ? Math.round(Number(data.apiPercent)) : null;
         const split = document.getElementById('directorUsageSplit');
         const otherEl = document.getElementById('directorUsageOther');
-        const showSplit = auto != null || other != null;
+        // TokenRouter: one remaining balance (top-up plus vouchers) instead of percents.
+        const wallet = data.engine === 'tokenrouter';
+        const money = wallet && typeof data.balanceText === 'string' && data.balanceText ? data.balanceText : null;
+        const showSplit = !wallet && (auto != null || other != null);
         if (split) split.classList.toggle('hidden', !showSplit);
-        autoEl.textContent = auto == null ? '—' : `${auto}%`;
+        autoEl.textContent = money || (auto == null ? '—' : `${auto}%`);
         if (otherEl) otherEl.textContent = other == null ? '—' : `${other}%`;
-        host.title = data.title || (this.displayEngine() === 'claude' ? 'Claude usage' : 'Cursor usage');
+        host.title = data.title || `${this.engineName(this.displayEngine())} usage`;
         host.classList.toggle('low-credits', data.limited === true);
         this.paintAccountBadge();
         if (iconEl) {
-            // Pie: share of the plan used. Turns into the warning mark at the limit.
-            iconEl.className = data.limited ? 'fas fa-triangle-exclamation' : 'fas fa-chart-pie';
+            // Pie: share of the plan used; wallet: TokenRouter balance. Warning mark at the limit.
+            iconEl.className = data.limited ? 'fas fa-triangle-exclamation' : (wallet ? 'fas fa-wallet' : 'fas fa-chart-pie');
         }
     }
 
@@ -6719,7 +6760,7 @@ class Director {
     }
 
     engineIconHtml(engine) {
-        const id = engine === 'claude' ? 'claude' : 'cursor';
+        const id = this.normalizeEngine(engine);
         return `<span class="director-engine-icon engine-${id}" role="img" aria-label="${this.engineName(id)}" title="${this.engineName(id)}"></span>`;
     }
 
@@ -6728,6 +6769,8 @@ class Director {
     // since Cursor runs record a variant id (effort / thinking suffix) as run.
     engineForModelId(model, session) {
         const id = model && (typeof model === 'string' ? model : model.id);
+        // TokenRouter ids are vendor/model; Cursor and Claude ids never have a slash.
+        if (id && id.indexOf('/') !== -1) return 'tokenrouter';
         if (!id || !this.catalogFor('claude').some((item) => item.id === id)) return 'cursor';
         if (!this.catalogFor('cursor').some((item) => item.id === id)) return 'claude';
         const run = model && typeof model === 'object' ? model.run : null;
@@ -6737,7 +6780,7 @@ class Director {
     sessionEngine(session) {
         if (!session) return 'cursor';
         const engine = this.persona === 'xi' ? session.runtime : session.engine;
-        return engine === 'claude' ? 'claude' : 'cursor';
+        return this.normalizeEngine(engine);
     }
 
     retryMessage(messageKey) {
@@ -6787,7 +6830,7 @@ class Director {
 
     // The other engine's last saved config, as setEngine would load it.
     savedEngineChoice(engine) {
-        const key = engine === 'claude' ? `${this.PREFS_KEY}_claude` : this.PREFS_KEY;
+        const key = this.enginePrefsKey(engine);
         let raw = {};
         try { raw = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (_err) { raw = {}; }
         return {
@@ -6841,7 +6884,7 @@ class Director {
         return {
             onAction: (action) => {
                 if (action.startsWith('retry-engine-')) {
-                    const engine = action.slice('retry-engine-'.length) === 'claude' ? 'claude' : 'cursor';
+                    const engine = director.normalizeEngine(action.slice('retry-engine-'.length));
                     if (engine !== choice.engine) {
                         Object.assign(choice, engine === director.activeEngine()
                             ? { engine, model: director.selectedModel, effort: director.selectedEffort, fast: director.fast === true }
@@ -6866,7 +6909,7 @@ class Director {
                         text: 'Engine',
                         hidden: () => director.persona === 'xi',
                         valueDisplay: () => director.engineName(choice.engine),
-                        submenu: ['cursor', 'claude'].map((id) => ({
+                        submenu: director.ENGINES.map((id) => ({
                             text: director.engineName(id),
                             action: `retry-engine-${id}`,
                             showIndicator: true,
@@ -6961,7 +7004,9 @@ class Director {
             }) : null;
             const buttons = [];
             if (retry) {
-                if (this.persona !== 'xi') this.requestDirectorModels(retryChoice.engine === 'claude' ? 'cursor' : 'claude');
+                if (this.persona !== 'xi') {
+                    this.ENGINES.filter((id) => id !== retryChoice.engine).forEach((id) => this.requestDirectorModels(id));
+                }
                 buttons.push({
                     id: 'directorRetryChoiceBtn',
                     text: this.retryChoiceLabel(retryChoice),

@@ -100,6 +100,31 @@ body:not(.windows-classic-theme) .gallery-toggle-group .gallery-toggle-btn:not(.
     opacity: 0.55;
 }
 
+/* The slider (the "on" segment) in every toggle group: Vista's pushed glass button over the
+   state's own colour (red scraps, green upscaled, gold pinned, the workspace colour, Studio's
+   prompt / UC ...). Dark edge outside, the state colour as the rim, an inner light line, a lit
+   top half over a darker fold. The glass is a ::before layer, so each state's background /
+   border rules keep working; the well around it takes the same 4 px corners. */
+body:not(.windows-classic-theme) .gallery-toggle-group {
+    border-radius: 4px;
+}
+
+body:not(.windows-classic-theme) .gallery-toggle-group .gallery-toggle-slider {
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px hsl(0 0% 0% / 55%), 0 1px 2px hsl(0 0% 0% / 35%);
+    overflow: hidden;
+}
+
+body:not(.windows-classic-theme) .gallery-toggle-group .gallery-toggle-slider::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(hsl(0 0% 100% / 30%), hsl(0 0% 100% / 12%) calc(50% - 1px), hsl(0 0% 0% / 14%) 50%, hsl(0 0% 0% / 4%) 85%, hsl(0 0% 100% / 14%));
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 26%);
+    pointer-events: none;
+}
+
 /* ---------- round buttons ----------
    All the glass is one ::before layer over the button's base colour: the frame tint and
    sheen (like the workspace page jumps; danger and wide pills such as Generate keep their own
@@ -494,7 +519,7 @@ body:not(.windows-classic-theme) :is(.badge, .taskbar-group-count) {
 /* Prompt boxes: a glass edge painted around the container only. The textarea, its padding,
    borders and font are untouched, so the auto-height calculator (static pixel values) and
    the emphasis overlay keep their numbers. Focused: Vista's blue glow on the same ring. */
-body:not(.windows-classic-theme) #manualModal .prompt-textarea-container::after {
+body:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container)::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -505,7 +530,7 @@ body:not(.windows-classic-theme) #manualModal .prompt-textarea-container::after 
     transition: box-shadow 0.15s linear;
 }
 
-body:not(.windows-classic-theme) #manualModal .prompt-textarea-container.textarea-focused::after {
+body:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container).textarea-focused::after {
     /* the glow marks the text area, not the toolbar strip under it (Yukimi) */
     bottom: var(--prompt-toolbar-height, 43px);
     border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
@@ -520,17 +545,17 @@ body:not(.windows-classic-theme) #manualModal .prompt-tabs:has(#dynamicGeneratio
 
 /* On the light prompt box the overlay highlights take the light-surface palette like the
    emphasis rings: a pastel fill with a deep ring (search blue, the editor's gold) */
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .search-highlight-overlay .search-highlight {
+body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .search-highlight-overlay .search-highlight {
     background: rgb(51 153 255 / 20%);
     box-shadow: inset 0 0 0 1px rgb(31 95 191 / 70%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .search-highlight-overlay .search-highlight-selected {
+body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .search-highlight-overlay .search-highlight-selected {
     background: rgb(51 153 255 / 38%);
     box-shadow: inset 0 0 0 2px #1f5fbf;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .emphasis-highlight-overlay .emphasis-selection-highlight {
+body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .emphasis-highlight-overlay .emphasis-selection-highlight {
     background: rgb(255 204 0 / 30%);
     box-shadow: inset 0 0 0 2px #c79a00;
 }
@@ -617,7 +642,7 @@ body:not(.windows-classic-theme) #characterAutocompleteOverlay > .character-auto
    light-surface variant (grey rings, capped fills, tinted syntax chips). Colours only: fonts,
    padding and line-height stay identical, so the overlays keep lining up with the text.
    The focused toolbar strip at the bottom stays dark glass with its own light text. */
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container {
+body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) {
     --prompt-surface: light;
     --text-primary: #141414;
     --text-color: #141414;
@@ -629,34 +654,29 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-cont
     caret-color: #141414;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container.textarea-focused {
+body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container).textarea-focused {
     background: #fff;
     box-shadow: inset 0 1px 3px hsl(0 0% 0% / 18%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container textarea {
+body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) textarea {
     color: #141414;
     caret-color: #141414;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container textarea::placeholder {
+body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) textarea::placeholder {
     color: #7a7a7a;
 }
 
 /* highlight bits that are not inline-coloured */
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .emphasis-highlight {
+body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .emphasis-highlight {
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22);
-}
-
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .search-highlight {
-    background: rgba(0, 140, 220, 0.22);
-    border-color: rgba(0, 110, 190, 0.65);
 }
 
 /* Toolbar strips (the focused prompt toolbar, the Dynamic Generation group below it): Vista's
    black glass (the taskbar's pressed-button glass: #474848 to #323333 above the middle,
    #0c0d0d below) with a light top line, and their own light text (Yukimi). */
-body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container .prompt-textarea-toolbar, div#dynamicGenerationGroup) {
+body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container .prompt-textarea-toolbar, .character-prompt-textarea-container .prompt-textarea-toolbar, div#dynamicGenerationGroup) {
     --text-primary: #ffffff;
     --text-color: #ffffff;
     --text-muted: #9a9a9a;
@@ -665,6 +685,34 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-
     border-top-color: hsl(0 0% 100% / 26%);
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 12%);
     color: #fff;
+}
+
+/* ---------- Studio character prompts (#445) ----------
+   Each character is a pane of Studio's glass: the dark edge and inner light line of the other
+   glass controls around a faint sheen; its header is the same black-glass strip as the prompt
+   toolbar (grip, name, collapse / delete / enable), and its prompt box the light text box
+   above (Yukimi: the characters and their containers did not match the design language). */
+body.desktop-mode:not(.windows-classic-theme) #manualModal .character-prompt-item {
+    background: linear-gradient(hsl(0 0% 100% / 6%), hsl(0 0% 100% / 2%) 48px, hsl(0 0% 0% / 18%) 100%);
+    border: 1px solid hsl(0 0% 0% / 62%);
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 10%), 0 1px 2px hsl(0 0% 0% / 30%);
+    overflow: hidden;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .character-prompt-item .character-prompt-tabs > .tab-header {
+    --text-primary: #ffffff;
+    --text-color: #ffffff;
+    margin: calc(-1 * var(--spacing-xs)) calc(-1 * var(--spacing-xs)) 0;
+    padding: 3px var(--spacing-xs) 3px 2px;
+    background: linear-gradient(hsl(0 0% 28% / 94%), hsl(0 0% 20% / 94%) calc(50% - 1px), hsl(0 0% 5% / 96%) 50%, hsl(0 0% 4% / 96%));
+    border-bottom: 1px solid hsl(0 0% 0% / 70%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 16%);
+    color: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .character-prompt-item.collapsed .character-prompt-tabs > .tab-header {
+    border-bottom: 0;
 }
 
 /* the strips are drawn as one stacked pair: the Dynamic Generation content layer paints
