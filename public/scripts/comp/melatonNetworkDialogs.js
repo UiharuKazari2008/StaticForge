@@ -1,27 +1,33 @@
 /**
- * Melaton network dialogs (Yozora #427): the client is a domain-joined PC and the server is its
- * domain controller, reached like a Vista VPN connection.
+ * Melaton network dialogs (Yozora #427, #429): the client is a domain-joined PC and the server
+ * is its domain controller, reached through a Vista VPN connection.
  *
- *   Connecting to <domain>...   #connectionDialModal (app.html), rendered by websocket.js
- *                               _renderConnectionDial with the text helpers below:
- *                               "Connecting to <fqdn> using '<WAN|Ethernet> Miniport (L-PPoP)'..."
- *                               → "Verifying user name and password..." → "Registering your
- *                               computer on the network...". A failure turns it into
- *                               "Error Connecting to <domain>" with a RAS error (800, 629, ...)
- *   Connect <domain>            the login dialog when the session needs a password again after
- *                               boot (pinModal.js showPinModal routes here on the desktop): banner,
- *                               User name / Password / Domain, Connect / Cancel / Properties
+ *   Connecting to <connection>...   #connectionDialModal (app.html), rendered by websocket.js
+ *                                   _renderConnectionDial with the text helpers below, on the
+ *                                   desktop and at the logon screen: "Connecting to <fqdn> using
+ *                                   '<WAN|Ethernet> Miniport (L-PPoP)'..." → "Verifying user name
+ *                                   and password..." → "Registering your computer on the
+ *                                   network...". A failure turns it into "Error Connecting to
+ *                                   domain controller" with a RAS error (800, 629, ...)
+ *   Connect <connection>            the login dialog when the session needs a password again
+ *                                   after boot (pinModal.js showPinModal routes here on the
+ *                                   desktop): banner, User name / Password / Domain, Connect /
+ *                                   Cancel / Properties
  *
- * <fqdn> is the host the page talks to (location.hostname); the domain name, WAN / Ethernet and
- * the device come from the server's public OPTIONS /status (`melaton`, modules/melatonNetwork.js,
- * kept by websocket.js as wsClient.melatonConnection). WAN = the client reached the server over
- * the Internet; Ethernet = from a private address through the local nginx. L-PPoP = LANTIS
- * Public Point of Presence, the LANTIS FireStorm load balancer.
+ * <connection> is the network interface name (desktop.connectionName, default VPN Connection),
+ * kept apart from the domain name (desktop.domainName, default DREAMSCAPE), which only appears
+ * where Windows shows the domain (the Domain field, DOMAIN\user, the network map). <fqdn> is the
+ * host the page talks to (location.hostname); WAN / Ethernet and the device come from the
+ * server's public OPTIONS /status (`melaton`, modules/melatonNetwork.js, kept by websocket.js as
+ * wsClient.melatonConnection). WAN = the client reached the server over the Internet; Ethernet =
+ * from a private address through the local nginx. L-PPoP = LANTIS Public Point of Presence, the
+ * LANTIS FireStorm load balancer.
  */
 (function (root) {
     'use strict';
 
     const DEFAULT_DOMAIN = 'DREAMSCAPE';
+    const DEFAULT_CONNECTION_NAME = 'VPN Connection';
     const DEFAULT_DEVICE = 'L-PPoP';
 
     /** Vista RAS errors for the failure messages websocket.js sets. */
@@ -37,6 +43,12 @@
         if (typeof root.melatonDomainName === 'function') return root.melatonDomainName();
         const conn = root.wsClient && root.wsClient.melatonConnection;
         return (conn && conn.domain) || DEFAULT_DOMAIN;
+    }
+
+    function connectionName() {
+        if (typeof root.melatonConnectionName === 'function') return root.melatonConnectionName();
+        const conn = root.wsClient && root.wsClient.melatonConnection;
+        return (conn && conn.connectionName) || DEFAULT_CONNECTION_NAME;
     }
 
     /** Before /status has answered: guess from the host name the page was opened with. */
@@ -59,6 +71,7 @@
         const fqdn = (root.location && root.location.hostname) || 'localhost';
         return {
             domain: domainName(),
+            connectionName: connectionName(),
             fqdn,
             connectionType: conn.connectionType === 'Ethernet' || conn.connectionType === 'WAN'
                 ? conn.connectionType
@@ -73,7 +86,7 @@
     }
 
     function connectingTitle(info) {
-        return `Connecting to ${(info || connectionInfo()).domain}...`;
+        return `Connecting to ${(info || connectionInfo()).connectionName}...`;
     }
 
     /** The dialog's one status line for a connection beat (websocket.js CONNECTION_BEATS). */
@@ -85,7 +98,7 @@
             case 'establishing':
                 return 'Registering your computer on the network...';
             case 'connected':
-                return `Connected to ${i.domain}.`;
+                return 'Connected.';
             default:
                 return `Connecting to ${i.fqdn} using '${miniportLabel(i)}'...`;
         }
@@ -94,8 +107,8 @@
     function attemptText(ui) {
         if (!ui || !(ui.attempt > 0)) return '';
         return ui.maxAttempts > 0
-            ? `Redial attempt ${ui.attempt} of ${ui.maxAttempts}.`
-            : `Redial attempt ${ui.attempt}.`;
+            ? `Reconnect attempt ${ui.attempt} of ${ui.maxAttempts}.`
+            : `Reconnect attempt ${ui.attempt}.`;
     }
 
     /** websocket.js failure message → { code, text } (the raw message stays for More Info). */
@@ -109,11 +122,16 @@
         return { code, text: `Error ${code}: ${RAS_ERRORS[code]}` };
     }
 
-    function errorTitle(info) {
-        return `Error Connecting to ${(info || connectionInfo()).domain}`;
+    function errorTitle() {
+        return 'Error Connecting to domain controller';
     }
 
-    // ---- Connect <domain> ------------------------------------------------------------------
+    /** XP's logon message when the domain cannot be reached (Cancel at the logon screen). */
+    function domainUnavailableText(info) {
+        return `The system cannot log you on now because the domain ${(info || connectionInfo()).domain} is not available.`;
+    }
+
+    // ---- Connect <connection> --------------------------------------------------------------
 
     const doc = typeof document !== 'undefined' ? document : null;
     let connectModal = null;
@@ -194,7 +212,7 @@
 
     function fillConnect() {
         const domain = domainName();
-        el('.domain-connect-title').textContent = `Connect ${domain}`;
+        el('.domain-connect-title').textContent = `Connect ${connectionName()}`;
         el('.domain-connect-user').value = connectionUserName();
         el('.domain-connect-domain').value = domain;
         el('.vpn-form-status').textContent = '';
@@ -284,6 +302,7 @@
 
     const api = {
         DEFAULT_DOMAIN,
+        DEFAULT_CONNECTION_NAME,
         RAS_ERRORS,
         connectionInfo,
         guessConnectionType,
@@ -293,6 +312,7 @@
         attemptText,
         errorFor,
         errorTitle,
+        domainUnavailableText,
         connect: {
             show: showConnect,
             open: openConnect,

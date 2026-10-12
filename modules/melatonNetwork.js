@@ -1,9 +1,11 @@
 /**
- * Melaton as a domain-joined PC (Yozora #425 / #426): what the client's Windows-style
+ * Melaton as a domain-joined PC (Yozora #425 / #427 / #429): what the client's Windows-style
  * connection dialogs say about its link to the server ("domain controller").
  *
  *   domain          userGlobalSettings.desktop.domainName in config.json (personalisation),
  *                   default DREAMSCAPE
+ *   connectionName  userGlobalSettings.desktop.connectionName, the network interface the
+ *                   client connects through (Windows' connection name), default VPN Connection
  *   connectionType  'Ethernet' when the client reached us from a private address (the LAN,
  *                   through the local nginx), 'WAN' when it came over the Internet
  *   device          'L-PPoP' (LANTIS Public Point of Presence, the FireStorm load balancer)
@@ -13,13 +15,22 @@
  */
 
 const DEFAULT_DOMAIN = 'DREAMSCAPE';
+const DEFAULT_CONNECTION_NAME = 'VPN Connection';
 const DEVICE = 'L-PPoP';
 
-function domainName(config) {
+function desktopSetting(config, key, fallback) {
     const value = config && config.userGlobalSettings && config.userGlobalSettings.desktop
-        ? config.userGlobalSettings.desktop.domainName
+        ? config.userGlobalSettings.desktop[key]
         : null;
-    return typeof value === 'string' && value.trim() ? value.trim().slice(0, 64) : DEFAULT_DOMAIN;
+    return typeof value === 'string' && value.trim() ? value.trim().slice(0, 64) : fallback;
+}
+
+function domainName(config) {
+    return desktopSetting(config, 'domainName', DEFAULT_DOMAIN);
+}
+
+function connectionName(config) {
+    return desktopSetting(config, 'connectionName', DEFAULT_CONNECTION_NAME);
 }
 
 function isPrivateAddress(address) {
@@ -46,9 +57,18 @@ function isPrivateAddress(address) {
 function describeConnection(address, config) {
     return {
         domain: domainName(config),
+        connectionName: connectionName(config),
         connectionType: isPrivateAddress(address) ? 'Ethernet' : 'WAN',
         device: DEVICE
     };
 }
 
-module.exports = { DEFAULT_DOMAIN, DEVICE, domainName, isPrivateAddress, describeConnection };
+module.exports = {
+    DEFAULT_DOMAIN,
+    DEFAULT_CONNECTION_NAME,
+    DEVICE,
+    domainName,
+    connectionName,
+    isPrivateAddress,
+    describeConnection
+};

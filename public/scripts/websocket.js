@@ -669,22 +669,22 @@ class WebSocketClient {
             progress: 12
         },
         dialing: {
-            message: 'Dialing…',
+            message: 'Connecting…',
             minMs: 1000,
             progress: 32
         },
         negotiation: {
-            message: 'Negotiation…',
+            message: 'Verifying user name and password…',
             minMs: 500,
             progress: 52
         },
         establishing: {
-            message: 'Establishing Session…',
+            message: 'Registering your computer on the network…',
             minMs: 500,
             progress: 72
         },
         connected: {
-            message: 'Connected to server',
+            message: 'Connected',
             minMs: 750,
             progress: 100
         }
@@ -1074,8 +1074,8 @@ class WebSocketClient {
     }
 
     /**
-     * The network tray icon (and the narrow-mode latency toast) open the Network and Server
-     * Center in the Control Panel (public/scripts/comp/melatonControlPanel.js, Yozora #428).
+     * The Network and Server Center in the Control Panel (public/scripts/comp/melatonControlPanel.js,
+     * Yozora #428): the narrow-mode latency toast's View Connection; the tray icon's flyout links here.
      */
     openConnectionDialStatus() {
         if (window.melatonControlPanel) {
@@ -1086,7 +1086,7 @@ class WebSocketClient {
     /**
      * Cancel in "Connecting to <domain>..." and Disconnect in the Network and Server Center
      * (Yozora #427): stop dialing and stay offline until the user connects again, like Windows.
-     * Connect to <domain> / Redial (manualReconnect) brings the session back.
+     * Connect / Reconnect (manualReconnect) brings the session back.
      */
     cancelConnectionFromUser() {
         this._userCancelledConnect = true;
@@ -1095,10 +1095,46 @@ class WebSocketClient {
         this.disconnect(true);
         this.updateWebSocketStatus('disconnected');
         this._setConnectionPhase('idle', { message: 'Disconnected.' });
-        this.bannerManager.showWebSocketTicker('error', 'Disconnected', 'fa-phone-slash', false);
+        if (!this._shouldUsePreStartupDialog()) {
+            this.bannerManager.showWebSocketTicker('error', 'Disconnected', 'fa-link-slash', false);
+        }
     }
 
-    /** Close in "Error Connecting to <domain>": the failure stays in the tray until a redial. */
+    /**
+     * Cancel at the logon screen: there is no desktop to fall back to, so XP's logon message
+     * "The system cannot log you on now because the domain <domain> is not available." offers
+     * Retry (connect again) or Restart (through /launch). bootMessageBox.js.
+     */
+    async _cancelLogonConnection() {
+        if (this._logonCancelOpen) return;
+        this._logonCancelOpen = true;
+        this.cancelConnectionFromUser();
+        const text = window.melatonNetworkDialogs;
+        let choice = 'retry';
+        try {
+            if (window.bootMessageBox) {
+                choice = await window.bootMessageBox.show({
+                    title: 'Logon Message',
+                    icon: 'error',
+                    message: text
+                        ? text.domainUnavailableText()
+                        : 'The system cannot log you on now because the domain is not available.',
+                    buttons: [{ label: 'Retry', value: 'retry', default: true }, { label: 'Restart', value: 'restart' }]
+                });
+            }
+        } finally {
+            this._logonCancelOpen = false;
+        }
+        if (choice === 'restart') {
+            // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
+            if (typeof restartClientNavigate === 'function') restartClientNavigate();
+            else location.reload();
+            return;
+        }
+        this.manualReconnect();
+    }
+
+    /** Close in "Error Connecting to domain controller": the failure stays in the tray until Reconnect. */
     closeConnectionDialStatus() {
         const modal = document.getElementById('connectionDialModal');
         if (modal && !modal.classList.contains('hidden') && typeof closeModal === 'function') {
@@ -1118,7 +1154,7 @@ class WebSocketClient {
             return;
         }
         if (window.isDesktop && this.preStartupHandoffCompleted && !this.initializationCompleted) {
-            this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
+            this.bannerManager.showWebSocketTicker('connected', this._connectedTickerText(), 'fa-network-wired', true, 3000);
             this.updateWebSocketStatus('connected');
             this._setConnectionPhase('idle');
             return;
@@ -1126,13 +1162,13 @@ class WebSocketClient {
         // Unlock after a server restart: the desktop just came back, no Connection Manager beat on top of it
         if (window.isDesktop && this._justResumedFromSuspend) {
             this._justResumedFromSuspend = false;
-            this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
+            this.bannerManager.showWebSocketTicker('connected', this._connectedTickerText(), 'fa-network-wired', true, 3000);
             this.updateWebSocketStatus('connected');
             this._setConnectionPhase('idle');
             return;
         }
         await this._runConnectionBeat('connected');
-        this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
+        this.bannerManager.showWebSocketTicker('connected', this._connectedTickerText(), 'fa-network-wired', true, 3000);
         this.updateWebSocketStatus('connected');
         this._setConnectionPhase('idle');
     }
@@ -1211,14 +1247,24 @@ class WebSocketClient {
         trayIcon.setAttribute('title', title);
     }
 
+    /** The network interface name (desktop.connectionName, default VPN Connection). */
+    _vpnConnectionName() {
+        const text = window.melatonNetworkDialogs;
+        return text ? text.connectionInfo().connectionName : 'VPN Connection';
+    }
+
+    /** Vista's balloon after a VPN connects: "<connection> is now connected". */
+    _connectedTickerText() {
+        return `${this._vpnConnectionName()} is now connected`;
+    }
+
     _updateModemTrayIcon() {
         const icon = document.getElementById('modemTrayIcon');
         const glyph = document.getElementById('modemTrayIconGlyph');
         if (!icon || !glyph) return;
 
-        // Vista network tray tooltips: the domain network and its access (melatonNetworkDialogs.js)
-        const text = window.melatonNetworkDialogs;
-        const domain = text ? text.connectionInfo().domain : 'DREAMSCAPE';
+        // Vista network tray tooltips: the connection and its access (melatonNetworkDialogs.js)
+        const name = this._vpnConnectionName();
         let title;
 
         if (this.isConnected()) {
@@ -1226,19 +1272,19 @@ class WebSocketClient {
             const uptimeMs = this.connectionStats.connectedAt
                 ? Date.now() - this.connectionStats.connectedAt
                 : 0;
-            title = `${domain}\nAccess: Local and Internet`;
+            title = `${name}\nAccess: Local and Internet`;
             if (uptimeMs > 0) title += `\nDuration: ${this.formatConnectionUptime(uptimeMs)}`;
         } else if (this.connectionPhase === 'failed') {
-            glyph.className = 'fas fa-phone-slash';
-            title = `Not connected\nError connecting to ${domain}`;
+            glyph.className = 'fas fa-link-slash';
+            title = 'Not connected\nError connecting to domain controller';
         } else if (this.connectionPhase === 'auth') {
-            glyph.className = 'fas fa-phone-slash';
-            title = `${domain}\nLogon required`;
+            glyph.className = 'fas fa-link-slash';
+            title = `${name}\nLogon required`;
         } else if (this.connectionPhase === 'dialing' || this.isConnecting) {
             glyph.className = 'fas fa-sync-alt fa-spin';
-            title = `Connecting to ${domain}...`;
+            title = `Connecting to ${name}...`;
         } else {
-            glyph.className = 'fas fa-phone-slash';
+            glyph.className = 'fas fa-link-slash';
             title = 'Not connected';
         }
 
@@ -1294,7 +1340,10 @@ class WebSocketClient {
         };
         on('connectionDialRedialBtn', () => this.manualReconnect());
         on('connectionDialCloseBtn', () => this.closeConnectionDialStatus());
-        on('connectionDialCancelBtn', () => this.cancelConnectionFromUser());
+        on('connectionDialCancelBtn', () => {
+            if (this._shouldUsePreStartupDialog()) this._cancelLogonConnection();
+            else this.cancelConnectionFromUser();
+        });
         on('connectionDialMoreInfoBtn', () => {
             const more = document.getElementById('connectionDialMoreInfo');
             if (more && more.textContent) more.classList.toggle('hidden');
@@ -1303,16 +1352,21 @@ class WebSocketClient {
         const closeBtn = document.querySelector('.connection-dial-close-btn');
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
-                if (this.connectionPhase === 'failed') this.closeConnectionDialStatus();
+                if (this._shouldUsePreStartupDialog()) this._cancelLogonConnection();
+                else if (this.connectionPhase === 'failed') this.closeConnectionDialStatus();
                 else this.cancelConnectionFromUser();
             });
         }
 
+        // Network tray icon: one click = Vista's status flyout, right-click = the network menu
+        // (public/scripts/comp/melatonControlPanel.js)
         const modemTray = document.getElementById('modemTrayIcon');
         if (modemTray) {
             modemTray.addEventListener('click', () => {
-                this.openConnectionDialStatus();
+                if (window.melatonControlPanel) window.melatonControlPanel.toggleTrayFlyout(modemTray);
+                else this.openConnectionDialStatus();
             });
+            if (window.melatonControlPanel) window.melatonControlPanel.attachTrayMenu(modemTray);
         }
     }
 
@@ -1454,7 +1508,7 @@ class WebSocketClient {
     }
 
     _presentConnectivityFailure() {
-        const message = this.connectionUi.message || 'NO CARRIER — Connection failed';
+        const message = this.connectionUi.message || 'Connection failed';
         const headline = this.preStartupHandoffCompleted && this.initializationCompleted
             ? 'Connection lost'
             : 'Could not connect';
@@ -1473,7 +1527,7 @@ class WebSocketClient {
         this.bannerManager.showWebSocketTicker(
             'error',
             ui.message || 'Server Not Responding',
-            'fa-phone-missed',
+            'fa-link-slash',
             false
         );
         this.updateWebSocketStatus('disconnected');
@@ -1535,7 +1589,7 @@ class WebSocketClient {
         if (!this._tealHoldTimer) {
             this._tealHoldTimer = setTimeout(() => {
                 this._tealHoldTimer = null;
-                if (this._shouldUsePreStartupDialog()) this._renderPreStartupDialog();
+                if (this._shouldUsePreStartupDialog()) this._renderConnectionDial();
             }, wait);
         }
         return true;
@@ -1552,6 +1606,8 @@ class WebSocketClient {
      * failures keep their own text; the real stage stays in the stage bar's tooltip.
      */
     _preStartupDisplayText(phase, statusMessage) {
+        // A connection failure is the "Error Connecting to domain controller" dialog on top
+        if (phase === 'failed' && window.isDesktop && window.melatonNetworkDialogs) return 'Please wait...';
         if (phase === 'auth' || phase === 'failed') return statusMessage;
         if (statusMessage === 'Preparing MeletonFX...') return 'Welcome';
         return 'Please wait...';
@@ -1565,6 +1621,8 @@ class WebSocketClient {
         if (this._deferPreStartupForTealHold()) {
             return;
         }
+        // Connected (or a password / logon step / starting server): the connecting dialog on top goes
+        if (!(window.isDesktop && this._shouldShowLogonConnectingDialog())) this._hideConnectionDialModal();
 
         const modal = document.getElementById('desktopPreStartupModal');
         const statusEl = document.getElementById('desktopPreStartupStatus');
@@ -1615,7 +1673,7 @@ class WebSocketClient {
         } else if (
             this._shouldUsePreStartupDialog()
             && !this.serverStartupReady
-            && /NO CARRIER/i.test(statusMessage)
+            && this.connectionPhase === 'failed'
         ) {
             statusMessage = bootStatus?.stageMessage || 'Waiting for server…';
         }
@@ -1974,6 +2032,7 @@ class WebSocketClient {
         if (!this._canCompletePreStartupHandoff()) return;
 
         this.connectionUi.message = 'Preparing MeletonFX...';
+        this._updatePreStartupStageProgress(null);
         this._setConnectionPhase('connected', {
             beat: 'connected',
             message: 'Preparing MeletonFX...'
@@ -2052,7 +2111,7 @@ class WebSocketClient {
             this.bannerManager.showWebSocketToast(
                 'error',
                 ui.message || 'Server Not Responding',
-                '<i class="fas fa-phone-missed"></i>',
+                '<i class="fas fa-link-slash"></i>',
                 false
             );
             this.updateWebSocketStatus('disconnected');
@@ -2071,7 +2130,7 @@ class WebSocketClient {
                 message,
                 handoffToInit
                     ? '<i class="fa-duotone fa-star-christmas"></i>'
-                    : '<i class="fas fa-phone"></i>',
+                    : '<i class="fas fa-network-wired"></i>',
                 !handoffToInit,
                 WebSocketClient.TIMEOUT_UI_DEFAULT,
                 true,
@@ -2086,7 +2145,7 @@ class WebSocketClient {
 
         const icon = ui.attempt > 0
             ? '<i class="fas fa-sync-alt"></i>'
-            : '<i class="fas fa-phone-arrow-up-right"></i>';
+            : '<i class="fas fa-network-wired"></i>';
         this.bannerManager.showWebSocketToast(
             'connecting',
             message,
@@ -2115,8 +2174,17 @@ class WebSocketClient {
 
         if (this._shouldUsePreStartupDialog()) {
             if (phase === 'failed' && this._shouldUseConnectivityErrorInsteadOfConnectionDial()) {
+                this._hideConnectionDialModal();
                 this._presentConnectivityFailure();
                 this._applyFailedConnectionSideEffects();
+                return;
+            }
+            if (window.isDesktop && this._shouldShowLogonConnectingDialog()) {
+                if (this._deferPreStartupForTealHold()) return;
+                // The logon dialog stays up ("Please wait..."); the VPN dialog sits centered on
+                // top of it while the connection test and the WebSocket connect run
+                this._renderPreStartupDialog();
+                this._renderVpnConnectionDialog({ logon: true });
                 return;
             }
             this._renderPreStartupDialog();
@@ -2142,8 +2210,35 @@ class WebSocketClient {
             return;
         }
 
-        // Connecting to <domain>... / Error Connecting to <domain> (Vista VPN dialog, Yozora #427;
-        // wording from public/scripts/comp/melatonNetworkDialogs.js)
+        this._renderVpnConnectionDialog({ logon: false });
+    }
+
+    /**
+     * Logon screen (Yozora #429): while the connection test (/status) and the WebSocket connect
+     * run, the small "Connecting to <connection>..." dialog shows instead of the logon dialog,
+     * like a domain logon over a VPN. A starting server (its boot progress), the password
+     * prompt and the logon steps stay in the logon dialog.
+     */
+    _shouldShowLogonConnectingDialog() {
+        const phase = this.connectionPhase;
+        if (phase === 'failed') return true;
+        if (phase !== 'dialing') return false;
+        if (this.lastServerStartupStatus && !this.serverStartupReady) return false;
+        if (this._logonInitStatus || this._logonInitError || this._logonInitRunning) return false;
+        if (this.preStartupAuthBusy) return false;
+        // Socket up: account data, the logon steps and the handoff belong to the logon dialog
+        if (this.connectionStats.connectedAt && this.isConnected()) return false;
+        return true;
+    }
+
+    /**
+     * Connecting to <connection>... / Error Connecting to domain controller (Vista VPN dialog,
+     * Yozora #427 / #429; wording from public/scripts/comp/melatonNetworkDialogs.js). logon: at
+     * the logon screen (no tickers; Cancel and the title close ask Retry / Restart, there is no
+     * desktop to fall back to).
+     */
+    _renderVpnConnectionDialog({ logon = false } = {}) {
+        const phase = this.connectionPhase;
         const modal = document.getElementById('connectionDialModal');
         const titleEl = document.getElementById('connectionDialTitle');
         const statusEl = document.getElementById('connectionDialStatus');
@@ -2167,6 +2262,7 @@ class WebSocketClient {
         const info = text ? text.connectionInfo() : null;
 
         modal.classList.remove('dialing', 'failed', 'connected-beat');
+        modal.classList.toggle('vpn-logon', logon);
 
         const hideModal = async () => {
             if (modal.classList.contains('hidden')) return;
@@ -2193,10 +2289,25 @@ class WebSocketClient {
             return;
         }
 
-        if (typeof openModal === 'function') {
-            openModal(modal);
-        } else {
-            modal.classList.remove('hidden');
+        // Open only when it is not up yet (openModal re-raises an open window, which would bury a
+        // prompt that opened during the connect; the dialog is .on-top anyway)
+        if (modal.classList.contains('hidden') || modal.classList.contains('closing')) {
+            // At the logon screen it is a centered window over the logon dialog (setModalOffsetPx:
+            // modalUtils.js; data-window-restore-position="false" keeps it from a saved spot)
+            if (logon && typeof setModalOffsetPx === 'function') setModalOffsetPx(modal, 0, 0, { snap: false });
+            if (typeof openModal === 'function') {
+                openModal(modal);
+            } else {
+                modal.classList.remove('hidden');
+            }
+        }
+        if (logon) {
+            const logonDialog = document.getElementById('desktopPreStartupModal');
+            const zOf = (el) => Number(getComputedStyle(el).zIndex) || 0;
+            if (logonDialog && !logonDialog.classList.contains('hidden') && zOf(logonDialog) >= zOf(modal)
+                && typeof bringModalToFront === 'function') {
+                bringModalToFront(modal);
+            }
         }
 
         if (phase === 'failed') {
@@ -2216,7 +2327,8 @@ class WebSocketClient {
             if (attemptEl) attemptEl.classList.add('hidden');
             if (actionsEl) actionsEl.classList.remove('hidden');
             if (cancelActionsEl) cancelActionsEl.classList.add('hidden');
-            this._applyFailedConnectionSideEffects();
+            if (logon) this.updateWebSocketStatus('disconnected');
+            else this._applyFailedConnectionSideEffects();
             return;
         }
 
@@ -2229,18 +2341,22 @@ class WebSocketClient {
         if (attemptEl) {
             const attemptLine = text
                 ? text.attemptText(ui)
-                : (ui.attempt > 0 ? `Redial attempt ${ui.attempt} of ${ui.maxAttempts}` : '');
+                : (ui.attempt > 0 ? `Reconnect attempt ${ui.attempt} of ${ui.maxAttempts}` : '');
             attemptEl.textContent = attemptLine;
             attemptEl.classList.toggle('hidden', !attemptLine);
         }
         if (actionsEl) actionsEl.classList.add('hidden');
         if (cancelActionsEl) cancelActionsEl.classList.remove('hidden');
+        if (logon) {
+            this.updateWebSocketStatus(phase === 'connected' ? 'connected' : 'connecting');
+            return;
+        }
 
-        const tickerMessage = ui.message || beatDef.message || 'Dialing…';
+        const tickerMessage = ui.message || beatDef.message || 'Connecting…';
         this.bannerManager.showWebSocketTicker(
             phase === 'connected' ? 'connected' : 'connecting',
             tickerMessage,
-            ui.attempt > 0 ? 'fa-sync-alt' : 'fa-phone-arrow-up-right',
+            ui.attempt > 0 ? 'fa-sync-alt' : 'fa-network-wired',
             phase === 'connected',
             phase === 'connected' ? 3000 : false
         );
@@ -2611,7 +2727,7 @@ class WebSocketClient {
 
         if (this._shouldUsePreStartupDialog()) {
             this._updatePreStartupStageProgress(progress, message);
-            this._renderPreStartupDialog();
+            this._renderConnectionDial();
         }
     }
 
@@ -2634,13 +2750,17 @@ class WebSocketClient {
     }
 
     /**
-     * /status failed or timed out while reconnecting after boot: the server is down or still
-     * loading (a restart), so lock now instead of leaving the Connection Manager on the old
-     * server's last stage ("Starting Dreamscape…"). Same server back → plain unlock.
+     * /status failed or timed out while reconnecting after boot (Yozora #429): the server is down
+     * or busy, but nothing says it restarted, so the desktop stays with "Connecting to
+     * <connection>..." and no teal lock. The old server's status is dropped so the poll waits like
+     * a first boot instead of failing; the lock comes once the server answers booting or with a
+     * new start time (_noteServerInstance). The same server back is a plain reconnect.
      */
-    _suspendIfServerUnreachable() {
+    _noteServerUnreachable() {
         if (!this.initializationCompleted || this.sessionSuspended || !window.isDesktop) return;
-        this._suspendSession('server-unreachable');
+        this.lastServerStartupStatus = null;
+        this.serverStartupStatusOk = false;
+        this.serverStartupReady = false;
     }
 
     /**
@@ -2654,7 +2774,7 @@ class WebSocketClient {
         this.sessionSuspendReason = reason;
         this.preStartupHandoffCompleted = false;
         // That /status came from the server that went away: wait for this one like a first boot
-        // (pingHost keeps polling instead of failing to NO CARRIER, no stale stage text)
+        // (pingHost keeps polling instead of failing to "Error Connecting", no stale stage text)
         this.lastServerStartupStatus = null;
         this.serverStartupStatusOk = false;
         this.serverStartupReady = false;
@@ -2679,26 +2799,48 @@ class WebSocketClient {
         console.log('🔓 Session resumed');
     }
 
+    /**
+     * Long tasks with progress at the logon screen (the server's own boot) get a small window off
+     * to the side, top-left like the desktop's startup window; the logon dialog never shows a bar
+     * (Yukimi, 2026-10-12). null hides it.
+     */
     _updatePreStartupStageProgress(progressPercent, message) {
-        const stageWrap = document.getElementById('desktopPreStartupStageProgress');
-        const stageFill = document.getElementById('desktopPreStartupStageProgressFill');
-        if (!stageWrap || !stageFill) {
+        const show = typeof progressPercent === 'number' && Number.isFinite(progressPercent)
+            && window.isDesktop && this._shouldUsePreStartupDialog();
+        let modal = document.getElementById('logonTaskProgressModal');
+        if (!show) {
+            if (modal && !modal.classList.contains('hidden')) {
+                if (typeof closeModal === 'function') closeModal(modal);
+                else modal.classList.add('hidden');
+            }
             return;
         }
-
-        if (typeof progressPercent === 'number' && Number.isFinite(progressPercent)) {
-            const pct = Math.max(0, Math.min(100, Math.round(progressPercent)));
-            stageWrap.classList.remove('hidden');
-            stageWrap.setAttribute('aria-hidden', 'false');
-            stageFill.style.width = `${pct}%`;
-            if (message) {
-                stageWrap.title = `${message} (${pct}%)`;
-            }
-        } else {
-            stageWrap.classList.add('hidden');
-            stageWrap.setAttribute('aria-hidden', 'true');
-            stageFill.style.width = '0%';
-            stageWrap.removeAttribute('title');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'logonTaskProgressModal';
+            modal.className = 'modal hidden on-top boot-dialog logon-task-progress';
+            modal.dataset.windowRestorePosition = 'false';
+            modal.innerHTML = `
+                <div class="modal-window-title">
+                    <div class="modal-window-title-main"><span>DreamScape MeletonFX</span></div>
+                </div>
+                <div class="modal-window-controls"></div>
+                <div class="modal-content modal-padding">
+                    <div class="modal-body">
+                        <div class="logon-task-heading">Waiting for the domain controller...</div>
+                        <div class="logon-task-status"></div>
+                        <div role="progressbar"><div class="logon-task-bar"></div></div>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+        }
+        const pct = Math.max(0, Math.min(100, Math.round(progressPercent)));
+        const stage = String(message || '').replace(/\s*\(\d+%\)\s*$/, '');
+        modal.querySelector('.logon-task-status').textContent = stage ? `${stage} (${pct}%)` : `${pct}%`;
+        modal.querySelector('.logon-task-bar').style.width = `${pct}%`;
+        if (modal.classList.contains('hidden') || modal.classList.contains('closing')) {
+            if (typeof openModal === 'function') openModal(modal);
+            else modal.classList.remove('hidden');
         }
     }
 
@@ -2731,7 +2873,7 @@ class WebSocketClient {
 
                 if (!data) {
                     unreachableAttempts += 1;
-                    this._suspendIfServerUnreachable();
+                    this._noteServerUnreachable();
                     this._setConnectionBeat('dialing', {
                         message: `Waiting for server status… (${unreachableAttempts})`
                     });
@@ -2779,9 +2921,9 @@ class WebSocketClient {
 
                 await new Promise((resolve) => setTimeout(resolve, bootPollInterval));
             } catch (error) {
-                // Before the checks below: the lock resets serverStartupStatusOk, so a refused
-                // connection keeps polling (boot wait) instead of throwing to NO CARRIER
-                this._suspendIfServerUnreachable();
+                // Before the checks below: this resets serverStartupStatusOk, so a refused
+                // connection keeps polling (boot wait) instead of throwing to "Error Connecting"
+                this._noteServerUnreachable();
                 if (error && error.name === 'TimeoutError') {
                     unreachableAttempts += 1;
                 } else if (this.serverStartupStatusOk) {
@@ -3672,8 +3814,8 @@ class WebSocketClient {
                 }
 
                 const failureMessage = this.circuitBreaker
-                    ? (pingError.message || 'NO CARRIER — Server may be unavailable.')
-                    : 'NO CARRIER — Server not responding';
+                    ? (pingError.message || 'Server may be unavailable.')
+                    : 'Server not responding';
 
                 this._setConnectionPhase('failed', { message: failureMessage });
 
@@ -3743,6 +3885,8 @@ class WebSocketClient {
                 }
 
                 this.connectionStats.connectedAt = Date.now();
+                // Logon screen: the VPN is up, the logon dialog takes over (_shouldShowLogonConnectingDialog)
+                if (this._shouldUsePreStartupDialog()) this._renderConnectionDial();
 
                 // Trigger connection event
                 this.triggerEvent('connected');
@@ -3913,7 +4057,7 @@ class WebSocketClient {
                         this.reconnect();
                     } else {
                         this._setConnectionPhase('failed', {
-                            message: `NO CARRIER — ${disconnectMessage}. Server may be unavailable.`
+                            message: `${disconnectMessage}. Server may be unavailable.`
                         });
                     }
                 }
@@ -3955,14 +4099,14 @@ class WebSocketClient {
                     }
 
                     if (this.circuitBreaker) {
-                        errorMessage = `NO CARRIER — ${errorMessage}. Server unavailable.`;
+                        errorMessage = `${errorMessage}. Server unavailable.`;
                         this._setConnectionPhase('failed', { message: errorMessage });
                     } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                        errorMessage = `NO CARRIER — ${errorMessage}. Max retry attempts reached.`;
+                        errorMessage = `${errorMessage}. Max retry attempts reached.`;
                         this._setConnectionPhase('failed', { message: errorMessage });
                     } else {
                         this._setConnectionPhase('failed', {
-                            message: `NO CARRIER — ${errorMessage}`
+                            message: errorMessage
                         });
                     }
 
@@ -3977,7 +4121,7 @@ class WebSocketClient {
             console.error('❌ Failed to create WebSocket connection:', error);
             this._releaseConnectLock();
             this._setConnectionPhase('failed', {
-                message: 'NO CARRIER — Connection failure'
+                message: 'Connection failure'
             });
         }
     }
@@ -4182,7 +4326,7 @@ class WebSocketClient {
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
             this.circuitBreaker = true;
             this._setConnectionPhase('failed', {
-                message: 'NO CARRIER — Connection failed after several attempts. Use Redial to reconnect.'
+                message: 'Connection failed after several attempts. Use Reconnect to try again.'
             });
             return;
         }
@@ -4193,12 +4337,12 @@ class WebSocketClient {
         console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
         const startupMessage = this.lastServerStartupStatus?.stageMessage;
-        const redialMessage = this._shouldShowStartupReconnectMessage()
-            ? `Redialing in ${Math.ceil(delay / 1000)}s…`
+        const reconnectMessage = this._shouldShowStartupReconnectMessage()
+            ? `Reconnecting in ${Math.ceil(delay / 1000)}s…`
             : (startupMessage || `Waiting for server… (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
         this._setConnectionBeat('dialing', {
-            message: redialMessage,
+            message: reconnectMessage,
             attempt: this.reconnectAttempts,
             maxAttempts: this.maxReconnectAttempts
         });
@@ -4250,7 +4394,7 @@ class WebSocketClient {
         this.lastConnectionAttempt = 0;
 
         this._setConnectionBeat('dialing', {
-            message: 'Redialing…',
+            message: 'Reconnecting…',
             attempt: 0,
             maxAttempts: this.maxReconnectAttempts
         });

@@ -1,18 +1,25 @@
 /**
- * Control Panel (Yozora #428): a Vista Explorer-style window in Classic View (a flat icon list,
- * no categories) that settings move into over time. The network tray icon opens it on the
- * Network and Server Center (Vista's Network and Sharing Center for a PC joined to the
- * Dreamscape domain): the map This computer — <domain> — Internet, the domain network box
- * (Access, Connection = '<WAN|Ethernet> Miniport (L-PPoP)', Customize = the domain name) and
- * the server's own status from the public OPTIONS /status. It replaces the old Connection
- * Manager status view; the uptime, sent / received and ping moved to the
- * "<domain> Status" dialog (View status), like Vista's Local Area Connection Status.
+ * Control Panel (Yozora #428, #429): a Vista Explorer-style window in Classic View (a flat icon
+ * list, no categories) that settings move into over time, and the network tray icon's UI.
+ *
+ *   Network and Server Center   Vista's Network and Sharing Center for a PC joined to the
+ *                               Dreamscape domain: the map This computer — <domain> — Internet,
+ *                               the domain network box (Access, Connection = <connection name> +
+ *                               View status, Customize = the network (domain) name) and the
+ *                               server's own status from the public OPTIONS /status
+ *   <connection> Status         Vista's Local Area Connection Status: device '<WAN|Ethernet>
+ *                               Miniport (L-PPoP)', duration, latency, messages sent / received
+ *   Tray flyout                 one click on the network tray icon: "Currently connected to:"
+ *                               the domain network and the VPN connection, Connect or disconnect,
+ *                               Network and Server Center; right-click = the tray menu
  *
  *   melatonControlPanel.open(page = 'home')    'home' | 'network'
  *   melatonControlPanel.registerItem({ id, name, icon, image, description, open })
+ *   melatonControlPanel.toggleTrayFlyout(anchor) / attachTrayMenu(anchor)
  *
- * Domain name: config.json userGlobalSettings.desktop.domainName (persistUserGlobalSettingsPatch,
- * modalUtils.js); connection facts: melatonNetworkDialogs.js.
+ * Names: config.json userGlobalSettings.desktop.domainName (the network / domain, default
+ * DREAMSCAPE) and desktop.connectionName (the interface, default VPN Connection), saved through
+ * persistUserGlobalSettingsPatch (modalUtils.js); connection facts: melatonNetworkDialogs.js.
  */
 (function (root) {
     'use strict';
@@ -46,7 +53,9 @@
 
     function info() {
         const n = net();
-        return n ? n.connectionInfo() : { domain: 'DREAMSCAPE', fqdn: root.location.hostname, connectionType: 'WAN', device: 'L-PPoP' };
+        return n
+            ? n.connectionInfo()
+            : { domain: 'DREAMSCAPE', connectionName: 'VPN Connection', fqdn: root.location.hostname, connectionType: 'WAN', device: 'L-PPoP' };
     }
 
     function ws() {
@@ -238,7 +247,8 @@
             case 'connect': connectToDomain(); break;
             case 'disconnect': disconnectFromDomain(); break;
             case 'status': openStatusDialog(); break;
-            case 'customize': openCustomizeDialog(); break;
+            case 'customize': openCustomizeDialog('network'); break;
+            case 'rename': openCustomizeDialog('connection'); break;
             case 'diagnose': diagnose(); break;
             default: break;
         }
@@ -404,10 +414,11 @@
                 <h3 class="cpl-task-heading">Tasks</h3>
                 <ul class="cpl-task-list">
                     ${state === 'connected' || state === 'connecting'
-                        ? taskLink(`Disconnect from ${i.domain}`, 'disconnect')
-                        : taskLink(`Connect to ${i.domain}`, 'connect')}
+                        ? taskLink(`Disconnect ${i.connectionName}`, 'disconnect')
+                        : taskLink(`Connect ${i.connectionName}`, 'connect')}
                     ${taskLink('Manage network connections', 'status')}
                     ${taskLink('Customize network name', 'customize')}
+                    ${taskLink('Rename this connection', 'rename')}
                     ${taskLink('Diagnose and repair', 'diagnose')}
                 </ul>
             </div>
@@ -435,7 +446,7 @@
                 <h1 class="cpl-page-title">Network and Server Center</h1>
                 <div class="cpl-map">
                     ${mapNode('/static_images/melaton/net-laptop.png', 'This computer')}
-                    ${mapLink(clientLink, state === 'connected' ? `Connected to ${i.domain}` : accessText(state))}
+                    ${mapLink(clientLink, state === 'connected' ? `Connected through ${i.connectionName}` : accessText(state))}
                     ${mapNode('/static_images/melaton/net-server.png', i.domain, 'Domain controller')}
                     ${mapLink(serverLink, reachable ? 'Connected' : 'Unknown')}
                     ${mapNode('/static_images/melaton/net-globe.png', 'Internet')}
@@ -452,7 +463,7 @@
                     </div>
                     <div class="cpl-row">
                         <span class="cpl-row-label">Connection</span>
-                        <span class="cpl-row-value">${esc(net() ? net().miniportLabel(i) : `${i.connectionType} Miniport (${i.device})`)}</span>
+                        <span class="cpl-row-value">${esc(i.connectionName)}</span>
                         <button type="button" class="cpl-link cpl-row-action" data-cpl-action="status">View status</button>
                     </div>
                     <div class="cpl-row">
@@ -462,7 +473,7 @@
                     ${state === 'auth' ? `
                     <div class="cpl-row">
                         <span class="cpl-row-label"></span>
-                        <button type="button" class="cpl-link" data-cpl-action="connect">Log on to ${esc(i.domain)}...</button>
+                        <button type="button" class="cpl-link" data-cpl-action="connect">Log on to the domain...</button>
                     </div>` : ''}
                 </div>
                 <h2 class="cpl-section-title">Server status</h2>
@@ -521,18 +532,18 @@
         let message;
         if (statusError) {
             icon = 'error';
-            message = `${i.domain} did not respond. Check that this computer is connected to the network and that the server is running, then try again.`;
+            message = 'The domain controller did not respond. Check that this computer is connected to the network and that the server is running, then try again.';
         } else if (lastStatus && !lastStatus.isReady) {
             icon = 'warning';
-            message = `${i.domain} is starting (${lastStatus.stageMessage || 'please wait'}). This computer connects again when the server is ready.`;
+            message = `The domain controller is starting (${lastStatus.stageMessage || 'please wait'}). This computer connects again when it is ready.`;
         } else if (state === 'auth') {
             icon = 'warning';
-            message = `${i.domain} is available, but this computer must log on again. Click "Log on to ${i.domain}..." in the Network and Server Center.`;
+            message = 'The domain controller is available, but this computer must log on again. Click "Log on to the domain..." in the Network and Server Center.';
         } else if (state !== 'connected') {
             icon = 'warning';
-            message = `${i.domain} is available, but this computer is not connected. Click "Connect to ${i.domain}" to connect.`;
+            message = `The domain controller is available, but ${i.connectionName} is not connected. Click "Connect ${i.connectionName}" to connect.`;
         } else {
-            message = `MeletonFX did not find any problems with this computer's connection to ${i.domain}.`;
+            message = "MeletonFX did not find any problems with this computer's connection to the domain controller.";
         }
         if (box) {
             await box.show({
@@ -654,7 +665,7 @@
         const state = linkState();
         const connected = state === 'connected';
         const stats = (client && client.connectionStats) || {};
-        sel(statusModal, '.connection-status-title').textContent = `${i.domain} Status`;
+        sel(statusModal, '.connection-status-title').textContent = `${i.connectionName} Status`;
         sel(statusModal, '.cs-domain').textContent = i.domain;
         sel(statusModal, '.cs-server').textContent = i.fqdn;
         sel(statusModal, '.cs-device').textContent = net() ? net().miniportLabel(i) : `${i.connectionType} Miniport (${i.device})`;
@@ -700,7 +711,37 @@
         else statusModal.classList.add('hidden');
     }
 
-    // ---- Customize network settings (the domain name) ---------------------------------------
+    // ---- Customize network settings / Rename this connection ------------------------------
+    //   'network'     the domain network's name (desktop.domainName), Vista's Set Network Location
+    //   'connection'  the network interface's name (desktop.connectionName), Rename Connection
+
+    const NAME_MODES = {
+        network: {
+            title: 'Set Network Location',
+            heading: 'Customize network settings',
+            label: 'Network name:',
+            key: 'domainName',
+            infoKey: 'domain',
+            connKey: 'domain',
+            note: 'This computer is joined to the domain, so the location type is set by the domain controller. '
+                + 'The network name is the domain: it shows in the Domain box of the logon dialogs, on the lock screen and here.',
+            empty: 'Type a network name.',
+            failed: 'The network name could not be saved.'
+        },
+        connection: {
+            title: 'Rename Connection',
+            heading: 'Rename this connection',
+            label: 'Connection name:',
+            key: 'connectionName',
+            infoKey: 'connectionName',
+            connKey: 'connectionName',
+            note: 'The connection is the network interface this computer reaches the domain controller through. '
+                + 'Its name shows in the Connecting and Connect dialogs, the tray and here.',
+            empty: 'Type a connection name.',
+            failed: 'The connection name could not be saved.'
+        }
+    };
+    let customizeMode = 'network';
 
     function ensureCustomizeModal() {
         if (customizeModal || !doc) return customizeModal;
@@ -712,7 +753,7 @@
                 <div class="modal-window-title-main">
                     <i class="fas fa-network-wired icon-fa"></i>
                     <img src="/static_images/melaton/net-server.png" alt="" class="icon-image">
-                    <span>Set Network Location</span>
+                    <span class="customize-title">Set Network Location</span>
                 </div>
             </div>
             <div class="modal-focus-overlay"></div>
@@ -721,13 +762,12 @@
             </div>
             <div class="modal-content vpn-dialog-content">
                 <form class="vpn-form customize-form" autocomplete="off">
-                    <h2 class="vpn-heading">Customize network settings</h2>
-                    <label class="vpn-form-row"><span>Network name:</span>
-                        <input class="vpn-input customize-name" type="text" maxlength="64" spellcheck="false" autocapitalize="characters"></label>
-                    <div class="vpn-form-row"><span>Location type:</span>
+                    <h2 class="vpn-heading customize-heading">Customize network settings</h2>
+                    <label class="vpn-form-row"><span class="customize-label">Network name:</span>
+                        <input class="vpn-input customize-name" type="text" maxlength="64" spellcheck="false"></label>
+                    <div class="vpn-form-row customize-location"><span>Location type:</span>
                         <span class="vpn-static">Domain network</span></div>
-                    <p class="vpn-note">This computer is joined to the domain, so the location type is set by the domain controller.
-                        The name is shown in the connection dialogs, the logon and lock screens, and here.</p>
+                    <p class="vpn-note customize-note"></p>
                     <p class="vpn-form-status customize-status" aria-live="polite"></p>
                     <div class="vpn-buttons">
                         <button type="submit" class="btn-standard customize-ok">OK</button>
@@ -747,38 +787,214 @@
         });
         sel(customizeModal, '.customize-form').addEventListener('submit', async (ev) => {
             ev.preventDefault();
+            const mode = NAME_MODES[customizeMode];
             const name = sel(customizeModal, '.customize-name').value.trim().slice(0, 64);
             const status = sel(customizeModal, '.customize-status');
             if (!name) {
-                status.textContent = 'Type a network name.';
+                status.textContent = mode.empty;
                 return;
             }
             try {
                 // persistUserGlobalSettingsPatch: public/scripts/comp/modalUtils.js (config.json
-                // userGlobalSettings.desktop.domainName)
+                // userGlobalSettings.desktop.domainName / connectionName)
                 if (typeof root.persistUserGlobalSettingsPatch === 'function') {
-                    await root.persistUserGlobalSettingsPatch({ desktop: { domainName: name } });
+                    await root.persistUserGlobalSettingsPatch({ desktop: { [mode.key]: name } });
                 }
                 const client = ws();
-                if (client && client.melatonConnection) client.melatonConnection = { ...client.melatonConnection, domain: name };
+                if (client && client.melatonConnection) {
+                    client.melatonConnection = { ...client.melatonConnection, [mode.connKey]: name };
+                }
                 closeIt();
                 render();
                 updateStatusDialog();
+                renderFlyout();
+                if (client && typeof client._updateModemTrayIcon === 'function') client._updateModemTrayIcon();
             } catch (err) {
-                status.textContent = `The network name could not be saved. ${err && err.message ? err.message : ''}`.trim();
+                status.textContent = `${mode.failed} ${err && err.message ? err.message : ''}`.trim();
             }
         });
         return customizeModal;
     }
 
-    function openCustomizeDialog() {
+    function openCustomizeDialog(which = 'network') {
         if (!ensureCustomizeModal()) return;
+        customizeMode = NAME_MODES[which] ? which : 'network';
+        const mode = NAME_MODES[customizeMode];
+        sel(customizeModal, '.customize-title').textContent = mode.title;
+        sel(customizeModal, '.customize-heading').textContent = mode.heading;
+        sel(customizeModal, '.customize-label').textContent = mode.label;
+        sel(customizeModal, '.customize-note').textContent = mode.note;
+        sel(customizeModal, '.customize-location').classList.toggle('hidden', customizeMode !== 'network');
         const input = sel(customizeModal, '.customize-name');
-        input.value = info().domain;
+        input.value = info()[mode.infoKey];
         sel(customizeModal, '.customize-status').textContent = '';
         if (typeof root.openModal === 'function') root.openModal(customizeModal);
         else customizeModal.classList.remove('hidden');
         setTimeout(() => { input.focus(); input.select(); }, 0);
+    }
+
+    // ---- Network tray flyout (one click) and menu (right-click) -----------------------------
+
+    let flyout = null;
+    let flyoutAnchor = null;
+    let flyoutTimer = null;
+
+    function flyoutStateText(state) {
+        switch (state) {
+            case 'connected': return 'Connected';
+            case 'connecting': return 'Connecting...';
+            case 'auth': return 'Logon required';
+            default: return 'Disconnected';
+        }
+    }
+
+    function ensureFlyout() {
+        if (flyout || !doc) return flyout;
+        flyout = doc.createElement('div');
+        flyout.id = 'networkTrayFlyout';
+        flyout.className = 'network-flyout hidden';
+        flyout.setAttribute('role', 'dialog');
+        flyout.setAttribute('aria-label', 'Network');
+        flyout.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const link = ev.target.closest('[data-flyout-action]');
+            if (!link) return;
+            const action = link.dataset.flyoutAction;
+            hideFlyout();
+            if (action === 'toggle') {
+                const state = linkState();
+                if (state === 'connected' || state === 'connecting') openStatusDialog();
+                else connectToDomain();
+            } else if (action === 'center') {
+                open('network');
+            }
+        });
+        doc.body.appendChild(flyout);
+        // Outside click / Escape closes it, like Vista's flyouts
+        doc.addEventListener('pointerdown', (ev) => {
+            if (!flyout || flyout.classList.contains('hidden')) return;
+            if (flyout.contains(ev.target) || (flyoutAnchor && flyoutAnchor.contains(ev.target))) return;
+            hideFlyout();
+        }, true);
+        doc.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape' && flyout && !flyout.classList.contains('hidden')) hideFlyout();
+        }, true);
+        return flyout;
+    }
+
+    function renderFlyout() {
+        if (!flyout || flyout.classList.contains('hidden')) return;
+        const i = info();
+        const state = linkState();
+        const connected = state === 'connected';
+        const html = `
+            <div class="network-flyout-body">
+                <div class="network-flyout-heading">${connected ? 'Currently connected to:' : 'Not connected'}</div>
+                <div class="network-flyout-item">
+                    <img src="/static_images/melaton/net-server.png" alt="" draggable="false">
+                    <div class="network-flyout-text">
+                        <span class="network-flyout-name">${esc(i.domain)}</span>
+                        <span class="network-flyout-sub">Access: ${connected ? 'Local and Internet' : state === 'auth' ? 'Logon required' : 'No network access'}</span>
+                    </div>
+                </div>
+                <div class="network-flyout-item">
+                    <img src="/static_images/melaton/net-laptop.png" alt="" draggable="false">
+                    <div class="network-flyout-text">
+                        <span class="network-flyout-name">${esc(i.connectionName)}</span>
+                        <span class="network-flyout-sub">${esc(flyoutStateText(state))}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="network-flyout-links">
+                <button type="button" class="network-flyout-link" data-flyout-action="toggle">Connect or disconnect</button>
+                <button type="button" class="network-flyout-link" data-flyout-action="center">Network and Server Center</button>
+            </div>`;
+        if (flyout.innerHTML !== html) flyout.innerHTML = html;
+    }
+
+    function positionFlyout() {
+        if (!flyout) return;
+        const width = flyout.offsetWidth || 280;
+        const margin = 8;
+        let rect = flyoutAnchor ? flyoutAnchor.getBoundingClientRect() : null;
+        if (!rect || !rect.width) {
+            // No visible anchor (tray still hidden during boot): the notification-area corner
+            const taskbar = doc.getElementById('desktopTaskbar');
+            const top = taskbar && taskbar.getBoundingClientRect().height ? taskbar.getBoundingClientRect().top : root.innerHeight - 40;
+            rect = { right: root.innerWidth - margin, top };
+        }
+        const right = Math.max(margin, root.innerWidth - rect.right - 12);
+        const left = Math.min(root.innerWidth - width - margin, root.innerWidth - right - width);
+        flyout.style.left = `${Math.max(margin, left)}px`;
+        flyout.style.bottom = `${Math.max(margin, root.innerHeight - rect.top + 6)}px`;
+    }
+
+    function showFlyout(anchor) {
+        if (!ensureFlyout()) return;
+        flyoutAnchor = anchor || null;
+        flyout.classList.remove('hidden');
+        renderFlyout();
+        positionFlyout();
+        if (flyoutTimer) clearInterval(flyoutTimer);
+        flyoutTimer = setInterval(() => {
+            if (!flyout || flyout.classList.contains('hidden')) { clearInterval(flyoutTimer); flyoutTimer = null; return; }
+            renderFlyout();
+        }, LIVE_TICK_MS);
+    }
+
+    function hideFlyout() {
+        if (flyoutTimer) clearInterval(flyoutTimer);
+        flyoutTimer = null;
+        if (flyout) flyout.classList.add('hidden');
+    }
+
+    /** One click on the network tray icon (websocket.js _setupConnectionDialModalHandlers). */
+    function toggleTrayFlyout(anchor) {
+        if (flyout && !flyout.classList.contains('hidden')) {
+            hideFlyout();
+            return;
+        }
+        showFlyout(anchor);
+    }
+
+    /** Right-click on the network tray icon: Vista's network tray menu (contextMenu.js). */
+    function attachTrayMenu(anchor) {
+        if (!anchor || anchor.dataset.networkMenu === '1' || typeof root.contextMenu === 'undefined' || !root.contextMenu) return;
+        anchor.dataset.networkMenu = '1';
+        root.contextMenu.attachToElement(anchor, {
+            sections: [{
+                type: 'list',
+                items: [
+                    {
+                        icon: 'fas fa-network-wired',
+                        text: 'Connect or disconnect',
+                        action: 'network-toggle',
+                        loadfn: (item) => {
+                            const state = linkState();
+                            const i = info();
+                            item.text = state === 'connected' || state === 'connecting'
+                                ? `Disconnect ${i.connectionName}`
+                                : `Connect ${i.connectionName}`;
+                        }
+                    },
+                    { icon: 'fas fa-sliders', text: 'Network and Server Center', action: 'network-center' },
+                    { separator: true },
+                    { icon: 'fas fa-stethoscope', text: 'Diagnose and repair', action: 'network-diagnose' }
+                ]
+            }],
+            onAction: (action) => {
+                hideFlyout();
+                if (action === 'network-toggle') {
+                    const state = linkState();
+                    if (state === 'connected' || state === 'connecting') disconnectFromDomain();
+                    else connectToDomain();
+                } else if (action === 'network-center') {
+                    open('network');
+                } else if (action === 'network-diagnose') {
+                    diagnose();
+                }
+            }
+        });
     }
 
     const api = {
@@ -789,6 +1005,9 @@
         openStatusDialog,
         openCustomizeDialog,
         diagnose,
+        toggleTrayFlyout,
+        hideTrayFlyout: hideFlyout,
+        attachTrayMenu,
         isOpen: () => !!(modal && !modal.classList.contains('hidden')),
         currentPage: () => current,
         _test: { pages, items, linkState, accessText, serverRows, formatDuration, setStatus: (s, e = false) => { lastStatus = s; statusError = e; } }

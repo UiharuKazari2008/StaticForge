@@ -557,8 +557,10 @@ class ConfigManager {
                     port: 9220,
                     userGlobalSettings: {
                         desktop: {
-                            // Melaton's domain (the server as domain controller), modules/melatonNetwork.js
+                            // Melaton's domain (the server as domain controller) and the connection
+                            // (network interface) the client reaches it through, modules/melatonNetwork.js
                             domainName: 'DREAMSCAPE',
+                            connectionName: 'VPN Connection',
                             autoLaunchWorkspace: true,
                             liveWindowRepositioning: false,
                             exitDesktopOnWorkspaceMaximise: false,

@@ -650,10 +650,6 @@
             <div class="desktop-prestartup-main">
                 <div class="desktop-prestartup-info">
                     <div id="desktopPreStartupStatus" class="desktop-prestartup-status">Initializing...</div>
-                    <div id="desktopPreStartupStageProgress" class="desktop-prestartup-stage-progress hidden"
-                        aria-hidden="true">
-                        <div id="desktopPreStartupStageProgressFill"></div>
-                    </div>
                 </div>
                 <div id="desktopPreStartupAuth" class="desktop-prestartup-auth hidden">
                     <label class="desktop-prestartup-auth-row" for="desktopPreStartupUsername">
@@ -815,10 +811,12 @@
         </div>
     </div>
 
-    <!-- Connecting to <domain>... : the Vista VPN connection dialog for connects and redials (Yozora #427).
-         websocket.js _renderConnectionDial fills it with the text from scripts/comp/melatonNetworkDialogs.js;
-         a failure turns it into "Error Connecting to <domain>" (Redial / Close / More Info). -->
-    <div id="connectionDialModal" class="modal hidden on-top connection-dial-modal vpn-dialog dialing boot-dialog">
+    <!-- Connecting to <connection>... : the Vista VPN connection dialog for connects and reconnects, on the
+         desktop and at the logon screen (Yozora #427, #429). websocket.js _renderVpnConnectionDialog fills it
+         with the text from scripts/comp/melatonNetworkDialogs.js; a failure turns it into "Error Connecting
+         to domain controller" (Reconnect / Close / More Info). -->
+    <div id="connectionDialModal" class="modal hidden on-top connection-dial-modal vpn-dialog dialing boot-dialog"
+        data-window-restore-position="false" data-window-restore-size="false">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-network-wired icon-fa"></i>
@@ -847,7 +845,7 @@
             </div>
             <div class="vpn-buttons">
                 <div id="connectionDialActions" class="connection-dial-actions hidden">
-                    <button type="button" class="btn-standard" id="connectionDialRedialBtn"><u>R</u>edial</button>
+                    <button type="button" class="btn-standard" id="connectionDialRedialBtn"><u>R</u>econnect</button>
                     <button type="button" class="btn-standard" id="connectionDialCloseBtn">Close</button>
                     <button type="button" class="btn-standard" id="connectionDialMoreInfoBtn"><u>M</u>ore Info</button>
                 </div>
@@ -8490,7 +8488,7 @@ Examples:
                 <div class="ping-warning-indicator taskbar-tray-icon hidden" id="pingWarningIndicator">
                     <i class="fas fa-satellite"></i>
                 </div>
-                <!-- Modem / Network Connection -->
+                <!-- Network (VPN connection): click = status flyout, right-click = menu (melatonControlPanel.js) -->
                 <div class="modem-tray-icon taskbar-tray-icon hidden" id="modemTrayIcon"
                     title="Network">
                     <i class="fa-regular fa-globe" id="modemTrayIconGlyph"></i>

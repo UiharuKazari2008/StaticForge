@@ -592,8 +592,9 @@ class WebSocketMessageHandlers {
             notificationBridgeEnabled: desktop.notificationBridgeEnabled !== false,
             bypassNotificationBridgeInDesktopMode: desktop.bypassNotificationBridgeInDesktopMode === true,
             startMenuButton: this.normalizeStartMenuButtonSetting(desktop),
-            // Melaton's domain name (personalisation), modules/melatonNetwork.js
-            domainName: melatonNetwork.domainName({ userGlobalSettings: { desktop } })
+            // Melaton's domain name and connection (interface) name, modules/melatonNetwork.js
+            domainName: melatonNetwork.domainName({ userGlobalSettings: { desktop } }),
+            connectionName: melatonNetwork.connectionName({ userGlobalSettings: { desktop } })
         };
         if (pinned !== undefined) {
             desktopOut.startMenuPinned = pinned;
@@ -633,6 +634,9 @@ class WebSocketMessageHandlers {
             }
             if (typeof patch.desktop.domainName === 'string') {
                 out.desktop.domainName = melatonNetwork.domainName({ userGlobalSettings: { desktop: { domainName: patch.desktop.domainName } } });
+            }
+            if (typeof patch.desktop.connectionName === 'string') {
+                out.desktop.connectionName = melatonNetwork.connectionName({ userGlobalSettings: { desktop: { connectionName: patch.desktop.connectionName } } });
             }
             if (patch.desktop.startMenuButton && typeof patch.desktop.startMenuButton === 'object') {
                 out.desktop.startMenuButton = this.normalizeStartMenuButtonSetting({

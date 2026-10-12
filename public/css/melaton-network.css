@@ -43,7 +43,7 @@
     justify-content: flex-end;
     align-items: center;
     gap: 8px;
-    padding: 10px 12px 12px;
+    padding: 8px 12px 10px;
 }
 
 .vpn-dialog .vpn-buttons .btn-standard {
@@ -61,15 +61,14 @@
 /* ---- Connecting to <domain>... / Error Connecting to <domain> ---------------------------- */
 
 #connectionDialModal {
-    width: 410px;
+    width: 380px;
 }
 
 .vpn-connecting {
     display: flex;
     align-items: flex-start;
-    gap: 14px;
-    padding: 18px 16px 6px;
-    min-height: 58px;
+    gap: 12px;
+    padding: 14px 14px 0;
 }
 
 .vpn-connecting-art {
@@ -134,14 +133,19 @@
     display: block;
 }
 
+/* At the logon screen there is no desktop behind the error: Reconnect / More Info only */
+#connectionDialModal.vpn-logon #connectionDialCloseBtn {
+    display: none;
+}
+
 .vpn-connecting-text {
     flex: 1;
     min-width: 0;
-    padding-top: 2px;
 }
 
-.vpn-connecting-text p {
-    margin: 0 0 6px;
+/* id-level: emphasis-manager.css gives every .modal-content p a margin */
+#connectionDialModal .vpn-connecting-text p {
+    margin: 0 0 4px;
     overflow-wrap: anywhere;
 }
 
@@ -152,7 +156,7 @@
 #connectionDialModal .connection-dial-more-info {
     color: var(--vpn-muted);
     font-size: 11px;
-    padding-top: 6px;
+    padding-top: 4px;
     border-top: 1px solid var(--vpn-line);
 }
 
@@ -390,6 +394,10 @@
 
 #domainCustomizeModal {
     width: 430px;
+}
+
+#domainCustomizeModal .vpn-form-row > span:first-child {
+    flex-basis: 110px;
 }
 
 .vpn-dialog .vpn-dialog-content h2.vpn-heading {
@@ -741,6 +749,146 @@
 
 #melatonControlPanelModal .cpl-dot--busy {
     background: #e0a000;
+}
+
+/* ---- Logon screen: long task progress off to the side (websocket.js _updatePreStartupStageProgress) */
+
+#logonTaskProgressModal {
+    position: fixed;
+    top: calc(var(--true-inset-top, 0px) + 20px);
+    left: 20px;
+    transform: none;
+    width: 320px;
+}
+
+#logonTaskProgressModal.modal-pixel-settled:not(.opening):not(.closing) {
+    left: 20px;
+    top: calc(var(--true-inset-top, 0px) + 20px);
+    transform: none;
+    margin: 0;
+}
+
+#logonTaskProgressModal .logon-task-heading {
+    margin-bottom: 2px;
+    font-size: 13px;
+}
+
+#logonTaskProgressModal .logon-task-status {
+    margin-bottom: 8px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+#logonTaskProgressModal .logon-task-bar {
+    transition: width 0.35s ease;
+}
+
+body.windows-classic-theme #logonTaskProgressModal .logon-task-heading,
+body.windows-classic-theme #logonTaskProgressModal .logon-task-status {
+    font-family: Tahoma, 'MS Sans Serif', sans-serif;
+    font-size: 11px;
+}
+
+/* ---- Network tray flyout (one click on the tray icon) ------------------------------------------ */
+
+.network-flyout {
+    position: fixed;
+    z-index: var(--z-taskbar-popover, 2710);
+    width: 280px;
+    box-sizing: border-box;
+    background: #ffffff;
+    color: #000000;
+    border: 1px solid rgba(0, 0, 0, 0.55);
+    border-radius: 4px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    font-family: 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+    overflow: hidden;
+    user-select: none;
+}
+
+.network-flyout.hidden {
+    display: none;
+}
+
+.network-flyout-body {
+    padding: 10px 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.network-flyout-heading {
+    color: #333333;
+}
+
+.network-flyout-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 6px;
+}
+
+.network-flyout-item img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    flex: 0 0 32px;
+}
+
+.network-flyout-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.network-flyout-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.network-flyout-sub {
+    color: #444444;
+}
+
+.network-flyout-links {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 7px 12px 9px;
+    background: linear-gradient(180deg, #f3f7fc, #e4ecf6);
+    border-top: 1px solid #d5dfe5;
+}
+
+.network-flyout-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #0066cc;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.network-flyout-link:hover {
+    color: #3399ff;
+    text-decoration: underline;
+}
+
+body.windows-classic-theme .network-flyout {
+    border-radius: 0;
+    background: var(--ButtonFace, #d4d0c8);
+    font-family: Tahoma, 'MS Sans Serif', sans-serif;
+    font-size: 11px;
+}
+
+body.windows-classic-theme .network-flyout-links {
+    background: var(--ButtonFace, #d4d0c8);
+    border-top-color: var(--ButtonShadow, #808080);
 }
 
 /* ---- Windows Classic -------------------------------------------------------------------------- */

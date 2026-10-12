@@ -114,26 +114,8 @@
     text-align: left;
 }
 
-#desktopPreStartupModal .desktop-prestartup-stage-progress {
-    flex: 0 0 88px;
-    width: 88px;
-    height: 10px;
-    margin-top: 1px;
-    background: rgba(0, 0, 0, 0.12);
-    overflow: hidden;
-    flex-shrink: 0;
-}
-
-#desktopPreStartupModal .desktop-prestartup-stage-progress > div {
-    height: 100%;
-    width: 0%;
-    background: #0a4f9e;
-    transition: width 0.35s ease;
-}
-
-#desktopPreStartupModal.auth-active .desktop-prestartup-stage-progress {
-    display: none !important;
-}
+/* No progress bar in the logon dialog: the server's boot progress is the small
+   #logonTaskProgressModal off to the side (websocket.js _updatePreStartupStageProgress) */
 
 #desktopPreStartupModal .desktop-prestartup-auth {
     flex: 0 0 274px;
@@ -480,6 +462,18 @@ body.desktop-mode.session-suspended::before {
 body.desktop-mode.session-suspended :is(.modal.boot-dialog, #windowsStartupModal, #dreamscapeOsInstallWizardModal, #bootUiDebugWindow),
 body.desktop-mode.workstation-locked :is(.modal.boot-dialog, #windowsStartupModal, #dreamscapeOsInstallWizardModal, #bootUiDebugWindow) {
     z-index: 2147482001 !important;
+}
+
+/* Over the logon dialog under the lock: the Connecting dialog (melaton-network.css, #429), then
+   message boxes (bootMessageBox.js) above both; same layer, so DOM order no longer decides */
+body.desktop-mode.session-suspended #connectionDialModal,
+body.desktop-mode.workstation-locked #connectionDialModal {
+    z-index: 2147482002 !important;
+}
+
+body.desktop-mode.session-suspended #bootMessageBox,
+body.desktop-mode.workstation-locked #bootMessageBox {
+    z-index: 2147482003 !important;
 }
 
 /* The restart lock's logon dialog owns the screen while it is up */

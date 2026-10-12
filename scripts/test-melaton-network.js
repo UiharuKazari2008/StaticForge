@@ -32,40 +32,45 @@ for (const ip of ['', null, '8.8.8.8', '172.32.0.1', '172.15.255.1', '192.169.0.
 const config = { userGlobalSettings: { desktop: { domainName: 'CONTOSO' } } };
 assert.deepStrictEqual(
     net.describeConnection('192.168.1.30', config),
-    { domain: 'CONTOSO', connectionType: 'Ethernet', device: 'L-PPoP' }
+    { domain: 'CONTOSO', connectionName: 'VPN Connection', connectionType: 'Ethernet', device: 'L-PPoP' }
 );
 assert.deepStrictEqual(
     net.describeConnection('198.51.100.7', {}),
-    { domain: 'DREAMSCAPE', connectionType: 'WAN', device: 'L-PPoP' }
+    { domain: 'DREAMSCAPE', connectionName: 'VPN Connection', connectionType: 'WAN', device: 'L-PPoP' }
 );
+// the connection (interface) name is its own setting
+assert.strictEqual(net.connectionName({ userGlobalSettings: { desktop: { connectionName: ' Office VPN ' } } }), 'Office VPN');
+assert.strictEqual(net.connectionName({ userGlobalSettings: { desktop: { domainName: 'KANMI' } } }), 'VPN Connection');
 
 // ---- client wording (melatonNetworkDialogs.js) ----
 global.location = { hostname: 'staticforge.737.jp.net', protocol: 'https:' };
-global.wsClient = { melatonConnection: { domain: 'CONTOSO', connectionType: 'WAN', device: 'L-PPoP' } };
+global.wsClient = { melatonConnection: { domain: 'CONTOSO', connectionName: 'Office VPN', connectionType: 'WAN', device: 'L-PPoP' } };
 const ui = require('../public/scripts/comp/melatonNetworkDialogs.js');
 
 const info = ui.connectionInfo();
-assert.deepStrictEqual(info, { domain: 'CONTOSO', fqdn: 'staticforge.737.jp.net', connectionType: 'WAN', device: 'L-PPoP' });
+assert.deepStrictEqual(info, { domain: 'CONTOSO', connectionName: 'Office VPN', fqdn: 'staticforge.737.jp.net', connectionType: 'WAN', device: 'L-PPoP' });
 assert.strictEqual(ui.miniportLabel(info), 'WAN Miniport (L-PPoP)');
-assert.strictEqual(ui.connectingTitle(info), 'Connecting to CONTOSO...');
+assert.strictEqual(ui.connectingTitle(info), 'Connecting to Office VPN...');
 assert.strictEqual(ui.connectingText('initializing', info), "Connecting to staticforge.737.jp.net using 'WAN Miniport (L-PPoP)'...");
 assert.strictEqual(ui.connectingText('dialing', info), "Connecting to staticforge.737.jp.net using 'WAN Miniport (L-PPoP)'...");
 assert.strictEqual(ui.connectingText('negotiation', info), 'Verifying user name and password...');
 assert.strictEqual(ui.connectingText('establishing', info), 'Registering your computer on the network...');
-assert.strictEqual(ui.connectingText('connected', info), 'Connected to CONTOSO.');
+assert.strictEqual(ui.connectingText('connected', info), 'Connected.');
 assert.strictEqual(ui.attemptText({ attempt: 0, maxAttempts: 10 }), '');
-assert.strictEqual(ui.attemptText({ attempt: 2, maxAttempts: 10 }), 'Redial attempt 2 of 10.');
-assert.strictEqual(ui.errorTitle(info), 'Error Connecting to CONTOSO');
+assert.strictEqual(ui.attemptText({ attempt: 2, maxAttempts: 10 }), 'Reconnect attempt 2 of 10.');
+assert.strictEqual(ui.errorTitle(info), 'Error Connecting to domain controller');
+assert.strictEqual(ui.domainUnavailableText(info), 'The system cannot log you on now because the domain CONTOSO is not available.');
 
 // RAS errors for websocket.js failure messages
 const code = (msg, opts) => ui.errorFor(msg, opts).code;
-assert.strictEqual(code('NO CARRIER — Server not responding'), 800);
+assert.strictEqual(code('Server not responding'), 800);
 assert.strictEqual(code('Server status unavailable after 30 attempts'), 800);
-assert.strictEqual(code('NO CARRIER — Connection failed after several attempts. Use Redial to reconnect.'), 800);
-assert.strictEqual(code('NO CARRIER — Network connection error. Max retry attempts reached.'), 800);
-assert.strictEqual(code('NO CARRIER — Connection closed unexpectedly'), 629);
-assert.strictEqual(code('NO CARRIER — Connection failed'), 619);
-assert.strictEqual(code('NO CARRIER — Network connection error'), 619);
+assert.strictEqual(code('Connection failed after several attempts. Use Reconnect to try again.'), 800);
+assert.strictEqual(code('Network connection error. Max retry attempts reached.'), 800);
+assert.strictEqual(code('Connection closed unexpectedly'), 629);
+assert.strictEqual(code('Connection closed (code 1006). Server may be unavailable.'), 629);
+assert.strictEqual(code('Connection failed'), 619);
+assert.strictEqual(code('Network connection error'), 619);
 assert.strictEqual(code('anything', { online: false }), 868);
 assert.ok(ui.errorFor('x').text.startsWith('Error 800: The remote connection was not made'));
 
@@ -77,9 +82,12 @@ assert.strictEqual(ui.guessConnectionType('dreamscape.lan'), 'Ethernet');
 assert.strictEqual(ui.guessConnectionType('8.8.8.8'), 'WAN');
 global.wsClient = { melatonConnection: null };
 global.location = { hostname: '10.0.0.4', protocol: 'http:' };
-assert.deepStrictEqual(ui.connectionInfo(), { domain: 'DREAMSCAPE', fqdn: '10.0.0.4', connectionType: 'Ethernet', device: 'L-PPoP' });
+assert.deepStrictEqual(ui.connectionInfo(), { domain: 'DREAMSCAPE', connectionName: 'VPN Connection', fqdn: '10.0.0.4', connectionType: 'Ethernet', device: 'L-PPoP' });
 global.melatonDomainName = () => 'KANMI';
+global.melatonConnectionName = () => 'Home VPN';
 assert.strictEqual(ui.connectionInfo().domain, 'KANMI');
+assert.strictEqual(ui.connectionInfo().connectionName, 'Home VPN');
+assert.strictEqual(ui.connectingTitle(), 'Connecting to Home VPN...');
 
 // ---- Cancel in "Connecting to <domain>..." stays cancelled (websocket.js) ----
 // Lift class methods out of websocket.js (the body brace comes after the parameter list).
@@ -106,9 +114,9 @@ function liftMethod(src, name) {
     throw new Error(`unbalanced ${name}`);
 }
 const wsSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/websocket.js'), 'utf8');
-const FakeClient = { CONNECTION_BEATS: { dialing: { message: 'Dialing…' }, negotiation: { message: 'Negotiation…' } } };
+const FakeClient = { CONNECTION_BEATS: { dialing: { message: 'Connecting…' }, negotiation: { message: 'Verifying user name and password…' } } };
 const proto = {};
-['_setConnectionBeat', 'cancelConnectionFromUser', 'manualReconnect'].forEach((name) => {
+['_setConnectionBeat', 'cancelConnectionFromUser', 'manualReconnect', '_shouldShowLogonConnectingDialog'].forEach((name) => {
     proto[name] = liftMethod(wsSrc, name)(FakeClient);
 });
 const phases = [];
@@ -122,6 +130,7 @@ const c = Object.assign(Object.create(proto), {
     updateWebSocketStatus() {},
     bannerManager: { showWebSocketTicker() {} },
     _isStartupHaltedForInstall: () => false,
+    _shouldUsePreStartupDialog: () => false,
     connect() { this.connectCalls = (this.connectCalls || 0) + 1; }
 });
 c.cancelConnectionFromUser();
@@ -136,5 +145,23 @@ c.manualReconnect(); // Redial / Connect to <domain>
 assert.strictEqual(c._userCancelledConnect, false);
 assert.strictEqual(c.isManualClose, false);
 assert.strictEqual(c.connectionPhase, 'dialing');
+
+// ---- Logon screen: the small Connecting dialog during the connection test + WebSocket connect ----
+const logon = (state) => Object.assign(Object.create(proto), {
+    connectionPhase: 'dialing',
+    lastServerStartupStatus: null,
+    serverStartupReady: false,
+    connectionStats: { connectedAt: null },
+    isConnected: () => false
+}, state)._shouldShowLogonConnectingDialog();
+assert.strictEqual(logon({}), true, 'connection test before /status answers');
+assert.strictEqual(logon({ lastServerStartupStatus: { isReady: true }, serverStartupReady: true }), true, 'ready server, socket connecting');
+assert.strictEqual(logon({ lastServerStartupStatus: { isReady: false }, serverStartupReady: false }), false, 'a starting server keeps its progress in the logon dialog');
+assert.strictEqual(logon({ connectionStats: { connectedAt: 1 }, isConnected: () => true }), false, 'socket up: the logon dialog takes over');
+assert.strictEqual(logon({ _logonInitStatus: { message: 'Loading Application Data...' } }), false, 'logon steps stay in the logon dialog');
+assert.strictEqual(logon({ connectionPhase: 'auth' }), false, 'the password prompt is the logon dialog');
+assert.strictEqual(logon({ connectionPhase: 'idle' }), false);
+assert.strictEqual(logon({ connectionPhase: 'failed' }), true, 'failures show Error Connecting to domain controller');
+assert.strictEqual(logon({ preStartupAuthBusy: true }), false);
 
 console.log('melaton network: ok');

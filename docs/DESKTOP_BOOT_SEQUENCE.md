@@ -129,35 +129,59 @@ reaches a page) lock the desktop like Windows XP Classic:
 - The restart lock (teal) wins while both are up; when the server is back the workstation is
   still locked.
 
-## Domain connection dialogs (Yozora #427, #428)
+## Domain connection dialogs (Yozora #427, #428, #429)
 
-The client is a PC joined to a domain; the server is its domain controller. The domain name is
-`config.json` `userGlobalSettings.desktop.domainName` (default `DREAMSCAPE`; Network and Server
-Center → Customize writes it through `persistUserGlobalSettingsPatch`). The public
-`OPTIONS /status` carries `melaton: { domain, connectionType, device }` (`modules/melatonNetwork.js`):
+The client is a PC joined to a domain; the server is its domain controller, reached through a
+VPN connection. Two names, both in `config.json` `userGlobalSettings.desktop`:
+
+- `domainName` (default `DREAMSCAPE`): the domain / network name. It only shows where Windows
+  shows the domain: the Domain field of Connect, `DOMAIN\Administrator` on the lock screen,
+  the network map and the domain network box, the tray flyout, XP's "domain … is not available".
+  Network and Server Center → Customize network name.
+- `connectionName` (default `VPN Connection`): the network interface. Dialog titles, the tray
+  tooltip and the status dialog use it. Network and Server Center → Rename this connection.
+
+Everything else says "domain controller" (e.g. **Error Connecting to domain controller**). Both
+are saved through `persistUserGlobalSettingsPatch`. The public `OPTIONS /status` carries
+`melaton: { domain, connectionName, connectionType, device }` (`modules/melatonNetwork.js`):
 `Ethernet` when the trusted client IP is private (the LAN through the local nginx), `WAN` over
-the Internet; `L-PPoP` is the LANTIS Public Point of Presence (FireStorm load balancer).
+the Internet; `L-PPoP` is the LANTIS Public Point of Presence (FireStorm load balancer). The
+wording is VPN, not modem: Connecting / Reconnecting, "Reconnect attempt n of m", Reconnect.
 
-- **Connecting to <domain>...** (`#connectionDialModal`, Vista VPN dialog) for connects and
-  redials after boot: `dialing` → "Connecting to <fqdn> using '<type> Miniport (L-PPoP)'...",
-  `negotiation` → "Verifying user name and password...", `establishing` → "Registering your
-  computer on the network...", plus "Redial attempt n of m." Cancel (or the title close / Esc)
-  calls `wsClient.cancelConnectionFromUser()`: no more redials, offline until Connect / Redial.
-- **Error Connecting to <domain>**: the same window with a RAS error for the failure message
-  (800 unreachable, 629 closed by the remote computer, 619 connection failed, 868 offline) and
-  Redial / Close / More Info (the raw message). Circuit-breaker failures still go to the
-  connectivity error page.
-- **Connect <domain>**: when the session needs the password again after boot
+- **Connecting to <connection>...** (`#connectionDialModal`, Vista VPN dialog,
+  `_renderVpnConnectionDialog`): `dialing` → "Connecting to <fqdn> using '<type> Miniport
+  (L-PPoP)'...", `negotiation` → "Verifying user name and password...", `establishing` →
+  "Registering your computer on the network...", plus "Reconnect attempt n of m." On the
+  desktop, Cancel (or the title close / Esc) calls `wsClient.cancelConnectionFromUser()`: no
+  more reconnects, offline until Connect / Reconnect.
+- **At the logon screen** (before the handoff and during the restart lock,
+  `_shouldShowLogonConnectingDialog`): the connection test (`/status`) and the WebSocket connect
+  show the same small dialog, centered on top of the logon dialog, which stays up with "Please
+  wait...". A starting server, the password prompt, the logon steps and the handoff need no
+  dialog on top; the socket coming up closes it. The logon dialog has no progress bar: a long task
+  with progress (the server's own boot, `/status` `progressPercent`) gets a small
+  `#logonTaskProgressModal` in the top-left corner (`_updatePreStartupStageProgress`). Cancel there gives XP's Logon Message "The system cannot
+  log you on now because the domain <domain> is not available." with Retry / Restart; an error
+  has no Close (nothing behind it).
+- **Error Connecting to domain controller**: the same window with a RAS error for the failure
+  message (800 unreachable, 629 closed by the remote computer, 619 connection failed, 868
+  offline) and Reconnect / Close / More Info (the raw message). Circuit-breaker failures still go
+  to the connectivity error page.
+- **Connect <connection>**: when the session needs the password again after boot
   (`handleAuthError` / `ensureSessionValid` → `showPinModal`, which routes to
   `melatonNetworkDialogs.connect.show()` on the desktop). Wrong password → Error 691 message box.
-  Cancel closes it but the prompt stays pending; Network and Server Center → "Log on to
-  <domain>..." opens it again.
-- **Control Panel** (`melatonControlPanel.js`, Classic View): Network and Server Center opens
-  from the network tray icon; Personalization, Remote Access, Runes, System and Dreamscape
-  Services open their existing windows. Settings move in with
+  Cancel closes it but the prompt stays pending; Network and Server Center → "Log on to the
+  domain..." opens it again.
+- **Network tray icon**: one click opens Vista's flyout ("Currently connected to:" the domain
+  network with its access and the VPN connection with its state; Connect or disconnect, Network
+  and Server Center); right-click has Connect / Disconnect <connection>, Network and Server
+  Center, Diagnose and repair. Tooltip: "<connection> / Access: Local and Internet",
+  "Connecting to <connection>...", "Not connected".
+- **Control Panel** (`melatonControlPanel.js`, Classic View): Network and Server Center (map,
+  domain network box with the connection and View status, server status, tasks), the
+  "<connection> Status" dialog (device, duration, latency, messages sent / received),
+  Personalization, Remote Access, Runes, System and Dreamscape Services. Settings move in with
   `melatonControlPanel.registerItem({ id, name, image | icon, description, open })`.
-- Tray tooltip: "<domain> / Access: Local and Internet", "Connecting to <domain>...",
-  "Not connected".
 
 Test: `npm run test:melaton-network`.
 
@@ -228,13 +252,13 @@ open animation's opacity keyframes cannot flash a window before its stage).
 
 ## Session lock on server restart
 
-After boot, a socket drop sends the Connecting dialog through its redial; `pingHost` then
-asks `/status`. The session locks when:
+After boot, a socket drop sends the Connecting dialog through its reconnect; `pingHost` then
+asks `/status`. A `/status` that fails, times out or is not OK does **not** lock (#429,
+Yukimi: no teal "secure desktop" before we know): `_noteServerUnreachable` only drops the old
+server's status so the poll waits like a first boot instead of failing, and the desktop keeps
+"Connecting to <connection>...". The session locks when the server answers and says it
+restarted:
 
-- `/status` fails, times out or is not OK (`_suspendIfServerUnreachable`, reason
-  `server-unreachable`): the server is down or still loading. During a real restart its
-  event loop is busy and `/status` times out for most of the boot, so this is the usual
-  trigger, about 2 s after the drop.
 - `/status` says `isReady: false` (`server-booting`), or its start time
   (`timestamp − uptime`) jumped more than `SERVER_RESTART_DRIFT_MS` (5 s) from the one
   recorded at boot (`server-restarted`), checked in `_noteServerInstance` before the new

@@ -9276,6 +9276,7 @@ function buildUserGlobalSettingsSnapshotFromClient() {
             bypassNotificationBridgeInDesktopMode: readDesktopSettingsBypassNotificationBridgeDesktopPreference(),
             startMenuButton,
             domainName: melatonDomainName(),
+            connectionName: melatonConnectionName(),
             ...(startMenuPinnedLaunchIds === null
                 ? {}
                 : { startMenuPinned: startMenuPinnedLaunchIds.slice() })
@@ -9300,6 +9301,14 @@ function melatonDomainName() {
         || 'DREAMSCAPE';
 }
 window.melatonDomainName = melatonDomainName;
+
+/** The network interface the client reaches the domain through (desktop.connectionName). */
+function melatonConnectionName() {
+    return desktopSettingsGlobalState.connectionName
+        || (window.wsClient && window.wsClient.melatonConnection && window.wsClient.melatonConnection.connectionName)
+        || 'VPN Connection';
+}
+window.melatonConnectionName = melatonConnectionName;
 
 function applyUserGlobalSettingsToClient(settings) {
     if (!settings || typeof settings !== 'object') {
@@ -9348,6 +9357,9 @@ function applyUserGlobalSettingsToClient(settings) {
         }
         if (typeof desktop.domainName === 'string' && desktop.domainName.trim()) {
             desktopSettingsGlobalState.domainName = desktop.domainName.trim().slice(0, 64);
+        }
+        if (typeof desktop.connectionName === 'string' && desktop.connectionName.trim()) {
+            desktopSettingsGlobalState.connectionName = desktop.connectionName.trim().slice(0, 64);
         }
         if (desktop.startMenuButton && typeof desktop.startMenuButton === 'object') {
             const preset = normalizeStartMenuButtonPresetClient(desktop.startMenuButton.preset);

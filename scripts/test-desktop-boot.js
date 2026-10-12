@@ -310,7 +310,7 @@ async function testLockTriggers(body) {
         TIMEOUT_VERSION_CHECK: 50
     };
     const proto = {};
-    ['pingHost', '_applyServerStartupStatus', '_noteServerInstance', '_suspendIfServerUnreachable',
+    ['pingHost', '_applyServerStartupStatus', '_noteServerInstance', '_noteServerUnreachable',
         '_suspendSession', '_shouldUsePreStartupDialog'].forEach((name) => {
         proto[name] = liftMethod(src, name)(WebSocketClient);
     });
@@ -360,11 +360,17 @@ async function testLockTriggers(body) {
     assert.strictEqual(c.sessionSuspended, false);
     assert.deepStrictEqual(c.beats, [undefined], 'plain dial beat (Dialing…) for the same server');
 
-    // Server down (refused), then booting, then ready: lock on the first failure, poll like a first boot
+    // Server down (refused), then booting, then ready (#429): no lock while it is only unreachable
+    // (the desktop keeps "Connecting to <connection>..."), poll like a first boot, lock once it
+    // answers booting
+    let unreachableLock = null;
     c = client([refused(), refused(), status(NEW, false, 'Syncing previews…', 54), status(NEW, true, 'Starting Dreamscape…', 100)]);
-    assert.strictEqual(await quiet(() => c.pingHost()), true, 'keeps polling instead of throwing to NO CARRIER');
+    const origSuspend = c._suspendSession;
+    c._suspendSession = function (reason) { unreachableLock = this.beats.length; return origSuspend.call(this, reason); };
+    assert.strictEqual(await quiet(() => c.pingHost()), true, 'keeps polling instead of throwing to "Error Connecting"');
+    assert.strictEqual(unreachableLock, 2, 'locks only after two unreachable polls, when the server says it is booting');
     assert.strictEqual(c.sessionSuspended, true);
-    assert.strictEqual(c.sessionSuspendReason, 'server-unreachable');
+    assert.strictEqual(c.sessionSuspendReason, 'server-booting');
     assert.strictEqual(c.preStartupHandoffCompleted, false, 'logon dialog owns the screen again');
     assert.strictEqual(c._trayOnlyReconnect, false, 'a tray-only reconnect still shows the lock dialog');
     assert.ok(body.classList.contains('session-suspended') && body.classList.contains('windows-classic-theme'));
@@ -373,10 +379,14 @@ async function testLockTriggers(body) {
     assert.strictEqual(c._serverStartedAt, NEW);
     window.desktopBoot.resume();
 
-    // /status timing out (server busy loading) locks too
+    // /status timing out (server busy) does not lock by itself: the same server back = no lock
+    c = client([timedOut(), timedOut(), status(OLD, true, 'Starting Dreamscape…', 100)]);
+    assert.strictEqual(await quiet(() => c.pingHost()), true);
+    assert.strictEqual(c.sessionSuspended, false, 'unreachable then the same server: plain reconnect');
+    // ... and a new start time after the timeouts locks as a restart
     c = client([timedOut(), status(NEW, true, 'Starting Dreamscape…', 100)]);
     assert.strictEqual(await quiet(() => c.pingHost()), true);
-    assert.strictEqual(c.sessionSuspendReason, 'server-unreachable');
+    assert.strictEqual(c.sessionSuspendReason, 'server-restarted');
     window.desktopBoot.resume();
 
     // Restart seen straight from a ready /status: lock, and that fresh status is kept
@@ -395,6 +405,7 @@ async function testLockTriggers(body) {
         sessionSuspended: true, preStartupHandoffCompleted: false,
         connectionPhase: 'dialing', socketAuthenticated: true, connectionUi: {},
         _setConnectionPhase: () => {}, _sleepConnectionBeat: async (ms) => { order.push(`sleep${ms}`); },
+        _updatePreStartupStageProgress: () => {},
         _waitForTealHold: async () => { order.push('hold'); },
         _canCompletePreStartupHandoff() { return this._shouldUsePreStartupDialog() && this.socketAuthenticated === true; },
         _resumeSuspendedSession() { order.push('resume'); this.sessionSuspended = false; },
@@ -404,11 +415,12 @@ async function testLockTriggers(body) {
     assert.deepStrictEqual(order, ['hold', 'sleep1000', 'resume', 'hide'], 'unlock: Preparing… then black, dialog closes under it');
     assert.strictEqual(h.preStartupHandoffCompleted, true);
 
-    // Melaton boot teal hold (#416): the logon dialog stays away until dreamscapeTealHoldUntil
+    // Melaton boot teal hold (#416): the logon dialog (or the Connecting dialog, #429) stays away
+    // until dreamscapeTealHoldUntil, then the connection renderer picks the right one
     const defer = liftMethod(src, '_deferPreStartupForTealHold')(WebSocketClient);
     const waitHold = liftMethod(src, '_waitForTealHold')(WebSocketClient);
     const renders = [];
-    const d = { _shouldUsePreStartupDialog: () => true, _renderPreStartupDialog() { renders.push(Date.now()); } };
+    const d = { _shouldUsePreStartupDialog: () => true, _renderConnectionDial() { renders.push(Date.now()); } };
     window.dreamscapeTealHoldUntil = Date.now() + 40;
     assert.strictEqual(defer.call(d), true, 'held while the teal hold runs');
     assert.strictEqual(defer.call(d), true, 'a second render during the hold just waits');
