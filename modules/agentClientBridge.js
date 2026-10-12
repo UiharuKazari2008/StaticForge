@@ -1183,10 +1183,15 @@ function handleAgentPriorityClient(handlersCtx, ws, message, clientInfo) {
     }
     const data = (message && message.data) || message || {};
     const state = setPriorityClient(gr, ensureClientId(info), data.enabled !== false);
-    notifyClient(wsServer, ws, 'agent_priority_client_state', {
-        ...state,
-        thisClient: state.clientId === ensureClientId(info)
+    const payload = { success: true, ...state, thisClient: state.clientId === ensureClientId(info) };
+    // the request resolves on <type>_response with its requestId (wsClient.sendMessage)
+    handlersCtx.sendToClient(ws, {
+        type: 'agent_priority_client_response',
+        requestId: message.requestId,
+        data: payload,
+        timestamp: new Date().toISOString()
     });
+    notifyClient(wsServer, ws, 'agent_priority_client_state', payload);
 }
 
 function sendClientCommand(globalResources, clientId, command, payload, timeoutMs) {

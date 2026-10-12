@@ -342,6 +342,7 @@ class BannerManager {
             'recompile_runtime_assets': 'Compile Application',
             'set_runtime_assets_auto_recompile': 'Set Auto-Recompile',
             'rebuild_metadata_cache': 'Rebuild Metadata Cache',
+            'agent_priority_client': 'Register Development Client',
             'clear_search_cache': 'Clear Search Cache',
             'broadcast_resource_update': 'Update Resources',
             'ping': 'Ping Server',
