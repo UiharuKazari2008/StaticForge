@@ -81,7 +81,7 @@ assert.ok(!/filter:\s*drop-shadow/.test(shared.replace(/\/\*[\s\S]*?\*\//g, ''))
         .forEach((anchor) => assert.ok(glass.includes(anchor), `aero-glass.css has: ${anchor}`));
     assert.ok(/var\(--aero-streaks\)[\s\S]*var\(--aero-wallpaper, none\)/.test(glass), 'frosted keeps the wallpaper copy under the texture');
     ['--window-frame-inset: 7px;', '--window-frame-inset: 0px;', ':not(.modal-maximized)::after',
-        'radial-gradient(circle at 50% 100%, #2aceda, transparent 65%)', 'radial-gradient(circle at 50% 100%, #f4e676, transparent 55%)',
+        'radial-gradient(circle at bottom, #2aceda, transparent 65%)', 'radial-gradient(circle at 50% 170%, #f4e676 10% 20%, #0000 60%)', '--window-caption-edge: 14px;', '--window-caption-edge: 13px;',
         ':hover:not(:disabled)::before', ':active:not(:disabled)::before']
         .forEach((anchor) => assert.ok(shared.includes(anchor), `shared chrome has: ${anchor}`));
     assert.ok(read('public/scripts/comp/aeroGlass.js').includes('function syncModal(modal) {\n        if (!modal) return false;'),

@@ -132,8 +132,8 @@ div#manualModal:not(.windowed) {
 }
 
 /* The preview background reads as a pane of Aero glass (Yukimi, #407): the frame's 54deg
-   streaks (--aero-streaks, aero-glass.css) laid twice for about double the strength, since
-   this is a backdrop and not a frame, brighter corner wedges and a soft top-left gloss.
+   streaks (--aero-streaks, aero-glass.css) at the frame's strength (doubled was too strong,
+   Yukimi), faint corner wedges and a soft top-left gloss.
    Sized to the pane, so the reflection stays put while images change. */
 body:not(.windows-classic-theme) .manual-preview-container::before {
     content: '';
@@ -143,10 +143,9 @@ body:not(.windows-classic-theme) .manual-preview-container::before {
     border-radius: inherit;
     pointer-events: none;
     background:
-        linear-gradient(135deg, hsl(0 0% 100% / 20%) 70px, transparent 110px),
-        linear-gradient(225deg, hsl(0 0% 100% / 20%) 70px, transparent 110px),
-        linear-gradient(135deg, hsl(0 0% 100% / 10%) 0, transparent 38%),
-        var(--aero-streaks, none),
+        linear-gradient(135deg, hsl(0 0% 100% / 10%) 70px, transparent 110px),
+        linear-gradient(225deg, hsl(0 0% 100% / 10%) 70px, transparent 110px),
+        linear-gradient(135deg, hsl(0 0% 100% / 5%) 0, transparent 38%),
         var(--aero-streaks, none);
     background-size: 100% 100%;
     background-repeat: no-repeat;

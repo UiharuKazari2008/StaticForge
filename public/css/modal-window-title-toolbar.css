@@ -355,7 +355,7 @@ body:not(.windows-classic-theme) #directorWindow {
     justify-content: center;
     border-bottom: 1px solid var(--glass-border-5);
     border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
-    background: linear-gradient(180deg, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 28%) 50%, hsl(0deg 0% 75% / 25%) 50.5%, hsl(0deg 0% 100% / 25%));
+    background: linear-gradient(180deg, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 28%) var(--window-caption-edge), hsl(0deg 0% 75% / 25%) calc(var(--window-caption-edge) + 0.15px), hsl(0deg 0% 100% / 25%));
     z-index: var(--z-layer-9);
     cursor: grab;
     user-select: none;
@@ -363,7 +363,7 @@ body:not(.windows-classic-theme) #directorWindow {
 }
 
 .modal.toolbar-visible .modal-window-title {
-    background: linear-gradient(180deg, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 28%) 16.9%, hsl(0deg 0% 75% / 25%) 17%, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 30%));
+    background: linear-gradient(180deg, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 28%) calc(var(--window-caption-edge) - 0.1px), hsl(0deg 0% 75% / 25%) var(--window-caption-edge), hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 30%));
     overflow: visible;
 }
 
@@ -1410,10 +1410,14 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-
    band's end colour (--window-frame-wash, aero-glass.css --aero-frame-wash). */
 .modal {
     --window-frame-wash: hsl(0 0% 100% / 25%);
+    /* The caption band's sharp line, from the window's top edge: 50 % of the 28 px caption,
+       17 % of the 76 px caption + toolbar. The caption buttons fold on the same pixel. */
+    --window-caption-edge: 14px;
 }
 
 .modal.toolbar-visible {
     --window-frame-wash: hsl(0 0% 100% / 30%);
+    --window-caption-edge: 13px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title {
@@ -1475,34 +1479,74 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-
     border-radius: 0;
 }
 
-/* Vista caption buttons (#407 step 2). Measured on Vista Aero (VM, 2026-10-12) and matching
-   7.css (khang-nd/7.css, MIT): the cluster has a dark edge with a white hairline outside it;
-   each button carries a 1 px inner highlight and the glass fold (light top half, darker band
-   below the middle, brighter at the bottom). Hover fades a bloom in (0.1 s) and out (0.3 s):
-   blue with a cyan bloom from below on minimize / maximize, red with a yellow bloom on Close;
-   pressed darkens. App buttons still parked in a cluster (#405) keep the plain look.
-   Sizes stay ours (38 x 24, Close 58). Inactive windows keep the flat look from #404. */
+/* Vista caption buttons, ported from 7.css (khang-nd/7.css, MIT: .title-bar-controls,
+   --w7-wct-*) and checked against a Vista Aero VM (#407). Every button in the cluster gets the
+   same treatment (Yukimi: standardise the controls), app buttons, dropdown triggers and
+   Studio's indicators included; only Close is red. The cluster is a #fff3 wash with a dark
+   edge (#000000b3 active, #0000004d inactive), 5 px bottom corners and a #fffa hairline
+   outside; active buttons carry the glass fold and a #fffa inner line; inactive ones are bare
+   on the wash with a #fff5 line. The fold sits on the caption's sharp line
+   (--window-caption-edge), so buttons and frame break at the same pixel. Hover fades a bloom
+   in (0.1 s) and out (0.3 s); pressed darkens. Indicator dots stay in ::after. */
 body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) {
-    border-color: hsl(0 0% 0% / 62%);
-    box-shadow: 0 1px 0 hsl(0 0% 100% / 50%), 1px 0 0 hsl(0 0% 100% / 50%), -1px 0 0 hsl(0 0% 100% / 50%);
+    background: #fff3;
+    border: 1px solid #0000004d;
+    border-top: 0;
+    border-radius: 0 0 5px 5px;
+    box-shadow: 0 1px 0 #fffa, 1px 0 0 #fffa, -1px 0 0 #fffa;
 }
 
-body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]) {
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) {
+    border-color: #000000b3;
+}
+
+body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > button,
+body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
     position: relative;
     isolation: isolate;
-    border-right-color: hsl(0 0% 0% / 55%);
+    border: 0;
+    border-right: 1px solid #0000004d;
+    border-radius: 0;
+    background: none;
+    box-shadow: inset 0 0 0 1px #fff5;
+    color: #f4f4f4;
 }
 
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]) {
-    background: linear-gradient(hsl(0 0% 100% / 40%), hsl(0 0% 100% / 24%) 45%, hsl(0 0% 0% / 14%) 50%, hsl(0 0% 0% / 14%) 75%, hsl(0 0% 100% / 36%));
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 30%);
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button,
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
+    border-right-color: #000000b3;
+    box-shadow: inset 0 0 0 1px #fffa;
 }
 
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls > button:is(.close-btn, .modal-close) {
+body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > button:first-child,
+body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown:first-child > button {
+    border-bottom-left-radius: 5px;
+}
+
+body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > button:last-child,
+body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown:last-child > button {
+    border-right: 0;
+    border-bottom-right-radius: 5px;
+}
+
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:not(:is(.close-btn, .modal-close)),
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
+    background: linear-gradient(#ffffff80, #ffffff4d calc(var(--window-caption-edge) - 1px), #0000001a var(--window-caption-edge), #0000001a 75%, #ffffff80);
+}
+
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close) {
     background:
-        radial-gradient(ellipse 60% 70% at 50% 100%, hsl(12 85% 78% / 55%), transparent 70%),
-        linear-gradient(#e0a197e5, #cf796a 25% 50%, #c4452f 50%);
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 30%);
+        linear-gradient(#ffffff80, #ffffff4d calc(var(--window-caption-edge) - 1px), #0000001a var(--window-caption-edge), #0000001a 75%, #ffffff80),
+        radial-gradient(circle at -60% 50%, #0007 5% 10%, #0000 50%),
+        radial-gradient(circle at 160% 50%, #0007 5% 10%, #0000 50%),
+        linear-gradient(#e0a197e5, #cf796a 25% var(--window-caption-edge), #d54f36 var(--window-caption-edge));
+}
+
+/* App icons and labels in the cluster: white with the Vista glyph outline */
+body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > button > :is(i, span):not(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large),
+body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button > :is(i, span) {
+    color: #f4f4f4;
+    text-shadow: -1px 0 0 #535666b3, 1px 0 0 #535666b3, 0 -1px 0 #535666b3, 0 1px 0 #535666b3;
 }
 
 /* Glyphs: Vista's own (traced from the bitmaps of a Vista Aero VM into vector SVGs in
@@ -1545,8 +1589,9 @@ body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed)))
     background-image: url("/static_images/window-controls/vista-close.svg");
 }
 
-/* The bloom layer: under the glyph, faded in on hover */
-body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"])::before {
+/* The bloom layer (7.css button:before): under the glyph, active windows only */
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button::before,
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -1554,41 +1599,49 @@ body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.mini
     border-radius: inherit;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.3s;
+    transition: opacity 0.3s linear;
     background:
-        radial-gradient(circle at 50% 100%, #2aceda, transparent 65%),
-        linear-gradient(#b6d9ee 50%, #1a6ca1 50%);
-    box-shadow: 0 0 7px 3px #5dc4f0, inset 0 0 0 1px hsl(0 0% 100% / 40%);
+        radial-gradient(circle at bottom, #2aceda, transparent 65%),
+        linear-gradient(#b6d9ee var(--window-caption-edge), #1a6ca1 var(--window-caption-edge));
+    box-shadow: 0 0 7px 3px #5dc4f0, inset 0 0 0 1px #fffa;
 }
 
-body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.close-btn, .modal-close)::before {
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close)::before {
     background:
-        radial-gradient(circle at 50% 100%, #f4e676, transparent 55%),
-        linear-gradient(#fb9d8b, #ee6d56 25% 50%, #d42809 50%);
-    box-shadow: 0 0 7px 3px #e68e75, inset 0 0 0 1px hsl(0 0% 100% / 40%);
+        linear-gradient(#ffffff80, #ffffff4d calc(var(--window-caption-edge) - 1px), #0000001a var(--window-caption-edge), #0000001a 75%, #ffffff80),
+        radial-gradient(circle at 50% 170%, #f4e676 10% 20%, #0000 60%),
+        radial-gradient(circle at -60% 50%, #000a 5% 10%, #0000 50%),
+        radial-gradient(circle at 160% 50%, #000a 5% 10%, #0000 50%),
+        linear-gradient(#fb9d8b, #ee6d56 25% var(--window-caption-edge), #d42809 var(--window-caption-edge));
+    box-shadow: 0 0 7px 3px #e68e75, inset 0 0 0 1px #fffa;
 }
 
 @media (hover: hover) {
-    body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):hover:not(:disabled)::before {
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:hover:not(:disabled)::before,
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:hover:not(:disabled)::before {
         opacity: 1;
-        transition-duration: 0.1s;
+        transition: opacity 0.1s linear;
     }
 }
 
-body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):active:not(:disabled)::before {
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:not(:is(.close-btn, .modal-close)):active:not(:disabled)::before,
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:active:not(:disabled)::before {
     opacity: 1;
-    transition-duration: 0s;
+    transition: none;
     background:
-        radial-gradient(circle at 50% 100%, #0bfdfa, transparent 65%),
-        linear-gradient(#86a7bc 50%, #092747 50%);
+        radial-gradient(circle at bottom, #0bfdfa, transparent 65%),
+        linear-gradient(#86a7bc var(--window-caption-edge), #092747 var(--window-caption-edge));
 }
 
-body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.close-btn, .modal-close):active:not(:disabled)::before {
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):active:not(:disabled)::before {
     opacity: 1;
-    transition-duration: 0s;
+    transition: none;
     background:
-        radial-gradient(circle at 50% 100%, #efc827, transparent 55%),
-        linear-gradient(#d3ab95, #a0503a 25% 50%, #7d0d01 50%);
+        linear-gradient(#ffffff80, #ffffff4d calc(var(--window-caption-edge) - 1px), #0000001a var(--window-caption-edge), #0000001a 75%, #ffffff80),
+        radial-gradient(circle at 50% 170%, #dcc03f 10% 20%, #0000 60%),
+        radial-gradient(circle at -60% 50%, #000 5% 10%, #0000 50%),
+        radial-gradient(circle at 160% 50%, #000 5% 10%, #0000 50%),
+        linear-gradient(#d1a894, #b67562 25% var(--window-caption-edge), #7d0d01 var(--window-caption-edge));
 }
 
 /* Caption button size. Vista Aero at 96 DPI is an 18 px row, 26 / 26 / 43 wide (measured);
@@ -1601,6 +1654,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not
 body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > .custom-dropdown > button {
     min-height: 22px;
     height: 22px;
+    min-width: 32px;
     padding-top: 0;
     padding-bottom: 0;
     line-height: 1;
