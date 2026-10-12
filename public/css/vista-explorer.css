@@ -289,3 +289,114 @@ body:not(.windows-classic-theme) #explorerModal .explorer-statusbar .explorer-vi
     background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
     border-color: #6d91ab;
 }
+
+/* ---------- Grimoire / Alchemy as Internet Explorer ----------
+   IE7's chrome is Explorer's sibling: the same blue glass back / forward orbs, Home as a bare
+   glyph, the light address box with the page icon, the path and the refresh arrows, the
+   Alchemy site menu a bare glyph. The pages keep their own look, as in a browser. The Alchemy
+   load fill (grimoireRemoteBrowser.js grimoireShowLoadProgress) runs pale blue in the box. */
+
+body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar > .button-group:has(> #tagWikiSearchBackBtn) {
+    gap: 2px;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn) {
+    width: 27px;
+    min-width: 27px;
+    height: 27px;
+    min-height: 27px;
+    padding: 0;
+    border: 1px solid hsl(216 80% 18%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 26%, hsl(205 100% 93%) 0, hsl(205 95% 80%) 18%, hsl(208 78% 58%) 48%, hsl(214 78% 38%) 78%, hsl(216 82% 27%) 100%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 55%), 0 1px 2px hsl(0 0% 0% / 45%);
+    color: #fff;
+    text-shadow: 0 1px 1px hsl(216 80% 15% / 80%);
+    transition: filter 0.2s, box-shadow 0.2s;
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn) i {
+    color: #fff;
+    font-size: 12px;
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn):hover:not(:disabled) {
+        filter: brightness(1.15);
+        box-shadow: inset 0 1px 0 hsl(0 0% 100% / 60%), 0 0 6px 1px hsl(200 100% 70% / 60%), 0 1px 2px hsl(0 0% 0% / 45%);
+    }
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn):is(:disabled, .disabled) {
+    filter: grayscale(1) brightness(1.15);
+    opacity: 0.75;
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchHomeBtn, #grimoireAddressSiteBtn) {
+    min-width: 26px;
+    height: 27px;
+    padding: 0 5px;
+    background: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/* the address box */
+body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar {
+    height: 25px;
+    min-height: 25px;
+    background: linear-gradient(#fff, #f4f7fb);
+    border: 1px solid hsl(210 8% 45%);
+    border-radius: 2px;
+    box-shadow: inset 0 1px 1px hsl(0 0% 0% / 8%), 0 0 0 1px hsl(0 0% 100% / 25%);
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer {
+    padding: 0 6px;
+    color: #000;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 12px;
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer .address-mode-icon {
+    color: #2b5797;
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer:hover {
+    background: none;
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer :is(.form-control, input) {
+    min-height: 23px;
+    height: 23px;
+    color: #000;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 12px;
+    text-shadow: none;
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer input::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer .btn-secondary {
+    min-height: 23px;
+    height: 23px;
+    padding: 0 6px;
+    border-left: 1px solid hsl(210 10% 82%);
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer .btn-secondary i {
+    color: #2f7d3b;
+}
+
+body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar::before {
+    background: hsl(210 90% 82% / 70%);
+    box-shadow: none;
+}
