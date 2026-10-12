@@ -1906,6 +1906,10 @@ class WebSocketClient {
             if (passwordInput) {
                 passwordInput.value = '';
             }
+            // Logged on again: a lock left from before this boot is over (workstationLock.js)
+            if (window.workstationLock) {
+                window.workstationLock.clearPending();
+            }
             this.preStartupAuthBusy = false;
             this.forceReconnect();
         } catch (error) {
@@ -1963,6 +1967,21 @@ class WebSocketClient {
             }, timeoutMs);
             this._connectionWelcomeWaiters.push(entry);
         });
+    }
+
+    /**
+     * The workstation was locked when this page went away (workstationLock.js keeps it in
+     * localStorage): like Windows after a restart, the logon dialog asks for the password
+     * before the desktop comes back. _submitPreStartupCredentials clears it.
+     */
+    _requireLogonAfterLock() {
+        if (!window.isDesktop || this.initializationCompleted || !this._shouldUsePreStartupDialog()) return false;
+        if (!window.workstationLock || !window.workstationLock.isLockPending()) return false;
+        this._setConnectionPhase('auth', {
+            beat: 'establishing',
+            message: 'This computer is locked. Type your password to log on.'
+        });
+        return true;
     }
 
     /** True while the logon-phase init steps run (appInitSteps rethrows critical errors to it). */
@@ -3942,6 +3961,10 @@ class WebSocketClient {
                     return;
                 }
 
+                // A workstation that was locked before this boot logs on again first
+                if (this._requireLogonAfterLock()) {
+                    return;
+                }
                 // Desktop first boot: the mission-critical steps run in the logon dialog; a
                 // failure stays there (Retry / Restart) and the desktop never starts
                 if (!(await this._runLogonInitSteps())) {

@@ -195,6 +195,30 @@ boot.config.stepWatchdogMs = 30;
     assert.ok(!overlay.classList.contains('active'), 'desktop cuts in after unlockSwitchMs');
     assert.ok(events.includes('desktopSessionSwitchDone'));
 
+    // ---- workstation lock (#423): wallpaper lock, shares the cut, Classic and the pause ----
+    const wsLog = [];
+    boot.registerPauseHook({ pause: () => wsLog.push('pause'), resume: () => wsLog.push('resume') });
+    assert.strictEqual(boot.lockWorkstation(), true);
+    assert.ok(body.classList.contains('workstation-locked') && body.classList.contains('windows-classic-theme'));
+    assert.ok(overlay.classList.contains('active'), 'manual lock cuts to black first');
+    assert.strictEqual(boot.lockWorkstation(), false, 'already locked');
+    assert.ok(boot.isWorkstationLocked());
+    // the server restarts while locked: both locks up, one pause, Classic stays until both are gone
+    boot.suspend('server-restarted');
+    assert.deepStrictEqual(wsLog, ['pause'], 'pauses nest: the second lock does not pause twice');
+    boot.resume();
+    assert.ok(body.classList.contains('workstation-locked') && body.classList.contains('windows-classic-theme'),
+        'after the server is back the workstation is still locked, still Classic');
+    assert.deepStrictEqual(wsLog, ['pause'], 'still paused while the workstation lock is up');
+    assert.strictEqual(boot.unlockWorkstation(), true);
+    assert.ok(!body.classList.contains('workstation-locked') && !body.classList.contains('windows-classic-theme'));
+    assert.deepStrictEqual(wsLog, ['pause', 'resume']);
+    assert.strictEqual(boot.unlockWorkstation(), false);
+    boot.begin();
+    assert.strictEqual(boot.lockWorkstation(), false, 'no manual lock while the staged boot runs');
+    boot.reset();
+    await sleep(50);
+
     // ---- paused while locked: videos, planet switcher loop, registered hooks; work untouched ----
     const playing = new FakeVideo(false, false);
     const idle = new FakeVideo(true, false);

@@ -6708,6 +6708,14 @@ async function runClientShutdownDirect() {
     await runClientShutdownSequence(() => window.close());
 }
 
+/** Lock the workstation (workstationLock.js: Computer Locked over the wallpaper, Ctrl+Alt+L too). */
+function runClientLockDirect() {
+    closeStartMenuAfterPowerAction();
+    if (window.workstationLock) {
+        window.workstationLock.lock();
+    }
+}
+
 function runLeaveDesktopModeDirect() {
     closeStartMenuAfterPowerAction();
     maximizeGalleryWindow();
@@ -6732,6 +6740,7 @@ function getStartMenuPowerMenuItems() {
         { id: 'restart', icon: 'fas fa-rotate-right', text: 'Restart', action: () => runClientRestartDirect() },
         { id: 'leave-desktop', icon: 'fas fa-window-maximize', text: 'Leave Desktop Mode', desktopOnly: true, action: () => runLeaveDesktopModeDirect() },
         { id: 'logout', icon: 'fas fa-right-from-bracket', text: 'Sign Out', action: () => runLogoutDirect() },
+        { id: 'lock', icon: 'fas fa-lock', text: 'Lock', desktopOnly: true, action: () => runClientLockDirect() },
         { id: 'restart-dss', icon: 'fas fa-rotate-right', text: 'Restart (Remote)', danger: true, adminOnly: true, action: () => runRestartDssDirect() },
     ];
     return items.filter((item) => {

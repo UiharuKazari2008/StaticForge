@@ -451,6 +451,22 @@ body.desktop-mode.session-suspended {
     background-image: none;
 }
 
+/* Workstation lock (workstationLock.js, Yozora #423): the wallpaper stays, like Windows; a cover
+   that repeats it sits over every other layer so nothing shows through (gallery grids force
+   visibility). Declared before the restart cover, so teal wins while both locks are up. */
+body.desktop-mode.workstation-locked::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 2147482000;
+    pointer-events: auto;
+    background-color: #000;
+    background-image: var(--desktop-wallpaper, none);
+    background-position: var(--desktop-wallpaper-position, center);
+    background-size: cover;
+    background-repeat: no-repeat;
+}
+
 body.desktop-mode.session-suspended::before {
     content: '';
     position: fixed;
@@ -461,8 +477,34 @@ body.desktop-mode.session-suspended::before {
 }
 
 /* :is() carries the id specificity, so this beats the dialogs' own `#id { z-index: … !important }` */
-body.desktop-mode.session-suspended :is(.modal.boot-dialog, #windowsStartupModal, #dreamscapeOsInstallWizardModal, #bootUiDebugWindow) {
+body.desktop-mode.session-suspended :is(.modal.boot-dialog, #windowsStartupModal, #dreamscapeOsInstallWizardModal, #bootUiDebugWindow),
+body.desktop-mode.workstation-locked :is(.modal.boot-dialog, #windowsStartupModal, #dreamscapeOsInstallWizardModal, #bootUiDebugWindow) {
     z-index: 2147482001 !important;
+}
+
+/* The restart lock's logon dialog owns the screen while it is up */
+body.desktop-mode.session-suspended #workstationLockModal {
+    visibility: hidden !important;
+}
+
+body.desktop-mode.workstation-locked .desktop-icons,
+body.desktop-mode.workstation-locked .desktop-taskbar,
+body.desktop-mode.workstation-locked .modal:not(.boot-dialog),
+body.desktop-mode.workstation-locked .gallery-window,
+body.desktop-mode.workstation-locked .gallery,
+body.desktop-mode.workstation-locked #title-bar,
+body.desktop-mode.workstation-locked #main-controls-bar,
+body.desktop-mode.workstation-locked #startMenu,
+body.desktop-mode.workstation-locked .taskbar-group-menu,
+body.desktop-mode.workstation-locked [class*="tray-popup"],
+body.desktop-mode.workstation-locked .context-menu,
+body.desktop-mode.workstation-locked .context-menu-overlay,
+body.desktop-mode.workstation-locked #toastContainer,
+body.desktop-mode.workstation-locked .websocket-ticker,
+body.desktop-mode.workstation-locked .websocket-banner {
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: none !important;
 }
 
 body.desktop-mode.session-suspended .desktop-wallpaper,
@@ -491,7 +533,10 @@ body.desktop-mode.session-suspended .websocket-banner {
    progress is not touched; a paused open/close animation just finishes after unlock. */
 body.desktop-mode.session-suspended *:not(.boot-dialog, .boot-dialog *),
 body.desktop-mode.session-suspended *:not(.boot-dialog, .boot-dialog *)::before,
-body.desktop-mode.session-suspended *:not(.boot-dialog, .boot-dialog *)::after {
+body.desktop-mode.session-suspended *:not(.boot-dialog, .boot-dialog *)::after,
+body.desktop-mode.workstation-locked *:not(.boot-dialog, .boot-dialog *),
+body.desktop-mode.workstation-locked *:not(.boot-dialog, .boot-dialog *)::before,
+body.desktop-mode.workstation-locked *:not(.boot-dialog, .boot-dialog *)::after {
     animation-play-state: paused !important;
 }
 
@@ -568,6 +613,121 @@ body.desktop-mode.session-suspended *:not(.boot-dialog, .boot-dialog *)::after {
 }
 
 #bootMessageBox .boot-message-box-buttons button {
+    min-width: 75px;
+    height: 23px;
+    padding: 0 10px;
+}
+
+/* Computer Locked / Unlock Computer (workstationLock.js): XP Classic logon-family dialog with
+   the logon dialog's banner, a static strip, padlock icon, text, and the unlock form */
+#workstationLockModal {
+    width: 530px;
+    max-width: calc(100vw - 48px);
+}
+
+#workstationLockModal .workstation-lock-content {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#workstationLockModal .workstation-lock-hero {
+    min-height: 102px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 11px;
+    padding: 10px 14px;
+    box-sizing: border-box;
+    background: #084f8d url('/static_images/header.png') center/cover no-repeat;
+}
+
+#workstationLockModal .workstation-lock-hero img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+}
+
+#workstationLockModal .workstation-lock-brand {
+    font-size: 1.8rem;
+    line-height: 1;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.01em;
+}
+
+#workstationLockModal .workstation-lock-strip {
+    height: 10px;
+    background: linear-gradient(90deg, #054793 0%, #8ec4ef 50%, #0a4f9e 100%);
+}
+
+#workstationLockModal .workstation-lock-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px;
+    background: var(--ButtonFace, #d4d0c8);
+    color: var(--WindowText, #000);
+    font-family: Tahoma, 'MS Sans Serif', 'Segoe UI', sans-serif;
+    font-size: 11px;
+}
+
+#workstationLockModal[data-view="locked"] .workstation-lock-main {
+    cursor: pointer;
+}
+
+#workstationLockModal .workstation-lock-icon svg {
+    display: block;
+    width: 32px;
+    height: 32px;
+}
+
+#workstationLockModal .workstation-lock-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#workstationLockModal .workstation-lock-text p {
+    margin: 0 0 8px;
+    line-height: 1.35;
+}
+
+#workstationLockModal[data-view="locked"] .workstation-lock-form,
+#workstationLockModal[data-view="unlock"] .workstation-lock-hint {
+    display: none;
+}
+
+#workstationLockModal .workstation-lock-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+}
+
+#workstationLockModal .workstation-lock-row > span {
+    width: 68px;
+    flex-shrink: 0;
+}
+
+#workstationLockModal .workstation-lock-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 3px 5px;
+    font: inherit;
+    border: 1px solid var(--ButtonShadow, #808080);
+    background: var(--Window, #fff);
+    color: var(--WindowText, #000);
+}
+
+#workstationLockModal .workstation-lock-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+#workstationLockModal .workstation-lock-actions button {
     min-width: 75px;
     height: 23px;
     padding: 0 10px;

@@ -92,6 +92,31 @@ windows close one by one, then a fade to black), then the full Melaton boot on `
 Browser refresh (F5 confirm) and the Connection Manager's Reload button stay plain reloads.
 Test: `npm run test:melaton-restart`.
 
+## Workstation lock (Yozora #423)
+
+The start menu's **Lock** (power options, desktop only) and **Ctrl+Alt+L** (Win+L never
+reaches a page) lock the desktop like Windows XP Classic:
+
+- `desktopBoot.lockWorkstation()`: black session-switch cut, `body.workstation-locked`
+  hides every window, icon, the taskbar, menus and toasts under a cover that repeats the
+  wallpaper (the wallpaper stays, like Windows), Classic theme, animations and render loops
+  paused (the same pause hooks as the restart lock; pauses nest when both locks are up).
+- `public/scripts/comp/workstationLock.js` shows **Computer Locked** (banner, padlock, "This
+  computer is in use and has been locked.", `DREAMSCAPE\Administrator`, "Press
+  Ctrl+Alt+Delete to unlock this computer."). Ctrl+Alt+Delete where the browser passes it,
+  Ctrl+Alt+End (the Remote Desktop stand-in), Enter or a click / tap opens **Unlock
+  Computer** (user name, password, OK / Cancel; Escape goes back). The password is checked
+  with the server's login (same call as the logon dialog); a wrong one gets XP's "The system
+  could not log you on…" Logon Message box. Success: `unlockWorkstation()` (black cut, the
+  desktop back).
+- While locked a critical priority-100 keyboard listener swallows every app shortcut
+  (typing in the form still works).
+- The lock survives reloads (`localStorage.melatonWorkstationLocked`): the next boot sets
+  the logon dialog to its password form before the logon steps (`_requireLogonAfterLock`),
+  and a successful logon clears it.
+- The restart lock (teal) wins while both are up; when the server is back the workstation is
+  still locked.
+
 ## Logon-phase init steps (Yozora #421)
 
 Application data is mission-critical for the desktop, so on a desktop first boot the init

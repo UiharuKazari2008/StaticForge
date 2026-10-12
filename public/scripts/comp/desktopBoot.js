@@ -87,7 +87,9 @@
         skipWired: false,
         suspended: false,
         suspendReason: null,
-        suspendAddedClassic: false,
+        lockAddedClassic: false,     // Classic added by a lock (server restart or workstation)
+        workstationLocked: false,   // manual lock (start menu Lock / Ctrl+Alt+L, workstationLock.js)
+        pauseDepth: 0,              // both locks can be up; the pauses nest
         switchTimer: null,
         pausedBy: [],         // resume functions from the pause hooks, run on unlock
         lastStepMessage: '',
@@ -475,6 +477,8 @@
     }
 
     function pauseSession() {
+        state.pauseDepth += 1;
+        if (state.pauseDepth > 1) return; // already paused by the other lock
         state.pausedBy = [];
         pauseHooks.forEach((hook) => {
             try {
@@ -487,11 +491,43 @@
     }
 
     function resumeSession() {
+        if (state.pauseDepth === 0) return;
+        state.pauseDepth -= 1;
+        if (state.pauseDepth > 0) return; // the other lock is still up
         state.pausedBy.splice(0).forEach((undo) => {
             try { undo(); } catch (err) {
                 if (typeof console !== 'undefined' && console.warn) console.warn('Session resume hook failed:', err);
             }
         });
+    }
+
+    // ---------- shared lock plumbing ----------
+
+    /**
+     * A lock layer is Windows Classic (like the first logon) while either lock is up. Every
+     * other layer sits hidden, so the theme only shows on the lock dialogs; it comes off with
+     * the last lock unless it was already on before.
+     */
+    function applyLockTheme() {
+        const b = body();
+        if (!b) return;
+        const locked = state.suspended || state.workstationLocked;
+        if (locked && !b.classList.contains(CLASSIC_THEME_CLASS)) {
+            b.classList.add(CLASSIC_THEME_CLASS);
+            state.lockAddedClassic = true;
+        } else if (!locked && state.lockAddedClassic) {
+            b.classList.remove(CLASSIC_THEME_CLASS);
+            state.lockAddedClassic = false;
+        }
+    }
+
+    function closeTransientSurfaces() {
+        try {
+            const startMenu = byId('startMenu');
+            if (startMenu && !startMenu.classList.contains('hidden') && typeof win.closeStartMenu === 'function') {
+                win.closeStartMenu();
+            }
+        } catch (_) { /* best effort */ }
     }
 
     // ---------- session lock (server restart after boot) ----------
@@ -504,21 +540,10 @@
         // Session switch: black first, the lock screen is built under it
         cutToBlack(config.lockSwitchMs);
         const b = body();
-        if (b) {
-            // The lock layer is the first logon again: Windows Classic. Everything else sits
-            // under the cover, so the theme only shows on that layer; resume() takes it off
-            // unless it was already on.
-            state.suspendAddedClassic = !b.classList.contains(CLASSIC_THEME_CLASS);
-            if (state.suspendAddedClassic) b.classList.add(CLASSIC_THEME_CLASS);
-            b.classList.add('session-suspended');
-        }
+        if (b) b.classList.add('session-suspended');
+        applyLockTheme();
         // Close transient surfaces so nothing pops back over the lock screen
-        try {
-            const startMenu = byId('startMenu');
-            if (startMenu && !startMenu.classList.contains('hidden') && typeof win.closeStartMenu === 'function') {
-                win.closeStartMenu();
-            }
-        } catch (_) { /* best effort */ }
+        closeTransientSurfaces();
         pauseSession();
         dispatch('desktopSessionSuspended', { reason: state.suspendReason });
         return true;
@@ -533,11 +558,8 @@
         // resumed loops all settle under it, then the desktop cuts in
         cutToBlack(config.unlockSwitchMs);
         const b = body();
-        if (b) {
-            b.classList.remove('session-suspended');
-            if (state.suspendAddedClassic) b.classList.remove(CLASSIC_THEME_CLASS);
-        }
-        state.suspendAddedClassic = false;
+        if (b) b.classList.remove('session-suspended');
+        applyLockTheme();
         resumeSession();
         dispatch('desktopSessionResumed', { reason });
         return true;
@@ -545,6 +567,40 @@
 
     function isSuspended() {
         return state.suspended;
+    }
+
+    // ---------- workstation lock (start menu Lock / Ctrl+Alt+L, Yozora #423) ----------
+    // body.workstation-locked: the wallpaper stays, everything else hides and pauses under a
+    // wallpaper cover; workstationLock.js shows Computer Locked / Unlock Computer on top. The
+    // server-restart lock (teal) takes precedence while both are up.
+
+    function lockWorkstation() {
+        if (!doc || !isDesktop() || state.active || state.workstationLocked) return false;
+        state.workstationLocked = true;
+        cutToBlack(config.lockSwitchMs);
+        const b = body();
+        if (b) b.classList.add('workstation-locked');
+        applyLockTheme();
+        closeTransientSurfaces();
+        pauseSession();
+        dispatch('desktopWorkstationLocked', {});
+        return true;
+    }
+
+    function unlockWorkstation() {
+        if (!state.workstationLocked) return false;
+        state.workstationLocked = false;
+        cutToBlack(config.unlockSwitchMs);
+        const b = body();
+        if (b) b.classList.remove('workstation-locked');
+        applyLockTheme();
+        resumeSession();
+        dispatch('desktopWorkstationUnlocked', {});
+        return true;
+    }
+
+    function isWorkstationLocked() {
+        return state.workstationLocked;
     }
 
     const api = {
@@ -567,6 +623,9 @@
         isSuspended,
         isSwitching,
         registerPauseHook,
+        lockWorkstation,
+        unlockWorkstation,
+        isWorkstationLocked,
         _test: { state, stageIndex, REVEAL_CLASS, BOOT_CLASSES }
     };
 
