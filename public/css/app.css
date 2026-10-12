@@ -3779,7 +3779,7 @@ body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.mi
    transform + opacity only. Reduced motion keeps the end states with a 1 ms animation,
    so the animationend handlers in modalUtils.js still run. */
 :root {
-    --window-open-duration: 0.2s;
+    --window-open-duration: 0.25s;
     --window-close-duration: 0.15s;
     --window-minimize-duration: 0.25s;
     --window-morph-duration: 180ms;
@@ -3796,51 +3796,58 @@ body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.mi
 
 /* Window keyframes (moved from emphasis-manager.css, #441) */
 /* Open/close: opacity + scale only (no filter blur — avoids paint cost on glass windows) */
+/* Vista DWM open / close (#441, Yukimi: not the Vista style yet): the window swings forward
+   into place, a quick zoom from ~86 % with a fade and a slight 3D tip around its horizontal
+   axis; closing it shrinks a little, fades and tips back. transform + opacity only. */
 @keyframes modalSlideIn {
     from {
         opacity: 0;
-        transform: translateZ(0) translate(-50%, -50%) scale(0.9);
+        transform: translateZ(0) translate(-50%, -50%) perspective(1400px) rotateX(10deg) scale(0.86);
+    }
+
+    60% {
+        opacity: 1;
     }
 
     to {
         opacity: 1;
-        transform: translateZ(0) translate(-50%, -50%) scale(1);
+        transform: translateZ(0) translate(-50%, -50%) perspective(1400px) rotateX(0deg) scale(1);
     }
 }
 
 @keyframes modalSlideInTopAnchor {
     from {
         opacity: 0;
-        transform: translateZ(0) translate(-50%, 0) scale(0.9);
+        transform: translateZ(0) translate(-50%, 0) perspective(1400px) rotateX(10deg) scale(0.86);
     }
 
     to {
         opacity: 1;
-        transform: translateZ(0) translate(-50%, 0) scale(1);
+        transform: translateZ(0) translate(-50%, 0) perspective(1400px) rotateX(0deg) scale(1);
     }
 }
 
 @keyframes modalSlideOut {
     from {
         opacity: 1;
-        transform: translateZ(0) translate(-50%, -50%) scale(1);
+        transform: translateZ(0) translate(-50%, -50%) perspective(1400px) rotateX(0deg) scale(1);
     }
 
     to {
         opacity: 0;
-        transform: translateZ(0) translate(-50%, -50%) scale(0.9);
+        transform: translateZ(0) translate(-50%, -50%) perspective(1400px) rotateX(-6deg) scale(0.92);
     }
 }
 
 @keyframes modalSlideOutTopAnchor {
     from {
         opacity: 1;
-        transform: translateZ(0) translate(-50%, 0) scale(1);
+        transform: translateZ(0) translate(-50%, 0) perspective(1400px) rotateX(0deg) scale(1);
     }
 
     to {
         opacity: 0;
-        transform: translateZ(0) translate(-50%, 0) scale(0.9);
+        transform: translateZ(0) translate(-50%, 0) perspective(1400px) rotateX(-6deg) scale(0.92);
     }
 }
 

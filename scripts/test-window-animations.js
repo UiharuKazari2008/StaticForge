@@ -38,7 +38,7 @@ fs.readdirSync(cssDir).filter((f) => f.endsWith('.css')).forEach((f) => {
 
 // 2. Vista timings from tokens; open grows from 90 %.
 const root_ = extractBlock(appCss, ':root {\n    --window-open-duration');
-assert.ok(/--window-open-duration:\s*0\.2s/.test(root_), 'open 200 ms');
+assert.ok(/--window-open-duration:\s*0\.25s/.test(root_), 'open 250 ms');
 assert.ok(/--window-close-duration:\s*0\.15s/.test(root_), 'close 150 ms');
 assert.ok(/--window-minimize-duration:\s*0\.25s/.test(root_), 'minimize 250 ms');
 assert.ok(/--window-morph-duration:\s*180ms/.test(root_), 'maximize morph 180 ms');
@@ -46,7 +46,7 @@ assert.ok(/--window-morph-duration:\s*180ms/.test(root_), 'maximize morph 180 ms
     '.modal[data-window-content-anchor="top"].opening {', '.modal[data-window-content-anchor="top"].closing {']
     .forEach((sel) => assert.ok(/var\(--window-(open|close|minimize)-duration\)/.test(extractBlock(appCss, sel)), `${sel} reads a timing token`));
 const slideIn = extractBlock(appCss, '@keyframes modalSlideIn {');
-assert.ok(slideIn.includes('scale(0.9)') && !slideIn.includes('scale(0.8)'), 'open grows from 90 %');
+assert.ok(slideIn.includes('scale(0.86)') && slideIn.includes('rotateX'), 'open swings forward from 86 % (Vista)');
 names.forEach((n) => {
     const kf = extractBlock(appCss, `@keyframes ${n} {`).replace(/\/\*[\s\S]*?\*\//g, '');
     const props = Array.from(kf.matchAll(/^\s*([a-z-]+)\s*:/gm)).map((m) => m[1]);
