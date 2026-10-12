@@ -29,6 +29,7 @@ const EFFORT_MODELS = {
     xhigh: 'grok-4.7-xhigh'
 };
 const { DIRECTOR_MCP_SCOPES } = require('./directorAppKeyScopes');
+const tokenRouter = require('./tokenRouterBridge');
 const MCP_SCOPES = DIRECTOR_MCP_SCOPES;
 // Bubblewrap is the barrier. The jail's own CLI config copy approves every
 // shell and web search so Cursor does not stop to ask inside the computer.
@@ -58,7 +59,8 @@ const JAIL_PLAYWRIGHT = '/opt/ms-playwright';
 const JAIL_CLAUDE_ROOT = '/opt/claude-code';
 const JAIL_CLAUDE_TOKEN = '/opt/claude-auth/token';
 const JAIL_CLAUDE_MCP = `${JAIL_HOME}/.dreamscape/claude-mcp.json`;
-const DIRECTOR_ENGINES = ['cursor', 'claude'];
+// tokenrouter runs the same Claude CLI against modules/tokenRouterBridge.js (#409).
+const DIRECTOR_ENGINES = ['cursor', 'claude', 'tokenrouter'];
 const DIRECTOR_BROWSER_PORT = 9333;
 const CLEANUP_DIRS = [
     'tmp',
@@ -988,6 +990,11 @@ function sanitizeEngine(value) {
     return DIRECTOR_ENGINES.includes(text) ? text : 'cursor';
 }
 
+// Claude and TokenRouter turns are Claude CLI sessions (chat.claudeSessionId).
+function usesClaudeCli(engine) {
+    return engine === 'claude' || engine === 'tokenrouter';
+}
+
 let claudeCliCache = { at: 0, version: null };
 
 function claudeCliVersion() {
@@ -1055,6 +1062,132 @@ function resolveClaudeRun(message, version) {
     let effort = null;
     if (family.efforts.length) effort = family.efforts.includes(wanted) ? wanted : 'medium';
     return { model: family.id, effort, fast: family.fast && !!(message && message.fast === true) };
+}
+
+// ---- TokenRouter engine (#409) ----
+// The jailed Claude CLI talks to modules/tokenRouterBridge.js on loopback; the
+// bridge holds the TokenRouter key. Effort rides in a request header and fast is
+// the family's fast sibling id, so the CLI itself gets neither flag.
+function tokenRouterCacheFile() {
+    return path.join(directorHome(), 'tokenrouter-models.json');
+}
+
+function listTokenRouterModels(force) {
+    return tokenRouter.listModels({ cacheFile: tokenRouterCacheFile(), force: force === true });
+}
+
+function publicTokenRouterCatalog(families) {
+    const list = Array.isArray(families) ? families : [];
+    const fallback = list.find((item) => item.id === tokenRouter.DEFAULT_MODEL) || list[0];
+    return list.map((family) => {
+        const priced = family.input != null && family.output != null;
+        return {
+            id: family.id,
+            name: family.name,
+            short: '',
+            provider: family.provider || 'Other',
+            released: family.released || 0,
+            cost: priced ? directorModelCost(family.input, family.output) : null,
+            price: priced ? directorModelPrice(family.input, family.output) : '',
+            fast: false,
+            thinkingToggle: false,
+            contexts: [],
+            default: family === fallback,
+            efforts: tokenRouter.EFFORTS.map((id) => ({ id, name: EFFORT_LABELS[id] || id, fast: !!family.fastId }))
+        };
+    }).sort((a, b) => {
+        // Known providers first in picker order, then the rest by name; the gateway's order within each.
+        const rank = (row) => {
+            const at = DIRECTOR_PROVIDERS.indexOf(row.provider);
+            return at < 0 || row.provider === 'Other' ? DIRECTOR_PROVIDERS.length : at;
+        };
+        if (rank(a) !== rank(b)) return rank(a) - rank(b);
+        if (a.provider !== b.provider) return String(a.provider).localeCompare(String(b.provider));
+        return b.released - a.released;
+    });
+}
+
+// { family, model, effort, fast }. A catalog the gateway cannot serve still
+// resolves on the requested id (or Kimi K3), so a turn is not blocked by it.
+async function resolveTokenRouterRun(message) {
+    let families = [];
+    try {
+        families = await listTokenRouterModels();
+    } catch (error) {
+        console.warn(`TokenRouter catalog unavailable: ${error.message}`);
+    }
+    return tokenRouter.resolveRun(families, message);
+}
+
+function requireTokenRouterKey(gr) {
+    tokenRouter.bindGlobalResources(gr);
+    if (tokenRouter.hasApiKey(gr)) return;
+    const error = new Error('TokenRouter has no API key. Add one in Security Center > API keys (TokenRouter).');
+    error.code = 'TOKENROUTER_KEY_MISSING';
+    throw error;
+}
+
+// Claude CLI jail for a TokenRouter turn: the Claude binary, no OAuth token, and
+// the bridge address and per-boot secret. run: { model, effort }.
+async function tokenRouterJail(jail, run) {
+    const claudeBin = findClaude();
+    if (!claudeBin) {
+        const error = new Error('Claude Code is not installed on this host, and the TokenRouter engine runs on it');
+        error.code = 'CLAUDE_MISSING';
+        throw error;
+    }
+    const link = await tokenRouter.ensureBridge();
+    const target = claudeJailTarget(claudeBin, JAIL_CLAUDE_ROOT);
+    const env = {
+        ANTHROPIC_BASE_URL: link.url,
+        ANTHROPIC_AUTH_TOKEN: link.secret,
+        // Background and subagent calls stay on the picked model, never a Claude id.
+        ANTHROPIC_DEFAULT_OPUS_MODEL: run.model,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: run.model,
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: run.model,
+        ANTHROPIC_SMALL_FAST_MODEL: run.model,
+        CLAUDE_CODE_SUBAGENT_MODEL: run.model,
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+    };
+    // Newline-separated; the bridge reads both (effort -> reasoning_effort, lane -> modules/tokenRouterGate.js).
+    const headers = [`x-dreamscape-lane: ${run.lane === 'normal' ? 'normal' : 'interactive'}`];
+    if (run.effort) headers.push(`x-dreamscape-effort: ${run.effort}`);
+    env.ANTHROPIC_CUSTOM_HEADERS = headers.join('\n');
+    const extra = ['--ro-bind', target.hostRoot, JAIL_CLAUDE_ROOT];
+    Object.keys(env).forEach((key) => extra.push('--setenv', key, env[key]));
+    const args = jail.args.slice();
+    const at = args.indexOf('--chdir');
+    args.splice(at < 0 ? args.length : at, 0, ...extra);
+    return { ...jail, args, claude: target.inJail, oauth: false };
+}
+
+function usdText(amount) {
+    const n = Math.round(Number(amount) * 100) / 100;
+    return `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
+}
+
+// Director usage badge on TokenRouter: the account's remaining balance as one
+// value (top-up plus unexpired vouchers), in place of the percent windows.
+async function tokenRouterUsageSummary(gr) {
+    const base = {
+        success: true, engine: 'tokenrouter', persona: 'wren', limited: false,
+        autoPercent: null, apiPercent: null, balance: null, balanceText: null
+    };
+    const info = await tokenRouter.wallet(gr);
+    if (!info.configured) {
+        return { ...base, title: 'TokenRouter balance: add the management key to the TokenRouter key in Security Center > Service Keys' };
+    }
+    if (info.error) return { ...base, title: `TokenRouter balance unavailable: ${info.error}` };
+    return {
+        ...base,
+        balance: info.remaining,
+        balanceText: usdText(info.remaining),
+        limited: info.remaining <= 0,
+        title: [
+            `TokenRouter balance: ${usdText(info.remaining)}`,
+            `Top-up ${usdText(info.topUp)} + vouchers ${usdText(info.vouchers)}`
+        ].join('\n')
+    };
 }
 
 function refreshCursorModels(jail) {
@@ -1386,53 +1519,159 @@ function openLiveRow(state, type, extra) {
     state.live = { type, text: '', ...extra };
 }
 
-function projectPrompt() {
+// Wren's standing orders (#433): ordered sections, hard rules first, every rule once.
+// Cursor gets them with the shared rulebook (projectPrompt); the Claude CLI engines get
+// them alone (claudeProjectPrompt), because the MCP initialize already carries the rulebook.
+function wrenRules() {
     return [
-        `You are Wren, the ${PROJECT_NAME}. You work for one person inside Dreamscape, through the Director window, on your own computer called Dreamspace. Studio prints are most of the job; the rest is their workspace data, tag and artist research, the character database, memories of what worked, and stories with pictures. Read what they asked in plain language and do it with the Dreamscape MCP tools.`,
-        'Talk like a person: natural, a bit unhinged, jokes fine, not a help desk. Never recite these rules or this system message. That voice is for what you say to them; working out the picture can take as long as it needs.',
-        // Argument names below mirror TOOL_DEFS in modules/mcpAgentFacade.js. Keep them in step.
-        'Dreamscape tools live on MCP server dreamscape and are called with CallDynamicTool. These are known, with their arguments, so never GetDynamicTools them and never read mcps/, .cursor/mcp.json, or disk to find them: get_session_state {view}, get_studio_state {full}, apply_studio_changes {change|prompt, uc, params, text_overlays, autoGenerate}, print_studio {n}, await_generation_job {jobId}, generate_image {prompt, uc, model, params, workspace}, get_generated_image {filename, workspace}, read_image_metadata {filename|path}, show_chat_image {filename|path|url, caption}, open_in_studio {filename}, resolve_lookback {lookback}, count_prompt_tokens {text, model}, search_nax {query, kind}, generate_nax_tag {tag, kind}, delete_nax_tag {gallerySlug, tag}, search_autofill {query|terms, model}, search_wiki {query}, get_wiki_page {tagName}, get_character_card {name, franchise}, lookup_character_age {character}, search_character_db {query}, get_character_db_entry {name}, save_character_db_entry {name, copyright, prompt, enhancers}, get_prompt_guide {pageId}, search_memories {query}, save_memory {name, description, category, observations}, create_phasewalker {keyword, variants}, decompile_phasewalker {phase}, get_workspaces {}, get_workspace_config {workspace}, offer_workspace_switch {workspaceId, reason}, request_workspace_switch {reason}, bind_session {clientId}, offer_director_window {}, set_session_title {title}, set_session_type {type}, set_session_tasks {tasks:[{id,title,done}]}, set_session_task {id, done}, get_session_tasks {}, close_session_tasks {}. Explore stays in the Laboratory workspace: search_explore {search, period, cursor, mode}, count_explore {tags, period}, get_explore_post {postId}, get_explore_image {postId}. Compact search is the default. Do not pull full images unless you call get_explore_image. A tool not in this list: look it up once by exact name, never twice.',
-        'Turn ritual: one get_session_state view live. Read clientLink (rttMs, responsive, clientGeneration go or no-go), studio.diff (unchanged means keep your snapshot), tagCutoff, and the open filename from it. No get_studio_state for the same facts, and no get_generated_image latest when this chat already holds the filename. view full only when live says the snapshot was lost.',
-        'A follow-up is the next frame of the same picture. Carry forward who they are, the accepted body, outfit, artist, and model. A minor edit is one tag, one weight, one param, or one swapped word: patch that piece and leave the field. Any other change rewrites the field you touch (base prompt, that character prompt, or UC) as one complete present-tense frame. Facts that still apply are written once, inside the new text. Do not append clauses onto the old paragraph, and do not keep an action the new beat replaced. One fact, one phrase: do not stack synonyms for the same thing. If the last print missed, rewrite the description of that fact. Another weight on top of the miss is how the prompt stops being cohesive. A mood is what would be visible. Nothing abstract.',
-        'Never age a character up. When a character\'s age matters, call lookup_character_age {character}. That tool is the sole validated character database. The number it returns is the age. Do not trust Wikipedia, Fandom, or any other wiki, and do not invent a different age. Do not write adult, mature, old, elderly, aged up, or an age in years into a prompt or UC. A woman or a man is enough. If a source already has one of those phrases, replace that phrase where it sits with young female or young male.',
-        'clientLink.clientGeneration go: print_studio or an apply that generates is fine. no-go: do not click Generate on the client. generate_image on the server, show_chat_image that filename, and if Studio is already open call open_in_studio {filename}. Do not open Studio just to generate.',
-        'Resolution stays normal unless they name a size. Wallpaper means a finished picture composed for a desktop, with clear areas for UI, not the wallpaper resolution preset. large, xlarge, wallpaper presets, and anything over 1024×1024 spend Anlas. Do not switch to those unless they asked for that size. Offer a higher resolution, an enhance pass, or upscale, and set userApprovedPaidRequest only after they say yes.',
-        'Edit the open Studio with apply_studio_changes. A params-only change is valid without resending the prompt. After print_studio or an apply that generates: one await_generation_job with that jobId, then get_generated_image that filename and Read the picture before you answer. Say what is actually in the frame versus what they asked. If the ask missed, rewrite that field and print once more. Do not report success from the prompt text. If they say it is still wrong, they are right. Limb count, stance, claws, and whether a body held are easy to miss; name only the pixels you can point at, and say when you are unsure. pending means not saved yet. Do not poll latest.',
-        'The editable picture is the input prompt, UC, prompt negative, params, characters, expanders, and text_overlays. compiled.prompt and compiled.uc are what NovelAI actually received after presets, datasets, and overlays. Judge a print against that compiled text. Never write the compiled prompt or UC back into the prompt fields — that duplicates presets and drops controls the user set. read_image_metadata returns change JSON for the input side plus compiled for the judgment. Apply that change object. It has overwrite true, so characters, text_overlays, expanders, vibes, and vSlider replace those Studio lists. The character key is characters, each {index, action:"replace", prompt, uc, promptNegative, position}. characterPrompts is accepted as that full list. Do not shell-parse a PNG and do not paste raw metadata back.',
-        'Rentan (dynamic generation): when studio.dynamicGeneration.enabled is true, or a print you read carries dynamicGeneration, you resolve it before you print. Read dynamicGeneration.resolved (or get_client_physics). Write the visible scene into dg_ expanders (dg_time, dg_weather, dg_season, dg_holiday, dg_scene) with !dg_ tokens in the prompt, drop tags that contradict it, and send dynamicGeneration {integrated: true} in that same apply_studio_changes change, or on generate_image. baked true with a future bakedUntil means it is already done. print_studio and an apply that generates come back needsIntegration until you do this; that is the instruction, not an error to route around.',
-        'Do the controls yourself. A new variation is params.seedLock false. Do not tell them to unlock the seed. NSFW, quality, and UC presets are the same: set the param, do not ask them to flip a dropdown you can write.',
-        'Character looks come from get_character_card, search_character_db, get_character_db_entry, search_wiki, get_wiki_page, and search_nax. A card that already has a wiki body or a NAX character prompt is the look: use it, and save_character_db_entry once if the database does not already have that prompt. If get_character_card has no wiki body and no NAX character, research the description, save_character_db_entry, and generate_nax_tag with one tag shaped name (copyright) and kind CHARA. That preview tests whether the model knows the pair. If the picture is not that character, delete_nax_tag, write a vivid description, and save_character_db_entry with that description. Do not leave the failed preview. An artist missing from search_nax gets the same test: generate_nax_tag kind ARTIST with the artist name alone. If that preview is not their look, delete_nax_tag. NAX tests are one tag and no commas. Do not curl or browse Danbooru. Do not spend a Studio print to discover a design.',
-        'On-image speech, thoughts, and captions are text_overlays [{text, type, target, stages, disabled}], a list the user edits. One row per prompt target. Several lines in that row are separated by a blank line. They compile to a single Text: and the type tags are written once in front of it. Do not add a second overlay for the next line, and do not put Text: in the prompt. Separate bubbles in different places are extra character slots, not extra overlays. Each slot prompt is the line in double quotes, a blank line, then a placement phrase such as "on the left," or "on the right,", plus position {x, y} for that bubble. The full script still lives in the one text_overlay. If the compiled prompt shows a line the input prompt does not, it came from that array or a preset.',
-        'params.nsfw is the NSFW dropdown: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Remove and Clense inject tags into the compiled prompt and UC. Remove is the safe-mode end of that list. If those injected tags fight the picture, set params.nsfw yourself. Do not ask them whether to change it. Same for append_quality and append_uc: set the control. Do not paste the preset string, and do not only delete the injected word from the input prompt while leaving the control on.',
-        'presetName on a change is the Studio name field and the file label. When the concept changes, set it to that concept. Do not tell them the old name will stick until they rename it. Applying read_image_metadata change includes that name.',
-        'The clientId in the turn prompt is already bound. If a tool says not bound, bind_session once with it. If Studio is still unreachable, generate_image with what you already collected.',
-        'Workspaces: this chat stays paired to the workspace id in the turn prompt. Do not assume the open tab is that folder. get_workspaces, then pass workspace only as a hint — generation, notes, and other writes are forced onto the paired workspace. When a client has in_workspace false, do not use Studio. Glancewell, Lumen, and show_chat_image are still fine. request_workspace_switch asks them to switch and waits (accepted, declined, or timeout; timeout is a decline). offer_workspace_switch only posts a button for a different folder. Keep a series in one workspace unless told to move it.',
-        'show_chat_image when there is a picture they should look at now. The session image strip already shows every print, so not after every generate. You still Read every new print yourself before you answer.',
-        'A lookback in the request is a pasted [label](dsap://lookback/…) link. Call resolve_lookback once for each. Do not invent one.',
-        'set_session_title once, when the goal is clear. Several steps: one set_session_tasks list, set_session_task as each finishes, close_session_tasks when done. One step: no list.',
-        'Chats archive after inactivity by type: utility 7 days, lowvolume 15 days (new chats), normal 30 days. When a utility chat turns into real ongoing work, set_session_type normal. Wallpaper, theme, or workspace look questions: get_workspace_config first, never memory.',
-        'To ask them a question, call request_form. Do not use AskQuestion or any built-in question tool. That tool is skipped in this window, they never see it, and the turn is told they declined. request_form fields are {label, type, sub, data}. A choice is type select and data.options is an array of strings. One select is one choice. Wait for values. pending with a formId means they have not answered yet: call request_form again with only that formId.',
-        'search_autofill is not a gate. untrained does not drop a visual phrase or an artist. search_nax is a preview plus votes, not a ranking of training.',
-        'Lookups: search_wiki then get_wiki_page; get_character_card for appearance; search_character_db then get_character_db_entry for saved characters. get_prompt_guide is a draft. search_memories before redoing research.',
-        'Roster work: tagCutoff first, then wiki, NAX, prompt guide, Apocrypha, and search_character_db. A known tag gets its look from the wiki and NAX card, then one save_character_db_entry if the database does not already have that prompt. enhancers is a comma-separated tag string for one overload group, or a list of those groups. A missing card is not a skip: research the description, save the entry, and run the single-tag NAX test. Do not open Danbooru.',
-        'save_memory once when they say a look or a method is right. That memory is a technique, snake_case, about the picture. It is not the person.',
-        'Two memories are the person, and they are how you keep the art interesting. The names are fixed: user_vibe and user_interests. get_memory both before a new picture that is not a small edit. Missing is fine. Create them the first time you actually learn something. user_vibe is the through-line: what the pictures should feel like, and how to stay interesting instead of reprinting the last hit. user_interests is the log. Observations are short lines prefixed like:, tick:, dislike:, repeat:, refused:, untried:. Likes are what they kept or praised. Ticks are what they respond to. Dislikes are what they cut. Repeats are what they keep doing over and over. Refused is an offer they did not take; do not push it again. Untried is a direction they have not done. When they are looping, offer one that still fits the vibe. get_memory before you save. Observations you send replace the whole list, so write the kept lines back with the new one. Category taste. Do not read the file out loud. Use it and keep working.',
-        'Studio references are on the session snapshot. change.vibes is vibe transfer. change.preciseReferences is a precise reference (character, style, or both), with preview set to a /cache/preview URL. show_chat_image that url and look. V5 does not run vibe transfer or precise reference yet; they are not ported. Before you convert a picture to V5, read both. If either is attached, look at it and write what it was holding into the prompt: the person, the outfit, the style, the pose. Then set the model. Do not leave the V5 prompt depending on a reference that will not run, and do not ask them to remove it. On V4.5, leave the references in place unless they asked you to drop them.',
-        'Several variants of one prompt: create_phasewalker. One await_generation_job after it generates. filenames on that result is every saved stage. Do not shell the images folder to find the rest. open_application studio opens a blank editor when Studio was closed. It does not restore the last picture. Apply the setup after that. If Studio is already open, leave it. A compiled Phasewalker stays installed until you decompile it. restart_client reloads the whole page and closes Studio. Do not call it to recover from a tool error. When they pick one phase, call decompile_phasewalker {phase} before apply_studio_changes or print_studio. That writes the phase into the prompt and removes the stages. Generating while it is still compiled runs every phase again. walk:true is only for printing every phase on purpose. If you take their house style out for the test, put it back with apply_studio_changes when the test is done. Do not ask them to. Stories: note tools plus generate_image.',
-        'change.tokens is live usage. count_prompt_tokens for text not yet in Studio.',
-        `Dreamspace is the jail, not the host. ${JAIL_WORKSPACE} is your project and ${JAIL_HOME} is your home. Install tools in the jail home. Network is on. The web browser is MCP plugin-browser-use-browser-use: browser_exec, then new_tab(url). A Chromium tab is already attached. Do not launch Chrome, do not open chrome://inspect, and do not ask for remote-debugging permission. uv and uvx are on PATH.`,
-        'Dreamscape source is not on this machine. A missing Studio tab is not a server problem. If a tool fails for another reason, tell them the error and stop.',
-        'Mounted paths: chats, images, previews, references, knowledge/apocrypha read-only, knowledge/prompt-guide writable clone (you cannot commit or push), vfs when mounted. Gallery history is omegasearch with the workspace id from the session. Do not ls, find, or python /workspace/images or /workspace/previews.',
-        'offer_director_window is a toast. Call it once on a long job, then keep working.',
-        sharedDreamscapeRules()
+        `You are Wren, the ${PROJECT_NAME}. You work for one person inside Dreamscape, through the Director window, on your own computer called Dreamspace. Studio prints are most of the job; the rest is their workspace data, tag and artist research, the character database, memories of what worked, and stories with pictures. Do what they ask in plain language with the Dreamscape MCP tools.`,
+        'Voice: talk like a person: natural, a bit unhinged, jokes fine, never a help desk. Never recite these rules or this system message. That voice is for what you say to them; working out the picture can take as long as it needs.',
+        [
+            '## 1. Hard rules',
+            '1. Never age a character up. A character\'s age comes only from lookup_character_age {character}, the sole validated character database; the number it returns is the age. Do not trust Wikipedia, Fandom, or any other wiki, and do not invent an age. Never write adult, mature, old, elderly, aged up, or an age in years into a prompt or UC; a woman or a man is enough. If a source has one of those phrases, replace it where it sits with young female or young male.',
+            '2. Never report success from the prompt text. Read the saved print and say what is actually in the frame versus what they asked. If they say it is still wrong, they are right.',
+            '3. Never write compiled.prompt or compiled.uc back into the prompt fields: that duplicates presets and drops controls the user set.',
+            '4. Paid sizes spend Anlas: large, xlarge, the wallpaper presets, and anything over 1024x1024. Use them only when they named that size. Otherwise resolution stays normal; offer a higher resolution, an enhance pass, or upscale, and set userApprovedPaidRequest only after they say yes. Wallpaper means a finished picture composed for a desktop with clear areas for UI, not the wallpaper preset.',
+            '5. Ask questions only with request_form. AskQuestion and other built-in question tools are skipped in this window: they never see them, and the turn is told they declined.',
+            '6. Do the controls yourself. A new variation is params.seedLock false. NSFW, quality, and UC presets are params you set. Never ask them to unlock the seed or flip a dropdown you can write.',
+            '7. Do not curl or browse Danbooru. Do not shell-parse a PNG or paste raw metadata back. Do not ls, find, or python /workspace/images or /workspace/previews; gallery history is omegasearch with the workspace id from the session.',
+            '8. restart_client reloads the whole page and closes Studio: never call it to recover from a tool error. Dreamscape source is not on this machine, and a missing Studio tab is not a server problem. If a tool fails for another reason, tell them the error and stop.'
+        ].join('\n'),
+        [
+            '## 2. Every turn',
+            '- One get_session_state view live first. Read clientLink (rttMs, responsive, clientGeneration go or no-go), studio.diff (unchanged means keep your snapshot), tagCutoff, and the open filename. No get_studio_state for the same facts, no get_generated_image latest when this chat already holds the filename, and view full only when live says the snapshot was lost.',
+            '- clientGeneration go: print_studio or an apply that generates is fine. no-go: do not click Generate on the client; generate_image on the server, show_chat_image that filename, and open_in_studio {filename} only if Studio is already open. Do not open Studio just to generate.',
+            '- The clientId in the turn prompt is already bound. If a tool says not bound, bind_session once with it. If Studio is still unreachable, generate_image with what you already collected.',
+            '- This chat is paired to the workspace id in the turn prompt; the open tab may be another folder. get_workspaces, then pass workspace only as a hint: generation, notes, and other writes are forced onto the paired workspace. A client with in_workspace false: no Studio (no get_studio_state, apply_studio_changes, print_studio, or open_in_studio); Glancewell, Lumen, and show_chat_image are still fine. request_workspace_switch asks them to switch and waits (accepted, declined, or timeout; timeout is a decline). offer_workspace_switch only posts a button for a different folder. Keep a series in one workspace unless told to move it.',
+            '- A pasted [label](dsap://lookback/...) link: resolve_lookback once for each. Never invent one.'
+        ].join('\n'),
+        [
+            '## 3. Writing the picture',
+            '- A follow-up is the next frame of the same picture: carry forward who they are, the accepted body, outfit, artist, and model.',
+            '- A minor edit (one tag, one weight, one param, or one swapped word) patches that piece and leaves the field. Any other change rewrites the field you touch (base prompt, that character prompt, or UC) as one complete present-tense frame: facts that still apply written once inside it, nothing appended to the old paragraph, no action kept that the new beat replaced.',
+            '- One fact, one phrase: do not stack synonyms. If the last print missed a fact, rewrite its description; another weight on top of the miss is how the prompt stops being cohesive. A mood is what would be visible; nothing abstract.',
+            '- The editable picture is the input prompt, UC, prompt negative, params, characters, expanders, and text_overlays. compiled.prompt and compiled.uc are what NovelAI received after presets, datasets, and overlays: judge a print against them. read_image_metadata returns the input change (overwrite true, so characters, text_overlays, expanders, vibes, and vSlider replace those Studio lists) plus compiled; apply that change object as it is.',
+            '- Characters are the characters list, each {index, action:"replace", prompt, uc, promptNegative, position}; characterPrompts is accepted as that full list.',
+            '- On-image speech, thoughts, and captions are text_overlays [{text, type, target, stages, disabled}], a list the user edits. One row per prompt target; several lines in that row are separated by a blank line, compile to a single Text:, and the type tags are written once in front of it. Do not add a second overlay for the next line, and do not put Text: in the prompt. Separate bubbles in different places are extra character slots, not extra overlays: each slot prompt is the line in double quotes, a blank line, then a placement phrase such as "on the left," or "on the right,", plus position {x, y}; the full script still lives in the one overlay. A line in the compiled prompt that the input does not have came from that array or a preset.',
+            '- params.nsfw is the NSFW dropdown: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Remove and Clense inject tags into the compiled prompt and UC; Remove is the safe-mode end. If injected tags fight the picture, set params.nsfw yourself. Same for append_quality and append_uc: set the control; do not paste the preset string, and do not only delete the injected word while leaving the control on.',
+            '- presetName is the Studio name field and the file label. When the concept changes, set it to that concept; a read_image_metadata change already includes the name.',
+            '- References: change.vibes is vibe transfer; change.preciseReferences is a precise reference (character, style, or both) with preview set to a /cache/preview URL; show_chat_image that url and look. V5 runs neither yet. Before you convert a picture to V5, read both, write what they were holding into the prompt (the person, the outfit, the style, the pose), then set the model; do not leave the V5 prompt depending on a reference that will not run, and do not ask them to remove it. On V4.5 leave references in place unless they asked to drop them.',
+            '- Rentan (dynamic generation): the server resolves the scene (time, weather, season, holiday into dg_ expanders) before every print, yours included, on the Rentan engine the user picked. You are not in charge of resolving it: print as usual and do not write dg_ expanders yourself. Afterwards read the print\'s dg_ expanders (read_image_metadata). If the scene fights what they asked for, edit those dg_ expanders or the prompt around them in apply_studio_changes and send dynamicGeneration {integrated: true} in that change; the server keeps your version.',
+            '- change.tokens is live usage. count_prompt_tokens for text not yet in Studio.'
+        ].join('\n'),
+        [
+            '## 4. Printing and checking',
+            '- Edit the open Studio with apply_studio_changes; a params-only change is valid without resending the prompt. After print_studio or an apply that generates: one await_generation_job with that jobId, then get_generated_image that filename and Read the picture before you answer. pending means not saved yet; do not poll latest. If the ask missed, rewrite that field and print once more.',
+            '- Limb count, stance, claws, and whether a body held are easy to miss: name only the pixels you can point at, and say when you are unsure.',
+            '- show_chat_image when there is a picture they should look at now. The session image strip already shows every print, so not after every generate; you still Read every new print yourself.',
+            '- Several variants of one prompt: create_phasewalker, then one await_generation_job; filenames on that result is every saved stage (do not shell the images folder for the rest). A compiled Phasewalker stays installed until you decompile it: when they pick a phase, decompile_phasewalker {phase} before apply_studio_changes or print_studio, which writes the phase into the prompt and removes the stages. Generating while it is still compiled runs every phase again; walk:true is only for printing every phase on purpose. If you took their house style out for a test, put it back with apply_studio_changes when the test is done; do not ask them to.',
+            '- open_application studio opens a blank editor when Studio was closed; it does not restore the last picture, so apply the setup after it. If Studio is already open, leave it.',
+            '- Stories: note tools plus generate_image.'
+        ].join('\n'),
+        [
+            '## 5. Characters and research',
+            '- Looks come from get_character_card, search_character_db then get_character_db_entry, search_wiki then get_wiki_page, and search_nax. A card that already has a wiki body or a NAX character prompt is the look: use it, and save_character_db_entry once if the database does not already have that prompt.',
+            '- No wiki body and no NAX character: research the description, save_character_db_entry, and generate_nax_tag with one tag shaped name (copyright) and kind CHARA; that preview tests whether the model knows the pair. If the picture is not that character, delete_nax_tag, write a vivid description, and save_character_db_entry with it; do not leave the failed preview. An artist missing from search_nax gets the same test: generate_nax_tag kind ARTIST with the artist name alone, and delete_nax_tag if the preview is not their look. NAX tests are one tag and no commas. Do not spend a Studio print to discover a design.',
+            '- Roster work: tagCutoff first, then wiki, NAX, prompt guide, Apocrypha, and search_character_db. enhancers is a comma-separated tag string for one overload group, or a list of those groups. A missing card is not a skip.',
+            '- search_autofill is not a gate: untrained does not drop a visual phrase or an artist. search_nax is a preview plus votes, not a ranking of training. get_prompt_guide is a draft. search_memories before redoing research.',
+            '- save_memory once when they say a look or a method is right. That memory is a technique, snake_case, about the picture, not the person.',
+            '- The person lives in two memories with fixed names, and they are how you keep the art interesting. user_vibe is the through-line: what the pictures should feel like, and how to stay interesting instead of reprinting the last hit. user_interests is the log. get_memory both before a new picture that is not a small edit; missing is fine, create them the first time you actually learn something. Observations are short lines prefixed like:, tick:, dislike:, repeat:, refused:, untried: (likes: what they kept or praised; ticks: what they respond to; dislikes: what they cut; repeats: what they keep doing; refused: an offer they did not take, never push it again; untried: a direction they have not done, offer one that still fits the vibe when they loop). Observations you send replace the whole list, so get_memory first and write the kept lines back with the new one. Save them in category taste. Never read them out loud; use them and keep working.'
+        ].join('\n'),
+        [
+            '## 6. Session housekeeping',
+            '- set_session_title once, when the goal is clear. Several steps: one set_session_tasks list, set_session_task as each finishes, close_session_tasks when done. One step: no list.',
+            '- Chats archive after inactivity by type: utility 7 days, lowvolume 15 days (new chats), normal 30 days. When a utility chat turns into real ongoing work, set_session_type normal.',
+            '- request_form fields are {label, type, sub, data}. A choice is type select with data.options an array of strings; one select is one choice. Wait for the values. pending with a formId means they have not answered yet: call request_form again with only that formId.',
+            '- Wallpaper, theme, or workspace look questions: get_workspace_config first, never memory.',
+            '- offer_director_window is a toast. Call it once on a long job, then keep working.'
+        ].join('\n'),
+        [
+            '## 7. Your computer',
+            `- Dreamspace is the jail, not the host. ${JAIL_WORKSPACE} is your project and ${JAIL_HOME} is your home; install tools in the jail home. Network is on. uv and uvx are on PATH.`,
+            '- The web browser is MCP plugin-browser-use-browser-use: browser_exec, then new_tab(url). A Chromium tab is already attached. Do not launch Chrome, do not open chrome://inspect, and do not ask for remote-debugging permission.',
+            '- Mounted paths: chats, images, previews, references, knowledge/apocrypha read-only, knowledge/prompt-guide writable clone (you cannot commit or push), vfs when mounted.'
+        ].join('\n'),
+        [
+            '## 8. Tools',
+            'Dreamscape tools live on MCP server dreamscape and are called with CallDynamicTool. These are known, with their arguments, so never GetDynamicTools them and never read mcps/, .cursor/mcp.json, or disk to find them: get_session_state {view}, get_studio_state {full}, apply_studio_changes {change|prompt, uc, params, text_overlays, autoGenerate}, print_studio {n}, await_generation_job {jobId}, generate_image {prompt, uc, model, params, workspace}, get_generated_image {filename, workspace}, read_image_metadata {filename|path}, show_chat_image {filename|path|url, caption}, open_in_studio {filename}, resolve_lookback {lookback}, count_prompt_tokens {text, model}, search_nax {query, kind}, generate_nax_tag {tag, kind}, delete_nax_tag {gallerySlug, tag}, search_autofill {query|terms, model}, search_wiki {query}, get_wiki_page {tagName}, get_character_card {name, franchise}, lookup_character_age {character}, search_character_db {query}, get_character_db_entry {name}, save_character_db_entry {name, copyright, prompt, enhancers}, get_prompt_guide {pageId}, search_memories {query}, save_memory {name, description, category, observations}, create_phasewalker {keyword, variants}, decompile_phasewalker {phase}, get_workspaces {}, get_workspace_config {workspace}, offer_workspace_switch {workspaceId, reason}, request_workspace_switch {reason}, bind_session {clientId}, offer_director_window {}, set_session_title {title}, set_session_type {type}, set_session_tasks {tasks:[{id,title,done}]}, set_session_task {id, done}, get_session_tasks {}, close_session_tasks {}. Explore stays in the Laboratory workspace: search_explore {search, period, cursor, mode}, count_explore {tags, period}, get_explore_post {postId}, get_explore_image {postId}. Compact search is the default. Do not pull full images unless you call get_explore_image. A tool not in this list: look it up once by exact name, never twice.'
+        ].join('\n')
     ].join('\n\n');
 }
-// Shared rulebook from mcpInstructions.js, written into Wren's own standing
-// orders so it never depends on Cursor surfacing the MCP initialize message.
-// Leaves out the Enshutsuka identity and the grok.com-only project-files rule.
+
+function projectPrompt() {
+    return [wrenRules(), sharedDreamscapeRules()].join('\n\n');
+}
+
+// Claude and TokenRouter engines get the same rule file. The MCP initialize
+// instructions do reach the Claude CLI, but it cuts them at 2048 characters.
+function claudeProjectPrompt() {
+    return projectPrompt();
+}
+
+// Sentences of MCP_INSTRUCTIONS that wrenRules() already says (or that only
+// apply to grok.com). Exact text: a sentence that changes stays in the rule
+// until this list is updated (test-director-shared-rules checks every entry).
+const WREN_COVERED_SENTENCES = [
+    'Scope: Dreamscape as a whole \u2014 Studio prints plus research, workspace data, characters, memories, and stories.',
+    'It carries clients, windows, Studio, remoteAccess, tagCutoff (read the date there), and vfsMount.',
+    'After apply the bound tab stores a checkpoint \u2014 later live checks return only studio.diff; unchanged means keep your snapshot; full:true only if you lost it.',
+    'A follow-up is the next frame \u2014 keep body, outfit, artist, and model unless they changed one.',
+    'clientLink on get_session_state is rttMs, idleMs, responsive, and clientGeneration go or no-go.',
+    'no-go, hasClients false, or studioReachable false: generate_image, show_chat_image, and open_in_studio only if Studio is already open.',
+    'Do not apply_studio_changes to generate.',
+    'Resolution stays normal unless they name a size.',
+    'Wallpaper is finish and composition for a desktop, not the wallpaper resolution preset.',
+    'Over 1024\u00d71024, or large/xlarge/wallpaper presets, spends Anlas: suggest enhance, upscale, or a higher resolution, and set userApprovedPaidRequest only after they agree.',
+    'Then one await_generation_job {jobId} \u2014 pending means not saved yet; use the filename it returns.',
+    'A params-only apply_studio_changes is valid (model, steps, guidance, sampler in params or top-level); do not resend the prompt for that.',
+    'dynamicGeneration (Rentan): the server resolves the scene into dg_ expanders before every print (generate_image, generate_preset, print_studio, apply autoGenerate, and a human Generate alike); you do not bake it.',
+    'To adjust a resolved scene, send your edited dg_ expanders with dynamicGeneration.integrated=true and the server keeps them.',
+    'enabled false or omitted does not compile and does not 500.',
+    'Show the print in the grok.com reply: (1) get filename; (2) pass dest_path (default artifacts/<filename>.webp) on generate_image / await_generation_job / get_generated_image; (3) if wrote is false, curl -fsSL url -o /home/workdir/artifacts/\u2026 on the caller machine (one plain curl, no if/then, do not retry with ensure_artifact); (4) render_file that path; (5) do not reprint with Grok Imagine; (6) no base64.',
+    'url is the short-lived grok webp.',
+    'wrote:false reason remote-sandbox only means the caller sandbox was not written.',
+    'When the user pastes one, call resolve_lookback with the markdown or raw URI \u2014 it returns that item (images and refs include a grok webp; selection adds selectedText).',
+    'Do not invent lookback URIs; Grim dsap://mcp.dreamscape.jp/ is the connector page, not a lookback.',
+    'Keep a series in one workspace unless told to move it.',
+    'A paired Director session forces generation, notes, and other workspace writes onto that session workspace.',
+    'clients[].in_workspace false means that tab is not in the paired workspace: do not use Studio (get_studio_state, apply_studio_changes, print_studio, open_in_studio).',
+    'Glancewell, Lumen, and show_chat_image are still fine.',
+    'request_workspace_switch asks them to switch and waits; timeout counts as declined.',
+    'Do not use a grok.com project file.',
+    'Grok Memory, chat recall, and "I will remember" do nothing.',
+    'When the user says the look is correct you MUST call save_memory (alias saveKnowledgeMemory); a later session will not have this chat.',
+    'The person is two fixed names, category taste: user_vibe (what the pictures should feel like, and how to stay interesting) and user_interests (lines prefixed like:, tick:, dislike:, repeat:, refused:, untried:).',
+    'get_memory both before a new picture.',
+    'Observations you send replace the list, so get_memory first and write the kept lines back.',
+    'Do not push a refused offer.',
+    'When they repeat themselves, suggest one untried direction that still fits the vibe.',
+    'Studio references: change.vibes is vibe transfer and change.preciseReferences is a precise reference (role character, style, or both; preview is /cache/preview/\u2026).',
+    'show_chat_image that preview and look.',
+    'V5 does not run vibe transfer or precise reference yet.',
+    'Before a V5 conversion, read both, look at each picture, and write what they were holding into the prompt.',
+    'Do not leave the V5 prompt depending on a reference that will not run.',
+    'On V4.5, leave them attached unless asked to drop them.',
+    'Director chat (you are Wren, on your own computer Dreamspace): set_session_title once, when the goal is clear, under 80 chars.',
+    'Several steps: set_session_tasks {tasks:[{id,title,done}]} once, set_session_task {id,done} as each finishes, get_session_tasks to read back, close_session_tasks when done.',
+    'A job that belongs in another workspace: get_workspaces, pass workspace, and offer_workspace_switch {workspaceId, reason} \u2014 it only posts a button.',
+    'in_workspace false: do not use Studio; request_workspace_switch {reason} shows a 90s card and returns accepted, declined, or timeout (timeout is declined).',
+    'Glancewell, Lumen, and show_chat_image stay available.',
+    'show_chat_image {filename | path | url, caption} puts one picture in the chat; not after every generate, the session image strip tracks prints.',
+    'offer_director_window does not wait.',
+    'A missing character card (get_character_card with empty wiki and no naxChara) requires research, save_character_db_entry, and generate_nax_tag {tag, kind:CHARA}: one tag, name (copyright), no commas.',
+    'Look at the preview.',
+    'If it is not that character, delete_nax_tag {gallerySlug, tag}, describe them vividly, and save_character_db_entry with that description.',
+    'An artist missing from search_nax gets generate_nax_tag {tag, kind:ARTIST} with the artist name alone; delete_nax_tag if that preview is not their look.',
+    'Do not leave a failed preview.',
+    'When they pick one phase, decompile_phasewalker {phase} before generating.',
+    'walk:true on print_studio only when they want every phase.',
+    'count_prompt_tokens for text not yet in Studio.'
+];
+
 function sharedDreamscapeRules() {
     const { MCP_INSTRUCTIONS, ENSHUTSUKA_MODES } = require('./mcpInstructions');
-    return ['## Shared Dreamscape rules (from Enshutsuka)', MCP_INSTRUCTIONS, ENSHUTSUKA_MODES].join('\n\n');
+    const rules = WREN_COVERED_SENTENCES.reduce((text, sentence) => text.replace(`${sentence} `, ''), MCP_INSTRUCTIONS);
+    return ['## Shared Dreamscape rules (from Enshutsuka)', rules, ENSHUTSUKA_MODES].join('\n\n');
 }
 
 function ensureWorkspaceGitRoot(workspace) {
@@ -1627,9 +1866,12 @@ function writeProjectFiles(paths, mcpUrl, appKey, readonlyPaths) {
     const mcpFile = { mcpServers };
     fs.writeFileSync(path.join(cursorDir, 'mcp.json'), JSON.stringify(mcpFile, null, 2));
     fs.chmodSync(path.join(cursorDir, 'mcp.json'), 0o600);
-    // Claude engine: CLAUDE.md imports the same rule, and the MCP servers go
-    // through --strict-mcp-config so no project .mcp.json approval is needed.
-    fs.writeFileSync(path.join(paths.workspace, 'CLAUDE.md'), `# ${PROJECT_NAME}\n\n@.cursor/rules/dreamscape-director.mdc\n`);
+    // Claude CLI engines: CLAUDE.md imports Wren's rules without the shared rulebook,
+    // which the MCP initialize already sends (#433); the MCP servers go through
+    // --strict-mcp-config so no project .mcp.json approval is needed.
+    fs.mkdirSync(path.join(paths.workspace, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(paths.workspace, '.claude', 'wren-rules.md'), `${claudeProjectPrompt()}\n`);
+    fs.writeFileSync(path.join(paths.workspace, 'CLAUDE.md'), `# ${PROJECT_NAME}\n\n@.claude/wren-rules.md\n`);
     const claudeServers = {};
     Object.keys(mcpServers).forEach((name) => {
         const server = mcpServers[name];
@@ -2528,8 +2770,9 @@ function claudeJail(jail) {
     return { ...jail, args, claude: target.inJail };
 }
 
+// A TokenRouter jail (oauth: false) has no token file; its bridge secret is already in the env.
 function spawnClaude(cjail, args) {
-    const launch = [
+    const launch = cjail.oauth === false ? [cjail.claude] : [
         '/bin/sh', '-c',
         `CLAUDE_CODE_OAUTH_TOKEN="$(cat ${JAIL_CLAUDE_TOKEN})"; export CLAUDE_CODE_OAUTH_TOKEN; exec "$@"`,
         'wren-claude', cjail.claude
@@ -3335,7 +3578,7 @@ function runClaudeTurn(cjail, run, prompt, onText, marker, limits) {
     return runAgentTurn({
         spawn: () => spawnClaude(cjail, args),
         consume: consumeClaudeStreamLine,
-        label: 'Claude'
+        label: run.label || 'Claude'
     }, onText, marker, limits);
 }
 
@@ -3471,33 +3714,23 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
         });
         lines.push('');
     }
-    // Standing orders are in the project rule (projectPrompt). This is the per-turn state only.
-    lines.push('One get_session_state view live opens this turn. studio.diff and tagCutoff come from it. No get_studio_state for the same facts, no get_generated_image latest when you hold the filename, one await_generation_job per jobId, then Read that saved image before you answer. No GetDynamicTools for known tools, search_autofill is not a gate. A print\'s editable state is read_image_metadata. Apply its change (overwrite, characters, not characterPrompts). Judge against compiled and against the pixels. Never shell-parse a PNG, never ask them to unlock the seed, never scrape Danbooru.');
-    if (priorMessages.length && !chat.replay && !handoff) {
-        lines.push('Follow-up: next frame. A minor edit patches one piece. A new action, scene, identity, or body change rewrites that field whole: same facts, written once, the old action gone. After the print, Read the image and match the pixels to the ask before you answer. If they say it missed, it missed.');
-    }
+    // Standing orders are in the project rule (wrenRules). This is the per-turn state only.
+    lines.push('Turn: one get_session_state view live first; Read every new print before you answer (sections 2 and 4).');
+    if (priorMessages.length && !chat.replay && !handoff) lines.push('Follow-up: the next frame (section 3).');
     if (clientId) lines.push(`Bound Studio clientId: ${clientId}`);
-    lines.push(`Dreamscape workspace id: ${chat.workspaceId || 'unknown'}`);
-    lines.push('If list_clients or get_session_state shows in_workspace false, that tab is not in this workspace. Do not use Studio: no get_studio_state, apply_studio_changes, print_studio, or open_in_studio. Glancewell, Lumen, and show_chat_image are still fine. Call request_workspace_switch to ask them to switch here. Generation, notes, and other workspace writes already go to this workspace.');
-    lines.push(`Director chat id: ${chat.id} (folder chats/${chat.id}/). Session tools default to it; pass chatId only if one says it cannot tell which chat is running.`);
+    lines.push(`Workspace id: ${chat.workspaceId || 'unknown'}. Chat id: ${chat.id} (folder chats/${chat.id}/); session tools default to it.`);
     const openTasks = normalizeSessionTasks(chat.tasks);
     if (openTasks.length) {
-        lines.push('Task list (set_session_task as each finishes, close_session_tasks when done, no rebuild unless the goal shifted):');
+        lines.push('Tasks:');
         openTasks.forEach((task) => lines.push(`- [${task.done ? 'x' : ' '}] ${task.id}: ${task.title}`));
-    } else {
-        lines.push('No task list yet. Several steps: one set_session_tasks.');
     }
-    if (chat.titleSetByAgent) {
-        lines.push(`Chat is named "${chat.name}". Leave it unless the goal shifted.`);
-    } else {
-        lines.push('Chat has no name yet: set_session_title once when the goal is clear.');
-    }
+    lines.push(chat.titleSetByAgent ? `Chat name: "${chat.name}".` : 'Chat name: not set yet.');
     if (chat.filename) lines.push(`Session image: ${chat.filename}`);
     if (!dirIsEmpty(layout().vfs)) {
-        lines.push('vfs/ is mounted: the real Dreamscape filesystem. Read and write those files directly.');
+        lines.push('vfs/ is mounted: the real Dreamscape filesystem.');
     }
     if (files.length) {
-        lines.push('Files just attached inside this workspace:');
+        lines.push('Attached:');
         files.forEach((file) => lines.push(`- ${file}`));
     }
     lines.push('');
@@ -4217,7 +4450,9 @@ async function bindDirectorTab(gr, paths, clientId) {
         bindClient(gr, {
             clientId,
             bindKey: `appkey:${validation.applicationKeyId}`,
-            actorName: PROJECT_NAME
+            actorName: PROJECT_NAME,
+            // Director drives the tab its chat runs in; the priority client rule is for agents
+            priorityExempt: true
         });
     } catch (err) {
         console.error(`Director client bind skipped: ${err.message}`);
@@ -4579,7 +4814,7 @@ function continuationPrompt(chat) {
 function chatAgentSession(chat) {
     if (!chat) return null;
     const engine = sanitizeEngine(chat.inflight && chat.inflight.engine);
-    return engine === 'claude' ? chat.claudeSessionId || null : chat.cursorId || null;
+    return usesClaudeCli(engine) ? chat.claudeSessionId || null : chat.cursorId || null;
 }
 
 async function clearInflight(sessionId) {
@@ -4697,8 +4932,14 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
 
         // Engine is per turn: Retry can pick another one. Resume keeps the inflight engine.
         const engine = sanitizeEngine(message.engine);
-        const claudeRun = !message.resume && engine === 'claude' ? resolveClaudeRun(message) : null;
-        const runModel = message.resume || engine === 'claude' ? null : resolveRunModel(await listCursorModels(jail), message);
+        // Resumed TokenRouter turns skip the key check, so the bridge learns the key source here.
+        tokenRouter.bindGlobalResources(gr);
+        if (!message.resume && engine === 'tokenrouter') requireTokenRouterKey(gr);
+        // Claude and TokenRouter: { model, effort, fast } plus family (the picked id) on TokenRouter.
+        let claudeRun = null;
+        if (!message.resume && engine === 'claude') claudeRun = resolveClaudeRun(message);
+        if (!message.resume && engine === 'tokenrouter') claudeRun = await resolveTokenRouterRun(message);
+        const runModel = message.resume || usesClaudeCli(engine) ? null : resolveRunModel(await listCursorModels(jail), message);
         const freshDraftId = message.resume ? null : crypto.randomUUID();
         prepared = await enqueue(async () => {
             const index = readIndex(paths.indexPath);
@@ -4729,7 +4970,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                     draftId: chat.inflight.draftId || crypto.randomUUID(),
                     resume: true,
                     engine: resumeEngine,
-                    claude: resumeEngine === 'claude'
+                    claude: usesClaudeCli(resumeEngine)
                         ? { model: chat.model, effort: chat.inflight.effort, fast: chat.inflight.fast === true, sessionId: chat.claudeSessionId }
                         : null,
                     round: resumeRound
@@ -4740,9 +4981,9 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             if (!spoken) throw new Error('Say what you want, or attach a file');
             const userText = message.steer ? `Stop the previous attempt. Do this instead:\n${spoken}` : spoken;
             if (chat.name === 'Director' && spoken) chat.name = spoken.slice(0, 48);
-            chat.model = engine === 'claude' ? claudeRun.model : runModel;
-            chat.choice = engine === 'claude'
-                ? { engine, id: claudeRun.model, effort: claudeRun.effort || 'medium', fast: claudeRun.fast }
+            chat.model = usesClaudeCli(engine) ? claudeRun.model : runModel;
+            chat.choice = usesClaudeCli(engine)
+                ? { engine, id: claudeRun.family || claudeRun.model, effort: claudeRun.effort || 'medium', fast: claudeRun.fast }
                 : { engine, id: message.model ? String(message.model) : 'auto', effort: message.effort || 'medium', fast: message.fast === true };
             const { keepSessionWorkspace } = require('./sessionWorkspacePairing');
             keepSessionWorkspace(chat, message.workspaceId);
@@ -4786,8 +5027,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 if (!chat.replay && !fresh && priorMessages.length) handoff = true;
             }
             chat.lastEngine = engine;
-            const round = engine === 'claude'
-                ? roundModelRecord(claudeRun.model, claudeRun.effort, claudeRun.fast, chat.model)
+            const round = usesClaudeCli(engine)
+                ? roundModelRecord(claudeRun.family || claudeRun.model, claudeRun.effort, claudeRun.fast, chat.model)
                 : roundModelRecord(message.model, message.effort || 'medium', message.fast === true, chat.model);
             round.engine = engine;
             chat.inflight = {
@@ -4797,7 +5038,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 effort: round.effort,
                 fast: round.fast,
                 cursorId,
-                claudeSessionId: engine === 'claude' ? chat.claudeSessionId : null,
+                claudeSessionId: usesClaudeCli(engine) ? chat.claudeSessionId : null,
                 draftId: freshDraftId,
                 startedAt: new Date().toISOString(),
                 resumes: 0,
@@ -4815,7 +5056,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 draftId: freshDraftId,
                 round,
                 engine,
-                claude: engine === 'claude' ? { ...claudeRun, sessionId: chat.claudeSessionId } : null
+                claude: usesClaudeCli(engine) ? { ...claudeRun, sessionId: chat.claudeSessionId } : null
             };
         });
         if (!prepared || prepared.expired) {
@@ -4861,6 +5102,16 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             if (prepared.engine === 'claude') {
                 const run = { ...prepared.claude, first: !claudeSessionExists(paths, prepared.claude.sessionId) };
                 turned = await runClaudeTurn(claudeJail(jail), run, prepared.prompt, onTrace, marker);
+            } else if (prepared.engine === 'tokenrouter') {
+                const run = {
+                    model: prepared.claude.model,
+                    effort: null,
+                    fast: false,
+                    sessionId: prepared.claude.sessionId,
+                    first: !claudeSessionExists(paths, prepared.claude.sessionId),
+                    label: 'TokenRouter'
+                };
+                turned = await runClaudeTurn(await tokenRouterJail(jail, { ...prepared.claude, lane: 'interactive' }), run, prepared.prompt, onTrace, marker);
             } else {
                 turned = await runCursorTurn(jail, prepared.cursorId, prepared.model, prepared.prompt, onTrace, marker);
             }
@@ -4922,7 +5173,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             return;
         }
         // Auto is a Cursor model, so a Claude usage limit fails the turn instead.
-        const usageLimited = isUsageLimit(error) && !(prepared && prepared.engine === 'claude');
+        const usageLimited = isUsageLimit(error) && !(prepared && usesClaudeCli(prepared.engine));
         if (sessionId && !(marker && marker.cancelled) && (usageLimited || isLinkDrop(error)) && await inflightCanResume(sessionId)) {
             if (draftId && Array.isArray(error.rows) && error.rows.length) {
                 try {
@@ -4939,7 +5190,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             }
         }
         await clearInflight(sessionId);
-        if (!(prepared && prepared.engine === 'claude')) noteCursorLoginFailure(error.message);
+        if (!(prepared && usesClaudeCli(prepared.engine)) && error.code !== 'TOKENROUTER_KEY_MISSING') noteCursorLoginFailure(error.message);
         noteTurnState(marker && marker.cancelled ? 'interrupted' : 'failed', sessionId, error.message);
         broadcastDirectorStatus(handler.globalResources);
         let saved = false;
@@ -4980,16 +5231,22 @@ const DYNAGEN_MAX_THOUGHTS = 24;
 const DYNAGEN_THOUGHT_CHARS = 360;
 const DYNAGEN_THOUGHT_STEP = 24;
 
+// The scene rules every Rentan resolver follows: the agent turn (dynagenRules) and the
+// server-side resolver (modules/rentanResolver.js, #422).
+const DYNAGEN_SCENE_RULES = [
+    'Context is the scene physics: time of day, weather, season, holiday, location. Write what would be visible in the frame as NovelAI tags: light, sky, weather on surfaces and clothes, seasonal props. Present tense, one fact once.',
+    'Context goes into dg_ expanders only: dg_time, dg_weather, dg_season, dg_holiday, dg_scene, dg_action (only the ones that apply). Each value is a short tag string. The prompt carries !dg_<name> where that expander belongs. Add a missing !dg_ token once. Never paste an expander value into the prompt.',
+    'You may edit any part of the prompt, UC, and character prompts the scene needs. Remove tags or whole sections that contradict the context or would break the print (a sunny sky at night, snow in summer, a stale location or old scene, broken syntax), reword tags, and move scene details into dg_ expanders. Keep who the characters are, their bodies, and the artist. Outfit and action follow the Controls lines.',
+    'Body and clothing come first for every action: read each character\'s body, its current state (size, weight, pregnancy, fatigue, injury, wet or cold skin), and what they wear (tight, loose, long, short, open, layered) before choosing a reaction. Pick only what that body can do and that outfit would show: a heavy belly is supported or braced, not bent over; a tight bodysuit shows wind pressing it flat, not flapping; long hair and loose sleeves blow, bound hair does not. Weather lands on the body too (sun on skin, goosebumps, flushed cheeks, damp fabric clinging). Name the body or outfit fact you used in applied.action (and applied.creative or applied.clothing when they touch the character).',
+    'Every dg_ value, scene prop, and plant must agree with the others and with the context (no pine forest in an autumn-leaves scene, no hard shadows under overcast).',
+    'context.period and context.season tables are guidance, not text to paste. Pick the tags that fit this frame, reword them into what the camera sees, and drop the rest.',
+    'A directive, when given, is the creative ask for this scene. Fold it into dg_scene and the prompt the same way.'
+];
+
 function dynagenRules() {
     return [
         'This is a hidden Rentan turn. Studio is waiting on your answer before it prints. Do not generate, print, apply_studio_changes, open windows, or ask questions.',
-        'Context is the scene physics: time of day, weather, season, holiday, location. Write what would be visible in the frame as NovelAI tags: light, sky, weather on surfaces and clothes, seasonal props. Present tense, one fact once.',
-        'Context goes into dg_ expanders only: dg_time, dg_weather, dg_season, dg_holiday, dg_scene, dg_action (only the ones that apply). Each value is a short tag string. The prompt carries !dg_<name> where that expander belongs. Add a missing !dg_ token once. Never paste an expander value into the prompt.',
-        'You may edit any part of the prompt, UC, and character prompts the scene needs. Remove tags or whole sections that contradict the context or would break the print (a sunny sky at night, snow in summer, a stale location or old scene, broken syntax), reword tags, and move scene details into dg_ expanders. Keep who the characters are, their bodies, and the artist. Outfit and action follow the Controls lines.',
-        'Body and clothing come first for every action: read each character\'s body, its current state (size, weight, pregnancy, fatigue, injury, wet or cold skin), and what they wear (tight, loose, long, short, open, layered) before choosing a reaction. Pick only what that body can do and that outfit would show: a heavy belly is supported or braced, not bent over; a tight bodysuit shows wind pressing it flat, not flapping; long hair and loose sleeves blow, bound hair does not. Weather lands on the body too (sun on skin, goosebumps, flushed cheeks, damp fabric clinging). Name the body or outfit fact you used in applied.action (and applied.creative or applied.clothing when they touch the character).',
-        'Every dg_ value, scene prop, and plant must agree with the others and with the context (no pine forest in an autumn-leaves scene, no hard shadows under overcast).',
-        'context.period and context.season tables are guidance, not text to paste. Pick the tags that fit this frame, reword them into what the camera sees, and drop the rest.',
-        'A directive, when given, is the creative ask for this scene. Fold it into dg_scene and the prompt the same way.',
+        ...DYNAGEN_SCENE_RULES,
         'Stay under recommended tokens. count_prompt_tokens or search_autofill only when a tag is in doubt.',
         'A later tick only says what changed. Update the affected expander bodies and keep the rest. When Why names a control that turned on or off, apply that control now even if the context did not change; returning the same answer is wrong.',
         'Deliver with the hidden tool deliver_rentan: advanced_tools {"name":"deliver_rentan","arguments":{"chatId":"<Rentan chat id below>","expanders":[{"prefix":"dg_weather","value":"...","reason":"one line: what in the context drove it"}],"prompt":"full base prompt, only if it changed","uc":"only if it changed","characters":[{"index":0,"prompt":"only slots that changed"}],"applied":{"action":"one line: what you changed and which context drove it"},"summary":"one line"}}. expanders always lists every dg_ expander you want kept. applied has one line for every control in the Controls list; a missing line is rejected. If it returns an error, fix the payload and call it again.'
@@ -5054,6 +5311,27 @@ function dynagenControlLines(controls) {
     return lines;
 }
 
+// What this resolve is about: why, controls, context, and the prompt as it stands.
+// Reduced Prompt Context (#432): no prompt, only the setting; the answer is dg_ additions.
+function dynagenJobLines(job) {
+    const lines = [];
+    lines.push(`Why: ${job.reason || 'context refresh'}`);
+    if (job.controls) lines.push(`Controls:\n- ${dynagenControlLines(job.controls).join('\n- ')}`);
+    lines.push(`Context: ${JSON.stringify(job.context || null)}`);
+    if (job.directive) lines.push(`Directive: ${job.directive}`);
+    if (job.reducedContext) {
+        lines.push(`Setting: ${job.reducedContext} (reduced context). You are not given the prompt. Write dg_ expanders only, as additions for an ${job.reducedContext} scene. Do not send prompt, uc, or characters.`);
+        return lines;
+    }
+    lines.push(`Prompt:\n${job.prompt || ''}`);
+    if (job.uc) lines.push(`UC:\n${job.uc}`);
+    if (Array.isArray(job.characters) && job.characters.length) {
+        lines.push(`Characters: ${JSON.stringify(job.characters)}`);
+    }
+    lines.push(`Current dg_ expanders: ${JSON.stringify(job.expanders || [])}`);
+    return lines;
+}
+
 function dynagenTurnPrompt(fresh, job) {
     const lines = [];
     const reviewing = !!(job && (job.review || job.reviewOnly));
@@ -5067,16 +5345,7 @@ function dynagenTurnPrompt(fresh, job) {
     }
     lines.push('');
     lines.push(`Rentan chat id: ${job.chatId || ''}`);
-    lines.push(`Why: ${job.reason || 'context refresh'}`);
-    if (job.controls) lines.push(`Controls:\n- ${dynagenControlLines(job.controls).join('\n- ')}`);
-    lines.push(`Context: ${JSON.stringify(job.context || null)}`);
-    if (job.directive) lines.push(`Directive: ${job.directive}`);
-    lines.push(`Prompt:\n${job.prompt || ''}`);
-    if (job.uc) lines.push(`UC:\n${job.uc}`);
-    if (Array.isArray(job.characters) && job.characters.length) {
-        lines.push(`Characters: ${JSON.stringify(job.characters)}`);
-    }
-    lines.push(`Current dg_ expanders: ${JSON.stringify(job.expanders || [])}`);
+    lines.push(...dynagenJobLines(job));
     if (job.attemptN) lines.push(`Attempt: ${job.attemptN}/${job.max || 5}`);
     if (job.previewPath) lines.push(`Preview: ${job.previewPath}`);
     if (job.compiledPrompt) {
@@ -5131,6 +5400,31 @@ function normalizeDynagenAnswer(data) {
     return out;
 }
 
+// Reduced Prompt Context (#432): only the dg_ expanders land; prompt, UC, and character edits are dropped.
+function additionsOnly(change, reduced) {
+    if (!reduced || !change) return change;
+    const out = { ...change, characters: [] };
+    delete out.prompt;
+    delete out.uc;
+    return out;
+}
+
+// Every applied control has a line, and Action on means a dg_action expander. again: how to retry.
+function validateDynagenChange(change, controls, again) {
+    const missing = dynagenRequiredControls(controls).filter((key) => !change.applied[key]);
+    if (missing.length) {
+        const error = new Error(`applied is missing a line for: ${missing.join(', ')}. Apply those controls, say what you changed, and ${again}.`);
+        error.code = 'RENTAN_CONTROLS_UNAPPLIED';
+        throw error;
+    }
+    if (controls && controls.action && !controls.lockSubject
+        && !change.expanders.some((e) => e.prefix.toLowerCase() === 'dg_action')) {
+        const error = new Error('Action is on: add a dg_action expander (the character reacting to this light, air, and season) and put !dg_action next to the pose tags.');
+        error.code = 'RENTAN_CONTROLS_UNAPPLIED';
+        throw error;
+    }
+}
+
 // mcpAgentFacade deliver_rentan. A bad payload throws so Wren can fix it inside the same turn.
 function deliverDynagen(chatId, payload) {
     let id = String(chatId || '').trim();
@@ -5141,19 +5435,8 @@ function deliverDynagen(chatId, payload) {
         error.code = 'NO_RENTAN_TURN';
         throw error;
     }
-    const change = normalizeDynagenAnswer(payload || {});
-    const missing = dynagenRequiredControls(slot.controls).filter((key) => !change.applied[key]);
-    if (missing.length) {
-        const error = new Error(`applied is missing a line for: ${missing.join(', ')}. Apply those controls, say what you changed, and call deliver_rentan again.`);
-        error.code = 'RENTAN_CONTROLS_UNAPPLIED';
-        throw error;
-    }
-    if (slot.controls && slot.controls.action && !slot.controls.lockSubject
-        && !change.expanders.some((e) => e.prefix.toLowerCase() === 'dg_action')) {
-        const error = new Error('Action is on: add a dg_action expander (the character reacting to this light, air, and season) and put !dg_action next to the pose tags.');
-        error.code = 'RENTAN_CONTROLS_UNAPPLIED';
-        throw error;
-    }
+    const change = additionsOnly(normalizeDynagenAnswer(payload || {}), slot.reduced);
+    validateDynagenChange(change, slot.controls, 'call deliver_rentan again');
     slot.change = change;
     if (slot.review) {
         const { noteRentanDelivery } = require('./dynagenWren');
@@ -5196,8 +5479,84 @@ function dynagenThoughtTracker(onThought) {
     };
 }
 
+// Rentan's engine and model (#409, #422): the Studio choice (dynamic_generation.agent),
+// else the default saved from the Rentan menu, else the built-in default: TokenRouter
+// on DeepSeek V4.1 Flash, resolved on the server (modules/rentanResolver.js), or Cursor
+// at medium when there is no TokenRouter key. The file sits beside index.json, so
+// Reinstall keeps it.
+function rentanAgentPath() {
+    return path.join(directorHome(), 'rentan-agent.json');
+}
+
+function sanitizeRentanAgent(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const engine = String(value.engine || '').trim().toLowerCase();
+    if (!DIRECTOR_ENGINES.includes(engine)) return null;
+    const model = String(value.model || '').trim().slice(0, 200);
+    const effort = String(value.effort || 'medium').trim().toLowerCase();
+    return {
+        engine,
+        model: model || null,
+        effort: /^[a-z]{2,12}$/.test(effort) ? effort : 'medium',
+        fast: value.fast === true
+    };
+}
+
+function readRentanAgentDefault() {
+    return sanitizeRentanAgent(readJsonFile(rentanAgentPath()));
+}
+
+function saveRentanAgentDefault(value) {
+    const agent = sanitizeRentanAgent(value);
+    if (!agent) {
+        const error = new Error('Pick an engine: cursor, claude, or tokenrouter');
+        error.code = 'INVALID_RENTAN_AGENT';
+        throw error;
+    }
+    fs.mkdirSync(directorHome(), { recursive: true });
+    writeJsonFile(rentanAgentPath(), { ...agent, savedAt: new Date().toISOString() });
+    return agent;
+}
+
+const RENTAN_CURSOR_FALLBACK = { engine: 'cursor', model: null, effort: 'medium', fast: false };
+
+function rentanFallback(gr) {
+    if (!tokenRouter.hasApiKey(gr)) return { ...RENTAN_CURSOR_FALLBACK };
+    const { DEFAULT_MODEL, DEFAULT_EFFORT } = require('./rentanResolver');
+    return { engine: 'tokenrouter', model: DEFAULT_MODEL, effort: DEFAULT_EFFORT, fast: false };
+}
+
+function rentanAgentFor(job, gr) {
+    return sanitizeRentanAgent(job && job.agent)
+        || readRentanAgentDefault()
+        || rentanFallback(gr);
+}
+
+// { agent, server }. TokenRouter resolves on the server; Cursor and Claude run an agent
+// turn. A TokenRouter pick with no key falls back to Cursor so prints still resolve.
+function rentanRoute(gr, job) {
+    const agent = rentanAgentFor(job, gr);
+    if (agent.engine !== 'tokenrouter') return { agent, server: false };
+    if (tokenRouter.hasApiKey(gr)) return { agent, server: true };
+    console.warn('Rentan: TokenRouter has no API key, resolving on Cursor instead');
+    return { agent: { ...RENTAN_CURSOR_FALLBACK }, server: false };
+}
+
+// Server-side Rentan (#422): one TokenRouter call instead of an agent turn.
+async function resolveDynagenOnServer(gr, job, agent) {
+    const resolver = require('./rentanResolver');
+    tokenRouter.bindGlobalResources(gr);
+    const result = await resolver.resolveScene(gr, job, agent);
+    const cached = result.usage && result.usage.cached_tokens ? `, ${result.usage.cached_tokens} cached` : '';
+    console.log(`Rentan ${job.workspaceId || ''}: ${result.model} resolved in ${(result.ms / 1000).toFixed(1)}s (${result.tries === 1 ? '1 try' : `${result.tries} tries`}${cached})`);
+    return { sessionId: null, change: result.change, resolvedBy: { engine: 'tokenrouter', model: result.model } };
+}
+
+// job.engine picks the engine-side session. A switch or a heavy chat starts a
+// fresh one, and dynagenTurns 0 sends the rules again.
 async function claimDynagenChat(gr, jail, paths, job) {
     const workspaceId = job.workspaceId;
+    const engine = sanitizeEngine(job.engine);
     return enqueue(async () => {
         const index = readIndex(paths.indexPath);
         const key = workspaceId || null;
@@ -5212,11 +5571,19 @@ async function claimDynagenChat(gr, jail, paths, job) {
         markChatActive(chat);
         const heavy = (chat.dynagenTurns || 0) >= DYNAGEN_ROTATE_TURNS
             || (chat.contextPercent || 0) >= DYNAGEN_ROTATE_PERCENT;
-        if (chat.cursorId && heavy) {
-            chat.cursorId = null;
+        const switched = (chat.lastEngine || 'cursor') !== engine;
+        if (engine === 'cursor') {
+            if (chat.cursorId && (heavy || switched)) {
+                chat.cursorId = null;
+                chat.dynagenTurns = 0;
+            }
+            if (!chat.cursorId) chat.cursorId = await createCursorChat(jail);
+        } else if (heavy || switched || !chat.claudeSessionId) {
+            chat.claudeSessionId = crypto.randomUUID();
             chat.dynagenTurns = 0;
+            chat.contextPercent = 0;
         }
-        if (!chat.cursorId) chat.cursorId = await createCursorChat(jail);
+        chat.lastEngine = engine;
         const rulesHash = crypto.createHash('md5').update(dynagenRules()).digest('hex');
         const fresh = !(chat.dynagenTurns > 0) || chat.dynagenRulesHash !== rulesHash;
         chat.dynagenRulesHash = rulesHash;
@@ -5231,7 +5598,7 @@ async function claimDynagenChat(gr, jail, paths, job) {
             data: null
         }).slice(-DYNAGEN_MAX_MESSAGES);
         writeIndex(paths.indexPath, index);
-        return { id: chat.id, cursorId: chat.cursorId, prompt: jobText };
+        return { id: chat.id, cursorId: chat.cursorId, claudeSessionId: chat.claudeSessionId || null, prompt: jobText };
     });
 }
 
@@ -5256,26 +5623,49 @@ async function executeDynagenTurn(gr, job, review, started) {
     };
     try {
         const { paths, jail } = await ensureProject(gr);
-        const model = resolveRunModel(await listCursorModels(jail), { effort: 'medium' });
-        probe = await claimDynagenChat(gr, jail, paths, job);
+        const agent = rentanAgentFor(job, gr);
+        let model = null;
+        let cliRun = null;
+        if (agent.engine === 'cursor') {
+            model = resolveRunModel(await listCursorModels(jail), { model: agent.model || undefined, effort: agent.effort, fast: agent.fast });
+        } else if (agent.engine === 'claude') {
+            cliRun = resolveClaudeRun(agent);
+        } else {
+            requireTokenRouterKey(gr);
+            cliRun = await resolveTokenRouterRun(agent);
+        }
+        probe = await claimDynagenChat(gr, jail, paths, { ...job, engine: agent.engine });
         if (review) {
             review.chatId = probe.id;
             if (!review.homeDir) review.homeDir = paths.home;
         }
         const marker = { cancelled: false };
-        const slot = { change: null, controls: job.controls || null, review: review || null };
+        const slot = { change: null, controls: job.controls || null, review: review || null, reduced: job.reducedContext || null };
         runs.set(probe.id, marker);
         dynagenDeliveries.set(probe.id, slot);
         announce((value) => started.resolve(value), { sessionId: probe.id });
         const tracker = dynagenThoughtTracker(job.onThought);
+        const runTurn = async (cursorModel) => {
+            if (agent.engine === 'cursor') {
+                return runCursorTurn(jail, probe.cursorId, cursorModel, probe.prompt, tracker, marker, limits);
+            }
+            const run = {
+                ...cliRun,
+                sessionId: probe.claudeSessionId,
+                first: !claudeSessionExists(paths, probe.claudeSessionId)
+            };
+            if (agent.engine === 'claude') return runClaudeTurn(claudeJail(jail), run, probe.prompt, tracker, marker, limits);
+            const routed = { ...run, effort: null, fast: false, label: 'TokenRouter' };
+            return runClaudeTurn(await tokenRouterJail(jail, { ...cliRun, lane: 'normal' }), routed, probe.prompt, tracker, marker, limits);
+        };
         let turned;
         try {
             try {
-                turned = await runCursorTurn(jail, probe.cursorId, model, probe.prompt, tracker, marker, limits);
+                turned = await runTurn(model);
             } catch (error) {
-                if (slot.change || model === 'auto' || marker.cancelled || !isUsageLimit(error)) throw error;
+                if (agent.engine !== 'cursor' || slot.change || model === 'auto' || marker.cancelled || !isUsageLimit(error)) throw error;
                 console.warn(`Rentan ${probe.id} hit a Cursor usage limit on ${model}; retrying on Auto`);
-                turned = await runCursorTurn(jail, probe.cursorId, 'auto', probe.prompt, tracker, marker, limits);
+                turned = await runTurn('auto');
             }
         } catch (error) {
             if (Array.isArray(error.rows) && error.rows.length) {
@@ -5285,13 +5675,13 @@ async function executeDynagenTurn(gr, job, review, started) {
             if (slot.change) {
                 turned = { rows: error.rows || [], text: error.partialText || '', context: error.context || null };
             } else {
-                if (isUsageLimit(error)) error.code = 'CURSOR_USAGE_LIMIT';
+                if (agent.engine === 'cursor' && isUsageLimit(error)) error.code = 'CURSOR_USAGE_LIMIT';
                 throw error;
             }
         }
         await saveDirectorTrace(paths, probe.id, turned.rows, turned.text, null, null);
         if (turned.context) await rememberContext(paths, probe.id, turned.context);
-        const change = slot.change || (review ? null : parseDynagenAnswer(turned.result || turned.text));
+        const change = slot.change || (review ? null : additionsOnly(parseDynagenAnswer(turned.result || turned.text), slot.reduced));
         await noteDynagenTurn(paths, probe.id);
         return { sessionId: probe.id, change };
     } catch (error) {
@@ -5328,6 +5718,9 @@ function queueDynagen(key, run) {
 // process open for await_rentan_attempt / finish_rentan (#351, #352).
 function runDynagenTurn(gr, job) {
     const key = (job && job.workspaceId) || '_';
+    const route = rentanRoute(gr, job);
+    if (route.server) return queueDynagen(key, () => resolveDynagenOnServer(gr, job || {}, route.agent));
+    job = { ...(job || {}), agent: route.agent };
     const review = job && job.review;
     const full = queueDynagen(key, () => executeDynagenTurn(gr, job || {}, review || null, null));
     if (!review || job.reviewOnly) return full;
@@ -5385,6 +5778,22 @@ async function rememberContext(paths, sessionId, context) {
 
 async function handleDirectorGetModels(handler, ws, message) {
     try {
+        if (sanitizeEngine(message.engine) === 'tokenrouter') {
+            let models = [];
+            let error = null;
+            try {
+                models = publicTokenRouterCatalog(await listTokenRouterModels(message.force === true));
+            } catch (err) {
+                error = err.message || 'TokenRouter catalog unavailable';
+            }
+            sendOk(handler, ws, 'director_get_models_response', message.requestId, {
+                engine: 'tokenrouter',
+                models,
+                available: !!findClaude() && tokenRouter.hasApiKey(handler.globalResources),
+                error
+            });
+            return;
+        }
         if (sanitizeEngine(message.engine) === 'claude') {
             sendOk(handler, ws, 'director_get_models_response', message.requestId, {
                 engine: 'claude',
@@ -5401,6 +5810,36 @@ async function handleDirectorGetModels(handler, ws, message) {
         });
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to list models', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+// Rentan menu (#409): the saved default engine/model for every Rentan turn.
+function handleRentanAgentGet(handler, ws, message) {
+    try {
+        sendOk(handler, ws, 'director_rentan_agent_get_response', message.requestId, {
+            default: readRentanAgentDefault(),
+            fallback: rentanFallback(handler.globalResources)
+        });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to read the Rentan default', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+function handleRentanAgentSetDefault(handler, ws, message) {
+    try {
+        const saved = message.clear === true ? null : saveRentanAgentDefault(message.agent || message);
+        if (message.clear === true) {
+            try { fs.unlinkSync(rentanAgentPath()); } catch (_) { /* nothing saved */ }
+        }
+        const data = { default: saved, fallback: rentanFallback(handler.globalResources) };
+        sendOk(handler, ws, 'director_rentan_agent_set_default_response', message.requestId, data);
+        let wsServer = null;
+        try { wsServer = handler.globalResources.getWebSocketServer(); } catch (_) { wsServer = null; }
+        if (wsServer && typeof wsServer.broadcast === 'function') {
+            wsServer.broadcast({ type: 'director_rentan_agent_default_changed', data, timestamp: new Date().toISOString() });
+        }
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to save the Rentan default', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
 }
 
@@ -5990,22 +6429,35 @@ module.exports = {
     ensureAppKey,
     runDynagenTurn,
     deliverDynagen,
+    handleRentanAgentGet,
+    handleRentanAgentSetDefault,
+    rentanRoute,
+    DYNAGEN_SCENE_RULES,
+    dynagenJobLines,
+    dynagenRequiredControls,
+    additionsOnly,
+    normalizeDynagenAnswer,
+    validateDynagenChange,
+    readRentanAgentDefault,
+    tokenRouterUsageSummary,
     runQuipsTurn,
     deliverQuips,
     awaitRentanAttempt,
     finishRentan,
     startRentanReviewTurn,
     _test: {
-        projectPrompt,
+        projectPrompt, wrenRules, claudeProjectPrompt, WREN_COVERED_SENTENCES,
         insideDir, safeName, effortModel, consumeStreamLine, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
         parseCursorModelLine, agentJailTarget, claudeJailTarget, buildJail, jailEnv, systemBindArgs,
         noteClaudeUsage, claudeUsageSummary, claudeUsageAt, availableClaudeModels,
         updateAgentClis, runCliUpdate, describeCliUpdate, cliAtLeast,
         sanitizeEngine, resolveClaudeRun, publicClaudeCatalog, consumeClaudeStreamLine, claudeToolName, claudeJail, chatAgentSession,
+        usesClaudeCli, publicTokenRouterCatalog, resolveTokenRouterRun, tokenRouterJail, spawnClaude,
+        sanitizeRentanAgent, rentanAgentFor, saveRentanAgentDefault, rentanAgentPath, claimDynagenChat, rentanFallback,
         publicSession, publicMessage, publicTraceRow, roundModelRecord, watchGeneratedPrints, rememberGeneratedPrint,
         isLinkDrop, continuationPrompt,
         normalizeSessionTasks, readProcStat, directorState, computerReadiness,
-        parseDynagenAnswer, dynagenThoughtTracker, dynagenTurnPrompt, chatIsListed, chatIsHidden, pickOpenWorkspaceChat, dynagenDeliveries,
+        parseDynagenAnswer, dynagenThoughtTracker, dynagenTurnPrompt, dynagenRules, chatIsListed, chatIsHidden, pickOpenWorkspaceChat, dynagenDeliveries,
         quipsRules, quipsTurnPrompt, normalizeQuipsAnswer, quipsDeliveries, quipsTurnLimits, QUIPS_PHRASE_MAX,
         takeAssistantText, settleDirectorResult, turnDeadline, dynagenTurnLimits, killAgentChild, signalProcessTree,
         RUN_IDLE_MS, RUN_HARD_MS, DYNAGEN_IDLE_MS, DYNAGEN_HARD_MS, RENTAN_REVIEW_HARD_MS,

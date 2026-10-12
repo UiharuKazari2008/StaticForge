@@ -7982,6 +7982,19 @@ Examples:
                                 Auto lets the model choose. Detached Request uses generate_image. Studio App writes the bound tab.</p>
                         </div>
                         <div class="desktop-settings-option">
+                            <button type="button" id="remoteAccessPriorityClientBtn"
+                                class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
+                                data-state="off"
+                                title="Agents (Claude Code, Cursor, MCP apps) only use this client; Director is not affected">
+                                <i class="fa-regular fa-user-shield"></i>
+                            </button>
+                            <div class="desktop-settings-option-body">
+                                <span class="desktop-settings-option-label">Priority Client</span>
+                                <p class="desktop-settings-hint">Register this window for development: agent calls use
+                                    it and never touch your other clients. Also in Run: <code>agent</code>.</p>
+                            </div>
+                        </div>
+                        <div class="desktop-settings-option">
                             <button type="button" id="remoteAccessAutoGenerateBtn"
                                 class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
                                 data-state="off"

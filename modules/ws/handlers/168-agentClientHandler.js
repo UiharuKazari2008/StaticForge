@@ -38,6 +38,10 @@ function registerPackets(handlersCtx) {
     reg('agent_session_unbind', 'agentSession', (handlers, ws, message, clientInfo) => {
         agentClientBridge.handleAgentSessionUnbind(handlers, ws, message, clientInfo);
     });
+    // Priority client for development (Run: agent, Remote Access: Priority Client)
+    reg('agent_priority_client', 'agentSession', (handlers, ws, message, clientInfo) => {
+        agentClientBridge.handleAgentPriorityClient(handlers, ws, message, clientInfo);
+    });
 }
 
 module.exports = {

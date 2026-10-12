@@ -138,6 +138,7 @@
     "test:frame-chrome": "node scripts/test-frame-chrome.js",
     "test:window-maximize": "node scripts/test-window-maximize.js",
     "test:window-animations": "node scripts/test-window-animations.js",
+    "test:agent-priority-client": "node scripts/test-agent-priority-client.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
     "icon:app": "node scripts/generate-app-icon.js",

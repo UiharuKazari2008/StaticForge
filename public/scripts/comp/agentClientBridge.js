@@ -1311,6 +1311,69 @@
         return data;
     }
 
+    // ---------- priority client (Yukimi, 2026-10-12) ----------
+    // "Use this client, do not touch any other clients": a tab registered here is the only one
+    // agent REST / non-Director MCP calls bind to (modules/agentClientBridge.js). Per tab
+    // (sessionStorage, like the agent client id), re-announced after every reconnect.
+    const PRIORITY_CLIENT_KEY = 'dreamscape.priorityClient';
+    let priorityClientState = { active: false, clientId: null, connected: false, thisClient: false };
+
+    function isPriorityClientRegistered() {
+        try { return sessionStorage.getItem(PRIORITY_CLIENT_KEY) === '1'; } catch (_) { return false; }
+    }
+
+    function announcePriorityClient() {
+        if (!window.wsClient || typeof window.wsClient.sendMessage !== 'function' || !window.wsClient.isConnected()) return;
+        if (!isPriorityClientRegistered()) return;
+        void window.wsClient.sendMessage('agent_priority_client', { enabled: true }, false);
+    }
+
+    function setAgentPriorityClient(enabled) {
+        try {
+            if (enabled) sessionStorage.setItem(PRIORITY_CLIENT_KEY, '1');
+            else sessionStorage.removeItem(PRIORITY_CLIENT_KEY);
+        } catch (_) { /* storage unavailable */ }
+        if (window.wsClient && typeof window.wsClient.sendMessage === 'function' && window.wsClient.isConnected()) {
+            void window.wsClient.sendMessage('agent_priority_client', { enabled: !!enabled }, false);
+        }
+        syncPriorityClientControls();
+        return !!enabled;
+    }
+
+    function syncPriorityClientControls() {
+        const on = isPriorityClientRegistered();
+        const btn = document.getElementById('remoteAccessPriorityClientBtn');
+        if (btn) btn.dataset.state = on ? 'on' : 'off';
+        document.dispatchEvent(new CustomEvent('agentPriorityClientChanged', { detail: { registered: on, state: priorityClientState } }));
+    }
+
+    if (typeof window !== 'undefined') {
+        window.setAgentPriorityClient = setAgentPriorityClient;
+        window.isAgentPriorityClient = isPriorityClientRegistered;
+        window.getAgentPriorityClientState = () => ({ ...priorityClientState, registered: isPriorityClientRegistered() });
+        const wireRemoteAccessToggle = () => {
+            const btn = document.getElementById('remoteAccessPriorityClientBtn');
+            if (!btn || btn.dataset.priorityWired === 'true') return;
+            btn.dataset.priorityWired = 'true';
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                setAgentPriorityClient(!isPriorityClientRegistered());
+            });
+            syncPriorityClientControls();
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireRemoteAccessToggle);
+        else wireRemoteAccessToggle();
+        const hookConnected = () => {
+            if (!window.wsClient || typeof window.wsClient.on !== 'function') return false;
+            window.wsClient.on('connected', announcePriorityClient);
+            announcePriorityClient();
+            return true;
+        };
+        if (!hookConnected()) {
+            const timer = setInterval(() => { if (hookConnected()) clearInterval(timer); }, 500);
+        }
+    }
+
     if (typeof registerWsInboundHandler === 'function') {
         registerWsInboundHandler({
             id: 'agent.session_command',
@@ -1341,6 +1404,15 @@
                 sessionBound = false;
                 // markAgentSessionUnbound: public/scripts/comp/mcpActivityClient.js
                 markAgentSessionUnbound();
+            }
+        });
+        registerWsInboundHandler({
+            id: 'agent.priority_client_state',
+            type: 'agent_priority_client_state',
+            phase: 'only',
+            handler(message) {
+                priorityClientState = Object.assign({ active: false }, message && message.data);
+                syncPriorityClientControls();
             }
         });
         registerWsInboundHandler({

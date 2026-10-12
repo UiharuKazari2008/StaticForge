@@ -44,6 +44,17 @@ function startTestingOfferSweep() {
 }
 startTestingOfferSweep();
 let preferredTestingClientId = null;
+
+// Priority client (Yukimi, 2026-10-12): "use this client, do not touch any other clients".
+// A tab registers itself (Run: agent, Remote Access: Priority Client; agent_priority_client
+// over the socket, re-sent after every reconnect). While it is registered, agent REST and
+// non-Director MCP calls only ever bind to it, other tabs get no testing offers, and a
+// reloading priority tab keeps the claim for PRIORITY_CLIENT_GRACE_MS, so calls wait instead
+// of falling back to the tab Yukimi is typing in. Director's own tab binds are exempt.
+const PRIORITY_CLIENT_GRACE_MS = 10 * 60 * 1000;
+const priorityClient = { clientId: null, since: 0, lastSeen: 0 };
+// Director's own keys (cursorDirector PROJECT_NAME, xiDirector 'Xi', Wren on the Director key)
+const PRIORITY_EXEMPT_ACTORS = new Set(['Dreamscape Director', 'Xi', 'Wren']);
 let testingOfferSweepTimer = null;
 const mcpStudioCheckpoints = new Map(); // bindKey -> { id, focusedFilename, qualitySettings }
 let lastBindResources = null;
@@ -813,7 +824,8 @@ function listClients(globalResources, bindKey) {
             lastActivity: lastMs ? new Date(lastMs).toISOString() : null,
             userAgent: snippetUserAgent(info.userAgent),
             bound: boundId === clientId,
-            authenticated: !!info.authenticated
+            authenticated: !!info.authenticated,
+            priority: priorityClient.clientId === clientId
         });
     }
     out.sort((a, b) => {
@@ -846,7 +858,7 @@ function notifyClient(wsServer, ws, type, data) {
     });
 }
 
-function bindClient(globalResources, { clientId, code, bindKey, actorName }) {
+function bindClient(globalResources, { clientId, code, bindKey, actorName, priorityExempt }) {
     lastBindResources = globalResources;
     const key = requireBindKey(bindKey);
     const wsServer = getWsServer(globalResources);
@@ -875,6 +887,10 @@ function bindClient(globalResources, { clientId, code, bindKey, actorName }) {
         throw err;
     }
     const previous = bindSessions.get(key);
+    const exempt = !!priorityExempt
+        || PRIORITY_EXEMPT_ACTORS.has(String(actorName || (previous && previous.actorName) || '').trim())
+        || !!(previous && previous.priorityExempt && previous.clientId === targetId);
+    if (priorityBlocksClient(globalResources, targetId, exempt)) throw priorityClientError();
     if (previous && previous.clientId !== targetId) {
         if (!clientHasOtherBind(previous.clientId, key)) {
             const prevFound = findClientById(wsServer, previous.clientId);
@@ -892,7 +908,8 @@ function bindClient(globalResources, { clientId, code, bindKey, actorName }) {
         clientId: targetId,
         lastInteractionAt: Date.now(),
         boundAt: alreadyThisKey && previous.boundAt ? previous.boundAt : Date.now(),
-        actorName: resolvedActor
+        actorName: resolvedActor,
+        priorityExempt: exempt
     });
     if (!alreadyThisKey) {
         notifyClient(wsServer, found.ws, 'agent_session_bound', {
@@ -1089,6 +1106,89 @@ function pickNearestClient(globalResources, requestIP, exceptClientId) {
     return best;
 }
 
+function getPriorityClientState(globalResources) {
+    if (!priorityClient.clientId) return { active: false, clientId: null, connected: false };
+    const wsServer = getWsServer(globalResources || lastBindResources);
+    const found = wsServer ? findClientById(wsServer, priorityClient.clientId) : null;
+    if (found) priorityClient.lastSeen = Date.now();
+    if (!found && Date.now() - priorityClient.lastSeen > PRIORITY_CLIENT_GRACE_MS) {
+        priorityClient.clientId = null;
+        return { active: false, clientId: null, connected: false };
+    }
+    return {
+        active: true,
+        clientId: priorityClient.clientId,
+        connected: !!found,
+        since: new Date(priorityClient.since).toISOString()
+    };
+}
+
+/** True when a registered priority client means this call may not use clientId. */
+function priorityBlocksClient(globalResources, clientId, exempt) {
+    if (exempt) return false;
+    const state = getPriorityClientState(globalResources);
+    return state.active && String(clientId || '') !== state.clientId;
+}
+
+function priorityClientError() {
+    const err = new Error('A priority client is registered for development; agent calls only use that client');
+    err.status = 423;
+    err.code = 'PRIORITY_CLIENT';
+    return err;
+}
+
+/** Register (enabled) or release a tab as the priority client. Moves agent binds onto it. */
+function setPriorityClient(globalResources, clientId, enabled) {
+    lastBindResources = globalResources;
+    const id = String(clientId || '').trim();
+    if (!id) return getPriorityClientState(globalResources);
+    if (!enabled) {
+        if (priorityClient.clientId === id) {
+            priorityClient.clientId = null;
+            priorityClient.since = 0;
+        }
+        return getPriorityClientState(globalResources);
+    }
+    const wsServer = getWsServer(globalResources);
+    if (priorityClient.clientId !== id) priorityClient.since = Date.now();
+    priorityClient.clientId = id;
+    priorityClient.lastSeen = Date.now();
+    preferredTestingClientId = id;
+    for (const [bindKey, session] of [...bindSessions]) {
+        if (!session || session.priorityExempt || session.clientId === id) continue;
+        try {
+            bindClient(globalResources, { clientId: id, bindKey, actorName: session.actorName || null });
+        } catch (_err) {
+            // the priority tab is reconnecting: drop the bind, the next call waits for it
+            bindSessions.delete(bindKey);
+        }
+    }
+    if (wsServer && wsServer.clients) {
+        for (const [ws, info] of wsServer.clients) {
+            if (ws.readyState !== WebSocket.OPEN) continue;
+            const other = ensureClientId(info);
+            if (other !== id) dismissTestingOffer(globalResources, other);
+        }
+    }
+    return getPriorityClientState(globalResources);
+}
+
+function handleAgentPriorityClient(handlersCtx, ws, message, clientInfo) {
+    const gr = handlersCtx && handlersCtx.globalResources;
+    const wsServer = gr ? getWsServer(gr) : null;
+    const info = clientInfo || (wsServer && wsServer.clients ? wsServer.clients.get(ws) : null);
+    if (!info || !info.authenticated) {
+        handlersCtx.sendError(ws, 'Unknown client', 'agent_priority_client', message.requestId);
+        return;
+    }
+    const data = (message && message.data) || message || {};
+    const state = setPriorityClient(gr, ensureClientId(info), data.enabled !== false);
+    notifyClient(wsServer, ws, 'agent_priority_client_state', {
+        ...state,
+        thisClient: state.clientId === ensureClientId(info)
+    });
+}
+
 function sendClientCommand(globalResources, clientId, command, payload, timeoutMs) {
     if (timeoutMs == null) timeoutMs = TESTING_OFFER_TIMEOUT_MS;
     const wsServer = getWsServer(globalResources);
@@ -1148,6 +1248,9 @@ function getTestingOfferState(bindKey) {
 }
 
 function claimTestingClient(globalResources, clientId, actorName) {
+    if (priorityBlocksClient(globalResources, clientId, false)) {
+        return { ok: false, clientId, primary: false, reason: 'priority_client' };
+    }
     preferredTestingClientId = clientId;
     for (const [bindKey, session] of [...bindSessions]) {
         bindClient(globalResources, {
@@ -1277,6 +1380,7 @@ function clientConnectedIsFresh(info) {
 }
 
 function maybeOfferTestingClients(globalResources, opts) {
+    if (getPriorityClientState(globalResources).active) return;
     adoptDeadPrimary(globalResources);
     const bindKey = (opts && opts.bindKey) || 'preferred:testing';
     const actorName = opts && opts.actorName;
@@ -1313,7 +1417,39 @@ function autoBindNearest(globalResources, bindKey, actorName, requestIP) {
     lastBindResources = globalResources;
     adoptDeadPrimary(globalResources);
     const key = bindKey ? String(bindKey).trim() : '';
+    const actorExempt = PRIORITY_EXEMPT_ACTORS.has(String(actorName || boundActorName(key) || '').trim());
+    const priority = actorExempt ? { active: false } : getPriorityClientState(globalResources);
+    if (priority.active && key) {
+        const session = bindSessions.get(key);
+        if (session && !session.priorityExempt && session.clientId !== priority.clientId) {
+            bindSessions.delete(key);
+        }
+    }
     const clients = listClients(globalResources, key || null);
+    if (priority.active && !(key && bindSessions.get(key) && bindSessions.get(key).priorityExempt)) {
+        if (!priority.connected) {
+            return {
+                bound: false,
+                auto: false,
+                bindKey: key || null,
+                needsClientChoice: false,
+                priorityClientOffline: true,
+                priorityClientId: priority.clientId,
+                clients
+            };
+        }
+        if (key && getBoundClientId(key) !== priority.clientId) {
+            bindClient(globalResources, { clientId: priority.clientId, bindKey: key, actorName });
+        }
+        return {
+            bound: !!key,
+            auto: true,
+            priority: true,
+            clientId: priority.clientId,
+            bindKey: key || null,
+            clients
+        };
+    }
     if (key && getBoundRecord(globalResources, key)) {
         const clientId = getBoundClientId(key);
         void maybeOfferTestingClients(globalResources, {
@@ -1542,7 +1678,8 @@ async function awaitClientReattach(globalResources, bindKey, opts) {
     const stepMs = Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 400;
     const deadline = Date.now() + waitMs;
     while (Date.now() < deadline) {
-        const found = pickReattachTarget(globalResources, hint);
+        const candidate = pickReattachTarget(globalResources, hint);
+        const found = candidate && !priorityBlocksClient(globalResources, candidate.clientId, false) ? candidate : null;
         if (found) {
             bindClient(globalResources, {
                 clientId: found.clientId,
@@ -1733,7 +1870,6 @@ async function enrichDynamicGenerationForMcp(globalResources, bindKey, dynamicGe
     };
 }
 
-const DYNAGEN_INTEGRATION_NEXT = 'Rentan is on and not baked. Read dynamicGeneration.resolved (time, date, timeOfDay, weather, season, location). Write it into dg_ expanders (dg_time, dg_weather, dg_season, dg_holiday, dg_scene) with !dg_ tokens in the prompt and drop tags that contradict it. Then retry with dynamicGeneration.integrated=true in the same apply_studio_changes change, or on generate_image. Prints stay blocked until then.';
 
 function normalizeDynagenInput(dyn) {
     if (dyn === true) return { enabled: true };
@@ -1768,24 +1904,6 @@ function dynagenShouldCompile(dyn) {
     return true;
 }
 
-function dynagenNeedsIntegration(dyn) {
-    const settings = normalizeDynagenInput(dyn);
-    if (!settings) return false;
-    if (settings.enabled === false) return false;
-    if (settings.integrated === true || settings.integrated === 'true') return false;
-    const compiled = settings.compiled_prompt;
-    if (compiled && typeof compiled === 'object' && compiled.success === false) {
-        return false;
-    }
-    if (compiled && typeof compiled === 'object'
-        && compiled.success !== false
-        && compiled.prompt_hash
-        && compiled.request_hash) {
-        return false;
-    }
-    return true;
-}
-
 function sanitizeDynagenForGenerate(payload) {
     if (!payload || typeof payload !== 'object') return payload;
     const dyn = payload.dynamic_generation || payload.dynamicGeneration;
@@ -1805,50 +1923,6 @@ function sanitizeDynagenForGenerate(payload) {
     payload.dynamic_generation = clean;
     payload.dynamicGeneration = clean;
     return payload;
-}
-
-function buildDynagenIntegrationPayload(enriched) {
-    return {
-        success: false,
-        needsIntegration: true,
-        dynamicGeneration: enriched,
-        next: DYNAGEN_INTEGRATION_NEXT
-    };
-}
-
-async function buildDynagenIntegrationBlock(globalResources, bindKey, dyn) {
-    const enriched = await enrichDynamicGenerationForMcp(
-        globalResources,
-        bindKey || null,
-        normalizeDynagenInput(dyn)
-    );
-    return buildDynagenIntegrationPayload(enriched);
-}
-
-async function guardStudioAutoGenerateDynagen(globalResources, bindKey, body) {
-    const { autoGenerate } = resolveStudioAutoFlags(body || {});
-    if (!autoGenerate) return null;
-    const assembled = assembleStudioChangeFromToolArgs(body || {});
-    const dyn = assembled && assembled.dynamicGeneration;
-    if (dyn) {
-        if (!dynagenNeedsIntegration(dyn)) return null;
-        return buildDynagenIntegrationBlock(globalResources, bindKey, dyn);
-    }
-    return guardLiveStudioDynagen(globalResources, bindKey);
-}
-
-// Agent-driven Studio prints (apply autoGenerate, print_studio) stop until the agent
-// resolves Rentan. Humans clicking Generate go through dynagenWren instead.
-async function guardLiveStudioDynagen(globalResources, bindKey) {
-    let live = null;
-    try {
-        const data = await sendBoundCommand(globalResources, 'get_physics', {}, 8000, bindKey);
-        live = data && data.dynamicGeneration;
-    } catch (_err) {
-        return null;
-    }
-    if (!live || live.enabled !== true || live.baked === true) return null;
-    return buildDynagenIntegrationBlock(globalResources, bindKey, live);
 }
 
 async function getClientPhysics(globalResources, bindKey, overrides, requestIP) {
@@ -2135,10 +2209,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                 return res.status(400).json({ success: false, error: 'change JSON or prompt/uc/params fields are required' });
             }
             const bindKey = resolveBindKey(req);
-            const blocked = await guardStudioAutoGenerateDynagen(globalResources, bindKey, body);
-            if (blocked) {
-                return res.status(409).json(blocked);
-            }
+            // Rentan is resolved by the server before the print (#422): no 409 needsIntegration any more.
             const data = await sendBoundCommand(globalResources, 'apply_studio', {
                 change: assembled,
                 prompt: body.prompt,
@@ -2322,6 +2393,9 @@ module.exports = {
     handleSessionShareStart,
     handleAgentSessionResult,
     handleAgentSessionUnbind,
+    handleAgentPriorityClient,
+    setPriorityClient,
+    getPriorityClientState,
     listClients,
     bindClient,
     unbindClient,
@@ -2336,13 +2410,8 @@ module.exports = {
     normalizeDynagenInput,
     pickDynagenFromInput,
     pickPhysicsOverrides,
-    dynagenNeedsIntegration,
     dynagenShouldCompile,
     sanitizeDynagenForGenerate,
-    buildDynagenIntegrationBlock,
-    guardStudioAutoGenerateDynagen,
-    guardLiveStudioDynagen,
-    DYNAGEN_INTEGRATION_NEXT,
     dispatchAgentPacket,
     sendBoundCommand,
     sendClientCommand,
@@ -2407,11 +2476,8 @@ module.exports = {
         normalizeDynagenInput,
         pickDynagenFromInput,
         pickPhysicsOverrides,
-        dynagenNeedsIntegration,
         dynagenShouldCompile,
         sanitizeDynagenForGenerate,
-        buildDynagenIntegrationPayload,
-        DYNAGEN_INTEGRATION_NEXT,
         STUDIO_CHANGE_PARAM_KEYS,
         pickNsfwFromStudioArgs,
         pickDatasetConfigFromStudioArgs,

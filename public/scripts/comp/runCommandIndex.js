@@ -577,6 +577,31 @@ function buildRunAppEntries() {
     return entries;
 }
 
+/** Run: agent: register / release this client as the priority client for development
+ *  (agents only use it; Remote Access has the same Priority Client toggle). */
+function buildRunAgentEntries() {
+    if (typeof window.setAgentPriorityClient !== 'function') return [];
+    const registered = typeof window.isAgentPriorityClient === 'function' && window.isAgentPriorityClient();
+    return [{
+        id: 'agent-priority-client',
+        category: 'app',
+        label: registered ? 'Release this client from development' : 'Register this client for development',
+        subtitle: registered
+            ? 'Priority client: agents only use this window. Run to let them use any client again'
+            : 'agent: Claude Code, Cursor and MCP apps use only this window and never touch your other clients',
+        icon: 'fa-regular fa-user-shield',
+        keywords: ['agent', 'priority client', 'development', 'dev client', 'register'],
+        execute: () => {
+            const on = window.setAgentPriorityClient(!registered);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', 'Priority Client', on
+                    ? 'This client is registered for development. Agents only use this window.'
+                    : 'This client is released. Agents may use any client again.', false, 4000);
+            }
+        }
+    }];
+}
+
 function buildRunWorkspaceEntries() {
     const entries = [];
     const workspacesData = typeof workspaces !== 'undefined' ? workspaces : (window.workspaces || {});
@@ -1296,6 +1321,7 @@ async function enterGallerySearchMode(query) {
 function buildRunStaticEntries() {
     return [
         ...buildRunAppEntries(),
+        ...buildRunAgentEntries(),
         ...buildRunWorkspaceEntries(),
         ...buildRunShortcutOnlyEntries()
     ];
