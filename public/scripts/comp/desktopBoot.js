@@ -43,13 +43,15 @@
         taskbar: 'boot-reveal-taskbar',
         windows: 'boot-reveal-windows'
     };
+    // Vista wording (Yukimi, 2026-10-12): one line, "Preparing your desktop..." for every
+    // stage and "Welcome" at the end; the real init step goes to the console only
     const STAGE_TEXT = {
-        session: 'Loading your personal settings…',
-        settings: 'Loading your personal settings…',
-        wallpaper: 'Applying your personal settings…',
-        icons: 'Preparing your desktop…',
-        taskbar: 'Preparing your desktop…',
-        windows: 'Restoring your windows…',
+        session: 'Preparing your desktop...',
+        settings: 'Preparing your desktop...',
+        wallpaper: 'Preparing your desktop...',
+        icons: 'Preparing your desktop...',
+        taskbar: 'Preparing your desktop...',
+        windows: 'Preparing your desktop...',
         done: 'Welcome'
     };
     const BOOT_CLASSES = ['boot-staged', ...Object.values(REVEAL_CLASS)];
@@ -58,7 +60,7 @@
     const config = {
         dwellMs: { session: 600, settings: 0, wallpaper: 700, icons: 450, taskbar: 450, windows: 500, done: 350 },
         stepWatchdogMs: 25000,
-        connectionWaitText: 'Waiting for the server…',
+        connectionWaitText: 'Please wait...',
         connectionFailedText: 'The server is not responding…',
         suspendText: 'Restoring your session…',
         lockSwitchMs: 500,   // black cut before the lock screen shows
@@ -120,9 +122,11 @@
         if (el && typeof text === 'string') el.textContent = text;
     }
 
+    /** The real init step: kept on the (hidden, Vista has one line) detail element and the console. */
     function setDetailText(text) {
         const el = byId('windowsStartupDetail');
         if (el) el.textContent = text || '';
+        if (text && typeof console !== 'undefined' && console.debug) console.debug(`[boot] ${text}`);
     }
 
     function setProgress(progress) {
@@ -382,9 +386,11 @@
         const waiting = phase === 'dialing' || phase === 'failed' || phase === 'auth';
         if (waiting) {
             state.connectionPaused = true;
+            // A dial beat is just a wait ("Please wait..."); a failure or the password prompt
+            // keeps its own text
             state.connectionText = phase === 'failed'
                 ? (message || config.connectionFailedText)
-                : (message || config.connectionWaitText);
+                : (phase === 'auth' ? (message || config.connectionWaitText) : config.connectionWaitText);
             clearTimeout(state.timer);
             state.timer = null;
             refreshPrimaryText();

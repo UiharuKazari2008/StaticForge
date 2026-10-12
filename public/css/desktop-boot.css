@@ -230,7 +230,12 @@ body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-auth-erro
     font-size: 13px;
 }
 
-/* Real init step under the stage headline (desktopBoot.js onStepMessage) */
+/* Real init step under the stage headline (desktopBoot.js onStepMessage). Hidden: the Vista
+   wording is one line; the step name stays in the DOM and the console for debugging. */
+#windowsStartupModal .windows-startup-detail {
+    display: none;
+}
+
 .windows-startup-detail {
     color: var(--text-muted);
     font-size: 11px;

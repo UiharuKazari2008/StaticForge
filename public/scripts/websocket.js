@@ -1708,6 +1708,17 @@ class WebSocketClient {
         return wait > 0 ? new Promise((resolve) => setTimeout(resolve, wait)) : Promise.resolve();
     }
 
+    /**
+     * Vista wording on the logon dialog (Yukimi, 2026-10-12): every stage before the handoff
+     * reads "Please wait...", the handoff "Welcome". The password prompt and connection
+     * failures keep their own text; the real stage stays in the stage bar's tooltip.
+     */
+    _preStartupDisplayText(phase, statusMessage) {
+        if (phase === 'auth' || phase === 'failed') return statusMessage;
+        if (statusMessage === 'Preparing MeletonFX...') return 'Welcome';
+        return 'Please wait...';
+    }
+
     _renderPreStartupDialog() {
         // serviceWorkerManager._isInstallWizardActive: public/scripts/comp/serviceWorkerManager.js
         if (window.serviceWorkerManager && window.serviceWorkerManager._isInstallWizardActive()) {
@@ -1787,7 +1798,7 @@ class WebSocketClient {
             && !logonError;
         const shouldPauseMarquee = !isTasking;
 
-        statusEl.textContent = statusMessage;
+        statusEl.textContent = this._preStartupDisplayText(phase, statusMessage);
         progressWrap.classList.toggle('paused', shouldPauseMarquee);
 
         if (serverBooting) {

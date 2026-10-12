@@ -18,10 +18,15 @@ sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417, #42
 
 Each stage holds for at least `desktopBoot.config.dwellMs[stage]` so the sequence reads
 even when the init steps finish in a few hundred milliseconds; when a step is slow the
-stage simply waits for it. The headline in the startup window belongs to the stage
-("Loading your personal settings…", "Applying your personal settings…", "Preparing your
-desktop…", "Restoring your windows…"); the real init step runs on the small detail line
-underneath, so nothing is hidden from a developer.
+stage simply waits for it.
+
+**Wording (Vista, Yukimi 2026-10-12).** The logon dialog reads "Please wait..." for every
+stage before the handoff (connection, server status, update check, logon steps) and
+"Welcome" at the handoff; the password prompt and connection failures keep their own text,
+and the server's real boot stage stays in the stage bar's tooltip
+(`websocket.js _preStartupDisplayText`). The small startup window reads "Preparing your
+desktop..." for every stage and "Welcome" at the end (`desktopBoot.STAGE_TEXT`); the real
+init step is kept on the hidden detail element and logged with `console.debug('[boot] …')`.
 
 ## Melaton boot (`/launch`)
 
@@ -55,6 +60,21 @@ preset per screen and `/launch?design=1&screen=menu` (`boot`, `menu`, `menu-info
 `confirm`, `confirm-touch`, `recover`, `teal`, `black`) opens one directly at any window
 size; `&hud=0` hides the HUD (clean screenshots). Recovery in design mode never wipes and
 nothing navigates. Test: `npm run test:melaton-boot`.
+
+## Default wallpapers (Yozora #419)
+
+`public/static_images/wallpapers/` (3840×2160 WebP), generated with
+`scripts/generate-setup-background.js` (GPT Image, Vista desktop aurora composition) and
+upscaled:
+
+| File | What |
+|------|------|
+| `aurora.webp` | The default: the `vista` aurora with the Dreamscape text logo (Mozilla Headline 600, white) on the left of the aurora, its left margin equal to the gap below it. Also the installer backdrop. |
+| `aurora-plain.webp` | The same aurora without the logo |
+| `aurora-blue.webp`, `aurora-dusk.webp`, `aurora-emerald.webp` | The other palettes, offered as default wallpapers to pick from |
+
+Wiring them in as the fallback for workspaces with no wallpaper and as picker choices is
+part of S4.
 
 ## Restart (Yozora #420)
 
