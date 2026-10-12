@@ -61,7 +61,7 @@ const FEATURE_MANIFEST = {
     explorer: {
         styles: ['css/explorer.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
-        scripts: ['scripts/comp/explorerApplet.js']
+        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerApplet.js']
     },
     naxt: {
         styles: ['css/naxt-shell.css', 'css/spellbook.css'],

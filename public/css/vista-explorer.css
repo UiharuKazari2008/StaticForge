@@ -1,293 +1,744 @@
-/* Cartograph as Vista's Windows Explorer (Yukimi, 2026-10-12: "update file explorer ... to be
-   IE"). Colours measured from a Vista Aero VM (Recycle Bin window): the command bar's teal
-   (#b6d2d9 to #488d9f over the top half, the fold at #156477, rising to #54a1ab, #777e85 above
-   and #0b3742 below), the white content (#fcfcfc), near-white column headers with the sorted
-   column pale blue, the details pane (#c8dde8 edge, #e3f3f8 to #ecfbfe).
-     caption     back / forward as Vista's blue glass orbs, the light address box with the
-                 refresh arrows in it, the search box with the magnifier
-     command bar the teal glass strip, bare buttons that light under the pointer
-     content     a light window: white file area, Vista's hot and selected item boxes
-     status bar  the details pane
-   explorerApplet.js and its markup are unchanged (app.html marks the window light). */
+/* Cartograph as Vista's Windows Explorer, 1:1 with the Vista VM (Yozora #449). Structure from
+   public/scripts/comp/explorerVistaChrome.js (breadcrumb, command bar, navigation and details
+   panes); art from the VM (public/static_images/vista-explorer/: the theme's navigation orbs,
+   the command icons, Favorite Links icons, the details pane swoosh); colours and sizes measured
+   from the VM's Explorer at 96 DPI and from Explorer's own UIFILE (shellstyle.dll). Desktop
+   mode; elsewhere Cartograph keeps its compact icon toolbar. */
 
-body:not(.windows-classic-theme) #explorerModal {
-    --vista-ex-text: #000;
+/* off the desktop: the old icon toolbar, no panes */
+body:not(.desktop-mode) #explorerModal :is(.explorer-command-set, .explorer-help-btn, .explorer-nav-pane, .explorer-breadcrumb, .explorer-details-icon, .explorer-details-info, .explorer-recent-pages-btn, .explorer-address-drop-btn),
+body.windows-classic-theme #explorerModal :is(.explorer-command-set, .explorer-help-btn, .explorer-nav-pane, .explorer-breadcrumb, .explorer-details-icon, .explorer-details-info, .explorer-recent-pages-btn, .explorer-address-drop-btn) {
+    display: none !important;
 }
 
-/* ---- caption: navigation orbs, address box, search box ---- */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal {
+    --ex-font: 'Segoe UI', 'Noto Sans', sans-serif;
+    --ex-link: #0066cc;
+    font-family: var(--ex-font);
+}
 
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .naxt-nav-group {
-    gap: 2px;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal :is(.explorer-legacy-commands, .explorer-legacy-command, #explorerViewDetailsBtn, #explorerViewLargeBtn, #explorerStatusText) {
+    display: none !important;
+}
+
+/* ---- caption: the theme's orbs, the breadcrumb box, the search box ---- */
+
+/* Explorer's caption carries no icon and no title (the taskbar button still names it) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-main > :is(.icon-fa, .icon-image, #explorerTitleLabel) {
+    visibility: hidden;
+}
+
+/* the travel band: a faint capsule holding the orbs and the Recent Pages arrow */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .naxt-nav-group {
+    gap: 0;
+    padding: 0 1px 0 0;
+    background: linear-gradient(hsl(0 0% 100% / 10%), hsl(0 0% 100% / 4%) 50%, hsl(0 0% 0% / 4%) 50%, hsl(0 0% 100% / 6%));
+    border: 1px solid hsl(210 20% 12% / 45%);
+    border-radius: 15px;
+    box-shadow: 0 1px 0 hsl(0 0% 100% / 22%), inset 0 1px 0 hsl(0 0% 100% / 14%);
+}
+
+/* Recent Pages: aero.msstyles IMAGE_937, 13x108, normal / hot / pressed / disabled at 27px */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-recent-pages-btn {
+    flex: none;
+    width: 13px;
+    min-width: 13px;
+    height: 27px;
+    min-height: 0;
     padding: 0;
-    background: none;
+    margin: 0 0 0 -1px;
+    background: url('/static_images/vista-explorer/recent-pages.png') no-repeat 0 0;
     border: 0;
+    border-radius: 0;
     box-shadow: none;
 }
 
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn) {
-    width: 27px;
-    min-width: 27px;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-recent-pages-btn:hover {
+    background-position: 0 -27px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-recent-pages-btn:active {
+    background-position: 0 -54px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .naxt-nav-group:has(#explorerBackBtn:disabled):has(#explorerForwardBtn:disabled) .explorer-recent-pages-btn {
+    background-position: 0 -81px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn) {
+    width: 29px;
+    min-width: 29px;
     height: 27px;
     min-height: 27px;
     padding: 0;
-    border: 1px solid hsl(216 80% 18%);
+    border: 0;
     border-radius: 50%;
-    background: radial-gradient(circle at 50% 26%, hsl(205 100% 93%) 0, hsl(205 95% 80%) 18%, hsl(208 78% 58%) 48%, hsl(214 78% 38%) 78%, hsl(216 82% 27%) 100%);
-    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 55%), 0 1px 2px hsl(0 0% 0% / 45%);
-    color: #fff;
-    text-shadow: 0 1px 1px hsl(216 80% 15% / 80%);
-    transition: filter 0.2s, box-shadow 0.2s;
+    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    box-shadow: none;
+    filter: none;
+    opacity: 1;
 }
 
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn) i {
-    color: #fff;
-    font-size: 12px;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerForwardBtn {
+    margin-left: -2px;
+    background-image: url('/static_images/vista-explorer/nav-forward.png');
 }
 
-@media (hover: hover) {
-    body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn):hover:not(:disabled) {
-        filter: brightness(1.15);
-        box-shadow: inset 0 1px 0 hsl(0 0% 100% / 60%), 0 0 6px 1px hsl(200 100% 70% / 60%), 0 1px 2px hsl(0 0% 0% / 45%);
-    }
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn) i {
+    display: none;
 }
 
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn):disabled,
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn).disabled {
-    filter: grayscale(1) brightness(1.15);
-    opacity: 0.75;
-}
-
-/* Up: Vista has none; a bare glyph next to the orbs */
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerUpBtn {
-    min-width: 24px;
-    height: 27px;
-    padding: 0 4px;
-    background: none;
-    border-color: transparent;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn):hover:not(:disabled) {
+    background-position: 0 -27px;
+    filter: none;
     box-shadow: none;
 }
 
-/* the address and search boxes: Vista's light boxes on the glass */
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(> #explorerAddressBar),
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(> #explorerSearchBar) {
-    height: 25px;
-    padding: 0;
-    background: linear-gradient(#fff, #f4f7fb);
-    border: 1px solid hsl(210 8% 45%);
-    border-radius: 2px;
-    box-shadow: inset 0 1px 1px hsl(0 0% 0% / 8%), 0 0 0 1px hsl(0 0% 100% / 25%);
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn):active:not(:disabled) {
+    background-position: 0 -54px;
 }
 
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar) {
-    height: 23px;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn):is(:disabled, .disabled) {
+    background-position: 0 -81px;
+    filter: none;
+    opacity: 1;
+}
+
+/* Up: Vista has none, the breadcrumb does it */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerUpBtn {
+    display: none;
+}
+
+/* the breadcrumb box and the search box: translucent white over the glass, a dark edge */
+/* VM: 22px, a dark edge (#353c43, the bottom lighter), a white inner line, a blue-grey fill */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)) {
+    position: relative;
+    height: 22px;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
+    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
+    border: 1px solid #353c43;
+    border-bottom-color: #6e7988;
+    border-radius: 0;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 88%), 0 0 0 1px hsl(0 0% 100% / 16%);
+}
+
+/* inside the address box, right to left: refresh (23px), a 1px rule, the ▾ of the places visited (17px) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-address-drop-btn {
+    position: absolute;
+    top: 1px;
+    right: 24px;
+    z-index: 3;
+    width: 17px;
+    min-width: 0;
+    height: 18px;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-address-drop-btn::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 7px;
+    width: 7px;
+    height: 4px;
+    background: #00025c;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-address-drop-btn:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-address-drop-btn:active {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #2c628b;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-address-group::after {
+    content: '';
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    right: 23px;
+    width: 1px;
+    background: #54585c;
+    pointer-events: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-breadcrumb {
+    position: absolute;
+    inset: 0 42px 0 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0 4px 0 3px;
+    overflow: hidden;
+    white-space: nowrap;
+    color: #000;
+    font: 12px var(--ex-font);
+    cursor: text;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-address-group.is-editing .explorer-breadcrumb {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-address-group:not(.is-editing) #explorerAddressBar {
+    color: transparent;
+    caret-color: transparent;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-crumb-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-right: 2px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-crumb-sep {
+    flex: none;
+    width: 15px;
+    height: 20px;
+    background: no-repeat center / 4px 7px linear-gradient(#000, #000);
+    -webkit-mask: no-repeat center / 4px 7px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 7'%3E%3Cpath d='M0 0l4 3.5L0 7z'/%3E%3C/svg%3E");
+    mask: no-repeat center / 4px 7px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 7'%3E%3Cpath d='M0 0l4 3.5L0 7z'/%3E%3C/svg%3E");
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-crumb {
+    flex: none;
+    height: 20px;
+    padding: 0 3px;
+    margin: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 12px var(--ex-font);
+    text-shadow: none;
+    cursor: default;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-crumb:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar) {
+    height: 20px;
     min-height: 0;
     padding: 0 6px;
     background: transparent;
     border: 0;
     box-shadow: none;
     color: #000;
-    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
-    font-size: 12px;
+    font: 12px var(--ex-font);
     text-shadow: none;
 }
 
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar)::placeholder {
-    color: #6d6d6d;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar)::placeholder {
+    color: #5f5f5f;
     font-style: italic;
 }
 
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerSearchBar {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerSearchBar {
     padding-right: 24px;
-    background: url('/static_images/vista-start/search-glyph.png') no-repeat right 6px center;
+    background: url('/static_images/vista-start/search-glyph.png') no-repeat right 5px center;
 }
 
-/* the refresh arrows sit in the address box's right end */
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerRefreshBtn {
-    width: 24px;
-    min-width: 24px;
-    height: 23px;
+/* the refresh cell at the box's right end (the VM's art, 23x18 inside the white inner line) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerRefreshBtn {
+    position: absolute;
+    right: 1px;
+    top: 1px;
+    z-index: 3;
+    width: 22px;
+    min-width: 0;
+    height: 18px;
     min-height: 0;
     padding: 0;
-    background: none;
+    background: url('/static_images/vista-explorer/refresh.png') no-repeat 0 0;
     border: 0;
-    border-left: 1px solid hsl(210 10% 82%);
     border-radius: 0;
     box-shadow: none;
 }
 
-body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerRefreshBtn i {
-    color: #2f7d3b;
-    font-size: 11px;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerRefreshBtn:hover {
+    box-shadow: inset 0 0 0 1px #3c7fb1, inset 0 0 0 2px hsl(0 0% 100% / 60%);
 }
 
-@media (hover: hover) {
-    body:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerRefreshBtn:hover {
-        background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
-    }
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerRefreshBtn i {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerAddressBar {
+    width: calc(100% - 42px);
 }
 
 /* ---- the command bar ---- */
 
-body:not(.windows-classic-theme) #explorerModal .explorer-actions-header.naxt-search-header {
-    --text-primary: #fff;
-    --text-color: #fff;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-actions-header.naxt-search-header {
     min-height: 32px;
-    padding: 0 6px;
+    padding: 0 4px;
     background: linear-gradient(#b6d2d9, #85b3bf 8%, #488d9f 49%, #156477 50%, #1c677a 62%, #4b94a1 92%, #99c9cf 97%, #99c9cf);
     border-top: 1px solid #777e85;
     border-bottom: 1px solid #0b3742;
     box-shadow: none;
-    color: #fff;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-actions-header :is(.button-group, .explorer-toolbar-right) {
-    gap: 1px;
-    background: none;
-    border: 0;
-    box-shadow: none;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-actions-header .naxt-search-controls {
+    gap: 0;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-actions-header button:is(.btn-secondary, .btn-primary) {
-    min-height: 26px;
-    height: 26px;
-    padding: 0 7px;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-set {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal :is(.explorer-command-btn, .explorer-command-btn.btn-secondary) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    height: 24px;
+    min-height: 24px;
+    margin: 0 2px;
+    padding: 0 6px;
     background: none;
     border: 1px solid transparent;
     border-radius: 3px;
     box-shadow: none;
     color: #fff;
-    text-shadow: 0 1px 1px hsl(195 70% 12% / 70%);
+    font: 12px var(--ex-font);
+    font-weight: 400;
+    text-shadow: 0 0 6px hsl(200 80% 10% / 90%), 0 1px 1px hsl(200 80% 10% / 70%);
+    white-space: nowrap;
+    cursor: default;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-actions-header button:is(.btn-secondary, .btn-primary) i {
-    color: #fff;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
 }
 
-@media (hover: hover) {
-    body:not(.windows-classic-theme) #explorerModal .explorer-actions-header button:is(.btn-secondary, .btn-primary):hover:not(:disabled) {
-        background: linear-gradient(hsl(0 0% 100% / 38%), hsl(0 0% 100% / 16%) 49%, hsl(0 0% 100% / 4%) 50%, hsl(0 0% 100% / 18%));
-        border-color: hsl(195 60% 12% / 70%);
-        box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 45%);
-    }
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-glyph {
+    width: 7px;
+    height: 4px;
+    margin-left: 7px;
+    background: #fff;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 4'%3E%3Cpath d='M0 0h7L3.5 4z'/%3E%3C/svg%3E") no-repeat center / 7px 4px;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 4'%3E%3Cpath d='M0 0h7L3.5 4z'/%3E%3C/svg%3E") no-repeat center / 7px 4px;
+    filter: drop-shadow(0 1px 1px hsl(200 80% 10% / 80%));
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-actions-header button:is(.btn-secondary, .btn-primary):active:not(:disabled) {
-    background: linear-gradient(hsl(195 60% 12% / 35%), hsl(195 60% 12% / 20%));
-    border-color: hsl(195 60% 12% / 80%);
-    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 45%);
+/* hot: Vista's glossy box (measured: #afc7d6 to #537c98 above the middle, #0e364f to #2f668a
+   below, light inner lines, a navy edge) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-btn:is(:hover, .active, [aria-expanded="true"]):not(:disabled) {
+    background: linear-gradient(#afc7d6, #537c98 48%, #0e364f 50%, #2f668a);
+    border-color: #044875;
+    box-shadow: inset 0 1px 0 #d8e4ec, inset 0 -1px 0 #92b1c4;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-actions-header button:disabled {
-    opacity: 0.45;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-btn:active:not(:disabled) {
+    background: linear-gradient(#0e364f, #1d4f6c 50%, #2f668a);
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 55%);
 }
 
-/* ---- the light window: white file area, Vista's column headers and item boxes ---- */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-btn:disabled {
+    color: #a1ccd2;
+    text-shadow: none;
+}
 
-body:not(.windows-classic-theme) #explorerModal .explorer-grid-host {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-help-btn {
+    width: 22px;
+    height: 22px;
+    margin-left: auto;
+    padding: 2px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-help-btn img {
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-help-btn:hover {
+    border-color: #044875;
+    box-shadow: inset 0 1px 0 #d8e4ec;
+}
+
+/* ---- the panes ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-main {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
     background: #fcfcfc;
-    color: var(--vista-ex-text);
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-details-header {
-    padding: 0 var(--spacing-sm);
-    background: linear-gradient(#fff, #f1f4f8);
-    border-bottom: 1px solid #d5d5d5;
-    color: #4c607a;
-    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
-    font-weight: 400;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-view-pane {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-details-header .explorer-details-sort-col {
-    height: 24px;
-    padding: 0 6px;
-    border-right: 1px solid #e2e5ea;
-    color: #4c607a;
-    font-weight: 400;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-nav-pane {
+    display: flex;
+    flex: 0 0 158px;
+    flex-direction: column;
+    min-height: 0;
+    background: #fcfcfc;
+    border-right: 1px solid #a7bac5;
+    box-shadow: 1px 0 0 #fff;
+    color: #000;
+    font: 12px var(--ex-font);
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-details-header .explorer-details-sort-col.active {
-    background: #ecf5fc;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorites {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 9px 4px 4px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-nav-heading {
+    margin: 0 0 6px 7px;
+    color: #6d6d6d;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorite-links {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorite-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 22px;
+    margin: 0;
+    padding: 0 4px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    color: var(--ex-link);
+    font: 12px var(--ex-font);
+    text-align: left;
+    text-shadow: none;
+    cursor: default;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorite-link img {
+    width: 16px;
+    height: 16px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorite-link:hover {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #e7f5fd);
+    border-color: #99defd;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorite-link.is-current {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #e7f5fd);
+    border-color: #99defd;
+}
+
+/* the Folders bar at the foot; open, the tree takes the pane above it */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    min-height: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders.is-open {
+    flex: 1 1 60%;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 25px;
+    margin: 0;
+    padding: 0 10px;
+    background: #fcfcfc;
+    border: 0;
+    border-top: 1px solid #f0f0f0;
+    border-radius: 0;
+    box-shadow: 0 -1px 0 #fff, inset 0 1px 0 #f0f0f0, inset 0 2px 0 #fff;
+    color: var(--ex-link);
+    font: 12px var(--ex-font);
+    text-shadow: none;
+    cursor: default;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders-chevron {
+    width: 11px;
+    height: 8px;
+    background: url('/static_images/vista-explorer/folders-up.png') no-repeat center;
+    transition: transform 0.2s;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders.is-open .explorer-folders-chevron {
+    transform: rotate(180deg);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders-tree {
+    display: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 2px 4px;
+    background: #fcfcfc;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders.is-open .explorer-folders-tree {
+    display: block;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders-tree ul.tree-view {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: 12px var(--ex-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders-tree .explorer-tree-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 3px;
+    border: 1px solid transparent;
+    border-radius: 2px;
     color: #000;
 }
 
-@media (hover: hover) {
-    body:not(.windows-classic-theme) #explorerModal .explorer-details-header .explorer-details-sort-col:hover {
-        background: linear-gradient(#e3f4fc, #d3edf9);
-        color: #000;
-    }
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders-tree .explorer-tree-label::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    background: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/vista-icons/explorer/folder-32.png') 2x) no-repeat center / 16px 16px;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-item {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders-tree .explorer-tree-label:hover {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #e7f5fd);
+    border-color: #99defd;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-loading {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+/* ---- the file area ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-grid-host {
+    background: #fcfcfc;
+    color: #000;
+}
+
+/* Details' column lines (#ededed down each column's right edge, VM 160 / 280 / 400 / 480px in) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-view-pane[data-view="details"] .explorer-grid-host {
+    background:
+        linear-gradient(#ededed, #ededed) no-repeat 160px 0 / 1px 100%,
+        linear-gradient(#ededed, #ededed) no-repeat 280px 0 / 1px 100%,
+        linear-gradient(#ededed, #ededed) no-repeat 400px 0 / 1px 100%,
+        linear-gradient(#ededed, #ededed) no-repeat 480px 0 / 1px 100%,
+        #fcfcfc;
+}
+
+/* column headers in every view, Vista's default widths: Name 157, Date modified 120, Type 120,
+   Size 80 (sorted column the pale blue, #96d9f9 under it) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-header {
+    grid-template-columns: 157px 120px 120px 80px;
+    justify-content: start;
+    gap: 0;
+    height: 21px;
+    padding: 0 0 0 3px;
+    background: linear-gradient(#fff, #fff 40%, #f3f5f8);
+    border-bottom: 1px solid #d5d5d5;
+    color: #4c607a;
+    font: 12px var(--ex-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-header .explorer-details-sort-col {
+    height: 21px;
+    padding: 0 6px;
+    border: 0;
+    border-right: 1px solid #e3e8ec;
+    color: #4c607a;
+    font: 12px var(--ex-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-header .explorer-details-sort-col.active {
+    background: linear-gradient(#f2f9fc 40%, #e1f1f9 42%, #d8ecf6);
+    box-shadow: inset 0 -1px 0 #96d9f9;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-header .explorer-details-sort-col:hover {
+    background: linear-gradient(#f2f9fc 40%, #e1f1f9 42%, #d8ecf6);
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-header :is(.explorer-details-sort-icon, .explorer-details-col-icon) {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-item {
     border: 1px solid transparent;
     border-radius: 3px;
-    color: var(--vista-ex-text);
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal :is(.explorer-item-label, .explorer-item-list-label, .explorer-item-name) {
+    color: #000;
+    font: 12px var(--ex-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal :is(.explorer-item-date, .explorer-item-type, .explorer-item-size) {
+    color: #000;
+    font: 12px var(--ex-font);
+}
+
+/* a Details row ends with the last column (the selection too): 5px in, 476px wide, one per line */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-item-details-row {
+    box-sizing: border-box;
+    grid-template-columns: 16px 135px 120px 120px 79px;
+    gap: 0;
+    flex: none;
+    width: 476px;
+    max-height: none;
+    margin: 0 max(0px, calc(100% - 481px)) 0 5px;
+    padding: 0 0 0 3px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-item-details-row .explorer-item-name {
+    padding: 0 6px 0 2px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-item-details-row :is(.explorer-item-date, .explorer-item-type) {
+    padding: 0 6px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-item-details-row .explorer-item-size {
+    padding: 0 6px;
+    text-align: right;
 }
 
 @media (hover: hover) {
-    body:not(.windows-classic-theme) #explorerModal .explorer-item:hover {
+    body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-item:hover {
         background: linear-gradient(#fafbfd, #ebf3fd);
         border-color: #b8d6fb;
     }
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-item.selected {
-    background: linear-gradient(#dcebfc, #c1dcf3);
-    border-color: #84acdd;
+/* selected: Vista's list selection (#99defd edge, the two-tone pale blue) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-item.selected,
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-item.selected:hover {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-item.selected:hover {
-    border-color: #7da2ce;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box:not(.has-preview) {
+    background: none;
 }
 
-body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-label, .explorer-item-list-label, .explorer-item-name) {
-    color: var(--vista-ex-text);
-    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
-}
-
-body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-date, .explorer-item-type, .explorer-item-size) {
-    color: #6d6d6d;
-    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
-}
-
-body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon {
     color: #2b5797;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-selection-marquee {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-selection-marquee {
     background: hsl(210 80% 60% / 18%);
     border: 1px solid hsl(212 70% 55%);
 }
 
-/* ---- the status bar: Vista's details pane ---- */
+/* ---- the details pane ---- */
 
-body:not(.windows-classic-theme) #explorerModal .explorer-statusbar {
-    min-height: 34px;
-    padding: 4px 10px;
-    background: linear-gradient(#e3f3f8, #ecfbfe 18%, #ecfbfe);
-    border-top: 1px solid #c8dde8;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-statusbar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 82px;
+    height: 82px;
+    padding: 4px 12px 4px 6px;
+    /* Explorer's UIFILE gradient (#f4fcff, #ecfbfe, #bbd9f0, left to right) and its swoosh */
+    background:
+        url('/static_images/vista-explorer/details-swoosh.png') no-repeat right 2px bottom 0,
+        linear-gradient(to right, #f4fcff, #ecfbfe 50%, #bbd9f0);
+    border-top: 1px solid #9db6c5;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 45%);
     color: #000;
-    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
-    font-size: 12px;
+    font: 12px var(--ex-font);
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-statusbar .explorer-status-text {
-    color: #000;
-}
-
-body:not(.windows-classic-theme) #explorerModal .explorer-statusbar .explorer-view-toggle {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-icon {
+    flex: none;
+    width: 64px;
+    height: 64px;
     background: none;
-    border: 1px solid transparent;
-    border-radius: 3px;
-    box-shadow: none;
+    border-radius: 0;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-statusbar .explorer-view-toggle i {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-icon .explorer-item-type-icon {
+    width: 60px;
+    height: 60px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal :is(.explorer-details-name, .explorer-details-type, .explorer-details-summary) {
+    overflow: hidden;
+    color: #000;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-row {
+    display: flex;
+    gap: 4px;
+}
+
+/* VM: name and type at the text's start, the labels right-aligned in a 108px column under them */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-label {
+    min-width: 108px;
+    color: #737373;
+    text-align: right;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-status-spinner {
+    position: absolute;
+    right: 160px;
     color: #2b5797;
-}
-
-body:not(.windows-classic-theme) #explorerModal .explorer-statusbar .explorer-view-toggle.active {
-    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
-    border-color: #6d91ab;
 }
 
 /* ---------- Grimoire / Alchemy as Internet Explorer ----------
@@ -404,12 +855,7 @@ body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar::before
 /* ---------- Vista's own folder and file icons (imageres.dll 3 folder, 1 file, 125 picture,
    13 text, 49 Recycle Bin; extracted from the VM at 256 / 96 / 64 / 48 / 32 / 16 px) in place
    of the Font Awesome glyphs. App shortcuts keep their app icons. ---------- */
-body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open) {
-    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/folder-256.png') 1x);
-    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-96.png') 1x, url('/static_images/vista-icons/explorer/folder-256.png') 2x);
-    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/folder-32.png') 1x, url('/static_images/vista-icons/explorer/folder-64.png') 2x);
-    --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/vista-icons/explorer/folder-32.png') 2x);
-}
+
 body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-file) {
     --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/file-256.png') 1x);
     --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/file-96.png') 1x, url('/static_images/vista-icons/explorer/file-256.png') 2x);
@@ -428,6 +874,13 @@ body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-
     --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/text-32.png') 1x, url('/static_images/vista-icons/explorer/text-64.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/text-16.png') 1x, url('/static_images/vista-icons/explorer/text-32.png') 2x);
 }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, [data-kind="folder"]:not(.fa-bin-recycle, .fa-trash-can)) {
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/folder-256.png') 1x);
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-96.png') 1x, url('/static_images/vista-icons/explorer/folder-256.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/folder-32.png') 1x, url('/static_images/vista-icons/explorer/folder-64.png') 2x);
+    --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/vista-icons/explorer/folder-32.png') 2x);
+}
+
 body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-bin-recycle, .fa-trash-can) {
     --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/recycle-256.png') 1x);
     --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/recycle-96.png') 1x, url('/static_images/vista-icons/explorer/recycle-256.png') 2x);
@@ -435,7 +888,7 @@ body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/recycle-16.png') 1x, url('/static_images/vista-icons/explorer/recycle-32.png') 2x);
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can) {
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can, [data-kind="folder"]) {
     display: block;
     width: 96px;
     height: 96px;
@@ -444,28 +897,28 @@ body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-
     background: var(--ex-icon-lg) no-repeat center / contain;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can)::before {
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can, [data-kind="folder"])::before {
     content: none;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can) {
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can, [data-kind="folder"]) {
     width: 160px;
     height: 160px;
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can) {
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can, [data-kind="folder"]) {
     width: 72px;
     height: 72px;
     background-image: var(--ex-icon-md);
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can) {
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can, [data-kind="folder"]) {
     width: 32px;
     height: 32px;
     background-image: var(--ex-icon-sm);
 }
 
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-row .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can) {
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-row .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can, [data-kind="folder"]) {
     width: 16px;
     height: 16px;
     background-image: var(--ex-icon-row);

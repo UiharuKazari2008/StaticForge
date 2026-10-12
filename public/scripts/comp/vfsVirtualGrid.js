@@ -23,6 +23,11 @@ class VfsVirtualGrid {
         this.onFileDrop = options.onFileDrop || (() => {});
         this.onItemsDrop = options.onItemsDrop || (() => {});
         this.populateIconBox = options.populateIconBox || null;
+        // Details view cells, when the host has its own wording (Cartograph's Vista chrome)
+        this.formatTypeLabel = options.formatTypeLabel || null;
+        this.formatDate = options.formatDate || null;
+        // per-mode metric overrides from the host (Vista's 19px Details / List rows)
+        this.modeOverrides = options.modeOverrides || null;
         this.items = [];
         this.selectedIds = new Set();
         this.anchorIndex = null;
@@ -559,7 +564,9 @@ class VfsVirtualGrid {
     }
 
     _getMode() {
-        return EXPLORER_VIEW_MODES[this.viewMode] || EXPLORER_VIEW_MODES['icons-lg'];
+        const base = EXPLORER_VIEW_MODES[this.viewMode] || EXPLORER_VIEW_MODES['icons-lg'];
+        const own = this.modeOverrides ? this.modeOverrides(this.viewMode, base) : null;
+        return own ? { ...base, ...own } : base;
     }
 
     _getColumnCount() {
@@ -750,6 +757,8 @@ class VfsVirtualGrid {
     }
 
     _formatTypeLabel(item) {
+        const own = this.formatTypeLabel ? this.formatTypeLabel(item) : null;
+        if (own) return own;
         if (item.mimeType) return item.mimeType;
         if (item.targetKind === 'desktop-shortcut' && item.shortcutType) return item.shortcutType;
         return item.targetKind || item.kind || '';
@@ -927,6 +936,8 @@ class VfsVirtualGrid {
 
     _formatDate(ts) {
         if (!ts) return '';
+        const own = this.formatDate ? this.formatDate(ts) : null;
+        if (own) return own;
         return new Date(ts * 1000).toLocaleString();
     }
 

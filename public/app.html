@@ -5386,19 +5386,25 @@ Examples:
                         title="Back"><i class="fas fa-arrow-left"></i></button>
                     <button type="button" id="explorerForwardBtn" class="btn-secondary toolbar-input-segment"
                         title="Forward"><i class="fas fa-arrow-right"></i></button>
+                    <button type="button" id="explorerRecentPagesBtn" class="explorer-recent-pages-btn"
+                        title="Recent Pages" aria-label="Recent Pages"></button>
                 </div>
                 <button type="button" id="explorerUpBtn" class="btn-secondary" title="Up"><i
                         class="fas fa-arrow-up"></i></button>
-                <div class="button-group">
+                <div class="button-group explorer-address-group">
+                    <!-- Vista breadcrumb over the address text (explorerVistaChrome.js); click empty space to type -->
+                    <div id="explorerBreadcrumb" class="explorer-breadcrumb" aria-label="Address"></div>
                     <input type="text" id="explorerAddressBar"
                         class="form-control colored explorer-address-bar toolbar-input-segment" placeholder="/"
                         spellcheck="false" autocapitalize="false" autocorrect="false">
+                    <button type="button" id="explorerAddressDropBtn" class="explorer-address-drop-btn"
+                        title="Previous Locations" aria-label="Previous Locations"></button>
                     <button type="button" id="explorerRefreshBtn" class="btn-secondary toolbar-input-segment"
                         title="Refresh"><i class="fas fa-sync"></i></button>
                 </div>
                 <div class="button-group">
                     <input type="text" id="explorerSearchBar"
-                        class="form-control colored explorer-search-bar toolbar-input-segment" placeholder="Search..."
+                        class="form-control colored explorer-search-bar toolbar-input-segment" placeholder="Search"
                         spellcheck="false" autocapitalize="false" autocorrect="false">
                 </div>
             </div>
@@ -5418,14 +5424,32 @@ Examples:
         <div class="modal-content naxt-modal-content dark explorer-content">
             <div class="naxt-search-header explorer-actions-header">
                 <div class="naxt-search-controls">
-                    <div class="button-group">
+                    <!-- Vista command bar (explorerVistaChrome.js): Organize menu, Views, contextual commands -->
+                    <div class="explorer-command-set">
+                        <button type="button" id="explorerOrganizeBtn" class="explorer-command-btn has-menu"
+                            title="Organize this folder's contents."><img class="explorer-command-icon"
+                                src="/static_images/vista-explorer/organize.png" alt="">Organize<span
+                                class="explorer-command-glyph" aria-hidden="true"></span></button>
+                        <button type="button" id="explorerViewsDropdownBtn" class="btn-secondary btn-small explorer-command-btn has-menu"
+                            title="Change your view.">
+                            <img class="explorer-command-icon" src="/static_images/vista-explorer/views.png" alt="">Views<span
+                                class="explorer-command-glyph" aria-hidden="true"></span>
+                        </button>
+                        <button type="button" id="explorerUploadCmd" class="explorer-command-btn"
+                            title="Upload files to this folder.">Upload</button>
+                        <button type="button" id="explorerDownloadCmd" class="explorer-command-btn hidden"
+                            title="Download the selected file.">Download</button>
+                        <button type="button" id="explorerReplaceCmd" class="explorer-command-btn hidden"
+                            title="Replace the selected file.">Replace</button>
+                    </div>
+                    <div class="button-group explorer-legacy-commands">
                         <button type="button" id="explorerNewFolderBtn" class="btn-secondary btn-small"
                             title="New Folder"><i class="fas fa-folder-plus"></i></button>
                         <button type="button" id="explorerUploadBtn" class="btn-secondary btn-small" title="Upload"><i
                                 class="fas fa-upload"></i></button>
                     </div>
                     <input type="file" id="explorerFileInput" class="hidden" multiple>
-                    <div class="button-group">
+                    <div class="button-group explorer-legacy-commands">
                         <button type="button" id="explorerCutBtn" class="btn-secondary disabled btn-small" title="Cut"
                             disabled><i class="fas fa-cut"></i></button>
                         <button type="button" id="explorerCopyBtn" class="btn-secondary disabled btn-small" title="Copy"
@@ -5442,18 +5466,33 @@ Examples:
                             title="Delete" disabled><i class="fas fa-trash"></i></button>
                     </div>
                     <div class="explorer-toolbar-right">
-                        <button type="button" id="explorerSortDropdownBtn" class="btn-secondary btn-small" title="Sort">
+                        <button type="button" id="explorerSortDropdownBtn" class="btn-secondary btn-small explorer-legacy-command" title="Sort">
                             <i class="fas fa-sort"></i>
                             <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
                         </button>
-                        <button type="button" id="explorerViewsDropdownBtn" class="btn-secondary btn-small"
-                            title="Views">
-                            <i class="fas fa-th-large"></i>
-                            <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
+                        <button type="button" id="explorerHelpBtn" class="explorer-help-btn" title="Get help">
+                            <img src="/static_images/vista-explorer/help.png" alt="">
                         </button>
                     </div>
                 </div>
             </div>
+            <div class="explorer-main">
+            <!-- Vista navigation pane (explorerVistaChrome.js): Favorite Links, the Folders tree -->
+            <aside id="explorerNavPane" class="explorer-nav-pane">
+                <div class="explorer-favorites">
+                    <div class="explorer-nav-heading">Favorite Links</div>
+                    <ul id="explorerFavoriteLinks" class="explorer-favorite-links"></ul>
+                </div>
+                <div id="explorerFolders" class="explorer-folders">
+                    <button type="button" id="explorerFoldersBar" class="explorer-folders-bar" aria-expanded="false">
+                        <span>Folders</span><span class="explorer-folders-chevron" aria-hidden="true"></span>
+                    </button>
+                    <div class="explorer-folders-tree win7">
+                        <ul id="explorerFolderTree" class="tree-view"></ul>
+                    </div>
+                </div>
+            </aside>
+            <div class="explorer-view-pane">
             <div id="explorerDetailsHeader" class="explorer-details-header hidden" aria-hidden="true">
                 <span class="explorer-details-col-icon" aria-hidden="true"></span>
                 <button type="button" class="explorer-details-sort-col" data-sort-field="name">
@@ -5461,7 +5500,7 @@ Examples:
                     <i class="explorer-details-sort-icon fas fa-sort" aria-hidden="true"></i>
                 </button>
                 <button type="button" class="explorer-details-sort-col" data-sort-field="date">
-                    <span class="explorer-details-col-label">Date Modified</span>
+                    <span class="explorer-details-col-label">Date modified</span>
                     <i class="explorer-details-sort-icon fas fa-sort" aria-hidden="true"></i>
                 </button>
                 <button type="button" class="explorer-details-sort-col" data-sort-field="type">
@@ -5474,7 +5513,12 @@ Examples:
                 </button>
             </div>
             <div id="explorerGridHost" class="explorer-grid-host naxt-body"></div>
+            </div>
+            </div>
             <div class="explorer-statusbar">
+                <!-- Vista details pane (explorerVistaChrome.js): the item or folder icon and its details -->
+                <div id="explorerDetailsIcon" class="explorer-details-icon explorer-item-icon-box"></div>
+                <div id="explorerDetailsInfo" class="explorer-details-info"></div>
                 <span id="explorerStatusSpinner" class="explorer-status-spinner hidden" aria-hidden="true"><i
                         class="fas fa-spinner fa-spin"></i></span>
                 <span id="explorerStatusText" class="explorer-status-text"></span>

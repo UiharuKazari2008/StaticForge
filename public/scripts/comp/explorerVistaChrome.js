@@ -1,0 +1,458 @@
+/**
+ * Cartograph as Vista's Windows Explorer (Yozora #449, 1:1 with the Vista VM's Explorer).
+ * explorerApplet.js keeps the file logic; this draws the Explorer chrome around it:
+ *
+ *   breadcrumb      the address box shows the path as crumbs (Root ▸ Workspaces ▸ Default ▸ …);
+ *                   a crumb navigates, a click on the empty part of the box types a path, the
+ *                   box's ▾ lists the places visited; the ▾ after the orbs is Recent Pages
+ *                   (the back / forward history, the current page checked)
+ *   command bar     Organize ▾ (New Folder, Cut, Copy, Paste, Rename, Delete), Views ▾ and the
+ *                   contextual Upload / Download / Replace; the old icon buttons stay hidden in
+ *                   the markup and do the work (their disabled state drives the menu)
+ *   navigation pane Favorite Links (this workspace's Desktop / Pictures / References / Notes,
+ *                   Workspaces, Library, Trash) and the Folders bar opening a 7.css tree view
+ *                   whose folders load as they open
+ *   details pane    the selected item (icon, name, type, Date modified, Size) or the folder's
+ *                   item count
+ *   Details view    Vista's type names (File Folder, PNG Image) and dates (11/2/2006 8:24 AM)
+ *
+ * Art from the VM (public/static_images/vista-explorer/, scripts/assets/vista-explorer-parts/),
+ * styles in public/css/vista-explorer.css. The applet calls renderBreadcrumb / renderDetails /
+ * syncCommands from updateLocationLabels / renderStatusText / updateToolbarState.
+ */
+(function (root) {
+    'use strict';
+
+    const ART = '/static_images/vista-explorer';
+
+    // Vista's type names by extension (HKCR friendly names); others read "<EXT> File"
+    const EXT_TYPES = {
+        png: 'PNG Image', jpg: 'JPEG Image', jpeg: 'JPEG Image', gif: 'GIF Image', bmp: 'Bitmap Image',
+        webp: 'WebP Image', avif: 'AVIF Image', tif: 'TIFF Image', tiff: 'TIFF Image', ico: 'Icon',
+        svg: 'SVG Document', txt: 'Text Document', md: 'Markdown Document', json: 'JSON File',
+        html: 'HTML Document', htm: 'HTML Document', css: 'Cascading Style Sheet Document',
+        js: 'JScript Script File', pdf: 'PDF Document', zip: 'Compressed (zipped) Folder',
+        mp3: 'MP3 Format Sound', wav: 'Wave Sound', ogg: 'OGG File', mp4: 'MP4 Video', webm: 'WebM Video',
+        mov: 'QuickTime Movie', gifv: 'GIF Video'
+    };
+
+    function esc(text) {
+        return String(text == null ? '' : text)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    class ExplorerVistaChrome {
+        constructor(app) {
+            this.app = app;
+            const $ = (id) => document.getElementById(id);
+            this.labels = new Map([['/', 'Cartograph']]);
+            this.el = {
+                addressGroup: app.modal.querySelector('.explorer-address-group'),
+                breadcrumb: $('explorerBreadcrumb'),
+                address: $('explorerAddressBar'),
+                addressDrop: $('explorerAddressDropBtn'),
+                recentPages: $('explorerRecentPagesBtn'),
+                organize: $('explorerOrganizeBtn'),
+                upload: $('explorerUploadCmd'),
+                download: $('explorerDownloadCmd'),
+                replace: $('explorerReplaceCmd'),
+                help: $('explorerHelpBtn'),
+                favorites: $('explorerFavoriteLinks'),
+                folders: $('explorerFolders'),
+                foldersBar: $('explorerFoldersBar'),
+                tree: $('explorerFolderTree'),
+                detailsIcon: $('explorerDetailsIcon'),
+                detailsInfo: $('explorerDetailsInfo')
+            };
+            this.wire();
+            this.renderFavorites();
+        }
+
+        // ---- breadcrumb ----
+
+        wire() {
+            const e = this.el;
+            if (e.breadcrumb) {
+                e.breadcrumb.addEventListener('click', (ev) => {
+                    const crumb = ev.target.closest('[data-crumb-path]');
+                    if (crumb) {
+                        ev.stopPropagation();
+                        this.app.navigateTo(crumb.dataset.crumbPath);
+                        return;
+                    }
+                    this.editAddress();
+                });
+            }
+            if (e.address) {
+                e.address.addEventListener('blur', () => this.leaveAddress());
+                e.address.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Escape') {
+                        ev.preventDefault();
+                        e.address.blur();
+                    } else if (ev.key === 'Enter') {
+                        // explorerApplet.js navigates on Enter; the crumbs come back after it
+                        setTimeout(() => e.address.blur(), 0);
+                    }
+                });
+            }
+
+            const proxy = (btnId) => {
+                const btn = document.getElementById(btnId);
+                if (btn && !btn.disabled) btn.click();
+            };
+            if (e.upload) e.upload.addEventListener('click', () => proxy('explorerUploadBtn'));
+            if (e.download) e.download.addEventListener('click', () => proxy('explorerDownloadBtn'));
+            if (e.replace) e.replace.addEventListener('click', () => proxy('explorerReplaceBtn'));
+            if (e.help) {
+                e.help.addEventListener('click', () => {
+                    if (typeof root.openGrimoireApplet === 'function') root.openGrimoireApplet();
+                });
+            }
+            if (e.organize && typeof root.contextMenu !== 'undefined' && root.contextMenu) {
+                const refresh = () => this.attachOrganizeMenu();
+                e.organize.addEventListener('pointerenter', refresh);
+                e.organize.addEventListener('pointerdown', refresh, true);
+                e.organize.addEventListener('focus', refresh);
+                refresh();
+            }
+            if (typeof root.contextMenu !== 'undefined' && root.contextMenu) {
+                // menus built when they open: the history changes under them
+                if (e.recentPages) {
+                    const attach = () => this.attachHistoryMenu(e.recentPages, () => this.recentPagesItems());
+                    e.recentPages.addEventListener('pointerdown', attach, true);
+                    e.recentPages.addEventListener('focus', attach);
+                    attach();
+                }
+                if (e.addressDrop) {
+                    const attach = () => this.attachHistoryMenu(e.addressDrop, () => this.visitedItems());
+                    e.addressDrop.addEventListener('pointerdown', attach, true);
+                    e.addressDrop.addEventListener('focus', attach);
+                    attach();
+                }
+            }
+            if (e.foldersBar) {
+                e.foldersBar.addEventListener('click', () => this.toggleFolders());
+            }
+            if (e.favorites) {
+                e.favorites.addEventListener('click', (ev) => {
+                    const link = ev.target.closest('[data-path]');
+                    if (link) this.app.navigateTo(link.dataset.path);
+                });
+            }
+            if (e.tree) {
+                e.tree.addEventListener('click', (ev) => {
+                    const label = ev.target.closest('.explorer-tree-label');
+                    if (!label) return;
+                    ev.preventDefault();
+                    this.app.navigateTo(label.dataset.path);
+                });
+                e.tree.addEventListener('toggle', (ev) => {
+                    const details = ev.target;
+                    if (details.open && details.dataset.loaded !== '1') this.loadTreeChildren(details);
+                }, true);
+            }
+        }
+
+        /** True while the Vista chrome shows (desktop, not the classic theme). */
+        isOn() {
+            const b = document.body;
+            return !!b && b.classList.contains('desktop-mode') && !b.classList.contains('windows-classic-theme');
+        }
+
+        labelFor(path) {
+            if (this.labels.has(path)) return this.labels.get(path);
+            const last = String(path || '/').split('/').filter(Boolean).pop();
+            return last || 'Cartograph';
+        }
+
+        /** Recent Pages: forward pages on top, the current one checked, then back (Vista's order). */
+        recentPagesItems() {
+            const { history, historyIndex } = this.app;
+            const items = [];
+            for (let i = Math.min(history.length - 1, historyIndex + 4); i >= Math.max(0, historyIndex - 4); i--) {
+                const current = i === historyIndex;
+                items.push(current
+                    ? { text: this.labelFor(history[i]), action: `h:${i}`, indicatorStyle: 'dot', checked: true }
+                    : { text: this.labelFor(history[i]), action: `h:${i}`, icon: 'fas fa-folder' });
+            }
+            return items;
+        }
+
+        /** The address box's list: each place visited once, newest first. */
+        visitedItems() {
+            const seen = new Set();
+            const items = [];
+            for (let i = this.app.history.length - 1; i >= 0 && items.length < 12; i--) {
+                const path = this.app.history[i];
+                if (seen.has(path)) continue;
+                seen.add(path);
+                items.push({ text: path === '/' ? 'Cartograph' : path, action: `p:${path}`, icon: 'fas fa-folder' });
+            }
+            return items;
+        }
+
+        attachHistoryMenu(btn, build) {
+            const cm = root.contextMenu;
+            cm.detachClickMenuFromElement(btn);
+            cm.attachClickMenuToElement(btn, {
+                sections: [{ type: 'list', items: build() }],
+                onAction: (action) => {
+                    if (action.startsWith('p:')) this.app.navigateTo(action.slice(2));
+                    else if (action.startsWith('h:')) this.goToHistory(Number(action.slice(2)));
+                }
+            });
+        }
+
+        /** Jump within the history like several Back / Forward presses (explorerApplet goBack). */
+        goToHistory(index) {
+            const app = this.app;
+            if (app._loading || !Number.isInteger(index) || index === app.historyIndex) return;
+            if (index < 0 || index >= app.history.length) return;
+            app.historyIndex = index;
+            app.currentPath = app.history[index];
+            app._applyViewModeForPath(app.currentPath);
+            app.updateLocationLabels(null);
+            const token = app._beginNavigation();
+            app.refresh(token).finally(() => app._endNavigation(token));
+        }
+
+        typeLabel(item) {
+            if (!item) return '';
+            if (item.isUploadPlaceholder) return 'Upload';
+            if (item.targetKind === 'workspace') return 'Workspace';
+            if (this.app.isFolderItem && this.app.isFolderItem(item)) {
+                return item.system || item.targetKind === 'system-folder' || item.kind === 'system-folder' ? 'System Folder' : 'File Folder';
+            }
+            // Vista names a file by what it is (PNG Image, Shortcut); the server's own wording last
+            if (item.shortcutType || item.isShortcut || item.isDesktopShortcut) return 'Shortcut';
+            const ext = String(item.name || '').match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
+            if (ext && EXT_TYPES[ext]) return EXT_TYPES[ext];
+            const mime = String(item.mimeType || '');
+            const sub = mime.split('/')[1];
+            if (sub) {
+                const name = sub.replace(/^x-/, '').split(/[+.;]/)[0].toUpperCase();
+                if (mime.startsWith('image/')) return `${name === 'JPEG' ? 'JPEG' : name} Image`;
+                if (mime.startsWith('video/')) return `${name} Video`;
+                if (mime.startsWith('audio/')) return `${name} Sound`;
+                if (mime.startsWith('text/')) return name === 'PLAIN' ? 'Text Document' : `${name} Document`;
+            }
+            if (ext) return `${ext.toUpperCase()} File`;
+            if (item.typeLabel) return item.typeLabel;
+            return this.app._fallbackTypeLabel ? this.app._fallbackTypeLabel(item) : 'File';
+        }
+
+        /** Vista's row pitch: 19px in Details and List (the grid scrolls by it) */
+        modeMetrics(viewMode) {
+            return viewMode === 'details' || viewMode === 'list' ? { rowHeight: 19 } : null;
+        }
+
+        /** 11/2/2006 8:24 AM */
+        formatDate(ts) {
+            if (!ts) return '';
+            const d = new Date(ts * 1000);
+            if (Number.isNaN(d.getTime())) return '';
+            return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+        }
+
+        editAddress() {
+            const { addressGroup, address } = this.el;
+            if (!addressGroup || !address) return;
+            addressGroup.classList.add('is-editing');
+            address.focus();
+            address.select();
+        }
+
+        leaveAddress() {
+            if (this.el.addressGroup) this.el.addressGroup.classList.remove('is-editing');
+        }
+
+        /** displayPath has one label per path segment (explorerApplet _fallbackDisplayPath / stats). */
+        renderBreadcrumb(displayPath) {
+            const host = this.el.breadcrumb;
+            if (!host) return;
+            const parts = String(this.app.currentPath || '/').split('/').filter(Boolean);
+            const labels = String(displayPath || '/').split('/').filter(Boolean);
+            const crumbs = [{ label: 'Cartograph', path: '/' }];
+            parts.forEach((part, i) => {
+                crumbs.push({ label: labels[i] || part, path: '/' + parts.slice(0, i + 1).join('/') });
+            });
+            crumbs.forEach((c) => this.labels.set(c.path, c.label));
+            host.innerHTML = `<img class="explorer-crumb-icon" src="${ART}/crumb-folder.png" alt="">`
+                + crumbs.map((c) => `<span class="explorer-crumb-sep" aria-hidden="true"></span><button type="button" class="explorer-crumb" data-crumb-path="${esc(c.path)}">${esc(c.label)}</button>`).join('')
+                // Vista ends the trail with an arrow too
+                + '<span class="explorer-crumb-sep" aria-hidden="true"></span>';
+            this.highlightFavorite();
+        }
+
+        // ---- command bar ----
+
+        attachOrganizeMenu() {
+            const btn = this.el.organize;
+            const cm = root.contextMenu;
+            if (!btn || !cm) return;
+            const live = (id) => {
+                const b = document.getElementById(id);
+                return !!b && !b.disabled && !b.classList.contains('hidden');
+            };
+            const isWsList = this.app._isWorkspacesListPath && this.app._isWorkspacesListPath();
+            const entries = [
+                { id: 'explorerNewFolderBtn', text: isWsList ? 'New Workspace' : 'New Folder', icon: 'fas fa-folder-plus' },
+                { separator: true },
+                { id: 'explorerCutBtn', text: 'Cut', icon: 'fas fa-cut' },
+                { id: 'explorerCopyBtn', text: 'Copy', icon: 'fas fa-copy' },
+                { id: 'explorerPasteBtn', text: 'Paste', icon: 'fas fa-paste' },
+                { separator: true },
+                { id: 'explorerRenameBtn', text: 'Rename', icon: 'fas fa-i-cursor' },
+                { id: 'explorerDeleteBtn', text: 'Delete', icon: 'fas fa-trash' }
+            ];
+            cm.detachClickMenuFromElement(btn);
+            cm.attachClickMenuToElement(btn, {
+                sections: [{
+                    type: 'list',
+                    items: entries.map((it) => (it.separator ? { separator: true } : { icon: it.icon, text: it.text, action: it.id, disabled: !live(it.id) }))
+                }],
+                onAction: (action) => {
+                    const b = document.getElementById(action);
+                    if (b && !b.disabled) b.click();
+                }
+            });
+        }
+
+        /** Contextual commands follow the hidden buttons' state (explorerApplet updateToolbarState). */
+        syncCommands() {
+            const shown = (cmd, legacyId) => {
+                if (!cmd) return;
+                const b = document.getElementById(legacyId);
+                const on = !!b && !b.disabled && !b.classList.contains('hidden');
+                cmd.classList.toggle('hidden', !on);
+            };
+            shown(this.el.upload, 'explorerUploadBtn');
+            shown(this.el.download, 'explorerDownloadBtn');
+            shown(this.el.replace, 'explorerReplaceBtn');
+        }
+
+        // ---- navigation pane ----
+
+        favoriteLinks() {
+            const ws = typeof root.activeWorkspace !== 'undefined' && root.activeWorkspace
+                ? root.activeWorkspace
+                : (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null);
+            const links = [];
+            if (ws) {
+                links.push({ label: 'Desktop', path: `/Workspaces/${ws}/Desktop`, icon: 'fav-desktop.png' });
+                links.push({ label: 'Pictures', path: `/Workspaces/${ws}/Pictures`, icon: 'fav-pictures.png' });
+                links.push({ label: 'References', path: `/Workspaces/${ws}/References`, icon: 'fav-searches.png' });
+                links.push({ label: 'Notes', path: `/Workspaces/${ws}/Notes`, icon: 'fav-documents.png' });
+            }
+            links.push({ label: 'Workspaces', path: '/Workspaces', icon: 'fav-public.png' });
+            links.push({ label: 'Library', path: '/System/Cache', icon: 'fav-recent.png' });
+            if (ws) links.push({ label: 'Trash', path: `/Workspaces/${ws}/Trash`, icon: 'fav-recycle.png' });
+            return links;
+        }
+
+        renderFavorites() {
+            const host = this.el.favorites;
+            if (!host) return;
+            host.innerHTML = this.favoriteLinks().map((l) => `
+                <li><button type="button" class="explorer-favorite-link" data-path="${esc(l.path)}" title="${esc(l.label)}">
+                    <img src="${ART}/${l.icon}" alt=""><span>${esc(l.label)}</span></button></li>`).join('');
+            this.highlightFavorite();
+        }
+
+        highlightFavorite() {
+            const host = this.el.favorites;
+            if (!host) return;
+            const current = this.app.currentPath;
+            host.querySelectorAll('.explorer-favorite-link').forEach((b) => {
+                b.classList.toggle('is-current', b.dataset.path === current);
+            });
+        }
+
+        toggleFolders() {
+            const { folders, foldersBar, tree } = this.el;
+            if (!folders) return;
+            const open = !folders.classList.contains('is-open');
+            folders.classList.toggle('is-open', open);
+            if (foldersBar) foldersBar.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open && tree && !tree.childElementCount) this.renderTreeLevel(tree, '/');
+        }
+
+        treeNode(item, path) {
+            const li = document.createElement('li');
+            const details = document.createElement('details');
+            details.dataset.path = path;
+            const summary = document.createElement('summary');
+            const label = document.createElement('span');
+            label.className = 'explorer-tree-label';
+            label.dataset.path = path;
+            label.textContent = item.name || path.split('/').pop();
+            summary.appendChild(label);
+            details.appendChild(summary);
+            const ul = document.createElement('ul');
+            details.appendChild(ul);
+            li.appendChild(details);
+            return li;
+        }
+
+        async renderTreeLevel(ul, path) {
+            if (typeof root.vfsClient === 'undefined' && typeof vfsClient === 'undefined') return;
+            const client = root.vfsClient || vfsClient;
+            ul.innerHTML = '<li class="explorer-tree-loading">Loading…</li>';
+            try {
+                const result = await client.listDirectory(path, { offset: 0, limit: 200, sortField: 'name', sortDirection: 'asc' });
+                const folders = (result && result.items || []).filter((item) => this.app.isFolderItem(item));
+                ul.innerHTML = '';
+                folders.forEach((item) => {
+                    // the applet resolves VFS folders against the folder on screen; the tree
+                    // resolves them against its own node
+                    const base = path === '/' ? '' : path;
+                    let target = item.navPath || null;
+                    if (!target && item.targetKind === 'vfs-folder') target = `${base}/${item.targetId || item.id}`;
+                    if (!target && typeof this.app.resolveNavigationPath === 'function') target = this.app.resolveNavigationPath(item);
+                    if (!target) target = `${base}/${item.name}`;
+                    ul.appendChild(this.treeNode(item, target));
+                });
+                if (!folders.length) ul.innerHTML = '';
+            } catch (err) {
+                ul.innerHTML = '';
+                console.error('Cartograph folders', err);
+            }
+        }
+
+        loadTreeChildren(details) {
+            details.dataset.loaded = '1';
+            const ul = details.querySelector(':scope > ul');
+            if (ul) this.renderTreeLevel(ul, details.dataset.path);
+        }
+
+        // ---- details pane ----
+
+        renderDetails(selected, summaryText) {
+            const { detailsIcon, detailsInfo } = this.el;
+            if (!detailsIcon || !detailsInfo) return;
+            const sel = Array.isArray(selected) ? selected : [];
+            const row = (label, value) => (value
+                ? `<div class="explorer-details-row"><span class="explorer-details-label">${esc(label)}:</span><span class="explorer-details-value">${esc(value)}</span></div>`
+                : '');
+            if (sel.length === 1) {
+                const item = sel[0];
+                detailsIcon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
+                if (typeof this.app._populateIconBox === 'function') this.app._populateIconBox(detailsIcon, item);
+                const type = this.typeLabel(item);
+                const date = this.formatDate(item.modifiedAt);
+                const size = this.app._itemSizeBytes && this.app._itemSizeBytes(item)
+                    ? this.app._formatStatusSize(this.app._itemSizeBytes(item)) : '';
+                detailsInfo.innerHTML = `<div class="explorer-details-name">${esc(item.name || '')}</div>`
+                    + `<div class="explorer-details-type">${esc(type)}</div>`
+                    + row('Date modified', date) + row('Size', size);
+                return;
+            }
+            // no selection or several: the folder's icon and the summary line
+            detailsIcon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
+            detailsIcon.innerHTML = '<i class="fas fa-folder explorer-item-type-icon" data-kind="folder"></i>';
+            detailsInfo.innerHTML = `<div class="explorer-details-summary">${esc(summaryText || '')}</div>`;
+        }
+    }
+
+    root.ExplorerVistaChrome = ExplorerVistaChrome;
+})(typeof window !== 'undefined' ? window : globalThis);

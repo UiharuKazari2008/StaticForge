@@ -159,6 +159,8 @@ class ExplorerApplet {
         this.setupClickMenus();
         this.setupDetailsHeader();
         this.setupExplorerContextMenu();
+        // Vista's Explorer chrome: breadcrumb, command bar, navigation and details panes (#449)
+        if (typeof ExplorerVistaChrome === 'function') this.vista = new ExplorerVistaChrome(this);
 
         this.ensureExplorerGrid();
 
@@ -178,6 +180,9 @@ class ExplorerApplet {
         this.grid = new VfsVirtualGrid(gridHost, {
             viewMode: this.viewMode,
             populateIconBox: (box, item) => this._populateIconBox(box, item),
+            formatTypeLabel: (item) => (this.vista && this.vista.isOn() ? this.vista.typeLabel(item) : null),
+            formatDate: (ts) => (this.vista && this.vista.isOn() ? this.vista.formatDate(ts) : null),
+            modeOverrides: (viewMode) => (this.vista && this.vista.isOn() ? this.vista.modeMetrics(viewMode) : null),
             onItemOpen: (item) => this.openItem(item),
             onSelectionChange: (sel) => this.onSelectionChange(sel),
             onItemContextMenu: (item, e) => this.showItemContextMenu(item, e),
@@ -304,9 +309,13 @@ class ExplorerApplet {
     updateDetailsHeaderVisibility() {
         const header = this.el?.detailsHeader;
         if (!header) return;
-        const show = this.viewMode === 'details';
+        // Vista shows the column headers in every view
+        const show = this.viewMode === 'details' || !!this.vista;
         header.classList.toggle('hidden', !show);
         header.setAttribute('aria-hidden', show ? 'false' : 'true');
+        // the view pane knows its view (vista-explorer.css draws Details' column lines from it)
+        const pane = header.parentElement;
+        if (pane) pane.dataset.view = this.viewMode;
     }
 
     updateDetailsHeaderSort() {
@@ -3531,6 +3540,8 @@ class ExplorerApplet {
         const prevPath = this.currentPath;
         const token = this._beginNavigation();
         this.currentPath = normalized;
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('navigate');
         if (normalized === '/Workspaces' && prevPath !== '/Workspaces') {
             this.sortField = 'workspaceOrder';
             this.sortDirection = 'asc';
@@ -3738,6 +3749,14 @@ class ExplorerApplet {
     }
 
     renderStatusText(selected) {
+        this._renderStatusText(selected);
+        if (this.vista) {
+            const sel = selected || (this.grid ? this.grid.getSelectedItems() : []);
+            this.vista.renderDetails(sel, this.el.statusText ? this.el.statusText.textContent : '');
+        }
+    }
+
+    _renderStatusText(selected) {
         const el = this.el.statusText;
         const spinner = this.el.statusSpinner;
         const showSpinner = !!(this._loading || this._loadingMore || this._busyKind
@@ -3791,6 +3810,7 @@ class ExplorerApplet {
         if (this.el.addressBar && document.activeElement !== this.el.addressBar) {
             this.el.addressBar.value = displayPath;
         }
+        if (this.vista) this.vista.renderBreadcrumb(displayPath);
     }
 
     _fallbackDisplayName(path) {
@@ -4029,6 +4049,8 @@ class ExplorerApplet {
     _populateDefaultIconBox(box, item) {
         const icon = document.createElement('i');
         icon.className = `${item.icon || 'fas fa-file'} explorer-item-type-icon`;
+        // vista-explorer.css draws Vista's folder icon for every folder
+        icon.dataset.kind = this.isFolderItem(item) ? 'folder' : 'file';
         box.innerHTML = '';
         box.appendChild(icon);
     }
@@ -4038,6 +4060,7 @@ class ExplorerApplet {
         box.classList.remove('has-preview');
         const icon = document.createElement('i');
         icon.className = `${item.icon || 'fas fa-file'} explorer-item-type-icon`;
+        icon.dataset.kind = this.isFolderItem(item) ? 'folder' : 'file';
         box.appendChild(icon);
         const img = document.createElement('img');
         img.className = 'explorer-item-preview-img';
@@ -4186,6 +4209,7 @@ class ExplorerApplet {
         set(this.el.deleteBtn, hasSel);
         set(this.el.newFolderBtn, isWsList || canWrite);
         this.updateWorkspacesListToolbar();
+        if (this.vista) this.vista.syncCommands();
         // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
         notifyKeyboardOverlayContextChanged();
     }
