@@ -934,6 +934,40 @@
     z-index: var(--z-layer-3);
 }
 
+/* Highlights inside the prompt overlays (search matches, the emphasis editor's selection).
+   The overlay mirrors the textarea glyph for glyph, so a highlight may not add padding, margin
+   or a border (that shifted the mirrored text by 2-3 px) and leaves its glyphs transparent (the
+   textarea's text shows through instead of a second coloured copy painted over it). The ring is
+   an inset shadow. Scoped to the overlays: .search-highlight elsewhere (cache browser, toasts,
+   gallery toolbar) keeps its own rules. Light prompt boxes: vista-glass-controls.css. */
+.search-highlight-overlay :is(.search-highlight, .search-highlight-selected),
+.emphasis-highlight-overlay .emphasis-selection-highlight {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 2px;
+    color: transparent;
+    font-weight: inherit;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+}
+
+.search-highlight-overlay .search-highlight {
+    background: rgba(0, 191, 255, 0.24);
+    box-shadow: inset 0 0 0 1px rgba(0, 191, 255, 0.6);
+}
+
+.search-highlight-overlay .search-highlight-selected {
+    background: rgba(0, 191, 255, 0.45);
+    box-shadow: inset 0 0 0 2px #00bfff;
+}
+
+.emphasis-highlight-overlay .emphasis-selection-highlight {
+    background: rgba(255, 215, 0, 0.3);
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 2px rgba(255, 215, 0, 0.8);
+}
+
 /* Director prompt and text overlay prompt containers need matching font styling for highlights */
 .prompt-textarea-container.director-prompt .search-highlight-overlay,
 .prompt-textarea-container.text-overlay-prompt .search-highlight-overlay {

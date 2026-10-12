@@ -518,6 +518,23 @@ body:not(.windows-classic-theme) #manualModal .prompt-tabs:has(#dynamicGeneratio
     border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
 }
 
+/* On the light prompt box the overlay highlights take the light-surface palette like the
+   emphasis rings: a pastel fill with a deep ring (search blue, the editor's gold) */
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .search-highlight-overlay .search-highlight {
+    background: rgb(51 153 255 / 20%);
+    box-shadow: inset 0 0 0 1px rgb(31 95 191 / 70%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .search-highlight-overlay .search-highlight-selected {
+    background: rgb(51 153 255 / 38%);
+    box-shadow: inset 0 0 0 2px #1f5fbf;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-textarea-container .emphasis-highlight-overlay .emphasis-selection-highlight {
+    background: rgb(255 204 0 / 30%);
+    box-shadow: inset 0 0 0 2px #c79a00;
+}
+
 /* ---------- Studio: standard buttons, sliders, token meter (#445) ---------- */
 
 /* Standard buttons: Vista glass over their own fill. :where keeps these below the latch rules

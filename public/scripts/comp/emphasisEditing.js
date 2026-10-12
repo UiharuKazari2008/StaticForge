@@ -552,10 +552,12 @@ function addEmphasisSelectionHighlight(textarea, selection) {
     const selectedText = text.substring(selection.start, selection.end);
     const afterSelection = text.substring(selection.end);
     
-    // Create highlighted text with golden background for selected portion
-    const highlightedText = beforeSelection + 
-        `<span style="background: rgba(255, 215, 0, 0.3); border: 2px solid rgba(255, 215, 0, 0.8); border-radius: 3px; padding: 1px;">${selectedText}</span>` + 
-        afterSelection;
+    // The selected portion in the gold ring (emphasis-manager.css .emphasis-selection-highlight).
+    // The ring is an inset shadow, not a border + padding, so the mirrored text stays on the
+    // textarea's glyphs; the text is escaped like every other overlay (escapeHtml: utilities.js).
+    const highlightedText = escapeHtml(beforeSelection)
+        + `<span class="emphasis-selection-highlight">${escapeHtml(selectedText)}</span>`
+        + escapeHtml(afterSelection);
     
     overlay.innerHTML = highlightedText;
     
