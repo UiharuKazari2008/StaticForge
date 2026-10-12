@@ -8,6 +8,8 @@
  *            viewport cover size (--aero-cover-*) offset by the window's own origin
  *            (--aero-x / --aero-y on the modal), so no window pays a per-frame
  *            backdrop-filter. Dragging is handled in CSS via --modal-drag-x / -y.
+ *            The origin is tracked in every mode: the screen-anchored Aero streaks
+ *            (#407) slide across the frame in live and basic too.
  *   live     the backdrop-filter path app.css ships.
  *   basic    performance mode: static tinted frames, same geometry. html.disable-blur
  *            is kept in sync so the older rules that key off it still apply.
@@ -139,7 +141,9 @@
     }
 
     function isModalAnimating(modal) {
-        return ANIMATING_CLASSES.some((cls) => modal.classList.contains(cls));
+        // _rectMorph: the maximize / restore morph (modalUtils.js playModalRectMorph, #441)
+        return ANIMATING_CLASSES.some((cls) => modal.classList.contains(cls))
+            || !!(modal._rectMorph && modal._rectMorph.playState === 'running');
     }
 
     /** Viewport origin of a window's border box, independent of transient transforms. */
@@ -201,8 +205,8 @@
         }
         if (mode === 'frosted') {
             scheduleWallpaperRefresh(false);
-            syncAllModals();
         }
+        syncAllModals();
         if (previous !== mode && doc && typeof CustomEvent === 'function') {
             doc.dispatchEvent(new CustomEvent('aeroGlassModeChanged', { detail: { mode, previous } }));
         }
@@ -225,8 +229,10 @@
 
     // ---------- per-window origin ----------
 
+    // Every mode tracks the origin: the frosted wallpaper copy and the screen-anchored
+    // streaks (#407, all modes) both read --aero-x / --aero-y.
     function syncModal(modal) {
-        if (!modal || state.mode !== 'frosted') return false;
+        if (!modal) return false;
         if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) return false;
         const origin = computeModalOrigin(modal);
         if (!origin) return false;
@@ -271,7 +277,7 @@
     }
 
     function syncAllModals() {
-        if (!doc || state.mode !== 'frosted') return 0;
+        if (!doc) return 0;
         let count = 0;
         doc.querySelectorAll('.modal:not(.hidden):not(.hidden-alt)').forEach((modal) => {
             if (syncModal(modal)) count += 1;

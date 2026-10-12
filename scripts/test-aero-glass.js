@@ -256,11 +256,12 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     assert.strictEqual(root.style.getPropertyValue('--aero-wallpaper'), '');
     assert.strictEqual(api.getMode(), 'frosted');
 
-    // ---- live mode does not touch windows ----
+    // ---- live and basic track the origin too: the screen-anchored streaks read it (#407) ----
     api.setMode('live');
     m.style.removeProperty('--aero-x');
-    assert.strictEqual(api.syncModal(m), false);
-    assert.strictEqual(m.style.getPropertyValue('--aero-x'), '');
+    m._aeroX = undefined;
+    assert.strictEqual(api.syncModal(m), true);
+    assert.notStrictEqual(m.style.getPropertyValue('--aero-x'), '');
 
     console.log('✅ test-aero-glass: all assertions passed');
 })().catch((err) => {

@@ -72,6 +72,22 @@ const shared = read(SHARED);
 ].forEach((anchor) => assert.ok(shared.includes(anchor), `shared chrome has: ${anchor}`));
 assert.ok(!/filter:\s*drop-shadow/.test(shared.replace(/\/\*[\s\S]*?\*\//g, '')), 'captions use text-shadow, not a drop-shadow filter');
 
+// 3b. Aero frame from 7.css + Vista measurements (#407): texture in every glass mode, the 8 px
+//     frame border (1 px edge + 7 px inset), client edge lines, caption-button blooms.
+{
+    const glass = read('public/css/aero-glass.css');
+    ['--aero-wedges:', '--aero-streaks:', '--aero-shade:', '--aero-streaks-pos:', '.modal[data-aero-texture="off"]',
+        'html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme)']
+        .forEach((anchor) => assert.ok(glass.includes(anchor), `aero-glass.css has: ${anchor}`));
+    assert.ok(/var\(--aero-streaks\)[\s\S]*var\(--aero-wallpaper, none\)/.test(glass), 'frosted keeps the wallpaper copy under the texture');
+    ['--window-frame-inset: 7px;', '--window-frame-inset: 0px;', ':not(.modal-maximized)::after',
+        'radial-gradient(circle at 50% 100%, #2aceda, transparent 65%)', 'radial-gradient(circle at 50% 100%, #f4e676, transparent 55%)',
+        ':hover:not(:disabled)::before', ':active:not(:disabled)::before']
+        .forEach((anchor) => assert.ok(shared.includes(anchor), `shared chrome has: ${anchor}`));
+    assert.ok(read('public/scripts/comp/aeroGlass.js').includes('function syncModal(modal) {\n        if (!modal) return false;'),
+        'window origin is tracked in every mode (the streaks read it)');
+}
+
 // 4. Every caption-control token set on .modal has an inactive counterpart.
 const block = (sel) => {
     const m = shared.match(new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}'));

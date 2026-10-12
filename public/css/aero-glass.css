@@ -26,6 +26,18 @@
        about as much as the old live blur did instead of a brighter strip wherever a
        panel does not paint. */
     --aero-body-shade: hsl(0 0% 4% / 45%);
+
+    /* Aero frame texture from 7.css (khang-nd/7.css, MIT; #407), in every mode.
+       Corner wedges: the bright glass corners at the top left / top right.
+       Streaks: the 54deg reflection bands, sized to the screen and offset by the
+       window origin, so moving a window slides it under the reflection like Aero.
+       Shade: the frame's faint left / right brightening. 7.css paints them over a
+       light blue frame; the wedge and shade alphas are lowered for our dark tints. */
+    --aero-wedges:
+        linear-gradient(135deg, hsl(0 0% 100% / 14%) 70px, transparent 100px),
+        linear-gradient(225deg, hsl(0 0% 100% / 14%) 70px, transparent 100px);
+    --aero-streaks: linear-gradient(54deg, #0002 0 4%, #6661 6% 6%, #0002 8% 10%, #0002 15% 16%, #aaa1 17% 18%, #0002 23% 24%, #bbb2 25% 26%, #0002 31% 33%, #0002 34% 34.5%, #bbb2 36% 40%, #0002 41% 41.5%, #bbb2 44% 45%, #bbb2 46% 47%, #0002 48% 49%, #0002 50% 50.5%, #0002 56% 56.5%, #bbb2 57% 63%, #0002 67% 69%, #bbb2 69.5% 70%, #0002 73.5% 74%, #bbb2 74.5% 79%, #0002 80% 84%, #aaa2 85% 86%, #0002 87%, #bbb1 90%);
+    --aero-shade: linear-gradient(to right, hsl(0 0% 100% / 10%), hsl(0 0% 0% / 5%), hsl(0 0% 100% / 6%));
 }
 
 /* Tints are computed on the window itself so the workspace theme's
@@ -42,6 +54,19 @@
     --aero-tint-active: color-mix(in srgb, var(--aero-frame-base) 84%, transparent);
     --aero-tint-inactive: color-mix(in srgb, var(--aero-frame-base) 45%, hsl(0 0% 66% / 60%));
     --aero-tint: var(--aero-tint-active);
+    /* Streak origin: the screen's top left in the window's frame (#407). -1px: the frame
+       paint starts inside the 1px border. */
+    --aero-streaks-pos:
+        calc(-1px - var(--aero-x, 0px) - var(--modal-drag-x, 0px))
+        calc(-1px - var(--aero-y, 0px) - var(--modal-drag-y, 0px));
+    --aero-streaks-size: var(--aero-vw, 100vw) var(--aero-vh, 100vh);
+}
+
+/* A window can opt out of the frame texture */
+.modal[data-aero-texture="off"] {
+    --aero-wedges: none, none;
+    --aero-streaks: none;
+    --aero-shade: none;
 }
 
 /* Basic (performance mode): opaque, saturated frames, like Vista Basic.
@@ -89,9 +114,12 @@ html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-them
     background-image:
         var(--aero-body-shade-layer),
         var(--aero-sheen),
+        var(--aero-wedges),
+        var(--aero-streaks),
+        var(--aero-shade),
         linear-gradient(var(--aero-tint), var(--aero-tint));
-    background-size: 100% 100%, 100% 100%, 100% 100%;
-    background-position: 0 0, 0 0, 0 0;
+    background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, var(--aero-streaks-size), 100% 100%, 100% 100%;
+    background-position: 0 0, 0 0, 0 0, 0 0, var(--aero-streaks-pos), 0 0, 0 0;
     background-repeat: no-repeat;
     box-shadow: var(--aero-frame-highlight);
 }
@@ -101,19 +129,40 @@ html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-th
     background-image:
         var(--aero-body-shade-layer),
         var(--aero-sheen),
+        var(--aero-wedges),
+        var(--aero-streaks),
+        var(--aero-shade),
         linear-gradient(var(--aero-tint), var(--aero-tint)),
         var(--aero-wallpaper, none);
     background-size:
         100% 100%,
+        100% 100%,
+        100% 100%, 100% 100%,
+        var(--aero-streaks-size),
         100% 100%,
         100% 100%,
         var(--aero-cover-w, 100vw) var(--aero-cover-h, 100vh);
     background-position:
         0 0,
         0 0,
+        0 0, 0 0,
+        var(--aero-streaks-pos),
+        0 0,
         0 0,
         calc(var(--aero-cover-x, 0px) - var(--aero-x, 0px) - var(--modal-drag-x, 0px) - 1px)
         calc(var(--aero-cover-y, 0px) - var(--aero-y, 0px) - var(--modal-drag-y, 0px) - 1px);
+}
+
+/* live: the same texture over the backdrop-filter glass, on the window's own background
+   (app.css keeps the background-color and the blur) */
+html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed))) {
+    background-image:
+        var(--aero-wedges),
+        var(--aero-streaks),
+        var(--aero-shade);
+    background-size: 100% 100%, 100% 100%, var(--aero-streaks-size), 100% 100%;
+    background-position: 0 0, 0 0, var(--aero-streaks-pos), 0 0;
+    background-repeat: no-repeat;
 }
 
 /* Inactive windows keep faint glass: same image, calmer tint and sheen (Vista inactive frame) */
@@ -139,6 +188,8 @@ html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) .modal-win
     --aero-sheen: linear-gradient(180deg, hsl(0 0% 100% / 5%) 0, hsl(0 0% 100% / 0%) 28px);
     --aero-sheen-inactive: linear-gradient(180deg, hsl(0 0% 100% / 3%) 0, hsl(0 0% 100% / 0%) 28px);
     --aero-frame-highlight: none;
+    /* the corners sit off-screen, so no bright corner wedges (#407) */
+    --aero-wedges: none, none;
     border-color: transparent;
     box-shadow: none;
 }

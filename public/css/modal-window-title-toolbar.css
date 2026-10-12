@@ -1367,3 +1367,129 @@ body.user-icons .icon-image {
 body:not(.desktop-mode) .modal .modal-window-controls .modal-maximize-auto {
     display: none;
 }
+
+/* Vista frame border (#407 step 3, Yukimi 2026-10-12: yes to the inset). Measured on a real
+   Vista Aero window: 8 px from the outer edge to the client on the sides and bottom = the
+   1 px window edge (.modal border), 1 px inner highlight (--aero-frame-highlight), 4 px of
+   glass, then a 1 px light and a 1 px dark line around the client area (::after below).
+   Windows only (a caption), desktop mode only; maximized frames sit off-screen, so no inset.
+   The fullscreen Studio editor, windowed Studio, Glancewell and the virtual keyboard set
+   their own padding by id and keep it. */
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)) {
+    --window-frame-inset: 7px;
+    padding-left: var(--window-frame-inset);
+    padding-right: var(--window-frame-inset);
+    padding-bottom: var(--window-frame-inset);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal.modal-maximized:where(:has(> .modal-window-title)) {
+    --window-frame-inset: 0px;
+}
+
+/* The client edge: light outside, dark inside, in the 2 px just outside the client box.
+   Under the window's children (z-index -1, after the frame paint in ::before), so the
+   caption band covers its top edge and only the sides and bottom show. */
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):not(.modal-maximized)::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+    top: calc(var(--modal-title-chrome-height, 27px) - 2px);
+    left: calc(var(--window-frame-inset) - 2px);
+    right: calc(var(--window-frame-inset) - 2px);
+    bottom: calc(var(--window-frame-inset) - 2px);
+    border: 1px solid hsl(0 0% 100% / 42%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 0% / 55%);
+}
+
+/* The client area is square inside the frame (Vista) */
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):not(.modal-maximized) > .modal-content,
+body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-title)):not(.modal-maximized) > .modal-body {
+    border-radius: 0;
+}
+
+/* Vista caption buttons (#407 step 2). Measured on Vista Aero (VM, 2026-10-12) and matching
+   7.css (khang-nd/7.css, MIT): the cluster has a dark edge with a white hairline outside it;
+   each button carries a 1 px inner highlight and the glass fold (light top half, darker band
+   below the middle, brighter at the bottom). Hover fades a bloom in (0.1 s) and out (0.3 s):
+   blue with a cyan bloom from below on minimize / maximize, red with a yellow bloom on Close;
+   pressed darkens. App buttons still parked in a cluster (#405) keep the plain look.
+   Sizes stay ours (38 x 24, Close 58). Inactive windows keep the flat look from #404. */
+body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) {
+    border-color: hsl(0 0% 0% / 62%);
+    box-shadow: 0 1px 0 hsl(0 0% 100% / 50%), 1px 0 0 hsl(0 0% 100% / 50%), -1px 0 0 hsl(0 0% 100% / 50%);
+}
+
+body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]) {
+    position: relative;
+    isolation: isolate;
+    border-right-color: hsl(0 0% 0% / 55%);
+}
+
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]) {
+    background: linear-gradient(hsl(0 0% 100% / 40%), hsl(0 0% 100% / 24%) 45%, hsl(0 0% 0% / 14%) 50%, hsl(0 0% 0% / 14%) 75%, hsl(0 0% 100% / 36%));
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 30%);
+}
+
+body:not(.windows-classic-theme) .modal.active-window .modal-window-controls > button:is(.close-btn, .modal-close) {
+    background:
+        radial-gradient(ellipse 60% 70% at 50% 100%, hsl(12 85% 78% / 55%), transparent 70%),
+        linear-gradient(#e0a197e5, #cf796a 25% 50%, #c4452f 50%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 30%);
+}
+
+/* glyph: white with the dark Vista outline */
+body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]) i {
+    position: relative;
+    color: #f4f4f4;
+    text-shadow:
+        -1px -1px 0 #535666cc, 1px -1px 0 #535666cc, -1px 1px 0 #535666cc, 1px 1px 0 #535666cc,
+        0 -1px 0 #535666cc, 0 1px 0 #535666cc, -1px 0 0 #535666cc, 1px 0 0 #535666cc;
+}
+
+/* The bloom layer: under the glyph, faded in on hover */
+body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"])::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    background:
+        radial-gradient(circle at 50% 100%, #2aceda, transparent 65%),
+        linear-gradient(#b6d9ee 50%, #1a6ca1 50%);
+    box-shadow: 0 0 7px 3px #5dc4f0, inset 0 0 0 1px hsl(0 0% 100% / 40%);
+}
+
+body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.close-btn, .modal-close)::before {
+    background:
+        radial-gradient(circle at 50% 100%, #f4e676, transparent 55%),
+        linear-gradient(#fb9d8b, #ee6d56 25% 50%, #d42809 50%);
+    box-shadow: 0 0 7px 3px #e68e75, inset 0 0 0 1px hsl(0 0% 100% / 40%);
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):hover:not(:disabled)::before {
+        opacity: 1;
+        transition-duration: 0.1s;
+    }
+}
+
+body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):active:not(:disabled)::before {
+    opacity: 1;
+    transition-duration: 0s;
+    background:
+        radial-gradient(circle at 50% 100%, #0bfdfa, transparent 65%),
+        linear-gradient(#86a7bc 50%, #092747 50%);
+}
+
+body:not(.windows-classic-theme) .modal .modal-window-controls > button:is(.close-btn, .modal-close):active:not(:disabled)::before {
+    opacity: 1;
+    transition-duration: 0s;
+    background:
+        radial-gradient(circle at 50% 100%, #efc827, transparent 55%),
+        linear-gradient(#d3ab95, #a0503a 25% 50%, #7d0d01 50%);
+}
+
