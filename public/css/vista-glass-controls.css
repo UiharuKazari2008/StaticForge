@@ -649,6 +649,20 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-
     color: #fff;
 }
 
+/* the strips are drawn as one stacked pair: the Dynamic Generation content layer paints
+   nothing of its own (it had a workspace-tinted fill and top line, Yukimi: must match) */
+body.desktop-mode:not(.windows-classic-theme) #manualModal div#dynamicGenerationGroup .dynamic-generation-container {
+    background: none;
+    border-top: 0;
+}
+
+/* the cost inset's "free" figures were drawn at 31 % and read as disabled: same strength as
+   the other insets (its own green) */
+body:not(.windows-classic-theme) #manualModal .inset-badge.price-display .price-list {
+    color: rgb(152 255 138 / 92%);
+    border-color: rgb(152 255 138 / 40%);
+}
+
 /* the Dynamic Generation strip carries the box's edge on its sides and bottom */
 body.desktop-mode:not(.windows-classic-theme) #manualModal div#dynamicGenerationGroup {
     border-color: hsl(0 0% 0% / 58%);
