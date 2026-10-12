@@ -431,11 +431,101 @@ function toggleModalMaximize(modal) {
     if (!modal) {
         return;
     }
+    // Start from what is on screen, but measure and save from the settled box
+    const fromRect = modal.getBoundingClientRect();
+    finishModalRectMorph(modal);
     if (isModalMaximized(modal)) {
         restoreModalFromMaximize(modal);
     } else {
         maximizeModalToWorkArea(modal);
     }
+    playModalRectMorph(modal, fromRect);
+}
+
+/** Jump a running maximize / restore morph to its end so getBoundingClientRect is the real box. */
+function finishModalRectMorph(modal) {
+    if (modal && modal._rectMorph) {
+        modal._rectMorph.finish();
+        modal._rectMorph = null;
+    }
+}
+
+/** CSS time token ("180ms", ".18s" after minification) in ms. */
+function parseCssTimeMs(value) {
+    const text = String(value || '').trim();
+    const n = parseFloat(text);
+    if (!Number.isFinite(n)) return 0;
+    return /ms$/.test(text) ? n : (/s$/.test(text) ? n * 1000 : n);
+}
+
+/**
+ * Aero maximize / restore (#441): the frame morphs from its old rect to the new one. FLIP on
+ * the individual `translate` / `scale` properties, so the window's own `transform` (centre
+ * anchor or pixel-settled translateZ) is left alone. Compositor only; skipped when the
+ * window's transform is more than a translation (open / minimize animation running).
+ */
+function playModalRectMorph(modal, fromRect) {
+    if (!modal || !fromRect || typeof modal.animate !== 'function' || typeof DOMMatrixReadOnly === 'undefined') {
+        return null;
+    }
+    const duration = parseCssTimeMs(getComputedStyle(document.documentElement).getPropertyValue('--window-morph-duration'));
+    if (!(duration > 0)) {
+        return null;
+    }
+    const toRect = modal.getBoundingClientRect();
+    const morph = computeModalRectMorph(fromRect, toRect, getComputedStyle(modal));
+    if (!morph) {
+        return null;
+    }
+    if (modal._rectMorph) {
+        modal._rectMorph.cancel();
+    }
+    const animation = modal.animate([
+        { translate: `${morph.dx}px ${morph.dy}px`, scale: `${morph.sx} ${morph.sy}` },
+        { translate: '0px 0px', scale: '1 1' }
+    ], { duration, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+    modal._rectMorph = animation;
+    animation.onfinish = animation.oncancel = () => {
+        if (modal._rectMorph === animation) {
+            modal._rectMorph = null;
+        }
+    };
+    return animation;
+}
+
+/** translate / scale that put a box laid out at toRect back onto fromRect (null when not a plain move). */
+function computeModalRectMorph(fromRect, toRect, computedStyle) {
+    if (!fromRect.width || !fromRect.height || !toRect.width || !toRect.height) {
+        return null;
+    }
+    const transform = computedStyle.transform;
+    const m = new DOMMatrixReadOnly(transform && transform !== 'none' ? transform : undefined);
+    if (Math.abs(m.a - 1) > 1e-3 || Math.abs(m.d - 1) > 1e-3 || Math.abs(m.b) > 1e-3 || Math.abs(m.c) > 1e-3) {
+        return null;
+    }
+    const sx = fromRect.width / toRect.width;
+    const sy = fromRect.height / toRect.height;
+    if (Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01
+        && Math.abs(fromRect.left - toRect.left) < 1 && Math.abs(fromRect.top - toRect.top) < 1) {
+        return null;
+    }
+    // Origin in viewport space: the layout box (toRect minus the transform's translation) + transform-origin
+    const origin = String(computedStyle.transformOrigin || '').split(' ').map(parseFloat);
+    const ox = Number.isFinite(origin[0]) ? origin[0] : toRect.width / 2;
+    const oy = Number.isFinite(origin[1]) ? origin[1] : toRect.height / 2;
+    const originX = toRect.left - m.e + ox;
+    const originY = toRect.top - m.f + oy;
+    // Scale about the origin, then translate, so the new box's centre lands on the old centre
+    const fromCx = fromRect.left + fromRect.width / 2;
+    const fromCy = fromRect.top + fromRect.height / 2;
+    const toCx = toRect.left + toRect.width / 2;
+    const toCy = toRect.top + toRect.height / 2;
+    return {
+        dx: fromCx - originX - sx * (toCx - originX),
+        dy: fromCy - originY - sy * (toCy - originY),
+        sx,
+        sy
+    };
 }
 
 // Windows whose caption already carries their own maximize (gallery mode, Glancewell fullscreen, Studio editor)
@@ -2261,6 +2351,17 @@ function ensureModalEdgesWithinWorkArea(modal, edgeMarginPx) {
         if (modal.hasAttribute('data-dragging') || modal.hasAttribute('data-resizing')) {
             return;
         }
+        // The maximize / restore morph scales the box; measure once it has landed (#441).
+        // Only while it is still running: `finished` resolves before onfinish clears
+        // _rectMorph, and re-chaining on a resolved promise spins the microtask queue forever.
+        const morph = modal._rectMorph;
+        if (morph && morph.playState === 'running') {
+            morph.finished.then(() => {
+                if (modal._rectMorph === morph) modal._rectMorph = null;
+                applyClamp();
+            }, () => {});
+            return;
+        }
 
         const rect = modal.getBoundingClientRect();
         if (!rect.width || !rect.height) {
@@ -2543,6 +2644,7 @@ function handleModalDragStart(e) {
     }
 
     e.preventDefault();
+    finishModalRectMorph(modal);
 
     if (activeModalInteraction) {
         endModalInteractionSession();
@@ -2813,6 +2915,7 @@ function handleModalResizeStart(e) {
     }
 
     e.preventDefault();
+    finishModalRectMorph(modal);
 
     if (activeModalInteraction) {
         endModalInteractionSession();
