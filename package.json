@@ -143,6 +143,7 @@
     "test:control-panel-settings-pages": "node scripts/test-control-panel-settings-pages.js",
     "test:cartograph-vista-explorer": "node scripts/test-cartograph-vista-explorer.js",
     "test:grimoire-ie-chrome": "node scripts/test-grimoire-ie-chrome.js",
+    "test:control-panel-vista-pages": "node scripts/test-control-panel-vista-pages.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
     "icon:app": "node scripts/generate-app-icon.js",

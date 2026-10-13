@@ -291,6 +291,44 @@
     background: var(--dsap-smf-status-error-bg);
 }
 
+/* --- Service key status dots (Security Center keychain, modules/apiKeyHealth.js) --- */
+[data-dsap] .sec-key-dot-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin: 0 4px;
+    white-space: nowrap;
+}
+
+[data-dsap] .sec-key-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    background: #b8b8b8;
+}
+
+[data-dsap] .sec-key-dot-ok { background: #2e9e44; }
+[data-dsap] .sec-key-dot-fail { background: #c62828; }
+[data-dsap] .sec-key-dot-warn { background: #e0a020; }
+[data-dsap] .sec-key-dot-unchecked { background: #b8b8b8; }
+[data-dsap] .sec-key-dot-none { background: transparent; border-style: dashed; }
+
+[data-dsap] .sec-key-dot-checking {
+    background: #4a90d9;
+    animation: sec-key-dot-pulse 0.9s ease-in-out infinite alternate;
+}
+
+[data-dsap] .sec-key-dot-label {
+    font-size: var(--dsap-smf-font-size-sm);
+}
+
+@keyframes sec-key-dot-pulse {
+    from { opacity: 0.35; }
+    to { opacity: 1; }
+}
+
 /* --- Stats table --- */
 .dsap-smf .dsap-smf-stats,
 [data-dsap] .dsap-smf-stats,

@@ -9869,7 +9869,13 @@ function wireRemoteAccessSettingsModal() {
     ]);
 }
 
+/** Remote Access lives in Control Panel; the old window stays as the fallback without it. */
 async function openRemoteAccessSettingsModal() {
+    const cpl = window.melatonControlPanel;
+    if (cpl && typeof cpl.open === 'function' && registerRemoteAccessControlPanelPage()) {
+        cpl.open('remote-access');
+        return;
+    }
     const modal = document.getElementById('remoteAccessSettingsModal');
     if (!modal) return;
     wireRemoteAccessSettingsModal();
@@ -9880,6 +9886,54 @@ async function openRemoteAccessSettingsModal() {
     syncRemoteAccessSettingsUI();
     openModal(modal);
 }
+
+let remoteAccessCplRegistered = false;
+
+/**
+ * Control Panel's Remote Access page (Yukimi 2026-10-13): hosts the live #remoteAccessSettingsLayout
+ * like Personalization hosts the desktop settings forms; every change saves as it is made.
+ */
+function registerRemoteAccessControlPanelPage() {
+    if (remoteAccessCplRegistered) return true;
+    const cpl = window.melatonControlPanel;
+    if (!cpl || typeof cpl.registerPage !== 'function') return false;
+    remoteAccessCplRegistered = true;
+    cpl.registerPage('remote-access', {
+        title: () => 'Remote Access',
+        tasks: () => `
+            <div class="cpl-task-group cpl-task-group--see-also">
+                <h3 class="cpl-task-heading">See also</h3>
+                <ul class="cpl-task-list">
+                    ${cpl.taskLinkHtml('Network and Server Center', 'nav', 'network')}
+                    ${cpl.taskLinkHtml('Global Settings', 'nav', 'global')}
+                </ul>
+            </div>`,
+        body: () => `
+            <div class="cpl-settings-page">
+                <h1 class="cpl-page-title">Choose how agents work on this computer</h1>
+                <p class="cpl-intro">How Claude Code, Cursor and other MCP apps generate, and where their prints open. Changes are saved as you make them.</p>
+                <div class="cpl-settings-host"></div>
+            </div>`,
+        mount: async (main) => {
+            const layout = document.getElementById('remoteAccessSettingsLayout');
+            const host = main.querySelector('.cpl-settings-host');
+            if (!layout || !host) return;
+            host.appendChild(layout);
+            wireRemoteAccessSettingsModal();
+            syncRemoteAccessSettingsUI();
+            const settings = await loadUserGlobalSettingsFromServer();
+            if (settings && settings.remoteAccess) applyRemoteAccessSettingsToState(settings.remoteAccess);
+            syncRemoteAccessSettingsUI();
+        },
+        unmount: () => {
+            const layout = document.getElementById('remoteAccessSettingsLayout');
+            const content = document.querySelector('#remoteAccessSettingsModal > .modal-content');
+            if (layout && content && !content.contains(layout)) content.appendChild(layout);
+        }
+    });
+    return true;
+}
+document.addEventListener('DOMContentLoaded', () => registerRemoteAccessControlPanelPage());
 
 function buildUserGlobalSettingsSnapshotFromClient() {
     let elevatePins = 0;

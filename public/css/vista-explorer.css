@@ -743,6 +743,199 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-status-sp
     color: #2b5797;
 }
 
+/* ---------- Control Panel as Vista's Control Panel (an Explorer window) ----------
+   The caption: Explorer's orbs in the gutter, the translucent breadcrumb box with refresh inside,
+   the search box, no icon or title. The task pane: Vista's (the VM's Windows Update / Control
+   Panel pane: #416fa5 to #69b570 top to bottom, white text, the swoosh lifted from the VM into
+   vista-cpl/task-pane-swoosh.png as white and black alpha), See also at its foot. */
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-main > :is(.icon-fa, .icon-image, .cpl-window-title) {
+    visibility: hidden;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .naxt-nav-group {
+    flex: none;
+    gap: 0;
+    padding: 0;
+    background: url('/static_images/vista-explorer/travel-gutter.svg') no-repeat 0 50%;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-back, .cpl-forward) {
+    width: 29px;
+    min-width: 29px;
+    height: 27px;
+    min-height: 27px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    box-shadow: none;
+    filter: none;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-forward {
+    margin-left: -1px;
+    background-image: url('/static_images/vista-explorer/nav-forward.png');
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-back, .cpl-forward) i {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-back, .cpl-forward):hover:not(:disabled) {
+    background-position: 0 -27px;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-back, .cpl-forward):active:not(:disabled) {
+    background-position: 0 -54px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-back, .cpl-forward):is(:disabled, .disabled) {
+    background-position: 0 -81px;
+    opacity: 1;
+}
+
+/* the breadcrumb box and the search box: Explorer's */
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)) {
+    position: relative;
+    height: 22px;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
+    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
+    border: 1px solid #353c43;
+    border-bottom-color: #6e7988;
+    border-radius: 0;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 88%), 0 0 0 1px hsl(0 0% 100% / 16%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-address {
+    height: 20px;
+    min-height: 0;
+    margin-right: 24px;
+    padding: 0 4px 0 3px;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    color: #000;
+    font: 12px var(--cpl-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-address-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 2px;
+    background: url('/static_images/app_icons/controlpanel.png') no-repeat center / 16px 16px;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-address-icon::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-crumb {
+    height: 20px;
+    padding: 0 3px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    color: #000;
+    font: 12px var(--cpl-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-crumb:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-crumb-sep {
+    width: 11px;
+    color: transparent;
+    font-size: 0;
+    background: #000;
+    -webkit-mask: no-repeat center / 4px 7px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 7'%3E%3Cpath d='M0 0l4 3.5L0 7z'/%3E%3C/svg%3E");
+    mask: no-repeat center / 4px 7px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 7'%3E%3Cpath d='M0 0l4 3.5L0 7z'/%3E%3C/svg%3E");
+    align-self: stretch;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-refresh {
+    position: absolute;
+    right: 1px;
+    top: 1px;
+    width: 22px;
+    min-width: 0;
+    height: 18px;
+    min-height: 0;
+    padding: 0;
+    background: url('/static_images/vista-explorer/refresh.png') no-repeat 0 0;
+    border: 0;
+    border-left: 1px solid #54585c;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-refresh i {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-search {
+    width: 200px;
+    height: 20px;
+    min-height: 0;
+    padding: 0 24px 0 6px;
+    background: url('/static_images/vista-start/search-glyph.png') no-repeat right 5px center;
+    border: 0;
+    box-shadow: none;
+    color: #000;
+    font: 12px var(--cpl-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-search::placeholder {
+    color: #5f5f5f;
+    font-style: italic;
+}
+
+/* the task pane */
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .cpl-tasks {
+    display: flex;
+    flex-direction: column;
+    padding: 14px 12px 16px 16px;
+    background:
+        url('/static_images/vista-cpl/task-pane-swoosh.png') no-repeat left bottom / 200px auto,
+        linear-gradient(#416fa5, #69b570);
+    border-right: 0;
+    color: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .cpl-content h3.cpl-task-heading {
+    color: #fff;
+    font-weight: 600;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .cpl-tasks .cpl-link {
+    color: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .cpl-tasks .cpl-link:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .cpl-tasks .cpl-task-list {
+    gap: 8px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .cpl-tasks .cpl-task-group--see-also {
+    margin-top: auto;
+    padding-top: 18px;
+    border-top: 0;
+}
+
 /* ---------- Grimoire / Alchemy as Internet Explorer 7 (#448) ----------
    1:1 with IE7 on the Vista VM. Structure from public/scripts/comp/grimoireIeChrome.js: the travel
    row (Explorer's orbs and gutter, Recent Pages ▾, the address box ending ▾ | refresh | stop, the

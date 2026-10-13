@@ -1,6 +1,8 @@
 /**
  * Security Center DSAP — security.dreamscape.jp
- * Linksys-style admin panel for blocked IPs, honeypot paths, authentication, and telemetry.
+ * Linksys-style admin panel for blocked IPs, honeypot paths and telemetry. Authentication (PINs,
+ * Director accounts, service and application keys, approved IPs) is Control Panel's
+ * Authentication page (cplAuthentication.js), which runs this driver on the auth view.
  * Depends on: dsapRegistry.js, websocket.js, confirmationDialog.js, contextMenu.js
  */
 
@@ -118,7 +120,6 @@ ${dsapSmfBuildHeader({
     <td align="center" class="sec-tab" data-sec-tab="home"><i class="fas fa-gauge-high"></i> Home</td>
     <td align="center" class="sec-tab" data-sec-tab="blocked"><i class="fas fa-ban"></i> Blocked Clients</td>
     <td align="center" class="sec-tab" data-sec-tab="honeypot"><i class="fas fa-spider"></i> Honeypot</td>
-    <td align="center" class="sec-tab" data-sec-tab="auth"><i class="fas fa-key"></i> Authentication</td>
     <td align="center" class="sec-tab" data-sec-tab="telemetry"><i class="fas fa-chart-line"></i> Telemetry</td>
   </tr>
 </table>
@@ -361,6 +362,7 @@ ${dsapSmfBuildHeader({
           <th align="left">Service</th>
           <th align="left">Active key</th>
           <th align="left">Fingerprint</th>
+          <th align="center" width="90" title="Each key is checked once when it is added or changed. Hover a dot for the result.">Status</th>
           <th align="center" width="130">Actions</th>
         </tr>
       </thead>
@@ -377,6 +379,9 @@ ${dsapSmfBuildHeader({
     <div class="sec-details-body sec-appkeys-form">
       <label>Name<input type="text" id="secKeychainEditName" class="sec-input" placeholder="Key label"></label>
       <label>Key value<input type="password" id="secKeychainEditValue" class="sec-input" autocomplete="new-password" placeholder="Leave blank to keep current value"></label>
+      <label id="secKeychainEditSecondaryWrap" class="hidden"><span id="secKeychainEditSecondaryLabel">Second key</span><input type="password" id="secKeychainEditSecondary" class="sec-input" autocomplete="new-password" placeholder="Leave blank to keep current value"></label>
+      <label id="secKeychainEditSecondaryClearWrap" class="sec-check hidden"><input type="checkbox" id="secKeychainEditSecondaryClear"> <span id="secKeychainEditSecondaryClearLabel">Remove it</span></label>
+      <div id="secKeychainEditSecondaryHint" class="sec-dsap-setting-hint hidden"></div>
       <div class="sec-appkeys-form-actions">
         <button type="button" id="secKeychainEditSave" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-save"></i> Save Key</button>
       </div>
@@ -391,6 +396,8 @@ ${dsapSmfBuildHeader({
     <div class="sec-details-body sec-appkeys-form">
       <label>Name<input type="text" id="secKeychainAddName" class="sec-input" placeholder="Key label"></label>
       <label>Key value<input type="password" id="secKeychainAddValue" class="sec-input" autocomplete="new-password" placeholder="API key or contract ID"></label>
+      <label id="secKeychainAddSecondaryWrap" class="hidden"><span id="secKeychainAddSecondaryLabel">Second key</span><input type="password" id="secKeychainAddSecondary" class="sec-input" autocomplete="new-password" placeholder="Optional"></label>
+      <div id="secKeychainAddSecondaryHint" class="sec-dsap-setting-hint hidden"></div>
       <div class="sec-appkeys-form-actions">
         <button type="button" id="secKeychainAddSubmit" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-plus"></i> Add Key</button>
       </div>
@@ -1101,7 +1108,9 @@ const securityDsapDriver = {
         }
 
         const segments = host.getPathSegments();
-        const view = securityDsapNormalizeView(segments[0]);
+        let view = securityDsapNormalizeView(segments[0]);
+        // Authentication moved to Control Panel (cplAuthentication.js); old links land there
+        if (view === 'auth' && !host.cplAuthentication && securityDsapOpenAuthInControlPanel()) view = 'home';
         this._state.view = view;
 
         const page = Math.max(1, parseInt(host.getQueryParam('page') || '1', 10) || 1);
@@ -3533,7 +3542,75 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
     _keychainFingerprint(service, index) {
         if (index === null || index === undefined) return '—';
         const key = service?.keys?.find((k) => k.index === index);
-        return key?.fingerprint || '—';
+        if (!key) return '—';
+        // A paired second credential (TokenRouter management key) shows after the API key.
+        if (service.secondary && key.secondaryFingerprint) {
+            return `${key.fingerprint || '••••'} + ${service.secondary.label} ${key.secondaryFingerprint}`;
+        }
+        return key.fingerprint || '—';
+    },
+
+    // Status dots come from the server's cached checks (modules/apiKeyHealth.js).
+    // Loading this table never starts a check; adding or editing a key does.
+    _keychainDot(status, label) {
+        const state = (status && status.state) || 'unchecked';
+        const words = {
+            ok: 'Working',
+            fail: 'Not working',
+            warn: 'Could not confirm',
+            checking: 'Checking...',
+            unchecked: 'Not checked yet',
+            none: 'Not set'
+        };
+        const bits = [label ? `${label}: ${words[state] || state}` : (words[state] || state)];
+        if (status && status.message && state !== 'ok') bits.push(status.message);
+        if (status && status.checkedAt) bits.push(`Checked ${new Date(status.checkedAt).toLocaleString()}`);
+        const title = securityDsapEscapeAttr(securityDsapEscapeHtml(bits.join('\n')));
+        const safeState = Object.prototype.hasOwnProperty.call(words, state) ? state : 'unchecked';
+        const tag = label ? `<span class="sec-key-dot-label">${securityDsapEscapeHtml(label)}</span>` : '';
+        return `<span class="sec-key-dot-wrap" title="${title}"><span class="sec-key-dot sec-key-dot-${safeState}" role="img" aria-label="${title}"></span>${tag}</span>`;
+    },
+
+    _keychainStatusHtml(service, index) {
+        if (!service || service.missingKeys || index === null || index === undefined) return this._keychainDot({ state: 'none' }, '');
+        const key = service.keys?.find((k) => k.index === index);
+        if (!key) return this._keychainDot({ state: 'none' }, '');
+        if (!service.secondary) return this._keychainDot(key.status, '');
+        let html = this._keychainDot(key.status, 'API');
+        if (key.secondaryStatus && key.secondaryStatus.state !== 'none') {
+            html += this._keychainDot(key.secondaryStatus, service.secondary.label === 'Management key' ? 'Mgmt' : service.secondary.label);
+        }
+        return html;
+    },
+
+    _paintKeychainStatus(root) {
+        const kc = this._state.keychain;
+        kc.services.forEach((service) => {
+            const cell = root.querySelector(`[data-sec-keychain-service="${service.id}"] .sec-keychain-status`);
+            if (cell) cell.innerHTML = this._keychainStatusHtml(service, kc.pendingSelections[service.id]);
+        });
+    },
+
+    // api_key_status_changed (modules/apiKeyHealth.js broadcast to admins): new dots without a reload.
+    _wireKeychainStatusUpdates(root) {
+        if (this._keychainStatusWired || !window.wsClient) return;
+        this._keychainStatusWired = true;
+        window.wsClient.on('api_key_status_changed', (packet) => {
+            const statuses = packet && packet.data && packet.data.statuses;
+            const host = (this._state && this._state.host && this._state.host.getRoot && this._state.host.getRoot()) || (root && root.isConnected ? root : null);
+            if (!statuses || !host || !this._state || !this._state.keychain) return;
+            this._state.keychain.services.forEach((service) => {
+                const rows = Array.isArray(statuses[service.id]) ? statuses[service.id] : [];
+                const field = service.secondary && service.secondary.field;
+                rows.forEach((row) => {
+                    const key = (service.keys || []).find((k) => k.index === row.index);
+                    if (!key) return;
+                    if (row.apiKey) key.status = row.apiKey;
+                    if (field && row[field]) key.secondaryStatus = row[field];
+                });
+            });
+            this._paintKeychainStatus(host);
+        });
     },
 
     _getKeychainChanges() {
@@ -3658,6 +3735,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
     </button>
   </td>
   <td class="sec-keychain-fp">${securityDsapEscapeHtml(fp)}</td>
+  <td class="sec-keychain-status" align="center">${this._keychainStatusHtml(service, sel)}</td>
   <td class="sec-actions-cell">
     ${unlockBtn}
     <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="keychain-edit" title="Edit active key"><i class="fas fa-pen"></i></button>
@@ -3667,6 +3745,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         }).join('');
 
         this._wireKeychainSelectMenus(root);
+        this._wireKeychainStatusUpdates(root);
         this._updateKeychainSaveButton(root);
     },
 
@@ -3703,11 +3782,35 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
                     const fpCell = row.querySelector('.sec-keychain-fp');
                     if (labelSpan) labelSpan.textContent = driver._keychainKeyLabel(svc, item.keyIndex);
                     if (fpCell) fpCell.textContent = driver._keychainFingerprint(svc, item.keyIndex);
+                    const statusCell = row.querySelector('.sec-keychain-status');
+                    if (statusCell) statusCell.innerHTML = driver._keychainStatusHtml(svc, item.keyIndex);
                     driver._updateKeychainSaveButton(root);
                 }
             };
             this._attachClickMenu(btn, config);
         });
+    },
+
+    // Paired second credential (SERVICE_METADATA.secondary, e.g. TokenRouter's management key).
+    _setKeychainSecondaryFields(root, panel, service, hasSecondary) {
+        const meta = service && service.secondary;
+        const wrap = root.querySelector(`#secKeychain${panel}SecondaryWrap`);
+        const input = root.querySelector(`#secKeychain${panel}Secondary`);
+        const label = root.querySelector(`#secKeychain${panel}SecondaryLabel`);
+        const hint = root.querySelector(`#secKeychain${panel}SecondaryHint`);
+        const clearWrap = root.querySelector(`#secKeychain${panel}SecondaryClearWrap`);
+        const clear = root.querySelector(`#secKeychain${panel}SecondaryClear`);
+        const clearLabel = root.querySelector(`#secKeychain${panel}SecondaryClearLabel`);
+        if (input) input.value = '';
+        if (clear) clear.checked = false;
+        wrap?.classList.toggle('hidden', !meta);
+        hint?.classList.toggle('hidden', !meta || !meta.hint);
+        clearWrap?.classList.toggle('hidden', !meta || !hasSecondary);
+        if (!meta) return;
+        if (label) label.textContent = meta.optional ? `${meta.label} (optional)` : meta.label;
+        if (hint) hint.textContent = meta.hint || '';
+        if (clearLabel) clearLabel.textContent = `Remove the ${meta.label.toLowerCase()}`;
+        if (input && panel === 'Edit') input.placeholder = hasSecondary ? 'Leave blank to keep current value' : 'Optional';
     },
 
     _openKeychainEditPanel(root, serviceId) {
@@ -3729,6 +3832,8 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (title) title.textContent = `Edit Key — ${service.label || serviceId}`;
         if (nameInput) nameInput.value = this._keychainKeyLabel(service, index);
         if (valueInput) valueInput.value = '';
+        const key = service.keys?.find((k) => k.index === index);
+        this._setKeychainSecondaryFields(root, 'Edit', service, !!(key && key.secondaryFingerprint));
 
         root.querySelector('#secKeychainAddPanel')?.classList.add('hidden');
         root.querySelector('#secKeychainEditPanel')?.classList.remove('hidden');
@@ -3745,6 +3850,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (title) title.textContent = `Add Key — ${service.label || serviceId}`;
         if (nameInput) nameInput.value = '';
         if (valueInput) valueInput.value = '';
+        this._setKeychainSecondaryFields(root, 'Add', service, false);
 
         root.querySelector('#secKeychainEditPanel')?.classList.add('hidden');
         root.querySelector('#secKeychainAddPanel')?.classList.remove('hidden');
@@ -3758,7 +3864,9 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
 
         const name = root.querySelector('#secKeychainEditName')?.value?.trim();
         const apiKey = root.querySelector('#secKeychainEditValue')?.value?.trim();
-        if (!name && !apiKey) {
+        const secondaryKey = root.querySelector('#secKeychainEditSecondary')?.value?.trim();
+        const clearSecondary = root.querySelector('#secKeychainEditSecondaryClear')?.checked === true && !secondaryKey;
+        if (!name && !apiKey && !secondaryKey && !clearSecondary) {
             if (typeof showGlassToast === 'function') showGlassToast('warning', null, 'Enter a new name and/or key value', false, 4000);
             return;
         }
@@ -3769,7 +3877,9 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
                 service: serviceId,
                 index,
                 name: name || undefined,
-                apiKey: apiKey || undefined
+                apiKey: apiKey || undefined,
+                secondaryKey: secondaryKey || undefined,
+                clearSecondary: clearSecondary || undefined
             });
             if (data?.success) {
                 if (typeof showGlassToast === 'function') showGlassToast('success', null, 'Service key updated', false, 4000, '<i class="fas fa-key-skeleton-left-right"></i>');
@@ -3796,10 +3906,12 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (!(await this._ensureWs())) return;
 
         try {
+            const secondaryKey = root.querySelector('#secKeychainAddSecondary')?.value?.trim();
             const data = await wsClient.sendMessage('add_api_key', {
                 service: serviceId,
                 name,
-                apiKey
+                apiKey,
+                secondaryKey: secondaryKey || undefined
             });
             if (data?.success) {
                 if (typeof showGlassToast === 'function') showGlassToast('success', null, 'Service key added', false, 4000, '<i class="fas fa-key-skeleton-left-right"></i>');
@@ -3893,7 +4005,15 @@ function registerSecurityCenterDsapApplet() {
     });
 }
 
+/** Control Panel's Authentication page; false when Control Panel is not there. */
+function securityDsapOpenAuthInControlPanel() {
+    const cpl = typeof window !== 'undefined' ? window.cplAuthentication : null;
+    if (!cpl || typeof cpl.open !== 'function') return false;
+    return cpl.open() !== false;
+}
+
 function openSecurityCenterDsap(view) {
+    if (securityDsapNormalizeView(view) === 'auth' && securityDsapOpenAuthInControlPanel()) return;
     const target = securityDsapBuildUrl(view || 'home');
     // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
     if (typeof openDsapInGrimoire === 'function') {

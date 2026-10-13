@@ -1032,3 +1032,591 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     background: var(--ButtonFace, #d4d0c8);
     border-right-color: var(--ButtonShadow, #808080);
 }
+
+/* ---- Authentication (cplAuthentication.js): Security Center's auth view in Vista's Control Panel
+   look. The applet markup keeps its classes; [data-dsap] is dropped so the Linksys theme stays in
+   Security Center. Buttons and boxes after 7.css; panels as Windows Update's boxes (rgb(189,202,234)
+   edge, the blue band rgb(145,203,211) into white, wucltux.dll UIFILE). ---- */
+
+#melatonControlPanelModal .cpl-auth-host :is(.dsap-smf-header, #secTabBar, .sec-view:not(.sec-auth-view)) {
+    display: none !important;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-auth-view.sec-showing-applog > :not(#secAppkeysLogPage) {
+    display: none !important;
+}
+
+#melatonControlPanelModal .cpl-auth-note {
+    color: #5b5b5b;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-section-hdr {
+    margin: 20px 0 4px;
+    color: var(--cpl-heading);
+    font-size: 13px;
+    font-weight: normal;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-section-hdr:first-child {
+    margin-top: 10px;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-section-hdr i {
+    display: none;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-statusbox {
+    margin: 0 0 6px;
+    color: #5b5b5b;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-statusbox.sec-dsap-status-ok {
+    color: #2a6e2a;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-statusbox.sec-dsap-status-error,
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-error {
+    color: #c00000;
+}
+
+#melatonControlPanelModal .cpl-auth-host :is(.sec-dsap-loading, .sec-dsap-empty, .sec-dsap-setting-hint, .sec-pins-note, .sec-dsap-settings-intro) {
+    color: #5b5b5b;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-settings-intro {
+    margin: 0 0 8px;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-settings-table td {
+    padding: 4px 8px 4px 0;
+    border: 0;
+    vertical-align: middle;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-setting-label {
+    width: 150px;
+    color: #333333;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-setting-control {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-pin-status.configured { color: #2a6e2a; font-weight: 600; }
+#melatonControlPanelModal .cpl-auth-host .sec-pin-status.not-set { color: #c00000; font-weight: 600; }
+
+/* text boxes: Vista's (#abadb3 top, #e3e9ef sides), the hot / focus blue */
+#melatonControlPanelModal .cpl-auth-host .sec-input {
+    box-sizing: border-box;
+    min-height: 23px;
+    padding: 2px 5px;
+    background: #ffffff;
+    border: 1px solid #abadb3;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    color: #000000;
+    font: 12px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-input:is(:hover, :focus) {
+    border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
+    outline: none;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-pin-input {
+    width: 180px;
+}
+
+/* buttons: 7.css */
+#melatonControlPanelModal .cpl-auth-host :is(.sec-dsap-action-btn, .sec-scope-chip, .sec-applog-tab, .dsap-smf-btn) {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    box-sizing: border-box;
+    min-height: 23px;
+    padding: 0 10px;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #707070;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+    color: #000000;
+    font: 12px var(--cpl-font);
+    text-shadow: none;
+    cursor: default;
+}
+
+#melatonControlPanelModal .cpl-auth-host :is(.sec-dsap-action-btn, .sec-scope-chip, .sec-applog-tab, .dsap-smf-btn):hover:not(:disabled) {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+#melatonControlPanelModal .cpl-auth-host :is(.sec-dsap-action-btn, .sec-scope-chip, .sec-applog-tab, .dsap-smf-btn):active:not(:disabled),
+#melatonControlPanelModal .cpl-auth-host :is(.sec-scope-chip.selected, .sec-applog-tab.active) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+    box-shadow: inset 1px 1px 0 hsl(0 0% 0% / 20%), inset -1px 1px 0 hsl(0 0% 0% / 7%);
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-action-btn.sec-btn-primary {
+    border-color: #3c7fb1;
+    box-shadow: inset 0 0 0 1px #9fe1fd;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-action-btn:disabled {
+    background: #f4f4f4;
+    border-color: #adb2b5;
+    box-shadow: none;
+    color: #838383;
+}
+
+#melatonControlPanelModal .cpl-auth-host :is(.sec-btn-small, .dsap-smf-btn-small) {
+    min-height: 21px;
+    padding: 0 6px;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-dsap-action-btn i {
+    color: #3d5a7a;
+    font-size: 11px;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-btn-danger i {
+    color: #c00000;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 8px;
+}
+
+/* tables: Explorer's list view */
+#melatonControlPanelModal .cpl-auth-host .sec-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--cpl-line);
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-data-table {
+    width: 100%;
+    border: 0;
+    border-collapse: collapse;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-data-table th {
+    height: 21px;
+    padding: 0 6px;
+    background: linear-gradient(#ffffff, #ffffff 40%, #f3f5f8);
+    border: 0;
+    border-right: 1px solid #e3e8ec;
+    border-bottom: 1px solid #d5d5d5;
+    color: #4c607a;
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-data-table td {
+    padding: 3px 6px;
+    border: 0;
+    border-bottom: 1px solid #f0f0f0;
+    color: #000000;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-data-table tbody tr:hover td {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+}
+
+#melatonControlPanelModal .cpl-auth-host tr:is(.sec-account-needs-login, .sec-keychain-row-locked) td {
+    background: #fff4ce;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-actions-cell {
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-actions-cell .sec-dsap-action-btn {
+    margin: 1px 2px;
+}
+
+/* panels: Windows Update's box with the blue band */
+#melatonControlPanelModal .cpl-auth-host .sec-details-panel {
+    margin: 8px 0 12px;
+    background: #ffffff;
+    border: 1px solid rgb(189, 202, 234);
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-details-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 30px;
+    padding: 0 6px 0 10px;
+    background: linear-gradient(to right, rgb(145, 203, 211), #ffffff);
+    border-bottom: 1px solid rgb(189, 202, 234);
+    color: var(--cpl-heading);
+    font-size: 13px;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-details-header strong {
+    font-weight: normal;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-details-body {
+    padding: 10px 12px;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-appkeys-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    max-width: 460px;
+    margin: 0 0 8px;
+    color: #333333;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-appkeys-form label.sec-check {
+    flex-direction: row;
+    align-items: center;
+}
+
+#melatonControlPanelModal .cpl-auth-host :is(.sec-token-row, .sec-color-row) {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-token-row textarea {
+    flex: 1;
+    max-width: 460px;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-appkeys-form-actions {
+    margin-top: 6px;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-appkeys-scopes {
+    max-height: 160px;
+    margin: 6px 0;
+    padding: 6px;
+    overflow-y: auto;
+    border: 1px solid var(--cpl-line);
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-scope-chip {
+    margin: 2px 4px 2px 0;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-appkey-result {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: linear-gradient(to right, rgb(175, 233, 176), #ffffff);
+    border: 1px solid rgb(189, 202, 234);
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-readonly-value {
+    font-weight: 600;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-pager {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+/* service key status (modules/apiKeyHealth.js), as dsap-smf.css draws them */
+#melatonControlPanelModal .cpl-auth-host .sec-key-dot-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin: 0 4px;
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-key-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background: #b8b8b8;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    border-radius: 50%;
+}
+
+#melatonControlPanelModal .cpl-auth-host .sec-key-dot-ok { background: #2e9e44; }
+#melatonControlPanelModal .cpl-auth-host .sec-key-dot-fail { background: #c62828; }
+#melatonControlPanelModal .cpl-auth-host .sec-key-dot-warn { background: #e0a020; }
+#melatonControlPanelModal .cpl-auth-host .sec-key-dot-none { background: transparent; border-style: dashed; }
+
+#melatonControlPanelModal .cpl-auth-host .sec-key-dot-checking {
+    background: #4a90d9;
+    animation: sec-key-dot-pulse 0.9s ease-in-out infinite alternate;
+}
+
+/* ---- MeletonFX Update (cplUpdate.js): Vista's Windows Update page (wucltux.dll UIFILE colours,
+   the VM's layout: 33px band with a 24px shield, body text left and the button right, facts below) ---- */
+
+#melatonControlPanelModal .cpl-link--icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#melatonControlPanelModal .cpl-link--icon img {
+    width: 16px;
+    height: 16px;
+}
+
+#melatonControlPanelModal .cpl-wu-box {
+    max-width: 580px;
+    margin: 14px 0 22px;
+    border: 1px solid rgb(189, 202, 234);
+}
+
+#melatonControlPanelModal .cpl-wu-band {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 33px;
+    padding: 0 10px;
+    border-bottom: 1px solid rgb(189, 202, 234);
+}
+
+#melatonControlPanelModal .cpl-wu-band--red { background: linear-gradient(to right, rgb(251, 130, 129), #ffffff); }
+#melatonControlPanelModal .cpl-wu-band--yellow { background: linear-gradient(to right, rgb(252, 236, 100), #ffffff); }
+#melatonControlPanelModal .cpl-wu-band--green { background: linear-gradient(to right, rgb(175, 233, 176), #ffffff); }
+#melatonControlPanelModal .cpl-wu-band--blue { background: linear-gradient(to right, rgb(145, 203, 211), #ffffff); }
+
+#melatonControlPanelModal .cpl-wu-shield {
+    flex: none;
+    width: 24px;
+    height: 24px;
+}
+
+#melatonControlPanelModal .cpl-wu-title {
+    color: var(--cpl-heading);
+    font-size: 15px;
+}
+
+#melatonControlPanelModal .cpl-wu-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 12px 10px 14px 33px;
+}
+
+#melatonControlPanelModal .cpl-wu-text {
+    flex: 1;
+    min-width: 0;
+}
+
+#melatonControlPanelModal .cpl-content .cpl-wu-text p {
+    margin: 0 0 4px;
+}
+
+#melatonControlPanelModal .cpl-wu-error em {
+    color: #000000;
+}
+
+/* the push button: 7.css */
+#melatonControlPanelModal .cpl-wu-button {
+    flex: none;
+    min-width: 86px;
+    min-height: 23px;
+    padding: 0 12px;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #707070;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+    color: #000000;
+    font: 12px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-wu-button:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+#melatonControlPanelModal .cpl-wu-button:active {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+}
+
+/* Vista's progress bar: the green fill (7.css), a marquee while checking */
+#melatonControlPanelModal .cpl-wu-bar {
+    position: relative;
+    height: 15px;
+    margin-top: 6px;
+    overflow: hidden;
+    background: linear-gradient(#f3f3f3, #dbdbdb);
+    border: 1px solid #bcbcbc;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 60%);
+}
+
+#melatonControlPanelModal .cpl-wu-bar > span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(#37d63e, #1fb725 50%, #0fa415 50%, #19d021);
+    transition: width 0.25s linear;
+}
+
+#melatonControlPanelModal .cpl-wu-bar--marquee > span {
+    width: 30%;
+    background: linear-gradient(to right, transparent, #1fb725 30% 70%, transparent);
+    animation: cpl-wu-marquee 1.6s linear infinite;
+}
+
+@keyframes cpl-wu-marquee {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(340%); }
+}
+
+#melatonControlPanelModal .cpl-wu-facts {
+    border-collapse: collapse;
+}
+
+#melatonControlPanelModal .cpl-wu-facts td {
+    padding: 1px 12px 1px 0;
+    vertical-align: top;
+}
+
+#melatonControlPanelModal .cpl-wu-facts td:first-child {
+    white-space: nowrap;
+}
+
+/* ---- Remote Access in Control Panel: the choices as Vista's radio buttons and check boxes (7.css) ---- */
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .gallery-toggle-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    width: auto;
+    height: auto;
+    margin: 4px 0 2px;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .gallery-toggle-slider {
+    display: none;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .gallery-toggle-group .gallery-toggle-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+    height: 18px;
+    min-height: 0;
+    padding: 0 0 0 19px;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    color: #000000;
+    font: 12px var(--cpl-font);
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .gallery-toggle-group .gallery-toggle-btn .tab-text {
+    font-weight: normal;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .gallery-toggle-group .gallery-toggle-btn::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 2px;
+    width: 13px;
+    height: 13px;
+    box-sizing: border-box;
+    background: linear-gradient(135deg, #dcdcdc, #fbfbfb);
+    border: 1px solid #8e8f8f;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px #f4f4f4;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .gallery-toggle-group .gallery-toggle-btn:hover::before {
+    background: linear-gradient(135deg, #b1dffd, #e9f7fe);
+    border-color: #3c7fb1;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .gallery-toggle-group .gallery-toggle-btn.active::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 5px;
+    width: 7px;
+    height: 7px;
+    background: radial-gradient(circle at 35% 35%, #8ee77a, #1e9a1e 60%, #116b11);
+    border-radius: 50%;
+}
+
+/* the on / off options as check boxes */
+#melatonControlPanelModal #remoteAccessSettingsLayout .desktop-settings-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 8px 0;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .desktop-settings-global-toggle {
+    position: relative;
+    flex: none;
+    width: 13px;
+    min-width: 0;
+    height: 13px;
+    min-height: 0;
+    margin-top: 2px;
+    padding: 0;
+    background: linear-gradient(135deg, #dcdcdc, #fbfbfb);
+    border: 1px solid #8e8f8f;
+    border-radius: 0;
+    box-shadow: inset 0 0 0 1px #f4f4f4;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .desktop-settings-global-toggle:hover {
+    background: linear-gradient(135deg, #b1dffd, #e9f7fe);
+    border-color: #3c7fb1;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .desktop-settings-global-toggle > i,
+#melatonControlPanelModal #remoteAccessSettingsLayout .desktop-settings-global-toggle::before {
+    display: none;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .desktop-settings-global-toggle[data-state="on"]::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0;
+    width: 4px;
+    height: 8px;
+    border: solid #1f3d8c;
+    border-width: 0 2px 2px 0;
+    transform: rotate(40deg);
+    background: none;
+    box-shadow: none;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .desktop-settings-option-label {
+    color: #000000;
+    font-weight: normal;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .section-header {
+    color: var(--cpl-heading);
+    font-size: 13px;
+    font-weight: normal;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout .section-header i {
+    display: none;
+}
+
+#melatonControlPanelModal #remoteAccessSettingsLayout input[type="number"] {
+    width: 70px;
+}

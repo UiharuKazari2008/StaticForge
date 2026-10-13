@@ -823,6 +823,23 @@ class ServiceWorkerManager {
     }
 
     _showServiceWorkerTrayPopup(nextState, { message = '', progress = null, filesTotal = null, kind = null } = {}) {
+        // Control Panel's update page (cplUpdate.js) is open: updates run in the foreground there,
+        // every state goes to the page and the tray balloon stays down (runtime compiles keep it)
+        const popupKind = kind !== null ? kind : this.trayPopup.kind;
+        if (typeof this.foregroundUpdateView === 'function' && popupKind !== 'runtime-compile') {
+            this._hideServiceWorkerTrayPopup();
+            this.trayPopup.kind = popupKind;
+            this.trayPopup.state = nextState;
+            if (typeof message === 'string') this.trayPopup.message = message;
+            if (progress !== null) this.trayPopup.progress = progress;
+            if (filesTotal !== null) this.trayPopup.filesTotal = filesTotal;
+            try {
+                this.foregroundUpdateView(nextState, { message: this.trayPopup.message, progress: this.trayPopup.progress, filesTotal: this.trayPopup.filesTotal });
+            } catch (err) {
+                console.error('Update page', err);
+            }
+            return true;
+        }
         if (!this._isDesktopTrayMode()) {
             return false;
         }
@@ -1295,10 +1312,14 @@ class ServiceWorkerManager {
 
             if (response.ok) {
                 const files = await response.json();
+                this._recordUpdateCheck();
                 await this.updateStaticCache(files, noToast);
             }
         } catch (error) {
             console.error('Failed to check static file updates:', error);
+            if (typeof this.foregroundUpdateView === 'function') {
+                this._showServiceWorkerTrayPopup('checking', { kind: 'sw-update', message: 'Failed to check for updates. Please try again.', progress: 0 });
+            }
         }
     }
     
@@ -3634,8 +3655,17 @@ class ServiceWorkerManager {
      * Yozora #420); during boot it goes straight there. options.direct = in-place reload
      * (agent test restarts, agentClientBridge.js).
      */
+    /** When this client last asked the server for updates (the update page's "Most recent check"). */
+    _recordUpdateCheck() {
+        try { localStorage.setItem('meletonUpdateCheckedAt', String(Date.now())); } catch (_) { /* private mode */ }
+    }
+
     forceRestart(options = {}) {
         console.log('🔄 Force restarting application...');
+        if (this.pendingUpdateFuse) {
+            // the downloaded updates install with this restart (the update page's "Updates were installed")
+            try { localStorage.setItem('meletonUpdateInstalledAt', String(Date.now())); } catch (_) { /* private mode */ }
+        }
         this.resetPendingUpdateFuse();
 
         try {

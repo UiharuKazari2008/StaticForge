@@ -127,7 +127,7 @@
         name: 'Remote Access',
         icon: 'fas fa-screencast',
         description: 'Choose how agents deliver and open images on this computer.',
-        open: () => callGlobal('openRemoteAccessSettingsModal')
+        open: () => navigate('remote-access')
     });
     registerItem({
         id: 'system',
@@ -191,7 +191,7 @@
                         <button type="button" class="btn-secondary toolbar-input-segment cpl-refresh" title="Refresh"><i class="fas fa-sync"></i></button>
                     </div>
                     <div class="button-group">
-                        <input type="text" class="form-control colored toolbar-input-segment cpl-search" placeholder="Search..."
+                        <input type="text" class="form-control colored toolbar-input-segment cpl-search" placeholder="Search"
                             spellcheck="false" autocapitalize="off" autocorrect="off">
                     </div>
                 </div>
