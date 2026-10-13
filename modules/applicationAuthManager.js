@@ -22,7 +22,9 @@ const SCOPE_WS_PACKETS = {
         'reroll_image', 'resolve_dynamic_context', 'compile_dynamic_generation',
         'apply_tendai_preview', 'resolve_text_replacements',
         'get_persona_settings', 'save_persona_settings', 'update_persona_settings',
-        'list_memory_image_links', 'link_memory_image', 'unlink_memory_image'
+        'list_memory_image_links', 'link_memory_image', 'unlink_memory_image',
+        // JULES: adding missing animate/upscale ws handlers to generation scope
+        'emotion_current_job', 'local_animate_status', 'local_upscale_status'
     ],
     workspace: [
         'workspace_list', 'workspace_get', 'workspace_create', 'workspace_delete', 'workspace_activate',
