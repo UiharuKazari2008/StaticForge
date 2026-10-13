@@ -1,0 +1,293 @@
+/* Atelier on the Vista desktop (naxtVistaChrome.js, Yukimi 2026-10-13): a light Vista window,
+   its caption controls in a menu bar, the gallery as Vista shows pictures.
+   - Menu bar: Explorer's on the VM (Alt): 20px, #fefeff to #e5eaf5 over 7px then #d4dbed to
+     #e1e6f6, a #b6bccc line under it; titles 12px black, hot / open flat #3399ff with white text.
+   - Search: Explorer's box on the glass, top right.
+   - Gallery: a white page, thumbnails framed like Photo Gallery's, Explorer's hover; marks as a
+     coloured frame (favourite gold, try blue, both green) instead of the dark theme's glow.
+   - Filter bar: a light pane under the menu bar (Vista's search pane), 7.css controls.
+   naxtVistaChrome.js sets .naxt-vista and data-window-client="light" only on the Vista desktop. */
+
+#naxtModal .naxt-menubar {
+    display: none;
+}
+
+/* ---- caption: only the search box stays ---- */
+
+#naxtModal.naxt-vista .modal-window-title-toolbar :is(.naxt-quick-filters, #naxtHomeBtn, #naxtRefreshBtn, #naxtFilterToggleBtn, #naxtOpenCustomTagBtn) {
+    display: none !important;
+}
+
+#naxtModal.naxt-vista .modal-window-title-toolbar {
+    justify-content: flex-end;
+}
+
+#naxtModal.naxt-vista .modal-window-title-toolbar .button-group:has(> #naxtSearchInput) {
+    flex: 0 1 260px;
+    height: 22px;
+    min-height: 0;
+    padding: 0;
+    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
+    border: 1px solid #353c43;
+    border-bottom-color: #6e7988;
+    border-radius: 0;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 88%), 0 0 0 1px hsl(0 0% 100% / 16%);
+}
+
+#naxtModal.naxt-vista .modal-window-title-toolbar #naxtSearchInput {
+    height: 20px;
+    min-height: 0;
+    padding: 0 24px 0 6px;
+    background: url('/static_images/vista-start/search-glyph.png') no-repeat right 5px center;
+    border: 0;
+    box-shadow: none;
+    color: #000;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-shadow: none;
+}
+
+#naxtModal.naxt-vista .modal-window-title-toolbar #naxtSearchInput::placeholder {
+    color: #5f5f5f;
+    font-style: italic;
+}
+
+/* ---- the menu bar ---- */
+
+#naxtModal.naxt-vista .naxt-menubar {
+    display: flex;
+    flex: none;
+    align-items: stretch;
+    height: 21px;
+    padding: 0 2px;
+    background: linear-gradient(#fefeff, #e5eaf5 7px, #d4dbed 7px, #e1e6f6 20px);
+    border-bottom: 1px solid #b6bccc;
+    box-sizing: border-box;
+}
+
+#naxtModal.naxt-vista .naxt-menubar .naxt-menu-title {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    width: auto;
+    min-width: 0;
+    height: 20px;
+    min-height: 0;
+    padding: 0 7px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-shadow: none;
+    filter: none;
+}
+
+#naxtModal.naxt-vista .naxt-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
+    background: #3399ff;
+    color: #fff;
+    outline: none;
+}
+
+/* the moved buttons show their label only (the caption's icons and state dots stay in the caption) */
+#naxtModal.naxt-vista .naxt-menubar .naxt-menu-title > :not(.naxt-menu-label, .naxt-bag-count) {
+    display: none;
+}
+
+#naxtModal.naxt-vista .naxt-menubar .naxt-menu-title::before,
+#naxtModal.naxt-vista .naxt-menubar .naxt-menu-title::after {
+    display: none;
+}
+
+#naxtModal .naxt-menu-label {
+    display: none;
+}
+
+#naxtModal.naxt-vista .naxt-menubar .naxt-menu-label {
+    display: inline;
+}
+
+/* Tag Bag (3) */
+#naxtModal.naxt-vista .naxt-menubar .naxt-bag-count {
+    order: 1;
+    position: static;
+    width: auto;
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    color: inherit;
+    font-size: 12px;
+    line-height: inherit;
+}
+
+#naxtModal.naxt-vista .naxt-menubar .naxt-bag-count::before { content: '('; }
+#naxtModal.naxt-vista .naxt-menubar .naxt-bag-count::after { content: ')'; }
+
+/* ---- the filter bar: Vista's search pane ---- */
+
+#naxtModal.naxt-vista #naxtFilterToolbar.modal-content-toolbar-overlay {
+    position: static;
+    flex: none;
+    padding: 6px 10px 7px;
+    background: linear-gradient(#f9fbfe, #e9eef8);
+    border-bottom: 1px solid #b6bccc;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+#naxtModal.naxt-vista #naxtFilterToolbar label {
+    color: #333;
+    font-size: 11px;
+}
+
+#naxtModal.naxt-vista #naxtFilterToolbar .form-control {
+    height: 21px;
+    min-height: 0;
+    padding: 1px 4px;
+    background: #fff;
+    border: 1px solid #abadb3;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-shadow: none;
+}
+
+#naxtModal.naxt-vista #naxtFilterToolbar .form-control:is(:hover, :focus) {
+    border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
+    outline: none;
+}
+
+#naxtModal.naxt-vista #naxtFilterToolbar button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 23px;
+    padding: 0 9px;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #707070;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+    color: #000;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-shadow: none;
+}
+
+#naxtModal.naxt-vista #naxtFilterToolbar button:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+#naxtModal.naxt-vista #naxtFilterToolbar button:is(:active, [data-state="on"]) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+}
+
+#naxtModal.naxt-vista #naxtFilterToolbar button i {
+    color: #3d5a7a;
+}
+
+/* ---- the gallery ---- */
+
+#naxtModal.naxt-vista .naxt-body {
+    background: #fff;
+}
+
+#naxtModal.naxt-vista .naxt-card {
+    padding: 6px 6px 2px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+}
+
+@media (hover: hover) {
+    #naxtModal.naxt-vista .naxt-card:hover {
+        background: linear-gradient(#fafbfd, #ebf3fd);
+        border-color: #b8d6fb;
+    }
+}
+
+#naxtModal.naxt-vista .naxt-card:focus-visible {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+    outline: none;
+}
+
+/* Photo Gallery's thumbnail: a white frame, a hairline, a soft shadow */
+#naxtModal.naxt-vista .naxt-card-img-wrap {
+    background: #fff;
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 1px #d4d4d4, 0 2px 4px hsl(0 0% 0% / 22%);
+}
+
+#naxtModal.naxt-vista .naxt-card[data-favorite="1"],
+#naxtModal.naxt-vista .naxt-card[data-try="1"] {
+    border-color: transparent;
+    box-shadow: none;
+}
+
+#naxtModal.naxt-vista .naxt-card[data-favorite="1"] .naxt-card-img-wrap {
+    box-shadow: 0 0 0 2px #e6c200, 0 2px 4px hsl(0 0% 0% / 22%);
+}
+
+#naxtModal.naxt-vista .naxt-card[data-try="1"] .naxt-card-img-wrap {
+    box-shadow: 0 0 0 2px #3c8fe0, 0 2px 4px hsl(0 0% 0% / 22%);
+}
+
+#naxtModal.naxt-vista .naxt-card[data-favorite="1"][data-try="1"] .naxt-card-img-wrap {
+    box-shadow: 0 0 0 2px #4fa85a, 0 2px 4px hsl(0 0% 0% / 22%);
+}
+
+#naxtModal.naxt-vista .naxt-card-votes {
+    right: 5px;
+    bottom: 5px;
+    gap: 5px;
+    padding: 0 5px;
+    background: hsl(0 0% 100% / 90%);
+    border: 1px solid #c5c5c5;
+    border-radius: 2px;
+    color: #333;
+    font: 11px 'Segoe UI', 'Noto Sans', sans-serif;
+}
+
+#naxtModal.naxt-vista .naxt-card-votes i {
+    color: #5b7da0;
+}
+
+#naxtModal.naxt-vista .naxt-card-caption {
+    padding: 4px 2px 2px;
+    color: #000;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+}
+
+#naxtModal.naxt-vista .naxt-empty-state {
+    color: #6d6d6d;
+}
+
+/* ---- the status bar ---- */
+#naxtModal.naxt-vista .naxt-status-bar {
+    height: 22px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    background: #f1eded;
+    border-top: 1px solid #919191;
+    box-shadow: 0 -1px 0 #fff, inset 0 1px 0 #fff;
+    color: #000;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+}
+
+/* the dataset's own icon (naxtApplet.js) stays off the bar; the caption title names the dataset */
+#naxtModal.naxt-vista #naxtDatasetDropdownBtn #naxtDatasetSelected {
+    display: none;
+}
+
+#naxtModal.naxt-vista #naxtFilterToolbar .naxt-filter-pair .form-control {
+    width: 72px;
+}

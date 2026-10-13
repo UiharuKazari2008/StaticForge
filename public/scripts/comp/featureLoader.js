@@ -64,8 +64,8 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerApplet.js']
     },
     naxt: {
-        styles: ['css/naxt-shell.css', 'css/spellbook.css'],
-        scripts: ['scripts/comp/naxtApplet.js']
+        styles: ['css/naxt-shell.css', 'css/spellbook.css', 'css/vista-atelier.css'],
+        scripts: ['scripts/comp/naxtVistaChrome.js', 'scripts/comp/naxtApplet.js']
     },
     bracket_gen: {
         styles: ['css/bracket-generation.css'],

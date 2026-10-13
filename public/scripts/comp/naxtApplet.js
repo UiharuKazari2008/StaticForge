@@ -337,6 +337,8 @@ class NaxtApplet {
         this.wireKeyboardOverlayEntries();
         this.updateBagChrome();
         this.updateMarkFilterButton();
+        // the Vista desktop's light window and menu bar: public/scripts/comp/naxtVistaChrome.js
+        if (typeof NaxtVistaChrome === 'function') this.vista = new NaxtVistaChrome(this);
     }
 
     wireKeyboardOverlayEntries() {
