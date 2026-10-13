@@ -45,7 +45,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
 }
 
 /* Recent Pages: aero.msstyles IMAGE_937, 13x108, normal / hot / pressed / disabled at 27px */
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-recent-pages-btn {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal) .modal-window-title-toolbar .explorer-recent-pages-btn {
     flex: none;
     width: 13px;
     min-width: 13px;
@@ -59,15 +59,16 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-recent-pages-btn:hover {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal) .modal-window-title-toolbar .explorer-recent-pages-btn:hover {
     background-position: 0 -27px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-recent-pages-btn:active {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal) .modal-window-title-toolbar .explorer-recent-pages-btn:active {
     background-position: 0 -54px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .naxt-nav-group:has(#explorerBackBtn:disabled):has(#explorerForwardBtn:disabled) .explorer-recent-pages-btn {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .naxt-nav-group:has(#explorerBackBtn:disabled):has(#explorerForwardBtn:disabled) .explorer-recent-pages-btn,
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .explorer-recent-pages-btn:disabled {
     background-position: 0 -81px;
 }
 
@@ -1200,7 +1201,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddre
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-book, .fa-puzzle-piece) {
-    background-image: url('/static_images/app_icons/vista-wordpad-document.png');
+    background-image: url('/static_images/app_icons/books.png');
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon.fa-file-alt {
@@ -1891,4 +1892,130 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWik
 body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > .button-group:has(.form-control, input:not([type="hidden"])) > [class^="btn-"]:hover:not(:disabled) {
     background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
     box-shadow: inset 0 0 0 1px #3c7fb1;
+}
+
+
+/* ---------- the common base of Cartograph, Control Panel and Grimoire (Yukimi 2026-10-13: "note
+   how Control Panel / Explorer / Internet Explorer share a common base design ... correct the
+   differences"). Measured on the VM at 1000x700, from the window's outer edge: the client edge at
+   y=62 (content at 63), the orbs at (11,32), the address box at y=33 and 22px tall (IE7: 32, 24px),
+   the search box 238px wide ending 9px from the right edge, 6px between the two boxes, Recent Pages ▾
+   right after the orbs and the box right after it. Explorer and Control Panel carry no caption
+   icon or title; IE7 shows the page icon at (9,9) and the title after it. Explorer's command bar is
+   31px with its dark bottom line; IE's tab row sits 2px below the client edge. ---------- */
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal).modal.toolbar-visible:not(.modal-maximized) {
+    --modal-title-chrome-height: 62px;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal).modal.toolbar-visible:not(.modal-maximized) .modal-window-title {
+    height: 63px;
+    min-height: 63px;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal).modal.toolbar-visible .modal-window-title-toolbar {
+    position: absolute;
+    top: 29px;
+    left: 10px;
+    right: 8px;
+    width: auto;
+    height: 31px;
+    min-height: 31px;
+    padding: 1px 0 0;
+    gap: 0;
+    align-items: flex-start;
+    overflow: visible;
+}
+/* the orbs' band at the toolbar's left, Recent Pages ▾ over the gutter's last 4px, the box after it */
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal) .modal-window-title-toolbar :is(.naxt-nav-group, .grimoire-travel) {
+    margin: 0;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal) .modal-window-title-toolbar .explorer-recent-pages-btn {
+    margin: 0 0 0 -4px;
+}
+/* (the selectors repeat the per-window rules' forms so these win by order, not by accident) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group,
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group {
+    flex: 1 1 0px;
+    align-self: flex-start;
+    min-width: 80px;
+    margin: 3px 0 0 2px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar {
+    flex: 1 1 0px;
+    align-self: flex-start;
+    min-width: 80px;
+    margin: 2px 0 0 4px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-seg {
+    align-self: flex-start;
+    margin: 2px 0 0;
+}
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(#explorerSearchBar),
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .button-group:has(> .cpl-search),
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search {
+    flex: 0 0 238px;
+    width: 238px;
+    min-width: 0;
+    max-width: 238px; /* explorer.css caps the group at 9rem */
+    align-self: flex-start;
+    margin: 3px 0 0 6px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search {
+    margin-top: 2px;
+}
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-search {
+    width: 100%;
+}
+/* the caption: nothing in Explorer and Control Panel; IE7's page icon and title */
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal).modal.toolbar-visible .modal-window-title-main {
+    visibility: hidden;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal.modal.toolbar-visible .modal-window-title-main {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 31px;
+    min-height: 31px;
+    margin: 0;
+    padding: 9px 0 0 8px;
+    gap: 4px;
+    align-items: flex-start;
+    color: #000;
+    font: 12px var(--ie-font, "Segoe UI", sans-serif);
+    text-shadow: 0 0 10px #fff, 0 0 6px #fff, 0 0 3px #fff;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal.modal.toolbar-visible .modal-window-title-main > .icon-image {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal.modal.toolbar-visible .modal-window-title-main > .icon-fa {
+    display: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal.modal.toolbar-visible .modal-window-title-main > span {
+    line-height: 16px;
+}
+/* Explorer's command bar: 31px with its dark bottom line (VM rows 63-93); IE's tab row 2px under the edge */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-actions-header.naxt-search-header {
+    height: 31px;
+    min-height: 31px;
+    box-sizing: border-box;
+    border-top: 0; /* the client edge is the line above it */
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow {
+    margin-top: 2px;
+    box-shadow: 0 -2px 0 #fff;
+}
+/* Vista's address-bar progress: a green fill across the box while the page comes in
+   (--vista-load from explorerApplet.js / melatonControlPanel.js; Grimoire's --alchemy-load from
+   grimoireRemoteBrowser.js). Painted as the box's first background so the breadcrumbs stay on top. */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group,
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group,
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar {
+    background:
+        linear-gradient(#d6efd0, #ace2a4 48%, #98d990 52%, #addfa4) no-repeat left top / var(--vista-load, var(--alchemy-load, 0%)) 100%,
+        var(--vista-box-fill, linear-gradient(#e3ebf3, #eaf1f8 25%, #eaf1f8 75%, #e7eff6));
+    transition: background-size .2s linear;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar::before {
+    display: none;
 }

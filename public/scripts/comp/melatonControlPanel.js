@@ -215,6 +215,7 @@
                     <div class="button-group naxt-nav-group">
                         <button type="button" class="btn-secondary toolbar-input-segment cpl-back" title="Back"><i class="fas fa-arrow-left"></i></button>
                         <button type="button" class="btn-secondary toolbar-input-segment cpl-forward" title="Forward"><i class="fas fa-arrow-right"></i></button>
+                        <button type="button" class="btn-secondary toolbar-input-segment explorer-recent-pages-btn cpl-recent" title="Recent Pages" aria-label="Recent Pages"></button>
                     </div>
                     <div class="button-group cpl-address-group">
                         <div class="form-control colored toolbar-input-segment cpl-address" role="navigation" aria-label="Address"></div>
@@ -239,6 +240,7 @@
         doc.body.appendChild(modal);
         el('.cpl-back').addEventListener('click', goBack);
         el('.cpl-forward').addEventListener('click', goForward);
+        el('.cpl-recent').addEventListener('mousedown', (ev) => recentPagesMenu(ev));
         el('.cpl-refresh').addEventListener('click', () => {
             if (current === 'network') pollStatus();
             render();
@@ -340,8 +342,51 @@
             if (search) search.value = '';
         }
         current = page;
+        addressLoad(0.4);
         if (page === 'network') pollStatus();
         render();
+        requestAnimationFrame(() => addressLoad(1));
+    }
+
+    /** Recent Pages ▾: the trail (back, current, forward) as Explorer's menu; a pick rewinds or advances. */
+    function recentPagesMenu(ev) {
+        const cm = root.contextMenu;
+        const btn = el('.cpl-recent');
+        if (!cm || !btn || btn.disabled) return;
+        const trail = back.concat([current], forward.slice().reverse());
+        const at = back.length;
+        const items = trail.map((page, i) => ({
+            text: (pages[page] && pages[page].title()) || page,
+            icon: i === at ? 'fas fa-check' : '',
+            action: `cpl-recent-${i}`
+        })).reverse();
+        cm.attachClickMenuToElement(btn, {
+            sections: [{ type: 'list', items }],
+            onAction: (action) => {
+                const j = Number(String(action).replace('cpl-recent-', ''));
+                if (!Number.isInteger(j) || j === at) return;
+                back.length = 0; back.push(...trail.slice(0, j));
+                forward.length = 0; forward.push(...trail.slice(j + 1).reverse());
+                navigate(trail[j], { fromHistory: true });
+            }
+        });
+        if (typeof cm.showMenu === 'function') cm.showMenu(ev, btn);
+    }
+
+    /** Vista's address-bar progress (green fill) while a page comes in. */
+    function addressLoad(value) {
+        const group = el('.cpl-address-group');
+        if (!group) return;
+        clearTimeout(addressLoad.timer);
+        group.style.setProperty('--vista-load', `${Math.round(value * 100)}%`);
+        if (value < 1) {
+            group.setAttribute('data-vista-loading', '');
+            return;
+        }
+        addressLoad.timer = setTimeout(() => {
+            group.removeAttribute('data-vista-loading');
+            group.style.setProperty('--vista-load', '0%');
+        }, 350);
     }
 
     function goBack() {
@@ -362,6 +407,7 @@
         el('.cpl-window-title').textContent = page.title();
         el('.cpl-back').disabled = back.length === 0;
         el('.cpl-forward').disabled = forward.length === 0;
+        el('.cpl-recent').disabled = back.length === 0 && forward.length === 0;
         el('.cpl-address').innerHTML = renderAddress(page);
         el('.cpl-tasks').innerHTML = page.tasks();
         unmountPage();

@@ -3462,6 +3462,7 @@ class ExplorerApplet {
         this._navToken += 1;
         this._loading = true;
         this._setGridLoading(true);
+        this._addressLoad(0.4);
         if (this.grid) {
             this.grid.clearSelection();
             this.grid.resetItems([]);
@@ -3476,6 +3477,23 @@ class ExplorerApplet {
         if (token !== this._navToken) return;
         this._loading = false;
         this._setGridLoading(false);
+        this._addressLoad(1);
+    }
+
+    /** Vista's address-bar progress (vista-explorer.css: a green fill across the breadcrumb box). */
+    _addressLoad(value) {
+        const group = this.modal && this.modal.querySelector('.explorer-address-group');
+        if (!group) return;
+        clearTimeout(this._addressLoadTimer);
+        group.style.setProperty('--vista-load', `${Math.round(value * 100)}%`);
+        if (value < 1) {
+            group.setAttribute('data-vista-loading', '');
+            return;
+        }
+        this._addressLoadTimer = setTimeout(() => {
+            group.removeAttribute('data-vista-loading');
+            group.style.setProperty('--vista-load', '0%');
+        }, 350);
     }
 
     _enrichGalleryPreviews(items) {
@@ -3871,11 +3889,12 @@ class ExplorerApplet {
             const resp = await vfsClient.getPathStats(this.currentPath);
             this._pathStats = resp?.stats || resp;
             this.updateLocationLabels(this._pathStats);
-            this.renderStatusText([]);
+            // no argument: keep the grid's selection. [] is truthy and would blank the details photo
+            this.renderStatusText();
         } catch (_) {
             this._pathStats = null;
             this.updateLocationLabels(null);
-            this.renderStatusText([]);
+            this.renderStatusText();
         }
     }
 
@@ -4067,35 +4086,84 @@ class ExplorerApplet {
         box.appendChild(icon);
     }
 
-    _populatePreviewIconBox(box, item) {
-        box.innerHTML = '';
-        box.classList.remove('has-preview');
-        const icon = document.createElement('i');
-        icon.className = `${item.icon || 'fas fa-file'} explorer-item-type-icon`;
-        icon.dataset.kind = this.isFolderItem(item) ? 'folder' : 'file';
-        box.appendChild(icon);
-        const img = document.createElement('img');
-        img.className = 'explorer-item-preview-img';
-        img.alt = '';
-        img.loading = 'lazy';
-        img.addEventListener('load', () => box.classList.add('has-preview'));
-        img.addEventListener('error', () => {
+    // Details pane (explorerVistaChrome.js renderDetails) keeps has-preview across a new
+    // selection so the photo on screen stays until the next one has decoded. The grid clears
+    // has-preview first, so its tiles still rebuild.
+    _swapVisiblePreview(box, img, item) {
+        const nextSrc = item.previewUrl;
+        if (img.getAttribute('src') === nextSrc || img.dataset.pendingSrc === nextSrc) return;
+        const icon = box.querySelector(':scope > i.explorer-item-type-icon');
+        if (icon) {
+            icon.className = `${item.icon || 'fas fa-file'} explorer-item-type-icon`;
+            icon.dataset.kind = this.isFolderItem(item) ? 'folder' : 'file';
+        }
+        img.dataset.pendingSrc = nextSrc;
+        const pre = new Image();
+        pre.className = 'explorer-item-preview-img';
+        pre.alt = '';
+        pre.draggable = false;
+        pre.onload = () => {
+            if (!img.isConnected || img.dataset.pendingSrc !== nextSrc) return;
+            pre.addEventListener('error', () => {
+                pre.remove();
+                box.classList.remove('has-preview');
+            });
+            img.replaceWith(pre);
+            box.classList.add('has-preview');
+        };
+        pre.onerror = () => {
+            if (!img.isConnected || img.dataset.pendingSrc !== nextSrc) return;
+            delete img.dataset.pendingSrc;
             img.remove();
             box.classList.remove('has-preview');
+        };
+        pre.src = nextSrc;
+    }
+
+    _populatePreviewIconBox(box, item) {
+        const img = box.querySelector(':scope > img.explorer-item-preview-img');
+        const icon = box.querySelector(':scope > i.explorer-item-type-icon');
+        const foreign = box.querySelector(':scope > .explorer-desktop-icon-root, :scope > .desktop-shortcut-icon');
+        if (!foreign && img && icon && (box.classList.contains('has-preview') || img.dataset.pendingSrc)) {
+            this._swapVisiblePreview(box, img, item);
+            return;
+        }
+        box.innerHTML = '';
+        box.classList.remove('has-preview');
+        const typeIcon = document.createElement('i');
+        typeIcon.className = `${item.icon || 'fas fa-file'} explorer-item-type-icon`;
+        typeIcon.dataset.kind = this.isFolderItem(item) ? 'folder' : 'file';
+        box.appendChild(typeIcon);
+        const fresh = document.createElement('img');
+        fresh.className = 'explorer-item-preview-img';
+        fresh.alt = '';
+        fresh.loading = 'lazy';
+        fresh.addEventListener('load', () => box.classList.add('has-preview'));
+        fresh.addEventListener('error', () => {
+            fresh.remove();
+            box.classList.remove('has-preview');
         });
-        img.src = item.previewUrl;
-        box.appendChild(img);
+        fresh.src = item.previewUrl;
+        box.appendChild(fresh);
     }
 
     _populateIconBox(box, item) {
+        // a slow shortcut icon must not land after the details pane has moved on
+        const iconStamp = `${item.id || ''}|${item.shortcutType || ''}|${item.previewUrl || ''}`;
+        box.dataset.iconStamp = iconStamp;
         if (item.shortcutType && typeof desktopShortcuts !== 'undefined') {
             const shortcut = this._shortcutFromItem(item);
             const handler = desktopShortcuts.shortcutTypes[shortcut.type];
             if (handler?.icon) {
                 const iconResult = handler.icon.call(desktopShortcuts, shortcut);
                 if (iconResult instanceof Promise) {
-                    iconResult.then((node) => this._mountDesktopIconInBox(box, node, item))
-                        .catch(() => this._populateDefaultIconBox(box, item));
+                    iconResult.then((node) => {
+                        if (box.dataset.iconStamp !== iconStamp) return;
+                        this._mountDesktopIconInBox(box, node, item);
+                    }).catch(() => {
+                        if (box.dataset.iconStamp !== iconStamp) return;
+                        this._populateDefaultIconBox(box, item);
+                    });
                     return;
                 }
                 this._mountDesktopIconInBox(box, iconResult, item);

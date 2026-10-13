@@ -23,7 +23,7 @@ const VISTA = [
     // the split Global Settings items (imageres -80 taskbar, main.cpl mouse / keyboard, mmsys.cpl)
     'vista-journal', 'vista-messenger', 'vista-photo-viewer', 'vista-user-accounts', 'vista-easy-transfer',
     'vista-snipping-tool', 'vista-wordpad-document', 'vista-appearance', 'vista-mouse', 'vista-keyboard',
-    'vista-sound', 'vista-taskbar'
+    'vista-sound', 'vista-taskbar', 'vista-performance'
 ];
 // generated with scripts/generate-app-icon.js in the Vista language (1024px masters)
 for (const name of ['vista-teleport', 'vista-weather', 'vista-mask-editor', 'vista-expand-canvas', 'vista-phasewalker']) {
@@ -45,7 +45,7 @@ launch('remote-desktop', 'vista-remote-desktop');
 launch('dovecote', 'vista-mail');
 launch('run', 'vista-run');
 launch('config-editor', 'vista-regedit');
-launch('event-viewer', 'vista-event-viewer');
+launch('event-viewer', 'vista-performance'); // Periscope: Performance Information and Tools (PerfCenterCPL.dll)
 assert.match(modalUtils, /id: 'help', text: 'Help and Support', imageIcon: 'vista-help\.png'/);
 assert.match(modalUtils, /id: 'control-panel', text: 'Control Panel', imageIcon: 'vista-control-panel\.png'/);
 assert.match(modalUtils, /text: 'Toolbox', imageIcon: 'vista-folder\.png'|imageIcon: 'vista-folder\.png', text: 'Toolbox'/);
@@ -77,7 +77,8 @@ const windowIcon = (id, icon) => {
 windowIcon('explorerModal', 'vista-explorer');
 windowIcon('galleryWindow', 'art');
 assert.match(modalUtils, /launchId: 'workspace',\s*icon: 'fas fa-film-canister',\s*imageIcon: 'art\.png'/, 'Workspace keeps its own icon');
-windowIcon('logViewerModal', 'vista-event-viewer');
+windowIcon('logViewerModal', 'vista-performance');
+windowIcon('dreamscapeAppErrorModal', 'vista-event-viewer'); // Spectator
 windowIcon('tokenDisplayModal', 'vista-calculator');
 windowIcon('tagWikiSearchModal', 'vista-iexplore');
 windowIcon('configEditorModal', 'vista-regedit');

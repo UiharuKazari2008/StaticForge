@@ -815,7 +815,8 @@ function applyWindowGeometryEdges(modal, edges) {
             const layout = getModalLayoutDimensions(modal);
             const rect = windowGeometry.edgesToRect(edges, workArea, { fixedSize: { width: layout.width, height: layout.height } });
             if (!rect) return false;
-            setModalOffsetsFromViewportTopLeft(modal, rect.left, rect.top, restoreClamp);
+            // whole pixels: a fractional edge blends the client's last row with the frame (Yukimi 2026-10-13)
+            setModalOffsetsFromViewportTopLeft(modal, Math.round(rect.left), Math.round(rect.top), restoreClamp);
         } else {
             const rect = windowGeometry.edgesToRect(edges, workArea);
             if (!rect) return false;
@@ -823,10 +824,10 @@ function applyWindowGeometryEdges(modal, edges) {
             const maxWidth = modal.dataset.windowMaxWidth ? parseInt(modal.dataset.windowMaxWidth, 10) : Infinity;
             const maxHeight = modal.dataset.windowMaxHeight ? parseInt(modal.dataset.windowMaxHeight, 10) : Infinity;
             setModalPositionFromViewportRect(modal, {
-                left: rect.left,
-                top: rect.top,
-                width: Math.min(maxWidth, Math.max(minWidth, rect.width)),
-                height: Math.min(maxHeight, Math.max(minHeight, rect.height))
+                left: Math.round(rect.left),
+                top: Math.round(rect.top),
+                width: Math.round(Math.min(maxWidth, Math.max(minWidth, rect.width))),
+                height: Math.round(Math.min(maxHeight, Math.max(minHeight, rect.height)))
             }, restoreClamp);
         }
         modal.setAttribute('data-modal-moved', 'true');
@@ -6225,7 +6226,7 @@ function buildToolsSubmenuItems() {
         { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal(); } },
         { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'vista-regedit.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
         { launchId: 'character-db', icon: 'fas fa-users', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
-        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-event-viewer.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
+        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-performance.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
         { launchId: 'calculator', icon: 'fas fa-calculator', text: 'Calculator', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
         { launchId: 'alarm', icon: 'fas fa-alarm-clock', imageIcon: 'vista-date-time.png', text: 'Alarm Clock', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
         { launchId: 'pomodoro', icon: 'fas fa-timer', imageIcon: 'vista-date-time.png', text: 'Pomodoro', appMenuLocation: 'tools', startMenu: false, appMenu: false, /* the Pomodoro tab of Alarm Clock; kept for old shortcuts */ action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },

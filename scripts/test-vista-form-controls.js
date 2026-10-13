@@ -37,4 +37,14 @@ const tw = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/tagWi
 assert.ok(/enterAddressEdit\(\) \{[\s\S]*?this\.searchInput\.select\(\);/.test(tw), 'a click selects the address on the desktop');
 const mn = fs.readFileSync(path.join(__dirname, '..', 'public/css/melaton-network.css'), 'utf8');
 assert.ok(/\.cpl-db-page \{[^}]*height: 100%;[^}]*overflow: hidden;/.test(mn) && /\.cpl-db-grid \{[^}]*flex: 1 1 auto;/.test(mn), 'the wallpaper list scrolls inside the page');
+// the common base of the three chromed windows (VM measurements) and Vista's address-bar progress
+assert.ok(ve.includes(':is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal).modal.toolbar-visible:not(.modal-maximized) {\n    --modal-title-chrome-height: 62px;'), 'content at 63 like Vista');
+assert.ok(/\.modal-window-title-toolbar \{\s*position: absolute;\s*top: 29px;\s*left: 10px;\s*right: 8px;/.test(ve), 'the orbs at (11,32), the search box 9px from the edge (the title box starts 1px in)');
+assert.ok((ve.match(/flex: 0 0 238px;/g) || []).length >= 1, 'the 238px search box');
+assert.ok(ve.includes('var(--vista-load, var(--alchemy-load, 0%)) 100%'), 'the green address-bar progress');
+const cplJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/melatonControlPanel.js'), 'utf8');
+assert.ok(cplJs.includes('explorer-recent-pages-btn cpl-recent') && cplJs.includes('function recentPagesMenu(') && cplJs.includes("setProperty('--vista-load'"), 'Control Panel: Recent Pages ▾ and the loading fill');
+assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/explorerApplet.js'), 'utf8').includes('_addressLoad(1)'), 'Cartograph fills the box while a folder loads');
+assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/grimoireIeChrome.js'), 'utf8').includes("BOOKS_ICON = '/static_images/app_icons/books.png'"), "the Grimoire's icon is its pages' favicon");
+assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/modalUtils.js'), 'utf8').includes('Math.round(rect.left)'), 'restored windows land on whole pixels');
 console.log('test-vista-form-controls (chrome): ok');
