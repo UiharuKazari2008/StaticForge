@@ -21,6 +21,10 @@ logs/
 log.txt
 securePrompts/*
 tmp/
+# Host-local media (Vista sound pack; Microsoft WAVs are not committed)
+media/
+# Mapped Vista WAVs for express.static until /sounds/vista is live. Not committed.
+public/sounds/
 .agents/skills/*
 .cursor/debug-*
 # Nested clone of DreamScape/cursor-rules (cron-pulled on host)

@@ -1,6 +1,7 @@
 /* Wallet tray icon and its flyout (public/scripts/comp/walletTray.js, Yozora #430).
    The flyout is a Vista notification-area flyout like the network one (melaton-network.css):
-   white body, a tab strip (Alerts / Status), rows with a status orb, the link footer. */
+   white body, a tab strip (Alerts / Status), rows with a status orb, the link footer. Both tab
+   panels sit in one grid cell, so the taller (Status) sets the height on either tab. */
 
 /* ---- Tray icon ------------------------------------------------------------------------------ */
 
@@ -30,7 +31,7 @@
 .wallet-flyout {
     position: fixed;
     z-index: var(--z-taskbar-popover, 2710);
-    width: 340px;
+    width: 400px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -98,6 +99,19 @@
     padding: 4px 10px 6px;
 }
 
+.wallet-panels {
+    display: grid;
+}
+
+.wallet-panel {
+    grid-area: 1 / 1;
+    min-width: 0;
+}
+
+.wallet-panel.inactive {
+    visibility: hidden;
+}
+
 .wallet-row,
 .wallet-alert {
     display: flex;
@@ -110,6 +124,15 @@
 .wallet-row:last-child,
 .wallet-alert:last-child {
     border-bottom: none;
+}
+
+/* Status rows run edge to edge with a faint fade from the left in the provider's colour
+   (--wallet-accent, set per row by walletTray.js) to nothing at the middle */
+.wallet-panel-status .wallet-row {
+    margin: 0 -10px;
+    padding-left: 12px;
+    padding-right: 12px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--wallet-accent, transparent) 16%, transparent) 0%, transparent 50%);
 }
 
 /* Status orb (Vista style): green ok, amber needs attention, red out, grey unavailable */
@@ -160,10 +183,12 @@
     white-space: nowrap;
 }
 
+/* NovelAI Anlas beside the name: larger, coloured like the other figures */
 .wallet-row-value {
     margin-left: auto;
     flex: 0 0 auto;
     color: #1e395b;
+    font-size: 14px;
     font-weight: 600;
 }
 
@@ -171,6 +196,149 @@
     color: #4c4c4c;
     font-size: 11px;
     overflow-wrap: anywhere;
+}
+
+/* "Login expired. Log in" */
+.wallet-inline-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #0066cc;
+    font: inherit;
+    cursor: pointer;
+}
+
+.wallet-inline-link:hover {
+    color: #3399ff;
+    text-decoration: underline;
+}
+
+/* NovelAI: V5 usage in its own column behind a divider */
+.wallet-row-side {
+    flex: 0 0 104px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+    margin-left: 2px;
+    padding-left: 10px;
+    border-left: 1px solid #dde3ea;
+}
+
+.wallet-side-label {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Two usage bars side by side (Claude 5 hours / 7 days, Cursor Auto / other models) */
+.wallet-side-bars {
+    display: flex;
+    gap: 8px;
+}
+
+.wallet-side-bar {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wallet-side-caption {
+    font-size: 11px;
+    color: #4c4c4c;
+    white-space: nowrap;
+}
+
+.wallet-side-bar .wallet-side-value {
+    font-size: 17px;
+    line-height: 1.25;
+}
+
+/* NovelAI Anlas: fixed and paid as two figures in a narrower column before V5 usage */
+.wallet-row-side.wallet-side-figures {
+    flex-basis: 84px;
+}
+
+.wallet-side-figure {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.wallet-side-number {
+    font-size: 17px;
+    line-height: 1.25;
+    color: #1e395b;
+}
+
+.wallet-side-unit {
+    font-size: 11px;
+    color: #4c4c4c;
+}
+
+.wallet-level-warn .wallet-side-number {
+    color: #d96a00;
+}
+
+.wallet-level-bad .wallet-side-number {
+    color: #c4231a;
+    font-weight: 600;
+}
+
+.wallet-side-value {
+    font-size: 22px;
+    font-weight: 400;
+    line-height: 1.15;
+    color: #1e395b;
+    letter-spacing: -0.2px;
+}
+
+/* Figures and meters share one scale: green ok, yellow V5 used faster than it refills,
+   orange low, red empty or nearly empty */
+.wallet-level-warn.wallet-row-value,
+.wallet-level-warn .wallet-side-value {
+    color: #d96a00;
+}
+
+.wallet-level-bad.wallet-row-value,
+.wallet-level-bad .wallet-side-value {
+    color: #c4231a;
+    font-weight: 600;
+}
+
+/* Vista progress bar */
+.wallet-meter {
+    display: block;
+    height: 7px;
+    margin: 2px 0 3px;
+    border: 1px solid #b2b2b2;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #f3f3f3, #e0e0e0);
+    overflow: hidden;
+}
+
+.wallet-meter-fill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(180deg, #a6f592 0%, #3fc31f 50%, #2ba50f 51%, #4fd12c 100%);
+}
+
+.wallet-level-drain .wallet-meter-fill {
+    background: linear-gradient(180deg, #fff6b0 0%, #f2d21f 50%, #e3c00f 51%, #f7dc3d 100%);
+}
+
+.wallet-level-warn .wallet-meter-fill {
+    background: linear-gradient(180deg, #ffd9a8 0%, #f28c1a 50%, #e07400 51%, #f5a043 100%);
+}
+
+.wallet-level-bad .wallet-meter-fill {
+    background: linear-gradient(180deg, #ffb0a6 0%, #e0352b 50%, #c4231a 51%, #ea4b3c 100%);
+}
+
+/* The Director's usage badge opens the wallet */
+.wallet-opener {
+    cursor: pointer;
 }
 
 .wallet-alert-icon {
@@ -192,6 +360,31 @@
 
 .wallet-alert-title {
     white-space: normal;
+}
+
+/* Vista command button on the right of an alert (Log in) */
+.wallet-alert-button {
+    flex: 0 0 auto;
+    align-self: center;
+    margin-left: 4px;
+    padding: 2px 10px;
+    border: 1px solid #707070;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #f2f2f2 0%, #ebebeb 45%, #dddddd 50%, #cfcfcf 100%);
+    color: #000000;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.wallet-alert-button:hover {
+    border-color: #3c7fb1;
+    background: linear-gradient(180deg, #eaf6fd 0%, #d9f0fc 45%, #bee6fd 50%, #a7d9f5 100%);
+}
+
+.wallet-alert-button:active {
+    border-color: #2c628b;
+    background: linear-gradient(180deg, #e5f4fc 0%, #c4e5f6 45%, #98d1ef 50%, #68b3db 100%);
 }
 
 /* First time this session shows the alert */
@@ -278,14 +471,42 @@ body.windows-classic-theme .wallet-alert {
     border-bottom-color: var(--ButtonShadow, #808080);
 }
 
-body.windows-classic-theme .wallet-alert-new {
+body.windows-classic-theme .wallet-alert-new,
+body.windows-classic-theme .wallet-panel-status .wallet-row {
     background: transparent;
 }
 
-body.windows-classic-theme .wallet-row-sub,
-body.windows-classic-theme .wallet-row-value {
+body.windows-classic-theme .wallet-row-sub {
     font-size: 11px;
     color: #000000;
+}
+
+body.windows-classic-theme .wallet-row-side {
+    border-left-color: var(--ButtonShadow, #808080);
+}
+
+body.windows-classic-theme .wallet-level-ok .wallet-side-number,
+body.windows-classic-theme .wallet-level-ok .wallet-side-value,
+body.windows-classic-theme .wallet-level-drain .wallet-side-value,
+body.windows-classic-theme .wallet-level-ok.wallet-row-value {
+    color: #000000;
+}
+
+body.windows-classic-theme .wallet-meter {
+    border-radius: 0;
+    border-color: var(--ButtonShadow, #808080) var(--ButtonHilight, #ffffff) var(--ButtonHilight, #ffffff) var(--ButtonShadow, #808080);
+    background: var(--ButtonFace, #d4d0c8);
+}
+
+body.windows-classic-theme .wallet-level-ok .wallet-meter-fill {
+    background: #000080;
+}
+
+body.windows-classic-theme .wallet-alert-button {
+    border-radius: 0;
+    border: 1px solid;
+    border-color: var(--ButtonHilight, #ffffff) var(--ButtonDkShadow, #404040) var(--ButtonDkShadow, #404040) var(--ButtonHilight, #ffffff);
+    background: var(--ButtonFace, #d4d0c8);
 }
 
 body.windows-classic-theme .wallet-flyout-links {

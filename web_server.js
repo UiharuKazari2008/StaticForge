@@ -51,6 +51,7 @@ const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
 const melatonNetwork = require('./modules/melatonNetwork');
 const { handleStatusStream } = require('./modules/statusStream');
+const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
 const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacRemoteBridge');
@@ -1048,6 +1049,10 @@ async function scanDirectory(dir, relFromPublic = '') {
             // App icon masters are compile inputs only — optimised sizes come from runtime-assets
             if (runtimeAssetService.isAppIconsMasterRelPath
                 && runtimeAssetService.isAppIconsMasterRelPath(itemRel)) {
+                continue;
+            }
+            // Vista WAVs stay out of the SW precache (copyrighted pack, played on demand)
+            if (itemRel === 'sounds' || itemRel.startsWith('sounds/')) {
                 continue;
             }
             const stats = fs.statSync(itemPath);
@@ -3747,6 +3752,11 @@ async function handleAdminUnixSocketMessage(message, socket) {
         });
 
         serverStartupStatus.setCapability('staticAssets', true);
+
+        // Vista scheme WAVs from media/Windows Vista Sounds (not in git, not in the SW precache)
+        app.get('/sounds/vista/:file', (req, res) => {
+            desktopSoundsStatic.sendSound(req, res, __dirname);
+        });
 
         // Serve static files from public directory (after routes to avoid conflicts)
         app.use(express.static('public', {

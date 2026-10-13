@@ -428,6 +428,8 @@
         ensureDialog();
         renderCounting();
         openDialog();
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('uac');
         const shown = new Promise((resolve) => {
             settle = resolve;
         });

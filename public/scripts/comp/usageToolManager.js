@@ -244,8 +244,11 @@ class GenerationUsageToolManager {
             return;
         }
         if (this.extendedUsageToastShown) return;
-        // shouldDeferTrayNotifications: public/scripts/comp/trayIndicators.js
-        if (!options.forceDisplay && shouldDeferTrayNotifications()) return;
+        // shouldDeferTrayNotifications, deferAccountTrayNotifications: public/scripts/comp/trayIndicators.js
+        if (!options.forceDisplay && shouldDeferTrayNotifications()) {
+            deferAccountTrayNotifications();
+            return;
+        }
 
         this.extendedUsageToastShown = true;
         showGlassToast(
@@ -260,8 +263,8 @@ class GenerationUsageToolManager {
     }
 
     /**
-     * Fill Anlas context-menu usage row (main menu or tray). Call from menu loadfn.
-     * @param {string} [suffix] - '' or 'Tray'
+     * Fill Anlas context-menu usage row (main menu). Call from menu loadfn.
+     * @param {string} [suffix] - element id suffix ('' for the main menu)
      */
     fillAnlasMenuUsageRow(suffix = '') {
         const row = document.getElementById(`contextAnlasOpusUsageRow${suffix}`);
@@ -286,7 +289,8 @@ class GenerationUsageToolManager {
     updateExternalSurfaces() {
         this.fillDataMgmtAccountUsage();
         this.fillAnlasMenuUsageRow('');
-        this.fillAnlasMenuUsageRow('Tray');
+        // walletTray.update: public/scripts/comp/walletTray.js (NovelAI V5 usage row)
+        if (window.walletTray) window.walletTray.update();
     }
 
     fillDataMgmtAccountUsage() {

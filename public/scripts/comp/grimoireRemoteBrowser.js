@@ -569,6 +569,8 @@ function grimoireRemoteMenuAction(found, action, data) {
     if (action === 'open-link') {
         const next = grimoireNormalizeWebUrl(data.href);
         if (next && found.frame.contentWindow) {
+            // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            desktopSounds.play('navigate');
             found.frame.contentWindow.postMessage({ type: 'grimoire-browser-navigate', url: next }, '*');
         }
         return;

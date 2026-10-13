@@ -2746,7 +2746,11 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         expire_preview: dynamicCarousel?.dataset.expirePreview === 'true',
         use_cache_responses: dynamicCarousel?.getAttribute('data-use-cache') !== 'false',
         chain_updates: dynamicCarousel?.dataset.chainUpdates === 'true' ? true : false, // Default to false
-        force_context_refresh: dynamicCarousel?.dataset.forceRefresh === 'true' ? true : undefined // Force context update in chain mode
+        force_context_refresh: dynamicCarousel?.dataset.forceRefresh === 'true' ? true : undefined, // Force context update in chain mode
+        // Rentan menu engine / model (getRentanAgentOverride: dynamicGenerationManager.js); undefined follows the saved default
+        agent: (typeof getRentanAgentOverride === 'function' && getRentanAgentOverride()) || undefined,
+        // Reduced Prompt Context: 'indoor' | 'outdoor' (getRentanReducedContext: dynamicGenerationManager.js)
+        reduced_context: (typeof getRentanReducedContext === 'function' && getRentanReducedContext()) || undefined
     };
 
     // Add weather location data if available
@@ -4661,6 +4665,13 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             }
             if (window.dynamicGenerationData.dialogs_count !== undefined) {
                 dynamicCarousel.setAttribute('data-creative-directive-dialogs', window.dynamicGenerationData.dialogs_count.toString());
+            }
+            // Rentan engine / model the print was made with; none follows the saved default (dynamicGenerationManager.js)
+            if (typeof setRentanAgentOverride === 'function') {
+                setRentanAgentOverride(window.dynamicGenerationData.agent || null);
+            }
+            if (typeof setRentanReducedContext === 'function') {
+                setRentanReducedContext(window.dynamicGenerationData.reduced_context || null);
             }
         } else {
             dynamicGenerationGroup.classList.add('hidden');

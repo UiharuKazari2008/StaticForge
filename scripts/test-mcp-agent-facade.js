@@ -878,9 +878,11 @@ assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.p
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.director);
 assert.strictEqual(_test.rateGroupForTool('get_linkxi_persona'), 'free');
 assert.strictEqual(_test.rateGroupForTool('save_linkxi_persona'), 'write');
+// Rentan is resolved by the server before every print (#422): it is no longer a must-act.
+assert.strictEqual(_test.collectEnshutsukaMustAct({ dynamicGeneration: { enabled: true } }), null);
 assert.deepStrictEqual(
-    _test.collectEnshutsukaMustAct({ dynamicGeneration: { enabled: true } }).reasons,
-    ['dynamicGeneration']
+    _test.collectEnshutsukaMustAct({ dynamicGeneration: { enabled: true }, director_session_id: 'sess-1' }).reasons,
+    ['director']
 );
 assert.deepStrictEqual(
     _test.collectEnshutsukaMustAct({ director_session_id: 'sess-1' }).reasons,
@@ -928,14 +930,16 @@ assert.ok(listedGen.inputSchema.properties.dataset_config.properties.nsfw.descri
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('settings'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('bakedUntil'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_session_state').description.includes('resolved'));
-assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').description.includes('needsIntegration'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').description.includes('resolved by the server'), 'Rentan is resolved server side (#422)');
+assert.ok(!JSON.stringify(_test.TOOL_DEFS).includes('needsIntegration'), 'no tool still promises a needsIntegration bounce');
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.workspace.description.includes('Do not copy the bound Studio tab'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('do not copy the bound Studio tab'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('gens this job started from'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.dynamicGeneration.description.includes('integrated=true'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_client_physics').description.includes('Works without a Studio bind'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_client_physics').inputSchema.properties.location);
-assert.ok(_test.MCP_INSTRUCTIONS.includes('needsIntegration'));
+assert.ok(!_test.MCP_INSTRUCTIONS.includes('needsIntegration'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('you do not bake it'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('integrated=true'));
 
 assert.deepStrictEqual(_test.collectFilenames({ filename: 'a.png', filenames: ['b.png', '../x'] }), ['b.png', 'a.png']);

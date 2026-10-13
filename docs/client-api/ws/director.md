@@ -17,7 +17,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `director_delete_feedback` | `director_delete_feedback_response` | admin/destructive | Handler: handleDirectorDeleteFeedback |
 | `director_delete_session` | `director_delete_session_response` | admin/destructive | Handler: handleDirectorDeleteSession |
 | `director_get_messages` | `director_get_messages_response` | session | Handler: handleDirectorGetMessages |
-| `director_get_models` | `director_get_models_response` | session | Live Cursor model list, grouped by family. `models[]` has `id`, `name`, `short` (single-line picker label, empty when `name` already fits), `fast`, and `efforts`. |
+| `director_get_models` | `director_get_models_response` | session | Model list for `engine` (`cursor` default, `claude`, `tokenrouter`), grouped by family. `models[]` has `id`, `name`, `short` (single-line picker label, empty when `name` already fits), `provider`, `cost`, `price`, `fast`, and `efforts`. Claude and TokenRouter also return `available`; TokenRouter returns `error` when its catalog is unreachable and there is no saved copy. `force: true` refetches the TokenRouter catalog. |
 | `director_get_session` | `director_get_session_response` | session | Handler: handleDirectorGetSession |
 | `director_get_sessions` | `director_get_sessions_response` | session | Handler: handleDirectorGetSessions |
 | `director_open_workspace` | `director_open_workspace_response` | admin/destructive | Opens the Cursor chat for the current workspace, or creates one. |
@@ -36,6 +36,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `director_streaming_ack` | — | session | Client ack of `director_streaming_update.data.seq`. The server holds the next snapshot until this ack or a deadline scaled from client RTT. |
 | `ledge_checks` | — | session | `{ sessionId, checked: [itemId] }` from the Ledge desk. Server broadcasts `ledge_state`. |
 | `director_tool_diff` | `director_tool_diff_response` | session | `{ sessionId, diffId, persona: "xi" }` → `{ text, name, detail }`. The live trace does not include that body. |
+| `director_rentan_agent_get` | `director_rentan_agent_get_response` | session | Rentan's saved default engine and model: `{ default, fallback }`. `default` is `{ engine, model, effort, fast }` or null (then `fallback`, Cursor at medium, applies). See [Rentan engine and model](#rentan-engine-and-model). |
+| `director_rentan_agent_set_default` | `director_rentan_agent_set_default_response` | admin/destructive | `{ agent: { engine, model, effort, fast } }` saves the default for every Rentan turn; `{ clear: true }` removes it. Broadcasts `director_rentan_agent_default_changed` with the same `data`. |
 
 ## Response envelope
 
@@ -99,6 +101,7 @@ Read-only, so it is **not** destructive: the tray icon and tray menu need it. Re
 - `state` is `working` while a turn runs, `offline` when the computer is down (`computer.code` is `BWRAP_MISSING`, `CURSOR_MISSING`, `DIRECTOR_NOT_PREPARED`, `DIRECTOR_IDLE_SHUTDOWN`, or the last `prepareDirector` failure), then `interrupted` / `failed` from the last turn, else `idle`.
 - After `director.idleShutdownMinutes` with no Director or Wren turn (default 15, `0` disables), the server stops the Director browser process and marks Dreamspace stopped. The next turn starts it again. Dreamscape itself is not restarted.
 - At server start, before the computer check, the server runs `cursor-agent update` and `claude update` on the host (each capped at 3 minutes, in parallel), so Wren's jail binds the new builds. The boot log shows each CLI's old and new version. It is skipped while an Xi turn is live, and `director.autoUpdateClis: false` turns it off. A failed update only logs a warning.
+- TokenRouter usage (`director_get_cursor_usage` with `engine: "tokenrouter"`): the account's remaining balance as one value, `balance` (number, USD) and `balanceText` (`"$12.34"`), which is TokenRouter's top-up balance plus unexpired vouchers from `GET /api/management/self/wallet`. That route needs the TokenRouter **Personal Management Key** of the same account, entered as the optional second key on the TokenRouter entry in Security Center > Service Keys (`secure.config.json` `tokenrouter.keys[].managementKey`, or `TOKENROUTER_MANAGEMENT_KEY`); the model API key is not accepted there. The badge uses the pair of the selected TokenRouter key. Cached for a minute, failures included (TokenRouter allows 10 calls a minute per key). `limited` is true at or below $0. `autoPercent` / `apiPercent` stay null; the badge shows the wallet mark and the dollar value.
 - Claude usage (`director_get_cursor_usage` with `engine: "claude"`, Wren or Xi): the 5-hour and 7-day windows from the last Claude call. Real Wren and Xi turns update it, and `modules/claudeUsageProbe.js` sends a one-line Haiku ping (throwaway HOME, no tools, no MCP) when the figures are 6 hours old. It only pings while a logged-in client is connected or was in the last 4 hours; otherwise the next login triggers it. One ping at a time, and 30 minutes between failed attempts.
 - `sessions` is the 3 most recent chats from `index.json`, newest first, with `current` set on the one a turn is running in.
 - `resources` measures **the Director's computer, not the Dreamscape host**: the tracked `bwrap` child plus its descendants (`cursor-agent`, `node`, headless chrome), read from `/proc/<pid>/stat` and `/proc/<pid>/task/<pid>/children`. `cpu` is a percent of one core over a 150 ms `utime + stime` delta and `rss` is in bytes; both are the tree total, and `processes` is the top 6 by CPU. With no turn running this is the last live sample with `live: false`, or `null` when there has not been one.
@@ -106,6 +109,31 @@ Read-only, so it is **not** destructive: the tray icon and tray menu need it. Re
 ### Server → client: `director_computer_status`
 
 Broadcast with the same `data` shape (minus a fresh CPU sample — `resources` is whatever the last read produced) on **turn start, turn end, abort, and error**. There is no interval: the client also asks with the request packet above each time the tray menu opens.
+
+### Engines (Wren)
+
+`director_send_message` takes `engine`: `cursor` (default), `claude`, or `tokenrouter`. Xi keeps its own runtime choice (Cursor or Claude).
+
+- **`claude`** runs the Claude Code CLI in the same jail, with the OAuth token file bound read-only.
+- **`tokenrouter`** (#409) runs the same Claude Code CLI, pointed at a loopback bridge in Dreamscape (`modules/tokenRouterBridge.js`, `127.0.0.1`, random port, per-boot secret). The bridge turns the CLI's Anthropic Messages calls into OpenAI chat completions on TokenRouter (`https://api.tokenrouter.com/v1/chat/completions`, `TOKENROUTER_BASE_URL` overrides) and streams the answer back: text, thinking (`reasoning_content`), and tool calls. Tool images go to the model as a user image message after the tool results. The TokenRouter key never enters the jail; it is the `tokenrouter` service in Security Center > API keys (`secure.config.json` `tokenrouter.keys[]`), with `TOKENROUTER_API_KEY` as the fallback. A turn without a key fails with `TOKENROUTER_KEY_MISSING`.
+  - Catalog: TokenRouter's public `/api/pricing`, chat models with the `openai` endpoint type only, saved to `~/.cache/dreamscape-director/tokenrouter-models.json` for when the gateway is down. Prices are new-api ratios (ratio 1 = $2 per million input tokens). The default model is `moonshotai/kimi-k3`.
+  - `effort` (`low`, `medium`, `high`) becomes `reasoning_effort`. `fast` picks the family's fast sibling (`-fast`, `-highspeed`, `-ultraspeed`) and is offered only where one exists. When a model refuses `reasoning_effort`, `reasoning_content`, images, or `max_tokens`, the bridge sends the request again without that field and remembers it for that model until the server restarts.
+- Switching engines inside a chat starts a new engine-side session with the kept transcript (handoff). Claude and TokenRouter sessions are separate even though both run the Claude CLI.
+
+### Rentan engine and model
+
+Rentan (dynamic generation, `modules/dynagenWren.js`) resolves the scene before every print: Studio, MCP `generate_image` / `generate_preset` / `print_studio` / `apply_studio_changes` `autoGenerate`, and the Director's own prints (#422). Agents do not bake it; they may adjust a resolved scene by sending edited `dg_` expanders with `integrated: true`. The engine and model come from, in order:
+
+1. `dynamic_generation.agent` on the generate request: `{ engine, model, effort, fast }` from the Rentan system menu (Studio `#dynamicCarousel` right-click, **Wren** block). It is saved with the preset and the print like the other Rentan settings.
+2. The default saved with **Save as Default** in that menu (`director_rentan_agent_set_default`), stored in `~/.cache/dreamscape-director/rentan-agent.json` (kept across Reinstall).
+3. The built-in default (`fallback` on `director_rentan_agent_get`): TokenRouter, `deepseek/deepseek-v4.1-flash`, effort `low`; Cursor at medium when there is no TokenRouter key.
+
+Engines:
+
+- **TokenRouter** resolves on the server (`modules/rentanResolver.js`): one chat-completions call on the `normal` lane of the request gate (#418), with the same scene rules, job lines, and checks as the agent's `deliver_rentan`, and one corrected retry. It has no image review. A failure falls back to the last scene when there is one. The compiled prompt records `resolved_by: { engine, model }` and has no `wren_session_id`. A TokenRouter pick with no key resolves on Cursor instead.
+- **Cursor / Claude** run the hidden per-workspace Wren chat as before, including the image review for human Studio prints. They cost subscription usage, not TokenRouter balance. A change of engine, or a heavy chat, starts a fresh engine-side session and sends Rentan's rules again. Only Cursor turns fall back to Auto on a usage limit.
+
+**Reduced Prompt Context** (#432, `dynamic_generation.reduced_context`: `indoor` | `outdoor`): the job carries the context and `Setting: indoor|outdoor` but no prompt, UC, characters, or current expanders, on every engine. Only the returned `dg_` expanders land (`cursorDirector.additionsOnly`); missing `!dg_` tokens are appended to the prompt. The setting is part of `compiled_prompt.controls`, so switching it resolves again.
 
 ### Server → client: `director_session_tasks`
 
@@ -340,9 +368,10 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `effort` | `low`, `medium`, `high`, or `xhigh` |
-| `fast` | Optional. When true and the model is Grok 4.7, the turn uses the fast parameter |
-| `model` | Model family id from `director_get_models`, such as `grok-4.7` |
+| `engine` | Optional. `cursor` (default), `claude`, or `tokenrouter`. See [Engines (Wren)](#engines-wren) |
+| `effort` | `low`, `medium`, `high`, or `xhigh` (TokenRouter: `low`, `medium`, `high`) |
+| `fast` | Optional. When true and the model has a fast variant, the turn uses it |
+| `model` | Model family id from `director_get_models` for that engine, such as `grok-4.7` or `moonshotai/kimi-k3` |
 
 **Success response:** `director_send_message_response`
 

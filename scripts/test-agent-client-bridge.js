@@ -616,18 +616,9 @@ assert.strictEqual(dynCfg.tod, 'night');
 assert.strictEqual(dynCfg.weather, 'rain');
 assert.strictEqual(dynCfg.location, 'TOKYO');
 
-assert.strictEqual(_test.dynagenNeedsIntegration(null), false);
-assert.strictEqual(_test.dynagenNeedsIntegration({ enabled: false }), false);
-assert.strictEqual(_test.dynagenNeedsIntegration({ enabled: true, integrated: true }), false);
-assert.strictEqual(_test.dynagenNeedsIntegration({
-    compiled_prompt: { success: true, prompt_hash: 'p', request_hash: 'r' }
-}), false);
-assert.strictEqual(_test.dynagenNeedsIntegration({ tod: true, weather: true }), true);
-assert.strictEqual(_test.dynagenNeedsIntegration(true), true);
-assert.strictEqual(_test.dynagenNeedsIntegration({
-    enabled: true,
-    compiled_prompt: { success: false }
-}), false);
+// Rentan is resolved by the server before every print (#422): no needsIntegration gate is exported.
+assert.strictEqual(_test.dynagenNeedsIntegration, undefined);
+assert.strictEqual(_test.buildDynagenIntegrationPayload, undefined);
 const nsfwFlat = _test.flattenGenerateToolArgs({ prompt: 'x', nsfw: 3 });
 assert.strictEqual(nsfwFlat.dataset_config.nsfw, 3);
 assert.deepStrictEqual(_test.pickDynagenFromInput({ dynamic_generation: { tod: 'night' } }), { tod: 'night' });
@@ -647,15 +638,6 @@ assert.strictEqual(sanitized.dynamic_generation.tod, true);
 assert.strictEqual(sanitized.dynamic_generation.integrated, undefined);
 assert.strictEqual(sanitized.dynamic_generation.resolved, undefined);
 assert.strictEqual(sanitized.dynamic_generation.directorApi, undefined);
-const bounce = _test.buildDynagenIntegrationPayload({
-    enabled: true,
-    resolved: { weather: 'rain' },
-    directorApi: 'noop'
-});
-assert.strictEqual(bounce.success, false);
-assert.strictEqual(bounce.needsIntegration, true);
-assert.ok(bounce.next.includes('integrated=true'));
-assert.ok(_test.DYNAGEN_INTEGRATION_NEXT.includes('dg_'));
 assert.strictEqual(sanitized.dynamic_generation.compiled_prompt.source, 'agent');
 assert.strictEqual(sanitized.dynamic_generation.compiled_prompt.integrated, true);
 

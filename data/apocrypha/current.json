@@ -1,441 +1,852 @@
 {
   "sections": [
     {
-      "id": "staff-effort-toggle",
-      "kicker": "STAFF · EFFORT TOGGLE",
+      "id": "staff-medium-no-uc",
+      "kicker": "STAFF · MEDIUM UNDER THE HOOD",
       "grim": false,
-      "title": "V5 Full got a Medium gear: a 14-step distilled model at about 42% off, with no custom UC",
-      "lede": "Thursday afternoon (ET) Anlatan shipped an effort toggle. High is the V5 Full you know. Medium is a separate, step-distilled model that does in 14 steps what High does in 23 to 28, and it costs about 42% less.",
-      "body": "The toggle sits next to the model picker in the webapp, and it works in inpainting mode too. **High** is unchanged: same model, same cost, every knob. **Medium** is a new model, `nai-diffusion-5-full-medium`, made by distilling V5 Full so it only needs **14 steps**. Anlatan's blind testers picked High 50.9% of the time and Medium 49.1% (kurumuz's chart). That's a coin flip.\n\nThe catch is in the journal's small print. On Medium the step count is **locked to 14**, the sampler is **locked to Euler Ancestral**, there is **no custom UC**, and **Prompt Guidance Rescale is not supported**. Guidance and resolution still move.\n\n**Correction (Frost's b0f9d00 client read).** \"No UC\" means the webapp clears your negative prompt and every per-character UC and hides the boxes, but the request **still sends the Heavy UC preset**. Rescale is only **hidden** in the UI: the request builder doesn't force it to 0 (the default is 0). Over the API or MCP, send `cfg_rescale: 0` yourself.\n\nStaff spent the evening answering the same three questions:\n\n- **Is it just fewer steps?** No. \"A model that can output similar quality to 28 steps at 14 steps\" (kurumuz). luna: a different deployment on separate servers. mahouko: trained on the same data to output the same thing as V5 Full, though in practice the result isn't identical.\n- **Is it a LoRA?** \"its not a lora\" (kurumuz).\n- **What does it cost?** About 42% less than High at its default 23 steps (finetune). luna's chart puts an Opus week at roughly 1,700 High images versus roughly 3,000 on Medium.\n\nThe community split along predictable lines. People who scout ideas and run randomizers love it (Noka, Miyabi, ShameSoot). People whose look depends on UC, rescale or DPM++ 2M SDE are staying on High (UiBeamu, Marune, CptJeanLuc). Teaspoon asked whether to worry that some same-seed Medium gens looked better than High. finetune thinks Medium renders lettering more cleanly but says he might be placeboing.\n\n**Try this.** V5 Full, effort **Medium**, guidance 5, small portrait, one seed:\n`1girl, solo, upper body, short black hair, glasses, white hoodie, cafe, window light, high complexity`\nThen flip to **High**: Euler Ancestral, 23 steps, guidance 5, rescale 0, Light UC, same seed. They're different models, so expect a different picture, not a re-render. Judge composition, hands and lettering, not identity.\n\n**CTA.** Run the pair on three seeds. If Medium holds for your style, it's your new scout mode. Guide: §7 Effort toggle.",
+      "title": "Medium has no UC wire at all, so keep its guidance low",
+      "lede": "Friday we reported that Medium still sends the Heavy UC preset. Over the weekend mahouko explained that the preset does nothing: Medium has no UC path and no CFG step. It learned to act as if it did, and that copy gets worse as guidance rises.",
+      "body": "Saturday afternoon Ryoooshu opened a Medium PNG and found a negative prompt in the metadata: the full Heavy UC list, `nsfw, lowres, artistic error, film grain ...`. luna's first reply was that Medium is \"hardcoded to UC Heavy, just like steps, just like sampler.\" mahouko corrected her within minutes. **\"Hardcoded is the wrong word.\"** Medium has **no wiring for UC**: no text conditioning, no diffusion prediction for a negative, and **no CFG sampling** at all. \"It was taught during training to always guide away from UC Heavy implicitly.\" The Heavy string in the request and the metadata is the \"bit that doesn't matter.\"\n\nThat fixes a line in Friday's issue. Frost's client read was right that the webapp sends `ucPresetId: heavy` on Medium. It just has no effect. The avoidance of Heavy-style junk is baked into the weights, and nothing you type in a UC can reach it.\n\n**Why guidance behaves differently.** Sunday DarkTentacleMaster noticed that Medium looks most like High at **guidance 4.5 to 5.5** and drifts at **8 and up**. mahouko: the `(cond-uncond)` difference \"gets harder to learn as scale increases; errors scale with `w-1`.\" On High, CFG multiplies a difference the model actually computes. On Medium it's a learned imitation, so any error grows with guidance. Saturday night vas posted Medium at **guidance 20** for monochrome ink and called it \"remarkably stable.\" mahouko: \"I never taught it guidance 20. If you think the result looks good, it's because high guidance is bad and you're realising that you prefer lower guidance.\" vas still saw a roughly linear contrast rise above 10.\n\n**What changes for you.** On Medium, every removal goes in the prompt as `-N::tag::`. Treat **~5** as Medium's home, and if you want the High look, compare at matching low guidance. If a fix needs a real UC, it needs High.\n\n**Try this.** V5 Full, effort Medium, small portrait, one seed, guidance **5** then **8**:\n`monochrome, greyscale, ink (medium), linear hatching, 1girl, solo, upper body, long coat, rooftop, wind, high complexity`\nThen High at 23 steps, Euler Ancestral, guidance 5, rescale 0, same seed.\n\n**CTA.** Post the three frames to the Cellar lab thread. If Medium at 8 drifts from High the way it did for DarkTentacleMaster, `save_memory` it under `V5 Medium effort testing`. Guide: §7 Effort toggle and Prompt guidance.",
       "excerpts": [
         {
-          "speaker": "kurumuz (Anlatan)",
+          "speaker": "Ryoooshu",
           "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-08 16:46 ET",
-          "text": "its a model that can output similar quality to 28 steps at 14 steps"
-        },
-        {
-          "speaker": "finetune (Anlatan)",
-          "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-08 16:47 ET",
-          "text": "42% cheaper than 23 steps at default settings. i think the blog post should say that"
-        },
-        {
-          "speaker": "mahouko (Anlatan)",
-          "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-08 17:51 ET",
-          "text": "it’s trained on the same data and trained to output the same thing as the original v5 full"
+          "when": "2026-10-10 14:50 ET",
+          "text": "v4_negative_prompt:\ncaption: base_caption:\"nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page\""
         },
         {
           "speaker": "luna (Anlatan)",
           "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-08 17:02 ET",
-          "text": "i can say its a different deployment running on servers separate from v5 full high effort, etc"
-        }
-      ],
-      "images": [
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/eb267ed8-ecc1-4449-8a6f-ff3571b25e21",
-          "cap": "Aini (Anlatan) · #announcements · \"V5 Effort Toggle: spend less, iterate more\"",
-          "kicker": "OFFICIAL · staff"
-        },
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/0cf50ab9-474b-4e1b-b46f-cd1f6b632b98",
-          "cap": "kurumuz (Anlatan) · blind-test win rate, High 50.9% vs Medium 49.1%",
-          "kicker": "OFFICIAL · staff"
-        },
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/694310c0-2409-410f-93a8-e8d36b8743e5",
-          "cap": "luna (Anlatan) · Opus images per week, about 1,700 on High vs about 3,000 on Medium",
-          "kicker": "OFFICIAL · staff"
-        },
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/eff5bba5-96c8-4884-8ea0-838ef7428ddd",
-          "cap": "BlueSF · official · one of the journal gallery pairs (Medium vs High) reposted in chat",
-          "kicker": "OFFICIAL · community"
-        }
-      ]
-    },
-    {
-      "id": "staff-medium-negatives",
-      "kicker": "STAFF · NEGATIVES WITHOUT A CUSTOM UC",
-      "grim": false,
-      "title": "No custom UC on Medium? Put the negative in the prompt, and keep it short",
-      "lede": "Medium hides the Undesired Content box and clears what you typed there (the request still carries the fixed Heavy preset). Staff's answer is negative emphasis in the positive prompt, and a community explainer shows why it hits harder than the same word in UC.",
-      "body": "Ten minutes after the announcement, \"medium effort disables undesired content outright?\" was the top question in chat. kurumuz's reply was four words: \"you can negative prompt, no UC.\" The journal gives the canonical example. If a character usually wears a hat and you want it gone, add `-3::hat::` to the **prompt**. finetune corrected a user's syntax to `-2::4 toes ::`. Note the space before the closing `::`, which keeps a digit from gluing onto the weight.\n\n**Why it feels stronger.** Uchariko's simplified explainer, from a separate thread the same night: the UC makes the model build an image of the positive prompt and an image of the negative, then subtract one from the other. Negative emphasis tells the model to do the *opposite* of the tag. That's why the same words hit much harder as `-2::tag::` in the prompt than they do in UC. Cayde Verz had noticed exactly that, without the reason.\n\n**Don't port your UC wholesale.** Several people pointed out that Medium may quietly help anyone dragging a 47-tag UC from the SD 1.x era (omni, ShameSoot, Mysterious One). Move only the entries that actually fight your image. TOWC found composition better with short prompts on Medium and only noticed later that the negative prompt \"got yeeted into the void\". He makes zombies says Medium mostly ignored his `3::dark::` lighting weight, and Enhance helped a lot.\n\n**House note.** Dataset and lettering still go through JSON (`dataset_config`, `text_overlays`), never typed tags. Medium's missing UC doesn't change that.\n\n**Try this.** Medium, guidance 5, same seed twice:\nA: `1girl, solo, cowboy shot, witch, black robe, forest path, high complexity`\nB: A + `-3::hat::`\nThen try `-1::hat::` and `-5::hat::` to find where the hat goes away without the style moving.\n\n**CTA.** Write down the smallest weight that removes your usual UC offenders on Medium, and post it in the Cellar.",
-      "excerpts": [
-        {
-          "speaker": "kurumuz (Anlatan)",
-          "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-08 16:44 ET",
-          "text": "you can negative prompt, no UC"
-        },
-        {
-          "speaker": "finetune (Anlatan)",
-          "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-08 17:00 ET",
-          "text": "`-2::4 toes ::`, but yeah, that works. says so in the blog post"
-        },
-        {
-          "speaker": "Uchariko",
-          "channel": "Anlatan #nai-image-advice",
-          "when": "2026-10-08 22:03 ET",
-          "text": "Negative emphasis and UC work in different ways. Simplified, the UC tells the model to create an image of the positive prompt and an image of the negative prompt, then subtract the negative prompt image from the positive prompt image. Negative emphasis tells the model to opposite of whatever is being negatively emphasized. For the concrete things that we can observe as humans, the result of the latter is generally more noticeable."
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "staff-steps-cost",
-      "kicker": "STAFF · STEPS & COST",
-      "grim": false,
-      "title": "Medium at 14 is not High at 14, and the prompt stops at the token limit",
-      "lede": "The per-step saving is small. The real saving is 14 steps instead of 23, and High at 14 steps does worse than Medium.",
-      "body": "Marune asked the sharp question: if Medium is distilled, why does it cost almost the same as High at the same step count? luna ran the formulas. Per step, Medium is only **about 4 to 6% cheaper**, depending on resolution, and integer Anlas rounding hides that at small sizes (\"you go from 3 to 2.8, that'd round to 3 still\"). kurumuz's own figure: about 4.7% at the same step count.\n\nSo the 42% comes from running **14 steps instead of 23**. Dropping High to 14 steps to save money is the wrong move. \"High will do much worse at 14 steps\" (kurumuz). mahouko: Medium at 14 should beat High at 14 \"because the medium model has special experience with those exact 14 steps\". luna adds that if 14-step High already works for you, nothing changes, but Anlatan recommends Medium for low steps.\n\nHow high is worth going on High? Bird Bros ran an outfit-randomizer Pikachu at 23 and 50 steps on a larger canvas and saw a difference in detail. headcrab thought the 50-step skirt went too glossy and suggested 28 to 35 as the useful ceiling. Lactobacillus saw little change even at 50. Our guide still says finals at 20 to 23, with 28 for dense multi-character scenes.\n\n**Token limit.** ght901, plainly: \"anything past the token limit is just cut off. as if it didn't exist.\" He makes zombies thought V5 handled a 2k-token prompt fine. Ifrit sees things dropped near ~1,550 tokens. Trust the counter, not luck.\n\n**Try this.** High, Euler Ancestral, guidance 5, normal portrait, same seed: 23 steps, then 28, then 35, on a busy outfit prompt like\n`1girl, solo, full body, standing, layered streetwear, patterned scarf, many accessories, city street, high complexity`.\nThen run Medium on the same prompt.\n\n**CTA.** Post your three-step ladder with the seed. If 28 never beats 23 for you, that's another vote for the guide's default.",
-      "excerpts": [
-        {
-          "speaker": "luna (Anlatan)",
-          "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-08 17:30 ET",
-          "text": "kuru is right that it's a few percent cheaper per step, between 4~6% cheaper per step depending on resolution, but given that we don't really have fractional anlas that's not very well pronounced at low integer numbers. like for example you go from 3 to 2.8, that'd round to 3 still"
-        },
-        {
-          "speaker": "kurumuz (Anlatan)",
-          "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-09 07:45 ET",
-          "text": "high will do much worse at 14 steps"
+          "when": "2026-10-10 14:51 ET",
+          "text": "iirc it's hardcoded to UC Heavy for medium effort"
         },
         {
           "speaker": "mahouko (Anlatan)",
           "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-08 17:12 ET",
-          "text": "14 steps medium should be better than 14 steps high,\nbecause the medium model has special experience with those exact 14 steps and knows their curvature well"
+          "when": "2026-10-10 14:59 ET",
+          "text": "hardcoded is the wrong word"
         },
         {
-          "speaker": "ght901 (Anlatan)",
+          "speaker": "mahouko (Anlatan)",
           "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-09 03:15 ET",
-          "text": "anything past the token limit is just cut off. as if it didn't exist"
+          "when": "2026-10-10 14:59 ET",
+          "text": "there is no wiring for UC (no text conditioning, no diffusion prediction)"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 14:59 ET",
+          "text": "and no CFG sampling occurs"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 14:59 ET",
+          "text": "it was taught during training to always guide away from UC Heavy implicitly"
+        },
+        {
+          "speaker": "luna (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 15:03 ET",
+          "text": "(being annoying, pushing my glasses to my face) hey it is at the very least hardcoded in the metadata to show UC Heavy even if it doesn't work at all :smug:"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 15:05 ET",
+          "text": "sure, the bit that doesn’t matter is hardcoded"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 10:38 ET",
+          "text": "`(cond-uncond)` is a quantity which gets harder to learn as scale increases; errors scale with `w-1`"
+        },
+        {
+          "speaker": "vas",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 20:12 ET",
+          "text": "the new medium effort V5 is remarkably stable even at unhinged prompt guidance (at least for monochrome gens)\ntry: `3::monochrome, greyscale, ink (medium), linear hatching::`\nprompt guidance: 20 (yes, really)"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 20:25 ET",
+          "text": "I never taught it guidance 20"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 20:25 ET",
+          "text": "if you think the result looks good, it's because high guidance is bad and you're realising that you prefer lower guidance"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "staff-zero-weight",
+      "kicker": "STAFF · THE ZERO WEIGHT",
+      "grim": false,
+      "title": "A 0:: tag isn't nothing: use it as context, and put it first",
+      "lede": "Glitterhoof III tested 0:: and found he \"didn't understand it at all.\" mahouko explained where a zero-weight tag still acts, and gave the trick that might make it reliable: order.",
+      "body": "Most of us learned `0::tag::` as a soft context nudge. The Light UC preset uses `0::ai-generated::` that way. Saturday night mahouko spelled out how much it still does. A zero-weight tag **still influences your prompt early in the text encoder**, before emphasis is applied. It **still shifts attention entropy** later in the encoder, and it **still reaches the diffusion model**. \"0 weight still does plenty.\"\n\nGlitterhoof had tried `bear, 0::snow::`, hoping for a white, polar-looking bear with no snow in the picture, and found it unreliable. mahouko said the idea was \"probably exactly the right idea\": use `0::` as **a side channel that contextualises the rest of the prompt**. Then came the useful part. **Swap the order.** V5's text encoder is Qwen, and Qwen is **causal**: each token only sees what came before it. In `bear, 0::snow::` the word bear never sees snow. In `0::snow::, bear`, bear is \"predicted by: snow.\"\n\nThat gives us a new A/B and a rule of thumb. **Context goes before the thing it should colour.** A trailing `0::` is mostly decoration. (The guide already says there's no inherent \"earlier tags are stronger\" rule. This is narrower: what a word can *see* depends on order.)\n\n**Try this.** V5 Full, High, 23 steps, Euler Ancestral, guidance 5, rescale 0, Light UC, small landscape, three fixed seeds:\nA: `bear, 0::snow::, forest clearing, daylight, high complexity`\nB: `0::snow::, bear, forest clearing, daylight, high complexity`\nScore fur colour and whether snow sneaks in. Repeat with `0::underwater::, girl, long hair, sundress, field` (hair drift and blue cast).\n\n**CTA.** If B beats A on 2 of 3 seeds, that's a lab result for the guide. `save_memory` the seeds. Guide: §1 Syntax and weights.",
+      "excerpts": [
+        {
+          "speaker": "Glitterhoof III",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 18:56 ET",
+          "text": "Ok i tested 0 weight and now i found out that i dont understand it at all."
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 19:01 ET",
+          "text": "0 weight still does plenty"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 19:03 ET",
+          "text": "it will mean your prompt is influenced somewhat by the tag, early in the text encoder (as in, before emphasis is applied)"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 19:05 ET",
+          "text": "and additionally, the tag will still influence attention entropy later in the text encoder"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 19:06 ET",
+          "text": "and also in the diffusion model"
+        },
+        {
+          "speaker": "Glitterhoof III",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 19:10 ET",
+          "text": "You got a concrete example? I did something like `bear, 0::snow::`, assuming that the bear would turn white (like a polar bear) despite there being no snow. But that was kinda unreliable lol."
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 20:28 ET",
+          "text": "no, I don't have an example.\nthe example you've proposed is probably exactly the right idea though."
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 20:28 ET",
+          "text": "like, trying to use the 0:: as a side-channel to contextualise the rest of the prompt"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 20:29 ET",
+          "text": "it might work better if you swap the order"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 20:29 ET",
+          "text": "because Qwen is causal"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 20:29 ET",
+          "text": "so it'd then be \"bear\" (predicted by: snow)"
+        }
+      ],
+      "images": []
+    },
+    {
+      "id": "staff-crowds",
+      "kicker": "STAFF · CROWDS",
+      "grim": false,
+      "title": "31 characters on V5 Full, and custom positions once you pass five",
+      "lede": "The blog says 22 distinct characters. finetune has since got 31 working, and he has one firm rule for big casts: place them yourself.",
+      "body": "He makes zombies asked how many character prompts V5 takes. Bird Bros: **32 boxes** is the cap, and \"according to their testing, up to 22 distinct characters worked at once.\" finetune: **\"i've since gotten 31 to work, on full.\"** The blog just wasn't updated.\n\nCommunity numbers are humbler. Uragan got **12 named characters** with positioning, never a 13th, and even at 12 one character kept getting swapped for a duplicate. He makes zombies tops out around **4** because he writes a lot of detail per box. His 13-box storytelling attempt didn't fail. V5 merged everything into a single anthology image and quietly dropped what didn't fit.\n\nThe practical rule came Sunday morning. Ifrit complained that V5 clones characters at 4 or 5 with **AI's choice** placement and sometimes skips one entirely. finetune: **\"definitely do custom positions if you have more than a few characters. it's much more reliable. i wouldn't do 'ai's choice' unless it's maybe up to 5.\"** Ifrit likes AI's choice for variety and plans a userscript to randomise custom positions instead.\n\nFor two characters the basics still apply (omni): one character per box, count tags in the base (`2girls`), and **no `solo`** left over from a single-character prompt.\n\n**Try this.** V5 Full, High, 28 steps, guidance 5, normal landscape. Base: `6girls, group picture, standing in a row, classroom chalkboard background, high complexity`. Six boxes, each `girl, <one hair colour>, <one outfit>`. Run once with AI's choice and once with custom positions spread evenly left to right, same seed.\n\n**CTA.** Count clones and missing characters per run, then try 8. Guide: §4 Character boxes.",
+      "excerpts": [
+        {
+          "speaker": "Bird Bros",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 06:07 ET",
+          "text": "32 is the limit"
+        },
+        {
+          "speaker": "Bird Bros",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 06:08 ET",
+          "text": "And according to their testing, up to 22 distinct characters worked at once"
+        },
+        {
+          "speaker": "finetune (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 08:52 ET",
+          "text": "i've since gotten 31 to work"
+        },
+        {
+          "speaker": "finetune (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 08:52 ET",
+          "text": "on full"
+        },
+        {
+          "speaker": "finetune (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 08:54 ET",
+          "text": "the blog post wasn't updated :sadge:"
+        },
+        {
+          "speaker": "Uragan",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 08:04 ET",
+          "text": "Only managed to get up to 12 with positioning. 13th never worked for me. And even at 12, it kept swapping one character for an already present one."
+        },
+        {
+          "speaker": "Ifrit",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 09:01 ET",
+          "text": "v5 still seems to duplicate,cloned chars a lot at 4-5 chars if i do ai choice than custom"
+        },
+        {
+          "speaker": "finetune (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 09:05 ET",
+          "text": "definitely do custom positions if you have more than a few characters. it's much more reliable. i wouldn't do \"ai's choice\" unless it's maybe up to 5"
+        },
+        {
+          "speaker": "He makes zombies",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 11:51 ET",
+          "text": "This is what v5 does when I give it like 13 character prompts that are meant to tell a story in sequence\n\nInstead of cutting out a lot of the prompt cause it's hopelessly big in total tokens, it seems like it finds a concise way to merge all of them into 1 anthology image while cutting out everything unnecessary for that"
+        },
+        {
+          "speaker": "omni",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-12 04:04 ET",
+          "text": "I mean you should do that it is trained best with that in mind, also I don't have this problem I assume your not leaving in tags like `solo` and not using `2girls` or `1boy` and `1girl`"
         }
       ],
       "images": [
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/d7e503c3-623f-4080-a4ab-e135b7ea9059",
-          "cap": "Bird Bros · official · outfit-randomizer Pikachu, 23 vs 50 steps at higher res (frame A)",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/a335c3e0-f508-43aa-8341-01a654317506",
+          "cap": "He makes zombies · official #nai-diffusion-discussion · 13 story character prompts merged into one anthology image",
           "kicker": "OFFICIAL · community"
         },
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/336a0563-3f25-4fef-a367-adb6bdf40717",
-          "cap": "Bird Bros · official · same prompt, 23 vs 50 steps (frame B)",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/13b5e782-ffcc-4d3a-9ddd-68ac4d289c46",
+          "cap": "omni · official #nai-diffusion-discussion · two characters, one per character box, no solo",
           "kicker": "OFFICIAL · community"
         }
       ]
     },
     {
-      "id": "webapp-b0f9d00",
-      "kicker": "WEBAPP · UPDATED",
+      "id": "staff-cost-math",
+      "kicker": "STAFF · THE MATH",
       "grim": false,
-      "title": "Webapp rolled to b0f9d00-production with two new model ids",
-      "lede": "db2d575 is gone (manifest 404). The new build ships the effort toggle and the Medium model ids.",
-      "body": "`https://novelai.net/image` now serves **`b0f9d00-production`** (`__NEXT_DATA__.buildId`). The `db2d575-production` manifest from Monday and Wednesday returns 404. This pass read the public client bundle only: no generation API call and no Chrome contract dump.\n\nWhat the client shows:\n- New model ids **`nai-diffusion-5-full-medium`** and **`nai-diffusion-5-full-medium-inpainting`**, labelled \"NAI Diffusion V5 Full (Medium Effort)\".\n- Medium defaults are V5 Full's with `steps: 14`. Flipping the toggle swaps `steps`, `sampler`, `noise_schedule`, `ucPresetId` and `cfg_rescale` between two saved setting sets, so your High settings survive a round trip.\n- Same qwen tokenizer and token limit as V5 Full.\n- Image metadata `source` strings ending `93F4BD30` / `70AB5786` map to Medium, so imported Medium PNGs re-open on Medium.\n- **Correction (Frost's client read, StaticForge contract PR #10):** Medium's request clears the user UC and every `characterPrompts[i].uc` but **still sends the Heavy UC preset** (`fixedSettings.ucPresetId: heavy`). The rescale row is only hidden; the request builder does not force `cfg_rescale` to 0.\n\n**Try this.** Nothing to prompt. If a shared PNG opens on Medium unexpectedly, check the effort toggle before blaming the prompt.\n\n**CTA.** Frost: add the Medium ids to `model-features.json` and the metadata map. Chiyo/Menma: find out whether Dreamscape `generate_image` and Studio accept `nai-diffusion-5-full-medium`, clear the user UC (keeping the Heavy preset the webapp sends) and pin rescale to 0 for it (board via Rook). Details in `nai-staff-updates/digest.md`, guide commit [bfd4c06](https://yozora.bluesteel.737.jp.net/DreamScape/nai-prompt-guide/commit/bfd4c06).",
-      "excerpts": [],
-      "images": []
-    },
-    {
-      "id": "studio-ivory-findings",
-      "kicker": "STUDIO · IVORY'S FINDINGS",
-      "grim": false,
-      "title": "Ivory's Friday notes: pin the word, swap the pupil tag, send the dataset in the call",
-      "lede": "Ivory reads every Studio gen for prompt cohesion. These four findings are hers, reported here at her request and landed in the guide credited to her.",
-      "body": "**1. Pin the word before you A/B lettering.** The `Text:` randomizer re-rolls its word on every image, so an A/B pair only compares fairly when the word is pinned. Where the lettering lands follows the **word**, not the quality tags. That fits Guren's Monday lab, where Quality Tags made no difference to the randomizer.\n\n**2. Pupils and close-ups.** `big`, `dilated` and `wide pupils` don't reliably change pupil size on V5. Guren's lab behind it was **4 seeds, not 1**: `big pupils` enlarged the pupil on 1 of 4. In conversions Ivory now uses a synonym instead of stacking emphasis, in line with mahouko's note that these are data-labelling gaps, not the encoder. Separately, `close-up, face focus` tends to collapse into a single-eye macro, so add a shot tag (`portrait`, `upper body`) when converting.\n\n**3. Datasets over the MCP.** A gen sent through the MCP needs `dataset_config` **in the call itself**. The dataset you picked in Studio doesn't carry over, which matters for fur-dataset gens:\n`\"dataset_config\": {\"include\": [\"fur dataset\"]}`. `include` replaces the whole list.\n\n**4. Hygiene.** Chains stay together and move only as a whole. That was the rule Yukimi cared about most. The 17-file Kaneko Lumi hyper-hips chain moved to ThicccHips in one piece. Duplicate groups stay listed, not deleted, until Zanzou queue #291 ships.\n\n**Try this.** A lettering pair with the word pinned: base `1girl, solo, upper body, talking, street, daytime`, with `\"text_overlays\": [{\"text\": \"hello\", \"type\": \"speech\", \"target\": 0}]`. Same seed, QT on vs off. Then swap the word and watch the bubble move.\n\n**CTA.** If a pupil synonym works for you, `save_memory` it and tell Ivory. She keeps the conversion table.",
-      "excerpts": [],
-      "images": []
-    },
-    {
-      "id": "lab-recap-wednesday",
-      "kicker": "LAB RECAP · GUREN",
-      "grim": false,
-      "title": "Wednesday's lab, in brief: the hug tags hold, cicada hug doesn't, and the UC style nudges are mostly noise",
-      "lede": "Guren's Wednesday board (33 free Opus images, 3 seeds per test) is in the guide now. Her full article is in Wednesday's archive.",
-      "body": "Settings: V5 Full, Euler, karras, guidance 5, 23 steps, QT on, Light UC. Memory: `wednesday_2026_10_07_lab`.\n\n- **Tight hug:** `mutual hug, clinging, belly-to-belly, arms around neck` / `arms around another's waist, hands on another's back, cheek press` landed 3/3.\n- **cicada hug:** 0/3. It fell back to a loose standing hug with outfit drift. Dropped from two-shot advice.\n- **Both hands:** `facing another, double hand grab, fingers interlaced, looking at another` gave a two-handed hold on 2/3, **with and without** `collarbone`. The collarbone warning didn't reproduce.\n- **Flat colour:** UC `-2::flat color::` clearly flattened 1/3 seeds. Prompt `0.5::flat color::` moved 3/3 without saturating. The guide now prefers the prompt weight.\n- **Ben-day dots:** UC `-1::ben-day dots::` did nothing reliable when `screentone, halftone` were already prompted (0/3).\n- **Ref-inset style:** txt2img proxy only. QT off + empty UC drifted further from the main figure on 3/3. The real inpaint claim still needs someone with an inpaint path.\n\n**Try this.** The flat-colour A/B on Medium, where there's no custom UC to hide in: `1girl, solo, upper body, short black hair, glasses, white hoodie, pink background, high complexity`, A plain, B + `0.5::flat color::`, C + `-2::flat color::` **in the prompt**.\n\n**CTA.** Guren: if C flattens like a prompt weight should, that's a clean read on what UC was doing.",
-      "excerpts": [],
-      "images": []
-    },
-    {
-      "id": "community-cleanup",
-      "kicker": "COMMUNITY · CLEANUP",
-      "grim": false,
-      "title": "Fuzzy colour? UC grainy, not grain. And inpaint with your style tags still on",
-      "lede": "A short fix that worked on the first try, plus the inpaint habit that keeps patches from changing style.",
-      "body": "sethcard asked why most of his V5 gens looked staticky, \"like everything has a film grain texture turned on\". Flitter rebuilt the image with **`grainy` in the UC** and posted the result, then added **`blurry background`** to the UC as well for a crisper street. sethcard: \"That looks much better thank you.\" Flitter's footnote is the useful part: `grain` had the same effect but **also blocked wheat**. Choose the word that only means the defect.\n\n**Inpaint that keeps the look.** Cayde Verz's patches kept coming back in a different style. Bicknell125: keep the **art-style tags** in the inpaint prompt and drop the character description tags that aren't relevant to the patch. ShameSoot and TOWC: inpaint bit by bit, because V5's img2img changes lighting and colour freely. (Medium also works in inpainting mode, and Arruruerie called it \"good for inpainting\".)\n\n**Artist blends that stay put.** `artist:a, artist:b` blend on their own (Bicknell125). To make the blend consistent, anchor it to an art style you define, for example a webtoon look, and both artists lean toward it. Always use the `artist:` prefix. A bare name is only a suggestion (Auxil).\n\n**Try this.** High, Euler Ancestral, 23 steps, guidance 5:\n`1girl, solo, cowboy shot, blonde hair, long wavy hair, thumbs up, smile, street, city, daytime, high complexity`\nUC A: Light preset. UC B: Light + `grainy`. UC C: Light + `grainy, blurry background`. Same seed.\n\n**CTA.** If `grainy` helps your stack, check it doesn't eat anything you wanted, like Flitter's wheat.",
+      "title": "Where the 42% went: compute savings vs the Anlas price",
+      "lede": "DarkTentacleMaster's receipt said Medium costs 18 Anlas to High's 26, about 31% off, not 42%. Both numbers are right. They measure different things.",
+      "body": "finetune: **\"it should be 42% compared to high at 23 steps and default settings. if you use lower resolution/less steps, the savings will be lower.\"** That 42% is the compute, and the Opus battery, saved against a default High generation.\n\nThe **Anlas** price follows its own brackets. Wemini priced a 1024x1024 generation without Opus: High at 23 steps is **26**, High at 14 steps is **18**, and Medium is **18**. That's about **31% off**. Going from 23 to 14 steps cuts compute ~39%, close to the advertised 42%, but the Anlas brackets were never meant to track GPU math. Bird Bros briefly agreed with the 42% figure, then redid the arithmetic.\n\nTwo practical notes. On Opus, free-tier gens burn battery, not Anlas, so the 42% is the number that matters there. And if you already scout at small size and few steps, Medium saves less. Dragonicious sticks to small resolution at 15 steps for spam gens because Medium's missing UC makes it hard to predict the full-size High result. shambibble agrees that small size is a better deal than Medium unless you're testing tiny details like pupils.\n\nSteps aren't only a cost lever. He makes zombies rewrote a prompt *for* 14 steps (below), and on High it \"look[ed] much better than its equivalent i was using for 28 steps.\" His old version over-did the details. AmbiProp: toony styles often look as good or better at lower steps.\n\n**Try this.** Before a batch, set image count to 2 to see the price of one (from Wednesday's issue), at Medium and at High 23. Note both at your usual size.\n\n**CTA.** If your workflow is \"small first, full later,\" time one session each way and report battery used. Guide: §7 Effort toggle.",
       "excerpts": [
         {
-          "speaker": "sethcard",
+          "speaker": "DarkTentacleMaster",
           "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-08 07:45 ET",
-          "text": "So just grainy in the Undesired Content section right?"
+          "when": "2026-10-11 00:01 ET",
+          "text": "I have two questions about Medium effort.\n\n**1. Prompt Guidance**\nI've noticed that Medium looks closer to High (especially in colors and linework) at lower guidance values, around 4.5–5.5, while the differences become more noticeable at 8+ when comparing the same guidance values.\n\nCould this be related to the fact that Medium doesn't actually perform CFG sampling? (In other words, does it directly generate results based on the guidance value, and become less accurate at values outside the range it was trained on?)\n\n**2. Anlas / Opus usage**\nMedium costs 18 Anlas vs. High's 26 (about 31% less), rather than the advertised 42% reduction. Does Medium get an additional discount toward the Opus free generation limit, or is the 42% calculated differently?"
         },
         {
-          "speaker": "{Flitter}",
+          "speaker": "finetune (Anlatan)",
           "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-08 07:48 ET",
-          "text": "Keep in mind that using `grain` instead of grainy made it have the same effect but also blocked wheat"
+          "when": "2026-10-11 08:54 ET",
+          "text": "it should be 42% compared to high at 23 steps and default settings"
         },
         {
-          "speaker": "Bicknell125",
-          "channel": "Anlatan #nai-image-advice",
-          "when": "2026-10-08 12:58 ET",
-          "text": "you keep the artstyle tags, and drop the character description tags that aren't relevant"
+          "speaker": "finetune (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 08:54 ET",
+          "text": "if you use lower resolution/less steps, the savings will be lower"
         },
         {
-          "speaker": "Bicknell125",
-          "channel": "Anlatan #nai-image-advice",
-          "when": "2026-10-08 13:54 ET",
-          "text": "The best way to make an artist blend consistent is to contextualize them into an artstyle you defined. It doesn't have to be anything complex, but if you do Artist:A, Artist:B and you do some sort of webtoon artstyle. Even if they do regular digital art or manga art, their artstyles will combine towards that which is generally more consistent. However, that matters more the more varied the content the artist does."
+          "speaker": "Wemini",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 13:17 ET",
+          "text": "> Medium costs 18 Anlas vs. High's 26 (about 31% less), rather than the advertised 42% reduction. Does Medium get an additional discount toward the Opus free generation limit, or is the 42% calculated differently?\nGood catch.\n\nIt's in fact simply the cost of a 14 steps generation on High (which is what Medium runs at):\n> 1024x1024 (without Opus)\n> High, 23 steps: 26 anlas\n> High, 14 steps: 18 anlas\n> Medium: 18 anlas\n> = ~30.8% reduction in cost\n\nI'm guessing that as part of Opus, standard generations cost further reflects raw backend compute consumption and isn't meant to match anlas pricing? Since 23 to 14 is a ~39% reduction, close to the advertised 42%."
+        },
+        {
+          "speaker": "Dragonicious",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-12 04:47 ET",
+          "text": "Hm. well, while i appreciate devs trying stuff with the effort setting - i'll stick to my small res 15 step for spammy gens, and ofc full res for finished works. \nThe lack of UC makes it too hard to get an estimation of what the full res/step output will be like while playing around with prompts"
+        },
+        {
+          "speaker": "shambibble",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-09 12:56 ET",
+          "text": "unless you're testing/checking something specifically with a low pixel count like special eye pupils, small size is a better deal than medium effort"
+        },
+        {
+          "speaker": "He makes zombies",
+          "channel": "Anlatan #nai-image-posting",
+          "when": "2026-10-09 13:29 ET",
+          "text": "-# how tf did i just get a prompt using 14 steps high effort to look much better than its equivalent i was using for 28 steps bro-"
+        },
+        {
+          "speaker": "AmbiProp",
+          "channel": "Anlatan #nai-image-posting",
+          "when": "2026-10-09 13:35 ET",
+          "text": "Yep, a lot of my more toony styles look at least as good if not better with lower steps. I appreciate that about v5."
         }
       ],
       "images": [
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/90e65019-d7d3-4da8-8eb7-2722bc7c90cf",
-          "cap": "Flitter · official · sethcard's fuzzy-colour prompt redone with grainy in the UC",
-          "kicker": "OFFICIAL · community"
-        },
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/8df3ca42-7768-421c-864e-a851aa786a62",
-          "cap": "Flitter · official · same seed, blurry background added to the UC as well",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/19ef520f-18c4-4366-90fa-cc813a64d809",
+          "cap": "He makes zombies · official #nai-image-posting · a prompt rewritten for 14 steps that beat its 28-step version",
           "kicker": "OFFICIAL · community"
         }
       ]
     },
     {
-      "id": "community-style-tests",
-      "kicker": "COMMUNITY · TESTING STYLE",
+      "id": "staff-director",
+      "kicker": "STAFF · ROADMAP",
       "grim": false,
-      "title": "Test style on an OC, freeze the seed, and watch your capital letters",
-      "lede": "Small habits that stop you from fooling yourself about what a tag does.",
-      "body": "**Character names carry their show's style.** Triplis: when prompting `character name, what they are from`, the style influence can be strong, so A/B style changes on an **original character** first. Weakening the copyright: `0.0::` worked on V4.5 but not so much on V5; `0.5::` can be OK depending on how much style you'll tolerate (Uchariko). Teaspoon tried `0.5::(the cool show)::` and called it \"might be cope\".\n\n**Rework prompts per model.** Uchariko: always be ready to rework prompts on a new model, \"and especially be prepared to dump UC and quality tags.\" Teaspoon: V5 answers plain-English style description well, and if that fails, ask an LLM to describe a reference image's style for you.\n\n**`depthness` is on or off.** Flitter: `ultra depthness` isn't a tag, just `depthness`. Other V5 tags with real effects: `detailed background`, `restricted palette`, and `<x> theme` (a colour in front works). This outranks Wednesday's unofficial `high` / `ultra depthness` wording until someone A/Bs it.\n\n**Capitals can summon artists.** Auxil typed `DEVILISH` in caps as a find-later marker and got a drastic style change: it doubles as an artist name. Ifrit avoids uppercase because it turns into drawn text. Our house rule already keeps prompts lowercase, outside in-image display text.\n\n**Freeze the seed.** Bicknell125: \"a good way to get 'I thought' into I know, is just freeze the seed and actually test if your 'thought' is real or not.\"\n\n**Try this.** OC style probe, same seed: `1girl, solo, upper body, red hair, ponytail, green jacket, rooftop, sunset, high complexity` + A: `depthness`, B: `ultra depthness`, C: neither.\n\n**CTA.** If B and A come out byte-identical or near it, tell Ivory and we drop the `ultra` wording from the guide.",
+      "title": "Director is image editing by prompt, and it's the roadmap",
+      "lede": "BlueSF asked what Director Mode actually is. mk answered in one line, and mahouko later said it's the whole roadmap.",
+      "body": "**\"image editing.\"** That was mk's first answer. Then the detail: \"image editing using the prompt. like you literally tell it 'change the image like this' and it generates a new image with that change based on the one that you gave it.\" Inpainting overlaps a little, but not much. It can't do \"make this realistic image look like a comic.\" It *can* do \"make the background transparent in this image,\" but painfully.\n\nWhen the channel started guessing release dates (He makes zombies: \"february 2027 would be an educated guess\"), mahouko said \"you will not be able to guess our roadmap as we don't have one.\" A few hours later: \"as far as I'm aware, our roadmap is 'Director'.\"\n\nMonogon reposted two older staff messages that fit. mahouko: \"character reference is a capability we developed whilst working towards director mode.\" finetune: \"director mode is the thing that director tools were built on top of. it's basically an edit model.\" Monogon notes the API already calls Precise Reference `director_reference`, and wonders whether the PR modes (Character, Artist, Character & Artist, Costume, Delta) are trained concepts of that edit model. That's community speculation, not a staff claim.\n\n**What it means today:** nothing ships yet and there's no date. PR and Vibe Transfer on V5 are still \"coming.\" Keep your edit folder ready, like Ifrit, but don't redesign workflows around it.\n\n**Try this (today's stand-in).** V5 Full inpaint: mask the area to change, keep your style tags in the inpaint prompt, and describe only the change: `same character, same outfit, holding a red umbrella, rain` at mask strength around 0.6. Small pieces first.\n\n**CTA.** Write down three edits you'd ask Director for. When it lands, those are our first lab board. Guide: §8 V5-specific.",
       "excerpts": [
         {
-          "speaker": "Triplis",
+          "speaker": "BlueSF",
           "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-07 18:23 ET",
-          "text": "also worth noting that if you're prompting for `character name, what they are from`, the style influence can be pretty strong sometimes. so I'd recommend when experimenting with style, do it with an OC first to make sure known-character-style-bias is not distorting the results"
+          "when": "2026-10-09 17:02 ET",
+          "text": "I still have hard time understanding what Director Mode is"
         },
         {
-          "speaker": "Uchariko",
+          "speaker": "mk (Anlatan)",
           "channel": "Anlatan #nai-diffusion-discussion",
-          "when": "2026-10-07 18:40 ET",
-          "text": "I don't know if I'd recommend negative on the copyright. `0.0::` worked in v4.5 but not so much in v5. `0.5::` can be okay depending on your desired style and tolerance"
+          "when": "2026-10-09 17:31 ET",
+          "text": "image editing"
         },
         {
-          "speaker": "{Flitter}",
-          "channel": "Anlatan #nai-image-advice",
-          "when": "2026-10-07 11:19 ET",
-          "text": "Ultra depthness is not a tag, I think. I think that it's just `depthness` (on or off)"
+          "speaker": "mk (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-09 17:32 ET",
+          "text": "inpainting can do some of the things director can do, but not all of them"
         },
         {
-          "speaker": "Auxil",
-          "channel": "Anlatan #nai-image-advice",
-          "when": "2026-10-09 04:45 ET",
-          "text": "ive also found some tags are artist names without needing to prompt artist at all, they have drastic effect on the style result, the most notorious was DEVILISH in all caps"
+          "speaker": "mk (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-09 17:32 ET",
+          "text": "for example \"make this realistic image look like a comic\""
         },
         {
-          "speaker": "Bicknell125",
-          "channel": "Anlatan #nai-image-advice",
-          "when": "2026-10-09 01:24 ET",
-          "text": "a good way to get \"I thought\" into I know, is just freeze the seed and actually test if your \"thought\" is real or not"
+          "speaker": "mk (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-09 17:33 ET",
+          "text": "and there's also some things inpainting can do but which are quite painful in comparison, like \"make the background transparent in this image\""
+        },
+        {
+          "speaker": "mk (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-09 17:37 ET",
+          "text": "image editing using the prompt"
+        },
+        {
+          "speaker": "mk (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-09 17:38 ET",
+          "text": "like you literally tell it \"change the image like this\" and it generates a new image with that change based on the one that you gave it"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 13:47 ET",
+          "text": "you will not be able to guess our roadmap as we don't have one"
+        },
+        {
+          "speaker": "mahouko (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 15:05 ET",
+          "text": "as far as I’m aware, our roadmap is “Director”"
+        },
+        {
+          "speaker": "Monogon",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-12 01:12 ET",
+          "text": "The place I'm coming from is mostly that in the API precise reference is already called \"Director_Reference\" which makes me assume that Precise Reference was built from a v4.5-era edit model, and the commands we do have; \"Costume\", \"Character\", \"Artist\", \"Delta\" and \"Character & Artist\" are just highly trained concepts (and maybe costume and delta less so?) to that director mode model which was too weak at the time to be a general editor. Or maybe training it on a few solid concepts was just the faster and better choice at the time. \nIf the new director mode is just a more advanced version of that same idea, the same commands to copy character and artist features could presumably still work along side more general capabilities.  \nAt this point I'm just writing fanfiction though. They could've scrapped everything that director tools and precise reference was built on, and just did something like nano banana instead."
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/3efc1ee1-63b4-4e30-bfb1-4d8b7d11afbc",
+          "cap": "finetune (Anlatan), older message reposted by Monogon · \"director mode is the thing that director tools were built on top of / it's basically an edit model\"",
+          "kicker": "OFFICIAL · staff (repost)"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/3641e16c-5c4e-46de-b057-4d3efcf7c752",
+          "cap": "mahouko (Anlatan), older message reposted by Monogon · \"character reference is a capability we developed whilst working towards director mode\"",
+          "kicker": "OFFICIAL · staff (repost)"
+        }
+      ]
+    },
+    {
+      "id": "community-uc-debate",
+      "kicker": "COMMUNITY · LIFE WITHOUT UC",
+      "grim": false,
+      "title": "Is UC dead on V5? The weekend argument, and what each side actually does",
+      "lede": "kurumuz asked \"how do people like the medium effort,\" and the channel turned it into a UC debate. Here are both camps' working methods, with nobody declared the winner.",
+      "body": "**The negative-emphasis camp.** Belverk calls V5's negative emphasis \"close enough\" to the open-source *negpip* technique and says it removes content \"better in every way than UC,\" with one caveat: how you write it. Triplis mostly replaces UC with negative emphasis or positive wording. TarotFool: as the model got smarter, it needed less UC \"beating it over the head.\"\n\n**The UC camp.** Unlimited Exclusive Kawaiiness rarely uses UC to remove objects; negative emphasis is better for that. They use it as a **style/quality steer**, pushing away from artist looks they don't want. \"Same seed, only UC changed, and the whole style and even the composition shifted. So for me UC is very much alive in v5.\" They'd love people to share UC presets like quality-tag presets. Vengyre and omni found both necessary. Vengyre's example: steering skin colour hard without making the whole prompt *about* skin colour.\n\n**The pitfalls.** Gluttonous Beast: a prompt negative close to something you *want* removes both, \"so you end up fighting weights.\" Ifrit: negating eye tags in the prompt can delete eyes entirely, so he keeps those in UC. On Sunday night Mrcxl's gens turned 3D and glassy. ShameSoot: tone down emphasis and UC, because \"a lot of folks have been using ancient overstuffed UC and it does more harm than good.\" Mrcxl's gens recovered after cutting negative emphasis.\n\nThis lines up with the staff piece above. On **High**, UC is real CFG and steers style. On **Medium**, there's no UC at all, so only prompt negatives exist.\n\n**Try this.** V5 Full, High, 23 steps, guidance 5, rescale 0, same seed. Prompt: `1girl, solo, cowboy shot, leather jacket, neon street, night, high complexity`. A: UC empty. B: UC `3d, realistic, glossy skin`. C: no UC, prompt `-1::3d, realistic::` appended. Compare style, not just the removed thing.\n\n**CTA.** Post A/B/C. If B shifts composition as much as Kawaiiness says, that's evidence UC still matters on High. Guide: §6 UC / negatives.",
+      "excerpts": [
+        {
+          "speaker": "kurumuz (Anlatan)",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 14:04 ET",
+          "text": "how do people like the medium effort"
+        },
+        {
+          "speaker": "Belverk | Cawesome Beakery",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 14:21 ET",
+          "text": "I'm not going to say that it's precisely negpip, but it's close enough, and achieves the task of removing content better in every way than UC, literally only caveat being how you write it"
+        },
+        {
+          "speaker": "Unlimited Exclusive Kawaiiness",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 14:41 ET",
+          "text": "I think it depends on what you use UC for. I barely use it to remove specific objects or characters, negative emphasis is probably better for that. I use it more like a style/quality prompt, pushing away from artist styles and aesthetics I don't want. Same seed, only UC changed, and the whole style and even the composition shifted. So for me UC is very much alive in v5."
+        },
+        {
+          "speaker": "Unlimited Exclusive Kawaiiness",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 14:46 ET",
+          "text": "Kinda wish people shared UC presets more, like they do with quality tag presets. a good UC shapes the style just as much"
+        },
+        {
+          "speaker": "Gluttonous Beast",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-09 12:50 ET",
+          "text": "Yea, negative prompting inside of positive prompts can cause some weird stuff, like negative prompting a specific thing, that is similar to something else that you have in your positive, will likely also remove the one that you want to keep in, and that's where UC comes in usually."
+        },
+        {
+          "speaker": "Ifrit",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-09 12:47 ET",
+          "text": "damn, no uc is unfortunate for medium, neg is extreme for some stuff like neg any eye tags makes it do no eyes at all(thats how it was in 4.5), so i just resorted to uc for those"
+        },
+        {
+          "speaker": "ShameSoot",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 22:14 ET",
+          "text": "My best advice in situations like that is to tone down any emphasis and UC you have"
+        },
+        {
+          "speaker": "ShameSoot",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 22:14 ET",
+          "text": "A lot of folks have been using ancient overstuffed UC especially and it does more harm than good"
         }
       ],
       "images": []
     },
     {
-      "id": "lab-board-friday",
-      "kicker": "LAB BOARD · WEEKEND",
+      "id": "community-fixes",
+      "kicker": "COMMUNITY · QUICK FIXES",
       "grim": false,
-      "title": "Weekend lab board: Medium vs High, prompt negatives, and five cheap A/Bs",
-      "lede": "Free Opus only, three seeds each, same-seed pairs, stop before the battery runs low.",
-      "body": "1. **Medium vs High** on three seeds, same prompt (lead feature's Try this). Score composition, hands, lettering.\n2. **Prompt negatives on Medium:** `-1` / `-3` / `-5::hat::` on a witch. Find the smallest weight that removes the hat without moving style.\n3. **Flat colour without UC:** prompt `0.5::flat color::` vs prompt `-2::flat color::` on Medium (Wednesday's flat-colour board, rerun).\n4. **`grainy` vs `grain`** in UC on High, plus a wheat field, to confirm Flitter's side effect.\n5. **`depthness` vs `ultra depthness`** on an OC, same seed.\n6. **Multi-bubble lettering:** two `text_overlays` rows, `\"target\": 1` and `\"target\": 2`, one per speaker's box, vs one row on `target: 0`. Check spelling and which bubble each line lands in.\n\n**Explore counts.** TIfa's Thursday scan was meant to count creators using ben-day dots, the flat-colour nudges, hug tags, two-hand tags and `no humans`. Those counts weren't on the box or in Dreamscape memories at publish time. When they land, fold them into the board and rerun any test where the counts and the pixels disagree.\n\n**CTA.** Cellar write-up + `save_memory` + your own LAB article on this sheet (`lab-guren-friday`).",
+      "title": "Toys in the background, armless vs -1::arms, and a POV that has a body",
+      "lede": "Four small fixes from the advice channels, each with the exact wording that worked.",
+      "body": "**Background clutter.** Rios's bunny-suit gen kept growing little toy people around her. OmniDaemon spotted a typo first: `no lego` instead of `no logo`. Removing it summoned takodachi instead. {Flitter}'s fix: the **end of the prompt** was causing it, so he cut the tail and added `solo` (before and after below). Darky: some artists clutter backgrounds with toys and photos no matter what.\n\n**`armless` vs `-1::arms::`.** Ren asked what the difference is. {Flitter}: \"`armless` means that someone clearly has no arms, whereas the `-1::arms::` just means arms are not visible. It could be because they're armless or because the arms are blocked by something or out of frame.\" Pick the one that says what you mean.\n\n**POV with a body.** Skewer wanted two characters seen from character 1's eyes. Bicknell125: describe only the parts of character 1 they can see themselves, and `pov, pov hands` does most of the work. ShameSoot's recipe: `pov` in the base prompt, then a character box like `male pov, species:human, lower body, abs, heart boxers, bear slippers`.\n\n**A meme tag hijacking a pose.** Gluttonous Beast found `the pose` kept summoning `lace pantyhose hooked on heel (meme)`, and putting that tag in UC killed the pose too. Raezuto: try `-0.5::lace pantyhose hooked on heel (meme)::` and tune the number. Gluttonous Beast settled on the meme in UC plus `-1::fabric pull::` in the prompt.\n\n**Try this.** V5 Full, High, guidance 5, 23 steps. Base: `pov, 2girls, cafe table, window light, high complexity`. Box 1: `girl, female pov, pov hands, holding coffee cup, sleeves`. Box 2: `girl, sitting across, smiling, looking at viewer, short brown hair, cardigan`.\n\n**CTA.** Try `armless` vs `-1::arms::` on one seed, and post the pair. Guide: §8 Community notes, Mon.",
+      "excerpts": [
+        {
+          "speaker": "Rios",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 04:20 ET",
+          "text": "Anyone know what the hell is with these little people/toys in the background is?"
+        },
+        {
+          "speaker": "OmniDaemon",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 04:24 ET",
+          "text": "There seems to be an error in your prompt \"no lego\" instead of what I would assume to be \"no logo\". Maybe its reading lego and putting blocky people in."
+        },
+        {
+          "speaker": "{Flitter}",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 08:58 ET",
+          "text": "The end of your prompt is what causes them. Here's the end removed and `solo` added"
+        },
+        {
+          "speaker": "{Flitter}",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-12 08:10 ET",
+          "text": "Well, `armless` means that someone clearly has no arms, whereas the `-1::arms::` just means arms are not visible. It could be because they're armless or because the arms are blocked by something or out of frame"
+        },
+        {
+          "speaker": "Bicknell125",
+          "channel": "Anlatan #nai-image-advice",
+          "when": "2026-10-09 20:22 ET",
+          "text": "only describe the parts of character one that is visible to themselves"
+        },
+        {
+          "speaker": "ShameSoot",
+          "channel": "Anlatan #nai-image-advice",
+          "when": "2026-10-09 21:48 ET",
+          "text": "I like to put `pov` in the main prompt, then create a character prompt that has `male/female pov, species, any details that need to be shown`"
+        },
+        {
+          "speaker": "ShameSoot",
+          "channel": "Anlatan #nai-image-advice",
+          "when": "2026-10-09 21:49 ET",
+          "text": "like `male pov, species:human, lower body, abs, heart boxers, bear slippers`"
+        },
+        {
+          "speaker": "Raezuto",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 00:34 ET",
+          "text": "just try this `-0.5::lace pantyhose hooked on heel (meme)::,` (play around with the number, you might find a sweet spot)  - also it may just be the artist you're using, if you are using one"
+        },
+        {
+          "speaker": "Gluttonous Beast",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-11 00:37 ET",
+          "text": "I kind of fixed it, I think.\n`lace pantyhose hooked on heel (meme)` still in UC, and I have `-1::fabric pull::` in positive."
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/80861e83-be33-4d18-8b02-360197cf9940",
+          "cap": "Rios · official #nai-diffusion-discussion · \"little people/toys in the background\" (before)",
+          "kicker": "OFFICIAL · community"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/3a9af6d0-5566-413a-a956-25a23ac36f2e",
+          "cap": "{Flitter} · official #nai-diffusion-discussion · same image with the end of the prompt removed and solo added (after)",
+          "kicker": "OFFICIAL · community"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/2eb84e41-f17f-489a-9316-56e1b2816a2a",
+          "cap": "Bicknell125 · official #nai-image-advice · pov, pov hands for a two-character point of view",
+          "kicker": "OFFICIAL · community"
+        }
+      ]
+    },
+    {
+      "id": "community-panels",
+      "kicker": "COMMUNITY · PANELS",
+      "grim": false,
+      "title": "A three-panel comic from one character box, and a V4.5 vibe stitched to a V5 panel",
+      "lede": "Two comic workflows from #nai-image-advice: one that puts the panel script inside a character box, and one that borrows a V4.5 vibe and extends it in V5.",
+      "body": "**Panels in a box.** 司 PhazonMadness answered Benokelvin's \"same character in every panel\" question with a working cat-frog comic. The base prompt sets the layout in plain English: `3 panel comic. first panel is on top left. second panel is on top right. third panel is covering bottom center. forest, river, lily pads.` The character box holds the character once, then one line per panel: `Panel 1: on a lily pad.`, `Panel 2: jumping across one lily pad to another.`, `Panel 3: speech bubble saying \"me-ribbit\", facing viewer, on a lily pad.` The same text after a `|` in the base prompt also works if no boxes are open, but you lose the placement grid. Redwood Elf noticed the frog-cat lost its cat ears in panel 2, so expect a few rerolls.\n\n**House note.** Our rule still stands: lettering goes through `text_overlays`, never typed. In Studio, put the bubble text in a `text_overlays` row targeting box 1 and keep the panel lines free of quoted text.\n\n**V4.5 vibe + V5 panel.** ShameSoot's deer-gunslinger strip started as a V4.5 vibe-transfer gen. He expanded the canvas in V5 inpainting to add a second panel and the speech bubble, then resized to normal limits. \"Basically, you can use v5 sort of if you use the original image as an inset reference.\" It's the same idea as Wednesday's reference-inset trick.\n\n**Too many boxes.** He makes zombies gave V5 13 character prompts meant as a sequence. Instead of failing, it merged them into one anthology image. Glitterhoof's advice: get fewer panels working first, then add more.\n\n**Try this.** V5 Full, High, 28 steps, guidance 5, normal portrait. Base: `3 panel comic. first panel is on top left. second panel is on top right. third panel is covering bottom center. city park, autumn.` Box 1: `girl, short red hair, green scarf. panel 1: feeding pigeons. panel 2: pigeons flying away. panel 3: surprised, facing viewer.` Overlay: `{\"text\":\"hey!\",\"type\":\"speech\",\"target\":1}`.\n\n**CTA.** Try 2 panels, then 3, then 4 on the same seed. Guide: §8 Community notes.",
+      "excerpts": [
+        {
+          "speaker": "司 ★PhazonMadness‑SE★🎮",
+          "channel": "Anlatan #nai-image-advice",
+          "when": "2026-10-10 08:44 ET",
+          "text": "prompt: ```3 panel comic. first panel is on top left. second panel is on top right. Third panel is covering bottom center. forest, river, lily pads.```\n\ncharacter 1: \n```\na hybrid of a cat and frog, cat frog fusion, species:hybrid, species:cat, species:frog, green fur, webbed feet, frog eyes, cat ears, cat whiskers.\n\nPanel 1: on a lily pad.\n\nPanel 2: jumping accross one lily pad to another.\n\nPanel 3: speech bubble saying \"me-ribbit\", facing viewer, on a lily pad.\n```"
+        },
+        {
+          "speaker": "司 ★PhazonMadness‑SE★🎮",
+          "channel": "Anlatan #nai-image-advice",
+          "when": "2026-10-10 08:53 ET",
+          "text": "Reminder that you can also do character prompts with `|` separators in main prompt if no character prompt boxes open"
+        },
+        {
+          "speaker": "司 ★PhazonMadness‑SE★🎮",
+          "channel": "Anlatan #nai-image-advice",
+          "when": "2026-10-10 08:54 ET",
+          "text": "main prompt\n```\n3 panel comic. first panel is on top left. second panel is on top right. Third panel is covering bottom center. forest, river, lily pads.|\na hybrid of a cat and frog, cat frog fusion, species:hybrid, species:cat, species:frog, green fur, webbed feet, frog eyes, cat ears, cat whiskers.\n\nPanel 1: on a lily pad.\n\nPanel 2: jumping accross one lily pad to another.\n\nPanel 3: speech bubble saying \"me-ribbit\", facing viewer, on a lily pad.\n```\nachieves same result, though this method does not give benefit of character placement grid"
+        },
+        {
+          "speaker": "Redwood Elf",
+          "channel": "Anlatan #nai-image-advice",
+          "when": "2026-10-10 10:36 ET",
+          "text": "Probably would need to do a half dozen or so generations, as I notice the Frog-kitty lost its cat ears and whiskers in the second panel."
+        },
+        {
+          "speaker": "ShameSoot",
+          "channel": "Anlatan #nai-image-advice",
+          "when": "2026-10-12 01:37 ET",
+          "text": "You can use both kinda, depending on the situation.\nFor instance  the left panel was originally a v4.5 vibe'd gen. I added the second panel and the speech bubble in v5 by expanding the canvas in inpainting, and then resizing to normal size constraints when genning"
+        },
+        {
+          "speaker": "ShameSoot",
+          "channel": "Anlatan #nai-image-advice",
+          "when": "2026-10-12 01:37 ET",
+          "text": "Basically, you can use v5 sort of if you use the original image as an inset reference."
+        },
+        {
+          "speaker": "Glitterhoof III",
+          "channel": "Anlatan #nai-diffusion-discussion",
+          "when": "2026-10-10 11:58 ET",
+          "text": "I'd definitely try to get less panels work first, and then try to successively get more."
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/8de83076-b7d0-47c5-9880-41f2cf1067bc",
+          "cap": "司 ★PhazonMadness‑SE★ · official #nai-image-advice · a three-panel cat-frog comic from one character box (panel lines in the box)",
+          "kicker": "OFFICIAL · community"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/0c276a74-ad5d-40d1-be68-945c4285c654",
+          "cap": "ShameSoot · official #nai-image-advice · left panel a V4.5 vibe gen; right panel and bubble added in V5 by expanding the canvas",
+          "kicker": "OFFICIAL · community"
+        }
+      ]
+    },
+    {
+      "id": "lab-board-monday",
+      "kicker": "LAB BOARD · THIS WEEK",
+      "grim": false,
+      "title": "This week's lab board: zero-weight order, Medium at 5 vs 8, six-girl positions",
+      "lede": "Five cheap A/Bs that would turn this weekend's staff answers into guide defaults. All free-tier, small sizes, fixed seeds.",
+      "body": "1. **`0::` order.** `bear, 0::snow::` vs `0::snow::, bear`, three seeds, High 23 steps, guidance 5. Pass if B gets a white or polar look on 2 of 3. Then try `0::underwater::, girl, ...`.\n2. **Medium guidance.** The same prompt on Medium at guidance 5 and 8 vs High at 5 and 8, two seeds. Check DarkTentacleMaster's claim that Medium tracks High at 5 and drifts at 8.\n3. **Six-girl positions.** `6girls, group picture`, six one-line boxes, AI's choice vs custom positions, same seed. Count clones and missing characters.\n4. **`armless` vs `-1::arms::`.** One character, `sleeveless dress`, same seed. Expect a missing limb vs hidden arms.\n5. **UC as style on High.** UC empty vs `3d, realistic, glossy skin` vs prompt `-1::3d, realistic::`, same seed. Did the composition move?\n\n**Settings unless noted:** V5 Full, small portrait, Euler Ancestral, guidance 5, rescale 0, quality tags on, Light UC (High only), HOUSE lowercase.\n\n**CTA.** Lab results go to the Cellar plus `save_memory`. Medium rows append to `V5 Medium effort testing` (same name, never a new one), plus a lab article on this sheet.",
       "excerpts": [],
       "images": []
     },
     {
-      "id": "grim-unofficial-friday",
+      "id": "grim-unofficial-monday",
       "kicker": "GRIM · UNOFFICIAL",
       "grim": true,
-      "title": "Behind the red wrapper: forceful hair negatives, four bubbles in one gen, and Medium on explicit gens",
-      "lede": "From the unofficial NSFW guild. Community technique, not staff.",
-      "body": "**Kill a stubborn feature from the prompt side.** Nightmare Seer couldn't get rid of antenna bangs. Boxed Water: `-2.5::loose hair, hair bangs, bangs::` in the **prompt**, \"just as a forceful measure\". That's the same negative-emphasis move staff now recommend for Medium.\n\n**Several speech bubbles in one image.** Vitou was inpainting one bubble at a time. Whoyo's method: one character box per bubble, using the \"other\" type, with custom placement. Whoyo saw the model fumble past about 6 boxes. MintberryFury posted four clean bubbles in one gen. House translation: never type `Text:`. Give each bubble its own `text_overlays` row and point `target` at the box that should speak.\n\n**Complexity and depthness.** Stealthybon called adding complexity and depthness tags a \"glowup\", like fighting \"with a hand tied behind my back\" before. Boxed Water: \"Immediate game changer.\" (See the public `depthness` note: it's on/off.)\n\n**Medium on explicit gens.** Gravel posted an explicit piece \"generated and enhanced with medium effort\". Tamato: with no UC on Medium, \"you have to use negative emphasis instead\".\n\n**Try this.** `2girls, upper body, bar counter, night, high complexity`, box 1 `girl, red hair, wine glass`, box 2 `girl, black hair, smile`, with\n`\"text_overlays\": [{\"text\": \"so she said...\", \"type\": \"speech\", \"target\": 1}, {\"text\": \"no way!\", \"type\": \"speech\", \"target\": 2}]`.\n\n**CTA.** Count spelling hits per bubble over three seeds.",
+      "title": "Behind the red wrapper: an anime-adaptation look in one sentence, turnarounds, and High vs Medium on skin",
+      "lede": "The unofficial guild was mostly showcase this weekend. Two threads had technique: getting a specific anime adaptation's look on V5, and High vs Medium on explicit gens.",
+      "body": "**An anime adaptation's look on V5.** verif wanted the Spice and Wolf anime look, since V5 has no reference images yet. Raezuto: on V4.5 use `copyright:spice and wolf, official art`. On **V5, write it as a sentence**: `the composition is in the official animated art style of spice and wolf.` Add `anime coloring`, try **DPM++ 2M** for anime-screenshot gens, then `clean lineart` and `cel rendering`. For the 2008 series, pin the era with `year 2008` and push away from the reboot with `-1::year 2024::`. Raezuto finds **medium complexity** best for animated looks. Boxed Water adds similar artists at low weight (`0.3::artist::`), `-2.0::lowres, sketch::` in the positive prompt, and `high complexity, high depthness`. Result from verif: swapping to DPM++ 2M \"made the most difference.\" Turning on furry mode brought it closer still (wolf ears), but per our house rule that's the `dataset_config` toggle, never typed.\n\n**Multiple views.** ChiakiAsakira's `multiple views` wasn't working. Boxed Water: try `turnaround`, or `reference sheet` / `character profile`. thickwaifu found `character profile` also draws text that no negative removes. In Studio, check the Quality Tags `no text` sub-toggle before blaming the prompt.\n\n**Hollow eyes.** For a jack-o'-lantern head with cut-out eyes: `empty eyes, eye socket` (Boxed Water).\n\n**High vs Medium on skin.** Stealthybon's same-prompt pair (below): \"Medium seems a lot smoother in a way, but in kinda the way tv anime is?\" NTRender found High better in their tests. Gravel: \"powered by medium effort, i don't see where the hate is coming from.\" thickwaifu noticed Medium doesn't use custom UC, which is now explained: Medium has no UC path at all.\n\n**Try this.** V5 Full, High, DPM++ 2M, 23 steps, guidance 5: `the composition is in the official animated art style of a 2008 fantasy anime. 1girl, solo, wolf ears, long brown hair, medieval village, autumn, anime coloring, clean lineart, cel rendering, year 2008, medium complexity`.\n\n**CTA.** A/B Euler Ancestral vs DPM++ 2M on that prompt, same seed. Guide: §8 Community notes (UNOFFICIAL).",
       "excerpts": [
+        {
+          "speaker": "Raezuto",
+          "channel": "Unofficial NSFW #nai-image-gen-discussion",
+          "when": "2026-10-12 02:19 ET",
+          "text": "with V4.5 try using these, `copyright:spice and wolf, official art,` as for V5, try typing `The composition is in the official animated art style of Spice and Wolf.` or something similarly phrased :raizutThink:"
+        },
+        {
+          "speaker": "Raezuto",
+          "channel": "Unofficial NSFW #nai-image-gen-discussion",
+          "when": "2026-10-12 02:25 ET",
+          "text": "tweaked the sentence I suggested for V5 :shadowo: - also try out the sampler: `DPM++ 2M` for anime gens like as in `anime screenshot` ones & include the tag `anime coloring`"
+        },
+        {
+          "speaker": "Raezuto",
+          "channel": "Unofficial NSFW #nai-image-gen-discussion",
+          "when": "2026-10-12 02:35 ET",
+          "text": "also I've learned for animated gens, medium complexity works best IMO"
+        },
+        {
+          "speaker": "Raezuto",
+          "channel": "Unofficial NSFW #nai-image-gen-discussion",
+          "when": "2026-10-12 02:36 ET",
+          "text": "Like this: `-1::year 2024::,`"
+        },
         {
           "speaker": "Boxed Water",
           "channel": "Unofficial NSFW #nai-image-gen-discussion",
-          "when": "2026-10-07 15:29 ET",
-          "text": "``-2.5::loose hair, hair bangs, bangs::``\nJust as a forceful measure"
+          "when": "2026-10-12 02:19 ET",
+          "text": "find similar artists and tune them to lower parameters like ``0.3::artist::``"
         },
         {
-          "speaker": "MintberryFury",
+          "speaker": "Boxed Water",
           "channel": "Unofficial NSFW #nai-image-gen-discussion",
-          "when": "2026-10-08 12:50 ET",
-          "text": "I'd try something like \"Left speech bubble \"random text\" right speech bubble \"random text\". \"\nOr put it in character boxes."
+          "when": "2026-10-12 02:25 ET",
+          "text": "-2.0::lowres, sketch:: (uh, in positive prompt is how I use it)"
+        },
+        {
+          "speaker": "Boxed Water",
+          "channel": "Unofficial NSFW #nai-image-gen-discussion",
+          "when": "2026-10-12 02:26 ET",
+          "text": "like ``high complexity, high depthness`` is usually a safe bet"
+        },
+        {
+          "speaker": "verif",
+          "channel": "Unofficial NSFW #nai-image-gen-discussion",
+          "when": "2026-10-12 02:26 ET",
+          "text": "okay so far swapping to DPM++2 has made the most difference"
+        },
+        {
+          "speaker": "Boxed Water",
+          "channel": "Unofficial NSFW #nai-image-gen-discussion",
+          "when": "2026-10-10 18:07 ET",
+          "text": "@ChiakiAsakira try ``turnaround``"
+        },
+        {
+          "speaker": "Boxed Water",
+          "channel": "Unofficial NSFW #nai-image-gen-discussion",
+          "when": "2026-10-10 18:07 ET",
+          "text": "``reference sheet`` and ``character profile`` can work too"
+        },
+        {
+          "speaker": "Boxed Water",
+          "channel": "Unofficial NSFW #nai-image-gen-discussion",
+          "when": "2026-10-11 15:55 ET",
+          "text": "``empty eyes, eye socket``?"
         },
         {
           "speaker": "Stealthybon",
           "channel": "Unofficial NSFW #nsfw-generation",
-          "when": "2026-10-07 11:08 ET",
-          "text": "Genuinely cannot believe how much of a glowup including complexity and depthness tags has made"
-        },
-        {
-          "speaker": "Gravel",
-          "channel": "Unofficial NSFW #kinky-generation",
-          "when": "2026-10-09 10:23 ET",
-          "text": "[exhibitionism]\ngenerated and enhanced with medium effort"
-        },
-        {
-          "speaker": "Tamato",
-          "channel": "Unofficial NSFW #nai-image-gen-discussion",
-          "when": "2026-10-09 03:44 ET",
-          "text": "so you have to use negative emphasis instead"
+          "when": "2026-10-10 22:32 ET",
+          "text": "Medium seems a lot smoother in a way, but in kinda the way tv anime is?"
         }
       ],
       "images": [
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/f1a4be5a-3434-4c66-aace-009164876d78",
-          "cap": "Boxed Water · unofficial · -2.5::loose hair, hair bangs, bangs:: in the prompt to kill antenna bangs",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/6c76e014-d52c-4c1f-97c7-731063608382",
+          "cap": "Stealthybon · unofficial #nsfw-generation · \"High vs medium effort comparison\", first image",
           "kicker": "GRIM · unofficial"
         },
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/142c9252-0492-460b-a6c0-4e1b14055400",
-          "cap": "MintberryFury · unofficial · four speech bubbles in one gen, answering a multi-bubble comic question",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/7ffa4a21-b34a-4852-a443-652eda1c1057",
+          "cap": "Stealthybon · unofficial #nsfw-generation · same post, second image (\"Medium seems a lot smoother\")",
           "kicker": "GRIM · unofficial"
         }
       ]
     },
     {
-      "id": "grim-house-friday",
+      "id": "grim-house-monday",
       "kicker": "GRIM · HOUSE",
       "grim": true,
-      "title": "HOUSE: the body-evaluation memory and its lettering rules",
-      "lede": "Enshutsuka (other MCP users) updated three memories since Wednesday. The body-evaluation process is the one with transferable technique.",
-      "body": "Memory `v5_body_evaluation_process` documents running one accepted heavyset body through many scenes and angles on V5 without drift. Parts that apply beyond that job:\n\n- **A width reference in every scene.** Something fixed to measure the body against (a door frame, both hallway walls, armrests). Open rooms without one drifted narrower.\n- **Freeze the accepted body text** and reuse it verbatim. Paraphrasing narrowed the figure.\n- **Lettering through `text_overlays`.** Keep each line around five words; longer lines garbled. `type: \"thought\"` draws a thought cloud. With `keep_newlines: true` on the server path, a blank line between lines keeps them in separate bubbles.\n- **Logos:** cups and cans default to brands. Describe them as plain and unlabeled.\n- **`dataset_config` with the fur dataset's `furry_human` sub-toggle** added belly and face definition on V5. Toggle, never typed.\n\nScoped HOUSE notes, not consensus. Memories `user_interests` and `user_vibe` were also refreshed.\n\n**Try this.** Pick one of your recurring characters, freeze the body text, and run front / side / rear on one locked seed with a width prop in each.\n\n**CTA.** `save_memory` the frozen block under the character's name.",
+      "title": "HOUSE: the shared Medium log, and two Studio gaps it turned up",
+      "lede": "Other Dreamscape MCP users have been appending Medium-vs-High pairs to one shared memory, `V5 Medium effort testing` (revision 25). Here's what it says, minus the rows we skip.",
+      "body": "The log's default policy: **prefer Medium for V5 Full and switch to High only when Medium misses**, meaning missed tags or composition, lost detail, or a fix that needs UC. The weekend rows back that up, with three patterns:\n\n- **Studio folds your negative prompt into `-1::` bans on Medium**, and the compiled UC is empty. Bans written that way worked: deck, glass and lattice banned put Tokyo Tower in the skyline instead of a second tower; a park table and foliage banned left a clean floor. A UC-only fix (an extra hand) never arrives on Medium. Even High with `extra hands` in the sent UC left a third hand on a railing once.\n- **Medium smooths strain into a smile.** Pained, wincing or clenched faces came back as smiles on Medium in 3 of 3 rows, and High restored the wince. Two-hand interactions (two plush mittens pressed together) dropped on Medium and landed on High.\n- **Wording traps.** `no head` cut a hole in a neck. `head out of frame` plus intact necks cropped at the chin. Naming one material per part (leather hat, glass eyes, minky hair) split materials on one plush. Satin and matte velvet still collapsed.\n\n**Expand isn't the Drafting lock.** Expand metadata on Medium showed `v5_medium` at **28 steps, guidance 4.9, rescale 0.07**, compiled UC empty. That's different from the 14-step lock.\n\n**Two Studio gaps worth a Menma look** (reported here, not filed):\n1. Rentan lighting presets whose `!dg_` tokens compiled to **empty**: noon light stayed until `golden hour` / `city lights` were typed.\n2. One row says `dataset_config.include [\"furry\"]` stayed selected in Studio but **injected nothing into the compiled prompt on either model**. Our documented toggle id is `\"fur dataset\"`, not `\"furry\"`, so this may just be the wrong id. Worth checking before the next pantry gen that relies on the toggle.\n\n**Skipped:** one row about a character canonically under 18, and the maternity rows' body specifics. No new hip/WG/pregnancy recipe is claimed.\n\n**CTA.** Cellar members testing Medium: append to the same memory name. Guide: §7 HOUSE Medium log.",
       "excerpts": [],
       "images": []
     },
     {
-      "id": "lab-guren-wednesday",
-      "kicker": "LAB · GUREN",
-      "title": "Sat Oct 10 follow-ups: fingers interlaced vs interlocked, and ben-day UC with no prompt halftone",
-      "body": "I ran two free-Opus A/Bs in Laboratory today to close the Wednesday board gaps. Same V5 stack as before: k_euler / karras / guidance 5 / rescale 0 / steps 23 / n=1 / quality on. No paid sizes. Child-look negatives stayed in UC; no age tags and no adult anchors in the prompts.\n\n**1) fingers interlaced vs interlocked fingers** (seeds 2026101011 / 12 / 13, small_landscape, append_uc=2 Light + child UC, Auto Position, double hand grab stack on both character boxes).\n\n- s11 — Arm A `fingers interlaced` (`1791646429198_generated_2026101011.png` / lab `hands_s11_interlaced.webp`): both hands held, clearer weave. Arm B `interlocked fingers` (`1791646453082_generated_2026101011.png` / `hands_s11_interlocked.webp`): stacked clasp, not woven. Winner: **A**. changedPercent 45.28.\n- s12 — Arm A (`1791646483504_generated_2026101012.png` / `hands_s12_interlaced.webp`) and Arm B (`1791646503839_generated_2026101012.png` / `hands_s12_interlocked.webp`): both messy finger clusters / overlapping knuckles, no clean weave. **Tie**. changedPercent 45.33.\n- s13 — Arm A (`1791646531094_generated_2026101013.png` / `hands_s13_interlaced.webp`) and Arm B (`1791646557795_generated_2026101013.png` / `hands_s13_interlocked.webp`): both land intentional interlacing. **Tie / slight B**. changedPercent 34.9.\n\nVerdict: keep `fingers interlaced` in the two-hand stack. `interlocked fingers` is not a reliable upgrade and is not worth rewriting the guide for. True woven fingers stay seed-luck either way.\n\n**2) UC `-1::ben-day dots::` vs baseline when the prompt never asks for screentone/halftone** (seeds 2026101021 / 22 / 23, small_portrait, append_uc=0, identical prompt both arms).\n\n- s21 — baseline `1791646587458_generated_2026101021.png` / `benday_s21_baseline.webp` vs Arm B `1791646612588_generated_2026101021.png` / `benday_s21_negbenday.webp`. Both already flat-clean (no dots). changedPercent **25.8** → steps noise.\n- s22 — baseline `1791646638731_generated_2026101022.png` / `benday_s22_baseline.webp` vs Arm B `1791646663301_generated_2026101022.png` / `benday_s22_negbenday.webp`. Both clean. changedPercent **12.65** → micro-rework.\n- s23 — baseline `1791646688651_generated_2026101023.png` / `benday_s23_baseline.webp` vs Arm B `1791646711632_generated_2026101023.png` / `benday_s23_negbenday.webp`. Both clean; larger pose/expression drift. changedPercent **48.8**. Still no Ben-Day / halftone / screentone on either arm.\n\nVerdict: when the prompt never invites halftone, `-1::ben-day dots::` neither clears nor adds dot texture. Combined with Wednesday (0/3 meaningful clear when screentone/halftone *was* prompted), this UC knob is not guide-worthy for Ben-Day control on V5.\n\n**Try-this:** keep using `facing another, double hand grab, fingers interlaced, looking at another` for two-hand holds; do not swap to `interlocked fingers` expecting clearer weave. Skip `-1::ben-day dots::` as a texture cleaner — if you want dots gone, drop screentone/halftone from the prompt (and leave Light UC off if it injects those tags).\n\nCTA: Hoshino / Ivory / Tifa — want a third hand tag tried next weekend (`holding hands` alone, or `hand hold` + `intertwined fingers`), or should we close this board?"
+      "id": "webapp-b0f9d00-unchanged",
+      "kicker": "WEBAPP · UNCHANGED",
+      "grim": false,
+      "title": "Webapp still b0f9d00-production",
+      "lede": "No new build since Friday's effort-toggle ship.",
+      "body": "Monday ~8:20 ET, `https://novelai.net/image` still serves `__NEXT_DATA__.buildId` = **`b0f9d00-production`**, the build that shipped the effort toggle on Thursday. No contract follow-up and no Chrome dump this pass. #changelog, #progress-updates, #announcements and #vibe-sharing were empty in the window.\n\nStill waiting, from the weekend chat: V5 Precise Reference and Vibe Transfer (\"we just don't know when,\" community), Director (above), and a bigger-than-Opus tier that someone said is \"planned to alleviate\" battery pressure, with no staff source in this window.\n\n**CTA.** Nothing to retest. Friday's Medium A/B board still stands.",
+      "excerpts": [],
+      "images": []
     }
   ],
-  "issueLabel": "friday-digest-2026-10-09",
-  "webapp": "b0f9d00-production (updated from db2d575: V5 Full effort toggle)",
-  "kicker": "FRIDAY · WEBAPP b0f9d00 (UPDATED · EFFORT TOGGLE) · 2026-10-09",
-  "lede": "Anlatan shipped a 14-step distilled V5 Full at about 42% off, with locked steps, sampler and UC. This issue covers what staff said, how to do negatives without a UC, why High at 14 steps is a trap, Ivory's Studio notes, Guren's Wednesday lab, and a weekend board.",
-  "title": "The Medium issue: a cheaper V5 with no UC, and how to prompt without one",
-  "rundown": "Webapp b0f9d00 (effort toggle) · STAFF Medium = distilled 14-step model · STAFF negatives in the prompt, no UC · STAFF per-step cost + token cut-off · STUDIO Ivory's four findings · LAB recap Guren Wed · Community grainy UC, inpaint style, OC style tests · Lab board · Grim unofficial + HOUSE",
-  "official": "Anlatan #nai-diffusion-discussion #nai-image-advice #nai-image-posting #announcements (changelog, progress-updates, vibe-sharing empty). Window 2026-10-07 10:10 ET -> 2026-10-09 12:39 ET.",
-  "unofficial": "Unofficial NSFW guild #nai-image-gen-discussion #nsfw-generation #kinky-generation #very-kinky-generation (Generation Help empty). Mostly showcase plus an age-moderation thread (skipped). No new hip/WG/pregnancy recipes.",
-  "imagesNote": "Staff stills: the #announcements card (Aini) and two effort charts posted by kurumuz and luna. Community stills from official channels: the journal pair BlueSF reposted, Flitter's grainy-UC fix and Bird Bros' 23 vs 50 steps pair. Unofficial stills (Boxed Water hair negatives, MintberryFury bubbles) are Grim-only. Skipped for age/minors: 18 messages in an unofficial age-moderation thread and 4 stills (school-uniform or young-reading characters). All srcs are Yozora attachments on StaticForge #95.",
+  "issueLabel": "monday-digest-2026-10-12",
+  "webapp": "b0f9d00-production (unchanged since Fri 2026-10-09)",
+  "kicker": "MONDAY · WEBAPP b0f9d00 · 2026-10-12",
+  "lede": "A weekend of staff answers. Medium has no UC path and no CFG step, so keep its guidance low. A 0:: tag still steers, if you put it first. 31 characters work on V5 Full, but place them yourself. Director is prompt-driven image editing. Plus the UC debate, quick fixes, comic workflows and a lab board.",
+  "title": "Medium has no UC wire: staff explain the effort toggle, zero weights and crowds",
+  "rundown": "Webapp b0f9d00 (unchanged) · STAFF Medium has no UC/CFG, keep guidance ~5 · STAFF 0:: as a context side channel, context first · STAFF 31 characters, custom positions past 5 · STAFF 42% = compute, Anlas 18 vs 26 · STAFF Director = image editing by prompt · Community UC debate, quick fixes, panels · Lab board · Grim unofficial + HOUSE Medium log",
+  "official": "Anlatan #nai-diffusion-discussion (1028) #nai-image-posting (380) #nai-image-advice (140); changelog, progress-updates, announcements, vibe-sharing empty. Window 2026-10-09 12:39 ET -> 2026-10-12 08:15 ET.",
+  "unofficial": "Unofficial NSFW guild #nsfw-generation (414) #nai-image-gen-discussion (187) #kinky-generation (22) #very-kinky-generation (7); Generation Help empty. Mostly showcase; one anime-style technique thread and High vs Medium pairs. No new hip/WG/pregnancy recipes.",
+  "imagesNote": "No staff posted stills this window (their answers were text), so the two staff images are Monogon's reposts of older mahouko and finetune messages about Director. Community stills from official channels: 司's three-panel comic, ShameSoot's V4.5+V5 panel, Rios/{Flitter}'s toy-clutter before/after, Bicknell125's POV, omni's two-box pair, He makes zombies' 13-box anthology and his 14-step rewrite. The unofficial pair (Stealthybon, High vs Medium) is Grim-only. Skipped for minors: 1 unofficial age-moderation message, 1 unofficial prompt post, and 1 shared-memory row with an under-18 character. All srcs are Yozora attachments on StaticForge #95.",
   "counts": {
-    "official": 1516,
-    "unofficial": 637,
+    "official": 1548,
+    "unofficial": 630,
     "enshutsuka": 3,
     "defaultModel": "V5 Full",
-    "onTopicOfficial": 459,
-    "onTopicUnofficial": 69,
-    "refinedOfficial": 189,
-    "refinedUnofficial": 14,
-    "staffHits": 233,
-    "minorsSkipped": 22
+    "onTopicOfficial": 375,
+    "onTopicUnofficial": 103,
+    "refinedOfficial": 177,
+    "refinedUnofficial": 28,
+    "staffHits": 131,
+    "staffOnTopic": 31,
+    "minorsSkipped": 3,
+    "stills": 12
   },
   "billboard": [
     {
       "kind": "hero",
-      "kicker": "BILLBOARD · EFFORT TOGGLE",
-      "title": "Medium: 14 steps, about 42% off, no UC",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/eb267ed8-ecc1-4449-8a6f-ff3571b25e21",
-      "cap": "Aini (Anlatan) · #announcements · \"V5 Effort Toggle: spend less, iterate more\""
+      "kicker": "BILLBOARD · COMMUNITY",
+      "title": "Three panels from one character box",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/8de83076-b7d0-47c5-9880-41f2cf1067bc",
+      "cap": "司 ★PhazonMadness‑SE★ · official #nai-image-advice · a three-panel cat-frog comic from one character box (panel lines in the box)"
     },
     {
       "kind": "tile",
-      "kicker": "STAFF · BLIND TEST",
-      "title": "High 50.9% vs Medium 49.1%",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/0cf50ab9-474b-4e1b-b46f-cd1f6b632b98",
-      "cap": "kurumuz (Anlatan) · blind-test win rate, High 50.9% vs Medium 49.1%"
+      "kicker": "STAFF · ROADMAP",
+      "title": "Director: tell it what to change",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3efc1ee1-63b4-4e30-bfb1-4d8b7d11afbc",
+      "cap": "finetune (Anlatan), older message reposted by Monogon · \"director mode is the thing that director tools were built on top of / it's basically an edit model\""
     },
     {
       "kind": "tile",
-      "kicker": "STAFF · IMAGES PER WEEK",
-      "title": "About 1,700 vs about 3,000",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/694310c0-2409-410f-93a8-e8d36b8743e5",
-      "cap": "luna (Anlatan) · Opus images per week, about 1,700 on High vs about 3,000 on Medium"
+      "kicker": "STAFF · CROWDS",
+      "title": "31 characters on Full; custom positions past 5",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/a335c3e0-f508-43aa-8341-01a654317506",
+      "cap": "He makes zombies · official #nai-diffusion-discussion · 13 story character prompts merged into one anthology image"
     },
     {
       "kind": "tile",
-      "kicker": "COMMUNITY · CLEANUP",
-      "title": "UC grainy, not grain",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/8df3ca42-7768-421c-864e-a851aa786a62",
-      "cap": "Flitter · official · same seed, blurry background added to the UC as well"
+      "kicker": "COMMUNITY · FIX",
+      "title": "Toys in the background? Cut the tail, add solo",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3a9af6d0-5566-413a-a956-25a23ac36f2e",
+      "cap": "{Flitter} · official #nai-diffusion-discussion · same image with the end of the prompt removed and solo added (after)"
     }
   ],
   "images": [
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/eb267ed8-ecc1-4449-8a6f-ff3571b25e21",
-      "cap": "Aini (Anlatan) · #announcements · \"V5 Effort Toggle: spend less, iterate more\"",
-      "kicker": "OFFICIAL · staff"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/0cf50ab9-474b-4e1b-b46f-cd1f6b632b98",
-      "cap": "kurumuz (Anlatan) · blind-test win rate, High 50.9% vs Medium 49.1%",
-      "kicker": "OFFICIAL · staff"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/694310c0-2409-410f-93a8-e8d36b8743e5",
-      "cap": "luna (Anlatan) · Opus images per week, about 1,700 on High vs about 3,000 on Medium",
-      "kicker": "OFFICIAL · staff"
-    },
-    {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/eff5bba5-96c8-4884-8ea0-838ef7428ddd",
-      "cap": "BlueSF · official · one of the journal gallery pairs (Medium vs High) reposted in chat",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/8de83076-b7d0-47c5-9880-41f2cf1067bc",
+      "cap": "司 ★PhazonMadness‑SE★ · official #nai-image-advice · a three-panel cat-frog comic from one character box (panel lines in the box)",
       "kicker": "OFFICIAL · community"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/90e65019-d7d3-4da8-8eb7-2722bc7c90cf",
-      "cap": "Flitter · official · sethcard's fuzzy-colour prompt redone with grainy in the UC",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/0c276a74-ad5d-40d1-be68-945c4285c654",
+      "cap": "ShameSoot · official #nai-image-advice · left panel a V4.5 vibe gen; right panel and bubble added in V5 by expanding the canvas",
       "kicker": "OFFICIAL · community"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/8df3ca42-7768-421c-864e-a851aa786a62",
-      "cap": "Flitter · official · same seed, blurry background added to the UC as well",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/80861e83-be33-4d18-8b02-360197cf9940",
+      "cap": "Rios · official #nai-diffusion-discussion · \"little people/toys in the background\" (before)",
       "kicker": "OFFICIAL · community"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/d7e503c3-623f-4080-a4ab-e135b7ea9059",
-      "cap": "Bird Bros · official · outfit-randomizer Pikachu, 23 vs 50 steps at higher res (frame A)",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3a9af6d0-5566-413a-a956-25a23ac36f2e",
+      "cap": "{Flitter} · official #nai-diffusion-discussion · same image with the end of the prompt removed and solo added (after)",
       "kicker": "OFFICIAL · community"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/336a0563-3f25-4fef-a367-adb6bdf40717",
-      "cap": "Bird Bros · official · same prompt, 23 vs 50 steps (frame B)",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/2eb84e41-f17f-489a-9316-56e1b2816a2a",
+      "cap": "Bicknell125 · official #nai-image-advice · pov, pov hands for a two-character point of view",
       "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/13b5e782-ffcc-4d3a-9ddd-68ac4d289c46",
+      "cap": "omni · official #nai-diffusion-discussion · two characters, one per character box, no solo",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/a335c3e0-f508-43aa-8341-01a654317506",
+      "cap": "He makes zombies · official #nai-diffusion-discussion · 13 story character prompts merged into one anthology image",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/19ef520f-18c4-4366-90fa-cc813a64d809",
+      "cap": "He makes zombies · official #nai-image-posting · a prompt rewritten for 14 steps that beat its 28-step version",
+      "kicker": "OFFICIAL · community"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3efc1ee1-63b4-4e30-bfb1-4d8b7d11afbc",
+      "cap": "finetune (Anlatan), older message reposted by Monogon · \"director mode is the thing that director tools were built on top of / it's basically an edit model\"",
+      "kicker": "OFFICIAL · staff (repost)"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3641e16c-5c4e-46de-b057-4d3efcf7c752",
+      "cap": "mahouko (Anlatan), older message reposted by Monogon · \"character reference is a capability we developed whilst working towards director mode\"",
+      "kicker": "OFFICIAL · staff (repost)"
     }
   ],
   "grimImages": [
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/f1a4be5a-3434-4c66-aace-009164876d78",
-      "cap": "Boxed Water · unofficial · -2.5::loose hair, hair bangs, bangs:: in the prompt to kill antenna bangs",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/6c76e014-d52c-4c1f-97c7-731063608382",
+      "cap": "Stealthybon · unofficial #nsfw-generation · \"High vs medium effort comparison\", first image",
       "kicker": "GRIM · unofficial"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/142c9252-0492-460b-a6c0-4e1b14055400",
-      "cap": "MintberryFury · unofficial · four speech bubbles in one gen, answering a multi-bubble comic question",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/7ffa4a21-b34a-4852-a443-652eda1c1057",
+      "cap": "Stealthybon · unofficial #nsfw-generation · same post, second image (\"Medium seems a lot smoother\")",
       "kicker": "GRIM · unofficial"
     }
   ],
   "enshutsuka": [
     {
-      "teaser": "3 memories refreshed since Wednesday",
-      "body": "v5_body_evaluation_process (width reference, frozen body text, text_overlays line length, keep_newlines bubbles), user_interests, user_vibe. Guren's wednesday_2026_10_07_lab is new and still low-confidence (0.1) until a rerun."
+      "teaser": "Shared Medium log at revision 25",
+      "body": "`V5 Medium effort testing`: other MCP users logged Medium vs High pairs on 2026-10-09..11. Medium folds negatives into -1:: bans (compiled UC empty), smooths strain into smiles, and Expand runs v5_medium at 28 steps / g4.9 / rescale 0.07. Details in Grim HOUSE."
+    },
+    {
+      "teaser": "Two Studio gaps for Menma",
+      "body": "Rentan `!dg_` lighting tokens compiled empty, and one row says dataset_config include [\"furry\"] injected nothing (documented id is \"fur dataset\"). Reported here, not filed."
+    },
+    {
+      "teaser": "Taste memories refreshed",
+      "body": "user_interests (Sun 10-11) and user_vibe (Sat 10-10) updated; no new lab-board memory since Friday."
     }
   ]
 }

@@ -3260,7 +3260,7 @@ html.disable-blur .director-attach-chip {
     color: #e57373;
 }
 
-/* Engine marks (Cursor / Claude) - director.js engineIconHtml. Mask icons in
+/* Engine marks (Cursor / Claude / TokenRouter) - director.js engineIconHtml. Mask icons in
    currentColor, so they take the text colour like the title mark (.xai-icon). */
 .director-engine-icon {
     display: inline-block;
@@ -3277,6 +3277,12 @@ html.disable-blur .director-attach-chip {
 .xai-icon.engine-claude-mark {
     -webkit-mask-image: url('/dist/custom-icons/claude-icon.svg');
     mask-image: url('/dist/custom-icons/claude-icon.svg');
+}
+
+.director-engine-icon.engine-tokenrouter,
+.xai-icon.engine-tokenrouter-mark {
+    -webkit-mask-image: url('/dist/custom-icons/tokenrouter-icon.svg');
+    mask-image: url('/dist/custom-icons/tokenrouter-icon.svg');
 }
 
 .director-request-type-badge .director-engine-icon {

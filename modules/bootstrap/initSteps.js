@@ -53,6 +53,8 @@ const INIT_STEPS = [
         sync: true,
         run: (gr) => {
             gr.initializeApiKeyManager();
+            // Security Center key status dots: checks keys never checked (or unreachable last time), 20s after boot.
+            require('../apiKeyHealth').start(gr);
         },
     },
     {

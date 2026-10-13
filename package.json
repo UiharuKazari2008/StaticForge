@@ -145,6 +145,7 @@
     "test:grimoire-ie-chrome": "node scripts/test-grimoire-ie-chrome.js",
     "test:control-panel-vista-pages": "node scripts/test-control-panel-vista-pages.js",
     "test:atelier-vista-menubar": "node scripts/test-atelier-vista-menubar.js",
+    "test:media-player-wmp": "node scripts/test-media-player-wmp.js",
     "test:user-accounts": "node scripts/test-user-accounts.js",
     "test:windows-defender": "node scripts/test-windows-defender.js",
     "test:melaton-search": "node scripts/test-melaton-search.js",

@@ -117,7 +117,7 @@ function main() {
     assert.match(emotionJs, /filmstrip\.src = 'data:image\/jpeg;base64,'/);
 
     // 8b. Animated results: NAI-only menu actions hidden for GIF/WebM/MP4, Open in eMotion /
-    // Open in Video Player added (galleryActions.js applyAnimatedResultMenuFilter).
+    // Open in Media Player added (galleryActions.js applyAnimatedResultMenuFilter).
     {
         const vm2 = require('vm');
         const ga = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/galleryActions.js'), 'utf8');

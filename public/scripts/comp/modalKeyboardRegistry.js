@@ -297,6 +297,26 @@ function shouldSkipUnregisteredKeyboardWarning(event) {
     return false;
 }
 
+function isBrowserActivatesControlKey(event) {
+    const key = event && event.key;
+    if (key !== 'Enter' && key !== ' ' && key !== 'Spacebar') return false;
+    const target = event.target;
+    if (!target || !target.closest) return false;
+    return !!target.closest('button, a[href], [role="button"], [role="menuitem"], [role="tab"], input[type="button"], input[type="submit"], input[type="reset"], input[type="checkbox"], input[type="radio"], summary, select, label');
+}
+
+function scheduleDeadKeySound(event) {
+    if (event.key === 'Tab' || event.repeat || isModifierKeyOnly(event)) return;
+    if (shouldSkipUnregisteredKeyboardWarning(event)) return;
+    if (isBrowserActivatesControlKey(event)) return;
+    const ev = event;
+    queueMicrotask(() => {
+        if (ev.defaultPrevented || ev._keyboardRegistryConsumed === true) return;
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('dialog');
+    });
+}
+
 function captureKeyboardListenerRegistrationStack() {
     const err = new Error('keyboard listener registration');
     if (!err.stack) return null;
@@ -476,6 +496,7 @@ function dispatchKeyboardRegistryEvent(event) {
 
     if (!consumed && event.type === 'keydown') {
         recordUnregisteredKeyboardActivity(event);
+        scheduleDeadKeySound(event);
     }
 
     return consumed;

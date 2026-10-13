@@ -14,7 +14,7 @@ sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417, #42
 | 4 | "Preparing MeletonFX…", logon dialog closes | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()` |
 | 5 | Solid colour only, then the small top-left startup window `#windowsStartupModal` | `desktopBoot.js` stage `session`, `websocket.js` `showWindowsStartupModal` |
 | 6 | Staged reveal while init steps run: wallpaper, icons, taskbar, windows, each appearing at once like Windows (no fade, no slide) | `desktopBoot.js` stages `settings` → `wallpaper` → `icons` → `taskbar` → `windows` |
-| 7 | "Welcome", startup window closes last | `desktopBoot.finish()` awaited by `hideProgressNotification` |
+| 7 | "Welcome", startup window closes last; Vista logon sound | `desktopBoot.finish()` awaited by `hideProgressNotification`; `desktopSounds.js` plays on stage `done` |
 
 Each stage holds for at least `desktopBoot.config.dwellMs[stage]` so the sequence reads
 even when the init steps finish in a few hundred milliseconds; when a step is slow the
@@ -130,6 +130,8 @@ preview shows the default when the workspace has none.
 A restart is a Windows restart: the shutdown sequence (`modalUtils.runClientShutdownSequence`:
 windows close one by one, then a fade to black), then the full Melaton boot on `/launch`
 (`restartClientNavigate`; narrow / non-desktop mode reloads in place instead).
+`desktopSounds.js` plays Windows Shutdown at the start and holds the black fade until the wav
+ends (cap 4 s). Lock / unlock use the logoff / logon files; Personalize → Sounds mutes the scheme.
 
 | Path | Behaviour |
 |------|-----------|

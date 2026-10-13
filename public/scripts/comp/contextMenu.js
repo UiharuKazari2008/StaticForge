@@ -3250,7 +3250,7 @@ class ContextMenuController {
 
                         const subtextElement = document.createElement('span');
                         subtextElement.className = 'context-menu-item-subtext';
-                        subtextElement.textContent = subItem.subtext;
+                        subtextElement.textContent = typeof subItem.subtext === 'function' ? subItem.subtext(target) : subItem.subtext;
                         textContainer.appendChild(subtextElement);
 
                         subItemElement.appendChild(textContainer);

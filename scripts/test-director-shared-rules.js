@@ -1,11 +1,25 @@
 'use strict';
 // Wren standing orders carry the shared Enshutsuka rulebook and modes, not the identity line.
 const assert = require('assert');
-const { projectPrompt } = require('../modules/cursorDirector')._test;
+const { projectPrompt, claudeProjectPrompt, wrenRules, WREN_COVERED_SENTENCES } = require('../modules/cursorDirector')._test;
 const { MCP_INSTRUCTIONS, ENSHUTSUKA_MODES, ENSHUTSUKA_GROK_PROJECT_PREAMBLE } = require('../modules/mcpInstructions');
 const p = projectPrompt();
 assert.ok(p.includes('## Shared Dreamscape rules (from Enshutsuka)'), 'heading');
-assert.ok(p.includes(MCP_INSTRUCTIONS), 'full rulebook');
+// The rulebook minus the sentences wrenRules() already says (#433).
+const shared = p.slice(p.indexOf('## Shared Dreamscape rules'));
+WREN_COVERED_SENTENCES.forEach((sentence) => {
+    assert.ok(MCP_INSTRUCTIONS.includes(`${sentence} `), `covered sentence still in MCP_INSTRUCTIONS (update the list): ${sentence.slice(0, 60)}`);
+    assert.ok(!shared.includes(sentence), `covered sentence stripped: ${sentence.slice(0, 60)}`);
+});
+const sentences = MCP_INSTRUCTIONS.split(/(?<=\.) (?=[A-Za-z])/);
+sentences.filter((sentence) => !WREN_COVERED_SENTENCES.includes(sentence)).forEach((sentence) => {
+    assert.ok(shared.includes(sentence), `kept sentence: ${sentence.slice(0, 60)}`);
+});
+['lookup_character_age {character} is the sole validated character database', 'Do not trust Wikipedia, Fandom', 'Absolute prompts only', 'Do not send preciseReferences back on apply']
+    .forEach((line) => assert.ok(p.includes(line), `kept: ${line}`));
+// Claude CLI cuts MCP initialize instructions at 2048 characters: its rule file carries the rulebook too.
+assert.strictEqual(claudeProjectPrompt(), p, 'Claude engines get the same rule file');
+assert.ok(p.length < wrenRules().length + MCP_INSTRUCTIONS.length, 'smaller than both in full');
 assert.ok(p.includes('V5 Medium is brand new and needs testing'), 'V5 Medium line');
 assert.ok(p.includes('"V5 Medium effort testing"'), 'memory name');
 assert.ok(typeof ENSHUTSUKA_MODES === 'string' && p.includes(ENSHUTSUKA_MODES), 'modes');

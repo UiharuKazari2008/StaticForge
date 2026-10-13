@@ -125,7 +125,7 @@ assert.strictEqual(d.fast, true);
 
 // Engine menu item in the Tools menu.
 const engineItem = d.engineMenuItem();
-assert.deepStrictEqual(Array.from(engineItem.submenu, (i) => i.action), ['director-tools-engine-cursor', 'director-tools-engine-claude']);
+assert.deepStrictEqual(Array.from(engineItem.submenu, (i) => i.action), ['director-tools-engine-cursor', 'director-tools-engine-claude', 'director-tools-engine-tokenrouter']);
 assert.strictEqual(engineItem.valueDisplay(), 'Cursor');
 // Session list / reply marks.
 assert.strictEqual(d.sessionEngine({ engine: 'claude' }), 'claude');
@@ -139,6 +139,61 @@ d.modelCatalogs.cursor = cursorCatalog.concat([{ id: 'claude-opus-5-5', name: 'C
 assert.strictEqual(d.engineForModelId({ id: 'claude-opus-5-5', run: 'claude-opus-5-5' }, { engine: 'claude' }), 'claude');
 assert.strictEqual(d.engineForModelId({ id: 'claude-opus-5-5', run: 'claude-opus-5-5-high-thinking' }, { engine: 'claude' }), 'cursor');
 d.modelCatalogs.cursor = cursorCatalog;
+
+// TokenRouter (#409): its own prefs, catalog cache, default (Kimi K3), and mark.
+const routerCatalog = [
+    { id: 'moonshotai/kimi-k3', name: 'Kimi K3', provider: 'Moonshot', default: true, efforts: [{ id: 'low', name: 'Low', fast: false }, { id: 'medium', name: 'Medium', fast: false }, { id: 'high', name: 'High', fast: false }] },
+    { id: 'z-ai/glm-5.3', name: 'GLM 5.3', provider: 'Z.ai', efforts: [{ id: 'low', name: 'Low', fast: true }, { id: 'medium', name: 'Medium', fast: true }] }
+];
+d.applyModelCatalog(routerCatalog, 'tokenrouter');
+assert.ok(store.has('staticforge_director_models_tokenrouter'), 'TokenRouter catalog has its own cache key');
+sent.length = 0;
+assert.strictEqual(d.setEngine('tokenrouter'), true);
+assert.strictEqual(d.activeEngine(), 'tokenrouter');
+assert.strictEqual(d.modelCatalog, routerCatalog);
+assert.strictEqual(d.selectedModel, 'moonshotai/kimi-k3');
+assert.ok(titleClasses.has('engine-tokenrouter-mark') && !titleClasses.has('engine-claude-mark'), 'title mark shows TokenRouter');
+assert.ok(sent.some((m) => m.type === 'director_get_models' && m.engine === 'tokenrouter'));
+assert.strictEqual(d.engineName('tokenrouter'), 'TokenRouter');
+d.selectedModel = 'z-ai/glm-5.3';
+d.fast = true;
+d.saveChatPrefs();
+assert.ok(JSON.parse(store.get('staticforge_director_chat_prefs_tokenrouter')).fast, 'TokenRouter prefs key');
+assert.strictEqual(d.engineForModelId({ id: 'moonshotai/kimi-k3' }), 'tokenrouter', 'vendor/model ids are TokenRouter');
+assert.strictEqual(d.sessionEngine({ engine: 'tokenrouter' }), 'tokenrouter');
+assert.ok(d.engineIconHtml('tokenrouter').includes('engine-tokenrouter'));
+const routerChoice = d.normalizeRetryChoice({ engine: 'tokenrouter', model: 'moonshotai/kimi-k3', effort: 'high', fast: true });
+assert.strictEqual(routerChoice.fast, false, 'Kimi K3 has no fast sibling');
+assert.strictEqual(d.retryChoiceLabel(routerChoice), 'TokenRouter / Kimi K3 / High');
+d.setEngine('cursor');
+assert.ok(!titleClasses.has('engine-tokenrouter-mark'));
+assert.strictEqual(d.savedEngineChoice('tokenrouter').model, 'z-ai/glm-5.3');
+
+// Usage badge: TokenRouter shows one balance (top-up plus vouchers), no percent split.
+const badge = {};
+['directorUsageDisplay', 'directorUsageAuto', 'directorUsageIcon', 'directorUsageSplit', 'directorUsageOther'].forEach((id) => {
+    const classes = new Set();
+    badge[id] = { id, textContent: '', title: '', className: '', classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)), has: (c) => classes.has(c) } };
+});
+const realGet = ctx.document.getElementById;
+ctx.document.getElementById = (id) => badge[id] || null;
+d.paintAccountBadge = () => {};
+d.engine = 'tokenrouter';
+d.paintCursorUsage({ engine: 'tokenrouter', balanceText: '$150.50', balance: 150.5, limited: false, title: 'TokenRouter balance: $150.50' });
+assert.strictEqual(badge.directorUsageAuto.textContent, '$150.50');
+assert.ok(badge.directorUsageSplit.classList.has('hidden'), 'no second figure');
+assert.strictEqual(badge.directorUsageIcon.className, 'fas fa-wallet');
+assert.strictEqual(badge.directorUsageDisplay.title, 'TokenRouter balance: $150.50');
+d.paintCursorUsage({ engine: 'tokenrouter', balanceText: null, title: 'TokenRouter balance: add the management key to the TokenRouter key' });
+assert.strictEqual(badge.directorUsageAuto.textContent, '\u2014');
+assert.strictEqual(badge.directorUsageIcon.className, 'fas fa-wallet');
+d.paintCursorUsage({ engine: 'claude', autoPercent: 40, apiPercent: 12 });
+assert.strictEqual(badge.directorUsageAuto.textContent, '40%');
+assert.ok(!badge.directorUsageSplit.classList.has('hidden'));
+assert.strictEqual(badge.directorUsageIcon.className, 'fas fa-chart-pie');
+ctx.document.getElementById = realGet;
+d.engine = 'cursor';
+delete d.paintAccountBadge;
 
 // Restore source: a retry on a reply cuts at the ask before it.
 d.currentSession = { messages: [

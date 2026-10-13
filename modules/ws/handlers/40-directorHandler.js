@@ -10,6 +10,8 @@ const {
     handleDirectorMoveSession,
     handleDirectorSendMessage,
     handleDirectorGetModels,
+    handleRentanAgentGet,
+    handleRentanAgentSetDefault,
     handleDirectorAbort,
     handleDirectorComputerSize,
     handleDirectorComputerStatus,
@@ -64,6 +66,9 @@ function registerPackets(handlersCtx) {
     reg('director_move_session', handleDirectorMoveSession, DIRECTOR_DESTRUCTIVE);
     reg('director_send_message', handleDirectorSendMessage, DIRECTOR_DESTRUCTIVE);
     reg('director_get_models', handleDirectorGetModels);
+    // Rentan menu: the saved default engine / model / reasoning / fast for every Rentan turn (#409).
+    reg('director_rentan_agent_get', handleRentanAgentGet);
+    reg('director_rentan_agent_set_default', handleRentanAgentSetDefault, DIRECTOR_DESTRUCTIVE);
     reg('director_abort', handleDirectorAbort, DIRECTOR_DESTRUCTIVE);
     reg('director_get_messages', handleDirectorGetMessages);
     reg('director_tool_diff', handleDirectorToolDiff);

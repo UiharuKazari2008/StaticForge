@@ -8,7 +8,12 @@ class ApiKeyManager {
             google: 'GOOGLE_API_KEY',
             openweather: 'OPENWEATHER_API_KEY',
             exa: 'EXA_API_KEY',
-            runpod: 'RUNPOD_API_KEY'
+            runpod: 'RUNPOD_API_KEY',
+            tokenrouter: 'TOKENROUTER_API_KEY'
+        };
+        // Env fallback for a service's paired second credential (SERVICE_METADATA.secondary).
+        this.SECONDARY_ENV_FALLBACKS = {
+            tokenrouter: 'TOKENROUTER_MANAGEMENT_KEY'
         };
         this.SERVICE_METADATA = {
             novelai: {
@@ -52,6 +57,19 @@ class ApiKeyManager {
                 description: 'GPU Pod start/stop and ESRGAN upscaling workers',
                 icon: 'fas fa-robot',
                 requiresRestart: false
+            },
+            tokenrouter: {
+                label: 'TokenRouter',
+                description: 'Director and Rentan TokenRouter engine (Kimi K3 and other routed models)',
+                icon: 'fas fa-route',
+                requiresRestart: false,
+                // Stored on the same key entry: a management key belongs to the account its API key is in.
+                secondary: {
+                    field: 'managementKey',
+                    label: 'Management key',
+                    optional: true,
+                    hint: 'Optional Personal Management Key from the same TokenRouter account. It shows the balance (top-up plus vouchers) on the Director badge and cannot make model requests.'
+                }
             }
         };
         this.restartHandlers = new Map();
@@ -63,6 +81,44 @@ class ApiKeyManager {
         this.TRIPWIRE_THRESHOLD = 3; // consecutive qualifying failures before locking
         this.serviceLocks = new Map(); // service -> lock record
         this.lockChangeHandler = null; // set by globalResources for logging + admin broadcast
+
+        this.migrateTokenRouterManagementKeys();
+    }
+
+    // #409 briefly kept TokenRouter management keys as their own service. They belong on
+    // the TokenRouter key entry of the same account, so move them there (by index; a
+    // single API key takes the selected management key) and drop the old service.
+    migrateTokenRouterManagementKeys() {
+        let legacy;
+        try {
+            legacy = this.globalResources.getSecureConfig({ path: 'tokenrouter_management' });
+        } catch (_) {
+            return;
+        }
+        if (!legacy) return;
+        const extra = Array.isArray(legacy.keys) ? legacy.keys.filter((k) => k && k.apiKey) : [];
+        const selected = (this.globalResources.getConfig({ path: 'selectedApiKeys' }) || {}).tokenrouter_management;
+        try {
+            const saved = this.globalResources.modifyConfig('secureConfig', (cfg) => {
+                const keys = cfg.tokenrouter && Array.isArray(cfg.tokenrouter.keys) ? cfg.tokenrouter.keys : [];
+                if (keys.length === 1 && extra.length) {
+                    const pick = extra[Number.isInteger(selected) && extra[selected] ? selected : 0];
+                    if (!keys[0].managementKey) keys[0].managementKey = String(pick.apiKey).trim();
+                } else {
+                    keys.forEach((key, i) => {
+                        if (extra[i] && !key.managementKey) key.managementKey = String(extra[i].apiKey).trim();
+                    });
+                }
+                delete cfg.tokenrouter_management;
+                return cfg;
+            });
+            if (saved && typeof saved.catch === 'function') {
+                saved.catch((error) => console.warn(`TokenRouter management key migration not saved: ${error.message}`));
+            }
+            console.log('✓ Moved TokenRouter management key(s) onto the TokenRouter key entry');
+        } catch (error) {
+            console.warn(`TokenRouter management key migration skipped: ${error.message}`);
+        }
     }
 
     // --- Tripwire / circuit-breaker -------------------------------------------------
@@ -220,6 +276,33 @@ class ApiKeyManager {
         return 0;
     }
 
+    // The selected key entry's paired second credential (SERVICE_METADATA.secondary), else its env fallback.
+    getActiveSecondaryKey(service) {
+        const field = this.SERVICE_METADATA[service]?.secondary?.field;
+        if (!field) return null;
+        const selected = this.getServiceKeys(service)[this.getSelectedIndex(service)];
+        if (selected && selected[field]) return String(selected[field]).trim();
+        const envVar = this.SECONDARY_ENV_FALLBACKS[service];
+        return envVar && process.env[envVar] ? String(process.env[envVar]).trim() : null;
+    }
+
+    // Cached check result for a stored credential (modules/apiKeyHealth.js). Never starts a check.
+    keyStatus(service, slot, secret) {
+        try {
+            return require('./apiKeyHealth').statusFor(service, slot, secret);
+        } catch (_) {
+            return { state: 'unchecked' };
+        }
+    }
+
+    noteKeysChanged(service) {
+        try {
+            require('./apiKeyHealth').noteKeysChanged(this.globalResources, service);
+        } catch (error) {
+            console.warn(`API key status check not started: ${error.message}`);
+        }
+    }
+
     getActiveApiKey(service) {
         if (!service) return null;
 
@@ -251,22 +334,32 @@ class ApiKeyManager {
             const selectedIndex = this.getSelectedIndex(service);
             const selectedKey = keys[selectedIndex];
 
+            const field = meta.secondary?.field;
             return {
                 id: service,
                 label: meta.label,
                 description: meta.description,
                 icon: meta.icon,
                 requiresRestart: meta.requiresRestart || this.restartHandlers.has(service),
+                secondary: meta.secondary ? { field, label: meta.secondary.label, optional: meta.secondary.optional === true, hint: meta.secondary.hint || '' } : null,
                 selectedIndex,
                 selectedName: selectedKey?.name || (keys.length ? `Key ${selectedIndex + 1}` : null),
                 selectedFingerprint: selectedKey ? this.maskKey(selectedKey.apiKey) : null,
                 missingKeys: keys.length === 0,
                 lock: this.getServiceLock(service),
-                keys: keys.map((key, index) => ({
-                    index,
-                    name: key.name || `Key ${index + 1}`,
-                    fingerprint: this.maskKey(key.apiKey)
-                }))
+                keys: keys.map((key, index) => {
+                    const row = {
+                        index,
+                        name: key.name || `Key ${index + 1}`,
+                        fingerprint: this.maskKey(key.apiKey),
+                        status: this.keyStatus(service, 'apiKey', key.apiKey)
+                    };
+                    if (field) {
+                        row.secondaryFingerprint = key[field] ? this.maskKey(key[field]) : null;
+                        row.secondaryStatus = this.keyStatus(service, field, key[field]);
+                    }
+                    return row;
+                })
             };
         });
     }
@@ -356,7 +449,8 @@ class ApiKeyManager {
         return { updated: changed, restartedServices };
     }
 
-    addApiKey(service, name, apiKey) {
+    // extras: { secondaryKey } for a service with a paired second credential (SERVICE_METADATA.secondary).
+    addApiKey(service, name, apiKey, extras) {
         if (!service || !name || !apiKey) {
             throw new Error('Service, name, and API key are required');
         }
@@ -376,8 +470,12 @@ class ApiKeyManager {
             name: name.trim(),
             apiKey: apiKey.trim()
         };
+        const field = meta.secondary?.field;
+        const secondary = typeof extras?.secondaryKey === 'string' ? extras.secondaryKey.trim() : '';
+        if (field && secondary) newKey[field] = secondary;
         
         this.globalResources.modifyConfig('secureConfig').append([service, 'keys'], newKey);
+        this.noteKeysChanged(service);
 
         const updatedKeys = this.getServiceKeys(service);
         const newIndex = updatedKeys.length - 1;
@@ -387,12 +485,14 @@ class ApiKeyManager {
             key: {
                 index: newIndex,
                 name: newKey.name,
-                fingerprint: this.maskKey(newKey.apiKey)
+                fingerprint: this.maskKey(newKey.apiKey),
+                secondaryFingerprint: field && newKey[field] ? this.maskKey(newKey[field]) : null
             }
         };
     }
 
-    updateApiKey(service, index, name, apiKey) {
+    // extras: { secondaryKey } replaces the paired credential, { clearSecondary: true } removes it.
+    updateApiKey(service, index, name, apiKey, extras) {
         if (!service) {
             throw new Error('Service is required');
         }
@@ -415,8 +515,11 @@ class ApiKeyManager {
         const existing = keys[idx];
         const trimmedName = typeof name === 'string' ? name.trim() : '';
         const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+        const field = meta.secondary?.field;
+        const secondary = field && typeof extras?.secondaryKey === 'string' ? extras.secondaryKey.trim() : '';
+        const clearSecondary = !!(field && extras?.clearSecondary === true && !secondary);
 
-        if (!trimmedName && !trimmedKey) {
+        if (!trimmedName && !trimmedKey && !secondary && !clearSecondary) {
             throw new Error('Provide a new name and/or key value to update');
         }
 
@@ -429,8 +532,13 @@ class ApiKeyManager {
             name: nextName,
             apiKey: trimmedKey || existing.apiKey
         };
+        if (field) {
+            const kept = clearSecondary ? '' : (secondary || existing[field] || '');
+            if (kept) nextKey[field] = kept;
+        }
 
         this.globalResources.modifyConfig('secureConfig').replace([service, 'keys'], idx, nextKey);
+        this.noteKeysChanged(service);
 
         // Editing the active key is an admin correction — clear any tripwire lock.
         if (this.getSelectedIndex(service) === idx) {
@@ -443,7 +551,8 @@ class ApiKeyManager {
             key: {
                 index: idx,
                 name: nextKey.name,
-                fingerprint: this.maskKey(nextKey.apiKey)
+                fingerprint: this.maskKey(nextKey.apiKey),
+                secondaryFingerprint: field && nextKey[field] ? this.maskKey(nextKey[field]) : null
             }
         };
     }

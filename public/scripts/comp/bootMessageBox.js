@@ -91,6 +91,8 @@
         });
         return new Promise((resolve) => {
             current = { resolve, buttons };
+            // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            desktopSounds.play(desktopSounds.bootIconEvent(options.icon));
             if (typeof root.openModal === 'function') root.openModal(el);
             else el.classList.remove('hidden');
             if (typeof root.bringModalToFront === 'function') root.bringModalToFront(el);

@@ -41,6 +41,7 @@ User-facing applet and tool names follow a **Dreamscape** style: short, tangible
 | `desktop-settings` | Personalize (modal title) |
 | `zanzou` | **Zanzou** (Afterimage / similar-image keep-scrap, Control Panel) |
 | `dovecote` | Dovecote (internal mail client) |
+| `media-player` | Media Player (Windows Media Player 11 analogue; replaced the Music and Video windows, #454) |
 
 ## Reserved for later
 

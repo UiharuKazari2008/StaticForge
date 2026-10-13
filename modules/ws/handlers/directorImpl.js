@@ -33,6 +33,8 @@ module.exports = {
     handleDirectorNukeSession: cursor.handleDirectorNukeSession,
     handleDirectorSendMessage: route(xi.handleDirectorSendMessage, cursor.handleDirectorSendMessage),
     handleDirectorGetModels: cursor.handleDirectorGetModels,
+    handleRentanAgentGet: cursor.handleRentanAgentGet,
+    handleRentanAgentSetDefault: cursor.handleRentanAgentSetDefault,
     handleDirectorAbort: route(xi.handleDirectorAbort, cursor.handleDirectorAbort),
     handleDirectorToolDiff: xi.handleDirectorToolDiff,
     handleDirectorToolPayload: cursor.handleDirectorToolPayload,

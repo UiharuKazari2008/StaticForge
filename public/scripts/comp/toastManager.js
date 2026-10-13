@@ -318,7 +318,8 @@ function _getDesktopPopupAnchorForTitle(title) {
         return document.getElementById('imageGenerationIndicator');
     }
     if (DESKTOP_POPUP_TOAST_TITLES.has(title)) {
-        return document.getElementById('fixedCreditsIndicator');
+        // Receipts and balance changes: the wallet tray icon (walletTray.js)
+        return document.getElementById('walletTrayIcon');
     }
     return null;
 }
@@ -348,7 +349,10 @@ function _showDesktopPopupForToast(toastId, type, title, message, timeout, custo
     }
 
     const resolvedTimeout = timeout === false ? 8000 : timeout;
-    const revealGenerationIndicator = title === 'Generation Complete' && anchor.classList.contains('hidden');
+    // Not while the taskbar is hidden (logon, staged boot, lock): the balloon is dropped there anyway (#435)
+    const taskbarShowing = !window.desktopBoot || typeof window.desktopBoot.isTaskbarVisible !== 'function'
+        || window.desktopBoot.isTaskbarVisible();
+    const revealGenerationIndicator = title === 'Generation Complete' && taskbarShowing && anchor.classList.contains('hidden');
     if (revealGenerationIndicator) {
         anchor.classList.remove('hidden');
     }
@@ -508,6 +512,8 @@ function _appendGlassToastDom(toastId, type, title, message, showProgress, timeo
     }
 
     toastContainer.prepend(toast);
+    // desktopSounds.playBalloon: public/scripts/comp/desktopSounds.js
+    desktopSounds.playBalloon(title);
 
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {

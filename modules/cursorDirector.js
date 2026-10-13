@@ -1153,11 +1153,18 @@ async function tokenRouterJail(jail, run) {
     const headers = [`x-dreamscape-lane: ${run.lane === 'normal' ? 'normal' : 'interactive'}`];
     if (run.effort) headers.push(`x-dreamscape-effort: ${run.effort}`);
     env.ANTHROPIC_CUSTOM_HEADERS = headers.join('\n');
-    const extra = ['--ro-bind', target.hostRoot, JAIL_CLAUDE_ROOT];
-    Object.keys(env).forEach((key) => extra.push('--setenv', key, env[key]));
     const args = jail.args.slice();
-    const at = args.indexOf('--chdir');
-    args.splice(at < 0 ? args.length : at, 0, ...extra);
+    // Mount the binary with the other binds. --setenv must follow --clearenv:
+    // buildJail clears the environment after --chdir, and bwrap drops any
+    // --setenv that came before that clear (the CLI then has no bridge secret
+    // and reports "Not logged in").
+    const chdirAt = args.indexOf('--chdir');
+    args.splice(chdirAt < 0 ? args.length : chdirAt, 0, '--ro-bind', target.hostRoot, JAIL_CLAUDE_ROOT);
+    const envArgs = [];
+    Object.keys(env).forEach((key) => envArgs.push('--setenv', key, env[key]));
+    const clearAt = args.indexOf('--clearenv');
+    if (clearAt >= 0) args.splice(clearAt + 1, 0, ...envArgs);
+    else args.push(...envArgs);
     return { ...jail, args, claude: target.inJail, oauth: false };
 }
 

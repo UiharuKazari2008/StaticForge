@@ -1,8 +1,60 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { WS_DISPATCH_FIFO_CONNECTION } = require('../wsMessageDispatcher');
 const workspaceCssService = require('../../workspaceCssService');
+const planetSheets = require('../../planetSheets');
 
 const WORKSPACE_DESTRUCTIVE = { destructive: true, ...WS_DISPATCH_FIFO_CONNECTION };
+
+/** Trailing seed of a gallery base name: images from one batch share it and look alike. */
+function previewSeedKey(row) {
+    const m = String(row && row.base || '').match(/_(\d{6,})$/);
+    return m ? m[1] : null;
+}
+
+/** Favourites and recent alternated (favourites first), unique per seed, for a fixed-order sprite sheet. */
+function interleavePreviewRows(favorites, recent, max) {
+    const seen = new Set();
+    const out = [];
+    const a = Array.isArray(favorites) ? favorites : [];
+    const b = Array.isArray(recent) ? recent : [];
+    let i = 0;
+    let j = 0;
+    let takeFavorite = a.length > 0;
+    while (out.length < max && (i < a.length || j < b.length)) {
+        const source = takeFavorite ? a : b;
+        const idx = takeFavorite ? i : j;
+        if (idx < source.length) {
+            const row = source[idx];
+            if (takeFavorite) i++; else j++;
+            const key = (row && (previewSeedKey(row) || row.base)) || null;
+            if (key && !seen.has(key)) {
+                seen.add(key);
+                out.push(row);
+            }
+        }
+        if (i < a.length && j < b.length) takeFavorite = !takeFavorite;
+        else takeFavorite = i < a.length;
+    }
+    return out;
+}
+
+/** Up to `n` rows from a newest-first list: one per seed, evenly spread over the list. */
+function spreadPreviewRows(rows, n) {
+    if (!Array.isArray(rows) || rows.length === 0 || n <= 0) return [];
+    const unique = [];
+    const seen = new Set();
+    rows.forEach((row) => {
+        const key = previewSeedKey(row) || row.base;
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        unique.push(row);
+    });
+    if (unique.length <= n) return unique;
+    const out = [];
+    const stride = unique.length / n;
+    for (let i = 0; i < n; i++) out.push(unique[Math.min(unique.length - 1, Math.floor(i * stride))]);
+    return out;
+}
 
 class WorkspaceWebSocketHandlers {
     constructor(handlersCtx) {
@@ -370,20 +422,37 @@ class WorkspaceWebSocketHandlers {
     }
 
     /**
-     * Newest preview samples per workspace for the planet switcher bubbles.
-     * One SQL LIMIT query per workspace (listWorkspaceGalleryItemsPaginated); never builds a full index.
-     * Request: { ids?: string[] (default: every workspace), limit?: number (1-12, default 6) }
-     * Response data: { limit, samples: { [workspaceId]: [{ base, preview, blurhash, width, height }] } }
+     * Preview samples per workspace for the planet switcher bubbles: newest images plus favourites
+     * (pinned view). One SQL LIMIT query per list; never builds a full index.
+     * Request: { ids?: string[] (default: every workspace), limit?: number (1-12 per list, default 6),
+     *            tile?: number (sprite tile edge, 128-256, default 192) }
+     * Response data: { limit, samples: { [workspaceId]: { recent, favorites, slides, sheet, imageCount } } }
+     * where each row is { base, preview, blurhash, width, height } (preview is `<base>.webp` under /previews/),
+     * `slides` is the fixed favourites/recent interleave the sheet was built from, and `sheet` is
+     * { url, tile, count, width, height } for the strip served lazily by GET /planet-sheets/<key>.webp
+     * (modules/planetSheets.js), or null when the workspace has no pictures.
      */
     async handleWorkspacePreviewSamples(ws, message, clientInfo, wsServer) {
         try {
-            const { ids, limit } = message;
+            const { ids, limit, tile } = message;
             const workspaceManager = this.globalResources.getWorkspaceManager();
             const metadataDb = this.globalResources.getMetadataDatabase();
             const sampleLimit = Math.max(1, Math.min(12, Number(limit) || 6));
+            const sheetTile = planetSheets.clampTile(tile);
+            const sheetService = planetSheets.getPlanetSheetService(this.globalResources);
             const requestedIds = Array.isArray(ids) && ids.length > 0
                 ? ids
                 : Object.keys(workspaceManager.getWorkspaces() || {});
+            const canQuery = metadataDb && typeof metadataDb.listWorkspaceGalleryItemsPaginated === 'function';
+            const mapRows = (items) => (Array.isArray(items) ? items : [])
+                .filter((item) => item && item.base)
+                .map((item) => ({
+                    base: item.base,
+                    preview: `${item.base}.webp`,
+                    blurhash: item.blurhash || null,
+                    width: item.width || null,
+                    height: item.height || null
+                }));
             const samples = {};
 
             for (const rawId of requestedIds) {
@@ -391,20 +460,27 @@ class WorkspaceWebSocketHandlers {
                 if (!workspaceId || samples[workspaceId] || !workspaceManager.getWorkspace(workspaceId)) {
                     continue;
                 }
-                let items = [];
-                if (metadataDb && typeof metadataDb.listWorkspaceGalleryItemsPaginated === 'function') {
-                    const page = await metadataDb.listWorkspaceGalleryItemsPaginated(workspaceId, 'images', 0, sampleLimit);
-                    items = Array.isArray(page && page.items) ? page.items : [];
+                let recentPage = { items: [], totalItems: 0 };
+                let favoritePage = { items: [], totalItems: 0 };
+                if (canQuery) {
+                    // Pull a wider newest-first pool and spread the picks so one generation batch cannot fill the list
+                    recentPage = await metadataDb.listWorkspaceGalleryItemsPaginated(workspaceId, 'images', 0, sampleLimit * 4);
+                    favoritePage = await metadataDb.listWorkspaceGalleryItemsPaginated(workspaceId, 'pinned', 0, sampleLimit * 2);
                 }
-                samples[workspaceId] = items
-                    .filter((item) => item && item.base)
-                    .map((item) => ({
-                        base: item.base,
-                        preview: `${item.base}.webp`,
-                        blurhash: item.blurhash || null,
-                        width: item.width || null,
-                        height: item.height || null
-                    }));
+                const recent = spreadPreviewRows(mapRows(recentPage && recentPage.items), sampleLimit);
+                const favorites = spreadPreviewRows(mapRows(favoritePage && favoritePage.items), sampleLimit);
+                const slides = interleavePreviewRows(favorites, recent, planetSheets.SLIDES_MAX);
+                const workspace = workspaceManager.getWorkspace(workspaceId);
+                const sheet = slides.length
+                    ? sheetService.register(workspaceId, slides, workspace && workspace.color, sheetTile)
+                    : null;
+                samples[workspaceId] = {
+                    recent,
+                    favorites,
+                    slides,
+                    sheet: sheet ? { url: sheet.url, tile: sheet.tile, count: sheet.count, width: sheet.width, height: sheet.height } : null,
+                    imageCount: Number(recentPage && recentPage.totalItems) || 0
+                };
             }
 
             this.handlers.sendToClient(ws, {

@@ -72,7 +72,9 @@ function wrenInputHash(body, dg) {
     })).digest('hex');
 }
 
-const RENTAN_CONTROLS = ['tod', 'weather', 'season', 'observeHoliday', 'guidance', 'clothing', 'action', 'creative', 'optimize', 'lockSubject', 'disable_holiday'];
+const RENTAN_CONTROLS = ['tod', 'weather', 'season', 'observeHoliday', 'guidance', 'clothing', 'action', 'creative', 'optimize', 'lockSubject', 'disable_holiday', 'reduced_context'];
+// Reduced Prompt Context (#432): Rentan sees only the context and writes dg_ additions for an indoor or outdoor setting.
+const REDUCED_SETTINGS = ['indoor', 'outdoor'];
 
 // Studio controls as Wren sees them: true, false, or the override value (a fixed time, weather, or season).
 function rentanControls(dg) {
@@ -83,6 +85,8 @@ function rentanControls(dg) {
     });
     // Creative carries its level (Creative menu Light / Medium / High), so a level change is a new turn.
     if (out.creative) out.creative = ['light', 'medium', 'high'].includes(dg.creative_level) ? dg.creative_level : 'medium';
+    // Indoor / Outdoor or off; a switch is a controls change, so it resolves again.
+    out.reduced_context = REDUCED_SETTINGS.includes(dg.reduced_context) ? dg.reduced_context : false;
     return out;
 }
 
@@ -103,6 +107,19 @@ const weighted = (rows) => (Array.isArray(rows) && rows.length
     : undefined);
 
 // compileContext already gates each part by its control; this keeps every visible fact and drops raw API payloads.
+// The job's view of the print: the whole prompt, or in reduced mode (#432) only the setting.
+function rentanPromptView(body, preset, dg) {
+    const reduced = REDUCED_SETTINGS.includes(dg && dg.reduced_context) ? dg.reduced_context : null;
+    if (reduced) return { reducedContext: reduced, prompt: '', uc: '', characters: [] };
+    return {
+        reducedContext: null,
+        prompt: body.prompt || (preset && preset.prompt) || '',
+        uc: body.uc || '',
+        characters: (Array.isArray(body.allCharacterPrompts) ? body.allCharacterPrompts : [])
+            .map((c, index) => ({ index, prompt: (c && c.prompt) || '' }))
+    };
+}
+
 function rentanContextForWren(context) {
     const c = context || {};
     const out = {};
@@ -321,7 +338,9 @@ function stampCompiled(gr, body, dg, preset, context, fields) {
             ? fields.original_input
             : (existing.input_hash === inputHash ? existing.original_input || null : null),
         input_hash: inputHash,
-        wren_session_id: fields.sessionId || existing.wren_session_id || null,
+        // A server resolve (#422) has no Director chat: it passes sessionId null on purpose.
+        wren_session_id: Object.prototype.hasOwnProperty.call(fields, 'sessionId') ? fields.sessionId || null : (existing.wren_session_id || null),
+        resolved_by: fields.resolvedBy || existing.resolved_by || null,
         wren_at: fields.wrenAt || existing.wren_at || null,
         wren_input_hash: wrenInputHash(body, dg),
         prompt_hash: promptHash,
@@ -788,6 +807,7 @@ function attachDeferredRentanReview(gr, body, preset, ws, handler, context) {
     review.delivered = true;
     review.openTurn = (attempt) => startRentanReviewTurn(gr, {
         workspaceId: body.workspace || null,
+        agent: dg.agent || null,
         reason: 'review cached scene',
         reviewOnly: true,
         review,
@@ -798,11 +818,8 @@ function attachDeferredRentanReview(gr, body, preset, ws, handler, context) {
         context: rentanContextForWren(context),
         controls: rentanControls(dg),
         directive: dg.directive || '',
-        prompt: body.prompt || preset?.prompt || '',
-        uc: body.uc || '',
-        characters: (Array.isArray(body.allCharacterPrompts) ? body.allCharacterPrompts : [])
-            .map((c, index) => ({ index, prompt: (c && c.prompt) || '' })),
-        expanders: dgExpandersFrom(body.text_replacements),
+        ...rentanPromptView(body, preset, dg),
+        expanders: REDUCED_SETTINGS.includes(dg.reduced_context) ? [] : dgExpandersFrom(body.text_replacements),
         onThought: (text, reasoningId) => progress({
             phase: 'streaming',
             reasoning: text,
@@ -849,7 +866,10 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
         ? null
         : staleReason(cp, dg, body, context, now);
     console.log(`Rentan ${body.workspace || ''}: ${reason ? `Wren turn (${reason})` : 'cached scene reused'}`);
-    const reviewWanted = rentanReviewApplies(body);
+    // Server-side resolves (#422, TokenRouter) cannot look at the print, so the image review is agent-only.
+    const { rentanRoute } = require('./cursorDirector');
+    const route = rentanRoute(gr, { agent: dg.agent || null });
+    const reviewWanted = !route.server && rentanReviewApplies(body);
     const reuseCachedScene = () => {
         if (!dgExpandersFrom(body.text_replacements).length && cp.dg_expanders && cp.dg_expanders.length) {
             body.text_replacements = (Array.isArray(body.text_replacements) ? body.text_replacements : [])
@@ -882,18 +902,17 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
     try {
         result = await runDynagenTurn(gr, {
             workspaceId: body.workspace || null,
+            // Studio engine / model choice (Rentan menu); null follows the saved default.
+            agent: route.agent,
             reason,
             review,
             context: rentanContextForWren(context),
             controls: rentanControls(dg),
             directive: dg.directive || '',
-            prompt: body.prompt || preset?.prompt || '',
-            uc: body.uc || '',
-            characters: (Array.isArray(body.allCharacterPrompts) ? body.allCharacterPrompts : [])
-                .map((c, index) => ({ index, prompt: (c && c.prompt) || '' })),
-            expanders: dgExpandersFrom(body.text_replacements).length
+            ...rentanPromptView(body, preset, dg),
+            expanders: REDUCED_SETTINGS.includes(dg.reduced_context) ? [] : (dgExpandersFrom(body.text_replacements).length
                 ? dgExpandersFrom(body.text_replacements)
-                : ((cp && cp.dg_expanders) || []),
+                : ((cp && cp.dg_expanders) || [])),
             onThought: (text, reasoningId) => progress({
                 phase: 'streaming',
                 reasoning: text,
@@ -902,9 +921,10 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
             })
         });
     } catch (error) {
-        // Out of Cursor usage even on Auto (modules/cursorDirector.js executeDynagenTurn): print on the last scene.
-        if (error.code === 'CURSOR_USAGE_LIMIT' && cp && Array.isArray(cp.dg_expanders) && cp.dg_expanders.length) {
-            console.warn(`Rentan ${body.workspace || ''}: Cursor usage limit, last scene reused`);
+        // Out of Cursor usage even on Auto, or the server resolve failed twice: print on the last scene.
+        const reusable = error.code === 'CURSOR_USAGE_LIMIT' || error.code === 'RENTAN_SERVER_FAILED';
+        if (reusable && cp && Array.isArray(cp.dg_expanders) && cp.dg_expanders.length) {
+            console.warn(`Rentan ${body.workspace || ''}: ${error.code === 'CURSOR_USAGE_LIMIT' ? 'Cursor usage limit' : error.message}; last scene reused`);
             reuseCachedScene();
             return;
         }
@@ -924,6 +944,7 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
         applied: result.change.applied,
         expanders: result.change.expanders,
         sessionId: result.sessionId,
+        resolvedBy: result.resolvedBy || { engine: route.agent.engine, model: route.agent.model || null },
         wrenAt: Date.now()
     });
 
@@ -965,5 +986,5 @@ module.exports = {
     emitApprovedRentanChange,
     rentanReviewStatus,
     RENTAN_MAX_ATTEMPTS,
-    _test: { originalInputFor, inputSnapshot, rentanControls, changedControls, rentanContextForWren, wrenInputHash, applyWrenChange, studioChangeFrom, staleReason, contextUnchanged, insertPrefixToken, isLegacyTendai, watchedBlocksReason }
+    _test: { originalInputFor, inputSnapshot, rentanControls, rentanPromptView, changedControls, rentanContextForWren, wrenInputHash, applyWrenChange, studioChangeFrom, staleReason, contextUnchanged, insertPrefixToken, isLegacyTendai, watchedBlocksReason }
 };

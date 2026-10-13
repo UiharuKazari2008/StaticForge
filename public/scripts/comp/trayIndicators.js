@@ -11,8 +11,25 @@ function isSystemTrayBootComplete() {
     return !window.isDesktop || window._systemTrayBootComplete === true;
 }
 
+// Account notices wait for the taskbar (#435): not at the logon, not before the staged taskbar
+// reveal, not under a lock or the black switch. desktopBoot.isTaskbarVisible:
+// public/scripts/comp/desktopBoot.js (true outside desktop mode).
+function isTaskbarShowing() {
+    const boot = window.desktopBoot;
+    if (boot && typeof boot.isTaskbarVisible === 'function') return boot.isTaskbarVisible();
+    return !isDesktopTrayBootPending();
+}
+
 function shouldDeferTrayNotifications() {
-    return isDesktopTrayBootPending();
+    return !isTaskbarShowing();
+}
+
+// One queued flush for every deferred account notice; it runs once the taskbar is back
+function deferAccountTrayNotifications() {
+    const boot = window.desktopBoot;
+    if (boot && typeof boot.whenTaskbarVisible === 'function') {
+        boot.whenTaskbarVisible('account-notices', flushDeferredAccountTrayNotifications);
+    }
 }
 
 function revealTrayIconElement(el, animate = true) {
@@ -38,6 +55,7 @@ async function checkSubscriptionExpiration(options = {}) {
 
     if (renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0) {
         if (!options.forceDisplay && shouldDeferTrayNotifications()) {
+            deferAccountTrayNotifications();
             return;
         }
         if (!showSubscriptionExpirationToast) {
@@ -64,6 +82,7 @@ async function checkFixedTrainingSteps(options = {}) {
         : `${usePerDay} Anlas per day`;
     if (fixedSteps > 500 && daysUntilRenewal <= 15 && daysUntilRenewal > 0) {
         if (!options.forceDisplay && shouldDeferTrayNotifications()) {
+            deferAccountTrayNotifications();
             return;
         }
         if (!showFixedTrainingStepsToast) {
@@ -79,6 +98,12 @@ async function checkFixedTrainingSteps(options = {}) {
 }
 
 async function flushDeferredAccountTrayNotifications() {
+    // The tray boot (systemTrayManager.js) also flushes; under a lock or before the taskbar
+    // stage that becomes the queued flush instead
+    if (shouldDeferTrayNotifications()) {
+        deferAccountTrayNotifications();
+        return;
+    }
     await checkSubscriptionExpiration({ forceDisplay: true });
     await checkFixedTrainingSteps({ forceDisplay: true });
     // usageToolManager: public/scripts/comp/usageToolManager.js
@@ -155,7 +180,7 @@ async function updateSubscriptionNotifications() {
 }
 
 /**
- * Test function to show a popover on the fixedCreditsIndicator
+ * Test function to show a receipt popover on the wallet tray icon
  * Call this from the browser console: testCreditsIndicatorPopover()
  */
 function testCreditsIndicatorPopover() {
@@ -164,9 +189,9 @@ function testCreditsIndicatorPopover() {
         return;
     }
 
-    const indicator = document.getElementById('fixedCreditsIndicator');
+    const indicator = document.getElementById('walletTrayIcon');
     if (!indicator) {
-        console.error('fixedCreditsIndicator not found');
+        console.error('walletTrayIcon not found');
         return;
     }
 
@@ -196,107 +221,15 @@ function testCreditsIndicatorPopover() {
     }, 4000);
 }
 
+// The NovelAI credits and subscription-renewal tray icons are rows and alerts of the wallet tray
+// icon now (walletTray.update: public/scripts/comp/walletTray.js, Yozora #430). Both names stay
+// for their callers (balance updates, account refresh, tray boot); options.reveal as before.
 function updateSubscriptionRenewalIndicator(options = {}) {
-    if (typeof isAccountDataDeferred === 'function' && isAccountDataDeferred()) {
-        return;
-    }
-    const indicator = document.getElementById('subscriptionRenewalIndicator');
-    if (!indicator) return;
-
-    if (!window.optionsData?.user?.subscription?.expiresAt) {
-        indicator.classList.add('hidden');
-        return;
-    }
-
-    const renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
-    const shouldWarn = renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0;
-    const reveal = options.reveal !== false && !isDesktopTrayBootPending();
-
-    if (shouldWarn) {
-        indicator.title = `Subscription renews in ${renewalData.timeRemaining} (${renewalData.renewalDateTimeStr})`;
-        indicator.classList.remove('warning', 'critical');
-        if (renewalData.hoursUntilRenewal <= 24 || renewalData.calendarDaysUntilRenewal <= 1) {
-            indicator.classList.add('critical');
-        } else if (renewalData.hoursUntilRenewal <= 72 || renewalData.calendarDaysUntilRenewal <= 3) {
-            indicator.classList.add('warning');
-        }
-        if (reveal) {
-            indicator.classList.remove('hidden');
-        } else {
-            indicator.classList.add('hidden');
-        }
-    } else {
-        indicator.classList.add('hidden');
-    }
+    if (window.walletTray) window.walletTray.update(options);
 }
 
 function updateFixedCreditsIndicator(options = {}) {
-    if (typeof isAccountDataDeferred === 'function' && isAccountDataDeferred()) {
-        const indicator = document.getElementById('fixedCreditsIndicator');
-        if (indicator) indicator.classList.add('hidden');
-        return;
-    }
-    const indicator = document.getElementById('fixedCreditsIndicator');
-    if (!indicator) return;
-
-    const reveal = options.reveal !== false && !isDesktopTrayBootPending();
-
-    // Ensure icon is always nai-anla
-    const iconElement = indicator.querySelector('i');
-    if (iconElement) {
-        iconElement.className = 'nai-anla';
-    }
-
-    if (!window.optionsData?.balance) {
-        indicator.classList.remove('low-credits', 'no-credits', 'expiring-credits');
-        indicator.title = 'Loading balance...';
-        if (reveal) {
-            indicator.classList.remove('hidden');
-        } else {
-            indicator.classList.add('hidden');
-        }
-        return;
-    }
-
-    // Get fixed credits
-    const fixedCredits = window.optionsData.balance.fixedTrainingStepsLeft || 0;
-    const totalCredits = window.optionsData.balance.totalCredits || 0;
-
-    // Get subscription expiration info
-    let renewalData = null;
-    if (window.optionsData?.user?.subscription?.expiresAt) {
-        renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
-    }
-
-    // Remove all state classes
-    indicator.classList.remove('low-credits', 'no-credits', 'expiring-credits');
-
-    // Determine state and set classes
-    if (fixedCredits === 0) {
-        // 0 credits - all requests are paid
-        indicator.classList.add('no-credits');
-        indicator.title = `No free credits remaining - all requests are paid (Total: ${totalCredits})`;
-    } else if (fixedCredits < 250) {
-        // Less than 250 credits
-        indicator.classList.add('low-credits');
-        indicator.title = `Low free credits: ${fixedCredits} remaining (Total: ${totalCredits})`;
-    } else if (fixedCredits >= 250 && renewalData !== null && renewalData.msUntilRenewal > 0 && renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000)) {
-        // More than 250 credits but subscription expiring soon
-        indicator.classList.add('expiring-credits');
-        indicator.title = `${fixedCredits} free credits remaining, subscription expires in ${renewalData.timeRemaining} (${renewalData.renewalDateTimeStr})`;
-    } else {
-        // Normal state - no special classes
-        indicator.title = `Free credits: ${fixedCredits} (Total: ${totalCredits})`;
-    }
-
-    // syncFixedCreditsIndicatorStanding: public/scripts/comp/novelAiAccountStatus.js
-    syncFixedCreditsIndicatorStanding();
-
-    if (reveal) {
-        indicator.classList.remove('hidden');
-    } else {
-        indicator.classList.add('hidden');
-    }
+    if (window.walletTray) window.walletTray.update(options);
 }
 
 function updateWorkspaceTrayIcon(options = {}) {

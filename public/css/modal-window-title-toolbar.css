@@ -449,7 +449,12 @@ body:not(.windows-classic-theme) #directorWindow {
     z-index: 1;
 }
 
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown:has([class^="btn-"].active) {
+/* Inside :has() the button variants are listed by class, never [class^="btn-"]: a class
+   attribute selector in a :has() argument makes Chrome recompute the whole document's
+   style on every class change anywhere (measured 65 ms per toggle on the desktop,
+   0.1 ms with the list; Yozora #406 perf notes, 2026-10-12). Outside :has() the
+   attribute form is fine. */
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown:has(:is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning).active) {
     z-index: 2;
 }
 
@@ -884,14 +889,14 @@ body:not(.windows-classic-theme) #directorWindow {
     box-shadow: inset var(--glass-shadow-2);
 }
 
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has([class^="btn-"]:disabled:hover):not(:has(.toolbar-input-segment:hover:not(:disabled))):not(:has(input.toolbar-input-segment:focus)),
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):disabled:hover):not(:has(.toolbar-input-segment:hover:not(:disabled))):not(:has(input.toolbar-input-segment:focus)),
 .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment):has(> .toolbar-input-segment:disabled:hover):not(:has(> .toolbar-input-segment:hover:not(:disabled))) {
     border-color: var(--glass-border-3);
     background: var(--glass-layer-dark-4);
     box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has([class^="btn-"]:disabled:hover):not(:has(.toolbar-input-segment:hover:not(:disabled))):not(:has(input.toolbar-input-segment:focus)),
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):disabled:hover):not(:has(.toolbar-input-segment:hover:not(:disabled))):not(:has(input.toolbar-input-segment:focus)),
 .modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment):has(> .toolbar-input-segment:disabled:hover):not(:has(> .toolbar-input-segment:hover:not(:disabled))) {
     border-color: var(--glass-border-2);
     background: var(--glass-layer-dark-2);
@@ -1398,7 +1403,9 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(:has(> .modal-window-
     top: calc(var(--modal-title-chrome-height, 27px) - 2px);
     left: calc(var(--window-frame-inset) - 2px);
     right: calc(var(--window-frame-inset) - 2px);
-    bottom: calc(var(--window-frame-inset) - 2px);
+    /* --window-frame-bottom (aero-glass.css): a band of frame glass inside the client's
+       foot, the edge closes above it (Media Player's transport) */
+    bottom: calc(var(--window-frame-inset) + var(--window-frame-bottom, 0px) - 2px);
     border: 1px solid hsl(0 0% 100% / 42%);
     box-shadow: inset 0 0 0 1px hsl(0 0% 0% / 55%);
 }

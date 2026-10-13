@@ -229,29 +229,10 @@ function buildCreditsTrayStatusMenuItems() {
     return items;
 }
 
+// Standing and upstream incidents are wallet rows / alerts (walletTray.update:
+// public/scripts/comp/walletTray.js, Yozora #430); the name stays for its callers.
 function syncFixedCreditsIndicatorStanding() {
-    const indicator = document.getElementById('fixedCreditsIndicator');
-    if (!indicator) return;
-
-    if (isAccountBanned()) {
-        const banMessage = getBanMessage();
-        indicator.title = banMessage
-            ? `Account banned — ${banMessage}`
-            : 'Account banned';
-        return;
-    }
-
-    const incident = getActiveUpstreamIncident();
-    if (incident) {
-        const baseTitle = indicator.dataset.baseCreditsTitle || indicator.title || 'Credits';
-        if (!indicator.dataset.baseCreditsTitle) {
-            indicator.dataset.baseCreditsTitle = baseTitle;
-        }
-        indicator.title = `${incident.component}: ${incident.status} — ${indicator.dataset.baseCreditsTitle}`;
-    } else if (indicator.dataset.baseCreditsTitle) {
-        indicator.title = indicator.dataset.baseCreditsTitle;
-        delete indicator.dataset.baseCreditsTitle;
-    }
+    if (window.walletTray) window.walletTray.update();
 }
 
 async function showBanMessageDialog() {
@@ -278,7 +259,7 @@ function assertClientImageGenerationAllowed() {
     if (isUpstreamImageGenerationBlocked()) {
         const incident = getActiveUpstreamIncident({ respectInhibit: false }) || getNovelAiStatusPayload()?.activeIncident;
         const label = incident?.status || 'Unavailable';
-        const message = `NovelAI Image Generation is currently unavailable (${label}). Check the credits tray menu or https://status.novelai.net/.`;
+        const message = `NovelAI Image Generation is currently unavailable (${label}). Check the wallet tray menu or https://status.novelai.net/.`;
         showGlassToast('error', 'Generation Blocked', message, false, 8000, '<i class="fas fa-triangle-exclamation"></i>');
         throw new Error(message);
     }

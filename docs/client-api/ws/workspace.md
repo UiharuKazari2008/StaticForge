@@ -463,7 +463,7 @@ Additional response/push types from handler:
 
 **Handler:** modules/ws/handlers/90-workspaceHandler.js → `handleWorkspacePreviewSamples`
 
-Newest gallery previews per workspace for the planet switcher bubbles (`public/scripts/comp/planetSwitcher.js`). One `LIMIT` query per workspace via `listWorkspaceGalleryItemsPaginated`; never builds a full gallery index and does not change the session's active workspace (unlike `request_gallery` with `workspaceId`).
+Newest gallery previews plus favourites (pinned view) per workspace for the planet switcher bubbles (`public/scripts/comp/planetSwitcher.js`). One `LIMIT` query per list via `listWorkspaceGalleryItemsPaginated`; never builds a full gallery index and does not change the session's active workspace (unlike `request_gallery` with `workspaceId`).
 
 **Request fields:**
 
@@ -471,9 +471,10 @@ Newest gallery previews per workspace for the planet switcher bubbles (`public/s
 |-------|-------|
 | `requestId` | Optional |
 | `ids` | Optional — workspace ids; defaults to every workspace |
-| `limit` | Optional — samples per workspace, 1-12 (default 6) |
+| `limit` | Optional — samples per list, 1-12 (default 6) |
+| `tile` | Optional — sprite tile edge in px, 128-256 (default 192) |
 
-**Success response:** `workspace_preview_samples_response` — `data.limit`, `data.samples` = `{ [workspaceId]: [{ base, preview, blurhash, width, height }] }` (`preview` is `<base>.webp` under `/previews/`; workspaces with no images map to `[]`).
+**Success response:** `workspace_preview_samples_response` — `data.limit`, `data.samples` = `{ [workspaceId]: { recent: [row], favorites: [row], slides: [row], sheet, imageCount } }` with row = `{ base, preview, blurhash, width, height }` (`preview` is `<base>.webp` under `/previews/`; empty lists for workspaces without images; `imageCount` is the images-view total). `recent` is spread over the newest 4x`limit` rows with one row per generation seed; `slides` is the favourites/recent interleave the sprite sheet was baked from; `sheet` is `{ url, tile, count, width, height }` for the tinted strip served lazily by `GET /planet-sheets/<key>.webp` (built by `modules/planetSheets.js` with sharp, cached under `.cache/planet-sheets/`), or `null` when the workspace has no pictures.
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors).
 

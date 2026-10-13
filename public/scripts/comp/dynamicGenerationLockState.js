@@ -174,6 +174,10 @@ function readDynamicGenerationSnapshot() {
     }
     // novelIsEnabled / novelGetSessionSettings: public/scripts/comp/novelManager.js
     if (novelGetBtn()) snapshot.novel = { enabled: !!novelIsEnabled(), ...novelGetSessionSettings() };
+    // getRentanAgentOverride: public/scripts/comp/dynamicGenerationManager.js (null follows the saved default)
+    if (typeof getRentanAgentOverride === 'function') snapshot.agent = getRentanAgentOverride();
+    // Reduced Prompt Context: 'indoor' | 'outdoor' | null (dynamicGenerationManager.js)
+    if (typeof getRentanReducedContext === 'function') snapshot.reduced_context = getRentanReducedContext();
     if (compiled && compiled.context) snapshot.hasCompiledContext = true;
     if (compiled && compiled.previousResponseId) snapshot.hasPreviousResponse = true;
     snapshot.baked = isDynamicGenerationBaked(compiled, locks.cacheLocked);
@@ -290,6 +294,15 @@ function applyStudioDynamicGenerationConfig(config) {
     if (config.novel !== undefined) {
         // applyStudioNovelConfig: public/scripts/comp/novelManager.js
         changed = applyStudioNovelConfig(config.novel) || changed;
+    }
+    // Rentan engine / model: {engine, model, effort, fast}, or null to follow the saved default
+    if (config.agent !== undefined && typeof setRentanAgentOverride === 'function') {
+        setRentanAgentOverride(config.agent);
+        changed = true;
+    }
+    if (config.reduced_context !== undefined && typeof setRentanReducedContext === 'function') {
+        setRentanReducedContext(config.reduced_context);
+        changed = true;
     }
     if (config.integrated === true || config.integrated === 'true') {
         markDynamicGenerationAgentIntegrated();

@@ -390,6 +390,8 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         }
 
         confirmationDialogActive = true;
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('dialog');
     });
 }
 
@@ -765,5 +767,7 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         }
 
         confirmationDialogActive = true;
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('dialog');
     });
 }

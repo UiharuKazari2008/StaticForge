@@ -45,14 +45,8 @@ function setAccountDataUiVisibility(visible) {
     document.querySelectorAll('.balanceDisplay').forEach((el) => {
         el.classList.toggle('hidden', !show);
     });
-    const renewal = document.getElementById('subscriptionRenewalIndicator');
-    const fixed = document.getElementById('fixedCreditsIndicator');
-    if (renewal) {
-        if (!show) renewal.classList.add('hidden');
-    }
-    if (fixed) {
-        if (!show) fixed.classList.add('hidden');
-    }
+    // The wallet tray icon stays: its NovelAI row says the account data is unavailable (walletTray.js)
+    if (window.walletTray) window.walletTray.update();
 }
 
 function applyAccountDataDeferredPresentation() {

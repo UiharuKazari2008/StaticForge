@@ -206,6 +206,8 @@
             el('.dotnet-details').classList.add('hidden');
             el('.dotnet-details-btn').setAttribute('aria-expanded', 'false');
             el('.dotnet-arrow').innerHTML = '&#9660;';
+            // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            desktopSounds.play('critical-stop');
             if (typeof root.openModal === 'function') root.openModal(modal);
             else modal.classList.remove('hidden');
             setTimeout(() => {

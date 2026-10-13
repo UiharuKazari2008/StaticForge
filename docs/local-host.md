@@ -152,8 +152,9 @@ unit (the runner's) with the caller's env. The check runs again right before the
 restarted **by name** (`pm2 restart Dreamscape`, no `--update-env`), which keeps Dreamscape's saved env
 as it is (PM2 5.3.1). Restarting through `ecosystem.config.js` would force `updateEnv` and merge
 sudo's reset env (PATH, DEPLOY_*, GITHUB_*) into it. `scripts/notify-service-worker-update.sh` only
-notifies the service worker and cannot restart the server. Agents do not run a restart: check that
-the Director is idle, ask Yukimi or Sala with the reason, and stop.
+notifies the service worker and cannot restart the server. Only Menma and Claude Code restart, and only
+after `node scripts/director-idle-check.js` shows Xi and Wren idle (`.cursor/rules/director-idle-before-restart.mdc`).
+Other agents check that the Director is idle, ask Yukimi or Sala with the reason, and stop.
 
 Always runs against `STATICFORGE_LIVE_ROOT` (default `/home/kanmi/staticforge`). Does **not** use Actions `checkout` into the live tree.
 

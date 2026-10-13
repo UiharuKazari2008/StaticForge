@@ -402,7 +402,7 @@ function animateImage(image, event = null) {
 // These have no NovelAI metadata (modules/imageAnimation.js saves the GIF as the gallery file
 // with a DB-only receipt: generation_type 'animated', formats, source_filename), so NAI-only
 // menu actions (Studio, Enhance, Upscale, Properties, Create Animation, Recast...) are hidden
-// for them and replaced by Open in eMotion / Open in Video Player.
+// for them and replaced by Open in eMotion / Open in Media Player.
 const ANIMATED_RESULT_EXT_RE = /\.(gif|webm|mp4)$/i;
 
 function animatedResultFilename(image) {
@@ -462,7 +462,7 @@ async function openAnimatedResultInVideoPlayer(image) {
         } catch (_err) {
             continue;
         }
-        // openDesktopVideoPlayerUrl: public/scripts/comp/desktop-apps/mediaPlayers.js
+        // openDesktopVideoPlayerUrl (= openDesktopMediaPlayerUrl): public/scripts/comp/desktop-apps/mediaPlayer.js
         openDesktopVideoPlayerUrl(url, name);
         return;
     }
@@ -480,7 +480,7 @@ function buildAnimatedResultMenuItems(getImage, actionPrefix = '') {
         },
         {
             icon: 'fas fa-play',
-            text: 'Open in Video Player',
+            text: 'Open in Media Player',
             action: actionPrefix + 'open-in-video-player',
             hidden: () => !isAnimatedResultImage(getImage())
         }
@@ -496,7 +496,7 @@ const NAI_ONLY_MENU_ACTIONS = new Set([
 ]);
 
 // Mutates a contextMenu config: hides NAI-only items (and the "Original" submenu) when
-// getImage() is an animated result, and inserts Open in eMotion / Open in Video Player
+// getImage() is an animated result, and inserts Open in eMotion / Open in Media Player
 // right after the "open in window" style entry (or at the top of the first list).
 function applyAnimatedResultMenuFilter(config, getImage, actionPrefix = '') {
     if (!config || !Array.isArray(config.sections)) return config;

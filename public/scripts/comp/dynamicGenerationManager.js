@@ -12,6 +12,291 @@ let dynamicGenerationUIWired = false;
 let dynamicGenContextMenuActionWired = false;
 let rentanSystemMenuConfig = null;
 
+// ---- Rentan engine / model (#409) ----
+// The Studio choice rides in dynamic_generation.agent ({engine, model, effort, fast},
+// kept on #dynamicCarousel data-agent-*). With none, Rentan uses the default saved
+// from this menu (modules/cursorDirector.js rentan-agent.json), else the server's
+// built-in default (TokenRouter on DeepSeek V4.1 Flash, resolved on the server, #422;
+// Cursor at medium when there is no TokenRouter key).
+// Model catalogs and the choice helpers are the Director's (director.js catalogFor,
+// normalizeRetryChoice, retryEfforts, retryFastAvailable).
+const RENTAN_AGENT_ENGINES = ['cursor', 'claude', 'tokenrouter'];
+const RENTAN_AGENT_FALLBACK = { engine: 'cursor', model: null, effort: 'medium', fast: false };
+let rentanAgentDefault = null;
+// The server's built-in default (director_rentan_agent_get fallback); RENTAN_AGENT_FALLBACK until it answers.
+let rentanAgentBuiltIn = null;
+
+function rentanAgentDirector() {
+    return window.directorInstance || null;
+}
+
+function getRentanAgentOverride() {
+    const carousel = document.getElementById('dynamicCarousel');
+    const engine = carousel && carousel.dataset.agentEngine;
+    if (!RENTAN_AGENT_ENGINES.includes(engine)) return null;
+    return {
+        engine,
+        model: carousel.dataset.agentModel || null,
+        effort: carousel.dataset.agentEffort || 'medium',
+        fast: carousel.dataset.agentFast === 'true'
+    };
+}
+
+/** agent: {engine, model, effort, fast}, or null to follow the saved default. */
+function setRentanAgentOverride(agent) {
+    const carousel = document.getElementById('dynamicCarousel');
+    if (!carousel) return;
+    if (!agent || typeof agent !== 'object' || !RENTAN_AGENT_ENGINES.includes(agent.engine)) {
+        delete carousel.dataset.agentEngine;
+        delete carousel.dataset.agentModel;
+        delete carousel.dataset.agentEffort;
+        delete carousel.dataset.agentFast;
+        return;
+    }
+    carousel.dataset.agentEngine = agent.engine;
+    if (agent.model) carousel.dataset.agentModel = String(agent.model);
+    else delete carousel.dataset.agentModel;
+    carousel.dataset.agentEffort = agent.effort ? String(agent.effort) : 'medium';
+    carousel.dataset.agentFast = agent.fast === true ? 'true' : 'false';
+}
+
+function rentanAgentBaseline() {
+    return rentanAgentDefault || rentanAgentBuiltIn || RENTAN_AGENT_FALLBACK;
+}
+
+function rentanAgentEffective() {
+    const picked = getRentanAgentOverride() || rentanAgentBaseline();
+    const director = rentanAgentDirector();
+    const choice = { ...picked, model: picked.model || (director ? director.defaultModel(picked.engine) : null) };
+    return choice;
+}
+
+// Model, effort, and fast that the engine's catalog can run (a loaded catalog only).
+function normalizeRentanAgent(choice) {
+    const director = rentanAgentDirector();
+    if (!director || !director.catalogFor(choice.engine).length) return choice;
+    return director.normalizeRetryChoice({ ...choice });
+}
+
+function rentanAgentFamily(choice) {
+    const director = rentanAgentDirector();
+    return director ? director.retryFamily(choice) : null;
+}
+
+function rentanAgentModelName(choice) {
+    if (choice.model === 'auto') return 'Auto';
+    const family = rentanAgentFamily(choice);
+    return (family && (family.short || family.name)) || choice.model || 'Default';
+}
+
+function rentanAgentEngineName(engine) {
+    const director = rentanAgentDirector();
+    if (director) return director.engineName(engine);
+    return { claude: 'Claude', tokenrouter: 'TokenRouter' }[engine] || 'Cursor';
+}
+
+function rentanAgentLabel(choice) {
+    const bits = [rentanAgentEngineName(choice.engine), rentanAgentModelName(choice)];
+    const director = rentanAgentDirector();
+    const level = director ? director.retryEfforts(choice).find((row) => row.id === choice.effort) : null;
+    if (level) bits.push(level.name);
+    if (choice.fast) bits.push('Fast');
+    return bits.join(' / ');
+}
+
+function escapeRentanAgentText(text) {
+    const span = document.createElement('span');
+    span.textContent = String(text == null ? '' : text);
+    return span.innerHTML;
+}
+
+function requestRentanAgentModels(engine) {
+    const director = rentanAgentDirector();
+    if (director) director.requestDirectorModels(engine);
+}
+
+function requestRentanAgentDefault() {
+    if (!window.wsClient || !window.wsClient.isConnected()) return;
+    window.wsClient.send({ type: 'director_rentan_agent_get', requestId: `rentan-agent-${Date.now()}` });
+}
+
+function wireRentanAgentDefaults() {
+    if (!window.wsClient || wireRentanAgentDefaults._wired) return;
+    wireRentanAgentDefaults._wired = true;
+    const take = (message) => {
+        const body = message && message.data;
+        if (!body || body.success === false) return;
+        rentanAgentDefault = body.default && RENTAN_AGENT_ENGINES.includes(body.default.engine) ? body.default : null;
+        if (body.fallback && RENTAN_AGENT_ENGINES.includes(body.fallback.engine)) rentanAgentBuiltIn = body.fallback;
+    };
+    window.wsClient.on('director_rentan_agent_get_response', take);
+    window.wsClient.on('director_rentan_agent_set_default_response', take);
+    window.wsClient.on('director_rentan_agent_default_changed', take);
+    requestRentanAgentDefault();
+}
+
+function saveRentanAgentDefault() {
+    if (!window.wsClient || !window.wsClient.isConnected()) {
+        showGlassToast('error', 'Rentan', 'Not connected, so the default was not saved.', false, 3000, '<i class="fas fa-plug-circle-xmark"></i>');
+        return;
+    }
+    const choice = normalizeRentanAgent(rentanAgentEffective());
+    window.wsClient.send({
+        type: 'director_rentan_agent_set_default',
+        requestId: `rentan-agent-${Date.now()}`,
+        agent: { engine: choice.engine, model: choice.model, effort: choice.effort, fast: choice.fast === true }
+    });
+    // Saved as the default, so this Studio follows it again.
+    rentanAgentDefault = { ...choice };
+    setRentanAgentOverride(null);
+    showGlassToast('success', 'Rentan default', rentanAgentLabel(choice), false, 2500, '<i class="fas fa-floppy-disk"></i>');
+}
+
+function setRentanAgentChoice(change) {
+    const next = normalizeRentanAgent({ ...rentanAgentEffective(), ...change });
+    setRentanAgentOverride(next);
+}
+
+// Reduced Prompt Context (#432): Rentan gets only the context, never the prompt, and writes
+// dg_ additions for an indoor or outdoor setting. #dynamicCarousel data-reduced-context.
+const RENTAN_REDUCED_SETTINGS = ['indoor', 'outdoor'];
+const RENTAN_REDUCED_LABELS = { off: 'Disabled', indoor: 'Indoor', outdoor: 'Outdoor' };
+
+function getRentanReducedContext() {
+    const carousel = document.getElementById('dynamicCarousel');
+    const value = carousel && carousel.dataset.reducedContext;
+    return RENTAN_REDUCED_SETTINGS.includes(value) ? value : null;
+}
+
+/** value: 'indoor' | 'outdoor', or anything else to turn it off. */
+function setRentanReducedContext(value) {
+    const carousel = document.getElementById('dynamicCarousel');
+    if (!carousel) return;
+    if (RENTAN_REDUCED_SETTINGS.includes(value)) carousel.dataset.reducedContext = value;
+    else delete carousel.dataset.reducedContext;
+}
+
+function rentanAgentMenuItems() {
+    const reducedItem = {
+        text: 'Reduced Prompt Context',
+        icon: 'fas fa-compress',
+        tooltip: 'Rentan sees only the time, weather, and season, never your prompt, and adds scene tags for the setting. You clean up conflicting tags.',
+        valueDisplay: () => RENTAN_REDUCED_LABELS[getRentanReducedContext() || 'off'],
+        submenu: ['off', 'indoor', 'outdoor'].map((id) => ({
+            text: RENTAN_REDUCED_LABELS[id],
+            action: 'setRentanReducedContext',
+            value: id,
+            showIndicator: true,
+            loadfn: function (item) {
+                item.checked = (getRentanReducedContext() || 'off') === id;
+            }
+        }))
+    };
+    const engineItem = {
+        text: 'Engine',
+        icon: 'fas fa-gears',
+        valueDisplay: () => escapeRentanAgentText(rentanAgentEngineName(rentanAgentEffective().engine)),
+        submenu: RENTAN_AGENT_ENGINES.map((id) => ({
+            text: rentanAgentEngineName(id),
+            action: 'setRentanAgentEngine',
+            value: id,
+            showIndicator: true,
+            loadfn: function (item) {
+                item.checked = rentanAgentEffective().engine === id;
+            }
+        }))
+    };
+    const modelItem = {
+        text: 'Model',
+        icon: 'fas fa-microchip',
+        valueDisplay: () => escapeRentanAgentText(rentanAgentModelName(rentanAgentEffective())),
+        optionsfn: () => {
+            const director = rentanAgentDirector();
+            const choice = rentanAgentEffective();
+            const models = director ? director.catalogFor(choice.engine) : [];
+            requestRentanAgentModels(choice.engine);
+            if (!models.length) return [{ text: 'Loading models...', disabled: true }];
+            const items = [];
+            let provider = '';
+            models.forEach((model) => {
+                const group = director.modelProvider(model);
+                if (group !== provider) {
+                    items.push({ separator: true, text: group });
+                    provider = group;
+                }
+                items.push({
+                    text: model.name,
+                    action: 'setRentanAgentModel',
+                    value: model.id,
+                    dots: model.cost || 0,
+                    tooltip: model.price || '',
+                    showIndicator: true,
+                    loadfn: function (item) {
+                        item.checked = rentanAgentEffective().model === model.id;
+                    }
+                });
+            });
+            return items;
+        }
+    };
+    const effortItem = {
+        text: 'Reasoning',
+        icon: 'fas fa-lightbulb',
+        hidden: () => {
+            const director = rentanAgentDirector();
+            return !director || director.retryEfforts(rentanAgentEffective()).length === 0;
+        },
+        valueDisplay: () => {
+            const director = rentanAgentDirector();
+            const choice = rentanAgentEffective();
+            const row = director ? director.retryEfforts(choice).find((level) => level.id === choice.effort) : null;
+            return escapeRentanAgentText(row ? row.name : '');
+        },
+        optionsfn: () => {
+            const director = rentanAgentDirector();
+            const choice = rentanAgentEffective();
+            return (director ? director.retryEfforts(choice) : []).map((level) => ({
+                text: level.name,
+                action: 'setRentanAgentEffort',
+                value: level.id,
+                showIndicator: true,
+                loadfn: function (item) {
+                    item.checked = rentanAgentEffective().effort === level.id;
+                }
+            }));
+        }
+    };
+    const fastItem = {
+        text: 'Fast',
+        icon: 'fas fa-bolt',
+        action: 'toggleRentanAgentFast',
+        keepMenuOpen: true,
+        tooltip: 'Only some models have a fast mode',
+        disabled: () => {
+            const director = rentanAgentDirector();
+            return !director || !director.retryFastAvailable(rentanAgentEffective());
+        },
+        loadfn: function (item) {
+            item.checked = rentanAgentEffective().fast === true;
+        }
+    };
+    const saveItem = {
+        text: 'Save as Default',
+        icon: 'fas fa-floppy-disk',
+        action: 'saveRentanAgentDefault',
+        tooltip: 'Use this engine, model, reasoning, and fast for all Rentan',
+        disabled: () => !getRentanAgentOverride(),
+        subtext: () => `Default: ${rentanAgentLabel(rentanAgentBaseline())}`
+    };
+    const useDefaultItem = {
+        text: 'Use Default',
+        icon: 'fas fa-rotate-left',
+        action: 'useRentanAgentDefault',
+        hidden: () => !getRentanAgentOverride()
+    };
+    return [reducedItem, engineItem, modelItem, effortItem, fastItem, saveItem, useDefaultItem];
+}
+
 function getRentanSystemSubmenuItems() {
     if (!rentanSystemMenuConfig || !Array.isArray(rentanSystemMenuConfig.sections)) {
         return [{ text: 'Rentan is still starting', disabled: true }];
@@ -357,6 +642,11 @@ function setupDynamicGenerationContextMenus() {
             },
             {
                 type: 'list',
+                title: 'Wren',
+                items: rentanAgentMenuItems()
+            },
+            {
+                type: 'list',
                 title: 'Enshutsuka Data',
                 items: [
                     {
@@ -691,11 +981,44 @@ function handleDynamicGenerationContextMenuAction(e) {
         'toggleWeatherForecast','setSeasonUseDate','togglePipelineAware','toggleInitialPromptAware','toggleFastMode',
         'toggleLockContext','toggleLockResults','toggleChainUpdates','toggleForceRefresh','toggleExpirePreview',
         'setCreativeDirectiveStrategy','setCreativeDirectiveToolPasses','setCreativeDirectiveDialogs',
-        'disableCreativeDirectiveDialogs','setAiTemperature','clearAiTemperature','openRentanSession','setCreativeLevel','restoreRentanInputPrompt'
+        'disableCreativeDirectiveDialogs','setAiTemperature','clearAiTemperature','openRentanSession','setCreativeLevel','restoreRentanInputPrompt',
+        'setRentanAgentEngine','setRentanAgentModel','setRentanAgentEffort','toggleRentanAgentFast','saveRentanAgentDefault','useRentanAgentDefault',
+        'setRentanReducedContext'
     ]);
     if (!dynGenActions.has(action)) return false;
 
-        if (action === 'setTodOverride') {
+        if (action === 'setRentanReducedContext') {
+            setRentanReducedContext(e.detail.item.value);
+            const label = RENTAN_REDUCED_LABELS[getRentanReducedContext() || 'off'];
+            showGlassToast('info', 'Rentan', `Reduced Prompt Context: ${label}`, false, 2000, '<i class="fas fa-compress"></i>');
+        } else if (action === 'setRentanAgentEngine') {
+            const engine = e.detail.item.value;
+            const director = rentanAgentDirector();
+            const current = rentanAgentEffective();
+            if (engine !== current.engine || !getRentanAgentOverride()) {
+                const fromDefault = rentanAgentDefault && rentanAgentDefault.engine === engine ? rentanAgentDefault : null;
+                setRentanAgentChoice(fromDefault ? { ...fromDefault } : {
+                    engine,
+                    model: director ? director.defaultModel(engine) : null,
+                    effort: 'medium',
+                    fast: false
+                });
+            }
+            requestRentanAgentModels(engine);
+        } else if (action === 'setRentanAgentModel') {
+            setRentanAgentChoice({ model: e.detail.item.value });
+        } else if (action === 'setRentanAgentEffort') {
+            setRentanAgentChoice({ effort: e.detail.item.value });
+        } else if (action === 'toggleRentanAgentFast') {
+            const director = rentanAgentDirector();
+            const current = rentanAgentEffective();
+            if (director && director.retryFastAvailable(current)) setRentanAgentChoice({ fast: !current.fast });
+        } else if (action === 'saveRentanAgentDefault') {
+            saveRentanAgentDefault();
+        } else if (action === 'useRentanAgentDefault') {
+            setRentanAgentOverride(null);
+            showGlassToast('info', 'Rentan', `Following the default: ${rentanAgentLabel(rentanAgentBaseline())}`, false, 2000, '<i class="fas fa-rotate-left"></i>');
+        } else if (action === 'setTodOverride') {
             setTodOverride(e.detail.item.value);
         } else if (action === 'setTodTimeOverride') {
             setTodTimeOverride(e.detail.item.value);
@@ -1198,6 +1521,7 @@ function wireDynamicGenerationUI() {
     setupDynamicGenerationContextMenus();
     initDynamicCarousel();
     wireDynamicGenerationContextMenuActions();
+    wireRentanAgentDefaults();
 }
 
 if (typeof wsClient !== 'undefined' && wsClient.registerInitStep) {

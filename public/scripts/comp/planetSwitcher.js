@@ -1,17 +1,20 @@
 // planetSwitcher.js
-// Planet switcher: a ring of glass "planet" bubbles (one per workspace) over a star field.
+// Planet switcher: a tilted ring of glass "planet" bubbles (one per workspace) around a plasma sun,
+// over a star field.
 //
 // Opening shrinks and fades the desktop layers (#desktopWallpaper, #desktopIcons, #desktopTaskbar)
 // and every open window with the Web Animations API. Only `scale` + `opacity` are animated, around
 // a transform-origin computed at the viewport centre, so window sizes, positions and their own
-// `transform` are never touched. Selecting a planet loads the workspace first (setActiveWorkspace +
-// the workspaceSwitchComplete / workspaceChanged events from workspaceUtils.js), then zooms into the
-// bubble, fades to black and zooms the desktop back in. Esc / Cancel reverses the opening animation.
+// `transform` are never touched. Tapping a planet centres it; tapping the centred planet travels:
+// the ring settles first (selection tween), then the workspace loads (setActiveWorkspace + the
+// workspaceSwitchComplete / workspaceChanged events from workspaceUtils.js) while the bubble pulses,
+// then the view zooms into the bubble, fades to black and zooms the desktop back in. Esc / Cancel
+// reverses the opening animation.
 //
 // Lazy feature "planet_switcher" (featureLoader.js). Entry point: openPlanetSwitcher() in modalUtils.js.
 // Monolith globals used: workspaces, activeWorkspace, setActiveWorkspace, wsClient, allImages,
 // resolveWorkspaceWallpaperUrl, closeStartMenu, showGlassToast, createWheelTickGate, guardWheelTick,
-// applyBlurhashPlaceholder, formatWorkspaceProgressStatusText, preloadWallpaperIntoMemory.
+// formatWorkspaceProgressStatusText, shouldGalleryProgressUseDeterminate, preloadWallpaperIntoMemory.
 
 const PLANET_SWITCHER_TIMING = Object.freeze({
     holderIn: 4500,      // Layer 2 fade + scale in
@@ -23,17 +26,31 @@ const PLANET_SWITCHER_TIMING = Object.freeze({
     cancel: 520,         // quick undo of the opening animation
     navigate: 480,       // ring rotation per step
     select: 950,         // chosen planet to centre, others away
+    settle: 260,         // pause after the selection tween before the real switch starts
     zoomIn: 1500,        // zoom into the bubble + fade to black
     reveal: 1500         // desktop + windows 80% -> 100%, 0% -> 100%
 });
 
-const PLANET_SWITCHER_SAMPLE_LIMIT = 5;
+const PLANET_SWITCHER_SAMPLE_LIMIT = 12;     // rows requested per list (recent + favourites) per workspace
+const PLANET_SWITCHER_PER_SOURCE = 6;        // slides kept from each list after spreading / seed de-duplication
+const PLANET_SWITCHER_SLIDES_MAX = 12;       // slides kept per planet
+const PLANET_SWITCHER_SLIDE_PERIOD = 6800;   // ms per slide (plus a per-planet stagger)
+const PLANET_SWITCHER_SLIDE_FADE = 1600;     // must match .planet-switcher-slide transition
 const PLANET_SWITCHER_LOAD_IDLE_MS = 60000;
+const PLANET_SWITCHER_SELECT_GROW = 1.9;     // focused bubble scale while loading
+const PLANET_SWITCHER_ZOOM_OVERSHOOT = 1.3;  // final zoom: bubble diameter vs viewport diagonal
+const PLANET_SWITCHER_TILT_DEG = 12;        // desktop zoom-out: bottom edge recedes faster than the top
+const PLANET_SWITCHER_REFLECT = 0.45;        // reflection height as a fraction of the bubble
+const PLANET_SWITCHER_WOBBLE = 0.03;         // idle ring rotation amplitude (rad), compositor driven
+const PLANET_SWITCHER_WOBBLE_MS = 16000;     // half period of the idle wobble
+const PLANET_SWITCHER_TILE_MAX = 72;         // baked slide tiles kept across opens (raised per open to fit every slide)
 
 /** Pure ring geometry. Also exercised by scripts/test-planet-switcher-ring.js (node). */
 const PlanetRingMath = {
     TAU: Math.PI * 2,
     MAX_STEP: Math.PI / 2.6,
+    MIN_SCALE: 0.38,
+    MIN_OPACITY: 0.35,
 
     /** Angular distance between neighbours: a full ring when there are many planets, an arc when few. */
     step(count) {
@@ -66,7 +83,19 @@ const PlanetRingMath = {
         return Math.max(0, Math.min(count - 1, index + dir));
     },
 
-    /** Screen placement of planet `index` for ring rotation `ringAngle`. depth 1 = front, -1 = back. */
+    /**
+     * Ellipse radii for `count` planets of `size` px so neighbours never bunch up. The ring widens with
+     * the count; past `maxRadiusX` the planets shrink instead (sizeScale < 1).
+     */
+    radii(count, size, maxRadiusX) {
+        const perimeterNeeded = Math.max(1, count) * size * 1.08;
+        const wanted = Math.max(size * 1.6, perimeterNeeded / 4.64);
+        const radiusX = Math.min(wanted, maxRadiusX);
+        const sizeScale = wanted > maxRadiusX ? Math.max(0.55, maxRadiusX / wanted) : 1;
+        return { radiusX, radiusY: radiusX * 0.32, sizeScale };
+    },
+
+    /** Screen placement of planet `index` for ring rotation `ringAngle`. depth 1 = front (low), -1 = back (high). */
     place(index, count, ringAngle, radiusX, radiusY) {
         const angle = ringAngle + index * this.step(count);
         const depth = Math.cos(angle);
@@ -75,15 +104,280 @@ const PlanetRingMath = {
             angle,
             depth,
             x: Math.sin(angle) * radiusX,
-            y: -(1 - t) * radiusY,
-            scale: 0.42 + 0.58 * t,
-            opacity: 0.22 + 0.78 * t,
+            y: depth * radiusY,
+            scale: this.MIN_SCALE + (1 - this.MIN_SCALE) * t,
+            opacity: this.MIN_OPACITY + (1 - this.MIN_OPACITY) * t,
             z: Math.round(100 + depth * 100)
         };
     },
 
     easeInOut(t) {
         return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    },
+
+    /** Fisher-Yates on a copy. `random` is injectable for tests. */
+    shuffle(list, random = Math.random) {
+        const out = list.slice();
+        for (let i = out.length - 1; i > 0; i--) {
+            const j = Math.floor(random() * (i + 1));
+            const tmp = out[i];
+            out[i] = out[j];
+            out[j] = tmp;
+        }
+        return out;
+    },
+
+    /** Same generation batch shares the trailing seed; treat those as one picture. */
+    slideKey(item) {
+        const url = item && item.url ? String(item.url) : '';
+        const m = url.match(/_(\d{6,})(?:%40[^/]*|@[^/]*)?\.webp$/i);
+        return m ? `seed:${m[1]}` : url;
+    },
+
+    /** Every k-th item of a newest-first list so "recent" spans a stretch of time instead of one batch. */
+    spread(list, n) {
+        if (!Array.isArray(list) || list.length <= n) return (list || []).slice();
+        const out = [];
+        const stride = list.length / n;
+        for (let i = 0; i < n; i++) out.push(list[Math.min(list.length - 1, Math.floor(i * stride))]);
+        return out;
+    },
+
+    /** Alternate favourites and recent (both shuffled), unique by picture, so no two neighbours share a source/time. */
+    mixSlides(recent, favorites, max, random = Math.random) {
+        const a = this.shuffle(favorites, random);
+        const b = this.shuffle(recent, random);
+        const seen = new Set();
+        const out = [];
+        let i = 0;
+        let j = 0;
+        let takeFavorite = a.length > 0;
+        while (out.length < max && (i < a.length || j < b.length)) {
+            const source = takeFavorite ? a : b;
+            const idx = takeFavorite ? i : j;
+            if (idx < source.length) {
+                const item = source[idx];
+                if (takeFavorite) i++; else j++;
+                const key = item && item.url ? this.slideKey(item) : null;
+                if (key && !seen.has(key) && !seen.has(item.url)) {
+                    seen.add(key);
+                    seen.add(item.url);
+                    out.push(item);
+                }
+            }
+            if (i < a.length && j < b.length) takeFavorite = !takeFavorite;
+            else takeFavorite = i < a.length;
+        }
+        return out;
+    }
+};
+
+/**
+ * Source cache: each slide source is fetched (service worker cache first), decoded and centre-cropped
+ * to the tile size with createImageBitmap, which runs off the main thread. The result is consumed
+ * by the tile baker and closed; older engines fall back to an Image element.
+ */
+const planetSwitcherImageCache = {
+    entries: new Map(),
+    queue: [],
+    active: 0,
+    concurrency: 6, // service-worker fetches dominate; decode runs off-thread
+    maxEntries: 240,
+
+    key(url, size) {
+        return `${url}|${size}`;
+    },
+
+    ready(url, size) {
+        const entry = this.entries.get(this.key(url, size));
+        return Boolean(entry && entry.ok && entry.source);
+    },
+
+    load(url, size) {
+        if (!url) return Promise.resolve(false);
+        const key = this.key(url, size);
+        const existing = this.entries.get(key);
+        if (existing) return existing.promise;
+        const entry = { ok: false, source: null, promise: null, failed: false };
+        entry.promise = new Promise((resolve) => {
+            this.queue.push({ url, size, entry, resolve });
+        });
+        this.entries.set(key, entry);
+        this.trim();
+        this.pump();
+        return entry.promise;
+    },
+
+    take(url, size) {
+        const key = this.key(url, size);
+        const entry = this.entries.get(key);
+        if (!entry || !entry.ok || !entry.source) return null;
+        const source = entry.source;
+        this.entries.delete(key);
+        return source;
+    },
+
+    release(source) {
+        if (source && typeof source.close === 'function') {
+            try { source.close(); } catch (error) { /* already closed */ }
+        }
+    },
+
+    trim() {
+        while (this.entries.size > this.maxEntries) {
+            const oldest = this.entries.keys().next().value;
+            const entry = this.entries.get(oldest);
+            if (entry && !entry.ok && !entry.failed) break; // still queued; keep order intact
+            if (entry) this.release(entry.source);
+            this.entries.delete(oldest);
+        }
+    },
+
+    pump() {
+        while (this.active < this.concurrency && this.queue.length) {
+            const job = this.queue.shift();
+            this.active++;
+            this.produce(job.url, job.size).then((source) => {
+                job.entry.ok = Boolean(source);
+                job.entry.failed = !source;
+                job.entry.source = source || null;
+                this.active--;
+                job.resolve(Boolean(source));
+                this.pump();
+            });
+        }
+    },
+
+    async produce(url, size) {
+        if (typeof createImageBitmap === 'function' && typeof fetch === 'function') {
+            try {
+                const res = await fetch(url, { credentials: 'same-origin' });
+                if (!res.ok) return null;
+                const blob = await res.blob();
+                const full = await createImageBitmap(blob);
+                const side = Math.max(1, Math.min(full.width, full.height));
+                const cropped = await createImageBitmap(
+                    full,
+                    Math.floor((full.width - side) / 2),
+                    Math.floor((full.height - side) / 2),
+                    side,
+                    side,
+                    { resizeWidth: size, resizeHeight: size, resizeQuality: 'medium' }
+                );
+                full.close();
+                return cropped;
+            } catch (error) {
+                return null;
+            }
+        }
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.decoding = 'async';
+            img.onload = () => {
+                const decode = typeof img.decode === 'function' ? img.decode() : Promise.resolve();
+                decode.then(() => resolve(img), () => resolve(img.naturalWidth > 0 ? img : null));
+            };
+            img.onerror = () => resolve(null);
+            img.src = url;
+        });
+    }
+};
+
+/**
+ * Baked slide tiles: the photo is drawn once into a small canvas, desaturated, tinted with the workspace
+ * colour, vignetted and glossed. Slides are then plain canvas layers with nothing to filter or blend
+ * per frame. Keyed by url + colour + size, small LRU so re-opens show instantly.
+ */
+const planetSwitcherTileCache = {
+    entries: new Map(),
+    max: PLANET_SWITCHER_TILE_MAX,
+
+    key(url, color, size) {
+        return `${url}|${color}|${size}`;
+    },
+
+    get(key) {
+        const tile = this.entries.get(key);
+        if (!tile) return null;
+        this.entries.delete(key);
+        this.entries.set(key, tile);
+        return tile;
+    },
+
+    set(key, tile) {
+        this.entries.set(key, tile);
+        while (this.entries.size > this.max) {
+            this.entries.delete(this.entries.keys().next().value);
+        }
+    },
+
+    /** Canvas-normalised rgba string for any CSS colour (fillStyle round-trip), with the given alpha. */
+    rgba(ctx, color, alpha) {
+        ctx.fillStyle = color;
+        const normalized = String(ctx.fillStyle);
+        let r = 99;
+        let g = 102;
+        let b = 241;
+        const hex = normalized.match(/^#([0-9a-f]{6})$/i);
+        const fn = normalized.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (hex) {
+            r = parseInt(hex[1].slice(0, 2), 16);
+            g = parseInt(hex[1].slice(2, 4), 16);
+            b = parseInt(hex[1].slice(4, 6), 16);
+        } else if (fn) {
+            r = Number(fn[1]);
+            g = Number(fn[2]);
+            b = Number(fn[3]);
+        }
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    },
+
+    bake(source, color, size) {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return canvas;
+        const iw = source.naturalWidth || source.width || size;
+        const ih = source.naturalHeight || source.height || size;
+        const scale = Math.max(size / iw, size / ih);
+        const dw = iw * scale;
+        const dh = ih * scale;
+        ctx.drawImage(source, (size - dw) / 2, (size - dh) / 2, dw, dh);
+        // desaturate most of the way with a grey 'saturation' blend (cheap, tile-sized)
+        ctx.globalCompositeOperation = 'saturation';
+        ctx.globalAlpha = 0.72;
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(0, 0, size, size);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+        // flat tint
+        ctx.fillStyle = this.rgba(ctx, color, 0.36);
+        ctx.fillRect(0, 0, size, size);
+        // coloured edge veil
+        const veil = ctx.createRadialGradient(size * 0.5, size * 0.45, size * 0.16, size * 0.5, size * 0.5, size * 0.56);
+        veil.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        veil.addColorStop(1, this.rgba(ctx, color, 0.6));
+        ctx.fillStyle = veil;
+        ctx.fillRect(0, 0, size, size);
+        // dark rim
+        const rim = ctx.createRadialGradient(size * 0.5, size * 0.5, size * 0.28, size * 0.5, size * 0.5, size * 0.5);
+        rim.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        rim.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+        ctx.fillStyle = rim;
+        ctx.fillRect(0, 0, size, size);
+        // glass highlight (squashed ellipse, top-left)
+        ctx.save();
+        ctx.translate(size * 0.32, size * 0.2);
+        ctx.scale(1, 0.66);
+        const gloss = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.42);
+        gloss.addColorStop(0, 'rgba(255, 255, 255, 0.58)');
+        gloss.addColorStop(0.52, 'rgba(255, 255, 255, 0.1)');
+        gloss.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = gloss;
+        ctx.fillRect(-size, -size, size * 3, size * 3);
+        ctx.restore();
+        return canvas;
     }
 };
 
@@ -105,13 +399,14 @@ class PlanetStarField {
     resize() {
         const w = Math.max(1, window.innerWidth);
         const h = Math.max(1, window.innerHeight);
-        this.dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+        // Half-resolution backing store: soft stars, a quarter of the fill cost
+        this.dpr = Math.min(window.devicePixelRatio || 1, 1.25) * 0.5;
         this.width = w;
         this.height = h;
         this.canvas.width = Math.round(w * this.dpr);
         this.canvas.height = Math.round(h * this.dpr);
         this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-        const wanted = Math.max(180, Math.min(640, Math.round((w * h) / 3200)));
+        const wanted = Math.max(140, Math.min(300, Math.round((w * h) / 6000)));
         while (this.stars.length < wanted) this.stars.push(this.spawn(true));
         this.stars.length = wanted;
     }
@@ -136,6 +431,13 @@ class PlanetStarField {
 
     step(dt, time) {
         this.speed += (this.targetSpeed - this.speed) * (1 - Math.exp(-dt * 1.4));
+        // Idle drift redraws at ~24fps; the warp runs every frame
+        this.carry = (this.carry || 0) + dt;
+        if (this.speed < 0.14 && this.carry < 0.04) {
+            return;
+        }
+        dt = this.carry;
+        this.carry = 0;
         const ctx = this.ctx;
         const w = this.width;
         const h = this.height;
@@ -195,12 +497,17 @@ class PlanetSwitcher {
         this.backdrop = null;
         this.holder = null;
         this.ring = null;
+        this.sun = null;
         this.fade = null;
         this.cancelBtn = null;
         this.planets = [];
         this.count = 0;
         this.index = 0;
         this.ringAngle = 0;
+        this.focusedIndex = -1;
+        this.tileSize = 256;
+        this.bakeQueue = [];
+        this.bakeTimer = 0;
         this.selectU = 0;
         this.tween = null;
         this.layerAnims = [];
@@ -213,11 +520,16 @@ class PlanetSwitcher {
         this.slideTimer = 0;
         this.loadGen = 0;
         this.radiusX = 400;
-        this.radiusY = 56;
+        this.radiusY = 128;
+        this.sizeScale = 1;
         this.pointer = null;
         this.suppressClickUntil = 0;
         this.loadKick = null;
+        this.loadStarted = false;
+        this.loadStartedAt = 0;
+        this.selectResolve = null;
         this.prevFocus = null;
+        this.reducedMotion = false;
         this.allowWheelTick = typeof createWheelTickGate === 'function' ? createWheelTickGate(140) : () => true;
         this._onKeyDown = (e) => this.handleKeyDown(e);
         this._onKeyUp = (e) => this.handleKeyUp(e);
@@ -249,6 +561,7 @@ class PlanetSwitcher {
         }
 
         this.state = 'opening';
+        this.reducedMotion = Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
         // closeStartMenu: public/scripts/comp/modalUtils.js
         if (typeof closeStartMenu === 'function') closeStartMenu({ immediate: true });
         if (typeof contextMenu !== 'undefined' && contextMenu && typeof contextMenu.hideMenu === 'function') {
@@ -257,14 +570,18 @@ class PlanetSwitcher {
         this.prevFocus = document.activeElement;
         if (this.prevFocus && typeof this.prevFocus.blur === 'function') this.prevFocus.blur();
 
-        document.body.classList.add('planet-switcher-active');
+        document.body.classList.add('planet-switcher-active', 'planet-switcher-flat');
+        this.count = list.length;
+        this.computeRingMetrics();
         this.buildDom(list);
-        this.layoutRing();
+        this.applyRingSize();
         const currentId = this.currentWorkspaceId();
         this.index = Math.max(0, list.findIndex((ws) => ws.id === currentId));
         this.ringAngle = PlanetRingMath.angleFor(this.index, this.count);
         this.selectU = 0;
+        this.focusedIndex = -1;
         this.applyRing();
+        this.startWobble();
 
         this.captureLayers();
         this.animateLayersOut();
@@ -278,6 +595,8 @@ class PlanetSwitcher {
         this.root.focus({ preventScroll: true });
         this.state = 'browsing';
         this.loadSamples(list);
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('planet-enter');
     }
 
     collectWorkspaces() {
@@ -321,12 +640,35 @@ class PlanetSwitcher {
         root.setAttribute('role', 'dialog');
         root.setAttribute('aria-label', 'Planet switcher');
 
+        const brand = document.createElement('div');
+        brand.className = 'planet-switcher-brand';
+        const brandText = document.createElement('span');
+        brandText.className = 'logo-text';
+        brandText.textContent = 'Dreamscape';
+        const brandSub = document.createElement('span');
+        brandSub.className = 'planet-switcher-brand-sub';
+        brandSub.textContent = 'Planets';
+        brand.appendChild(brandText);
+        brand.appendChild(brandSub);
+        root.appendChild(brand);
+
         const holder = document.createElement('div');
         holder.className = 'planet-switcher-holder';
         const ring = document.createElement('div');
         ring.className = 'planet-switcher-ring';
         holder.appendChild(ring);
         root.appendChild(holder);
+
+        const sun = document.createElement('div');
+        sun.className = 'planet-switcher-sun';
+        sun.setAttribute('aria-hidden', 'true');
+        ['planet-switcher-sun-corona', 'planet-switcher-sun-plasma p1', 'planet-switcher-sun-plasma p2', 'planet-switcher-sun-plasma p3', 'planet-switcher-sun-core']
+            .forEach((cls) => {
+                const layer = document.createElement('div');
+                layer.className = cls;
+                sun.appendChild(layer);
+            });
+        ring.appendChild(sun);
 
         this.planets = list.map((ws, i) => this.buildPlanet(ws, i, ring));
         this.count = this.planets.length;
@@ -343,7 +685,7 @@ class PlanetSwitcher {
 
         const hint = document.createElement('div');
         hint.className = 'planet-switcher-hint';
-        hint.textContent = 'Arrow keys, wheel or drag to browse - Enter or click to travel - Esc to cancel';
+        hint.textContent = 'Arrow keys, wheel or drag to browse - tap a planet to centre it, tap again or Enter to travel - Esc to cancel';
         root.appendChild(hint);
 
         const fade = document.createElement('div');
@@ -361,6 +703,7 @@ class PlanetSwitcher {
         this.root = root;
         this.holder = holder;
         this.ring = ring;
+        this.sun = sun;
         this.cancelBtn = cancelBtn;
         this.hint = hint;
         this.fade = fade;
@@ -372,37 +715,72 @@ class PlanetSwitcher {
         el.dataset.workspaceId = ws.id;
         el.setAttribute('role', 'button');
         el.tabIndex = -1;
-        el.title = ws.name || ws.id;
         const color = typeof ws.color === 'string' && ws.color ? ws.color : '#6366f1';
         el.style.setProperty('--planet-color', color);
         if (ws.id === this.currentWorkspaceId()) el.classList.add('is-current');
 
+        const orbit = document.createElement('div');
+        orbit.className = 'planet-switcher-orbit';
+        const wrap = document.createElement('div');
+        wrap.className = 'planet-switcher-bubble-wrap';
         const bubble = document.createElement('div');
         bubble.className = 'planet-switcher-bubble';
         bubble.style.setProperty('--planet-color', color);
         const slides = document.createElement('div');
         slides.className = 'planet-switcher-slides';
         bubble.appendChild(slides);
-        ['planet-switcher-tint', 'planet-switcher-veil', 'planet-switcher-gloss'].forEach((cls) => {
-            const layer = document.createElement('div');
-            layer.className = cls;
-            bubble.appendChild(layer);
-        });
-        el.appendChild(bubble);
+        // Both slots exist from the start (bottom, top) so no layers are added while pictures arrive
+        const slots = [this.createSlideSlot(slides), this.createSlideSlot(slides)];
+        wrap.appendChild(bubble);
+        // Flip 3D style reflection: the bubble's lower cap mirrored, masked by CSS, redrawn only on swaps
+        const reflect = document.createElement('canvas');
+        reflect.className = 'planet-switcher-reflect';
+        reflect.width = this.tileSize;
+        reflect.height = Math.round(this.tileSize * PLANET_SWITCHER_REFLECT);
+        reflect.setAttribute('aria-hidden', 'true');
+        wrap.appendChild(reflect);
+
+        // Text never sits on a scaled layer: the bubble wrap scales with depth, the popover and the
+        // labels only translate to follow it, so they stay crisp at every ring position.
+        const tip = document.createElement('div');
+        tip.className = 'planet-switcher-tip';
+        tip.textContent = ws.name || ws.id;
+        orbit.appendChild(tip);
+        orbit.appendChild(wrap);
+
+        const labels = document.createElement('div');
+        labels.className = 'planet-switcher-labels';
+        orbit.appendChild(labels);
 
         const name = document.createElement('div');
         name.className = 'planet-switcher-name';
         name.textContent = ws.name || ws.id;
-        el.appendChild(name);
+        labels.appendChild(name);
+
+        const count = document.createElement('div');
+        count.className = 'planet-switcher-count';
+        count.textContent = this.formatCount(ws.fileCount);
+        labels.appendChild(count);
 
         const status = document.createElement('div');
         status.className = 'planet-switcher-status';
-        el.appendChild(status);
+        labels.appendChild(status);
+
+        const progress = document.createElement('div');
+        progress.className = 'planet-switcher-progress marquee';
+        progress.setAttribute('role', 'progressbar');
+        progress.setAttribute('aria-valuemin', '0');
+        progress.setAttribute('aria-valuemax', '100');
+        const fill = document.createElement('div');
+        fill.className = 'planet-switcher-progress-fill';
+        progress.appendChild(fill);
+        labels.appendChild(progress);
+        el.appendChild(orbit);
 
         el.addEventListener('click', (e) => {
             e.stopPropagation();
             if (performance.now() < this.suppressClickUntil) return;
-            this.select(index);
+            this.tap(index);
         });
 
         ring.appendChild(el);
@@ -410,18 +788,39 @@ class PlanetSwitcher {
             id: ws.id,
             ws,
             el,
+            orbit,
+            wrap,
+            reflect,
+            tip,
+            labels,
             bubble,
             slides,
             name,
+            count,
             status,
+            progress,
+            progressFill: fill,
+            color,
+            sheet: null,
+            sheetImg: null,
             images: [],
-            imgs: [],
-            front: 0,
-            back: 1,
+            tiles: [],
+            slots,
+            wobbleAnim: null,
+            topShown: false,
             slideIndex: 0,
-            period: 3400 + index * 370,
+            shown: false,
+            swapping: false,
+            period: PLANET_SWITCHER_SLIDE_PERIOD + index * 450,
             nextAt: 0
         };
+    }
+
+    formatCount(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < 0) return '';
+        if (n === 1) return '1 image';
+        return `${n.toLocaleString()} images`;
     }
 
     // ---------- layers (desktop + windows) ----------
@@ -437,11 +836,13 @@ class PlanetSwitcher {
     }
 
     collectWindowElements() {
-        return Array.from(document.querySelectorAll('.modal, #galleryWindow')).filter((el) => {
-            if (el === this.root || el.classList.contains('hidden') || el.classList.contains('hidden-alt')) return false;
-            if (el.classList.contains('closing') || el.classList.contains('minimised')) return false;
-            return getComputedStyle(el).display !== 'none';
+        const candidates = [];
+        document.querySelectorAll('.modal, #galleryWindow').forEach((el) => {
+            if (el === this.root || el.classList.contains('hidden') || el.classList.contains('hidden-alt')) return;
+            if (el.classList.contains('closing') || el.classList.contains('minimised')) return;
+            candidates.push(el);
         });
+        return candidates.filter((el) => getComputedStyle(el).display !== 'none');
     }
 
     prepareLayerEl(el, cx, cy) {
@@ -496,6 +897,11 @@ class PlanetSwitcher {
         });
         this.desktopLayer.forEach(({ el, opacity }) => {
             this.layerAnims.push(el.animate([{ scale: '1' }, { scale: '0.5' }], { duration: T.desktopScale, easing: ease, fill: 'forwards' }));
+            // Flip-3D style tilt: the bottom edge recedes faster than the top
+            this.layerAnims.push(el.animate(
+                [{ transform: 'perspective(1400px) rotateX(0deg)' }, { transform: `perspective(1400px) rotateX(${-PLANET_SWITCHER_TILT_DEG}deg)` }],
+                { duration: T.desktopScale, easing: ease, fill: 'forwards' }
+            ));
             this.layerAnims.push(el.animate([{ opacity }, { opacity: 0 }], { duration: T.desktopFade, easing: 'ease-out', fill: 'forwards' }));
         });
     }
@@ -515,16 +921,79 @@ class PlanetSwitcher {
 
     // ---------- ring ----------
 
+    /** Mirrors the stylesheet's --planet-size clamp(110px, 16vmin, 200px) without a forced style read. */
+    planetSizePx() {
+        const vmin = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+        return Math.max(110, Math.min(200, vmin * 0.16)) || 180;
+    }
+
+    computeRingMetrics() {
+        const base = this.planetSizePx();
+        const maxRadiusX = Math.max(160, window.innerWidth * 0.46 - base * 0.5);
+        const { radiusX, radiusY, sizeScale } = PlanetRingMath.radii(this.count, base, maxRadiusX);
+        this.radiusX = radiusX;
+        this.radiusY = Math.min(radiusY, window.innerHeight * 0.2);
+        this.sizeScale = sizeScale;
+        this.planetSize = base * sizeScale;
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+        this.tileSize = Math.round(Math.max(192, Math.min(320, base * sizeScale * dpr)));
+    }
+
+    applyRingSize() {
+        if (this.ring) {
+            // Planets shrink (via the CSS size var) once the ring cannot widen any further
+            this.ring.style.setProperty('--planet-size', `${this.planetSize.toFixed(1)}px`);
+        }
+    }
+
     layoutRing() {
-        this.radiusX = Math.min(window.innerWidth * 0.36, 560);
-        this.radiusY = Math.min(window.innerHeight * 0.07, 64);
+        this.computeRingMetrics();
+        this.applyRingSize();
+    }
+
+    // ---------- idle wobble (compositor) ----------
+
+    /**
+     * Slight ring rotation while browsing, as one transform animation per planet on its orbit wrapper:
+     * tangent direction from the planet's angle, so nothing is written from JavaScript per frame.
+     */
+    startWobble(phaseMs = null) {
+        if (this.reducedMotion || !this.count) return;
+        const base = this.ringAngle;
+        this.planets.forEach((p, i) => {
+            const angle = base + i * PlanetRingMath.step(this.count);
+            const dx = PLANET_SWITCHER_WOBBLE * Math.cos(angle) * this.radiusX;
+            const dy = -PLANET_SWITCHER_WOBBLE * Math.sin(angle) * this.radiusY;
+            if (p.wobbleAnim) p.wobbleAnim.cancel();
+            p.wobbleAnim = p.orbit.animate(
+                [{ transform: `translate3d(${(-dx).toFixed(2)}px, ${(-dy).toFixed(2)}px, 0)` }, { transform: `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0)` }],
+                { duration: PLANET_SWITCHER_WOBBLE_MS, direction: 'alternate', iterations: Infinity, easing: 'ease-in-out' }
+            );
+            if (phaseMs != null) {
+                try { p.wobbleAnim.currentTime = phaseMs; } catch (error) { /* older engines */ }
+            }
+        });
+    }
+
+    /** Ease the wobble out (selection) or stop it outright (teardown). */
+    stopWobble(easeMs = 0) {
+        this.planets.forEach((p) => {
+            if (!p.wobbleAnim) return;
+            const current = getComputedStyle(p.orbit).transform;
+            p.wobbleAnim.cancel();
+            p.wobbleAnim = null;
+            if (easeMs > 0 && current && current !== 'none') {
+                p.orbit.animate([{ transform: current }, { transform: 'none' }], { duration: easeMs, easing: 'ease-out', fill: 'forwards' });
+            }
+        });
     }
 
     applyRing() {
         const u = this.selectU;
+        const angle = this.ringAngle;
         for (let i = 0; i < this.count; i++) {
             const p = this.planets[i];
-            const pos = PlanetRingMath.place(i, this.count, this.ringAngle, this.radiusX, this.radiusY);
+            const pos = PlanetRingMath.place(i, this.count, angle, this.radiusX, this.radiusY);
             let x = pos.x;
             let y = pos.y;
             let s = pos.scale;
@@ -534,7 +1003,7 @@ class PlanetSwitcher {
                 if (i === this.index) {
                     x *= 1 - u;
                     y *= 1 - u;
-                    s *= 1 + 0.55 * u;
+                    s *= 1 + (PLANET_SWITCHER_SELECT_GROW - 1) * u;
                     o = 1;
                     z = 400;
                 } else {
@@ -544,10 +1013,27 @@ class PlanetSwitcher {
                     o *= 1 - u;
                 }
             }
-            p.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${s.toFixed(3)})`;
-            p.el.style.opacity = o.toFixed(3);
-            p.el.style.zIndex = String(z);
-            p.el.classList.toggle('is-focused', i === this.index);
+            const transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+            const opacity = o.toFixed(3);
+            const zIndex = String(z);
+            const depth = s.toFixed(3);
+            if (p.lastTransform !== transform) { p.el.style.transform = transform; p.lastTransform = transform; }
+            if (p.lastDepth !== depth) {
+                const belowPivot = this.planetSize * (0.5 + PLANET_SWITCHER_REFLECT) + 4;
+                const labelShift = (s - 1) * belowPivot;
+                const tipShift = ((1 - s) * this.planetSize) / 2;
+                p.wrap.style.transform = `scale(${depth})`;
+                p.labels.style.transform = `translate3d(0, ${labelShift.toFixed(1)}px, 0)`;
+                p.tip.style.transform = `translate(-50%, ${tipShift.toFixed(1)}px)`;
+                p.lastDepth = depth;
+            }
+            if (p.lastOpacity !== opacity) { p.el.style.opacity = opacity; p.lastOpacity = opacity; }
+            if (p.lastZ !== zIndex) { p.el.style.zIndex = zIndex; p.lastZ = zIndex; }
+        }
+        if (this.focusedIndex !== this.index) {
+            if (this.planets[this.focusedIndex]) this.planets[this.focusedIndex].el.classList.remove('is-focused');
+            if (this.planets[this.index]) this.planets[this.index].el.classList.add('is-focused');
+            this.focusedIndex = this.index;
         }
     }
 
@@ -563,6 +1049,7 @@ class PlanetSwitcher {
         this.index = index;
         const target = PlanetRingMath.angleFor(index, this.count);
         const to = this.ringAngle + PlanetRingMath.delta(this.ringAngle, target, this.count);
+        const onDone = options.onDone || null;
         this.tween = {
             from: this.ringAngle,
             to,
@@ -570,8 +1057,22 @@ class PlanetSwitcher {
             toU: options.selectU != null ? options.selectU : this.selectU,
             start: performance.now(),
             duration: options.duration || PLANET_SWITCHER_TIMING.navigate,
-            onDone: options.onDone || null
+            onDone: () => {
+                // The wobble keeps the tangents computed at open: re-aiming it would recreate 14
+                // compositor animations on every rotation, and the few px of error are invisible.
+                if (typeof onDone === 'function') onDone();
+            }
         };
+    }
+
+    /** Tap: centre the planet first; a tap on the centred planet travels. */
+    tap(index) {
+        if (this.state !== 'browsing') return;
+        if (index !== this.index) {
+            this.goTo(index);
+            return;
+        }
+        this.select(index);
     }
 
     stepTween(now) {
@@ -580,7 +1081,6 @@ class PlanetSwitcher {
         const e = PlanetRingMath.easeInOut(p);
         this.ringAngle = tw.from + (tw.to - tw.from) * e;
         this.selectU = tw.fromU + (tw.toU - tw.fromU) * e;
-        this.applyRing();
         if (p >= 1) {
             this.tween = null;
             if (typeof tw.onDone === 'function') tw.onDone();
@@ -604,7 +1104,10 @@ class PlanetSwitcher {
         const dt = Math.min(0.05, Math.max(0, (now - this.lastFrame) / 1000));
         this.lastFrame = now;
         if (this.stars && !document.hidden) this.stars.step(dt, now);
-        if (this.tween) this.stepTween(now);
+        if (this.tween) {
+            this.stepTween(now);
+            this.applyRing();
+        }
         this.raf = requestAnimationFrame(this._frame);
     }
 
@@ -629,9 +1132,12 @@ class PlanetSwitcher {
     tickSlides() {
         const now = performance.now();
         for (const p of this.planets) {
-            if (p.images.length < 2 || now < p.nextAt) continue;
-            p.nextAt = now + p.period;
-            this.advanceSlide(p);
+            if (!p.shown || p.swapping || this.slideCount(p) < 2 || now < p.nextAt) continue;
+            if (this.advanceSlide(p)) {
+                p.nextAt = now + p.period;
+            } else {
+                p.nextAt = now + 900; // nothing decoded yet; look again soon
+            }
         }
     }
 
@@ -642,7 +1148,7 @@ class PlanetSwitcher {
         try {
             if (window.wsClient && wsClient.isConnected() && typeof wsClient.getWorkspacePreviewSamples === 'function') {
                 const res = await Promise.race([
-                    wsClient.getWorkspacePreviewSamples(ids, PLANET_SWITCHER_SAMPLE_LIMIT),
+                    wsClient.getWorkspacePreviewSamples(ids, PLANET_SWITCHER_SAMPLE_LIMIT, this.tileSize),
                     new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000))
                 ]);
                 samples = (res && res.samples) || (res && res.data && res.data.samples) || {};
@@ -654,21 +1160,208 @@ class PlanetSwitcher {
         if (gen !== this.loadGen || !this.isActive()) return;
 
         const currentId = this.currentWorkspaceId();
-        this.planets.forEach((p, i) => {
-            let images = this.normalizeSamples(samples[p.id]);
-            if (!images.length && p.id === currentId && typeof allImages !== 'undefined' && Array.isArray(allImages)) {
-                images = this.normalizeSamples(allImages.slice(0, PLANET_SWITCHER_SAMPLE_LIMIT));
+        this.planets.forEach((p) => {
+            const sample = samples[p.id];
+            let recent = [];
+            let favorites = [];
+            p.sheet = null;
+            if (Array.isArray(sample)) {
+                recent = this.normalizeSamples(sample);
+            } else if (sample && typeof sample === 'object') {
+                recent = this.normalizeSamples(sample.recent);
+                favorites = this.normalizeSamples(sample.favorites);
+                if (Number.isFinite(Number(sample.imageCount)) && sample.imageCount >= 0) {
+                    p.count.textContent = this.formatCount(sample.imageCount);
+                }
+                // Server-baked sprite sheet: one strip per planet, nothing to decode or draw here
+                const sheet = sample.sheet;
+                const slides = this.normalizeSamples(sample.slides);
+                if (sheet && typeof sheet.url === 'string' && Number(sheet.count) > 0 && slides.length) {
+                    p.sheet = { url: sheet.url, tile: Number(sheet.tile) || this.tileSize, count: Math.min(Number(sheet.count), slides.length) };
+                    p.images = slides;
+                }
             }
+            if (!recent.length && !favorites.length && p.id === currentId && typeof allImages !== 'undefined' && Array.isArray(allImages)) {
+                recent = this.normalizeSamples(allImages.slice(0, PLANET_SWITCHER_SAMPLE_LIMIT * 2));
+            }
+            if (p.sheet) return;
+            let images = PlanetRingMath.mixSlides(
+                PlanetRingMath.spread(recent, PLANET_SWITCHER_PER_SOURCE),
+                favorites.slice(0, PLANET_SWITCHER_PER_SOURCE * 2),
+                PLANET_SWITCHER_SLIDES_MAX
+            );
             if (!images.length) {
                 // resolveWorkspaceWallpaperUrl: public/scripts/comp/modalUtils.js
                 const url = typeof resolveWorkspaceWallpaperUrl === 'function' ? resolveWorkspaceWallpaperUrl(p.ws.wallpaper) : null;
                 if (url) images = [{ url, blurhash: null }];
             }
-            if (!images.length) return;
             p.images = images;
-            p.nextAt = performance.now() + 1400 + i * 520;
-            this.mountFirstSlide(p);
         });
+
+        // Sheet planets: load the strip (service worker cache first) and show it; fall back to tiles on failure
+        this.planets.forEach((p, i) => {
+            if (!p.sheet) return;
+            p.nextAt = performance.now() + 1400 + i * 520;
+            this.mountSheet(p, gen);
+        });
+
+        // Warm the source cache round-robin so every planet gets its first picture early; broken files drop out.
+        // Baking into tiles happens in small idle batches after the first tile of each planet.
+        this.warmTiles(this.planets.filter((p) => !p.sheet), gen);
+    }
+
+    /** Client-side path (no sheet): decode sources off-thread round-robin, bake the first tile of each planet now. */
+    warmTiles(planets, gen) {
+        const totalSlides = this.planets.reduce((sum, p) => sum + p.images.length, 0);
+        planetSwitcherTileCache.max = Math.max(PLANET_SWITCHER_TILE_MAX, totalSlides + 8);
+        const longest = planets.reduce((max, p) => Math.max(max, p.images.length), 0);
+        const size = this.tileSize;
+        for (let k = 0; k < longest; k++) {
+            planets.forEach((p) => {
+                const image = p.images[k];
+                if (!image) return;
+                planetSwitcherImageCache.load(image.url, size).then((ok) => {
+                    if (gen !== this.loadGen) return;
+                    if (!ok) {
+                        this.dropImage(p, image.url);
+                        return;
+                    }
+                    if (k > 0) this.queueBake(p, image.url);
+                });
+            });
+        }
+        planets.forEach((p) => {
+            if (!p.images.length) return;
+            const i = this.planets.indexOf(p);
+            p.nextAt = performance.now() + 1400 + Math.max(0, i) * 520;
+            this.mountFirstSlide(p, gen);
+        });
+    }
+
+    // ---------- sprite sheet slides ----------
+
+    slideCount(p) {
+        return p.sheet ? p.sheet.count : p.images.length;
+    }
+
+    /** Mirror the lower cap of the current picture into the reflection canvas. */
+    paintReflection(p, source, sx, sy, size) {
+        const canvas = p.reflect;
+        if (!canvas || !source) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const w = canvas.width;
+        const h = canvas.height;
+        const capRows = Math.round(size * PLANET_SWITCHER_REFLECT);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        ctx.setTransform(1, 0, 0, -1, 0, h);
+        ctx.drawImage(source, sx, sy + size - capRows, size, capRows, 0, 0, w, h);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    /** Copy one frame of the decoded strip into a slot (GPU copy; the strip was decoded by the image loader). */
+    paintSheetSlot(p, slot, index) {
+        const img = p.sheetImg;
+        if (!img) return;
+        const tile = p.sheet.tile;
+        if (slot.width !== tile || slot.height !== tile) {
+            slot.width = tile;
+            slot.height = tile;
+        }
+        const ctx = slot.getContext('2d');
+        if (!ctx) return;
+        ctx.clearRect(0, 0, tile, tile);
+        ctx.drawImage(img, index * tile, 0, tile, tile, 0, 0, tile, tile);
+        slot.dataset.frame = String(index);
+        this.paintReflection(p, img, index * tile, 0, tile);
+    }
+
+    mountSheet(p, gen) {
+        const img = new Image();
+        img.decoding = 'async';
+        let settled = false;
+        const fail = () => {
+            if (settled || gen !== this.loadGen || !this.isActive()) return;
+            settled = true;
+            // Older server or missing strip: client-side tiles instead
+            p.sheet = null;
+            this.warmTiles([p], gen);
+        };
+        const ready = () => {
+            if (settled || gen !== this.loadGen || !this.isActive()) return;
+            settled = true;
+            p.sheetImg = img;
+            const framesInStrip = Math.max(1, Math.floor(img.naturalWidth / p.sheet.tile));
+            p.sheet.count = Math.max(1, Math.min(p.sheet.count, framesInStrip));
+            p.topShown = false;
+            p.slideIndex = Math.floor(Math.random() * p.sheet.count);
+            this.paintSheetSlot(p, p.slots[0], p.slideIndex);
+            this.revealFirstSlide(p);
+        };
+        img.onload = () => {
+            const decode = typeof img.decode === 'function' ? img.decode() : Promise.resolve();
+            decode.then(ready, () => (img.naturalWidth > 0 ? ready() : fail()));
+        };
+        img.onerror = fail;
+        setTimeout(fail, 12000);
+        img.src = p.sheet.url;
+    }
+
+    tileFor(p, url) {
+        return planetSwitcherTileCache.get(planetSwitcherTileCache.key(url, p.color, this.tileSize));
+    }
+
+    /** Bake one tile now from a decoded source (consumed and released). Returns the tile or null. */
+    bakeTile(p, url) {
+        const key = planetSwitcherTileCache.key(url, p.color, this.tileSize);
+        const existing = planetSwitcherTileCache.get(key);
+        if (existing) return existing;
+        const source = planetSwitcherImageCache.take(url, this.tileSize);
+        if (!source) return null;
+        const tile = planetSwitcherTileCache.bake(source, p.color, this.tileSize);
+        planetSwitcherImageCache.release(source);
+        planetSwitcherTileCache.set(key, tile);
+        return tile;
+    }
+
+    /** Make sure a tile exists or is on its way (source load, then an idle bake). */
+    ensureTile(p, url) {
+        if (this.tileFor(p, url)) return;
+        const gen = this.loadGen;
+        planetSwitcherImageCache.load(url, this.tileSize).then((ok) => {
+            if (gen !== this.loadGen || !this.isActive()) return;
+            if (ok) this.queueBake(p, url);
+            else this.dropImage(p, url);
+        });
+    }
+
+    queueBake(p, url) {
+        this.bakeQueue.push({ p, url });
+        this.pumpBakes();
+    }
+
+    /** One tile per idle slice so baking never stalls a frame. */
+    pumpBakes() {
+        if (this.bakeTimer || !this.bakeQueue.length || !this.isActive()) return;
+        const run = () => {
+            this.bakeTimer = 0;
+            let n = 0;
+            while (this.bakeQueue.length && n < 1) {
+                const job = this.bakeQueue.shift();
+                if (!this.isActive()) return;
+                if (job.p.images.some((image) => image.url === job.url)) {
+                    this.bakeTile(job.p, job.url);
+                    n++;
+                }
+            }
+            if (this.bakeQueue.length) this.pumpBakes();
+        };
+        if (typeof requestIdleCallback === 'function') {
+            this.bakeTimer = requestIdleCallback(run, { timeout: 400 });
+        } else {
+            this.bakeTimer = setTimeout(run, 24);
+        }
     }
 
     normalizeSamples(raw) {
@@ -685,87 +1378,123 @@ class PlanetSwitcher {
             const base = String(preview).replace(/\.(jpg|jpeg|png|webp)$/i, '');
             out.push({ url: `/previews/${encodeURIComponent(`${base}.webp`)}`, blurhash: item.blurhash || null });
         });
-        return out.slice(0, PLANET_SWITCHER_SAMPLE_LIMIT);
+        return out;
     }
 
-    createSlideImg(p) {
-        const img = document.createElement('img');
-        img.className = 'planet-switcher-slide';
-        img.alt = '';
-        img.draggable = false;
-        img.decoding = 'async';
-        p.slides.appendChild(img);
-        return img;
-    }
-
-    mountFirstSlide(p) {
-        const first = p.images[0];
-        // applyBlurhashPlaceholder: public/scripts/comp/blurhashUtil.js
-        if (first.blurhash && typeof applyBlurhashPlaceholder === 'function') {
-            applyBlurhashPlaceholder(p.bubble, first.blurhash, 24);
-        }
-        p.imgs = [this.createSlideImg(p), this.createSlideImg(p)];
-        p.front = 0;
-        p.back = 1;
-        p.slideIndex = 0;
-        const img = p.imgs[0];
-        img.src = first.url;
-        img.dataset.src = first.url;
-        this.decodeSlide(img).then((ok) => {
-            if (!this.isActive()) return;
-            if (ok) {
-                img.classList.add('is-visible');
-                this.prefetchSlide(p);
-            } else {
-                this.dropImage(p, 0);
-                if (p.images.length) this.mountFirstSlide(p);
-            }
-        });
-    }
-
-    decodeSlide(img) {
-        if (img.complete && img.naturalWidth > 0) return Promise.resolve(true);
-        return img.decode().then(() => true, () => false);
-    }
-
-    prefetchSlide(p) {
-        if (p.images.length < 2) return;
-        const nextIndex = (p.slideIndex + 1) % p.images.length;
-        const url = p.images[nextIndex].url;
-        const back = p.imgs[p.back];
-        if (back.dataset.src !== url) {
-            back.src = url;
-            back.dataset.src = url;
-        }
-    }
-
-    advanceSlide(p) {
-        if (p.images.length < 2 || p.imgs.length < 2) return;
-        const nextIndex = (p.slideIndex + 1) % p.images.length;
-        const url = p.images[nextIndex].url;
-        const incoming = p.imgs[p.back];
-        if (incoming.dataset.src !== url) {
-            incoming.src = url;
-            incoming.dataset.src = url;
-        }
-        this.decodeSlide(incoming).then((ok) => {
-            if (!this.isActive() || incoming.dataset.src !== url) return;
-            if (!ok) {
-                this.dropImage(p, nextIndex);
-                return;
-            }
-            incoming.classList.add('is-visible');
-            p.imgs[p.front].classList.remove('is-visible');
-            p.front = p.back;
-            p.back = 1 - p.back;
-            p.slideIndex = nextIndex;
-            this.prefetchSlide(p);
-        });
-    }
-
-    dropImage(p, index) {
-        p.images.splice(index, 1);
+    dropImage(p, url) {
+        const idx = p.images.findIndex((image) => image.url === url);
+        if (idx < 0) return;
+        p.images.splice(idx, 1);
+        if (p.slideIndex > idx) p.slideIndex -= 1;
         if (p.slideIndex >= p.images.length) p.slideIndex = 0;
+    }
+
+    createSlideSlot(container) {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'planet-switcher-slide';
+        canvas.width = this.tileSize;
+        canvas.height = this.tileSize;
+        canvas.setAttribute('aria-hidden', 'true');
+        container.appendChild(canvas);
+        return canvas;
+    }
+
+    paintSlot(slot, tile, p = null) {
+        const ctx = slot.getContext('2d');
+        if (!ctx) return;
+        if (slot.width !== tile.width || slot.height !== tile.height) {
+            slot.width = tile.width;
+            slot.height = tile.height;
+        }
+        ctx.clearRect(0, 0, slot.width, slot.height);
+        ctx.drawImage(tile, 0, 0);
+        if (p) this.paintReflection(p, tile, 0, 0, tile.width);
+    }
+
+    async mountFirstSlide(p, gen) {
+        // First picture: the first one that decodes; broken ones are dropped (by url: the list may shift meanwhile)
+        while (p.images.length) {
+            const url = p.images[0].url;
+            const ok = this.tileFor(p, url) ? true : await planetSwitcherImageCache.load(url, this.tileSize);
+            if (gen !== this.loadGen || !this.isActive()) return;
+            if (ok) break;
+            this.dropImage(p, url);
+        }
+        if (!p.images.length) return;
+        const tile = this.bakeTile(p, p.images[0].url);
+        if (!tile) return;
+        p.topShown = false;
+        p.slideIndex = 0;
+        this.paintSlot(p.slots[0], tile, p);
+        this.revealFirstSlide(p);
+    }
+
+    /**
+     * Slots stay in DOM order (bottom, top) and never change z-index; a slot's content is only ever
+     * changed while it is covered or hidden, and the fade starts one frame later on the top slot
+     * alone. Both halves are cheap on their own; doing them in the same frame forced a compositing
+     * update across the whole page.
+     */
+    fadeSlot(slot, to) {
+        if (slot.planetFade) {
+            try { slot.planetFade.cancel(); } catch (error) { /* already done */ }
+        }
+        slot.dataset.shown = to > 0 ? '1' : '0';
+        slot.planetFade = slot.animate(
+            [{ opacity: 1 - to }, { opacity: to }],
+            { duration: PLANET_SWITCHER_SLIDE_FADE, easing: 'ease', fill: 'forwards' }
+        );
+    }
+
+    revealFirstSlide(p) {
+        requestAnimationFrame(() => {
+            if (!this.isActive()) return;
+            this.fadeSlot(p.slots[0], 1);
+            if (p.reflect) p.reflect.classList.add('is-shown');
+            p.shown = true;
+        });
+    }
+
+    /**
+     * Crossfade to the next slide. Top hidden: paint the top slot, fade it in over the bottom.
+     * Top shown: paint the covered bottom slot, fade the top out to reveal it.
+     */
+    advanceSlide(p) {
+        if (this.slideCount(p) < 2 || p.slots.length < 2) return false;
+        let nextIndex = -1;
+        let tile = null;
+        if (p.sheet) {
+            nextIndex = (p.slideIndex + 1) % p.sheet.count;
+        } else {
+            for (let step = 1; step < p.images.length; step++) {
+                const candidate = (p.slideIndex + step) % p.images.length;
+                const url = p.images[candidate].url;
+                tile = this.tileFor(p, url);
+                if (!tile) this.ensureTile(p, url);
+                if (tile) {
+                    nextIndex = candidate;
+                    break;
+                }
+            }
+            if (nextIndex < 0 || !tile) return false;
+        }
+        const bottom = p.slots[0];
+        const top = p.slots[1];
+        const target = p.topShown ? bottom : top;
+        p.swapping = true;
+        if (p.sheet) this.paintSheetSlot(p, target, nextIndex);
+        else this.paintSlot(target, tile, p);
+        const showTop = !p.topShown;
+        requestAnimationFrame(() => {
+            if (!this.isActive() || !p.slots.length) return;
+            this.fadeSlot(top, showTop ? 1 : 0);
+        });
+        setTimeout(() => {
+            p.topShown = showTop;
+            p.slideIndex = nextIndex;
+            p.swapping = false;
+        }, PLANET_SWITCHER_SLIDE_FADE + 100);
+        return true;
     }
 
     // ---------- input ----------
@@ -870,10 +1599,18 @@ class PlanetSwitcher {
 
         this.state = 'selecting';
         this.index = index;
+        this.loadStarted = false;
         this.root.classList.add('is-selecting');
         planet.el.classList.add('is-selected');
         planet.status.textContent = 'Preparing...';
         if (this.stars) this.stars.warp(true);
+        this.stopWobble(700);
+        if (this.sun) {
+            this.sunAnim = this.sun.animate(
+                [{ scale: '1', opacity: 1 }, { scale: '1.5', opacity: 0 }],
+                { duration: PLANET_SWITCHER_TIMING.select, easing: 'ease-in-out', fill: 'forwards' }
+            );
+        }
 
         // Glide the ring's sway back to centre (WAAPI beats the CSS keyframe animation on transform)
         const swayTransform = getComputedStyle(this.ring).transform;
@@ -882,13 +1619,28 @@ class PlanetSwitcher {
             { duration: PLANET_SWITCHER_TIMING.select, easing: 'ease-in-out', fill: 'forwards' }
         );
 
-        const moved = new Promise((resolve) => {
+        // 1. Let the ring settle completely before any DOM-heavy work starts, so the tween stays smooth
+        await new Promise((resolve) => {
+            this.selectResolve = resolve;
             this.goTo(index, { selectU: 1, duration: PLANET_SWITCHER_TIMING.select, onDone: resolve });
         });
+        this.selectResolve = null;
+        if (this.state !== 'selecting') return;
+        await new Promise((resolve) => setTimeout(resolve, PLANET_SWITCHER_TIMING.settle));
+        if (this.state !== 'selecting') return;
+
+        // 2. Real switch: bubble pulses while the workspace loads
+        this.loadStarted = true;
+        this.loadStartedAt = performance.now();
+        this.root.classList.add('is-loading-workspace');
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('planet-activate');
+        planet.el.classList.add('is-loading');
+        planet.status.textContent = 'Loading...';
 
         let failed = null;
         try {
-            await Promise.all([moved, this.loadWorkspace(planet.id)]);
+            await this.loadWorkspace(planet.id);
         } catch (error) {
             failed = error;
         }
@@ -901,6 +1653,7 @@ class PlanetSwitcher {
         }
 
         planet.status.textContent = '';
+        this.setProgressBar(planet, 1, true);
         await this.zoomIntoBubble(planet);
         if (this.state !== 'zooming') return;
         await this.revealDesktop();
@@ -995,18 +1748,45 @@ class PlanetSwitcher {
             try { text = formatWorkspaceProgressStatusText(progress) || ''; } catch (error) { text = ''; }
         }
         if (!text && progress && typeof progress.percent === 'number') text = `${Math.round(progress.percent)}%`;
+        if (!text && progress && typeof progress.progress === 'number') text = `${Math.round(progress.progress * 100)}%`;
         planet.status.textContent = text || 'Loading...';
+
+        let determinate = false;
+        // shouldGalleryProgressUseDeterminate: public/scripts/comp/workspaceUtils.js
+        if (typeof shouldGalleryProgressUseDeterminate === 'function') {
+            try { determinate = shouldGalleryProgressUseDeterminate(progress); } catch (error) { determinate = false; }
+        } else {
+            determinate = Boolean(progress && typeof progress.progress === 'number');
+        }
+        let fraction = 0;
+        if (progress && typeof progress.progress === 'number') fraction = progress.progress;
+        else if (progress && typeof progress.percent === 'number') fraction = progress.percent / 100;
+        this.setProgressBar(planet, fraction, determinate);
+    }
+
+    setProgressBar(planet, fraction, determinate) {
+        const clamped = Math.max(0, Math.min(1, Number(fraction) || 0));
+        planet.progress.classList.toggle('marquee', !determinate);
+        planet.progressFill.style.width = determinate ? `${Math.round(clamped * 100)}%` : '';
+        if (determinate) planet.progress.setAttribute('aria-valuenow', String(Math.round(clamped * 100)));
+        else planet.progress.removeAttribute('aria-valuenow');
     }
 
     abortSelection(planet) {
         this.state = 'browsing';
-        this.root.classList.remove('is-selecting');
-        planet.el.classList.remove('is-selected');
+        this.loadStarted = false;
+        this.root.classList.remove('is-selecting', 'is-loading-workspace');
+        planet.el.classList.remove('is-selected', 'is-loading');
         planet.status.textContent = '';
+        this.setProgressBar(planet, 0, false);
         if (this.stars) this.stars.warp(false);
         if (this.ringSwayAnim) {
             this.ringSwayAnim.cancel();
             this.ringSwayAnim = null;
+        }
+        if (this.sunAnim) {
+            this.sunAnim.cancel();
+            this.sunAnim = null;
         }
         this.goTo(this.index, { selectU: 0, duration: 420 });
     }
@@ -1014,17 +1794,19 @@ class PlanetSwitcher {
     async zoomIntoBubble(planet) {
         const T = PLANET_SWITCHER_TIMING;
         this.state = 'zooming';
-        this.root.classList.remove('is-selecting');
+        this.loadStarted = false;
+        this.root.classList.remove('is-selecting', 'is-loading-workspace');
         this.root.classList.add('is-zooming');
         const rect = planet.bubble.getBoundingClientRect();
         const diagonal = Math.hypot(window.innerWidth, window.innerHeight);
-        const k = (diagonal / Math.max(1, rect.width)) * 1.04;
+        const k = (diagonal / Math.max(1, rect.width)) * PLANET_SWITCHER_ZOOM_OVERSHOOT;
         const zoom = planet.bubble.animate(
             [{ transform: 'translateZ(0) scale(1)' }, { transform: `translateZ(0) scale(${k.toFixed(3)})` }],
             { duration: T.zoomIn, easing: 'cubic-bezier(0.65, 0, 0.85, 0.35)', fill: 'forwards' }
         );
-        planet.name.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: 'forwards' });
-        planet.status.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: 'forwards' });
+        [planet.name, planet.count, planet.status, planet.progress].forEach((el) => {
+            el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: 'forwards' });
+        });
         const fade = this.fade.animate(
             [{ opacity: 0 }, { opacity: 0, offset: 0.42 }, { opacity: 1 }],
             { duration: T.zoomIn, easing: 'ease-in', fill: 'forwards' }
@@ -1036,6 +1818,8 @@ class PlanetSwitcher {
         const T = PLANET_SWITCHER_TIMING;
         this.state = 'revealing';
         this.stopLoop();
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('planet-switch');
         clearInterval(this.slideTimer);
         this.slideTimer = 0;
         this.removeInputListeners();
@@ -1050,9 +1834,16 @@ class PlanetSwitcher {
         });
         const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
         const inAnims = [];
+        const desktopEls = new Set(this.desktopLayer.map((rec) => rec.el));
         [...this.desktopLayer, ...this.windowLayer].forEach(({ el, opacity }) => {
             if (el.classList.contains('hidden') || el.classList.contains('hidden-alt')) return;
             inAnims.push(el.animate([{ scale: '0.8' }, { scale: '1' }], { duration: T.reveal, easing: ease, fill: 'forwards' }));
+            if (desktopEls.has(el)) {
+                inAnims.push(el.animate(
+                    [{ transform: `perspective(1400px) rotateX(${-PLANET_SWITCHER_TILT_DEG / 2}deg)` }, { transform: 'perspective(1400px) rotateX(0deg)' }],
+                    { duration: T.reveal, easing: ease, fill: 'forwards' }
+                ));
+            }
             inAnims.push(el.animate([{ opacity: 0 }, { opacity }], { duration: T.reveal, easing: 'ease-out', fill: 'forwards' }));
         });
         this.cancelAnimations(this.layerAnims);
@@ -1069,6 +1860,18 @@ class PlanetSwitcher {
     // ---------- cancel ----------
 
     cancel() {
+        if (this.state === 'selecting' && !this.loadStarted) {
+            // The real switch has not started yet: pull the selection back, then undo the opening
+            const planet = this.planets[this.index];
+            const release = this.selectResolve;
+            this.selectResolve = null;
+            this.tween = null;
+            if (planet) this.abortSelection(planet);
+            this.tween = null;
+            this.selectU = 0;
+            this.applyRing();
+            if (release) release();
+        }
         if (this.state !== 'browsing' && this.state !== 'opening') return;
         this.state = 'cancelling';
         const T = PLANET_SWITCHER_TIMING;
@@ -1079,11 +1882,15 @@ class PlanetSwitcher {
 
         // Undo from wherever the opening animation got to: read the animated values, run them home fast
         const undo = [];
+        const desktopEls = new Set(this.desktopLayer.map((rec) => rec.el));
         [...this.windowLayer, ...this.desktopLayer].forEach(({ el, opacity }) => {
             const cs = getComputedStyle(el);
             const curScale = cs.scale && cs.scale !== 'none' ? cs.scale : '1';
             const curOpacity = parseFloat(cs.opacity);
             undo.push(el.animate([{ scale: curScale }, { scale: '1' }], { duration: T.cancel, easing: 'ease-out', fill: 'forwards' }));
+            if (desktopEls.has(el) && cs.transform && cs.transform !== 'none') {
+                undo.push(el.animate([{ transform: cs.transform }, { transform: 'perspective(1400px) rotateX(0deg)' }], { duration: T.cancel, easing: 'ease-out', fill: 'forwards' }));
+            }
             undo.push(el.animate(
                 [{ opacity: Number.isFinite(curOpacity) ? curOpacity : 0 }, { opacity }],
                 { duration: T.cancel, easing: 'ease-out', fill: 'forwards' }
@@ -1138,9 +1945,12 @@ class PlanetSwitcher {
             this.cancelAnimations([this.ringSwayAnim]);
             this.ringSwayAnim = null;
         }
+        this.sunAnim = null;
+        this.bakeQueue = [];
+        this.bakeTimer = 0;
         if (this.root && this.root.parentNode) this.root.remove();
         if (this.backdrop && this.backdrop.parentNode) this.backdrop.remove();
-        document.body.classList.remove('planet-switcher-active');
+        document.body.classList.remove('planet-switcher-active', 'planet-switcher-flat');
         this.layerAnims = [];
         this.overlayAnims = [];
         this.desktopLayer = [];
@@ -1151,12 +1961,14 @@ class PlanetSwitcher {
         this.selectU = 0;
         this.pointer = null;
         this.loadKick = null;
+        this.loadStarted = false;
         this.prevFocus = null;
         this.stars = null;
         this.root = null;
         this.backdrop = null;
         this.holder = null;
         this.ring = null;
+        this.sun = null;
         this.fade = null;
         this.cancelBtn = null;
         this.loadGen++;
@@ -1170,5 +1982,5 @@ if (planetSwitcher) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { PlanetRingMath, PLANET_SWITCHER_TIMING };
+    module.exports = { PlanetRingMath, PLANET_SWITCHER_TIMING, planetSwitcherImageCache, planetSwitcherTileCache };
 }

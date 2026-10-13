@@ -722,7 +722,10 @@ async function handleAddApiKey(handlersCtx, ws, message, clientInfo, wsServer) {
             return;
         }
 
-        const result = handlersCtx.globalResources.getApiKeyManager().addApiKey(service, name.trim(), apiKey.trim());
+        // secondaryKey: optional paired credential (TokenRouter management key), apiKeyManager SERVICE_METADATA.secondary.
+        const result = handlersCtx.globalResources.getApiKeyManager().addApiKey(service, name.trim(), apiKey.trim(), {
+            secondaryKey: typeof message.secondaryKey === 'string' ? message.secondaryKey : undefined
+        });
 
         console.log(`✅ Added new Service Key "${name}" for service "${service}"`);
 
@@ -793,7 +796,10 @@ async function handleUpdateApiKey(handlersCtx, ws, message, clientInfo, wsServer
             return;
         }
 
-        const result = handlersCtx.globalResources.getApiKeyManager().updateApiKey(service, index, name, apiKey);
+        const result = handlersCtx.globalResources.getApiKeyManager().updateApiKey(service, index, name, apiKey, {
+            secondaryKey: typeof message.secondaryKey === 'string' ? message.secondaryKey : undefined,
+            clearSecondary: message.clearSecondary === true
+        });
 
         console.log(`✅ Updated Service Key for service "${service}" (index ${result.index})`);
 
