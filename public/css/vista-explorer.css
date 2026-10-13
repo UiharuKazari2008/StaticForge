@@ -1650,8 +1650,9 @@ body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, 
 /* Pictures (the VM's thumbtest folder, 2026-10-13): Vista shows the thumbnail at its own aspect
    in a plain white photo frame, no type badge. desktopShortcutPhotoFrame (desktopShortcuts.js)
    adds the picture as an <img> so the frame can hug it; the square tile goes transparent.
-   References keep their type as Vista's small overlay box at the bottom left (the way shortcuts
-   carry the arrow). Generation requests keep their round badge. */
+   References keep their type as Vista's small overlay box, inside the frame at the bottom left
+   with a little padding off the edge (Yukimi 2026-10-13). Generation requests keep their round
+   badge. */
 .desktop-shortcut-photo {
     display: none;
 }
@@ -1700,7 +1701,7 @@ body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-image-preview 
     height: auto;
     align-items: flex-end;
     justify-content: flex-start;
-    padding: 0;
+    padding: 3px;
 }
 body:not(.windows-classic-theme) .desktop-shortcut:not([data-shortcut-type="request"]) .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder > i.desktop-shortcut-image-icon:not(.fa-image),
 body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder > i.desktop-shortcut-image-icon:not(.fa-image) {
@@ -1709,7 +1710,7 @@ body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-image-preview 
     justify-content: center;
     width: 16px;
     height: 16px;
-    margin: 0 0 -1px -1px;
+    margin: 0;
     border: 1px solid #7d7d7d;
     background: #fff;
     color: #1d3f76;
