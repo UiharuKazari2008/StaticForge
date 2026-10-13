@@ -1548,12 +1548,18 @@ class DesktopShortcutsManager {
         
         // Apply color
         icon.style.color = noteColor;
+        // vista-explorer.css: Vista's text document, the note's glyph on the page, the colour as a chip
+        icon.dataset.vistaIcon = 'note';
+        icon.style.setProperty('--note-color', noteColor);
         
         // Create FontAwesome icon
         const noteIconElement = document.createElement('i');
         noteIconElement.className = noteIcon;
         
         icon.appendChild(noteIconElement);
+        const chip = document.createElement('span');
+        chip.className = 'desktop-note-color-chip';
+        icon.appendChild(chip);
         return icon;
     }
 
@@ -2419,8 +2425,8 @@ class DesktopShortcutsManager {
         // Just the icon, no wrapper or frame (like note/preset)
         const icon = document.createElement('div');
         icon.className = 'desktop-shortcut-icon desktop-shortcut-icon-wiki';
-        // Grimoire is Internet Explorer: vista-explorer.css draws Vista's Internet shortcut (url.dll)
-        icon.dataset.vistaIcon = 'internet-shortcut';
+        // vista-explorer.css draws a document (WordPad's); Alchemy pages get the Internet shortcut
+        icon.dataset.vistaIcon = 'document';
         
         // Use fa-file-alt icon for wiki pages
         const wikiIcon = document.createElement('i');
@@ -2469,7 +2475,7 @@ class DesktopShortcutsManager {
             img.alt = '';
             icon.appendChild(img);
         } else {
-            icon.dataset.vistaIcon = 'internet-shortcut';
+            icon.dataset.vistaIcon = 'document';
             const wikiIcon = document.createElement('i');
             wikiIcon.className = 'fas fa-file-doc';
             icon.appendChild(wikiIcon);
@@ -3924,8 +3930,8 @@ wsClient.registerInitStep(18, 'Loading Desktop Shortcuts', async () => {
             desktopShortcuts.currentWorkspace = activeWorkspace;
             const loaded = await desktopShortcuts.loadShortcuts(activeWorkspace);
             if (loaded) {
-                desktopShortcuts.renderShortcuts();
-                applyDesktopWindowPositionsAfterLoad();
+                // Drawn after icon bitmaps decode (public/scripts/comp/assetPreload.js).
+                desktopShortcuts._bootShortcutsLoaded = true;
             }
         }
     }

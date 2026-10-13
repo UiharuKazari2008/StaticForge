@@ -1,6 +1,7 @@
 // MeletonFX alarm clock and pomodoro.
 // public/scripts/comp/desktop-apps/alarmPomodoro.js
-// Two .modal windows on the existing stack. Shell loads this script; no tray icon.
+// One .modal window ("Alarm Clock", Yukimi 2026-10-13: the two apps combined) with an Alarm tab and
+// a Pomodoro tab on the existing stack. Shell loads this script; no tray icon.
 
 const DESKTOP_POMODORO_FOCUS_MS = 25 * 60 * 1000;
 const DESKTOP_POMODORO_BREAK_MS = 5 * 60 * 1000;
@@ -85,7 +86,7 @@ function desktopUtilityCreateModal(spec) {
         + '<div class="modal-window-title">'
         + '<div class="modal-window-title-main">'
         + '<i class="' + spec.iconClass + ' icon-fa"></i>'
-        + '<img src="/static_images/app_icons/time.png" alt="" class="icon-image">'
+        + '<img src="/static_images/app_icons/vista-date-time.png" alt="" class="icon-image">'
         + '<span>' + spec.title + '</span>'
         + '</div>'
         + '</div>'
@@ -98,10 +99,9 @@ function desktopUtilityCreateModal(spec) {
         + '<i class="fa-regular fa-xmark-large"></i>'
         + '</button>'
         + '</div>'
-        + '<div class="modal-content dark"></div>';
+        + '<div class="modal-content"></div>';
     const content = modal.querySelector('.modal-content');
-    content.appendChild(spec.body);
-    content.appendChild(spec.footer);
+    spec.parts.forEach((part) => content.appendChild(part));
     modal.querySelector('.close-btn').addEventListener('click', () => {
         // Hide only. Alarm and pomodoro keep running until cancel, pause, or reset.
         // closeModal: public/scripts/comp/modalUtils.js
@@ -281,6 +281,7 @@ function desktopAlarmFire() {
     desktopAlarm.deadline = 0;
     desktopAlarmStopTicker();
     desktopAlarmRender();
+    desktopTimerSelect('alarm');
     desktopUtilityNotify('warning', 'Alarm', 'Alarm', 'fas fa-bell');
 }
 
@@ -379,32 +380,90 @@ function desktopAlarmBuildBody() {
     return { body: face.body, footer: footer };
 }
 
-function desktopAlarmEnsure() {
-    if (desktopAlarm.modal && desktopAlarm.modal.isConnected) return desktopAlarm.modal;
-    const existing = document.getElementById('desktopAlarmModal');
+// The window: a Vista tab strip (Alarm, Pomodoro), one page per tab, the page's own buttons in
+// the command strip. Both tabs' state lives in desktopAlarm / desktopPomodoro as before.
+const desktopTimer = { modal: null, tabs: {}, pages: {}, footers: {} };
+
+function desktopTimerSelect(tab) {
+    if (!desktopTimer.modal) return;
+    ['alarm', 'pomodoro'].forEach((name) => {
+        const on = name === tab;
+        desktopTimer.tabs[name].setAttribute('aria-selected', on ? 'true' : 'false');
+        desktopTimer.tabs[name].tabIndex = on ? 0 : -1;
+        desktopTimer.pages[name].hidden = !on;
+        desktopTimer.footers[name].hidden = !on;
+    });
+}
+
+function desktopTimerEnsure() {
+    if (desktopTimer.modal && desktopTimer.modal.isConnected) return desktopTimer.modal;
+    const existing = document.getElementById('desktopTimerModal');
     if (existing) {
-        desktopAlarm.modal = existing;
+        desktopTimer.modal = existing;
         return existing;
     }
-    const parts = desktopAlarmBuildBody();
+    const alarmParts = desktopAlarmBuildBody();
     desktopAlarmSeedClock();
     desktopAlarmRender();
-    desktopAlarm.modal = desktopUtilityCreateModal({
-        id: 'desktopAlarmModal',
-        identifier: 'desktop-alarm',
-        title: 'Alarm',
-        iconClass: 'fas fa-bell',
+    const pomodoroParts = desktopPomodoroBuildBody();
+    desktopPomodoroRender(desktopPomodoro.remainingMs);
+    desktopPomodoroSyncControls();
+
+    const strip = document.createElement('div');
+    strip.className = 'desktop-timer-tabs';
+    strip.setAttribute('role', 'tablist');
+    const pages = document.createElement('div');
+    pages.className = 'desktop-timer-pages';
+    [['alarm', 'Alarm', alarmParts], ['pomodoro', 'Pomodoro', pomodoroParts]].forEach(([name, label, parts]) => {
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'desktop-timer-tab';
+        tab.id = 'desktopTimerTab-' + name;
+        tab.setAttribute('role', 'tab');
+        tab.textContent = label;
+        tab.addEventListener('click', () => desktopTimerSelect(name));
+        tab.addEventListener('keydown', (ev) => {
+            if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+                const next = name === 'alarm' ? 'pomodoro' : 'alarm';
+                desktopTimerSelect(next);
+                desktopTimer.tabs[next].focus();
+            }
+        });
+        strip.appendChild(tab);
+        const page = document.createElement('div');
+        page.className = 'desktop-timer-page';
+        page.setAttribute('role', 'tabpanel');
+        page.setAttribute('aria-labelledby', tab.id);
+        page.appendChild(parts.body);
+        pages.appendChild(page);
+        desktopTimer.tabs[name] = tab;
+        desktopTimer.pages[name] = page;
+        desktopTimer.footers[name] = parts.footer;
+    });
+
+    desktopTimer.modal = desktopUtilityCreateModal({
+        id: 'desktopTimerModal',
+        identifier: 'desktop-timer',
+        title: 'Alarm Clock',
+        iconClass: 'fas fa-alarm-clock',
         minWidth: '300',
         width: '340',
-        body: parts.body,
-        footer: parts.footer
+        parts: [strip, pages, alarmParts.footer, pomodoroParts.footer]
     });
-    return desktopAlarm.modal;
+    desktopAlarm.modal = desktopTimer.modal;
+    desktopPomodoro.modal = desktopTimer.modal;
+    desktopTimerSelect('alarm');
+    return desktopTimer.modal;
+}
+
+function desktopAlarmEnsure() {
+    return desktopTimerEnsure();
 }
 
 function openDesktopAlarm() {
     const modal = desktopAlarmEnsure();
     desktopAlarmRender();
+    desktopTimerSelect('alarm');
     desktopUtilityReveal(modal);
 }
 
@@ -537,33 +596,13 @@ function desktopPomodoroBuildBody() {
 }
 
 function desktopPomodoroEnsure() {
-    if (desktopPomodoro.modal && desktopPomodoro.modal.isConnected) return desktopPomodoro.modal;
-    const existing = document.getElementById('desktopPomodoroModal');
-    if (existing) {
-        desktopPomodoro.modal = existing;
-        return existing;
-    }
-    const parts = desktopPomodoroBuildBody();
-    desktopPomodoroRender(desktopPomodoro.remainingMs);
-    desktopPomodoroSyncControls();
-    desktopPomodoro.modal = desktopUtilityCreateModal({
-        id: 'desktopPomodoroModal',
-        identifier: 'desktop-pomodoro',
-        title: 'Pomodoro',
-        iconClass: 'fas fa-clock',
-        minWidth: '300',
-        width: '340',
-        body: parts.body,
-        footer: parts.footer
-    });
-    desktopPomodoroRender(desktopPomodoro.remainingMs);
-    return desktopPomodoro.modal;
+    const modal = desktopTimerEnsure();
+    desktopPomodoroRender(desktopPomodoro.running ? desktopPomodoro.deadline - Date.now() : desktopPomodoro.remainingMs);
+    return modal;
 }
 
 function openDesktopPomodoro() {
     const modal = desktopPomodoroEnsure();
-    desktopPomodoroRender(desktopPomodoro.running
-        ? desktopPomodoro.deadline - Date.now()
-        : desktopPomodoro.remainingMs);
+    desktopTimerSelect('pomodoro');
     desktopUtilityReveal(modal);
 }

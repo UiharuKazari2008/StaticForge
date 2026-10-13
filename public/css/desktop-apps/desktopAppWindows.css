@@ -4,12 +4,11 @@
    pomodoro) and lay out the calculator's keypads and history tape.
    Link before hidden.css in public/app.html:
    <link rel="stylesheet" href="/css/desktop-apps/desktopAppWindows.css">
-   Alarm and pomodoro share the .desktop-timer-* face below.
+   Alarm Clock (alarm + pomodoro tabs) uses the .desktop-timer-* face below.
 */
 
 #desktopCalculatorModal,
-#desktopAlarmModal,
-#desktopPomodoroModal {
+#desktopTimerModal {
     flex-direction: column;
     width: 280px;
 }
@@ -20,14 +19,12 @@
     container-name: desktop-calculator;
 }
 
-#desktopAlarmModal,
-#desktopPomodoroModal {
+#desktopTimerModal {
     width: 340px;
 }
 
 #desktopCalculatorModal > .modal-content,
-#desktopAlarmModal > .modal-content,
-#desktopPomodoroModal > .modal-content {
+#desktopTimerModal > .modal-content {
     flex: 1 1 auto;
     height: auto;
     min-height: 0;
@@ -191,11 +188,68 @@
     }
 }
 
-/* Alarm and pomodoro (alarmPomodoro.js). Same reading order as the
-   calculator: caption, sunken readout, then the 7.css progress bar from
-   cache-browser.css. Buttons sit in the colored command strip at the
-   bottom, like a Vista dialog. The readout grows with the window. */
-.desktop-timer-window > .modal-content > .desktop-timer-body {
+/* Alarm Clock (alarmPomodoro.js): a Vista tab control (Alarm, Pomodoro) on the
+   light dialog surface; each page has the same reading order as the calculator:
+   caption, sunken readout, then the 7.css progress bar from cache-browser.css.
+   The page's buttons sit in the colored command strip at the bottom, like a
+   Vista dialog. The readout grows with the window. */
+.desktop-timer-window > .modal-content {
+    background: #f0f0f0;
+    color: #000;
+}
+
+.desktop-timer-window .desktop-timer-tabs {
+    display: flex;
+    flex: 0 0 auto;
+    padding: 8px 8px 0;
+}
+
+.desktop-timer-window .desktop-timer-tab {
+    position: relative;
+    top: 1px;
+    margin-right: -1px;
+    padding: 2px 10px 3px;
+    border: 1px solid #898c95;
+    border-bottom: none;
+    border-radius: 2px 2px 0 0;
+    background: linear-gradient(#f2f2f2, #e5e5e5);
+    color: #000;
+    font: 9pt "Segoe UI", sans-serif;
+    cursor: default;
+}
+
+.desktop-timer-window .desktop-timer-tab:hover {
+    background: linear-gradient(#eaf6fd, #bee6fd);
+}
+
+.desktop-timer-window .desktop-timer-tab[aria-selected="true"] {
+    top: 0;
+    z-index: 1;
+    padding-bottom: 4px;
+    background: #fff;
+}
+
+.desktop-timer-window .desktop-timer-pages {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 8px 8px;
+}
+
+.desktop-timer-window .desktop-timer-page {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    border: 1px solid #898c95;
+    background: #fff;
+}
+
+.desktop-timer-window .desktop-timer-page[hidden],
+.desktop-timer-window .desktop-timer-footer[hidden] {
+    display: none;
+}
+
+.desktop-timer-window .desktop-timer-body {
     flex: 1 1 auto;
     gap: var(--spacing-md);
     min-height: 0;
@@ -236,7 +290,7 @@
     flex: 0 0 auto;
 }
 
-.desktop-timer-window > .modal-content > .desktop-timer-footer {
+.desktop-timer-window .desktop-timer-footer {
     flex: 0 0 auto;
     width: auto;
 }

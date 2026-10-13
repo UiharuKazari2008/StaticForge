@@ -3363,6 +3363,8 @@ class ExplorerApplet {
         if (gridHost) gridHost.classList.toggle('explorer-loading', !!loading);
         if (this.grid) this.grid.setInteractionBlocked(!!loading);
         this.renderStatusText();
+        // desktopTaskMonitor.sync: public/scripts/comp/desktopTaskMonitor.js
+        desktopTaskMonitor.sync();
     }
 
     _setBusyState(kind, detail) {
@@ -3374,6 +3376,8 @@ class ExplorerApplet {
             gridHost.classList.toggle('explorer-busy-paste', kind === 'paste');
         }
         this.renderStatusText();
+        // desktopTaskMonitor.sync: public/scripts/comp/desktopTaskMonitor.js
+        desktopTaskMonitor.sync();
     }
 
     _syncHasMore(result) {
@@ -4039,9 +4043,15 @@ class ExplorerApplet {
         const icon = document.createElement('div');
         icon.className = 'desktop-shortcut-icon desktop-shortcut-icon-note explorer-desktop-icon-root';
         icon.style.color = item.noteColor || '#ffc107';
+        // the desktop's note icon (desktopShortcuts.js createNoteIcon): Vista's document + glyph + colour chip
+        icon.dataset.vistaIcon = 'note';
+        icon.style.setProperty('--note-color', item.noteColor || '#ffc107');
         const noteIcon = document.createElement('i');
         noteIcon.className = item.noteIcon || item.icon || 'fas fa-file-lines';
         icon.appendChild(noteIcon);
+        const chip = document.createElement('span');
+        chip.className = 'desktop-note-color-chip';
+        icon.appendChild(chip);
         box.innerHTML = '';
         box.appendChild(icon);
     }

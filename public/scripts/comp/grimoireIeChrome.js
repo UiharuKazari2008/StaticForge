@@ -21,7 +21,7 @@
     'use strict';
 
     const ART = '/static_images/vista-ie';
-    const BOOKS_ICON = '/static_images/app_icons/books.png';
+    const BOOKS_ICON = '/static_images/app_icons/vista-wordpad-document.png'; // wiki pages: a document, not IE's page
 
     function esc(text) {
         return String(text == null ? '' : text)

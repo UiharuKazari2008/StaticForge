@@ -193,7 +193,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     white-space: nowrap;
     color: #000;
     font: 12px var(--ex-font);
-    cursor: text;
+    cursor: var(--c-text);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-address-group.is-editing .explorer-breadcrumb {
@@ -233,7 +233,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     color: #000;
     font: 12px var(--ex-font);
     text-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-crumb:hover {
@@ -330,7 +330,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal :is(.explorer-comma
     font-weight: 400;
     text-shadow: 0 0 6px hsl(200 80% 10% / 90%), 0 1px 1px hsl(200 80% 10% / 70%);
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-icon {
@@ -452,7 +452,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorite-
     font: 12px var(--ex-font);
     text-align: left;
     text-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorite-link img {
@@ -498,7 +498,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders-b
     color: var(--ex-link);
     font: 12px var(--ex-font);
     text-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders-chevron {
@@ -1111,7 +1111,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
 /* IE keeps the red X showing when idle */
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-stop:disabled {
     opacity: 1;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-seg:hover:not(:disabled) {
@@ -1197,7 +1197,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddre
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-book, .fa-puzzle-piece) {
-    background-image: url('/static_images/app_icons/books.png');
+    background-image: url('/static_images/app_icons/vista-wordpad-document.png');
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon.fa-file-alt {
@@ -1279,7 +1279,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-f
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-fav:disabled {
     opacity: 1;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-fav:disabled img {
@@ -1600,7 +1600,99 @@ body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="file"] 
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] {
     background-image: image-set(url('/static_images/vista-icons/explorer/internet-shortcut-64.png') 1x, url('/static_images/vista-icons/explorer/internet-shortcut-256.png') 2x);
 }
+body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="document"] {
+    background-image: image-set(url('/static_images/vista-icons/explorer/document-64.png') 1x, url('/static_images/vista-icons/explorer/document-256.png') 2x);
+}
 /* Cartograph shows desktop shortcuts with the same nodes, at its own view's size */
 body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-icon[data-vista-icon] {
     background-size: contain;
+}
+
+/* Notes (Yukimi 2026-10-13): Vista's text document with the note's own glyph in the middle of
+   the page and its colour as a chip in the corner, instead of a coloured glyph alone. */
+body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="note"] {
+    position: relative;
+    background-image: image-set(url('/static_images/vista-icons/explorer/text-64.png') 1x, url('/static_images/vista-icons/explorer/text-256.png') 2x);
+    color: var(--note-color, #ffc107);
+}
+body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="note"] > i {
+    display: block;
+    position: absolute;
+    top: 52%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 36%;
+    color: var(--note-color, #ffc107);
+    text-shadow: 0 0 1px #fff, 0 0 2px #fff;
+    filter: none;
+}
+body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="note"] > .desktop-note-color-chip {
+    position: absolute;
+    right: 6%;
+    bottom: 4%;
+    width: 22%;
+    height: 22%;
+    border: 1px solid #fff;
+    box-shadow: 0 0 0 1px #0006;
+    background: var(--note-color, #ffc107);
+}
+/* the glyph is a fraction of the icon (desktop 64px; Cartograph's icon boxes) */
+body:not(.windows-classic-theme) .desktop-shortcut .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 64px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 160px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 96px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 72px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 32px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-row .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 16px; }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="note"] > .desktop-note-color-chip {
+    display: none;
+}
+
+/* Pictures (the VM's thumbtest folder, 2026-10-13): Vista shows a thumbnail in a plain white
+   photo frame, no type badge. References keep their type as Vista's small overlay box at the
+   bottom left (the way shortcuts carry the arrow). */
+body:not(.windows-classic-theme) .desktop-shortcut-icon-image {
+    border: 3px solid #fff;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: 0 0 0 1px #b9b9b9, 1px 1px 3px #0005;
+}
+body:not(.windows-classic-theme) .desktop-shortcut-icon-image .desktop-shortcut-image-preview {
+    border-radius: 0;
+}
+body:not(.windows-classic-theme) .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder > i.fa-image.desktop-shortcut-image-icon {
+    display: none;
+}
+body:not(.windows-classic-theme) .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder {
+    align-items: flex-end;
+    justify-content: flex-start;
+    padding: 0;
+}
+body:not(.windows-classic-theme) .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder > i.desktop-shortcut-image-icon:not(.fa-image) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin: 0 0 -1px -1px;
+    border: 1px solid #7d7d7d;
+    background: #fff;
+    color: #1d3f76;
+    font-size: 9px;
+    text-shadow: none;
+}
+
+/* App shortcuts (applet, dsap) carry Vista's shortcut arrow (shell32.dll 29), bottom left, a size
+   down from Vista's own since the desktop icons are 64px. VFS files have none. */
+body:not(.windows-classic-theme) .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon {
+    position: relative;
+}
+body:not(.windows-classic-theme) .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    background: image-set(url('/static_images/vista-icons/explorer/shortcut-arrow-16.png') 1x, url('/static_images/vista-icons/explorer/shortcut-arrow-32.png') 2x) no-repeat center / 16px 16px;
+    pointer-events: none;
 }

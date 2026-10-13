@@ -6146,20 +6146,20 @@ const startMenuLaunchables = [
     },
     { launchId: 'spellbook', icon: 'fas fa-hat-wizard', imageIcon: 'caster.png', text: 'Spellcaster', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openSpellbookApplet(); } },
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', appMenu: true, action: () => { showCacheManagerModal(); } },
-    { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openBracketGenerationApplet(); } },
+    { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'vista-phasewalker.png', text: 'Phasewalker', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openBracketGenerationApplet(); } },
     { launchId: 'director', icon: 'fas fa-clapperboard', imageIcon: 'director.png', text: 'Director', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/director.js */ await openDirectorWindow(); } },
     { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'vista-iexplore.png', text: 'Grimoire', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openGrimoireApplet(); } },
     { launchId: 'alchemy', icon: 'fas fa-atom', imageIcon: 'alchemy.png', text: 'Alchemy', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openGrimoireUrl(ALCHEMY_HOME_URL); } },
     { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openNaxtApplet(); } },
-    { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
-    { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
+    { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'vista-journal.png', text: 'Notion', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
+    { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'vista-messenger.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'vista-explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
     { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'vista-remote-desktop.png', text: 'Remote Desktop', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
     { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'vista-mail.png', text: 'Dovecote', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
     // Teleport (Yukimi, 2026-10-12): the planet switcher. All Programs, the places column under
     // Workspaces, and the power menu where Vista has Switch User; the start menu lists no planets.
     // Run: `planets`, `teleport`.
-    { launchId: 'planet-switcher', icon: 'fas fa-planet-moon', imageIcon: 'planet.png', text: 'Teleport', desktopOnly: true, appMenu: true, action: async () => { await openPlanetSwitcher(); } },
+    { launchId: 'planet-switcher', icon: 'fas fa-planet-moon', imageIcon: 'vista-teleport.png', text: 'Teleport', desktopOnly: true, appMenu: true, action: async () => { await openPlanetSwitcher(); } },
 ];
 
 /** Root start menu shell rows (folders + run). */
@@ -6219,7 +6219,7 @@ function isAppMenuToolsEntryEnabled(item) {
 
 function buildToolsSubmenuItems() {
     const staticItems = [
-        { launchId: 'import', icon: 'nai-import', imageIcon: 'export.png', text: 'Import', appMenuLocation: 'tools', action: () => { unifiedUploadModalManager.show(); } },
+        { launchId: 'import', icon: 'nai-import', imageIcon: 'vista-easy-transfer.png', text: 'Import', appMenuLocation: 'tools', action: () => { unifiedUploadModalManager.show(); } },
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', appMenuLocation: 'tools', action: () => { showPresetManager(); } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', appMenuLocation: 'tools', action: () => { showTextReplacementManager(); } },
         { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal(); } },
@@ -6227,8 +6227,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'character-db', icon: 'fas fa-users', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
         { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-event-viewer.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
         { launchId: 'calculator', icon: 'fas fa-calculator', text: 'Calculator', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
-        { launchId: 'alarm', icon: 'fas fa-alarm-clock', text: 'Alarm', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
-        { launchId: 'pomodoro', icon: 'fas fa-timer', text: 'Pomodoro', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
+        { launchId: 'alarm', icon: 'fas fa-alarm-clock', imageIcon: 'vista-date-time.png', text: 'Alarm Clock', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
+        { launchId: 'pomodoro', icon: 'fas fa-timer', imageIcon: 'vista-date-time.png', text: 'Pomodoro', appMenuLocation: 'tools', startMenu: false, appMenu: false, /* the Pomodoro tab of Alarm Clock; kept for old shortcuts */ action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
         { launchId: 'media-player', icon: 'fas fa-play', imageIcon: 'media_player.png', text: 'Media Player', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayer.js */ openDesktopMediaPlayer(); } },
         { launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/emotion.js */ openDesktopEmotion(); } },
     ].filter(isStartMenuEntryEnabled);
@@ -7572,9 +7572,9 @@ function getStartMenuPlaces() {
         { id: 'user', text: START_MENU_USER_NAME, action: () => openExplorerApplet() },
         { id: 'cartograph', text: 'Cartograph', imageIcon: 'vista-explorer.png', action: launch('explorer') },
         { id: 'gallery', text: 'Gallery', imageIcon: 'vista-photo-gallery.png', desktopOnly: true, action: launch('workspace') },
-        { id: 'notion', text: 'Notion', imageIcon: 'notebook.png', action: launch('notebook') },
+        { id: 'notion', text: 'Notion', imageIcon: 'vista-journal.png', action: launch('notebook') },
         { id: 'workspaces', text: 'Workspaces', imageIcon: 'planet.png', action: () => showWorkspaceManagementModal() },
-        { id: 'teleport', text: 'Teleport', imageIcon: 'planet.png', desktopOnly: true, action: launch('planet-switcher') },
+        { id: 'teleport', text: 'Teleport', imageIcon: 'vista-teleport.png', desktopOnly: true, action: launch('planet-switcher') },
         { separator: true },
         { id: 'recent', text: 'Recent Items', flyout: true },
         { id: 'network', text: 'Network and Server Center', image: '/static_images/melaton/net-globe.png', action: controlPanel('network') },
@@ -8403,6 +8403,41 @@ function syncDesktopSettingsGlassModeUI() {
     });
 }
 
+// Personalize → Cursors. Client-only preference applied at once (public/scripts/comp/desktopCursors.js)
+let desktopSettingsCursorSchemeWired = false;
+
+function syncDesktopSettingsCursorSchemeUI() {
+    const toggle = document.getElementById('desktopSettingsCursorSchemeToggle');
+    if (!toggle) return;
+    const scheme = desktopCursors.getScheme();
+    toggle.setAttribute('data-active', scheme);
+    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.cursorScheme === scheme);
+    });
+}
+
+function setupDesktopSettingsCursorSchemeToggle() {
+    if (desktopSettingsCursorSchemeWired) {
+        return;
+    }
+    const toggle = document.getElementById('desktopSettingsCursorSchemeToggle');
+    if (!toggle) return;
+
+    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const scheme = btn.dataset.cursorScheme;
+            if (!scheme) return;
+            // desktopCursors.setScheme: public/scripts/comp/desktopCursors.js
+            desktopCursors.setScheme(scheme);
+            syncDesktopSettingsCursorSchemeUI();
+        });
+    });
+    document.addEventListener('desktopCursorSchemeChanged', syncDesktopSettingsCursorSchemeUI);
+    syncDesktopSettingsCursorSchemeUI();
+    desktopSettingsCursorSchemeWired = true;
+}
+
 function setupDesktopSettingsGlassModeToggle() {
     if (desktopSettingsGlassModeWired) {
         return;
@@ -8501,6 +8536,8 @@ function setupDesktopSettingsStartMenuTextDropdown() {
 }
 
 let desktopSettingsActiveScope = 'workspace';
+// a Control Panel page shows one group of the global sections (data-desktop-settings-group)
+let desktopSettingsActiveGroup = null;
 let desktopSettingsScopeHandlersWired = false;
 let desktopSettingsDropdownsWired = false;
 let desktopSettingsStartMenuTextWired = false;
@@ -8639,14 +8676,16 @@ function setDesktopSettingsScope(scope) {
 
     // the layout lives in this window or in a Control Panel page (Personalization, Global Settings)
     const layout = document.getElementById('desktopSettingsLayout') || modal;
+    const offGroup = (section) => nextScope === 'global' && !!desktopSettingsActiveGroup
+        && section.dataset.desktopSettingsGroup !== desktopSettingsActiveGroup;
     layout.querySelectorAll('[data-desktop-settings-scope]').forEach((section) => {
         if (section.id === 'desktopSettingsNotificationBridgeSection') {
             const bridgeVisible = typeof isAndroidNotificationBridgeDetected === 'function'
                 && isAndroidNotificationBridgeDetected();
-            section.classList.toggle('hidden', nextScope !== 'global' || !bridgeVisible);
+            section.classList.toggle('hidden', nextScope !== 'global' || !bridgeVisible || offGroup(section));
             return;
         }
-        section.classList.toggle('hidden', section.dataset.desktopSettingsScope !== nextScope);
+        section.classList.toggle('hidden', section.dataset.desktopSettingsScope !== nextScope || offGroup(section));
     });
 }
 
@@ -8945,7 +8984,7 @@ async function openDesktopSettingsModal(wallpaperPath = null, scope = 'workspace
     const cpl = window.melatonControlPanel;
     if (cpl && cpl.registerPage && document.getElementById('desktopSettingsLayout')) {
         desktopSettingsPendingWallpaper = wallpaperPath;
-        cpl.open(scope === 'global' ? 'global' : 'personalization');
+        cpl.open(scope === 'global' ? 'appearance' : 'personalization');
         return;
     }
     const modal = document.getElementById('desktopSettingsModal');
@@ -9067,6 +9106,8 @@ async function prepareDesktopSettingsForm(wallpaperPath = null) {
     updateDesktopSettingsVirtualKeyboardToggleUI(desktopSettingsGlobalState.virtualKeyboardEnabled);
     // desktopSounds.isEnabled: public/scripts/comp/desktopSounds.js
     updateDesktopSettingsSoundsToggleUI(desktopSounds.isEnabled());
+    // desktopCursors.getScheme: public/scripts/comp/desktopCursors.js
+    syncDesktopSettingsCursorSchemeUI();
     // syncImageGenerationSettingsUI: public/scripts/comp/imageGenerationSettings.js
     syncImageGenerationSettingsUI();
     if (typeof isAndroidNotificationBridgeDetected === 'function' && isAndroidNotificationBridgeDetected()) {
@@ -9104,10 +9145,11 @@ function finishDesktopSettingsDialog() {
     if (modal && !modal.classList.contains('hidden')) closeModal(modal);
 }
 
-function mountDesktopSettingsInControlPanel(main, scope) {
+function mountDesktopSettingsInControlPanel(main, scope, group = null) {
     const layout = document.getElementById('desktopSettingsLayout');
     const host = main.querySelector('.cpl-settings-host');
     if (!layout || !host) return;
+    desktopSettingsActiveGroup = group;
     host.appendChild(layout);
     const wallpaper = desktopSettingsPendingWallpaper;
     desktopSettingsPendingWallpaper = null;
@@ -9124,6 +9166,7 @@ function mountDesktopSettingsInControlPanel(main, scope) {
 
 /** Put the forms back in their (hidden) window so nothing is lost when the page goes away. */
 function unmountDesktopSettingsFromControlPanel() {
+    desktopSettingsActiveGroup = null;
     const layout = document.getElementById('desktopSettingsLayout');
     const modal = document.getElementById('desktopSettingsModal');
     const content = modal && modal.querySelector('.modal-content');
@@ -9158,21 +9201,38 @@ function registerDesktopSettingsControlPanelPages() {
             <h3 class="cpl-task-heading">See also</h3>
             <ul class="cpl-task-list">${cpl.taskLinkHtml('Remote Access', 'item', 'remote-access')}</ul>
         </div>`;
+    // Global Settings split into Vista's own Control Panel items (Yukimi 2026-10-13): each page
+    // mounts the shared forms with one data-desktop-settings-group of the global sections.
+    const GLOBAL_PAGES = [
+        ['appearance', 'Window Color and Appearance', 'Windows and their glass',
+            'How windows move and resize, and the frame glass: frosted, live or basic.'],
+        ['mouse', 'Mouse', 'Pointers',
+            'Choose the pointer scheme: Vista, Classic, or Posy.'],
+        ['sound', 'Sound', 'Program sounds',
+            'Windows Vista sounds for dialogs, errors, lock, logon, shutdown, navigation and the planet switcher.'],
+        ['taskbar', 'Taskbar and Start Menu', 'Taskbar and Start Menu',
+            'The start button, what opens at startup, and where notifications go.'],
+        ['keyboard', 'Keyboard', 'Input',
+            'The virtual keyboard on touch devices.']
+    ];
+    const siblings = (id) => [['Personalization', 'personalization']]
+        .concat(GLOBAL_PAGES.filter(([other]) => other !== id).map(([other, name]) => [name, other]));
     cpl.registerPage('personalization', {
         title: () => 'Personalization',
-        tasks: () => tasks([['Global Settings', 'global']]),
+        tasks: () => tasks(siblings('personalization')),
         body: () => desktopSettingsPageBody('Personalize this workspace',
             "Change the workspace's name and colours, its fonts, and its desktop background."),
         mount: (main) => mountDesktopSettingsInControlPanel(main, 'workspace'),
         unmount: unmountDesktopSettingsFromControlPanel
     });
-    cpl.registerPage('global', {
-        title: () => 'Global Settings',
-        tasks: () => tasks([['Personalization', 'personalization']]),
-        body: () => desktopSettingsPageBody('Settings for every workspace',
-            'Windows and their glass, program sounds, the taskbar and start button, startup, notifications and input.'),
-        mount: (main) => mountDesktopSettingsInControlPanel(main, 'global'),
-        unmount: unmountDesktopSettingsFromControlPanel
+    GLOBAL_PAGES.forEach(([id, name, heading, intro]) => {
+        cpl.registerPage(id, {
+            title: () => name,
+            tasks: () => tasks(siblings(id)),
+            body: () => desktopSettingsPageBody(heading, intro),
+            mount: (main) => mountDesktopSettingsInControlPanel(main, 'global', id),
+            unmount: unmountDesktopSettingsFromControlPanel
+        });
     });
 }
 
@@ -9340,6 +9400,7 @@ function initializeDesktopSettingsModal() {
     setupDesktopSettingsStartMenuTextDropdown();
     setupDesktopSettingsStartMenuStyleToggle();
     setupDesktopSettingsGlassModeToggle();
+    setupDesktopSettingsCursorSchemeToggle();
 
     // Setup button handlers
     setupDesktopSettingsButtonHandlers();
@@ -9914,7 +9975,7 @@ function registerRemoteAccessControlPanelPage() {
                 <h3 class="cpl-task-heading">See also</h3>
                 <ul class="cpl-task-list">
                     ${cpl.taskLinkHtml('Network and Server Center', 'nav', 'network')}
-                    ${cpl.taskLinkHtml('Global Settings', 'nav', 'global')}
+                    ${cpl.taskLinkHtml('Taskbar and Start Menu', 'nav', 'taskbar')}
                 </ul>
             </div>`,
         body: () => `

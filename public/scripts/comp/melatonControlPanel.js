@@ -115,12 +115,42 @@
         description: "Change this workspace's name, colours, fonts and desktop background.",
         open: () => navigate('personalization')
     });
+    // Global Settings as Vista's own items (pages registered in modalUtils.js
+    // registerDesktopSettingsControlPanelPages, one group of the global sections each)
     registerItem({
-        id: 'global-settings',
-        name: 'Global Settings',
-        image: '/static_images/app_icons/slider.png',
-        description: 'Windows, glass, sounds, the taskbar and start button, startup and input for every workspace.',
-        open: () => navigate('global')
+        id: 'appearance',
+        name: 'Window Color and Appearance',
+        image: '/static_images/app_icons/vista-appearance.png',
+        description: 'How windows move and resize, and the frame glass for every workspace.',
+        open: () => navigate('appearance')
+    });
+    registerItem({
+        id: 'mouse',
+        name: 'Mouse',
+        image: '/static_images/app_icons/vista-mouse.png',
+        description: 'Choose the pointer scheme: Vista, Classic, or Posy.',
+        open: () => navigate('mouse')
+    });
+    registerItem({
+        id: 'sound',
+        name: 'Sound',
+        image: '/static_images/app_icons/vista-sound.png',
+        description: 'Turn the Windows Vista program sounds on or off.',
+        open: () => navigate('sound')
+    });
+    registerItem({
+        id: 'taskbar',
+        name: 'Taskbar and Start Menu',
+        image: '/static_images/app_icons/vista-taskbar.png',
+        description: 'The start button, what opens at startup, and where notifications go.',
+        open: () => navigate('taskbar')
+    });
+    registerItem({
+        id: 'keyboard',
+        name: 'Keyboard',
+        image: '/static_images/app_icons/vista-keyboard.png',
+        description: 'The virtual keyboard on touch devices.',
+        open: () => navigate('keyboard')
     });
     registerItem({
         id: 'remote-access',
