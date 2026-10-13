@@ -3491,8 +3491,13 @@ class ExplorerApplet {
             return;
         }
         this._addressLoadTimer = setTimeout(() => {
-            group.removeAttribute('data-vista-loading');
-            group.style.setProperty('--vista-load', '0%');
+            group.removeAttribute('data-vista-loading'); // fades out (vista-explorer.css)
+            this._addressLoadTimer = setTimeout(() => {
+                group.classList.add('vista-load-reset');
+                group.style.setProperty('--vista-load', '0%');
+                void group.offsetWidth; // flush with no transition before the class goes
+                setTimeout(() => group.classList.remove('vista-load-reset'), 50);
+            }, 400);
         }, 350);
     }
 

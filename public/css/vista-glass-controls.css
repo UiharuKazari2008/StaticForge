@@ -935,3 +935,13 @@ body.desktop-mode:not(.windows-classic-theme) select[multiple]:not(.hover-show):
     color: #000;
     font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
 }
+
+
+/* ---------- the window's outer edge (Yukimi 2026-10-13: "the way you add the border is not 1:1 ...
+   missing when it's over a dark background"). Vista: a dark line on the outside (VM: (36,46,57) at
+   the top, (25,30,34) on the shadow side) and a near-white line just inside it ((247,249,250)). Ours
+   was a 30% white border with a 17% highlight. ---------- */
+body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow):not(#virtualKeyboardModal) {
+    border-color: hsl(210 24% 14% / 82%);
+    --aero-frame-highlight: inset 0 0 0 1px hsl(0 0% 100% / 82%);
+}

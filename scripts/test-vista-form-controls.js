@@ -39,9 +39,9 @@ const mn = fs.readFileSync(path.join(__dirname, '..', 'public/css/melaton-networ
 assert.ok(/\.cpl-db-page \{[^}]*height: 100%;[^}]*overflow: hidden;/.test(mn) && /\.cpl-db-grid \{[^}]*flex: 1 1 auto;/.test(mn), 'the wallpaper list scrolls inside the page');
 // the common base of the three chromed windows (VM measurements) and Vista's address-bar progress
 assert.ok(ve.includes(':is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal).modal.toolbar-visible:not(.modal-maximized) {\n    --modal-title-chrome-height: 62px;'), 'content at 63 like Vista');
-assert.ok(/\.modal-window-title-toolbar \{\s*position: absolute;\s*top: 29px;\s*left: 10px;\s*right: 8px;/.test(ve), 'the orbs at (11,32), the search box 9px from the edge (the title box starts 1px in)');
+assert.ok(/\.modal-window-title-toolbar \{\s*position: absolute;\s*top: 28px;\s*left: 8px;\s*right: 8px;/.test(ve), 'the orbs at (11,32), the search box 9px from the edge (the title box starts 1px in)');
 assert.ok((ve.match(/flex: 0 0 238px;/g) || []).length >= 1, 'the 238px search box');
-assert.ok(ve.includes('var(--vista-load, var(--alchemy-load, 0%)) 100%'), 'the green address-bar progress');
+assert.ok(ve.includes('width: calc(var(--vista-load, var(--alchemy-load, 0%)) - 2px);') && ve.includes('.vista-load-reset::before'), 'the green address-bar progress fades, then resets unseen');
 const cplJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/melatonControlPanel.js'), 'utf8');
 assert.ok(cplJs.includes('explorer-recent-pages-btn cpl-recent') && cplJs.includes('function recentPagesMenu(') && cplJs.includes("setProperty('--vista-load'"), 'Control Panel: Recent Pages ▾ and the loading fill');
 assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/explorerApplet.js'), 'utf8').includes('_addressLoad(1)'), 'Cartograph fills the box while a folder loads');

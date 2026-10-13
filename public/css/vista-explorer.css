@@ -1912,8 +1912,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonContro
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal).modal.toolbar-visible .modal-window-title-toolbar {
     position: absolute;
-    top: 29px;
-    left: 10px;
+    top: 28px;
+    left: 8px;
     right: 8px;
     width: auto;
     height: 31px;
@@ -1936,17 +1936,17 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-w
     flex: 1 1 0px;
     align-self: flex-start;
     min-width: 80px;
-    margin: 3px 0 0 2px;
+    margin: 4px 0 0 4px;
 }
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar {
     flex: 1 1 0px;
     align-self: flex-start;
     min-width: 80px;
-    margin: 2px 0 0 4px;
+    margin: 3px 0 0 7px;
 }
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-seg {
     align-self: flex-start;
-    margin: 2px 0 0;
+    margin: 3px 0 0;
 }
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(#explorerSearchBar),
 body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .button-group:has(> .cpl-search),
@@ -1956,13 +1956,29 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     min-width: 0;
     max-width: 238px; /* explorer.css caps the group at 9rem */
     align-self: flex-start;
-    margin: 3px 0 0 6px;
+    margin: 4px 0 0 6px;
 }
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search {
-    margin-top: 2px;
+    margin-top: 3px;
 }
 body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-search {
     width: 100%;
+}
+/* the caption glass is one smooth wash (VM column x=400: brightest near y=7, darkest near y=29); the
+   mid-caption line of the other windows (--window-caption-edge) is not in Vista's Explorer, and the
+   toolbar draws nothing of its own */
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal).modal.toolbar-visible .modal-window-title {
+    background: linear-gradient(180deg, hsl(0 0% 100% / 24%), hsl(0 0% 100% / 30%) 12%, hsl(0 0% 100% / 20%) 46%, hsl(0 0% 100% / 24%));
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal).modal.toolbar-visible .modal-window-title-toolbar {
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal).modal.toolbar-visible .modal-window-title-main {
+    border: 0;
+    box-shadow: none;
+    background: none;
 }
 /* the caption: nothing in Explorer and Control Panel; IE7's page icon and title */
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal).modal.toolbar-visible .modal-window-title-main {
@@ -2002,20 +2018,67 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-actions-h
     border-top: 0; /* the client edge is the line above it */
 }
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow {
+    height: 29px;
     margin-top: 2px;
-    box-shadow: 0 -2px 0 #fff;
+    margin-bottom: 5px;
+    border-top-color: #91969e;
+    box-shadow: 0 -2px 0 #fff, 0 1px 0 #edf3fe, 0 2px 0 #b7c8f6, 0 3px 0 #b7c8f6, 0 4px 0 #a0a0a0, 0 5px 0 #696969;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab {
+    height: 25px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab.is-active {
+    height: 30px;
+    margin-bottom: -2px;
+    border-top-color: #91969e;
+}
+/* the first tab 78px in (VM), after the star and the add-favorite */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabs {
+    margin-left: 6px;
 }
 /* Vista's address-bar progress: a green fill across the box while the page comes in
    (--vista-load from explorerApplet.js / melatonControlPanel.js; Grimoire's --alchemy-load from
-   grimoireRemoteBrowser.js). Painted as the box's first background so the breadcrumbs stay on top. */
+   grimoireRemoteBrowser.js): a layer under the box's content; when the page is in it fades out, and only
+   then (`.vista-load-reset`, no transition) goes back to 0 for the next load. */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group,
 body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group,
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar {
-    background:
-        linear-gradient(#d6efd0, #ace2a4 48%, #98d990 52%, #addfa4) no-repeat left top / var(--vista-load, var(--alchemy-load, 0%)) 100%,
-        var(--vista-box-fill, linear-gradient(#e3ebf3, #eaf1f8 25%, #eaf1f8 75%, #e7eff6));
-    transition: background-size .2s linear;
+    position: relative;
+    isolation: isolate;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar::before {
-    display: none;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group > *,
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group > * {
+    position: relative;
+    z-index: 1;
+}
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group > #explorerRefreshBtn {
+    position: absolute;
+}
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group::before,
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group::before,
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar::before {
+    content: '';
+    display: block;
+    position: absolute;
+    left: 1px;
+    top: 1px;
+    bottom: 1px;
+    width: calc(var(--vista-load, var(--alchemy-load, 0%)) - 2px);
+    max-width: calc(100% - 2px);
+    background: linear-gradient(#d6efd0, #ace2a4 48%, #98d990 52%, #addfa4);
+    opacity: 0;
+    transition: width .2s linear, opacity .35s ease-out;
+    pointer-events: none;
+    z-index: 0;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group[data-vista-loading]::before,
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group[data-vista-loading]::before,
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar[data-alchemy-loading]::before {
+    opacity: 1;
+}
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group.vista-load-reset::before,
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group.vista-load-reset::before,
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar.vista-load-reset::before {
+    transition: none;
 }

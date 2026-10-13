@@ -308,7 +308,16 @@ function grimoireShowLoadProgress(found, value) {
         bar.setAttribute('data-alchemy-loading', '');
         return;
     }
-    host._grimoireLoadFillTimer = setTimeout(() => bar.removeAttribute('data-alchemy-loading'), 350);
+    host._grimoireLoadFillTimer = setTimeout(() => {
+        bar.removeAttribute('data-alchemy-loading'); // fades out
+        // then back to 0 unseen (vista-explorer.css .vista-load-reset: no transition), for the next load
+        host._grimoireLoadFillTimer = setTimeout(() => {
+            bar.classList.add('vista-load-reset');
+            bar.style.setProperty('--alchemy-load', '0%');
+            void bar.offsetWidth; // flush with no transition before the class goes
+            setTimeout(() => bar.classList.remove('vista-load-reset'), 50);
+        }, 400);
+    }, 350);
 }
 
 // Saves into the active workspace's VFS Downloads folder (grimoireBrowserBridge.js /save), not the browser's downloads.
