@@ -1544,8 +1544,9 @@ function failVibeEncodingProgress(toastId, errorMessage = 'Vibe encoding failed'
  * Handle toast button click events
  * @param {number} buttonId - The unique button ID
  */
+// JULES: Convert buttonId to number to match numeric keys stored in buttonHandlers Map
 function handleToastButtonClick(buttonId) {
-    const handler = buttonHandlers.get(buttonId);
+    const handler = buttonHandlers.get(Number(buttonId));
     if (handler) {
         try {
             handler.onClick(handler.toastId);
