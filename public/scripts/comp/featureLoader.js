@@ -52,7 +52,7 @@ const FEATURE_MANIFEST = {
     },
     grimoire: {
         styles: ['css/tag-wiki-search.css'],
-        scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/tagWikiSearchModal.js']
+        scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/tagWikiSearchModal.js']
     },
     character_search: {
         depends: ['grimoire'],

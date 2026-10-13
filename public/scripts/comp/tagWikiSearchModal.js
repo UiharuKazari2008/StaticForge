@@ -3622,6 +3622,8 @@ class GrimoireSplitPane extends WikiDisplayBase {
     navigate(url) {
         const target = String(url || '').trim();
         if (!target) return;
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('navigate');
         this.blank = false;
         const host = window.tagWikiSearchModal;
         if (host && typeof host._navigateToPane === 'function') {
@@ -3919,6 +3921,8 @@ class WikiWindowInstance extends WikiDisplayBase {
     navigate(url) {
         const target = String(url || '').trim();
         if (!target) return;
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('navigate');
 
         // Search stays in this window. The DSAP search activator returns true
         // even when this shell has no showSearchResultsPage, which would skip the fallback.
@@ -4094,6 +4098,8 @@ class WikiWindowInstance extends WikiDisplayBase {
     
     restoreHistoryEntry(entry) {
         if (!entry) return;
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('navigate');
 
         if (entry.type === 'web' && entry.url) {
             // grimoireOpenRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
@@ -4501,6 +4507,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.setupSplitModeListeners();
         this.setupContextMenu();
         // updateSearchControlsVisibility no longer needed (no old header controls to toggle)
+        // IE7's chrome on the Vista desktop: public/scripts/comp/grimoireIeChrome.js (#448)
+        if (typeof GrimoireIeChrome === 'function') this.ieChrome = new GrimoireIeChrome(this);
     }
 
     setupSplitModeListeners() {
@@ -5945,6 +5953,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
     navigate(pseudoUrl = '') {
         const url = String(pseudoUrl || '').trim();
         if (!url) return;
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('navigate');
 
         // grimoireNormalizeWebUrl / grimoireBareWebUrl: public/scripts/comp/grimoireRemoteBrowser.js
         const webUrl = grimoireNormalizeWebUrl(url) || grimoireBareWebUrl(url);
@@ -7408,6 +7418,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
     
     goHome() {
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('navigate');
         // grimoireCloseRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
         grimoireCloseRemoteBrowser(this);
         if (this.rightPane) grimoireCloseRemoteBrowser(this.rightPane);
@@ -7425,6 +7437,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
     
     restoreHistoryEntry(entry) {
         if (!entry) return;
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('navigate');
 
         if (entry.type !== 'web') {
             // grimoireCloseRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js

@@ -28,14 +28,15 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     visibility: hidden;
 }
 
-/* the travel band: a faint capsule holding the orbs and the Recent Pages arrow */
+/* the travel band: the orbs sit in Explorer's gutter, a groove that rings each orb and pinches into
+   a waist between them (travel-gutter.svg, drawn from the VM); Recent Pages ▾ sits outside it */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .naxt-nav-group {
     gap: 0;
-    padding: 0 1px 0 0;
-    background: linear-gradient(hsl(0 0% 100% / 10%), hsl(0 0% 100% / 4%) 50%, hsl(0 0% 0% / 4%) 50%, hsl(0 0% 100% / 6%));
-    border: 1px solid hsl(210 20% 12% / 45%);
-    border-radius: 15px;
-    box-shadow: 0 1px 0 hsl(0 0% 100% / 22%), inset 0 1px 0 hsl(0 0% 100% / 14%);
+    padding: 0;
+    background: url('/static_images/vista-explorer/travel-gutter.svg') no-repeat 0 50%;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
 }
 
 /* Recent Pages: aero.msstyles IMAGE_937, 13x108, normal / hot / pressed / disabled at 27px */
@@ -79,8 +80,9 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     opacity: 1;
 }
 
+/* orb centres 28px apart, as on the VM */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerForwardBtn {
-    margin-left: -2px;
+    margin-left: -1px;
     background-image: url('/static_images/vista-explorer/nav-forward.png');
 }
 
@@ -741,115 +743,552 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-status-sp
     color: #2b5797;
 }
 
-/* ---------- Grimoire / Alchemy as Internet Explorer ----------
-   IE7's chrome is Explorer's sibling: the same blue glass back / forward orbs, Home as a bare
-   glyph, the light address box with the page icon, the path and the refresh arrows, the
-   Alchemy site menu a bare glyph. The pages keep their own look, as in a browser. The Alchemy
-   load fill (grimoireRemoteBrowser.js grimoireShowLoadProgress) runs pale blue in the box. */
+/* ---------- Grimoire / Alchemy as Internet Explorer 7 (#448) ----------
+   1:1 with IE7 on the Vista VM. Structure from public/scripts/comp/grimoireIeChrome.js: the travel
+   row (Explorer's orbs and gutter, Recent Pages ▾, the address box ending ▾ | refresh | stop, the
+   search box), the tab row (Favorites, Add to Favorites, the tab, the new-tab stub, the command
+   bar with Home, Split view and Tools ▾) and the status bar. Art in public/static_images/vista-ie/
+   (ieframe.dll and the VM). The pages keep their own look, as in a browser. The Alchemy load fill
+   (grimoireRemoteBrowser.js grimoireShowLoadProgress) runs pale blue in the address box. */
 
-body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar > .button-group:has(> #tagWikiSearchBackBtn) {
-    gap: 2px;
+body:not(.desktop-mode) #tagWikiSearchModal :is(.grimoire-recent-pages-btn, .grimoire-ie-seg, .grimoire-ie-search, .grimoire-ie-tabrow, .grimoire-ie-status),
+body.windows-classic-theme #tagWikiSearchModal :is(.grimoire-recent-pages-btn, .grimoire-ie-seg, .grimoire-ie-search, .grimoire-ie-tabrow, .grimoire-ie-status) {
+    display: none !important;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal {
+    --ie-font: 'Segoe UI', 'Noto Sans', sans-serif;
+}
+
+/* the travel band: the same orbs, gutter and Recent Pages ▾ as Explorer */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-travel {
+    flex: none;
+    gap: 0;
     padding: 0;
-    background: none;
+    background: url('/static_images/vista-explorer/travel-gutter.svg') no-repeat 0 50%;
     border: 0;
+    border-radius: 0;
     box-shadow: none;
 }
 
-body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn) {
-    width: 27px;
-    min-width: 27px;
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn) {
+    width: 29px;
+    min-width: 29px;
     height: 27px;
     min-height: 27px;
     padding: 0;
-    border: 1px solid hsl(216 80% 18%);
+    border: 0;
     border-radius: 50%;
-    background: radial-gradient(circle at 50% 26%, hsl(205 100% 93%) 0, hsl(205 95% 80%) 18%, hsl(208 78% 58%) 48%, hsl(214 78% 38%) 78%, hsl(216 82% 27%) 100%);
-    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 55%), 0 1px 2px hsl(0 0% 0% / 45%);
-    color: #fff;
-    text-shadow: 0 1px 1px hsl(216 80% 15% / 80%);
-    transition: filter 0.2s, box-shadow 0.2s;
+    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    box-shadow: none;
+    filter: none;
+    opacity: 1;
+    transition: none;
 }
 
-body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn) i {
-    color: #fff;
-    font-size: 12px;
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #tagWikiSearchForwardBtn {
+    margin-left: -1px;
+    background-image: url('/static_images/vista-explorer/nav-forward.png');
 }
 
-@media (hover: hover) {
-    body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn):hover:not(:disabled) {
-        filter: brightness(1.15);
-        box-shadow: inset 0 1px 0 hsl(0 0% 100% / 60%), 0 0 6px 1px hsl(200 100% 70% / 60%), 0 1px 2px hsl(0 0% 0% / 45%);
-    }
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn) i {
+    display: none;
 }
 
-body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn):is(:disabled, .disabled) {
-    filter: grayscale(1) brightness(1.15);
-    opacity: 0.75;
-}
-
-body:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchHomeBtn, #grimoireAddressSiteBtn) {
-    min-width: 26px;
-    height: 27px;
-    padding: 0 5px;
-    background: none;
-    border-color: transparent;
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn):hover:not(:disabled) {
+    background-position: 0 -27px;
+    filter: none;
     box-shadow: none;
 }
 
-/* the address box */
-body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar {
-    height: 25px;
-    min-height: 25px;
-    background: linear-gradient(#fff, #f4f7fb);
-    border: 1px solid hsl(210 8% 45%);
-    border-radius: 2px;
-    box-shadow: inset 0 1px 1px hsl(0 0% 0% / 8%), 0 0 0 1px hsl(0 0% 100% / 25%);
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn):active:not(:disabled) {
+    background-position: 0 -54px;
 }
 
-body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer {
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn):is(:disabled, .disabled) {
+    background-position: 0 -81px;
+    filter: none;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn {
+    flex: none;
+    width: 13px;
+    min-width: 13px;
+    height: 27px;
+    min-height: 0;
+    padding: 0;
+    margin: 0 4px 0 -1px;
+    background: url('/static_images/vista-explorer/recent-pages.png') no-repeat 0 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn:hover {
+    background-position: 0 -27px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn:active {
+    background-position: 0 -54px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn.is-disabled {
+    background-position: 0 -81px;
+}
+
+/* the address box: 24px, Explorer's translucent box, then ▾ | refresh | stop inside the same frame */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar {
+    height: 24px;
+    min-height: 24px;
+    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
+    border: 1px solid #353c43;
+    border-right: 0;
+    border-bottom-color: #6e7988;
+    border-radius: 0;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 88%), inset 1px 0 0 hsl(0 0% 100% / 88%), inset 0 -1px 0 hsl(0 0% 100% / 88%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-seg {
+    position: relative;
+    flex: none;
+    align-self: center;
+    width: 25px;
+    min-width: 0;
+    height: 24px;
+    min-height: 0;
+    padding: 0;
+    /* joined to the box: cancel the toolbar's 4px gap */
+    margin: 0 0 0 -4px;
+    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
+    border: 1px solid #353c43;
+    border-width: 1px 0;
+    border-bottom-color: #6e7988;
+    border-radius: 0;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 88%), inset 0 -1px 0 hsl(0 0% 100% / 88%), inset 1px 0 0 #64686e;
+    background-repeat: no-repeat;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-drop {
+    width: 17px;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 88%), inset 0 -1px 0 hsl(0 0% 100% / 88%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-drop::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url('/static_images/vista-ie/drop.png') no-repeat center;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(.grimoire-ie-refresh, .grimoire-ie-stop)::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 0 1px;
+    background: no-repeat center;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-refresh::before {
+    background-image: url('/static_images/vista-ie/refresh.png');
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-stop {
+    border-right-width: 1px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-stop::before {
+    background-image: url('/static_images/vista-ie/stop.png');
+}
+
+/* IE keeps the red X showing when idle */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-stop:disabled {
+    opacity: 1;
+    cursor: default;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-seg:hover:not(:disabled) {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    box-shadow: inset 0 0 0 1px #3c7fb1, inset 0 0 0 2px hsl(0 0% 100% / 55%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-seg:active:not(:disabled) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    box-shadow: inset 0 0 0 1px #2c628b;
+}
+
+/* the search box, 6px on, IE's 247px */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search {
+    flex: 0 1 247px;
+    display: flex;
+    align-items: center;
+    min-width: 120px;
+    height: 24px;
+    margin-left: 2px;
+    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
+    border: 1px solid #353c43;
+    border-bottom-color: #6e7988;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 88%);
+    box-sizing: border-box;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search input {
+    flex: 1;
+    min-width: 0;
+    height: 20px;
     padding: 0 6px;
+    background: transparent;
+    border: 0;
+    outline: 0;
     color: #000;
-    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
-    font-size: 12px;
+    font: 12px var(--ie-font);
 }
 
-body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer .address-mode-icon {
-    color: #2b5797;
-}
-
-body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer:hover {
-    background: none;
-}
-
-body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer :is(.form-control, input) {
-    min-height: 23px;
-    height: 23px;
-    color: #000;
-    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
-    font-size: 12px;
-    text-shadow: none;
-}
-
-body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer input::placeholder {
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search input::placeholder {
     color: #6d6d6d;
     font-style: italic;
 }
 
-body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer .btn-secondary {
-    min-height: 23px;
-    height: 23px;
-    padding: 0 6px;
-    border-left: 1px solid hsl(210 10% 82%);
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search-go {
+    flex: none;
+    width: 24px;
+    min-width: 0;
+    height: 20px;
+    min-height: 0;
+    padding: 0;
+    background: url('/static_images/vista-ie/search.png') no-repeat center;
+    border: 0;
     border-radius: 0;
+    box-shadow: none;
 }
 
-body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer .btn-secondary i {
-    color: #2f7d3b;
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer {
+    padding: 0 6px;
+    color: #000;
+    font-family: var(--ie-font);
+    font-size: 12px;
 }
 
-body:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar::before {
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer .address-mode-icon {
+    color: #2b5797;
+}
+
+/* the page's icon, as IE shows it: IE's page for the web, the Grimoire's book for its own pages (applets too), a document for rdf */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-globe, .fa-book, .fa-file-alt, .fa-puzzle-piece) {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: no-repeat center / 16px 16px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-globe, .fa-book, .fa-file-alt, .fa-puzzle-piece)::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon.fa-globe {
+    background-image: url('/static_images/vista-ie/page-ie.png');
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-book, .fa-puzzle-piece) {
+    background-image: url('/static_images/app_icons/books.png');
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon.fa-file-alt {
+    background-image: url('/static_images/vista-icons/explorer/file-16.png');
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer:hover {
+    background: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer :is(.form-control, input) {
+    min-height: 22px;
+    height: 22px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    color: #000;
+    font-family: var(--ie-font);
+    font-size: 12px;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer input::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+/* the old in-box refresh: the segment after the box does it now */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer #tagWikiSearchRefreshBtn {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar::before {
     background: hsl(210 90% 82% / 70%);
     box-shadow: none;
+}
+
+/* ---- the tab row: IE's light bar (VM: #5b6a7a top, white line, #fefeff to #e3e8f4, #cfd7eb,
+   #d0d7ec to #e9ecfa, #8b919f bottom; then the page frame #edf3fe, #b7c8f6, #a0a0a0) ---- */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: none;
+    align-items: flex-end;
+    gap: 0;
+    height: 32px;
+    margin-bottom: 4px;
+    padding: 0 6px 0 4px;
+    background: linear-gradient(#fff 0 1px, #fefeff 1px, #e3e8f4 15px, #cfd7eb 15px, #cfd7eb 19px, #d0d7ec 19px, #e9ecfa);
+    border-top: 1px solid #5b6a7a;
+    border-bottom: 1px solid #8b919f;
+    box-shadow: 0 1px 0 #edf3fe, 0 3px 0 #b7c8f6, 0 4px 0 #a0a0a0;
+    box-sizing: border-box;
+    color: #000;
+    font: 12px var(--ie-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-fav {
+    align-self: center;
+    width: 26px;
+    min-width: 0;
+    height: 24px;
+    min-height: 0;
+    padding: 0;
+    margin-right: 4px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-fav img {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-fav:disabled {
+    opacity: 1;
+    cursor: default;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-fav:disabled img {
+    filter: grayscale(1);
+    opacity: 0.5;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabs {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: flex-end;
+    min-width: 0;
+    height: 100%;
+    margin-left: 14px;
+}
+
+/* the tab: 3px down, #9196a2 top, #8b919f sides with a #f5faff inner line, #fcfdfd to #e7f5fb then
+   #cfe7fa to #b9d3fb, open at the bottom into the page frame */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab {
+    display: flex;
+    flex: 0 1 298px;
+    align-items: center;
+    gap: 4px;
+    min-width: 80px;
+    height: 28px;
+    margin-bottom: -1px;
+    padding: 0 8px 0 5px;
+    background: linear-gradient(#fcfdfd, #e7f5fb 9px, #cfe7fa 9px, #b9d3fb);
+    border: 1px solid #8b919f;
+    border-top-color: #9196a2;
+    border-bottom: 0;
+    border-radius: 3px 3px 0 0;
+    box-shadow: inset 1px 0 0 #f5faff, inset -1px 0 0 #f5faff;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+/* loading: IE7's ring (ieframe.dll bitmap 624, 18 frames) in place of the page icon */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab.is-loading .grimoire-ie-tab-icon {
+    object-position: -9999px 0;
+    background: url('/static_images/vista-ie/loading.png') no-repeat 0 0 / 288px 16px;
+    animation: grimoire-ie-ring 0.9s steps(18) infinite;
+}
+
+@keyframes grimoire-ie-ring {
+    to {
+        background-position: -288px 0;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* the new-tab stub: 29px, 5px down, the bar's own gradient */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-newtab {
+    flex: none;
+    width: 30px;
+    min-width: 0;
+    height: 26px;
+    min-height: 0;
+    padding: 0;
+    margin-left: -1px;
+    background: linear-gradient(#fcfdfd, #e5eaf5 9px, #cfd7eb 9px, #e9ecfa);
+    border: 1px solid #8b919f;
+    border-top-color: #9196a2;
+    border-bottom: 0;
+    border-radius: 3px 3px 0 0;
+    box-shadow: inset 1px 0 0 #f0f3f9, inset -1px 0 0 #f0f3f9;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-newtab:hover {
+    background: linear-gradient(#fdfeff, #eaf6fd 9px, #d5ecfb 9px, #c2e2f9);
+}
+
+/* the command bar: flat buttons, Vista's light hover */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands {
+    display: flex;
+    flex: none;
+    align-self: center;
+    align-items: center;
+    gap: 2px;
+    margin-left: 8px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands > :is(button, .btn-secondary) {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    width: auto;
+    min-width: 24px;
+    height: 24px;
+    min-height: 0;
+    padding: 0 4px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 12px var(--ie-font);
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands > :is(button, .btn-secondary):hover:not(:disabled) {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 55%);
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands > :is(button, .btn-secondary):is(:active, .active) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #2c628b;
+}
+
+/* the split toggle lives in Page ▾ here */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands > #tagWikiSearchRightToggleBtn {
+    display: none !important;
+}
+
+/* IE always shows Tools ▾ (grimoire-browser.css keeps the caption's site menu to Alchemy pages) */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands > #grimoireAddressSiteBtn {
+    display: inline-flex;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands img {
+    width: 16px;
+    height: 16px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands i {
+    color: #3d5a7a;
+    font-size: 13px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-cmd-drop {
+    width: 0;
+    height: 0;
+    margin-left: 2px;
+    border: 3.5px solid transparent;
+    border-top: 4px solid #000;
+    border-bottom: 0;
+}
+
+/* ---- the page and the status bar ---- */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-content.tag-wiki-search-content {
+    display: flex;
+    flex-direction: column;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-content.tag-wiki-search-content > .tag-wiki-panels-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+/* VM: #919191 over a white line, #f1eded, etched cells, the zone with its globe, a size grip */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status {
+    display: flex;
+    flex: none;
+    align-items: stretch;
+    height: 23px;
+    background: #f1eded;
+    border-top: 1px solid #919191;
+    box-shadow: 0 -1px 0 #fff, inset 0 1px 0 #fff;
+    box-sizing: border-box;
+    color: #000;
+    font: 12px var(--ie-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status > span {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 8px;
+    white-space: nowrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-ie-status-cell, .grimoire-ie-status-zone) {
+    border-left: 1px solid #c9c4c4;
+    box-shadow: inset 1px 0 0 #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-cell {
+    width: 120px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-zone {
+    flex: none;
+    min-width: 250px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-zone img {
+    width: 16px;
+    height: 16px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-grip {
+    width: 14px;
+    padding: 0 !important;
+    background:
+        radial-gradient(circle at 1px 1px, #a8a3a3 1px, transparent 1.2px) right 2px bottom 2px / 4px 4px no-repeat,
+        radial-gradient(circle at 1px 1px, #a8a3a3 1px, transparent 1.2px) right 6px bottom 2px / 4px 4px no-repeat,
+        radial-gradient(circle at 1px 1px, #a8a3a3 1px, transparent 1.2px) right 2px bottom 6px / 4px 4px no-repeat;
 }
 
 /* ---------- Vista's own folder and file icons (imageres.dll 3 folder, 1 file, 125 picture,

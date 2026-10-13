@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="57" height="27" viewBox="0 0 57 27">
+  <!-- Explorer's travel band gutter (Vista VM, 96 DPI): a groove round each orb (r 12.5, centres
+       28 px apart) pinched into a waist 1 px inside the orbs' tops and bottoms; a pale recess,
+       a 2 px shadow along the top and a soft 3 px light along the bottom -->
+  <defs>
+    <path id="g" d="M20.4 2.5H36.6A12.5 12.5 0 1 1 36.6 24.5H20.4A12.5 12.5 0 1 1 20.4 2.5Z"/>
+    <linearGradient id="fill" gradientUnits="userSpaceOnUse" x1="0" y1="2" x2="0" y2="25">
+      <stop offset="0" stop-color="#fff" stop-opacity=".04"/>
+      <stop offset=".3" stop-color="#fff" stop-opacity=".1"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".06"/>
+    </linearGradient>
+    <linearGradient id="edge" gradientUnits="userSpaceOnUse" x1="0" y1="1" x2="0" y2="26">
+      <stop offset="0" stop-color="#000" stop-opacity=".3"/>
+      <stop offset=".4" stop-color="#000" stop-opacity=".1"/>
+      <stop offset=".62" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".42"/>
+    </linearGradient>
+    <linearGradient id="inner" gradientUnits="userSpaceOnUse" x1="0" y1="2" x2="0" y2="12">
+      <stop offset="0" stop-color="#000" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="below" gradientUnits="userSpaceOnUse" x1="0" y1="14" x2="0" y2="26">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".22"/>
+    </linearGradient>
+    <clipPath id="in"><use xlink:href="#g"/></clipPath>
+  </defs>
+  <use xlink:href="#g" fill="url(#fill)"/>
+  <use xlink:href="#g" transform="translate(0 1)" fill="none" stroke="url(#inner)" clip-path="url(#in)"/>
+  <use xlink:href="#g" transform="translate(0 1)" fill="none" stroke="url(#below)"/>
+  <use xlink:href="#g" fill="none" stroke="url(#edge)"/>
+</svg>
