@@ -7887,6 +7887,16 @@ class WebSocketClient {
         return this.sendMessage('set_user_pin_login_enabled', { enabled });
     }
 
+    /** Account pictures for Administrator and Guest (modules/accountPictures.js; User Accounts). */
+    async getAccountPictures() {
+        return this.sendMessage('get_account_pictures', {}, false);
+    }
+
+    /** picture: a default picture's name, or 'custom' with dataUrl (a 128x128 PNG data URL). Admin only. */
+    async setAccountPicture(account, picture, dataUrl) {
+        return this.sendMessage('set_account_picture', { account, picture, ...(dataUrl ? { dataUrl } : {}) });
+    }
+
     async getApprovedIps() {
         return this.sendMessage('get_approved_ips', {});
     }

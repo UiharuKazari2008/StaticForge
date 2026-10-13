@@ -145,6 +145,7 @@
     "test:grimoire-ie-chrome": "node scripts/test-grimoire-ie-chrome.js",
     "test:control-panel-vista-pages": "node scripts/test-control-panel-vista-pages.js",
     "test:atelier-vista-menubar": "node scripts/test-atelier-vista-menubar.js",
+    "test:user-accounts": "node scripts/test-user-accounts.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
     "icon:app": "node scripts/generate-app-icon.js",

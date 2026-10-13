@@ -21,12 +21,16 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 |---|---|---|---|
 | `get_app_options` | `get_app_options_response` | session | Full app config + account health |
 | `retry_account_data` | `retry_account_data_response` | session | Force upstream account refresh |
+| `wallet_status` | `wallet_status_response` | admin (session: `restricted`) | Wallet tray: usage and balance of the other accounts and API keys. Handler `modules/ws/handlers/176-walletHandler.js` (owner `wallet`) |
+| `get_account_pictures` | `get_account_pictures_response` | session | Administrator and Guest account pictures (Control Panel User Accounts, start menu). Handler `modules/ws/handlers/270-accountPicturesHandler.js` (owner `accountPictures`) |
+| `set_account_picture` | `set_account_picture_response` | admin | Change one account's picture: a default name or `custom` with a 128x128 PNG data URL (destructive) |
 
 ## Server push (no request)
 
 | Push type | When | Client handler |
 |---|---|---|
 | `account_data_health_updated` | Account health fields change (including after balance/subscription sync) | `public/scripts/ws/handlers/40-appCoreInbound.js` |
+| `account_pictures_changed` | An administrator changed an account picture | `public/scripts/comp/cplUserAccounts.js` (`wsClient.on`) |
 
 Periodic **ping** payloads include `balance`, `opusUsage`, and `accountHealth` — see [infrastructure.md](./infrastructure.md#ping-server-push-fields).
 
@@ -243,7 +247,48 @@ Forces `initializeAccountData(true)` on the server.
 
 **Client:** `applyAccountHealthFieldsToOptions()` syncs `optionsData` and tray/Data Management UI; prompts restart when deferred user receives valid data; shows subscription renewal-failure dialog once per client session when `subscriptionRenewalFailed` is true.
 
+### `wallet_status`
+
+Usage and balance of every connected account and API key except NovelAI, for the taskbar wallet flyout (`public/scripts/comp/walletTray.js`, Yozora #430; NovelAI comes from `optionsData`). Built by `modules/walletStatus.js`, cached 2 minutes; `refresh: true` (the flyout opening) re-reads anything older than 20 seconds, `fresh: true` (after a Cursor login finished, `cursor_account_login_complete`) always collects again. The wallet also asks again on `api_service_lock_changed` and `api_key_status_changed`. Each service fails on its own: its block carries `error` instead of failing the packet. A service that is not set up is `null`. OpenAI is not included: it gives API keys no balance (`/dashboard/billing/credit_grants` needs a browser session key).
+
+**Request:** `{ "type": "wallet_status", "refresh": true, "fresh": false }`
+
+**Response (admin):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fetchedAt` | number | ms epoch |
+| `cursor` | object \| null | `{ accounts: [{ id, name, email, color, personas: ['Wren'\|'Xi'], plan, percent, autoPercent, apiPercent, limited, daysLeft, costLabel, needsLogin, error }] }` from `cursorUsage.getCursorUsageForAccount` per saved profile; `null` with no profiles and no host login. `needsLogin` follows Security Center's Login button (never logged in, or the usage error says the login expired / is missing); the wallet then offers `login_cursor_account` |
+| `claude` | object \| null | `{ at, status, resetsAt, fiveHour: { percent, resetsAt }, sevenDay: { percent, resetsAt } }` from the last Claude turn (Director `claude-usage.json`); a window whose `resetsAt` passed has reset since. `null` when Claude Code is not installed |
+| `tokenrouter` | object \| null | `{ managementKey: false }` without a management key, else `{ managementKey: true, remaining, topUp, vouchers, spent }` (USD, `tokenRouterBridge.wallet`) |
+| `runpod` | object \| null | `{ pods: [{ id, name, status, costPerHr, lastStartedAt, gpuName, error }], running, balance, spendPerHr, spendLimit }`; balance from GraphQL `myself { clientBalance currentSpendPerHr spendLimit }` |
+| `keys` | object | Read on every request (not cached): `{ locks: [{ service, label, failureCount, lastStatus, lastMessage, lockedAt }], failed: [{ service, label, slot, index, keyName, message, checkedAt }] }`. `locks` = services the key tripwire stopped calling (`apiKeyManager`; the wallet's Unlock sends `unlock_api_service`), `failed` = keys Security Center's check refused (`apiKeyHealth`, state `fail`). Grok is left out |
+
+**Response (session user):** `{ "success": true, "restricted": true }`; the wallet shows NovelAI and the RunPod pods only.
+
 ---
+
+### `get_account_pictures` / `set_account_picture`
+
+Account pictures for MeletonFX's two accounts (`modules/accountPictures.js`): Administrator (the admin
+PIN) and Guest (the user PIN). A picture is one of Vista's defaults
+(`public/static_images/account-pictures/<name>.png`) or an uploaded one.
+
+```json
+{ "type": "get_account_pictures" }
+{ "type": "get_account_pictures_response", "data": { "success": true,
+  "accounts": { "administrator": { "picture": "kitten", "url": "/static_images/account-pictures/kitten.png" },
+                "guest": { "picture": "custom", "url": "data:image/png;base64,..." } },
+  "defaults": ["music", "starfish", "leaf", "robot", "fish", "bonsai", "sports", "dog", "chess", "kitten", "fireworks", "guest", "user"] } }
+
+{ "type": "set_account_picture", "account": "guest", "picture": "custom", "dataUrl": "data:image/png;base64,..." }
+{ "type": "set_account_picture_response", "data": { "success": true, "accounts": { ... } } }
+```
+
+`set_account_picture` is admin only. `picture` is a default name or `custom`; `custom` needs `dataUrl`,
+a PNG of at most 256 KB (the client draws the upload into 128x128). Stored in `config.json`
+`accountPictures` and `data/account-pictures/<account>.png`. After a change the server pushes
+`account_pictures_changed` (`data.accounts`) to every client.
 
 ## Subscription renewal failure notice
 
