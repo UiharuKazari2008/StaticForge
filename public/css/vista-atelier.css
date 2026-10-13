@@ -2,7 +2,8 @@
    its caption controls in a menu bar, the gallery as Vista shows pictures.
    - Menu bar: Explorer's on the VM (Alt): 20px, #fefeff to #e5eaf5 over 7px then #d4dbed to
      #e1e6f6, a #b6bccc line under it; titles 12px black, hot / open flat #3399ff with white text.
-   - Search: Explorer's box on the glass, top right.
+   - The caption keeps its controls (quick filters, Home, Dataset, search, Refresh, the filters,
+     Marks, Pins, Tag Bag) as they were.
    - Gallery: a white page, thumbnails framed like Photo Gallery's, Explorer's hover; marks as a
      coloured frame (favourite gold, try blue, both green) instead of the dark theme's glow.
    - Filter bar: a light pane under the menu bar (Vista's search pane), 7.css controls.
@@ -12,44 +13,7 @@
     display: none;
 }
 
-/* ---- caption: only the search box stays ---- */
-
-#naxtModal.naxt-vista .modal-window-title-toolbar :is(.naxt-quick-filters, #naxtHomeBtn, #naxtRefreshBtn, #naxtFilterToggleBtn, #naxtOpenCustomTagBtn) {
-    display: none !important;
-}
-
-#naxtModal.naxt-vista .modal-window-title-toolbar {
-    justify-content: flex-end;
-}
-
-#naxtModal.naxt-vista .modal-window-title-toolbar .button-group:has(> #naxtSearchInput) {
-    flex: 0 1 260px;
-    height: 22px;
-    min-height: 0;
-    padding: 0;
-    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
-    border: 1px solid #353c43;
-    border-bottom-color: #6e7988;
-    border-radius: 0;
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 88%), 0 0 0 1px hsl(0 0% 100% / 16%);
-}
-
-#naxtModal.naxt-vista .modal-window-title-toolbar #naxtSearchInput {
-    height: 20px;
-    min-height: 0;
-    padding: 0 24px 0 6px;
-    background: url('/static_images/vista-start/search-glyph.png') no-repeat right 5px center;
-    border: 0;
-    box-shadow: none;
-    color: #000;
-    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
-    text-shadow: none;
-}
-
-#naxtModal.naxt-vista .modal-window-title-toolbar #naxtSearchInput::placeholder {
-    color: #5f5f5f;
-    font-style: italic;
-}
+/* ---- the caption keeps its controls (Yukimi 2026-10-13); only the menu bar is new ---- */
 
 /* ---- the menu bar ---- */
 

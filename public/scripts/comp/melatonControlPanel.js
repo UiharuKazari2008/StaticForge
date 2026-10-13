@@ -125,7 +125,7 @@
     registerItem({
         id: 'remote-access',
         name: 'Remote Access',
-        image: '/static_images/vista-icons/remote-access-32.png',
+        image: '/static_images/app_icons/remote_desktop.png',
         description: 'Choose how agents deliver and open images on this computer.',
         open: () => navigate('remote-access')
     });

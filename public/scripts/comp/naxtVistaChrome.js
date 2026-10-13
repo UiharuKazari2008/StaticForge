@@ -1,25 +1,20 @@
 /**
- * Atelier on the Vista desktop (Yukimi 2026-10-13): a light Vista window whose caption controls
- * move to a menu bar (Vista's: Explorer's menu bar on the VM, styles in public/css/vista-atelier.css).
+ * Atelier on the Vista desktop (Yukimi 2026-10-13): a light Vista window with a menu bar (Vista's:
+ * Explorer's menu bar on the VM, styles in public/css/vista-atelier.css) under the caption.
  *
  *   File      Home, Refresh, Add Custom Tag…, Close
  *   View      GOAT, Hidden Gems, Debated (the quick filters), Filter Bar, Reset Filters
- *   Dataset   Marks   Pins   Tag Bag    the window's own dropdown buttons, moved into the bar;
- *                                        their click menus (naxtApplet.js setupClickMenus) stay
  *
- * File and View drive the window's buttons, which stay in the caption hidden, so naxtApplet.js
- * keeps every handler and state. The search box stays on the glass, top right, as in Vista's
- * own programs. Off the Vista desktop (classic theme, no desktop) everything goes back.
+ * File and View drive the window's own buttons. Those stay in the caption as its controls
+ * (Yukimi: "the menu bar icons can go back to the titlebar controls"), so the dropdowns
+ * (Dataset, Marks, Pins, Tag Bag) and the quick filters are where they were. Off the Vista
+ * desktop (classic theme, no desktop) the menu bar and the light client go.
  */
 (function (root) {
     'use strict';
 
-    const MOVED = [
-        ['naxtDatasetDropdownBtn', 'Dataset'],
-        ['naxtMarkFilterDropdownBtn', 'Marks'],
-        ['naxtElevatePinsDropdownBtn', 'Pins'],
-        ['naxtBagDropdownBtn', 'Tag Bag']
-    ];
+    // buttons moved from the caption into the bar: none since the controls went back to the caption
+    const MOVED = [];
 
     class NaxtVistaChrome {
         constructor(app) {

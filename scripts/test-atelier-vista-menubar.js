@@ -36,7 +36,7 @@ assert.ok(read('public/scripts/comp/featureLoader.js').includes("scripts: ['scri
 assert.ok(read('public/scripts/comp/featureLoader.js').includes("'css/vista-atelier.css'"));
 assert.ok(read('public/scripts/comp/naxtApplet.js').includes('this.vista = new NaxtVistaChrome(this)'));
 const js = read('public/scripts/comp/naxtVistaChrome.js');
-assert.ok(js.includes("['naxtDatasetDropdownBtn', 'Dataset']") && js.includes("['naxtBagDropdownBtn', 'Tag Bag']"), 'the dropdowns move into the bar');
+assert.ok(js.includes('const MOVED = [];') && !/naxt-quick-filters, #naxtHomeBtn[^{]*\{\s*display: none/.test(read('public/css/vista-atelier.css')), 'the caption keeps its controls (Yukimi: back to the titlebar)');
 assert.ok(js.includes("this.modal.dataset.windowClient = 'light'") && js.includes('[...this.homes].reverse()'), 'light on the Vista desktop, caption order restored elsewhere');
 const css = read('public/css/vista-atelier.css');
 assert.ok(css.includes('background: linear-gradient(#fefeff, #e5eaf5 7px, #d4dbed 7px, #e1e6f6 20px);') && css.includes('border-bottom: 1px solid #b6bccc;'), "Vista's menu bar (the VM's Explorer)");
