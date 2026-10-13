@@ -282,6 +282,31 @@ body.windows-classic-theme [role=progressbar]>div::after {
     display: none;
 }
 
+/* no Vista shine on the classic bar; an indeterminate (marquee) bar is a plain highlight block
+   sliding across the well, as Windows Classic draws it */
+body.windows-classic-theme [role=progressbar]::after {
+    display: none;
+}
+
+body.windows-classic-theme [role=progressbar].marquee::before {
+    content: '';
+    display: block;
+    width: 25%;
+    height: 100%;
+    background: var(--Hilight);
+    opacity: 1;
+    animation: classic-progress-marquee 1.6s steps(24) infinite;
+}
+
+body.windows-classic-theme [role=progressbar]:not(.marquee)::before {
+    display: none;
+}
+
+@keyframes classic-progress-marquee {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(400%); }
+}
+
 /* Windows Update Modal Specific Styles */
 .windows-update-status {
     gap: 12px;

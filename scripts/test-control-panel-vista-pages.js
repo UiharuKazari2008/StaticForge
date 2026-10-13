@@ -55,7 +55,7 @@ for (const sel of ['.cpl-auth-host .sec-data-table th', '.cpl-wu-band--green', '
 assert.ok(net.includes('rgb(175, 233, 176)') && net.includes('rgb(252, 236, 100)') && net.includes('rgb(251, 130, 129)'), "Windows Update's band colours (wucltux.dll UIFILE)");
 const vex = read('public/css/vista-explorer.css');
 assert.ok(vex.includes("url('/static_images/vista-cpl/task-pane-swoosh.png') no-repeat left bottom / 200px auto,\n        linear-gradient(#416fa5, #69b570);"), "Vista's task pane");
-assert.ok(vex.includes('#melatonControlPanelModal .modal-window-title-toolbar .naxt-nav-group {\n    flex: none;\n    gap: 0;\n    padding: 0;\n    background: url(\'/static_images/vista-explorer/travel-gutter.svg\')'), "Explorer's orbs and gutter");
+assert.ok(/(#melatonControlPanelModal \.modal-window-title-toolbar \.naxt-nav-group) \{[^}]*height: 27px;[^}]*align-items: flex-start;[^}]*background: url\('\/static_images\/vista-explorer\/travel-gutter\.svg'\) no-repeat 0 0;/.test(vex), "Explorer's orbs and gutter, the band the orbs' height");
 for (const f of ['shield-ok.png', 'shield-warning.png', 'shield-error.png', 'key-32.png', 'windows-update-32.png', 'task-pane-swoosh.png']) {
     assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-cpl', f)), f);
 }

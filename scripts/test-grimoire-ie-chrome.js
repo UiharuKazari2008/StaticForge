@@ -48,7 +48,7 @@ const css = read('public/css/vista-explorer.css');
 for (const sel of ['.grimoire-travel', '.grimoire-ie-seg', '.grimoire-ie-search', '.grimoire-ie-tabrow', '.grimoire-ie-tab', '.grimoire-ie-newtab', '.grimoire-ie-commands', '.grimoire-ie-status']) {
     assert.ok(css.includes(sel), sel + ' is styled');
 }
-assert.ok(css.includes("#tagWikiSearchModal .modal-window-title-toolbar .grimoire-travel {\n    flex: none;\n    gap: 0;\n    padding: 0;\n    background: url('/static_images/vista-explorer/travel-gutter.svg')"), 'the orbs sit in Explorer\'s gutter');
+assert.ok(/(#tagWikiSearchModal \.modal-window-title-toolbar \.grimoire-travel) \{[^}]*height: 27px;[^}]*align-items: flex-start;[^}]*background: url\('\/static_images\/vista-explorer\/travel-gutter\.svg'\) no-repeat 0 0;/.test(css), 'the orbs sit in Explorer\'s gutter, the band the orbs\' height');
 assert.ok(/\.grimoire-ie-commands > #grimoireAddressSiteBtn \{\s*display: inline-flex;/.test(css), 'Tools shows on Grimoire pages too');
 for (const f of ['favorites.png', 'favorites-add.png', 'home.png', 'page-ie.png', 'refresh.png', 'stop.png', 'drop.png', 'search.png', 'tools.png', 'zone-internet.png']) {
     assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-ie', f)), f);

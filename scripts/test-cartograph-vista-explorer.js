@@ -79,7 +79,7 @@ assert.ok(css.includes("url('/static_images/vista-explorer/recent-pages.png')"),
 assert.ok(/\.explorer-address-group[^{]*\{[^}]*overflow: visible/.test(css), 'refresh is not clipped');
 assert.ok(css.includes('grid-template-columns: 157px 120px 120px 80px'), 'Vista column widths');
 assert.ok(css.includes('.explorer-view-pane[data-view="details"] .explorer-grid-host'), 'column lines in Details');
-assert.ok(css.includes("background: url('/static_images/vista-explorer/travel-gutter.svg') no-repeat 0 50%;"), 'the orbs sit in the gutter');
+assert.ok(/(#explorerModal \.modal-window-title-toolbar \.naxt-nav-group) \{[^}]*height: 27px;[^}]*align-items: flex-start;[^}]*background: url\('\/static_images\/vista-explorer\/travel-gutter\.svg'\) no-repeat 0 0;/.test(css), 'the orbs sit in the gutter, the band the orbs\' height (the groove was 3px low)');
 assert.ok(/#explorerForwardBtn \{\s*margin-left: -1px;/.test(css), 'orb centres 28px apart');
 assert.ok(read('public/static_images/vista-explorer/travel-gutter.svg').includes('A12.5 12.5 0 1 1'), 'the gutter rings each orb');
 for (const f of ['recent-pages.png', 'refresh.png', 'travel-gutter.svg']) {
