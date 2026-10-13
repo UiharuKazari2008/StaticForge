@@ -2008,3 +2008,87 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     margin-left: 8px;
     color: #6d6d6d;
 }
+
+/* ---- Melaton Search (cplSearch.js): Vista's Indexing Options (srchadmin.dll) as a page: the
+   48px icon with the count and status line, the indexes as a list, the push buttons under it ---- */
+
+#melatonControlPanelModal .cpl-search-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 22px;
+    margin: 16px 0 20px 14px;
+}
+
+#melatonControlPanelModal .cpl-search-head > img {
+    width: 48px;
+    height: 48px;
+}
+
+#melatonControlPanelModal .cpl-content .cpl-search-head p {
+    margin: 0 0 14px;
+}
+
+#melatonControlPanelModal .cpl-search-progress {
+    width: 300px;
+    max-width: 100%;
+    margin: -6px 0 8px;
+}
+
+#melatonControlPanelModal .cpl-content p.cpl-search-detail {
+    color: #5b5b5b;
+}
+
+#melatonControlPanelModal .cpl-content p.cpl-search-caption {
+    margin: 0 0 4px;
+}
+
+#melatonControlPanelModal .cpl-search-list {
+    max-width: 580px;
+    border: 1px solid #828790;
+}
+
+#melatonControlPanelModal .cpl-search-list table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#melatonControlPanelModal .cpl-search-list th {
+    height: 21px;
+    padding: 0 6px;
+    background: linear-gradient(#fff, #fff 40%, #f3f5f8);
+    border-right: 1px solid #e3e8ec;
+    border-bottom: 1px solid #d5d5d5;
+    font-weight: normal;
+    text-align: left;
+}
+
+#melatonControlPanelModal .cpl-search-list td {
+    padding: 2px 6px;
+}
+
+#melatonControlPanelModal .cpl-search-list td img {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    vertical-align: -3px;
+}
+
+#melatonControlPanelModal .cpl-search-buttons {
+    display: flex;
+    gap: 10px;
+    max-width: 580px;
+    margin-top: 10px;
+}
+
+#melatonControlPanelModal .cpl-search-buttons .cpl-wu-button {
+    min-width: 110px;
+}
+
+#melatonControlPanelModal .cpl-search-drop {
+    display: inline-block;
+    margin-left: 4px;
+    border: 3.5px solid transparent;
+    border-top: 4px solid #000;
+    border-bottom: 0;
+    vertical-align: 1px;
+}

@@ -147,6 +147,7 @@
     "test:atelier-vista-menubar": "node scripts/test-atelier-vista-menubar.js",
     "test:user-accounts": "node scripts/test-user-accounts.js",
     "test:windows-defender": "node scripts/test-windows-defender.js",
+    "test:melaton-search": "node scripts/test-melaton-search.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
     "icon:app": "node scripts/generate-app-icon.js",
