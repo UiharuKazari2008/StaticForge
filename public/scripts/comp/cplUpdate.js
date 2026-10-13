@@ -3,18 +3,23 @@
  * client's files. While the page is open, updates run in the foreground: opening it checks the
  * server, and every state the service worker reaches (serviceWorkerManager.js
  * _showServiceWorkerTrayPopup) shows here instead of the tray balloon, background downloads
- * included. The page is Vista's: the status box with the coloured band and shield (wucltux.dll
- * UIFILE: red rgb(251,130,129), yellow rgb(252,236,100), green rgb(175,233,176), blue
- * rgb(145,203,211), each into white, rgb(189,202,234) edge; imageres.dll shields 98-101), then
- * the facts: most recent check, when updates were installed, how updates are set, where they come from.
+ * included. Laid out and sized as on the Vista VM: the 580px status box (rgb(189,202,234) edge,
+ * the 33px band with a 24px shield and 15px title, the text 34px in, the push button right),
+ * then the facts. Band colours from wucltux.dll's UIFILE (red rgb(251,130,129), yellow
+ * rgb(252,236,100), green rgb(175,233,176), blue rgb(145,203,211), each into white); shields
+ * imageres.dll 98-101; bars are 7.css's [role=progressbar] (classic draws its own).
  *
- *   checking      blue, "Checking for updates…", a marquee bar
+ * Each state has its own look:
+ *   checking      blue band, no shield, "Checking for updates…", a marquee bar
  *   available     yellow, "Download and install updates for your computer", Install updates
- *   downloading   blue, "Downloading updates…", the bar and the file count
- *   ready         yellow, "Install updates for your computer" (CSS and assets apply live), Install updates
+ *   downloading   blue, "Downloading updates…", "Downloading n files (x% complete)", the bar
+ *   installing    blue, "Installing updates…", a marquee bar (styles and assets applying live)
+ *   ready         yellow, "Install updates for your computer" (they install without a restart), Install updates
  *   restart       yellow, "Restart MeletonFX to finish installing updates", Restart now
- *   uptodate      green, "MeletonFX is up to date"
+ *   uptodate      green, "MeletonFX is up to date", Check for updates
  *   failed        red, "MeletonFX could not search for new updates", Try again
+ *
+ * Balloon wording for the tray (Vista's: only when something needs you) is balloonFor(state).
  */
 (function (root) {
     'use strict';
@@ -23,6 +28,7 @@
     let main = null;
     let view = { state: 'checking', message: '', progress: 0, filesTotal: 0 };
     let registered = false;
+    let skipNextCheck = false;
 
     function esc(text) {
         return String(text == null ? '' : text)
@@ -62,6 +68,29 @@
         return 'checking';
     }
 
+    /** Vista's Windows Update balloons: only for something that needs you; null = no balloon. */
+    function balloonFor(state) {
+        switch (state) {
+            case 'available': return { title: 'Updates are available for MeletonFX', body: 'Click here to download and install them.' };
+            case 'ready': return { title: 'Updates are ready to install', body: 'Click here to install them.' };
+            case 'restart': return { title: 'Restart MeletonFX to finish installing updates', body: 'Click here to restart now or later.' };
+            default: return null;
+        }
+    }
+
+    /** The tray icon's tooltip while nothing needs you (Vista: "Downloading updates (40%)"). */
+    function tooltipFor(state, progress) {
+        switch (state) {
+            case 'checking': return 'Checking for updates…';
+            case 'downloading': return `Downloading updates (${Math.round(progress || 0)}%)`;
+            case 'installing': return 'Installing updates…';
+            case 'available': return 'Updates are available';
+            case 'ready': return 'Updates are ready to install';
+            case 'restart': return 'Restart MeletonFX to finish installing updates';
+            default: return 'MeletonFX Update';
+        }
+    }
+
     /** Where things stand when the page opens, before the check answers. */
     function initialState() {
         const manager = sw();
@@ -73,27 +102,48 @@
         return { state: 'checking' };
     }
 
+    function bar(progress) {
+        if (progress == null) return '<div class="cpl-wu-progress marquee" role="progressbar" aria-label="Working"></div>';
+        const pct = Math.max(0, Math.min(100, Math.round(progress)));
+        return `<div class="cpl-wu-progress animate" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div style="width:${pct}%"></div></div>`;
+    }
+
     function box() {
         const s = view.state;
         const files = view.filesTotal || (sw() && sw().pendingUpdateFilesTotal) || 0;
-        const fileText = files ? `${files} ${files === 1 ? 'file' : 'files'}` : 'files';
+        const fileText = files ? `${files} ${files === 1 ? 'file' : 'files'}` : 'the updated files';
         const kinds = {
-            checking: { band: 'blue', shield: null, title: 'Checking for updates…', body: '<div class="cpl-wu-bar cpl-wu-bar--marquee"><span></span></div>' },
-            available: { band: 'yellow', shield: 'shield-warning', title: 'Download and install updates for your computer', body: `<p>${esc(view.message || 'Updates to MeletonFX are available.')}</p>`, button: ['Install updates', 'install'] },
-            downloading: {
-                band: 'blue',
-                shield: null,
-                title: 'Downloading updates…',
-                body: `<p>Downloading ${esc(fileText)} (${Math.round(view.progress || 0)}% complete)</p><div class="cpl-wu-bar"><span style="width:${Math.max(0, Math.min(100, Math.round(view.progress || 0)))}%"></span></div>`
+            checking: { band: 'blue', title: 'Checking for updates…', body: `<p>Looking for updates on the server.</p>${bar(null)}` },
+            available: {
+                band: 'yellow', shield: 'shield-warning', title: 'Download and install updates for your computer',
+                body: `<p>${esc(view.message && !/available\.?$/i.test(view.message) ? view.message : 'Updates to MeletonFX are available.')}</p>`,
+                button: ['Install updates', 'install']
             },
-            ready: { band: 'yellow', shield: 'shield-warning', title: 'Install updates for your computer', body: '<p>The updates change styles and assets only, so they install without a restart.</p>', button: ['Install updates', 'apply'] },
-            restart: { band: 'yellow', shield: 'shield-warning', title: 'Restart MeletonFX to finish installing updates', body: `<p>${esc(fileText.charAt(0).toUpperCase() + fileText.slice(1))} downloaded. Save your work before restarting.</p>`, button: ['Restart now', 'restart'] },
-            uptodate: { band: 'green', shield: 'shield-ok', title: 'MeletonFX is up to date', body: '<p>There are no updates available for this computer.</p>' },
-            failed: { band: 'red', shield: 'shield-error', title: 'MeletonFX could not search for new updates', body: `<p class="cpl-wu-error"><em>Error(s) found:</em></p><p>${esc(view.message || 'The server did not answer.')}</p>`, button: ['Try again', 'check'] }
+            downloading: {
+                band: 'blue', title: 'Downloading updates…',
+                body: `<p>Downloading ${esc(fileText)} (${Math.round(view.progress || 0)}% complete)</p>${bar(view.progress || 0)}`
+            },
+            installing: { band: 'blue', title: 'Installing updates…', body: `<p>Installing ${esc(fileText)}. MeletonFX keeps running while they install.</p>${bar(null)}` },
+            ready: {
+                band: 'yellow', shield: 'shield-warning', title: 'Install updates for your computer',
+                body: `<p>${esc(fileText.charAt(0).toUpperCase() + fileText.slice(1))} downloaded. They change styles and assets only, so they install without restarting MeletonFX.</p>`,
+                button: ['Install updates', 'apply']
+            },
+            restart: {
+                band: 'yellow', shield: 'shield-warning', title: 'Restart MeletonFX to finish installing updates',
+                body: `<p>${esc(fileText.charAt(0).toUpperCase() + fileText.slice(1))} downloaded and ready.</p><p>Please save your work and close your windows before restarting.</p>`,
+                button: ['Restart now', 'restart']
+            },
+            uptodate: { band: 'green', shield: 'shield-ok', title: 'MeletonFX is up to date', body: '<p>There are no updates available for your computer.</p>', button: ['Check for updates', 'check'] },
+            failed: {
+                band: 'red', shield: 'shield-error', title: 'MeletonFX could not search for new updates',
+                body: `<p class="cpl-wu-error"><em>Error(s) found:</em></p><p>${esc(view.message || 'The server did not answer.')}</p>`,
+                button: ['Try again', 'check']
+            }
         };
         const k = kinds[s] || kinds.checking;
         return `
-            <div class="cpl-wu-box">
+            <div class="cpl-wu-box cpl-wu-box--${esc(s)}">
                 <div class="cpl-wu-band cpl-wu-band--${k.band}">
                     ${k.shield ? `<img class="cpl-wu-shield" src="${ART}/${k.shield}.png" alt="">` : ''}
                     <span class="cpl-wu-title">${esc(k.title)}</span>
@@ -124,13 +174,14 @@
         if (f) f.innerHTML = facts();
     }
 
-    function check() {
+    function check(run) {
         const manager = sw();
         if (!manager || typeof manager.checkStaticFileUpdates !== 'function') return;
         view = { state: 'checking', message: '', progress: 0, filesTotal: 0 };
         paint();
         // the foreground check (noToast = false): its states come back through foregroundUpdateView
-        manager.checkStaticFileUpdates(false).then(() => {
+        const pending = typeof run === 'function' ? run() : manager.checkStaticFileUpdates(false);
+        Promise.resolve(pending).then(() => {
             // a check that found nothing to say (already downloading elsewhere) leaves the box as it was
             if (view.state === 'checking' && !manager.isUpdating) {
                 view = initialState();
@@ -146,9 +197,13 @@
         if (what === 'check' || what === 'install') {
             check();
         } else if (what === 'apply' && typeof manager.applyStaticCacheUpdate === 'function') {
-            manager.applyStaticCacheUpdate(manager.pendingApplyFiles || []);
-            view = { state: 'uptodate' };
+            view = { ...view, state: 'installing' };
             paint();
+            Promise.resolve(manager.applyStaticCacheUpdate(manager.pendingApplyFiles || [])).finally(() => {
+                try { localStorage.setItem('meletonUpdateInstalledAt', String(Date.now())); } catch (_) { /* private mode */ }
+                view = { state: 'uptodate' };
+                paint();
+            });
         } else if (what === 'restart' && typeof manager.forceRestart === 'function') {
             manager.forceRestart();
         }
@@ -165,7 +220,8 @@
         }
         view = { ...{ message: '', progress: 0, filesTotal: 0 }, ...initialState() };
         paint();
-        if (view.state === 'checking') check();
+        if (view.state === 'checking' && !skipNextCheck) check();
+        skipNextCheck = false;
         const modal = el.closest('.modal');
         if (modal && !modal.dataset.cplWuWired) {
             modal.dataset.cplWuWired = '1';
@@ -221,7 +277,21 @@
         return true;
     }
 
-    root.cplUpdate = { register, open: () => register() && root.melatonControlPanel.open('update'), _test: { classify } };
+    /** Open the page; with run (the tray's Check for updates), that check runs in the foreground here. */
+    function open(run) {
+        if (!register()) return false;
+        const cpl = root.melatonControlPanel;
+        if (typeof run === 'function') {
+            skipNextCheck = true;
+            cpl.open('update');
+            check(run);
+            return true;
+        }
+        cpl.open('update');
+        return true;
+    }
+
+    root.cplUpdate = { register, open, balloonFor, tooltipFor, classify, _test: { classify, balloonFor, tooltipFor, box: (v) => { view = { message: '', progress: 0, filesTotal: 0, ...v }; return box(); } } };
     if (typeof document !== 'undefined') {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', register);
         else register();

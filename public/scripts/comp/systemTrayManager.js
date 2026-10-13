@@ -13,9 +13,7 @@ function prepareSystemTrayBackground() {
         'mcpActivityIndicator',
         'mcpPhysicsIndicator',
         'replicationTrayIndicator',
-        'runpodTrayIcon',
-        'subscriptionRenewalIndicator',
-        'fixedCreditsIndicator',
+        'walletTrayIcon',
         'searchIndexingIndicator',
         'desktopSaveTrayIndicator',
         'generationQuipsTrayIcon',
@@ -34,19 +32,17 @@ function prepareSystemTrayBackground() {
         if (el) el.classList.add('hidden');
     });
 
-    // updateSubscriptionRenewalIndicator, updateFixedCreditsIndicator, updateImageGenerationIndicator: public/scripts/comp/trayIndicators.js
-    setInterval(updateSubscriptionRenewalIndicator, 3600000);
-    setInterval(updateFixedCreditsIndicator, 60000);
+    // The wallet tray icon repaints and polls on its own (walletTray.init: public/scripts/comp/walletTray.js).
     // doveRefreshTrayUnread: public/scripts/comp/desktop-apps/dovecote.js — no server push for new
-    // mail, so the unread badge polls like the credits/subscription indicators above.
+    // mail, so the unread badge polls.
     setInterval(doveRefreshTrayUnread, 60000);
 }
 
 async function startBackgroundTrayServices() {
     if (!window.isDesktop) return;
 
-    updateFixedCreditsIndicator({ reveal: false });
-    updateSubscriptionRenewalIndicator({ reveal: false });
+    // walletTray.init: public/scripts/comp/walletTray.js (NovelAI credits / renewal and RunPod live there)
+    if (window.walletTray) window.walletTray.init();
     updateWorkspaceTrayIcon({ reveal: false });
     updateSearchIndexingIndicator();
     setupServiceWorkerTrayContextMenu();
@@ -84,12 +80,8 @@ async function startBackgroundTrayServices() {
 
     const revealPlan = [
         () => {
-            updateFixedCreditsIndicator({ reveal: true });
-            return 'fixedCreditsIndicator';
-        },
-        () => {
-            updateSubscriptionRenewalIndicator({ reveal: true });
-            return 'subscriptionRenewalIndicator';
+            if (window.walletTray) window.walletTray.update({ reveal: true });
+            return 'walletTrayIcon';
         },
         () => {
             updateWorkspaceTrayIcon({ reveal: true });
@@ -106,10 +98,6 @@ async function startBackgroundTrayServices() {
         () => {
             revealTrayIconById('modemTrayIcon');
             return 'modemTrayIcon';
-        },
-        () => {
-            revealTrayIconById('runpodTrayIcon');
-            return 'runpodTrayIcon';
         },
         () => {
             if (window.naxtApplet && typeof window.naxtApplet.updateBagTrayChrome === 'function') {
@@ -132,7 +120,7 @@ async function startBackgroundTrayServices() {
         },
         () => {
             // doveRefreshTrayUnread: public/scripts/comp/desktop-apps/dovecote.js — stays hidden
-            // at 0 unread, same conditional-reveal convention as fixedCreditsIndicator above.
+            // at 0 unread (conditional reveal).
             doveRefreshTrayUnread({ reveal: true });
             return 'dovecoteTrayIcon';
         },
@@ -237,136 +225,6 @@ function startPopoverAutoHideTimer(indicator, maxMs = TRAY_POPOVER_FALLBACK_MAX_
             document.removeEventListener('visibilitychange', onVisibilityChange);
         }
     };
-}
-
-function attachFixedCreditsTrayContextMenu(indicator) {
-    if (!contextMenu || !indicator || indicator.dataset.contextMenu) return;
-
-    const contextMenuId = 'fixedCreditsContextMenu';
-    indicator.dataset.contextMenu = contextMenuId;
-
-    contextMenu.attachToElement(indicator, {
-        maxHeight: true,
-        sections: [
-            {
-                type: 'list',
-                initfn: (section) => {
-                    // buildCreditsTrayStatusMenuItems: public/scripts/comp/novelAiAccountStatus.js
-                    section.items = buildCreditsTrayStatusMenuItems();
-                },
-                items: [],
-            },
-            {
-                type: 'custom',
-                content: `
-                        <div class="anlas-subscription-section" style="padding: 0 10px; gap: var(--spacing-xs);">
-                            <div class="menu-item-row balance-list">
-                                <i class="nai-anla"></i>
-                                <div class="price-list-container">
-                                    <div class="price-list-fixed">
-                                        <span class="price-list-label hidden">Fixed</span> 
-                                        <span id="contextAnlasBalanceFixedTray" class="price-list balanceFixed">-</span>
-                                    </div>
-                                    <i class="fas fa-circle" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
-                                    <div class="price-list-paid">
-                                        <span class="price-list-label hidden">Paid</span>
-                                        <span id="contextAnlasBalancePaidTray" class="price-list balancePaid">-</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="menu-item-row balance-list">
-                                <i class="nai-opus" style="font-size: 1.15rem; margin: calc(-1.15rem / 2) 0;"></i>
-                                <div class="price-list-container">
-                                    <span class="anlas-subscription-value" id="contextAnlasSubscriptionTierTray">Free</span>
-                                    <i class="fas fa-circle hidden" id="contextAnlasSubscriptionDividerTray" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
-                                    <span class="anlas-subscription-value" id="contextAnlasDaysTillExpireTray">
-                                        <i class="fas fa-exclamation-triangle anlas-warning-icon hidden"></i>
-                                        <span class="anlas-days-text">Loading...</span>
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="menu-item-row balance-list" id="contextAnlasOpusUsageRowTray">
-                                <i id="contextAnlasOpusUsageIconTray" class="fas fa-battery-three-quarters"></i>
-                                <div class="price-list-container">
-                                    <span class="anlas-subscription-value" id="contextAnlasOpusUsageTray">—</span>
-                                </div>
-                            </div>
-                        </div>
-                    `,
-                loadfn: (section, target) => {
-                    if (window.optionsData?.balance) {
-                        const balance = window.optionsData.balance;
-                        const fixedCredits = balance?.fixedTrainingStepsLeft || 0;
-                        const purchasedCredits = balance?.purchasedTrainingSteps || 0;
-
-                        const contextBalanceFixed = document.getElementById('contextAnlasBalanceFixedTray');
-                        const contextBalancePaid = document.getElementById('contextAnlasBalancePaidTray');
-
-                        if (contextBalanceFixed) {
-                            contextBalanceFixed.textContent = fixedCredits;
-                        }
-                        if (contextBalancePaid) {
-                            contextBalancePaid.textContent = purchasedCredits;
-                        }
-                    }
-
-                    try {
-                        const subscriptionTierElement = document.getElementById('contextAnlasSubscriptionTierTray');
-                        const daysTillExpireElement = document.getElementById('contextAnlasDaysTillExpireTray');
-                        const subscriptionDivider = document.getElementById('contextAnlasSubscriptionDividerTray');
-                        const warningIcon = document.querySelector('#contextAnlasDaysTillExpireTray .anlas-warning-icon');
-                        const daysText = document.querySelector('#contextAnlasDaysTillExpireTray .anlas-days-text');
-
-                        if (subscriptionTierElement && daysTillExpireElement && warningIcon && daysText) {
-                            const accountData = window.optionsData;
-
-                            if (accountData?.user?.subscription?.tier !== undefined) {
-                                const subscriptionTier = accountData.user.subscription.tier || 'Unknown';
-                                subscriptionTierElement.textContent = subscriptionTier === 3 ? 'Opus' :
-                                    subscriptionTier === 2 ? 'Scroll' :
-                                        subscriptionTier === 1 ? 'Tablet' :
-                                            subscriptionTier === 0 ? 'Free' : 'Unknown';
-
-                                if (subscriptionDivider) {
-                                    subscriptionDivider.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
-                                }
-                                daysTillExpireElement.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
-
-                                let renewalData = null;
-                                if (accountData.user.subscription.expiresAt) {
-                                    renewalData = getSubscriptionRenewalDisplayData(accountData.user.subscription.expiresAt);
-                                }
-
-                                daysText.textContent = renewalData ? renewalData.timeRemaining : '0 days';
-
-                                if (renewalData && renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0) {
-                                    warningIcon.classList.remove('hidden');
-                                } else {
-                                    warningIcon.classList.add('hidden');
-                                }
-
-                                if (renewalData && renewalData.msUntilRenewal > 0 && renewalData.msUntilRenewal <= (3 * 24 * 60 * 60 * 1000)) {
-                                    daysTillExpireElement.style.color = 'var(--danger-color, #ff6b6b)';
-                                } else if (renewalData && renewalData.msUntilRenewal > 0 && renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000)) {
-                                    daysTillExpireElement.style.color = 'var(--warning-color, #ffc107)';
-                                } else {
-                                    daysTillExpireElement.style.color = '';
-                                }
-                            } else {
-                                subscriptionTierElement.textContent = 'No data';
-                                daysText.textContent = 'No data';
-                            }
-                        }
-                    } catch (error) {
-                        console.error('Error updating subscription info in context menu:', error);
-                    }
-
-                    // usageToolManager: public/scripts/comp/usageToolManager.js
-                    usageToolManager.fillAnlasMenuUsageRow('Tray');
-                }
-            }
-        ]
-    });
 }
 
 function attachWorkspaceTrayContextMenu(icon) {
@@ -651,8 +509,15 @@ function setupServiceWorkerTrayContextMenu() {
                 title: 'Updates',
                 items: [
                     {
+                        // Vista's Windows Update tray menu: the page first (cplUpdate.js)
+                        icon: 'fas fa-shield-halved',
+                        text: 'Open MeletonFX Update',
+                        action: 'sw-open-update',
+                        hidden: () => typeof window.cplUpdate === 'undefined'
+                    },
+                    {
                         icon: 'fas fa-cloud-arrow-down',
-                        text: 'Apply Updates',
+                        text: 'Restart to Install Updates',
                         action: 'sw-restart-apply-updates',
                         className: 'text-warning',
                         hidden: () => !(window.serviceWorkerManager
@@ -661,7 +526,7 @@ function setupServiceWorkerTrayContextMenu() {
                     },
                     {
                         icon: 'fa-regular fa-sync',
-                        text: 'Check for Updates',
+                        text: 'Check for updates',
                         action: 'sw-check-updates'
                     },
                     {
@@ -708,7 +573,6 @@ function formatBytes(bytes) {
 }
 
 function wireTrayIndicatorContextMenus() {
-    attachFixedCreditsTrayContextMenu(document.getElementById('fixedCreditsIndicator'));
     attachWorkspaceTrayContextMenu(document.getElementById('workspaceTrayIcon'));
     attachSearchIndexingTrayContextMenu(document.getElementById('searchIndexingIndicator'));
 }
@@ -727,7 +591,6 @@ window.prepareSystemTrayBackground = prepareSystemTrayBackground;
 window.startBackgroundTrayServices = startBackgroundTrayServices;
 window.startPopoverAutoHideTimer = startPopoverAutoHideTimer;
 window.setupServiceWorkerTrayContextMenu = setupServiceWorkerTrayContextMenu;
-window.attachFixedCreditsTrayContextMenu = attachFixedCreditsTrayContextMenu;
 window.attachWorkspaceTrayContextMenu = attachWorkspaceTrayContextMenu;
 window.attachSearchIndexingTrayContextMenu = attachSearchIndexingTrayContextMenu;
 window.wireSystemTrayListeners = wireSystemTrayListeners;

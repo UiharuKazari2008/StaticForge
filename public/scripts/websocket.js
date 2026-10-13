@@ -1238,12 +1238,13 @@ class WebSocketClient {
             iconClass = 'fa-regular fa-laptop-arrow-down';
             trayIcon.classList.add('sw-update-downloading');
             const pct = Math.round(Math.max(0, Math.min(100, swStatus.updateProgress || 0)));
-            title = `Service Worker: Updating (${pct}%)`;
+            // Vista's Windows Update tooltip wording
+            title = `Downloading updates (${pct}%)`;
         } else if (swStatus.updateAvailable) {
             // Updates are downloaded and pending restart.
             iconClass = 'fa-regular fa-laptop-arrow-down';
             trayIcon.classList.add('sw-update-complete');
-            title = 'Service Worker: Update ready (restart to apply)';
+            title = 'Restart MeletonFX to finish installing updates';
         }
 
         glyph.className = iconClass;

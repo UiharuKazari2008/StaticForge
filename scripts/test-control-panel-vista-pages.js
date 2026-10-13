@@ -25,6 +25,22 @@ assert.strictEqual(classify('complete', 'Completed updating 3 files.'), 'restart
 global.serviceWorkerManager = { hasPendingUpdates: () => false };
 assert.strictEqual(classify('complete', ''), 'uptodate');
 
+// Vista's balloons only when something needs you; the tooltip says the rest
+const balloonFor = upd._test.balloonFor;
+assert.strictEqual(balloonFor('checking'), null);
+assert.strictEqual(balloonFor('downloading'), null);
+assert.strictEqual(balloonFor('uptodate'), null);
+assert.strictEqual(balloonFor('restart').title, 'Restart MeletonFX to finish installing updates');
+assert.strictEqual(balloonFor('ready').title, 'Updates are ready to install');
+assert.strictEqual(upd._test.tooltipFor('downloading', 40), 'Downloading updates (40%)');
+const updJs = read('public/scripts/comp/cplUpdate.js');
+assert.ok(updJs.includes("button: ['Check for updates', 'check']"), 'up to date offers Check for updates');
+assert.ok(updJs.includes("installing: { band: 'blue', title: 'Installing updates…'"), 'installing has its own look');
+assert.ok(updJs.includes('role="progressbar"'), "7.css bars (classic draws its own)");
+const swmJs = read('public/scripts/comp/serviceWorkerManager.js');
+assert.ok(swmJs.includes('const balloon = window.cplUpdate.balloonFor(pageState);') && swmJs.includes('_renderVistaUpdateBalloon'), 'the tray balloon is Vista\'s');
+assert.ok(read('public/scripts/comp/mainMenuManager.js').includes('window.cplUpdate.open(() => sw.refreshServerCacheAndCheck())'), 'the tray check runs on the page');
+
 // the foreground hook in the service worker manager
 const swm = read('public/scripts/comp/serviceWorkerManager.js');
 assert.ok(/if \(typeof this\.foregroundUpdateView === 'function' && popupKind !== 'runtime-compile'\) \{\s*this\._hideServiceWorkerTrayPopup\(\);/.test(swm), 'the open page takes the states and the balloon stays down');
@@ -49,7 +65,7 @@ assert.ok(html.indexOf('scripts/comp/melatonControlPanel.js') < html.indexOf('sc
 
 // the look
 const net = read('public/css/melaton-network.css');
-for (const sel of ['.cpl-auth-host .sec-data-table th', '.cpl-wu-band--green', '.cpl-wu-bar--marquee', '#remoteAccessSettingsLayout .gallery-toggle-group .gallery-toggle-btn::before']) {
+for (const sel of ['.cpl-auth-host .sec-data-table th', '.cpl-wu-band--green', '.cpl-wu-progress', '#remoteAccessSettingsLayout .gallery-toggle-group .gallery-toggle-btn::before']) {
     assert.ok(net.includes(sel), sel);
 }
 assert.ok(net.includes('rgb(175, 233, 176)') && net.includes('rgb(252, 236, 100)') && net.includes('rgb(251, 130, 129)'), "Windows Update's band colours (wucltux.dll UIFILE)");

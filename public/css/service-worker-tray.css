@@ -86,3 +86,59 @@
     margin-top: 6px;
     width: 100%;
 }
+
+/* ---- Vista's Windows Update balloon (serviceWorkerManager._renderVistaUpdateBalloon): the
+   7.css balloon, the Windows Update icon and a bold title, one line under it, a small close ×;
+   the whole balloon opens MeletonFX Update ---- */
+.service-worker-tray-popup.vista-update-balloon {
+    width: min(330px, calc(100vw - 24px));
+    min-width: 0;
+    padding: 9px 10px 10px 12px;
+    cursor: pointer;
+}
+
+.service-worker-tray-popup.vista-update-balloon .popover-content {
+    gap: 4px;
+}
+
+.service-worker-tray-popup.vista-update-balloon .popover-header {
+    gap: 7px;
+    font-weight: 700;
+}
+
+.service-worker-tray-popup.vista-update-balloon .vista-update-balloon-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.service-worker-tray-popup.vista-update-balloon .popover-body {
+    padding-left: 23px;
+    font-size: 9pt;
+}
+
+.service-worker-tray-popup.vista-update-balloon .vista-update-balloon-close {
+    position: relative;
+    flex: none;
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    cursor: default;
+}
+
+.service-worker-tray-popup.vista-update-balloon .vista-update-balloon-close::before {
+    content: '\00d7';
+    position: absolute;
+    inset: -2px 0 0;
+    color: #6d6d6d;
+    font: 13px/15px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-align: center;
+}
+
+.service-worker-tray-popup.vista-update-balloon .vista-update-balloon-close:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}

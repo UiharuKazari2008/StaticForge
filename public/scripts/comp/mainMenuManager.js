@@ -1048,10 +1048,22 @@ function setupMainMenuContextMenus() {
                 }
                 break;
 
+            case 'sw-open-update':
+                // cplUpdate.open: public/scripts/comp/cplUpdate.js (MeletonFX Update in Control Panel)
+                if (window.cplUpdate) window.cplUpdate.open();
+                break;
+
             case 'sw-check-updates':
                 if (window.serviceWorkerManager) {
+                    const sw = window.serviceWorkerManager;
+                    const vista = document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
+                    // Vista checks in Windows Update's window: the check runs in the foreground on the page
+                    if (vista && window.cplUpdate) {
+                        window.cplUpdate.open(() => sw.refreshServerCacheAndCheck());
+                        break;
+                    }
                     // refreshServerCacheAndCheck: compile runtime assets, then pull the new SW manifest
-                    await window.serviceWorkerManager.refreshServerCacheAndCheck();
+                    await sw.refreshServerCacheAndCheck();
                 }
                 break;
 

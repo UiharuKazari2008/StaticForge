@@ -650,10 +650,41 @@ class ServiceWorkerManager {
         }
     }
 
+    /** Vista's Windows Update balloon: the icon, a bold title, one line; a click opens the page. */
+    _renderVistaUpdateBalloon(popover, balloon) {
+        popover.classList.add('vista-update-balloon');
+        popover.innerHTML = `
+            <div class="popover-content">
+                <div class="service-worker-tray-popup-header-row">
+                    <div class="popover-header"><img class="vista-update-balloon-icon" src="/static_images/vista-cpl/windows-update-16.png" alt=""><span></span></div>
+                    <button type="button" class="vista-update-balloon-close" title="Close" aria-label="Close"></button>
+                </div>
+                <div class="popover-body"></div>
+            </div>`;
+        popover.querySelector('.popover-header span').textContent = balloon.title;
+        popover.querySelector('.popover-body').textContent = balloon.body;
+        popover.querySelector('.vista-update-balloon-close').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this._hideServiceWorkerTrayPopup();
+        });
+        popover.onclick = (e) => {
+            if (e.target.closest('.vista-update-balloon-close')) return;
+            this._hideServiceWorkerTrayPopup();
+            if (window.cplUpdate) window.cplUpdate.open();
+        };
+    }
+
     _renderServiceWorkerTrayPopup() {
         this._ensureServiceWorkerTrayPopup();
         const popover = this.trayPopup.el;
         const state = this.trayPopup.state;
+        popover.classList.remove('vista-update-balloon');
+        popover.onclick = null;
+        if (this.trayPopup.vistaBalloon && this.trayPopup.kind !== 'runtime-compile') {
+            this._renderVistaUpdateBalloon(popover, this.trayPopup.vistaBalloon);
+            return;
+        }
         const isRuntimeCompile = this.trayPopup.kind === 'runtime-compile';
 
         const titleByState = isRuntimeCompile
@@ -842,6 +873,23 @@ class ServiceWorkerManager {
         }
         if (!this._isDesktopTrayMode()) {
             return false;
+        }
+
+        // Vista's Windows Update: no balloon while it checks or downloads (the tray icon's tooltip
+        // says it); a balloon only when something needs you, worded as Vista's, and one click
+        // opens MeletonFX Update (cplUpdate.js balloonFor). Classic keeps the old popup.
+        this.trayPopup.vistaBalloon = null;
+        const vista = popupKind !== 'runtime-compile' && window.cplUpdate
+            && document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
+        if (vista) {
+            const pageState = window.cplUpdate.classify(nextState, typeof message === 'string' && message ? message : this.trayPopup.message);
+            const balloon = window.cplUpdate.balloonFor(pageState);
+            if (!balloon) {
+                if (this.trayPopup.el && this.trayPopup.el.classList.contains('show')) this._hideServiceWorkerTrayPopup();
+                this.trayPopup.kind = popupKind;
+                return false;
+            }
+            this.trayPopup.vistaBalloon = balloon;
         }
 
         // No tray balloon while the taskbar is hidden (boot, logon, locks; Yozora #435).
