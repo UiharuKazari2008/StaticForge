@@ -1743,16 +1743,9 @@ class GlobalResources {
             let notesCounts = {};
             try {
                 const notesDb = this.getNotesDatabase();
-                if (notesDb) {
-                    // Get notes for each workspace and count them
-                    for (const workspaceId of workspaceIds) {
-                        try {
-                            const notes = await notesDb.getNotesByWorkspace(workspaceId);
-                            notesCounts[workspaceId] = notes ? notes.length : 0;
-                        } catch (notesError) {
-                            notesCounts[workspaceId] = 0;
-                        }
-                    }
+                if (notesDb && typeof notesDb.getWorkspaceNoteCounts === 'function') {
+                    // JULES: Get notes counts for each workspace efficiently via batched query
+                    notesCounts = await notesDb.getWorkspaceNoteCounts(workspaceIds);
                 }
             } catch (notesError) {
                 console.warn('Failed to get notes counts:', notesError);

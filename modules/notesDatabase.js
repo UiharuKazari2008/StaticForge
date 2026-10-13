@@ -192,6 +192,35 @@ async function getNote(noteId) {
 /**
  * Get all notes for a workspace
  */
+
+// JULES: Get note counts for multiple workspaces efficiently via batched query
+/**
+ * Get note counts for multiple workspaces
+ * @param {Array<string>} workspaceIds Array of workspace IDs
+ * @returns {Promise<Object>} Object mapping workspace_id to note count
+ */
+async function getWorkspaceNoteCounts(workspaceIds) {
+    if (!workspaceIds || workspaceIds.length === 0) return {};
+    try {
+        const placeholders = workspaceIds.map(() => '?').join(',');
+        const rows = await db.all(
+            `SELECT workspace_id, COUNT(*) as count FROM notes WHERE workspace_id IN (${placeholders}) GROUP BY workspace_id`,
+            workspaceIds
+        );
+        const counts = {};
+        for (const id of workspaceIds) {
+            counts[id] = 0;
+        }
+        for (const row of rows || []) {
+            counts[row.workspace_id] = row.count;
+        }
+        return counts;
+    } catch (error) {
+        logger.error('Error getting workspace note counts:', error);
+        throw error;
+    }
+}
+
 async function getNotesByWorkspace(workspaceId) {
     try {
         const notes = await db.all(
@@ -347,6 +376,7 @@ module.exports = {
     createNote,
     getNote,
     getNotesByWorkspace,
+    getWorkspaceNoteCounts,
     getNovelNotesByWorkspace,
     getAllNotes,
     getAllNotesMetadata,
