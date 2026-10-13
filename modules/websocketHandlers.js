@@ -546,6 +546,10 @@ class WebSocketMessageHandlers {
             'package_install',
             'package_uninstall',
             'package_set_enabled',
+            'dovecote_mark_mail', // JULES: Fix privilege leak for read-only clients on dovecote mail mark
+            'dovecote_send_mail', // JULES: Fix privilege leak for read-only clients on dovecote mail send
+            'dovecote_forward_mail', // JULES: Fix privilege leak for read-only clients on dovecote mail forward
+            'dovecote_set_image_pref', // JULES: Fix privilege leak for read-only clients on dovecote image pref
         ];
         return destructiveOperations.includes(messageType) || isReplicationDestructivePacket(messageType);
     }

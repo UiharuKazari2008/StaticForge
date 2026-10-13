@@ -284,7 +284,7 @@ function registerPackets(handlersCtx) {
     reg('dovecote_mark_mail', handleMarkMail, DOVECOTE_DESTRUCTIVE);
     reg('dovecote_send_mail', handleSendMail, DOVECOTE_DESTRUCTIVE);
     reg('dovecote_forward_mail', handleForwardMail, DOVECOTE_DESTRUCTIVE);
-    reg('dovecote_set_image_pref', handleSetImagePref);
+    reg('dovecote_set_image_pref', handleSetImagePref, DOVECOTE_DESTRUCTIVE); // JULES: Register set_image_pref as destructive
 }
 
 module.exports = {
