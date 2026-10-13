@@ -6122,7 +6122,7 @@ const startMenuLaunchables = [
     {
         launchId: 'workspace',
         icon: 'fas fa-film-canister',
-        imageIcon: 'vista-photo-gallery.png',
+        imageIcon: 'art.png', // Workspace keeps its own icon (Yukimi); Photo Gallery's went to Glancewell
         text: 'Workspace',
         desktopOnly: true,
         appMenu: true,
@@ -6464,7 +6464,6 @@ const startMenuSubmenus = {
     'all-apps': () => buildAllAppsSubmenuWithOrganizeRow()
 };
 
-const appIconMemoryImages = [];
 const shellIconFontSpecs = [
     '900 16px "Font Awesome 6 Pro"',
     '400 16px "Font Awesome 6 Pro"',
@@ -6532,15 +6531,9 @@ async function preloadShellIconsAndFonts() {
     collectShellImageIcons(names, startMenuSubmenus, seenMenus);
     const loads = [];
     names.forEach((name) => {
-        const url = appIconMemoryUrl(name);
-        if (!url) return;
-        loads.push(new Promise((resolve) => {
-            const img = new Image();
-            appIconMemoryImages.push(img);
-            img.onload = () => resolve();
-            img.onerror = () => resolve();
-            img.src = url;
-        }));
+        // assetPreload.holdAppIcon: public/scripts/comp/assetPreload.js
+        // Same src and srcset the menu image uses, kept decoded in the off-screen hold.
+        loads.push(assetPreload.holdAppIcon(name));
     });
     if (document.fonts && document.fonts.load) {
         for (let i = 0; i < shellIconFontSpecs.length; i++) {
@@ -7571,7 +7564,7 @@ function getStartMenuPlaces() {
     return [
         { id: 'user', text: START_MENU_USER_NAME, action: () => openExplorerApplet() },
         { id: 'cartograph', text: 'Cartograph', imageIcon: 'vista-explorer.png', action: launch('explorer') },
-        { id: 'gallery', text: 'Gallery', imageIcon: 'vista-photo-gallery.png', desktopOnly: true, action: launch('workspace') },
+        { id: 'gallery', text: 'Gallery', imageIcon: 'art.png', desktopOnly: true, action: launch('workspace') },
         { id: 'notion', text: 'Notion', imageIcon: 'vista-journal.png', action: launch('notebook') },
         { id: 'workspaces', text: 'Workspaces', imageIcon: 'planet.png', action: () => showWorkspaceManagementModal() },
         { id: 'teleport', text: 'Teleport', imageIcon: 'vista-teleport.png', desktopOnly: true, action: launch('planet-switcher') },

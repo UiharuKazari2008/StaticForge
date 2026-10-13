@@ -75,6 +75,8 @@ const windowIcon = (id, icon) => {
     assert.ok(app.slice(at, at + 4000).includes(`app_icons/${icon}.png`), `${id} titlebar -> ${icon}`);
 };
 windowIcon('explorerModal', 'vista-explorer');
+windowIcon('galleryWindow', 'art');
+assert.match(modalUtils, /launchId: 'workspace',\s*icon: 'fas fa-film-canister',\s*imageIcon: 'art\.png'/, 'Workspace keeps its own icon');
 windowIcon('logViewerModal', 'vista-event-viewer');
 windowIcon('tokenDisplayModal', 'vista-calculator');
 windowIcon('tagWikiSearchModal', 'vista-iexplore');

@@ -454,7 +454,7 @@
     font: inherit;
     padding: 0 3px;
     border-radius: 2px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #melatonControlPanelModal .cpl-crumb:hover {
@@ -534,7 +534,7 @@
     color: var(--cpl-link);
     font: inherit;
     text-align: left;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #melatonControlPanelModal .cpl-link:hover {
@@ -571,7 +571,7 @@
     padding: 4px 6px;
     border: 1px solid transparent;
     border-radius: 3px;
-    cursor: default;
+    cursor: var(--c-default);
     user-select: none;
     outline: none;
 }
@@ -982,7 +982,7 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     color: #0066cc;
     font: inherit;
     text-align: left;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .network-flyout-link:hover {
@@ -1145,7 +1145,7 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     color: #000000;
     font: 12px var(--cpl-font);
     text-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #melatonControlPanelModal .cpl-auth-host :is(.sec-dsap-action-btn, .sec-scope-chip, .sec-applog-tab, .dsap-smf-btn):hover:not(:disabled) {
@@ -1651,7 +1651,7 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
 }
 
 #melatonControlPanelModal .cpl-ua-tile[role="button"] {
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #melatonControlPanelModal .cpl-ua-tile[role="button"]:is(:hover, :focus-visible) {
@@ -1873,7 +1873,7 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     box-shadow: none !important;
     color: var(--cpl-link);
     font: 12px var(--cpl-font);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #melatonControlPanelModal .cpl-auth-host :is(.cpl-vault-link, .cpl-vault-actions .sec-dsap-action-btn, .cpl-vault-value .sec-dsap-action-btn):hover:not(:disabled) {
@@ -1883,7 +1883,7 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
 
 #melatonControlPanelModal .cpl-auth-host :is(.cpl-vault-link, .cpl-vault-actions .sec-dsap-action-btn, .cpl-vault-value .sec-dsap-action-btn):disabled {
     color: #838383;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #melatonControlPanelModal .cpl-auth-host :is(.cpl-vault-actions, .cpl-vault-value) .sec-dsap-action-btn i {
@@ -1922,7 +1922,7 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     color: #000;
     font: 12px var(--cpl-font);
     text-align: left;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #melatonControlPanelModal .cpl-vault-line:hover {
@@ -2100,7 +2100,9 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
 #melatonControlPanelModal .cpl-db-page {
     display: flex;
     flex-direction: column;
-    min-height: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden; /* the listbox scrolls, never the page (Yukimi 2026-10-13) */
 }
 
 #melatonControlPanelModal .cpl-db-location {
@@ -2139,9 +2141,8 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
 }
 
 #melatonControlPanelModal .cpl-db-grid {
-    flex: 1;
-    min-height: 260px;
-    max-height: 520px;
+    flex: 1 1 auto;
+    min-height: 120px;
     overflow: auto;
     padding: 2px 12px 12px;
     background: #fff;
@@ -2160,7 +2161,7 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     border: 0;
     color: #1e3287;
     font: 12px var(--cpl-font);
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #melatonControlPanelModal .cpl-db-group-rule {
@@ -2268,6 +2269,7 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
 
 #melatonControlPanelModal .cpl-db-footer {
     display: flex;
+    flex: none;
     justify-content: flex-end;
     gap: 10px;
     margin: 14px -22px -20px;

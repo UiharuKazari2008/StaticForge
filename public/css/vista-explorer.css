@@ -116,17 +116,19 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     display: none;
 }
 
-/* the breadcrumb box and the search box: translucent white over the glass, a dark edge */
-/* VM: 22px, a dark edge (#353c43, the bottom lighter), a white inner line, a blue-grey fill */
+/* the breadcrumb box and the search box: Vista's opaque boxes (VM pixels, 2026-10-13: the address box
+   #eaf1f8 with a #4a5157 edge, #9facb8 at the bottom; the search box #f2f8fe with #53585e / #aab5c0),
+   a near-white line inside the edge and a 1px light halo outside it. The earlier translucent fill went
+   grey over the teal glass and made that inner line read as an extra frame. */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)) {
     position: relative;
     height: 22px;
     min-height: 0;
     padding: 0;
     overflow: visible;
-    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
-    border: 1px solid #353c43;
-    border-bottom-color: #6e7988;
+    background: var(--vista-box-fill, linear-gradient(#e3ebf3, #eaf1f8 25%, #eaf1f8 75%, #e7eff6));
+    border: 1px solid var(--vista-box-edge, #4a5157);
+    border-bottom-color: var(--vista-box-edge-bottom, #9facb8);
     border-radius: 0;
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 88%), 0 0 0 1px hsl(0 0% 100% / 16%);
 }
@@ -263,7 +265,8 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     background: url('/static_images/vista-start/search-glyph.png') no-repeat right 5px center;
 }
 
-/* the refresh cell at the box's right end (the VM's art, 23x18 inside the white inner line) */
+/* the refresh cell at the box's right end (IE's glyph, transparent: the ripped 23x18 cell carried its own
+   background and showed as a lighter box, Yukimi 2026-10-13) */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerRefreshBtn {
     position: absolute;
     right: 1px;
@@ -274,7 +277,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     height: 18px;
     min-height: 0;
     padding: 0;
-    background: url('/static_images/vista-explorer/refresh.png') no-repeat 0 0;
+    background: url('/static_images/vista-ie/refresh.png') no-repeat center;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -817,9 +820,9 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-w
     min-height: 0;
     padding: 0;
     overflow: visible;
-    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
-    border: 1px solid #353c43;
-    border-bottom-color: #6e7988;
+    background: var(--vista-box-fill, linear-gradient(#e3ebf3, #eaf1f8 25%, #eaf1f8 75%, #e7eff6));
+    border: 1px solid var(--vista-box-edge, #4a5157);
+    border-bottom-color: var(--vista-box-edge-bottom, #9facb8);
     border-radius: 0;
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 88%), 0 0 0 1px hsl(0 0% 100% / 16%);
 }
@@ -882,7 +885,7 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-w
     height: 18px;
     min-height: 0;
     padding: 0;
-    background: url('/static_images/vista-explorer/refresh.png') no-repeat 0 0;
+    background: url('/static_images/vista-ie/refresh.png') no-repeat center;
     border: 0;
     border-left: 1px solid #54585c;
     border-radius: 0;
@@ -1049,10 +1052,10 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar {
     height: 24px;
     min-height: 24px;
-    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
-    border: 1px solid #353c43;
+    background: var(--vista-box-fill, linear-gradient(#e3ebf3, #eaf1f8 25%, #eaf1f8 75%, #e7eff6));
+    border: 1px solid var(--vista-box-edge, #4a5157);
     border-right: 0;
-    border-bottom-color: #6e7988;
+    border-bottom-color: var(--vista-box-edge-bottom, #9facb8);
     border-radius: 0;
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 88%), inset 1px 0 0 hsl(0 0% 100% / 88%), inset 0 -1px 0 hsl(0 0% 100% / 88%);
 }
@@ -1068,12 +1071,12 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     padding: 0;
     /* joined to the box: cancel the toolbar's 4px gap */
     margin: 0 0 0 -4px;
-    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
-    border: 1px solid #353c43;
+    background: var(--vista-box-fill, linear-gradient(#e3ebf3, #eaf1f8 25%, #eaf1f8 75%, #e7eff6));
+    border: 1px solid var(--vista-box-edge, #4a5157);
     border-width: 1px 0;
-    border-bottom-color: #6e7988;
+    border-bottom-color: var(--vista-box-edge-bottom, #9facb8);
     border-radius: 0;
-    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 88%), inset 0 -1px 0 hsl(0 0% 100% / 88%), inset 1px 0 0 #64686e;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 88%), inset 0 -1px 0 hsl(0 0% 100% / 88%), inset 1px 0 0 #6c6c6c;
     background-repeat: no-repeat;
 }
 
@@ -1132,9 +1135,9 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     min-width: 120px;
     height: 24px;
     margin-left: 2px;
-    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%, hsl(0 0% 100% / 74%) 75%, hsl(0 0% 100% / 68%));
-    border: 1px solid #353c43;
-    border-bottom-color: #6e7988;
+    background: var(--vista-box-fill, linear-gradient(#e3ebf3, #eaf1f8 25%, #eaf1f8 75%, #e7eff6));
+    border: 1px solid var(--vista-box-edge, #4a5157);
+    border-bottom-color: var(--vista-box-edge-bottom, #9facb8);
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 88%);
     box-sizing: border-box;
 }
@@ -1754,4 +1757,138 @@ body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .desk
 }
 body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
     display: none;
+}
+
+/* Vista's search boxes and IE7's address box are the lighter fill (VM pixels) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(> #explorerSearchBar),
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .button-group:has(> .cpl-search),
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(.grimoire-ie-search, #grimoireAddressBar.wiki-address-bar, .grimoire-ie-seg) {
+    --vista-box-fill: linear-gradient(#ebf2f9, #f2f8fe 25%, #f3f8fd 75%, #eef5fb);
+    --vista-box-edge: #53585e;
+    --vista-box-edge-bottom: #aab5c0;
+}
+
+/* IE7 with the address focused (VM): the edge turns blue, the text is selected; the page icon and the
+   ▾ | refresh | stop stay where they are */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar:is(.edit-active, :focus-within) {
+    --vista-box-edge: #3d7bad;
+    --vista-box-edge-bottom: #b7d9ed;
+    box-shadow: inset 0 1px 0 #b5cfe7, inset 1px 0 0 #b5cfe7, inset 0 -1px 0 #e0eef8;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar.edit-active .address-display-layer {
+    display: flex;
+    width: 28px;
+    padding: 0 0 0 6px;
+    z-index: 4;
+    pointer-events: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar.edit-active .address-display-layer .address-path {
+    display: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar.edit-active .address-edit-layer :is(.form-control, input) {
+    padding-left: 28px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar.edit-active .address-edit-layer input::selection {
+    background: #3399ff;
+    color: #fff;
+}
+
+/* ---------- every other window's caption toolbar (Yukimi 2026-10-13: "no app should have non vista
+   style controls when they're in the control bar"): Explorer's command bar on the glass. Buttons are
+   flat with Vista's blue hover / pressed faces, toggles that are on sit pressed, and a group that
+   holds a text box is Vista's search box with the button segments inside it. Cartograph, Grimoire,
+   Control Panel, Director and Media Player draw their own. ---------- */
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > [class^="btn-"]:not(.btn-primary, .btn-danger),
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) > [class^="btn-"]:not(.btn-primary, .btn-danger) {
+    height: 24px;
+    min-height: 24px;
+    min-width: 24px;
+    padding: 0 5px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    color: #1e395b;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    text-shadow: none;
+    filter: none;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) {
+    gap: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > [class^="btn-"]:not(.btn-primary, .btn-danger):hover:not(:disabled),
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) > [class^="btn-"]:not(.btn-primary, .btn-danger):hover:not(:disabled) {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 60%);
+    color: #1e395b;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):is(:active:not(:disabled), [data-state="on"], [data-state="open"], .active, [aria-pressed="true"]) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #2c628b;
+    box-shadow: inset 1px 1px 0 hsl(0 0% 0% / 20%);
+    color: #1e395b;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):disabled {
+    color: #8a96a3;
+    opacity: 1;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger)::before,
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger)::after {
+    content: none;
+}
+/* a group with a text box: Vista's search box; the segments (dataset ▾, go) sit inside the frame */
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > .button-group:has(.form-control, input:not([type="hidden"])) {
+    align-self: center;
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
+    gap: 0;
+    background: linear-gradient(#ebf2f9, #f2f8fe 25%, #f3f8fd 75%, #eef5fb);
+    border: 1px solid #53585e;
+    border-bottom-color: #aab5c0;
+    border-radius: 0;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 88%), 0 0 0 1px hsl(0 0% 100% / 16%);
+    box-sizing: border-box;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > .button-group:has(.form-control, input:not([type="hidden"])) :is(.form-control, input:not([type="hidden"])) {
+    height: 20px;
+    min-height: 0;
+    margin: 1px 0;
+    padding: 0 6px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    text-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > .button-group:has(.form-control, input:not([type="hidden"])) input::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > .button-group:has(.form-control, input:not([type="hidden"])) > [class^="btn-"] {
+    height: 22px;
+    min-height: 0;
+    min-width: 22px;
+    padding: 0 4px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: inset 1px 0 0 #6c6c6c;
+    color: #1e395b;
+    text-shadow: none;
+    filter: none;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > .button-group:has(.form-control, input:not([type="hidden"])) > [class^="btn-"]:first-child {
+    box-shadow: inset -1px 0 0 #6c6c6c;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar > .button-group:has(.form-control, input:not([type="hidden"])) > [class^="btn-"]:hover:not(:disabled) {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    box-shadow: inset 0 0 0 1px #3c7fb1;
 }

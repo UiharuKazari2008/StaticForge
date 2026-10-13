@@ -322,9 +322,9 @@ class WikiDisplayBase {
             <div style="margin-bottom:10px;font-weight:bold;color:#003366;">Leave DSAP?</div>
             <div style="margin-bottom:14px;line-height:1.3;">This link will leave the currently open DSAP.</div>
             <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;">
-                <button type="button" data-act="new" style="padding:4px 10px;background:#c0c0c0;border:1px solid #ff8c00;border-radius:3px;font-size:9pt;cursor:pointer;">Open in New Window</button>
-                ${ (wide || rightVisible) ? `<button type="button" data-act="right" style="padding:4px 10px;background:#c0c0c0;border:1px solid #ff8c00;border-radius:3px;font-size:9pt;cursor:pointer;">Open in Right Side</button>` : '' }
-                <button type="button" data-act="cancel" style="padding:4px 10px;background:#d4d0c8;border:1px solid #666;border-radius:3px;font-size:9pt;cursor:pointer;">Cancel</button>
+                <button type="button" data-act="new" style="padding:4px 10px;background:#c0c0c0;border:1px solid #ff8c00;border-radius:3px;font-size:9pt;cursor: var(--c-pointer);">Open in New Window</button>
+                ${ (wide || rightVisible) ? `<button type="button" data-act="right" style="padding:4px 10px;background:#c0c0c0;border:1px solid #ff8c00;border-radius:3px;font-size:9pt;cursor: var(--c-pointer);">Open in Right Side</button>` : '' }
+                <button type="button" data-act="cancel" style="padding:4px 10px;background:#d4d0c8;border:1px solid #666;border-radius:3px;font-size:9pt;cursor: var(--c-pointer);">Cancel</button>
             </div>
         `;
         document.body.appendChild(dialog);
@@ -2626,7 +2626,7 @@ class WikiDisplayBase {
         
         // Set cursor to progress and prevent pointer events on wiki content
         if (this.displayArea) {
-            this.displayArea.style.cursor = 'progress';
+            this.displayArea.style.cursor = 'var(--c-progress)';
             this.displayArea.style.pointerEvents = 'none';
         }
         
@@ -2977,7 +2977,7 @@ class WikiDisplayBase {
                             }
                         });
                     }
-                    link.style.cursor = 'pointer';
+                    link.style.cursor = 'var(--c-pointer)';
                     link.title = `Search for: ${searchQuery}`;
                     return;
                 }
@@ -3000,7 +3000,7 @@ class WikiDisplayBase {
             if (img.dataset.wikiLinkWired) return;
             img.dataset.wikiLinkWired = '1';
 
-            img.style.cursor = 'pointer';
+            img.style.cursor = 'var(--c-pointer)';
             img.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -3031,7 +3031,7 @@ class WikiDisplayBase {
                     embed.dataset.wikiLinkWired = '1';
 
                     const imageUrl = `/cache/wiki_files/post${mediaId}.jpg`;
-                    embed.style.cursor = 'pointer';
+                    embed.style.cursor = 'var(--c-pointer)';
                     embed.addEventListener('click', (e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -5765,6 +5765,13 @@ class TagWikiSearchModal extends WikiDisplayBase {
         // User can click the input if they want to edit the address.
         const current = (this.currentAddress && this.currentAddress.fullUrl) || this.addressPath?.textContent || '';
         this.searchInput.value = current || 'edtx://en.grimoire.jp/index.dtxt';
+        // On the Vista desktop the box is IE7's: a click puts the caret in and selects the whole
+        // address (the VM, 2026-10-13). Touch / mobile keep the no-focus behaviour above.
+        if (document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme')
+            && !(window.matchMedia && window.matchMedia('(hover: none)').matches)) {
+            this.searchInput.focus({ preventScroll: true });
+            this.searchInput.select();
+        }
     }
 
     exitAddressEdit() {

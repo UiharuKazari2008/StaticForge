@@ -860,8 +860,12 @@ body:not(.windows-classic-theme) .custom-dropdown-badge::before {
    darker at the top, 2px corners, the blue edge on hover / focus, grey when disabled. The app's
    own sizing (padding, min-height) stays so rows keep their layout. `.hover-show` inputs are the
    custom apps' reveal-on-hover controls and keep their rules; Studio (#manualModal) keeps its
-   own control mix; .win7 content already has 7.css; Classic draws its own. ---------- */
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, .form-control:not(select)):not(.hover-show):not(.win7 *):not(#manualModal *):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button) {
+   own control mix; the window chrome toolbars (.modal-window-title-toolbar: address and search
+   boxes) draw their own Vista boxes; .win7 content already has 7.css; Classic draws its own.
+   Only form elements: .form-control on a div (the Control Panel's breadcrumb box, readouts) is not
+   a text box. No #id inside :not() here: it would lift these rules over every app's own #id
+   rules. ---------- */
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button) {
     background: #fff;
     border: 1px solid;
     border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
@@ -872,22 +876,22 @@ body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type=
     text-shadow: none;
     transition: border-color .5s;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, .form-control:not(select)):not(.hover-show):not(.win7 *):not(#manualModal *):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button)::placeholder {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button)::placeholder {
     color: #777;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, .form-control:not(select)):not(.hover-show):not(.win7 *):not(#manualModal *):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):hover:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):hover:not(:disabled) {
     background: #fff;
     border-color: #5794bf #b7d5ea #c7e2f1 #c5daed;
     box-shadow: none;
     transition: border-color .3s;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, .form-control:not(select)):not(.hover-show):not(.win7 *):not(#manualModal *):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):is(:focus, :active, :focus-visible) {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):is(:focus, :active, :focus-visible) {
     background: #fff;
     border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
     box-shadow: none;
     outline: none;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, .form-control:not(select)):not(.hover-show):not(.win7 *):not(#manualModal *):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):disabled {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):disabled {
     background: #f0f0f0;
     border-color: #afafaf;
     box-shadow: inset 0 0 0 1px #fff;
@@ -896,7 +900,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type=
 }
 
 /* native selects: 7.css's drop-down button face with its arrow */
-body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not(#manualModal *) {
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) {
     appearance: none;
     -webkit-appearance: none;
     background: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTExIDZINHYxaDF2MWgxdjFoMXYxaDFWOWgxVjhoMVY3aDFWNloiIGZpbGw9IiMwMDAiLz48L3N2Zz4="), linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
@@ -910,22 +914,22 @@ body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-
     padding-right: 30px;
     text-shadow: none;
 }
-body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not(#manualModal *):not(:disabled):hover {
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(:disabled):hover {
     background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTExIDZINHYxaDF2MWgxdjFoMXYxaDFWOWgxVjhoMVY3aDFWNloiIGZpbGw9IiMwMDAiLz48L3N2Zz4="), linear-gradient(#eaf6fd 45%, #bee6fd 0, #a7d9f5);
     border-color: #3c7fb1;
 }
-body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not(#manualModal *):not(:disabled):focus {
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(:disabled):focus {
     box-shadow: inset 0 0 0 2px #98d1ef;
     outline: 1px dotted #000;
     outline-offset: -4px;
 }
-body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not(#manualModal *):disabled {
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):disabled {
     background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTExIDZINHYxaDF2MWgxdjFoMXYxaDFWOWgxVjhoMVY3aDFWNloiIGZpbGw9IiMwMDAiLz48L3N2Zz4="), linear-gradient(#f4f4f4, #f4f4f4);
     border-color: #adb2b5;
     color: #838383;
     opacity: 1;
 }
-body.desktop-mode:not(.windows-classic-theme) select[multiple]:not(.hover-show):not(.win7 *):not(#manualModal *) {
+body.desktop-mode:not(.windows-classic-theme) select[multiple]:not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) {
     background: #fff;
     border: 1px solid #c0c1cd;
     color: #000;
