@@ -2092,3 +2092,190 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     border-bottom: 0;
     vertical-align: 1px;
 }
+
+/* ---- Desktop Background (cplDesktopBackground.js): Vista's picker on the VM. Location ▾ and
+   Browse..., the listbox (#828790 edge) with a header per group (blue name and count, a rule, a
+   chevron), 92x69 framed thumbnails on a ~126px pitch, the grey footer with OK / Cancel. ---- */
+
+#melatonControlPanelModal .cpl-db-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+
+#melatonControlPanelModal .cpl-db-location {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 6px 0 8px;
+}
+
+#melatonControlPanelModal .cpl-db-combo {
+    position: relative;
+    width: 250px;
+    height: 23px;
+    padding: 0 22px 0 6px;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #707070;
+    border-radius: 3px;
+    color: #000;
+    font: 12px var(--cpl-font);
+    text-align: left;
+}
+
+#melatonControlPanelModal .cpl-db-combo::after {
+    content: '';
+    position: absolute;
+    right: 8px;
+    top: 9px;
+    border: 3.5px solid transparent;
+    border-top: 4px solid #000;
+    border-bottom: 0;
+}
+
+#melatonControlPanelModal .cpl-db-combo:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+#melatonControlPanelModal .cpl-db-grid {
+    flex: 1;
+    min-height: 260px;
+    max-height: 520px;
+    overflow: auto;
+    padding: 2px 12px 12px;
+    background: #fff;
+    border: 1px solid #828790;
+}
+
+#melatonControlPanelModal .cpl-db-group-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    height: 22px;
+    margin-top: 4px;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: #1e3287;
+    font: 12px var(--cpl-font);
+    cursor: default;
+}
+
+#melatonControlPanelModal .cpl-db-group-rule {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, #9fb3d6, #e2e9f5);
+}
+
+#melatonControlPanelModal .cpl-db-chevron {
+    width: 8px;
+    height: 8px;
+    border: 3.5px solid transparent;
+    border-bottom: 4px solid #1e3287;
+    border-top: 0;
+    box-sizing: border-box;
+    margin-right: 4px;
+}
+
+#melatonControlPanelModal .cpl-db-group.is-collapsed .cpl-db-chevron {
+    border-bottom: 0;
+    border-top: 4px solid #1e3287;
+}
+
+#melatonControlPanelModal .cpl-db-group.is-collapsed .cpl-db-pics {
+    display: none;
+}
+
+#melatonControlPanelModal .cpl-db-pics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 22px;
+    padding: 6px 0 10px;
+}
+
+#melatonControlPanelModal .cpl-db-pic {
+    position: relative;
+    padding: 5px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+}
+
+#melatonControlPanelModal .cpl-db-pic:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+#melatonControlPanelModal .cpl-db-pic.is-selected {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+}
+
+#melatonControlPanelModal .cpl-db-pic:focus-visible {
+    outline: 1px dotted #000;
+}
+
+#melatonControlPanelModal .cpl-db-frame {
+    display: block;
+    padding: 2px;
+    background: #fff;
+    box-shadow: 0 0 0 1px #d5d5d5, 0 2px 3px hsl(0 0% 0% / 30%);
+}
+
+#melatonControlPanelModal .cpl-db-frame img {
+    display: block;
+    width: 92px;
+    height: 69px;
+    object-fit: cover;
+}
+
+/* Your Uploads: × removes a picture from the history */
+#melatonControlPanelModal .cpl-db-remove {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 17px;
+    height: 17px;
+    padding: 0;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #707070;
+    border-radius: 3px;
+    opacity: 0;
+}
+
+#melatonControlPanelModal .cpl-db-remove::before {
+    content: '\00d7';
+    display: block;
+    color: #c00000;
+    font: 700 13px/15px var(--cpl-font);
+    text-align: center;
+}
+
+#melatonControlPanelModal .cpl-db-pic:is(:hover, :focus-within) .cpl-db-remove {
+    opacity: 1;
+}
+
+#melatonControlPanelModal .cpl-db-remove:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+#melatonControlPanelModal .cpl-content p.cpl-db-empty {
+    margin: 16px 4px;
+    color: #5b5b5b;
+}
+
+#melatonControlPanelModal .cpl-db-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin: 14px -22px -20px;
+    padding: 10px 22px;
+    background: #f0f0f0;
+    border-top: 1px solid #dfdfdf;
+}
+
+#melatonControlPanelModal .cpl-db-footer .cpl-wu-button {
+    min-width: 75px;
+}

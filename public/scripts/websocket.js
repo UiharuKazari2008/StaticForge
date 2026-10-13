@@ -7328,8 +7328,18 @@ class WebSocketClient {
         return this.sendMessage('upload_reference', { imageData, workspaceId, tempFile, comment, filename, description, tags });
     }
 
-    async uploadWallpaper(imageData, workspaceId) {
-        return this.sendMessage('upload_wallpaper', { imageData, workspaceId });
+    /** filename: the upload's own name, kept in the wallpaper history (modules/wallpaperHistory.js). */
+    async uploadWallpaper(imageData, workspaceId, filename = null) {
+        return this.sendMessage('upload_wallpaper', { imageData, workspaceId, ...(filename ? { filename } : {}) });
+    }
+
+    /** Uploaded wallpapers kept for Control Panel's Desktop Background, newest first. */
+    async getWallpaperHistory() {
+        return this.sendMessage('wallpaper_history_list', {}, false);
+    }
+
+    async deleteWallpaperHistoryItem(id) {
+        return this.sendMessage('wallpaper_history_delete', { id });
     }
 
     async replaceReference(hash, imageData, workspaceId, tempFile = null, filename = null) {

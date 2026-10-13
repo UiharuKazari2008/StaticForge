@@ -8,6 +8,7 @@ const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const replicationRemoteFetch = require('./replicationRemoteFetch');
 const { broadcastGalleryMutation } = require('./ws/handlers/120-galleryHandler');
 const { browserRequest } = require('./browserHttp');
+const wallpaperHistory = require('./wallpaperHistory');
 
 const REFERENCES_DESTRUCTIVE = { destructive: true };
 
@@ -976,13 +977,22 @@ class ReferencesWebSocketHandlers {
                 console.log(`🖼️ Saved custom wallpaper for workspace '${workspaceId}' (direct write)`);
             }
 
+            // keep a copy in the upload history (Control Panel's Desktop Background, wallpaperHistory.js)
+            let historyItem = null;
+            try {
+                historyItem = wallpaperHistory.remember(this.globalResources.getPath('cache'), wallpaperPath, message.filename);
+            } catch (error) {
+                console.warn('Wallpaper history:', error.message);
+            }
+
             this.handlers.sendToClient(ws, {
                 type: 'upload_wallpaper_response',
                 requestId: message.requestId,
                 data: {
                     success: true,
                     message: 'Wallpaper uploaded successfully',
-                    workspaceId: workspaceId
+                    workspaceId: workspaceId,
+                    historyItem
                 },
                 timestamp: new Date().toISOString()
             });

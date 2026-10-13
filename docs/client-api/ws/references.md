@@ -29,6 +29,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `update_reference_metadata` | `update_reference_metadata_response` | admin/destructive | Handler: handleUpdateReferenceMetadata |
 | `upload_reference` | `upload_reference_response` | admin/destructive | Handler: handleUploadReference |
 | `upload_wallpaper` | `upload_wallpaper_response` | admin/destructive | Handler: handleUploadWallpaper |
+| `wallpaper_history_list` | `wallpaper_history_list_response` | session | Uploaded wallpapers kept for Desktop Background. Handler `modules/ws/handlers/280-wallpaperHistoryHandler.js` |
+| `wallpaper_history_delete` | `wallpaper_history_delete_response` | destructive | Remove one upload from the history |
 | `upload_workspace_image` | `upload_workspace_image_response` | admin/destructive | Handler: handleUploadWorkspaceImage |
 
 ## Response envelope
@@ -496,8 +498,25 @@ Additional response/push types from handler:
 | `requestId` | Optional |
 | `imageData` | Optional |
 | `workspaceId` | Optional |
+| `filename` | Optional: the upload's own name, kept in the wallpaper history |
 
-**Success response:** `upload_wallpaper_response`
+**Success response:** `upload_wallpaper_response`. `data.historyItem` (`{ id, name, addedAt, url }`)
+is the copy kept in the wallpaper history (`modules/wallpaperHistory.js`).
+
+### `wallpaper_history_list` / `wallpaper_history_delete`
+
+Uploaded wallpapers kept for Control Panel's Desktop Background (`modules/wallpaperHistory.js`): every
+`upload_wallpaper` also stores a copy at `<cache>/wallpapers/history/<id>.png` (served as
+`/cache/wallpapers/history/<id>.png`), newest first, at most 40, the id being the PNG's content hash.
+
+```json
+{ "type": "wallpaper_history_list" }
+{ "type": "wallpaper_history_list_response", "data": { "success": true,
+  "items": [{ "id": "c358171d305bac52", "name": "beach.jpg", "addedAt": 1791918458581, "url": "/cache/wallpapers/history/c358171d305bac52.png" }] } }
+
+{ "type": "wallpaper_history_delete", "id": "c358171d305bac52" }
+{ "type": "wallpaper_history_delete_response", "data": { "success": true, "removed": true, "items": [] } }
+```
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

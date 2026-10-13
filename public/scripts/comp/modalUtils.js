@@ -8021,7 +8021,7 @@ async function uploadCustomWallpaper(file) {
 
         // Upload via WebSocket
         if (wsClient && wsClient.isConnected()) {
-            const response = await wsClient.uploadWallpaper(base64, currentWorkspace);
+            const response = await wsClient.uploadWallpaper(base64, currentWorkspace, file.name);
 
             if (response.success) {
                 // Precache the new wallpaper: delete old cache entry, then load and cache the new one
@@ -8042,6 +8042,8 @@ async function uploadCustomWallpaper(file) {
                     showProgress: false,
                     timeout: 3000
                 });
+                // the response carries the upload's history item (Desktop Background, cplDesktopBackground.js)
+                return response;
             } else {
                 throw new Error(response.message || 'Upload failed');
             }
@@ -9684,8 +9686,16 @@ function setupDesktopSettingsButtonHandlers() {
         const newUploadInput = uploadInput.cloneNode(true);
         uploadInput.parentNode.replaceChild(newUploadInput, uploadInput);
 
-        // Select: Upload / Stock (contextMenu.js click menu)
-        contextMenu.attachClickMenuToElement(newUploadBtn, buildWallpaperSelectMenuConfig(newUploadInput));
+        // Select: Control Panel's Desktop Background page (Vista's picker, cplDesktopBackground.js);
+        // without Control Panel, the Upload / Stock click menu (contextMenu.js)
+        if (window.cplDesktopBackground && window.melatonControlPanel) {
+            newUploadBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.cplDesktopBackground.open();
+            });
+        } else {
+            contextMenu.attachClickMenuToElement(newUploadBtn, buildWallpaperSelectMenuConfig(newUploadInput));
+        }
 
         newUploadInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
