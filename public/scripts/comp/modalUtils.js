@@ -6229,8 +6229,7 @@ function buildToolsSubmenuItems() {
         { launchId: 'calculator', icon: 'fas fa-calculator', text: 'Calculator', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
         { launchId: 'alarm', icon: 'fas fa-alarm-clock', text: 'Alarm', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
         { launchId: 'pomodoro', icon: 'fas fa-timer', text: 'Pomodoro', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
-        { launchId: 'music', icon: 'fas fa-music', text: 'Music', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayers.js */ openDesktopMusicPlayer(); } },
-        { launchId: 'video', icon: 'fas fa-video', text: 'Video', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayers.js */ openDesktopVideoPlayer(); } },
+        { launchId: 'media-player', icon: 'fas fa-play', imageIcon: 'media_player.png', text: 'Media Player', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayer.js */ openDesktopMediaPlayer(); } },
         { launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/emotion.js */ openDesktopEmotion(); } },
     ].filter(isStartMenuEntryEnabled);
     // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
@@ -9043,8 +9042,8 @@ async function prepareDesktopSettingsForm(wallpaperPath = null) {
         desktopSettingsState.wallpaperUrl = null;
     }
 
-    // Parse existing position
-    if (workspace.wallpaperPosition) {
+    // Parse existing position (no workspace yet, e.g. right after a reconnect: the default)
+    if (workspace && workspace.wallpaperPosition) {
         const position = workspace.wallpaperPosition || 'center center';
         parseWallpaperPosition(position);
     } else {

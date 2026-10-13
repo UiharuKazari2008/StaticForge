@@ -830,10 +830,10 @@ const ensureDesktopEmotionModal = function () {
     const resultBadge = document.createElement('button');
     resultBadge.type = 'button';
     resultBadge.className = 'btn-secondary btn-small emotion-result-badge hidden';
-    resultBadge.title = 'Open in Video Player';
-    resultBadge.innerHTML = '<i class="fas fa-film"></i> Video Player';
+    resultBadge.title = 'Open in Media Player';
+    resultBadge.innerHTML = '<i class="fas fa-film"></i> Media Player';
     resultBadge.addEventListener('click', () => {
-        // openDesktopVideoPlayerUrl: public/scripts/comp/desktop-apps/mediaPlayers.js
+        // openDesktopVideoPlayerUrl (= openDesktopMediaPlayerUrl): public/scripts/comp/desktop-apps/mediaPlayer.js
         if (resultBadge.dataset.video && typeof openDesktopVideoPlayerUrl === 'function') {
             openDesktopVideoPlayerUrl(localGalleryImageUrl(resultBadge.dataset.video), resultBadge.dataset.video);
         }
