@@ -112,15 +112,16 @@ function naxPinnedBoostExpr(elevatePins, boostValue, elseExpr) {
     return `(CASE WHEN ${match} THEN ${boostValue} ELSE ${elseExpr} END)`;
 }
 
+// JULES: Batch gallery existence lookup to avoid per-slug SELECT query loop
 function getSlugsInMergeGroupFor(slug, d) {
     const database = d || getDb();
     if (!database) return [slug];
     for (const group of NAX_FAVORITE_MERGE_GROUPS) {
         if (group.includes(slug)) {
-            return group.filter((s) => {
-                const row = database.prepare('SELECT 1 AS ok FROM nax_galleries WHERE slug = ?').get(s);
-                return !!row;
-            });
+            const placeholders = group.map(() => '?').join(', ');
+            const existingRows = database.prepare(`SELECT slug FROM nax_galleries WHERE slug IN (${placeholders})`).all(...group);
+            const existingSet = new Set(existingRows.map((r) => r.slug));
+            return group.filter((s) => existingSet.has(s));
         }
     }
     return [slug];
@@ -586,6 +587,8 @@ function listMissingForGallery(gallerySlug, markFilter, query, bounds) {
         params.push(q);
     }
 
+    // JULES: Include NOT EXISTS subquery to filter missing tags directly in SQLite rather than N separate queries
+    params.push(gallerySlug);
     const rows = d.prepare(`
         SELECT tag,
                MAX(favorite) AS favorite,
@@ -595,17 +598,17 @@ function listMissingForGallery(gallerySlug, markFilter, query, bounds) {
           AND ${markSql}
           AND ${NAX_HIDDEN_WHERE}
           ${querySql}
+          AND NOT EXISTS (
+              SELECT 1 FROM nax_tags t WHERE t.gallery_slug = ? AND t.tag = nax_tags.tag
+          )
         GROUP BY tag
         ORDER BY tag COLLATE NOCASE ASC
     `).all(...params);
 
-    const existsStmt = d.prepare(
-        'SELECT 1 AS ok FROM nax_tags WHERE gallery_slug = ? AND tag = ?'
-    );
     const out = [];
     for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        if (!row || !row.tag || existsStmt.get(gallerySlug, row.tag)) continue;
+        if (!row || !row.tag) continue;
         out.push({
             id: null,
             gallerySlug,
