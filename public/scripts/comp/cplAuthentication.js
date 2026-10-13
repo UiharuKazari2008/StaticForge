@@ -313,7 +313,7 @@
                     <h3 class="cpl-task-heading">See also</h3>
                     <ul class="cpl-task-list">
                         ${cpl.taskLinkHtml('User Accounts', 'nav', 'user-accounts')}
-                        ${cpl.taskLinkHtml('Windows Defender', 'nav', 'defender')}
+                        ${cpl.taskLinkHtml('Windows Defender', 'item', 'windows-defender')}
                     </ul>
                 </div>`,
             body: () => `

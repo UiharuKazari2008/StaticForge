@@ -4012,8 +4012,18 @@ function securityDsapOpenAuthInControlPanel() {
     return cpl.open() !== false;
 }
 
+/** On the Vista desktop Security Center is Windows Defender (windowsDefender.js); false elsewhere. */
+function securityDsapOpenDefender(view) {
+    const defender = typeof window !== 'undefined' ? window.windowsDefender : null;
+    const body = typeof document !== 'undefined' ? document.body : null;
+    if (!defender || !body || !body.classList.contains('desktop-mode') || body.classList.contains('windows-classic-theme')) return false;
+    const pages = { home: 'home', blocked: 'quarantine', honeypot: 'honeypot', telemetry: 'history' };
+    return defender.open(pages[view] || 'home') !== false;
+}
+
 function openSecurityCenterDsap(view) {
     if (securityDsapNormalizeView(view) === 'auth' && securityDsapOpenAuthInControlPanel()) return;
+    if (securityDsapOpenDefender(securityDsapNormalizeView(view))) return;
     const target = securityDsapBuildUrl(view || 'home');
     // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
     if (typeof openDsapInGrimoire === 'function') {

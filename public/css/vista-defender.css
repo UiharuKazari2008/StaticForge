@@ -1,0 +1,456 @@
+/* Windows Defender (windowsDefender.js), 1:1 with the Vista VM's: the client area is Defender's
+   blue-to-green (#4372a4 to #68b472, left to right), the toolbar on it (orbs in the travel band,
+   30px icons with white labels, the logo right), the white subtitle, the white panel (#b3becb
+   edge). Art: MsMpRes.dll (public/static_images/vista-defender/). The list pages restyle Security
+   Center's driver markup in Vista's controls. */
+
+#defenderModal {
+    --defender-font: 'Segoe UI', 'Noto Sans', sans-serif;
+    --defender-link: #0066cc;
+}
+
+#defenderModal .modal-content.defender-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0 6px 12px 20px;
+    background: linear-gradient(to right, #4372a4, #68b472);
+    color: #000;
+    font: 12px var(--defender-font);
+}
+
+/* ---- the toolbar ---- */
+
+#defenderModal .defender-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 46px;
+    margin-left: -12px;
+    padding-right: 180px;
+}
+
+#defenderModal .defender-travel {
+    display: flex;
+    flex: none;
+    width: 57px;
+    height: 27px;
+    margin-right: 6px;
+    background: url('/static_images/vista-defender/travel-gutter.png') no-repeat 0 0;
+}
+
+#defenderModal .defender-orb {
+    width: 26px;
+    height: 25px;
+    margin: 1px 0 0 1px;
+    padding: 0;
+    background: url('/static_images/vista-defender/back.png') no-repeat 0 0;
+    border: 0;
+    border-radius: 50%;
+}
+
+#defenderModal .defender-forward {
+    margin-left: 3px;
+    background-image: url('/static_images/vista-defender/forward.png');
+}
+
+#defenderModal .defender-back:hover:not(:disabled) { background-image: url('/static_images/vista-defender/back-hot.png'); }
+#defenderModal .defender-back:active:not(:disabled) { background-image: url('/static_images/vista-defender/back-pressed.png'); }
+#defenderModal .defender-back:disabled { background-image: url('/static_images/vista-defender/back-disabled.png'); }
+#defenderModal .defender-forward:hover:not(:disabled) { background-image: url('/static_images/vista-defender/forward-hot.png'); }
+#defenderModal .defender-forward:active:not(:disabled) { background-image: url('/static_images/vista-defender/forward-pressed.png'); }
+#defenderModal .defender-forward:disabled { background-image: url('/static_images/vista-defender/forward-disabled.png'); }
+
+#defenderModal .defender-tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 34px;
+    padding: 0 6px 0 2px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #fff;
+    font: 12px var(--defender-font);
+    text-shadow: 0 0 6px hsl(210 60% 20% / 70%);
+}
+
+#defenderModal .defender-tool img {
+    width: 30px;
+    height: 30px;
+}
+
+#defenderModal .defender-tool:is(:hover, .is-current) {
+    background: linear-gradient(hsl(0 0% 100% / 22%), hsl(0 0% 100% / 8%));
+    border-color: hsl(0 0% 100% / 45%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 15%);
+}
+
+#defenderModal .defender-bar-sep {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+    background: hsl(0 0% 100% / 35%);
+}
+
+#defenderModal .defender-logo {
+    position: absolute;
+    right: 10px;
+    top: 4px;
+    width: 166px;
+    height: 48px;
+    pointer-events: none;
+}
+
+#defenderModal .defender-sub {
+    padding: 8px 0 6px;
+    margin-left: -12px;
+    color: #fff;
+    text-shadow: 0 0 6px hsl(210 60% 20% / 70%);
+}
+
+/* ---- the panel ---- */
+
+#defenderModal .defender-panel {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: #fff;
+    border: 1px solid #b3becb;
+    border-radius: 3px;
+}
+
+#defenderModal .defender-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    box-sizing: border-box;
+    padding: 20px 20px 16px;
+}
+
+#defenderModal .defender-note {
+    color: #5b5b5b;
+}
+
+#defenderModal .defender-link {
+    padding: 0;
+    background: none;
+    border: 0;
+    color: var(--defender-link);
+    font: 12px var(--defender-font);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+#defenderModal .defender-link:hover {
+    color: #3399ff;
+}
+
+/* Home: the banner (VM: #fee3ac edge, #fced6f to white head; green and blue alike) and Status */
+#defenderModal .defender-banner {
+    border: 1px solid #fee3ac;
+    border-radius: 3px;
+}
+
+#defenderModal .defender-banner--ok { border-color: #b6dfa8; }
+#defenderModal .defender-banner--scan { border-color: #b7d3ea; }
+
+#defenderModal .defender-banner-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 8px 0 0;
+    background: linear-gradient(to right, #fced6f, #fff);
+    font-weight: 700;
+}
+
+#defenderModal .defender-banner--ok .defender-banner-head { background: linear-gradient(to right, #c3ecb2, #fff); }
+#defenderModal .defender-banner--scan .defender-banner-head { padding-left: 24px; background: linear-gradient(to right, #c7e1f4, #fff); }
+
+#defenderModal .defender-banner-head img {
+    width: 32px;
+    height: 32px;
+    margin: -6px 0 -6px -6px;
+}
+
+#defenderModal .defender-banner-body {
+    padding: 10px 24px 12px;
+}
+
+#defenderModal .defender-banner-body p {
+    margin: 0 0 6px;
+}
+
+#defenderModal .defender-progress {
+    width: 300px;
+    max-width: 100%;
+}
+
+#defenderModal .defender-status {
+    margin-top: auto;
+    padding-top: 24px;
+}
+
+#defenderModal .defender-status h2 {
+    margin: 0 0 3px;
+    font: 700 12px var(--defender-font);
+}
+
+#defenderModal .defender-status table {
+    width: 100%;
+    padding: 6px 24px 8px;
+    border: 1px solid #e3e3e3;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px #f1f1f1;
+    border-collapse: separate;
+}
+
+#defenderModal .defender-status td {
+    padding: 1px 0;
+}
+
+#defenderModal .defender-status td:first-child {
+    width: 200px;
+}
+
+/* Tools and Settings */
+#defenderModal .defender-tools h1 {
+    margin: 0 0 18px;
+    font: 20px var(--defender-font);
+}
+
+#defenderModal .defender-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #333;
+}
+
+#defenderModal .defender-group::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #d5d5d5;
+}
+
+#defenderModal .defender-items {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 26px 40px;
+    padding: 18px 26px 34px 44px;
+}
+
+#defenderModal .defender-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+#defenderModal .defender-item img {
+    flex: none;
+    width: 48px;
+    height: 48px;
+}
+
+#defenderModal .defender-item p {
+    margin: 2px 0 0;
+    color: #333;
+}
+
+/* the list pages */
+#defenderModal .defender-page-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+#defenderModal .defender-page-head img {
+    width: 32px;
+    height: 32px;
+}
+
+#defenderModal .defender-page-head h1 {
+    margin: 2px 0 2px;
+    font: 15px var(--defender-font);
+}
+
+#defenderModal .defender-page-head p {
+    margin: 0;
+}
+
+#defenderModal .defender-sec :is(.dsap-smf-header, #secTabBar, .sec-dsap-section-hdr, .sec-dsap-stats, .sec-view.hidden) {
+    display: none !important;
+}
+
+/* Allowed items: the approved IPs only, from the auth view */
+#defenderModal .defender-list--allowed #secAuthView > :not(#secApprovedView) {
+    display: none !important;
+}
+
+/* the driver's status line as Defender's info strip (#dcecf9, #e0e8ee edge) */
+#defenderModal .defender-sec .sec-dsap-statusbox {
+    margin: 0 0 8px;
+    padding: 4px 8px;
+    background: #dcecf9;
+    border: 1px solid #e0e8ee;
+    box-shadow: 0 0 0 1px #e3e3e3;
+}
+
+#defenderModal .defender-sec .sec-dsap-status-error { background: #fdecea; }
+
+#defenderModal .defender-sec :is(.sec-dsap-loading, .sec-dsap-empty, .sec-dsap-setting-hint, .sec-dsap-settings-intro) {
+    color: #5b5b5b;
+}
+
+#defenderModal .defender-sec .sec-dsap-error {
+    color: #c00000;
+}
+
+#defenderModal .defender-sec .sec-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 8px;
+}
+
+#defenderModal .defender-sec .sec-search-wrap {
+    position: relative;
+}
+
+#defenderModal .defender-sec .sec-search-icon {
+    display: none;
+}
+
+#defenderModal .defender-sec .sec-input {
+    box-sizing: border-box;
+    min-height: 23px;
+    padding: 2px 5px;
+    background: #fff;
+    border: 1px solid #abadb3;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    color: #000;
+    font: 12px var(--defender-font);
+}
+
+#defenderModal .defender-sec .sec-search-input {
+    width: 240px;
+}
+
+#defenderModal .defender-sec :is(.sec-dsap-action-btn, .dsap-smf-btn, .sec-telemetry-event-btn) {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 23px;
+    padding: 0 10px;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #707070;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+    color: #000;
+    font: 12px var(--defender-font);
+    text-shadow: none;
+}
+
+#defenderModal .defender-sec :is(.sec-dsap-action-btn, .dsap-smf-btn, .sec-telemetry-event-btn):hover:not(:disabled) {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+#defenderModal .defender-sec .sec-dsap-action-btn:disabled {
+    background: #f4f4f4;
+    border-color: #adb2b5;
+    box-shadow: none;
+    color: #838383;
+}
+
+#defenderModal .defender-sec .sec-dsap-action-btn i {
+    color: #3d5a7a;
+    font-size: 11px;
+}
+
+#defenderModal .defender-sec .sec-btn-small {
+    min-height: 21px;
+    padding: 0 6px;
+}
+
+/* Defender's list view (Explorer's) */
+#defenderModal .defender-sec .sec-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #828790;
+}
+
+#defenderModal .defender-sec .sec-data-table {
+    width: 100%;
+    border: 0;
+    border-collapse: collapse;
+}
+
+#defenderModal .defender-sec .sec-data-table th {
+    height: 21px;
+    padding: 0 6px;
+    background: linear-gradient(#fff, #fff 40%, #f3f5f8);
+    border: 0;
+    border-right: 1px solid #e3e8ec;
+    border-bottom: 1px solid #d5d5d5;
+    color: #000;
+    font-weight: normal;
+    text-align: left;
+    white-space: nowrap;
+}
+
+#defenderModal .defender-sec .sec-data-table td {
+    padding: 2px 6px;
+    border: 0;
+    color: #000;
+}
+
+#defenderModal .defender-sec .sec-data-table tbody tr:hover td {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+}
+
+#defenderModal .defender-sec .sec-pager {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: #efefef;
+    border-bottom: 1px solid #c9d2d4;
+}
+
+#defenderModal .defender-sec .sec-details-panel {
+    margin: 8px 0;
+    border: 1px solid rgb(189, 202, 234);
+}
+
+#defenderModal .defender-sec .sec-details-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 28px;
+    padding: 0 6px 0 10px;
+    background: linear-gradient(to right, rgb(145, 203, 211), #fff);
+    border-bottom: 1px solid rgb(189, 202, 234);
+}
+
+#defenderModal .defender-sec .sec-details-body {
+    padding: 10px 12px;
+}
+
+/* the app's own paragraph and heading styles stay out of Defender's panel */
+#defenderModal .defender-panel :is(p, h1, h2) {
+    color: #000;
+    text-align: left;
+    text-shadow: none;
+}
+
+#defenderModal .defender-item p {
+    color: #333;
+}

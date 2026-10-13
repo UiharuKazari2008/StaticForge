@@ -141,12 +141,18 @@ function registerDsapManifests() {
             launchId: 'security-center',
             icon: 'fas fa-shield-halved',
             imageIcon: 'secu.png',
-            text: 'Security Center',
+            text: 'Windows Defender',
             appMenu: false,
             startMenu: false,
             desktopOnly: true,
             adminOnly: true,
             launch() {
+                // Security Center is Windows Defender on the Vista desktop: public/scripts/comp/windowsDefender.js
+                const body = document.body;
+                if (window.windowsDefender && body.classList.contains('desktop-mode') && !body.classList.contains('windows-classic-theme')) {
+                    window.windowsDefender.open('home');
+                    return;
+                }
                 // openSecurityCenterDsap: public/scripts/comp/securityCenterDsapApplet.js
                 if (typeof openSecurityCenterDsap === 'function') {
                     openSecurityCenterDsap('home');
