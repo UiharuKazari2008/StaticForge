@@ -1388,6 +1388,7 @@ class DesktopShortcutsManager {
             // Default icon - prepend before label
             const defaultIcon = document.createElement('div');
             defaultIcon.className = 'desktop-shortcut-icon';
+            defaultIcon.dataset.vistaIcon = 'file';
             defaultIcon.innerHTML = '<i class="fas fa-file"></i>';
             element.insertBefore(defaultIcon, label);
         }
@@ -1946,6 +1947,7 @@ class DesktopShortcutsManager {
     createFolderIcon() {
         const icon = document.createElement('div');
         icon.className = 'desktop-shortcut-icon';
+        icon.dataset.vistaIcon = 'folder'; // vista-explorer.css: Vista's own folder icon
         icon.innerHTML = '<i class="fas fa-folder"></i>';
         return icon;
     }
@@ -1955,6 +1957,8 @@ class DesktopShortcutsManager {
         icon.className = 'desktop-shortcut-icon';
         const iconClass = shortcut?.data?.icon
             || (shortcut?.data?.systemKey === 'trash' ? 'fas fa-trash-can' : 'fas fa-folder');
+        // vista-explorer.css: the Recycle Bin, or Vista's folder like Cartograph draws system folders
+        icon.dataset.vistaIcon = shortcut?.data?.systemKey === 'trash' ? 'recycle' : 'folder';
         icon.innerHTML = `<i class="${iconClass}"></i>`;
         return icon;
     }
@@ -2415,6 +2419,8 @@ class DesktopShortcutsManager {
         // Just the icon, no wrapper or frame (like note/preset)
         const icon = document.createElement('div');
         icon.className = 'desktop-shortcut-icon desktop-shortcut-icon-wiki';
+        // Grimoire is Internet Explorer: vista-explorer.css draws Vista's Internet shortcut (url.dll)
+        icon.dataset.vistaIcon = 'internet-shortcut';
         
         // Use fa-file-alt icon for wiki pages
         const wikiIcon = document.createElement('i');
@@ -2463,6 +2469,7 @@ class DesktopShortcutsManager {
             img.alt = '';
             icon.appendChild(img);
         } else {
+            icon.dataset.vistaIcon = 'internet-shortcut';
             const wikiIcon = document.createElement('i');
             wikiIcon.className = 'fas fa-file-doc';
             icon.appendChild(wikiIcon);
@@ -2527,6 +2534,7 @@ class DesktopShortcutsManager {
             img.alt = '';
             icon.appendChild(img);
         } else {
+            icon.dataset.vistaIcon = 'internet-shortcut';
             const globe = document.createElement('i');
             globe.className = 'fas fa-globe';
             icon.appendChild(globe);

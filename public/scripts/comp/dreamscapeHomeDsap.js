@@ -64,7 +64,7 @@ function registerDreamscapeHomeDsap() {
         menuEntry: {
             launchId: 'control-panel',
             icon: 'fas fa-gauge',
-            imageIcon: 'controlpanel.png',
+            imageIcon: 'vista-control-panel.png',
             text: 'Control Panel',
             fullName: 'Control Panel',
             appMenu: false,

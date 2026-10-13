@@ -474,7 +474,7 @@ function setupMainMenuContextMenus() {
                                 icon: 'fa-regular fa-shield-halved',
                                 text: 'Security Center',
                                 action: 'security-center',
-                                imageIcon: 'secu.png',
+                                imageIcon: 'vista-defender.png',
                                 desktopOnly: true,
                                 hidden: localStorage.getItem('userType') !== 'admin',
                             },

@@ -140,7 +140,7 @@ function registerDsapManifests() {
         menuEntry: {
             launchId: 'security-center',
             icon: 'fas fa-shield-halved',
-            imageIcon: 'secu.png',
+            imageIcon: 'vista-defender.png',
             text: 'Windows Defender',
             appMenu: false,
             startMenu: false,

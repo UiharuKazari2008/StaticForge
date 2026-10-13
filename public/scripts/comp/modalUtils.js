@@ -6122,7 +6122,7 @@ const startMenuLaunchables = [
     {
         launchId: 'workspace',
         icon: 'fas fa-film-canister',
-        imageIcon: 'art.png',
+        imageIcon: 'vista-photo-gallery.png',
         text: 'Workspace',
         desktopOnly: true,
         appMenu: true,
@@ -6148,14 +6148,14 @@ const startMenuLaunchables = [
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', appMenu: true, action: () => { showCacheManagerModal(); } },
     { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openBracketGenerationApplet(); } },
     { launchId: 'director', icon: 'fas fa-clapperboard', imageIcon: 'director.png', text: 'Director', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/director.js */ await openDirectorWindow(); } },
-    { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Grimoire', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openGrimoireApplet(); } },
+    { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'vista-iexplore.png', text: 'Grimoire', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openGrimoireApplet(); } },
     { launchId: 'alchemy', icon: 'fas fa-atom', imageIcon: 'alchemy.png', text: 'Alchemy', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openGrimoireUrl(ALCHEMY_HOME_URL); } },
     { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openNaxtApplet(); } },
     { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
-    { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
-    { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'remote_desktop.png', text: 'Remote Desktop', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
-    { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'dovecote.png', text: 'Dovecote', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
+    { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'vista-explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
+    { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'vista-remote-desktop.png', text: 'Remote Desktop', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
+    { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'vista-mail.png', text: 'Dovecote', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
     // Teleport (Yukimi, 2026-10-12): the planet switcher. All Programs, the places column under
     // Workspaces, and the power menu where Vista has Switch User; the start menu lists no planets.
     // Run: `planets`, `teleport`.
@@ -6176,8 +6176,8 @@ const startMenuShellConfig = [
         contextSubmenu: 'planets',
         action: () => { openPlanetSwitcher(); }
     },
-    { icon: 'fas fa-toolbox', imageIcon: 'toolbox.png', text: 'Toolbox', hasSubmenu: true, submenu: 'tools', appMenu: false },
-    { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'search.png', text: 'Run', appMenu: false, action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('run'); runApplet.open(); } },
+    { icon: 'fas fa-toolbox', imageIcon: 'vista-folder.png', text: 'Toolbox', hasSubmenu: true, submenu: 'tools', appMenu: false },
+    { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'vista-run.png', text: 'Run', appMenu: false, action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('run'); runApplet.open(); } },
 ];
 
 /** @deprecated Use startMenuLaunchables + startMenuShellConfig */
@@ -6223,9 +6223,9 @@ function buildToolsSubmenuItems() {
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', appMenuLocation: 'tools', action: () => { showPresetManager(); } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', appMenuLocation: 'tools', action: () => { showTextReplacementManager(); } },
         { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal(); } },
-        { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'slider.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
+        { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'vista-regedit.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
         { launchId: 'character-db', icon: 'fas fa-users', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
-        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
+        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-event-viewer.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
         { launchId: 'calculator', icon: 'fas fa-calculator', text: 'Calculator', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
         { launchId: 'alarm', icon: 'fas fa-alarm-clock', text: 'Alarm', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
         { launchId: 'pomodoro', icon: 'fas fa-timer', text: 'Pomodoro', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
@@ -7570,8 +7570,8 @@ function getStartMenuPlaces() {
     };
     return [
         { id: 'user', text: START_MENU_USER_NAME, action: () => openExplorerApplet() },
-        { id: 'cartograph', text: 'Cartograph', imageIcon: 'explorer.png', action: launch('explorer') },
-        { id: 'gallery', text: 'Gallery', imageIcon: 'art.png', desktopOnly: true, action: launch('workspace') },
+        { id: 'cartograph', text: 'Cartograph', imageIcon: 'vista-explorer.png', action: launch('explorer') },
+        { id: 'gallery', text: 'Gallery', imageIcon: 'vista-photo-gallery.png', desktopOnly: true, action: launch('workspace') },
         { id: 'notion', text: 'Notion', imageIcon: 'notebook.png', action: launch('notebook') },
         { id: 'workspaces', text: 'Workspaces', imageIcon: 'planet.png', action: () => showWorkspaceManagementModal() },
         { id: 'teleport', text: 'Teleport', imageIcon: 'planet.png', desktopOnly: true, action: launch('planet-switcher') },
@@ -7579,9 +7579,9 @@ function getStartMenuPlaces() {
         { id: 'recent', text: 'Recent Items', flyout: true },
         { id: 'network', text: 'Network and Server Center', image: '/static_images/melaton/net-globe.png', action: controlPanel('network') },
         { separator: true },
-        { id: 'control-panel', text: 'Control Panel', imageIcon: 'controlpanel.png', action: controlPanel('home') },
-        { id: 'remote-access', text: 'Remote Access', imageIcon: 'remote_desktop.png', action: () => openRemoteAccessSettingsModal() },
-        { id: 'help', text: 'Help and Support', imageIcon: 'books.png', action: () => openGrimoireApplet() },
+        { id: 'control-panel', text: 'Control Panel', imageIcon: 'vista-control-panel.png', action: controlPanel('home') },
+        { id: 'remote-access', text: 'Remote Access', imageIcon: 'vista-remote-desktop.png', action: () => openRemoteAccessSettingsModal() },
+        { id: 'help', text: 'Help and Support', imageIcon: 'vista-help.png', action: () => openGrimoireApplet() },
     ].filter((place) => !(place.desktopOnly && !desktop));
 }
 

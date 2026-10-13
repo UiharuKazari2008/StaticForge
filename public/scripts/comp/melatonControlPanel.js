@@ -111,7 +111,7 @@
     registerItem({
         id: 'personalization',
         name: 'Personalization',
-        image: '/static_images/app_icons/colors.png',
+        image: '/static_images/app_icons/vista-personalization.png',
         description: "Change this workspace's name, colours, fonts and desktop background.",
         open: () => navigate('personalization')
     });
@@ -125,21 +125,21 @@
     registerItem({
         id: 'remote-access',
         name: 'Remote Access',
-        image: '/static_images/app_icons/remote_desktop.png',
+        image: '/static_images/app_icons/vista-remote-desktop.png',
         description: 'Choose how agents deliver and open images on this computer.',
         open: () => navigate('remote-access')
     });
     registerItem({
         id: 'system',
         name: 'System',
-        image: '/static_images/app_icons/cube.png',
+        image: '/static_images/app_icons/vista-system.png',
         description: 'See the version and details of MeletonFX.',
         open: () => callGlobal('openAboutMelatoninModal')
     });
     registerItem({
         id: 'runes',
         name: 'Runes',
-        image: '/static_images/app_icons/slider.png',
+        image: '/static_images/app_icons/vista-regedit.png',
         description: 'Edit the server configuration directly.',
         open: async () => {
             /* global featureLoader, configEditorApplet */
@@ -178,7 +178,7 @@
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="fas fa-sliders icon-fa"></i>
-                    <img src="/static_images/app_icons/controlpanel.png" alt="" class="icon-image">
+                    <img src="/static_images/app_icons/vista-control-panel.png" alt="" class="icon-image">
                     <span class="cpl-window-title">Control Panel</span>
                 </div>
                 <div class="modal-window-title-toolbar">

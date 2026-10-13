@@ -60,17 +60,17 @@ function main() {
     assert.match(systemTrayJs, /doveRefreshTrayUnread/);
 
     // 4. Dovecote launches from the main app menu (startMenuLaunchables, appMenu: true) with an
-    // image icon, and is no longer under the Tools submenu.
+    // image icon (Windows Mail's, WinMail.exe on the Vista VM), and is no longer under the Tools submenu.
     assert.match(
         modalUtilsJs,
-        /\{ launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'dovecote\.png', text: 'Dovecote', appMenu: true,/
+        /\{ launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'vista-mail\.png', text: 'Dovecote', appMenu: true,/
     );
     const toolsSubmenuSection = modalUtilsJs.slice(
         modalUtilsJs.indexOf('function buildToolsSubmenuItems'),
         modalUtilsJs.indexOf('function buildToolsSubmenuItems') + 4000
     );
     assert.doesNotMatch(toolsSubmenuSection, /launchId: 'dovecote'/);
-    assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/app_icons/dovecote.png')), 'dovecote.png icon asset must exist');
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/app_icons/vista-mail.png')), 'vista-mail.png icon asset must exist');
 
     // No inline styles, no native <select> — custom context menu / design-system classes only.
     assert.doesNotMatch(dovecoteJs, /\.style\./);
