@@ -29,7 +29,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
 }
 
 /* the travel band: the orbs sit in Explorer's gutter, a groove that rings each orb and pinches into
-   a waist between them (travel-gutter.svg, drawn from the VM); Recent Pages ▾ sits outside it */
+   a waist between them (travel-gutter.png: Vista's own band, MsMpRes.dll PNG 281); Recent Pages ▾ sits outside it */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .naxt-nav-group {
     gap: 0;
     padding: 0;
@@ -38,7 +38,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     min-height: 0;
     align-items: flex-start;
     align-self: center;
-    background: url('/static_images/vista-explorer/travel-gutter.svg') no-repeat 0 0;
+    background: url('/static_images/vista-explorer/travel-gutter.png') no-repeat 0 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -767,7 +767,7 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-w
     min-height: 0;
     align-items: flex-start;
     align-self: center;
-    background: url('/static_images/vista-explorer/travel-gutter.svg') no-repeat 0 0;
+    background: url('/static_images/vista-explorer/travel-gutter.png') no-repeat 0 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -973,7 +973,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     min-height: 0;
     align-items: flex-start;
     align-self: center;
-    background: url('/static_images/vista-explorer/travel-gutter.svg') no-repeat 0 0;
+    background: url('/static_images/vista-explorer/travel-gutter.png') no-repeat 0 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;

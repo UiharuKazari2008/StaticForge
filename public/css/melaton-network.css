@@ -1826,3 +1826,185 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
     border-color: #99defd;
 }
+
+/* ---- Authentication as a credential vault (cplAuthentication.js, after Credential Manager):
+   section strips with the "Add …" links, rows that open into details and actions. PINs live in
+   User Accounts and approved IPs in Windows Defender, so their parts of the driver stay hidden. ---- */
+
+#melatonControlPanelModal .cpl-auth-host :is(#secAuthView > .sec-dsap-section-hdr:first-child, #secAuthPinStatus, #secAuthPinsLoading, #secAuthPinsError, #secAuthPinsContent, #secApprovedView, .cpl-vault-replaced, .cpl-vault-source, #secCursorAccountsStatus, #secKeychainStatus, #secAppkeysStatus, #secCursorAccountsEmpty, #secAppkeysEmpty, #secKeychainEmpty, #secCursorAccountsContent > .sec-dsap-settings-intro) {
+    display: none !important;
+}
+
+#melatonControlPanelModal .cpl-auth-host #secAuthView > .sec-toolbar {
+    display: none;
+}
+
+#melatonControlPanelModal .cpl-vault-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 20px 0 0;
+    padding: 6px 10px;
+    background: linear-gradient(#ffffff, #eef3fa);
+    border: 1px solid #d5dfe5;
+}
+
+#melatonControlPanelModal .cpl-vault-head > img {
+    width: 16px;
+    height: 16px;
+}
+
+#melatonControlPanelModal .cpl-vault-title {
+    flex: 1;
+    color: #1e395b;
+    font-size: 13px;
+}
+
+#melatonControlPanelModal .cpl-vault-links {
+    display: flex;
+    gap: 14px;
+}
+
+#melatonControlPanelModal .cpl-auth-host :is(.cpl-vault-link, .cpl-vault-actions .sec-dsap-action-btn, .cpl-vault-value .sec-dsap-action-btn) {
+    min-height: 0;
+    padding: 0;
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    color: var(--cpl-link);
+    font: 12px var(--cpl-font);
+    cursor: pointer;
+}
+
+#melatonControlPanelModal .cpl-auth-host :is(.cpl-vault-link, .cpl-vault-actions .sec-dsap-action-btn, .cpl-vault-value .sec-dsap-action-btn):hover:not(:disabled) {
+    color: var(--cpl-link-hover);
+    text-decoration: underline;
+}
+
+#melatonControlPanelModal .cpl-auth-host :is(.cpl-vault-link, .cpl-vault-actions .sec-dsap-action-btn, .cpl-vault-value .sec-dsap-action-btn):disabled {
+    color: #838383;
+    cursor: default;
+}
+
+#melatonControlPanelModal .cpl-auth-host :is(.cpl-vault-actions, .cpl-vault-value) .sec-dsap-action-btn i {
+    display: none;
+}
+
+#melatonControlPanelModal .cpl-vault-list {
+    border: 1px solid #d5dfe5;
+    border-top: 0;
+}
+
+#melatonControlPanelModal .cpl-vault-caption {
+    padding: 6px 10px 2px;
+    color: #5b5b5b;
+    font-size: 11px;
+}
+
+#melatonControlPanelModal .cpl-vault-empty {
+    padding: 8px 10px 8px 34px;
+    color: #5b5b5b;
+}
+
+#melatonControlPanelModal .cpl-vault-row + .cpl-vault-row {
+    border-top: 1px solid #edf0f4;
+}
+
+#melatonControlPanelModal .cpl-vault-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 30px;
+    padding: 4px 10px 4px 34px;
+    background: none;
+    border: 1px solid transparent;
+    color: #000;
+    font: 12px var(--cpl-font);
+    text-align: left;
+    cursor: pointer;
+}
+
+#melatonControlPanelModal .cpl-vault-line:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+#melatonControlPanelModal .cpl-vault-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-vault-summary {
+    color: #5b5b5b;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+/* the round chevron that opens a credential */
+#melatonControlPanelModal .cpl-vault-chevron {
+    position: relative;
+    flex: none;
+    width: 15px;
+    height: 15px;
+    background: linear-gradient(#fdfdfd, #e3e6ea);
+    border: 1px solid #a0a8b2;
+    border-radius: 50%;
+}
+
+#melatonControlPanelModal .cpl-vault-chevron::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 5px;
+    border: 3px solid transparent;
+    border-top: 4px solid #4d5a6a;
+    border-bottom: 0;
+}
+
+#melatonControlPanelModal .cpl-vault-row.is-open .cpl-vault-chevron::before {
+    top: 4px;
+    border-top: 0;
+    border-bottom: 4px solid #4d5a6a;
+}
+
+#melatonControlPanelModal .cpl-vault-details {
+    display: none;
+    padding: 4px 12px 12px 34px;
+    background: #f7f9fc;
+}
+
+#melatonControlPanelModal .cpl-vault-row.is-open .cpl-vault-details {
+    display: block;
+}
+
+#melatonControlPanelModal .cpl-vault-field {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+#melatonControlPanelModal .cpl-vault-label {
+    color: #333;
+}
+
+#melatonControlPanelModal .cpl-vault-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 8px;
+}
+
+#melatonControlPanelModal .cpl-vault-row[data-state~="sec-account-needs-login"] .cpl-vault-summary::after {
+    content: ' · Sign in again';
+    color: #c00000;
+}
+
+#melatonControlPanelModal .cpl-vault-sub {
+    margin-left: 8px;
+    color: #6d6d6d;
+}
