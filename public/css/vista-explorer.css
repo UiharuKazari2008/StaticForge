@@ -1647,27 +1647,63 @@ body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, 
     display: none;
 }
 
-/* Pictures (the VM's thumbtest folder, 2026-10-13): Vista shows a thumbnail in a plain white
-   photo frame, no type badge. References keep their type as Vista's small overlay box at the
-   bottom left (the way shortcuts carry the arrow). */
-body:not(.windows-classic-theme) .desktop-shortcut-icon-image {
+/* Pictures (the VM's thumbtest folder, 2026-10-13): Vista shows the thumbnail at its own aspect
+   in a plain white photo frame, no type badge. desktopShortcutPhotoFrame (desktopShortcuts.js)
+   adds the picture as an <img> so the frame can hug it; the square tile goes transparent.
+   References keep their type as Vista's small overlay box at the bottom left (the way shortcuts
+   carry the arrow). Generation requests keep their round badge. */
+.desktop-shortcut-photo {
+    display: none;
+}
+body:not(.windows-classic-theme) .desktop-shortcut:not([data-shortcut-type="request"]) .desktop-shortcut-icon-image,
+body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-icon-image {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    --photo-box: 58px;
+}
+body:not(.windows-classic-theme) .desktop-shortcut:not([data-shortcut-type="request"]) .desktop-shortcut-icon-image .desktop-shortcut-image-preview,
+body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-icon-image .desktop-shortcut-image-preview {
+    position: relative;
+    display: inline-flex;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
     border: 3px solid #fff;
     border-radius: 0;
     background: #fff;
+    background-image: none !important;
     box-shadow: 0 0 0 1px #b9b9b9, 1px 1px 3px #0005;
+    overflow: visible;
 }
-body:not(.windows-classic-theme) .desktop-shortcut-icon-image .desktop-shortcut-image-preview {
-    border-radius: 0;
+body:not(.windows-classic-theme) .desktop-shortcut:not([data-shortcut-type="request"]) .desktop-shortcut-image-preview > .desktop-shortcut-photo,
+body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-image-preview > .desktop-shortcut-photo {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: var(--photo-box);
+    max-height: var(--photo-box);
 }
 body:not(.windows-classic-theme) .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder > i.fa-image.desktop-shortcut-image-icon {
     display: none;
 }
-body:not(.windows-classic-theme) .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder {
+body:not(.windows-classic-theme) .desktop-shortcut:not([data-shortcut-type="request"]) .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder,
+body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
     align-items: flex-end;
     justify-content: flex-start;
     padding: 0;
 }
-body:not(.windows-classic-theme) .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder > i.desktop-shortcut-image-icon:not(.fa-image) {
+body:not(.windows-classic-theme) .desktop-shortcut:not([data-shortcut-type="request"]) .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder > i.desktop-shortcut-image-icon:not(.fa-image),
+body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder > i.desktop-shortcut-image-icon:not(.fa-image) {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1680,9 +1716,22 @@ body:not(.windows-classic-theme) .desktop-shortcut-image-preview > .desktop-shor
     font-size: 9px;
     text-shadow: none;
 }
+/* Cartograph's icon boxes */
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon-image { --photo-box: 152px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon-image { --photo-box: 90px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .desktop-shortcut-icon-image { --photo-box: 66px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm .desktop-shortcut-icon-image { --photo-box: 30px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-row .desktop-shortcut-icon-image { --photo-box: 14px; }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon-image .desktop-shortcut-image-preview {
+    border-width: 1px;
+    box-shadow: 0 0 0 1px #b9b9b9;
+}
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-image-preview > .desktop-shortcut-flare-holder > i.desktop-shortcut-image-icon:not(.fa-image) {
+    display: none;
+}
 
-/* App shortcuts (applet, dsap) carry Vista's shortcut arrow (shell32.dll 29), bottom left, a size
-   down from Vista's own since the desktop icons are 64px. VFS files have none. */
+/* App shortcuts (applet, dsap) carry Vista's shortcut arrow (shell32.dll 29) bottom left, the 24px
+   frame (16px was too small to see, Yukimi 2026-10-13). VFS files have none. */
 body:not(.windows-classic-theme) .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon {
     position: relative;
 }
@@ -1691,8 +1740,17 @@ body:not(.windows-classic-theme) .desktop-shortcut:is([data-shortcut-type="apple
     position: absolute;
     left: 0;
     bottom: 0;
+    width: 24px;
+    height: 24px;
+    background: image-set(url('/static_images/vista-icons/explorer/shortcut-arrow-24.png') 1x, url('/static_images/vista-icons/explorer/shortcut-arrow-48.png') 2x) no-repeat center / 24px 24px;
+    pointer-events: none;
+}
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
     width: 16px;
     height: 16px;
-    background: image-set(url('/static_images/vista-icons/explorer/shortcut-arrow-16.png') 1x, url('/static_images/vista-icons/explorer/shortcut-arrow-32.png') 2x) no-repeat center / 16px 16px;
-    pointer-events: none;
+    background-image: image-set(url('/static_images/vista-icons/explorer/shortcut-arrow-16.png') 1x, url('/static_images/vista-icons/explorer/shortcut-arrow-32.png') 2x);
+    background-size: 16px 16px;
+}
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
+    display: none;
 }

@@ -1,6 +1,30 @@
 // Desktop Shortcuts Manager
 // Manages desktop shortcuts for each workspace
 
+// Vista (vista-explorer.css): the thumbnail as an <img> too, so the white frame hugs the picture's
+// own aspect the way Vista frames photos (Yukimi 2026-10-13). The background stays for Classic.
+// Also used by Cartograph (explorerApplet.js _populateGalleryImageIconBox / _populateReferenceIconBox).
+// Gallery previews (/previews/<name>.webp) are 256px square centre crops; the @lq variant
+// (modules/previewUtils.js generateMobilePreviews, 128px on the long edge, fit inside) keeps the
+// picture's aspect, so the frame takes that one and falls back to the square if it is missing.
+function desktopShortcutPhotoFrame(preview) {
+    const m = /url\((['"]?)(.*?)\1\)/.exec((preview && preview.style.backgroundImage) || '');
+    if (!m) return;
+    const url = m[2];
+    const img = document.createElement('img');
+    img.className = 'desktop-shortcut-photo';
+    img.alt = '';
+    img.draggable = false;
+    const lq = /^(\/previews\/.+?)(\.webp)$/i.exec(url);
+    if (lq && !/@(lq|2x)\.webp$/i.test(url)) {
+        img.addEventListener('error', () => { img.src = url; }, { once: true });
+        img.src = `${lq[1]}@lq${lq[2]}`;
+    } else {
+        img.src = url;
+    }
+    preview.insertBefore(img, preview.firstChild);
+}
+
 class DesktopShortcutsManager {
     constructor() {
         this.shortcuts = [];
@@ -1452,6 +1476,7 @@ class DesktopShortcutsManager {
         // Build structure: frame > preview > flare > icon
         flareHolder.appendChild(imageIcon);
         imagePreview.appendChild(flareHolder);
+        desktopShortcutPhotoFrame(imagePreview);
         frame.appendChild(imagePreview);
 
         return frame;
@@ -1699,6 +1724,7 @@ class DesktopShortcutsManager {
         // Build structure: frame > preview > flare > icon
         flareHolder.appendChild(refIcon);
         imagePreview.appendChild(flareHolder);
+        desktopShortcutPhotoFrame(imagePreview);
         frame.appendChild(imagePreview);
 
         return frame;
@@ -2600,6 +2626,7 @@ class DesktopShortcutsManager {
 
         flareHolder.appendChild(tagIcon);
         imagePreview.appendChild(flareHolder);
+        desktopShortcutPhotoFrame(imagePreview);
         frame.appendChild(imagePreview);
 
         return frame;

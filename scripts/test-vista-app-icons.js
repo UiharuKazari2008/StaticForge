@@ -109,8 +109,10 @@ assert.ok(read('public/scripts/comp/explorerApplet.js').includes("icon.dataset.v
 const css = read('public/css/vista-explorer.css');
 assert.ok(css.includes('.desktop-shortcut-icon[data-vista-icon="note"] > i') && css.includes('.desktop-note-color-chip'), 'note glyph on the page + chip');
 assert.ok(css.includes('> i.fa-image.desktop-shortcut-image-icon {\n    display: none;'), 'pictures lose the type badge (Vista frames them)');
-assert.ok(css.includes('[data-shortcut-type="dsap"]) .desktop-shortcut-icon::after') && css.includes('shortcut-arrow-16.png'), 'app shortcuts carry the arrow');
-for (const size of [16, 32]) assert.ok(fs.existsSync(path.join(ROOT, `public/static_images/vista-icons/explorer/shortcut-arrow-${size}.png`)), `arrow ${size}`);
+assert.ok(shortcuts.includes('function desktopShortcutPhotoFrame(preview)') && (shortcuts.match(/desktopShortcutPhotoFrame\(imagePreview\)/g) || []).length === 3, 'pictures, references and nax tags get the <img> for the aspect frame');
+assert.ok(css.includes('.desktop-shortcut-image-preview > .desktop-shortcut-photo') && css.includes('max-width: var(--photo-box)'), 'the frame hugs the picture');
+assert.ok(css.includes('[data-shortcut-type="dsap"]) .desktop-shortcut-icon::after') && css.includes('shortcut-arrow-24.png'), 'app shortcuts carry the arrow');
+for (const size of [16, 24, 32, 48]) assert.ok(fs.existsSync(path.join(ROOT, `public/static_images/vista-icons/explorer/shortcut-arrow-${size}.png`)), `arrow ${size}`);
 for (const kind of ['folder', 'recycle', 'file', 'internet-shortcut', 'document']) {
     assert.ok(css.includes(`.desktop-shortcut-icon[data-vista-icon="${kind}"]`), `CSS draws ${kind}`);
     for (const size of [64, 256]) {

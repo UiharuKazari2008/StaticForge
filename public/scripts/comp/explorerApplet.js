@@ -4003,6 +4003,7 @@ class ExplorerApplet {
         imageIcon.className = 'fas fa-image desktop-shortcut-image-icon';
         flareHolder.appendChild(imageIcon);
         imagePreview.appendChild(flareHolder);
+        if (typeof desktopShortcutPhotoFrame === 'function') desktopShortcutPhotoFrame(imagePreview); // desktopShortcuts.js
         frame.appendChild(imagePreview);
         box.innerHTML = '';
         box.appendChild(frame);
@@ -4034,6 +4035,7 @@ class ExplorerApplet {
         }
         flareHolder.appendChild(refIcon);
         imagePreview.appendChild(flareHolder);
+        if (typeof desktopShortcutPhotoFrame === 'function') desktopShortcutPhotoFrame(imagePreview); // desktopShortcuts.js
         frame.appendChild(imagePreview);
         box.innerHTML = '';
         box.appendChild(frame);
