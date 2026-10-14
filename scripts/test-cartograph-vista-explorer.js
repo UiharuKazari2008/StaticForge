@@ -86,4 +86,62 @@ for (const f of ['recent-pages.png', 'refresh.png', 'travel-gutter.png']) {
     assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-explorer', f)), f);
 }
 
+// details pane: the same picture is not rebuilt on a status refresh, and a new picture
+// keeps has-preview so the previous photo stays until the next one is decoded
+function fakeEl() {
+    const classes = new Set();
+    const el = { dataset: {}, innerHTML: '' };
+    el.classList = {
+        contains: (c) => classes.has(c),
+        add: (...cs) => cs.forEach((c) => classes.add(c)),
+        remove: (...cs) => cs.forEach((c) => classes.delete(c))
+    };
+    Object.defineProperty(el, 'className', {
+        get() { return [...classes].join(' '); },
+        set(v) {
+            classes.clear();
+            String(v || '').split(/\s+/).filter(Boolean).forEach((c) => classes.add(c));
+        }
+    });
+    return el;
+}
+const populates = [];
+const details = chromeFor({
+    _populateIconBox: (box, item) => populates.push(item.id),
+    _itemSizeBytes: () => 1510000,
+    _formatStatusSize: () => '1.51 MB',
+    isFolderItem: () => false
+});
+const detailsIcon = fakeEl();
+const detailsInfo = fakeEl();
+details.el = { detailsIcon, detailsInfo };
+const light = { id: 'light', name: 'switch.png', mimeType: 'image/png', previewUrl: '/p/light', modifiedAt: 100 };
+const cassette = { id: 'tape', name: 'tape.png', mimeType: 'image/png', previewUrl: '/p/tape', modifiedAt: 100 };
+details.renderDetails([light], '');
+details.renderDetails([light], 'ignored');
+assert.deepStrictEqual(populates, ['light'], 'a status refresh does not reload the details photo');
+detailsIcon.classList.add('has-preview');
+details.renderDetails([cassette], '');
+assert.deepStrictEqual(populates, ['light', 'tape']);
+assert.ok(detailsIcon.classList.contains('has-preview'), 'the previous photo stays up while the next one loads');
+assert.ok(detailsInfo.innerHTML.includes('tape.png') && detailsInfo.innerHTML.includes('PNG Image'));
+details.renderDetails([], '4 items');
+assert.strictEqual(detailsIcon.dataset.detailsKey, '');
+assert.ok(detailsInfo.innerHTML.includes('4 items'));
+details.renderDetails([], '5 items');
+assert.ok(detailsInfo.innerHTML.includes('5 items'), 'the summary still updates when the icon is already the folder');
+assert.ok(read('public/scripts/comp/explorerApplet.js').includes('_swapVisiblePreview'), 'a loaded details photo is swapped in place');
+
+// live folders (Yukimi 2026-10-13): the server picks every 10th picture of a folder (a workspace's
+// latest generations when its desktop has none); the client stands them between Vista's folder
+// back (imageres 4) and front flap (imageres 5) at the medium size and up
+const vfs = fs.readFileSync(path.join(__dirname, '..', 'modules/vfsManager.js'), 'utf8');
+assert.ok(vfs.includes('_pickSpacedPreviews(previews, count = 2, stride = 10)') && vfs.includes('async _workspaceFolderPreviews(workspaceId)'), 'server previews');
+assert.ok((vfs.match(/previews: this\._pickSpacedPreviews\(this\._shortcutPreviews\(/g) || []).length === 2 && vfs.includes('previews: workspacePreviews[id] || []'), 'folders and workspaces carry previews');
+assert.ok(fs.readFileSync(path.join(__dirname, '..', 'modules/metadataDatabase.js'), 'utf8').includes('async function listWorkspaceLatestFilenames('), 'latest generations query');
+const ex = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/explorerApplet.js'), 'utf8');
+assert.ok(ex.includes('_mountLiveFolder(box, icon, previews)') && ex.includes("explorer-item-icon-box-sm") && ex.includes("@lq.webp"), 'client live folder');
+const liveCss = fs.readFileSync(path.join(__dirname, '..', 'public/css/vista-explorer.css'), 'utf8');
+assert.ok(liveCss.includes('.explorer-item-type-icon.explorer-live-folder {') && liveCss.includes('folder-back-256.png') && liveCss.includes('folder-front-96.png'), 'live folder art');
+for (const n of ['folder-back-256', 'folder-back-96', 'folder-front-256', 'folder-front-96']) assert.ok(fs.existsSync(path.join(__dirname, '..', `public/static_images/vista-icons/explorer/${n}.png`)), n);
 console.log('test-cartograph-vista-explorer: ok');

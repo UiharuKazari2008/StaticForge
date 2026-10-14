@@ -215,7 +215,7 @@
     background: linear-gradient(#f2f2f2, #e5e5e5);
     color: #000;
     font: 9pt "Segoe UI", sans-serif;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .desktop-timer-window .desktop-timer-tab:hover {
@@ -249,12 +249,11 @@
     display: none;
 }
 
-/* the page's controls on the white tab page: Vista's text boxes and labels (the shared
-   .form-control is styled for the dark windows) */
+/* the page is .win7, so 7.css draws its text boxes and labels; only the readout and the hint are ours */
 .desktop-timer-window .desktop-timer-page label,
 .desktop-timer-window .desktop-timer-page .form-hint {
     color: #000;
-    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     font-variation-settings: normal;
     letter-spacing: 0;
     text-transform: none;
@@ -266,19 +265,14 @@
     color: #555;
 }
 
-.desktop-timer-window .desktop-timer-page .form-control {
-    background: #fff;
-    border: 1px solid #abadb3;
-    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+.desktop-timer-window .desktop-timer-page input.form-control {
+    height: 23px;
+    min-height: 23px;
+    padding: 3px 4px 5px;
     border-radius: 2px;
     box-shadow: none;
     color: #000;
     text-shadow: none;
-}
-
-.desktop-timer-window .desktop-timer-page .form-control:is(:hover, :focus) {
-    border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
-    outline: none;
 }
 
 .desktop-timer-window .desktop-timer-page .desktop-timer-readout {

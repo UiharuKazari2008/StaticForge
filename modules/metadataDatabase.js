@@ -1776,6 +1776,26 @@ async function countWorkspaceGalleryFilenames(workspaceId, bucket = 'files') {
 }
 
 /**
+ * The newest filenames of a workspace's gallery (Cartograph's live folder icons: the latest
+ * generations peek out of a workspace folder whose desktop has no pictures of its own).
+ */
+async function listWorkspaceLatestFilenames(workspaceId, limit = 30, bucket = 'files') {
+    if (!workspaceId || !dbInitialized || !db) {
+        return [];
+    }
+    const rows = await db.all(
+        `SELECT o.filename
+         FROM ${GALLERY_OWNERSHIP_TABLE} o
+         LEFT JOIN images i ON i.filename = o.filename
+         WHERE o.workspace_id = ? AND o.bucket = ?
+         ORDER BY COALESCE(i.mtime, 0) DESC, o.filename DESC
+         LIMIT ?`,
+        [workspaceId, bucket, Math.max(1, Math.min(200, Number(limit) || 30))]
+    );
+    return (rows || []).map((r) => r.filename);
+}
+
+/**
  * Workspace gallery rows joined to images for sort/filter fields (single indexed query).
  */
 async function listWorkspaceGalleryImageRows(workspaceId, bucket = 'files') {
@@ -7959,6 +7979,7 @@ async function listSimilarGroupMemberFilenames(workspaceId, groupId, kind = 'con
 }
 
 module.exports = {
+    listWorkspaceLatestFilenames,
     initializeDatabase,
     closeDatabase,
     getImageMetadata,

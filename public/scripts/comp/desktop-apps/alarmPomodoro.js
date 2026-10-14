@@ -330,7 +330,7 @@ function desktopAlarmBuildTimeGroup(id, text, max) {
     const input = document.createElement('input');
     input.type = 'number';
     input.id = id;
-    input.className = 'form-control hover-show colored';
+    input.className = 'form-control'; // a Vista text box (7.css), not the custom apps' reveal-on-hover control
     input.min = '0';
     input.max = String(max);
     input.step = '1';
@@ -431,7 +431,7 @@ function desktopTimerEnsure() {
         });
         strip.appendChild(tab);
         const page = document.createElement('div');
-        page.className = 'desktop-timer-page';
+        page.className = 'desktop-timer-page win7'; // 7.css styles the page's controls
         page.setAttribute('role', 'tabpanel');
         page.setAttribute('aria-labelledby', tab.id);
         page.appendChild(parts.body);

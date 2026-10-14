@@ -4089,6 +4089,39 @@ class ExplorerApplet {
         icon.dataset.kind = this.isFolderItem(item) ? 'folder' : 'file';
         box.innerHTML = '';
         box.appendChild(icon);
+        // Vista's live folder: the folder's pictures stand in it (item.previews from vfsManager.js,
+        // every 10th one) at the medium size and up; the small sizes keep the plain folder
+        const live = Array.isArray(item.previews) && item.previews.length
+            && icon.dataset.kind === 'folder' && !/\b(fa-bin-recycle|fa-trash-can)\b/.test(icon.className)
+            && !box.classList.contains('explorer-item-icon-box-sm') && !box.classList.contains('explorer-item-icon-box-row');
+        if (live) this._mountLiveFolder(box, icon, item.previews);
+    }
+
+    _mountLiveFolder(box, icon, previews) {
+        icon.classList.add('explorer-live-folder');
+        const papers = document.createElement('span');
+        papers.className = 'explorer-live-folder-papers';
+        previews.slice(0, 2).forEach((preview, i) => {
+            const img = document.createElement('img');
+            img.className = `explorer-live-folder-paper explorer-live-folder-paper-${i + 1}`;
+            img.alt = '';
+            img.draggable = false;
+            const square = `/previews/${encodeURIComponent(preview)}`;
+            // the @lq preview keeps the picture's shape (the plain one is a square crop)
+            img.addEventListener('error', () => { if (img.src !== location.origin + square) img.src = square; }, { once: true });
+            // a portrait stands taller than a landscape in Vista's folder
+            img.addEventListener('load', () => {
+                const r = img.naturalWidth / (img.naturalHeight || 1);
+                img.classList.toggle('is-portrait', r < 0.9);
+                img.classList.toggle('is-landscape', r > 1.1);
+            });
+            img.src = `/previews/${encodeURIComponent(preview.replace(/\.webp$/i, '@lq.webp'))}`;
+            papers.appendChild(img);
+        });
+        icon.appendChild(papers);
+        const front = document.createElement('span');
+        front.className = 'explorer-live-folder-front';
+        icon.appendChild(front);
     }
 
     // Details pane (explorerVistaChrome.js renderDetails) keeps has-preview across a new

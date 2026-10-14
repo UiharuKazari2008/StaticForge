@@ -708,6 +708,44 @@ class VfsManager {
         };
     }
 
+    /**
+     * Live folder icons (Cartograph, Yukimi 2026-10-13): the pictures that peek out of a folder, as
+     * Vista's folders show their contents. Every 10th picture, so two neighbours never show the
+     * same icons back to back; two at most (Vista's live folder holds two).
+     */
+    _pickSpacedPreviews(previews, count = 2, stride = 10) {
+        const out = [];
+        // fewer than count * stride pictures: spread the picks over what there is instead
+        const step = Math.max(1, Math.min(stride, Math.floor(previews.length / count)));
+        for (let i = 0; i < previews.length && out.length < count; i += step) {
+            if (previews[i]) out.push(previews[i]);
+        }
+        return out;
+    }
+
+    /** Preview names of a workspace desktop's picture shortcuts in one folder (null = the desktop). */
+    _shortcutPreviews(workspaceId, folderId = null) {
+        const { shortcuts } = this.globalResources.getWorkspaceManager().getDesktopShortcuts(workspaceId);
+        const pics = (shortcuts || [])
+            .filter(s => s && s.type === 'image' && (s.folderId || null) === (folderId || null) && s.data && s.data.preview)
+            .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        return pics.map(s => s.data.preview);
+    }
+
+    /** A workspace folder: its desktop's pictures, or the latest generations when it has none. */
+    async _workspaceFolderPreviews(workspaceId) {
+        const own = this._pickSpacedPreviews(this._shortcutPreviews(workspaceId, null));
+        if (own.length) return own;
+        try {
+            const metadataDb = this.globalResources.getMetadataDatabase?.();
+            if (!metadataDb || typeof metadataDb.listWorkspaceLatestFilenames !== 'function') return [];
+            const files = await metadataDb.listWorkspaceLatestFilenames(workspaceId, 30);
+            return this._pickSpacedPreviews(files.map(f => `${String(f).replace(/\.[^.]+$/, '')}.webp`));
+        } catch (err) {
+            return [];
+        }
+    }
+
     makeFolderItem(folder, extra = {}) {
         return {
             id: folder.id,
@@ -1229,11 +1267,14 @@ class VfsManager {
             case 'workspaces-list': {
                 const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces();
                 let listTotalBytes = 0;
+                const workspacePreviews = {};
+                for (const id of Object.keys(workspaces)) workspacePreviews[id] = await this._workspaceFolderPreviews(id);
                 items = Object.entries(workspaces).map(([id, ws]) => {
                     const cached = this._getWorkspaceStatsFromCache(id);
                     const sizeBytes = cached?.diskUsageBytes || 0;
                     listTotalBytes += sizeBytes;
                     return {
+                        previews: workspacePreviews[id] || [],
                         id: `ws-${id}`,
                         name: ws.name || id,
                         kind: 'folder',
@@ -1269,7 +1310,8 @@ class VfsManager {
                 const surfaceEntries = await this._getSurfaceEntryItems('workspace', parsed.workspaceId);
                 items.push(...folders.map(f => this.makeFolderItem(f, {
                     navPath: this.folderNavPath(wsBase, f.id),
-                    workspaceId: parsed.workspaceId
+                    workspaceId: parsed.workspaceId,
+                    previews: this._pickSpacedPreviews(this._shortcutPreviews(parsed.workspaceId, f.id))
                 })));
                 items.push(...surfaceEntries);
                 items.push(...files.map(f => this.makeFileItem(f, { workspaceId: parsed.workspaceId })));
@@ -1652,7 +1694,8 @@ class VfsManager {
         const items = [
             ...subfolders.map(f => this.makeFolderItem(f, {
                 navPath: this.folderNavPath(parsed.path, f.id),
-                workspaceId: parsed.workspaceId
+                workspaceId: parsed.workspaceId,
+                previews: this._pickSpacedPreviews(this._shortcutPreviews(parsed.workspaceId, f.id))
             })),
             ...files.map(f => this.makeFileItem(f, { workspaceId: parsed.workspaceId })),
             ...inFolder.map(s => this._shortcutToItem(s, parsed.workspaceId))
