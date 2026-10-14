@@ -786,6 +786,12 @@ $(fence_untrusted "$PM2_PROBLEM")
 Start pm2-kanmi.service and re-run host-deploy via workflow_dispatch with restart_server." || true
         die "deployed $(git rev-parse --short HEAD) but skipped the PM2 restart: $PM2_PROBLEM"
     fi
+    if [[ -f "$LIVE_ROOT/scripts/precompile-runtime-assets.js" ]]; then
+        log "Precompiling runtime assets..."
+        if ! node "$LIVE_ROOT/scripts/precompile-runtime-assets.js"; then
+            log "WARNING: runtime asset precompile failed; boot will compile on startup"
+        fi
+    fi
     log "PM2 restart (by name, no --update-env)..."
     # ./restart tails logs forever — run the pm2 steps only.
     # Restart by NAME without --update-env: PM2 5.3.1 then keeps Dreamscape's saved env exactly.

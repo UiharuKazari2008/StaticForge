@@ -113,6 +113,7 @@
     "setup:docker": "bash scripts/setup.sh --mode docker",
     "docker:test": "docker compose -f docker-compose.test.yml up --build",
     "test:agent-auth": "node scripts/test-agent-auth.js",
+    "test:runtime-asset-precompile": "node scripts/test-runtime-asset-precompile.js",
     "test:custom-resolution": "node scripts/test-custom-resolution-legal.js",
     "test:wheel-tick-gate": "node scripts/test-wheel-tick-gate.js",
     "test:mcp-facade": "node scripts/test-mcp-agent-facade.js",

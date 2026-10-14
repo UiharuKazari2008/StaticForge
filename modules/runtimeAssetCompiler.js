@@ -6,6 +6,7 @@ const { transform: transformCss } = require('lightningcss');
 const { dedupeCssLiterals } = require('./cssValueDeduper');
 const runtimeCompileLogStore = require('./runtimeCompileLogStore');
 const appIconRuntimeAssets = require('./appIconRuntimeAssets');
+const runtimeAssetMemory = require('./runtimeAssetMemory');
 
 const HEADER_MARKER = 'DO NOT EDIT, READ ONLY OPTIMISED VERSION';
 const MANAGED_ROOTS = ['css', 'scripts'];
@@ -336,16 +337,21 @@ function waitForCompileIdle() {
     });
 }
 
-function walkManagedFiles(absDir, relPrefix, out) {
-    if (!fs.existsSync(absDir)) {
-        return;
+async function walkManagedFilesAsync(absDir, relPrefix, out) {
+    let items;
+    try {
+        items = await fs.promises.readdir(absDir);
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return;
+        }
+        throw err;
     }
-    const items = fs.readdirSync(absDir);
     for (const item of items) {
         const abs = path.join(absDir, item);
-        const stat = fs.statSync(abs);
+        const stat = await fs.promises.stat(abs);
         if (stat.isDirectory()) {
-            walkManagedFiles(abs, `${relPrefix}/${item}`, out);
+            await walkManagedFilesAsync(abs, `${relPrefix}/${item}`, out);
             continue;
         }
         if (!item.endsWith('.css') && !item.endsWith('.js')) {
@@ -356,12 +362,45 @@ function walkManagedFiles(absDir, relPrefix, out) {
     }
 }
 
-function scanManagedFiles(projectRoot) {
+async function scanManagedFilesAsync(projectRoot) {
     const files = [];
     for (const root of MANAGED_ROOTS) {
-        walkManagedFiles(path.join(getPublicRoot(projectRoot), root), `/${root}`, files);
+        await walkManagedFilesAsync(path.join(getPublicRoot(projectRoot), root), `/${root}`, files);
     }
     return files;
+}
+
+async function readExistingSourceHashAsync(compiledPath) {
+    let handle;
+    try {
+        handle = await fs.promises.open(compiledPath, 'r');
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return null;
+        }
+        throw err;
+    }
+    try {
+        const buf = Buffer.alloc(4096);
+        const { bytesRead } = await handle.read(buf, 0, 4096, 0);
+        if (bytesRead === 0) {
+            return null;
+        }
+        const slice = buf.subarray(0, bytesRead);
+        const lineEnd = slice.indexOf(0x0a);
+        const line = (lineEnd === -1 ? slice : slice.subarray(0, lineEnd)).toString('utf8');
+        return parseHeaderSourceHash(line);
+    } finally {
+        await handle.close();
+    }
+}
+
+async function atomicWriteAsync(filePath, content) {
+    const dir = path.dirname(filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+    await fs.promises.writeFile(tmp, content);
+    await fs.promises.rename(tmp, filePath);
 }
 
 function atomicWrite(filePath, content) {
@@ -488,15 +527,17 @@ async function compileJs(source, sourceRelPath, sourceHash, options = {}) {
     return `${buildHeader(sourceRelPath, sourceHash)}\n${code}`;
 }
 
-async function compileOneFile(projectRoot, abs, rel, options = {}) {
-    const source = fs.readFileSync(abs, 'utf8');
+async function compileOneFileBody(projectRoot, abs, rel, options, webPath) {
+    const source = await fs.promises.readFile(abs, 'utf8');
     const sourceHash = hashSource(source);
-    const webPath = `/${rel.replace(/^public\//, '')}`;
     const compiledPath = webPathToCompiledPath(projectRoot, webPath);
 
     if (!options.force) {
-        const existingHash = readExistingSourceHash(compiledPath);
+        const existingHash = await readExistingSourceHashAsync(compiledPath);
         if (existingHash === sourceHash) {
+            if (!runtimeAssetMemory.lookup(webPath)) {
+                await runtimeAssetMemory.rememberAbs(compiledPath, webPath);
+            }
             return { status: 'skipped', rel, webPath, source, sourceHash };
         }
     }
@@ -508,7 +549,8 @@ async function compileOneFile(projectRoot, abs, rel, options = {}) {
         output = await compileJs(source, rel, sourceHash, { runId: options.runId });
     }
 
-    atomicWrite(compiledPath, output);
+    await atomicWriteAsync(compiledPath, output);
+    runtimeAssetMemory.remember(webPath, output, { optimized: true });
     return {
         status: 'compiled',
         rel,
@@ -517,6 +559,13 @@ async function compileOneFile(projectRoot, abs, rel, options = {}) {
         output,
         sourceHash
     };
+}
+
+async function compileOneFile(projectRoot, abs, rel, options = {}) {
+    const webPath = `/${rel.replace(/^public\//, '')}`;
+    return runtimeAssetMemory.singleFlight(webPath, () => (
+        compileOneFileBody(projectRoot, abs, rel, options, webPath)
+    ));
 }
 
 function recordCompiledStats(stats, source, output) {
@@ -581,7 +630,7 @@ async function compileRuntimeAssets(projectRoot, options = {}) {
     const runId = beginCompileRun();
 
     try {
-        const files = scanManagedFiles(projectRoot);
+        const files = await scanManagedFilesAsync(projectRoot);
         stats.totalFiles = files.length;
         emitProgress(0, files.length, null, stats);
 
@@ -676,33 +725,6 @@ async function compileRuntimeAssets(projectRoot, options = {}) {
     }
 }
 
-function computeCacheStats(projectRoot) {
-    const files = scanManagedFiles(projectRoot);
-    const stats = {
-        totalFiles: files.length,
-        compiledFiles: 0,
-        sourceBytes: 0,
-        outputBytes: 0,
-        bytesSaved: 0,
-        percentBytesSaved: 0
-    };
-
-    for (const { abs } of files) {
-        const webPath = `/${sourcePathToRel(abs, projectRoot).replace(/^public\//, '')}`;
-        const compiledPath = webPathToCompiledPath(projectRoot, webPath);
-        if (!fs.existsSync(compiledPath)) {
-            continue;
-        }
-        const source = fs.readFileSync(abs, 'utf8');
-        const output = fs.readFileSync(compiledPath, 'utf8');
-        stats.compiledFiles++;
-        stats.sourceBytes += Buffer.byteLength(source, 'utf8');
-        stats.outputBytes += Buffer.byteLength(output, 'utf8');
-    }
-
-    return finalizeStats(stats);
-}
-
 function getCompileState(projectRoot) {
     const state = {
         complete: compileState.complete,
@@ -716,7 +738,14 @@ function getCompileState(projectRoot) {
     };
 
     if (!compileState.inProgress && projectRoot && state.stats.totalFiles === 0) {
-        state.stats = computeCacheStats(projectRoot);
+        const summary = runtimeAssetMemory.summary();
+        if (summary.totalFiles > 0) {
+            state.stats = {
+                ...state.stats,
+                totalFiles: summary.totalFiles,
+                outputBytes: summary.outputBytes
+            };
+        }
     }
 
     return state;
@@ -803,6 +832,8 @@ module.exports = {
     compileCss,
     compileJs,
     compileRuntimeAssets,
+    compileOneFile,
+    atomicWriteAsync,
     ensureCompiledForRequest,
     getCompileState,
     resolveServedPath,

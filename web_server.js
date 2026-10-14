@@ -994,6 +994,18 @@ async function generateCacheData(directory) {
                     continue;
                 }
 
+                // Prefer the precompiled memory cache so this pass does not re-read asset bytes.
+                const cachedAsset = runtimeAssetService.lookupRuntimeAsset(webPath);
+                if (cachedAsset && cachedAsset.hash && cachedAsset.body) {
+                    assets.push({
+                        path: webPath,
+                        hash: cachedAsset.hash,
+                        size: cachedAsset.body.length,
+                        modified: cachedAsset.modified || Date.now()
+                    });
+                    continue;
+                }
+
                 // SHA-256 of bytes actually served to clients (optimised copy for managed css/scripts)
                 let hashPath = filePath;
                 if (runtimeAssetService.isRuntimeManagedWebPath(webPath)
@@ -2363,13 +2375,71 @@ app.options('/app', authMiddleware, (req, res) => {
     response.vfsPathUuid = globalResources.getVfsPathUuid();
     res.json(response);
 });
-app.get('/app', (req, res) => {
-    if (req.query.agent === '1') {
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private, max-age=0');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
+async function sendRuntimeManagedAsset(req, res, webPath, debugMode) {
+    const asset = await runtimeAssetService.resolveRuntimeAsset(__dirname, webPath, {
+        debug: debugMode === true
+    });
+    if (!asset || !asset.body) {
+        return false;
     }
-    res.sendFile(runtimeAssetService.resolveServedPath(__dirname, '/app.html', false));
+    agentAssetBundle.applyServedAssetCacheHeaders(req, res);
+    res.setHeader('X-StaticForge-Runtime-Asset', asset.optimized ? 'optimized' : 'source');
+    res.setHeader('Content-Type', asset.contentType);
+    const etag = `"${asset.hash}"`;
+    res.setHeader('ETag', etag);
+    res.setHeader('Content-Length', asset.body.length);
+    if (req.headers['if-none-match'] === etag) {
+        res.status(304).end();
+        return true;
+    }
+    if (req.method === 'HEAD') {
+        res.end();
+        return true;
+    }
+    res.end(asset.body);
+    return true;
+}
+
+function mountRuntimeAssetMiddleware(app) {
+    app.use(async (req, res, next) => {
+        try {
+            if (req.method !== 'GET' && req.method !== 'HEAD') {
+                return next();
+            }
+            const webPath = req.path;
+            if (!runtimeAssetService.isRuntimeManagedWebPath(webPath)
+                && !runtimeAssetService.isHtmlShaLinkWebPath(webPath)) {
+                return next();
+            }
+            const sent = await sendRuntimeManagedAsset(
+                req,
+                res,
+                webPath,
+                runtimeAssetService.isDebugRequest(req)
+            );
+            if (!sent) {
+                return next();
+            }
+        } catch (err) {
+            next(err);
+        }
+    });
+}
+
+app.get('/app', async (req, res, next) => {
+    try {
+        if (req.query.agent === '1') {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private, max-age=0');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+        const sent = await sendRuntimeManagedAsset(req, res, '/app.html', false);
+        if (!sent) {
+            next();
+        }
+    } catch (err) {
+        next(err);
+    }
 });
 
 // Android WebView: JSON probe for AndroidBackgroundRefresh manifest (session cookies, same as WebView)
@@ -2727,8 +2797,15 @@ app.use('/traces/files', authMiddleware, (req, res, next) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
     next();
 }, express.static(globalResources.getTracing().tracesDir));
-app.get('/launch', (req, res) => {
-    res.sendFile(runtimeAssetService.resolveServedPath(__dirname, '/launch.html', false));
+app.get('/launch', async (req, res, next) => {
+    try {
+        const sent = await sendRuntimeManagedAsset(req, res, '/launch.html', false);
+        if (!sent) {
+            next();
+        }
+    } catch (err) {
+        next(err);
+    }
 });
 app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (req, res) => {
     try {
@@ -3626,9 +3703,13 @@ async function handleAdminUnixSocketMessage(message, socket) {
     // Initialize boot tree logging
     globalResources.logger.startBoot();
 
+    // Compile/load runtime assets alongside listen. Requests serve memory or a single-flight miss.
+    const assetPrime = runtimeAssetService.startRuntimeAssetPrime(__dirname, { showConsoleProgress: true });
+
     // Listen immediately so /status is reachable during global resource init
     await globalResources.logger.bootStep('HTTP Server', async () => {
         updateServerStage('binding');
+        mountRuntimeAssetMiddleware(app);
         await globalResources.startWebServer();
         serverStartupStatus.setCapability('http', true);
         serverStartupStatus.setCapability('status', true);
@@ -3662,7 +3743,13 @@ async function handleAdminUnixSocketMessage(message, socket) {
     // Account & Cache Initialization
     await globalResources.logger.bootStep('Runtime Asset Compilation', async () => {
         updateServerStage('runtime_compile');
-        const result = await runtimeAssetService.compileOnBoot(__dirname, { showConsoleProgress: true });
+        const result = await assetPrime;
+        await runtimeAssetService.refreshHashCacheAndBroadcast({
+            projectRoot: __dirname,
+            compileWorkspaceCss: true,
+            broadcastManifest: false,
+            broadcastComplete: true
+        });
         runtimeCompileComplete = true;
         if (result.errors.length > 0) {
             globalResources.logger.error(`Runtime compile: ${result.errors.length} file(s) failed (keeping previous optimised copies)`);
@@ -3745,42 +3832,6 @@ async function handleAdminUnixSocketMessage(message, socket) {
     await globalResources.logger.bootStep('Finalizing', async () => {
         updateServerStage('finalizing');
         globalResources.logger.bootSubStep('Security system initialized');
-
-        // Serve optimised css/scripts from .cache unless debug mode (before public static)
-        app.use(async (req, res, next) => {
-            try {
-                if (req.method !== 'GET' && req.method !== 'HEAD') {
-                    return next();
-                }
-                const webPath = req.path;
-                if (!runtimeAssetService.isRuntimeManagedWebPath(webPath)
-                    && !(runtimeAssetService.isHtmlShaLinkWebPath
-                        && runtimeAssetService.isHtmlShaLinkWebPath(webPath))) {
-                    return next();
-                }
-                const debugMode = runtimeAssetService.isDebugRequest(req);
-                if (!debugMode && runtimeAssetService.isAutoRecompileEnabled()) {
-                    await runtimeAssetService.ensureCompiledForRequest(__dirname, webPath);
-                }
-                const servedPath = runtimeAssetService.resolveServedPath(
-                    __dirname,
-                    webPath,
-                    debugMode
-                );
-                if (!fs.existsSync(servedPath)) {
-                    return next();
-                }
-                agentAssetBundle.applyServedAssetCacheHeaders(req, res);
-                if (servedPath.includes(`${path.sep}.cache${path.sep}runtime-assets${path.sep}`)) {
-                    res.setHeader('X-StaticForge-Runtime-Asset', 'optimized');
-                } else {
-                    res.setHeader('X-StaticForge-Runtime-Asset', 'source');
-                }
-                res.sendFile(servedPath);
-            } catch (err) {
-                next(err);
-            }
-        });
 
         serverStartupStatus.setCapability('staticAssets', true);
 
