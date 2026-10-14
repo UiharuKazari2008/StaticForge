@@ -111,7 +111,7 @@ const VSB_GADGETS = {
     calendar: { title: 'Calendar', icon: 'calendar/icon.png', desc: 'Browse the days of the calendar.', author: 'Microsoft Corporation' },
     clock: { title: 'Clock', icon: 'clock/icon.png', desc: 'Watch the clock in your own time zone or any city in the world.', author: 'Microsoft Corporation', options: true },
     cpu: { title: 'CPU Meter', icon: 'cpu/icon.png', desc: 'See the server\'s current CPU and system memory (RAM), the same figures as Periscope.', author: 'Microsoft Corporation' },
-    mail: { title: 'Mail', iconUrl: '/static_images/app_icons/vista-mail.png', desc: 'See your latest Dovecote Inbox messages and how many are unread. Click a message to read it.', author: 'Dreamscape', options: true },
+    mail: { title: 'Mail', iconUrl: '/static_images/app_icons/vista-mail.webp', desc: 'See your latest Dovecote Inbox messages and how many are unread. Click a message to read it.', author: 'Dreamscape', options: true },
     notes: { title: 'Notes', icon: 'notes/icon.png', desc: 'Capture ideas, notes, and reminders in a quick and easy way.', author: 'Microsoft Corporation', options: true },
     puzzle: { title: 'Picture Puzzle', icon: 'puzzle/icon.png', desc: 'Move the pieces of the puzzle and try to put them in order. The picture comes from this workspace.', author: 'Microsoft Corporation', options: true },
     slideshow: { title: 'Slide Show', icon: 'slideshow/icon.png', desc: 'Show a continuous slide show of the pictures in this workspace.', author: 'Microsoft Corporation', options: true },
@@ -1950,7 +1950,7 @@ const vsbEnsureGallery = function () {
     modal.dataset.windowClient = 'light';
     modal.innerHTML = `
         <div class="modal-window-title">
-            <div class="modal-window-title-main"><img class="vsb-gallery-title-icon" src="/static_images/app_icons/vista-sidebar.png" alt=""><span>Gadget Gallery</span></div>
+            <div class="modal-window-title-main"><img class="vsb-gallery-title-icon" src="/static_images/app_icons/vista-sidebar.webp" alt=""><span>Gadget Gallery</span></div>
             <div class="modal-window-title-toolbar win7">
                 <div class="vsb-gallery-pager">
                     <span class="vsb-gallery-page-btn vsb-gallery-page-prev" title="Previous page"></span>

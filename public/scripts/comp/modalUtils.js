@@ -5162,11 +5162,13 @@ function resolveAppIconPath(imageIcon, size) {
     if (!filename) return '';
     if (val.startsWith('/') && !val.includes('/static_images/app_icons/')) return val;
     if (val.startsWith('static_images/') && !val.includes('app_icons/')) return `/${val}`;
+    // modules/appIconRuntimeAssets.js serves a lossless webp beside the png fallback
+    const served = /\.png$/i.test(filename) ? filename.replace(/\.png$/i, '.webp') : filename;
     const sizeNum = Number(size);
     if (sizeNum && APP_ICON_SRCSET_SIZES.includes(sizeNum)) {
-        return `/static_images/app_icons/${sizeNum}/${filename}`;
+        return `/static_images/app_icons/${sizeNum}/${served}`;
     }
-    return `/static_images/app_icons/${filename}`;
+    return `/static_images/app_icons/${served}`;
 }
 
 function buildAppIconSrcset(imageIcon) {
@@ -5233,7 +5235,7 @@ function getModalIcon(modal) {
         // Extract path from src (handle both relative and absolute URLs)
         const src = imgEl.src;
         const url = new URL(src, window.location.origin);
-        return url.pathname; // Return just the path part (e.g., "/static_images/app_icons/studio.png")
+        return url.pathname; // Return just the path part (e.g., "/static_images/app_icons/studio.webp")
     }
 
     // Fallback to Font Awesome icon

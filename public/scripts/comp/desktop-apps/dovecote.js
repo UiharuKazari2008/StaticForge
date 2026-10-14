@@ -189,7 +189,7 @@ const ensureDesktopDovecoteModal = function () {
     const titleImage = document.createElement('img');
     titleImage.className = 'icon-image';
     titleImage.alt = '';
-    titleImage.src = '/static_images/app_icons/vista-mail.png';
+    titleImage.src = '/static_images/app_icons/vista-mail.webp';
     const titleText = document.createElement('span');
     titleText.textContent = 'Inbox - Dovecote';
     titleMain.appendChild(titleIcon);
@@ -2369,7 +2369,7 @@ const doveEnsureNewMailModal = function () {
     const titleImage = document.createElement('img');
     titleImage.className = 'icon-image';
     titleImage.alt = '';
-    titleImage.src = '/static_images/app_icons/vista-mail.png';
+    titleImage.src = '/static_images/app_icons/vista-mail.webp';
     const titleText = document.createElement('span');
     titleText.textContent = 'New Mail';
     titleMain.appendChild(titleIcon);
@@ -2390,7 +2390,7 @@ const doveEnsureNewMailModal = function () {
     const icon = document.createElement('img');
     icon.className = 'dovecote-new-mail-icon';
     icon.alt = '';
-    icon.src = '/static_images/app_icons/vista-mail.png';
+    icon.src = '/static_images/app_icons/vista-mail.webp';
     const text = document.createElement('div');
     text.className = 'dovecote-new-mail-text';
     const count = document.createElement('p');

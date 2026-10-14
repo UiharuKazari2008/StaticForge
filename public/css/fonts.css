@@ -1,6 +1,7 @@
 @font-face {
     font-family: 'Noto Sans';
-    src: url('/dist/fonts/NotoSans-VariableFont_wdth,wght.ttf') format('truetype');
+    src: url('/dist/fonts/NotoSans-VariableFont_wdth,wght.woff2') format('woff2'),
+         url('/dist/fonts/NotoSans-VariableFont_wdth,wght.ttf') format('truetype');
     font-weight: 100 900;
     font-stretch: 50% 100%;
     font-style: normal;

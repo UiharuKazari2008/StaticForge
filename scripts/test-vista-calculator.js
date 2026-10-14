@@ -18,7 +18,7 @@ const G = 'body.desktop-mode:not(.windows-classic-theme)';
 assert.ok(html.includes('<link rel="stylesheet" href="/css/vista-visual-index.css">\n    <link rel="stylesheet" href="/css/vista-calculator.css">'), 'sheet linked after vista-visual-index.css');
 assert.ok(html.includes('scripts/comp/desktop-apps/calculator.js'), 'calculator.js loads');
 assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/app_icons/vista-calculator.png')), 'calc.exe icon exists');
-assert.ok(js.includes("titleImage.src = '/static_images/app_icons/vista-calculator.png'") && js.includes("titleIcon.className = 'fas fa-calculator icon-fa'"), 'caption: Font Awesome glyph plus the program icon');
+assert.ok(js.includes("titleImage.src = '/static_images/app_icons/vista-calculator.webp'") && js.includes("titleIcon.className = 'fas fa-calculator icon-fa'"), 'caption: Font Awesome glyph plus the program icon');
 
 // keyboard characters only in the new text (existing key labels are \u escapes)
 for (const [file, text] of [['vista-calculator.css', css], ['calculator.js', js], ['desktopAppWindows.css', base]]) {

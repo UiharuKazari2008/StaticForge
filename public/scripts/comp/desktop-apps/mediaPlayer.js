@@ -223,7 +223,7 @@ function mediaPlayerCaptionHtml() {
         + '<div class="modal-window-title">'
         + '<div class="modal-window-title-main">'
         + '<i class="fas fa-play icon-fa"></i>'
-        + '<img src="/static_images/app_icons/media_player.png" alt="" class="icon-image">'
+        + '<img src="/static_images/app_icons/media_player.webp" alt="" class="icon-image">'
         + '<span>Media Player</span>'
         + '</div>'
         + '</div>'

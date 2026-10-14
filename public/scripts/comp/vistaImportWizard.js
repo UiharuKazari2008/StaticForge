@@ -27,7 +27,7 @@
     const PAGE_ATTR = 'data-wizard-page';
     const TITLE = 'Import';
     // the runtime's 32 px variant of the Easy Transfer icon (modalUtils.js resolveAppIconPath sizes), drawn at 16 px
-    const ICON = '/static_images/app_icons/32/vista-easy-transfer.png';
+    const ICON = '/static_images/app_icons/32/vista-easy-transfer.webp';
 
     let modal = null;
     let caption = null;

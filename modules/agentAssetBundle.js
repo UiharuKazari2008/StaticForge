@@ -14,6 +14,7 @@ const runtimeAssetService = require('./runtimeAssetService');
 
 const AGENT_STATIC_CACHE_CONTROL = 'private, max-age=120';
 const NO_STORE = 'no-cache, no-store, must-revalidate, max-age=0';
+const HASHED_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const PRELOAD_TIMEOUT_MS = 45000;
 const ZIP_LEVEL = 1;
 
@@ -43,7 +44,29 @@ function isDevAdminSession(req) {
     return Boolean(req.session && req.session.authenticated && req.session.userType === 'dev_admin');
 }
 
+function requestHasShaQuery(req) {
+    if (!req) {
+        return false;
+    }
+    if (req.query && Object.prototype.hasOwnProperty.call(req.query, 'sha')) {
+        return true;
+    }
+    const raw = req.originalUrl || req.url || '';
+    const cut = raw.indexOf('?');
+    if (cut === -1) {
+        return false;
+    }
+    return new URLSearchParams(raw.slice(cut + 1)).has('sha');
+}
+
 function applyServedAssetCacheHeaders(req, res) {
+    // ?sha= names an immutable compiled asset. Unversioned URLs keep the branch below.
+    if (requestHasShaQuery(req)) {
+        res.setHeader('Cache-Control', HASHED_ASSET_CACHE_CONTROL);
+        res.removeHeader('Pragma');
+        res.removeHeader('Expires');
+        return true;
+    }
     if (isDevAdminSession(req)) {
         res.setHeader('Cache-Control', AGENT_STATIC_CACHE_CONTROL);
         return true;

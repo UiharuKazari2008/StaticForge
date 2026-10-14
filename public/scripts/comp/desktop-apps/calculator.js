@@ -345,7 +345,7 @@ const ensureDesktopCalculatorModal = function () {
     const titleImage = document.createElement('img');
     titleImage.className = 'icon-image';
     titleImage.alt = '';
-    titleImage.src = '/static_images/app_icons/vista-calculator.png';
+    titleImage.src = '/static_images/app_icons/vista-calculator.webp';
     const titleText = document.createElement('span');
     titleText.textContent = 'Calculator';
     titleMain.appendChild(titleIcon);

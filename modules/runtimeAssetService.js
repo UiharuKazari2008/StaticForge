@@ -538,13 +538,10 @@ async function readDebugAsset(targetRoot, webPath) {
     let abs;
     if (runtimeAssetCompiler.isAppIconWebPath(webPath)) {
         const appIconRuntimeAssets = require('./appIconRuntimeAssets');
-        const parsed = appIconRuntimeAssets.parseAppIconWebPath(webPath);
-        if (!parsed) {
+        abs = appIconRuntimeAssets.resolveServedAppIconPath(targetRoot, webPath, true);
+        if (!abs) {
             return null;
         }
-        abs = parsed.isDefault
-            ? path.join(appIconRuntimeAssets.getPublicIconsDir(targetRoot), parsed.filename)
-            : path.join(runtimeAssetCompiler.getOutputRoot(targetRoot), webPath.replace(/^\//, ''));
     } else if (isHtmlShaLinkWebPath(webPath)) {
         abs = path.join(runtimeAssetCompiler.getPublicRoot(targetRoot), webPath.replace(/^\//, ''));
     } else {

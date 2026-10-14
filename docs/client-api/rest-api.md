@@ -1150,10 +1150,12 @@ Runtime assets may be transparently served from `.cache/runtime-assets/` at norm
 
 **Auth:** Static files generally **unauthenticated** except routes registered before static middleware with auth.
 
-**Cache-Control:** default is no-store. `dev_admin` sessions (`GET /agent`) receive
-`private, max-age=120` on those static CSS/JS/image responses so the `/agent`
-preload can populate the browser HTTP cache before `/app?agent=1` runs. The
-`/app` HTML document itself stays no-store when `?agent=1`.
+**Cache-Control:** default is no-store. A request whose query contains `sha`
+(`?sha=<hash>`) is `public, max-age=31536000, immutable`. Unversioned URLs stay
+on the default. `dev_admin` sessions (`GET /agent`) receive `private, max-age=120`
+on unversioned static CSS/JS/image responses so the `/agent` preload can populate
+the browser HTTP cache before `/app?agent=1` runs. The `/app` HTML document itself
+stays no-store when `?agent=1`.
 
 ---
 

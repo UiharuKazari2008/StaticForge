@@ -45,6 +45,6 @@ assert.ok(ve.includes('width: calc(var(--vista-load, var(--alchemy-load, 0%)) - 
 const cplJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/melatonControlPanel.js'), 'utf8');
 assert.ok(cplJs.includes('explorer-recent-pages-btn cpl-recent') && cplJs.includes('function recentPagesMenu(') && cplJs.includes("setProperty('--vista-load'"), 'Control Panel: Recent Pages ▾ and the loading fill');
 assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/explorerApplet.js'), 'utf8').includes('_addressLoad(1)'), 'Cartograph fills the box while a folder loads');
-assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/grimoireIeChrome.js'), 'utf8').includes("BOOKS_ICON = '/static_images/app_icons/books.png'"), "the Grimoire's icon is its pages' favicon");
+assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/grimoireIeChrome.js'), 'utf8').includes("BOOKS_ICON = '/static_images/app_icons/books.webp'"), "the Grimoire's icon is its pages' favicon");
 assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/modalUtils.js'), 'utf8').includes('Math.round(rect.left)'), 'restored windows land on whole pixels');
 console.log('test-vista-form-controls (chrome): ok');

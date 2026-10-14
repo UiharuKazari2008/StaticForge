@@ -65,14 +65,14 @@ launch('naxt', 'test_tube');
 const cpl = read('public/scripts/comp/melatonControlPanel.js');
 for (const icon of ['vista-personalization', 'vista-remote-desktop', 'vista-system', 'vista-regedit', 'vista-control-panel',
     'vista-appearance', 'vista-mouse', 'vista-sound', 'vista-taskbar', 'vista-keyboard']) {
-    assert.ok(cpl.includes(`/static_images/app_icons/${icon}.png`), `Control Panel uses ${icon}`);
+    assert.ok(cpl.includes(`/static_images/app_icons/${icon}.webp`), `Control Panel uses ${icon}`);
 }
 
 const app = read('public/app.html');
 const windowIcon = (id, icon) => {
     const at = app.indexOf(`id="${id}"`);
     assert.ok(at > 0, `${id} in app.html`);
-    assert.ok(app.slice(at, at + 4000).includes(`app_icons/${icon}.png`), `${id} titlebar -> ${icon}`);
+    assert.ok(app.slice(at, at + 4000).includes(`app_icons/${icon}.webp`), `${id} titlebar -> ${icon}`);
 };
 windowIcon('explorerModal', 'vista-explorer');
 windowIcon('galleryWindow', 'art');
@@ -100,7 +100,7 @@ const timer = read('public/scripts/comp/desktop-apps/alarmPomodoro.js');
 assert.ok(timer.includes("id: 'desktopTimerModal'") && timer.includes("title: 'Alarm Clock'"), 'one window');
 assert.ok(/desktopTimerSelect\('pomodoro'\)/.test(timer) && /desktopTimerSelect\('alarm'\)/.test(timer), 'openDesktopAlarm / openDesktopPomodoro pick their tab');
 assert.ok(!timer.includes('desktopAlarmModal') && !timer.includes('desktopPomodoroModal'), 'the old windows are gone');
-assert.ok(timer.includes('app_icons/vista-date-time.png'), 'Date and Time icon');
+assert.ok(timer.includes('app_icons/vista-date-time.webp'), 'Date and Time icon');
 
 // desktop shortcuts: Vista's folder / Recycle Bin / file / Internet shortcut by data-vista-icon
 const shortcuts = read('public/scripts/comp/desktopShortcuts.js');

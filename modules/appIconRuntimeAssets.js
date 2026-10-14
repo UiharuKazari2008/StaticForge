@@ -99,6 +99,14 @@ function atomicWriteBinary(filePath, buffer) {
     fs.renameSync(tmp, filePath);
 }
 
+function iconStem(filename) {
+    return String(filename || '').replace(/\.(png|webp)$/i, '');
+}
+
+function masterPngName(filename) {
+    return `${iconStem(filename)}.png`;
+}
+
 function listMasterIcons(projectRoot) {
     const dir = getPublicIconsDir(projectRoot);
     if (!fs.existsSync(dir)) {
@@ -124,13 +132,20 @@ function webPathFor(filename, size, isDefault) {
     return `${APP_ICONS_WEB_ROOT}/${size}/${filename}`;
 }
 
+function servedNamesForMaster(filename) {
+    const stem = iconStem(filename);
+    return [`${stem}.png`, `${stem}.webp`];
+}
+
 function outputsExistForIcon(projectRoot, filename) {
-    if (!fs.existsSync(outputPathFor(projectRoot, filename, DEFAULT_SIZE, true))) {
-        return false;
-    }
-    for (const size of ICON_SIZES) {
-        if (!fs.existsSync(outputPathFor(projectRoot, filename, size, false))) {
+    for (const name of servedNamesForMaster(filename)) {
+        if (!fs.existsSync(outputPathFor(projectRoot, name, DEFAULT_SIZE, true))) {
             return false;
+        }
+        for (const size of ICON_SIZES) {
+            if (!fs.existsSync(outputPathFor(projectRoot, name, size, false))) {
+                return false;
+            }
         }
     }
     return true;
@@ -143,6 +158,7 @@ async function compileOneIcon(projectRoot, filename, sourceBuf, sourceHash, opti
     let sourceBytes = sourceBuf.length;
     let outputBytes = 0;
 
+    const stem = iconStem(filename);
     for (const size of ICON_SIZES) {
         const png = await sharp(sourceBuf)
             .resize(size, size, {
@@ -152,13 +168,17 @@ async function compileOneIcon(projectRoot, filename, sourceBuf, sourceHash, opti
             })
             .png({ compressionLevel: 9, adaptiveFiltering: true })
             .toBuffer();
+        // Re-encode the resized PNG. Same canvas; do not resize again.
+        const webp = await sharp(png).webp({ lossless: true, effort: 6, alphaQuality: 100 }).toBuffer();
 
-        atomicWriteBinary(outputPathFor(projectRoot, filename, size, false), png);
-        outputBytes += png.length;
+        atomicWriteBinary(outputPathFor(projectRoot, `${stem}.png`, size, false), png);
+        atomicWriteBinary(outputPathFor(projectRoot, `${stem}.webp`, size, false), webp);
+        outputBytes += png.length + webp.length;
 
         if (size === DEFAULT_SIZE) {
-            atomicWriteBinary(outputPathFor(projectRoot, filename, size, true), png);
-            outputBytes += png.length;
+            atomicWriteBinary(outputPathFor(projectRoot, `${stem}.png`, size, true), png);
+            atomicWriteBinary(outputPathFor(projectRoot, `${stem}.webp`, size, true), webp);
+            outputBytes += png.length + webp.length;
         }
     }
 
@@ -228,14 +248,16 @@ async function compileAppIcons(projectRoot, options = {}) {
             continue;
         }
         try {
-            const defaultPath = outputPathFor(projectRoot, filename, DEFAULT_SIZE, true);
-            if (fs.existsSync(defaultPath)) {
-                fs.unlinkSync(defaultPath);
-            }
-            for (const size of ICON_SIZES) {
-                const sized = outputPathFor(projectRoot, filename, size, false);
-                if (fs.existsSync(sized)) {
-                    fs.unlinkSync(sized);
+            for (const name of servedNamesForMaster(filename)) {
+                const defaultPath = outputPathFor(projectRoot, name, DEFAULT_SIZE, true);
+                if (fs.existsSync(defaultPath)) {
+                    fs.unlinkSync(defaultPath);
+                }
+                for (const size of ICON_SIZES) {
+                    const sized = outputPathFor(projectRoot, name, size, false);
+                    if (fs.existsSync(sized)) {
+                        fs.unlinkSync(sized);
+                    }
                 }
             }
         } catch (_err) {
@@ -265,8 +287,8 @@ function resolveServedAppIconPath(projectRoot, webPath, debugMode) {
     if (!parsed) {
         return null;
     }
-    if (debugMode && parsed.isDefault) {
-        const master = path.join(getPublicIconsDir(projectRoot), parsed.filename);
+    if (debugMode && parsed.isDefault && /\.png$/i.test(parsed.filename)) {
+        const master = path.join(getPublicIconsDir(projectRoot), masterPngName(parsed.filename));
         if (fs.existsSync(master)) {
             return master;
         }
@@ -275,8 +297,8 @@ function resolveServedAppIconPath(projectRoot, webPath, debugMode) {
     if (fs.existsSync(compiled)) {
         return compiled;
     }
-    if (parsed.isDefault) {
-        const master = path.join(getPublicIconsDir(projectRoot), parsed.filename);
+    if (parsed.isDefault && /\.png$/i.test(parsed.filename)) {
+        const master = path.join(getPublicIconsDir(projectRoot), masterPngName(parsed.filename));
         if (fs.existsSync(master)) {
             return master;
         }
@@ -314,7 +336,7 @@ function listOptimisedAppIconManifestEntries(projectRoot) {
                 walk(abs, rel);
                 continue;
             }
-            if (!/\.png$/i.test(item)) {
+            if (!/\.webp$/i.test(item)) {
                 continue;
             }
             const webPath = `${APP_ICONS_WEB_ROOT}/${rel}`;
@@ -338,25 +360,26 @@ async function ensureCompiledForRequest(projectRoot, webPath) {
     if (!parsed) {
         return { changed: false };
     }
-    const abs = path.join(getPublicIconsDir(projectRoot), parsed.filename);
+    const masterName = masterPngName(parsed.filename);
+    const abs = path.join(getPublicIconsDir(projectRoot), masterName);
     if (!fs.existsSync(abs)) {
         return { changed: false };
     }
     const sourceBuf = fs.readFileSync(abs);
     const sourceHash = hashBuffer(sourceBuf);
     const meta = readSourcesMeta(projectRoot);
-    const prev = meta[parsed.filename];
-    if (prev && prev.sourceHash === sourceHash && outputsExistForIcon(projectRoot, parsed.filename)) {
+    const prev = meta[masterName];
+    if (prev && prev.sourceHash === sourceHash && outputsExistForIcon(projectRoot, masterName)) {
         return { changed: false };
     }
-    await compileOneIcon(projectRoot, parsed.filename, sourceBuf, sourceHash, {});
-    meta[parsed.filename] = {
+    await compileOneIcon(projectRoot, masterName, sourceBuf, sourceHash, {});
+    meta[masterName] = {
         sourceHash,
         sizes: ICON_SIZES.slice(),
         defaultSize: DEFAULT_SIZE
     };
     writeSourcesMeta(projectRoot, meta);
-    return { changed: true, rel: `public/${APP_ICONS_PUBLIC_REL}/${parsed.filename}` };
+    return { changed: true, rel: `public/${APP_ICONS_PUBLIC_REL}/${masterName}` };
 }
 
 module.exports = {

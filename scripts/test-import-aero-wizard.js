@@ -74,7 +74,7 @@ assert.ok(js.includes("if (event.target.closest('#unifiedUploadCancelBtn')) unif
 
 // the caption: Back orb, icon, title
 assert.ok(js.includes("caption.className = 'modal-window-title'") && js.includes('<button type="button" class="vista-wizard-back" title="Back" disabled></button>'), 'the Back button in the caption');
-assert.ok(js.includes("'/static_images/app_icons/32/vista-easy-transfer.png'") && js.includes("const TITLE = 'Import'"), 'the Easy Transfer icon and the title');
+assert.ok(js.includes("'/static_images/app_icons/32/vista-easy-transfer.webp'") && js.includes("const TITLE = 'Import'"), 'the Easy Transfer icon and the title');
 // the taskbar reads both caption icons (modalUtils.js getModalIcons): the <i> on Luna / workspace, the image on the orb
 assert.ok(js.includes('<i class="nai-import icon-fa"></i>') && js.includes('<img class="icon-image" alt="" src="\' + ICON + \'">'), 'the launchable\'s nai-import and vista-easy-transfer.png icons sit in the caption for the taskbar');
 assert.ok(css.includes('.modal-window-title .modal-window-title-main > .icon-fa {\n    display: none;'), 'the caption shows the image, not the Font Awesome twin');

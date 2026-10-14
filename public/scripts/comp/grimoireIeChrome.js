@@ -30,7 +30,7 @@
     'use strict';
 
     const ART = '/static_images/vista-ie';
-    const BOOKS_ICON = '/static_images/app_icons/books.png'; // the Grimoire's own icon is its pages' favicon (Yukimi)
+    const BOOKS_ICON = '/static_images/app_icons/books.webp'; // the Grimoire's own icon is its pages' favicon (Yukimi)
     const NAI_FAVICON = '/static_images/novelai-favicon.png';
 
     function pageFavicon(entry) {

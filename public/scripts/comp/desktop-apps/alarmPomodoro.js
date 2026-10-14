@@ -86,7 +86,7 @@ function desktopUtilityCreateModal(spec) {
         + '<div class="modal-window-title">'
         + '<div class="modal-window-title-main">'
         + '<i class="' + spec.iconClass + ' icon-fa"></i>'
-        + '<img src="/static_images/app_icons/vista-date-time.png" alt="" class="icon-image">'
+        + '<img src="/static_images/app_icons/vista-date-time.webp" alt="" class="icon-image">'
         + '<span>' + spec.title + '</span>'
         + '</div>'
         + '</div>'

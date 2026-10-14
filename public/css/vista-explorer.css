@@ -881,6 +881,7 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-w
     height: 16px;
     margin-right: 2px;
     background: url('/static_images/app_icons/vista-control-panel.png') no-repeat center / 16px 16px;
+    background-image: image-set(url('/static_images/app_icons/vista-control-panel.webp') type('image/webp'));
     opacity: 1;
 }
 
@@ -1243,6 +1244,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddre
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-book, .fa-puzzle-piece) {
     background-image: url('/static_images/app_icons/books.png');
+    background-image: image-set(url('/static_images/app_icons/books.webp') type('image/webp'));
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon.fa-file-alt {
