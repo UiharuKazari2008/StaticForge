@@ -70,6 +70,7 @@ const SCOPE_WS_PACKETS = {
         'search_tag_wiki', 'get_tag_wiki_page', 'refresh_tag_wiki_page',
         'get_static_wiki_site_index', 'get_static_wiki_page', 'get_wiki_home',
         'resolve_grimoire_url', 'get_apocrypha_zine',
+        'get_fandom_wiki_index', 'get_fandom_wiki_manager',
         'import_fandom_wiki_page', 'import_static_wiki', 'update_wiki_import',
         'delete_fandom_wiki_import'
     ],
