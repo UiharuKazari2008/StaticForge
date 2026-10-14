@@ -147,22 +147,29 @@ class FurryTagSearch {
             const tagInfo = this.tagData[tagName];
             const words = tagName.toLowerCase().split(/\s+/).filter(word => word.length > 0);
             
+            // JULES: perf sweep - O(N^2) to O(N) deduplication - per-tag uniqueness sets
+            const seenWords = new Set();
+            const seenPrefixes = new Set();
+            const seenSuffixes = new Set();
+
             // Index by individual words for word-based matching
             words.forEach(word => {
-                if (!this.wordIndex[word] || !Array.isArray(this.wordIndex[word])) {
-                    this.wordIndex[word] = [];
-                }
-                if (!this.wordIndex[word].includes(tagName)) {
+                if (!seenWords.has(word)) {
+                    seenWords.add(word);
+                    if (!this.wordIndex[word] || !Array.isArray(this.wordIndex[word])) {
+                        this.wordIndex[word] = [];
+                    }
                     this.wordIndex[word].push(tagName);
                 }
                 
                 // Index word prefixes for better partial matching
                 for (let i = 1; i <= word.length; i++) {
                     const prefix = word.substring(0, i);
-                    if (!this.prefixIndex[prefix] || !Array.isArray(this.prefixIndex[prefix])) {
-                        this.prefixIndex[prefix] = [];
-                    }
-                    if (!this.prefixIndex[prefix].includes(tagName)) {
+                    if (!seenPrefixes.has(prefix)) {
+                        seenPrefixes.add(prefix);
+                        if (!this.prefixIndex[prefix] || !Array.isArray(this.prefixIndex[prefix])) {
+                            this.prefixIndex[prefix] = [];
+                        }
                         this.prefixIndex[prefix].push(tagName);
                     }
                 }
@@ -170,10 +177,11 @@ class FurryTagSearch {
                 // Index word suffixes for better partial matching
                 for (let i = 1; i <= word.length; i++) {
                     const suffix = word.substring(word.length - i);
-                    if (!this.suffixIndex[suffix] || !Array.isArray(this.suffixIndex[suffix])) {
-                        this.suffixIndex[suffix] = [];
-                    }
-                    if (!this.suffixIndex[suffix].includes(tagName)) {
+                    if (!seenSuffixes.has(suffix)) {
+                        seenSuffixes.add(suffix);
+                        if (!this.suffixIndex[suffix] || !Array.isArray(this.suffixIndex[suffix])) {
+                            this.suffixIndex[suffix] = [];
+                        }
                         this.suffixIndex[suffix].push(tagName);
                     }
                 }
@@ -184,6 +192,7 @@ class FurryTagSearch {
             if (!this.searchIndex[fullTagName]) {
                 this.searchIndex[fullTagName] = [];
             }
+            // Tags themselves are unique in this loop, so we don't need a Set for full tag names
             if (!this.searchIndex[fullTagName].includes(tagName)) {
                 this.searchIndex[fullTagName].push(tagName);
             }
