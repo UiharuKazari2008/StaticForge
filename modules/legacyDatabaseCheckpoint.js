@@ -19,19 +19,10 @@ function attachLegacyDatabaseCheckpoint(instance, dbPath, getDbFn, globalResourc
         }
         instance._legacyCheckpointTimer = setTimeout(() => {
             instance._legacyCheckpointTimer = null;
-            try {
-                const db = getDbFn();
-                if (db) {
-                    try {
-                        db.pragma('wal_checkpoint(TRUNCATE)');
-                    } catch {
-                        // ignore checkpoint errors
-                    }
-                }
-                instance.checkpointManager.createCheckpoint();
-            } catch (err) {
+            // WAL checkpoint + backup run on the worker lane, not this connection.
+            Promise.resolve(instance.checkpointManager.createCheckpointWithBackup(true)).catch((err) => {
                 console.warn(`⚠️ Legacy DB checkpoint failed (${dbPath}):`, err.message);
-            }
+            });
         }, 3000);
     };
 

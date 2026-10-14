@@ -702,7 +702,7 @@ async function handleUpdateWikiImport(handler, ws, message, clientInfo, wsServer
         const fs = require('fs');
         let urls = [];
         try {
-            const raw = JSON.parse(fs.readFileSync(path.join(siteDir, 'index.json'), 'utf8'));
+            const raw = JSON.parse(await fs.promises.readFile(path.join(siteDir, 'index.json'), 'utf8'));
             urls = (raw.pages || []).map((pg) => pg.sourceUrl).filter(Boolean);
         } catch (_) { /* none */ }
         if (!urls.length) {

@@ -53,6 +53,18 @@ function hashServedFileIfChanged(absPath, stats, cachedEntry) {
     return hashServedFile(absPath);
 }
 
+async function hashServedFileIfChangedAsync(absPath, stats, cachedEntry) {
+    const modified = stats.mtime.getTime();
+    if (cachedEntry
+        && cachedEntry.hash
+        && cachedEntry.size === stats.size
+        && cachedEntry.modified === modified) {
+        return cachedEntry.hash;
+    }
+    const fileBuffer = await fs.promises.readFile(absPath);
+    return crypto.createHash(SERVED_HASH_ALGO).update(fileBuffer).digest('hex');
+}
+
 function isHtmlShaLinkWebPath(webPath) {
     const name = String(webPath || '').replace(/^\//, '');
     return HTML_SHA_LINK_FILES.includes(name);
@@ -631,6 +643,7 @@ module.exports = {
     HTML_SHA_LINK_FILES,
     hashServedFile,
     hashServedFileIfChanged,
+    hashServedFileIfChangedAsync,
     updateHtmlStylesheetShaLinks,
     isHtmlShaLinkWebPath,
     resolveServedHtmlPath,

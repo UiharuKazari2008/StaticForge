@@ -3,6 +3,15 @@
 const earlyHttpServer = require('./modules/earlyHttpServer').bindEarly(__dirname);
 const express = require('express');
 const fs = require('fs');
+
+async function statOrNull(filePath) {
+    try {
+        return await fs.promises.stat(filePath);
+    } catch (err) {
+        if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) return null;
+        throw err;
+    }
+}
 const path = require('path');
 const https = require('https');
 const sharp = require('sharp');
@@ -46,6 +55,7 @@ const agentClientBridge = require('./modules/agentClientBridge');
 const cursorDirector = require('./modules/cursorDirector');
 const mcpAgentFacade = require('./modules/mcpAgentFacade');
 const mcpRequestLog = require('./modules/mcpRequestLog');
+mcpRequestLog.startEventLoopLagMonitor();
 const apocryphaSite = require('./modules/apocryphaSite');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
@@ -972,7 +982,8 @@ async function generateCacheData(directory) {
         for (const file of files) {
             try {
                 const filePath = path.join(directory, file);
-                const stats = fs.statSync(filePath);
+                const stats = await statOrNull(filePath);
+                if (!stats) continue;
                 
                 // Skip directories and non-asset files
                 if (stats.isDirectory() || 
@@ -1012,12 +1023,13 @@ async function generateCacheData(directory) {
                     || (runtimeAssetService.isHtmlShaLinkWebPath
                         && runtimeAssetService.isHtmlShaLinkWebPath(webPath))) {
                     const servedPath = runtimeAssetService.resolveServedAssetPath(__dirname, webPath);
-                    if (servedPath && fs.existsSync(servedPath)) {
+                    if (servedPath && await statOrNull(servedPath)) {
                         hashPath = servedPath;
                     }
                 }
-                const hashStats = fs.statSync(hashPath);
-                const hash = runtimeAssetService.hashServedFileIfChanged(
+                const hashStats = await statOrNull(hashPath);
+                if (!hashStats) continue;
+                const hash = await runtimeAssetService.hashServedFileIfChangedAsync(
                     hashPath,
                     hashStats,
                     previousByPath.get(webPath)
@@ -1063,40 +1075,41 @@ async function generateCacheData(directory) {
 // Recursively scan directory for files
 async function scanDirectory(dir, relFromPublic = '') {
     const files = [];
-    
+    let items;
     try {
-        const items = fs.readdirSync(dir);
-        
-        for (const item of items) {
-            const itemPath = path.join(dir, item);
-            const itemRel = relFromPublic ? `${relFromPublic}/${item}` : item;
-            // App icon masters are compile inputs only — optimised sizes come from runtime-assets
-            if (runtimeAssetService.isAppIconsMasterRelPath
-                && runtimeAssetService.isAppIconsMasterRelPath(itemRel)) {
-                continue;
-            }
-            // Vista WAVs stay out of the SW precache (played on demand).
-            // Planet switcher BGM under sounds/planet is hashed and cached.
-            if (itemRel === 'sounds/vista' || itemRel.startsWith('sounds/vista/')) {
-                continue;
-            }
-            if (itemRel === 'cursors' || itemRel.startsWith('cursors/')) {
-                continue;
-            }
-            const stats = fs.statSync(itemPath);
-            
-            if (stats.isDirectory()) {
-                // Recursively scan subdirectories
-                const subFiles = await scanDirectory(itemPath, itemRel);
-                files.push(...subFiles.map(subFile => path.join(item, subFile)));
-            } else {
-                files.push(item);
-            }
-        }
+        items = await fs.promises.readdir(dir);
     } catch (error) {
         console.error(`❌ Error reading directory ${dir}:`, error.message);
+        return files;
     }
-    
+
+    for (const item of items) {
+        const itemPath = path.join(dir, item);
+        const itemRel = relFromPublic ? `${relFromPublic}/${item}` : item;
+        // App icon masters are compile inputs only — optimised sizes come from runtime-assets
+        if (runtimeAssetService.isAppIconsMasterRelPath
+            && runtimeAssetService.isAppIconsMasterRelPath(itemRel)) {
+            continue;
+        }
+        // Vista WAVs stay out of the SW precache (played on demand).
+        // Planet switcher BGM under sounds/planet is hashed and cached.
+        if (itemRel === 'sounds/vista' || itemRel.startsWith('sounds/vista/')) {
+            continue;
+        }
+        if (itemRel === 'cursors' || itemRel.startsWith('cursors/')) {
+            continue;
+        }
+        const stats = await statOrNull(itemPath);
+        if (!stats) continue;
+
+        if (stats.isDirectory()) {
+            const subFiles = await scanDirectory(itemPath, itemRel);
+            files.push(...subFiles.map(subFile => path.join(item, subFile)));
+        } else {
+            files.push(item);
+        }
+    }
+
     return files;
 }
 
@@ -1648,13 +1661,14 @@ app.use('/temp', express.static(path.join(cacheDir, 'tempDownload'), {
         res.setHeader('Expires', '0');
     }
 }));
-app.use('/previews/:preview', authMiddleware, (req, res) => {
+app.use('/previews/:preview', authMiddleware, async (req, res, next) => {
+    try {
     const previewFile = decodeURIComponent(req.params.preview);
     const previewPath = path.join(previewsDir, previewFile);
-    if (!fs.existsSync(previewPath)) {
+    const previewStat = await statOrNull(previewPath);
+    if (!previewStat || !previewStat.isFile()) {
         return res.status(404).json({ success: false, error: 'Preview not found' });
     }
-    const previewStat = fs.statSync(previewPath);
     res.setHeader('Cache-Control', 'private, max-age=259200');
     res.setHeader('Content-Length', previewStat.size);
     res.sendFile(previewFile, { root: previewsDir }, (err) => {
@@ -1665,6 +1679,9 @@ app.use('/previews/:preview', authMiddleware, (req, res) => {
         }
         res.status(err.code === 'ENOENT' ? 404 : 500).end();
     });
+    } catch (err) {
+        next(err);
+    }
 });
 // Planet switcher sprite sheets: built on first request from the recipe registered by
 // workspace_preview_samples, cached under .cache/planet-sheets/ (modules/planetSheets.js)
@@ -1680,7 +1697,7 @@ app.use('/cache/quickstart', authMiddleware, async (req, res, next) => {
         const base = path.basename(String(req.path || '').replace(/^\/+/, ''));
         if (!base || base.includes('..')) return next();
         const abs = path.join(cacheDir, 'quickstart', base);
-        if (fs.existsSync(abs)) return next();
+        if (await statOrNull(abs)) return next();
         let cache = null;
         try {
             cache = globalResources.getQuickstartGalleryCache();
@@ -1701,7 +1718,7 @@ app.use('/cache/explore_files', authMiddleware, async (req, res, next) => {
         const base = path.basename(String(req.path || '').replace(/^\/+/, ''));
         if (!base || base.includes('..')) return next();
         const abs = path.join(cacheDir, 'explore_files', base);
-        if (fs.existsSync(abs)) return next();
+        if (await statOrNull(abs)) return next();
 
         const thumbMatch = /^thumb_([0-9a-fA-F-]{36})(?:\.[a-zA-Z0-9]+)?$/.exec(base);
         const blobMatch = /^blob_([0-9a-fA-F-]{36})(?:\.[a-zA-Z0-9]+)?$/.exec(base);
@@ -1856,12 +1873,10 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(imagesDir, filename);
     
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
+    const fileStat = await statOrNull(filePath);
+    if (!fileStat || !fileStat.isFile()) {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
-    
-    const fileStat = fs.statSync(filePath);
 
     // Set appropriate headers
     const ext = path.extname(filename).toLowerCase();
@@ -1881,7 +1896,7 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     if ((req.query.clipboardOrigin === 'true' || req.query.clipboard === 'true')
         && path.extname(filename).toLowerCase() === '.png') {
         try {
-            const imageBuffer = fs.readFileSync(filePath);
+            const imageBuffer = await fs.promises.readFile(filePath);
             const pngMeta = globalResources.getPngMetadata();
             // restoreOriginCommentFromStealth: modules/pngMetadata.js
             const restored = await pngMeta.restoreOriginCommentFromStealth(imageBuffer);
@@ -1908,7 +1923,7 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     // Download: attest NovelAI (+ Forge when forge_data is present) via response headers
     if (req.query.download === 'true' && path.extname(filename).toLowerCase() === '.png') {
         try {
-            const imageBuffer = fs.readFileSync(filePath);
+            const imageBuffer = await fs.promises.readFile(filePath);
             const pngMeta = globalResources.getPngMetadata();
             // verifyNovelAiSignature: modules/pngMetadata.js
             const naiSig = await pngMeta.verifyNovelAiSignature(imageBuffer);
@@ -1945,7 +1960,7 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     // Handle stripContext query parameter for PNG files
     if (req.query.stripContext === 'true' && path.extname(filename).toLowerCase() === '.png') {
         try {
-            const imageBuffer = fs.readFileSync(filePath);
+            const imageBuffer = await fs.promises.readFile(filePath);
             const metadata = globalResources.getPngMetadata().readMetadata(imageBuffer);
             
             if (metadata.tEXt && metadata.tEXt.Comment) {
@@ -1994,8 +2009,7 @@ app.use('/image/slim/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(imagesDir, filename);
     
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
+    if (!await statOrNull(filePath)) {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
     
@@ -2031,8 +2045,7 @@ app.use('/image/opti/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(imagesDir, filename);
     
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
+    if (!await statOrNull(filePath)) {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
     
@@ -2122,13 +2135,17 @@ app.get('/logon-picture', (req, res) => {
 
 // Boot-critical static assets — available as soon as HTTP listens (before full static middleware)
 for (const bootPath of ['/sw.js', '/manifest.json']) {
-    app.get(bootPath, (req, res, next) => {
-        const filePath = path.join(__dirname, 'public', bootPath.slice(1));
-        if (!fs.existsSync(filePath)) {
-            return next();
+    app.get(bootPath, async (req, res, next) => {
+        try {
+            const filePath = path.join(__dirname, 'public', bootPath.slice(1));
+            if (!await statOrNull(filePath)) {
+                return next();
+            }
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+            res.sendFile(filePath);
+        } catch (err) {
+            next(err);
         }
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
-        res.sendFile(filePath);
     });
 }
 
@@ -2640,7 +2657,7 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
                 return denyVfsFileAccess(res, true);
             }
             const blobPath = globalResources.getVfsManager().getFileBlobPath(file.content_hash);
-            if (!fs.existsSync(blobPath)) return res.status(404).json({ success: false, error: 'File blob missing' });
+            if (!await statOrNull(blobPath)) return res.status(404).json({ success: false, error: 'File blob missing' });
             res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
             res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.original_name)}"`);
             fs.createReadStream(blobPath).pipe(res);
@@ -2664,7 +2681,7 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
                 return res.status(400).json({ success: false, error: 'Invalid system file key' });
             }
             const info = vfs.resolveSystemFileDownload(systemFileKey);
-            if (!fs.existsSync(info.absPath)) {
+            if (!await statOrNull(info.absPath)) {
                 return res.status(404).json({ success: false, error: 'File not found' });
             }
             res.setHeader('Content-Type', info.mimeType || 'application/octet-stream');
@@ -2691,13 +2708,13 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
             }
             if (file.preview_path) {
                 const previewPath = globalResources.getVfsManager().getFilePreviewPath(file.preview_path);
-                if (previewPath && fs.existsSync(previewPath)) {
+                if (previewPath && await statOrNull(previewPath)) {
                     res.setHeader('Content-Type', 'image/webp');
                     return fs.createReadStream(previewPath).pipe(res);
                 }
             }
             const blobPath = globalResources.getVfsManager().getFileBlobPath(file.content_hash);
-            if ((file.mime_type || '').startsWith('image/') && fs.existsSync(blobPath)) {
+            if ((file.mime_type || '').startsWith('image/') && await statOrNull(blobPath)) {
                 res.setHeader('Content-Type', file.mime_type);
                 return fs.createReadStream(blobPath).pipe(res);
             }
@@ -2717,7 +2734,7 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
             const inFiles = (ws.files || []).includes(filename) || (ws.scraps || []).includes(filename);
             if (!inFiles) return res.status(403).json({ success: false, error: 'Access denied' });
             const imagePath = path.join(globalResources.getPath('images'), filename);
-            if (!fs.existsSync(imagePath)) return res.status(404).send('Not found');
+            if (!await statOrNull(imagePath)) return res.status(404).send('Not found');
             res.setHeader('Content-Type', 'image/png');
             fs.createReadStream(imagePath).pipe(res);
         } catch (e) {
@@ -2755,14 +2772,15 @@ function directorChatRoots() {
     return roots;
 }
 
-function sendDirectorChatFile(res, chatId, subdir, filename, contentType) {
+async function sendDirectorChatFile(res, chatId, subdir, filename, contentType) {
     const roots = directorChatRoots();
     for (let i = 0; i < roots.length; i++) {
         try {
-            const root = fs.realpathSync(path.join(roots[i], chatId, subdir));
-            const target = fs.realpathSync(path.join(root, filename));
+            const root = await fs.promises.realpath(path.join(roots[i], chatId, subdir));
+            const target = await fs.promises.realpath(path.join(root, filename));
             if (!target.startsWith(root + path.sep)) continue;
-            if (!fs.statSync(target).isFile()) continue;
+            const st = await fs.promises.stat(target);
+            if (!st.isFile()) continue;
             res.setHeader('Content-Type', contentType);
             res.setHeader('Cache-Control', 'private, max-age=60');
             fs.createReadStream(target).pipe(res);
@@ -2772,24 +2790,32 @@ function sendDirectorChatFile(res, chatId, subdir, filename, contentType) {
     res.status(404).send('Not found');
 }
 
-app.get('/director/browser/:chatId/:filename', authMiddleware, (req, res) => {
-    const chatId = directorPreviewSegment(req.params.chatId);
-    const filename = directorPreviewSegment(req.params.filename);
-    if (!chatId || !filename) return res.status(404).send('Not found');
-    const contentType = DIRECTOR_PREVIEW_TYPES[path.extname(filename).toLowerCase()];
-    if (!contentType) return res.status(404).send('Not found');
-    sendDirectorChatFile(res, chatId, 'browser', filename, contentType);
+app.get('/director/browser/:chatId/:filename', authMiddleware, async (req, res, next) => {
+    try {
+        const chatId = directorPreviewSegment(req.params.chatId);
+        const filename = directorPreviewSegment(req.params.filename);
+        if (!chatId || !filename) return res.status(404).send('Not found');
+        const contentType = DIRECTOR_PREVIEW_TYPES[path.extname(filename).toLowerCase()];
+        if (!contentType) return res.status(404).send('Not found');
+        await sendDirectorChatFile(res, chatId, 'browser', filename, contentType);
+    } catch (err) {
+        next(err);
+    }
 });
 
 // show_chat_image copies the picture into chats/<id>/chat-images (modules/mcpAgentFacade.js)
-app.get('/director/image/:chatId/:filename', authMiddleware, (req, res) => {
+app.get('/director/image/:chatId/:filename', authMiddleware, async (req, res, next) => {
+    try {
     const chatId = directorPreviewSegment(req.params.chatId);
     const filename = directorPreviewSegment(req.params.filename);
     if (!chatId || !filename) return res.status(404).send('Not found');
     const contentType = DIRECTOR_PREVIEW_TYPES[path.extname(filename).toLowerCase()];
     if (!contentType) return res.status(404).send('Not found');
     // CHAT_IMAGE_DIRNAME: modules/cursorDirector.js
-    sendDirectorChatFile(res, chatId, cursorDirector.CHAT_IMAGE_DIRNAME, filename, contentType);
+    await sendDirectorChatFile(res, chatId, cursorDirector.CHAT_IMAGE_DIRNAME, filename, contentType);
+    } catch (err) {
+        next(err);
+    }
 });
 
 // Serve trace attachments
@@ -2897,10 +2923,10 @@ app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (r
         if (targetFilename && targetFilename !== result.filename) {
             // Need to read from disk
             const imagePath = path.join(imagesDir, targetFilename);
-            if (!fs.existsSync(imagePath)) {
+            if (!await statOrNull(imagePath)) {
                 return res.status(404).json({ success: false, error: 'Generated image file not found' });
             }
-            finalBuffer = fs.readFileSync(imagePath);
+            finalBuffer = await fs.promises.readFile(imagePath);
         } else {
             // Use buffer from result
             finalBuffer = result.buffer;
@@ -3204,11 +3230,11 @@ app.get('/pending/retrieval/:requestid', serverReadinessMiddleware, async (req, 
 
             // Read the generated image file
             const imagePath = path.join(imagesDir, targetFilename);
-            if (!fs.existsSync(imagePath)) {
+            if (!await statOrNull(imagePath)) {
                 return res.status(404).json({ success: false, error: 'Generated image file not found' });
             }
 
-            const imageBuffer = fs.readFileSync(imagePath);
+            const imageBuffer = await fs.promises.readFile(imagePath);
 
             // Set headers similar to regular preset endpoint
             res.setHeader('Content-Type', 'image/png');
@@ -3347,12 +3373,11 @@ app.post('/test-bias-adjustment', serverReadinessMiddleware, authMiddleware, asy
         }
         
         // Check if file exists
-        if (!fs.existsSync(imagePath)) {
+        if (!await statOrNull(imagePath)) {
             return res.status(404).json({ success: false, error: 'Image file not found' });
         }
         
-        // Read image file
-        const imageBuffer = fs.readFileSync(imagePath);
+        const imageBuffer = await fs.promises.readFile(imagePath);
         
         // Process image with dynamic bias
         const processedBuffer = await processDynamicImage(

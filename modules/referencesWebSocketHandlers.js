@@ -12,6 +12,16 @@ const wallpaperHistory = require('./wallpaperHistory');
 
 const REFERENCES_DESTRUCTIVE = { destructive: true };
 
+async function fileExists(filePath) {
+    try {
+        await fs.promises.access(filePath);
+        return true;
+    } catch (err) {
+        if (err && err.code === 'ENOENT') return false;
+        throw err;
+    }
+}
+
 // modules/replicationJournal.js
 async function recordReplicationReferenceJournal(hash, workspaceId) {
     if (!hash) return;
@@ -42,8 +52,10 @@ class ReferencesWebSocketHandlers {
 
     async readReferenceUploadBuffer(hash, options = {}) {
         const localPath = path.join(this.globalResources.getPath('uploadCache'), hash);
-        if (fs.existsSync(localPath)) {
-            return fs.readFileSync(localPath);
+        try {
+            return await fs.promises.readFile(localPath);
+        } catch (err) {
+            if (!err || err.code !== 'ENOENT') throw err;
         }
         const result = await replicationRemoteFetch.readAssetBuffer(
             'reference-upload',
@@ -462,10 +474,13 @@ class ReferencesWebSocketHandlers {
     async getFileImageData(filename) {
         try {
             const filePath = path.join(this.globalResources.getPath('images'), filename);
-            if (!fs.existsSync(filePath)) {
-                return null;
+            let stats;
+            try {
+                stats = await fs.promises.stat(filePath);
+            } catch (err) {
+                if (err && err.code === 'ENOENT') return null;
+                throw err;
             }
-            const stats = fs.statSync(filePath);
             return {
                 filename,
                 mtime: stats.mtimeMs,
@@ -686,21 +701,23 @@ class ReferencesWebSocketHandlers {
             const previewPath = path.join(this.globalResources.getPath("previewCache"), `${hash}.webp`);
 
             // Check if file exists
-            if (!fs.existsSync(filePath)) {
-                this.handlers.sendError(ws, 'Reference not found', 'Cache file not found', message.requestId);
-                return;
+            try {
+                await fs.promises.access(filePath);
+            } catch (err) {
+                if (err && err.code === 'ENOENT') {
+                    this.handlers.sendError(ws, 'Reference not found', 'Cache file not found', message.requestId);
+                    return;
+                }
+                throw err;
             }
 
             // Before deleting, check if any vibes use this cache image and convert them to base64
             await this.convertVibesToBase64(hash, workspaceId);
 
-            // Delete main file
-            fs.unlinkSync(filePath);
-
-            // Delete preview if it exists
-            if (fs.existsSync(previewPath)) {
-                fs.unlinkSync(previewPath);
-            }
+            await fs.promises.unlink(filePath);
+            await fs.promises.unlink(previewPath).catch((err) => {
+                if (err && err.code !== 'ENOENT') throw err;
+            });
 
             // Delete reference metadata (database handles workspace ownership via foreign keys)
             this.globalResources.getReferenceMetadataDatabase().deleteMetadata(hash);
@@ -807,12 +824,12 @@ class ReferencesWebSocketHandlers {
             if (tempFile) {
                 // Handle downloaded temp file
                 const tempFilePath = path.join(this.globalResources.getPath("cache"), 'tempDownload', tempFile);
-                if (!fs.existsSync(tempFilePath)) {
+                if (!await fileExists(tempFilePath)) {
                     this.handlers.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
                     return;
                 }
 
-                imageBuffer = fs.readFileSync(tempFilePath);
+                imageBuffer = await fs.promises.readFile(tempFilePath);
                 hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
 
                 console.log(`📥 Using downloaded temp file: ${tempFile} -> ${hash}`);
@@ -827,11 +844,11 @@ class ReferencesWebSocketHandlers {
 
             // Save file
             const filePath = path.join(this.globalResources.getPath("uploadCache"), hash);
-            fs.writeFileSync(filePath, imageBuffer);
+            await fs.promises.writeFile(filePath, imageBuffer);
 
             // Handle preview - generate single cache preview for references
             const previewPath = path.join(this.globalResources.getPath("previewCache"), `${hash}.webp`);
-            const hasPreview = fs.existsSync(previewPath);
+            const hasPreview = await fileExists(previewPath);
             if (!hasPreview) {
                 await sharp(imageBuffer)
                     .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
@@ -867,14 +884,14 @@ class ReferencesWebSocketHandlers {
                     const tempPreviewPath = path.join(this.globalResources.getPath("cache"), 'tempDownload', `${hash}.webp`);
 
                     // Delete the temp file
-                    if (fs.existsSync(tempFilePath)) {
-                        fs.unlinkSync(tempFilePath);
+                    if (await fileExists(tempFilePath)) {
+                        await fs.promises.unlink(tempFilePath);
                         console.log(`🧹 Cleaned up temp file: ${tempFile}`);
                     }
 
                     // Delete the temp preview
-                    if (fs.existsSync(tempPreviewPath)) {
-                        fs.unlinkSync(tempPreviewPath);
+                    if (await fileExists(tempPreviewPath)) {
+                        await fs.promises.unlink(tempPreviewPath);
                         console.log(`🧹 Cleaned up temp preview: ${hash}.webp`);
                     }
                 } catch (cleanupError) {
@@ -939,8 +956,8 @@ class ReferencesWebSocketHandlers {
 
             // Ensure wallpapers directory exists
             const wallpapersDir = path.join(this.globalResources.getPath("cache"), 'wallpapers');
-            if (!fs.existsSync(wallpapersDir)) {
-                fs.mkdirSync(wallpapersDir, { recursive: true });
+            if (!await fileExists(wallpapersDir)) {
+                await fs.promises.mkdir(wallpapersDir, { recursive: true });
             }
 
             // Convert image to PNG, resize to max 4K (3840x2160) if larger, and save
@@ -973,7 +990,7 @@ class ReferencesWebSocketHandlers {
             } catch (error) {
                 // If sharp fails, try writing the buffer directly (might already be PNG)
                 console.error('Sharp processing failed, attempting direct write:', error);
-                fs.writeFileSync(wallpaperPath, imageBuffer);
+                await fs.promises.writeFile(wallpaperPath, imageBuffer);
                 console.log(`🖼️ Saved custom wallpaper for workspace '${workspaceId}' (direct write)`);
             }
 
@@ -1037,8 +1054,8 @@ class ReferencesWebSocketHandlers {
 
             if (filename) {
                 const imageFilePath = path.join(this.globalResources.getPath("images"), filename);
-                if (fs.existsSync(imageFilePath)) {
-                    imageBuffer = fs.readFileSync(imageFilePath);
+                if (await fileExists(imageFilePath)) {
+                    imageBuffer = await fs.promises.readFile(imageFilePath);
                 } else {
                     try {
                         const fetched = await replicationRemoteFetch.readAssetBuffer(
@@ -1056,16 +1073,16 @@ class ReferencesWebSocketHandlers {
             } else if (tempFile) {
                 // Handle downloaded temp file
                 const tempFilePath = path.join(this.globalResources.getPath("cache"), 'tempDownload', tempFile);
-                if (!fs.existsSync(tempFilePath)) {
+                if (!await fileExists(tempFilePath)) {
                     this.handlers.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
                     return;
                 }
 
-                imageBuffer = fs.readFileSync(tempFilePath);
+                imageBuffer = await fs.promises.readFile(tempFilePath);
 
                 // Clean up temp file
                 try {
-                    fs.unlinkSync(tempFilePath);
+                    await fs.promises.unlink(tempFilePath);
                     console.log(`🧹 Cleaned up temp file: ${tempFile}`);
                 } catch (cleanupError) {
                     console.warn(`⚠️ Failed to clean up temp file: ${cleanupError.message}`);
@@ -1087,7 +1104,7 @@ class ReferencesWebSocketHandlers {
 
                 // Save the new file
                 const newFilePath = path.join(this.globalResources.getPath("uploadCache"), newHash);
-                fs.writeFileSync(newFilePath, imageBuffer);
+                await fs.promises.writeFile(newFilePath, imageBuffer);
 
                 // Generate new preview
                 const newPreviewPath = path.join(this.globalResources.getPath("previewCache"), `${newHash}.webp`);
@@ -1102,7 +1119,7 @@ class ReferencesWebSocketHandlers {
                 refDb.addReferenceToWorkspace(newHash, workspaceId);
 
                 // Update file cache for new hash (previews always generated)
-                const stats = fs.statSync(newFilePath);
+                const stats = await fs.promises.stat(newFilePath);
                 refDb.setFileCache(newHash, {
                     size: stats.size,
                     mtime: stats.mtime.valueOf()
@@ -1122,13 +1139,13 @@ class ReferencesWebSocketHandlers {
                     const oldFilePath = path.join(this.globalResources.getPath("uploadCache"), hash);
                     const oldPreviewPath = path.join(this.globalResources.getPath("previewCache"), `${hash}.webp`);
 
-                    if (fs.existsSync(oldFilePath)) {
-                        fs.unlinkSync(oldFilePath);
+                    if (await fileExists(oldFilePath)) {
+                        await fs.promises.unlink(oldFilePath);
                         console.log(`🗑️ Removed old reference file: ${hash}`);
                     }
 
-                    if (fs.existsSync(oldPreviewPath)) {
-                        fs.unlinkSync(oldPreviewPath);
+                    if (await fileExists(oldPreviewPath)) {
+                        await fs.promises.unlink(oldPreviewPath);
                         console.log(`🗑️ Removed old reference preview: ${hash}.webp`);
                     }
 
@@ -1220,7 +1237,7 @@ class ReferencesWebSocketHandlers {
         if (!thumbnailBuffer || !thumbnailBuffer.length) return null;
         const thumbnailHash = crypto.createHash('md5').update(thumbnailBuffer).digest('hex');
         const thumbnailPath = path.join(this.globalResources.getPath('previewCache'), `${thumbnailHash}.webp`);
-        if (!overwrite && fs.existsSync(thumbnailPath)) {
+        if (!overwrite && await fileExists(thumbnailPath)) {
             return thumbnailHash;
         }
         await sharp(thumbnailBuffer)
@@ -1373,8 +1390,8 @@ class ReferencesWebSocketHandlers {
             try {
                 // Create temp download directory if it doesn't exist
                 const tempDownloadDir = path.join(this.globalResources.getPath("cache"), 'tempDownload');
-                if (!fs.existsSync(tempDownloadDir)) {
-                    fs.mkdirSync(tempDownloadDir, { recursive: true });
+                if (!await fileExists(tempDownloadDir)) {
+                    await fs.promises.mkdir(tempDownloadDir, { recursive: true });
                 }
 
                 // Download the file
@@ -1450,7 +1467,7 @@ class ReferencesWebSocketHandlers {
                     // Store file as hash.dat in tempDownloadDir
                     const finalTempFilename = `${hash}.dat`;
                     const finalTempFilePath = path.join(tempDownloadDir, finalTempFilename);
-                    fs.writeFileSync(finalTempFilePath, response.buffer);
+                    await fs.promises.writeFile(finalTempFilePath, response.buffer);
 
                     // Generate and save preview in tempDownloadDir
                     const previewPath = path.join(tempDownloadDir, `${hash}.webp`);
@@ -1526,7 +1543,7 @@ class ReferencesWebSocketHandlers {
                     // Store file as hash.dat in tempDownloadDir
                     const finalTempFilename = `${hash}.dat`;
                     const finalTempFilePath = path.join(tempDownloadDir, finalTempFilename);
-                    fs.writeFileSync(finalTempFilePath, response.buffer);
+                    await fs.promises.writeFile(finalTempFilePath, response.buffer);
 
                     // Parse JSON to extract metadata
                     let jsonData;
@@ -1686,11 +1703,11 @@ class ReferencesWebSocketHandlers {
 
                         // Ensure destination directory exists
                         const destDir = path.dirname(filePath);
-                        if (!fs.existsSync(destDir)) {
-                            fs.mkdirSync(destDir, { recursive: true });
+                        if (!await fileExists(destDir)) {
+                            await fs.promises.mkdir(destDir, { recursive: true });
                         }
 
-                        fs.writeFileSync(filePath, Buffer.from(buffer));
+                        await fs.promises.writeFile(filePath, Buffer.from(buffer));
 
                         responseData = {
                             success: true,
@@ -2173,7 +2190,7 @@ class ReferencesWebSocketHandlers {
 
                 // Generate preview for base64 image
                 const previewPath = path.join(this.globalResources.getPath("previewCache"), `${imageHash}.webp`);
-                if (!fs.existsSync(previewPath)) {
+                if (!await fileExists(previewPath)) {
                     await sharp(imageBuffer)
                         .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
                         .webp({ quality: 80 })
@@ -2231,7 +2248,7 @@ class ReferencesWebSocketHandlers {
 
                 // Generate preview for cache file (if not already exists)
                 const previewPath = path.join(this.globalResources.getPath("previewCache"), `${imageHash}.webp`);
-                if (!fs.existsSync(previewPath)) {
+                if (!await fileExists(previewPath)) {
                     await sharp(imageBuffer)
                         .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
                         .webp({ quality: 80 })
@@ -2275,12 +2292,12 @@ class ReferencesWebSocketHandlers {
             } else if (tempFile) {
                 // Create vibe from temp downloaded file
                 const tempFilePath = path.join(this.globalResources.getPath("cache"), 'tempDownload', tempFile);
-                if (!fs.existsSync(tempFilePath)) {
+                if (!await fileExists(tempFilePath)) {
                     this.handlers.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
                     return;
                 }
 
-                const imageBuffer = fs.readFileSync(tempFilePath);
+                const imageBuffer = await fs.promises.readFile(tempFilePath);
                 const imageBase64 = imageBuffer.toString('base64');
                 const imageHash = crypto.createHash('md5').update(imageBuffer).digest('hex');
                 const sha256Hash = crypto.createHash('sha256').update(imageBuffer).digest('hex');
@@ -2299,11 +2316,25 @@ class ReferencesWebSocketHandlers {
                 // Handle preview - use existing temp preview if available, otherwise generate new one
                 const previewPath = path.join(this.globalResources.getPath("previewCache"), `${imageHash}.webp`);
                 const tempPreviewPath = path.join(this.globalResources.getPath("cache"), 'tempDownload', `${imageHash}.webp`);
-                if (fs.existsSync(tempPreviewPath)) {
-                    // Move temp preview to permanent preview cache
-                    fs.copyFileSync(tempPreviewPath, previewPath);
+                let tempPreviewReady = false;
+                try {
+                    await fs.promises.access(tempPreviewPath);
+                    tempPreviewReady = true;
+                } catch (err) {
+                    if (!err || err.code !== 'ENOENT') throw err;
+                }
+                if (tempPreviewReady) {
+                    await fs.promises.copyFile(tempPreviewPath, previewPath);
                     console.log(`📸 Moved temp preview to permanent storage: ${imageHash}.webp`);
-                } else if (!fs.existsSync(previewPath)) {
+                } else {
+                let previewReady = false;
+                try {
+                    await fs.promises.access(previewPath);
+                    previewReady = true;
+                } catch (err) {
+                    if (!err || err.code !== 'ENOENT') throw err;
+                }
+                if (!previewReady) {
                     // Generate new preview if neither temp nor permanent preview exists
                     await sharp(imageBuffer)
                         .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
@@ -2312,6 +2343,7 @@ class ReferencesWebSocketHandlers {
                     console.log(`📸 Generated new preview for temp vibe image: ${imageHash}.webp`);
                 } else {
                     console.log(`📸 Preview already exists for vibe image: ${imageHash}.webp`);
+                }
                 }
 
                 // Generate encoding from temp file
@@ -2356,7 +2388,7 @@ class ReferencesWebSocketHandlers {
                         type: existingVibe.type,
                         locked: existingVibe.locked
                     };
-                    this.validateVibeForEncoding(vibeForValidation, id);
+                    await this.validateVibeForEncoding(vibeForValidation, id);
                 } catch (validationError) {
                     this.handlers.sendError(ws, 'Vibe validation failed', validationError.message, message.requestId);
                     return;
@@ -2408,14 +2440,14 @@ class ReferencesWebSocketHandlers {
                     const tempPreviewPath = path.join(this.globalResources.getPath("cache"), 'tempDownload', `${tempFile.replace('.dat', '')}.webp`);
 
                     // Delete the temp file
-                    if (fs.existsSync(tempFilePath)) {
-                        fs.unlinkSync(tempFilePath);
+                    if (await fileExists(tempFilePath)) {
+                        await fs.promises.unlink(tempFilePath);
                         console.log(`🧹 Cleaned up temp file: ${tempFile}`);
                     }
 
                     // Delete the temp preview if it exists
-                    if (fs.existsSync(tempPreviewPath)) {
-                        fs.unlinkSync(tempPreviewPath);
+                    if (await fileExists(tempPreviewPath)) {
+                        await fs.promises.unlink(tempPreviewPath);
                         console.log(`🧹 Cleaned up temp preview: ${tempFile.replace('.dat', '')}.webp`);
                     }
                 } catch (cleanupError) {
@@ -2487,7 +2519,7 @@ class ReferencesWebSocketHandlers {
             };
 
             // Check if vibe can be encoded
-            const encodingStatus = this.canEncodeVibe(vibeData, vibeId);
+            const encodingStatus = await this.canEncodeVibe(vibeData, vibeId);
 
             this.handlers.sendToClient(ws, {
                 type: 'check_vibe_encoding_response',
@@ -2532,7 +2564,7 @@ class ReferencesWebSocketHandlers {
     }
 
     // Helper function to validate vibe for encoding
-    validateVibeForEncoding(vibe, vibeId) {
+    async validateVibeForEncoding(vibe, vibeId) {
         // Check if vibe is locked
         if (this.shouldLockVibe(vibe)) {
             throw new Error(`Cannot encode locked vibe: ${vibeId}`);
@@ -2550,7 +2582,7 @@ class ReferencesWebSocketHandlers {
 
         if (vibe.type === 'cache') {
             const localPath = path.join(this.globalResources.getPath("uploadCache"), vibe.image);
-            if (!fs.existsSync(localPath)) {
+            if (!await fileExists(localPath)) {
                 return true;
             }
         }
@@ -2559,9 +2591,9 @@ class ReferencesWebSocketHandlers {
     }
 
     // Helper function to check if a vibe can be encoded (returns object with status and reason)
-    canEncodeVibe(vibe, vibeId) {
+    async canEncodeVibe(vibe, vibeId) {
         try {
-            this.validateVibeForEncoding(vibe, vibeId);
+            await this.validateVibeForEncoding(vibe, vibeId);
             return { canEncode: true, reason: null };
         } catch (error) {
             return { canEncode: false, reason: error.message };
@@ -2761,13 +2793,13 @@ class ReferencesWebSocketHandlers {
             if (tempFile) {
                 // Handle downloaded temp file
                 const tempFilePath = path.join(this.globalResources.getPath("cache"), 'tempDownload', tempFile);
-                if (!fs.existsSync(tempFilePath)) {
+                if (!await fileExists(tempFilePath)) {
                     this.handlers.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
                     return;
                 }
 
                 try {
-                    const fileContent = fs.readFileSync(tempFilePath, 'utf8');
+                    const fileContent = await fs.promises.readFile(tempFilePath, 'utf8');
                     bundleDataToProcess = JSON.parse(fileContent);
                     console.log(`📥 Using downloaded temp file: ${tempFile}`);
                 } catch (parseError) {
@@ -2959,14 +2991,14 @@ class ReferencesWebSocketHandlers {
                     const tempPreviewPath = path.join(this.globalResources.getPath("cache"), 'tempDownload', `${tempFile.replace('.dat', '')}.webp`);
 
                     // Delete the temp file
-                    if (fs.existsSync(tempFilePath)) {
-                        fs.unlinkSync(tempFilePath);
+                    if (await fileExists(tempFilePath)) {
+                        await fs.promises.unlink(tempFilePath);
                         console.log(`🧹 Cleaned up temp file: ${tempFile}`);
                     }
 
                     // Delete the temp preview if it exists
-                    if (fs.existsSync(tempPreviewPath)) {
-                        fs.unlinkSync(tempPreviewPath);
+                    if (await fileExists(tempPreviewPath)) {
+                        await fs.promises.unlink(tempPreviewPath);
                         console.log(`🧹 Cleaned up temp preview: ${tempFile.replace('.dat', '')}.webp`);
                     }
                 } catch (cleanupError) {
@@ -3013,12 +3045,12 @@ class ReferencesWebSocketHandlers {
             if (tempFile) {
                 // Handle downloaded temp file
                 const tempFilePath = path.join(this.globalResources.getPath("cache"), 'tempDownload', tempFile);
-                if (!fs.existsSync(tempFilePath)) {
+                if (!await fileExists(tempFilePath)) {
                     this.handlers.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
                     return;
                 }
 
-                imageBuffer = fs.readFileSync(tempFilePath);
+                imageBuffer = await fs.promises.readFile(tempFilePath);
                 hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
 
                 console.log(`📥 Using downloaded temp file: ${tempFile} -> ${hash}`);
@@ -3070,7 +3102,7 @@ class ReferencesWebSocketHandlers {
             let finalFilePath = path.join(this.globalResources.getPath("images"), finalFilename);
             let counter = 1;
 
-            while (fs.existsSync(finalFilePath)) {
+            while (await fileExists(finalFilePath)) {
                 const ext = path.extname(filename);
                 const baseName = path.basename(filename, ext);
                 finalFilename = `${baseName}_${counter}${ext}`;
@@ -3079,7 +3111,7 @@ class ReferencesWebSocketHandlers {
             }
 
             // Save file to images directory
-            fs.writeFileSync(finalFilePath, imageBuffer);
+            await fs.promises.writeFile(finalFilePath, imageBuffer);
 
             // Handle preview - use existing temp preview if available, otherwise generate new one
             const baseName = path.basename(finalFilename, path.extname(finalFilename));
@@ -3101,14 +3133,14 @@ class ReferencesWebSocketHandlers {
                     const tempPreviewPath = path.join(this.globalResources.getPath("cache"), 'tempDownload', `${hash}.webp`);
 
                     // Delete the temp file
-                    if (fs.existsSync(tempFilePath)) {
-                        fs.unlinkSync(tempFilePath);
+                    if (await fileExists(tempFilePath)) {
+                        await fs.promises.unlink(tempFilePath);
                         console.log(`🧹 Cleaned up temp file: ${tempFile}`);
                     }
 
                     // Delete the temp preview
-                    if (fs.existsSync(tempPreviewPath)) {
-                        fs.unlinkSync(tempPreviewPath);
+                    if (await fileExists(tempPreviewPath)) {
+                        await fs.promises.unlink(tempPreviewPath);
                         console.log(`🧹 Cleaned up temp preview: ${hash}.webp`);
                     }
                 } catch (cleanupError) {

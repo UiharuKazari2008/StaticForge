@@ -75,11 +75,17 @@ async function readVfsPackageBuffer(handlers, fileId) {
         throw new MelatonPackageError(`VFS file not found: ${fileId}`, 'PACKAGE_VFS');
     }
     const blobPath = path.join(handlers.globalResources.getPath('userFiles'), file.content_hash);
-    if (!fs.existsSync(blobPath)) {
-        throw new MelatonPackageError('VFS blob missing on disk', 'PACKAGE_VFS');
+    let buffer;
+    try {
+        buffer = await fs.promises.readFile(blobPath);
+    } catch (err) {
+        if (err && err.code === 'ENOENT') {
+            throw new MelatonPackageError('VFS blob missing on disk', 'PACKAGE_VFS');
+        }
+        throw err;
     }
     return {
-        buffer: fs.readFileSync(blobPath),
+        buffer,
         fileName: file.original_name || ''
     };
 }

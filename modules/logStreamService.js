@@ -4,6 +4,8 @@
  * modules/pm2Service.js (getProcessStatus)
  */
 
+const fs = require('fs');
+
 const POLL_INTERVAL_MS = 250;
 const HEARTBEAT_INTERVAL_MS = 15000;
 const PM2_STATUS_INTERVAL_MS = 3000;
@@ -54,7 +56,16 @@ function streamLogFile(res, logger, source, startOffset, options = {}) {
             .catch(() => { /* ignore */ });
     };
 
-    const pollCombined = () => {
+    const fileStat = async (filePath) => {
+        try {
+            return await fs.promises.stat(filePath);
+        } catch (err) {
+            if (err && err.code === 'ENOENT') return null;
+            throw err;
+        }
+    };
+
+    const pollCombined = async () => {
         if (closed) return;
         try {
             if (logger.pollCombinedRotation(offset)) {
@@ -72,8 +83,10 @@ function streamLogFile(res, logger, source, startOffset, options = {}) {
             }
 
             const fs = require('fs');
-            const outSize = fs.existsSync(paths.out) ? fs.statSync(paths.out).size : 0;
-            const errSize = fs.existsSync(paths.err) ? fs.statSync(paths.err).size : 0;
+            const outStat = await fileStat(paths.out);
+            const errStat = await fileStat(paths.err);
+            const outSize = outStat ? outStat.size : 0;
+            const errSize = errStat ? errStat.size : 0;
             const hasMore = offset.offsets.out < outSize || offset.offsets.err < errSize;
             if (!hasMore) return;
 
@@ -97,7 +110,7 @@ function streamLogFile(res, logger, source, startOffset, options = {}) {
         }
     };
 
-    const pollSingle = () => {
+    const pollSingle = async () => {
         if (closed) return;
         try {
             const filePath = logger.resolveLogSource(source);
@@ -109,7 +122,8 @@ function streamLogFile(res, logger, source, startOffset, options = {}) {
             }
 
             const fs = require('fs');
-            if (!fs.existsSync(filePath)) {
+            const stats = await fileStat(filePath);
+            if (!stats) {
                 if (offset !== 0) {
                     sendSse(res, 'rotate', { nextOffset: 0 });
                     offset = 0;
@@ -117,8 +131,6 @@ function streamLogFile(res, logger, source, startOffset, options = {}) {
                 lastSize = 0;
                 return;
             }
-
-            const stats = fs.statSync(filePath);
             const inode = stats.ino;
 
             if (lastInode !== null && (stats.size < offset || inode !== lastInode)) {
@@ -157,7 +169,16 @@ function streamLogFile(res, logger, source, startOffset, options = {}) {
         }
     };
 
-    const poll = isCombined ? pollCombined : pollSingle;
+    let polling = false;
+    const poll = async () => {
+        if (closed || polling) return;
+        polling = true;
+        try {
+            await (isCombined ? pollCombined() : pollSingle());
+        } finally {
+            polling = false;
+        }
+    };
 
     res.on('close', cleanup);
 

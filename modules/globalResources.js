@@ -1650,65 +1650,29 @@ class GlobalResources {
             };
             
             try {
-                const { execSync } = require('child_process');
                 const projectRoot = path.resolve(__dirname, '..');
-                
-                // Use df command to get filesystem stats for the project root
-                // df -B1 shows sizes in 1-byte blocks (direct byte values)
-                const dfOutput = execSync(`df -B1 "${projectRoot}"`, { encoding: 'utf8' });
-                const lines = dfOutput.trim().split('\n');
-                
-                if (lines.length >= 2) {
-                    // Parse the header and data line
-                    const header = lines[0].split(/\s+/);
-                    const data = lines[1].split(/\s+/);
-                    
-                    // Find column indices (they may vary)
-                    let totalIndex = -1;
-                    let usedIndex = -1;
-                    let availIndex = -1;
-                    
-                    header.forEach((col, idx) => {
-                        if (col === '1B-blocks' || col === '1K-blocks' || col === 'Size' || col.toUpperCase() === 'SIZE') {
-                            totalIndex = idx;
-                        }
-                        if (col === 'Used' || col.toUpperCase() === 'USED') {
-                            usedIndex = idx;
-                        }
-                        if (col === 'Avail' || col === 'Available' || col.toUpperCase() === 'AVAIL' || col.toUpperCase() === 'AVAILABLE') {
-                            availIndex = idx;
-                        }
-                    });
-                    
-                    // Alternative: if columns aren't found by name, use standard positions
-                    // Standard df output: Filesystem, 1B-blocks (or 1K-blocks), Used, Available, Use%, Mounted on
-                    if (totalIndex === -1) totalIndex = 1;
-                    if (usedIndex === -1) usedIndex = 2;
-                    if (availIndex === -1) availIndex = 3;
-                    
-                    // With df -B1, values are already in bytes (1-byte blocks)
-                    const totalBytes = parseInt(data[totalIndex]);
-                    const usedBytes = parseInt(data[usedIndex]);
-                    const freeBytes = parseInt(data[availIndex]);
-                    
-                    // Format sizes
-                    const formatBytes = (bytes) => {
-                        if (bytes >= 1024 * 1024 * 1024 * 1024) {
-                            return `${(bytes / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB`;
-                        } else if (bytes >= 1024 * 1024 * 1024) {
-                            return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-                        } else if (bytes >= 1024 * 1024) {
-                            return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-                        } else if (bytes >= 1024) {
-                            return `${(bytes / 1024).toFixed(2)} KB`;
-                        }
-                        return `${bytes} B`;
-                    };
-                    
-                    diskInfo.total = formatBytes(totalBytes);
-                    diskInfo.used = formatBytes(usedBytes);
-                    diskInfo.free = formatBytes(freeBytes);
-                }
+                const stats = await fs.promises.statfs(projectRoot);
+                const bsize = stats.bsize || 1;
+                const totalBytes = stats.blocks * bsize;
+                const freeBytes = stats.bavail * bsize;
+                const usedBytes = Math.max(0, (stats.blocks - stats.bfree) * bsize);
+
+                const formatBytes = (bytes) => {
+                    if (bytes >= 1024 * 1024 * 1024 * 1024) {
+                        return `${(bytes / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB`;
+                    } else if (bytes >= 1024 * 1024 * 1024) {
+                        return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+                    } else if (bytes >= 1024 * 1024) {
+                        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+                    } else if (bytes >= 1024) {
+                        return `${(bytes / 1024).toFixed(2)} KB`;
+                    }
+                    return `${bytes} B`;
+                };
+
+                diskInfo.total = formatBytes(totalBytes);
+                diskInfo.used = formatBytes(usedBytes);
+                diskInfo.free = formatBytes(freeBytes);
             } catch (diskError) {
                 // Disk space calculation failed, keep N/A values
                 console.warn('Failed to get disk space information:', diskError.message);

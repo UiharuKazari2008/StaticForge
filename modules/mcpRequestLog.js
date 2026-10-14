@@ -15,6 +15,7 @@ const MCP_LOG_TOKEN_RE = /[^A-Za-z0-9_./:-]+/g;
 let lagHistogram = null;
 let lagTimer = null;
 let lastLagWarnAt = 0;
+let lagMonitorStarted = false;
 
 function formatTimestamp(now) {
     const d = now instanceof Date ? now : new Date(now || Date.now());
@@ -162,6 +163,14 @@ function ensureLagMonitor() {
     if (lagTimer && typeof lagTimer.unref === 'function') lagTimer.unref();
 }
 
+function startEventLoopLagMonitor() {
+    if (lagMonitorStarted) return false;
+    lagMonitorStarted = true;
+    ensureLagMonitor();
+    console.log(`📈 [${formatTimestamp()}] Event-loop delay monitor on (perf_hooks.monitorEventLoopDelay)`);
+    return true;
+}
+
 function sampleEventLoopLag() {
     if (!lagHistogram) return null;
     const p99 = lagHistogram.percentile(99);
@@ -259,6 +268,7 @@ module.exports = {
     peekSseRpcOutcome,
     inferMcpOutcome,
     attachMcpRequestLog,
+    startEventLoopLagMonitor,
     maybeWarnEventLoopLag,
     sampleEventLoopLag,
     LAG_SAMPLE_MS

@@ -323,7 +323,8 @@ class AsyncSQLiteDatabase {
             return;
         }
         
-        // If database is dirty, create checkpoint before unloading
+        // If database is dirty, checkpoint before unloading. tag_wiki.db uses this
+        // path. The backup is queued on the shared lane (jitter, one database at a time).
         if (this.isDirty && this.checkpointManager) {
             console.log(`💾 Creating checkpoint before idle shutdown: ${path.basename(this.dbPath)}`);
             try {
@@ -667,85 +668,14 @@ class AsyncSQLiteDatabase {
             return false;
         }
 
-        if (!this.checkpointManager.needsCheckpoint({ dirty: true, force: false })) {
-            this.markClean();
-            return false;
-        }
-        
-        // Prevent concurrent checkpoints
         if (this.isCheckpointing) {
             await this.waitForCheckpoint();
-            return false; // Another checkpoint already in progress
+            return false;
         }
-        
+
         this.isCheckpointing = true;
-        
         try {
-            // Ensure database is open for backup
-            if (!this.isOpen || !this.db) {
-                await this.open();
-            }
-            
-            // First, checkpoint WAL to ensure all changes are in main database
-            // This merges WAL changes into the main database file, making it safe to copy
-            try {
-                await this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
-            } catch (walError) {
-                // WAL checkpoint may fail if not in WAL mode, that's okay
-                console.warn(`⚠️ WAL checkpoint warning: ${walError.message}`);
-            }
-            
-            // Generate checkpoint filename and path (same dir as DatabaseCheckpointManager)
-            const checkpointFilename = this.checkpointManager.generateCheckpointFilename();
-            const checkpointDir = this.checkpointManager.checkpointDir;
-            const checkpointPath = path.join(checkpointDir, checkpointFilename);
-
-            if (!fs.existsSync(checkpointDir)) {
-                fs.mkdirSync(checkpointDir, { recursive: true });
-            }
-
-            // After WAL checkpoint, the database is in a consistent state
-            // We can safely copy the database file directly without needing the backup API
-            // This avoids connection management issues entirely
-            if (!fs.existsSync(this.dbPath)) {
-                throw new Error(`Database file does not exist: ${this.dbPath}`);
-            }
-
-            // Copy the main database file
-            fs.copyFileSync(this.dbPath, checkpointPath);
-
-            // Also copy WAL and SHM files if they exist (though they should be empty after checkpoint)
-            const walPath = this.dbPath + '-wal';
-            const shmPath = this.dbPath + '-shm';
-            const checkpointWalPath = checkpointPath + '-wal';
-            const checkpointShmPath = checkpointPath + '-shm';
-
-            if (fs.existsSync(walPath)) {
-                try {
-                    fs.copyFileSync(walPath, checkpointWalPath);
-                } catch (walCopyError) {
-                    // WAL file might be locked, that's okay since we checkpointed
-                    console.warn(`⚠️ Could not copy WAL file: ${walCopyError.message}`);
-                }
-            }
-
-            if (fs.existsSync(shmPath)) {
-                try {
-                    fs.copyFileSync(shmPath, checkpointShmPath);
-                } catch (shmCopyError) {
-                    // SHM file might be locked, that's okay
-                    console.warn(`⚠️ Could not copy SHM file: ${shmCopyError.message}`);
-                }
-            }
-
-            // Update checkpoint manager signature
-            const currentSignature = this.checkpointManager.getDatabaseSignature();
-            this.checkpointManager.lastCheckpointSignature = currentSignature;
-            this.checkpointManager.cleanupOldCheckpoints();
-
-            this.markClean();
-            console.log(`✅ Created database checkpoint: ${checkpointFilename}`);
-            return true;
+            return await this.checkpointManager.createCheckpointWithBackup(true);
         } catch (error) {
             console.error(`❌ Error creating checkpoint for ${path.basename(this.dbPath)}:`, error);
             return false;
@@ -764,78 +694,15 @@ class AsyncSQLiteDatabase {
         if (!this.checkpointManager) {
             return false;
         }
-        
-        // Prevent concurrent checkpoints
+
         if (this.isCheckpointing) {
             await this.waitForCheckpoint();
-            return false; // Another checkpoint already in progress
+            return false;
         }
-        
+
         this.isCheckpointing = true;
-        
         try {
-            await this.open();
-            
-            // First, checkpoint WAL to ensure all changes are in main database
-            // This merges WAL changes into the main database file, making it safe to copy
-            try {
-                await this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
-            } catch (walError) {
-                // WAL checkpoint may fail if not in WAL mode, that's okay
-                console.warn(`⚠️ WAL checkpoint warning: ${walError.message}`);
-            }
-            
-            // Generate checkpoint filename and path (same dir as DatabaseCheckpointManager)
-            const checkpointFilename = this.checkpointManager.generateCheckpointFilename();
-            const checkpointDir = this.checkpointManager.checkpointDir;
-            const checkpointPath = path.join(checkpointDir, checkpointFilename);
-
-            if (!fs.existsSync(checkpointDir)) {
-                fs.mkdirSync(checkpointDir, { recursive: true });
-            }
-
-            // After WAL checkpoint, the database is in a consistent state
-            // We can safely copy the database file directly without needing the backup API
-            // This avoids connection management issues entirely
-            if (!fs.existsSync(this.dbPath)) {
-                throw new Error(`Database file does not exist: ${this.dbPath}`);
-            }
-
-            // Copy the main database file
-            fs.copyFileSync(this.dbPath, checkpointPath);
-
-            // Also copy WAL and SHM files if they exist (though they should be empty after checkpoint)
-            const walPath = this.dbPath + '-wal';
-            const shmPath = this.dbPath + '-shm';
-            const checkpointWalPath = checkpointPath + '-wal';
-            const checkpointShmPath = checkpointPath + '-shm';
-
-            if (fs.existsSync(walPath)) {
-                try {
-                    fs.copyFileSync(walPath, checkpointWalPath);
-                } catch (walCopyError) {
-                    // WAL file might be locked, that's okay since we checkpointed
-                    console.warn(`⚠️ Could not copy WAL file: ${walCopyError.message}`);
-                }
-            }
-
-            if (fs.existsSync(shmPath)) {
-                try {
-                    fs.copyFileSync(shmPath, checkpointShmPath);
-                } catch (shmCopyError) {
-                    // SHM file might be locked, that's okay
-                    console.warn(`⚠️ Could not copy SHM file: ${shmCopyError.message}`);
-                }
-            }
-
-            // Update checkpoint manager signature
-            const currentSignature = this.checkpointManager.getDatabaseSignature();
-            this.checkpointManager.lastCheckpointSignature = currentSignature;
-            this.checkpointManager.cleanupOldCheckpoints();
-
-            this.markClean();
-            console.log(`✅ Created database checkpoint: ${checkpointFilename}`);
-            return true;
+            return await this.checkpointManager.createCheckpointWithBackup(true);
         } catch (error) {
             console.error(`❌ Error creating checkpoint for ${path.basename(this.dbPath)}:`, error);
             return false;
@@ -854,7 +721,7 @@ class AsyncSQLiteDatabase {
         this.updateAccessTime();
         
         try {
-            const stats = fs.statSync(this.dbPath);
+            const stats = await fs.promises.stat(this.dbPath);
             const tables = await this.all("SELECT name FROM sqlite_master WHERE type='table'");
             
             let totalRecords = 0;

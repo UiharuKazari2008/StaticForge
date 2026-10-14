@@ -425,7 +425,7 @@ class CheckpointManagementService {
         if (!created && manager.createCheckpointWithBackup) {
             created = await manager.createCheckpointWithBackup(true);
         } else if (!created) {
-            created = manager.createCheckpoint();
+            created = await manager.createCheckpoint();
         }
 
         const latest = manager.getCheckpointFiles()[0];

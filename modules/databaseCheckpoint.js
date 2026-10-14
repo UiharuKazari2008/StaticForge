@@ -309,63 +309,16 @@ class DatabaseCheckpointManager {
     }
 
     /**
-     * Create a checkpoint of the current database
+     * Create a checkpoint of the current database.
+     * WAL checkpoint and the backup run on the shared off-thread lane.
      */
-    createCheckpoint() {
-        try {
-            if (!fs.existsSync(this.dbPath)) {
-                console.warn(`⚠️ Database file does not exist: ${this.dbPath}`);
-                return false;
-            }
-
-            const currentSignature = this.getDatabaseSignature();
-            const dirty = !!(this.dbWrapper && typeof this.dbWrapper.isDirtyState === 'function' && this.dbWrapper.isDirtyState());
-            if (!this.needsCheckpoint({ dirty, force: false })) {
-                if (dirty && this.dbWrapper && typeof this.dbWrapper.markClean === 'function') {
-                    this.dbWrapper.markClean();
-                }
-                console.log(`ℹ️ Database unchanged, skipping checkpoint for ${this.dbName}`);
-                return false;
-            }
-
-            const checkpointFilename = this.generateCheckpointFilename();
-            const { relative, filePath: checkpointPath } = this._newCheckpointWritePath(checkpointFilename);
-
-            // For SQLite databases, we need to ensure the database is not locked
-            // We'll use a simple file copy approach
-            fs.copyFileSync(this.dbPath, checkpointPath);
-
-            // Also copy WAL and SHM files if they exist (for WAL mode databases)
-            const walPath = this.dbPath + '-wal';
-            const shmPath = this.dbPath + '-shm';
-            
-            if (fs.existsSync(walPath)) {
-                fs.copyFileSync(walPath, checkpointPath + '-wal');
-            }
-            
-            if (fs.existsSync(shmPath)) {
-                fs.copyFileSync(shmPath, checkpointPath + '-shm');
-            }
-
-            console.log(`✅ Created database checkpoint: ${relative}`);
-            
-            // Clean up old checkpoints
-            this.cleanupOldCheckpoints();
-
-            this.lastCheckpointSignature = currentSignature;
-            if (this.dbWrapper && typeof this.dbWrapper.markClean === 'function') {
-                this.dbWrapper.markClean();
-            }
-            
-            return true;
-        } catch (error) {
-            console.error('❌ Error creating database checkpoint:', error);
-            return false;
-        }
+    async createCheckpoint() {
+        const dirty = !!(this.dbWrapper && typeof this.dbWrapper.isDirtyState === 'function' && this.dbWrapper.isDirtyState());
+        return this.createCheckpointWithBackup(dirty);
     }
 
     /**
-     * Create a checkpoint using SQLite backup API (more reliable for active databases)
+     * Create a checkpoint using the SQLite backup API on a worker thread.
      * @param {boolean} dirty - True when write operations modified data since last checkpoint
      */
     async createCheckpointWithBackup(dirty = false) {
@@ -375,7 +328,6 @@ class DatabaseCheckpointManager {
                 return false;
             }
 
-            const currentSignature = this.getDatabaseSignature();
             if (!this.needsCheckpoint({ dirty, force: false })) {
                 if (dirty && this.dbWrapper && typeof this.dbWrapper.markClean === 'function') {
                     this.dbWrapper.markClean();
@@ -386,28 +338,18 @@ class DatabaseCheckpointManager {
 
             const checkpointFilename = this.generateCheckpointFilename();
             const { relative, filePath: checkpointPath } = this._newCheckpointWritePath(checkpointFilename);
+            // modules/sqliteMaintenanceLane.js — one backup at a time, jitter between databases
+            const { backupDatabaseOffThread } = require('./sqliteMaintenanceLane');
+            await backupDatabaseOffThread(this.dbPath, checkpointPath, { walCheckpoint: 'TRUNCATE' });
 
-            // Open source database (better-sqlite3 for synchronous backup)
-            const sourceDb = new Database(this.dbPath, { readonly: true });
-            
-            try {
-                // Perform backup - backup() returns a promise and must be awaited
-                await sourceDb.backup(checkpointPath);
-                
-                console.log(`✅ Created database checkpoint with backup API: ${relative}`);
-            } finally {
-                // Always close source database, even if backup fails
-                sourceDb.close();
-            }
-            
-            // Clean up old checkpoints
+            console.log(`✅ Created database checkpoint with backup API: ${relative}`);
+
             this.cleanupOldCheckpoints();
-
-            this.lastCheckpointSignature = currentSignature;
+            this.lastCheckpointSignature = this.getDatabaseSignature();
             if (this.dbWrapper && typeof this.dbWrapper.markClean === 'function') {
                 this.dbWrapper.markClean();
             }
-            
+
             return true;
         } catch (error) {
             console.error('❌ Error creating database checkpoint with backup:', error);

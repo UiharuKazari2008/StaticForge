@@ -1,5 +1,15 @@
 const fs = require('fs');
 const path = require('path');
+
+async function fileExists(filePath) {
+    try {
+        await fs.promises.access(filePath);
+        return true;
+    } catch (err) {
+        if (err && err.code === 'ENOENT') return false;
+        throw err;
+    }
+}
 const sharp = require('sharp');
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { encodeBlurhashFromFile } = require('../../blurhashUtils');
@@ -700,7 +710,7 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
 
         if (!cachedMetadata) {
             const filePath = path.join(imagesDir, filename);
-            const fileExists = fs.existsSync(filePath);
+            const fileExists = await fileExists(filePath);
 
             if (!fileExists && canGalleryUseRemoteMaster(
                 handlers.globalResources.getReplicationService().getReplicationConfig()
@@ -878,7 +888,7 @@ async function handleImageByIndexRequest(handlers, ws, message, clientInfo, wsSe
         let metadata = null;
         try {
             const filePath = path.join(handlers.globalResources.getPath("images"), image.original);
-            if (fs.existsSync(filePath)) {
+            if (await fileExists(filePath)) {
                 // Track client workspace usage
                 handlers.metadataCache.trackClientWorkspace(clientInfo.sessionId, workspaceId);
 
@@ -1066,7 +1076,7 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
             try {
                 const filePath = path.join(handlers.globalResources.getPath("images"), filename);
 
-                if (!fs.existsSync(filePath)) {
+                if (!await fileExists(filePath)) {
                     alreadyMissing.push(filename);
                     results.push({ filename, deletedFiles: ['already-missing'] });
                     continue;
@@ -1102,13 +1112,13 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
 
                 // Add original file if exists
                 const originalPath = path.join(handlers.globalResources.getPath("images"), originalFilename);
-                if (fs.existsSync(originalPath)) {
+                if (await fileExists(originalPath)) {
                     filesToDelete.push({ path: originalPath, type: 'original' });
                     filenamesToRemoveFromWorkspaces.push(originalFilename);
 
                     // Try to extract and delete dynGenPreview file from original
                     try {
-                        const imageBuffer = fs.readFileSync(originalPath);
+                        const imageBuffer = await fs.promises.readFile(originalPath);
                         const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
                         if (metadata?.tEXt?.Comment) {
                             const commentData = JSON.parse(metadata.tEXt.Comment);
@@ -1118,7 +1128,7 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
                                 const dynGenPreviewDir = path.join(handlers.globalResources.getPath("cache"), 'dynGenPreview');
                                 const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
 
-                                if (fs.existsSync(dynGenPreviewPath)) {
+                                if (await fileExists(dynGenPreviewPath)) {
                                     filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
                                     console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
                                 }
@@ -1132,14 +1142,14 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
 
                 // Add upscaled file if exists
                 const upscaledPath = path.join(handlers.globalResources.getPath("images"), upscaledFilename);
-                if (fs.existsSync(upscaledPath)) {
+                if (await fileExists(upscaledPath)) {
                     filesToDelete.push({ path: upscaledPath, type: 'upscaled' });
                     filenamesToRemoveFromWorkspaces.push(upscaledFilename);
                 }
 
                 // Add all preview files (webp and legacy formats)
                 for (const previewFilePath of previewFiles) {
-                    if (fs.existsSync(previewFilePath)) {
+                    if (await fileExists(previewFilePath)) {
                         filesToDelete.push({ path: previewFilePath, type: 'preview' });
                     }
                 }
@@ -1158,7 +1168,7 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
                 const deletedFiles = [];
                 for (const file of filesToDelete) {
                     try {
-                        fs.unlinkSync(file.path);
+                        await fs.promises.unlink(file.path);
                         deletedFiles.push(file.type);
                     } catch (error) {
                         console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
@@ -1239,18 +1249,18 @@ async function handleDeleteUnupscaledOriginal(handlers, ws, message, clientInfo,
         const upscaledFilename = filename.replace(/\.png$/i, '_upscaled.png');
         const upscaledPath = path.join(imagesDir, upscaledFilename);
 
-        if (!fs.existsSync(originalPath)) {
+        if (!await fileExists(originalPath)) {
             handlers.sendError(ws, 'Original file not found', 'delete_unupscaled_original', message.requestId);
             return;
         }
-        if (!fs.existsSync(upscaledPath)) {
+        if (!await fileExists(upscaledPath)) {
             handlers.sendError(ws, 'No upscaled version exists; use Incinerate to delete the image', 'delete_unupscaled_original', message.requestId);
             return;
         }
 
         const filesToDelete = [{ path: originalPath, type: 'original' }];
         try {
-            const imageBuffer = fs.readFileSync(originalPath);
+            const imageBuffer = await fs.promises.readFile(originalPath);
             const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
             if (metadata?.tEXt?.Comment) {
                 const commentData = JSON.parse(metadata.tEXt.Comment);
@@ -1261,7 +1271,7 @@ async function handleDeleteUnupscaledOriginal(handlers, ws, message, clientInfo,
                         'dynGenPreview',
                         `${previewHash}.png`
                     );
-                    if (fs.existsSync(dynGenPreviewPath)) {
+                    if (await fileExists(dynGenPreviewPath)) {
                         filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
                     }
                 }
@@ -1272,7 +1282,7 @@ async function handleDeleteUnupscaledOriginal(handlers, ws, message, clientInfo,
 
         for (const file of filesToDelete) {
             try {
-                fs.unlinkSync(file.path);
+                await fs.promises.unlink(file.path);
             } catch (error) {
                 console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
             }
@@ -1329,9 +1339,9 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
         }
 
         // Create sequenzia folder if it doesn't exist
-        if (!fs.existsSync(sequenziaFolder)) {
+        if (!await fileExists(sequenziaFolder)) {
             try {
-                fs.mkdirSync(sequenziaFolder, { recursive: true });
+                await fs.promises.mkdir(sequenziaFolder, { recursive: true });
                 console.log(`📁 Created sequenzia folder: ${sequenziaFolder}`);
             } catch (error) {
                 handlers.sendError(ws, `Failed to create sequenzia folder: ${error.message}`, 'send_to_sequenzia_bulk', message.requestId);
@@ -1346,7 +1356,7 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
             try {
                 const filePath = path.join(handlers.globalResources.getPath("images"), filename);
 
-                if (!fs.existsSync(filePath)) {
+                if (!await fileExists(filePath)) {
                     errors.push({ filename, error: 'File not found' });
                     continue;
                 }
@@ -1382,14 +1392,14 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
 
                 // Add original file if exists
                 const originalPath = path.join(handlers.globalResources.getPath("images"), originalFilename);
-                if (fs.existsSync(originalPath)) {
+                if (await fileExists(originalPath)) {
                     filesToMove.push({ source: originalPath, type: 'original' });
                     filesToDelete.push(originalPath);
                     filenamesToRemoveFromWorkspaces.push(originalFilename);
 
                     // Try to extract and delete dynGenPreview file from original
                     try {
-                        const imageBuffer = fs.readFileSync(originalPath);
+                        const imageBuffer = await fs.promises.readFile(originalPath);
                         const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
                         if (metadata?.tEXt?.Comment) {
                             const commentData = JSON.parse(metadata.tEXt.Comment);
@@ -1399,7 +1409,7 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
                                 const dynGenPreviewDir = path.join(handlers.globalResources.getPath("cache"), 'dynGenPreview');
                                 const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
 
-                                if (fs.existsSync(dynGenPreviewPath)) {
+                                if (await fileExists(dynGenPreviewPath)) {
                                     filesToDelete.push(dynGenPreviewPath);
                                     console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
                                 }
@@ -1413,7 +1423,7 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
 
                 // Add upscaled file if exists
                 const upscaledPath = path.join(handlers.globalResources.getPath("images"), upscaledFilename);
-                if (fs.existsSync(upscaledPath)) {
+                if (await fileExists(upscaledPath)) {
                     filesToMove.push({ source: upscaledPath, type: 'upscaled' });
                     filesToDelete.push(upscaledPath);
                     filenamesToRemoveFromWorkspaces.push(upscaledFilename);
@@ -1421,7 +1431,7 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
 
                 // Add all preview files (webp and legacy formats)
                 for (const previewFilePath of previewFiles) {
-                    if (fs.existsSync(previewFilePath)) {
+                    if (await fileExists(previewFilePath)) {
                         filesToDelete.push(previewFilePath);
                     }
                 }
@@ -1430,7 +1440,7 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
                 const movedFiles = [];
                 for (const file of filesToMove) {
                     const destPath = path.join(sequenziaFolder, path.basename(file.source));
-                    fs.copyFileSync(file.source, destPath);
+                    await fs.promises.copyFile(file.source, destPath);
                     movedFiles.push(file.type);
                     console.log(`📁 Moved to sequenzia: ${path.basename(file.source)}`);
                 }
@@ -1438,7 +1448,7 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
                 // Delete files from original location
                 const deletedFiles = [];
                 for (const filePath of filesToDelete) {
-                    fs.unlinkSync(filePath);
+                    await fs.promises.unlink(filePath);
                     deletedFiles.push(path.basename(filePath));
                 }
 
@@ -1517,13 +1527,13 @@ async function handleUpdateImagePresetBulk(handlers, ws, message, clientInfo, ws
             try {
                 const filePath = path.join(handlers.globalResources.getPath("images"), filename);
 
-                if (!fs.existsSync(filePath)) {
+                if (!await fileExists(filePath)) {
                     errors.push({ filename, error: 'File not found' });
                     continue;
                 }
 
                 // Read the current image and extract metadata
-                const imageBuffer = fs.readFileSync(filePath);
+                const imageBuffer = await fs.promises.readFile(filePath);
                 const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
 
                 if (!metadata) {
@@ -1548,7 +1558,7 @@ async function handleUpdateImagePresetBulk(handlers, ws, message, clientInfo, ws
                 const updatedImageBuffer = handlers.globalResources.getPngMetadata().updateMetadata(imageBuffer, metadata.forge_data);
 
                 // Write the updated image back to disk
-                fs.writeFileSync(filePath, updatedImageBuffer);
+                await fs.promises.writeFile(filePath, updatedImageBuffer);
 
                 results.push({ filename, presetName: presetName || 'removed' });
                 console.log(`✏️ Updated preset name for ${filename}: ${presetName || 'removed'}`);
@@ -1605,7 +1615,7 @@ async function handleUrlUploadMetadataRequest(handlers, ws, message, clientInfo,
         const tempDownloadDir = path.join(handlers.globalResources.getPath("cache"), 'tempdownload');
         const filePath = path.join(tempDownloadDir, filename);
 
-        if (!fs.existsSync(filePath)) {
+        if (!await fileExists(filePath)) {
             handlers.sendError(ws, 'File not found in tempdownload folder', 'request_url_upload_metadata', message.requestId);
             return;
         }

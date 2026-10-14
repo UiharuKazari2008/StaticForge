@@ -267,8 +267,11 @@ class GlobalCheckpointManager {
             throw new Error('Invalid checkpoint manager type: must be "database" or "json"');
         }
         
-        // Calculate stagger offset based on number of registered managers
-        const staggerOffset = this.checkpointManagers.size * this.staggerDelay;
+        // Fixed slots plus jitter so databases do not checkpoint on the same phase.
+        // The maintenance lane still refuses to run two SQLite jobs at once.
+        const slot = this.checkpointManagers.size * this.staggerDelay;
+        const jitterMs = Math.floor(Math.random() * Math.min(this.staggerDelay, 30 * 1000));
+        const staggerOffset = slot + jitterMs;
         
         this.checkpointManagers.set(name, {
             manager,
@@ -346,7 +349,7 @@ class GlobalCheckpointManager {
                 if (manager.createCheckpointWithBackup) {
                     success = await manager.createCheckpointWithBackup(isDirty);
                 } else {
-                    success = manager.createCheckpoint();
+                    success = await manager.createCheckpoint();
                 }
             } else {
                 // JSON checkpoints

@@ -6,13 +6,13 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execSync } = require('child_process');
 const pm2 = require('pm2');
 const pm2LogPaths = require('./pm2LogPaths');
 
 const HOST_DISK_CACHE_MS = 60000;
 let hostDiskCache = null;
 let hostDiskCacheAt = 0;
+let diskRefresh = null;
 
 let pm2Connected = false;
 let pm2Connecting = null;
@@ -99,51 +99,35 @@ function isPm2Available() {
     return pm2LogPaths.getPm2LogPaths() != null;
 }
 
-function readFilesystemBytes(targetPath) {
+function scheduleDiskRefresh(targetPath) {
+    if (diskRefresh) return diskRefresh;
     const projectRoot = path.resolve(targetPath || path.join(__dirname, '..'));
-    try {
-        const dfOutput = execSync(`df -B1 "${projectRoot}"`, { encoding: 'utf8' });
-        const lines = dfOutput.trim().split('\n');
-        if (lines.length < 2) return null;
-        const header = lines[0].split(/\s+/);
-        const data = lines[1].split(/\s+/);
-        let totalIndex = -1;
-        let usedIndex = -1;
-        let availIndex = -1;
-        header.forEach((col, idx) => {
-            if (col === '1B-blocks' || col === '1K-blocks' || col === 'Size' || col.toUpperCase() === 'SIZE') {
-                totalIndex = idx;
-            }
-            if (col === 'Used' || col.toUpperCase() === 'USED') usedIndex = idx;
-            if (col === 'Avail' || col === 'Available' || col.toUpperCase() === 'AVAIL'
-                || col.toUpperCase() === 'AVAILABLE') availIndex = idx;
-        });
-        if (totalIndex === -1) totalIndex = 1;
-        if (usedIndex === -1) usedIndex = 2;
-        if (availIndex === -1) availIndex = 3;
-        const totalBytes = parseInt(data[totalIndex], 10);
-        const usedBytes = parseInt(data[usedIndex], 10);
-        const freeBytes = parseInt(data[availIndex], 10);
-        if (!Number.isFinite(totalBytes) || !Number.isFinite(freeBytes)) return null;
-        return {
+    diskRefresh = fs.promises.statfs(projectRoot).then((stats) => {
+        const bsize = stats.bsize || 1;
+        const totalBytes = stats.blocks * bsize;
+        const freeBytes = stats.bavail * bsize;
+        hostDiskCache = {
             totalBytes,
-            usedBytes: Number.isFinite(usedBytes) ? usedBytes : Math.max(0, totalBytes - freeBytes),
-            freeBytes
+            freeBytes,
+            usedBytes: Math.max(0, (stats.blocks - stats.bfree) * bsize)
         };
-    } catch (_) {
-        return null;
-    }
+        hostDiskCacheAt = Date.now();
+        return hostDiskCache;
+    }).catch(() => hostDiskCache).finally(() => {
+        diskRefresh = null;
+    });
+    return diskRefresh;
 }
 
 function getCachedFilesystemBytes() {
     const now = Date.now();
-    if (hostDiskCache && (now - hostDiskCacheAt) < HOST_DISK_CACHE_MS) {
-        return hostDiskCache;
+    if (!hostDiskCache || (now - hostDiskCacheAt) >= HOST_DISK_CACHE_MS) {
+        scheduleDiskRefresh();
     }
-    hostDiskCache = readFilesystemBytes();
-    hostDiskCacheAt = now;
     return hostDiskCache;
 }
+
+scheduleDiskRefresh();
 
 function getHostMetrics() {
     const totalMem = os.totalmem();

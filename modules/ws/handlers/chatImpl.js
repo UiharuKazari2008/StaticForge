@@ -118,9 +118,14 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
             console.log('📁 Images directory:', handler.globalResources.getPath("images"));
             console.log('📄 Filename:', data.filename);
 
-            if (fs.existsSync(imagePath)) {
+            let imageBuffer = null;
+            try {
+                imageBuffer = await fs.promises.readFile(imagePath);
+            } catch (err) {
+                if (!err || err.code !== 'ENOENT') throw err;
+            }
+            if (imageBuffer) {
                 console.log('✅ Image file exists, loading...');
-                const imageBuffer = fs.readFileSync(imagePath);
                 const base64Image = imageBuffer.toString('base64');
                 const mimeType = path.extname(data.filename).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';
 

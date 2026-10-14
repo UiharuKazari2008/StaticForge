@@ -297,4 +297,9 @@ try {
     console.log = origLog;
 }
 
+assert.strictEqual(mcpRequestLog.startEventLoopLagMonitor(), true);
+assert.strictEqual(mcpRequestLog.startEventLoopLagMonitor(), false);
+const lagSample = mcpRequestLog.sampleEventLoopLag();
+assert.ok(lagSample == null || typeof lagSample === 'number');
+
 console.log('test-mcp-request-log: ok');

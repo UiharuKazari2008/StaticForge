@@ -307,9 +307,7 @@ async function handleExportIPToGateway(handlersCtx, ws, message, clientInfo, wsS
         }
 
         const exportDir = handlersCtx.globalResources.getPath('ipExports');
-        if (!fs.existsSync(exportDir)) {
-            fs.mkdirSync(exportDir, { recursive: true });
-        }
+        await fs.promises.mkdir(exportDir, { recursive: true });
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const exportFile = path.join(exportDir, `ip_export_${timestamp}.txt`);
@@ -322,7 +320,7 @@ async function handleExportIPToGateway(handlersCtx, ws, message, clientInfo, wsS
             reason: 'Exported from StaticForge IP Management'
         };
 
-        fs.writeFileSync(exportFile, JSON.stringify(exportData, null, 2));
+        await fs.promises.writeFile(exportFile, JSON.stringify(exportData, null, 2));
 
         setTimeout(() => {
             const blockedIPs = global.blockedIPs || new Map();

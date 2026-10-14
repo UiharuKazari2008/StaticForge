@@ -244,7 +244,9 @@ async function handleGenerateNaxCustomTag(handler, ws, message, clientInfo, wsSe
             item = naxTagsDatabase.insertCustomTag(gallerySlug, tagValue, filename);
         } catch (dbErr) {
             try {
-                if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
+                await fs.promises.unlink(absPath).catch((err) => {
+                    if (err && err.code !== 'ENOENT') throw err;
+                });
             } catch {
                 /* */
             }
