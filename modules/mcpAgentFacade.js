@@ -135,6 +135,7 @@ const {
     deliverCake,
     feedCake,
     inspectPantry,
+    adjustWeight,
     consumeCake,
     voidCakeDelivery,
     updateMealImages,
@@ -2680,7 +2681,7 @@ const TOOL_DEFS = [
     {
         name: 'deliver_cake',
         core: true,
-        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren, Rook, Sala) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, optional do_not_eat (or cake_type=dry-verify) for forever-skip dry verifies, credit (grok.menma for 4x Lead multiplier).',
+        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren, Rook, Sala) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, optional do_not_eat (or cake_type=dry-verify) for forever-skip dry verifies, credit (grok.menma or Lead = Math.ceil(slices * CAKE_LEAD_MULTIPLIER), default 1.5). Already-banked deliveries are not rewritten.',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -2692,7 +2693,7 @@ const TOOL_DEFS = [
                 reason: { type: 'string', description: 'Why: reward for which ship/work' },
                 cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.). Use dry-verify for forever-skip dry verifies (sets do_not_eat).' },
                 do_not_eat: { type: 'boolean', description: 'If true, forever-skip this delivery (also set when cake_type=dry-verify). Prefer over reason text (Yozora #154).' },
-                credit: { type: 'string', description: 'Credit attribution. grok.menma or Lead = 4x multiplier' },
+                credit: { type: 'string', description: 'Credit attribution. grok.menma or Lead = Math.ceil(slices * CAKE_LEAD_MULTIPLIER), default 1.5. Other credits stay 1x. Applies to this bank only.' },
                 line_counts: {
                     type: 'object',
                     description: 'For cleanup calc: { deleted: lines, bytes_removed }. 1 slice per 40 lines or 10KB, min 1, cap 16.',
@@ -2801,6 +2802,26 @@ const TOOL_DEFS = [
                 meal_id: { type: 'string', description: 'Stable meal_id from inspect_pantry.past_consumes' },
                 before_image: { type: 'string', description: 'Replacement before image filename (must already exist via generate_image). Omit to leave the current before id.' },
                 after_image: { type: 'string', description: 'Replacement after image filename (must already exist via generate_image). Omit to leave the current after id.' }
+            }
+        }
+    },
+    {
+        name: 'adjust_weight',
+        core: true,
+        description: 'Approval-gated weight-loss surgery. Sets current_kg to kg and is the only call that may lower a monotonic account (Menma). Requires a non-empty reason, event "weight_loss_surgery" (the default), and an explicit approval note (approval: "yukimi-477", or approved: true with approvalNote). Refuses otherwise. Bypasses the never-down clamp for this call only. Writes kg_history kind "surgery" and a ledger row with reason, approval note, before/after kg, and actor. Later meals floor from that surgery entry, not from pre-surgery kg. Does not change baseline_kg (stays 54) or already-banked slices. Intended use: Menma 597.2 kg -> 110 kg. Rook runs it; do not call it without Yukimi\'s approval note.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId', 'kg', 'reason'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account whose current_kg changes' },
+                kg: { type: 'number', description: 'New current kg. Intended: Menma 597.2 -> 110.' },
+                reason: { type: 'string', description: 'Why this surgery is happening. Required, non-empty.' },
+                event: { type: 'string', enum: ['weight_loss_surgery'], description: 'Must be weight_loss_surgery. Defaults to that when omitted.' },
+                approval: { type: 'string', description: 'Explicit approval note, for example yukimi-477. Required unless approved is true and approvalNote is set.' },
+                approved: { type: 'boolean', description: 'When true, approvalNote is also required. A bare true is refused.' },
+                approvalNote: { type: 'string', description: 'Approval note used with approved: true. Example: yukimi-477.' }
             }
         }
     },
@@ -8615,6 +8636,24 @@ async function callTool(globalResources, req, name, args) {
             client: resolveActorName(req) || resolveBindKey(req)
         }, {
             resolveImage: (id) => galleryFileExists(globalResources, id)
+        });
+        return mcpTextResult(result, !result.success);
+    }
+
+    if (name === 'adjust_weight') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
+        }
+        const result = await adjustWeight(accountId, {
+            kg: input.kg,
+            reason: input.reason,
+            event: input.event,
+            approval: input.approval,
+            approved: input.approved,
+            approvalNote: input.approvalNote
+        }, {
+            actor: resolveActorName(req) || resolveBindKey(req) || null
         });
         return mcpTextResult(result, !result.success);
     }

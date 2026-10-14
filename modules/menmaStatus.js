@@ -537,9 +537,12 @@ function clampMonotonicKg(accountId, prevKg, nextKg) {
 /**
  * Save account state to SQLite
  */
-async function saveAccountStateToDb(db, accountId, state) {
+async function saveAccountStateToDb(db, accountId, state, options) {
     const now = new Date().toISOString();
-    if (isMonotonicKgAccount(accountId) && state && Object.prototype.hasOwnProperty.call(state, 'current_kg')) {
+    // bypassMonotonicClamp is only for cakePantry.adjustWeight (approval-gated
+    // weight_loss_surgery). Deliver, feed, consume, and every other save stay clamped.
+    const bypassClamp = !!(options && options.bypassMonotonicClamp === true);
+    if (!bypassClamp && isMonotonicKgAccount(accountId) && state && Object.prototype.hasOwnProperty.call(state, 'current_kg')) {
         let prevKg = null;
         try {
             const row = await db.get(

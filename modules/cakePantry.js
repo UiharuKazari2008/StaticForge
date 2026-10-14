@@ -14,8 +14,11 @@
  * Cake math:
  * - 0.12kg per slice
  * - Cleanup: 1 slice per 40 lines or 10KB removed (min 1, cap 16)
- * - 4x multiplier for grok.menma (Jules/Cursor Lead); Yukimi 2026-10-05 (was 1.25x)
+ * - Lead multiplier for grok.menma (env CAKE_LEAD_MULTIPLIER, default 1.5, Math.ceil).
+ *   Yukimi #477 (was 4x as of 2026-10-05, and 1.25x before that).
+ *   Already-banked deliveries keep the slices they were given; only new banks use the current multiplier.
  * - Menma current_kg never decreases (monotonic clamp on every state save)
+ *   except adjust_weight with an explicit approval note (weight_loss_surgery only)
  * - Soft sitting cap default 8; override via slices/max_slices up to all eligible; remainder carries
  * - Optional delivery_ids on consume eats those deliveries instead of the whole FIFO
  * - FIFO de-dup: the same ship reason/key is eaten once; a later copy stays pending
@@ -62,8 +65,19 @@ const CLEANUP_LINES_PER_SLICE = 40;
 const CLEANUP_BYTES_PER_SLICE = 10240; // 10KB
 const CLEANUP_SLICE_MIN = 1;
 const CLEANUP_SLICE_CAP = 16;
-/** grok.menma / Lead credit multiplier. Yukimi 2026-10-05 7:28pm ET: 1.25 → 4. */
-const LEAD_MULTIPLIER = 4;
+/**
+ * grok.menma / Lead credit multiplier.
+ * Env CAKE_LEAD_MULTIPLIER, default 1.5 (Yukimi #477; was 4, before that 1.25).
+ * Read at call time so a process restart picks up the env, and so already-banked
+ * deliveries (their stored slice counts) are never rewritten.
+ */
+function leadMultiplier() {
+    const raw = process.env.CAKE_LEAD_MULTIPLIER;
+    if (raw == null || String(raw).trim() === '') return 1.5;
+    const n = Number(String(raw).trim());
+    if (!Number.isFinite(n) || n <= 0) return 1.5;
+    return n;
+}
 const MAX_VISUAL_QA_GENS = 10;
 /** Soft default sitting cap (8). Override via slices and/or max_slices up to all eligible pending. */
 const MAX_SLICES_PER_SITTING = 8;
@@ -677,15 +691,55 @@ async function ensurePantryMigration(accountId) {
 /** Visual-feast locked start weight for pantry keepers (and Menma/Guren defs). */
 const VISUAL_FEAST_BASELINE_KG = 54.0;
 
-/** Highest kg recorded in state.history, or null. */
-function maxHistoryKg(state) {
+/**
+ * History that the never-down guard may see.
+ * After weight_loss_surgery, the floor starts at the latest `kind: 'surgery'`
+ * entry and ignores every earlier (higher) kg. No surgery: the full history.
+ */
+function historySinceLatestSurgery(state) {
     const hist = Array.isArray(state && state.history) ? state.history : [];
+    for (let i = hist.length - 1; i >= 0; i--) {
+        if (hist[i] && hist[i].kind === 'surgery') return hist.slice(i);
+    }
+    return hist;
+}
+
+/** Highest kg recorded since the latest surgery (or in all of history), or null. */
+function maxHistoryKg(state) {
+    const hist = historySinceLatestSurgery(state);
     let max = null;
     for (const h of hist) {
         const kg = h && h.kg != null && h.kg !== '' ? Number(h.kg) : NaN;
         if (Number.isFinite(kg) && (max == null || kg > max)) max = kg;
     }
     return max;
+}
+
+/**
+ * Chair milestone after a kg change. baseline_kg is not touched.
+ * A drop that stays at or above chair_broke_at_kg keeps the heavy-duty chair.
+ * A drop below that break puts the pre-break chair back (gaming) and marks the
+ * break inactive, but keeps chair_broke_at_kg as history.
+ */
+function reviewMilestonesAfterKgChange(state, nextKg) {
+    if (!state || !state.milestones || typeof state.milestones !== 'object' || Array.isArray(state.milestones)) {
+        return (state && state.milestones) || {};
+    }
+    const ms = state.milestones;
+    const brokeAt = ms.chair_broke_at_kg == null || ms.chair_broke_at_kg === ''
+        ? NaN
+        : Number(ms.chair_broke_at_kg);
+    if (!Number.isFinite(brokeAt)) return ms;
+    const kg = Number(nextKg);
+    if (Number.isFinite(kg) && kg < brokeAt) {
+        if (!ms.chair_before_break) ms.chair_before_break = 'gaming';
+        ms.chair = ms.chair_before_break;
+        ms.chair_break_active = false;
+    } else {
+        ms.chair_break_active = true;
+        if (!ms.chair) ms.chair = 'heavy_duty';
+    }
+    return ms;
 }
 
 /**
@@ -843,7 +897,7 @@ async function getAccountState(accountId) {
  * Save account state - async, uses SQLite after import.
  * FAIL-CLOSED: After import or unknown status, do NOT write to files.
  */
-async function saveAccountState(accountId, state) {
+async function saveAccountState(accountId, state, saveOptions) {
     const def = ACCOUNT_DEFS[accountId];
     if (!def) return false;
 
@@ -851,6 +905,8 @@ async function saveAccountState(accountId, state) {
     await ensurePantryMigration(accountId);
     
     const status = await getAccountImportStatus(accountId);
+    // bypassMonotonicClamp is set only by adjustWeight (approval-gated surgery).
+    const bypassClamp = !!(saveOptions && saveOptions.bypassMonotonicClamp === true);
     
     if (status.imported === true) {
         // After import: SQLite only, NO file fallback
@@ -859,7 +915,7 @@ async function saveAccountState(accountId, state) {
             return false;
         }
         try {
-            await saveAccountStateToDb(status.db, accountId, state);
+            await saveAccountStateToDb(status.db, accountId, state, saveOptions);
             return true;
         } catch (e) {
             console.error(`[cakePantry] saveAccountState SQLite error for ${accountId}:`, e);
@@ -870,7 +926,7 @@ async function saveAccountState(accountId, state) {
         const dir = ensureAccountDir(accountId);
         if (!dir) return false;
         const statePath = path.join(dir, 'state.json');
-        if (isMonotonicKgAccount(accountId) && Object.prototype.hasOwnProperty.call(state, 'current_kg')) {
+        if (!bypassClamp && isMonotonicKgAccount(accountId) && Object.prototype.hasOwnProperty.call(state, 'current_kg')) {
             let prev = null;
             try { prev = JSON.parse(fs.readFileSync(statePath, 'utf8')).current_kg; } catch (_) { /* no file yet */ }
             state.current_kg = clampMonotonicKg(accountId, prev, state.current_kg);
@@ -966,11 +1022,12 @@ function calculateCleanupSlices(linesDeleted, bytesRemoved, roundUp = false) {
 }
 
 /**
- * Apply multiplier for credit roles (LEAD_MULTIPLIER = 4x for Lead/grok.menma; others 1x)
+ * Apply multiplier for credit roles (leadMultiplier() for Lead/grok.menma; others 1x).
+ * Math.ceil so 1 slice at 1.5x banks 2. Does not rewrite deliveries already stored.
  */
 function applyMultiplier(slices, credit) {
     if (credit === 'grok.menma' || credit === 'Lead') {
-        return Math.ceil(slices * LEAD_MULTIPLIER);
+        return Math.ceil(Number(slices) * leadMultiplier());
     }
     return slices;
 }
@@ -978,8 +1035,8 @@ function applyMultiplier(slices, credit) {
 /**
  * deliver_cake - Add slices to a pile with reason (reward for ship/work)
  */
-async function deliverCake(accountId, params) {
-    const state = await getAccountState(accountId);
+async function deliverCake(accountId, params = {}, options) {
+    const state = (options && options.state) ? options.state : await getAccountState(accountId);
     if (!state) {
         return { success: false, error: 'Unknown account', accountId };
     }
@@ -1011,7 +1068,7 @@ async function deliverCake(accountId, params) {
         cake_type: dne.cake_type,
         do_not_eat: dne.do_not_eat,
         credit,
-        multiplier: credit === 'grok.menma' || credit === 'Lead' ? LEAD_MULTIPLIER : 1,
+        multiplier: credit === 'grok.menma' || credit === 'Lead' ? leadMultiplier() : 1,
         line_counts: params.line_counts || null,
         source: 'deliver'
     };
@@ -1022,7 +1079,8 @@ async function deliverCake(accountId, params) {
     }
     state.pending_deliveries.push(delivery);
 
-    const saved = await saveAccountState(accountId, state);
+    // deliver_cake never writes current_kg. The monotonic clamp still applies on save.
+    const saved = await persistAccountState(accountId, state, options);
     if (!saved) {
         return { success: false, error: 'Failed to save state', accountId };
     }
@@ -1039,8 +1097,8 @@ async function deliverCake(accountId, params) {
 /**
  * feed_cake - Yukimi grants slices (promotion or just because)
  */
-async function feedCake(accountId, params) {
-    const state = await getAccountState(accountId);
+async function feedCake(accountId, params = {}, options) {
+    const state = (options && options.state) ? options.state : await getAccountState(accountId);
     if (!state) {
         return { success: false, error: 'Unknown account', accountId };
     }
@@ -1069,7 +1127,8 @@ async function feedCake(accountId, params) {
     }
     state.pending_feeds.push(feed);
 
-    const saved = await saveAccountState(accountId, state);
+    // feed_cake never writes current_kg. The monotonic clamp still applies on save.
+    const saved = await persistAccountState(accountId, state, options);
     if (!saved) {
         return { success: false, error: 'Failed to save state', accountId };
     }
@@ -1123,7 +1182,10 @@ async function inspectPantry(accountId, params = {}, options = {}) {
         at: h.at,
         kg: h.kg,
         slices: h.slices,
-        gained_kg: h.gained_kg
+        gained_kg: h.gained_kg,
+        kind: h.kind || null,
+        reason: h.reason || null,
+        kg_before: h.kg_before != null ? h.kg_before : null
     }));
 
     const pastConsumes = cakeLog
@@ -1526,15 +1588,15 @@ async function updateMealImages(accountId, params = {}, options = {}) {
  * - Does NOT auto-generate before/after images (pass refs if already generated)
  */
 
-async function persistAccountState(accountId, state, options) {
+async function persistAccountState(accountId, state, options, saveOptions) {
     if (options && options.state) {
         if (typeof options.saveState === 'function') {
-            const ok = await options.saveState(accountId, state);
+            const ok = await options.saveState(accountId, state, saveOptions);
             return ok !== false;
         }
         return true;
     }
-    return saveAccountState(accountId, state);
+    return saveAccountState(accountId, state, saveOptions);
 }
 
 async function persistCakeLogEntry(accountId, entry, options) {
@@ -2108,6 +2170,164 @@ async function voidCakeDelivery(accountId, params = {}, options = {}) {
     };
 }
 
+const WEIGHT_LOSS_SURGERY_EVENT = 'weight_loss_surgery';
+
+/**
+ * Explicit approval: a non-empty `approval` note (e.g. "yukimi-477"),
+ * or `approved: true` together with a non-empty approvalNote.
+ * A bare approved:true, or a blank note, is not approval.
+ */
+function explicitApprovalNote(params) {
+    if (!params || typeof params !== 'object') return '';
+    if (typeof params.approval === 'string' && params.approval.trim()) {
+        return params.approval.trim();
+    }
+    if (params.approval != null && typeof params.approval !== 'boolean' && typeof params.approval !== 'object') {
+        const asText = String(params.approval).trim();
+        if (asText) return asText;
+    }
+    const approved = params.approved === true || params.approved === 1
+        || (typeof params.approved === 'string' && ['true', '1', 'yes'].includes(params.approved.trim().toLowerCase()));
+    const note = params.approvalNote != null
+        ? String(params.approvalNote).trim()
+        : (params.approval_note != null ? String(params.approval_note).trim() : '');
+    if (approved && note) return note;
+    return '';
+}
+
+/**
+ * adjust_weight — approval-gated weight_loss_surgery.
+ * The only path that may lower a monotonic account's current_kg.
+ * Intended use (Rook, not this process): Menma 597.2 kg → 110 kg, approval "yukimi-477".
+ * baseline_kg stays at the account lock (54). Does not rewrite banked deliveries.
+ */
+async function adjustWeight(accountId, params = {}, options = {}) {
+    const approvalNote = explicitApprovalNote(params);
+    if (!approvalNote) {
+        return {
+            success: false,
+            error: 'adjust_weight refused: explicit approval is required (approval note such as "yukimi-477", or approved:true with approvalNote)',
+            accountId
+        };
+    }
+    const reason = params.reason != null ? String(params.reason).trim() : '';
+    if (!reason) {
+        return { success: false, error: 'reason is required', accountId };
+    }
+    const event = params.event == null || String(params.event).trim() === ''
+        ? WEIGHT_LOSS_SURGERY_EVENT
+        : String(params.event).trim();
+    if (event !== WEIGHT_LOSS_SURGERY_EVENT) {
+        return {
+            success: false,
+            error: `event must be ${WEIGHT_LOSS_SURGERY_EVENT}`,
+            accountId
+        };
+    }
+    const kgNum = Number(params.kg);
+    if (!Number.isFinite(kgNum) || kgNum < 0) {
+        return { success: false, error: 'kg must be a finite number >= 0', accountId };
+    }
+    const kgAfter = Number(kgNum.toFixed(2));
+
+    const def = ACCOUNT_DEFS[accountId];
+    if (!def) {
+        return { success: false, error: 'Unknown account', accountId };
+    }
+
+    const injected = !!(options && options.state);
+    const state = injected ? options.state : await getAccountState(accountId);
+    if (!state) {
+        return { success: false, error: 'Unknown account', accountId };
+    }
+    if (state._sqliteUnavailable || state._sqliteError || state._importStatusUnknown) {
+        return { success: false, error: state._reason || 'SQLite unavailable', accountId };
+    }
+
+    const { state: kgState } = ensureCurrentKgSeeded(accountId, state);
+    Object.assign(state, kgState);
+    const kgBeforeNum = state.current_kg == null || state.current_kg === '' ? NaN : Number(state.current_kg);
+    const kgBefore = Number.isFinite(kgBeforeNum)
+        ? kgBeforeNum
+        : (state.baseline_kg != null ? Number(state.baseline_kg) : VISUAL_FEAST_BASELINE_KG);
+
+    // Never rewrite the locked baseline (Menma stays 54).
+    if (state.baseline_kg == null || state.baseline_kg === '') {
+        state.baseline_kg = def.baseline_kg != null ? def.baseline_kg : VISUAL_FEAST_BASELINE_KG;
+    }
+    reviewMilestonesAfterKgChange(state, kgAfter);
+    // A surgery below baseline must not be undone by the one-shot "ate from 0" lift.
+    if (Number(kgAfter) < Number(state.baseline_kg)) {
+        state._baseline_lift_applied = true;
+    }
+
+    const now = (options && options.now) || new Date().toISOString();
+    const actor = (options && options.actor) || params.actor || params.who || null;
+    const gainedKg = Number((kgAfter - kgBefore).toFixed(2));
+
+    state.current_kg = kgAfter;
+    if (!Array.isArray(state.history)) state.history = [];
+    const historyEntry = {
+        at: now,
+        kind: 'surgery',
+        event,
+        kg: kgAfter,
+        kg_before: kgBefore,
+        kg_after: kgAfter,
+        slices: 0,
+        gained_kg: gainedKg,
+        reason,
+        approval: approvalNote,
+        actor: actor || null
+    };
+    state.history.push(historyEntry);
+
+    const ledger = {
+        event,
+        kind: 'surgery',
+        at: now,
+        reason,
+        approval: approvalNote,
+        approval_note: approvalNote,
+        actor: actor || null,
+        who: actor || null,
+        kg_before: kgBefore,
+        kg_after: kgAfter,
+        gained_kg: gainedKg,
+        slices: 0,
+        stacks: 0,
+        named_for: [],
+        chair: (state.milestones && state.milestones.chair) || null
+    };
+
+    const saved = await persistAccountState(accountId, state, options, { bypassMonotonicClamp: true });
+    if (!saved) {
+        return { success: false, error: 'Failed to save state', accountId };
+    }
+    const logged = await persistCakeLogEntry(accountId, ledger, options);
+    if (!logged) {
+        console.error(`[cakePantry] adjustWeight: failed to append ledger for ${accountId}`);
+    }
+
+    return {
+        success: true,
+        accountId,
+        event,
+        kind: 'surgery',
+        reason,
+        approval: approvalNote,
+        actor: actor || null,
+        kg_before: kgBefore,
+        kg_after: kgAfter,
+        gained_kg: gainedKg,
+        baseline_kg: state.baseline_kg,
+        current_kg: state.current_kg,
+        milestones: state.milestones || {},
+        history_entry: historyEntry,
+        ledger
+    };
+}
+
 /**
  * List available accounts
  */
@@ -2357,7 +2577,8 @@ module.exports = {
     CLEANUP_BYTES_PER_SLICE,
     CLEANUP_SLICE_MIN,
     CLEANUP_SLICE_CAP,
-    LEAD_MULTIPLIER,
+    get LEAD_MULTIPLIER() { return leadMultiplier(); },
+    leadMultiplier,
     MAX_VISUAL_QA_GENS,
     MAX_SLICES_PER_SITTING,
     normalizeCakeType,
@@ -2392,6 +2613,7 @@ module.exports = {
     deliverCake,
     feedCake,
     inspectPantry,
+    adjustWeight,
     consumeCake,
     voidCakeDelivery,
     updateMealImages,
@@ -2412,8 +2634,11 @@ module.exports = {
     removeMenmaWorkItem,
     _test: {
         maxHistoryKg,
+        historySinceLatestSurgery,
+        reviewMilestonesAfterKgChange,
         monotonicKgBefore,
         ensureCurrentKgSeeded,
+        explicitApprovalNote,
         MEAL_FROZEN_KEYS,
         deriveMealId,
         attachMealId,

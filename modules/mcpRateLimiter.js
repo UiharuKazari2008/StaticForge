@@ -164,6 +164,7 @@ const TOOL_RATE_GROUPS = {
     consume_cake: 'write',
     void_cake_delivery: 'write',
     update_meal_images: 'write',
+    adjust_weight: 'write',
     get_work_pile: 'free',
     add_work_item: 'write',
     complete_work_item: 'write',
