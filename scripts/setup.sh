@@ -433,7 +433,7 @@ install_node_deps() {
     node "$ROOT/scripts/configure-nekoai.js"
 
     local pnpm_args=(install)
-    [[ "$FROZEN_LOCK" -eq 1 ]] && pnpm_args+=(--frozen-lockfile)
+    if [[ "$FROZEN_LOCK" -eq 1 ]]; then pnpm_args+=(--frozen-lockfile); else pnpm_args+=(--no-frozen-lockfile); fi  # CI=true defaults pnpm to frozen; lockfile pins file:../NekoAI-JS
     log "Running pnpm ${pnpm_args[*]} ..."
     (cd "$ROOT" && CI="${CI:-true}" pnpm "${pnpm_args[@]}")
     verify_geo2city

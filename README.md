@@ -121,17 +121,19 @@ Process management: `ecosystem.config.js` (PM2 app `Dreamscape`, port **9220** d
 ### Installation
 
 #### 1. Clone and Setup
-```bash
-curl -fsSL https://get.pnpm.io/install.sh | sh -
-source ~/.bashrc
+On Debian/Ubuntu use the installer (system packages, Node 20, pnpm 10.33 via corepack, native
+modules, starter config). Full details and the list of required packages:
+**[docs/CLEAN_INSTALL.md](./docs/CLEAN_INSTALL.md)**.
 
-git clone https://yozora.bluesteel.737.jp.net/UiharuKazari2008/StaticForge dreamscape
+```bash
+git clone https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge.git dreamscape
 cd dreamscape
-pnpm install
+sudo bash scripts/install-linux.sh            # add --with-service for pm2 + boot startup
 ```
 
 #### 2. Configuration
-Create `config.json` in the root directory:
+The installer creates `config.json` (random login key/PINs) and `secure.config.json` (with a
+`sessionSecret`, which the server requires) if missing. Edit them, e.g.:
 
 ```json
 {
