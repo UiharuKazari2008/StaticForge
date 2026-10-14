@@ -33,6 +33,9 @@ global.window = {
     },
     requestAnimationFrame: (cb) => cb()
 };
+global.desktopSounds = {
+    playBalloon: () => {}
+};
 global.requestAnimationFrame = global.window.requestAnimationFrame;
 
 global.document = {
@@ -66,10 +69,28 @@ const toastId = showGlassToast('info', 'Test Title', 'Test Message', false, fals
 
 assert.ok(toastId, 'showGlassToast should return a toastId');
 
-// Simulate button click via global window.handleToastButtonClick
+// Simulate button click via global window.handleToastButtonClick with numeric ID
 // Next button ID for first button is 1
 global.window.handleToastButtonClick(1);
 
-assert.strictEqual(clickedToastId, toastId, 'handleToastButtonClick should trigger button callback with toastId');
+assert.strictEqual(clickedToastId, toastId, 'handleToastButtonClick should trigger button callback with numeric ID');
+
+// Test clicking a toast button with string ID (as passed from DOM inline onclick attribute)
+let clickedToastId2 = null;
+const toastId2 = showGlassToast('info', 'Test Title 2', 'Test Message 2', false, false, null, [
+    {
+        text: 'Action 2',
+        onClick: (id) => {
+            clickedToastId2 = id;
+        }
+    }
+]);
+
+assert.ok(toastId2, 'showGlassToast should return a toastId for second toast');
+
+// Next button ID for second button is 2, pass as string '2'
+global.window.handleToastButtonClick('2');
+
+assert.strictEqual(clickedToastId2, toastId2, 'handleToastButtonClick should trigger button callback when passed string ID');
 
 console.log('✅ test-toast-button-handler.js passed');
