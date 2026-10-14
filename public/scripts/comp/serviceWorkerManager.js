@@ -69,6 +69,25 @@ const LOGIN_CRITICAL_PREFIXES = [
     '/static_images/apple-touch-icon'
 ];
 
+// Same keys as public/scripts/launch/updateEngine.js (melatonInstall / melatonInstallRecord).
+const MELATON_INSTALL_STATE_KEY = 'melatonInstall';
+const MELATON_INSTALL_RECORD_KEY = 'melatonInstallRecord';
+
+/** Files the last install could not keep. They must not reopen Setup on the next boot. */
+function filesCountingTowardInstaller(files, stragglers) {
+    const list = Array.isArray(files) ? files : [];
+    const known = new Set(Array.isArray(stragglers) ? stragglers : []);
+    if (!known.size) return list.filter((file) => file && file.url);
+    return list.filter((file) => file && file.url && !known.has(file.url));
+}
+
+/** Large set, or an install /launch already started. Stragglers never count. */
+function needsLaunchInstaller(files, options) {
+    const opts = options || {};
+    if (opts.installInProgress) return true;
+    return filesCountingTowardInstaller(files, opts.stragglers).length > WIZARD_FILE_THRESHOLD;
+}
+
 class ServiceWorkerManager {
     constructor() {
         this.swRegistration = null;
@@ -230,12 +249,19 @@ class ServiceWorkerManager {
     }
 
     _isInstallWizardActive() {
-        return Boolean(
-            this.installWizardUsed ||
-            this.bootPhase === 'wizard' ||
-            document.body.classList.contains('dreamscape-install-wizard') ||
-            this._readInstallWizardSession()?.active
-        );
+        if (this.installWizardUsed || this.bootPhase === 'wizard' || document.body.classList.contains('dreamscape-install-wizard')) {
+            return true;
+        }
+        // A leftover in-app wizard session is not the installer. It only stays on screen when
+        // /launch just refused another reboot (narrow mode, or the 3-minute guard).
+        if (!this._readInstallWizardSession()?.active) return false;
+        if (!window.isDesktop) return true;
+        try {
+            const last = Number(sessionStorage.getItem('melatonInstallRebootAt')) || 0;
+            return last > 0 && (Date.now() - last < 3 * 60 * 1000);
+        } catch (_) {
+            return false;
+        }
     }
 
     _isPreStartupUpdatePhase() {
@@ -244,6 +270,95 @@ class ServiceWorkerManager {
         }
         // Block startup update UI until runBootSequence finishes (not just pre-startup dialog handoff)
         return Boolean(window.isDesktop && !this.bootComplete);
+    }
+
+    /** Logon and the startup window: the desktop is not up yet. */
+    _isBeforeDesktop() {
+        if (!window.isDesktop) return false;
+        const ws = window.wsClient;
+        if (ws && ws.initializationCompleted) return false;
+        return true;
+    }
+
+    _melatonInstallInProgress() {
+        try {
+            const raw = localStorage.getItem(MELATON_INSTALL_STATE_KEY);
+            if (!raw) return false;
+            const state = JSON.parse(raw);
+            return !!(state && state.active);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    _melatonInstallStragglers() {
+        try {
+            const raw = localStorage.getItem(MELATON_INSTALL_RECORD_KEY);
+            if (!raw) return [];
+            const record = JSON.parse(raw);
+            return Array.isArray(record && record.stragglers) ? record.stragglers : [];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    _filesCountingTowardInstaller(files) {
+        return filesCountingTowardInstaller(files, this._melatonInstallStragglers());
+    }
+
+    _needsLaunchInstaller(files) {
+        return needsLaunchInstaller(files, {
+            installInProgress: this._melatonInstallInProgress(),
+            stragglers: this._melatonInstallStragglers()
+        });
+    }
+
+    _installerFileCount(files) {
+        const fresh = this._filesCountingTowardInstaller(files);
+        if (fresh.length) return fresh.length;
+        return Array.isArray(files) ? files.length : 0;
+    }
+
+    /**
+     * A cache push that arrives before the desktop must not paint download progress.
+     * Over the cutoff (or an install already started on /launch) reboots there; a small
+     * set waits until the desktop and then uses the tray.
+     */
+    async _holdCacheUpdateUntilDesktop(files, noToast, cacheOptions) {
+        let list = files;
+        if (!Array.isArray(list) || list.length === 0) {
+            list = await this._fetchManifest();
+        }
+        if (!this._isBeforeDesktop()) {
+            if (Array.isArray(files) && files.length) {
+                await this.updateStaticCache(files, noToast, cacheOptions);
+            } else {
+                await this.checkStaticFileUpdates(noToast);
+            }
+            return;
+        }
+        let needing = [];
+        try {
+            needing = await this.getFilesNeedingUpdate(list);
+        } catch (_) {
+            this.queueCacheUpdateUntilBoot(files, true, cacheOptions);
+            return;
+        }
+        if (this._launchRedirectStarted) return;
+        if (!this._isBeforeDesktop()) {
+            if (needing.length) await this.updateStaticCache(needing, noToast, cacheOptions);
+            return;
+        }
+        if (this._needsLaunchInstaller(needing)) {
+            if (this._rebootIntoInstaller(this._installerFileCount(needing))) return;
+        }
+        const fresh = this._filesCountingTowardInstaller(needing);
+        if (fresh.length) this.queueCacheUpdateUntilBoot(fresh, true, cacheOptions);
+    }
+
+    flushUpdatesAfterDesktop() {
+        if (this._launchRedirectStarted || this._isBeforeDesktop()) return;
+        this._flushPendingCacheUpdates();
     }
 
     isBootComplete() {
@@ -277,7 +392,10 @@ class ServiceWorkerManager {
         document.body.classList.remove('dreamscape-install-wizard');
         document.body.classList.remove('initializing');
         this._hideInstallWizardUi();
-        this._flushPendingCacheUpdates();
+        // The logon is still up. A queued download paints progress on it if flushed here.
+        if (!this._isBeforeDesktop()) {
+            this._flushPendingCacheUpdates();
+        }
         const resolvers = this._bootCompleteResolvers.splice(0);
         resolvers.forEach((fn) => fn());
     }
@@ -510,6 +628,7 @@ class ServiceWorkerManager {
     }
 
     _showInitUpdateModal(message, progress = 0) {
+        if (this._isBeforeDesktop()) return;
         if (!this._isPreStartupUpdatePhase() || !window.wsClient) return;
         this.initUpdateModalActive = true;
         window.wsClient.showWindowsUpdateModal(message, progress);
@@ -857,15 +976,18 @@ class ServiceWorkerManager {
         // Control Panel's update page (cplUpdate.js) is open: updates run in the foreground there,
         // every state goes to the page and the tray balloon stays down (runtime compiles keep it)
         const popupKind = kind !== null ? kind : this.trayPopup.kind;
-        if (typeof this.foregroundUpdateView === 'function' && popupKind !== 'runtime-compile') {
+        if (typeof this.foregroundUpdateView === 'function') {
             this._hideServiceWorkerTrayPopup();
             this.trayPopup.kind = popupKind;
             this.trayPopup.state = nextState;
             if (typeof message === 'string') this.trayPopup.message = message;
             if (progress !== null) this.trayPopup.progress = progress;
             if (filesTotal !== null) this.trayPopup.filesTotal = filesTotal;
+            const pageState = popupKind === 'runtime-compile'
+                ? (/failed|error/i.test(this.trayPopup.message) ? 'failed' : 'preparing')
+                : nextState;
             try {
-                this.foregroundUpdateView(nextState, { message: this.trayPopup.message, progress: this.trayPopup.progress, filesTotal: this.trayPopup.filesTotal });
+                this.foregroundUpdateView(pageState, { message: this.trayPopup.message, progress: this.trayPopup.progress, filesTotal: this.trayPopup.filesTotal });
             } catch (err) {
                 console.error('Update page', err);
             }
@@ -1022,7 +1144,8 @@ class ServiceWorkerManager {
                     }
                     this.loginBootPromise = this.runLoginBootSequence();
                 } else {
-                    this.bootPromise = this.runBootSequence().then(() => {
+                    this.bootPromise = this.runBootSequence().then((result) => {
+                        if (result && result.rebooted) return;
                         this._resolveBootComplete();
                     }).catch((err) => {
                         console.error('Boot sequence failed:', err);
@@ -1134,11 +1257,24 @@ class ServiceWorkerManager {
         }
         this._swWarmScheduled = true;
         ready.then(() => {
+            this.ensurePlanetSwitcherBgmCache();
             if (!this.bootComplete) {
                 this.queueCacheUpdateUntilBoot(null, true);
                 return;
             }
             this.checkStaticFileUpdates(true);
+        }).catch(() => {});
+    }
+
+    // PLANET_SWITCHER_BGM.url: public/scripts/comp/planetSwitcher.js
+    // The live hash scan still skips all of /sounds until Dreamscape is bounced;
+    // put the bed in static-cache-v1 so Teleport hits Cache Storage now.
+    ensurePlanetSwitcherBgmCache() {
+        const url = '/sounds/planet/innerlight.opus';
+        if (!caches || !caches.match) return;
+        caches.match(url).then((hit) => {
+            if (hit) return;
+            this.deleteAndPrecache(url).catch(() => {});
         }).catch(() => {});
     }
 
@@ -1318,6 +1454,10 @@ class ServiceWorkerManager {
         if (this.agentSession) {
             return;
         }
+        if (!window.isLoginPage && this._isBeforeDesktop()) {
+            await this._holdCacheUpdateUntilDesktop(null, noToast);
+            return;
+        }
         if (!window.isLoginPage && !this.bootComplete && !this._bootOrchestrating) {
             return;
         }
@@ -1406,6 +1546,10 @@ class ServiceWorkerManager {
 
     async updateStaticCache(files, noToast = false, cacheOptions = null) {
         if (this.agentSession) {
+            return;
+        }
+        if (!window.isLoginPage && this._isBeforeDesktop()) {
+            await this._holdCacheUpdateUntilDesktop(files, noToast, cacheOptions);
             return;
         }
         if (!window.isLoginPage && !this.bootComplete && !this._bootOrchestrating) {
@@ -1577,6 +1721,12 @@ class ServiceWorkerManager {
     }
 
     async getFilesNeedingUpdate(files) {
+        const prev = this._diffTail || Promise.resolve();
+        let release;
+        const gate = new Promise((resolve) => { release = resolve; });
+        this._diffTail = prev.then(() => gate, () => gate);
+        try {
+        await prev;
         const filesToUpdate = [];
         const cache = await caches.open('static-cache-v1');
         this._staticCacheKeyIndex = null;
@@ -1623,6 +1773,9 @@ class ServiceWorkerManager {
         }
         this._staticCacheKeyIndex = null;
         return filesToUpdate;
+        } finally {
+            release();
+        }
     }
 
     async fetchSwConfig() {
@@ -1915,6 +2068,7 @@ class ServiceWorkerManager {
     }
     
     showCheckingForUpdatesToast() {
+        if (this._isBeforeDesktop()) return;
         // Desktop mode: use tray popup
         if (this._isDesktopTrayMode()) {
             this._showServiceWorkerTrayPopup('checking', { message: 'Scanning for available updates…', progress: 0 });
@@ -2117,7 +2271,7 @@ class ServiceWorkerManager {
     }
 
     showUpdateToast(files) {
-        if (this._isInstallWizardActive()) {
+        if (this._isBeforeDesktop() || this._isInstallWizardActive()) {
             return;
         }
 
@@ -2154,7 +2308,7 @@ class ServiceWorkerManager {
     updateProgressToast(progress) {
         this.updateProgress = progress;
 
-        if (this._isInstallWizardActive()) {
+        if (this._isBeforeDesktop() || this._isInstallWizardActive()) {
             return;
         }
 
@@ -3333,94 +3487,112 @@ class ServiceWorkerManager {
         }
     }
 
-    // Refresh server cache and check for updates
+    // Refresh server cache and check for updates.
+    // Always: MeletonFX Update (preparing = compile static assets), then the file check.
     async refreshServerCacheAndCheck() {
+        if (this._refreshAndCheckRunning) return this._refreshAndCheckRunning;
         console.log('Refreshing server cache and checking for updates...');
-        try {
-            // Check if WebSocket client is available
-            if (window.wsClient && window.wsClient.isConnected()) {
-                // Use WebSocket to refresh server cache
-                const result = await window.wsClient.refreshServerCache();
-                console.log('Server cache refresh result:', result);
-
-                // Wait a moment for the server to process
-                setTimeout(async () => {
-                    // Check for static file updates
+        this._refreshAndCheckRunning = (async () => {
+            try {
+                if (!this.agentSession && window.cplUpdate && typeof window.cplUpdate.beginPrepare === 'function') {
+                    window.cplUpdate.beginPrepare();
+                }
+                if (typeof this.foregroundUpdateView === 'function') {
+                    this.foregroundUpdateView('preparing', { message: 'Preparing system to update...', progress: 0, filesTotal: 0 });
+                }
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    const result = await window.wsClient.refreshServerCache();
+                    console.log('Server cache refresh result:', result);
+                    if (result && result.success === false) {
+                        const err = result.error || result.message || 'The server did not finish preparing.';
+                        this._showServiceWorkerTrayPopup('checking', { kind: 'sw-update', message: err, progress: 0 });
+                        return result;
+                    }
                     await this.checkStaticFileUpdates();
-                }, 1000);
-
-            } else {
-                console.warn('WebSocket not connected, using HTTP fallback');
-                // Fallback to HTTP OPTIONS request
-                await this.checkStaticFileUpdates();
+                } else {
+                    console.warn('WebSocket not connected, using HTTP fallback');
+                    await this.checkStaticFileUpdates();
+                }
+            } catch (error) {
+                console.error('Error refreshing server cache:', error);
+                this._showServiceWorkerTrayPopup('checking', {
+                    kind: 'sw-update',
+                    message: error && error.message ? error.message : 'Failed to prepare the system to update.',
+                    progress: 0
+                });
+            } finally {
+                this._refreshAndCheckRunning = null;
             }
-        } catch (error) {
-            console.error('Error refreshing server cache:', error);
-        }
+        })();
+        return this._refreshAndCheckRunning;
     }
 
-    // Initialization step: Check for and download updates as part of startup process
-    async checkAndDownloadUpdatesForInit() {
-        const useInitModal = this._isPreStartupUpdatePhase();
+    // Small boot updates download with no dialog. A large set reboots to /launch first.
+    async checkAndDownloadUpdatesForInit(filesAlreadyKnown) {
         try {
             console.log('🔍 Checking for application updates during startup...');
 
-            if (useInitModal) {
-                this._setPreStartupUpdateStageMessage('Checking for updates...');
-            }
+            let filesToUpdate = Array.isArray(filesAlreadyKnown) ? filesAlreadyKnown : null;
+            if (!filesToUpdate) {
+                const response = await fetch('/', {
+                    method: 'OPTIONS',
+                    headers: {
+                        'X-Service-Worker-Version': '2.0',
+                        'X-Requested-With': 'ServiceWorker'
+                    }
+                });
 
-            // Make the actual request
-            const response = await fetch('/', {
-                method: 'OPTIONS',
-                headers: {
-                    'X-Service-Worker-Version': '2.0',
-                    'X-Requested-With': 'ServiceWorker'
+                if (!response.ok) {
+                    console.log('No update information available, continuing...');
+                    this.initialCheckDone = true;
+                    return { success: true, filesDownloaded: 0 };
                 }
-            });
 
-            if (!response.ok) {
-                console.log('No update information available, continuing...');
-                this.initialCheckDone = true;
-                return; // No updates available
+                const files = await response.json();
+                filesToUpdate = await this.getFilesNeedingUpdate(files);
             }
 
-            const files = await response.json();
+            if (this._needsLaunchInstaller(filesToUpdate)) {
+                const count = this._installerFileCount(filesToUpdate);
+                if (this._rebootIntoInstaller(count)) {
+                    return { rebooted: true };
+                }
+                return { needsWizard: true, files: filesToUpdate };
+            }
 
-            // Check which files need updating
-            const filesToUpdate = await this.getFilesNeedingUpdate(files);
-
-            if (filesToUpdate.length === 0) {
+            const fresh = this._filesCountingTowardInstaller(filesToUpdate);
+            if (fresh.length === 0) {
                 console.log('✅ No updates available');
                 this.initialCheckDone = true;
-                return; // No updates needed
+                return { success: true, filesDownloaded: 0 };
             }
 
-            console.log(`📦 Found ${filesToUpdate.length} updates to download`);
+            console.log(`📦 Found ${fresh.length} updates to download`);
 
-            if (useInitModal) {
-                this._showInitUpdateModal(`Downloading ${filesToUpdate.length} updates...`, 0);
-            }
-
-            // Start downloading updates with integrated progress - AWAIT the result
-            const downloadResult = await this.downloadUpdatesForInit(filesToUpdate);
+            // No System Update dialog before the desktop. /launch owns the large-update progress.
+            const downloadResult = await this.downloadUpdatesForInit(fresh, { silent: true });
             this.initialCheckDone = true;
             console.log('Update download process completed:', downloadResult);
-
-            // Restart-required updates reload inside downloadUpdatesForInit
+            if (downloadResult && this._launchRedirectStarted) {
+                return { rebooted: true };
+            }
+            return downloadResult;
 
         } catch (error) {
             console.error('❌ Error during update check:', error);
-            if (useInitModal && this.initUpdateModalActive) {
+            if (this.initUpdateModalActive) {
                 this._hideInitUpdateModal();
             }
             this.initialCheckDone = true;
             // Don't fail the startup process for update check errors - continue normally
+            return { success: false };
         }
     }
 
     // Download updates with integrated progress for initialization
-    async downloadUpdatesForInit(files) {
-        const useInitModal = this._isPreStartupUpdatePhase();
+    async downloadUpdatesForInit(files, options = {}) {
+        const silent = options.silent === true || this._isBeforeDesktop();
+        const useInitModal = !silent && this._isPreStartupUpdatePhase();
 
         const onProgress = ({ completed, total, progress }) => {
             this.lastUpdateCounts = { completed, total };
@@ -3443,7 +3615,7 @@ class ServiceWorkerManager {
                 () => this.forceRestart(),
                 null
             );
-        } else if (this._isDesktopTrayMode()) {
+        } else if (!silent && this._isDesktopTrayMode()) {
             this.showUpdateToast(files);
         }
 
@@ -4166,6 +4338,7 @@ class ServiceWorkerManager {
     }
 
     async _runInstallWizard(filesToUpdate) {
+        if (this._launchRedirectStarted) return { success: false, rebooted: true };
         this._showInstallWizardUi(filesToUpdate.length);
         this._updateInstallWizardUi(0, filesToUpdate.length, 'download');
         const result = await this.attachToDownloadProgress({
@@ -4196,15 +4369,19 @@ class ServiceWorkerManager {
      * here finishes the job, so the two pages never bounce. Returns true when navigating.
      */
     _rebootIntoInstaller(count) {
+        if (this._launchRedirectStarted) return true;
         if (!window.isDesktop) return false;
         let last = 0;
         try {
             last = Number(sessionStorage.getItem('melatonInstallRebootAt')) || 0;
         } catch (_) { /* no guard then: one reboot is still safe */ }
-        if (Date.now() - last < 3 * 60 * 1000) return false;
+        if (last && Date.now() - last < 3 * 60 * 1000) return false;
         try {
             sessionStorage.setItem('melatonInstallRebootAt', String(Date.now()));
         } catch (_) { /* best effort */ }
+        this._launchRedirectStarted = true;
+        this._hideInitUpdateModal();
+        this._hideInstallWizardUi();
         console.log(`[boot] ${count} files to update: rebooting into the installer (/launch)`);
         // restartClientNavigate: public/scripts/comp/modalUtils.js (desktop → /launch)
         if (typeof restartClientNavigate === 'function') restartClientNavigate();
@@ -4224,7 +4401,9 @@ class ServiceWorkerManager {
         let installWizardUsed = false;
         try {
             const resumeSession = this._readInstallWizardSession();
-            if (resumeSession && resumeSession.active) {
+            // Desktop: a leftover wizard session must not skip the /launch reboot.
+            // Narrow mode still finishes with the in-app wizard.
+            if (resumeSession && resumeSession.active && !window.isDesktop) {
                 installWizardUsed = true;
                 this.installWizardUsed = true;
                 this.bootPhase = resumeSession.phase === 'verify' ? 'verify' : 'wizard';
@@ -4243,7 +4422,6 @@ class ServiceWorkerManager {
                 return;
             }
             this.bootPhase = 'checking';
-            this._setPreStartupUpdateStageMessage('Checking for updates…');
             // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
             if (window.bootUiDebug) {
                 await window.bootUiDebug.gate('system-update', { detail: 'Checking for updates…' });
@@ -4254,15 +4432,21 @@ class ServiceWorkerManager {
             let lastPendingFingerprint = '';
 
             while (true) {
+                if (this._launchRedirectStarted) return { rebooted: true };
                 this.bootPhase = this.bootPhase === 'wizard' ? 'wizard' : 'checking';
                 const manifest = await this._fetchManifest();
-                let filesToUpdate = await this.getFilesNeedingUpdate(manifest);
+                const filesToUpdate = await this.getFilesNeedingUpdate(manifest);
+                const fresh = this._filesCountingTowardInstaller(filesToUpdate);
+                const installInProgress = this._melatonInstallInProgress();
 
-                if (filesToUpdate.length === 0) {
+                // Stragglers are fetched at runtime. They must not open update progress or Setup.
+                if (fresh.length === 0 && !installInProgress) {
                     break;
                 }
 
-                const pendingFingerprint = filesToUpdate.map((f) => `${f.url}:${f.hash}`).sort().join('|');
+                const pendingSource = fresh.length ? fresh : filesToUpdate;
+                const pendingFingerprint = pendingSource.map((f) => `${f.url}:${f.hash}`).sort().join('|')
+                    || (installInProgress ? 'melaton-install' : '');
                 if (pendingFingerprint === lastPendingFingerprint) {
                     verifyPass++;
                 } else {
@@ -4274,26 +4458,39 @@ class ServiceWorkerManager {
                     break;
                 }
 
-                if (filesToUpdate.length > WIZARD_FILE_THRESHOLD || installWizardUsed) {
-                    // Desktop: large updates install in /launch's Setup now (Yozora #419)
-                    if (!installWizardUsed && this._rebootIntoInstaller(filesToUpdate.length)) {
-                        return;
+                // More than the cutoff, or an install /launch already started: leave before any dialog.
+                if (!installWizardUsed && this._needsLaunchInstaller(filesToUpdate)) {
+                    if (this._rebootIntoInstaller(this._installerFileCount(filesToUpdate))) {
+                        this._clearInstallWizardSession();
+                        return { rebooted: true };
                     }
                     installWizardUsed = true;
                     this.installWizardUsed = true;
+                }
+
+                if (installWizardUsed) {
+                    const wizardFiles = fresh.length ? fresh : filesToUpdate;
                     this.bootPhase = 'wizard';
                     // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
                     if (window.bootUiDebug) {
                         await window.bootUiDebug.gate('install-wizard', { detail: 'Install wizard' });
                     }
-                    await this._runInstallWizard(filesToUpdate);
+                    await this._runInstallWizard(wizardFiles);
+                    if (this._launchRedirectStarted) return { rebooted: true };
                     this.bootPhase = 'verify';
-                    this._writeInstallWizardSession({ phase: 'verify', pendingCount: filesToUpdate.length });
+                    this._writeInstallWizardSession({ phase: 'verify', pendingCount: wizardFiles.length });
                     this._updateInstallWizardUi(0, 0, 'verify');
                     continue;
                 }
 
-                await this.checkAndDownloadUpdatesForInit();
+                const outcome = await this.checkAndDownloadUpdatesForInit(fresh);
+                if (outcome && outcome.rebooted) return { rebooted: true };
+                if (outcome && outcome.userChoice === 'restart') break;
+                if (outcome && outcome.needsWizard) {
+                    installWizardUsed = true;
+                    this.installWizardUsed = true;
+                    continue;
+                }
                 this.bootPhase = 'verify';
             }
 

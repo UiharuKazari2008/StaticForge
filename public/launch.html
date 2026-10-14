@@ -235,6 +235,7 @@
             }
         })();
     </script>
+    <link rel="stylesheet" href="/css/desktop-cursors.css">
     <link rel="stylesheet" href="/css/launch-boot.css">
     <link rel="stylesheet" href="/css/launch-install.css">
 
@@ -412,13 +413,13 @@
             pointer-events: auto;
             -webkit-app-region: drag;
             app-region: drag;
-            cursor: grab;
+            cursor: var(--c-grab);
             flex: 1 1 auto;
             min-width: 50px;
         }
 
         #titlebar-grab-center:active {
-            cursor: grabbing;
+            cursor: var(--c-grabbing);
         }
 
         /* Titlebar clickable areas */
@@ -429,7 +430,7 @@
             pointer-events: auto;
             -webkit-app-region: no-drag;
             app-region: no-drag;
-            cursor: default;
+            cursor: var(--c-default);
             flex: 0 0 auto;
             min-width: 0;
         }
@@ -455,7 +456,7 @@
         #titlebar-grab-area [role="button"] {
             -webkit-app-region: no-drag;
             app-region: no-drag;
-            cursor: default;
+            cursor: var(--c-default);
         }
 
         .launch-container {
@@ -555,14 +556,14 @@
             padding: 0.75rem 1.5rem;
             border-radius: 0.5rem;
             font-size: 1rem;
-            cursor: pointer;
+            cursor: var(--c-pointer);
             transition: background-color 0.2s;
         }
 
         .retry-button:disabled,
         .continue-button:disabled {
             background: #6b7280;
-            cursor: not-allowed;
+            cursor: var(--c-not-allowed);
         }
 
         .rescue-button {
@@ -572,7 +573,7 @@
             padding: 0.75rem 1.5rem;
             border-radius: 0.5rem;
             font-size: 1rem;
-            cursor: pointer;
+            cursor: var(--c-pointer);
             transition: background-color 0.2s;
         }
 
@@ -695,7 +696,7 @@
             border-radius: 8px;
             padding: 8px 10px;
             font-size: 12px;
-            cursor: pointer;
+            cursor: var(--c-pointer);
         }
 
         html.dreamscape-design-mode .dreamscape-launch-design-btn-primary {

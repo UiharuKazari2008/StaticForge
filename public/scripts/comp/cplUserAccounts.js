@@ -12,6 +12,8 @@
  * default pictures from the VM, or Browse for more pictures: drawn into 128x128 and uploaded).
  * Pictures live on the server (modules/accountPictures.js); the start menu shows the signed-in
  * account's (localStorage userType: admin = Administrator, otherwise Guest). Admins only change.
+ * Admins also get "Use Vista Logon" under the list (wsClient.setUseVistaLogon, one server-wide
+ * choice): the logon screen reads it from /status (websocket.js _setVistaLogon).
  */
 (function (root) {
     'use strict';
@@ -105,11 +107,26 @@
         return `<li><button type="button" class="cpl-link cpl-ua-link" data-cpl-ua="${action}">${shield ? `<img src="${ART}/shield-uac-16.png" alt="">` : '<span class="cpl-ua-link-pad"></span>'}${esc(label)}</button></li>`;
     }
 
+    /** Use Vista Logon (config.useVistaLogon, one choice for the server): the Control Panel check box. */
+    function vistaLogonOption() {
+        const on = !!(pins && pins.useVistaLogon);
+        return `
+            <div class="cpl-settings-host">
+                <div class="desktop-settings-option">
+                    <button type="button" class="btn-secondary toggle-btn icon-only indicator" data-cpl-ua="vista-logon" data-state="${on ? 'on' : 'off'}" aria-pressed="${on}" aria-label="Use Vista Logon"></button>
+                    <div class="desktop-settings-option-body">
+                        <span class="desktop-settings-option-label">Use Vista Logon</span>
+                        <p class="desktop-settings-hint">Start at the Windows Vista Welcome screen instead of the Classic logon dialog. The connection and startup windows use Windows Vista Basic. Applies to every computer that signs in to this server.</p>
+                    </div>
+                </div>
+            </div>`;
+    }
+
     function listView() {
         return `
             <h1 class="cpl-page-title">Choose the account you would like to change</h1>
             <div class="cpl-ua-list">${tile('administrator')}${tile('guest')}</div>
-            ${isAdmin() ? '' : '<p class="cpl-ua-note">Sign in as the Administrator to change these accounts.</p>'}`;
+            ${isAdmin() ? vistaLogonOption() : '<p class="cpl-ua-note">Sign in as the Administrator to change these accounts.</p>'}`;
     }
 
     function accountView() {
@@ -222,6 +239,14 @@
             } catch (_err) { toast('error', 'The guest account could not be changed.'); }
             return paint();
         }
+        if (action === 'vista-logon' && client && isAdmin()) {
+            const enable = !(pins && pins.useVistaLogon);
+            try {
+                const res = await client.setUseVistaLogon(enable);
+                if (res && res.success) pins = { ...(pins || {}), useVistaLogon: res.useVistaLogon };
+            } catch (_err) { toast('error', 'The logon setting could not be changed.'); }
+            return paint();
+        }
         if (action === 'password-save' && client) {
             const pin = main.querySelector('[data-cpl-ua-field="pin"]').value.trim();
             const confirm = main.querySelector('[data-cpl-ua-field="confirm"]').value.trim();
@@ -315,7 +340,7 @@
                 <div class="cpl-task-group cpl-task-group--see-also">
                     <h3 class="cpl-task-heading">See also</h3>
                     <ul class="cpl-task-list">
-                        ${cpl.taskLinkHtml('Authentication', 'nav', 'authentication')}
+                        ${cpl.taskLinkHtml('Dreamscape Services', 'nav', 'authentication')}
                     </ul>
                 </div>`,
             body: () => '<div class="cpl-ua-page"></div>',

@@ -776,13 +776,9 @@ textarea {
     z-index: auto;
 }
 
-.character-autocomplete-view-bar .custom-dropdown {
+.character-autocomplete-view-bar .custom-dropdown-btn {
     flex: 1 1 0;
     min-width: 0;
-}
-
-.character-autocomplete-view-bar .custom-dropdown-btn {
-    width: 100%;
     min-height: 1.6em;
     font-size: 0.7rem;
     display: flex;
@@ -805,7 +801,7 @@ textarea {
     white-space: nowrap;
 }
 
-.character-autocomplete-view-bar .custom-dropdown.autofill-view-control-cycled .custom-dropdown-btn {
+.character-autocomplete-view-bar .custom-dropdown-btn.autofill-view-control-cycled {
     border-color: var(--primary-color);
     color: var(--primary-color-light);
 }
@@ -871,7 +867,7 @@ textarea {
     justify-content: space-between;
     align-items: center;
     touch-action: manipulation;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .character-autocomplete-item:hover:not(:disabled) {
@@ -1216,7 +1212,7 @@ textarea {
 
 .character-autocomplete-item.no-results {
     order: -1;
-    cursor: default;
+    cursor: var(--c-default);
     pointer-events: none;
 }
 
@@ -1750,7 +1746,7 @@ textarea {
     padding: 8px;
     transition: var(--transition-tray-menu);
     touch-action: manipulation;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .enhancer-group:hover:not(:disabled) {

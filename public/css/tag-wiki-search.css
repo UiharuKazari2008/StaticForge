@@ -122,7 +122,7 @@
     border: none;
     padding: 0;
     margin: 0;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #tagWikiSearchModal.tag-wiki-results-overlay-open .tag-wiki-results-overlay-backdrop:not(.hidden) {
@@ -362,7 +362,7 @@
     width: 100%;
     height: 100%;
     border: 0;
-    background: var(--glass-layer-dark-5);
+    background: #fff;
 }
 
 .tag-wiki-display-content:has(.tag-wiki-page) {
@@ -622,13 +622,14 @@
     width: 64px;
     height: 64px;
     flex-shrink: 0;
+    filter: brightness(0);
 }
 
 .tag-wiki-display-content .dreamwiki-home .form-row .logo-text {
     margin: 0;
     font-size: 2.75rem;
     font-weight: bold;
-    color: #ffffff;
+    color: #1a1a1a;
 }
 
 .tag-wiki-display-content .dreamwiki-home .dreamwiki-home-small-sep .form-section-separator {
@@ -727,7 +728,7 @@
 }
 
 .tag-wiki-display-content .dreamwiki-recent-item {
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .tag-wiki-display-content .dreamwiki-recent-empty {
@@ -735,6 +736,184 @@
     text-align: center;
     font-size: 0.9rem;
     color: var(--text-muted);
+}
+
+/* Grimoire document sheet. Home, search, loading, errors, lookup, and articles
+   share this light palette. Applets ([data-dsap]) and the remote page (iframe)
+   keep their own colors. The scrollbar thumb still uses --glass-layer-5. */
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)),
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) {
+    background: #fff;
+    color: #1a1a1a;
+    --text-primary: #1a1a1a;
+    --text-secondary: #333;
+    --text-muted: #5c5c5c;
+    --text-accent: #1a1a1a;
+    --text-accent-tinted: #333;
+    --accent-color: #c45100;
+    --danger-color: #b00020;
+    --primary-glass-color: #c45100;
+    --primary-glass-border: #a34300;
+    --danger-glass-color: #b00020;
+    --danger-glass-border: #8a0018;
+    --btn-hover-bg-primary: #a34300;
+    --btn-hover-text-primary: #fff;
+    --link-color: #0073ff;
+    --wiki-link-color: #0073ff;
+    --wiki-link-color-hover: #0056c7;
+    --wiki-quote-text: #444;
+    --wiki-quote-border: #c9a000;
+    --wiki-header-primary: #111;
+    --wiki-header-secondary: #333;
+    --wiki-divider-color: #d5d5d5;
+    --wiki-list-marker: #333;
+    --wiki-table-bg: #fff;
+    --wiki-table-header-bg: #f6f1ea;
+    --wiki-table-border: #d0d0d0;
+    --wiki-code-bg: #f3f3f3;
+    --wiki-code-text: #1a1a1a;
+    --wiki-section-bg: #f7f7f7;
+    --wiki-section-border: #ddd;
+    --wiki-expand-bg: #f4f4f4;
+    --wiki-expand-header-bg: #eee;
+    --wiki-expand-header-text: #222;
+    --wiki-expand-header-hover: #e4e4e4;
+    --glass-layer-1: #f7f7f7;
+    --glass-layer-2: #f3f3f3;
+    --glass-layer-3: #eee;
+    --glass-layer-4: #e8e8e8;
+    --glass-layer-dark-1: #fafafa;
+    --glass-layer-dark-2: #f6f6f6;
+    --glass-layer-dark-3: #f3f3f3;
+    --glass-layer-dark-4: #fff;
+    --glass-layer-dark-5: #eee;
+    --glass-border-2: #d0d0d0;
+    --glass-border-3: #ccc;
+    --glass-border-4: #ddd;
+    --btn-hover-border-primary: #c45100;
+}
+
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .tag-wiki-page,
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .tag-wiki-page {
+    color: #1a1a1a;
+    background: #fff;
+}
+
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-secondary:hover:not(:disabled),
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-secondary:hover:not(:disabled) {
+    color: #1a1a1a;
+    background: #e4e4e4;
+    border-color: #b5b5b5;
+}
+
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-primary,
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-primary {
+    color: #fff;
+}
+
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-primary:hover:not(:disabled),
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-primary:hover:not(:disabled) {
+    color: #fff;
+}
+
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page :is(details, details.tag-wiki-expand-section),
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page :is(details, details.tag-wiki-expand-section) {
+    background-color: #f7f7fb;
+    border-color: #d0d4dc;
+}
+
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page .spoiler,
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page .spoiler {
+    background: #111;
+    color: #111;
+    border-color: #111;
+}
+
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page .spoiler:hover,
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page .spoiler:hover {
+    background: #111;
+    color: #fff;
+    border-color: #111;
+}
+
+/* Offline NovelAI docs (rdf://docs.novelai.jp): navy page, white type, yellow accent. */
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)):has([data-grimoire-site="novelai"]),
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)):has([data-grimoire-site="novelai"]) {
+    background: #13152c;
+    color: #fff;
+    --text-primary: #fff;
+    --text-secondary: #fff;
+    --text-muted: #c5c6d4;
+    --text-accent: #f8f010;
+    --text-accent-tinted: #f8f010;
+    --accent-color: #f8f010;
+    --primary-glass-color: #f8f010;
+    --primary-glass-border: #d6cf10;
+    --btn-hover-bg-primary: #fff36a;
+    --btn-hover-text-primary: #13152c;
+    --link-color: #f8f010;
+    --wiki-link-color: #f8f010;
+    --wiki-link-color-hover: #fff36a;
+    --wiki-quote-text: #fff;
+    --wiki-quote-border: #f8f010;
+    --wiki-header-primary: #fff;
+    --wiki-header-secondary: #fff;
+    --wiki-divider-color: #3a3d5c;
+    --wiki-list-marker: #f8f010;
+    --wiki-table-bg: #1c1f3d;
+    --wiki-table-header-bg: #242748;
+    --wiki-table-border: #3a3d5c;
+    --wiki-code-bg: #1c1f3d;
+    --wiki-code-text: #fff;
+    --wiki-section-bg: #1c1f3d;
+    --wiki-section-border: #3a3d5c;
+    --wiki-expand-bg: #1c1f3d;
+    --wiki-expand-header-bg: #242748;
+    --wiki-expand-header-text: #fff;
+    --wiki-expand-header-hover: #2c3054;
+    --glass-layer-1: #1c1f3d;
+    --glass-layer-2: #242748;
+    --glass-layer-3: #2c3054;
+    --glass-layer-4: #34385e;
+    --glass-layer-dark-1: #1c1f3d;
+    --glass-layer-dark-2: #242748;
+    --glass-layer-dark-3: #2c3054;
+    --glass-layer-dark-4: #13152c;
+    --glass-layer-dark-5: #1c1f3d;
+    --glass-border-2: #3a3d5c;
+    --glass-border-3: #4a4e70;
+    --glass-border-4: #3a3d5c;
+    --btn-hover-border-primary: #f8f010;
+}
+
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)):has([data-grimoire-site="novelai"]) .tag-wiki-page,
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)):has([data-grimoire-site="novelai"]) .tag-wiki-page {
+    background: #13152c;
+    color: #fff;
+}
+
+#tagWikiSearchModal [data-grimoire-site="novelai"] :is(a, .wiki-static-link, .wiki-static-index-link),
+.wiki-page-viewer-modal [data-grimoire-site="novelai"] :is(a, .wiki-static-link, .wiki-static-index-link) {
+    color: #f8f010;
+}
+
+#tagWikiSearchModal [data-grimoire-site="novelai"] :is(a, .wiki-static-link, .wiki-static-index-link):hover,
+.wiki-page-viewer-modal [data-grimoire-site="novelai"] :is(a, .wiki-static-link, .wiki-static-index-link):hover {
+    color: #fff36a;
+}
+
+#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])) [data-grimoire-site="novelai"] :is(details, details.tag-wiki-expand-section),
+.wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])) [data-grimoire-site="novelai"] :is(details, details.tag-wiki-expand-section) {
+    background-color: #1c1f3d;
+    border-color: #3a3d5c;
+    color: #fff;
+}
+
+#tagWikiSearchModal .tag-wiki-search-display:has([data-grimoire-site="novelai"]) .btn-primary,
+.wiki-page-viewer-modal .tag-wiki-search-display:has([data-grimoire-site="novelai"]) .btn-primary {
+    color: #13152c;
+    background: #f8f010;
+    border-color: #d6cf10;
 }
 
 .tag-wiki-page {
@@ -818,7 +997,7 @@
 }
 
 .tag-wiki-page-content.wiki-static-doc table.sortable th:not(.unsortable) {
-    cursor: pointer;
+    cursor: var(--c-pointer);
     user-select: none;
 }
 
@@ -1537,7 +1716,7 @@
     border: 1px solid var(--glass-border-3);
     border-radius: 999px;
     padding: 4px 0 4px 12px; /* left breathing for icon+input area; right gap provided by button margin */
-    box-shadow: var(--glass-shadow-2);
+    box-shadow: 0 1px 6px rgba(32, 33, 36, 0.22);
     /* no fixed height — let padding + content define natural height for better breathing room */
 }
 
@@ -1573,7 +1752,7 @@
 
 .search-gear {
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: var(--c-pointer);
     padding: 3px 6px; /* balanced vertical + horizontal padding for comfortable click target + hover background */
     font-size: 0.95rem;
     border-radius: 4px;
@@ -1632,7 +1811,7 @@
 .google-search-result {
     padding: 6px 4px;
     border-radius: 6px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     transition: background 0.1s ease;
 }
 
@@ -1725,7 +1904,7 @@
     padding: 2px 10px;
     font-size: 0.8rem;
     color: var(--text-accent-tinted);
-    cursor: pointer;
+    cursor: var(--c-pointer);
     transition: all 0.1s ease;
 }
 .tag-pill:hover {
@@ -1813,10 +1992,9 @@
 }
 
 .grimoire-google-home .brand-logo {
-    max-width: 500px;
-    width: 100%;
-    height: auto;
     display: block;
+    width: min(340px, 86%);
+    height: auto;
     margin: 0 auto;
 }
 
@@ -1833,7 +2011,7 @@
     border-radius: 999px;
     padding: 0 16px;
     margin-bottom: 18px;
-    box-shadow: var(--glass-shadow-2);
+    box-shadow: 0 1px 6px rgba(32, 33, 36, 0.22);
 }
 
 .grimoire-google-home .search-box-large i:not(.search-gear) {
@@ -1854,6 +2032,21 @@
     outline: none;
 }
 
+/* The pill is the box. Desktop text fields would paint their own bevel inside it. */
+#tagWikiSearchModal :is(.google-large-input, .search-page-input),
+#tagWikiSearchModal :is(.google-large-input, .search-page-input):hover,
+#tagWikiSearchModal :is(.google-large-input, .search-page-input):focus,
+.wiki-page-viewer-modal :is(.google-large-input, .search-page-input),
+.wiki-page-viewer-modal :is(.google-large-input, .search-page-input):hover,
+.wiki-page-viewer-modal :is(.google-large-input, .search-page-input):focus {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    outline: none;
+    color: #1a1a1a;
+}
+
 .grimoire-google-home .google-actions {
     display: flex;
     gap: 12px;
@@ -1867,7 +2060,7 @@
     padding: 8px 18px;
     border-radius: 4px;
     font-size: 0.9rem;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .grimoire-google-home .google-action-btn:hover {

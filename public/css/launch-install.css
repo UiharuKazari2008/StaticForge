@@ -24,7 +24,7 @@
     font-family: Tahoma, 'MS Sans Serif', 'Noto Sans', sans-serif;
     font-size: 11px;
     color: #000;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 /* The window closes; the aurora stays for the last few seconds */

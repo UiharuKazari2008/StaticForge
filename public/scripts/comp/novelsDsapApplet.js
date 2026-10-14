@@ -23,7 +23,7 @@ function novelsDsapResolveWorkspaceId(host) {
 const novelsDsapScopedCss = `
 [data-dsap="novels"] { padding: 1rem; color: #eee; }
 [data-dsap="novels"] .novels-header { margin-bottom: 1rem; }
-[data-dsap="novels"] .novels-list-item { display:flex; justify-content:space-between; align-items:center; padding:0.6rem 0.75rem; margin-bottom:0.35rem; border-radius:6px; background:rgba(0,0,0,0.2); cursor:pointer; }
+[data-dsap="novels"] .novels-list-item { display:flex; justify-content:space-between; align-items:center; padding:0.6rem 0.75rem; margin-bottom:0.35rem; border-radius:6px; background:rgba(0,0,0,0.2); cursor: var(--c-pointer); }
 [data-dsap="novels"] .novels-list-item:hover { background:rgba(0,0,0,0.35); }
 [data-dsap="novels"] .novels-editor-textarea { width:100%; min-height:280px; margin:0.5rem 0; font-family:monospace; line-height:1.5; }
 [data-dsap="novels"] .novels-actions { display:flex; gap:0.35rem; flex-wrap:wrap; margin-top:0.5rem; }

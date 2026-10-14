@@ -505,7 +505,7 @@
     background: var(--glass-layer-2);
     color: inherit;
     padding: 6px 8px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .studio-change-row.is-on {

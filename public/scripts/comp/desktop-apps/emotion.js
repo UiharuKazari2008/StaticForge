@@ -523,7 +523,7 @@ function emotionRenderStartStop() {
     const icon = document.createElement('i');
     icon.className = desktopEmotion.running ? 'fas fa-stop' : 'fas fa-play';
     const label = document.createElement('span');
-    label.textContent = desktopEmotion.running ? ' Stop' : ' Start';
+    label.textContent = desktopEmotion.running ? 'Stop' : 'Start';
     btn.appendChild(icon);
     btn.appendChild(label);
 }
@@ -642,11 +642,14 @@ const emotionModeMenuConfig = {
 };
 
 function emotionBuildModeButton() {
-    const btn = emotionCreateButton('btn-secondary', 'Mode', 'fas fa-film');
+    const btn = emotionCreateButton('btn-secondary btn-small explorer-command-btn has-menu', 'Mode', 'fas fa-film');
     btn.id = 'emotionModeBtn';
     const label = document.createElement('span');
     label.className = 'emotion-mode-btn-label';
-    btn.appendChild(label);
+    const glyph = document.createElement('span');
+    glyph.className = 'explorer-command-glyph';
+    glyph.setAttribute('aria-hidden', 'true');
+    btn.append(label, glyph);
     contextMenu.attachClickMenuToElement(btn, emotionModeMenuConfig);
     setTimeout(emotionRenderModeButton, 0);
     fetchLocalAnimateStatus().then(emotionRenderModeButton);
@@ -681,8 +684,10 @@ const ensureDesktopEmotionModal = function () {
 
     modal = document.createElement('div');
     modal.id = DESKTOP_EMOTION_MODAL_ID;
-    modal.className = 'modal resizeable-window toolbar-visible hidden';
+    modal.className = 'modal resizeable-window hidden';
     modal.dataset.windowIdentifier = 'desktopEmotion';
+    // Vista (#485): a light window with Explorer's command bar (vista-explorer.css)
+    modal.dataset.windowClient = 'light';
     modal.dataset.windowDefaultWidth = '860';
     modal.dataset.windowDefaultHeight = '560';
     modal.dataset.windowMinWidth = '640';
@@ -703,19 +708,24 @@ const ensureDesktopEmotionModal = function () {
     titleMain.appendChild(titleText);
     title.appendChild(titleMain);
 
+    const commandBar = document.createElement('div');
+    commandBar.className = 'explorer-actions-header';
+    commandBar.setAttribute('role', 'toolbar');
     const toolbar = document.createElement('div');
-    toolbar.className = 'modal-window-title-toolbar';
+    toolbar.className = 'explorer-command-set';
+    const runSet = document.createElement('div');
+    runSet.className = 'explorer-command-set';
+    commandBar.appendChild(toolbar);
+    commandBar.appendChild(runSet);
 
-    const loadBtn = emotionCreateButton('btn-secondary', 'Open image', 'fas fa-folder-open');
-    const loadLabel = document.createElement('span');
-    loadLabel.textContent = ' Open Image';
-    loadBtn.appendChild(loadLabel);
+    const loadBtn = emotionCreateButton('btn-secondary btn-small explorer-command-btn has-menu', 'Open image', 'fas fa-folder-open');
+    loadBtn.append('Open Image');
+    const loadGlyph = document.createElement('span');
+    loadGlyph.className = 'explorer-command-glyph';
+    loadGlyph.setAttribute('aria-hidden', 'true');
+    loadBtn.appendChild(loadGlyph);
     contextMenu.attachClickMenuToElement(loadBtn, emotionLoadImageMenuConfig);
     toolbar.appendChild(loadBtn);
-
-    const divider = document.createElement('div');
-    divider.className = 'emotion-toolbar-divider';
-    toolbar.appendChild(divider);
 
     // Compact number inputs like Studio's #manualPrintsCount, with a muted FA icon to the left
     // so Frames vs FPS stay readable without a text label in the toolbar.
@@ -733,7 +743,7 @@ const ensureDesktopEmotionModal = function () {
         input.inputMode = 'numeric';
         input.title = labelText + ' (hover + scroll to adjust)';
         input.setAttribute('aria-label', labelText);
-        input.className = 'form-control hover-show colored';
+        input.className = 'form-control';
         toolbar.appendChild(icon);
         toolbar.appendChild(input);
         return input;
@@ -743,7 +753,7 @@ const ensureDesktopEmotionModal = function () {
 
     toolbar.appendChild(emotionBuildModeButton());
 
-    const loopToggle = emotionCreateButton('btn-secondary icon-only indicator', 'Loop', 'fas fa-repeat');
+    const loopToggle = emotionCreateButton('btn-secondary btn-small explorer-command-btn', 'Loop', 'fas fa-repeat');
     loopToggle.id = 'emotionLoopToggle';
     loopToggle.dataset.state = desktopEmotion.loop ? 'on' : 'off';
     loopToggle.setAttribute('aria-pressed', String(desktopEmotion.loop));
@@ -754,11 +764,7 @@ const ensureDesktopEmotionModal = function () {
     });
     toolbar.appendChild(loopToggle);
 
-    const spacer = document.createElement('div');
-    spacer.className = 'emotion-toolbar-spacer';
-    toolbar.appendChild(spacer);
-
-    const directorToggle = emotionCreateButton('btn-secondary icon-only indicator', 'Auto prompt via Director', 'fas fa-wand-magic-sparkles');
+    const directorToggle = emotionCreateButton('btn-secondary btn-small explorer-command-btn', 'Auto prompt via Director', 'fas fa-wand-magic-sparkles');
     directorToggle.dataset.state = 'off';
     directorToggle.setAttribute('aria-pressed', 'false');
     directorToggle.addEventListener('click', () => {
@@ -769,14 +775,12 @@ const ensureDesktopEmotionModal = function () {
             emotionRunAutoPrompt();
         }
     });
-    toolbar.appendChild(directorToggle);
+    runSet.appendChild(directorToggle);
 
     // Content (icon + label) is owned entirely by emotionRenderStartStop() below.
-    const startStopBtn = emotionCreateButton('btn-primary emotion-start-stop-btn', 'Start', null);
+    const startStopBtn = emotionCreateButton('btn-primary btn-small explorer-command-btn emotion-start-stop-btn', 'Start', null);
     startStopBtn.addEventListener('click', emotionHandleStartStopClick);
-    toolbar.appendChild(startStopBtn);
-
-    title.appendChild(toolbar);
+    runSet.appendChild(startStopBtn);
 
     const focusOverlay = document.createElement('div');
     focusOverlay.className = 'modal-focus-overlay';
@@ -795,7 +799,7 @@ const ensureDesktopEmotionModal = function () {
 
     // ---- Body: left preview panel, right prompt + controls column ----
     const content = document.createElement('div');
-    content.className = 'modal-content modal-padding dark';
+    content.className = 'modal-content dark';
     const body = document.createElement('div');
     body.className = 'modal-body emotion-body';
 
@@ -865,6 +869,7 @@ const ensureDesktopEmotionModal = function () {
 
     body.appendChild(previewPanel);
     body.appendChild(promptInput);
+    content.appendChild(commandBar);
     content.appendChild(body);
 
     modal.appendChild(title);

@@ -103,7 +103,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
         radial-gradient(ellipse 70% 55% at 50% 100%, #78b6ff, #2c6bd6 55%, hsl(0 0% 100% / 0%) 80%),
         linear-gradient(#5a78b8, #1e3b86 45%, #0a2566 50%, #16418f);
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 1px 1px hsl(0 0% 0% / 40%);
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-orb::before {
@@ -205,7 +205,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 /* the small arrow under the label: the tab's menu */
@@ -222,7 +222,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     background: none;
     box-shadow: none;
     opacity: 0;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-tab-menu::before {
@@ -366,7 +366,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     border-radius: 0;
     background: none;
     box-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-listpane-arrow::before {
@@ -438,7 +438,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-listpane-title:hover {
@@ -469,7 +469,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     color: var(--wmp-text);
     font: var(--wmp-font);
     text-align: left;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-listpane-name::after {
@@ -498,7 +498,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     border-radius: 0;
     background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" stroke="%23d8242a" stroke-width="2" stroke-linecap="round"/></svg>') no-repeat center;
     box-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-listpane-clear:hover {
@@ -526,7 +526,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     color: var(--wmp-link);
     font: var(--wmp-font);
     text-align: left;
-    cursor: default;
+    cursor: var(--c-default);
     box-sizing: border-box;
 }
 
@@ -593,7 +593,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     border-radius: 2px;
     background: none;
     box-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-category:hover,
@@ -632,7 +632,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     color: var(--wmp-text);
     font: var(--wmp-font);
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-crumb:hover {
@@ -661,7 +661,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     border-radius: 0;
     background: url('/static_images/vista-wmp/view-split.png') no-repeat center;
     box-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-viewbtn:hover {
@@ -777,7 +777,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     border-radius: 0;
     background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M5 3l5 5-5 5z" fill="%23fff" stroke="%23595959"/></svg>') no-repeat center;
     box-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-tree-node.is-open .wmp-tree-toggle {
@@ -809,7 +809,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     color: var(--wmp-text);
     font: var(--wmp-font);
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default);
     box-sizing: border-box;
 }
 
@@ -954,7 +954,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     right: 0;
     height: 4px;
     background: linear-gradient(#8492a2, #8492a2 1px, #c7d8ef 1px, #d5e3f3);
-    cursor: default;
+    cursor: var(--c-default);
     outline: none;
 }
 
@@ -1091,7 +1091,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     border-radius: 3px;
     background: no-repeat center;
     box-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 /* the glossy light-blue square on hover (wmploc 4724 / 4725) */
@@ -1214,7 +1214,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     background: none;
     box-shadow: none;
     transform: translate(-50%, -50%);
-    cursor: default;
+    cursor: var(--c-default);
     z-index: 1;
 }
 
@@ -1284,7 +1284,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     width: 80px;
     height: 25px;
     margin-left: 4px;
-    cursor: default;
+    cursor: var(--c-default);
     outline: none;
 }
 
@@ -1360,7 +1360,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     border-radius: 0;
     background: none;
     box-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-fullscreen {

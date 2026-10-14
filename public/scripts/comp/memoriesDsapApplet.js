@@ -517,7 +517,7 @@ const memoriesDsapScopedCss = `
   border: 1px solid #666;
   color: #000;
   font-size: 9pt;
-  cursor: pointer;
+  cursor: var(--c-pointer);
 }
 [data-dsap="memories-dyna"] .memories-btn {
   display: inline-flex;
@@ -529,7 +529,7 @@ const memoriesDsapScopedCss = `
   border: 1px solid #ff8c00;
   border-radius: 3px;
   font-size: 10pt;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   box-shadow: 1px 1px 0 #ffffff inset, -1px -1px 0 #808080 inset;
 }
 [data-dsap="memories-dyna"] .memories-btn:active {
@@ -561,7 +561,7 @@ const memoriesDsapScopedCss = `
     background: #f8f8f8;
     border: 1px solid #999;
     padding: 6px 8px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 [data-dsap="memories-dyna"] .memories-memory-item:hover {
     border-color: #003366;
@@ -652,7 +652,7 @@ const memoriesDsapScopedCss = `
   align-items: center;
   justify-content: center;
   gap: 2px;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   background: #f8f8f8;
   font-size: 9pt;
   color: #333;
@@ -722,7 +722,7 @@ const memoriesDsapScopedCss = `
   background: #fff !important;
   border: 1px solid #999 !important;
   padding: 4px 6px !important;
-  cursor: pointer !important;
+  cursor: var(--c-pointer) !important;
   font-size: 11pt !important;
 }
 [data-dsap="memories-dyna"] .memories-delete-option:hover {
@@ -832,7 +832,7 @@ const memoriesDsapScopedCss = `
   background: #fff !important;
   border: 1px solid #666 !important;
   color: #000 !important;
-  cursor: text !important;
+  cursor: var(--c-text) !important;
   min-height: 28px !important;
   white-space: pre-wrap !important;
 }
@@ -977,7 +977,7 @@ const memoriesDsapScopedCss = `
 [data-dsap="memories-dyna"] .memories-dropdown-menu .memories-dd-item {
   padding: 4px 10px !important;
   font-size: 11pt !important;
-  cursor: pointer !important;
+  cursor: var(--c-pointer) !important;
   color: #000 !important;
   background: transparent !important;
 }
@@ -1062,7 +1062,7 @@ const memoriesDsapScopedCss = `
   font-size: 11pt !important;
   border-radius: 2px !important;
   box-shadow: 1px 1px 0 #ffffff inset, -1px -1px 0 #808080 inset !important;
-  cursor: pointer !important;
+  cursor: var(--c-pointer) !important;
 }
 [data-dsap="memories-dyna"] .memories-remove-btn:active {
   box-shadow: -1px -1px 0 #ffffff inset, 1px 1px 0 #808080 inset !important;
@@ -1264,7 +1264,7 @@ const memoriesDsapScopedCss = `
   font-size: 11pt !important;
   border-radius: 2px !important;
   box-shadow: 1px 1px 0 #fff inset, -1px -1px 0 #808080 inset !important;
-  cursor: pointer !important;
+  cursor: var(--c-pointer) !important;
   line-height: 1 !important;
 }
 [data-dsap="memories-dyna"] .memories-remove-btn:active {
@@ -1368,7 +1368,7 @@ const memoriesDsapScopedCss = `
   border: 0;
   border-bottom: 1px solid #ddd;
   padding: 4px 6px;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   font-size: 10pt;
 }
 [data-dsap="memories-dyna"] .memories-fast-hit:hover,
@@ -1383,7 +1383,7 @@ const memoriesDsapScopedCss = `
   border: 1px solid #999;
   background: #fff;
   padding: 6px;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   min-height: 110px;
 }
 [data-dsap="memories-dyna"] .memories-card:hover { background: #f4f8fc; }
@@ -1393,7 +1393,7 @@ const memoriesDsapScopedCss = `
   border: 1px solid #999;
   min-height: 280px;
 }
-[data-dsap="memories-dyna"] .memories-map-node { cursor: pointer; }
+[data-dsap="memories-dyna"] .memories-map-node { cursor: var(--c-pointer); }
 [data-dsap="memories-dyna"] .memories-image-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 [data-dsap="memories-dyna"] .memories-image-thumb {
   position: relative;
@@ -3571,8 +3571,8 @@ const memoriesDsapDriver = {
         // Replace the counts with the toggle (the memory counts info does not apply to this view)
         bar.innerHTML = `
             <div class="memories-stat-pill" style="background:transparent;border:none;font-weight:600;opacity:0.9;">Static Rules</div>
-            <div class="memories-stat-pill memories-stat-action ${currentView === 'rules' ? 'active' : ''}" data-rules-toggle="rules" style="cursor:pointer;">Rules</div>
-            <div class="memories-stat-pill memories-stat-action ${currentView === 'feedback' ? 'active' : ''}" data-rules-toggle="feedback" style="cursor:pointer;">Feedback</div>
+            <div class="memories-stat-pill memories-stat-action ${currentView === 'rules' ? 'active' : ''}" data-rules-toggle="rules" style="cursor: var(--c-pointer);">Rules</div>
+            <div class="memories-stat-pill memories-stat-action ${currentView === 'feedback' ? 'active' : ''}" data-rules-toggle="feedback" style="cursor: var(--c-pointer);">Feedback</div>
         `;
 
         bar.querySelectorAll('[data-rules-toggle]').forEach(el => {

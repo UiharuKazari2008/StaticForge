@@ -55,12 +55,9 @@
 
                     <div class="form-group">
                         <label for="chatVerbosityBtn">Verbosity</label>
-                        <div id="chatVerbosityDropdown" class="custom-dropdown">
-                            <button type="button" id="chatVerbosityBtn" class="custom-dropdown-btn hover-show colored">
-                                <span id="chatVerbositySelected">Expressive</span>
-                            </button>
-                            <div id="chatVerbosityMenu" class="custom-dropdown-menu hidden"></div>
-                        </div>
+                        <button type="button" id="chatVerbosityBtn" class="custom-dropdown-btn hover-show colored">
+                            <span id="chatVerbositySelected">Expressive</span>
+                        </button>
                         <input type="hidden" id="chatVerbosityHidden" value="3">
                     </div>
                 </div>
@@ -75,8 +72,8 @@
     </div>
 </div>
 
-<!-- Chat Interface Modal -->
-<div id="chatInterfaceModal" class="modal resizeable-window hidden" data-window-min-width="800"
+<!-- Chat Interface Modal. Vista (#485): a light window in Windows Live Messenger's look -->
+<div id="chatInterfaceModal" class="modal resizeable-window hidden" data-window-client="light" data-window-min-width="800"
     data-window-min-height="500">
     <div class="modal-window-title">
         <div class="modal-window-title-main">

@@ -453,7 +453,7 @@
 
 .position-cell.position-cell-occupied {
     opacity: 0.38;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
     pointer-events: none;
     border-color: var(--border-secondary);
     background: var(--bg-secondary);
@@ -698,17 +698,24 @@
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 200px;
+    contain: paint;
 }
 
 .gallery.is-scrolling .gallery-item,
-.gallery.is-scrolling .gallery-placeholder {
+.gallery.is-scrolling .gallery-placeholder,
+.gallery.is-scrolling .gallery-item img,
+.gallery.is-scrolling .gallery-item-overlay {
     transition: none;
 }
 
-.gallery.is-scrolling {
-    contain: layout paint;
+.gallery.is-scrolling .gallery-item {
+    pointer-events: none;
+}
+
+.gallery.is-scrolling .gallery-item-overlay {
+    visibility: hidden;
+    opacity: 0;
+    box-shadow: none;
 }
 
 #galleryWindow.windowed .gallery-item {
@@ -1200,8 +1207,7 @@ html:not(.disable-blur) .gallery:has(.gallery-item.context-open) .gallery-item:n
     opacity: 0.8;
 }
 
-.workspace-controls>button,
-.workspace-controls>#workspaceDropdown>button {
+.workspace-controls>button {
     padding: 0.5em 0.5em;
     min-width: 35px;
 }

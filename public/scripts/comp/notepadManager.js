@@ -974,6 +974,83 @@ class NotepadManager {
 
         this.setupNotebookWorkspaceDropdown();
         this.setupNotebookNovelActions();
+        this.setupNotebookMenuBar();
+    }
+
+    // Windows Journal's menu bar (shown on the Vista desktop: vista-atelier.css)
+    setupNotebookMenuBar() {
+        const onAction = (action) => this.notebookRunMenuAction(action);
+        this.notebookModal.querySelectorAll('[data-notebook-menu]').forEach((title) => {
+            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+            contextMenu.attachClickMenuToElement(title, {
+                onAction,
+                sections: [{
+                    type: 'list',
+                    initfn: (section) => { section.items = this.notebookMenuItems(title.dataset.notebookMenu); }
+                }]
+            });
+        });
+    }
+
+    notebookMenuItems(menu) {
+        const noNote = !this.notebookCurrentNote;
+        if (menu === 'file') {
+            return [
+                { text: 'New Note', icon: 'fas fa-plus', action: 'new' },
+                { text: 'Save', icon: 'fas fa-save', action: 'save', disabled: !this.notebookHasUnsavedChanges },
+                { separator: true },
+                { text: 'Open in Window', icon: 'fas fa-window', action: 'open-in-window', disabled: noNote },
+                { text: 'Add to Desktop', icon: 'fas fa-arrow-down-left', action: 'add-to-desktop', disabled: noNote },
+                { separator: true },
+                { text: 'Close', action: 'close' }
+            ];
+        }
+        if (menu === 'edit') {
+            return [
+                { text: 'Select All', icon: 'fas fa-i-cursor', action: 'select-all' },
+                { text: 'Copy Lookback', icon: 'fas fa-link', action: 'copy-lookback', disabled: noNote },
+                { separator: true },
+                { text: 'Modify Note', icon: 'fas fa-cog', action: 'modify-note', disabled: noNote },
+                { text: 'Delete Note', icon: 'fas fa-trash', action: 'delete-note', disabled: noNote, className: 'context-menu-item-danger' }
+            ];
+        }
+        if (menu === 'view') {
+            return [{ text: 'Refresh', icon: 'fas fa-rotate', action: 'refresh' }];
+        }
+        // Actions: the novel buttons in the toolbar, which notebookUpdateNovelToolbar keeps current
+        return ['notebookNovelGenerateBtn', 'notebookNovelUndoBtn', 'notebookNovelContinueBtn'].map((id) => {
+            const btn = document.getElementById(id);
+            return { text: btn.title, icon: btn.firstElementChild.className, action: id, disabled: btn.classList.contains('hidden') || btn.disabled };
+        });
+    }
+
+    async notebookRunMenuAction(action) {
+        const note = this.notebookCurrentNote;
+        switch (action) {
+            case 'new':
+                await this.notebookHandleNewNote();
+                break;
+            case 'save':
+                await this.notebookSaveCurrentNote();
+                break;
+            case 'close':
+                await this.closeNotebook();
+                break;
+            case 'select-all':
+                this.notebookTextarea.focus();
+                this.notebookTextarea.select();
+                break;
+            case 'refresh':
+                await this.notebookRefreshNotesList();
+                break;
+            case 'notebookNovelGenerateBtn':
+            case 'notebookNovelUndoBtn':
+            case 'notebookNovelContinueBtn':
+                document.getElementById(action).click();
+                break;
+            default:
+                if (note) await this.notebookRunNoteAction(action, { id: note.id, name: note.name, icon: note.icon, color: note.color });
+        }
     }
 
     setupNotebookNovelActions() {
@@ -1220,29 +1297,31 @@ class NotepadManager {
                     ]
                 }
             ],
-            onAction: async (action) => {
-                switch (action) {
-                    case 'open-in-window':
-                        await this.notebookOpenInWindow(noteData.id);
-                        break;
-                    case 'copy-lookback':
-                        // copyLookbackNote: public/scripts/comp/copyLookback.js
-                        copyLookbackNote(noteData.id);
-                        break;
-                    case 'add-to-desktop':
-                        await this.notebookAddToDesktop(noteData);
-                        break;
-                    case 'modify-note':
-                        await this.notebookModifyNote(noteData.id);
-                        break;
-                    case 'delete-note':
-                        await this.notebookDeleteNote(noteData.id);
-                        break;
-                }
-            }
+            onAction: (action) => this.notebookRunNoteAction(action, noteData)
         };
 
         contextMenu.attachToElement(element, contextMenuConfig);
+    }
+
+    async notebookRunNoteAction(action, noteData) {
+        switch (action) {
+            case 'open-in-window':
+                await this.notebookOpenInWindow(noteData.id);
+                break;
+            case 'copy-lookback':
+                // copyLookbackNote: public/scripts/comp/copyLookback.js
+                copyLookbackNote(noteData.id);
+                break;
+            case 'add-to-desktop':
+                await this.notebookAddToDesktop(noteData);
+                break;
+            case 'modify-note':
+                await this.notebookModifyNote(noteData.id);
+                break;
+            case 'delete-note':
+                await this.notebookDeleteNote(noteData.id);
+                break;
+        }
     }
 
     // Open note in standalone window
@@ -1623,9 +1702,6 @@ class Notepad {
             textarea.value = this.note.content || '';
         }
 
-        // Initialize save button state
-        this.updateSaveButton();
-
         // Open modal
         openModal(this.element);
 
@@ -1646,12 +1722,7 @@ class Notepad {
 
     setupEventListeners() {
         const textarea = this.element.querySelector(`#notepadTextarea_${this.id}`);
-        const saveBtn = this.element.querySelector(`#notepadSaveBtn_${this.id}`);
-        const maximizeBtn = this.element.querySelector(`#notepadMaximizeBtn_${this.id}`);
         const closeBtn = this.element.querySelector('.close-btn');
-        const dropdown = this.element.querySelector(`#notepadDropdown_${this.id}`);
-        const dropdownBtn = this.element.querySelector(`#notepadDropdownBtn_${this.id}`);
-        const dropdownMenu = this.element.querySelector(`#notepadDropdownMenu_${this.id}`);
 
         // Textarea input - mark as unsaved (but don't auto-save unsaved notes)
         if (textarea) {
@@ -1663,22 +1734,6 @@ class Notepad {
             });
         }
 
-        // Save button click - immediate save
-        if (saveBtn) {
-            saveBtn.addEventListener('click', async () => {
-                if (textarea) {
-                    await this.saveNoteContent(textarea.value);
-                }
-            });
-        }
-
-        // Maximize button - open in notebook
-        if (maximizeBtn) {
-            maximizeBtn.addEventListener('click', async () => {
-                await this.maximizeToNotebook();
-            });
-        }
-
         // Close button
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
@@ -1686,170 +1741,121 @@ class Notepad {
             });
         }
 
-        // Setup dropdown using the global dropdown utility
-        if (dropdown && dropdownBtn && dropdownMenu) {
-            setupDropdown(
-                dropdown,
-                dropdownBtn,
-                dropdownMenu,
-                () => this.renderNotepadDropdown(),
-                () => null, // No selected value needed for action menu
-                { preventFocusTransfer: true }
-            );
-        }
+        this.setupNotepadMenuBar();
     }
 
-    renderNotepadDropdown() {
-        const dropdownMenu = this.element.querySelector(`#notepadDropdownMenu_${this.id}`);
-        const dropdownBtn = this.element.querySelector(`#notepadDropdownBtn_${this.id}`);
-        if (!dropdownMenu) return;
+    // Notepad's menu bar (shown on the Vista desktop: vista-atelier.css)
+    setupNotepadMenuBar() {
+        const onAction = (action) => this.runNotepadAction(action);
+        this.element.querySelectorAll('[data-notepad-menu]').forEach((title) => {
+            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+            contextMenu.attachClickMenuToElement(title, {
+                onAction,
+                sections: [{
+                    type: 'list',
+                    initfn: (section) => { section.items = this.notepadMenuItems(title.dataset.notepadMenu); }
+                }]
+            });
+        });
+    }
 
-        dropdownMenu.innerHTML = '';
-
-        const options = [
-            {
-                icon: 'fas fa-plus-large',
-                text: 'New',
-                action: 'new'
-            },
-            {
-                icon: 'fas fa-folder-open',
-                text: 'Open',
-                action: 'open'
-            },
-            {
-                icon: 'fas fa-cog',
-                text: 'Update',
-                action: 'update',
-                disabled: !this.note || !this.note.id
-            },
-            {
-                separator: true
-            },
-            {
-                icon: 'fas fa-arrow-down-left',
-                text: 'Add to Desktop',
-                action: 'add-shortcut',
-                disabled: !this.note || !this.note.id
-            },
-            {
-                icon: 'fas fa-link',
-                text: 'Copy Lookback',
-                action: 'copy-lookback',
-                disabled: !this.note || !this.note.id
-            }
-        ];
-
-        if (this.note && this.note.note_kind === 'novel') {
-            options.push(
+    notepadMenuItems(menu) {
+        const noNote = !this.note || !this.note.id;
+        if (menu === 'file') {
+            return [
+                { text: 'New', icon: 'fas fa-plus-large', action: 'new' },
+                { text: 'Open', icon: 'fas fa-folder-open', action: 'open' },
+                { text: 'Save', icon: 'fas fa-save', action: 'save', disabled: !this.hasUnsavedChanges },
                 { separator: true },
-                {
-                    icon: 'fas fa-pen-fancy',
-                    text: 'Generate Next',
-                    action: 'novel-generate'
-                },
-                {
-                    icon: 'fas fa-undo',
-                    text: 'Undo',
-                    action: 'novel-undo',
-                    disabled: !(this.note.metadata?.undo_stack?.length > 0)
-                }
+                { text: 'Open in Notion', icon: 'fa-regular fa-window-maximize', action: 'open-in-notion' },
+                { text: 'Update', icon: 'fas fa-cog', action: 'update', disabled: noNote },
+                { text: 'Add to Desktop', icon: 'fas fa-arrow-down-left', action: 'add-shortcut', disabled: noNote },
+                { separator: true },
+                { text: 'Close', action: 'close' }
+            ];
+        }
+        const items = [
+            { text: 'Select All', icon: 'fas fa-i-cursor', action: 'select-all' },
+            { text: 'Copy Lookback', icon: 'fas fa-link', action: 'copy-lookback', disabled: noNote }
+        ];
+        if (this.note && this.note.note_kind === 'novel') {
+            items.push(
+                { separator: true },
+                { text: 'Generate Next', icon: 'fas fa-pen-fancy', action: 'novel-generate' },
+                { text: 'Undo', icon: 'fas fa-undo', action: 'novel-undo', disabled: !(this.note.metadata?.undo_stack?.length > 0) }
             );
         }
+        return items;
+    }
 
-        options.forEach(option => {
-            if (option.separator) {
-                const separator = document.createElement('div');
-                separator.className = 'custom-dropdown-separator';
-                dropdownMenu.appendChild(separator);
-                return;
+    async runNotepadAction(action) {
+        switch (action) {
+            case 'save': {
+                const box = this.element.querySelector(`#notepadTextarea_${this.id}`);
+                await this.saveNoteContent(box.value);
+                break;
             }
-
-            const optionElement = document.createElement('div');
-            optionElement.className = 'custom-dropdown-option' + (option.disabled ? ' disabled' : '');
-            optionElement.dataset.action = option.action;
-            optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.text}`;
-
-            if (!option.disabled) {
-                optionElement.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    // Close the dropdown
-                    closeDropdown(dropdownMenu, dropdownBtn);
-
-                    // Handle the action
-                    switch (option.action) {
-                        case 'new':
-                            this.manager.handleNewNote();
-                            break;
-                        case 'open':
-                            this.handleOpenNote();
-                            break;
-                        case 'update':
-                            this.handleUpdateNote();
-                            break;
-                        case 'add-shortcut':
-                            this.handleAddShortcut();
-                            break;
-                        case 'copy-lookback': {
-                            const box = this.element.querySelector(`#notepadTextarea_${this.id}`);
-                            const liveSel = box && box.selectionStart !== box.selectionEnd
-                                ? box.value.slice(box.selectionStart, box.selectionEnd)
-                                : '';
-                            // copyLookbackNote: public/scripts/comp/copyLookback.js
-                            copyLookbackNote(this.note.id, liveSel || this._lookbackSel);
-                            break;
-                        }
-                        case 'novel-generate':
-                            if (typeof novelHydrateSession === 'function') novelHydrateSession(this.note);
-                            if (typeof novelRunGenerate === 'function') {
-                                novelRunGenerate({ noteId: this.note.id });
-                            }
-                            break;
-                        case 'novel-undo':
-                            if (typeof novelRunUndo === 'function') {
-                                novelRunUndo().then(() => this.manager.loadNoteById(this.note.id).then((note) => {
-                                    this.note = note;
-                                    const textarea = this.element.querySelector(`#notepadTextarea_${this.id}`);
-                                    if (textarea) textarea.value = note.content || '';
-                                }));
-                            }
-                            break;
-                    }
-                });
+            case 'open-in-notion':
+                await this.maximizeToNotebook();
+                break;
+            case 'close':
+                this.close();
+                break;
+            case 'select-all': {
+                const box = this.element.querySelector(`#notepadTextarea_${this.id}`);
+                box.focus();
+                box.select();
+                break;
             }
-
-            dropdownMenu.appendChild(optionElement);
-        });
+            case 'new':
+                this.manager.handleNewNote();
+                break;
+            case 'open':
+                this.handleOpenNote();
+                break;
+            case 'update':
+                this.handleUpdateNote();
+                break;
+            case 'add-shortcut':
+                this.handleAddShortcut();
+                break;
+            case 'copy-lookback': {
+                const box = this.element.querySelector(`#notepadTextarea_${this.id}`);
+                const liveSel = box && box.selectionStart !== box.selectionEnd
+                    ? box.value.slice(box.selectionStart, box.selectionEnd)
+                    : '';
+                // copyLookbackNote: public/scripts/comp/copyLookback.js
+                copyLookbackNote(this.note.id, liveSel || this._lookbackSel);
+                break;
+            }
+            case 'novel-generate':
+                if (typeof novelHydrateSession === 'function') novelHydrateSession(this.note);
+                if (typeof novelRunGenerate === 'function') {
+                    novelRunGenerate({ noteId: this.note.id });
+                }
+                break;
+            case 'novel-undo':
+                if (typeof novelRunUndo === 'function') {
+                    novelRunUndo().then(() => this.manager.loadNoteById(this.note.id).then((note) => {
+                        this.note = note;
+                        const textarea = this.element.querySelector(`#notepadTextarea_${this.id}`);
+                        if (textarea) textarea.value = note.content || '';
+                    }));
+                }
+                break;
+        }
     }
 
     markAsUnsaved() {
         if (!this.hasUnsavedChanges) {
             this.hasUnsavedChanges = true;
             this.updateTitle(true);
-            this.updateSaveButton();
         }
     }
 
     markAsSaved() {
         this.hasUnsavedChanges = false;
         this.updateTitle(false);
-        this.updateSaveButton();
-    }
-
-    // Update save button appearance based on unsaved state
-    updateSaveButton() {
-        const saveBtn = this.element.querySelector(`#notepadSaveBtn_${this.id}`);
-        if (!saveBtn) return;
-
-        if (this.hasUnsavedChanges) {
-            saveBtn.classList.remove('btn-secondary');
-            saveBtn.classList.add('btn-primary');
-        } else {
-            saveBtn.classList.remove('btn-primary');
-            saveBtn.classList.add('btn-secondary');
-        }
     }
 
     debounceSave(content) {
@@ -2081,11 +2087,10 @@ class Notepad {
     }
 
     destroy() {
-        const dropdown = this.element.querySelector(`#notepadDropdown_${this.id}`);
-        // teardownDropdown: public/scripts/comp/dropdown.js
-        if (dropdown) {
-            teardownDropdown(dropdown);
-        }
+        this.element.querySelectorAll('[data-notepad-menu]').forEach((title) => {
+            // contextMenu.detachClickMenuFromElement: public/scripts/comp/contextMenu.js
+            contextMenu.detachClickMenuFromElement(title);
+        });
 
         closeModal(this.element);
         setTimeout(() => {

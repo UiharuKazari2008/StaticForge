@@ -1277,15 +1277,13 @@ function wireEnhanceDialog(dialog, scaleOptions) {
             selected.textContent = noise ? noise.display : (value || 'Inherited');
         }
     };
-    // getForgeModelFeatures / updateV3ModelVisibility: public/scripts/comp/utilities.js
-    if (getForgeModelFeatures()?.noiseScheduleUi !== false) {
-        wireEnhanceDialogClickMenu(
-            document.getElementById('enhanceNoiseSchedulerBtn'),
-            [{ value: '', name: 'Inherited' }, ...NOISE_MAP.map((entry) => ({ value: entry.meta, name: entry.display }))],
-            selectNoiseScheduler,
-            () => document.getElementById('enhanceNoiseSchedulerHidden')?.value || ''
-        );
-    }
+    // Always wire the menu. updateV3ModelVisibility hides the group when noiseScheduleUi is false.
+    wireEnhanceDialogClickMenu(
+        document.getElementById('enhanceNoiseSchedulerBtn'),
+        [{ value: '', name: 'Inherited' }, ...NOISE_MAP.map((entry) => ({ value: entry.meta, name: entry.display }))],
+        selectNoiseScheduler,
+        () => document.getElementById('enhanceNoiseSchedulerHidden')?.value || ''
+    );
     updateV3ModelVisibility();
 
     wireEnhancePercentInput('enhanceStrengthInput', 'enhanceStrengthOverlay');

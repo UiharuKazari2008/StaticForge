@@ -96,7 +96,7 @@
     color: var(--text-primary);
     font-size: 14px;
     transition: border-color 0.2s ease;
-    cursor: text;
+    cursor: var(--c-text);
     pointer-events: auto;
 }
 
@@ -163,7 +163,7 @@
 /* Loading states for dataset tag toolbar */
 .dataset-tag-dropdown-wrapper.loading .custom-dropdown-btn {
     opacity: 0.7;
-    cursor: wait;
+    cursor: var(--c-wait);
 }
 
 /* Loading spinner for dataset tag toolbar */
@@ -566,7 +566,7 @@
 }
 
 .precise-reference-preview-clickable {
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .precise-reference-preview-clickable .overlay-icon-container {

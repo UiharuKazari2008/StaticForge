@@ -147,7 +147,7 @@ class PWAInstaller {
                     color: white;
                     padding: 8px 16px;
                     border-radius: 6px;
-                    cursor: pointer;
+                    cursor: var(--c-pointer);
                     transition: all 0.2s ease;
                 }
 
@@ -162,7 +162,7 @@ class PWAInstaller {
                     color: white;
                     padding: 8px 12px;
                     border-radius: 6px;
-                    cursor: pointer;
+                    cursor: var(--c-pointer);
                     transition: all 0.2s ease;
                 }
 

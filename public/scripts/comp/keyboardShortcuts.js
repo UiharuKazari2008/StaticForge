@@ -1464,6 +1464,7 @@ function handleKeyDown(event) {
         if (active && active.matches('.prompt-textarea, .character-prompt-textarea')) {
             markPromptShortcutHandled();
         }
+        return true;
     }
 }
 

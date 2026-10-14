@@ -612,6 +612,31 @@
     color: var(--cpl-heading);
 }
 
+#melatonControlPanelModal .cpl-mail-options {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 4px 0 0;
+}
+
+#melatonControlPanelModal .cpl-mail-options label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#melatonControlPanelModal .cpl-mail-options input[type="checkbox"] {
+    appearance: auto;
+    -webkit-appearance: checkbox;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    flex: none;
+    accent-color: #3c7fb1;
+    background: #fff;
+}
+
 #melatonControlPanelModal .cpl-map {
     display: flex;
     align-items: flex-start;
@@ -1999,9 +2024,12 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     margin-top: 8px;
 }
 
-#melatonControlPanelModal .cpl-vault-row[data-state~="sec-account-needs-login"] .cpl-vault-summary::after {
-    content: ' · Sign in again';
-    color: #c00000;
+/* status dot to the right of the active selection (cplAuthentication.js). No label; the title has the words. */
+#melatonControlPanelModal .cpl-vault-status {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
 }
 
 #melatonControlPanelModal .cpl-vault-sub {
@@ -2268,7 +2296,15 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
 }
 
 #melatonControlPanelModal .cpl-main:has(> .cpl-db-page) {
-    padding-bottom: 0; /* the OK / Cancel bar sits on the pane's foot with nothing around it */
+    /* the bar is full-bleed; .cpl-db-page overflow:hidden clips a negative margin */
+    padding-left: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+}
+
+#melatonControlPanelModal .cpl-db-page > :is(h1.cpl-page-title, p.cpl-intro, .cpl-db-location, .cpl-db-grid) {
+    margin-left: 22px;
+    margin-right: 22px;
 }
 
 #melatonControlPanelModal .cpl-db-footer {
@@ -2276,8 +2312,8 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     flex: none;
     justify-content: flex-end;
     gap: 10px;
-    margin: 14px -22px 0;
-    padding: 10px 22px;
+    margin: 14px 0 0;
+    padding: 10px 22px; /* spacing stays inside the bar */
     background: #f0f0f0;
     border-top: 1px solid #dfdfdf;
 }

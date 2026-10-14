@@ -84,13 +84,13 @@
     background: var(--character-pin-color);
     color: var(--text-primary);
     box-shadow: 0 2px 8px var(--shadow-dark);
-    cursor: grab;
+    cursor: var(--c-grab);
     font-weight: 700;
     touch-action: none;
 }
 
 .character-position-pin:active {
-    cursor: grabbing;
+    cursor: var(--c-grabbing);
 }
 
 .character-position-pin.selected {
@@ -110,7 +110,7 @@
     min-width: 12px;
     border-width: 1px;
     font-size: 0;
-    cursor: default;
+    cursor: var(--c-default);
     box-shadow: none;
 }
 

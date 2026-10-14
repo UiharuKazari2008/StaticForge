@@ -174,6 +174,32 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director
     color: #2b5797;
 }
 
+/* tool-row buttons (Parameters and result, Apply): white glyphs on Vista's black glass, which the
+   grey face and navy glyph lost against on the quiet tool rows (Yukimi 2026-10-14) */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) .director-user-message-header button.btn-small {
+    background: linear-gradient(hsl(0 0% 28%), hsl(0 0% 20%) calc(50% - 1px), hsl(0 0% 5%) 50%, hsl(0 0% 4%));
+    border-color: hsl(0 0% 0% / 70%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 22%);
+    color: #fff;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) .director-user-message-header button.btn-small:hover:not(:disabled) {
+        background: linear-gradient(hsl(0 0% 38%), hsl(0 0% 28%) calc(50% - 1px), hsl(0 0% 12%) 50%, hsl(0 0% 10%));
+        border-color: hsl(0 0% 0% / 80%);
+        box-shadow: inset 0 1px 0 hsl(0 0% 100% / 30%), 0 0 4px hsl(200 80% 70% / 50%);
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) .director-user-message-header button.btn-small:active:not(:disabled) {
+    background: linear-gradient(hsl(0 0% 8%), hsl(0 0% 14%));
+    box-shadow: inset 1px 1px 0 #0006;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) .director-user-message-header button.btn-small i {
+    color: #fff;
+}
+
 /* ---- the reply box: a white Vista text box, blue edge while typing ---- */
 
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat #directorComposer {
@@ -183,7 +209,8 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat #directorComp
 }
 
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input {
-    padding: 4px;
+    /* the buttons sat 4 px off the edge (Yukimi: too close); a text box's inner margin */
+    padding: 6px 8px;
     background: #fff;
     border: 1px solid hsl(0 0% 0% / 60%);
     border-radius: 3px;
@@ -209,6 +236,44 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
     font-style: italic;
 }
 
+/* quick starts: Vista's standard toggle buttons (pressed when picked) instead of the dark theme's
+   glass pills, whose white text vanished on the light page (Yukimi 2026-10-14) */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat [data-quick-start] .btn-group-compact > button.btn-toggle {
+    min-height: 23px;
+    padding: 0 12px;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #8e8f8f;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+    color: #000;
+    font: 400 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    font-variation-settings: normal;
+    text-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    transition: border-color 0.3s, background 0.3s;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #directorSessionChat [data-quick-start] .btn-group-compact > button.btn-toggle:hover:not(:disabled) {
+        background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+        border-color: #3c7fb1;
+        box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+        color: #000;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat [data-quick-start] .btn-group-compact > button.btn-toggle:is(:active, [data-state="on"]) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+    box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat [data-quick-start] .btn-group-compact > button.btn-toggle::before {
+    content: none;
+}
+
 /* attach and send: square standard buttons inside the box instead of round bubbles */
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input :is(#directorAttachDropdownBtn, #directorSendBtn) {
     width: 30px;
@@ -218,6 +283,77 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
 
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorAttachDropdownBtn i {
     color: #2b5797;
+}
+
+/* Send: white glyph and a "Send" label on the accent button (Yukimi 2026-10-14) */
+.director-send-label {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: auto;
+    padding: 0 10px 0 8px;
+    background: linear-gradient(hsl(0 0% 100% / 38%), hsl(0 0% 100% / 14%) 45%, transparent 45%, hsl(0 0% 0% / 14%)), var(--primary-color, #3a7bd5);
+    border: 1px solid color-mix(in srgb, var(--primary-color, #3a7bd5), #000 40%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 30%);
+    color: #fff;
+    font: 600 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-shadow: 0 1px 1px hsl(0 0% 0% / 45%);
+    opacity: 1;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn:hover:not(:disabled) {
+        background: linear-gradient(hsl(0 0% 100% / 52%), hsl(0 0% 100% / 26%) 45%, hsl(0 0% 100% / 10%) 45%, transparent), var(--primary-color, #3a7bd5);
+        box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 45%), 0 0 6px color-mix(in srgb, var(--primary-color, #3a7bd5), transparent 40%);
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn:active:not(:disabled) {
+    background: linear-gradient(hsl(0 0% 0% / 18%), transparent 50%, hsl(0 0% 0% / 8%) 50%), var(--primary-color, #3a7bd5);
+    box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn :is(i, .director-send-label) {
+    color: #fff;
+}
+
+/* nothing to send: Vista's disabled button */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn:disabled {
+    background: #f4f4f4;
+    border-color: #adb2b5;
+    box-shadow: none;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn:disabled :is(i, .director-send-label) {
+    color: #838383;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn .director-send-label {
+    display: inline;
+}
+
+/* the welcome logo inherited the Studio's white text and vanished on the white transcript:
+   Vista's main-instruction navy, set like Vista's page titles (Welcome Center): Segoe UI Light
+   instead of the dark theme's Mozilla Headline, and the quip as a plain grey subtitle */
+body.desktop-mode:not(.windows-classic-theme) #directorComposer .director-welcome-message .logo-text {
+    color: #1e395b;
+    font-family: 'Segoe UI Light', 'Segoe UI', 'Noto Sans', sans-serif;
+    font-weight: 300;
+    font-variation-settings: normal;
+    letter-spacing: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorComposer .director-welcome-message h3 {
+    color: var(--vista-light-muted);
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-weight: 400;
+    font-variation-settings: normal;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat #directorComposer [data-quick-note] {
@@ -274,7 +410,7 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionList .director-ses
     border: 1px solid transparent;
     border-radius: 3px;
     color: #141414;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 @media (hover: hover) {
@@ -378,6 +514,12 @@ body:not(.windows-classic-theme) #directorWindow #directorWindowToolbar.director
 
 body:not(.windows-classic-theme) #directorWindow #directorWindowToolbar > #directorCommonHeader {
     height: auto;
+}
+
+/* Header glyphs stay white on the dark glass. The workspace accent is the same
+   family as the button fill, so the icon reads as a blank purple pill. */
+body:not(.windows-classic-theme) #directorCommonHeader [class^="btn-"]:not(.gallery-toggle-btn) > i {
+    color: #fff;
 }
 
 /* the light client between the panes (Vista's #f0f0f0 window face) */

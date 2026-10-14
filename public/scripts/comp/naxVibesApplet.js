@@ -1194,7 +1194,7 @@ const naxVibesDsapScopedCss = `
   font-size: 11px;
   font-weight: 600;
   margin: 0 1px;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset;
   transition: all .05s ease;
 }
@@ -1279,7 +1279,7 @@ const naxVibesDsapScopedCss = `
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 600;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1362,7 +1362,7 @@ const naxVibesDsapScopedCss = `
               0 0 0 1px #222a38 inset;
   display: flex;
   flex-direction: column;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   transition: box-shadow .08s ease, transform .04s ease;
 }
 .naxvibes-dsap .nv-card:hover {
@@ -1556,7 +1556,7 @@ const naxVibesDsapScopedCss = `
   border: 1px solid #5a3a3a;
   padding: 1px 7px;
   border-radius: 2px;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   font-size: 11px;
 }
 .naxvibes-dsap .nv-enc-grid {
@@ -1571,7 +1571,7 @@ const naxVibesDsapScopedCss = `
   border: 1px solid #2a3344;
   border-radius: 3px;
   overflow: hidden;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   font-size: 10px;
 }
 .naxvibes-dsap .nv-enc-cell:hover { border-color: var(--nv-accent); }

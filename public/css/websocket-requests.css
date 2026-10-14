@@ -214,7 +214,7 @@
 
 /* Make ticker and indicators clickable */
 .websocket-ticker {
-    cursor: pointer;
+    cursor: var(--c-pointer);
     user-select: none;
 }
 
@@ -223,7 +223,7 @@
 }
 
 .websocket-indicator {
-    cursor: pointer;
+    cursor: var(--c-pointer);
     user-select: none;
 }
 

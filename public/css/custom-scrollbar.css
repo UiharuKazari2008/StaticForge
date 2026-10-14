@@ -44,7 +44,10 @@
 }
 
 .has-custom-scrollbar.scrollbar-indicating .custom-scrollbar,
-.form-section-scroll.scrollbar-indicating .custom-scrollbar {
+.form-section-scroll.scrollbar-indicating .custom-scrollbar,
+/* the scroller that owns the current wheel gesture (wheelScrollLock.js, #466) shows what is locked */
+.has-custom-scrollbar.wheel-owner .custom-scrollbar,
+.form-section-scroll.wheel-owner .custom-scrollbar {
     opacity: 1;
 }
 

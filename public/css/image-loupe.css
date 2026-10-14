@@ -22,7 +22,7 @@
     z-index: var(--z-layer-3);
     pointer-events: auto;
     touch-action: none;
-    cursor: grab;
+    cursor: var(--c-grab);
     opacity: 1;
     transform: translate3d(-50%, -50%, 0);
     backface-visibility: hidden;
@@ -101,7 +101,7 @@
 
 
 .image-loupe:active {
-    cursor: grabbing;
+    cursor: var(--c-grabbing);
 }
 
 .image-loupe.is-elevated {

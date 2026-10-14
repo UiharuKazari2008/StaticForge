@@ -94,7 +94,7 @@
     width: min(330px, calc(100vw - 24px));
     min-width: 0;
     padding: 9px 10px 10px 12px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .service-worker-tray-popup.vista-update-balloon .popover-content {
@@ -126,7 +126,7 @@
     background: none;
     border: 1px solid transparent;
     border-radius: 2px;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .service-worker-tray-popup.vista-update-balloon .vista-update-balloon-close::before {

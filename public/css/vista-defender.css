@@ -141,7 +141,7 @@
     color: var(--defender-link);
     font: 12px var(--defender-font);
     text-decoration: underline;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #defenderModal .defender-link:hover {

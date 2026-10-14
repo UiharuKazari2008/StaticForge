@@ -2540,6 +2540,8 @@ class Director {
     }
 
     updateTrayChrome() {
+        // desktopTaskMonitor.sync: public/scripts/comp/desktopTaskMonitor.js
+        desktopTaskMonitor.sync();
         if (!this.directorTrayIcon || !window.isDesktop) return;
         // Stays hidden while the Studio panel is the only UI; shows once the window
         // opened, a run started, or a turn left something for the user to look at.
@@ -5297,13 +5299,16 @@ class Director {
         // one glass layer (background, blur, darkness) is that workspace's and
         // nothing stacks. Docked in the Studio, only the chat root re-scopes the
         // variables, since the Studio window paints the ground there.
+        // The Vista desktop draws Director in its own light chrome; a session's workspace
+        // variables fight it, so there it keeps the current workspace (Yukimi 2026-10-14).
+        const scoped = meta && meta.id && !(document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme'));
         const inWindow = this.directorDockedInWindow();
         if (this.directorWindow) {
-            if (inWindow && meta && meta.id) this.directorWindow.setAttribute('data-workspace', meta.id);
+            if (inWindow && scoped) this.directorWindow.setAttribute('data-workspace', meta.id);
             else this.directorWindow.removeAttribute('data-workspace');
         }
         if (chat) {
-            if (!inWindow && meta && meta.id) chat.setAttribute('data-workspace', meta.id);
+            if (!inWindow && scoped) chat.setAttribute('data-workspace', meta.id);
             else chat.removeAttribute('data-workspace');
         }
         if (!banner || !text) return;

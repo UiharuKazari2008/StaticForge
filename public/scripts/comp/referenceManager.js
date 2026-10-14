@@ -2737,7 +2737,7 @@ function resetCacheManagerModeSelector() {
 
     if (cacheManagerModeSelector) {
         // Reset all button states
-        const modeButtons = cacheManagerModeSelector.querySelectorAll('.mode-slider-btn');
+        const modeButtons = cacheManagerModeSelector.querySelectorAll('.gallery-toggle-btn');
         modeButtons.forEach(button => {
             button.classList.remove('active');
             // Set 'all' button as active
@@ -2749,6 +2749,20 @@ function resetCacheManagerModeSelector() {
         // Update data-active attribute for CSS positioning
         cacheManagerModeSelector.setAttribute('data-active', 'all');
     }
+    updateCacheManagerTitle();
+}
+
+// Caption names the mode, as the Workspace window names its view ("Workspace - Images", #474)
+const CACHE_MANAGER_MODE_TITLES = { all: 'All', image: 'Image References', vibe: 'Vibes', character: 'Character & Style' };
+
+function updateCacheManagerTitle() {
+    const titleText = document.getElementById('cacheManagerTitleText');
+    if (!titleText) return;
+    const text = 'Reference Manager - ' + (CACHE_MANAGER_MODE_TITLES[cacheManagerFilterMode] || 'All');
+    if (titleText.textContent === text) return;
+    titleText.textContent = text;
+    // debouncedUpdateTaskbarWindows: public/scripts/comp/modalUtils.js
+    if (typeof debouncedUpdateTaskbarWindows === 'function') debouncedUpdateTaskbarWindows();
 }
 
 // Reset cache browser mode selector to default state
@@ -2771,6 +2785,9 @@ function resetCacheBrowserModeSelector() {
         cacheBrowserModeSelector.setAttribute('data-active', 'all');
     }
 }
+
+// encoding badges on a Reference Manager card before the rest fold into "+N more"
+const CACHE_MANAGER_MAX_ENCODING_BADGES = 4;
 
 function createCacheManagerGalleryItem(cacheImage) {
     const item = document.createElement('div');
@@ -2831,29 +2848,48 @@ function createCacheManagerGalleryItem(cacheImage) {
         }
     }
 
-    // Add vibe encoding badges
+    // Add vibe encoding badges: at most CACHE_MANAGER_MAX_ENCODING_BADGES on the card, the rest
+    // folded into a "+N more" pill whose tooltip lists every encoding (#474: a card with a dozen
+    // encodings wrapped its badges out of the card and gave the board a sideways scrollbar)
+    const encodings = [];
     if (cacheImage.vibes && cacheImage.vibes.length > 0) {
         cacheImage.vibes.forEach(vibe => {
             if (vibe.encodings && Array.isArray(vibe.encodings)) {
-                vibe.encodings.forEach(encoding => {
-                    const encodingBadge = document.createElement('div');
-                    
-                    encodingBadge.className = 'cache-badge encoding' + 
-                        (modelBadges[encoding.model]?.badge ? ' encoding-' + modelBadges[encoding.model].badge.toLowerCase() : '');
-                    
-                    // Get model display name
-                    const modelKey = encoding.model;
-                    const modelDisplayName = modelBadges[modelKey] ? modelBadges[modelKey].display : modelKey;
-                    
-                    encodingBadge.innerHTML = `
-                        <div class="badge-model"><i class="nai-vibe-transfer"></i> <span>${modelDisplayName}</span></div>
-                        <span class="badge-ie">${((encoding.informationExtraction || 0.0) * 100).toFixed(0)}%</span>
-                    `;
-                    encodingBadge.title = `Model: ${modelDisplayName}, IE: ${((encoding.informationExtraction || 0.0) * 100).toFixed(0)}%`;
-                    badgesContainer.appendChild(encodingBadge);
-                });
+                vibe.encodings.forEach(encoding => encodings.push(encoding));
             }
         });
+    }
+    const encodingLabel = (encoding) => {
+        const modelKey = encoding.model;
+        const modelDisplayName = modelBadges[modelKey] ? modelBadges[modelKey].display : modelKey;
+        return { modelDisplayName, pct: ((encoding.informationExtraction || 0.0) * 100).toFixed(0) };
+    };
+    const shown = encodings.length > CACHE_MANAGER_MAX_ENCODING_BADGES
+        ? encodings.slice(0, CACHE_MANAGER_MAX_ENCODING_BADGES - 1)
+        : encodings;
+    shown.forEach(encoding => {
+        const encodingBadge = document.createElement('div');
+
+        encodingBadge.className = 'cache-badge encoding' +
+            (modelBadges[encoding.model]?.badge ? ' encoding-' + modelBadges[encoding.model].badge.toLowerCase() : '');
+
+        const { modelDisplayName, pct } = encodingLabel(encoding);
+        encodingBadge.innerHTML = `
+            <div class="badge-model"><i class="nai-vibe-transfer"></i> <span>${modelDisplayName}</span></div>
+            <span class="badge-ie">${pct}%</span>
+        `;
+        encodingBadge.title = `Model: ${modelDisplayName}, IE: ${pct}%`;
+        badgesContainer.appendChild(encodingBadge);
+    });
+    if (shown.length < encodings.length) {
+        const moreBadge = document.createElement('div');
+        moreBadge.className = 'cache-badge more-badge';
+        moreBadge.textContent = `+${encodings.length - shown.length} more`;
+        moreBadge.title = encodings.map((encoding) => {
+            const { modelDisplayName, pct } = encodingLabel(encoding);
+            return `${modelDisplayName} ${pct}%`;
+        }).join('\n');
+        badgesContainer.appendChild(moreBadge);
     }
 
     item.appendChild(img);
@@ -7313,7 +7349,7 @@ function initializeCacheManager() {
 
     // Cache Manager Mode Selector
     if (cacheManagerModeSelector) {
-        const modeButtons = cacheManagerModeSelector.querySelectorAll('.mode-slider-btn');
+        const modeButtons = cacheManagerModeSelector.querySelectorAll('.gallery-toggle-btn');
         cacheManagerModeSelector.setAttribute('data-active', 'all');
         modeButtons.forEach(button => {
             button.addEventListener('click', () => {
@@ -7328,6 +7364,7 @@ function initializeCacheManager() {
 
                 // Update cache manager filter mode
                 cacheManagerFilterMode = mode;
+                updateCacheManagerTitle();
 
                 // Refresh cache manager display with new filter
                 displayCacheManagerImages();

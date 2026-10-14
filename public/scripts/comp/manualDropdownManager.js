@@ -2708,6 +2708,7 @@ function getStudioUcPresetMenuItems() {
         value: preset.value,
         keepMenuOpen: true,
         showIndicator: true,
+        indicatorMark: 'radio',
         loadfn: (item) => {
             item.checked = selectedUcPreset === preset.value;
         }
@@ -2733,6 +2734,7 @@ function getStudioNsfwBiasMenuItems() {
             value: option.value,
             keepMenuOpen: true,
             showIndicator: true,
+            indicatorMark: 'radio',
             loadfn: (item) => {
                 item.checked = selectedNsfwValue === item.value;
             },
@@ -3773,41 +3775,52 @@ function wireManualModalListenerScope() {
     });
 }
 
+function attachStudioControlMenu(button, buildItems, options) {
+    if (!button || typeof contextMenu === 'undefined' || !contextMenu) return;
+    const refreshOnAction = !!(options && options.refreshOnAction);
+    const config = {
+        position: 'anchor',
+        anchorAlign: 'start',
+        maxHeight: true,
+        refreshOnAction: refreshOnAction,
+        sections: [{ type: 'list', items: [] }],
+        beforeShow: function () {
+            // menuSectionsFromItems: public/scripts/comp/contextMenu.js
+            config.sections = menuSectionsFromItems(buildItems());
+        },
+        // handleImageGenerationSettingsMenuAction: public/scripts/comp/imageGenerationSettings.js
+        onAction: handleImageGenerationSettingsMenuAction
+    };
+    // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+    contextMenu.attachClickMenuToElement(button, config);
+}
+
 function wireManualDropdownSetup() {
     if (document.body.dataset.manualDropdownSetupWired === 'true') return;
     document.body.dataset.manualDropdownSetupWired = 'true';
 
     wireManualModalListenerScope();
 
-    setupDropdown(
-        manualResolutionDropdown,
-        manualResolutionDropdownBtn,
-        manualResolutionDropdownMenu,
-        renderManualResolutionDropdown,
-        () => manualSelectedResolution,
-        { preventFocusTransfer: true }
-    );
-
-    setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler, { preventFocusTransfer: true });
+    // Click menus reuse the existing select handlers. Ratio rows use checks.
+    // getStudioResolutionMenuItems: public/scripts/comp/imageGenerationSettings.js
+    attachStudioControlMenu(manualResolutionDropdownBtn, getStudioResolutionMenuItems);
+    // getStudioSamplerControlMenuItems: public/scripts/comp/imageGenerationSettings.js
+    attachStudioControlMenu(manualSamplerDropdownBtn, getStudioSamplerControlMenuItems);
     if (manualSamplerDropdownBtn && manualSamplerDropdownBtn.dataset.samplerWheelWired !== 'true') {
         manualSamplerDropdownBtn.dataset.samplerWheelWired = 'true';
         manualSamplerDropdownBtn.addEventListener('wheel', onManualSamplerWheel, { passive: false });
     }
 
-    setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel, { preventFocusTransfer: true });
-
-    setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets, { preventFocusTransfer: true });
-
-    setupDropdown(subTogglesDropdown, subTogglesBtn, subTogglesDropdownMenu, renderSubTogglesDropdown, () => selectedDatasets, { preventFocusTransfer: true });
-
-    setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset, { preventFocusTransfer: true });
-
-    setupDropdown(nsfwDropdown, nsfwToggleBtn, nsfwDropdownMenu, renderNsfwDropdown, () => selectedNsfwValue, { preventFocusTransfer: true });
-
-    setupDropdown(manualWorkspaceDropdown, manualWorkspaceDropdownBtn, manualWorkspaceDropdownMenu, renderManualWorkspaceDropdown, () => manualSelectedWorkspace, { preventFocusTransfer: true });
-
-    // renderAddItemDropdown: public/scripts/app.js
-    setupDropdown(addItemDropdown, addItemDropdownBtn, addItemDropdownMenu, renderAddItemDropdown, () => '', { preventFocusTransfer: true });
+    // getStudioModelMenuItems: public/scripts/comp/imageGenerationSettings.js
+    attachStudioControlMenu(manualModelDropdownBtn, getStudioModelMenuItems);
+    attachStudioControlMenu(datasetDropdownBtn, getStudioDatasetMenuItems, { refreshOnAction: true });
+    attachStudioControlMenu(subTogglesBtn, getStudioAdjustmentMenuItems, { refreshOnAction: true });
+    attachStudioControlMenu(ucPresetsDropdownBtn, getStudioUcPresetMenuItems, { refreshOnAction: true });
+    attachStudioControlMenu(nsfwToggleBtn, getStudioNsfwBiasMenuItems, { refreshOnAction: true });
+    // getStudioWorkspaceMenuItems: public/scripts/comp/imageGenerationSettings.js
+    attachStudioControlMenu(manualWorkspaceDropdownBtn, getStudioWorkspaceMenuItems);
+    // getStudioAddComponentMenuItems: public/scripts/comp/imageGenerationSettings.js
+    attachStudioControlMenu(addItemDropdownBtn, getStudioAddComponentMenuItems);
 
     manualSelectedWorkspace = activeWorkspace;
     updateManualWorkspaceDisplay();

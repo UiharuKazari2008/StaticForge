@@ -41,7 +41,7 @@
     border: none;
     padding: 0;
     color: var(--dsap-smf-context-bg, #336699);
-    cursor: pointer;
+    cursor: var(--c-pointer);
     font: inherit;
     text-decoration: underline;
 }
@@ -132,7 +132,7 @@
     align-items: flex-start;
     gap: 6px;
     font-weight: normal;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 [data-dsap="data-mgmt"] .data-mgmt-repl-clone-grid input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; width: auto; }
 [data-dsap="data-mgmt"] .data-mgmt-repl-clone-hint { font-size: 0.78rem; color: #666; margin: 0 0 6px; }
@@ -148,7 +148,7 @@
     align-items: flex-start;
     gap: 6px;
     font-weight: normal;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 .modal-content .data-mgmt-repl-clone-grid input[type="checkbox"] {
     margin-top: 2px;

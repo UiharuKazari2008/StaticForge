@@ -136,10 +136,6 @@ const PopoverManager = {
         }
         
         // Show the popover (use requestAnimationFrame to ensure DOM is ready)
-        if (!hoverOnly) {
-            // desktopSounds.playBalloon: public/scripts/comp/desktopSounds.js
-            desktopSounds.playBalloon(title, options);
-        }
         requestAnimationFrame(() => {
             this.show(element);
         });

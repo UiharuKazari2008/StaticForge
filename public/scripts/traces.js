@@ -1,55 +1,19 @@
-// Minimal traces viewer using existing dropdown system
+// Minimal traces viewer (standalone page, native select)
 (function () {
-  const traceDropdown = document.getElementById('traceDropdown');
-  const traceDropdownBtn = document.getElementById('traceDropdownBtn');
-  const traceDropdownMenu = document.getElementById('traceDropdownMenu');
-  const traceDropdownSelected = document.getElementById('traceDropdownSelected');
-  const traceDropdownHidden = document.getElementById('traceDropdownHidden');
+  const traceSelect = document.getElementById('traceSelect');
   const traceDetails = document.getElementById('traceDetails');
 
   let traces = [];
-  let selectedTraceId = '';
 
   function fmtTime(ts) {
     try { return new Date(ts).toLocaleString(); } catch { return String(ts); }
   }
 
-  function selectTrace(id) {
-    selectedTraceId = id;
-    traceDropdownHidden.value = id;
-    const item = traces.find(t => t.id === id);
-    traceDropdownSelected.textContent = item ? `${item.id} (${item.status})` : 'Select trace...';
-    renderTrace(id);
-  }
-
-  function closeTraceDropdown() {
-    if (typeof closeDropdown === 'function') closeDropdown(traceDropdownMenu, traceDropdownBtn);
-  }
-
   function renderTraceOptions() {
-    const items = traces.map(t => ({ value: t.id, name: `${t.id} • ${fmtTime(t.startedAt)} • ${t.status}` }));
-    if (typeof renderSimpleDropdown === 'function') {
-      renderSimpleDropdown(
-        traceDropdownMenu,
-        items,
-        'value',
-        'name',
-        (val) => { selectTrace(val); },
-        closeTraceDropdown,
-        selectedTraceId,
-        { preventFocusTransfer: true }
-      );
-    } else {
-      // Fallback basic render
-      traceDropdownMenu.innerHTML = '';
-      items.forEach(opt => {
-        const el = document.createElement('div');
-        el.className = 'custom-dropdown-option' + (selectedTraceId === opt.value ? ' selected' : '');
-        el.textContent = opt.name;
-        el.addEventListener('click', () => { selectTrace(opt.value); closeTraceDropdown(); });
-        traceDropdownMenu.appendChild(el);
-      });
-    }
+    const selected = traceSelect.value;
+    traceSelect.replaceChildren(new Option('Select trace...', ''),
+      ...traces.map(t => new Option(`${t.id} • ${fmtTime(t.startedAt)} • ${t.status}`, t.id)));
+    traceSelect.value = selected;
   }
 
   function formatAIContent(content) {
@@ -183,17 +147,7 @@
   }
 
   function init() {
-    // Dropdown setup
-    if (typeof setupDropdown === 'function') {
-      setupDropdown(
-        traceDropdown,
-        traceDropdownBtn,
-        traceDropdownMenu,
-        () => renderTraceOptions(),
-        () => selectedTraceId,
-        { preventFocusTransfer: true }
-      );
-    }
+    traceSelect.addEventListener('change', () => renderTrace(traceSelect.value));
 
     // Load list
     fetch('/traces/list')

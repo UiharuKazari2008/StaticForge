@@ -28,6 +28,13 @@ const EXPLORE_MODEL_OPTIONS = [
     { value: 'nai-diffusion-5-full', label: 'NAI Diffusion V5 Full' }
 ];
 
+/** Explore has no system:model tag for the V5 Full Medium generation slug. */
+function exploreModelForQuery(model) {
+    const value = String(model || '').trim();
+    if (value === 'nai-diffusion-5-full-medium' || value === 'nai-diffusion-5-full-medium-inpainting') return '';
+    return value;
+}
+
 const EXPLORE_ASPECT_OPTIONS = [
     { value: '', label: 'All Aspects' },
     { value: 'portrait', label: 'Portrait' },
@@ -40,6 +47,52 @@ const EXPLORE_VT_OPTIONS = [
     { value: 'with', label: 'Has Vibe Transfer' }
 ];
 
+// SAMPLER_MAP: public/scripts/comp/utilities.js
+const EXPLORE_SAMPLER_OPTIONS = [{ value: '', label: 'All Samplers' }].concat(
+    SAMPLER_MAP.map((row) => ({ value: row.meta, label: row.display }))
+);
+
+const EXPLORE_CHARACTER_OPTIONS = [{ value: '', label: 'Any Characters' }].concat(
+    [0, 1, 2, 3, 4, 5, 6].map((n) => ({ value: String(n), label: String(n) }))
+);
+
+const EXPLORE_PROMPT_LENGTH_OPTIONS = [
+    { value: '', label: 'Any Prompt Length' },
+    { value: 'small', label: 'Prompt Small' },
+    { value: 'medium', label: 'Prompt Medium' },
+    { value: 'large', label: 'Prompt Large' },
+    { value: 'xlarge', label: 'Prompt XLarge' }
+];
+
+const EXPLORE_OPUS_OPTIONS = [
+    { value: '', label: 'Any Opus' },
+    { value: 'with', label: 'Opus Free Gen' }
+];
+
+function exploreFilterValues(src) {
+    const row = src || {};
+    return {
+        model: exploreModelForQuery(row.model),
+        aspect: row.aspect || '',
+        vt: row.vt || '',
+        sampler: row.sampler || '',
+        characters: row.characters != null ? String(row.characters) : '',
+        promptLength: row.promptLength || '',
+        opus: row.opus || ''
+    };
+}
+
+function exploreWriteFilterParams(q, src) {
+    const filters = exploreFilterValues(src);
+    if (filters.model) q.set('model', filters.model);
+    if (filters.aspect) q.set('aspect', filters.aspect);
+    if (filters.vt) q.set('vt', filters.vt);
+    if (filters.sampler) q.set('sampler', filters.sampler);
+    if (filters.characters !== '') q.set('characters', filters.characters);
+    if (filters.promptLength) q.set('prompt_length', filters.promptLength);
+    if (filters.opus) q.set('opus', filters.opus);
+}
+
 const EXPLORE_CREATOR_ROW_MAX = 10;
 const EXPLORE_CREATOR_CARD_W = 148;
 
@@ -48,6 +101,31 @@ function exploreEscapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = String(text);
     return div.innerHTML;
+}
+
+function exploreErrorCopy(err) {
+    const message = err && err.message ? String(err.message) : 'Failed to load';
+    const details = err && err.details != null ? String(err.details) : '';
+    if (details && details !== message) return message + '\n' + details;
+    return message;
+}
+
+function exploreRestoreEmptyMessage(emptyEl, hasResults) {
+    if (!emptyEl) return;
+    if (emptyEl.dataset.empty) emptyEl.textContent = emptyEl.dataset.empty;
+    emptyEl.classList.toggle('hidden', !!hasResults);
+}
+
+/** Search and image-page failures stay in the Agora view. infrastructure.error skips the exception window for these. */
+function explorePaintPageError(root, err) {
+    const emptyEl = root && root.querySelector('#exEmpty');
+    const statusEl = root && root.querySelector('#exStatusText');
+    const message = err && err.message ? String(err.message) : 'Failed to load';
+    if (statusEl) statusEl.textContent = message;
+    if (!emptyEl) return;
+    if (!emptyEl.dataset.empty) emptyEl.dataset.empty = emptyEl.textContent;
+    emptyEl.textContent = exploreErrorCopy(err);
+    emptyEl.classList.remove('hidden');
 }
 
 /** renderSimpleDropdown passes the option value string, not the option object. */
@@ -94,6 +172,10 @@ function exploreParseState(host) {
     const model = host.getQueryParam('model') || '';
     const aspect = host.getQueryParam('aspect') || '';
     const vt = host.getQueryParam('vt') || '';
+    const sampler = host.getQueryParam('sampler') || '';
+    const characters = host.getQueryParam('characters') || '';
+    const promptLength = host.getQueryParam('prompt_length') || '';
+    const opus = host.getQueryParam('opus') || '';
     const pageParam = parseInt(host.getQueryParam('page') || '1', 10) || 1;
     const offsetParam = host.getQueryParam('offset');
     const offsetParsed = offsetParam != null && offsetParam !== ''
@@ -115,9 +197,13 @@ function exploreParseState(host) {
         sort: ['new', 'top', 'hot'].includes(sort) ? sort : 'new',
         period: ['day', 'week', 'month'].includes(period) ? period : 'day',
         search: String(search || '').trim(),
-        model: String(model || '').trim(),
+        model: exploreModelForQuery(model),
         aspect: String(aspect || '').trim(),
         vt: String(vt || '').trim(),
+        sampler: String(sampler || '').trim(),
+        characters: String(characters || '').trim(),
+        promptLength: String(promptLength || '').trim(),
+        opus: String(opus || '').trim(),
         page: Math.max(1, pageParam),
         offset: offsetParsed,
         detailId,
@@ -127,14 +213,12 @@ function exploreParseState(host) {
     };
 }
 
-function exploreBuildGalleryUrl({ sort = 'new', period = 'day', search = '', model = '', aspect = '', vt = '', page = 1, offset = null } = {}) {
+function exploreBuildGalleryUrl({ sort = 'new', period = 'day', search = '', page = 1, offset = null, ...filters } = {}) {
     const q = new URLSearchParams();
     if (sort && sort !== 'new') q.set('sort', sort);
     if (sort !== 'new' && period && period !== 'day') q.set('period', period);
     if (search) q.set('q', search);
-    if (model) q.set('model', model);
-    if (aspect) q.set('aspect', aspect);
-    if (vt) q.set('vt', vt);
+    exploreWriteFilterParams(q, filters);
     const pg = parseInt(page, 10) || 1;
     if (pg > 1) q.set('page', String(pg));
     const off = offset == null ? null : Math.max(0, parseInt(offset, 10) || 0);
@@ -160,9 +244,7 @@ function exploreBuildDetailUrl(id, backState) {
         if (backState?.sort && backState.sort !== 'new') q.set('sort', backState.sort);
         if (backState?.sort !== 'new' && backState?.period) q.set('period', backState.period);
         if (backState?.search) q.set('q', backState.search);
-        if (backState?.model) q.set('model', backState.model);
-        if (backState?.aspect) q.set('aspect', backState.aspect);
-        if (backState?.vt) q.set('vt', backState.vt);
+        exploreWriteFilterParams(q, backState);
         const pg = parseInt(backState?.page, 10) || 1;
         if (pg > 1) q.set('page', String(pg));
     }
@@ -290,6 +372,18 @@ function exploreAspectLabel(aspect) {
 }
 function exploreVtLabel(vt) {
     return EXPLORE_VT_OPTIONS.find((o) => o.value === vt)?.label || 'Any Vibe';
+}
+function exploreSamplerLabel(sampler) {
+    return EXPLORE_SAMPLER_OPTIONS.find((o) => o.value === sampler)?.label || 'All Samplers';
+}
+function exploreCharacterLabel(characters) {
+    return EXPLORE_CHARACTER_OPTIONS.find((o) => o.value === String(characters || ''))?.label || 'Any Characters';
+}
+function explorePromptLengthLabel(promptLength) {
+    return EXPLORE_PROMPT_LENGTH_OPTIONS.find((o) => o.value === promptLength)?.label || 'Any Prompt Length';
+}
+function exploreOpusLabel(opus) {
+    return EXPLORE_OPUS_OPTIONS.find((o) => o.value === opus)?.label || 'Any Opus';
 }
 
 function exploreParseNaiMetadata(raw) {
@@ -1295,7 +1389,7 @@ const exploreDsapScopedCss = `
   padding: 0.35rem 0.85rem;
   font: inherit;
   font-size: 0.85rem;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -1361,15 +1455,19 @@ const exploreDsapScopedCss = `
 [data-dsap="explore-gallery"] .ex-search-wrap i { color: var(--ex-muted); opacity: 0.8; }
 [data-dsap="explore-gallery"] .ex-search-wrap input {
   flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--ex-text);
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--ex-text) !important;
+  font-family: inherit !important;
   font-size: 0.95rem;
+  text-shadow: none;
+  border-radius: 0 !important;
   outline: none;
   width: 100%;
   padding: 0.55rem 0;
 }
-[data-dsap="explore-gallery"] .ex-search-wrap input::placeholder { color: rgba(255,255,255,0.35); }
+[data-dsap="explore-gallery"] .ex-search-wrap input::placeholder { color: rgba(255,255,255,0.35) !important; }
 [data-dsap="explore-gallery"] .ex-toolbar .custom-dropdown { min-width: 88px; }
 [data-dsap="explore-gallery"] .ex-toolbar .custom-dropdown-btn {
   min-height: 40px;
@@ -1380,7 +1478,29 @@ const exploreDsapScopedCss = `
   padding: 0 0.85rem !important;
   width: 100%;
 }
-[data-dsap="explore-gallery"] .ex-period-wrap.is-disabled {
+[data-dsap="explore-gallery"] .ex-toolbar .custom-dropdown-btn:is(:hover, :focus-visible, .active):not(:disabled),
+[data-dsap="explore-gallery"] .ex-refresh-btn:is(:hover, :focus-visible):not(:disabled) {
+  background-color: #3a4d86 !important;
+  background-image: none !important;
+  border-color: rgba(255,255,255,0.22) !important;
+}
+[data-dsap="explore-gallery"] .custom-dropdown-menu {
+  background: var(--ex-card) !important;
+  border: 1px solid var(--ex-border) !important;
+  color: var(--ex-text) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35) !important;
+}
+[data-dsap="explore-gallery"] .custom-dropdown-menu .custom-dropdown-option {
+  color: var(--ex-text) !important;
+  background: transparent !important;
+}
+[data-dsap="explore-gallery"] .custom-dropdown-menu .custom-dropdown-option:is(:hover:not(:disabled), :focus, .keyboard-selected) {
+  background-color: #3a4d86 !important;
+  background-image: none !important;
+  color: var(--ex-text) !important;
+}
+[data-dsap="explore-gallery"] .ex-period-wrap.is-disabled,
+[data-dsap="explore-gallery"] .ex-toolbar .custom-dropdown.is-disabled {
   opacity: 0.4;
   pointer-events: none;
 }
@@ -1391,12 +1511,12 @@ const exploreDsapScopedCss = `
   border: 1px solid var(--ex-border);
   background: var(--ex-input);
   color: var(--ex-text);
-  cursor: pointer;
+  cursor: var(--c-pointer);
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-[data-dsap="explore-gallery"] .ex-refresh-btn:hover { background: #1a2444; }
+[data-dsap="explore-gallery"] .ex-refresh-btn:hover { background-color: #3a4d86; }
 [data-dsap="explore-gallery"] .ex-refresh-btn.is-spinning i { animation: ex-spin 0.8s linear infinite; }
 @keyframes ex-spin { to { transform: rotate(360deg); } }
 
@@ -1425,12 +1545,12 @@ const exploreDsapScopedCss = `
   border: 1px solid var(--ex-border);
   background: var(--ex-input);
   color: var(--ex-text);
-  cursor: pointer;
+  cursor: var(--c-pointer);
   font-size: 0.85rem;
 }
 [data-dsap="explore-gallery"] .ex-page-btn:disabled {
   opacity: 0.35;
-  cursor: not-allowed;
+  cursor: var(--c-not-allowed);
 }
 [data-dsap="explore-gallery"] .ex-page-indicator {
   min-width: 4.5rem;
@@ -1464,7 +1584,7 @@ const exploreDsapScopedCss = `
   font-family: "Eczar", Georgia, serif;
   font-size: 1.25rem;
   font-weight: 600;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1476,7 +1596,7 @@ const exploreDsapScopedCss = `
 }
 [data-dsap="explore-gallery"] .ex-next-page-btn:disabled {
   opacity: 0.35;
-  cursor: not-allowed;
+  cursor: var(--c-not-allowed);
 }
 [data-dsap="explore-gallery"] .ex-grid {
   column-count: 1;
@@ -1499,7 +1619,7 @@ const exploreDsapScopedCss = `
   border: none;
   border-radius: 12px;
   overflow: hidden;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   display: inline-block;
   width: 100%;
   vertical-align: top;
@@ -1570,6 +1690,7 @@ const exploreDsapScopedCss = `
   text-align: center;
   padding: 3rem 1rem;
   color: var(--ex-muted);
+  white-space: pre-line;
 }
 
 /* —— Detail / image page (NAI Explore layout) —— */
@@ -1603,7 +1724,7 @@ const exploreDsapScopedCss = `
   border: none;
   background: transparent;
   color: var(--ex-text);
-  cursor: pointer;
+  cursor: var(--c-pointer);
   font: inherit;
   display: inline-flex;
   align-items: center;
@@ -1642,7 +1763,7 @@ const exploreDsapScopedCss = `
   height: auto;
   object-fit: contain;
   border-radius: 8px;
-  cursor: zoom-in;
+  cursor: var(--c-zoom-in);
 }
 [data-dsap="explore-gallery"] .ex-detail-side {
   position: relative;
@@ -1733,7 +1854,7 @@ const exploreDsapScopedCss = `
   border: none;
   padding: 0;
   font: inherit;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -1756,7 +1877,7 @@ const exploreDsapScopedCss = `
   background: var(--ex-input);
   color: var(--ex-text);
   padding: 0.5rem 0.9rem;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   font-size: 0.9rem;
   display: inline-flex;
   align-items: center;
@@ -1809,7 +1930,7 @@ const exploreDsapScopedCss = `
   border: none;
   background: transparent;
   color: var(--ex-muted);
-  cursor: pointer;
+  cursor: var(--c-pointer);
   padding: 0.2rem 0.35rem;
   border-radius: 4px;
 }
@@ -1833,7 +1954,7 @@ const exploreDsapScopedCss = `
 [data-dsap="explore-gallery"] .ex-detail-btn.is-disabled,
 [data-dsap="explore-gallery"] .ex-detail-btn:disabled {
   opacity: 0.42;
-  cursor: not-allowed;
+  cursor: var(--c-not-allowed);
 }
 
 [data-dsap="explore-gallery"] .ex-tags {
@@ -1895,7 +2016,7 @@ const exploreDsapScopedCss = `
   border: none;
   background: transparent;
   color: var(--ex-link);
-  cursor: pointer;
+  cursor: var(--c-pointer);
   font: inherit;
   font-size: 0.85rem;
   padding: 0.15rem 0;
@@ -1972,7 +2093,7 @@ const exploreDsapScopedCss = `
   border: 1px solid var(--ex-border);
   border-radius: 8px;
   overflow: hidden;
-  cursor: pointer;
+  cursor: var(--c-pointer);
 }
 [data-dsap="explore-gallery"] .ex-more-card img {
   display: block;
@@ -2001,7 +2122,7 @@ const exploreDsapScopedCss = `
   border: 1px solid var(--ex-border);
   background: var(--ex-input);
   color: var(--ex-text);
-  cursor: pointer;
+  cursor: var(--c-pointer);
   font: inherit;
   font-size: 0.95rem;
 }
@@ -2037,6 +2158,10 @@ const exploreDsapDriver = {
             model: '',
             aspect: '',
             vt: '',
+            sampler: '',
+            characters: '',
+            promptLength: '',
+            opus: '',
             results: [],
             page: 1,
             total: 0,
@@ -2111,6 +2236,10 @@ const exploreDsapDriver = {
             model: parsed.model,
             aspect: parsed.aspect,
             vt: parsed.vt,
+            sampler: parsed.sampler,
+            characters: parsed.characters,
+            promptLength: parsed.promptLength,
+            opus: parsed.opus,
             detailId: parsed.detailId,
             creatorId: parsed.detailId ? '' : parsed.creatorId,
             creatorName: parsed.detailId ? '' : parsed.creatorName,
@@ -2367,7 +2496,8 @@ const exploreDsapDriver = {
             state.host.navigate(exploreBuildGalleryUrl({
                 sort: state.sort,
                 period: state.period,
-                search: state.search
+                search: state.search,
+                ...exploreFilterValues(state)
             }));
         }
     },
@@ -2422,9 +2552,7 @@ const exploreDsapDriver = {
                     period: state.period,
 
                     search: state.search,
-                    model: state.model,
-                    aspect: state.aspect,
-                    vt: state.vt,
+                    ...exploreFilterValues(state),
 
                     page: state.page
                 }));
@@ -2536,6 +2664,7 @@ const exploreDsapDriver = {
     _render(host) {
         const state = this._state;
         if (!state) return;
+        if (!state.layoutObserver) this._wireLayoutObserver(host);
         this._wireReactDelegation(host.getRoot());
         this._syncChromeButtons();
         if (state.detailId) {
@@ -2607,6 +2736,38 @@ const exploreDsapDriver = {
                 <div id="exVtMenu" class="custom-dropdown-menu hidden"></div>
               </div>
               <input type="hidden" id="exVtHidden" value="${exploreEscapeHtml(state.vt)}">
+
+              <div class="custom-dropdown" id="exSamplerDropdown">
+                <button type="button" class="custom-dropdown-btn hover-show colored" id="exSamplerBtn">
+                  <span id="exSamplerSelected">${exploreEscapeHtml(exploreSamplerLabel(state.sampler))}</span>
+                </button>
+                <div id="exSamplerMenu" class="custom-dropdown-menu hidden"></div>
+              </div>
+              <input type="hidden" id="exSamplerHidden" value="${exploreEscapeHtml(state.sampler)}">
+
+              <div class="custom-dropdown" id="exCharactersDropdown">
+                <button type="button" class="custom-dropdown-btn hover-show colored" id="exCharactersBtn">
+                  <span id="exCharactersSelected">${exploreEscapeHtml(exploreCharacterLabel(state.characters))}</span>
+                </button>
+                <div id="exCharactersMenu" class="custom-dropdown-menu hidden"></div>
+              </div>
+              <input type="hidden" id="exCharactersHidden" value="${exploreEscapeHtml(state.characters)}">
+
+              <div class="custom-dropdown" id="exPromptLengthDropdown">
+                <button type="button" class="custom-dropdown-btn hover-show colored" id="exPromptLengthBtn">
+                  <span id="exPromptLengthSelected">${exploreEscapeHtml(explorePromptLengthLabel(state.promptLength))}</span>
+                </button>
+                <div id="exPromptLengthMenu" class="custom-dropdown-menu hidden"></div>
+              </div>
+              <input type="hidden" id="exPromptLengthHidden" value="${exploreEscapeHtml(state.promptLength)}">
+
+              <div class="custom-dropdown" id="exOpusDropdown">
+                <button type="button" class="custom-dropdown-btn hover-show colored" id="exOpusBtn">
+                  <span id="exOpusSelected">${exploreEscapeHtml(exploreOpusLabel(state.opus))}</span>
+                </button>
+                <div id="exOpusMenu" class="custom-dropdown-menu hidden"></div>
+              </div>
+              <input type="hidden" id="exOpusHidden" value="${exploreEscapeHtml(state.opus)}">
 
               <button type="button" class="ex-refresh-btn" id="exRefreshBtn" title="Refresh from NovelAI">
                 <i class="fas fa-arrows-rotate"></i>
@@ -2739,15 +2900,16 @@ const exploreDsapDriver = {
                     period: state.period,
 
                     search: state.search,
-                    model: state.model,
-                    aspect: state.aspect,
-                    vt: state.vt,
+                    ...exploreFilterValues(state),
 
                     page: state.page,
                     offset: state.pageOffset,
                     ...patch
                 };
-                if (patch.sort != null || patch.period != null || patch.search != null || patch.model != null || patch.aspect != null || patch.vt != null) {
+                const filterPatch = patch.sort != null || patch.period != null || patch.search != null
+                    || patch.model != null || patch.aspect != null || patch.vt != null
+                    || patch.sampler != null || patch.characters != null || patch.promptLength != null || patch.opus != null;
+                if (filterPatch) {
                     if (patch.page == null) next.page = 1;
                     if (patch.offset == null) next.offset = 0;
                     state.offsetByPage = { 1: 0 };
@@ -2801,6 +2963,42 @@ const exploreDsapDriver = {
             }, EXPLORE_VT_OPTIONS, (value) => {
                 navigateWith({ vt: value, page: 1, offset: 0 });
             });
+            exploreSetupFilterDropdown(root, {
+                dropdown: '#exSamplerDropdown',
+                btn: '#exSamplerBtn',
+                menu: '#exSamplerMenu',
+                hidden: '#exSamplerHidden',
+                selected: '#exSamplerSelected'
+            }, EXPLORE_SAMPLER_OPTIONS, (value) => {
+                navigateWith({ sampler: value, page: 1, offset: 0 });
+            });
+            exploreSetupFilterDropdown(root, {
+                dropdown: '#exCharactersDropdown',
+                btn: '#exCharactersBtn',
+                menu: '#exCharactersMenu',
+                hidden: '#exCharactersHidden',
+                selected: '#exCharactersSelected'
+            }, EXPLORE_CHARACTER_OPTIONS, (value) => {
+                navigateWith({ characters: value, page: 1, offset: 0 });
+            });
+            exploreSetupFilterDropdown(root, {
+                dropdown: '#exPromptLengthDropdown',
+                btn: '#exPromptLengthBtn',
+                menu: '#exPromptLengthMenu',
+                hidden: '#exPromptLengthHidden',
+                selected: '#exPromptLengthSelected'
+            }, EXPLORE_PROMPT_LENGTH_OPTIONS, (value) => {
+                navigateWith({ promptLength: value, page: 1, offset: 0 });
+            });
+            exploreSetupFilterDropdown(root, {
+                dropdown: '#exOpusDropdown',
+                btn: '#exOpusBtn',
+                menu: '#exOpusMenu',
+                hidden: '#exOpusHidden',
+                selected: '#exOpusSelected'
+            }, EXPLORE_OPUS_OPTIONS, (value) => {
+                navigateWith({ opus: value, page: 1, offset: 0 });
+            });
 
             if (periodWrap) periodWrap.classList.toggle('is-disabled', state.sort === 'new');
             const modelWrap = root.querySelector('#exModelDropdown');
@@ -2809,6 +3007,10 @@ const exploreDsapDriver = {
             if (aspectWrap) aspectWrap.classList.toggle('is-disabled', state.creatorId !== '');
             const vtWrap = root.querySelector('#exVtDropdown');
             if (vtWrap) vtWrap.classList.toggle('is-disabled', state.creatorId !== '');
+            ['#exSamplerDropdown', '#exCharactersDropdown', '#exPromptLengthDropdown', '#exOpusDropdown'].forEach((sel) => {
+                const wrap = root.querySelector(sel);
+                if (wrap) wrap.classList.toggle('is-disabled', state.creatorId !== '');
+            });
 
             searchInput?.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -2951,9 +3153,13 @@ const exploreDsapDriver = {
                 payload.sort = state.sort;
                 payload.period = state.period;
                 payload.search = state.search;
-                payload.model = state.model;
+                payload.model = exploreModelForQuery(state.model);
                 payload.aspect = state.aspect;
                 payload.vt = state.vt;
+                payload.sampler = state.sampler;
+                payload.characters = state.characters;
+                payload.promptLength = state.promptLength;
+                payload.opus = state.opus;
             }
             state.forceNext = false;
             const data = await wsClient.sendMessage('get_novelai_explore_gallery', payload, false);
@@ -2985,7 +3191,7 @@ const exploreDsapDriver = {
                 }
             }
 
-            if (emptyEl) emptyEl.classList.toggle('hidden', state.results.length > 0);
+            exploreRestoreEmptyMessage(emptyEl, state.results.length > 0);
             if (statusEl) {
                 statusEl.textContent = total
                     ? `${results.length} posts · page ${state.page}`
@@ -3003,8 +3209,7 @@ const exploreDsapDriver = {
             }
         } catch (err) {
             console.error('Agora load failed', err);
-            if (statusEl) statusEl.textContent = err.message || 'Failed to load';
-            if (emptyEl) emptyEl.classList.remove('hidden');
+            explorePaintPageError(root, err);
             if (mode === 'likes' && /not registered/i.test(String(err.message || ''))) {
                 state.exploreUser = { registered: false, registerUrl: EXPLORE_REGISTER_URL };
                 this._syncChromeButtons();
@@ -3127,6 +3332,7 @@ const exploreDsapDriver = {
         });
 
         let post = state.byId.get(id) || null;
+        let pageError = null;
         try {
             if (wsClient) {
                 const ensured = await wsClient.sendMessage('ensure_novelai_explore_image', {
@@ -3141,6 +3347,7 @@ const exploreDsapDriver = {
             }
         } catch (err) {
             console.warn('Agora ensure blob', err);
+            pageError = err;
         }
 
         // Like counts work without Explore registration (GET /post/:id)
@@ -3163,12 +3370,13 @@ const exploreDsapDriver = {
             }
         } catch (err) {
             console.warn('Agora post like_count', err);
+            pageError = err;
         }
 
         const loading = root.querySelector('#exDetailLoading');
         const content = root.querySelector('#exDetailContent');
         if (!post) {
-            if (loading) loading.textContent = 'Post not found. Go back and open again.';
+            if (loading) loading.textContent = pageError ? exploreErrorCopy(pageError) : 'Post not found. Go back and open again.';
             return;
         }
 

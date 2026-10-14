@@ -427,6 +427,21 @@
 
         // ---- details pane ----
 
+        // Same picture must not be torn down and fetched again. Status refreshes call this
+        // constantly; a new element each time flashes the file icon, then the photo, per tile.
+        _detailsIconKey(item) {
+            return [
+                item.id || '',
+                item.targetKind || '',
+                item.shortcutType || '',
+                item.previewUrl || '',
+                item.galleryPreview || '',
+                item.previewImageFilename || '',
+                item.previewHash || '',
+                item.modifiedAt || ''
+            ].join('\n');
+        }
+
         renderDetails(selected, summaryText) {
             const { detailsIcon, detailsInfo } = this.el;
             if (!detailsIcon || !detailsInfo) return;
@@ -436,8 +451,16 @@
                 : '');
             if (sel.length === 1) {
                 const item = sel[0];
-                detailsIcon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
-                if (typeof this.app._populateIconBox === 'function') this.app._populateIconBox(detailsIcon, item);
+                const key = this._detailsIconKey(item);
+                if (detailsIcon.dataset.detailsKey !== key) {
+                    // has-preview stays so the previous photo remains until the next one is decoded
+                    // (_populatePreviewIconBox in explorerApplet.js swaps it in place)
+                    const keepPreview = detailsIcon.classList.contains('has-preview');
+                    detailsIcon.dataset.detailsKey = key;
+                    detailsIcon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
+                    if (keepPreview) detailsIcon.classList.add('has-preview');
+                    if (typeof this.app._populateIconBox === 'function') this.app._populateIconBox(detailsIcon, item);
+                }
                 const type = this.typeLabel(item);
                 const date = this.formatDate(item.modifiedAt);
                 const size = this.app._itemSizeBytes && this.app._itemSizeBytes(item)
@@ -448,8 +471,11 @@
                 return;
             }
             // no selection or several: the folder's icon and the summary line
-            detailsIcon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
-            detailsIcon.innerHTML = '<i class="fas fa-folder explorer-item-type-icon" data-kind="folder"></i>';
+            if (detailsIcon.dataset.detailsKey !== '') {
+                detailsIcon.dataset.detailsKey = '';
+                detailsIcon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
+                detailsIcon.innerHTML = '<i class="fas fa-folder explorer-item-type-icon" data-kind="folder"></i>';
+            }
             detailsInfo.innerHTML = `<div class="explorer-details-summary">${esc(summaryText || '')}</div>`;
         }
     }

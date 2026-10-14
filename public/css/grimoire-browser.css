@@ -44,7 +44,7 @@
     background: var(--glass-layer-dark-4);
     border: 1px solid var(--glass-border-3);
     box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
-    cursor: text;
+    cursor: var(--c-text);
     box-sizing: border-box;
 }
 
@@ -166,7 +166,7 @@
 
 .wiki-address-bar.nav-loading {
     opacity: 0.75;
-    cursor: progress;
+    cursor: var(--c-progress);
 }
 
 .wiki-address-bar.nav-loading .address-path {
@@ -174,7 +174,7 @@
     opacity: 0.65;
 }
 
-/* Alchemy page load: glass tint fills left to right. --alchemy-load and data-alchemy-loading come from grimoireShowLoadProgress (grimoireRemoteBrowser.js) */
+/* Alchemy page load: glass tint fills left to right. --alchemy-load and data-alchemy-loading come from grimoireShowLoadProgress; wiki page waits hold it at 50% (grimoireBeginWikiLoad), both in grimoireRemoteBrowser.js */
 #grimoireAddressBar::before {
     content: '';
     position: absolute;
@@ -593,7 +593,7 @@
     border: 1px solid var(--glass-border-3);
     border-radius: 999px;
     padding: 4px 0 4px 12px; /* left breathing for icon+input area; right gap provided by button margin */
-    box-shadow: var(--glass-shadow-2);
+    box-shadow: 0 1px 6px rgba(32, 33, 36, 0.22);
     /* no fixed height — let padding + content define natural height for better breathing room */
 }
 
@@ -629,7 +629,7 @@
 
 .search-gear {
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: var(--c-pointer);
     padding: 3px 6px; /* balanced vertical + horizontal padding for comfortable click target + hover background */
     font-size: 0.95rem;
     border-radius: 4px;
@@ -688,7 +688,7 @@
 .google-search-result {
     padding: 6px 4px;
     border-radius: 6px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     transition: background 0.1s ease;
 }
 
@@ -783,7 +783,7 @@
     padding: 2px 10px;
     font-size: 0.8rem;
     color: var(--text-accent-tinted);
-    cursor: pointer;
+    cursor: var(--c-pointer);
     transition: all 0.1s ease;
 }
 .tag-pill:hover {
@@ -871,10 +871,9 @@
 }
 
 .grimoire-google-home .brand-logo {
-    max-width: 500px;
-    width: 100%;
-    height: auto;
     display: block;
+    width: min(340px, 86%);
+    height: auto;
     margin: 0 auto;
 }
 
@@ -891,7 +890,7 @@
     border-radius: 999px;
     padding: 0 16px;
     margin-bottom: 18px;
-    box-shadow: var(--glass-shadow-2);
+    box-shadow: 0 1px 6px rgba(32, 33, 36, 0.22);
 }
 
 .grimoire-google-home .search-box-large i:not(.search-gear) {
@@ -925,7 +924,7 @@
     padding: 8px 18px;
     border-radius: 4px;
     font-size: 0.9rem;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .grimoire-google-home .google-action-btn:hover {
@@ -977,7 +976,7 @@
 }
 
 .alchemy-scrollbar {
-    cursor: default;
+    cursor: var(--c-default);
     touch-action: none;
 }
 

@@ -17,6 +17,10 @@
     overflow: hidden;
 }
 
+.text-replacement-manager-content > .modal-body {
+    padding: var(--spacing-md);
+}
+
 .text-replacement-manager-content .modal-header,
 .text-replacement-manager-content .modal-footer {
     flex-shrink: 0;
@@ -30,6 +34,12 @@
 
 .text-replacement-search input {
     padding-right: 2.5rem;
+}
+
+.explorer-actions-header > .text-replacement-search {
+    flex: 0 1 260px;
+    min-width: 0;
+    margin: 0 0 0 auto;
 }
 
 .text-replacement-search i {
@@ -49,7 +59,7 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    overflow: hidden;
+    overflow: auto;
 }
 
 .text-replacement-list {
@@ -60,7 +70,7 @@
     flex-wrap: nowrap;
 }
 
-.text-replacement-list .text-replacement-list-items {
+.text-replacement-list-items {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
@@ -93,7 +103,7 @@
 
 .pagination-btn:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 .page-info {
@@ -681,4 +691,142 @@
     display: flex;
     gap: 8px;
     justify-content: flex-end;
+}
+
+/* ---------- Vista (#485): Expanders, Embedded Expanders, Favorites, Spellbook ----------
+   Light windows (data-window-client="light") with Explorer's command bar above a white list
+   box; each entry is a list row with Vista's hot and selected boxes, its values in read-only
+   Vista text boxes. Text at Properties' readable size (#476). */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .text-replacement-manager-content {
+    font-size: 11pt;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .explorer-actions-header > .text-replacement-search input {
+    height: 22px;
+    min-height: 22px;
+    padding: 1px 24px 1px 6px;
+    font-size: 9pt;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .explorer-actions-header > .text-replacement-search input::placeholder {
+    font-style: italic;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .explorer-actions-header > .text-replacement-search i {
+    z-index: 3; /* the text box lifts itself to 2 */
+    right: 7px;
+    color: #6d6d6d;
+    font-size: 9pt;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-list-container {
+    background: #fff;
+    border: 1px solid #828790;
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-list-items {
+    gap: 2px;
+    padding: 2px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-item {
+    padding: 6px 8px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+}
+
+@media (hover: hover) {
+    body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-item:hover {
+        background: linear-gradient(#fafbfd, #ebf3fd);
+        border-color: #b8d6fb;
+    }
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-item.editing {
+    background: linear-gradient(#f6fafe, #e3effd);
+    border-color: #7da2ce;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-item.modified {
+    border-left: 4px solid #e8a33d;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-item.new-item {
+    border-left: 4px solid #4caf50;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-name {
+    color: #1e3287;
+    font-family: inherit;
+    font-size: 11pt;
+    font-weight: 600;
+    font-variation-settings: normal;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-type {
+    color: #c0631a;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-type.random {
+    color: #0a72b5;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-value-display {
+    padding: 3px 6px;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-value-display .text-replacement-text {
+    color: #000;
+    font-size: 10pt;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-empty {
+    color: #6d6d6d;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .text-replacement-manager-content > .modal-footer {
+    padding: 6px var(--spacing-md);
+    background: #f0f0f0;
+    border-top: 1px solid #d5d5d5;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .page-info {
+    color: #000;
+    font-size: 10pt;
+    font-weight: 400;
+    font-variation-settings: normal;
+}
+
+/* Spellbook's preset data and the embedded expanders' stages: glass badges over the workspace
+   badge colour, like Properties' data badges */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] :is(.preset-model, .preset-resolution, .preset-steps, .preset-guidance, .preset-workspace, .text-replacement-stages > span) {
+    padding: 2px 7px;
+    color: var(--custom-dropdown-badge-text);
+    background: var(--custom-dropdown-badge-bg);
+    border: 0;
+    font-size: 9pt;
+    font-weight: 400;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .preset-icons i {
+    color: #444;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .preset-icons .uc-box {
+    border-color: #8e8f8f;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .preset-icons .uc-boxes[data-uc-level] .uc-box[data-level] {
+    background-color: transparent;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .preset-icons :is(.uc-boxes[data-uc-level="1"] .uc-box[data-level="1"], .uc-boxes[data-uc-level="5"] .uc-box[data-level="1"], .uc-boxes[data-uc-level="2"] .uc-box:is([data-level="1"], [data-level="2"]), .uc-boxes[data-uc-level="3"] .uc-box:is([data-level="1"], [data-level="2"], [data-level="3"]), .uc-boxes[data-uc-level="4"] .uc-box) {
+    background-color: #2b5797;
+    border-color: #1e3f73;
 }

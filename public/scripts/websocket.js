@@ -482,6 +482,7 @@ class BannerManager {
             'set_admin_pin': 'Set Admin PIN',
             'set_user_pin': 'Set User PIN',
             'set_user_pin_login_enabled': 'Toggle User PIN',
+            'set_use_vista_logon': 'Toggle Vista Logon',
             'list_application_keys': 'List App Keys',
             'list_application_request_log': 'App Request Log',
             'create_application_key': 'Create App Key',
@@ -492,9 +493,230 @@ class BannerManager {
             'update_api_key_selections': 'Update Keychain',
             'add_api_key': 'Add to Keychain',
             'update_api_key': 'Update Keychain',
+            'delete_api_key': 'Delete from Keychain',
 
             // Utility operations
-            'spellcheck_add_word': 'Add Word'
+            'spellcheck_add_word': 'Add Word',
+
+            // Account pictures and wallpaper history
+            'get_account_pictures': 'Get Account Pictures',
+            'set_account_picture': 'Set Account Picture',
+            'wallpaper_history_list': 'Wallpaper History',
+            'wallpaper_history_delete': 'Delete Wallpaper',
+
+            // Start menu
+            'start_menu_get_layout': 'Get Start Menu',
+            'start_menu_save_layout': 'Save Start Menu',
+            'start_menu_reset_layout': 'Reset Start Menu',
+
+            // Mail
+            'dovecote_list_mailboxes': 'List Mailboxes',
+            'dovecote_list_mail': 'List Mail',
+            'dovecote_get_mail': 'Read Mail',
+            'dovecote_render_body': 'Render Mail',
+            'dovecote_get_attachment': 'Get Attachment',
+            'dovecote_mark_mail': 'Mark Mail',
+            'dovecote_send_mail': 'Send Mail',
+            'dovecote_forward_mail': 'Forward Mail',
+            'dovecote_set_image_pref': 'Mail Image Preference',
+
+            // Windows Sidebar
+            'sidebar_get': 'Load Sidebar',
+            'sidebar_save': 'Save Sidebar',
+            'sidebar_random_image': 'Sidebar Picture',
+            'sidebar_weather': 'Sidebar Weather',
+            'sidebar_host_metrics': 'Sidebar CPU Meter',
+
+            // Cursor accounts
+            'get_cursor_accounts': 'Get Cursor Accounts',
+            'switch_cursor_account': 'Switch Cursor Account',
+            'save_cursor_account': 'Save Cursor Account',
+            'login_cursor_account': 'Login Cursor Account',
+            'capture_cursor_account': 'Capture Cursor Account',
+            'logout_cursor_account': 'Logout Cursor Account',
+            'logout_cursor_account_profile': 'Logout Cursor Profile',
+            'delete_cursor_account': 'Delete Cursor Account',
+            'set_cursor_account_api_key': 'Set Cursor API Key',
+
+            // Characters, memories, autofill
+            'get_character_db': 'Get Characters',
+            'character_db_upsert': 'Save Character',
+            'character_db_delete': 'Delete Character',
+            'character_db_rename_copyright': 'Rename Copyright',
+            'character_db_delete_copyright': 'Delete Copyright',
+            'get_memory_mind_map': 'Memory Mind Map',
+            'get_memory_revision_images': 'Memory Revision Images',
+            'list_memory_image_links': 'List Memory Links',
+            'link_memory_image': 'Link Memory Image',
+            'unlink_memory_image': 'Unlink Memory Image',
+            'search_knowledge_memories_fast': 'Search Memories',
+            'get_autofill_ranking': 'Get Autofill Ranking',
+            'test_autofill_ranking': 'Test Autofill Ranking',
+            'update_autofill_ranking': 'Update Autofill Ranking',
+
+            // Wiki imports and Agora
+            'get_apocrypha_zine': 'Get Apocrypha',
+            'get_fandom_wiki_index': 'Get Wiki Index',
+            'get_fandom_wiki_manager': 'Get Wiki Manager',
+            'import_fandom_wiki_page': 'Import Wiki Page',
+            'import_static_wiki': 'Import Static Wiki',
+            'update_wiki_import': 'Update Wiki Import',
+            'delete_fandom_wiki_import': 'Delete Wiki Import',
+            'get_novelai_explore_user': 'Get Agora User',
+            'get_novelai_explore_post': 'Get Agora Post',
+            'set_novelai_explore_post_like': 'Like Agora Post',
+            'downvote_novelai_explore_post': 'Downvote Agora Post',
+            'block_novelai_explore_creator': 'Block Agora Creator',
+            'list_novelai_explore_blocked_creators': 'List Blocked Creators',
+            'check_novelai_explore_upload': 'Check Agora Upload',
+            'upload_novelai_explore_image': 'Upload to Agora',
+
+            // Generation, gallery, similar images
+            'enhance_image': 'Enhance Image',
+            'max_enhance_image': 'Max Enhance',
+            'emotion_current_job': 'Emotion Job',
+            'set_gallery_show_shared': 'Show Shared Gallery',
+            'get_similar_image_groups': 'Get Similar Images',
+            'scrap_similar_images': 'Scrap Similar Images',
+
+            // Trash and system files
+            'vfs_read_system_file': 'Read System File',
+            'vfs_folder_has_user_files': 'Folder Has Files',
+            'vfs_move_to_trash': 'Move to Trash',
+            'vfs_restore_from_trash': 'Restore from Trash',
+            'vfs_empty_trash': 'Empty Trash',
+            'vfs_permanently_delete': 'Delete Permanently',
+            'workspace_bulk_remove_scrap': 'Bulk Remove Scraps',
+
+            // Director extras
+            'director_get_models': 'Get Director Models',
+            'director_fork_session': 'Fork Director Session',
+            'director_move_session': 'Move Director Session',
+            'director_abort': 'Abort Director',
+            'director_rentan_agent_get': 'Get Rentan Agent',
+            'director_rentan_agent_set_default': 'Set Default Rentan Agent',
+            'director_tool_diff': 'Director Tool Diff',
+            'director_tool_payload': 'Director Tool Payload',
+            'director_workspace_switch_result': 'Director Workspace Switch',
+            'director_streaming_ack': 'Director Stream Ack',
+            'director_computer_status': 'Director Computer Status',
+            'director_computer_size': 'Director Computer Size',
+            'director_cleanup': 'Clean Director',
+            'director_reinstall': 'Reinstall Director',
+            'director_prompt_guide_diff': 'Prompt Guide Diff',
+            'director_prompt_guide_extract': 'Extract Prompt Guide',
+            'director_prompt_guide_commit': 'Commit Prompt Guide',
+            'director_prompt_guide_push': 'Push Prompt Guide',
+            'ledge_checks': 'Ledge Checks',
+            'request_form_submit': 'Submit Request Form',
+
+            // Packages, workers, wallet, Menma
+            'package_list': 'List Packages',
+            'package_install': 'Install Package',
+            'package_uninstall': 'Uninstall Package',
+            'package_set_enabled': 'Set Package Enabled',
+            'runpod_pods_status': 'Runpod Status',
+            'runpod_pod_start': 'Start Runpod',
+            'runpod_pod_stop': 'Stop Runpod',
+            'wallet_status': 'Wallet Status',
+            'get_menma_state': 'Get Menma State',
+            'report_client_perf': 'Report Performance',
+            'unlock_api_service': 'Unlock Keychain',
+
+            // Application keys
+            'authenticate_application': 'Authenticate Application',
+            'refresh_application_key': 'Refresh App Key',
+            'request_temp_access_token': 'Request Temp Token',
+            'request_application_authorization': 'Request App Authorization',
+            'check_application_authorization': 'Check App Authorization',
+            'claim_application_authorization': 'Claim App Authorization',
+            'get_application_auth_scopes': 'Get App Scopes',
+            'list_application_auth_requests': 'List App Auth Requests',
+            'deny_application_auth_request': 'Deny App Auth',
+
+            // Agent session
+            'session_share_start': 'Start Session Share',
+            'agent_session_result': 'Agent Session Result',
+            'agent_session_unbind': 'Unbind Agent Session',
+
+            // Infrastructure probes
+            'pong': 'Pong',
+            'server_status': 'Server Status',
+            'check_updates': 'Check Updates',
+            'version_check': 'Version Check',
+
+            // Replication (client to server)
+            'replication_status': 'Replication Status',
+            'replication_sync_begin': 'Begin Replication Sync',
+            'replication_sync_status': 'Replication Sync Status',
+            'replication_sync_apply': 'Apply Replication Sync',
+            'replication_separation_prepare': 'Prepare Separation',
+            'replication_separation_status': 'Separation Status',
+            'replication_separation_bootstrap_preview': 'Preview Separation',
+            'replication_separation_bootstrap_apply': 'Apply Separation',
+            'replication_delegate': 'Replication Delegate',
+            'replication_delegation_status': 'Delegation Status',
+            'authenticate_replication': 'Authenticate Replication',
+            'replication_request_remote_gallery': 'Remote Gallery',
+
+            // Server push (server to client)
+            'account_data_health_updated': 'Account Data Health',
+            'account_pictures_changed': 'Account Pictures Changed',
+            'chat_message_response': 'Chat Message',
+            'chat_streaming_start': 'Chat Stream Start',
+            'chat_streaming_update': 'Chat Stream',
+            'chat_streaming_complete': 'Chat Stream Complete',
+            'error': 'Error',
+            'gallery_hint': 'Gallery Hint',
+            'gallery_scroll_state': 'Gallery Scroll',
+            'gallery_updated': 'Gallery Updated',
+            'generation_quips_progress': 'Quips Progress',
+            'generation_quips_status': 'Quips Status',
+            'generation_quips_updated': 'Quips Updated',
+            'image_generation_progress': 'Generating Image',
+            'image_generation_response': 'Generate Image',
+            'image_generation_error': 'Generation Failed',
+            'image_upscaling_response': 'Upscale Image',
+            'image_upscaling_error': 'Upscale Failed',
+            'image_expansion_response': 'Expand Canvas',
+            'image_expansion_error': 'Expand Failed',
+            'image_expansion_reroll_response': 'Recast Expand',
+            'image_expansion_reroll_error': 'Recast Expand Failed',
+            'note_created': 'Notebook Page Created',
+            'note_updated': 'Notebook Updated',
+            'note_content_updated': 'Notebook Updated',
+            'note_deleted': 'Notebook Page Deleted',
+            'novel_progress': 'Novel Progress',
+            'novel_updated': 'Novel Updated',
+            'novel_generate_complete': 'Novel Generated',
+            'preset_updated': 'Preset Updated',
+            'preset_group_updated': 'Preset Updated',
+            'queue_update': 'Queue Update',
+            'receipt_notification': 'Receipt',
+            'replication_maintenance': 'Replication Maintenance',
+            'replication_progress': 'Replication Progress',
+            'request_gallery_response': 'Get Gallery',
+            'request_keep_alive': 'Keep Alive',
+            'runpod_pods_status_update': 'Runpod Status',
+            'runtime_compile_progress': 'Compiling',
+            'runtime_compile_complete': 'Compile Finished',
+            'runtime_compile_error': 'Compile Failed',
+            'runtime_compile_logs': 'Compile Logs',
+            'search_indexing_status': 'Search Indexing',
+            'search_results_update': 'Search Results',
+            'search_results_complete': 'Search Complete',
+            'search_status_update': 'Search Status',
+            'service_worker_cache_update': 'Cache Update',
+            'vfs_updated': 'Files Updated',
+            'workspace_activated': 'Workspace Activated',
+            'workspace_updated': 'Workspace Updated',
+            'sidebar_updated': 'Sidebar Updated',
+            'workspace_deleted': 'Workspace Deleted',
+            'workspace_restored': 'Workspace Restored',
+            'workspace_data': 'Workspace Data',
+            'workspace_css_updated': 'Workspace Style',
+            'workspace_desktop_persisted': 'Desktop Saved',
+            'workspace_image_added': 'Image Added'
         };
 
         return typeMap[requestType] || requestType;
@@ -664,6 +886,17 @@ class WebSocketClient {
     /** Longest the startup window may wait on the staged reveal after init completes */
     static TIMEOUT_BOOT_REVEAL_FINISH = 15000;
 
+    /** Use Vista Logon's last /status answer: the logon picture path while on, no key while off (app.html reads it) */
+    static VISTA_LOGON_STORAGE_KEY = 'dreamscapeUseVistaLogon';
+
+    /** Use Vista Logon: logon failures in Vista's words (server errors from web_server.js login) */
+    static VISTA_LOGON_MESSAGES = {
+        'Invalid PIN code': 'The user name or password is incorrect.',
+        'PIN code is required': 'The user name or password is incorrect.',
+        'Password is required.': 'The user name or password is incorrect.',
+        'Too many failed login attempts. IP blocked.': 'The referenced account is currently locked out and may not be logged on to.'
+    };
+
     static CONNECTION_BEATS = {
         initializing: {
             message: 'Initializing…',
@@ -759,6 +992,19 @@ class WebSocketClient {
         this._justResumedFromSuspend = false;
         this._serverStartedAt = null;
         this.preStartupAuthBusy = false;
+        /** Use Vista Logon: the password was accepted, "Welcome" stays until the handoff */
+        this.preStartupCredentialsAccepted = false;
+        /**
+         * User Accounts "Use Vista Logon", server-owned (/status useVistaLogon). app.html starts
+         * from the last answer in localStorage (Classic when there is none); _setVistaLogon
+         * follows every /status.
+         */
+        this.vistaLogon = document.body.classList.contains('vista-logon');
+        this._vistaLogonArtPromise = null;
+        if (this.vistaLogon) {
+            this._showVistaLogonPicture(localStorage.getItem(WebSocketClient.VISTA_LOGON_STORAGE_KEY));
+            this._whenVistaLogonArtReady();
+        }
         this.preStartupAuthHandlersSetup = false;
         this.preStartupMarqueeManualPause = false;
         this.socketAuthenticated = null;
@@ -1570,14 +1816,51 @@ class WebSocketClient {
             });
         }
 
+        // Use Vista Logon controls (shown by desktop-boot.css only under body.vista-logon)
+        const messageOkBtn = document.getElementById('desktopPreStartupMessageOkBtn');
+        if (messageOkBtn) {
+            messageOkBtn.addEventListener('click', () => {
+                this._updatePreStartupAuthError('');
+                if (passwordInput) passwordInput.focus();
+            });
+        }
+        // runClientShutdownDirect / runClientRestartDirect: public/scripts/comp/modalUtils.js
+        const shutdownBtn = document.getElementById('desktopPreStartupShutdownBtn');
+        if (shutdownBtn) {
+            shutdownBtn.addEventListener('click', () => runClientShutdownDirect());
+        }
+        const shutdownMenuBtn = document.getElementById('desktopPreStartupShutdownMenuBtn');
+        if (shutdownMenuBtn) {
+            const powerActions = { restart: runClientRestartDirect, shutdown: runClientShutdownDirect };
+            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+            contextMenu.attachClickMenuToElement(shutdownMenuBtn, {
+                sections: [{
+                    type: 'list',
+                    items: [
+                        { text: 'Restart', action: 'restart' },
+                        { text: 'Shut Down', action: 'shutdown' }
+                    ]
+                }],
+                onAction: (action) => {
+                    if (powerActions[action]) powerActions[action]();
+                }
+            });
+        }
     }
 
     _updatePreStartupAuthError(message = '') {
         const errorEl = document.getElementById('desktopPreStartupAuthError');
         if (!errorEl) return;
         if (message) {
-            errorEl.textContent = message;
+            errorEl.textContent = this.vistaLogon
+                ? (WebSocketClient.VISTA_LOGON_MESSAGES[message] || message)
+                : message;
             errorEl.classList.remove('hidden');
+            if (this.vistaLogon) {
+                // Vista's message view: the account gives way, OK takes the focus (desktop-boot.css)
+                const okBtn = document.getElementById('desktopPreStartupMessageOkBtn');
+                if (okBtn) okBtn.focus();
+            }
         } else {
             errorEl.textContent = '';
             errorEl.classList.add('hidden');
@@ -1614,6 +1897,8 @@ class WebSocketClient {
     _preStartupDisplayText(phase, statusMessage) {
         // A connection failure is the "Error Connecting to domain controller" dialog on top
         if (phase === 'failed' && window.isDesktop && window.melatonNetworkDialogs) return 'Please wait...';
+        // Use Vista Logon: Vista's Welcome screen says "Welcome" from the password check to the desktop
+        if (this.vistaLogon && (this.preStartupAuthBusy || this.preStartupCredentialsAccepted)) return 'Welcome';
         if (phase === 'auth' || phase === 'failed') return statusMessage;
         if (statusMessage === 'Preparing MeletonFX...') return 'Welcome';
         return 'Please wait...';
@@ -1710,6 +1995,8 @@ class WebSocketClient {
         }
 
         modal.classList.toggle('auth-active', authVisible);
+        // Use Vista Logon: the account gives way to "Welcome" while the password is checked (desktop-boot.css)
+        modal.classList.toggle('auth-busy', this.preStartupAuthBusy);
 
         if (authSection) {
             authSection.classList.toggle('hidden', !authVisible);
@@ -1739,6 +2026,9 @@ class WebSocketClient {
             loginBtn.disabled = !authVisible || this.preStartupAuthBusy;
             loginBtn.textContent = this.preStartupAuthBusy ? 'Please wait...' : 'OK';
         }
+
+        // placeWindowsLogonDialog: public/scripts/comp/modalUtils.js (the Vista Welcome screen is full screen)
+        if (!this.vistaLogon) placeWindowsLogonDialog(modal);
     }
 
     async _hidePreStartupDialog() {
@@ -1754,6 +2044,11 @@ class WebSocketClient {
 
     async _submitPreStartupCredentials() {
         if (this.preStartupAuthBusy) return;
+        // A Vista workstation lock unlocks on this screen (public/scripts/comp/workstationLock.js)
+        if (window.workstationLock && window.workstationLock.ownsLogonScreen()) {
+            window.workstationLock.submitVista();
+            return;
+        }
 
         const usernameInput = document.getElementById('desktopPreStartupUsername');
         const passwordInput = document.getElementById('desktopPreStartupPassword');
@@ -1812,6 +2107,7 @@ class WebSocketClient {
             if (window.workstationLock) {
                 window.workstationLock.clearPending();
             }
+            this.preStartupCredentialsAccepted = true;
             this.preStartupAuthBusy = false;
             this.forceReconnect();
         } catch (error) {
@@ -2051,6 +2347,8 @@ class WebSocketClient {
             this.preStartupHandoffCompleted = true;
             this._resumeSuspendedSession();
             await this._hidePreStartupDialog();
+            // A Vista workstation lock from before the restart takes the screen back (workstationLock.js)
+            if (window.workstationLock) window.workstationLock.reshowAfterRestart();
             return;
         }
         await this._hidePreStartupDialog();
@@ -2179,6 +2477,17 @@ class WebSocketClient {
         }
 
         if (this._shouldUsePreStartupDialog()) {
+            // whenLoginStageReady: public/scripts/comp/assetPreload.js
+            // Teal fill stays up until the logon banner and the connecting dialog art have decoded.
+            if (!this._loginStageAssetsReady) {
+                if (!this._loginStageAssetsPromise) {
+                    this._loginStageAssetsPromise = assetPreload.whenLoginStageReady().then(() => {
+                        this._loginStageAssetsReady = true;
+                        if (this._shouldUsePreStartupDialog()) this._renderConnectionDial();
+                    });
+                }
+                return;
+            }
             if (phase === 'failed' && this._shouldUseConnectivityErrorInsteadOfConnectionDial()) {
                 this._hideConnectionDialModal();
                 this._presentConnectivityFailure();
@@ -2725,6 +3034,9 @@ class WebSocketClient {
         if (data.melaton && typeof data.melaton === 'object') {
             this.melatonConnection = data.melaton;
         }
+        if (typeof data.useVistaLogon === 'boolean') {
+            this._setVistaLogon(data.useVistaLogon, data.logonPicture);
+        }
         this.serverStartupStatusOk = true;
         this.serverStartupReady = data.isReady === true;
 
@@ -2742,6 +3054,59 @@ class WebSocketClient {
             this._updatePreStartupStageProgress(data.isReady === false ? progress : null, message);
             this._renderConnectionDial();
         }
+    }
+
+    /**
+     * Use Vista Logon from /status: the Welcome screen with the Administrator picture, and the
+     * boot windows in Vista Basic (desktopBoot.setLogonTheme). Every answer refreshes the
+     * localStorage copy app.html starts the next load from; a differing answer switches now.
+     */
+    _setVistaLogon(on, picture) {
+        const stored = on && picture ? picture : null;
+        const key = WebSocketClient.VISTA_LOGON_STORAGE_KEY;
+        if (localStorage.getItem(key) !== stored) {
+            if (stored) localStorage.setItem(key, stored);
+            else localStorage.removeItem(key);
+        }
+        if (stored) this._showVistaLogonPicture(stored);
+        if (on === this.vistaLogon) return;
+        this.vistaLogon = on;
+        if (on) this._whenVistaLogonArtReady();
+        if (window.desktopBoot) {
+            window.desktopBoot.setLogonTheme(on);
+        }
+    }
+
+    _showVistaLogonPicture(picture) {
+        const img = document.getElementById('desktopPreStartupPicture');
+        if (picture && img && img.getAttribute('src') !== picture) {
+            img.setAttribute('src', picture);
+        }
+    }
+
+    /**
+     * The Welcome screen's art, decoded before it shows (the background is the one the
+     * desktop-boot.css aspect-ratio queries picked for this screen). Until then the screen
+     * stays invisible (desktop-boot.css .vista-logon-art-ready); the Connecting and Mainframe
+     * Server windows never wait for it.
+     */
+    _whenVistaLogonArtReady() {
+        if (this._vistaLogonArtPromise) return this._vistaLogonArtPromise;
+        const modal = document.getElementById('desktopPreStartupModal');
+        const bg = modal ? getComputedStyle(modal).getPropertyValue('--vista-logon-bg') : '';
+        const picture = document.getElementById('desktopPreStartupPicture');
+        const urls = [...bg.matchAll(/url\(\s*["']?([^"')]+)/g)].map((m) => m[1]).concat(
+            ['branding.png', 'wait-20.png', 'usertile-frame-190.png', 'password.png', 'submit.png']
+                .map((name) => `/static_images/vista-logon/${name}`),
+            picture && picture.getAttribute('src') ? [picture.getAttribute('src')] : []
+        );
+        // holdImage: public/scripts/comp/assetPreload.js (per-image timeout, never rejects)
+        this._vistaLogonArtPromise = Promise.all(urls.map((url) => assetPreload.holdImage(url))).then(() => {
+            if (modal) modal.classList.add('vista-logon-art-ready');
+            // The password field could not take the focus while the screen was invisible
+            if (this._shouldUsePreStartupDialog()) this._renderConnectionDial();
+        });
+        return this._vistaLogonArtPromise;
     }
 
     /** Server start time from /status; a jump after boot means the server restarted. */
@@ -2786,6 +3151,7 @@ class WebSocketClient {
         this.sessionSuspended = true;
         this.sessionSuspendReason = reason;
         this.preStartupHandoffCompleted = false;
+        this.preStartupCredentialsAccepted = false;
         // That /status came from the server that went away: wait for this one like a first boot
         // (pingHost keeps polling instead of failing to "Error Connecting", no stale stage text)
         this.lastServerStartupStatus = null;
@@ -3528,6 +3894,8 @@ class WebSocketClient {
         if (!this.initSteps || this.initSteps.length === 0) {
             this.initializationCompleted = true;
             this.initializationLock = false; // Release initialization lock
+            // serviceWorkerManager.flushUpdatesAfterDesktop: public/scripts/comp/serviceWorkerManager.js
+            if (window.serviceWorkerManager) window.serviceWorkerManager.flushUpdatesAfterDesktop();
             await this.hideProgressNotification();
             return;
         }
@@ -3632,6 +4000,8 @@ class WebSocketClient {
             // Mark initialization as completed
             this.initializationCompleted = true;
             this.initializationLock = false; // Release initialization lock
+            // serviceWorkerManager.flushUpdatesAfterDesktop: public/scripts/comp/serviceWorkerManager.js
+            if (window.serviceWorkerManager) window.serviceWorkerManager.flushUpdatesAfterDesktop();
 
             // Hide overlay after all steps complete
             setTimeout(async () => {
@@ -5159,6 +5529,7 @@ class WebSocketClient {
 
         if (this._shouldUsePreStartupDialog()) {
             this.preStartupAuthBusy = false;
+            this.preStartupCredentialsAccepted = false;
             this._setConnectionPhase('auth', {
                 beat: 'establishing',
                 message: 'Authentication required. Enter your password.'
@@ -7897,6 +8268,14 @@ class WebSocketClient {
         return this.sendMessage('set_user_pin_login_enabled', { enabled });
     }
 
+    /** User Accounts' "Use Vista Logon" (config.useVistaLogon, server-wide). Admin only. */
+    async setUseVistaLogon(enabled) {
+        const res = await this.sendMessage('set_use_vista_logon', { enabled });
+        // This tab's next lock or logon uses it without waiting for a /status
+        if (res && res.success) this._setVistaLogon(res.useVistaLogon, res.logonPicture);
+        return res;
+    }
+
     /** Account pictures for Administrator and Guest (modules/accountPictures.js; User Accounts). */
     async getAccountPictures() {
         return this.sendMessage('get_account_pictures', {}, false);
@@ -8662,6 +9041,8 @@ class WebSocketClient {
     incrementPendingRequests() {
         this.pendingRequestsCount++;
         this.updatePendingRequestsSpinner();
+        // desktopTaskMonitor.sync: public/scripts/comp/desktopTaskMonitor.js
+        desktopTaskMonitor.sync();
     }
 
     // Update ticker badge with current pending count (pagination group = one ticker row; see getPendingRequestsForTicker)
@@ -9364,6 +9745,8 @@ class WebSocketClient {
             this.pendingRequestsCount--;
             this.updatePendingRequestsSpinner();
         }
+        // desktopTaskMonitor.sync: public/scripts/comp/desktopTaskMonitor.js
+        desktopTaskMonitor.sync();
     }
 
 

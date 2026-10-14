@@ -106,7 +106,7 @@
 .bracket-gen-compare-source-btn.disabled {
     opacity: 0.35;
     pointer-events: none;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 /* Managed pipeline stages & expanders */
@@ -118,7 +118,7 @@
 .pipeline-stage-item.managed-stage .workspace-drag-handle {
     opacity: 0.35;
     pointer-events: none;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 .stage-managed-hammer {
@@ -143,4 +143,203 @@
 
 .text-replacement-item.managed-expander .text-replacement-value-display {
     opacity: 0.9;
+}
+
+/* ---- Phasewalker on the Vista desktop (Yukimi 2026-10-14: "vistafy Atelier and Phasewalker").
+   A Studio tool, so it sits on the Studio's felt (manual-modal.css: the same tile, the workspace
+   accent's dye, lamp and edge burn) and its stages are the Studio's Vista prompt cards
+   (vista-glass-controls.css: glass card, black-glass header strip, light prompt box with the glass
+   ring and Vista's blue focus glow). Mirrored here, scoped to Phasewalker, so the Studio rules stay
+   one file's business. Controls on the strips sit on solid bases like the Studio's. ---- */
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal {
+    --studio-felt-dye: color-mix(in srgb, var(--primary-color-dark, var(--primary-color, #2f7f75)) 50%, #000);
+    --studio-control-base: color-mix(in srgb, var(--studio-felt-dye) 38%, #15191a);
+}
+
+@supports (color: oklch(from red l c h)) {
+    body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal {
+        --studio-felt-dye: oklch(from var(--primary-color-dark, var(--primary-color, #2f7f75)) calc(l * 0.36) calc(c * 1.2) h);
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal > .modal-content.bracket-generation-modal-content {
+    background-color: var(--studio-felt-dye);
+    background-image:
+        radial-gradient(ellipse 80% 50% at 50% 20%, hsl(0 0% 100% / 8%), transparent 70%),
+        radial-gradient(ellipse 130% 100% at 50% 45%, transparent 45%, hsl(0 0% 0% / 62%)),
+        image-set(url('/static_images/studio-felt/felt-1x.webp') 1x, url('/static_images/studio-felt/felt.webp') 2x);
+    background-size: 100% 100%, 100% 100%, 256px 256px;
+    background-repeat: no-repeat, no-repeat, repeat;
+    background-blend-mode: normal, normal, overlay;
+    box-shadow: inset 0 2px 6px hsl(0 0% 0% / 55%), inset 0 0 40px hsl(0 0% 0% / 35%), inset 0 0 0 1px hsl(0 0% 0% / 45%);
+}
+
+/* the stage cards */
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal .character-prompt-item {
+    background: linear-gradient(hsl(0 0% 100% / 6%), hsl(0 0% 100% / 2%) 48px, hsl(0 0% 0% / 18%) 100%), var(--studio-control-base);
+    border: 1px solid hsl(0 0% 0% / 62%);
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 10%), 0 2px 6px hsl(0 0% 0% / 45%);
+    overflow: hidden;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal .character-prompt-item .character-prompt-tabs > .tab-header {
+    --text-primary: #ffffff;
+    --text-color: #ffffff;
+    margin: calc(-1 * var(--spacing-xs)) calc(-1 * var(--spacing-xs)) 0;
+    padding: 4px;
+    gap: 4px;
+    background: linear-gradient(hsl(0 0% 28%), hsl(0 0% 20%) calc(50% - 1px), hsl(0 0% 5%) 50%, hsl(0 0% 4%));
+    border-bottom: 1px solid hsl(0 0% 0% / 70%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 16%);
+    color: #fff;
+}
+
+/* the light prompt box with its glass ring */
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal :is(.prompt-textarea-container, .character-prompt-textarea-container) {
+    --prompt-surface: light;
+    --text-primary: #141414;
+    --text-color: #141414;
+    --text-muted: #6d6d6d;
+    --primary-color-light: #1e395b;
+    background: rgb(247 247 247);
+    border-color: hsl(0 0% 0% / 55%);
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 22%);
+    caret-color: #141414;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal :is(.prompt-textarea-container, .character-prompt-textarea-container).textarea-focused {
+    background: #fff;
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 18%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal :is(.prompt-textarea-container, .character-prompt-textarea-container) textarea {
+    color: #141414;
+    caret-color: #141414;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal :is(.prompt-textarea-container, .character-prompt-textarea-container) textarea::placeholder {
+    color: #7a7a7a;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .emphasis-highlight {
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar {
+    --text-primary: #ffffff;
+    --text-color: #ffffff;
+    --text-muted: #9a9a9a;
+    margin-left: -1px;
+    margin-right: -1px;
+    margin-bottom: -1px;
+    background: linear-gradient(hsl(0 0% 28%), hsl(0 0% 20%) calc(50% - 1px), hsl(0 0% 5%) 50%, hsl(0 0% 4%));
+    border: 1px solid hsl(0 0% 0% / 58%);
+    border-top-color: hsl(0 0% 100% / 26%);
+    border-radius: 0 0 var(--border-radius-md) var(--border-radius-md);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 12%), 0 1px 0 hsl(0 0% 100% / 14%);
+    color: #fff;
+}
+
+/* solid bases under the strip's buttons (the felt never shows through a control) */
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal .modal-content :is(.btn-secondary, .toggle-btn):not(.hover-show):not(.gallery-toggle-btn) {
+    background-color: color-mix(in srgb, #fff 16%, var(--studio-control-base));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal .modal-content .toggle-btn[data-state="on"] {
+    background-color: color-mix(in srgb, var(--primary-color-dark, var(--primary-color)) 42%, var(--studio-control-base));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal .modal-content .btn-danger:not(.hover-show) {
+    background-color: color-mix(in srgb, #d2281e 74%, var(--studio-control-base));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal .modal-content :is(.btn-secondary, .btn-danger, .toggle-btn):disabled,
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal .modal-content .bracket-gen-compare-source-btn.disabled {
+    background-color: color-mix(in srgb, #fff 6%, var(--studio-control-base));
+    opacity: 1;
+    color: hsl(0 0% 100% / 42%);
+}
+
+/* the empty state reads on the cloth */
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal .bracket-generation-modal-content .bracket-gen-empty-hint {
+    color: hsl(0 0% 100% / 85%);
+    text-shadow: 0 1px 2px hsl(0 0% 0% / 70%);
+}
+
+/* ---- caption buttons (Yukimi 2026-10-14: "white with black outline and white outer glow like
+   real Vista icons", the generic caption toolbar's navy glyphs were too low in contrast on this
+   caption): white glyphs and labels, a 1 px black outline, a soft white glow. Not the Prompt / UC
+   slider, which keeps its own look (Yukimi: "don't apply the effects to the slider bar"). The selector repeats
+   enough of the generic caption-toolbar rule's (vista-explorer.css) to outrank it. ---- */
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary):not(.btn-danger),
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary):not(.btn-danger) span,
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar #bracketGenCompileBtn {
+    /* labels: white with a soft dark halo (an outline as thick as the strokes read as dark text) */
+    color: #fff;
+    opacity: 1;
+    text-shadow: 0 0 2px hsl(0 0% 0% / 90%), 0 0 4px hsl(0 0% 0% / 55%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary):not(.btn-danger) i,
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar #bracketGenCompileBtn i {
+    /* glyphs: Vista's caption icons, white with a 1 px black outline and a soft white glow */
+    color: #fff;
+    opacity: 1;
+    text-shadow:
+        1px 0 0 hsl(0 0% 0% / 85%), -1px 0 0 hsl(0 0% 0% / 85%),
+        0 1px 0 hsl(0 0% 0% / 85%), 0 -1px 0 hsl(0 0% 0% / 85%),
+        0 0 6px hsl(0 0% 100% / 75%), 0 0 10px hsl(0 0% 100% / 35%);
+}
+
+/* hovered, pressed or latched on / open, a caption button wears Vista's light-blue face
+   (vista-explorer.css: exactly these states), so its glyph and label are plain black there: no
+   outline, no glow
+   (Yukimi: "when hovered and selected it's black with no outline or glow as it's a button").
+   Compile is a primary button on the accent glass and keeps white. */
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary):not(.btn-danger):is(:hover, :active, .active, .context-open, [aria-expanded="true"], [aria-pressed="true"], [data-state="on"], [data-state="open"]):not(:disabled),
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary):not(.btn-danger):is(:hover, :active, .active, .context-open, [aria-expanded="true"], [aria-pressed="true"], [data-state="on"], [data-state="open"]):not(:disabled) :is(i, span) {
+    color: #000;
+    text-shadow: none;
+}
+
+/* Compile when there is something to compile (bracketGenerationApplet.updateCompileButton swaps it
+   to btn-primary): it was the old flat accent box; now a Vista glass button over the accent (the
+   lit top half, the darker fold, a dark edge and an inner light line), the caption buttons'
+   height, a soft glow on hover, pressed on click (Yukimi: "compile button need to be fixed when
+   it's available"). */
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar #bracketGenCompileBtn.btn-primary {
+    height: 26px;
+    min-height: 0;
+    padding: 0 9px;
+    gap: 6px;
+    background:
+        linear-gradient(hsl(0 0% 100% / 34%), hsl(0 0% 100% / 14%) calc(50% - 1px), hsl(0 0% 0% / 16%) 50%, hsl(0 0% 0% / 4%) 85%, hsl(0 0% 100% / 16%)),
+        color-mix(in srgb, var(--primary-color-dark, var(--primary-color, #2f7f75)) 78%, #000);
+    border: 1px solid hsl(0 0% 0% / 62%);
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 1px 2px hsl(0 0% 0% / 35%);
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar #bracketGenCompileBtn.btn-primary:hover:not(:disabled) {
+    background:
+        linear-gradient(hsl(0 0% 100% / 44%), hsl(0 0% 100% / 20%) calc(50% - 1px), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 2%) 85%, hsl(0 0% 100% / 22%)),
+        color-mix(in srgb, var(--primary-color-dark, var(--primary-color, #2f7f75)) 88%, #000);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 36%), 0 0 8px 1px color-mix(in srgb, var(--primary-color, #77dfd8) 55%, transparent), 0 1px 2px hsl(0 0% 0% / 35%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar #bracketGenCompileBtn.btn-primary:active:not(:disabled) {
+    background:
+        linear-gradient(hsl(0 0% 0% / 22%), hsl(0 0% 0% / 12%) calc(50% - 1px), hsl(0 0% 0% / 24%) 50%, hsl(0 0% 0% / 14%) 85%, hsl(0 0% 100% / 8%)),
+        color-mix(in srgb, var(--primary-color-dark, var(--primary-color, #2f7f75)) 78%, #000);
+    box-shadow: inset 0 2px 4px hsl(0 0% 0% / 60%), inset 0 0 0 1px hsl(0 0% 100% / 10%);
+}
+
+/* the glyph on the glass needs no outline: white with the label's halo */
+body.desktop-mode:not(.windows-classic-theme) #bracketGenerationModal.modal.toolbar-visible .modal-window-title .modal-window-title-toolbar #bracketGenCompileBtn.btn-primary i {
+    text-shadow: 0 0 2px hsl(0 0% 0% / 90%), 0 0 4px hsl(0 0% 0% / 55%);
 }

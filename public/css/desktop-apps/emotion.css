@@ -1,6 +1,6 @@
 /* eMotion LIVE (image-to-video) desktop app — public/scripts/comp/desktop-apps/emotion.js.
-   Title-bar toolbar: [Open Image] | Frames FPS Mode Loop <spacer> Auto-prompt Start/Stop.
-   Body (standard .modal-padding): 1:1 preview (left, progress/result) + full-height motion prompt (right).
+   Explorer command bar (#485, vista-explorer.css): Open Image, Frames, FPS, Mode, Loop | Auto-prompt, Start/Stop.
+   Body: 1:1 preview (left, progress/result) + full-height prompt (right).
    Inset-panel recipe matches public/css/director.css .director-expandable-content. */
 
 #desktopEmotionModal {
@@ -19,6 +19,7 @@
     flex: 1 1 auto;
     min-height: 0;
     gap: var(--spacing-sm);
+    padding: var(--spacing-md);
 }
 
 #desktopEmotionModal .emotion-inset-panel {
@@ -28,37 +29,28 @@
     border-radius: var(--border-radius-md);
 }
 
-/* ---- Toolbar ---- */
+/* ---- Command bar ---- */
 
-/* Muted glyph left of Frames/FPS inputs: a toolbar sibling, not a wrapper. */
-#desktopEmotionModal .modal-window-title-toolbar > .emotion-toolbar-number-icon {
+/* Muted glyph left of Frames/FPS inputs: a command-set sibling, not a wrapper. */
+#desktopEmotionModal .emotion-toolbar-number-icon {
     flex: 0 0 auto;
+    margin-left: var(--spacing-xs);
     color: var(--text-accent-tinted);
-    font-size: 14px;
+    font-size: 12px;
     line-height: 1;
     pointer-events: none;
 }
 
-#desktopEmotionModal .emotion-toolbar-divider {
-    flex: 0 0 1px;
-    align-self: stretch;
-    margin: 4px var(--spacing-xs);
-    background: var(--glass-border-3);
+/* Loop and Auto-prompt are icon only (their labels are spans, so :only-child is safe here) */
+#desktopEmotionModal .explorer-command-btn > i:only-child {
+    margin-right: 0;
 }
 
-#desktopEmotionModal .emotion-toolbar-spacer {
-    flex: 1 1 auto;
-    min-width: var(--spacing-sm);
-}
-
-/* Toolbar fits on one row: no wrap, no scroll. */
-#desktopEmotionModal .modal-window-title-toolbar {
-    flex-wrap: nowrap;
-    overflow: visible;
-}
-
-#desktopEmotionModal .emotion-mode-btn-label {
-    margin-left: 4px;
+#desktopEmotionModal .explorer-command-set > input[type="number"] {
+    width: 52px;
+    height: 22px;
+    min-height: 22px;
+    padding: 0 4px;
 }
 
 /* ---- Left: preview / progress / result ---- */
@@ -183,4 +175,43 @@
         flex: 1 0 auto;
         min-height: 10em;
     }
+}
+
+/* ---- Vista light client (#485) ---- */
+body.desktop-mode:not(.windows-classic-theme) #desktopEmotionModal .emotion-toolbar-number-icon {
+    color: #fff;
+    filter: drop-shadow(0 1px 1px hsl(200 80% 10% / 80%));
+}
+
+body:not(.windows-classic-theme) #desktopEmotionModal .emotion-inset-panel {
+    background: #fff;
+    border-color: #828790;
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) #desktopEmotionModal .emotion-preview-placeholder {
+    color: #6d6d6d;
+    opacity: 1;
+}
+
+/* the prompt: Vista's text box (no prompt container, so Studio's light box does not reach it) */
+body:not(.windows-classic-theme) #desktopEmotionModal .emotion-prompt-input {
+    color: #000;
+    caret-color: #000;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    box-shadow: none;
+    padding: 4px 6px;
+    font-size: 10pt;
+}
+
+body:not(.windows-classic-theme) #desktopEmotionModal .emotion-prompt-input:is(:hover, :focus) {
+    border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
+}
+
+body:not(.windows-classic-theme) #desktopEmotionModal .emotion-prompt-input::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
 }

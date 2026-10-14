@@ -333,9 +333,15 @@ async function upscaleImage(image, event = null) {
                     }
                 };
 
-                // Update the current manual preview image object to include the upscaled version
-                if (window.currentManualPreviewImage) {
-                    window.currentManualPreviewImage.upscaled = filename;
+                // Stamp the Studio preview only when this upscale is that preview.
+                // A gallery upscale of a different file must leave the last Studio image alone.
+                const preview = window.currentManualPreviewImage;
+                const sourceName = image.original || image.filename || image.upscaled;
+                const previewNames = preview
+                    ? [preview.original, preview.filename, preview.upscaled]
+                    : [];
+                if (preview && sourceName && previewNames.indexOf(sourceName) !== -1) {
+                    preview.upscaled = filename;
                 }
 
                 await handleImageResult(imageUrl, undefined, undefined, mockResponse, metadata);

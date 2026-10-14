@@ -1227,6 +1227,38 @@ function buildOpsFromPayload(payload) {
         }
     }
 
+    const dyn = payload.dynamicGeneration || payload.dynamic_generation;
+    if (dyn && typeof dyn === 'object' && !Array.isArray(dyn)) {
+        const bits = [];
+        if (dyn.enabled != null) bits.push(dyn.enabled ? 'on' : 'off');
+        if (dyn.creative != null) bits.push(dyn.creative ? 'creative' : 'creative off');
+        if (dyn.novel != null) bits.push('novel');
+        ops.push({
+            key: 'dynamicGeneration',
+            group: 'Dynamic generation',
+            kind: 'dynamicGeneration',
+            action: 'set',
+            label: 'Dynamic generation',
+            detail: bits.join(' · ') || 'Apply dynamic generation',
+            toValue: dyn,
+            enabled: true
+        });
+    }
+    if (payload.director && typeof payload.director === 'object' && !Array.isArray(payload.director)) {
+        const director = payload.director;
+        const detail = director.sessionId || director.session_id || director.prompt || director.directive || 'Attach the Director session';
+        ops.push({
+            key: 'director',
+            group: 'Director',
+            kind: 'director',
+            action: 'set',
+            label: 'Director',
+            detail: String(detail),
+            toValue: director,
+            enabled: true
+        });
+    }
+
     return ops;
 }
 
@@ -1302,6 +1334,14 @@ function buildPayloadFromOps(ops, title) {
         }
         if (op.kind === 'genso-locks') {
             payload.gensoLocks = op.toValue;
+            return;
+        }
+        if (op.kind === 'dynamicGeneration') {
+            payload.dynamicGeneration = op.toValue;
+            return;
+        }
+        if (op.kind === 'director') {
+            payload.director = op.toValue;
             return;
         }
         if (op.kind === 'character') {
@@ -2370,6 +2410,15 @@ async function applyStudioChangeOps(ops) {
         applyStudioGensoLocks(op.toValue);
     });
 
+    enabled.filter((op) => op.kind === 'dynamicGeneration').forEach((op) => {
+        // applyStudioDynamicGenerationConfig: public/scripts/comp/dynamicGenerationLockState.js
+        applyStudioDynamicGenerationConfig(op.toValue);
+    });
+    enabled.filter((op) => op.kind === 'director').forEach((op) => {
+        // applyStudioDirectorAttach: public/scripts/comp/dynamicGenerationLockState.js
+        applyStudioDirectorAttach(op.toValue);
+    });
+
     // applyModelLocks: public/scripts/comp/utilities.js — after params, including steps written before effort
     if (typeof applyModelLocks === 'function') applyModelLocks();
 
@@ -2457,8 +2506,9 @@ async function applyStudioChangePayload(payload, options) {
             return false;
         }
         const count = await applyStudioChangeOps(enabledOps);
+        const extras = enabledOps.some((op) => op.kind === 'dynamicGeneration' || op.kind === 'director');
         // noteStudioActivityChange: public/scripts/comp/studioActivityTool.js
-        if (typeof noteStudioActivityChange === 'function') noteStudioActivityChange(enabledOps, { source: (options && options.source) || 'manual', title: payload.title || '' });
+        if (typeof noteStudioActivityChange === 'function') noteStudioActivityChange(enabledOps, { source: (options && options.source) || 'manual', title: payload.title || '', extras });
         // refreshStudioTokenCounts: public/scripts/comp/presetTokenCount.js
         await refreshStudioTokenCounts();
         showGlassToast('success', 'Studio change', `Applied ${count} change${count === 1 ? '' : 's'}`, false, 2500, '<i class="fas fa-check"></i>');
@@ -2478,17 +2528,10 @@ async function applyStudioChangePayloadSilent(payload, options) {
         restoreStudioDatasetSelectionUnlessChanged(datasetSnapshot, payload);
         const ops = buildOpsFromPayload(payload);
         const enabledOps = ops.filter((op) => op.enabled !== false);
-        let extras = false;
-        const dyn = payload.dynamicGeneration || payload.dynamic_generation;
-        if (dyn && typeof applyStudioDynamicGenerationConfig === 'function') {
-            extras = applyStudioDynamicGenerationConfig(dyn) || extras;
-        }
-        if (payload.director && typeof applyStudioDirectorAttach === 'function') {
-            extras = applyStudioDirectorAttach(payload.director) || extras;
-        }
-        if (!enabledOps.length && !extras) return false;
-        if (enabledOps.length) await applyStudioChangeOps(enabledOps);
+        if (!enabledOps.length) return false;
+        await applyStudioChangeOps(enabledOps);
         // noteStudioActivityChange: public/scripts/comp/studioActivityTool.js
+        const extras = enabledOps.some((op) => op.kind === 'dynamicGeneration' || op.kind === 'director');
         if (typeof noteStudioActivityChange === 'function') noteStudioActivityChange(enabledOps, {
             source: (options && options.source) || 'agent',
             actorName: (options && options.actorName) || '',

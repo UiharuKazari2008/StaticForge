@@ -244,7 +244,7 @@
     transform: translateX(calc(100% + 2px));
 }
 
-.dataset-tag-dropdown-wrapper .custom-dropdown-btn.hover-show:not(.active) {
+.dataset-tag-dropdown-wrapper .custom-dropdown-btn.hover-show:not(.active):not(.context-open) {
     padding: 0.25em 0 0.25em 0;
     color: #ed9b7c;
     gap: 5px;
@@ -286,7 +286,7 @@
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.6);
     position: relative;
-    cursor: help;
+    cursor: var(--c-help);
 }
 
 .tag-count-dot.n-count {
@@ -330,11 +330,6 @@
     width: 100%;
 }
 
-.dataset-tag-dropdown-wrapper .custom-dropdown-menu {
-    max-width: unset;
-    width: max-content;
-}
-
 .custom-dropdown-option.naxt-bag-item {
     gap: 1em;
 }
@@ -366,7 +361,8 @@ select.hover-show:focus:not(:disabled),
     z-index: var(--z-layer-3);
 }
 
-.custom-dropdown-btn.hover-show.active {
+.custom-dropdown-btn.hover-show.active,
+.custom-dropdown-btn.hover-show.context-open {
     color: var(--text-primary);
     background: var(--hover-show-active-bg);
     border: 1px solid var(--hover-show-active-border);
@@ -388,7 +384,8 @@ select.hover-show:hover:focus:not(:disabled),
 .form-row textarea.hover-show:hover:focus:not(:disabled),
 .form-row .percentage-input-container.hover-show:hover:focus-within,
 .percentage-input-container.hover-show:hover:focus-within,
-.custom-dropdown-btn.hover-show.active:hover:not(:disabled) {
+.custom-dropdown-btn.hover-show.active:hover:not(:disabled),
+.custom-dropdown-btn.hover-show.context-open:hover:not(:disabled) {
     background: var(--hover-show-active-bg);
     border: 1px solid var(--hover-show-active-border);
     box-shadow: var(--hover-show-active-shadow);
@@ -412,14 +409,6 @@ span.dataset-button-text {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-}
-
-#datasetTagSearchDropdown {
-    background: #474747e0;
-}
-
-#datasetTagSearchDropdown .custom-dropdown-option.keyboard-selected {
-    background: #6a210aa6 !important;
 }
 
 /* Prompt Status Icons */

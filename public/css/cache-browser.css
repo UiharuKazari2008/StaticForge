@@ -419,7 +419,7 @@ input.vibe-reference-ratio-input[type=number] {
 
 .cache-gallery-item.disabled .cache-delete-btn {
     opacity: 0.3;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 /* Cache Browser Container (Desktop Only) */
@@ -681,7 +681,7 @@ img.loading {
 
 .bias-adjustment-image {
     object-fit: cover;
-    cursor: grab;
+    cursor: var(--c-grab);
     transition: transform 0.1s ease;
     user-select: none;
     -webkit-user-drag: none;
@@ -700,7 +700,7 @@ img.loading {
 }
 
 .bias-adjustment-image:active {
-    cursor: grabbing;
+    cursor: var(--c-grabbing);
 }
 
 .image-info {
@@ -780,8 +780,8 @@ img.loading {
     background-color: #ef0000;
 }
 
-[role=progressbar].animate>div:before,
-[role=progressbar].marquee:before {
+body:not(.windows-classic-theme) [role=progressbar].animate>div:before,
+body:not(.windows-classic-theme) [role=progressbar].marquee:before {
     -webkit-animation: progressbar 3s linear infinite;
     animation: progressbar 3s linear infinite;
     background: linear-gradient(90deg, transparent, #ffffff80, transparent 40%);
@@ -790,7 +790,7 @@ img.loading {
     height: 100%;
 }
 
-[role=progressbar].marquee:before {
+body:not(.windows-classic-theme) [role=progressbar].marquee:before {
     background: linear-gradient(to right, transparent, #0bd82c, transparent 35%);
     opacity: 0.5;
 }
@@ -1315,22 +1315,6 @@ img.loading {
         max-height: 95vh;
     }
 
-    .cache-manager-header {
-        align-items: stretch;
-        gap: 16px;
-    }
-
-    .cache-manager-workspace-selector {
-        justify-content: center;
-    }
-
-    .cache-manager-actions {
-        justify-content: center;
-    }
-
-    .cache-manager-gallery {
-        gap: 12px;
-    }
 }
 
 @keyframes slideUpFromBottom {
@@ -1435,7 +1419,7 @@ img.loading {
     overflow: hidden;
     transition: transform 0.2s ease;
     border: 1px solid var(--glass-border-1);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
@@ -1656,7 +1640,6 @@ img.loading {
 
     .cache-manager-gallery {
         grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-        gap: 8px;
     }
 }
 

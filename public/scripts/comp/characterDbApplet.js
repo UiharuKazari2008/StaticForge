@@ -19,7 +19,7 @@ class CharacterDbApplet {
         this.characterListEl = null;
         this.tagListEl = null;
         this.statusEl = null;
-        this.scrollShells = [];
+        this.copyTagBtn = null;
 
         this.characters = [];
         this.selectedCopyright = null;
@@ -46,7 +46,7 @@ class CharacterDbApplet {
         this.characterListEl = document.getElementById('characterDbCharacterList');
         this.tagListEl = document.getElementById('characterDbTagList');
         this.statusEl = document.getElementById('characterDbStatus');
-        this.scrollShells = Array.from(this.modal.querySelectorAll('.character-db-scroll-shell[data-custom-scrollbar]'));
+        this.copyTagBtn = document.getElementById('characterDbCopyTagBtn');
 
         const closeBtn = document.getElementById('closeCharacterDbBtn');
         if (closeBtn) {
@@ -64,6 +64,12 @@ class CharacterDbApplet {
         if (this.searchClearBtn) {
             this.searchClearBtn.addEventListener('click', () => this.clearSearch());
         }
+        if (this.copyTagBtn) {
+            this.copyTagBtn.addEventListener('click', () => {
+                const ch = this.getSelectedCharacter();
+                if (ch) this.copyText(ch.prompt || '');
+            });
+        }
 
         this.wireContextMenus();
         this._boundSearchUpdate = (message) => this.onSearchResultsUpdate(message);
@@ -78,9 +84,7 @@ class CharacterDbApplet {
         if (!this.modal) return;
         // openModal: public/scripts/comp/modalUtils.js
         openModal(this.modal);
-        this.loadDatabase().then(() => {
-            setTimeout(() => this.reinitScrollbars(), 80);
-        });
+        this.loadDatabase();
         if (this.searchInput) {
             setTimeout(() => this.searchInput.focus(), 50);
         }
@@ -90,11 +94,6 @@ class CharacterDbApplet {
         if (!this.modal) return;
         // closeModal: public/scripts/comp/modalUtils.js
         closeModal(this.modal);
-    }
-
-    reinitScrollbars() {
-        if (typeof customScrollbar === 'undefined' || !customScrollbar.forceReinit) return;
-        this.scrollShells.forEach((shell) => customScrollbar.forceReinit(shell));
     }
 
     setStatus(text) {
@@ -242,8 +241,6 @@ class CharacterDbApplet {
         this.updateActiveCopyrightRows();
         this.renderCharacterList();
         this.renderTagList();
-        this.updatePanelScrollbar('character');
-        this.updatePanelScrollbar('tagtext');
     }
 
     selectCharacter(name) {
@@ -256,28 +253,16 @@ class CharacterDbApplet {
         if (copyrightChanged) {
             this.updateActiveCopyrightRows();
             this.renderCharacterList();
-            this.updatePanelScrollbar('character');
         } else {
             this.updateActiveCharacterRows();
         }
         this.renderTagList();
-        this.updatePanelScrollbar('tagtext');
     }
 
     getPanelScrollable(panelName) {
         const panel = this.modal && this.modal.querySelector(`.character-db-panel[data-panel="${panelName}"]`);
         if (!panel) return null;
-        return panel.querySelector('.character-db-scrollable') || panel.querySelector('.scrollable-content');
-    }
-
-    updatePanelScrollbar(panelName) {
-        const shell = this.modal && this.modal.querySelector(`.character-db-panel[data-panel="${panelName}"] .character-db-scroll-shell`);
-        if (!shell || typeof customScrollbar === 'undefined') return;
-        if (customScrollbar._scheduleUpdateScrollbar) {
-            customScrollbar._scheduleUpdateScrollbar(shell);
-        } else if (customScrollbar.updateScrollbar) {
-            customScrollbar.updateScrollbar(shell);
-        }
+        return panel.querySelector('.character-db-scroll-shell');
     }
 
     updateActiveCopyrightRows() {
@@ -298,7 +283,6 @@ class CharacterDbApplet {
         this.renderCopyrightList();
         this.renderCharacterList();
         this.renderTagList();
-        setTimeout(() => this.reinitScrollbars(), 0);
     }
 
     renderCopyrightList() {
@@ -351,6 +335,7 @@ class CharacterDbApplet {
     renderTagList() {
         if (!this.tagListEl) return;
         const ch = this.getSelectedCharacter();
+        if (this.copyTagBtn) this.copyTagBtn.disabled = !ch;
         if (!ch) {
             this.tagListEl.innerHTML = '<div class="character-db-empty">Select a character</div>';
             return;
@@ -408,7 +393,7 @@ class CharacterDbApplet {
     onSearchInput() {
         const q = this.searchInput ? this.searchInput.value.trim() : '';
         if (this.searchClearBtn) {
-            this.searchClearBtn.classList.toggle('hidden', !q);
+            this.searchClearBtn.disabled = !q;
         }
         clearTimeout(this.searchDebounceTimer);
         if (!q) {
@@ -420,7 +405,7 @@ class CharacterDbApplet {
 
     clearSearch() {
         if (this.searchInput) this.searchInput.value = '';
-        if (this.searchClearBtn) this.searchClearBtn.classList.add('hidden');
+        if (this.searchClearBtn) this.searchClearBtn.disabled = true;
         this.exitSearchMode();
     }
 
@@ -500,7 +485,7 @@ class CharacterDbApplet {
                 this.selectCharacter(el.dataset.name);
                 this.exitSearchMode();
                 if (this.searchInput) this.searchInput.value = '';
-                if (this.searchClearBtn) this.searchClearBtn.classList.add('hidden');
+                if (this.searchClearBtn) this.searchClearBtn.disabled = true;
                 this.setStatus(`${this.characters.length} characters`);
             });
         });

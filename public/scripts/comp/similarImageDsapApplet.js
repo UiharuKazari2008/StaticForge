@@ -48,7 +48,7 @@ const similarDsapScopedCss = `
     max-width: 100%;
     background: #ffffff;
     border: 2px solid var(--dsap-smf-border);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 [data-dsap="similar-images"] .similar-card.selected {
     border-color: var(--dsap-smf-tab-accent);

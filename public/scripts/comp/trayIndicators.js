@@ -365,6 +365,8 @@ function updateImageGenerationIndicator(options = {}) {
         indicator.classList.remove('active');
         indicator.classList.add('hidden');
     }
+    // desktopTaskMonitor.sync: public/scripts/comp/desktopTaskMonitor.js
+    desktopTaskMonitor.sync();
 }
 
 let replicationTraySnapshot = null;
@@ -378,6 +380,8 @@ function updateReplicationTrayIndicator(snapshot) {
         indicator.classList.remove('active');
         indicator.classList.add('hidden');
         indicator.title = 'Replication';
+        // desktopTaskMonitor.sync: public/scripts/comp/desktopTaskMonitor.js
+        desktopTaskMonitor.sync();
         return;
     }
 
@@ -390,6 +394,8 @@ function updateReplicationTrayIndicator(snapshot) {
     indicator.title = `Replication: ${phase}${progress}${path}`;
     indicator.classList.remove('hidden');
     indicator.classList.add('active');
+    // desktopTaskMonitor.sync: public/scripts/comp/desktopTaskMonitor.js
+    desktopTaskMonitor.sync();
 }
 
 function wireReplicationTrayIndicator() {

@@ -90,11 +90,11 @@
 }
 
 .lightbox-image-container.zoomed {
-    cursor: grab;
+    cursor: var(--c-grab);
 }
 
 .lightbox-image-container.zoomed:active {
-    cursor: grabbing;
+    cursor: var(--c-grabbing);
 }
 
 #lightboxImage {
@@ -151,7 +151,7 @@
 
 .lightbox-nav-btn:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
     transform: none;
 }
 
@@ -197,7 +197,7 @@
 
 .image-preview-nav-btn:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
     transform: none;
 }
 
@@ -994,11 +994,11 @@
 }
 
 .image-preview-image-container.zoomed {
-    cursor: grab;
+    cursor: var(--c-grab);
 }
 
 .image-preview-image-container.zoomed:active {
-    cursor: grabbing;
+    cursor: var(--c-grabbing);
 }
 
 /* Touch gesture visual feedback */

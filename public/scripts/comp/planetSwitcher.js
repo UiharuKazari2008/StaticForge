@@ -44,6 +44,15 @@ const PLANET_SWITCHER_REFLECT = 0.45;        // reflection height as a fraction 
 const PLANET_SWITCHER_WOBBLE = 0.03;         // idle ring rotation amplitude (rad), compositor driven
 const PLANET_SWITCHER_WOBBLE_MS = 16000;     // half period of the idle wobble
 const PLANET_SWITCHER_TILE_MAX = 72;         // baked slide tiles kept across opens (raised per open to fit every slide)
+const PLANET_SWITCHER_BGM = Object.freeze({
+    url: '/sounds/planet/innerlight.opus',
+    gain: 0.48,          // file is already -20 LUFS; this sits under Vista SFX
+    gainActive: 0.62,    // lift when travel starts (Enter / tap again)
+    fadeActivate: 560,   // nudge up
+    fadeOut: 480,        // cancel overlay
+    // zoomIn + reveal is 3000; keep fading after the desktop is back
+    fadeTravel: 5200
+});
 
 /** Pure ring geometry. Also exercised by scripts/test-planet-switcher-ring.js (node). */
 const PlanetRingMath = {
@@ -535,6 +544,10 @@ class PlanetSwitcher {
         this._onKeyUp = (e) => this.handleKeyUp(e);
         this._onResize = () => this.handleResize();
         this._frame = (t) => this.frame(t);
+        this.bgm = null;
+        this.bgmFade = null;
+        this.bgmTicker = 0;
+        this.bgmHold = false;
     }
 
     isActive() {
@@ -597,6 +610,7 @@ class PlanetSwitcher {
         this.loadSamples(list);
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
         desktopSounds.play('planet-enter');
+        this.startBgm();
     }
 
     collectWorkspaces() {
@@ -1104,6 +1118,7 @@ class PlanetSwitcher {
         const dt = Math.min(0.05, Math.max(0, (now - this.lastFrame) / 1000));
         this.lastFrame = now;
         if (this.stars && !document.hidden) this.stars.step(dt, now);
+        this.stepBgm(now);
         if (this.tween) {
             this.stepTween(now);
             this.applyRing();
@@ -1602,6 +1617,9 @@ class PlanetSwitcher {
         this.loadStarted = false;
         this.root.classList.add('is-selecting');
         planet.el.classList.add('is-selected');
+        this.nudgeBgm();
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('planet-activate');
         planet.status.textContent = 'Preparing...';
         if (this.stars) this.stars.warp(true);
         this.stopWobble(700);
@@ -1633,8 +1651,6 @@ class PlanetSwitcher {
         this.loadStarted = true;
         this.loadStartedAt = performance.now();
         this.root.classList.add('is-loading-workspace');
-        // desktopSounds.play: public/scripts/comp/desktopSounds.js
-        desktopSounds.play('planet-activate');
         planet.el.classList.add('is-loading');
         planet.status.textContent = 'Loading...';
 
@@ -1792,6 +1808,8 @@ class PlanetSwitcher {
     }
 
     async zoomIntoBubble(planet) {
+        this.bgmHold = true;
+        this.fadeBgm(0, PLANET_SWITCHER_BGM.fadeTravel);
         const T = PLANET_SWITCHER_TIMING;
         this.state = 'zooming';
         this.loadStarted = false;
@@ -1874,6 +1892,7 @@ class PlanetSwitcher {
         }
         if (this.state !== 'browsing' && this.state !== 'opening') return;
         this.state = 'cancelling';
+        this.fadeBgm(0, PLANET_SWITCHER_BGM.fadeOut);
         const T = PLANET_SWITCHER_TIMING;
         this.tween = null;
         this.removeInputListeners();
@@ -1971,8 +1990,83 @@ class PlanetSwitcher {
         this.sun = null;
         this.fade = null;
         this.cancelBtn = null;
+        if (!this.bgmHold) this.stopBgm(true);
         this.loadGen++;
         this.state = 'idle';
+    }
+
+    // ---------- bgm (public/sounds/planet/innerlight.opus, gated by desktopSounds) ----------
+
+    startBgm() {
+        // desktopSounds.isEnabled: public/scripts/comp/desktopSounds.js
+        if (!desktopSounds.isEnabled()) return;
+        this.bgmHold = false;
+        if (!this.bgm) {
+            this.bgm = new Audio(PLANET_SWITCHER_BGM.url);
+            this.bgm.loop = true;
+            this.bgm.preload = 'auto';
+        }
+        this.bgm.volume = PLANET_SWITCHER_BGM.gain;
+        this.bgm.currentTime = 0;
+        this.bgm.play().catch(() => {});
+    }
+
+    nudgeBgm() {
+        if (!this.bgm || this.bgmHold) return;
+        this.fadeBgm(PLANET_SWITCHER_BGM.gainActive, PLANET_SWITCHER_BGM.fadeActivate);
+    }
+
+    fadeBgm(to, ms) {
+        if (!this.bgm) return;
+        const from = this.bgm.volume;
+        this.bgmFade = {
+            from,
+            to,
+            start: performance.now(),
+            ms: Math.max(1, ms || PLANET_SWITCHER_BGM.fadeOut)
+        };
+        this.ensureBgmTicker();
+        if (!this.raf) this.stepBgm(performance.now());
+    }
+
+    ensureBgmTicker() {
+        if (this.bgmTicker) return;
+        const tick = (now) => {
+            this.stepBgm(now);
+            if (this.bgmFade) this.bgmTicker = requestAnimationFrame(tick);
+            else this.bgmTicker = 0;
+        };
+        this.bgmTicker = requestAnimationFrame(tick);
+    }
+
+    stepBgm(now) {
+        if (!this.bgm || !this.bgmFade) return;
+        const u = Math.min(1, (now - this.bgmFade.start) / this.bgmFade.ms);
+        const vol = this.bgmFade.from + (this.bgmFade.to - this.bgmFade.from) * u;
+        this.bgm.volume = Math.max(0, Math.min(1, vol));
+        if (u < 1) return;
+        this.bgmFade = null;
+        if (this.bgm.volume <= 0.001) {
+            this.bgm.pause();
+            this.bgm.volume = 0;
+            this.bgmHold = false;
+        }
+    }
+
+    stopBgm(immediate) {
+        this.bgmHold = false;
+        this.bgmFade = null;
+        if (this.bgmTicker) {
+            cancelAnimationFrame(this.bgmTicker);
+            this.bgmTicker = 0;
+        }
+        if (!this.bgm) return;
+        if (immediate) {
+            this.bgm.pause();
+            this.bgm.volume = 0;
+            return;
+        }
+        this.fadeBgm(0, PLANET_SWITCHER_BGM.fadeOut);
     }
 }
 
@@ -1982,5 +2076,5 @@ if (planetSwitcher) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { PlanetRingMath, PLANET_SWITCHER_TIMING, planetSwitcherImageCache, planetSwitcherTileCache };
+    module.exports = { PlanetRingMath, PLANET_SWITCHER_TIMING, PLANET_SWITCHER_BGM, planetSwitcherImageCache, planetSwitcherTileCache };
 }

@@ -5,6 +5,11 @@
 // openModal / bringModalToFront / restoreMinimizedModal / closeModal / isModalMaximized: public/scripts/comp/modalUtils.js
 // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
 // Layout, keypad-per-mode visibility, 2nd labels, and the tape column: public/css/desktop-apps/desktopAppWindows.css
+// On the Vista desktop the window is calc.exe (Yozora #493): light client, Edit / View / Help menu bar
+// (click menus from public/scripts/comp/contextMenu.js), the keypad arrangement of calc.exe, Inv / Hyp
+// check boxes and the Degrees / Radians / Grads and Hex / Dec / Oct / Bin radio groups, a fixed-size
+// window per mode. The look is public/css/vista-calculator.css; calcPlaceVistaChrome below flips the
+// structure (light client, no resize, menu bar instead of the caption toolbar) with the body classes.
 
 const DESKTOP_CALCULATOR_MODAL_ID = 'desktopCalculatorModal';
 const DESKTOP_CALCULATOR_STORAGE_KEY = 'desktopCalculator';
@@ -23,6 +28,14 @@ const DESKTOP_CALCULATOR_MODE_ICONS = {
     scientific: ['fas fa-square-root-variable', 'Scientific'],
     programmer: ['fas fa-code', 'Programmer']
 };
+// calc.exe window widths per mode on the Vista desktop (client + the 8 px frame on each side; the
+// Standard window is calc.exe's 270 px, measured on the VM) and the history tape column.
+const DESKTOP_CALCULATOR_VISTA_WIDTHS = { standard: 270, scientific: 402, programmer: 363 };
+const DESKTOP_CALCULATOR_VISTA_TAPE_WIDTH = 248;
+const DESKTOP_CALCULATOR_APP_WIDTH = 360;
+// Hyp (calc.exe's check box): the trig keys become the hyperbolic functions.
+const DESKTOP_CALCULATOR_HYP_KEYS = { sin: 'sinh', cos: 'cosh', tan: 'tanh', asin: 'asinh', acos: 'acosh', atan: 'atanh' };
+const DESKTOP_CALCULATOR_ANGLE_LABELS = { deg: 'Degrees', rad: 'Radians', grad: 'Grads' };
 
 const CALC_ERR_DIV0 = 'Cannot divide by zero';
 const CALC_ERR_INVALID = 'Invalid input';
@@ -79,46 +92,46 @@ const DESKTOP_CALCULATOR_KEY_SPECS = {
     DESKTOP_CALCULATOR_KEY_SPECS[digit] = { label: digit, title: digit };
 });
 
-const DESKTOP_CALCULATOR_MEMORY_ROW = ['mc', 'mr', 'mplus', 'mminus', 'ms'];
-// The last programmer row is F and a wide equals (desktopAppWindows.css).
+// calc.exe's arrangement (Vista VM). Row 0 is the status row: the memory box (and in Scientific the
+// Inv / Hyp group and the parenthesis box) sit before Backspace CE C. Then a memory column, the digit
+// block, the operator column, and the function columns. Scientific is calc.exe's Scientific with our
+// key set (no Sta / F-E / dms / Exp / Int); Programmer is a Dreamscape addition in the same shape with
+// the A-F row under the digit block like calc.exe's. Inv (second) and the angle unit are controls in
+// the group boxes, not keys. The keyboard reaches every key in the visible layout plus Inv and Hyp.
 const DESKTOP_CALCULATOR_LAYOUTS = {
     standard: [
-        DESKTOP_CALCULATOR_MEMORY_ROW,
-        ['percent', 'ce', 'clear', 'backspace'],
-        ['recip', 'sqr', 'sqrt', '/'],
-        ['7', '8', '9', '*'],
-        ['4', '5', '6', '-'],
-        ['1', '2', '3', '+'],
-        ['sign', '0', '.', '=']
+        ['backspace', 'ce', 'clear'],
+        ['mc', '7', '8', '9', '/', 'sqrt'],
+        ['mr', '4', '5', '6', '*', 'percent'],
+        ['ms', '1', '2', '3', '-', 'recip'],
+        ['mplus', '0', 'sign', '.', '+', '=']
     ],
     scientific: [
-        DESKTOP_CALCULATOR_MEMORY_ROW,
-        ['second', 'angle', 'sin', 'cos', 'tan'],
-        ['pi', 'e', 'clear', 'ce', 'backspace'],
-        ['sqr', 'recip', 'abs', 'fact', 'mod'],
-        ['sqrt', '(', ')', 'percent', '/'],
-        ['pow', '7', '8', '9', '*'],
-        ['pow10', '4', '5', '6', '-'],
-        ['log', '1', '2', '3', '+'],
-        ['ln', 'sign', '0', '.', '=']
+        ['backspace', 'ce', 'clear'],
+        ['pi', '(', ')', 'mc', '7', '8', '9', '/', 'mod'],
+        ['e', 'pow10', 'ln', 'mr', '4', '5', '6', '*', 'percent'],
+        ['sin', 'pow', 'log', 'ms', '1', '2', '3', '-', 'abs'],
+        ['cos', 'sqr', 'fact', 'mplus', '0', 'sign', '.', '+', '='],
+        ['tan', 'sqrt', 'recip', 'mminus']
     ],
     programmer: [
-        ['bits', 'and', 'or', 'xor', 'not'],
-        ['nand', 'nor', 'lsh', 'rsh', 'mod'],
-        ['A', '(', ')', 'clear', 'backspace'],
-        ['B', '7', '8', '9', '/'],
-        ['C', '4', '5', '6', '*'],
-        ['D', '1', '2', '3', '-'],
-        ['E', 'sign', '0', 'ce', '+'],
-        ['F', '=']
+        ['backspace', 'ce', 'clear'],
+        ['bits', 'mc', '7', '8', '9', '/', 'mod', 'and'],
+        ['(', 'mr', '4', '5', '6', '*', 'or', 'xor'],
+        [')', 'ms', '1', '2', '3', '-', 'lsh', 'rsh'],
+        ['not', 'mplus', '0', 'sign', 'nand', '+', '=', 'nor'],
+        [null, 'mminus', 'A', 'B', 'C', 'D', 'E', 'F']
     ]
 };
+// The memory column and the digit block start calc.exe's wider gaps (data-calc-col, vista-calculator.css).
+const DESKTOP_CALCULATOR_MEMORY_KEYS = ['mc', 'mr', 'ms', 'mplus', 'mminus'];
 
 // Keys reachable in each mode (keyboard is limited to what the visible keypad offers).
 const DESKTOP_CALCULATOR_MODE_KEYS = {};
 DESKTOP_CALCULATOR_MODES.forEach((mode) => {
     const keys = new Set();
     DESKTOP_CALCULATOR_LAYOUTS[mode].forEach((row) => row.forEach((key) => {
+        if (!key) return;
         keys.add(key);
         if (DESKTOP_CALCULATOR_KEY_SPECS[key].key2) keys.add(DESKTOP_CALCULATOR_KEY_SPECS[key].key2);
     }));
@@ -151,7 +164,8 @@ const DESKTOP_CALCULATOR_FN_PREC = 9;
 const DESKTOP_CALCULATOR_UNARY_LABELS = {
     neg: 'negate', not: 'NOT', sqr: 'sqr', cube: 'cube', sqrt: '\u221a', cbrt: '\u221b', recip: '1/', abs: 'abs',
     fact: 'fact', sin: 'sin', cos: 'cos', tan: 'tan', asin: 'sin\u207b\u00b9', acos: 'cos\u207b\u00b9',
-    atan: 'tan\u207b\u00b9', pow10: '10^', pow2: '2^', exp: 'e^', log: 'log', log2: 'log\u2082', ln: 'ln'
+    atan: 'tan\u207b\u00b9', pow10: '10^', pow2: '2^', exp: 'e^', log: 'log', log2: 'log\u2082', ln: 'ln',
+    sinh: 'sinh', cosh: 'cosh', tanh: 'tanh', asinh: 'sinh\u207b\u00b9', acosh: 'cosh\u207b\u00b9', atanh: 'tanh\u207b\u00b9'
 };
 
 const DESKTOP_CALCULATOR_WORD_OPS = {
@@ -166,6 +180,7 @@ const desktopCalc = {
     base: 10,
     bits: 64,
     second: false,
+    hyp: false,
     entry: '0',
     value: 0,
     label: null,
@@ -191,6 +206,8 @@ function openDesktopCalculator() {
     if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) {
         // openModal: public/scripts/comp/modalUtils.js
         openModal(modal);
+        // the fixed-size window re-measures once visible (the hidden measure can run mid-boot)
+        if (desktopCalcEls.vista) calcRefitHeight();
     }
     // bringModalToFront: public/scripts/comp/modalUtils.js
     bringModalToFront(modal);
@@ -210,10 +227,8 @@ const calcCreateButton = function (className, title, iconClass) {
     return button;
 };
 
-const calcBuildKeyGroup = function (key) {
+const calcBuildKey = function (key) {
     const spec = DESKTOP_CALCULATOR_KEY_SPECS[key];
-    const group = document.createElement('div');
-    group.className = 'form-group';
     let className = 'btn-secondary';
     if (spec.primary) className = 'btn-primary';
     else if (spec.toggle) className = 'btn-secondary btn-toggle';
@@ -232,21 +247,76 @@ const calcBuildKeyGroup = function (key) {
     } else {
         button.textContent = spec.label;
     }
-    group.appendChild(button);
-    return group;
+    return button;
+};
+
+// calc.exe's sunken boxes under the display: M when memory is set, (=n while parentheses are open.
+const calcBuildStatusBox = function (name) {
+    const box = document.createElement('div');
+    box.className = 'form-control';
+    box.dataset.calcBox = name;
+    box.setAttribute('aria-hidden', 'true');
+    return box;
+};
+
+// 7.css radio / check box: <input> then <label> (public/css/7.scoped.css styles the pair).
+const calcBuildChoice = function (type, id, text, data) {
+    const input = document.createElement('input');
+    input.type = type;
+    input.id = id;
+    Object.keys(data).forEach((name) => { input.dataset[name] = data[name]; });
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    label.textContent = text;
+    return [input, label];
+};
+
+const calcBuildGroup = function (id, group) {
+    const fieldset = document.createElement('fieldset');
+    fieldset.id = id;
+    fieldset.dataset.calcGroup = group;
+    return fieldset;
 };
 
 const calcBuildPad = function (mode) {
     const pad = document.createElement('div');
     pad.className = 'form-col';
     pad.dataset.calcPad = mode;
-    DESKTOP_CALCULATOR_LAYOUTS[mode].forEach((row) => {
+    DESKTOP_CALCULATOR_LAYOUTS[mode].forEach((row, rowIndex) => {
         const rowEl = document.createElement('div');
         rowEl.className = 'form-row';
-        row.forEach((key) => rowEl.appendChild(calcBuildKeyGroup(key)));
+        if (rowIndex === 0) {
+            rowEl.dataset.calcRow = 'status';
+            if (mode === 'scientific') {
+                const group = calcBuildGroup('desktopCalculatorInvHyp', 'second');
+                calcBuildChoice('checkbox', 'desktopCalculatorInv', 'Inv', { calcKey: 'second' }).forEach((el) => group.appendChild(el));
+                calcBuildChoice('checkbox', 'desktopCalculatorHyp', 'Hyp', { calcHyp: '1' }).forEach((el) => group.appendChild(el));
+                rowEl.appendChild(group);
+            }
+            rowEl.appendChild(calcBuildStatusBox('memory'));
+            if (mode !== 'standard') rowEl.appendChild(calcBuildStatusBox('paren'));
+        }
+        row.forEach((key, index) => {
+            if (!key) {
+                const spacer = document.createElement('span');
+                spacer.dataset.calcSpacer = '';
+                rowEl.appendChild(spacer);
+                return;
+            }
+            const button = calcBuildKey(key);
+            if (DESKTOP_CALCULATOR_MEMORY_KEYS.indexOf(key) !== -1) button.dataset.calcCol = 'memory';
+            else if (index > 0 && DESKTOP_CALCULATOR_MEMORY_KEYS.indexOf(row[index - 1]) !== -1) button.dataset.calcCol = 'digits';
+            rowEl.appendChild(button);
+        });
         pad.appendChild(rowEl);
     });
     return pad;
+};
+
+// Vista desktop, not Classic: the gate every rule in vista-calculator.css uses.
+const calcIsVista = function () {
+    const b = document.body.classList;
+    return b.contains('desktop-mode') && !b.contains('windows-classic-theme');
 };
 
 const ensureDesktopCalculatorModal = function () {
@@ -258,25 +328,32 @@ const ensureDesktopCalculatorModal = function () {
     modal.id = DESKTOP_CALCULATOR_MODAL_ID;
     modal.className = 'modal resizeable-window toolbar-visible hidden';
     modal.dataset.windowIdentifier = 'desktopCalculator';
-    modal.dataset.windowDefaultWidth = '360';
+    modal.dataset.windowDefaultWidth = String(DESKTOP_CALCULATOR_APP_WIDTH);
     modal.dataset.windowMinWidth = '300';
     modal.dataset.windowMaxWidth = '960';
     modal.dataset.windowMaxHeight = '900';
     modal.dataset.calcMode = desktopCalc.mode;
 
+    // caption: the Font Awesome glyph and calc.exe's icon, as the other app windows (app.html)
     const title = document.createElement('div');
     title.className = 'modal-window-title';
     const titleMain = document.createElement('div');
     titleMain.className = 'modal-window-title-main';
     const titleIcon = document.createElement('i');
-    titleIcon.className = 'fas fa-calculator';
+    titleIcon.className = 'fas fa-calculator icon-fa';
     titleIcon.setAttribute('aria-hidden', 'true');
+    const titleImage = document.createElement('img');
+    titleImage.className = 'icon-image';
+    titleImage.alt = '';
+    titleImage.src = '/static_images/app_icons/vista-calculator.png';
     const titleText = document.createElement('span');
     titleText.textContent = 'Calculator';
     titleMain.appendChild(titleIcon);
+    titleMain.appendChild(titleImage);
     titleMain.appendChild(titleText);
     title.appendChild(titleMain);
 
+    // caption toolbar: the mode toggles and History off the Vista desktop (the menu bar has them there)
     const toolbar = document.createElement('div');
     toolbar.className = 'modal-window-title-toolbar';
     const modeGroup = document.createElement('div');
@@ -312,6 +389,23 @@ const ensureDesktopCalculatorModal = function () {
 
     const content = document.createElement('div');
     content.className = 'modal-content modal-padding dark';
+
+    // calc.exe's menu bar (Edit, View, Help): the shared menu-bar markup of naxtVistaChrome.js /
+    // Notepad, click menus from contextMenu.js. Shown on the Vista desktop (vista-calculator.css).
+    const menubar = document.createElement('div');
+    menubar.className = 'naxt-menubar';
+    menubar.setAttribute('role', 'menubar');
+    const menuTitles = ['Edit', 'View', 'Help'].map((name) => {
+        const button = calcCreateButton('naxt-menu-title', '', null);
+        button.removeAttribute('title');
+        button.setAttribute('role', 'menuitem');
+        button.dataset.calcMenu = name.toLowerCase();
+        button.textContent = name;
+        menubar.appendChild(button);
+        return button;
+    });
+    content.appendChild(menubar);
+
     const body = document.createElement('div');
     body.className = 'modal-body';
 
@@ -330,19 +424,22 @@ const ensureDesktopCalculatorModal = function () {
     pad.appendChild(expression);
     pad.appendChild(readout);
 
-    const basesEl = document.createElement('div');
-    basesEl.id = 'desktopCalculatorBases';
-    basesEl.className = 'form-col';
+    // Scientific: Degrees / Radians / Grads. Programmer: Hex / Dec / Oct / Bin (each label's title
+    // is the value in that base). Radio groups as calc.exe's, under the display.
+    const angleEl = calcBuildGroup('desktopCalculatorAngle', 'angle');
+    const angleInputs = DESKTOP_CALCULATOR_ANGLES.map((angle) => {
+        const pair = calcBuildChoice('radio', 'desktopCalculatorAngle-' + angle, DESKTOP_CALCULATOR_ANGLE_LABELS[angle], { calcAngle: angle });
+        pair[0].name = 'desktopCalculatorAngle';
+        pair.forEach((el) => angleEl.appendChild(el));
+        return pair[0];
+    });
+    pad.appendChild(angleEl);
+    const basesEl = calcBuildGroup('desktopCalculatorBases', 'base');
     const baseValues = DESKTOP_CALCULATOR_BASES.map(([base, name]) => {
-        const button = calcCreateButton('btn-secondary btn-toggle', name, null);
-        button.dataset.calcBase = String(base);
-        const nameEl = document.createElement('span');
-        nameEl.textContent = name;
-        const valueEl = document.createElement('span');
-        button.appendChild(nameEl);
-        button.appendChild(valueEl);
-        basesEl.appendChild(button);
-        return [base, valueEl, button];
+        const pair = calcBuildChoice('radio', 'desktopCalculatorBase-' + base, name.charAt(0) + name.slice(1).toLowerCase(), { calcBase: String(base) });
+        pair[0].name = 'desktopCalculatorBase';
+        pair.forEach((el) => basesEl.appendChild(el));
+        return [base, pair[1], pair[0]];
     });
     pad.appendChild(basesEl);
     DESKTOP_CALCULATOR_MODES.forEach((mode) => pad.appendChild(calcBuildPad(mode)));
@@ -364,14 +461,26 @@ const ensureDesktopCalculatorModal = function () {
     tape.appendChild(tapeHeader);
     tape.appendChild(tapeList);
 
-    // Buttons never take focus, so Enter is only the equals key and never re-clicks a button.
+    // Buttons and the check / radio labels never take focus, so Enter is only the equals key and
+    // never re-clicks a control (a label still toggles its input on click).
     const keepFocus = (ev) => {
-        if (ev.target.closest('button')) ev.preventDefault();
+        if (ev.target.closest('button, label, input')) ev.preventDefault();
     };
     content.addEventListener('mousedown', keepFocus);
     toolbar.addEventListener('mousedown', keepFocus);
     content.addEventListener('click', handleDesktopCalculatorContentClick);
+    content.addEventListener('change', handleDesktopCalculatorContentChange);
     toolbar.addEventListener('click', handleDesktopCalculatorToolbarClick);
+    menuTitles.forEach((button) => {
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        contextMenu.attachClickMenuToElement(button, {
+            onAction: handleDesktopCalculatorMenuAction,
+            sections: [{
+                type: 'list',
+                initfn: (section) => { section.items = calcMenuItems(button.dataset.calcMenu); }
+            }]
+        });
+    });
 
     body.appendChild(pad);
     body.appendChild(tape);
@@ -384,16 +493,20 @@ const ensureDesktopCalculatorModal = function () {
 
     desktopCalcEls = {
         modal: modal,
+        content: content,
         display: readout,
         expression: expression,
         bases: baseValues,
+        angleInputs: angleInputs,
         tapeList: tapeList,
         tapeBtn: tapeBtn,
         modeButtons: modeButtons,
-        secondButton: modal.querySelector('[data-calc-key="second"]'),
-        angleButton: modal.querySelector('[data-calc-key="angle"]'),
+        secondButton: modal.querySelector('#desktopCalculatorInv'),
+        hypButton: modal.querySelector('#desktopCalculatorHyp'),
         bitsButton: modal.querySelector('[data-calc-key="bits"]'),
         memoryButtons: modal.querySelectorAll('[data-calc-key="mc"], [data-calc-key="mr"]'),
+        memoryBoxes: modal.querySelectorAll('[data-calc-box="memory"]'),
+        parenBoxes: modal.querySelectorAll('[data-calc-box="paren"]'),
         programmerDigits: modal.querySelectorAll('[data-calc-pad="programmer"] [data-calc-key]')
     };
     calcSyncModeChrome();
@@ -403,11 +516,96 @@ const ensureDesktopCalculatorModal = function () {
     calcTapeRenderAll();
     calcRender();
     wireDesktopCalculatorKeyboard();
-    desktopAppApplyContentHeight(modal);
+    calcPlaceVistaChrome();
+    new MutationObserver(calcPlaceVistaChrome).observe(document.body, { attributes: true, attributeFilter: ['class'] });
     return modal;
 };
 
-function desktopAppApplyContentHeight(modal) {
+// The Vista desktop gets calc.exe's structure: light client (vista-glass-controls.css light-client
+// mechanism: data-window-client="light" + .win7 on the content), a fixed-size window (no resize
+// handles, no maximize box: modalUtils.js keys both on .resizeable-window), the menu bar instead
+// of the caption toolbar. Off it (Classic theme, plain web app) the window keeps its dark client,
+// its caption toggles and its resizable frame. Runs at build and whenever the body classes change.
+const calcPlaceVistaChrome = function () {
+    const els = desktopCalcEls;
+    if (!els) return;
+    const on = calcIsVista();
+    if (els.vista === on) return;
+    els.vista = on;
+    const modal = els.modal;
+    modal.classList.toggle('resizeable-window', !on);
+    modal.classList.toggle('toolbar-visible', !on);
+    els.content.classList.toggle('win7', on);
+    els.content.classList.toggle('dark', !on);
+    if (on) modal.dataset.windowClient = 'light';
+    else delete modal.dataset.windowClient;
+    if (!on) {
+        modal.dataset.windowDefaultWidth = String(DESKTOP_CALCULATOR_APP_WIDTH);
+        modal.dataset.windowMinWidth = '300';
+        modal.style.removeProperty('width');
+    }
+    calcRefitHeight();
+};
+
+// Vista: the window is calc.exe's width for the mode, plus the tape column while History is open.
+const calcVistaWidth = function () {
+    const tape = desktopCalcEls.modal.hasAttribute('data-calc-tape') ? DESKTOP_CALCULATOR_VISTA_TAPE_WIDTH : 0;
+    return DESKTOP_CALCULATOR_VISTA_WIDTHS[desktopCalc.mode] + tape;
+};
+
+const calcSetTape = function (open) {
+    const els = desktopCalcEls;
+    if (!els) return;
+    els.modal.toggleAttribute('data-calc-tape', open);
+    els.tapeBtn.dataset.state = open ? 'on' : 'off';
+    if (els.vista) calcRefitHeight();
+};
+
+const calcMenuItems = function (menu) {
+    if (menu === 'edit') {
+        return [
+            { text: 'Copy', icon: 'fas fa-copy', action: 'copy', badge: 'Ctrl+C', disabled: !!desktopCalc.error },
+            { text: 'Paste', icon: 'fas fa-paste', action: 'paste', badge: 'Ctrl+V' }
+        ];
+    }
+    if (menu === 'view') {
+        const mode = (name) => ({
+            text: DESKTOP_CALCULATOR_MODE_ICONS[name][1], action: 'mode:' + name,
+            showIndicator: true, indicatorMark: 'radio', checked: desktopCalc.mode === name
+        });
+        return [
+            mode('standard'),
+            mode('scientific'),
+            mode('programmer'),
+            { separator: true },
+            { text: 'History', action: 'tape', showIndicator: true, checked: desktopCalcEls.modal.hasAttribute('data-calc-tape') }
+        ];
+    }
+    return [{ text: 'About Calculator', icon: 'fas fa-calculator', action: 'about' }];
+};
+
+const handleDesktopCalculatorMenuAction = function (action) {
+    if (typeof action !== 'string') return;
+    if (action === 'copy') calcCopyDisplay();
+    else if (action === 'paste') calcPasteClipboard();
+    else if (action.indexOf('mode:') === 0) calcSetMode(action.slice(5));
+    else if (action === 'tape') calcSetTape(!desktopCalcEls.modal.hasAttribute('data-calc-tape'));
+    else if (action === 'about') {
+        // showConfirmationDialog: public/scripts/comp/confirmationDialog.js (a Vista message box on the desktop)
+        showConfirmationDialog(
+            '<p>Calculator</p><p>Standard, Scientific and Programmer modes with a history tape. The keypad and menus follow Windows Vista\'s calc.exe.</p>',
+            [{ text: 'OK', value: true, className: 'btn-standard primary' }],
+            null,
+            { title: 'About Calculator', icon: 'fas fa-calculator' }
+        );
+    }
+};
+
+// Measures the window's natural (hug) height at its default width and records it as the default
+// and minimum height. The stretching parts are frozen for the measure; a fixed layout (the Vista
+// calculator: every row and key has its pixel size) passes fixed = true so only the window and its
+// client are unfrozen and the keys keep their size.
+function desktopAppApplyContentHeight(modal, fixed) {
     // beginModalLayoutMeasure / endModalLayoutMeasure: public/scripts/comp/modalUtils.js
     const width = parseInt(modal.dataset.windowDefaultWidth, 10);
     const state = beginModalLayoutMeasure(modal);
@@ -415,7 +613,8 @@ function desktopAppApplyContentHeight(modal) {
     const freeze = [modal];
     if (content) {
         freeze.push(content);
-        content.querySelectorAll('.modal-body, .form-col, .form-section, .form-row, .form-group, .form-control, button, h2, h3').forEach((node) => {
+        const stretching = fixed ? '.modal-body, .form-col' : '.modal-body, .form-col, .form-section, .form-row, .form-group, .form-control, button, h2, h3';
+        content.querySelectorAll(stretching).forEach((node) => {
             freeze.push(node);
         });
     }
@@ -432,7 +631,11 @@ function desktopAppApplyContentHeight(modal) {
         item.node.style.height = 'auto';
         item.node.style.maxHeight = 'none';
     });
-    const hug = Math.ceil(modal.getBoundingClientRect().height);
+    // offsetHeight: the open animation scales the window, a client rect would read the scaled box.
+    // The client's scrollHeight is its content's real extent even when the frame is constrained
+    // mid-boot (a top/bottom anchored box) and the client's flex children shrank into it.
+    void modal.offsetHeight;
+    const hug = content ? modal.offsetHeight - content.offsetHeight + content.scrollHeight : modal.offsetHeight;
     if (previousWidth) modal.style.width = previousWidth;
     else modal.style.removeProperty('width');
     saved.forEach((item) => {
@@ -456,8 +659,6 @@ const handleDesktopCalculatorContentClick = function (ev) {
     if (button.dataset.calcKey) {
         const key = desktopCalc.second && button.dataset.calcKey2 ? button.dataset.calcKey2 : button.dataset.calcKey;
         applyDesktopCalculatorKey(key);
-    } else if (button.dataset.calcBase) {
-        calcSetBase(parseInt(button.dataset.calcBase, 10));
     } else if (button.dataset.tapeId) {
         calcRecallTapeEntry(parseInt(button.dataset.tapeId, 10));
     } else if (button.id === 'desktopCalculatorTapeClear') {
@@ -467,15 +668,23 @@ const handleDesktopCalculatorContentClick = function (ev) {
     }
 };
 
+// Inv / Hyp check boxes and the angle / base radio groups.
+const handleDesktopCalculatorContentChange = function (ev) {
+    const input = ev.target;
+    if (!input || input.tagName !== 'INPUT') return;
+    if (input.dataset.calcKey) applyDesktopCalculatorKey(input.dataset.calcKey);
+    else if (input.dataset.calcHyp) calcSetHyp(input.checked);
+    else if (input.dataset.calcAngle) calcSetAngle(input.dataset.calcAngle);
+    else if (input.dataset.calcBase) calcSetBase(parseInt(input.dataset.calcBase, 10));
+};
+
 const handleDesktopCalculatorToolbarClick = function (ev) {
     const button = ev.target.closest('button');
     if (!button) return;
     if (button.dataset.calcModeBtn) {
         calcSetMode(button.dataset.calcModeBtn);
     } else if (button === desktopCalcEls.tapeBtn) {
-        const open = !desktopCalcEls.modal.hasAttribute('data-calc-tape');
-        desktopCalcEls.modal.toggleAttribute('data-calc-tape', open);
-        button.dataset.state = open ? 'on' : 'off';
+        calcSetTape(!desktopCalcEls.modal.hasAttribute('data-calc-tape'));
     }
 };
 
@@ -942,7 +1151,8 @@ const calcEvaluateText = function (text, mode, angle, bits, base) {
 const applyDesktopCalculatorKey = function (key) {
     calcEnsureLoaded();
     try {
-        calcDispatchKey(key);
+        // Hyp (Scientific): sin cos tan and their inverses become the hyperbolic functions.
+        calcDispatchKey(desktopCalc.hyp && DESKTOP_CALCULATOR_HYP_KEYS[key] ? DESKTOP_CALCULATOR_HYP_KEYS[key] : key);
     } catch (err) {
         calcShowError((err && err.message) || CALC_ERR_INVALID);
     }
@@ -1225,18 +1435,29 @@ const calcMemoryKey = function (key) {
     calcSave();
 };
 
+// Inv (calc.exe's check box): the 2nd labels swap through data-calc-second (desktopAppWindows.css).
 const calcToggleSecond = function () {
     desktopCalc.second = !desktopCalc.second;
     if (!desktopCalcEls) return;
     desktopCalcEls.modal.toggleAttribute('data-calc-second', desktopCalc.second);
-    desktopCalcEls.secondButton.dataset.state = desktopCalc.second ? 'on' : 'off';
+    desktopCalcEls.secondButton.checked = desktopCalc.second;
+};
+
+const calcSetHyp = function (on) {
+    desktopCalc.hyp = !!on;
+    if (desktopCalcEls) desktopCalcEls.hypButton.checked = desktopCalc.hyp;
+};
+
+const calcSetAngle = function (angle) {
+    if (DESKTOP_CALCULATOR_ANGLES.indexOf(angle) === -1 || desktopCalc.angle === angle) return;
+    desktopCalc.angle = angle;
+    calcSyncAngleButton();
+    calcSave();
 };
 
 const calcCycleAngle = function () {
     const angles = DESKTOP_CALCULATOR_ANGLES;
-    desktopCalc.angle = angles[(angles.indexOf(desktopCalc.angle) + 1) % angles.length];
-    calcSyncAngleButton();
-    calcSave();
+    calcSetAngle(angles[(angles.indexOf(desktopCalc.angle) + 1) % angles.length]);
 };
 
 const calcCycleBits = function () {
@@ -1266,6 +1487,7 @@ const calcSetMode = function (mode) {
     if (c.mode === mode || DESKTOP_CALCULATOR_MODES.indexOf(mode) === -1) return;
     c.mode = mode;
     if (c.second) calcToggleSecond();
+    if (c.hyp) calcSetHyp(false);
     calcClearAll();
     calcSyncModeChrome();
     calcSave();
@@ -1283,16 +1505,23 @@ const calcSyncModeChrome = function () {
     });
 };
 
+// MC / MR follow the memory; calc.exe's box under the display shows M while it is set.
 const calcSyncMemoryButtons = function () {
     if (!desktopCalcEls) return;
     const empty = desktopCalc.memory === null;
     desktopCalcEls.memoryButtons.forEach((button) => {
         button.disabled = empty;
     });
+    desktopCalcEls.memoryBoxes.forEach((box) => {
+        box.textContent = empty ? '' : 'M';
+    });
 };
 
 const calcSyncAngleButton = function () {
-    if (desktopCalcEls) desktopCalcEls.angleButton.textContent = desktopCalc.angle.toUpperCase();
+    if (!desktopCalcEls) return;
+    desktopCalcEls.angleInputs.forEach((input) => {
+        input.checked = input.dataset.calcAngle === desktopCalc.angle;
+    });
 };
 
 const calcSyncBits = function () {
@@ -1300,24 +1529,34 @@ const calcSyncBits = function () {
     const base = desktopCalc.base;
     desktopCalcEls.bitsButton.textContent = DESKTOP_CALCULATOR_WORD_NAMES[desktopCalc.bits];
     desktopCalcEls.bases.forEach((row) => {
-        row[2].dataset.state = row[0] === base ? 'on' : 'off';
+        row[2].checked = row[0] === base;
     });
     desktopCalcEls.programmerDigits.forEach((button) => {
         if (calcIsDigitKey(button.dataset.calcKey)) button.disabled = parseInt(button.dataset.calcKey, 16) >= base;
     });
 };
 
-// Keypads differ in row count, so the window minimum follows the visible one.
+// Keypads differ in row count, so the window minimum follows the visible one. On the Vista desktop
+// the window is fixed-size: calc.exe's width for the mode (plus the tape column) and the hug height.
 const calcRefitHeight = function () {
-    const modal = desktopCalcEls && desktopCalcEls.modal;
+    const els = desktopCalcEls;
+    const modal = els && els.modal;
     if (!modal) return;
+    if (els.vista) {
+        modal.dataset.windowDefaultWidth = String(calcVistaWidth());
+        modal.dataset.windowMinWidth = modal.dataset.windowDefaultWidth;
+    }
     const tapeOpen = modal.hasAttribute('data-calc-tape');
     if (tapeOpen) modal.removeAttribute('data-calc-tape');
-    desktopAppApplyContentHeight(modal);
+    desktopAppApplyContentHeight(modal, els.vista);
     if (tapeOpen) modal.setAttribute('data-calc-tape', '');
     const min = parseInt(modal.dataset.windowMinHeight, 10);
     // isModalMaximized: public/scripts/comp/modalUtils.js
-    if (min > 0 && !isModalMaximized(modal) && modal.getBoundingClientRect().height < min) {
+    if (!(min > 0) || modal.classList.contains('hidden') || isModalMaximized(modal)) return;
+    if (els.vista) {
+        modal.style.width = modal.dataset.windowDefaultWidth + 'px';
+        modal.style.height = min + 'px';
+    } else if (modal.getBoundingClientRect().height < min) {
         modal.style.height = min + 'px';
     }
 };
@@ -1333,9 +1572,14 @@ const calcRender = function () {
     const c = desktopCalc;
     desktopCalcEls.display.textContent = c.error || calcGroupText(c.entry, c.mode, c.base);
     desktopCalcEls.expression.textContent = (c.error ? '' : (c.shownExpr || calcPendingText())) || '\u00a0';
+    // calc.exe's parenthesis box: (=n while n are open
+    const depth = c.error ? 0 : calcOpenParenCount(c.tokens);
+    desktopCalcEls.parenBoxes.forEach((box) => {
+        box.textContent = depth > 0 ? '(=' + depth : '';
+    });
     if (c.mode !== 'programmer') return;
     desktopCalcEls.bases.forEach((row) => {
-        row[1].textContent = calcGroupText(calcIntText(c.value, row[0]), 'programmer', row[0]);
+        row[1].title = calcGroupText(calcIntText(c.value, row[0]), 'programmer', row[0]);
     });
 };
 

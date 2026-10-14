@@ -47,7 +47,6 @@ function getQueueStatus() {
 function initializePresetManager() {
     const presetManagerBtn = document.getElementById('presetManagerBtn');
     const closePresetManagerBtn = document.getElementById('closePresetManagerBtn');
-    const togglePresetSearchBtn = document.getElementById('togglePresetSearchBtn');
     const presetSearch = document.getElementById('presetSearch');
     const presetPrevBtn = document.getElementById('presetPrevBtn');
     const presetNextBtn = document.getElementById('presetNextBtn');
@@ -55,7 +54,6 @@ function initializePresetManager() {
     // Event listeners
     closePresetManagerBtn.addEventListener('click', hidePresetManager);
     wirePresetManagerKeyboardOverlayEntries();
-    togglePresetSearchBtn.addEventListener('click', togglePresetSearch);
     presetSearch.addEventListener('input', debounce(async () => {
         presetPaginationInfo.currentPage = 1; // Reset to first page when searching
         presetSearchTerm = presetSearch.value;
@@ -202,20 +200,9 @@ async function showPresetManager() {
         return;
     }
     
-    const wasClosed = modal.classList.contains('hidden');
     await loadPresets();
     await renderPresetList();
     openModal(modal);
-    
-    if (wasClosed && window.customScrollbar) {
-        // Initialize custom scrollbars after modal is opened
-        setTimeout(() => {
-            const presetListContainer = document.getElementById('presetListContainer');
-            if (presetListContainer) {
-                window.customScrollbar.forceReinit(presetListContainer);
-            }
-        }, 50);
-    }
 }
 
 // Hide preset manager modal
@@ -231,22 +218,6 @@ async function hidePresetManager() {
     const searchInput = document.getElementById('presetSearch');
     if (searchInput) {
         searchInput.value = '';
-    }
-    const presetSearchContainer = document.getElementById('presetSearchContainer');
-    if (presetSearchContainer) {
-        presetSearchContainer.classList.add('hidden');
-    }
-}
-
-// Toggle preset search
-function togglePresetSearch() {
-    const toggleContainer = document.getElementById('presetSearchContainer');
-    if (toggleContainer) {
-        toggleContainer.classList.toggle('hidden');
-    }
-    const searchInput = document.getElementById('presetSearch');
-    if (searchInput) {
-        searchInput.focus();
     }
 }
 
@@ -369,7 +340,7 @@ function scrollPresetListToTop() {
     const modal = document.getElementById('presetManagerModal');
     if (modal) {
         // Scroll the list container to top
-        const listContainer = modal.querySelector('.text-replacement-list-container .text-replacement-list');
+        const listContainer = modal.querySelector('.text-replacement-list-container');
         if (listContainer) {
             listContainer.scrollTop = 0;
         }
@@ -1138,10 +1109,6 @@ async function hideUpdatePresetModal() {
     const searchInput = document.getElementById('presetSearch');
     if (searchInput) {
         searchInput.value = '';
-    }
-    const presetSearchContainer = document.getElementById('presetSearchContainer');
-    if (presetSearchContainer) {
-        presetSearchContainer.classList.add('hidden');
     }
 
     // Reset dynamic generation buttons

@@ -27,38 +27,26 @@ function setChatVerbosityField(hiddenId, selectedId, value) {
     if (selected) selected.textContent = chatVerbosityOptionLabel(v);
 }
 
-function wireChatVerbosityDropdown(config) {
-    const container = document.getElementById(config.containerId);
+const CHAT_VERBOSITY_PICKER_ITEMS = CHAT_VERBOSITY_OPTIONS.map((o) => ({ value: o.value, text: o.name }));
+
+function wireChatVerbosityPicker(config) {
     const btn = document.getElementById(config.btnId);
-    const menu = document.getElementById(config.menuId);
     const selectedEl = document.getElementById(config.selectedId);
     const hidden = document.getElementById(config.hiddenId);
-    if (!container || !btn || !menu || !selectedEl || !hidden) return;
-    if (container.dataset.wired === '1') return;
-    container.dataset.wired = '1';
+    if (!btn || !selectedEl || !hidden || btn.dataset.clickMenu) return;
 
     if (!hidden.value) hidden.value = '3';
     selectedEl.textContent = chatVerbosityOptionLabel(hidden.value);
 
-    const renderMenu = (selectedVal) => {
-        // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
-        renderSimpleDropdown(
-            menu,
-            CHAT_VERBOSITY_OPTIONS,
-            'value',
-            'name',
-            (value) => {
-                hidden.value = String(value);
-                selectedEl.textContent = chatVerbosityOptionLabel(value);
-            },
-            () => closeDropdown(menu, btn), // closeDropdown: public/scripts/comp/dropdown.js
-            selectedVal,
-            { preventFocusTransfer: true }
-        );
-    };
-
-    // setupDropdown: public/scripts/comp/dropdown.js
-    setupDropdown(container, btn, menu, renderMenu, () => hidden.value, { preventFocusTransfer: true });
+    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+    contextMenu.attachPickerMenu(btn, {
+        items: () => CHAT_VERBOSITY_PICKER_ITEMS,
+        value: () => hidden.value,
+        onSelect: (value) => {
+            hidden.value = String(value);
+            selectedEl.textContent = chatVerbosityOptionLabel(value);
+        }
+    });
 }
 
 class ChatSystem {
@@ -118,17 +106,13 @@ class ChatSystem {
         // Persona settings button
         document.getElementById('personaSettingsBtn')?.addEventListener('click', () => this.openPersonaSettingsModal());
 
-        wireChatVerbosityDropdown({
-            containerId: 'chatVerbosityDropdown',
+        wireChatVerbosityPicker({
             btnId: 'chatVerbosityBtn',
-            menuId: 'chatVerbosityMenu',
             selectedId: 'chatVerbositySelected',
             hiddenId: 'chatVerbosityHidden'
         });
-        wireChatVerbosityDropdown({
-            containerId: 'personaDefaultVerbosityDropdown',
+        wireChatVerbosityPicker({
             btnId: 'personaDefaultVerbosityBtn',
-            menuId: 'personaDefaultVerbosityMenu',
             selectedId: 'personaDefaultVerbositySelected',
             hiddenId: 'personaDefaultVerbosityHidden'
         });

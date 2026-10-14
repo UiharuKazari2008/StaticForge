@@ -62,73 +62,38 @@ body.desktop-mode .image-prompt-inspector.modal {
     font-size: 0.8rem;
 }
 
-.image-prompt-inspector-controls {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-bottom: 1px solid var(--glass-border-2);
+.image-prompt-inspector-findbar .explorer-command-btn.btn-small > i {
+    margin-right: 0;
 }
 
-.image-prompt-inspector-controls .gallery-toggle-group {
-    flex: 0 0 auto;
-    grid-template-columns: 1fr 1fr;
-    margin: -2px 0;
+.image-prompt-inspector-find-input {
+    flex: 0 1 260px;
+    min-width: 0;
 }
 
-.image-prompt-inspector-controls .gallery-toggle-group.three-tabs {
-    grid-template-columns: 1fr 1fr 1fr;
+.image-prompt-inspector-find-count {
+    margin-right: auto;
+    white-space: nowrap;
 }
 
-.image-prompt-inspector-controls .gallery-toggle-btn {
-    min-height: 33px;
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector-findbar {
+    border-top: 1px solid #0b3742;
 }
 
-.image-prompt-inspector-controls .gallery-toggle-group .gallery-toggle-slider {
-    width: calc(50% - 2px);
-}
-
-.image-prompt-inspector-controls .gallery-toggle-group.three-tabs .gallery-toggle-slider {
-    width: calc(calc(100% / 3) - 2px);
-}
-
-.image-prompt-inspector-controls .gallery-toggle-group[data-active="prompt"] .gallery-toggle-slider {
-    transform: translateX(0);
-    background: rgb(174 255 171 / 20%);
-    border-color: rgb(211 255 203 / 25%);
-}
-
-.image-prompt-inspector-controls .gallery-toggle-group[data-active="director"] .gallery-toggle-slider {
-    transform: translateX(calc(100% + 2px));
-    background: rgb(122 151 255 / 24%);
-    border-color: rgb(203 218 255 / 25%);
-}
-
-.image-prompt-inspector-controls .gallery-toggle-group[data-active="uc"] .gallery-toggle-slider {
-    transform: translateX(calc(100% + 2px));
-    background: rgb(255 25 25 / 20%);
-    border-color: rgb(250 82 82 / 25%);
-}
-
-.image-prompt-inspector-controls .gallery-toggle-group.three-tabs[data-active="uc"] .gallery-toggle-slider {
-    transform: translateX(calc(200% + 3px));
-}
-
-.image-prompt-inspector-controls .toggle-btn.icon-only {
-    flex: 0 0 auto;
-    margin-left: auto;
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector-find-count {
+    color: #fff;
+    font-size: var(--inspector-font-size);
+    text-shadow: 0 0 6px hsl(200 80% 10% / 90%), 0 1px 1px hsl(200 80% 10% / 70%);
 }
 
 .image-prompt-inspector-scroll-shell {
     flex: 1 1 0;
     min-height: 0;
-    overflow: hidden;
+    overflow: auto;
     position: relative;
 }
 
-.image-prompt-inspector-scrollable {
-    height: 100%;
-    overflow: auto;
+.image-prompt-inspector-scroll-inner {
     padding: var(--spacing-md);
 }
 
@@ -287,14 +252,14 @@ body.desktop-mode .image-prompt-inspector.modal {
 .image-prompt-inspector-empty,
 .image-prompt-inspector .forgedata-badge span,
 .image-prompt-inspector .scale-ratio-badge {
-    cursor: text !important;
+    cursor: var(--c-text) !important;
 }
 
 .image-prompt-inspector textarea[readonly] {
     user-select: text !important;
     -webkit-user-select: text !important;
     -moz-user-select: text !important;
-    cursor: text !important;
+    cursor: var(--c-text) !important;
 }
 
 /* Specific interactive/chrome elements that should NOT have text selection */
@@ -306,16 +271,13 @@ body.desktop-mode .image-prompt-inspector.modal {
 .image-prompt-inspector .modal-window-title *,
 .image-prompt-inspector .modal-window-controls,
 .image-prompt-inspector .modal-window-controls *,
-.image-prompt-inspector .image-prompt-inspector-footer-label,
 .image-prompt-inspector .image-prompt-inspector-thumb,
-.image-prompt-inspector .custom-scrollbar,
-.image-prompt-inspector .custom-scrollbar-thumb,
 .image-prompt-inspector .icon-fa,
 .image-prompt-inspector .icon-image {
     user-select: none !important;
     -webkit-user-select: none !important;
     -moz-user-select: none !important;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .image-prompt-inspector button,
@@ -325,48 +287,7 @@ body.desktop-mode .image-prompt-inspector.modal {
 .image-prompt-inspector .close-btn,
 .image-prompt-inspector .minimize-btn,
 .image-prompt-inspector .modal-work-area-maximize {
-    cursor: pointer !important;
-}
-
-.image-prompt-inspector-footer {
-    display: flex;
-    align-items: center;
-    padding: var(--spacing-xs) var(--spacing-md);
-    border-top: 1px solid var(--glass-border-2);
-    background: var(--glass-layer-1);
-    min-height: 42px;
-    height: 42px;
-    flex: 0 0 42px;
-    flex-shrink: 0;
-    box-sizing: border-box;
-    z-index: 10;
-}
-
-.image-prompt-inspector-footer-label {
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.image-prompt-inspector-footer-spacer {
-    flex: 1;
-}
-
-.image-prompt-inspector-footer-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-}
-
-.image-prompt-inspector-footer-actions .toolbar-btn {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    cursor: var(--c-pointer) !important;
 }
 
 .image-prompt-inspector-json {
@@ -385,17 +306,12 @@ body.desktop-mode .image-prompt-inspector.modal {
 .image-prompt-inspector-json-scroll-shell {
     flex: 1;
     min-height: 0;
-    overflow: hidden;
-}
-
-.image-prompt-inspector-json-scrollable {
-    height: 100%;
     overflow: auto;
-    padding: var(--spacing-md);
 }
 
 .image-prompt-inspector-json-body {
     margin: 0;
+    padding: var(--spacing-md);
     color: var(--text-primary);
     font-family: var(--font-mono, monospace);
     font-size: 0.82rem;
@@ -403,6 +319,179 @@ body.desktop-mode .image-prompt-inspector.modal {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     user-select: text;
+}
+
+/* ---- Vista light client (#476): the window face, a white page for the sections, Vista's
+   heading blue. Menu bar: vista-atelier.css; command bar: vista-explorer.css; prompt boxes:
+   Studio's light text box (vista-glass-controls.css). ---- */
+
+/* the dark theme's glass fills and tinted text, remapped for the white page (as tag-wiki-search.css).
+   Studio's expander Inspector (#485) shares these and the expander rules below: same markup. */
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, .image-prompt-inspector-json, #textReplacementLockModal)[data-window-client="light"] > .modal-content {
+    --inspector-font-size: 11pt;
+    font-size: var(--inspector-font-size);
+    --text-accent: #1e3287;
+    --hover-show-colored-text: #1e395b;
+    --glass-layer-1: #f7f7f7;
+    --glass-layer-2: #f3f3f3;
+    --glass-layer-3: #eee;
+    --glass-layer-4: #e8e8e8;
+    --glass-layer-dark-1: #fafafa;
+    --glass-layer-dark-2: #f6f6f6;
+    --glass-layer-dark-3: #f3f3f3;
+    --glass-layer-dark-4: #fff;
+    --glass-layer-dark-5: #eee;
+    --glass-layer-dark-bg: #f7f7f7;
+    --glass-inset-bg-4: #fff;
+    --glass-border-1: #ddd;
+    --glass-border-2: #d0d0d0;
+    --glass-border-3: #ccc;
+    --glass-border-4: #ddd;
+    --glass-border-5: #bbb;
+}
+
+/* cache-browser.css paints the info rows for the dark glass in fixed colours */
+body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .info-label {
+    color: #6d6d6d;
+}
+
+body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .info-item span:last-child {
+    color: #000;
+}
+
+body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .image-prompt-inspector-summary {
+    background: none;
+    border-bottom: 1px solid #a0a0a0;
+}
+
+body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .image-prompt-inspector-thumb {
+    background: #fff;
+    border: 1px solid #a0a0a0;
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, .image-prompt-inspector-json)[data-window-client="light"] :is(.image-prompt-inspector-scroll-shell, .image-prompt-inspector-json-scroll-shell) {
+    background: #fff;
+}
+
+/* Explorer's group header: dark blue with the fading rule after it */
+body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .image-prompt-inspector-section-title {
+    gap: 6px;
+    color: #1e3287;
+    font-size: var(--inspector-font-size);
+    font-weight: 400;
+}
+
+body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .image-prompt-inspector-section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, #c5d0e2, transparent);
+}
+
+/* Segoe UI at the window's text size everywhere outside the prompt boxes (their overlay mirrors the prompt font) */
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] :is(.image-prompt-inspector-filename, .image-prompt-inspector-subtitle, .image-prompt-inspector-character strong, .blueprint-info label, .meta-value, .forgedata-badge, .info-label, .info-item span, .text-replacement-full-value, .text-replacement-lock-info .reason-text, .text-replacement-original, .text-replacement-selected) {
+    font-family: inherit;
+    font-size: var(--inspector-font-size);
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] :is(.image-prompt-inspector-subtitle, .blueprint-info label, .info-label) {
+    color: #6d6d6d;
+    font-weight: 400;
+}
+
+body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] :is(.image-prompt-inspector-filename, .image-prompt-inspector-character strong, .meta-value) {
+    color: #000;
+    font-weight: 400;
+}
+
+/* Available Data: glass badges over the workspace badge colour (glass layer: vista-glass-controls.css) */
+body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .forgedata-badge {
+    padding: 2px 7px;
+    color: var(--custom-dropdown-badge-text);
+    background: var(--custom-dropdown-badge-bg);
+    border: 0;
+}
+
+/* Text expanders: white group boxes, read-only Vista text boxes, Segoe captions */
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-lock-item.dynamic-replacement-type {
+    border-left: 0;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-lock-content {
+    background: #fff;
+    border: 1px solid #d5dfe5;
+    border-radius: 3px;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .negative-prompt .text-replacement-lock-content {
+    background: #fff5f5;
+    border-color: #e5c4c4;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] :is(.text-replacement-full-value, .text-replacement-original, .text-replacement-selected) {
+    padding: 3px 5px;
+    color: #000;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-full-value {
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] :is(.text-replacement-lock-info .reason-text, .text-replacement-references) {
+    color: #444;
+}
+
+/* textReplacementManager.js sizes the sources list inline */
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-references {
+    font-size: var(--inspector-font-size) !important;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] :is(.text-replacement-arrow, .text-replacement-references a) {
+    color: #0066cc !important;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-badge {
+    font-size: calc(var(--inspector-font-size) - 1pt);
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-badge-combined {
+    padding: 2px 6px;
+    background: #fff;
+    border-color: #abadb3;
+    border-radius: 2px;
+}
+
+/* the location / type / status icons are tinted inline in pastels for the dark glass */
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-badge-combined > span {
+    filter: brightness(0.55) saturate(1.8);
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-index {
+    color: var(--badge-text);
+}
+
+body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .image-prompt-inspector-character {
+    background: #f7f7f7;
+    border-color: #d5d5d5;
+}
+
+body:not(.windows-classic-theme) .image-prompt-inspector-json[data-window-client="light"] .image-prompt-inspector-json-body {
+    font-size: var(--inspector-font-size);
+}
+
+body:not(.windows-classic-theme) .image-prompt-inspector-json[data-window-client="light"] .image-prompt-inspector-json-scroll-shell {
+    margin: 6px;
+    border: 1px solid #828790;
 }
 
 @media (max-width: 640px) {

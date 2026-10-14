@@ -1250,11 +1250,11 @@ class ImageViewer {
         const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
         if (imgElement) {
             if (this.isDragging) {
-                imgElement.style.cursor = 'grabbing';
+                imgElement.style.cursor = 'var(--c-grabbing)';
             } else if (this.zoomLevel > 1.0) {
-                imgElement.style.cursor = 'grab';
+                imgElement.style.cursor = 'var(--c-grab)';
             } else {
-                imgElement.style.cursor = 'zoom-in';
+                imgElement.style.cursor = 'var(--c-zoom-in)';
             }
         }
     }

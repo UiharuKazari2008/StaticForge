@@ -743,6 +743,7 @@ function omegasearchDsapBuildUrl(params = {}) {
     if (params.page && Number(params.page) > 1) {
         q.set('page', String(params.page));
     }
+    if (params.frame) q.set('frame', params.frame);
 
     const qs = q.toString();
     return qs ? `dsap://${ISPY_DSAP_URL}/?${qs}` : `dsap://${ISPY_DSAP_URL}/`;
@@ -1170,6 +1171,7 @@ ${omegasearchDsapBuildContextBarHtml()}
 
 <div class="omega-dsap-results hidden" id="omegaResultsSection">
 ${omegasearchDsapBuildStatsHtml().replace('class="dsap-smf-stats"', 'class="dsap-smf-stats hidden" id="omegaStatsTable"')}
+${dsapSmfBuildToolbar('<button type="button" id="omegaFrameSaveBtn" class="dsap-smf-btn dsap-smf-btn-primary"><i class="fas fa-image"></i> Show in photo frame</button>', 'omegaFrameToolbar').replace('class="dsap-smf-toolbar"', 'class="dsap-smf-toolbar hidden"')}
 
 <div class="omega-dsap-view omega-dsap-gallery-view" id="omegaGalleryView">
   <div id="omegaGalleryLoading" class="omega-dsap-loading hidden"><i class="fas fa-spinner-third fa-spin"></i> Searching…</div>
@@ -1382,14 +1384,14 @@ const omegasearchDsapScopedCss = `
   height: 18px;
   background: #003366;
   border: 1px solid #001a33;
-  cursor: pointer;
+  cursor: var(--c-pointer);
 }
 [data-dsap="ispy-dyna"] .omega-dsap-slider-input::-moz-range-thumb {
   width: 10px;
   height: 18px;
   background: #003366;
   border: 1px solid #001a33;
-  cursor: pointer;
+  cursor: var(--c-pointer);
 }
 [data-dsap="ispy-dyna"] .omega-dsap-slider-wrap-centered .omega-dsap-slider-track::before {
   content: '';
@@ -1449,7 +1451,7 @@ const omegasearchDsapScopedCss = `
 [data-dsap="ispy-dyna"] .omega-dsap-chip-remove {
   border: none;
   background: transparent;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   color: #003366;
   padding: 0 2px;
 }
@@ -1474,7 +1476,7 @@ const omegasearchDsapScopedCss = `
   font-size: 10.5pt;
 }
 [data-dsap="ispy-dyna"] .omega-dsap-section-toggle-hdr {
-  cursor: pointer;
+  cursor: var(--c-pointer);
   user-select: none;
 }
 [data-dsap="ispy-dyna"] .omega-dsap-section-chevron {
@@ -1513,7 +1515,7 @@ const omegasearchDsapScopedCss = `
 [data-dsap="ispy-dyna"] .omega-dsap-field-clear {
   border: none;
   background: transparent;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   color: #666;
   padding: 0 2px;
   font-size: 9pt;
@@ -1538,7 +1540,7 @@ const omegasearchDsapScopedCss = `
   position: relative;
   border: 1px solid #666;
   background: #f5f5f5;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   aspect-ratio: 1;
   overflow: hidden;
 }
@@ -1580,7 +1582,7 @@ const omegasearchDsapScopedCss = `
   border: none;
   background: transparent;
   color: #003366;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   padding: 0 4px;
   font-size: 10pt;
 }
@@ -1779,7 +1781,8 @@ const omegasearchDsapDriver = {
             loading: false,
             searchSessionId: null,
             serverSearchSessionId: null,
-            resultsActive: (omegasearchDsapResolveBlocks(host) || []).length > 0
+            resultsActive: (omegasearchDsapResolveBlocks(host) || []).length > 0,
+            frameId: host.getQueryParam('frame') || null
         };
 
         const root = host.getRoot();
@@ -2037,6 +2040,7 @@ const omegasearchDsapDriver = {
             statShowing: root.querySelector('#omegaStatShowing'),
             statUsages: root.querySelector('#omegaStatUsages'),
             statsTable: root.querySelector('#omegaStatsTable'),
+            frameToolbar: root.querySelector('#omegaFrameToolbar'),
             searchProgressBanner: root.querySelector('#omegaSearchProgressBanner'),
             searchProgressText: root.querySelector('#omegaSearchProgressText'),
             activeSearchRestore: root.querySelector('#omegaActiveSearchRestore'),
@@ -3053,6 +3057,7 @@ const omegasearchDsapDriver = {
         this._els.resultsSection?.classList.toggle('hidden', !showResults);
         const hasResultStats = (this._state?.total || 0) > 0;
         this._els.statsTable?.classList.toggle('hidden', !hasResultStats);
+        this._syncFrameToolbar();
         this._syncFiltersCollapseState();
         this._syncActiveSearchRestore();
     },
@@ -3334,7 +3339,8 @@ const omegasearchDsapDriver = {
             page: this._state.page,
             filters: this._collectFiltersFromInputs(),
             promptSource: this._resolvePromptSourceForPayload(),
-            blockOptions: this._state.blockOptions
+            blockOptions: this._state.blockOptions,
+            frame: this._state.frameId
         });
         const currentUrl = host.shell?._dsapState?.url || host.url;
         if (currentUrl === nextUrl) return false;
@@ -3548,6 +3554,12 @@ const omegasearchDsapDriver = {
         if (btn.id === 'omegaReturnToSearchBtn') {
             e.preventDefault();
             this._restoreActiveSearch();
+            return;
+        }
+
+        if (btn.id === 'omegaFrameSaveBtn') {
+            e.preventDefault();
+            this._saveToPhotoFrame();
             return;
         }
 
@@ -3785,6 +3797,33 @@ const omegasearchDsapDriver = {
         if (this._els.statShowing) this._els.statShowing.textContent = String(showing);
         if (this._els.statUsages) this._els.statUsages.textContent = String(usages);
         this._els.statsTable?.classList.toggle('hidden', !(total > 0));
+        this._syncFrameToolbar();
+    },
+
+    /** "Show in photo frame" only exists when a Sidebar Slide Show opened this search (frame= in the URL). */
+    _syncFrameToolbar() {
+        const state = this._state;
+        this._els.frameToolbar?.classList.toggle('hidden', !(state?.frameId && state.view === 'gallery' && state.total > 0));
+    },
+
+    _saveToPhotoFrame() {
+        const state = this._state;
+        const blockOptions = state.blockOptions || omegasearchDsapDefaultBlockOptions();
+        const search = {
+            blocks: omegasearchDsapBlocksForSearchPayload(state.blocks, blockOptions),
+            workspaceId: state.workspaceId,
+            viewType: state.viewType,
+            promptSource: state.promptSource || this._resolvePromptSourceForPayload() || '',
+            filters: omegasearchDsapBuildFiltersPayload(this._collectFiltersFromInputs()),
+            blockOptions: { defaultMatchMode: blockOptions.defaultMatchMode || 'substring' },
+            label: (state.blocks || []).map(omegasearchDsapFormatBlockLabel).filter(Boolean).join(', ')
+        };
+        // vsbSetFrameSearch: public/scripts/comp/vistaSidebar.js
+        const ok = vsbSetFrameSearch(state.frameId, search);
+        // showGlassToast: public/scripts/comp/toastManager.js
+        showGlassToast(ok ? 'success' : 'error', 'Image Search',
+            ok ? `The photo frame now shows ${state.total} matching pictures` : 'That photo frame is no longer on the Sidebar',
+            false, 3000, `<i class="fas fa-${ok ? 'image' : 'exclamation-circle'}"></i>`);
     },
 
     _renderResults() {
@@ -4159,77 +4198,11 @@ const omegasearchDsapDriver = {
         }
     },
 
-    async _jumpDetailToGallery() {
+    _jumpDetailToGallery() {
         const filename = this._state?.detailFile;
         if (!filename) return;
-        const metadata = this._state?.detailMetadata;
-        const imageWorkspaceId = omegasearchDsapGetDetailWorkspaceId(metadata);
-        const currentWorkspaceId = activeWorkspace || 'default';
-
-        const findImageIndex = () => {
-            if (!allImages || !Array.isArray(allImages) || !allImages.length) return -1;
-            return allImages.findIndex((img) =>
-                img && (img.filename === filename || img.original === filename || img.upscaled === filename)
-            );
-        };
-
-        let imageIndex = findImageIndex();
-
-        if (imageIndex === -1 && imageWorkspaceId && imageWorkspaceId !== currentWorkspaceId) {
-            const workspaceName = workspaces?.[imageWorkspaceId]?.name || imageWorkspaceId;
-            const confirmed = await showConfirmationDialog(
-                `This image is in the "${workspaceName}" workspace. Switch to that workspace and jump to the image?`,
-                [
-                    { text: 'Switch & Jump', value: true, className: 'btn-primary' },
-                    { text: 'Cancel', value: false, className: 'btn-secondary' }
-                ]
-            );
-            if (!confirmed) return;
-            // setActiveWorkspace: public/scripts/comp/workspaceUtils.js
-            await setActiveWorkspace(imageWorkspaceId);
-            // loadGallery: public/scripts/comp/galleryView.js
-            if (loadGallery) await loadGallery(true);
-            imageIndex = findImageIndex();
-        }
-
-        if (imageIndex === -1 && loadGallery) {
-            await loadGallery(true);
-            imageIndex = findImageIndex();
-        }
-
-        if (imageIndex === -1) {
-            showGlassToast('warning', 'Not Found', 'Image not found in workspace', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
-            return;
-        }
-
-        let targetIndex = imageIndex;
-        if (typeof window.filteredImageIndices !== 'undefined' && Array.isArray(window.filteredImageIndices)) {
-            const filteredIndex = window.filteredImageIndices.indexOf(imageIndex);
-            if (filteredIndex !== -1) {
-                targetIndex = filteredIndex;
-            } else {
-                showGlassToast('warning', 'Not Visible', 'Image is filtered out of current view', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
-                return;
-            }
-        }
-
-        const galleryWindow = document.getElementById('galleryWindow');
-        if (galleryWindow) {
-            // isGalleryWindowHidden, openModal, bringModalToFront: public/scripts/comp/modalUtils.js
-            if (isGalleryWindowHidden()) {
-                openModal(galleryWindow);
-                if (typeof window.isGalleryHidden !== 'undefined') {
-                    window.isGalleryHidden = false;
-                }
-            } else {
-                bringModalToFront(galleryWindow);
-            }
-        }
-
-        // displayGalleryFromStartIndex: public/scripts/comp/galleryView.js
-        if (displayGalleryFromStartIndex) {
-            await displayGalleryFromStartIndex(targetIndex, true);
-        }
+        // jumpToGalleryImage: public/scripts/comp/galleryView.js
+        return jumpToGalleryImage(filename, omegasearchDsapGetDetailWorkspaceId(this._state?.detailMetadata));
     },
 
     _goToDetailWorkspace() {

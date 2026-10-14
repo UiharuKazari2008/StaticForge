@@ -183,11 +183,14 @@ class ContextMenuController {
 
     _isTouchGeneratedContextMenu(event) {
         if (!event || event._isProxyEvent) return false;
+        // Android WebView long-press sends contextmenu as pointerType mouse with no
+        // firesTouchEvents. That used to skip the hold and toggle the menu shut.
+        if (this.touchStartX != null || this._openingTouchActive || this._touchOpenShield) return true;
+        if (Date.now() < this._recentTouchContextUntil) return true;
         if (this._isRealMouseEvent(event)) return false;
         if (event.pointerType === 'touch' || event.pointerType === 'pen') return true;
         if (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents) return true;
-        if (this.touchStartX != null) return true;
-        return Date.now() < this._recentTouchContextUntil;
+        return false;
     }
 
     _isTouchDismissShielded() {
@@ -371,48 +374,91 @@ class ContextMenuController {
         return true;
     }
 
-    /** Radio-style selection dot: keepMenuOpen toggles, or showIndicator without keeping menu open. */
+    /** keepMenuOpen toggles, showIndicator, or dataState. Highlighted rows stay a hot box. */
     itemWantsIndicator(item) {
         if (!item || item.noIndicator || item.highlighted) return false;
-        return Boolean(item.keepMenuOpen || item.showIndicator);
+        return Boolean(item.keepMenuOpen || item.showIndicator || item.dataState);
     }
 
-    /** 'box' (default) or 'dot' when showIndicator / keepMenuOpen; null when none. */
-    getIndicatorStyle(item) {
-        if (!item || item.noIndicator || item.highlighted) return null;
-        if (item.indicatorStyle === 'dot') return 'dot';
-        if (item.indicatorStyle === 'box') return 'box';
-        if (this.itemWantsIndicator(item)) return 'box';
-        return null;
+    /** Vista lamp (.indicator + data-state) for icon/grid tiles. Off is the smoked lens. */
+    resolveIndicatorState(item) {
+        if (!item) return 'off';
+        if (item.dataState) return String(item.dataState);
+        return item.checked === true ? 'on' : 'off';
+    }
+
+    /** List rows: check by default. Exclusive groups set indicatorMark to 'radio'. Ratio rows set 'check'. */
+    itemIndicatorMarkKind(item) {
+        if (item && (item.indicatorMark === 'check' || item.indicatorMark === 'radio')) return item.indicatorMark;
+        return 'check';
+    }
+
+    itemIndicatorMarkOn(item) {
+        if (!item) return false;
+        if (item.checked === true) return true;
+        if (!item.dataState) return false;
+        const state = String(item.dataState);
+        return state === 'on' || state === 'onhigh' || state === 'armed' || state === 'partial' || state === 'open';
+    }
+
+    clearMenuMark(itemElement) {
+        const mark = itemElement.querySelector(':scope > .context-menu-item-mark');
+        if (mark) mark.remove();
+        itemElement.classList.remove('has-menu-mark', 'menu-indicator');
+        itemElement.removeAttribute('data-indicator');
+    }
+
+    paintMenuMark(itemElement, item) {
+        const kind = this.itemIndicatorMarkKind(item);
+        itemElement.classList.add('menu-indicator');
+        itemElement.dataset.indicator = kind;
+        if (!this.itemIndicatorMarkOn(item)) {
+            const existing = itemElement.querySelector(':scope > .context-menu-item-mark');
+            if (existing) existing.remove();
+            itemElement.classList.remove('has-menu-mark');
+            return;
+        }
+        let mark = itemElement.querySelector(':scope > .context-menu-item-mark');
+        if (!mark) {
+            mark = document.createElement('span');
+            mark.className = 'context-menu-item-mark';
+            mark.setAttribute('aria-hidden', 'true');
+            itemElement.appendChild(mark);
+        }
+        mark.dataset.kind = kind;
+        itemElement.classList.add('has-menu-mark');
+    }
+
+    applyIndicatorLamp(itemElement, item) {
+        if (!itemElement || !item) return;
+        const leftover = itemElement.querySelector(':scope > .context-menu-item-indicator');
+        if (leftover) leftover.remove();
+        itemElement.classList.remove('has-toggle-indicator');
+        const isTile = itemElement.classList.contains('context-menu-icon-btn')
+            || itemElement.classList.contains('context-menu-grid-btn');
+        if (!this.itemWantsIndicator(item)) {
+            itemElement.classList.remove('indicator');
+            itemElement.removeAttribute('data-state');
+            this.clearMenuMark(itemElement);
+            return;
+        }
+        // Icon/grid tiles: data-state only. The lamp sits on the glyph.
+        if (isTile) {
+            itemElement.classList.remove('indicator');
+            itemElement.setAttribute('data-state', this.resolveIndicatorState(item));
+            this.clearMenuMark(itemElement);
+            return;
+        }
+        // List rows: 7.css gutter mark. Empty when off. Check or radio when on.
+        itemElement.classList.remove('indicator');
+        itemElement.removeAttribute('data-state');
+        this.paintMenuMark(itemElement, item);
     }
 
     applyItemHighlightAndIndicator(itemElement, item) {
         if (!itemElement || !item) return;
-
         itemElement.classList.toggle('context-menu-item-highlighted', !!item.highlighted);
-
-        const indicatorStyle = this.getIndicatorStyle(item);
-        if (!indicatorStyle) {
-            itemElement.classList.remove('has-toggle-indicator');
-            const existing = itemElement.querySelector('.context-menu-item-indicator');
-            if (existing) existing.remove();
-            return;
-        }
-
-        let indicatorDot = itemElement.querySelector('.context-menu-item-indicator');
-        if (!indicatorDot) {
-            indicatorDot = document.createElement('span');
-        }
-        const submenuArrow = itemElement.querySelector(':scope > .context-menu-submenu-arrow');
-        if (submenuArrow) itemElement.insertBefore(indicatorDot, submenuArrow);
-        else if (!indicatorDot.parentNode) itemElement.appendChild(indicatorDot);
-        indicatorDot.className = 'context-menu-item-indicator indicator-' + indicatorStyle;
-        const indicatorState = item.dataState || '';
-        const indicatorOn = item.checked === true || indicatorState === 'on' || indicatorState === 'armed' || indicatorState === 'suspended';
-        indicatorDot.classList.toggle('checked', indicatorOn);
-        if (indicatorOn && indicatorState && indicatorState !== 'off') indicatorDot.setAttribute('data-state', indicatorState);
-        else indicatorDot.removeAttribute('data-state');
-        itemElement.classList.add('has-toggle-indicator');
+        this.applyIndicatorLamp(itemElement, item);
     }
 
     appendRowDots(itemElement, item) {
@@ -539,10 +585,22 @@ class ContextMenuController {
         return true;
     }
 
+    _fitClickMenuToViewport(menu, viewportHeight) {
+        if (!menu || this.activeMenuTrigger !== 'click') return;
+        menu.style.removeProperty('max-height');
+        if (!menu.scrollHeight) return;
+        const available = Math.max(120, viewportHeight - 20);
+        const border = Math.max(0, menu.offsetHeight - menu.clientHeight);
+        const needed = menu.scrollHeight + border;
+        const fit = Math.min(needed + 1, available);
+        menu.style.setProperty('--context-menu-max-height', fit + 'px');
+    }
+
     positionMenuForStoredTarget(target, config, trigger) {
         const menu = this.menu;
         menu.classList.remove('hidden');
         menu.style.opacity = '0';
+        this._fitClickMenuToViewport(menu, window.innerHeight);
 
         const menuRect = menu.getBoundingClientRect();
         const menuWidth = menuRect.width;
@@ -632,6 +690,12 @@ class ContextMenuController {
         // Create the overlay to catch clicks outside the menu
         this.overlay = document.createElement('div');
         this.overlay.className = 'context-menu-overlay hidden';
+        // mousedown on the overlay would blur a focused textarea. Cancel that
+        // before the click closes the menu, so click-out keeps the text caret.
+        this.overlay.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+        });
         this.overlay.addEventListener('click', (e) => {
             // Prevent event bubbling to avoid conflicts
             e.stopPropagation();
@@ -789,6 +853,12 @@ class ContextMenuController {
         const menuContent = document.createElement('div');
         menuContent.className = 'context-menu-content';
         this.menu.appendChild(menuContent);
+        this.menu.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            // The scroller itself is the scrollbar. Leave that mousedown alone.
+            if (e.target === this.menu) return;
+            e.preventDefault();
+        });
 
         // Add overlay and menu to document
         document.body.appendChild(this.overlay);
@@ -843,7 +913,7 @@ class ContextMenuController {
                 clearTimeout(this.touchTimer);
                 this.touchTimer = null;
             }
-            if (!e._isProxyEvent && !this._isRealMouseEvent(e) && Date.now() < this._suppressDocumentContextMenuUntil) {
+            if (!e._isProxyEvent && Date.now() < this._suppressDocumentContextMenuUntil && (fromTouch || !this._isRealMouseEvent(e))) {
                 return;
             }
             if (!e._isProxyEvent && fromTouch && this._isTouchDismissShielded() && this.isOpen && this.currentTarget === target) {
@@ -1000,8 +1070,17 @@ class ContextMenuController {
             // Mobile long-press can emit a stray key while the callout is suppressed.
             if (this._isTouchDismissShielded()) return;
             if (this.isFocusInsideOpenMenu()) return;
+            // A results menu anchored on a search field stays up while that field is typed in.
+            if (this.activeRootMenuConfig && this.activeRootMenuConfig.keepOpenWhileTyping && e.target === this.currentTarget) return;
             this.hideMenu();
         });
+
+        // Window capture runs before the document-capture keyboard registry and a focused
+        // textarea's own arrow handling, so an open menu owns its keys.
+        window.addEventListener('keydown', (e) => {
+            if (!this.isOpen || this._isTouchDismissShielded()) return;
+            this.handleMenuNavigationKey(e);
+        }, true);
 
         // Handle window resize. Phones fire this when the URL bar jiggles during a long-press.
         window.addEventListener('resize', () => {
@@ -1073,7 +1152,30 @@ class ContextMenuController {
         this._openMenu(event, target, 'context', isTouch, isProxyEvent);
     }
 
+    _isTextField(el) {
+        if (!el || !el.matches) return false;
+        if (el.matches('textarea, [contenteditable="true"]')) return true;
+        if (!el.matches('input')) return false;
+        const type = (el.type || 'text').toLowerCase();
+        return type === 'text' || type === 'search' || type === 'url' || type === 'password' || type === 'email' || type === 'number' || type === 'tel';
+    }
+
+    _rememberTextFocus() {
+        const el = document.activeElement;
+        if (this._isTextField(el)) this._textFocus = el;
+    }
+
+    _restoreTextFocus() {
+        const el = this._textFocus;
+        this._textFocus = null;
+        if (!el || !el.isConnected || !document.hasFocus()) return;
+        const active = document.activeElement;
+        if (active === el || this._isTextField(active)) return;
+        el.focus({ preventScroll: true });
+    }
+
     _openMenu(event, target, trigger, isTouch = false, isProxyEvent = false) {
+        this._rememberTextFocus();
         const isNestedItemContext = this.isNestedItemContextOpen(target, trigger);
 
         if (this.isOpen && !isProxyEvent && !isNestedItemContext) {
@@ -1249,8 +1351,9 @@ class ContextMenuController {
         const menu = this.menu;
         if (!menu) return;
 
-        // Reset any existing maxHeight
-        menu.style.setProperty('--context-menu-max-height', '');
+        // Drop a leftover inline cap so a short max-height cannot keep a short list scrolling.
+        menu.style.removeProperty('max-height');
+        menu.style.removeProperty('--context-menu-max-height');
 
         if (config.maxHeight !== undefined) {
             if (config.maxHeight === true) {
@@ -1436,8 +1539,8 @@ class ContextMenuController {
             }
         });
 
-        // Add keyboard navigation
-        this.setupKeyboardNavigation();
+        this._kbdLayer = null;
+        this._kbdRow = null;
     }
 
     createSection(section, target, sectionIndex) {
@@ -1618,7 +1721,7 @@ class ContextMenuController {
                 itemElement.classList.add('has-submenu');
             }
 
-            // Indicator for toggles / selection (box or dot) or row highlight
+            // Vista lamp (.indicator + data-state) or row highlight
             this.applyItemHighlightAndIndicator(itemElement, item);
             this.appendRowDots(itemElement, item);
 
@@ -1658,7 +1761,7 @@ class ContextMenuController {
                         this.executeAction(item.action, target, item);
                         if (!item.keepMenuOpen) {
                             this.hideMenu({ instant: true });
-                        } else {
+                        } else if (!this.refreshOpenMenuFromConfig()) {
                             // If menu stays open, refresh the item display
                             this.refreshListItemDisplay(itemElement, item, target);
                         }
@@ -1712,6 +1815,7 @@ class ContextMenuController {
 
             // Store reference to DOM element on item for later updates
             item._element = itemElement;
+            itemElement._menuItem = item;
             this.wireItemContextMenu(itemElement, item, target);
 
             sectionElement.appendChild(itemElement);
@@ -1822,18 +1926,7 @@ class ContextMenuController {
                 });
             }
 
-            // Set data-state attribute if available (for toggle buttons)
-            // Support both dataState and checked for flexibility
-            if (icon.dataState) {
-                iconElement.setAttribute('data-state', icon.dataState);
-            } else if (this.itemWantsIndicator(icon)) {
-                // If using checked instead of dataState, convert to dataState for consistent styling
-                if (icon.checked === true) {
-                    iconElement.setAttribute('data-state', 'on');
-                } else {
-                    iconElement.setAttribute('data-state', 'off');
-                }
-            }
+            this.applyIndicatorLamp(iconElement, icon);
 
             iconsContainer.appendChild(iconElement);
             icon._element = iconElement;
@@ -1938,16 +2031,7 @@ class ContextMenuController {
             btn.classList.add('has-grid-text');
         }
 
-        if (this.itemWantsIndicator(cell)) {
-            const indicatorStyle = this.getIndicatorStyle(cell) || 'box';
-            const indicatorDot = document.createElement('span');
-            indicatorDot.className = 'context-menu-item-indicator indicator-' + indicatorStyle;
-            if (cell.checked === true || cell.dataState === 'on') {
-                indicatorDot.classList.add('checked');
-            }
-            btn.appendChild(indicatorDot);
-            btn.classList.add('has-toggle-indicator');
-        }
+        this.applyIndicatorLamp(btn, cell);
 
         if (cell.tooltip !== undefined) {
             const tooltipValue = typeof cell.tooltip === 'function' ? cell.tooltip(target) : cell.tooltip;
@@ -2147,6 +2231,7 @@ class ContextMenuController {
             // CSS will handle centering
             menu.style.left = '';
             menu.style.top = '';
+            this._fitClickMenuToViewport(menu, window.innerHeight);
             this._playContextMenuOpenAnimation(menu);
             return;
         }
@@ -2171,6 +2256,7 @@ class ContextMenuController {
         menu.style.left = '-9999px';
         menu.style.top = '-9999px';
         menu.style.opacity = '0';
+        this._fitClickMenuToViewport(menu, viewportHeight);
 
         // Force layout calculation to get real dimensions
         const menuRect = menu.getBoundingClientRect();
@@ -2276,17 +2362,126 @@ class ContextMenuController {
         return { x, y, vertical, horizontal };
     }
 
-    setupKeyboardNavigation() {
-        const handleKeydown = (e) => {
-            switch (e.key) {
-                case 'Escape':
-                    e.preventDefault();
-                    this.hideMenu();
-                    break;
-            }
-        };
+    /**
+     * Open an element's click menu from code (keyboard flows), anchored as a click would be.
+     * focusValue puts the keyboard row on the item whose value matches.
+     */
+    openClickMenu(element, focusValue) {
+        if (!element || !element.dataset.clickMenu) return;
+        if (!(this.isOpen && this.currentTarget === element)) {
+            const rect = element.getBoundingClientRect();
+            this.showClickMenu({ clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }, element, false);
+        }
+        if (focusValue === undefined || focusValue === null) return;
+        const row = Array.from(this.menu.querySelectorAll('.context-menu-item'))
+            .find((el) => el._menuItem && String(el._menuItem.value) === String(focusValue));
+        if (row) {
+            this._kbdLayer = this.menu;
+            this._setKeyboardRow(row);
+        }
+    }
 
-        this.menu.addEventListener('keydown', handleKeydown);
+    /** The open layer arrow keys move in: the root menu, or the submenu Right opened. */
+    _keyboardLayer() {
+        const layer = this._kbdLayer;
+        if (layer && layer.isConnected && layer !== this.menu) return layer;
+        this._kbdLayer = this.menu;
+        return this.menu;
+    }
+
+    _setKeyboardRow(row) {
+        if (this._kbdRow && this._kbdRow !== row && this._kbdRow.isConnected
+            && !this._kbdRow.classList.contains('has-submenu')) {
+            this._kbdRow.classList.remove('keyboard-selected');
+        }
+        this._kbdRow = row;
+        if (!row) return;
+        row.classList.add('keyboard-selected');
+        row.scrollIntoView({ block: 'nearest' });
+    }
+
+    /**
+     * Up / Down / Home / End move the keyboard row, Enter (or Space) runs it, Right opens its
+     * submenu (or config.onNavigateRight), Left closes the submenu (or config.onNavigateLeft).
+     * Returns true when the key was a menu key.
+     */
+    handleMenuNavigationKey(e) {
+        const key = e.key;
+        if (!['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', 'Enter', ' ', 'ArrowRight', 'ArrowLeft'].includes(key)) return false;
+        if (e.altKey || e.ctrlKey || e.metaKey) return false;
+        const t = e.target;
+        if (t && t.closest && t.closest('.context-menu, .context-menu-submenu') && this._isTextField(t)) return false;
+        const config = this.activeRootMenuConfig;
+        if (config && config.keepOpenWhileTyping && t === this.currentTarget
+            && ['ArrowLeft', 'ArrowRight', 'Home', 'End', ' '].includes(key)) return false;
+        const layer = this._keyboardLayer();
+        const rows = Array.from(layer.querySelectorAll('.context-menu-item:not(.disabled)'))
+            .filter((row) => row.closest('.context-menu, .context-menu-submenu') === layer);
+        const index = rows.indexOf(this._kbdRow);
+        if ((key === ' ' || key === 'Enter') && index < 0) return false;
+        e.preventDefault();
+        e.stopPropagation();
+        switch (key) {
+            case 'ArrowDown':
+                if (rows.length) this._setKeyboardRow(rows[index < 0 ? 0 : (index + 1) % rows.length]);
+                break;
+            case 'ArrowUp':
+                if (rows.length) this._setKeyboardRow(rows[index <= 0 ? rows.length - 1 : index - 1]);
+                break;
+            case 'PageDown':
+                if (rows.length) this._setKeyboardRow(rows[Math.min(rows.length - 1, Math.max(0, index) + 10)]);
+                break;
+            case 'PageUp':
+                if (rows.length) this._setKeyboardRow(rows[Math.max(0, index - 10)]);
+                break;
+            case 'Home':
+                if (rows.length) this._setKeyboardRow(rows[0]);
+                break;
+            case 'End':
+                if (rows.length) this._setKeyboardRow(rows[rows.length - 1]);
+                break;
+            case 'Enter':
+            case ' ':
+                if (index >= 0) rows[index].click();
+                break;
+            case 'ArrowRight': {
+                const row = index >= 0 ? rows[index] : null;
+                if (row && row.classList.contains('has-submenu')) {
+                    row.click();
+                    const opened = this.deepSubmenu || this.nestedSubmenu || this.currentSubmenu;
+                    if (opened && opened !== layer && opened.isConnected) {
+                        this._kbdLayer = opened;
+                        this._kbdRow = null;
+                        const first = opened.querySelector('.context-menu-item:not(.disabled)');
+                        if (first) this._setKeyboardRow(first);
+                    }
+                } else if (row && config && typeof config.onNavigateRight === 'function') {
+                    config.onNavigateRight(row._menuItem, this.currentTarget);
+                }
+                break;
+            }
+            case 'ArrowLeft':
+                if (layer !== this.menu) {
+                    let parentRow = null;
+                    if (layer === this.deepSubmenu) {
+                        parentRow = this.deepSubmenuState && this.deepSubmenuState.parentItem;
+                        this._removeDeepSubmenu();
+                    } else if (layer === this.nestedSubmenu) {
+                        parentRow = this.nestedSubmenuState && this.nestedSubmenuState.parentItem;
+                        this._removeNestedSubmenu();
+                    } else {
+                        parentRow = this.currentSubmenuState && this.currentSubmenuState.parentItem;
+                        this.hideSubmenu();
+                    }
+                    this._kbdRow = null;
+                    this._kbdLayer = parentRow ? parentRow.closest('.context-menu, .context-menu-submenu') : this.menu;
+                    if (parentRow && parentRow.isConnected) this._setKeyboardRow(parentRow);
+                } else if (config && typeof config.onNavigateLeft === 'function') {
+                    config.onNavigateLeft(this.currentTarget);
+                }
+                break;
+        }
+        return true;
     }
 
     executeAction(action, target, item) {
@@ -2321,6 +2516,7 @@ class ContextMenuController {
                     console.error('Error executing list item loadfn:', error);
                 }
             }
+            this.applyItemHighlightAndIndicator(itemElement, item);
             return;
         }
 
@@ -2498,6 +2694,7 @@ class ContextMenuController {
                     console.error('Error executing submenu item loadfn:', error);
                 }
             }
+            this.applyItemHighlightAndIndicator(subItemElement, subItem);
             return;
         }
 
@@ -2654,6 +2851,26 @@ class ContextMenuController {
         this.updateItemIndicatorDot(subItemElement, subItem);
     }
 
+    /** Rebuild a click menu whose rows change while it stays open (dataset bias, NSFW, UC). */
+    refreshOpenMenuFromConfig() {
+        const config = this.activeRootMenuConfig;
+        const target = this.currentTarget;
+        if (!config || !config.refreshOnAction || !target) return false;
+        if (typeof config.beforeShow === 'function') {
+            try {
+                config.beforeShow(null, target, false);
+            } catch (error) {
+                console.error('Error executing menu beforeShow on refresh:', error);
+            }
+        }
+        this.applyMaxHeight(config);
+        this.renderMenu(config, target);
+        this.positionMenuForStoredTarget(target, config, this.activeMenuTrigger);
+        this.executeLoadFunctions(config, target);
+        this.updateIndicatorDots(config);
+        return true;
+    }
+
     updateIndicatorDots(config) {
         if (!config.sections || !Array.isArray(config.sections)) return;
 
@@ -2712,20 +2929,7 @@ class ContextMenuController {
             iconElement.removeAttribute('title');
         }
 
-        // Update data-state attribute if available
-        // Support both dataState and checked for flexibility
-        if (icon.dataState) {
-            iconElement.setAttribute('data-state', icon.dataState);
-        } else if (this.itemWantsIndicator(icon)) {
-            // If using checked instead of dataState, convert to dataState for consistent styling
-            if (icon.checked === true) {
-                iconElement.setAttribute('data-state', 'on');
-            } else {
-                iconElement.setAttribute('data-state', 'off');
-            }
-        } else {
-            iconElement.removeAttribute('data-state');
-        }
+        this.applyIndicatorLamp(iconElement, icon);
 
         // Update disabled state - evaluate function if it's a function
         const isIconItemDisabled = typeof icon.disabled === 'function' ? icon.disabled() : icon.disabled;
@@ -2788,6 +2992,7 @@ class ContextMenuController {
             return;
         }
 
+        this._restoreTextFocus();
         this._cancelPendingHide();
 
         const hideConfig = this.activeRootMenuConfig;
@@ -2990,6 +3195,45 @@ class ContextMenuController {
         element.setAttribute('data-click-menu', configId);
     }
 
+    /**
+     * Value picker on a button: a click menu anchored under it, the current value radio-marked.
+     * options.items() returns rows ({ value, text, icon, subtext, content, disabled }) and
+     * separators ({ separator: true, text }); rows with their own action go to options.onAction.
+     * options.value() is the current value; options.onSelect(value, item) runs on a pick.
+     */
+    attachPickerMenu(element, options) {
+        if (!element || !options) return null;
+        const config = {
+            position: 'anchor',
+            anchorAlign: options.anchorAlign || 'start',
+            maxHeight: options.maxHeight !== undefined ? options.maxHeight : true,
+            sections: [{ type: 'list', items: [] }],
+            beforeShow: () => {
+                const current = options.value ? options.value() : undefined;
+                const currentKey = current === undefined || current === null ? null : String(current);
+                config.sections = menuSectionsFromItems((options.items() || []).map((item) => {
+                    if (item.separator || item.action) return item;
+                    return Object.assign({
+                        action: 'picker-select',
+                        showIndicator: true,
+                        indicatorMark: 'radio',
+                        checked: currentKey !== null && String(item.value) === currentKey
+                    }, item);
+                }));
+            },
+            onAction: (action, target, item) => {
+                if (action === 'picker-select') {
+                    if (item) options.onSelect(item.value, item);
+                } else if (options.onAction) {
+                    options.onAction(action, target, item);
+                }
+            }
+        };
+        this.detachClickMenuFromElement(element);
+        this.attachClickMenuToElement(element, config);
+        return config;
+    }
+
     detachClickMenuFromElement(element) {
         if (!element) return;
 
@@ -3109,6 +3353,10 @@ class ContextMenuController {
         // Create submenu container
         const submenu = document.createElement('div');
         submenu.className = 'context-menu-submenu';
+        submenu.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+        });
 
         // Create submenu items
         submenuItems.forEach((subItem) => {
@@ -3271,7 +3519,7 @@ class ContextMenuController {
                 }
             }
 
-            // Indicator for toggles / selection (box or dot) or row highlight
+            // Vista lamp (.indicator + data-state) or row highlight
             this.applyItemHighlightAndIndicator(subItemElement, subItem);
             this.appendRowDots(subItemElement, subItem);
 
@@ -3692,6 +3940,26 @@ class ContextMenuController {
 
 // Global singleton — bare `contextMenu` in other classic scripts resolves via window
 window.contextMenu = new ContextMenuController();
+
+/** Item list with { separator: true, text } group headers -> list sections titled by those headers. */
+function menuSectionsFromItems(items) {
+    const sections = [];
+    let current = { type: 'list', items: [] };
+    (items || []).forEach((item) => {
+        if (item && item.separator && item.text && current.items.length === 0 && sections.length === 0) {
+            current.title = item.text;
+            return;
+        }
+        if (item && item.separator && item.text && current.items.length > 0) {
+            sections.push(current);
+            current = { type: 'list', title: item.text, items: [] };
+            return;
+        }
+        current.items.push(item);
+    });
+    if (current.items.length || current.title) sections.push(current);
+    return sections.length ? sections : [{ type: 'list', items: [] }];
+}
 
 // Export for module usage
 if (typeof module !== 'undefined' && module.exports) {

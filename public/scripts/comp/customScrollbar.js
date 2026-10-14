@@ -13,7 +13,32 @@ class CustomScrollbar {
         this._layoutBatchPending = new Set();
         this._layoutSettling = false;
         this._layoutSettleRafId = null;
+        // wheel gesture lock (wheelScrollLock.js): the owner's host keeps .wheel-owner, so its
+        // scrollbar stays visible while it holds the gesture
+        this._wheelLock = (typeof wheelScrollLock !== 'undefined' && wheelScrollLock && typeof wheelScrollLock.createWheelLock === 'function')
+            ? wheelScrollLock.createWheelLock()
+            : null;
+        this._wheelSettleTimer = null;
+        if (this._wheelLock) {
+            this._wheelLock.onChange((owner) => {
+                document.querySelectorAll('.has-custom-scrollbar.wheel-owner').forEach((host) => {
+                    if (!owner || !host.contains(owner)) host.classList.remove('wheel-owner');
+                });
+                const host = owner ? owner.parentElement : null;
+                if (host && host.classList.contains('has-custom-scrollbar')) host.classList.add('wheel-owner');
+            });
+        }
         this.init();
+    }
+
+    /** After the settle gap with no wheel event, the gesture is over: release the owner. */
+    _armWheelSettle() {
+        if (!this._wheelLock) return;
+        if (this._wheelSettleTimer) clearTimeout(this._wheelSettleTimer);
+        this._wheelSettleTimer = setTimeout(() => {
+            this._wheelSettleTimer = null;
+            this._wheelLock.owner(performance.now()); // past the gap: drops the owner and the class
+        }, this._wheelLock.settleMs + 20);
     }
 
     beginLayoutBatch() {
@@ -259,29 +284,60 @@ class CustomScrollbar {
             if (!('ontouchstart' in window)) {
                 // Check if this is the innermost scrollable element to prevent conflicts
                 const isInnermostScrollable = this.isInnermostScrollable(scrollableContent, e.target, wrapperClass);
-                if (isInnermostScrollable) {
-                    // Check if this element actually needs scrolling and can scroll in the current direction
-                    const scrollHeight = scrollableContent.scrollHeight;
-                    const clientHeight = scrollableContent.clientHeight;
-                    const scrollTop = scrollableContent.scrollTop;
-                    const delta = e.deltaY;
+                const scrollHeight = scrollableContent.scrollHeight;
+                const clientHeight = scrollableContent.clientHeight;
+                const scrollTop = scrollableContent.scrollTop;
+                const delta = e.deltaY;
 
-                    // Check if scrolling is possible at all
-                    const canScrollVertically = scrollHeight > clientHeight;
+                // Check if scrolling is possible at all
+                const canScrollVertically = scrollHeight > clientHeight;
 
-                    // Check if we can scroll in the requested direction
-                    const atTop = scrollTop <= 0;
-                    const maxScrollDistance = this.getMaxScrollDistance(scrollableContent);
-                    const atBottom = scrollTop >= maxScrollDistance;
-                    const scrollingUp = delta < 0; // negative delta = scrolling up
-                    const canScrollInDirection = (scrollingUp && !atTop) || (!scrollingUp && !atBottom);
+                // Check if we can scroll in the requested direction
+                const atTop = scrollTop <= 0;
+                const maxScrollDistance = this.getMaxScrollDistance(scrollableContent);
+                const atBottom = scrollTop >= maxScrollDistance;
+                const scrollingUp = delta < 0; // negative delta = scrolling up
+                const canScrollInDirection = (scrollingUp && !atTop) || (!scrollingUp && !atBottom);
 
-                    if (canScrollVertically && canScrollInDirection) {
-                        // If this element can scroll in the requested direction, prevent the event from bubbling to outer areas
+                // The wheel gesture lock (wheelScrollLock.js, #466): the scroller that took the
+                // first event of a gesture keeps every event until the wheel settles, so a nested
+                // scroller sliding under the pointer never takes over and the owner never chains
+                // into its parent mid-gesture.
+                const lock = this._wheelLock;
+                if (lock) {
+                    const verdict = lock.decide(scrollableContent, performance.now(), {
+                        canScroll: canScrollVertically,
+                        canScrollInDirection,
+                        innermost: isInnermostScrollable
+                    });
+                    if (verdict.action === 'forward') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (verdict.owner && verdict.owner.isConnected) verdict.owner.scrollTop += delta;
+                        this._armWheelSettle();
+                        return;
+                    }
+                    if (verdict.action === 'swallow') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this._armWheelSettle();
+                        return;
+                    }
+                    if (verdict.action === 'scroll') {
                         e.preventDefault();
                         e.stopPropagation();
                         scrollableContent.scrollTop += delta;
+                        this._armWheelSettle();
+                        return;
                     }
+                    return; // pass: an outer scroller or the page decides
+                }
+
+                if (isInnermostScrollable && canScrollVertically && canScrollInDirection) {
+                    // If this element can scroll in the requested direction, prevent the event from bubbling to outer areas
+                    e.preventDefault();
+                    e.stopPropagation();
+                    scrollableContent.scrollTop += delta;
                 }
             }
         };

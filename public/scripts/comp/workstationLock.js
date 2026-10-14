@@ -10,6 +10,12 @@
  *                    server's login (the same call as the logon dialog). A wrong one gets XP's
  *                    "could not log you on" message box (bootMessageBox.js)
  *
+ * With User Accounts "Use Vista Logon" (desktopBoot.isVistaLogon) the lock is Vista's instead:
+ * the logon dialog's Welcome screen (#desktopPreStartupModal), locked (desktop-boot.css under
+ * body.workstation-locked): tile, name, "Locked", the password box straight away. Its arrow and
+ * Enter come here through websocket.js _submitPreStartupCredentials; a wrong password is the
+ * screen's own message view.
+ *
  * While locked, a critical top-priority keyboard listener swallows every app shortcut. The
  * lock survives reloads (localStorage): the next boot asks for the password in the logon
  * dialog before the desktop comes back (websocket.js), like Windows after a restart.
@@ -30,9 +36,12 @@
         + '<circle cx="24" cy="22.2" r="1.6" fill="#5a4300"/><path d="M24 23.2v2.6" stroke="#5a4300" stroke-width="1.4"/>'
         + '</svg>';
 
+    const VISTA_BAD_PASSWORD = 'The user name or password is incorrect.';
+
     const doc = typeof document !== 'undefined' ? document : null;
     let modal = null;
     let busy = false;
+    let vista = false; // this lock is on the Vista Welcome screen (fixed when it locks)
 
     function readPending() {
         try { return root.localStorage.getItem(STORAGE_KEY) === '1'; } catch (_) { return false; }
@@ -114,19 +123,93 @@
         const password = el('.workstation-lock-password');
         password.value = '';
         if (view === 'unlock') setTimeout(() => password.focus(), 0);
+        // placeWindowsLogonDialog: public/scripts/comp/modalUtils.js
+        placeWindowsLogonDialog(modal);
     }
 
     function openDialog() {
+        if (vista) {
+            showVistaScreen();
+            return;
+        }
         if (!ensureModal()) return;
         showView('locked');
         if (typeof root.openModal === 'function') root.openModal(modal);
         else modal.classList.remove('hidden');
+        // placeWindowsLogonDialog: public/scripts/comp/modalUtils.js
+        placeWindowsLogonDialog(modal);
     }
 
     function closeDialog() {
+        if (vista) {
+            // closeModal: public/scripts/comp/modalUtils.js
+            root.closeModal(doc.getElementById('desktopPreStartupModal'));
+            return;
+        }
         if (!modal) return;
         if (typeof root.closeModal === 'function') root.closeModal(modal);
         else modal.classList.add('hidden');
+    }
+
+    /** The Welcome screen, locked: the password box straight away (desktop-boot.css does the look). */
+    function showVistaScreen() {
+        const screen = doc.getElementById('desktopPreStartupModal');
+        const password = doc.getElementById('desktopPreStartupPassword');
+        screen.classList.add('auth-active');
+        screen.classList.remove('auth-busy');
+        doc.getElementById('desktopPreStartupAuth').classList.remove('hidden');
+        doc.getElementById('desktopPreStartupUsername').value = USER;
+        // The logon's last render (websocket.js _renderPreStartupDialog) left both disabled
+        password.disabled = false;
+        doc.getElementById('desktopPreStartupLoginBtn').disabled = false;
+        password.value = '';
+        // _updatePreStartupAuthError: public/scripts/websocket.js (the screen's message view)
+        root.wsClient._updatePreStartupAuthError('');
+        if (screen.classList.contains('hidden') || screen.classList.contains('closing')) {
+            // openModal: public/scripts/comp/modalUtils.js
+            root.openModal(screen);
+        }
+        // An invisible screen cannot take the focus: wait for its art (websocket.js _whenVistaLogonArtReady)
+        root.wsClient._whenVistaLogonArtReady().then(() => {
+            if (ownsLogonScreen()) password.focus();
+        });
+    }
+
+    /** True while this lock owns the Welcome screen (a restart lock over it is the logon's). */
+    function ownsLogonScreen() {
+        const boot = root.desktopBoot;
+        return vista && !!boot && boot.isWorkstationLocked() && !boot.isSuspended();
+    }
+
+    /** The Welcome screen's arrow / Enter (websocket.js _submitPreStartupCredentials): "Welcome" while it checks. */
+    async function submitVista() {
+        if (busy) return;
+        const screen = doc.getElementById('desktopPreStartupModal');
+        const password = doc.getElementById('desktopPreStartupPassword');
+        const value = password.value;
+        busy = true;
+        screen.classList.add('auth-busy');
+        doc.getElementById('desktopPreStartupStatus').textContent = 'Welcome';
+        let ok = false;
+        try {
+            ok = value ? await verifyPassword(value) : false;
+        } catch (_) {
+            ok = false;
+        } finally {
+            busy = false;
+        }
+        if (ok) {
+            unlock();
+            return;
+        }
+        screen.classList.remove('auth-busy');
+        password.value = '';
+        root.wsClient._updatePreStartupAuthError(VISTA_BAD_PASSWORD);
+    }
+
+    /** websocket.js after a restart lock's logon: a Vista lock still up takes its screen back. */
+    function reshowAfterRestart() {
+        if (ownsLogonScreen()) showVistaScreen();
     }
 
     /** Lock the workstation (start menu Lock, Ctrl+Alt+L). */
@@ -135,6 +218,7 @@
         if (!boot || !root.isDesktop || boot.isWorkstationLocked()) return false;
         if (!boot.lockWorkstation()) return false;
         writePending(true);
+        vista = boot.isVistaLogon();
         openDialog(); // built under the session-switch black
         return true;
     }
@@ -144,6 +228,7 @@
         writePending(false);
         if (boot) boot.unlockWorkstation(); // black first; the dialog closes under it
         closeDialog();
+        vista = false;
     }
 
     async function verifyPassword(password) {
@@ -205,6 +290,7 @@
             return false;
         }
         if (boot.isSuspended()) return false; // the server-restart logon dialog has the keyboard
+        if (vista) return true; // the Welcome screen's own controls take Enter (websocket.js)
         const view = modal ? modal.dataset.view : 'locked';
         if (view === 'locked') {
             if (isUnlockCombo(ev) || ev.key === 'Enter') {
@@ -246,6 +332,9 @@
         isLocked: () => !!(root.desktopBoot && root.desktopBoot.isWorkstationLocked()),
         isLockPending: readPending,
         clearPending: () => writePending(false),
+        ownsLogonScreen,
+        submitVista,
+        reshowAfterRestart,
         _test: { onKeydown, showView, submit, verifyPassword, STORAGE_KEY }
     };
     if (root) root.workstationLock = api;

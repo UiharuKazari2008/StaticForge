@@ -109,7 +109,7 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     color: inherit;
     padding: 6px 8px;
     border-radius: 4px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     font-size: 0.85em;
 }
 
@@ -228,7 +228,7 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     color: inherit;
     padding: 4px 6px;
     border-radius: 4px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     font-size: 0.9em;
 }
 
@@ -250,7 +250,7 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 
 #configEditorModal .config-editor-tree-panel.config-editor-panel-busy,
 #configEditorModal .config-editor-values-panel.config-editor-panel-busy {
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 #configEditorModal .config-editor-tree-panel.config-editor-panel-busy::after,
@@ -261,7 +261,7 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     background: rgba(0, 0, 0, 0.28);
     pointer-events: auto;
     z-index: 4;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 #configEditorModal .config-editor-values-state-row td {
@@ -515,7 +515,7 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     opacity: 0.55;
     background: rgba(255, 255, 255, 0.08);
     vertical-align: middle;
-    cursor: help;
+    cursor: var(--c-help);
     flex: 0 0 auto;
 }
 

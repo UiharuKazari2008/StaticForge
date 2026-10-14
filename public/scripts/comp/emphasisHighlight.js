@@ -46,9 +46,21 @@ function promptNeedsFullSyntaxHighlight(text) {
 let emphasisLightSurface = false;
 
 function isLightPromptSurface(textarea) {
-    const host = textarea && textarea.closest ? textarea.closest('.prompt-textarea-container') : null;
+    const host = textarea && textarea.closest
+        ? textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container')
+        : null;
     if (!host || typeof getComputedStyle !== 'function') return false;
     return getComputedStyle(host).getPropertyValue('--prompt-surface').trim() === 'light';
+}
+
+/** highlightEmphasisInText in the palette of the box the textarea sits in. */
+function highlightEmphasisForTextarea(textarea, text, weightSource) {
+    emphasisLightSurface = isLightPromptSurface(textarea);
+    try {
+        return highlightEmphasisInText(text, weightSource);
+    } finally {
+        emphasisLightSurface = false;
+    }
 }
 
 function lightSurfaceChannel(r, g, b) {
@@ -278,12 +290,7 @@ function updateEmphasisHighlighting(textarea) {
         const bag = typeof resolveEmphasisBagForTextarea === 'function'
             ? resolveEmphasisBagForTextarea(textarea)
             : null;
-        emphasisLightSurface = isLightPromptSurface(textarea);
-        try {
-            overlay.innerHTML = highlightEmphasisInText(paintValue, bag);
-        } finally {
-            emphasisLightSurface = false;
-        }
+        overlay.innerHTML = highlightEmphasisForTextarea(textarea, paintValue, bag);
     }
     invalidateEmphasisSpanIndex(overlay);
 
@@ -922,9 +929,12 @@ function highlightEmphasisInText(text, weightSource) {
             // pastel fill: stronger weights (higher backgroundA) keep more of their colour
             const [fr, fg, fb] = lightSurfacePastel(c.r, c.g, c.b, 0.78 - Math.min(0.9, c.backgroundA) * 0.3);
             const fillA = c.backgroundA <= 0.02 ? 0 : Math.min(0.95, 0.55 + c.backgroundA * 0.45);
+            // the mid-grey ring of a near-neutral weight (1.0-1.2) read at 2:1 on the white box
+            // (#466 audit): it takes more alpha than the coloured rings
+            const ringA = Math.max(neutral ? 0.72 : 0.55, c.borderA);
             return {
                 background: `rgba(${fr}, ${fg}, ${fb}, ${fillA.toFixed(2)})`,
-                border: `rgba(${br}, ${bg}, ${bb}, ${Math.max(0.55, c.borderA).toFixed(2)})`,
+                border: `rgba(${br}, ${bg}, ${bb}, ${ringA.toFixed(2)})`,
                 caret: `rgb(${br}, ${bg}, ${bb})`
             };
         }

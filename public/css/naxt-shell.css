@@ -184,7 +184,7 @@
     overflow: hidden;
     background: var(--glass-layer-2);
     border: 1px solid var(--glass-border-4);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #naxVibesEncodingPickerModal .nax-vibes-encoding-cell .nax-vibes-encoding-thumb {
@@ -252,7 +252,7 @@
     overflow: hidden;
     background: var(--glass-layer-2);
     border: 1px solid var(--glass-border-4);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #naxtModal .naxt-card[data-favorite="1"] {
@@ -403,11 +403,11 @@
 }
 
 .naxt-custom-tag-preview-container {
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .naxt-custom-tag-preview-container.has-preview {
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .naxt-custom-tag-preview-placeholder,

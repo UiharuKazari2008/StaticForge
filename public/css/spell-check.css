@@ -60,7 +60,7 @@
     flex-wrap: nowrap;
     align-items: center;
     gap: 4px 6px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     touch-action: manipulation;
     overflow: hidden;
     min-width: 0;
@@ -237,7 +237,7 @@
     flex-wrap: nowrap;
     align-items: center;
     gap: 4px 6px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     touch-action: manipulation;
     overflow: hidden;
     min-width: 0;
@@ -415,7 +415,7 @@
     border: 1px solid var(--glass-border-2);
     min-width: 72px;
     text-align: right;
-    cursor: ns-resize;
+    cursor: var(--c-ns-resize);
     user-select: none;
 }
 

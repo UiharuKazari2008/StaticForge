@@ -30,6 +30,12 @@
     min-height: 0;
 }
 
+/* calc.exe's Edit / View / Help bar: the Vista desktop only (vista-calculator.css); elsewhere the
+   caption toolbar keeps the mode toggles and History */
+#desktopCalculatorModal .naxt-menubar {
+    display: none;
+}
+
 #desktopCalculatorModal .modal-body,
 #desktopCalculatorModal #desktopCalculatorPad,
 #desktopCalculatorModal [data-calc-pad] {
@@ -67,35 +73,65 @@
     text-align: right;
 }
 
-/* One keypad per mode; the base rows only in programmer */
+/* One keypad per mode; the angle radios only in scientific, the base radios only in programmer */
 #desktopCalculatorModal:not([data-calc-mode="standard"]) [data-calc-pad="standard"],
 #desktopCalculatorModal:not([data-calc-mode="scientific"]) [data-calc-pad="scientific"],
 #desktopCalculatorModal:not([data-calc-mode="programmer"]) [data-calc-pad="programmer"],
+#desktopCalculatorModal:not([data-calc-mode="scientific"]) #desktopCalculatorAngle,
 #desktopCalculatorModal:not([data-calc-mode="programmer"]) #desktopCalculatorBases {
     display: none;
 }
 
+/* Rows of keys (calc.exe's arrangement, calculator.js DESKTOP_CALCULATOR_LAYOUTS); the first row
+   is the status row: calc.exe's memory / parenthesis boxes (and Inv / Hyp in scientific) before
+   Backspace CE C. A spacer holds an empty cell (the A-F row). */
 #desktopCalculatorModal [data-calc-pad] > .form-row {
     flex: 1 1 auto;
     align-items: stretch;
     min-height: 32px;
 }
 
-#desktopCalculatorModal [data-calc-pad] > .form-row > .form-group {
-    min-height: 0;
+#desktopCalculatorModal [data-calc-pad] > .form-row > button,
+#desktopCalculatorModal [data-calc-pad] > .form-row > [data-calc-spacer] {
+    flex: 1 1 0;
     min-width: 0;
-}
-
-#desktopCalculatorModal [data-calc-pad] > .form-row > .form-group > button {
-    flex: 1 1 auto;
-    width: 100%;
     min-height: 32px;
     padding-inline: 0;
 }
 
-/* Programmer: F and a wide equals */
-#desktopCalculatorModal [data-calc-pad="programmer"] > .form-row:last-child > .form-group:last-child {
-    flex-grow: 4;
+#desktopCalculatorModal [data-calc-box] {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    min-width: 2.5em;
+    min-height: 32px;
+    padding: 0 var(--spacing-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Radio / check groups (7.css pairs: <input> then <label>) read as one row */
+#desktopCalculatorModal fieldset {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-xs) var(--spacing-md);
+    margin: 0;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-sm, 4px);
+}
+
+#desktopCalculatorModal fieldset label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-bottom: 0;
+    font-size: 0.85rem;
+    cursor: var(--c-default);
 }
 
 /* 2nd shows the second label on keys that have one */
@@ -106,22 +142,6 @@
 
 #desktopCalculatorModal[data-calc-second] [data-calc-key2] > span + span {
     display: inline;
-}
-
-#desktopCalculatorModal #desktopCalculatorBases {
-    gap: var(--spacing-xs);
-}
-
-#desktopCalculatorModal #desktopCalculatorBases > button {
-    justify-content: space-between;
-    gap: var(--spacing-sm);
-    width: 100%;
-}
-
-#desktopCalculatorModal #desktopCalculatorBases > button > span + span {
-    min-width: 0;
-    overflow-wrap: anywhere;
-    text-align: right;
 }
 
 /* History tape: a side column when the window is wide. When narrow,
@@ -249,7 +269,7 @@
     display: none;
 }
 
-/* the page is .win7, so 7.css draws its text boxes and labels; only the readout and the hint are ours */
+/* the page is .win7, so 7.css draws its text boxes, labels, and buttons; only the readout and the hint are ours */
 .desktop-timer-window .desktop-timer-page label,
 .desktop-timer-window .desktop-timer-page .form-hint {
     color: #000;
@@ -265,14 +285,121 @@
     color: #555;
 }
 
-.desktop-timer-window .desktop-timer-page input.form-control {
+/* Hour / Minute: 7.css number box plus the up-down column (same chrome as .combobox button) */
+.desktop-timer-window .desktop-timer-number {
+    position: relative;
+}
+
+.desktop-timer-window .desktop-timer-number input {
+    width: 100%;
     height: 23px;
     min-height: 23px;
-    padding: 3px 4px 5px;
+    box-sizing: border-box;
+    padding: 3px 20px 5px 4px;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
     border-radius: 2px;
+    background: #fff;
     box-shadow: none;
     color: #000;
     text-shadow: none;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.desktop-timer-window .desktop-timer-number input::-webkit-outer-spin-button,
+.desktop-timer-window .desktop-timer-number input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.desktop-timer-window .desktop-timer-number input:hover:not(:disabled) {
+    border-color: #5794bf #b7d5ea #c7e2f1 #c5daed;
+}
+
+.desktop-timer-window .desktop-timer-number input:is(:focus, :active) {
+    border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
+    background: #fff;
+    outline: none;
+}
+
+.desktop-timer-window .desktop-timer-number input:disabled {
+    background: #f0f0f0;
+    border-color: #afafaf;
+    box-shadow: inset 0 0 0 1px #fff;
+    color: #838383;
+}
+
+.desktop-timer-window .desktop-timer-number button {
+    position: absolute;
+    right: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: calc(50% + 1px);
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    line-height: 0;
+    animation: none;
+}
+
+.desktop-timer-window .desktop-timer-number button,
+.desktop-timer-window .desktop-timer-number button:before,
+.desktop-timer-window .desktop-timer-number button:after {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.desktop-timer-window .desktop-timer-number button[data-step="1"] {
+    top: 0;
+}
+
+.desktop-timer-window .desktop-timer-number button[data-step="1"],
+.desktop-timer-window .desktop-timer-number button[data-step="1"]:before,
+.desktop-timer-window .desktop-timer-number button[data-step="1"]:after {
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 0;
+}
+
+.desktop-timer-window .desktop-timer-number button[data-step="-1"] {
+    bottom: 0;
+}
+
+.desktop-timer-window .desktop-timer-number button[data-step="-1"],
+.desktop-timer-window .desktop-timer-number button[data-step="-1"]:before,
+.desktop-timer-window .desktop-timer-number button[data-step="-1"]:after {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 2px;
+}
+
+.desktop-timer-window .desktop-timer-number button:is(:focus, :focus-visible, .focused) {
+    animation: none;
+    outline: none;
+}
+
+.desktop-timer-window .desktop-timer-number button span {
+    display: block;
+    width: 0;
+    height: 0;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    pointer-events: none;
+}
+
+.desktop-timer-window .desktop-timer-number button[data-step="1"] span {
+    border-bottom: 3px solid var(--w7-el-c, #222);
+}
+
+.desktop-timer-window .desktop-timer-number button[data-step="-1"] span {
+    border-top: 3px solid var(--w7-el-c, #222);
+}
+
+.desktop-timer-window .desktop-timer-number button:disabled span {
+    border-top-color: var(--w7-el-c-d, #838383);
+    border-bottom-color: var(--w7-el-c-d, #838383);
 }
 
 .desktop-timer-window .desktop-timer-page .desktop-timer-readout {

@@ -74,7 +74,7 @@
 .cache-browser-tabs .tab-btn[style*="opacity: 0.5"],
 .cache-manager-tabs .tab-btn[style*="opacity: 0.5"] {
     position: relative;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 .cache-browser-tabs .tab-btn[style*="opacity: 0.5"]::after,
@@ -697,7 +697,7 @@
 }
 
 .unified-upload-mode-selector.disabled .mode-slider-btn {
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 .comment-dialog .comment-content p {

@@ -1466,7 +1466,7 @@ class WikiDisplayBase {
         const tag = this.buildWikiTagFromTerm(tagName);
         if (!tag) return;
 
-        this.getTagWikiPage(tag).then((result) => {
+        this.getTagWikiPage(tag, { quiet: true }).then((result) => {
             if (this.hasWikiPageContent(result)) {
                 window.wikiWindowManager.createWindow(result, { title: tag.title, name: tag.name });
             }
@@ -1679,6 +1679,8 @@ class WikiDisplayBase {
         }
 
         this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading...</div>';
+        // grimoireBeginWikiLoad: public/scripts/comp/grimoireRemoteBrowser.js
+        const endWikiLoad = grimoireBeginWikiLoad(this);
 
         try {
             const slug = String(options.slug || options.issue || '').trim()
@@ -1708,9 +1710,10 @@ class WikiDisplayBase {
         } catch (e) {
             console.error('[Apocrypha] Error loading zine:', e);
             this.displayArea.innerHTML = '<div style="padding: 2rem;">Error loading Apocrypha.</div>';
+        } finally {
+            endWikiLoad();
+            this.setNavigationLoading(false);
         }
-
-        this.setNavigationLoading(false);
     }
 
     bindDreamWikiHomepageEvents() {
@@ -1820,6 +1823,8 @@ class WikiDisplayBase {
         this.currentStaticWiki = null;
 
         this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading...</div>';
+        // grimoireBeginWikiLoad: public/scripts/comp/grimoireRemoteBrowser.js
+        const endWikiLoad = grimoireBeginWikiLoad(this);
 
         try {
             const data = await wsClient.sendMessage('get_static_wiki_site_index', { siteId });
@@ -1842,8 +1847,9 @@ class WikiDisplayBase {
                 }).join('');
             }
 
+            const siteMark = siteId === 'novelai' ? ' data-grimoire-site="novelai"' : '';
             this.displayArea.innerHTML = `
-<div class="tag-wiki-page static-wiki-index">
+<div class="tag-wiki-page static-wiki-index"${siteMark}>
     ${headerHtml}
     <div class="tag-wiki-body-content tag-wiki-page-content">
         ${groupsHtml}
@@ -1873,6 +1879,8 @@ class WikiDisplayBase {
         } catch (err) {
             console.error('showStaticWikiSiteIndex:', err);
             this.displayArea.innerHTML = `<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(err.message || 'Failed to load index')}</div>`;
+        } finally {
+            endWikiLoad();
         }
     }
 
@@ -1909,6 +1917,8 @@ class WikiDisplayBase {
         this.currentStaticWiki = null;
 
         this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading...</div>';
+        // grimoireBeginWikiLoad: public/scripts/comp/grimoireRemoteBrowser.js
+        const endWikiLoad = grimoireBeginWikiLoad(this);
 
         try {
             const data = await wsClient.sendMessage('get_fandom_wiki_index', { showAll });
@@ -1970,6 +1980,8 @@ class WikiDisplayBase {
         } catch (err) {
             console.error('showFandomWikiIndex:', err);
             this.displayArea.innerHTML = `<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(err.message || 'Failed to load Fandom index')}</div>`;
+        } finally {
+            endWikiLoad();
         }
     }
 
@@ -2016,6 +2028,8 @@ class WikiDisplayBase {
         };
 
         showLoading('Loading...');
+        // grimoireBeginWikiLoad: public/scripts/comp/grimoireRemoteBrowser.js
+        const endWikiLoad = grimoireBeginWikiLoad(this);
 
         try {
             let data;
@@ -2104,6 +2118,8 @@ class WikiDisplayBase {
             if (this.displayArea) {
                 this.displayArea.innerHTML = `<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(err.message || 'Page not found')}</div>`;
             }
+        } finally {
+            endWikiLoad();
         }
     }
     
@@ -2176,6 +2192,8 @@ class WikiDisplayBase {
             payload.force = true;
         }
 
+        // grimoireBeginWikiLoad: public/scripts/comp/grimoireRemoteBrowser.js
+        const endWikiLoad = options.quiet ? function () {} : grimoireBeginWikiLoad(this);
         try {
             const result = await window.wsClient.sendMessage('get_tag_wiki_page', payload);
             const page = result || {};
@@ -2191,6 +2209,7 @@ class WikiDisplayBase {
             throw error;
         } finally {
             this.setNavigationLoading(false);
+            endWikiLoad();
         }
     }
     
@@ -2382,8 +2401,10 @@ class WikiDisplayBase {
         // Store fetched online status for context menu use
         this.currentFetchedOnline = anyFetchedOnline;
         
+        const naiDoc = content.staticWiki && (content.siteId === 'novelai' || content.kind === 'novelai');
+        const siteMark = naiDoc ? ' data-grimoire-site="novelai"' : '';
         const displayHtml = `
-            <div class="tag-wiki-page">
+            <div class="tag-wiki-page"${siteMark}>
                 ${this.naxArtistImageHtml(content, title)}
                 ${titleHtml}
                 ${bodiesHtml}
@@ -3227,12 +3248,15 @@ class WikiDisplayBase {
             this.currentTagName = tag;
         }
         
+        // grimoireBeginWikiLoad: public/scripts/comp/grimoireRemoteBrowser.js
+        let endWikiLoad = function () {};
         try {
             // Show loading state
             if (this.displayArea) {
                 this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Refreshing from online...</div>';
             }
-            
+            endWikiLoad = grimoireBeginWikiLoad(this);
+
             // Send refresh request with force flag
             const result = await window.wsClient.sendMessage('refresh_tag_wiki_page', {
                 tagName: this.currentTagName,
@@ -3285,6 +3309,8 @@ class WikiDisplayBase {
                 // JULES: Fix showGlassToast parameter order (type, title, message)
                 showGlassToast('error', null, `Error: ${error.message}`);
             }
+        } finally {
+            endWikiLoad();
         }
     }
     
@@ -3299,6 +3325,7 @@ class WikiDisplayBase {
     }
 
     staticWikiSiteIconUrl(siteId, iconFromApi) {
+        if (siteId === 'novelai') return '/static_images/novelai-favicon.png';
         return iconFromApi || '';
     }
 
@@ -6266,7 +6293,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         }
 
         try {
-            const result = await this.getTagWikiPage(tag, { force: !!options.force });
+            const result = await this.getTagWikiPage(tag, { force: !!options.force, quiet: true });
 
             if (!this.hasWikiPageContent(result)) {
                 const searchTitle = (tag && tag.title) || trimmed;
@@ -6698,7 +6725,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             const homeHtml = `
 <div class="grimoire-google-home">
   <div class="google-brand">
-    <img src="/static_images/grim_logo.png" alt="Grimoire" class="brand-logo">
+    <img src="/static_images/grim_logo_sheet.png" alt="Grimoire" class="brand-logo">
   </div>
   <div class="google-search-form">
     <div class="search-box-large">

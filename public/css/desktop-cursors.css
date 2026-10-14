@@ -1,6 +1,6 @@
 /* Pointer scheme tokens. Classic = native keywords. Vista / Posy = url() from
-   /cursors/{scheme}/ (media/cursors, not in git). Missing files fall back to the
-   keyword after the comma. html[data-cursor-scheme] is set by desktopCursors.js. */
+   /cursors/{scheme}/ when the file is on disk (media/cursors, not in git). Missing
+   files use the keyword only — never a 404 url(). desktopCursors.js sets the attr. */
 html {
     --c-auto: auto;
     --c-default: default;
@@ -50,9 +50,9 @@ html[data-cursor-scheme="vista"] {
     --c-progress: url("/cursors/vista/aero_working.ani") 0 0, progress;
     --c-wait: url("/cursors/vista/aero_busy.ani") 16 16, wait;
     --c-cell: url("/cursors/vista/aero_arrow.cur") 0 0, cell;
-    --c-crosshair: url("/cursors/vista/aero_precision.cur") 16 16, crosshair;
-    --c-text: url("/cursors/vista/aero_text.cur") 4 8, text;
-    --c-vertical-text: url("/cursors/vista/aero_text.cur") 4 8, vertical-text;
+    --c-crosshair: url("/cursors/vista/cross.cur") 16 16, crosshair;
+    --c-text: url("/cursors/vista/beam_r.cur") 4 8, text;
+    --c-vertical-text: url("/cursors/vista/beam_r.cur") 4 8, vertical-text;
     --c-alias: url("/cursors/vista/aero_arrow.cur") 0 0, alias;
     --c-copy: url("/cursors/vista/aero_arrow.cur") 0 0, copy;
     --c-move: url("/cursors/vista/aero_move.cur") 11 11, move;
@@ -80,44 +80,43 @@ html[data-cursor-scheme="vista"] {
 }
 
 html[data-cursor-scheme="posy"] {
-    --c-auto: url("/cursors/posy/pointer.cur") 0 0, auto;
-    --c-default: url("/cursors/posy/pointer.cur") 0 0, default;
+    --c-auto: auto;
+    --c-default: default;
     --c-none: none;
-    --c-context-menu: url("/cursors/posy/pointer.cur") 0 0, context-menu;
-    --c-help: url("/cursors/posy/help.cur") 0 0, help;
-    --c-pointer: url("/cursors/posy/link.cur") 8 0, pointer;
-    --c-progress: url("/cursors/posy/working.ani") 0 0, progress;
-    --c-wait: url("/cursors/posy/busy.ani") 16 16, wait;
-    --c-cell: url("/cursors/posy/pointer.cur") 0 0, cell;
-    --c-crosshair: url("/cursors/posy/precise.cur") 16 16, crosshair;
-    --c-text: url("/cursors/posy/beam.cur") 4 8, text;
-    --c-vertical-text: url("/cursors/posy/beam.cur") 4 8, vertical-text;
-    --c-alias: url("/cursors/posy/alternate.cur") 0 0, alias;
-    --c-copy: url("/cursors/posy/alternate.cur") 0 0, copy;
-    --c-move: url("/cursors/posy/move.cur") 11 11, move;
-    --c-no-drop: url("/cursors/posy/unavailable.cur") 8 8, no-drop;
-    --c-not-allowed: url("/cursors/posy/unavailable.cur") 8 8, not-allowed;
-    --c-grab: url("/cursors/posy/move.cur") 11 11, grab;
-    --c-grabbing: url("/cursors/posy/move.cur") 11 11, grabbing;
-    --c-all-scroll: url("/cursors/posy/move.cur") 11 11, all-scroll;
-    --c-col-resize: url("/cursors/posy/horizontal.cur") 16 16, col-resize;
-    --c-row-resize: url("/cursors/posy/vertical.cur") 16 16, row-resize;
-    --c-n-resize: url("/cursors/posy/vertical.cur") 16 16, n-resize;
-    --c-e-resize: url("/cursors/posy/horizontal.cur") 16 16, e-resize;
-    --c-s-resize: url("/cursors/posy/vertical.cur") 16 16, s-resize;
-    --c-w-resize: url("/cursors/posy/horizontal.cur") 16 16, w-resize;
-    --c-ne-resize: url("/cursors/posy/diagonal_2.cur") 16 16, ne-resize;
-    --c-nw-resize: url("/cursors/posy/diagonal_1.cur") 16 16, nw-resize;
-    --c-se-resize: url("/cursors/posy/diagonal_1.cur") 16 16, se-resize;
-    --c-sw-resize: url("/cursors/posy/diagonal_2.cur") 16 16, sw-resize;
-    --c-ew-resize: url("/cursors/posy/horizontal.cur") 16 16, ew-resize;
-    --c-ns-resize: url("/cursors/posy/vertical.cur") 16 16, ns-resize;
-    --c-nesw-resize: url("/cursors/posy/diagonal_2.cur") 16 16, nesw-resize;
-    --c-nwse-resize: url("/cursors/posy/diagonal_1.cur") 16 16, nwse-resize;
-    --c-zoom-in: url("/cursors/posy/zoom-in.cur") 8 8, zoom-in;
-    --c-zoom-out: url("/cursors/posy/zoom-out.cur") 8 8, zoom-out;
+    --c-context-menu: context-menu;
+    --c-help: help;
+    --c-pointer: pointer;
+    --c-progress: progress;
+    --c-wait: wait;
+    --c-cell: cell;
+    --c-crosshair: crosshair;
+    --c-text: text;
+    --c-vertical-text: vertical-text;
+    --c-alias: alias;
+    --c-copy: copy;
+    --c-move: move;
+    --c-no-drop: no-drop;
+    --c-not-allowed: not-allowed;
+    --c-grab: grab;
+    --c-grabbing: grabbing;
+    --c-all-scroll: all-scroll;
+    --c-col-resize: col-resize;
+    --c-row-resize: row-resize;
+    --c-n-resize: n-resize;
+    --c-e-resize: e-resize;
+    --c-s-resize: s-resize;
+    --c-w-resize: w-resize;
+    --c-ne-resize: ne-resize;
+    --c-nw-resize: nw-resize;
+    --c-se-resize: se-resize;
+    --c-sw-resize: sw-resize;
+    --c-ew-resize: ew-resize;
+    --c-ns-resize: ns-resize;
+    --c-nesw-resize: nesw-resize;
+    --c-nwse-resize: nwse-resize;
+    --c-zoom-in: zoom-in;
+    --c-zoom-out: zoom-out;
 }
-
 /* Task monitor (desktopTaskMonitor.js). Working in Background remints the arrow.
    A busy window uses wait. No new classes: html[data-task-cursor] + aria-busy. */
 html[data-task-cursor="progress"] {

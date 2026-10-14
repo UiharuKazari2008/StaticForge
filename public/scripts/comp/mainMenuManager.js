@@ -1038,7 +1038,7 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'refresh-cache':
-                // Refresh cache directly
+                // refreshServerCacheAndCheck: public/scripts/comp/serviceWorkerManager.js
                 await serviceWorkerManager.refreshServerCacheAndCheck();
                 break;
 
@@ -1055,15 +1055,8 @@ function setupMainMenuContextMenus() {
 
             case 'sw-check-updates':
                 if (window.serviceWorkerManager) {
-                    const sw = window.serviceWorkerManager;
-                    const vista = document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
-                    // Vista checks in Windows Update's window: the check runs in the foreground on the page
-                    if (vista && window.cplUpdate) {
-                        window.cplUpdate.open(() => sw.refreshServerCacheAndCheck());
-                        break;
-                    }
-                    // refreshServerCacheAndCheck: compile runtime assets, then pull the new SW manifest
-                    await sw.refreshServerCacheAndCheck();
+                    // refreshServerCacheAndCheck: public/scripts/comp/serviceWorkerManager.js
+                    await window.serviceWorkerManager.refreshServerCacheAndCheck();
                 }
                 break;
 

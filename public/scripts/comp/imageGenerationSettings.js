@@ -1255,6 +1255,7 @@ function getStudioModelMenuItems() {
                 value: opt.value,
                 groupName: group.group,
                 showIndicator: true,
+                indicatorMark: 'radio',
                 checked: current === opt.value
             });
         });
@@ -1268,6 +1269,7 @@ function getStudioSamplerMenuItems() {
         action: 'studio-select-sampler',
         value: sampler.meta,
         showIndicator: true,
+        indicatorMark: 'radio',
         checked: manualSelectedSampler === sampler.meta
     }));
 }
@@ -1278,6 +1280,7 @@ function getStudioNoiseMenuItems() {
         action: 'studio-select-noise',
         value: noise.meta,
         showIndicator: true,
+        indicatorMark: 'radio',
         checked: manualSelectedNoiseScheduler === noise.meta
     }));
 }
@@ -1294,11 +1297,32 @@ function getStudioResolutionMenuItems() {
                 value: opt.value,
                 groupName: group.group,
                 showIndicator: true,
+                indicatorMark: 'check',
                 checked: manualSelectedResolution === opt.value
             });
         });
     });
     return items;
+}
+
+function getStudioSamplerControlMenuItems() {
+    const items = [{ separator: true, text: 'Sampler' }];
+    getStudioSamplerMenuItems().forEach((item) => items.push(item));
+    if (!studioNoiseScheduleDisabled()) {
+        items.push({ separator: true, text: 'Noise Scheduler' });
+        getStudioNoiseMenuItems().forEach((item) => items.push(item));
+    }
+    return items;
+}
+
+function getStudioWorkspaceMenuItems() {
+    // getWorkspacePickerItems: public/scripts/comp/workspaceUtils.js
+    return getWorkspacePickerItems().map((item) => Object.assign(item, {
+        action: 'studio-select-workspace',
+        showIndicator: true,
+        indicatorMark: 'radio',
+        checked: item.value === activeWorkspace
+    }));
 }
 
 function getStudioPreferencesMenuItems() {
@@ -1404,8 +1428,8 @@ function studioEffortMenuDisabled() {
 function getStudioEffortMenuItems() {
     const current = typeof activeMediumLock === 'function' && activeMediumLock() ? 'medium' : 'high';
     return [
-        { text: 'High', action: 'studio-select-effort', value: 'high', showIndicator: true, checked: current === 'high' },
-        { text: 'Medium', action: 'studio-select-effort', value: 'medium', showIndicator: true, checked: current === 'medium' }
+        { text: 'High', action: 'studio-select-effort', value: 'high', showIndicator: true, indicatorMark: 'radio', checked: current === 'high' },
+        { text: 'Medium', action: 'studio-select-effort', value: 'medium', showIndicator: true, indicatorMark: 'radio', checked: current === 'medium' }
     ];
 }
 
@@ -1481,12 +1505,8 @@ function studioPaintCompareParentIndicator() {
     if (!text || text.textContent !== 'Comparison') return;
     const btn = document.getElementById('manualPreviewUseAsSourceBtn');
     const state = btn ? (btn.getAttribute('data-state') || 'off') : 'off';
-    const dot = parent.querySelector('.context-menu-item-indicator');
-    if (!dot) return;
-    const on = state !== 'off';
-    dot.classList.toggle('checked', on);
-    if (on) dot.setAttribute('data-state', state);
-    else dot.removeAttribute('data-state');
+    parent.classList.add('indicator');
+    parent.setAttribute('data-state', state);
 }
 
 function getStudioCompareMenuItems() {
@@ -2077,7 +2097,7 @@ function getStudioImageGenerationSettingsMenuConfig() {
                     {
                         icon: 'fas fa-shuffle',
                         text: 'Sampler',
-                        optionsfn: getStudioSamplerMenuItems,
+                        optionsfn: getStudioSamplerControlMenuItems,
                         valueDisplay: studioCurrentSamplerLabel,
                         disabled: () => studioMediumLocked('sampler'),
                         tooltip: () => (studioMediumLocked('sampler') ? STUDIO_MEDIUM_LOCKED_TIP : '')
@@ -2313,6 +2333,13 @@ function handleImageGenerationSettingsMenuAction(action, target, item) {
     if (action === 'studio-select-resolution' && row && row.value) {
         // selectManualResolution: public/scripts/comp/manualDropdownManager.js
         selectManualResolution(row.value, row.groupName);
+        return true;
+    }
+    if (action === 'studio-select-workspace' && row && row.value) {
+        if (row.value !== activeWorkspace) {
+            // selectManualWorkspace: public/scripts/comp/manualDropdownManager.js
+            selectManualWorkspace(row.value);
+        }
         return true;
     }
     if (action === 'studio-clear-emphasis') {

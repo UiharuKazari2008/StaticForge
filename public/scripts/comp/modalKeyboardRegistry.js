@@ -305,16 +305,41 @@ function isBrowserActivatesControlKey(event) {
     return !!target.closest('button, a[href], [role="button"], [role="menuitem"], [role="tab"], input[type="button"], input[type="submit"], input[type="reset"], input[type="checkbox"], input[type="radio"], summary, select, label');
 }
 
-function scheduleDeadKeySound(event) {
-    if (event.key === 'Tab' || event.repeat || isModifierKeyOnly(event)) return;
-    if (shouldSkipUnregisteredKeyboardWarning(event)) return;
-    if (isBrowserActivatesControlKey(event)) return;
-    const ev = event;
-    queueMicrotask(() => {
-        if (ev.defaultPrevented || ev._keyboardRegistryConsumed === true) return;
-        // desktopSounds.play: public/scripts/comp/desktopSounds.js
-        desktopSounds.play('dialog');
-    });
+function normalizeKeyChord(keys) {
+    return String(keys || '')
+        .toUpperCase()
+        .replace(/CONTROL/g, 'CTRL')
+        .replace(/ESCAPE/g, 'ESC')
+        .replace(/OPTION/g, 'ALT')
+        .replace(/COMMAND/g, 'META')
+        .replace(/SPACEBAR/g, ' ')
+        .replace(/\s+/g, '');
+}
+
+function eventMatchesOverlayKeys(event, overlayKeys) {
+    if (!overlayKeys) return false;
+    const chord = normalizeKeyChord(formatKeyboardEventLabel(event));
+    const parts = String(overlayKeys).split(/\s*(?:,|\bor\b)\s*/i);
+    for (let i = 0; i < parts.length; i++) {
+        if (normalizeKeyChord(parts[i]) === chord) return true;
+    }
+    return false;
+}
+
+function registryDefinesKey(event) {
+    const overlay = getActiveKeyboardOverlayEntries();
+    for (let i = 0; i < overlay.length; i++) {
+        if (eventMatchesOverlayKeys(event, overlay[i].overlayKeys)) return true;
+    }
+    const active = collectActiveKeyboardListeners(event);
+    for (let i = 0; i < active.length; i++) {
+        if (eventMatchesOverlayKeys(event, active[i].overlayKeys)) return true;
+    }
+    return false;
+}
+
+function scheduleDeadKeySound(_event) {
+    return;
 }
 
 function captureKeyboardListenerRegistrationStack() {
@@ -496,7 +521,6 @@ function dispatchKeyboardRegistryEvent(event) {
 
     if (!consumed && event.type === 'keydown') {
         recordUnregisteredKeyboardActivity(event);
-        scheduleDeadKeySound(event);
     }
 
     return consumed;

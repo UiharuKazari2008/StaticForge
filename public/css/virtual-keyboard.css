@@ -39,14 +39,14 @@
     border-radius: 0;
     background: rgba(0, 0, 0, 0.22);
     box-shadow: none;
-    cursor: move;
+    cursor: var(--c-move);
     touch-action: none;
     user-select: none;
     z-index: 1;
 }
 
 #virtualKeyboardModal.virtual-keyboard .virtual-keyboard-drag-header.dragging {
-    cursor: grabbing;
+    cursor: var(--c-grabbing);
 }
 
 #virtualKeyboardModal.virtual-keyboard .virtual-keyboard-drag-grip {
@@ -117,7 +117,7 @@
     font-size: 0.85rem;
     font-family: var(--font-mono, monospace);
     line-height: 1.2;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     touch-action: manipulation;
 }
 

@@ -390,8 +390,10 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         }
 
         confirmationDialogActive = true;
-        // desktopSounds.play: public/scripts/comp/desktopSounds.js
-        desktopSounds.play('dialog');
+        if (config.sound) {
+            // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            desktopSounds.play(config.sound === true ? 'dialog' : config.sound);
+        }
     });
 }
 
@@ -474,7 +476,12 @@ function layoutConfirmationDialogPlacement(event, config, options) {
         config.position === 'bottom-right' ||
         (options.usesManualPlacement && config.position !== 'center')
     );
-    const point = getConfirmationDialogEventPoint(event);
+    // On the Vista desktop a dialog opens centred over its owner window, not at the click
+    // (vistaDialogs.js ownerCenter, #465); synthetic centre events without a target keep their point
+    let point = getConfirmationDialogEventPoint(event);
+    if (point && event && event.target && typeof window.vistaDialogs === 'object' && window.vistaDialogs && typeof window.vistaDialogs.ownerCenter === 'function') {
+        point = window.vistaDialogs.ownerCenter(event) || point;
+    }
     if (!point && !useBottomRight) {
         confirmationDialog.removeAttribute('data-confirmation-preplaced');
         return false;
@@ -767,7 +774,9 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         }
 
         confirmationDialogActive = true;
-        // desktopSounds.play: public/scripts/comp/desktopSounds.js
-        desktopSounds.play('dialog');
+        if (config.sound) {
+            // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            desktopSounds.play(config.sound === true ? 'dialog' : config.sound);
+        }
     });
 }

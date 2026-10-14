@@ -296,6 +296,19 @@ function grimoireShowDownloadProgress(data) {
     if (data.total) updateGlassToastProgress(toastId, (data.received / data.total) * 100);
 }
 
+// Fade the address fill out, then snap it back to 0 with no transition (vista-explorer.css .vista-load-reset).
+function grimoireFinishAddressLoad(host, bar) {
+    host._grimoireLoadFillTimer = setTimeout(() => {
+        bar.removeAttribute('data-alchemy-loading');
+        host._grimoireLoadFillTimer = setTimeout(() => {
+            bar.classList.add('vista-load-reset');
+            bar.style.setProperty('--alchemy-load', '0%');
+            void bar.offsetWidth; // flush with no transition before the class goes
+            setTimeout(() => bar.classList.remove('vista-load-reset'), 50);
+        }, 400);
+    }, 350);
+}
+
 // Address bar glass fill (grimoire-browser.css #grimoireAddressBar::before); only the main Grimoire window has the bar.
 function grimoireShowLoadProgress(found, value) {
     const host = found.host;
@@ -308,16 +321,32 @@ function grimoireShowLoadProgress(found, value) {
         bar.setAttribute('data-alchemy-loading', '');
         return;
     }
-    host._grimoireLoadFillTimer = setTimeout(() => {
-        bar.removeAttribute('data-alchemy-loading'); // fades out
-        // then back to 0 unseen (vista-explorer.css .vista-load-reset: no transition), for the next load
-        host._grimoireLoadFillTimer = setTimeout(() => {
-            bar.classList.add('vista-load-reset');
-            bar.style.setProperty('--alchemy-load', '0%');
-            void bar.offsetWidth; // flush with no transition before the class goes
-            setTimeout(() => bar.classList.remove('vista-load-reset'), 50);
-        }, 400);
-    }, 350);
+    grimoireFinishAddressLoad(host, bar);
+}
+
+// Wiki pages have no byte progress. Hold the same fill at 50% until the page arrives.
+// Returns a function that completes the bar. No-op when this shell is not the active Grimoire window.
+function grimoireBeginWikiLoad(shell) {
+    const host = (typeof tagWikiSearchModal !== 'undefined') ? tagWikiSearchModal : null;
+    if (!host || !host.addressBar || !shell) return function () {};
+    if (host.modal && host.modal.dataset.alchemy === '1') return function () {};
+    const active = host.activePane && host.activePane !== host ? host.activePane : host;
+    if (shell !== active) return function () {};
+    const bar = host.addressBar;
+    host._wikiLoadHold = (host._wikiLoadHold || 0) + 1;
+    clearTimeout(host._grimoireLoadFillTimer);
+    bar.style.setProperty('--alchemy-load', '50%');
+    bar.setAttribute('data-alchemy-loading', '');
+    let done = false;
+    return function () {
+        if (done) return;
+        done = true;
+        host._wikiLoadHold = Math.max(0, (host._wikiLoadHold || 1) - 1);
+        if (host._wikiLoadHold > 0) return;
+        bar.style.setProperty('--alchemy-load', '100%');
+        bar.setAttribute('data-alchemy-loading', '');
+        grimoireFinishAddressLoad(host, bar);
+    };
 }
 
 // Saves into the active workspace's VFS Downloads folder (grimoireBrowserBridge.js /save), not the browser's downloads.

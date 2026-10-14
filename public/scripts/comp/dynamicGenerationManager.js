@@ -601,7 +601,7 @@ function setupDynamicGenerationContextMenus() {
                     const img = document.createElement('img');
                     img.src = `/cache/dynGenPreview/${previewHash}.png`;
                     img.alt = 'Enshutsuka Preview';
-                    img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: pointer;';
+                    img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: var(--c-pointer);';
                     img.loading = 'lazy';
 
                     // Add click handler to open in PhotoSwipe lightbox

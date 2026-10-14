@@ -3,7 +3,6 @@
  *
  * Dependencies:
  * - public/scripts/comp/modalUtils.js
- * - public/scripts/comp/customScrollbar.js
  * - public/scripts/comp/galleryView.js (getImageMetadata)
  */
 
@@ -169,7 +168,24 @@ class ImagePromptInspector {
         this.renderAll();
         openModal(this.element);
         onModalOpened(this.element);
-        setTimeout(() => customScrollbar.forceReinit(this.scrollShell), 0);
+        this.observePromptWidth();
+    }
+
+    // Boxes are measured before the window opens; the scrollbar, maximize, resize and the late prompt font change the wrap later.
+    observePromptWidth() {
+        this.promptWidth = 0;
+        this.promptWidthObserver = new ResizeObserver((entries) => {
+            const width = entries[0].contentRect.width;
+            if (!width || width === this.promptWidth) return;
+            this.promptWidth = width;
+            this.resizePromptTextareas();
+        });
+        this.promptWidthObserver.observe(this.prompt);
+        document.fonts.ready.then(() => this.resizePromptTextareas());
+    }
+
+    resizePromptTextareas() {
+        this.element.querySelectorAll('textarea.prompt-textarea').forEach((textarea) => this.resizeReadonlyTextarea(textarea));
     }
 
     setLoading(loading) {
@@ -182,7 +198,6 @@ class ImagePromptInspector {
         this.renderSummary();
         this.configureDirectorTab();
         this.renderAll();
-        setTimeout(() => customScrollbar.forceReinit(this.scrollShell), 0);
     }
 
     cacheElements() {
@@ -192,7 +207,12 @@ class ImagePromptInspector {
         this.subtitle = this.find('imagePromptInspectorSubtitle');
         this.promptTabs = this.find('imagePromptInspectorPromptTabs');
         this.laneToggle = this.find('imagePromptInspectorLaneToggle');
-        this.jsonBtn = this.find('imagePromptInspectorJsonBtn');
+        this.copyBtn = this.find('imagePromptInspectorCopyBtn');
+        this.findBar = this.find('imagePromptInspectorFindBar');
+        this.findInput = this.find('imagePromptInspectorFindInput');
+        this.findCount = this.find('imagePromptInspectorFindCount');
+        this.scrollShell = this.find('imagePromptInspectorScrollShell');
+        this.menuTitles = this.element.querySelectorAll('[data-inspector-menu]');
         this.promptHeading = this.find('imagePromptInspectorPromptHeading');
         this.prompt = this.find('imagePromptInspectorPrompt');
         this.characters = this.find('imagePromptInspectorCharacters');
@@ -204,15 +224,6 @@ class ImagePromptInspector {
         this.dynamicContext = this.find('imagePromptInspectorDynamicContext');
         this.dynamicSection = this.find('imagePromptInspectorDynamicSection')
             || this.dynamic?.closest('.image-prompt-inspector-section');
-        this.scrollShell = this.find('imagePromptInspectorScrollShell');
-
-        // Footer copy buttons
-        this.copyFilenameBtn = this.find('imagePromptInspectorCopyFilename');
-        this.copyPromptInputBtn = this.find('imagePromptInspectorCopyPromptInput');
-        this.copyPromptCompiledBtn = this.find('imagePromptInspectorCopyPromptCompiled');
-        this.copyChangeJsonBtn = this.find('imagePromptInspectorCopyChangeJson');
-        this.copyRawJsonBtn = this.find('imagePromptInspectorCopyRawJson');
-        this.copyImageWithMetaBtn = this.find('imagePromptInspectorCopyImageWithMeta');
     }
 
     getDisplayFilename() {
@@ -246,6 +257,7 @@ class ImagePromptInspector {
             this.thumb.src = imageSource;
             this.thumb.classList.remove('hidden');
         }
+        this.element.querySelector('[data-inspector-action="studio"]').disabled = !this.hasImageFile();
     }
 
     getDynamicGeneration() {
@@ -263,27 +275,41 @@ class ImagePromptInspector {
 
     configureDirectorTab() {
         const directorButton = this.promptTabs.querySelector('[data-prompt-type="director"]');
-        const hasDirector = Boolean(this.getDirectorPrompt().trim());
-        directorButton.classList.toggle('hidden', !hasDirector);
-        this.promptTabs.classList.toggle('three-tabs', hasDirector);
+        directorButton.classList.toggle('hidden', !this.hasDirectorPrompt());
+    }
+
+    hasDirectorPrompt() {
+        return Boolean(this.getDirectorPrompt().trim());
     }
 
     wireControls() {
         this.promptTabs.querySelectorAll('[data-prompt-type]').forEach((button) => {
-            button.addEventListener('click', () => {
-                this.promptType = button.dataset.promptType;
-                this.updateToggle(this.promptTabs, 'promptType', this.promptType);
-                this.renderPrompt();
+            button.addEventListener('click', () => this.setPromptType(button.dataset.promptType));
+        });
+
+        this.laneToggle.addEventListener('click', () => this.toggleLane());
+        this.findInput.addEventListener('input', () => this.runFind());
+        this.registerFindKeys();
+
+        this.element.querySelectorAll('[data-inspector-action]').forEach((button) => {
+            button.addEventListener('click', () => this.runAction(button.dataset.inspectorAction));
+        });
+
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        const onAction = (action) => this.runAction(action);
+        contextMenu.attachClickMenuToElement(this.copyBtn, {
+            onAction,
+            sections: [{ type: 'list', items: this.copyMenuItems('') }]
+        });
+        this.menuTitles.forEach((title) => {
+            contextMenu.attachClickMenuToElement(title, {
+                onAction,
+                sections: [{
+                    type: 'list',
+                    initfn: (section) => { section.items = this.menuItems(title.dataset.inspectorMenu); }
+                }]
             });
         });
-
-        this.laneToggle.addEventListener('click', () => {
-            this.promptLane = this.promptLane === 'input' ? 'computed' : 'input';
-            this.updateLaneToggle();
-            this.renderPrompt();
-        });
-
-        this.jsonBtn.addEventListener('click', () => this.showMetadataJson());
 
         this.element.addEventListener('focusin', (event) => {
             if (!event.target.matches('textarea[readonly]')) return;
@@ -302,79 +328,6 @@ class ImagePromptInspector {
         }, true);
 
         this.element.querySelector('.close-btn').addEventListener('click', () => this.close());
-
-        // Copy footer actions
-        this.copyFilenameBtn?.addEventListener('click', async () => {
-            const name = this.getDisplayFilename();
-            if (!name) return;
-            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
-            await copyTextToClipboard(name);
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('success', 'Copied', 'Filename copied to clipboard', false, 2500, '<i class="fas fa-file-signature"></i>');
-            }
-        });
-
-        this.copyPromptInputBtn?.addEventListener('click', async () => {
-            const fields = this.getPromptFields('input');
-            const text = fields.prompt || this.metadata.input_prompt || this.metadata.prompt || '';
-            if (!text) {
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('info', 'Prompt', 'No input prompt available', false, 2500, '<i class="fas fa-align-left"></i>');
-                }
-                return;
-            }
-            await copyTextToClipboard(this.promptTextWithVisibleEmphasis(text, 'prompt'));
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('success', 'Copied', 'Input prompt copied to clipboard', false, 2500, '<i class="fas fa-align-left"></i>');
-            }
-        });
-
-        this.copyPromptCompiledBtn?.addEventListener('click', async () => {
-            const fields = this.getPromptFields('computed');
-            const compiledPrompt = typeof this.metadata.compiled_prompt === 'string'
-                ? this.metadata.compiled_prompt
-                : this.metadata.compiled_prompt?.prompt;
-            const text = fields.prompt || compiledPrompt || this.metadata.prompt || '';
-            if (!text) {
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('info', 'Prompt', 'No compiled prompt available', false, 2500, '<i class="fas fa-hammer"></i>');
-                }
-                return;
-            }
-            await copyTextToClipboard(this.promptTextWithVisibleEmphasis(text, 'prompt'));
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('success', 'Copied', 'Compiled prompt copied to clipboard', false, 2500, '<i class="fas fa-hammer"></i>');
-            }
-        });
-
-        this.copyChangeJsonBtn?.addEventListener('click', async () => {
-            const changeJson = this.buildChangeJson();
-            const text = JSON.stringify(changeJson, null, 2);
-            await copyTextToClipboard(text);
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('success', 'Copied', 'Change JSON copied to clipboard', false, 2500, '<i class="fas fa-code-compare"></i>');
-            }
-        });
-
-        this.copyRawJsonBtn?.addEventListener('click', async () => {
-            const text = JSON.stringify(this.metadata, null, 2);
-            await copyTextToClipboard(text);
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('success', 'Copied', 'Raw metadata JSON copied to clipboard', false, 2500, '<i class="fas fa-brackets-curly"></i>');
-            }
-        });
-
-        this.copyImageWithMetaBtn?.addEventListener('click', () => {
-            if (typeof copyImageToClipboard === 'function') {
-                copyImageToClipboard(this.metadata);
-            } else if (typeof window.copyImageToClipboard === 'function') {
-                window.copyImageToClipboard(this.metadata);
-            } else {
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('error', 'Copy Failed', 'Clipboard copy routine unavailable', false, 3000);
-                }
-            }
-        });
 
         const copyValueWithToast = async (value, label = 'Copied') => {
             const cleanText = (value || '').trim();
@@ -419,6 +372,246 @@ class ImagePromptInspector {
             const text = (target.innerText || target.textContent || '').trim();
             await copyValueWithToast(text, 'Dynamic Info Copied');
         });
+    }
+
+    setPromptType(promptType) {
+        this.promptType = promptType;
+        this.updateToggle(this.promptTabs, 'promptType', promptType);
+        this.renderPrompt();
+    }
+
+    toggleLane() {
+        this.promptLane = this.promptLane === 'input' ? 'computed' : 'input';
+        this.updateLaneToggle();
+        this.renderPrompt();
+    }
+
+    hasImageFile() {
+        return Boolean(this.metadata.filename || this.metadata.upscaled || this.metadata.original);
+    }
+
+    copyMenuItems(prefix) {
+        return [
+            { text: `${prefix}Filename`, icon: 'fas fa-file-signature', action: 'copy-filename' },
+            { text: `${prefix}Input Prompt`, icon: 'fas fa-align-left', action: 'copy-prompt-input' },
+            { text: `${prefix}Compiled Prompt`, icon: 'fas fa-hammer', action: 'copy-prompt-compiled' },
+            { separator: true },
+            { text: `${prefix}Change JSON`, icon: 'fas fa-code-compare', action: 'copy-change-json' },
+            { text: `${prefix}Raw Metadata JSON`, icon: 'fas fa-brackets-curly', action: 'copy-raw-json' },
+            { separator: true },
+            { text: `${prefix}Image with Metadata`, icon: 'fas fa-image', action: 'copy-image' }
+        ];
+    }
+
+    menuItems(menu) {
+        const noFile = !this.hasImageFile();
+        if (menu === 'file') {
+            return [
+                { text: 'Open Image', icon: 'fas fa-image', action: 'view-image' },
+                { text: 'Edit in DreamStudio', icon: 'fas fa-compass-drafting', action: 'studio', disabled: noFile },
+                { separator: true },
+                { text: 'Close', action: 'close' }
+            ];
+        }
+        if (menu === 'edit') {
+            return [
+                ...this.copyMenuItems('Copy '),
+                { separator: true },
+                { text: 'Find...', icon: 'fas fa-magnifying-glass', action: 'find' }
+            ];
+        }
+        const radio = (text, promptType, extra) => ({
+            text,
+            action: `prompt-${promptType}`,
+            showIndicator: true,
+            indicatorMark: 'radio',
+            checked: this.promptType === promptType,
+            ...extra
+        });
+        return [
+            radio('Prompt', 'prompt'),
+            radio('Director', 'director', { hidden: !this.hasDirectorPrompt() }),
+            radio('Undesired Content', 'uc'),
+            { separator: true },
+            { text: 'Computed Prompt', action: 'lane', showIndicator: true, checked: this.promptLane === 'computed' },
+            { separator: true },
+            { text: 'Metadata JSON', icon: 'fas fa-brackets-curly', action: 'json' }
+        ];
+    }
+
+    runAction(action) {
+        switch (action) {
+            case 'copy-filename': return this.copyFilename();
+            case 'copy-prompt-input': return this.copyPrompt('input');
+            case 'copy-prompt-compiled': return this.copyPrompt('computed');
+            case 'copy-change-json':
+                return this.copyText(JSON.stringify(this.buildChangeJson(), null, 2), 'Change JSON copied to clipboard', 'fas fa-code-compare');
+            case 'copy-raw-json':
+                return this.copyText(JSON.stringify(this.metadata, null, 2), 'Raw metadata JSON copied to clipboard', 'fas fa-brackets-curly');
+            // copyImageToClipboard: public/scripts/comp/galleryView.js
+            case 'copy-image': return copyImageToClipboard(this.metadata);
+            // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
+            case 'view-image': return openGalleryImageInViewer(this.metadata);
+            case 'studio': return this.openInStudio();
+            case 'json': return this.showMetadataJson();
+            case 'prompt-prompt':
+            case 'prompt-director':
+            case 'prompt-uc':
+                return this.setPromptType(action.slice('prompt-'.length));
+            case 'lane': return this.toggleLane();
+            case 'find': return this.openFind();
+            case 'find-prev': return this.stepFind(-1);
+            case 'find-next': return this.stepFind(1);
+            case 'find-close': return this.closeFind();
+            case 'close': return this.close();
+            default: return undefined;
+        }
+    }
+
+    registerFindKeys() {
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: `imagePromptInspector.find.${this.id}`,
+            type: 'whenFocused',
+            modalId: this.id,
+            eventType: 'keydown',
+            label: 'Find',
+            keys: 'Ctrl+F',
+            overlayIcon: 'fas fa-magnifying-glass',
+            overlayGroup: 'Properties',
+            priority: 80,
+            critical: true,
+            handler: (event) => {
+                if ((event.ctrlKey || event.metaKey) && (event.key || '').toLowerCase() === 'f') {
+                    event.preventDefault();
+                    this.openFind();
+                    return true;
+                }
+                if (event.target !== this.findInput) return false;
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    this.stepFind(event.shiftKey ? -1 : 1);
+                    return true;
+                }
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    this.closeFind();
+                    return true;
+                }
+                return false;
+            }
+        });
+    }
+
+    isFindOpen() {
+        return !this.findBar.classList.contains('hidden');
+    }
+
+    openFind() {
+        this.findBar.classList.remove('hidden');
+        this.findInput.focus();
+        this.findInput.select();
+        this.runFind();
+    }
+
+    closeFind() {
+        this.findBar.classList.add('hidden');
+        this.findMatches = [];
+        this.clearFindHighlights();
+    }
+
+    // Matches every prompt box in the current view; reruns when the view changes (renderPrompt).
+    runFind() {
+        this.clearFindHighlights();
+        const query = this.findInput.value.toLowerCase();
+        this.findMatches = [];
+        if (query) {
+            this.element.querySelectorAll('textarea.prompt-textarea').forEach((textarea) => {
+                // findSearchMatchesInText: public/scripts/comp/promptTextareaToolbar.js
+                promptTextareaToolbar.findSearchMatchesInText(textarea.value, query).forEach((match) => {
+                    this.findMatches.push({ ...match, textarea });
+                });
+            });
+        }
+        this.findIndex = this.findMatches.length ? 0 : -1;
+        this.paintFind();
+    }
+
+    stepFind(direction) {
+        const count = this.findMatches?.length;
+        if (!count) return;
+        this.findIndex = (this.findIndex + direction + count) % count;
+        this.paintFind();
+    }
+
+    paintFind() {
+        const byTextarea = new Map();
+        this.findMatches.forEach((match) => {
+            if (!byTextarea.has(match.textarea)) byTextarea.set(match.textarea, []);
+            byTextarea.get(match.textarea).push(match);
+        });
+        byTextarea.forEach((matches, textarea) => {
+            // ensurePromptSearchHighlightOverlay: public/scripts/comp/emphasisParse.js
+            // buildSearchHighlightHtml: public/scripts/comp/promptTextareaToolbar.js
+            ensurePromptSearchHighlightOverlay(textarea).innerHTML = promptTextareaToolbar
+                .buildSearchHighlightHtml(textarea.value, matches, this.findIndex, this.findMatches);
+        });
+
+        const total = this.findMatches.length;
+        this.findCount.textContent = !this.findInput.value ? ''
+            : (total ? `${this.findIndex + 1} of ${total}` : 'No matches');
+
+        const selected = this.element.querySelector('.search-highlight-selected');
+        if (!selected) return;
+        const box = selected.getBoundingClientRect();
+        const view = this.scrollShell.getBoundingClientRect();
+        if (box.top < view.top || box.bottom > view.bottom) {
+            this.scrollShell.scrollTop += box.top - view.top - view.height / 3;
+        }
+    }
+
+    clearFindHighlights() {
+        this.element.querySelectorAll('.search-highlight-overlay').forEach((overlay) => {
+            overlay.textContent = '';
+        });
+        this.findCount.textContent = '';
+    }
+
+    async copyText(text, message, iconClass) {
+        // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+        await copyTextToClipboard(text);
+        showGlassToast('success', 'Copied', message, false, 2500, `<i class="${iconClass}"></i>`);
+    }
+
+    copyFilename() {
+        const name = this.getDisplayFilename();
+        if (!name) return undefined;
+        return this.copyText(name, 'Filename copied to clipboard', 'fas fa-file-signature');
+    }
+
+    copyPrompt(lane) {
+        const computed = lane === 'computed';
+        const fields = this.getPromptFields(lane);
+        const compiledPrompt = typeof this.metadata.compiled_prompt === 'string'
+            ? this.metadata.compiled_prompt
+            : this.metadata.compiled_prompt?.prompt;
+        const text = fields.prompt
+            || (computed ? compiledPrompt : this.metadata.input_prompt)
+            || this.metadata.prompt
+            || '';
+        const label = computed ? 'Compiled' : 'Input';
+        const iconClass = computed ? 'fas fa-hammer' : 'fas fa-align-left';
+        if (!text) {
+            showGlassToast('info', 'Prompt', `No ${label.toLowerCase()} prompt available`, false, 2500, `<i class="${iconClass}"></i>`);
+            return undefined;
+        }
+        return this.copyText(this.promptTextWithVisibleEmphasis(text, 'prompt'), `${label} prompt copied to clipboard`, iconClass);
+    }
+
+    openInStudio() {
+        if (!this.hasImageFile()) return undefined;
+        // openManualModalWithContent: public/scripts/comp/manualModalManager.js
+        return openManualModalWithContent({ type: 'image', image: this.metadata, metadata: null });
     }
 
     buildChangeJson() {
@@ -541,6 +734,7 @@ class ImagePromptInspector {
             .forEach((button) => {
                 const active = button.dataset[datasetKey] === value;
                 button.classList.toggle('active', active);
+                button.dataset.state = active ? 'on' : 'off';
                 button.setAttribute('aria-selected', String(active));
             });
     }
@@ -549,6 +743,7 @@ class ImagePromptInspector {
         const computed = this.promptLane === 'computed';
         this.laneToggle.dataset.promptLane = this.promptLane;
         this.laneToggle.dataset.state = computed ? 'on' : 'off';
+        this.laneToggle.classList.toggle('active', computed);
         this.laneToggle.setAttribute('aria-pressed', String(computed));
         this.laneToggle.title = computed
             ? 'Showing computed prompt; click for input prompt'
@@ -637,7 +832,7 @@ class ImagePromptInspector {
         this.resizeReadonlyTextarea(this.prompt);
         this.renderTextareaEmphasis(this.prompt, fieldHint);
         this.renderCharacters(characters, this.promptType);
-        customScrollbar.forceReinit(this.scrollShell);
+        if (this.isFindOpen()) this.runFind();
     }
 
     renderCharacters(characters, promptType) {
@@ -717,11 +912,11 @@ class ImagePromptInspector {
     }
 
     renderTextareaEmphasis(textarea, fieldHint) {
-        // ensurePromptEmphasisHighlightOverlay / highlightEmphasisInText:
+        // ensurePromptEmphasisHighlightOverlay / highlightEmphasisForTextarea:
         // public/scripts/comp/emphasisHighlight.js
         const overlay = ensurePromptEmphasisHighlightOverlay(textarea);
         if (!overlay) return;
-        overlay.innerHTML = highlightEmphasisInText(textarea.value, this.resolveEmphasisWeightSource(fieldHint));
+        overlay.innerHTML = highlightEmphasisForTextarea(textarea, textarea.value, this.resolveEmphasisWeightSource(fieldHint));
         overlay.scrollTop = textarea.scrollTop;
         overlay.scrollLeft = textarea.scrollLeft;
     }
@@ -1046,7 +1241,6 @@ class ImagePromptInspector {
         this.jsonWindow = element;
 
         const body = element.querySelector(`#imagePromptInspectorJsonBody_${this.id}`);
-        const scrollShell = element.querySelector(`#imagePromptInspectorJsonScrollShell_${this.id}`);
         body.textContent = this.formatValue(this.metadata);
 
         element.querySelector('.close-btn').addEventListener('click', () => {
@@ -1055,7 +1249,6 @@ class ImagePromptInspector {
 
         openModal(element);
         onModalOpened(element);
-        setTimeout(() => customScrollbar.forceReinit(scrollShell), 0);
     }
 
     closeJsonWindow() {
@@ -1064,8 +1257,6 @@ class ImagePromptInspector {
         this.jsonWindow = null;
         closeModal(element).then(() => {
             onModalClosed(element);
-            const scrollShell = element.querySelector('[data-custom-scrollbar]');
-            if (scrollShell) customScrollbar.destroy(scrollShell);
             element.remove();
         });
     }
@@ -1096,12 +1287,14 @@ class ImagePromptInspector {
             const element = this.jsonWindow;
             this.jsonWindow = null;
             onModalClosed(element);
-            const scrollShell = element.querySelector('[data-custom-scrollbar]');
-            if (scrollShell) customScrollbar.destroy(scrollShell);
             element.remove();
         }
+        contextMenu.detachClickMenuFromElement(this.copyBtn);
+        this.menuTitles.forEach((title) => contextMenu.detachClickMenuFromElement(title));
+        this.promptWidthObserver.disconnect();
+        // deregisterKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        deregisterKeyboardListener(`imagePromptInspector.find.${this.id}`);
         onModalClosed(this.element);
-        customScrollbar.destroy(this.scrollShell);
         this.element.remove();
     }
 }

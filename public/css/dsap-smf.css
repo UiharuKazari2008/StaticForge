@@ -166,7 +166,7 @@
 .dsap-smf .dsap-smf-tab,
 [data-dsap] .dsap-smf-tab,
 [data-dsap] .sec-tab {
-    cursor: pointer;
+    cursor: var(--c-pointer);
     font-weight: bold;
     background: var(--dsap-smf-tab-bg);
     color: var(--dsap-smf-fg);
@@ -209,7 +209,7 @@
     font-size: var(--dsap-smf-font-size-xs);
     font-weight: bold;
     background: var(--dsap-smf-tab-bg);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .dsap-smf .dsap-smf-tabbar-flex .dsap-smf-tab-auto,
@@ -411,7 +411,7 @@
     border-radius: 3px;
     padding: 5px 12px;
     margin: 0;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     line-height: 1.15;
     white-space: nowrap;
     box-shadow: 1px 1px 0 #ffffff inset, -1px -1px 0 #808080 inset;
@@ -458,7 +458,7 @@
 [data-dsap] .quips-dsap-action-btn:disabled,
 [data-dsap] .omega-dsap-action-btn:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 /* --- Inputs --- */
@@ -682,7 +682,7 @@
     padding: 0;
     border: 1px solid var(--dsap-smf-border, #555);
     background: none;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 /* Data Management: Remote workers */

@@ -1114,7 +1114,37 @@
             };
         }
         if (typeof maskAgentStudioRead === 'function') body = maskAgentStudioRead(body);
+        body.desktopState = computeDesktopState();
         replyAgentSessionResult(requestId, body);
+    }
+
+    // ---- Desktop readiness (#475) ----
+    // Where this tab is, for agents (GET /agent/clients, get_session_state clientLink, restart):
+    // logon (the logon dialog), booting (the desktop is staging or the startup window is still up),
+    // locked (server-restart lock or workstation lock), desktop (the desktop UI is up and usable),
+    // ready (non-desktop UI fully loaded). Sent as WS client_desktop_state on every change.
+    function computeDesktopState() {
+        const ws = window.wsClient;
+        const boot = window.desktopBoot;
+        const call = (fn) => { try { return !!(boot && typeof boot[fn] === 'function' && boot[fn]()); } catch (_) { return false; } };
+        if (call('isSuspended') || call('isWorkstationLocked') || (ws && ws.sessionSuspended)) return 'locked';
+        if (window.isDesktop) {
+            if (ws && !ws.preStartupHandoffCompleted) return 'logon';
+            if (call('isBooting') || !(ws && ws.initStartupUiDismissed)) return 'booting';
+            return 'desktop';
+        }
+        return ws && ws.initStartupUiDismissed ? 'ready' : 'booting';
+    }
+
+    let lastSentDesktopState = null;
+
+    function announceDesktopState(force) {
+        const ws = window.wsClient;
+        if (!ws || typeof ws.send !== 'function' || typeof ws.isConnected !== 'function' || !ws.isConnected()) return;
+        const state = computeDesktopState();
+        if (!force && state === lastSentDesktopState) return;
+        // fire-and-forget (no reply): modules/ws/handlers/168-agentClientHandler.js client_desktop_state
+        if (ws.send({ type: 'client_desktop_state', desktopState: state })) lastSentDesktopState = state;
     }
 
     async function handleAgentSessionCommand(message) {
@@ -1367,8 +1397,19 @@
             if (!window.wsClient || typeof window.wsClient.on !== 'function') return false;
             window.wsClient.on('connected', announcePriorityClient);
             announcePriorityClient();
+            // a new socket starts with no state on the server: send it again
+            window.wsClient.on('connected', () => announceDesktopState(true));
+            announceDesktopState(true);
             return true;
         };
+        window.getClientDesktopState = computeDesktopState;
+        ['desktopBootBegin', 'desktopBootStage', 'desktopBootDone', 'desktopSessionSuspended', 'desktopSessionResumed',
+            'desktopWorkstationLocked', 'desktopWorkstationUnlocked'].forEach((type) => {
+            document.addEventListener(type, () => announceDesktopState(false));
+        });
+        // the startup window closing (websocket.js hideProgressNotification) has no event of its own:
+        // a cheap check that sends only when the state changed
+        setInterval(() => announceDesktopState(false), 1000);
         if (!hookConnected()) {
             const timer = setInterval(() => { if (hookConnected()) clearInterval(timer); }, 500);
         }

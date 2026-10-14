@@ -73,7 +73,7 @@
     align-items: center;
     justify-content: center;
     color: #000;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 /* ============================================================================

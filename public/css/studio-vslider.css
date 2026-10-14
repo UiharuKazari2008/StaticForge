@@ -130,7 +130,7 @@
     height: 18px;
     min-height: 18px;
     padding: 0;
-    cursor: ew-resize;
+    cursor: var(--c-ew-resize);
     background: transparent;
     touch-action: none;
     position: relative;
@@ -185,7 +185,7 @@
     border: 1.5px solid var(--glass-border-3);
     border-radius: var(--border-radius-md);
     margin-top: -10px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #studioVSliderTool .vslider-stop-labels {
@@ -303,7 +303,7 @@
     border: 1px solid var(--border-secondary);
     border-radius: var(--border-radius-sm);
     overflow: hidden;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     touch-action: none;
 }
 
@@ -369,7 +369,7 @@
     display: block;
     width: 100%;
     height: 220px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #studioVSliderTool .vslider-empty {
@@ -388,7 +388,7 @@
 }
 
 #studioVSliderTool .vslider-card {
-    cursor: context-menu;
+    cursor: var(--c-context-menu);
 }
 
 /* Editor tool */

@@ -1502,8 +1502,8 @@ function showAutofillCycleHud(kind) {
     const bar = getAutofillViewBarEl();
     if (!bar || bar.classList.contains('hidden')) return;
     const dropdown = kind === 'sort'
-        ? document.getElementById('autofillSortDropdown')
-        : document.getElementById('autofillTypeFilterDropdown');
+        ? document.getElementById('autofillSortBtn')
+        : document.getElementById('autofillTypeFilterBtn');
     if (!dropdown) return;
     dropdown.classList.add('autofill-view-control-cycled');
     if (autofillCycleHudHideTimer) clearTimeout(autofillCycleHudHideTimer);
@@ -1610,61 +1610,24 @@ function applyCharacterAutocompleteOverlayBox(target) {
     return box;
 }
 
+const AUTOFILL_TYPE_FILTER_PICKER_ITEMS = AUTOFILL_TYPE_FILTER_OPTIONS.map((o) => ({ value: o.id, text: o.label }));
+const AUTOFILL_SORT_PICKER_ITEMS = AUTOFILL_SORT_OPTIONS.map((o) => ({ value: o.id, text: o.label }));
+
 function ensureAutofillViewBarWired() {
-    const typeContainer = document.getElementById('autofillTypeFilterDropdown');
     const typeBtn = document.getElementById('autofillTypeFilterBtn');
-    const typeMenu = document.getElementById('autofillTypeFilterMenu');
-    const sortContainer = document.getElementById('autofillSortDropdown');
     const sortBtn = document.getElementById('autofillSortBtn');
-    const sortMenu = document.getElementById('autofillSortMenu');
-    if (!typeContainer || !typeBtn || !typeMenu || !sortContainer || !sortBtn || !sortMenu) return;
-    // setupDropdown: public/scripts/comp/dropdown.js
-
-    if (typeContainer.getAttribute('data-dropdown-initialized') !== 'true') {
-        setupDropdown(
-            typeContainer,
-            typeBtn,
-            typeMenu,
-            function (selectedValue) {
-                // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
-                renderSimpleDropdown(
-                    typeMenu,
-                    AUTOFILL_TYPE_FILTER_OPTIONS,
-                    'id',
-                    'label',
-                    setAutofillSessionTypeFilter,
-                    function () { closeDropdown(typeMenu, typeBtn); },
-                    selectedValue,
-                    { preventFocusTransfer: true }
-                );
-            },
-            function () { return autofillSessionTypeFilter; },
-            { preventFocusTransfer: true }
-        );
-    }
-
-    if (sortContainer.getAttribute('data-dropdown-initialized') !== 'true') {
-        setupDropdown(
-            sortContainer,
-            sortBtn,
-            sortMenu,
-            function (selectedValue) {
-                // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
-                renderSimpleDropdown(
-                    sortMenu,
-                    AUTOFILL_SORT_OPTIONS,
-                    'id',
-                    'label',
-                    setAutofillSessionSortMode,
-                    function () { closeDropdown(sortMenu, sortBtn); },
-                    selectedValue,
-                    { preventFocusTransfer: true }
-                );
-            },
-            function () { return autofillSessionSortMode; },
-            { preventFocusTransfer: true }
-        );
-    }
+    if (!typeBtn || !sortBtn || typeBtn.dataset.clickMenu) return;
+    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+    contextMenu.attachPickerMenu(typeBtn, {
+        items: () => AUTOFILL_TYPE_FILTER_PICKER_ITEMS,
+        value: () => autofillSessionTypeFilter,
+        onSelect: setAutofillSessionTypeFilter
+    });
+    contextMenu.attachPickerMenu(sortBtn, {
+        items: () => AUTOFILL_SORT_PICKER_ITEMS,
+        value: () => autofillSessionSortMode,
+        onSelect: setAutofillSessionSortMode
+    });
 }
 
 function refreshAutofillDisplayAfterViewControlChange() {
@@ -1868,7 +1831,6 @@ function isAutofillOverlayInteractiveMouseTarget(target) {
         '.spell-check-word',
         '.word-lookup-word-row',
         '.character-autocomplete-view-bar',
-        '.custom-dropdown',
         'button',
         'input',
         'textarea',
@@ -2751,7 +2713,7 @@ function isAutofillDismissSafeNode(node) {
         node.closest('#characterAutocompleteOverlay')
         || node.closest('#characterAutocompleteViewBar')
         || node.closest('#characterAutofillTool')
-        || node.closest('.custom-dropdown-menu')
+        || node.closest('.context-menu, .context-menu-submenu')
     )) {
         return true;
     }

@@ -10,6 +10,7 @@
  * imageres.dll 98-101; bars are 7.css's [role=progressbar] (classic draws its own).
  *
  * Each state has its own look:
+ *   preparing     blue band, no shield, "Preparing system to update...", a marquee bar (server compile)
  *   checking      blue band, no shield, "Checking for updates…", a marquee bar
  *   available     yellow, "Download and install updates for your computer", Install updates
  *   downloading   blue, "Downloading updates…", "Downloading n files (x% complete)", the bar
@@ -29,6 +30,7 @@
     let view = { state: 'checking', message: '', progress: 0, filesTotal: 0 };
     let registered = false;
     let skipNextCheck = false;
+    let pendingView = null;
 
     function esc(text) {
         return String(text == null ? '' : text)
@@ -50,10 +52,11 @@
         return d.toDateString() === today.toDateString() ? `Today at ${time}` : `${d.toLocaleDateString()} at ${time}`;
     }
 
-    /** The service worker's state words (checking | available | downloading | complete) as the page's. */
+    /** The service worker's state words (preparing | checking | available | downloading | complete) as the page's. */
     function classify(state, message) {
         const m = String(message || '');
         const manager = sw();
+        if (state === 'preparing') return 'preparing';
         if (state === 'downloading') return 'downloading';
         if (state === 'available') return 'available';
         if (state === 'complete') {
@@ -81,6 +84,7 @@
     /** The tray icon's tooltip while nothing needs you (Vista: "Downloading updates (40%)"). */
     function tooltipFor(state, progress) {
         switch (state) {
+            case 'preparing': return 'Preparing system to update...';
             case 'checking': return 'Checking for updates…';
             case 'downloading': return `Downloading updates (${Math.round(progress || 0)}%)`;
             case 'installing': return 'Installing updates…';
@@ -113,6 +117,10 @@
         const files = view.filesTotal || (sw() && sw().pendingUpdateFilesTotal) || 0;
         const fileText = files ? `${files} ${files === 1 ? 'file' : 'files'}` : 'the updated files';
         const kinds = {
+            preparing: {
+                band: 'blue', title: 'Preparing system to update...',
+                body: `<p>Getting the server ready to compile static assets.</p>${view.progress > 0 ? bar(view.progress) : bar(null)}`
+            },
             checking: { band: 'blue', title: 'Checking for updates…', body: `<p>Looking for updates on the server.</p>${bar(null)}` },
             available: {
                 band: 'yellow', shield: 'shield-warning', title: 'Download and install updates for your computer',
@@ -176,16 +184,21 @@
 
     function check(run) {
         const manager = sw();
-        if (!manager || typeof manager.checkStaticFileUpdates !== 'function') return;
-        view = { state: 'checking', message: '', progress: 0, filesTotal: 0 };
+        if (!manager) return;
+        // refreshServerCacheAndCheck: public/scripts/comp/serviceWorkerManager.js
+        const start = typeof run === 'function'
+            ? run
+            : (typeof manager.refreshServerCacheAndCheck === 'function'
+                ? () => manager.refreshServerCacheAndCheck()
+                : () => manager.checkStaticFileUpdates(false));
+        view = { state: 'preparing', message: '', progress: 0, filesTotal: 0 };
         paint();
         // the foreground check (noToast = false): its states come back through foregroundUpdateView
-        const pending = typeof run === 'function' ? run() : manager.checkStaticFileUpdates(false);
-        Promise.resolve(pending).then(() => {
+        Promise.resolve(start()).then(() => {
             // a check that found nothing to say (already downloading elsewhere) leaves the box as it was
-            if (view.state === 'checking' && !manager.isUpdating) {
+            if ((view.state === 'checking' || view.state === 'preparing') && !manager.isUpdating) {
                 view = initialState();
-                if (view.state === 'checking') view = { state: 'uptodate' };
+                if (view.state === 'checking' || view.state === 'preparing') view = { state: 'uptodate' };
                 paint();
             }
         });
@@ -195,6 +208,10 @@
         const manager = sw();
         if (!manager) return;
         if (what === 'check' || what === 'install') {
+            if (typeof manager.refreshServerCacheAndCheck === 'function') {
+                manager.refreshServerCacheAndCheck();
+                return;
+            }
             check();
         } else if (what === 'apply' && typeof manager.applyStaticCacheUpdate === 'function') {
             view = { ...view, state: 'installing' };
@@ -218,7 +235,8 @@
                 paint();
             };
         }
-        view = { ...{ message: '', progress: 0, filesTotal: 0 }, ...initialState() };
+        view = { ...{ message: '', progress: 0, filesTotal: 0 }, ...(pendingView || initialState()) };
+        pendingView = null;
         paint();
         if (view.state === 'checking' && !skipNextCheck) check();
         skipNextCheck = false;
@@ -277,6 +295,17 @@
         return true;
     }
 
+    /** Open the page on the prepare stage; refreshServerCacheAndCheck drives compile then check. */
+    function beginPrepare() {
+        if (!register()) return false;
+        skipNextCheck = true;
+        pendingView = { state: 'preparing', message: '', progress: 0, filesTotal: 0 };
+        view = pendingView;
+        root.melatonControlPanel.open('update');
+        paint();
+        return true;
+    }
+
     /** Open the page; with run (the tray's Check for updates), that check runs in the foreground here. */
     function open(run) {
         if (!register()) return false;
@@ -291,7 +320,7 @@
         return true;
     }
 
-    root.cplUpdate = { register, open, balloonFor, tooltipFor, classify, _test: { classify, balloonFor, tooltipFor, box: (v) => { view = { message: '', progress: 0, filesTotal: 0, ...v }; return box(); } } };
+    root.cplUpdate = { register, open, beginPrepare, balloonFor, tooltipFor, classify, _test: { classify, balloonFor, tooltipFor, box: (v) => { view = { message: '', progress: 0, filesTotal: 0, ...v }; return box(); } } };
     if (typeof document !== 'undefined') {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', register);
         else register();

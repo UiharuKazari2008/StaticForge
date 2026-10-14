@@ -5,9 +5,10 @@
  *
  * Events: error, warning, dialog, logon, lock, unlock, shutdown, navigate,
  * planet-enter, planet-activate, planet-switch, print-complete, print-error,
- * balloon (tray popovers and glass toasts; skipped when a parent event already
- * owns the sound, e.g. Generation Complete), default/dialog (Ding on a key that
- * did nothing), notify (new Dovecote mail), recycle (image delete / scrap),
+ * balloon (off for tray popovers and glass toasts; playBalloon stays for an
+ * explicit caller), dialog only when a confirmation/input pass config.sound,
+ * (dead-key Ding is off), notify
+ * (new Dovecote mail, unless Control Panel Mail turns that sound off), recycle (image delete / scrap),
  * critical-stop (exception window / hard WS drop), uac (Client Update).
  * No min/max, no ambient.
  *
@@ -29,8 +30,8 @@
         unlock: 'Windows Logon Sound.wav',
         shutdown: 'Windows Shutdown.wav',
         navigate: 'Windows Navigation Start.wav',
-        'planet-enter': 'Windows Navigation Start.wav',
-        'planet-activate': 'Windows User Account Control.wav',
+        'planet-enter': 'Windows Logoff Sound.wav',
+        'planet-activate': 'Windows Navigation Start.wav',
         'planet-switch': 'Windows Logon Sound.wav',
         'print-complete': 'Windows Print complete.wav',
         'print-error': 'Windows Hardware Fail.wav',
@@ -126,6 +127,9 @@
         if (state.enabled) {
             unlock();
             play('dialog');
+        } else if (win && win.planetSwitcher) {
+            // planetSwitcher.stopBgm: public/scripts/comp/planetSwitcher.js
+            win.planetSwitcher.stopBgm(true);
         }
         return state.enabled;
     }

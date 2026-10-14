@@ -542,7 +542,7 @@ function getNonEditableTokenTotals(promptTexts, ucTexts, periodKey, model) {
         expanderUc += getExpanderTokenDeltaForText(t, lockedSeeds, periodKey, model);
     });
 
-    const rentan = computeRentanTokenDelta();
+    const rentan = computeRentanTokenDelta(promptTexts, ucTexts);
 
     return {
         prompt: preset.prompt + expanderPrompt + rentan.prompt,
@@ -550,33 +550,53 @@ function getNonEditableTokenTotals(promptTexts, ucTexts, periodKey, model) {
     };
 }
 
-function computeRentanTokenDelta() {
+// Rentan (dynamic generation) text replacements, as the server applies them
+// (modules/dynamicGenerationHandlers.js): a replace swaps select_text for replace_text, so it adds
+// only the difference (the select_text is already in the editable count); an append, or an
+// append-to-end (select_text EOF / empty), adds the whole replace_text; a replacement whose
+// select_text (or fallback_select_text) is not in the text is not applied and adds nothing.
+// Counting every replace_text in full overstated the total (Yukimi's -81, 2026-10-14).
+function rentanReplacementTokenDelta(item, haystackLower) {
+    if (!item || !item.replace_text) return 0;
+    const action = String(item.action || 'replace').toLowerCase();
+    const select = String(item.select_text || '').trim();
+    const replaceTokens = countTokensForText(item.replace_text);
+    if (!select || select === 'EOF') return replaceTokens;
+    const fallback = String(item.fallback_select_text || '').trim();
+    const target = haystackLower.includes(select.toLowerCase())
+        ? select
+        : (fallback && haystackLower.includes(fallback.toLowerCase()) ? fallback : null);
+    if (!target) return 0;
+    if (action === 'append') return replaceTokens;
+    return replaceTokens - countTokensForText(target);
+}
+
+function computeRentanTokenDelta(promptTexts, ucTexts) {
     const result = { prompt: 0, uc: 0 };
     const drafting = typeof getManualEffort === 'function' && getManualEffort() === 'medium';
     const tr = window.dynamicGenerationData?.compiled_prompt?.text_replacements;
     if (!tr || !getPromptTokenizer()) return result;
 
-    const sumArr = (arr) => {
+    const promptLower = (promptTexts || []).join(', ').toLowerCase();
+    const ucLower = (ucTexts || []).join(', ').toLowerCase();
+    const sumArr = (arr, haystackLower) => {
         if (!Array.isArray(arr)) return 0;
-        let n = 0;
-        arr.forEach((item) => {
-            if (item && item.replace_text) {
-                n += countTokensForText(item.replace_text);
-            }
-        });
-        return n;
+        return arr.reduce((n, item) => n + rentanReplacementTokenDelta(item, haystackLower), 0);
     };
 
-    result.prompt += sumArr(tr.prompt);
-    if (!drafting) result.uc += sumArr(tr.uc);
+    result.prompt += sumArr(tr.prompt, promptLower);
+    if (!drafting) result.uc += sumArr(tr.uc, ucLower);
     if (Array.isArray(tr.character_prompts)) {
         tr.character_prompts.forEach((char) => {
             if (char) {
-                result.prompt += sumArr(char.prompt);
-                if (!drafting) result.uc += sumArr(char.uc);
+                result.prompt += sumArr(char.prompt, promptLower);
+                if (!drafting) result.uc += sumArr(char.uc, ucLower);
             }
         });
     }
+    // a run of shortening replaces never takes the total below the editable count
+    result.prompt = Math.max(0, result.prompt);
+    result.uc = Math.max(0, result.uc);
     return result;
 }
 

@@ -40,6 +40,78 @@
     --aero-shade: linear-gradient(to right, hsl(0 0% 100% / 10%), hsl(0 0% 0% / 5%), hsl(0 0% 100% / 6%));
 }
 
+/* Frosted is a static-raster mode. aeroGlass.js produces the shared wallpaper
+   rasters once per wallpaper, so no descendant may start a live backdrop pass.
+   Keep this in the terminal glass stylesheet so it covers legacy hardcoded blur,
+   brightness and saturation filters without changing Basic's solid palette. */
+html[data-glass="frosted"] {
+    --glass-blur-circle-0: none;
+    --glass-blur-circle-1: none;
+    --glass-blur-circle-2: none;
+    --glass-blur-circle-3: none;
+    --glass-blur-circle-4: none;
+    --glass-blur-circle-5: none;
+    --glass-blur-0: none;
+    --glass-blur-1: none;
+    --glass-blur-2: none;
+    --glass-blur-3: none;
+    --glass-blur-4: none;
+    --glass-blur-5: none;
+}
+
+html[data-glass="frosted"],
+html[data-glass="frosted"] :where(
+    body,
+    body *,
+    body::before,
+    body::after,
+    body *::before,
+    body *::after
+) {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+/* Legacy live-glass hints otherwise keep empty compositor layers allocated in
+   frosted mode even after the filter itself is gone. Keep animation hints that
+   still have work to do, but remove only the backdrop-related promotions. */
+html[data-glass="frosted"] :where(#focus-overlay, .websocket-ticker) {
+    transform: none;
+    backface-visibility: visible;
+}
+
+html[data-glass="frosted"] :where(
+    #manualPanelSection.zoomed div#manualPreviewContainer,
+    #manualPanelSection.initial div#manualPreviewContainer
+) {
+    will-change: background-color;
+}
+
+html[data-glass="frosted"] :where(.manual-loading-overlay, .manual-loading-overlay.return) {
+    will-change: opacity;
+}
+
+/* These image backdrops are live CSS blur passes over changing previews. Frosted
+   already has its static wallpaper raster, so keep the existing solid container
+   background instead of allocating another full-window filter surface. */
+html[data-glass="frosted"] :where(
+    .manual-preview-blur-background,
+    .image-viewer-blur-background,
+    .spellbook-blur-background
+) {
+    display: none;
+    -webkit-filter: none;
+    filter: none;
+    transform: none;
+    will-change: auto;
+}
+
+/* Context focus already uses opacity. Do not blur every visible gallery tile. */
+html[data-glass="frosted"] .gallery:has(.gallery-item.context-open) .gallery-item:not(.context-open) {
+    -webkit-filter: none;
+    filter: none;
+}
+
 /* Tints are computed on the window itself so the workspace theme's
    --glass-windows-bg (set on body[data-workspace], not :root) and any per-app
    override of it are honoured. Inactive keeps a good share of the workspace

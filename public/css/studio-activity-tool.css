@@ -37,7 +37,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     opacity: 0.9;
 }
 
@@ -88,7 +88,7 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.35rem 0.5rem;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     list-style: none;
 }
 

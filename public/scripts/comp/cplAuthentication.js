@@ -1,7 +1,7 @@
 /**
- * Control Panel's Authentication page (Yukimi 2026-10-13), laid out like Credential Manager's
+ * Control Panel's Dreamscape Services page (Yukimi 2026-10-13), laid out like Credential Manager's
  * vault: sections with a header strip (icon, title, "Add …" link on the right), each credential
- * a row (icon, name, a summary, a chevron) that opens into its details and actions.
+ * a row (name, a status mark beside the name, a summary, a chevron) that opens into its details and actions.
  *
  *   Director Accounts   Cursor profiles for Wren and Xi (Add a Director account)
  *   Service Keys        the keys Dreamscape uses for outside services (Save changes)
@@ -28,11 +28,8 @@
             links: [['secCursorAccountsAddBtn', 'Add a Director account']],
             tables: [{
                 body: 'secCursorAccountsTableBody',
-                // "Active for Wren and Xi": a persona's cell shows Active (no Activate button) for the profile in use
-                summary: (cells) => {
-                    const on = [[1, 'Wren'], [2, 'Xi']].filter(([i]) => cells[i] && !cells[i].querySelector('button') && /active/i.test(cells[i].textContent)).map(([, n]) => n);
-                    return on.length ? `Active for ${on.join(' and ')}` : '';
-                },
+                // Status (who is using it, usage cap, sign-in) sits beside the name, not in this column.
+                summary: () => '',
                 empty: 'No Director accounts.'
             }]
         },
@@ -113,23 +110,170 @@
 
     /** A row's name: its bold part (or first element), the rest as a grey subtitle. */
     function nameOf(cell) {
-        const all = cell.textContent.trim().replace(/\s+/g, ' ');
+        // The profile initial (director-account-badge) is the colored badge in the details, not part of the title.
+        const copy = cell.cloneNode(true);
+        copy.querySelectorAll('.director-account-badge').forEach((el) => el.remove());
+        const all = copy.textContent.trim().replace(/\s+/g, ' ');
         // "Name<br><span class=hint>description</span>" (service and application keys)
         const hint = cell.querySelector('.sec-dsap-setting-hint');
         if (hint) {
             const sub = hint.textContent.trim().replace(/\s+/g, ' ');
             // the hint follows the name: take it off the end (the name may contain the same text)
-            const name = (all.endsWith(sub) ? all.slice(0, all.length - sub.length) : all.replace(sub, '')).trim();
+            const name = (all.endsWith(sub) ? all.slice(0, all.length - sub.length) : all.replace(sub, '')).replace(/\s+/g, ' ').trim();
             return { name: name || all, sub: name ? sub : '' };
         }
-        const lead = cell.querySelector('strong, b') || [...cell.children].find((el) => el.textContent.trim().length > 1);
+        const lead = copy.querySelector('strong, b') || [...copy.children].find((el) => el.textContent.trim().length > 1);
         const name = lead ? lead.textContent.trim().replace(/\s+/g, ' ') : all;
         let sub = all;
         const at = sub.indexOf(name);
         if (at >= 0) sub = (sub.slice(0, at) + sub.slice(at + name.length)).trim();
-        // a one-letter badge before the name (Director's profile initial) is not a subtitle
-        sub = sub.replace(/^\S\s+/, '').trim();
         return { name: name || all, sub: sub === name ? '' : sub };
+    }
+
+    const KEY_DOT_WORD = {
+        ok: 'Working',
+        fail: 'Not working',
+        warn: 'Unconfirmed',
+        checking: 'Checking',
+        unchecked: 'Unchecked',
+        none: 'Not set'
+    };
+
+    function keyDotState(className) {
+        const match = String(className || '').match(/sec-key-dot-(ok|fail|warn|checking|unchecked|none)\b/);
+        return match ? match[1] : 'unchecked';
+    }
+
+    /** Worst fact wins the color. The words are the dot's title, to the right of the selection. */
+    function directorGlance(info) {
+        const active = Array.isArray(info.active) ? info.active : [];
+        const parts = [];
+        let state = 'unchecked';
+        if (active.length) {
+            parts.push(`Active for ${active.join(' and ')}`);
+            state = 'ok';
+        }
+        if (info.limited) {
+            parts.push('Limited');
+            state = 'warn';
+        }
+        if (info.loginNeeded) {
+            parts.push('Sign in again');
+            state = 'fail';
+        }
+        if (!parts.length) return { state: 'unchecked', label: 'Not in use', text: 'Not in use' };
+        const text = parts.join(' · ');
+        const label = info.limited && info.usageTitle ? `${text}. ${info.usageTitle}` : text;
+        return { state, label, text };
+    }
+
+    function appKeyGlance(status) {
+        const text = String(status || '').trim();
+        if (text === 'active') return { state: 'ok', label: 'Active', text: 'Active' };
+        if (text === 'refresh_required') return { state: 'warn', label: 'Refresh required', text: 'Refresh' };
+        if (text === 'expired') return { state: 'fail', label: 'Expired', text: 'Expired' };
+        if (text === 'revoked') return { state: 'fail', label: 'Revoked', text: 'Revoked' };
+        return { state: 'unchecked', label: text || 'Unknown', text: text || 'Unknown' };
+    }
+
+    /** A persona cell shows Active with no Activate button while that profile is in use. */
+    function personasInUse(cells) {
+        return [[1, 'Wren'], [2, 'Xi']].filter(([i]) => {
+            const cell = cells[i];
+            return cell && !cell.querySelector('button') && /active/i.test(cell.textContent);
+        }).map(([, persona]) => persona);
+    }
+
+    function serviceGlanceItems(tr, cells) {
+        const items = [];
+        if (tr.classList.contains('sec-keychain-row-locked')) {
+            items.push({ state: 'fail', label: 'Locked', text: 'Locked' });
+        }
+        cells.forEach((td) => {
+            td.querySelectorAll('.sec-key-dot').forEach((dot) => {
+                const wrap = dot.closest('.sec-key-dot-wrap');
+                const state = keyDotState(dot.className);
+                const labelEl = wrap && wrap.querySelector('.sec-key-dot-label');
+                const tagged = labelEl && labelEl.textContent.trim();
+                const title = (wrap && wrap.getAttribute('title')) || KEY_DOT_WORD[state];
+                items.push({ state, label: title, text: tagged || KEY_DOT_WORD[state] });
+            });
+        });
+        if (!items.length) items.push({ state: 'unchecked', label: 'Not checked yet', text: 'Unchecked' });
+        return items;
+    }
+
+    function rowGlance(spec, tr, cells) {
+        if (spec.body === 'secCursorAccountsTableBody') {
+            const usageEl = cells[4] && cells[4].querySelector('.not-set');
+            return [directorGlance({
+                loginNeeded: tr.classList.contains('sec-account-needs-login'),
+                limited: !!usageEl,
+                usageTitle: usageEl ? (usageEl.getAttribute('title') || '') : '',
+                active: personasInUse(cells)
+            })];
+        }
+        if (spec.body === 'secKeychainTableBody') return serviceGlanceItems(tr, cells);
+        if (spec.body === 'secAppkeysTableBody') return [appKeyGlance(cells[3] ? cells[3].textContent : '')];
+        if (spec.body === 'secAppkeysPendingBody') return [{ state: 'warn', label: 'Waiting for approval', text: 'Waiting' }];
+        return [];
+    }
+
+    /** A colored dot only. The words stay on the dot's title. */
+    function makeGlance(items) {
+        const slot = document.createElement('span');
+        slot.className = 'cpl-vault-status';
+        items.forEach((item) => {
+            const dot = document.createElement('span');
+            dot.className = `sec-key-dot sec-key-dot-${item.state}`;
+            dot.title = item.label;
+            dot.setAttribute('role', 'img');
+            dot.setAttribute('aria-label', item.label);
+            slot.appendChild(dot);
+        });
+        return slot;
+    }
+
+    // Icon-only actions disappear in the vault (the icon is hidden). These words are the link text.
+    const VAULT_ACTION_LABEL = {
+        'edit-cursor-account': 'Edit',
+        'delete-cursor-account': 'Delete',
+        'copy-cursor-token': 'Copy',
+        'capture-cursor-account': 'Capture',
+        'keychain-edit': 'Edit',
+        'keychain-add': 'Add',
+        'keychain-delete': 'Delete',
+        'keychain-unlock': 'Unlock',
+        'edit-appkey': 'Edit',
+        'revoke-appkey': 'Delete',
+        'approve-appkey-req': 'Approve',
+        'deny-appkey-req': 'Deny'
+    };
+
+    /** Keep the row id on each button (they leave the table) and give icon-only buttons a word. */
+    function prepareVaultActions(tr) {
+        tr.querySelectorAll('[data-sec-action]').forEach((btn) => {
+            if (tr.dataset.secCursorAccId) btn.dataset.secCursorAccId = tr.dataset.secCursorAccId;
+            if (tr.dataset.secKeychainService) btn.dataset.secKeychainService = tr.dataset.secKeychainService;
+            if (tr.dataset.secAppkeyId) btn.dataset.secAppkeyId = tr.dataset.secAppkeyId;
+            if (tr.dataset.secAppkeyReq) btn.dataset.secAppkeyReq = tr.dataset.secAppkeyReq;
+            if (btn.textContent.trim()) return;
+            const label = VAULT_ACTION_LABEL[btn.dataset.secAction];
+            if (label) btn.append(document.createTextNode(label));
+        });
+    }
+
+    function paintKeychainGlance(row, tr) {
+        const slot = row.querySelector('.cpl-vault-status');
+        const statusCell = tr.querySelector('.sec-keychain-status');
+        if (!slot || !statusCell || !statusCell.querySelector('.sec-key-dot')) return;
+        const fresh = makeGlance(serviceGlanceItems(tr, [...tr.children]));
+        slot.replaceChildren(...fresh.childNodes);
+        const lab = [...row.querySelectorAll('.cpl-vault-label')].find((el) => /^status:?$/i.test(el.textContent.trim()));
+        const value = lab && lab.nextElementSibling;
+        if (value && value.classList.contains('cpl-vault-value')) {
+            value.replaceChildren(...[...statusCell.childNodes].map((node) => node.cloneNode(true)));
+        }
     }
 
     /** One table as vault rows; rebuilt from the driver's rows each time it re-renders them. */
@@ -146,7 +290,17 @@
         const labels = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
         const actionsAt = labels.findIndex((l) => /^actions$/i.test(l));
 
+        const cellWatchers = [];
+        const dropCellWatchers = () => {
+            cellWatchers.forEach((watcher) => {
+                watcher.disconnect();
+                const at = observers.indexOf(watcher);
+                if (at >= 0) observers.splice(at, 1);
+            });
+            cellWatchers.length = 0;
+        };
         const build = () => {
+            dropCellWatchers();
             list.innerHTML = '';
             const rows = [...body.children].filter((tr) => tr.tagName === 'TR');
             if (spec.caption && rows.length) {
@@ -173,6 +327,7 @@
                 line.type = 'button';
                 line.className = 'cpl-vault-line';
                 line.setAttribute('aria-expanded', open.has(key) ? 'true' : 'false');
+                prepareVaultActions(tr);
                 const name = document.createElement('span');
                 name.className = 'cpl-vault-name';
                 const title = nameOf(cells[0]);
@@ -191,7 +346,10 @@
                 const chevron = document.createElement('span');
                 chevron.className = 'cpl-vault-chevron';
                 chevron.setAttribute('aria-hidden', 'true');
-                line.append(name, summary, chevron);
+                const marks = rowGlance(spec, tr, cells);
+                line.append(name, summary);
+                if (marks.length) line.append(makeGlance(marks));
+                line.append(chevron);
                 line.addEventListener('click', () => {
                     const isOpen = row.classList.toggle('is-open');
                     line.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
@@ -219,6 +377,15 @@
                     details.appendChild(actions);
                 }
                 row.append(line, details);
+                if (spec.body === 'secKeychainTableBody') {
+                    const statusCell = tr.querySelector('.sec-keychain-status');
+                    if (statusCell) {
+                        const watch = new MutationObserver(() => paintKeychainGlance(row, tr));
+                        watch.observe(statusCell, { childList: true });
+                        cellWatchers.push(watch);
+                        observers.push(watch);
+                    }
+                }
                 list.appendChild(row);
             });
             if (!list.children.length && spec.empty) {
@@ -295,13 +462,13 @@
         registered = true;
         cpl.registerItem({
             id: 'authentication',
-            name: 'Authentication',
-            image: '/static_images/vista-cpl/key-32.png',
+            name: 'Dreamscape Services',
+            image: '/static_images/vista-cpl/cardspace-32.png',
             description: 'The accounts and keys Dreamscape signs in with, and the keys programs use to reach it.',
             open: () => cpl.open('authentication')
         });
         cpl.registerPage('authentication', {
-            title: () => 'Authentication',
+            title: () => 'Dreamscape Services',
             tasks: () => `
                 <div class="cpl-task-group">
                     <h3 class="cpl-task-heading">Tasks</h3>
@@ -319,7 +486,7 @@
             body: () => `
                 <div class="cpl-auth-page">
                     <h1 class="cpl-page-title">Store credentials for Dreamscape</h1>
-                    <p class="cpl-intro">Use Authentication to keep the accounts and keys Dreamscape signs in with, and the keys programs use to reach it.</p>
+                    <p class="cpl-intro">Use Dreamscape Services to keep the accounts and keys Dreamscape signs in with, and the keys programs use to reach it.</p>
                     <div class="cpl-auth-host"></div>
                 </div>`,
             mount: (main) => {
@@ -338,7 +505,17 @@
         return true;
     }
 
-    root.cplAuthentication = { register, open: () => register() && root.melatonControlPanel.open('authentication'), VAULTS, _test: { vault: (el) => { hostEl = el; vault(); } } };
+    root.cplAuthentication = {
+        register,
+        open: () => register() && root.melatonControlPanel.open('authentication'),
+        VAULTS,
+        _test: {
+            vault: (el) => { hostEl = el; vault(); },
+            directorGlance,
+            appKeyGlance,
+            keyDotState
+        }
+    };
     if (typeof document !== 'undefined') {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', register);
         else register();

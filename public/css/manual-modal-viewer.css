@@ -460,31 +460,6 @@ body:not(.desktop-mode) #manualModal #unmaximizeManualBtn,
     .update-progress-container {
         display: none !important;
     }
-
-    #workspaceDropdown.custom-dropdown.dropup .custom-dropdown-menu {
-        position: fixed;
-        top: var(--true-inset-top, 0px);
-        left: 50%;
-        bottom: auto;
-        font-size: 24px;
-        margin-top: initial;
-        width: calc(100% - var(--spacing-xxl));
-        max-height: calc(max-content - var(--spacing-xxl));
-        transform: translateX(-50%);
-    }
-
-    #workspaceDropdown .custom-dropdown-option {
-        justify-content: center;
-    }
-
-    #workspaceDropdown .workspace-option-content {
-        max-width: 350px;
-    }
-
-    #workspaceDropdown .workspace-color-indicator {
-        width: 20px;
-        height: 20px;
-    }
 }
 
 @container manual-modal (max-width: 767px) {

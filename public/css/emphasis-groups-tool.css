@@ -91,11 +91,11 @@
 }
 
 .emphasis-groups-card.emphasis-groups-card-wheelable {
-    cursor: ns-resize;
+    cursor: var(--c-ns-resize);
 }
 
 .emphasis-groups-card-weight-wheelable {
-    cursor: ns-resize;
+    cursor: var(--c-ns-resize);
     min-width: 5.5rem;
 }
 
@@ -278,7 +278,7 @@
     text-align: right;
     line-height: 1;
     color: var(--text-primary);
-    cursor: text;
+    cursor: var(--c-text);
     border-radius: 3px;
     border: 1px solid transparent;
     padding: 1px 4px;
@@ -395,7 +395,7 @@
     height: 18px;
     min-height: 18px;
     padding: 0;
-    cursor: ew-resize;
+    cursor: var(--c-ew-resize);
     background: transparent;
     touch-action: none;
     position: relative;

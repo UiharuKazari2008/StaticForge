@@ -4,9 +4,12 @@
                         arrow and Recent Items) = Vista's menu: a #f0f0f0 face, the etched icon
                         gutter, a thin dark border with a soft shadow, rounded light-blue hot
                         items, etched separators (7.css ul[role=menu], khang-nd/7.css, MIT)
-     custom dropdowns   (dropdown.js: Studio's sampler / model / presets ..., light and .dark)
+     custom dropdowns   (dropdown.js: combo lists that are still dropdowns, light and .dark)
                         = a combo box's list: white, a thin dark border, the solid blue
                         highlight with white text on the hot item
+     Studio model, resolution, sampler, workspace, datasets, UC, and NSFW open as
+     context menus. The enabled row carries a 7.css gutter mark: a radio bullet,
+     or a check for ratio rows and toggles. Unchecked rows leave the gutter empty.
    The text tokens flip dark inside both, so item content that reads them follows. Desktop mode,
    not Classic. Linked after vista-director.css. */
 
@@ -62,7 +65,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
     pointer-events: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item:is(:hover:not(.disabled), .keyboard-selected)::before {
+body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item:is(:hover:not(.disabled), .keyboard-selected, .context-menu-item-highlighted:not(.disabled))::before {
     content: none;
 }
 
@@ -95,7 +98,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
     transform: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) :is(.context-menu-icon-btn, .context-menu-grid-btn):is(:hover:not(.disabled), .keyboard-selected) {
+body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) :is(.context-menu-icon-btn, .context-menu-grid-btn):is(:hover:not(.disabled), .keyboard-selected),
+body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) :is(.context-menu-icon-btn, .context-menu-grid-btn):is([data-state="on"], [data-state="onhigh"], [data-state="armed"], [data-state="partial"], [data-state="open"]) {
     background: linear-gradient(hsl(0 0% 100% / 60%), hsl(216 41% 93% / 80%) 90%, hsl(0 0% 100% / 80%));
     border-color: #aaddfa;
     outline: none;
@@ -110,13 +114,24 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
     color: #2b2b2b;
 }
 
+/* Hot, keyboard, and the current choice (highlighted). The glass rule paints highlighted
+   with the workspace bar; these tokens already flip its text to black, so without this
+   the current row is a teal slab. Same light-blue box as a hot item, on every menu. */
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item:hover:not(.disabled),
-body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item.keyboard-selected {
+body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item.keyboard-selected,
+body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item.context-menu-item-highlighted:not(.disabled) {
     background: linear-gradient(hsl(0 0% 100% / 60%), hsl(216 41% 93% / 80%) 90%, hsl(0 0% 100% / 80%)) !important;
     border: 1px solid #aaddfa !important;
     color: #000 !important;
     font-weight: 400;
     font-variation-settings: normal;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item.context-menu-item-highlighted.disabled {
+    background: transparent;
+    border-color: transparent;
+    color: #6d6d6d;
+    font-weight: 400;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item.disabled {
@@ -202,4 +217,198 @@ body.desktop-mode:not(.windows-classic-theme) .dark .custom-dropdown-menu .custo
     height: 1px;
     margin: 2px 4px;
     background: #d5d5d5;
+}
+
+/* ---------- Classic (non-Aero): Windows Classic menu / combo list ----------
+   Same two surfaces as above. Face is --Menu, hot item is solid --Hilight, 3D border
+   as the rest of Classic chrome (windows-classic-theme.css). No glass, no Vista
+   gutter etch, no teal selected bar. */
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu, .custom-dropdown-menu),
+body.windows-classic-theme .dark :is(.context-menu, .context-menu-submenu, .custom-dropdown-menu) {
+    --text-primary: var(--MenuText);
+    --text-color: var(--MenuText);
+    --text-secondary: var(--MenuText);
+    --text-muted: var(--GrayText);
+    --text-accent: var(--MenuText);
+    --text-accent-tinted: var(--MenuText);
+    --text-white: var(--HilightText);
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-variation-settings: normal;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu),
+body.windows-classic-theme .dark :is(.context-menu, .context-menu-submenu) {
+    padding: 2px;
+    background: var(--Menu);
+    color: var(--MenuText);
+    border: none;
+    border-radius: 0;
+    box-shadow:
+        -1px -1px 0 1px var(--ButtonHilight),
+        0 0 0 1px var(--ButtonShadow),
+        -1px -1px 0 2px var(--ButtonLight),
+        0 0 0 2px var(--ButtonDkShadow);
+    line-height: 1.4;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item {
+    --classic-menu-gutter: 18px;
+    padding: 1px 12px 1px 2px;
+    border: none;
+    border-radius: 0;
+    color: var(--MenuText);
+    font-size: 11px;
+    font-weight: 400;
+    font-variation-settings: normal;
+    gap: 4px;
+    transition: none;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item > :is(i, img):first-child {
+    flex: none;
+    width: var(--classic-menu-gutter);
+    min-width: var(--classic-menu-gutter);
+    margin: 0;
+    text-align: center;
+    justify-content: center;
+    color: inherit;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item:not(:has(> i:first-child, > .workspace-color-indicator:first-child, > img:first-child)) {
+    padding-left: calc(var(--classic-menu-gutter) + 2px);
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item i {
+    color: inherit;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item:is(:hover:not(.disabled), .keyboard-selected),
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item.context-menu-item-highlighted:is(:hover:not(.disabled), .keyboard-selected) {
+    background: var(--Hilight) !important;
+    color: var(--HilightText) !important;
+    border: none !important;
+    border-left: none !important;
+    font-weight: 400;
+    font-variation-settings: normal;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item.context-menu-item-highlighted:not(:hover):not(.keyboard-selected) {
+    background: transparent !important;
+    color: var(--MenuText) !important;
+    font-weight: 400;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item.disabled {
+    color: var(--GrayText);
+    opacity: 1;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item-mark[data-kind="check"]::before {
+    color: currentColor;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item-mark[data-kind="radio"]::before {
+    background: currentColor;
+    border-color: currentColor;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) :is(.context-menu-icon-btn, .context-menu-grid-btn) {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0;
+    color: var(--MenuText);
+    transform: none;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) :is(.context-menu-icon-btn, .context-menu-grid-btn):is(:hover:not(.disabled), .keyboard-selected),
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) :is(.context-menu-icon-btn, .context-menu-grid-btn):is([data-state="on"], [data-state="onhigh"], [data-state="armed"], [data-state="partial"], [data-state="open"]) {
+    background: var(--Hilight);
+    color: var(--HilightText);
+    border-color: var(--Hilight);
+    outline: none;
+    transform: none;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-icons-container {
+    color: var(--MenuText);
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-separator {
+    height: 2px;
+    margin: 3px 2px;
+    background: none;
+    box-shadow: inset 0 1px var(--ButtonShadow), inset 0 -1px var(--ButtonHilight);
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-separator:has(span) {
+    height: auto;
+    box-shadow: none;
+    border-bottom: 1px solid var(--ButtonShadow);
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) :is(.context-menu-section-title, .context-menu-separator-name) {
+    padding-left: 22px;
+    background: none;
+    border-bottom-color: var(--ButtonShadow);
+    color: var(--MenuText);
+    letter-spacing: 0;
+    text-transform: none;
+    opacity: 1;
+    font-weight: 700;
+}
+
+body.windows-classic-theme .custom-dropdown-menu,
+body.windows-classic-theme .dark .custom-dropdown-menu {
+    padding: 1px;
+    background: var(--Window);
+    border: none;
+    border-radius: 0;
+    box-shadow:
+        -1px -1px 0 1px var(--ButtonHilight),
+        0 0 0 1px var(--ButtonShadow),
+        -1px -1px 0 2px var(--ButtonLight),
+        0 0 0 2px var(--ButtonDkShadow);
+    color: var(--WindowText);
+    font-weight: 400;
+}
+
+body.windows-classic-theme .custom-dropdown-menu .custom-dropdown-option,
+body.windows-classic-theme .dark .custom-dropdown-menu .custom-dropdown-option {
+    padding: 1px 8px;
+    border-bottom: 0;
+    color: var(--WindowText);
+    font-size: 11px;
+    font-weight: 400;
+    font-variation-settings: normal;
+}
+
+body.windows-classic-theme .custom-dropdown-menu .custom-dropdown-option:is(:hover:not(:disabled), :focus, .keyboard-selected, .selected, .active),
+body.windows-classic-theme .dark .custom-dropdown-menu .custom-dropdown-option:is(:hover:not(:disabled), :focus, .keyboard-selected, .selected, .active) {
+    background: var(--Hilight) !important;
+    border-left: 0 !important;
+    color: var(--HilightText) !important;
+    font-weight: 400;
+}
+
+body.windows-classic-theme .custom-dropdown-menu :is(.custom-dropdown-header, .custom-dropdown-group),
+body.windows-classic-theme .dark .custom-dropdown-menu :is(.custom-dropdown-header, .custom-dropdown-group) {
+    margin: 2px 0;
+    padding: 2px 8px;
+    background: var(--Menu);
+    border-bottom: 1px solid var(--ButtonShadow);
+    color: var(--MenuText);
+    letter-spacing: 0;
+    text-transform: none;
+    opacity: 1;
+}
+
+body.windows-classic-theme .custom-dropdown-menu .custom-dropdown-separator,
+body.windows-classic-theme .dark .custom-dropdown-menu .custom-dropdown-separator {
+    height: 2px;
+    margin: 3px 2px;
+    background: none;
+    box-shadow: inset 0 1px var(--ButtonShadow), inset 0 -1px var(--ButtonHilight);
 }

@@ -129,7 +129,7 @@
     padding: 0.5rem 0.75rem;
     border-radius: 6px;
     background: rgba(0, 0, 0, 0.15);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 [data-dsap="novels"] .novels-list-item:hover {

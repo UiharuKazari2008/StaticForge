@@ -920,7 +920,7 @@ html.disable-blur .director-session-overlay {
     object-fit: contain;
     background: var(--bg-secondary);
     border: 1px solid var(--glass-border-4);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .director-message-actions {
@@ -1977,7 +1977,7 @@ html.disable-blur .director-attach-chip {
     font-weight: 600;
     color: white;
     border: 1px solid rgba(255, 255, 255, 0.3);
-    cursor: help;
+    cursor: var(--c-help);
     transition: var(--transition-tray-menu);
 }
 
@@ -2303,7 +2303,7 @@ html.disable-blur .director-attach-chip {
     display: inline-block;
     vertical-align: middle;
     margin-left: 4px;
-    cursor: help;
+    cursor: var(--c-help);
     width: 24px;
     height: 8px;
     background: #e0e0e0;
@@ -2774,7 +2774,7 @@ html.disable-blur .director-attach-chip {
 /* Director Mode Slider Disabled State */
 #directorModeSliderContainer .mode-slider-btn:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
     pointer-events: none;
 }
 

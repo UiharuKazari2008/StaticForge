@@ -250,19 +250,36 @@ function collectWorkspaceWallpaperUrls() {
 function preloadWallpaperIntoMemory(url) {
     if (!url) return Promise.resolve();
     const existing = wallpaperMemoryImages.get(url);
-    if (existing && existing.complete && existing.naturalWidth > 0) {
-        return Promise.resolve();
-    }
-    return new Promise((resolve) => {
-        const img = new Image();
+    if (existing && existing._preloadPromise) return existing._preloadPromise;
+    const img = existing || new Image();
+    let promise;
+    const alreadyStarted = !!img.getAttribute('src');
+    if (alreadyStarted && img.complete) {
+        promise = (img.naturalWidth > 0 && img.decode) ? img.decode().catch(() => {}) : Promise.resolve();
+    } else if (alreadyStarted && img._preloadPromise) {
+        promise = img._preloadPromise;
+    } else {
+        let finish = null;
+        promise = new Promise((resolve) => {
+            finish = () => resolve();
+        });
+        img._preloadPromise = promise;
         wallpaperMemoryImages.set(url, img);
-        img.onload = () => resolve();
-        img.onerror = () => resolve();
-        img.src = url;
-    });
+        img.onload = () => {
+            if (img.decode) img.decode().then(finish).catch(finish);
+            else finish();
+        };
+        img.onerror = finish;
+        if (!alreadyStarted) img.src = url;
+        else if (img.complete) finish();
+        return promise;
+    }
+    img._preloadPromise = promise;
+    wallpaperMemoryImages.set(url, img);
+    return promise;
 }
 
-async function syncWorkspaceWallpaperCache(refreshUrls) {
+async function syncWorkspaceWallpaperCache(refreshUrls, options) {
     const urls = collectWorkspaceWallpaperUrls();
     const refresh = Array.isArray(refreshUrls) ? refreshUrls.filter(Boolean) : [];
     const keep = new Set(urls);
@@ -279,6 +296,8 @@ async function syncWorkspaceWallpaperCache(refreshUrls) {
             console.warn('Wallpaper cache sync failed:', error);
         }
     }
+    // Boot defers decode to the "Loading wallpaper" bar step (assetPreload.js).
+    if (options && options.skipDecode) return;
     await Promise.all(urls.map((url) => preloadWallpaperIntoMemory(url)));
 }
 
@@ -1067,8 +1086,10 @@ async function loadWorkspaces() {
             workspaces = newWorkspaces;
             activeWorkspace = data.activeWorkspace;
 
-            // Fill the wallpaper cache and drop any workspace that no longer uses one.
-            await syncWorkspaceWallpaperCache();
+            // During desktop startup, bitmap decode waits for the bar's wallpaper
+            // step (assetPreload.js). Later reloads still decode here.
+            const deferWallpaperDecode = document.body.classList.contains('windows-startup');
+            await syncWorkspaceWallpaperCache(undefined, { skipDecode: deferWallpaperDecode });
 
             // Point the stylesheet at the live compiled hash before dropping inline boot
             // wallpaper. app.html's baked ?sha= is from the last full compile and can
@@ -1089,14 +1110,16 @@ async function loadWorkspaces() {
         // Set initial workspace theme first, then update background (this will also notify desktop shortcuts)
         await switchWorkspaceTheme(activeWorkspace, isFirstLoad);
 
-        // If desktop mode, switch from Windows Classic to Aero theme. Not under the server-restart
-        // lock: it owns Classic for its logon dialog and drops it on resume (desktopBoot.js)
+        // If desktop mode, switch from the boot theme (Windows Classic, or Vista Basic with Use
+        // Vista Logon) to Aero. Not under the server-restart lock: it owns the boot theme for its
+        // logon dialog and drops it on resume (desktopBoot.js)
         const sessionLocked = !!(window.desktopBoot && window.desktopBoot.isSuspended());
-        if (document.body.classList.contains('windows-classic-theme') && !sessionLocked) {
+        const bootTheme = ['windows-classic-theme', 'vista-basic-theme'].find((cls) => document.body.classList.contains(cls));
+        if (bootTheme && !sessionLocked) {
             // runWithThemeSwitchOverlay: public/scripts/comp/themePreferences.js
             await runWithThemeSwitchOverlay(() => {
                 loadBlurPreference();
-                document.body.classList.remove('windows-classic-theme');
+                document.body.classList.remove(bootTheme);
                 if (!document.body.classList.contains('windows-startup')) {
                     document.body.classList.remove('no-animation');
                 }
@@ -1122,7 +1145,6 @@ async function loadWorkspaces() {
         // Re-enable wallpaper transitions now that the correct theme is painted
         document.body.classList.remove('wallpaper-boot');
 
-        renderWorkspaceDropdown();
         updateActiveWorkspaceDisplay();
         
         // Mark styles as initialized
@@ -1646,7 +1668,6 @@ async function createWorkspace(name) {
                 }
 
                 // Update UI components that need the new workspace
-                renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
             }
         } else {
@@ -1698,7 +1719,6 @@ async function deleteWorkspace(id) {
                 }
                 
                 // Update UI components
-                renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
                 
                 // Only refresh gallery if it's currently visible
@@ -1734,9 +1754,6 @@ async function dumpWorkspace(sourceId, targetId) {
                     workspaces[targetId].fileCount = (workspaces[targetId].fileCount || 0) + (result.movedCount || 0);
                 }
                     
-                // Update UI components
-                renderWorkspaceDropdown();
-                
                 // Only refresh gallery if it's currently visible
                 if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
@@ -2079,9 +2096,6 @@ async function moveFilesToWorkspace(filenames, targetWorkspaceId) {
                     workspaces[targetWorkspaceId].fileCount = (workspaces[targetWorkspaceId].fileCount || 0) + (result.movedCount || 0);
                 }
                 
-                // Update UI components
-                renderWorkspaceDropdown();
-                
                 // Only refresh gallery if it's currently visible
                 if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
@@ -2117,7 +2131,6 @@ function updateWorkspaceData(workspaceId, updates) {
     }
     
     // Update UI components
-    renderWorkspaceDropdown();
     updateActiveWorkspaceDisplay();
 }
 
@@ -2164,46 +2177,53 @@ async function updateWorkspaceBackgroundColor(id, backgroundColor) {
 }
 
 // Workspace UI functions
-function renderWorkspaceDropdown(selectedVal) {
-    const workspaceMenu = document.getElementById('workspaceDropdownMenu');
-    if (!workspaceMenu) return;
+/** A workspace row for click menus: colour dot, name, and (unless withoutCount) the file count. */
+function workspaceMenuRowContent(workspace, withoutCount) {
+    const wrap = document.createElement('div');
+    wrap.className = 'workspace-option-content';
+    const dot = document.createElement('div');
+    dot.className = 'workspace-color-indicator';
+    dot.style.backgroundColor = workspace.color || '#102040';
+    const name = document.createElement('span');
+    name.className = 'workspace-name';
+    name.textContent = workspace.name;
+    wrap.appendChild(dot);
+    wrap.appendChild(name);
+    if (!withoutCount) {
+        const counts = document.createElement('span');
+        counts.className = 'workspace-counts';
+        counts.textContent = (workspace.fileCount || 0) + ' files';
+        wrap.appendChild(counts);
+    }
+    return wrap;
+}
 
-    workspaceMenu.innerHTML = '';
+/** Picker rows (contextMenu.attachPickerMenu) for every workspace in sort order, minus excludeId. */
+function getWorkspacePickerItems(excludeId, withoutCount) {
+    return Object.values(workspaces || {})
+        .filter((workspace) => workspace.id !== excludeId)
+        .sort((a, b) => (a.sort || 0) - (b.sort || 0))
+        .map((workspace) => ({
+            value: workspace.id,
+            text: workspace.name,
+            content: () => workspaceMenuRowContent(workspace, withoutCount)
+        }));
+}
 
-    // Sort workspaces by their sort order - workspaces is an object, not an array
-    const sortedWorkspaces = Object.values(workspaces).sort((a, b) => (a.sort || 0) - (b.sort || 0));
-
-    sortedWorkspaces.forEach(workspace => {
-        const option = document.createElement('div');
-        // Use activeWorkspace variable instead of workspace.isActive property
-        const isActive = workspace.id === activeWorkspace;
-        option.className = 'custom-dropdown-option' + (isActive ? ' selected' : '');
-        option.tabIndex = 0;
-        option.dataset.value = workspace.id;
-
-        option.innerHTML = `
-            <div class="workspace-option-content">
-                <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#102040'}"></div>
-                <span class="workspace-name">${workspace.name}</span>
-                <span class="workspace-counts">${workspace.fileCount} files</span>
-            </div>
-        `;
-
-        const action = () => {
-            if (!isActive) {
-                setActiveWorkspace(workspace.id);
+/** Picker rows for a font list; each label is drawn in its own face. */
+function getFontPickerItems(fonts, genericFamily, defaultFamily) {
+    return fonts.map((font) => {
+        const family = font.value ? `'${font.value}', ${genericFamily}` : (font.fontFamily || defaultFamily);
+        return {
+            value: font.value || '',
+            text: font.label || 'Default',
+            content: () => {
+                const span = document.createElement('span');
+                span.style.fontFamily = family;
+                span.textContent = font.label || 'Default';
+                return span;
             }
-            closeWorkspaceDropdown();
         };
-
-        option.addEventListener('click', action);
-        option.addEventListener('keydown', e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                action();
-            }
-        });
-
-        workspaceMenu.appendChild(option);
     });
 }
 
@@ -2241,14 +2261,6 @@ function updateManualWorkspaceDisplay() {
         }
     }
 }
-function openWorkspaceDropdown() {
-    openDropdown(document.getElementById('workspaceDropdownMenu'), document.getElementById('workspaceDropdownBtn'));
-}
-
-function closeWorkspaceDropdown() {
-    closeDropdown(document.getElementById('workspaceDropdownMenu'), document.getElementById('workspaceDropdownBtn'));
-}
-
 function renderWorkspaceManagementList(targetList, options) {
     const list = targetList || document.getElementById('workspaceManageList');
     if (!list) {
@@ -2508,40 +2520,17 @@ function setDumpTargetWorkspaceValue(workspaceId) {
     selected.textContent = ws?.name || 'Select planet...';
 }
 
-function renderDumpTargetDropdown(selectedVal) {
-    const menu = document.getElementById('dumpTargetMenu');
-    const btn = document.getElementById('dumpTargetBtn');
-    const hidden = document.getElementById('dumpTargetHidden');
-    if (!menu || !btn || !hidden) return;
-
-    const items = Object.values(workspaces)
-        .filter((w) => w.id !== dumpTargetExcludeWorkspaceId)
-        .map((w) => ({ value: w.id, name: w.name }));
-
-    // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
-    renderSimpleDropdown(
-        menu,
-        items,
-        'value',
-        'name',
-        (value) => setDumpTargetWorkspaceValue(value),
-        () => closeDropdown(menu, btn), // closeDropdown: public/scripts/comp/dropdown.js
-        selectedVal || hidden.value,
-        { preventFocusTransfer: true }
-    );
-}
-
 function wireDumpTargetDropdown() {
-    const container = document.getElementById('dumpTargetDropdown');
     const btn = document.getElementById('dumpTargetBtn');
-    const menu = document.getElementById('dumpTargetMenu');
     const hidden = document.getElementById('dumpTargetHidden');
-    if (!container || !btn || !menu || !hidden) return;
-    if (container.dataset.wired === '1') return;
-    container.dataset.wired = '1';
+    if (!btn || !hidden || btn.dataset.clickMenu) return;
 
-    // setupDropdown: public/scripts/comp/dropdown.js
-    setupDropdown(container, btn, menu, renderDumpTargetDropdown, () => hidden.value, { preventFocusTransfer: true });
+    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+    contextMenu.attachPickerMenu(btn, {
+        items: () => getWorkspacePickerItems(dumpTargetExcludeWorkspaceId),
+        value: () => hidden.value,
+        onSelect: (value) => setDumpTargetWorkspaceValue(value)
+    });
 }
 
 function showDumpWorkspaceModal(sourceId, sourceName) {
@@ -2590,12 +2579,14 @@ function initializeWorkspaceSystem() {
     }
     workspaceSystemWired = true;
 
-    // Setup workspace dropdown using standard custom dropdown system
-    const workspaceDropdown = document.getElementById('workspaceDropdown');
-    const workspaceDropdownBtn = document.getElementById('workspaceDropdownBtn');
-    const workspaceDropdownMenu = document.getElementById('workspaceDropdownMenu');
-
-    setupDropdown(workspaceDropdown, workspaceDropdownBtn, workspaceDropdownMenu, renderWorkspaceDropdown, () => activeWorkspace);
+    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+    contextMenu.attachPickerMenu(document.getElementById('workspaceDropdownBtn'), {
+        items: () => getWorkspacePickerItems(),
+        value: () => activeWorkspace,
+        onSelect: (id) => {
+            if (id !== activeWorkspace) setActiveWorkspace(id);
+        }
+    });
 
     // Workspace action button events
     const workspaceManageBtn = document.getElementById('workspaceManageBtn');
@@ -2800,43 +2791,22 @@ function initializeWorkspaceSettingsForm() {
     }
 
     // Primary font dropdown setup (selection stored locally; sent on Save)
-    const primaryFontContainer = document.getElementById('workspacePrimaryFontDropdown');
     const primaryFontBtn = document.getElementById('workspacePrimaryFontDropdownBtn');
-    const primaryFontMenu = document.getElementById('workspacePrimaryFontDropdownMenu');
     const primaryFontSelected = document.getElementById('workspacePrimaryFontSelected');
-    if (primaryFontContainer && primaryFontBtn && primaryFontMenu && primaryFontSelected) {
-        const renderPrimaryFontMenu = async (selectedVal = '') => {
-            const groups = [
-                {
-                    group: 'Available Fonts',
-                    options: AVAILABLE_PRIMARY_FONTS.map(f => ({
-                        value: f.value,
-                        label: f.label,
-                        preview: f.preview,
-                        fontFamily: f.value ? `'${f.value}', sans-serif` : f.fontFamily || "var(--font-primary)",
-                    }))
-                }
-            ];
-            renderGroupedDropdown(primaryFontMenu, groups, (value) => {
+    if (primaryFontBtn && primaryFontSelected) {
+        const primaryFontItems = getFontPickerItems(AVAILABLE_PRIMARY_FONTS, 'sans-serif', 'var(--font-primary)');
+        // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+        contextMenu.attachPickerMenu(primaryFontBtn, {
+            items: () => primaryFontItems,
+            value: () => (workspaces[currentWorkspaceOperation?.id || activeWorkspace]?.primaryFont) || '',
+            onSelect: (value) => {
                 const id = currentWorkspaceOperation?.id || activeWorkspace;
                 if (workspaces[id]) workspaces[id].primaryFont = value || null;
                 const def = AVAILABLE_PRIMARY_FONTS.find(f => f.value === value) || AVAILABLE_PRIMARY_FONTS[0];
                 primaryFontSelected.textContent = def.label || 'Default';
                 primaryFontSelected.style.fontFamily = def.value ? `'${def.value}', sans-serif` : (def.fontFamily || 'var(--font-primary)');
-                closeDropdown(primaryFontMenu, primaryFontBtn);
-            }, () => closeDropdown(primaryFontMenu, primaryFontBtn), selectedVal, (opt) => {
-                return `<span style=\"font-family:${opt.fontFamily};\">${opt.label || 'Default'}</span>`;
-            });
-        };
-
-        setupDropdown(primaryFontContainer, primaryFontBtn, primaryFontMenu, async () => {
-            const id = currentWorkspaceOperation?.id || activeWorkspace;
-            const selected = (workspaces[id]?.primaryFont) || '';
-            await renderPrimaryFontMenu(selected);
-        }, () => {
-            const id = currentWorkspaceOperation?.id || activeWorkspace;
-            return (workspaces[id]?.primaryFont) || '';
-        }, { enableKeyboardNav: true });
+            }
+        });
 
         // Initialize selected label + preview
         const initialId = currentWorkspaceOperation?.id || activeWorkspace;
@@ -2847,43 +2817,22 @@ function initializeWorkspaceSettingsForm() {
     }
 
     // Textarea font dropdown setup (selection stored locally; sent on Save)
-    const textareaFontContainer = document.getElementById('workspaceTextareaFontDropdown');
     const textareaFontBtn = document.getElementById('workspaceTextareaFontDropdownBtn');
-    const textareaFontMenu = document.getElementById('workspaceTextareaFontDropdownMenu');
     const textareaFontSelected = document.getElementById('workspaceTextareaFontSelected');
-    if (textareaFontContainer && textareaFontBtn && textareaFontMenu && textareaFontSelected) {
-        const renderTextareaFontMenu = async (selectedVal = '') => {
-            const groups = [
-                {
-                    group: 'Available Fonts',
-                    options: AVAILABLE_TEXTAREA_FONTS.map(f => ({
-                        value: f.value,
-                        label: f.label,
-                        preview: f.preview,
-                        fontFamily: f.value ? `'${f.value}', monospace` : f.fontFamily || "var(--font-mono)",
-                    }))
-                }
-            ];
-            renderGroupedDropdown(textareaFontMenu, groups, (value) => {
+    if (textareaFontBtn && textareaFontSelected) {
+        const textareaFontItems = getFontPickerItems(AVAILABLE_TEXTAREA_FONTS, 'monospace', 'var(--font-mono)');
+        // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+        contextMenu.attachPickerMenu(textareaFontBtn, {
+            items: () => textareaFontItems,
+            value: () => (workspaces[currentWorkspaceOperation?.id || activeWorkspace]?.textareaFont) || '',
+            onSelect: (value) => {
                 const id = currentWorkspaceOperation?.id || activeWorkspace;
                 if (workspaces[id]) workspaces[id].textareaFont = value || null;
                 const def = AVAILABLE_TEXTAREA_FONTS.find(f => f.value === value) || AVAILABLE_TEXTAREA_FONTS[0];
                 textareaFontSelected.textContent = def.label || 'Default';
                 textareaFontSelected.style.fontFamily = def.value ? `'${def.value}', monospace` : (def.fontFamily || 'var(--font-mono)');
-                closeDropdown(textareaFontMenu, textareaFontBtn);
-            }, () => closeDropdown(textareaFontMenu, textareaFontBtn), selectedVal, (opt) => {
-                return `<span style=\"font-family:${opt.fontFamily};\">${opt.label || 'Default'}</span>`;
-            });
-        };
-
-        setupDropdown(textareaFontContainer, textareaFontBtn, textareaFontMenu, async () => {
-            const id = currentWorkspaceOperation?.id || activeWorkspace;
-            const selected = (workspaces[id]?.textareaFont) || '';
-            await renderTextareaFontMenu(selected);
-        }, () => {
-            const id = currentWorkspaceOperation?.id || activeWorkspace;
-            return (workspaces[id]?.textareaFont) || '';
-        }, { enableKeyboardNav: true });
+            }
+        });
 
         // Initialize selected label + preview
         const initialId2 = currentWorkspaceOperation?.id || activeWorkspace;
@@ -3015,14 +2964,8 @@ if (window.wsClient) {
         initializeWorkspaceSettingsForm();
     });
     
-    // Enable taskbar after other workspace tasks are done
-    window.wsClient.registerInitStep(0.55, 'Preloading icons', async () => {
-        // preloadShellIconsAndFonts: public/scripts/comp/modalUtils.js
-        await Promise.race([
-            preloadShellIconsAndFonts(),
-            new Promise((resolve) => setTimeout(resolve, 8000))
-        ]);
-    });
+    // Shell icon decode is the startup bar's "Loading desktop assets" step
+    // (public/scripts/comp/assetPreload.js), after wallpaper and desktop icons.
     window.wsClient.registerInitStep(16, 'Starting Taskbar', async () => {
         if (window.isDesktop) {
             const taskbar = document.getElementById('desktopTaskbar');
@@ -3065,7 +3008,6 @@ function initializeWebSocketWorkspaceEvents() {
                 }
                 
                 // Update UI components that need the new workspace
-                renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
                 
                 // If workspace management UI is open, refresh it
@@ -3080,7 +3022,6 @@ function initializeWebSocketWorkspaceEvents() {
                 }
                 
                 // Update UI components
-                renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
                 
                 refreshWorkspaceManagementListsIfPresent();
@@ -3094,7 +3035,6 @@ function initializeWebSocketWorkspaceEvents() {
                 }
                 
                 // Update UI components
-                renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
                 
                 refreshWorkspaceManagementListsIfPresent();
@@ -3109,9 +3049,6 @@ function initializeWebSocketWorkspaceEvents() {
                 if (data.targetWorkspaceId && workspaces[data.targetWorkspaceId]) {
                     workspaces[data.targetWorkspaceId].fileCount = (workspaces[data.targetWorkspaceId].fileCount || 0) + (data.movedCount || 0);
                 }
-                
-                // Update UI components
-                renderWorkspaceDropdown();
                 
                 refreshWorkspaceManagementListsIfPresent();
                 refreshExplorerWorkspacesListIfOpen();
@@ -3141,7 +3078,6 @@ function initializeWebSocketWorkspaceEvents() {
                 });
 
                 // Update UI components that show the new order
-                renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
 
                 refreshWorkspaceManagementListsIfPresent();
@@ -3156,9 +3092,6 @@ function initializeWebSocketWorkspaceEvents() {
                 if (data.targetWorkspaceId && workspaces[data.targetWorkspaceId]) {
                     workspaces[data.targetWorkspaceId].fileCount = (workspaces[data.targetWorkspaceId].fileCount || 0) + (data.movedCount || 0);
                 }
-                
-                // Update UI components
-                renderWorkspaceDropdown();
                 
                 break;
                 
@@ -3320,7 +3253,6 @@ function initializeWebSocketWorkspaceEvents() {
                 }
                 
                 // Update UI components
-                renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
 
                 // Keep workspace management lists (incl. data management DSAP) and explorer in sync
@@ -3351,7 +3283,6 @@ function initializeWebSocketWorkspaceEvents() {
         }
         
         // Refresh UI components (no need to reload workspaces)
-        renderWorkspaceDropdown();
         updateActiveWorkspaceDisplay();
 
         window.workspaceLoadingCompleteCallback = completeWorkspaceSwitch;
@@ -3652,7 +3583,6 @@ async function reorderWorkspaces(workspaceIds) {
 
 function refreshWorkspaceManager() {
     // Only refresh the UI components, don't reload all workspaces
-    renderWorkspaceDropdown();
     updateActiveWorkspaceDisplay();
     refreshWorkspaceManagementListsIfPresent();
 }

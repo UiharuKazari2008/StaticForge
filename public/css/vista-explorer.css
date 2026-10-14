@@ -298,7 +298,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
 
 /* ---- the command bar ---- */
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-actions-header.naxt-search-header {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal .explorer-actions-header.naxt-search-header, .modal[data-window-client="light"] .explorer-actions-header) {
     min-height: 32px;
     padding: 0 4px;
     background: linear-gradient(#b6d2d9, #85b3bf 8%, #488d9f 49%, #156477 50%, #1c677a 62%, #4b94a1 92%, #99c9cf 97%, #99c9cf);
@@ -311,13 +311,13 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-actions-h
     gap: 0;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-set {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, .modal[data-window-client="light"]) .explorer-command-set {
     display: flex;
     align-items: center;
     gap: 2px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal :is(.explorer-command-btn, .explorer-command-btn.btn-secondary) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, .modal[data-window-client="light"]) :is(.explorer-command-btn, .explorer-command-btn.btn-secondary) {
     display: inline-flex;
     align-items: center;
     gap: 0;
@@ -337,13 +337,13 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal :is(.explorer-comma
     cursor: var(--c-default);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-icon {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, .modal[data-window-client="light"]) .explorer-command-icon {
     width: 16px;
     height: 16px;
     margin-right: 5px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-glyph {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, .modal[data-window-client="light"]) .explorer-command-glyph {
     width: 7px;
     height: 4px;
     margin-left: 7px;
@@ -355,20 +355,56 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-g
 
 /* hot: Vista's glossy box (measured: #afc7d6 to #537c98 above the middle, #0e364f to #2f668a
    below, light inner lines, a navy edge) */
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-btn:is(:hover, .active, [aria-expanded="true"]):not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, .modal[data-window-client="light"]) .explorer-command-btn:is(:hover, .active, .context-open, [aria-expanded="true"], [data-state="on"]):not(:disabled) {
     background: linear-gradient(#afc7d6, #537c98 48%, #0e364f 50%, #2f668a);
     border-color: #044875;
     box-shadow: inset 0 1px 0 #d8e4ec, inset 0 -1px 0 #92b1c4;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-btn:active:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, .modal[data-window-client="light"]) .explorer-command-btn:active:not(:disabled) {
     background: linear-gradient(#0e364f, #1d4f6c 50%, #2f668a);
     box-shadow: inset 0 1px 3px hsl(0 0% 0% / 55%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-command-btn:disabled {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, .modal[data-window-client="light"]) .explorer-command-btn:disabled {
     color: #a1ccd2;
     text-shadow: none;
+}
+
+/* the command bar in any light window (#476 Properties, #485): layout in every theme */
+:where(.modal[data-window-client="light"]) .explorer-actions-header:where(:not(.naxt-search-header)) {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-bottom: 1px solid var(--glass-border-2);
+    overflow: hidden;
+}
+
+:where(.modal[data-window-client="light"]) .explorer-actions-header:where(:not(.naxt-search-header)) .explorer-command-set {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+:where(.modal[data-window-client="light"]) .explorer-actions-header:where(:not(.naxt-search-header)) .explorer-command-set + .explorer-command-set {
+    margin-left: auto;
+}
+
+:where(.modal[data-window-client="light"]) .explorer-actions-header:where(:not(.naxt-search-header)) .explorer-command-btn {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+:where(.modal[data-window-client="light"]) .explorer-actions-header:where(:not(.naxt-search-header)) .explorer-command-btn > i {
+    margin-right: 5px;
+}
+
+/* the latched toggle's tint layer would show through Explorer's pressed box */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .explorer-actions-header:not(.naxt-search-header) .explorer-command-btn.toggle-btn::before {
+    content: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-help-btn {
@@ -2025,13 +2061,13 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWik
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 60%);
     color: #1e395b;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):is(:active:not(:disabled), [data-state="on"], [data-state="open"], .active, [aria-pressed="true"]) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):is(:active:not(:disabled), [data-state="on"], [data-state="open"], .active, .context-open, [aria-expanded="true"], [aria-pressed="true"]) {
     background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
     border-color: #2c628b;
     box-shadow: inset 1px 1px 0 hsl(0 0% 0% / 20%);
     color: #1e395b;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):disabled {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):disabled {
     color: #8a96a3;
     opacity: 1;
 }
@@ -2209,7 +2245,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal.modal.toolbar-
 /* Explorer's command bar: 31px with its dark bottom line (VM rows 63-93). IE's tab row is the band
    straight under the client edge (VM column x=450: the edge, then #fff, #fefeff ... #e9ecfa, #8b919f;
    no line of its own on top), the active tab's top 2px into it, the new-tab stub's 4px */
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-actions-header.naxt-search-header {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal .explorer-actions-header.naxt-search-header, .modal[data-window-client="light"] .explorer-actions-header) {
     height: 31px;
     min-height: 31px;
     box-sizing: border-box;

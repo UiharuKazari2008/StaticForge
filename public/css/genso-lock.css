@@ -29,6 +29,11 @@
     min-height: 0;
 }
 
+#textReplacementLockListContainer {
+    overflow: auto;
+    padding: var(--spacing-md);
+}
+
 .text-replacement-lock-list {
     gap: var(--spacing-sm);
     display: flex;
@@ -844,7 +849,7 @@
 }
 
 .usage-detail-value.selectable {
-    cursor: text;
+    cursor: var(--c-text);
     user-select: text;
 }
 
@@ -1118,4 +1123,39 @@
 
 .compile-to-prompts-modal .tendai-include-toggle[data-state="on"] i {
     color: var(--success-color, #81ffb3);
+}
+
+/* ---- Vista light client (#485): Studio's expander Inspector. The window remap and the expander
+   rows are shared with Properties (image-prompt-inspector.css). ---- */
+body:not(.windows-classic-theme) #textReplacementLockModal[data-window-client="light"] .compiled-prompt-expandable-section {
+    background: #fff;
+    border-color: #d5dfe5;
+    border-radius: 3px;
+}
+
+body:not(.windows-classic-theme) #textReplacementLockModal[data-window-client="light"] .compiled-prompt-label {
+    color: #1e3287;
+    font-weight: 400;
+    font-variation-settings: normal;
+}
+
+body:not(.windows-classic-theme) #textReplacementLockModal[data-window-client="light"] .compiled-prompt-display-wrapper {
+    background: #fff;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    box-shadow: none;
+}
+
+body:not(.windows-classic-theme) #textReplacementLockModal[data-window-client="light"] .compiled-prompt-display {
+    color: #000;
+}
+
+/* a locked row: Explorer's selected item */
+body:not(.windows-classic-theme) #textReplacementLockModal[data-window-client="light"] .text-replacement-lock-item.selected {
+    background: none;
+}
+
+body:not(.windows-classic-theme) #textReplacementLockModal[data-window-client="light"] .text-replacement-lock-item.selected .text-replacement-lock-content {
+    background: linear-gradient(#f6fafe, #e3effd);
+    border-color: #7da2ce;
 }

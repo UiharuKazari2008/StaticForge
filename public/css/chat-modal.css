@@ -656,6 +656,8 @@
 }
 
 .chat-input-panel {
+    position: relative;
+    z-index: 1;
     padding: var(--spacing-sm);
     border-top: 1px solid var(--glass-border-3);
     background: var(--glass-layer-3);
@@ -692,7 +694,7 @@
 
 .chat-send-btn:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 /* Persona Settings Styles */
@@ -768,4 +770,140 @@
     .chat-message {
         max-width: 95%;
     }
+}
+
+/* ---- Vista light client (#485): Windows Live Messenger 2009. A light navigation pane, a white
+   conversation, light blue bubbles for you and light grey for the character, Vista's text box
+   to type in. The send button is Vista's standard button (vista-glass-controls.css). ---- */
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-list-panel {
+    background: linear-gradient(#f4f8fc, #e3ecf6);
+    border-right-color: #b9c9d9;
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-sessions-list {
+    gap: 2px;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-session-item {
+    background: none;
+    border-color: transparent;
+    border-radius: 3px;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-session-item:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-session-item.active {
+    background: linear-gradient(#dcebfc, #c1dbfc);
+    border-color: #7da2ce;
+}
+
+/* Messenger's display picture: a white frame, not a ring */
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] :is(.chat-session-avatar, .chat-message-avatar) {
+    padding: 1px;
+    background: #fff;
+    border: 1px solid #9fb4cc;
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-session-name {
+    color: #000;
+    font-size: 10pt;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] :is(.chat-session-last-message, .chat-session-time, .chat-sentinel .chat-loading-indicator) {
+    color: #6d6d6d;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-messages-panel {
+    background-color: #fff;
+    border-radius: 0;
+}
+
+/* the character's picture behind the conversation: washed out under a white veil */
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-messages-panel::before {
+    background: linear-gradient(rgb(255 255 255 / 60%), rgb(255 255 255 / 92%));
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-message {
+    font-size: 10pt;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-message:not(.metadata-message) .chat-message-content {
+    color: #000;
+    background: #f3f3f3;
+    border-color: #d5d5d5;
+    border-radius: 6px;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-message.user .chat-message-content {
+    background: linear-gradient(#f0f6fd, #dcebfb);
+    border-color: #a9c7e8;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-message-text {
+    font-weight: 400;
+    font-variation-settings: normal;
+}
+
+/* the 4th wall events keep their hue under a white veil, with dark text */
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .metadata-message .chat-message-content {
+    background-image: linear-gradient(rgb(255 255 255 / 70%), rgb(255 255 255 / 70%));
+    color: #1a1a1a;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .metadata-message .metadata-label {
+    color: #444;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-message-metadata {
+    color: #444;
+    background: #fafafa;
+    border-color: #d5d5d5;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-input-panel {
+    background: linear-gradient(#f6f9fd, #e3ecf6);
+    border-top-color: #b9c9d9;
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-message-input {
+    padding: 4px 6px;
+    color: #000;
+    font-size: 10pt;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    box-shadow: none;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-message-input:is(:hover, :focus) {
+    border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-message-input::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
+    opacity: 1;
+}
+
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-send-btn {
+    min-width: 60px;
+    font-size: 9pt;
+}
+
+body:not(.windows-classic-theme) #personaSettingsModal[data-window-client="light"] .profile-photo-preview {
+    background: #fff;
+    border: 1px dashed #abadb3;
+}
+
+body:not(.windows-classic-theme) #personaSettingsModal[data-window-client="light"] :is(.profile-photo-preview i, .profile-photo-preview span) {
+    color: #6d6d6d;
 }

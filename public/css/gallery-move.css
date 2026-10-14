@@ -174,7 +174,7 @@
     justify-content: center;
 }
 
-.gallery-move-workspace-selector .custom-dropdown {
+.gallery-move-workspace-selector .custom-dropdown-btn {
     width: 100%;
     max-width: 300px;
 }
@@ -381,13 +381,25 @@
     }
 }
 
+/* ---- Reference Manager (#cacheManagerModal) in the Workspace window's design (#474) ----
+   As #galleryWindow: square tiles edge to edge with the frame-coloured 2px borders on the window
+   glass (no inset panel), the MeletonFX mark behind them, and the floating glass bar bottom-left
+   built from the same classes as #main-menu-bar (app.css .floating-bar-left / .main-menu-bar-*):
+   "References • <workspace>" over the type toggle (gallery-core.css .gallery-toggle-group) and
+   the tools that used to sit in the caption. */
+
+/* the body is the window glass, like the windowed workspace */
+body:not(.windows-classic-theme) #cacheManagerModal {
+    --window-body-bg: transparent;
+}
+
 .cache-manager-content {
     width: 95vw;
     height: -webkit-fill-available;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    padding: var(--spacing-sm);
+    padding: 0;
 }
 
 .cache-manager-content .modal-body {
@@ -395,53 +407,11 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    padding: 0;
     overflow: hidden;
 }
 
 .cache-manager-content .modal-header {
-    flex-shrink: 0;
-}
-
-.cache-manager-controls {
-    background: var(--header-bg, var(--glass-layer-dark-5));
-    -webkit-backdrop-filter: var(--glass-blur-2, brightness(0.15)) saturate(0.5);
-    backdrop-filter: var(--glass-blur-2, brightness(0.15)) saturate(0.5);
-    border: 1px solid var(--header-border, var(--glass-border-2));
-    box-shadow: 1px 4px 25px rgb(0 0 0 / 68%);
-    margin: var(--spacing-lg);
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    z-index: var(--z-layer-3);
-    padding: 8px;
-    border-radius: var(--border-radius-xl);
-}
-
-.cache-manager-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 20px;
-    flex-wrap: wrap;
-}
-
-.cache-manager-workspace-selector {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-}
-
-.cache-manager-workspace-selector label {
-    color: #ccc;
-    font-size: 0.9rem;
-    font-weight: 500;
-    white-space: nowrap;
-}
-
-.cache-manager-actions {
-    display: flex;
-    gap: 12px;
     flex-shrink: 0;
 }
 
@@ -451,13 +421,8 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding: 0px;
     overflow: hidden;
-    box-sizing: border-box;
-    border: 1px solid var(--glass-border-3);
-    background: var(--glass-inset-bg-3);
-    border-radius: 8px;
-    box-shadow: inset 0 16px 40px 0px hsl(0deg 0% 0% / 65%);
+    isolation: isolate;
 }
 
 .cache-manager-gallery-container {
@@ -471,46 +436,29 @@
 }
 
 .cache-manager-gallery {
+    /* never a shrinking flex item: its rows would collapse under the square tiles */
+    flex: none;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 8px;
-    padding: 10px;
+    gap: 0;
+    padding: 0 0 var(--spacing-xxl);
     width: 100%;
     min-height: 200px;
 }
 
-/* Custom scrollbar for cache manager gallery */
-.cache-manager-gallery::-webkit-scrollbar {
-    width: 8px;
-}
-
-.cache-manager-gallery::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-}
-
-.cache-manager-gallery::-webkit-scrollbar-thumb {
-    background: var(--primary-color);
-    border-radius: 4px;
-}
-
-.cache-manager-gallery::-webkit-scrollbar-thumb:hover:not(:disabled) {
-    background: var(--primary-color-light);
-}
-
 .cache-manager-gallery-item {
     position: relative;
-    height: max-content;
-    border-radius: 8px;
+    aspect-ratio: 1;
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--glass-border-5);
+    border: 2px solid var(--glass-layer-dark-menu);
+    border-radius: 0;
+    background-color: var(--glass-layer-2);
 }
 
 .cache-manager-gallery-item img {
     display: block;
     width: 100%;
-    aspect-ratio: 1/1;
+    height: 100%;
     object-fit: cover;
     object-position: center top;
     background: linear-gradient(45deg, #ffffff, #b4b4b4);
@@ -530,10 +478,8 @@
     width: 100%;
     height: 100%;
     z-index: var(--z-layer-2);
-    border-radius: var(--border-radius-lg);
     gap: var(--spacing-lg);
-    background: #7c7c7cf5;
-    border: 1px solid var(--glass-border-1);
+    background: hsl(0 0% 0% / 45%);
 }
 
 .cache-manager-loading .spinner {
@@ -549,6 +495,241 @@
 .cache-manager-loading p {
     margin: 0;
     font-size: 0.9rem;
+}
+
+/* the floating bar: inside the window, as .windowed #main-menu-bar */
+#cacheManagerModal .cache-manager-menu-bar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    margin: var(--spacing-lg);
+    z-index: var(--z-layer-4);
+}
+
+#cacheManagerModal .cache-manager-menu-bar::after {
+    top: calc(-1 * calc(var(--spacing-lg) + 50%));
+    left: calc(-1 * var(--spacing-lg));
+    width: calc(150% + calc(2 * var(--spacing-lg)));
+    height: calc(150% + calc(2 * var(--spacing-lg)));
+}
+
+/* one backdrop on the window already (app.css .modal.windowed .main-menu-bar-outer) */
+#cacheManagerModal .main-menu-bar-outer {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+#cacheManagerModal .cache-manager-menu-dot {
+    font-size: 0.35rem;
+    padding-top: 0.15rem;
+}
+
+/* the type toggle: four segments, each lit in its badge colour (as Workspace's views) */
+#cacheManagerModeSelector[data-active="all"] .gallery-toggle-slider {
+    transform: translateX(0);
+    background: var(--header-bg);
+    border-color: var(--header-border);
+}
+
+#cacheManagerModeSelector[data-active="all"] .gallery-toggle-btn.active {
+    color: var(--text-accent-tinted);
+}
+
+#cacheManagerModeSelector[data-active="image"] .gallery-toggle-slider {
+    transform: translateX(calc(100% + 2px));
+    background: hsl(140deg 70% 40% / 32%);
+    border-color: hsl(140deg 70% 55% / 45%);
+}
+
+#cacheManagerModeSelector[data-active="image"] .gallery-toggle-btn.active {
+    color: #b6ffc4;
+}
+
+#cacheManagerModeSelector[data-active="vibe"] .gallery-toggle-slider {
+    transform: translateX(calc(200% + 3px));
+    background: hsl(200deg 90% 50% / 30%);
+    border-color: hsl(200deg 90% 62% / 45%);
+}
+
+#cacheManagerModeSelector[data-active="vibe"] .gallery-toggle-btn.active {
+    color: #a8e0ff;
+}
+
+#cacheManagerModeSelector[data-active="character"] .gallery-toggle-slider {
+    transform: translateX(calc(300% + 4px));
+    background: hsl(268deg 85% 62% / 32%);
+    border-color: hsl(268deg 85% 72% / 50%);
+}
+
+#cacheManagerModeSelector[data-active="character"] .gallery-toggle-btn.active {
+    color: #dccbff;
+}
+
+/* the tile badges: Vista glass pills (Yukimi 2026-10-14), the toggle slider's recipe — a dark
+   edge, an inner light line, a lit top half over a darker fold, the badge's colour under it */
+#cacheManagerModal .cache-manager-badges {
+    top: 6px;
+    left: 6px;
+    gap: 3px;
+}
+
+#cacheManagerModal .cache-badge {
+    --badge-tint: hsl(0 0% 28% / 88%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+    padding: 0 7px;
+    box-sizing: border-box;
+    border: 1px solid hsl(0 0% 0% / 60%);
+    border-radius: 3px;
+    background:
+        linear-gradient(hsl(0 0% 100% / 34%), hsl(0 0% 100% / 14%) calc(50% - 1px), hsl(0 0% 0% / 16%) 50%, hsl(0 0% 0% / 4%) 85%, hsl(0 0% 100% / 16%)),
+        var(--badge-tint);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 1px 3px hsl(0 0% 0% / 45%);
+    color: #fff;
+    font: 600 11px "Segoe UI", "Noto Sans", sans-serif;
+    letter-spacing: 0;
+    text-transform: none;
+    text-shadow: 0 1px 2px hsl(0 0% 0% / 70%);
+}
+
+#cacheManagerModal .cache-badge i {
+    font-size: 11px;
+}
+
+#cacheManagerModal .cache-badge.base-image { --badge-tint: hsl(140 60% 28% / 90%); }
+#cacheManagerModal .cache-badge.character-reference-badge { --badge-tint: hsl(266 70% 50% / 90%); }
+#cacheManagerModal .cache-badge.style-reference-badge { --badge-tint: hsl(34 92% 44% / 90%); }
+#cacheManagerModal .cache-badge.novelai-badge { --badge-tint: hsl(256 80% 30% / 92%); }
+#cacheManagerModal .cache-badge.locked-badge { --badge-tint: hsl(0 75% 38% / 92%); }
+#cacheManagerModal .cache-badge.encoding { --badge-tint: linear-gradient(90deg, hsl(288 72% 45% / 92%), hsl(200 75% 42% / 92%)); }
+#cacheManagerModal .cache-badge.encoding.encoding-c { --badge-tint: linear-gradient(90deg, hsl(30 80% 48% / 92%), hsl(322 65% 40% / 92%)); }
+
+/* the encoding pill: model on the left, the information-extraction share in its own etched cell */
+#cacheManagerModal .cache-badge.encoding {
+    gap: 0;
+    padding: 0 0 0 7px;
+}
+
+#cacheManagerModal .cache-badge.encoding .badge-model {
+    gap: 4px;
+}
+
+#cacheManagerModal .cache-badge.encoding .badge-ie {
+    height: 100%;
+    margin-left: 6px;
+    padding: 0 6px;
+    background: hsl(0 0% 0% / 18%);
+    border-left: 1px solid hsl(0 0% 0% / 45%);
+    border-radius: 0 2px 2px 0;
+    box-shadow: inset 1px 0 0 hsl(0 0% 100% / 22%);
+    font-weight: 400;
+}
+
+/* ---- the cork pinboard (Yukimi 2026-10-14: "lets add cork pinboard design", "more gutter and
+   padding around the reference item so the background can be seen ... like printed photo cards"):
+   natural cork (static_images/reference-cork/, scripts/generate-cork-board.js; not dyed) with
+   darker edges and the board's edge sunk into the window; each reference is a printed photo card
+   (white border, soft shadow, a slight tilt that varies across the grid) held by a glass-head
+   pushpin. Hover straightens and lifts the card. Outside the classic theme. ---- */
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-body {
+    background-color: #b0773f;
+    background-image:
+        radial-gradient(ellipse 120% 100% at 50% 45%, transparent 50%, hsl(25 60% 10% / 45%)),
+        image-set(url('/static_images/reference-cork/cork-1x.webp') 1x, url('/static_images/reference-cork/cork.webp') 2x);
+    background-size: 100% 100%, 256px 256px;
+    background-repeat: no-repeat, repeat;
+    box-shadow: inset 0 2px 6px hsl(25 60% 8% / 60%), inset 0 0 0 1px hsl(25 50% 10% / 55%);
+}
+
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery {
+    /* larger cards, a column fewer (Yukimi 2026-10-14), so a card's badges fit on its photo */
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 26px 22px;
+    padding: 26px 24px 120px;
+}
+
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item {
+    --card-tilt: 0deg;
+    aspect-ratio: auto;
+    overflow: visible;
+    padding: 8px 8px 10px;
+    background: linear-gradient(#fdfcf8, #f3f1ea);
+    border: 0;
+    border-radius: 2px;
+    box-shadow: 0 1px 2px hsl(25 40% 8% / 45%), 0 8px 16px -6px hsl(25 40% 8% / 55%);
+    transform: rotate(var(--card-tilt));
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item:nth-child(4n + 1) { --card-tilt: -0.9deg; }
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item:nth-child(4n + 2) { --card-tilt: 0.6deg; }
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item:nth-child(4n + 3) { --card-tilt: -0.35deg; }
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item:nth-child(4n) { --card-tilt: 1deg; }
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item:nth-child(7n) { --card-tilt: 0.2deg; }
+
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item:is(:hover, .context-open) {
+    z-index: 2;
+    transform: rotate(0deg) translateY(-3px) scale(1.02);
+    box-shadow: 0 2px 4px hsl(25 40% 8% / 40%), 0 16px 26px -8px hsl(25 40% 8% / 60%);
+}
+
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item img {
+    aspect-ratio: 1;
+    height: auto;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 0% / 12%);
+}
+
+/* the pushpin: a glossy glass head with its shadow on the card, colour by position */
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item::after {
+    --pin: #d4302a;
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: calc(50% - 7px);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 35% 30%, hsl(0 0% 100% / 85%) 0 2px, hsl(0 0% 100% / 0%) 4px),
+        radial-gradient(circle at 50% 55%, var(--pin) 0 55%, color-mix(in srgb, var(--pin) 55%, #000) 100%);
+    box-shadow: 0 1px 1px hsl(0 0% 0% / 45%), 2px 4px 4px -1px hsl(25 40% 8% / 45%);
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* cycles of 3, 4 and 7 so no column of a 4- to 6-wide grid repeats one colour */
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item:nth-child(3n + 2)::after { --pin: #2a6fd4; }
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item:nth-child(4n + 3)::after { --pin: #2f9e44; }
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item:nth-child(7n + 1)::after { --pin: #e3b51c; }
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item:nth-child(7n + 5)::after { --pin: #f2f2f2; }
+
+/* a pinboard carries no logo */
+body:not(.windows-classic-theme) #cacheManagerModal .gallery-melatonin-backdrop {
+    display: none;
+}
+
+/* the badges sit on the photo, inside the card's border, one column that never wraps sideways
+   (referenceManager.js caps encodings at CACHE_MANAGER_MAX_ENCODING_BADGES with a "+N more" pill) */
+body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item .cache-manager-badges {
+    top: 14px;
+    left: 14px;
+    right: 14px;
+    bottom: 16px;
+    max-height: none;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    overflow: hidden;
+}
+
+#cacheManagerModal .cache-badge.more-badge {
+    --badge-tint: hsl(210 12% 30% / 90%);
+}
+
+/* tilted / lifted cards at the board's edge never open a sideways scrollbar */
+#cacheManagerModal .cache-manager-gallery-container > .scrollable-content {
+    overflow-x: hidden;
 }
 
 /* Gallery Move Modal Styles - Shared by all move/encoding modals */
@@ -832,7 +1013,7 @@
 }
 
 .generating-effect {
-    cursor: progress;
+    cursor: var(--c-progress);
     background: linear-gradient(90deg,
             rgb(255 40 40 / 66%),
             rgb(255 181 60 / 66%),
@@ -859,7 +1040,7 @@
             rgb(255 40 40 / 66%)) 0% 0% / 1000% 100%;
     animation: rainbowShift 25s linear infinite;
     opacity: 1 !important;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
     transform: none;
     border-color: var(--primary-color) !important;
     color: #ffffff !important;

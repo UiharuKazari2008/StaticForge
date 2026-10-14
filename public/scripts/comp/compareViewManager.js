@@ -908,7 +908,7 @@ function buildCompareMenuPreview() {
     const img = document.createElement('img');
     img.src = info.url;
     img.alt = compareMenuHasSource() ? 'Compare source' : 'Current image';
-    img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: pointer;';
+    img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: var(--c-pointer);';
     img.loading = 'lazy';
     img.addEventListener('click', function (e) {
         e.stopPropagation();

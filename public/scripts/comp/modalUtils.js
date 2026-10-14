@@ -41,7 +41,8 @@ const TASKBAR_SYSTEM_MODAL_IDS = new Set([
     'dreamscapeOsInstallWizardModal',
     'confirmationDialog',
     'creditCostDialog',
-    'agentClientUpdateDialog'
+    'agentClientUpdateDialog',
+    'dovecoteNewMailModal'
 ]);
 
 function shouldShowInTaskbar(modal) {
@@ -138,6 +139,12 @@ document.addEventListener('visibilitychange', () => {
 
 window.addEventListener('resize', () => {
     modalTrueInsetCacheValid = false;
+    ['desktopPreStartupModal', 'workstationLockModal'].forEach((id) => {
+        const logonModal = document.getElementById(id);
+        if (!logonModal) return;
+        delete logonModal.dataset.logonPlaceKey;
+        placeWindowsLogonDialog(logonModal);
+    });
 });
 
 // Integer desktop title-band bias (CSS uses 18px; was calc(0.5 * 35px) = 17.5px)
@@ -155,6 +162,45 @@ const MAXIMIZED_DRAG_RESTORE_THRESHOLD_PX = 4;
 
 function getDesktopModalTopBias() {
     return window.isDesktop ? MODAL_DESKTOP_TOP_BIAS_PX : 0;
+}
+
+/**
+ * Classic logon dialog (msgina "Log On to Windows" / Computer Locked).
+ * Horizontally centered. The top edge is one third of the leftover vertical space:
+ *   top = (viewportHeight - dialogHeight) / 3
+ * Measured on a full-frame XP classic logon: the gap above the dialog was that third.
+ * desktopTopBias is the 18px the desktop modal CSS subtracts, so the returned
+ * offset cancels it and the dialog lands on the full screen (the taskbar is hidden here).
+ */
+function windowsLogonDialogOffsetY(viewportHeight, dialogHeight, trueInsetTop, desktopTopBias) {
+    const H = viewportHeight;
+    const h = dialogHeight;
+    const inset = trueInsetTop || 0;
+    const bias = desktopTopBias || 0;
+    const free = Math.max(0, H - h);
+    const desiredCenter = free / 3 + h / 2;
+    return desiredCenter - (H / 2) - (0.5 * inset) + bias;
+}
+
+/** #desktopPreStartupModal and #workstationLockModal. Skip a window the user has dragged. */
+function placeWindowsLogonDialog(modal) {
+    if (!modal || modal.classList.contains('hidden') || modal.hasAttribute('data-modal-moved') || modal.hasAttribute('data-dragging')) {
+        return;
+    }
+    const h = modal.offsetHeight;
+    if (!h) return;
+    const inset = getModalTrueInsetTop();
+    const key = `${window.innerHeight}:${h}:${inset}`;
+    const y = windowsLogonDialogOffsetY(window.innerHeight, h, inset, getDesktopModalTopBias());
+    const raw = modal.style.getPropertyValue('--modal-offset-y');
+    const current = parseFloat(raw);
+    if (modal.dataset.logonPlaceKey === key && raw && Number.isFinite(current) && Math.abs(current - y) < 1.5) {
+        return;
+    }
+    modal.dataset.logonPlaceKey = key;
+    const opening = modal.classList.contains('opening');
+    clearModalPixelAnchor(modal);
+    setModalOffsetPx(modal, 0, y, { snap: !opening, settle: !opening });
 }
 
 function computeModalWorkAreaBounds(trueInsetTop) {
@@ -3401,10 +3447,11 @@ function openModal(modal) {
         ensureModalWithinViewport(modal);
     }
 
-    // prepareGalleryWindowContent: public/scripts/comp/galleryView.js
+    // prepareGalleryWindowContent: public/scripts/comp/galleryImagesLoad.js (the promise is kept for
+    // showGalleryWindow, which holds the Workspaces splash until the content is ready)
     if (modal.id === 'galleryWindow' && modal.classList.contains('windowed')
         && typeof prepareGalleryWindowContent === 'function') {
-        prepareGalleryWindowContent().catch((err) => {
+        galleryWindowPreparePromise = prepareGalleryWindowContent().catch((err) => {
             console.error('Gallery prepare failed:', err);
         });
     }
@@ -4250,14 +4297,27 @@ async function hideGalleryWindow() {
 // - Reloads gallery content (like manual modal close does when reopening gallery)
 // - Brings window to front
 // - Can be called from start menu "Gallery" option or taskbar click
+// The last prepareGalleryWindowContent() run started by openModal(galleryWindow)
+let galleryWindowPreparePromise = null;
+
 function showGalleryWindow() {
     if (!galleryWindow || !galleryWindow.classList.contains('windowed')) {
         return;
     }
 
+    // Opening from closed (not from the taskbar's minimised state): the Workspaces splash (#468,
+    // workspaceSplash: public/scripts/comp/appSplash.js) stays up at least 3 s and 1.5 s past the
+    // content being ready; while it is up the gallery load progress draws in its corner.
+    const splash = isGalleryWindowHidden() && workspaceSplash.show('Opening Workspaces...');
+    galleryWindowPreparePromise = null;
+
     // Mark gallery as visible (openModal restores saved size/position and prepares content)
     openModal(galleryWindow);
     ensureModalEdgesWithinWorkArea(galleryWindow);
+
+    if (splash) {
+        Promise.resolve(galleryWindowPreparePromise).then(() => workspaceSplash.hide(), () => workspaceSplash.hide());
+    }
 
     console.log('Gallery shown in desktop mode');
 }
@@ -4376,7 +4436,7 @@ const desktopIconsConfig = [
     {
         id: 'spellbook',
         icon: 'fa-duotone fa-book-spells',
-        imageIcon: 'caster.png',
+        imageIcon: 'spellcaster.png',
         label: 'Spellcaster',
         action: () => {
             // openSpellbookApplet: public/scripts/comp/featureLoader.js
@@ -5650,9 +5710,9 @@ function showTaskbarItemContextMenu(e, modal, taskbarItem) {
                 return;
             }
 
-            // Handle dropdown menus
-            if (control.classList.contains('custom-dropdown')) {
-                const button = control.querySelector('button');
+            // Handle value pickers
+            if (control.classList.contains('custom-dropdown-btn') || control.classList.contains('custom-dropdown')) {
+                const button = control.matches('button') ? control : control.querySelector('button');
                 if (!button) return;
 
                 // Get icon and current value
@@ -5795,8 +5855,8 @@ function showTaskbarGroupContextMenu(e, groupItem, modals) {
                     return;
                 }
 
-                if (control.classList.contains('custom-dropdown')) {
-                    const button = control.querySelector('button');
+                if (control.classList.contains('custom-dropdown-btn') || control.classList.contains('custom-dropdown')) {
+                    const button = control.matches('button') ? control : control.querySelector('button');
                     if (!button) return;
 
                     const icon = button.querySelector('i:not(.fa-chevron-down)')?.className || 'fas fa-chevron-down';
@@ -6123,8 +6183,9 @@ const startMenuLaunchables = [
     {
         launchId: 'workspace',
         icon: 'fas fa-film-canister',
-        imageIcon: 'art.png', // Workspace keeps its own icon (Yukimi); Photo Gallery's went to Glancewell
-        text: 'Workspace',
+        imageIcon: 'art.png', // Workspaces keeps its own icon (Yukimi); Photo Gallery's went to Glancewell
+        text: 'Workspaces',
+        fullName: 'Dreamscape Workspaces',
         desktopOnly: true,
         appMenu: true,
         action: () => {
@@ -6140,12 +6201,12 @@ const startMenuLaunchables = [
         icon: 'fas fa-compass-drafting',
         imageIcon: 'studio.png',
         text: 'Studio',
-        fullName: 'DreamStudio 2025',
+        fullName: 'DreamStudio 2026 R7',
         desktopOnly: true,
         appMenu: true,
         action: () => { openManualModalWithContent(); }
     },
-    { launchId: 'spellbook', icon: 'fas fa-hat-wizard', imageIcon: 'caster.png', text: 'Spellcaster', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openSpellbookApplet(); } },
+    { launchId: 'spellbook', icon: 'fas fa-hat-wizard', imageIcon: 'spellcaster.png', text: 'Spellcaster', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openSpellbookApplet(); } },
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', appMenu: true, action: () => { showCacheManagerModal(); } },
     { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'vista-phasewalker.png', text: 'Phasewalker', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openBracketGenerationApplet(); } },
     { launchId: 'director', icon: 'fas fa-clapperboard', imageIcon: 'director.png', text: 'Director', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/director.js */ await openDirectorWindow(); } },
@@ -6225,9 +6286,10 @@ function buildToolsSubmenuItems() {
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', appMenuLocation: 'tools', action: () => { showTextReplacementManager(); } },
         { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal(); } },
         { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'vista-regedit.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
-        { launchId: 'character-db', icon: 'fas fa-users', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
+        { launchId: 'character-db', icon: 'fas fa-users', imageIcon: 'characters.png', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
         { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-performance.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
-        { launchId: 'calculator', icon: 'fas fa-calculator', text: 'Calculator', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
+        { launchId: 'calculator', icon: 'fas fa-calculator', imageIcon: 'vista-calculator.png', text: 'Calculator', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
+        { launchId: 'vista-sidebar', icon: 'fas fa-sidebar-flip', imageIcon: 'vista-sidebar.png', text: 'Windows Sidebar', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, startMenu: localStorage.getItem('userType') === 'admin', action: () => { /* public/scripts/comp/vistaSidebar.js */ openVistaSidebar(); } },
         { launchId: 'alarm', icon: 'fas fa-alarm-clock', imageIcon: 'vista-date-time.png', text: 'Alarm Clock', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
         { launchId: 'pomodoro', icon: 'fas fa-timer', imageIcon: 'vista-date-time.png', text: 'Pomodoro', appMenuLocation: 'tools', startMenu: false, appMenu: false, /* the Pomodoro tab of Alarm Clock; kept for old shortcuts */ action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
         { launchId: 'media-player', icon: 'fas fa-play', imageIcon: 'media_player.png', text: 'Media Player', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayer.js */ openDesktopMediaPlayer(); } },
@@ -7280,22 +7342,58 @@ function launchStartMenuItem(item) {
 
 // ---- All Programs ----
 
+// The "Dreamscape 2026 R7" program folder (Yozora #468, Yukimi 2026-10-14): the package's apps live
+// there like Vista's "Microsoft Office" folder, under the names the package uses, and leave the
+// top level and Accessories. launchId -> folder label, in the folder's order.
+const START_MENU_PACKAGE_FOLDER = 'Dreamscape 2026 R7';
+const START_MENU_PACKAGE_APPS = [
+    ['studio', 'DreamStudio'],
+    ['workspace', 'Workspaces'],
+    ['spellbook', 'Spellcaster'],
+    ['reference', 'Reference'],
+    ['bracket-generation', 'Phasewalker'],
+    ['character-db', 'Characters'],
+    ['expanders', 'Expanders'],
+    ['presets', 'Spellbook']
+];
+const START_MENU_PACKAGE_IDS = new Set(START_MENU_PACKAGE_APPS.map((pair) => pair[0]));
+
+function isStartMenuPackageApp(item) {
+    return !!item && START_MENU_PACKAGE_IDS.has(item.launchId);
+}
+
+function getStartMenuPackageItems() {
+    const byId = new Map();
+    getAllAppsMenuItems().concat(flattenToolsSubmenuItems(buildToolsSubmenuItems()))
+        .forEach((item) => { if (isStartMenuPackageApp(item) && !byId.has(item.launchId)) byId.set(item.launchId, item); });
+    return START_MENU_PACKAGE_APPS
+        .map(([launchId, label]) => {
+            const item = byId.get(launchId);
+            return item && isStartMenuItemLaunchable(item) ? { ...item, text: label, fullName: label } : null;
+        })
+        .filter(Boolean);
+}
+
 function getStartMenuAccessoriesItems() {
     const run = startMenuShellConfig.find((item) => item.launchId === 'run');
     return flattenToolsSubmenuItems(buildToolsSubmenuItems())
         .concat(run ? [run] : [])
-        .filter((item) => item && !item.separator && typeof item.action === 'function' && isStartMenuItemLaunchable(item))
+        .filter((item) => item && !item.separator && typeof item.action === 'function' && isStartMenuItemLaunchable(item) && !isStartMenuPackageApp(item))
         .sort(byStartMenuLabel);
 }
 
 /** Apps by name (or in the organizer's order, Teleport among them), then the folders, like Vista's All Programs. */
 function getStartMenuProgramsTree() {
     const custom = Array.isArray(startMenuCustomLayout) && startMenuCustomLayout.length > 0;
-    const entries = getOrganizedAllAppsMenuItems().map((item) => (item.isCustomFolder
-        ? { folder: true, folderId: `custom-${item.folderId}`, text: item.text, children: item.customFolderItems || [] }
-        : item));
+    const entries = getOrganizedAllAppsMenuItems()
+        .filter((item) => !isStartMenuPackageApp(item))
+        .map((item) => (item.isCustomFolder
+            ? { folder: true, folderId: `custom-${item.folderId}`, text: item.text, children: (item.customFolderItems || []).filter((child) => !isStartMenuPackageApp(child)) }
+            : item));
     if (!custom) entries.sort(byStartMenuLabel);
+    // folders after the apps, by name: Accessories, Dreamscape 2026 R7
     entries.push({ folder: true, folderId: 'accessories', text: 'Accessories', children: getStartMenuAccessoriesItems() });
+    entries.push({ folder: true, folderId: 'dreamscape-r7', text: START_MENU_PACKAGE_FOLDER, children: getStartMenuPackageItems() });
     return entries.filter((entry) => !entry.folder || entry.children.length > 0);
 }
 

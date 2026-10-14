@@ -93,7 +93,7 @@ function handleTextReplacementManagerKeydown(e) {
     if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
         e.preventDefault();
         e.stopPropagation();
-        toggleTextReplacementSearch();
+        focusTextReplacementSearch();
         return true;
     }
 
@@ -249,7 +249,6 @@ function initializeCreateTextReplacementModal() {
 function initializeTextReplacementManager() {
     const textReplacementManagerBtn = document.getElementById('textReplacementManagerBtn');
     const closeTextReplacementManagerBtn = document.getElementById('closeTextReplacementManagerBtn');
-    const toggleTextReplacementSearchBtn = document.getElementById('toggleTextReplacementSearchBtn');
     const textReplacementSearch = document.getElementById('textReplacementSearch');
     const textReplacementPrevBtn = document.getElementById('textReplacementPrevBtn');
     const textReplacementNextBtn = document.getElementById('textReplacementNextBtn');
@@ -261,10 +260,6 @@ function initializeTextReplacementManager() {
     
     if (closeTextReplacementManagerBtn) {
         closeTextReplacementManagerBtn.addEventListener('click', hideTextReplacementManager);
-    }
-    
-    if (toggleTextReplacementSearchBtn) {
-        toggleTextReplacementSearchBtn.addEventListener('click', toggleTextReplacementSearch);
     }
     
     if (textReplacementSearch) {
@@ -323,22 +318,14 @@ async function hideTextReplacementManager() {
     if (searchInput) {
         searchInput.value = '';
     }
-
-    const textReplacementSearchContainer = document.getElementById('textReplacementSearchContainer');
-    if (textReplacementSearchContainer) {
-        textReplacementSearchContainer.classList.add('hidden');
-    }
 }
 
-// Toggle text replacement search
-function toggleTextReplacementSearch() {
-    const toggleContainer = document.getElementById('textReplacementSearchContainer');
-    if (toggleContainer) {
-        toggleContainer.classList.toggle('hidden');
-        const searchInput = document.getElementById('textReplacementSearch');
-        if (searchInput) {
-            searchInput.focus();
-        }
+// Ctrl+F: the search box lives in the command bar
+function focusTextReplacementSearch() {
+    const searchInput = document.getElementById('textReplacementSearch');
+    if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
     }
 }
 
@@ -463,15 +450,7 @@ function renderTextReplacementList() {
 // Scroll text replacement list to top
 function scrollTextReplacementListToTop() {
     const container = document.getElementById('textReplacementListContainer');
-    if (!container) return;
-    
-    // If scrollbar is initialized, scroll the scrollableContent wrapper
-    if (window.customScrollbar && window.customScrollbar.scrollbars.has(container)) {
-        const data = window.customScrollbar.scrollbars.get(container);
-        if (data && data.scrollableContent) {
-            data.scrollableContent.scrollTop = 0;
-        }
-    }
+    if (container) container.scrollTop = 0;
 }
 
 // Create a text replacement item element
@@ -1073,10 +1052,6 @@ async function hideCreateTextReplacementModal() {
     if (searchInput) {
         searchInput.value = '';
     }
-    const textReplacementSearchContainer = document.getElementById('textReplacementSearchContainer');
-    if (textReplacementSearchContainer) {
-        textReplacementSearchContainer.classList.add('hidden');
-    }
 }
 
 // Handle type selection change
@@ -1362,7 +1337,6 @@ async function showFavoritesManager() {
     const modal = document.getElementById('favoritesManagerModal');
     if (!modal) return;
     
-    const wasClosed = modal.classList.contains('hidden');
     console.log('Opening favorites manager...');
     await loadFavorites();
     console.log('Favorites loaded, rendering list...');
@@ -1375,16 +1349,6 @@ async function showFavoritesManager() {
     }
     
     openModal(modal);
-    
-    if (wasClosed && window.customScrollbar) {
-        // Initialize custom scrollbars after modal is opened
-        setTimeout(() => {
-            const favoritesListContainer = document.getElementById('favoritesListContainer');
-            if (favoritesListContainer) {
-                window.customScrollbar.forceReinit(favoritesListContainer);
-            }
-        }, 50);
-    }
 }
 
 // Hide favorites manager modal
@@ -1398,10 +1362,6 @@ async function hideFavoritesManager() {
     const searchInput = document.getElementById('favoritesSearch');
     if (searchInput) {
         searchInput.value = '';
-    }
-    const favoritesSearchContainer = document.getElementById('favoritesSearchContainer');
-    if (favoritesSearchContainer) {
-        favoritesSearchContainer.classList.add('hidden');
     }
 }
 
@@ -3202,11 +3162,11 @@ function toggleCompiledPromptsSection() {
 
     if (isHidden) {
         expandableSection.classList.remove('hidden');
-        toggleBtn.innerHTML = '<i class="fas fa-subtitles"></i>';
+        toggleBtn.firstElementChild.className = 'fas fa-subtitles';
         toggleBtn.classList.add('active');
     } else {
         expandableSection.classList.add('hidden');
-        toggleBtn.innerHTML = '<i class="fa-regular fa-subtitles"></i>';
+        toggleBtn.firstElementChild.className = 'fa-regular fa-subtitles';
         toggleBtn.classList.remove('active');
     }
 }
@@ -3547,9 +3507,7 @@ function renderTextReplacementModal() {
 
     // Scroll the list container to the top
     const scrollableContainer = document.getElementById('textReplacementLockListContainer');
-    if (scrollableContainer) {
-        scrollableContainer.querySelector('.scrollable-content').scrollTop = 0;
-    }
+    if (scrollableContainer) scrollableContainer.scrollTop = 0;
 }
 
 // Refresh the Genso lock modal if it's currently open

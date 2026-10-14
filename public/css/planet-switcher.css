@@ -240,7 +240,7 @@ body.planet-switcher-active #galleryWindow * {
     width: max(var(--planet-size), 220px);
     margin-left: calc(max(var(--planet-size), 220px) / -2);
     margin-top: calc(var(--planet-size) / -2);
-    cursor: pointer;
+    cursor: var(--c-pointer);
     will-change: transform, opacity;
     transform-origin: 50% calc(var(--planet-size) / 2);
     -webkit-tap-highlight-color: transparent;
@@ -529,7 +529,7 @@ body.planet-switcher-active #galleryWindow * {
     color: var(--text-primary, #f4f6ff);
     font: inherit;
     font-size: 0.92rem;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.25);
     transition: background 0.2s ease, transform 0.2s ease, opacity 0.3s ease;
 }

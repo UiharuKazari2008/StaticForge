@@ -2224,7 +2224,7 @@ class NaxtApplet {
                     filename: target.dataset.filename
                 });
                 img.alt = target.dataset.tag || 'Tag preview';
-                img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: pointer;';
+                img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: var(--c-pointer);';
                 img.loading = 'lazy';
 
                 img.addEventListener('click', (e) => {

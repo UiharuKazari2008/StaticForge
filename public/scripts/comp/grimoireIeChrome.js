@@ -31,6 +31,15 @@
 
     const ART = '/static_images/vista-ie';
     const BOOKS_ICON = '/static_images/app_icons/books.png'; // the Grimoire's own icon is its pages' favicon (Yukimi)
+    const NAI_FAVICON = '/static_images/novelai-favicon.png';
+
+    function pageFavicon(entry) {
+        if (entry && entry.type === 'web') return `${ART}/page-ie.png`;
+        const site = entry && (entry.siteId || (entry.content && entry.content.siteId));
+        const url = entry ? (entry.displayUrl || entry.url || (entry.content && entry.content.displayUrl) || '') : '';
+        if (site === 'novelai' || /docs\.novelai\.jp/i.test(String(url))) return NAI_FAVICON;
+        return BOOKS_ICON;
+    }
 
     // Search ▾ (ids match ALCHEMY_SEARCH_PROVIDERS in modules/grimoireBrowserBridge.js)
     const SEARCH_PROVIDERS = [
@@ -725,7 +734,7 @@
             const web = !!(entry && entry.type === 'web');
             const title = entry ? this.entryLabel(entry, shell.historyIndex) : 'Grimoire';
             if (this.tabTitle.textContent !== title) this.tabTitle.textContent = title;
-            const icon = web ? `${ART}/page-ie.png` : BOOKS_ICON;
+            const icon = pageFavicon(entry);
             if (this.tabIcon.getAttribute('src') !== icon) this.tabIcon.setAttribute('src', icon);
             this.tabTitle.parentElement.title = title;
             // IE's caption: "<page> - Windows Internet Explorer"; here "<page> - Grimoire"

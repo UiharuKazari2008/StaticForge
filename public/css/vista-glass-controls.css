@@ -359,7 +359,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.attention::af
    (#f0f0f0, black text, Segoe UI 9pt) whose native controls are styled by 7.css as is
    (public/css/7.scoped.css: buttons, text boxes, select, progress bars, list boxes, tables).
    Our text tokens flip to dark on the client only, so the glass caption keeps light text.
-   Used by: the startup and Windows Update dialogs, Run, Dovecote. */
+   Used by: the startup and Windows Update dialogs, Run, Dovecote, Periscope. */
 body:not(.windows-classic-theme) .modal[data-window-client="light"] {
     --window-body-bg: #f0f0f0;
 }
@@ -389,16 +389,78 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     font-variation-settings: normal;
 }
 
+/* The light app windows of #485 keep the app's own controls (prompt boxes and their toolbar
+   strip need the app's metrics, so no .win7 on them): their buttons take Vista's standard
+   button face (7.css values, as vista-dialogs.css), not the dark glass. The command bar,
+   prompt toolbar strips and caption buttons have their own rules. */
+body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show) {
+    min-height: 23px;
+    padding: 0 8px;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #8e8f8f;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px #fffc;
+    color: #000;
+    text-shadow: none;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    font-weight: 400;
+    font-variation-settings: normal;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    transition: border-color 0.3s, background 0.3s;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show)::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show) i {
+    color: #2b5797;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button.btn-danger:not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show) i {
+    color: #c42b1c;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show):hover:not(:disabled) {
+        background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+        border-color: #3c7fb1;
+        box-shadow: inset 0 0 0 1px #fffc;
+        color: #000;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show):is(:active, .active, [data-state="on"]):not(:disabled) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+    box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show):disabled {
+    background: #f4f4f4;
+    border-color: #adb2b5;
+    color: #838383;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show):focus-visible {
+    box-shadow: inset 0 0 0 2px #98d1ef;
+    outline: 1px dotted #000;
+    outline-offset: -4px;
+}
+
 /* ---------- tray icons: Vista's own (ripped from the VM, static_images/vista-icons/) ----------
    pnidui.dll 24-26 / 19 / 30 (Vista's network icon: internet idle, sending, receiving,
    disconnected, limited; netshell's 16 px art is the XP set), imageres.dll 166 (search) and 26 (hard drive), user32.dll 1
    (warning), plus icons generated for tray items Vista never had, with Vista's own icons as
    style references (scripts/generate-vista-tray-icons.js): workspace switcher, service
-   worker, developer warnings, Account Manager (rolodex), Dovecote, Remote Access. The Font
+   worker, developer warnings, wallet (Windows CardSpace, icardres.dll -4096), Dovecote, Remote Access. The Font
    Awesome glyph element stays
    (scripts still switch its classes for state); its glyph is hidden and the icon is painted
    on it. */
-body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph, #modemTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone, #walletTrayIcon > i.fa-wallet, #dovecoteTrayIcon > i.fa-envelope, #mcpActivityIndicator > i.fa-screencast) {
+body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph, #modemTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone, #walletTrayIcon > i.fa-wallet, #dovecoteTrayIcon > i.fa-envelope, #mcpActivityIndicator > i.fa-screencast, #vistaSidebarTrayIcon > i.fa-sidebar-flip) {
     display: inline-block;
     width: 16px;
     height: 16px;
@@ -437,11 +499,12 @@ body.desktop-mode:not(.windows-classic-theme) #serviceWorkerTrayIcon.sw-update-d
 }
 body.desktop-mode:not(.windows-classic-theme) #devWarningsTrayIcon > i.fa-triangle-exclamation { background-image: image-set(url("/static_images/vista-icons/dev-warnings-16.png") 1x, url("/static_images/vista-icons/dev-warnings-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #workspaceTrayIcon > i.fa-clone { background-image: image-set(url("/static_images/vista-icons/workspace-switcher-16.png") 1x, url("/static_images/vista-icons/workspace-switcher-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) #walletTrayIcon > i.fa-wallet { background-image: image-set(url("/static_images/vista-icons/account-manager-16.png") 1x, url("/static_images/vista-icons/account-manager-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #walletTrayIcon > i.fa-wallet { background-image: image-set(url("/static_images/vista-icons/cardspace-16.png") 1x, url("/static_images/vista-icons/cardspace-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #dovecoteTrayIcon > i.fa-envelope { background-image: image-set(url("/static_images/vista-icons/dovecote-16.png") 1x, url("/static_images/vista-icons/dovecote-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #mcpActivityIndicator > i.fa-screencast { background-image: image-set(url("/static_images/vista-icons/remote-access-16.png") 1x, url("/static_images/vista-icons/remote-access-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #vistaSidebarTrayIcon > i.fa-sidebar-flip { background-image: image-set(url("/static_images/vista-icons/windows-sidebar-16.png") 1x, url("/static_images/vista-icons/windows-sidebar-32.png") 2x); }
 
-/* the Account Manager alert mark is Vista's small warning, over the lower right of the rolodex */
+/* the wallet alert mark is Vista's small warning, over the lower right of the CardSpace icon */
 body.desktop-mode:not(.windows-classic-theme) #walletTrayIcon > i.wallet-tray-alert {
     position: absolute;
     right: 0;
@@ -519,7 +582,7 @@ body:not(.windows-classic-theme) :is(.badge, .taskbar-group-count) {
 /* Prompt boxes: a glass edge painted around the container only. The textarea, its padding,
    borders and font are untouched, so the auto-height calculator (static pixel values) and
    the emphasis overlay keep their numbers. Focused: Vista's blue glow on the same ring. */
-body:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container)::after {
+body:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container)::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -530,7 +593,7 @@ body:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .c
     transition: box-shadow 0.15s linear;
 }
 
-body:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container).textarea-focused::after {
+body:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container).textarea-focused::after {
     /* the glow marks the text area, not the toolbar strip under it (Yukimi) */
     bottom: var(--prompt-toolbar-height, 43px);
     border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
@@ -545,17 +608,17 @@ body:not(.windows-classic-theme) #manualModal .prompt-tabs:has(#dynamicGeneratio
 
 /* On the light prompt box the overlay highlights take the light-surface palette like the
    emphasis rings: a pastel fill with a deep ring (search blue, the editor's gold) */
-body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .search-highlight-overlay .search-highlight {
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container) .search-highlight-overlay .search-highlight {
     background: rgb(51 153 255 / 20%);
     box-shadow: inset 0 0 0 1px rgb(31 95 191 / 70%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .search-highlight-overlay .search-highlight-selected {
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container) .search-highlight-overlay .search-highlight-selected {
     background: rgb(51 153 255 / 38%);
     box-shadow: inset 0 0 0 2px #1f5fbf;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .emphasis-highlight-overlay .emphasis-selection-highlight {
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container) .emphasis-highlight-overlay .emphasis-selection-highlight {
     background: rgb(255 204 0 / 30%);
     box-shadow: inset 0 0 0 2px #c79a00;
 }
@@ -642,7 +705,7 @@ body:not(.windows-classic-theme) #characterAutocompleteOverlay > .character-auto
    light-surface variant (grey rings, capped fills, tinted syntax chips). Colours only: fonts,
    padding and line-height stay identical, so the overlays keep lining up with the text.
    The focused toolbar strip at the bottom stays dark glass with its own light text. */
-body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) {
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container) {
     --prompt-surface: light;
     --text-primary: #141414;
     --text-color: #141414;
@@ -654,31 +717,35 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-
     caret-color: #141414;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container).textarea-focused {
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container).textarea-focused {
     background: #fff;
     box-shadow: inset 0 1px 3px hsl(0 0% 0% / 18%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) textarea {
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container) textarea {
     color: #141414;
     caret-color: #141414;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) textarea::placeholder {
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container) textarea::placeholder {
     color: #7a7a7a;
 }
 
 /* highlight bits that are not inline-coloured */
-body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .emphasis-highlight {
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22);
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container) .emphasis-highlight {
+    /* 0.22 read at 1.5:1 against the pastel fills on the white box (#466 audit) */
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32);
 }
 
 /* Toolbar strips (the focused prompt toolbar, the Dynamic Generation group below it): Vista's
    black glass (the taskbar's pressed-button glass: #474848 to #323333 above the middle,
    #0c0d0d below) with a light top line, and their own light text (Yukimi). */
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar,
 body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container .prompt-textarea-toolbar, .character-prompt-textarea-container .prompt-textarea-toolbar, div#dynamicGenerationGroup) {
     --text-primary: #ffffff;
     --text-color: #ffffff;
+    --text-secondary: #cccccc;
+    --text-accent-tinted: #ffffff;
     --text-muted: #9a9a9a;
     --primary-color-light: var(--btn-hover-border-primary, #ffcbb3);
     background: linear-gradient(hsl(0 0% 28% / 94%), hsl(0 0% 20% / 94%) calc(50% - 1px), hsl(0 0% 5% / 96%) 50%, hsl(0 0% 4% / 96%));
@@ -693,7 +760,7 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-
    The strip now spans the box's border and carries its own edge over its own glass, so its sides
    and bottom match the strip below. Its height does not change (sides and the 1 px it already
    overhung at the bottom), so the auto-height calculator keeps its numbers. */
-body.desktop-mode:not(.windows-classic-theme) #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar {
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar {
     margin-left: -1px;
     margin-right: -1px;
     margin-bottom: -1px;
@@ -807,9 +874,14 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal div#dynamicGeneration
     border-top: 0;
 }
 
-/* the cost inset's "free" figures were drawn at 31 % and read as disabled: same strength as
-   the other insets (its own green) */
-body:not(.windows-classic-theme) #manualModal .inset-badge.price-display .price-list {
+/* Paid Anlas: the figures match the wheat icon (#ffde7b on .price-display).
+   Free figures were drawn at 31 % and read as disabled, so they stay the inset's green
+   at the same strength as the other insets. */
+body:not(.windows-classic-theme) #manualModal .inset-badge.price-display:not(.free) .price-list {
+    color: #ffde7b;
+}
+
+body:not(.windows-classic-theme) #manualModal .inset-badge.price-display.free .price-list {
     color: rgb(152 255 138 / 92%);
     border-color: rgb(152 255 138 / 40%);
 }
@@ -835,15 +907,16 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal div#dynamicGeneration
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 12%), 0 1px 0 hsl(0 0% 100% / 14%);
 }
 
-/* Pills and badges (sampler ANCESTRAL / curated badges, count badges): glass with the sharp
-   centre line over their own colour, as a layer so their fill stays (Yukimi) */
-body:not(.windows-classic-theme) .custom-dropdown-badge {
+/* Pills and badges (sampler ANCESTRAL / curated badges, count badges, Properties' data and
+   expander badges, Spellbook's preset data and the embedded expanders' stages): glass with the sharp centre line over their own colour, as a layer so
+   their fill stays (Yukimi) */
+body:not(.windows-classic-theme) :is(.custom-dropdown-badge, .image-prompt-inspector .forgedata-badge, .image-prompt-inspector .text-replacement-badge-category, .text-replacement-manager-content :is(.preset-model, .preset-resolution, .preset-steps, .preset-guidance, .preset-workspace, .text-replacement-stages > span)) {
     position: relative;
     isolation: isolate;
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 26%), 0 0 0 1px hsl(0 0% 0% / 40%);
 }
 
-body:not(.windows-classic-theme) .custom-dropdown-badge::before {
+body:not(.windows-classic-theme) :is(.custom-dropdown-badge, .image-prompt-inspector .forgedata-badge, .image-prompt-inspector .text-replacement-badge-category, .text-replacement-manager-content :is(.preset-model, .preset-resolution, .preset-steps, .preset-guidance, .preset-workspace, .text-replacement-stages > span))::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -862,10 +935,13 @@ body:not(.windows-classic-theme) .custom-dropdown-badge::before {
    custom apps' reveal-on-hover controls and keep their rules; Studio (#manualModal) keeps its
    own control mix; the window chrome toolbars (.modal-window-title-toolbar: address and search
    boxes) draw their own Vista boxes; .win7 content already has 7.css; Classic draws its own.
+   Prompt boxes (.prompt-textarea) keep the prompt font: their emphasis overlay mirrors it.
+   Notepad and Notion pages (.notepad-textarea) and the Sidebar note (.vsb-notes-text) are a
+   borderless page, not a text box.
    Only form elements: .form-control on a div (the Control Panel's breadcrumb box, readouts) is not
    a text box. No #id inside :not() here: it would lift these rules over every app's own #id
    rules. ---------- */
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button) {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button) {
     background: #fff;
     border: 1px solid;
     border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
@@ -876,22 +952,22 @@ body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type=
     text-shadow: none;
     transition: border-color .5s;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button)::placeholder {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button)::placeholder {
     color: #777;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):hover:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):hover:not(:disabled) {
     background: #fff;
     border-color: #5794bf #b7d5ea #c7e2f1 #c5daed;
     box-shadow: none;
     transition: border-color .3s;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):is(:focus, :active, :focus-visible) {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):is(:focus, :active, :focus-visible) {
     background: #fff;
     border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
     box-shadow: none;
     outline: none;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):disabled {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):disabled {
     background: #f0f0f0;
     border-color: #afafaf;
     box-shadow: inset 0 0 0 1px #fff;

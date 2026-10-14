@@ -6,6 +6,10 @@ registerWsInboundHandler({
     type: 'error',
     phase: 'only',
     handler(message, wsClient) {
+        // Agora paints these on the gallery or image page (exploreDsapApplet.js explorePaintPageError).
+        if (message.requestType === 'get_novelai_explore_gallery' || message.requestType === 'get_novelai_explore_post') {
+            return;
+        }
         // Desktop: a .NET-style "Unhandled exception" window in Windows wording instead of a toast
         // (public/scripts/comp/mainframeExceptionDialog.js). Logon / boot (auth errors, the desktop
         // not up yet) and narrow mode keep the banner.

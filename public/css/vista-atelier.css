@@ -7,9 +7,10 @@
    - Gallery: a white page, thumbnails framed like Photo Gallery's, Explorer's hover; marks as a
      coloured frame (favourite gold, try blue, both green) instead of the dark theme's glow.
    - Filter bar: a light pane under the menu bar (Vista's search pane), 7.css controls.
-   naxtVistaChrome.js sets .naxt-vista and data-window-client="light" only on the Vista desktop. */
+   naxtVistaChrome.js sets .naxt-vista and data-window-client="light" only on the Vista desktop.
+   Notepad's menu bar holds all its commands, so it shows on every theme. */
 
-#naxtModal .naxt-menubar {
+:is(#naxtModal, .image-prompt-inspector, #notebookModal) .naxt-menubar {
     display: none;
 }
 
@@ -17,7 +18,7 @@
 
 /* ---- the menu bar ---- */
 
-#naxtModal.naxt-vista .naxt-menubar {
+:is(#naxtModal.naxt-vista, .notepad-modal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar {
     display: flex;
     flex: none;
     align-items: stretch;
@@ -28,7 +29,7 @@
     box-sizing: border-box;
 }
 
-#naxtModal.naxt-vista .naxt-menubar .naxt-menu-title {
+:is(#naxtModal.naxt-vista, .notepad-modal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title {
     position: relative;
     display: inline-flex;
     align-items: center;
@@ -48,7 +49,7 @@
     filter: none;
 }
 
-#naxtModal.naxt-vista .naxt-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
+:is(#naxtModal.naxt-vista, .notepad-modal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
     background: #3399ff;
     color: #fff;
     outline: none;
@@ -59,8 +60,8 @@
     display: none;
 }
 
-#naxtModal.naxt-vista .naxt-menubar .naxt-menu-title::before,
-#naxtModal.naxt-vista .naxt-menubar .naxt-menu-title::after {
+:is(#naxtModal.naxt-vista, .notepad-modal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title::before,
+:is(#naxtModal.naxt-vista, .notepad-modal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title::after {
     display: none;
 }
 
@@ -89,6 +90,197 @@
 
 #naxtModal.naxt-vista .naxt-menubar .naxt-bag-count::before { content: '('; }
 #naxtModal.naxt-vista .naxt-menubar .naxt-bag-count::after { content: ')'; }
+
+/* ---- the command bar (Yukimi 2026-10-14: "Atelier should use a blue control bar instead of the
+   caption bar design"): naxtVistaChrome.js moves the caption's controls here on the Vista desktop.
+   Windows Mail's blue bar (desktop-apps/dovecote.css, VM pixels): flat buttons with white glyphs
+   and labels, the hot box on hover, the pressed box for toggles that are on. ---- */
+#naxtModal .naxt-command-bar,
+#naxtModal .naxt-menubar-search,
+#naxtModal .naxt-cmd-label {
+    display: none;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0;
+    height: 30px;
+    padding: 0 3px;
+    background: linear-gradient(#8fbbed 1px, #4b90df 1px, #295591 15px, #183d76 15px, #325f9e calc(100% - 1px), #819ec4 calc(100% - 1px));
+    border-bottom: 1px solid #484848;
+    box-sizing: border-box;
+}
+
+/* the caption's toolbar row is empty while its controls are in the bar: without it the caption is
+   a plain title bar again (left in, its glass hung 24 px over the bar's shine) */
+#naxtModal.naxt-vista .modal-window-title > .modal-window-title-toolbar {
+    display: none;
+}
+
+/* Filters: View > Filter Bar / Reset Filters already cover it (Yukimi), so no button of its own
+   on the Vista desktop; View's entries still click it (naxtVistaChrome.js run) */
+#naxtModal.naxt-vista .naxt-command-bar #naxtFilterToggleBtn {
+    display: none;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar .naxt-cmd-label {
+    display: inline;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar .button-group {
+    display: flex;
+    gap: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* the quick filters end in Windows Mail's separator (#172f50 beside #6a88b2) */
+#naxtModal.naxt-vista .naxt-command-bar .naxt-quick-filters {
+    margin-right: 4px;
+    padding-right: 4px;
+    background: linear-gradient(90deg, #172f50 1px, #6a88b2 1px) no-repeat right center / 2px 24px;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    width: auto;
+    min-width: 0;
+    height: 28px;
+    min-height: 0;
+    margin: 0 1px;
+    padding: 0 7px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    color: #fff;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    font-weight: 400;
+    text-shadow: none;
+    filter: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transform: none;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar button i {
+    color: #fff;
+    font-size: 13px;
+    text-shadow: 0 1px 1px hsl(215 60% 10% / 60%);
+}
+
+/* 7.css draws its hover glass on button::before / ::after; the indicator lamp keeps ::after */
+#naxtModal.naxt-vista .naxt-command-bar button::before,
+#naxtModal.naxt-vista .naxt-command-bar button:not(.indicator)::after {
+    content: none;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar button:is(:hover, .context-open, [aria-expanded="true"]):not(:disabled) {
+    background: linear-gradient(#cddff5 1px, #9bbee6 1px, #4b70a2 11px, #365c8e 11px, #355a8c 13px, #274676 13px, #3c649f calc(100% - 1px), #96adcd calc(100% - 1px));
+    border-color: #34659c #112b52 #5a6e89;
+    box-shadow: inset 1px 0 0 #7f90aa, inset -1px 0 0 #7f90aa;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar button:is(:active, [data-state="on"], [data-state="onhigh"], [data-state="partial"]):not(:disabled) {
+    background: linear-gradient(#183d76, #23498c 50%, #2e5999);
+    border-color: #112b52;
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 50%);
+}
+
+#naxtModal.naxt-vista .naxt-command-bar button:disabled {
+    color: #a0a0a0;
+    opacity: 1;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar #naxtBagDropdownBtn {
+    margin-left: auto;
+}
+
+/* the search box at the menu band's right end (Windows Mail's; the dataset picker and refresh
+   sit inside it) */
+#naxtModal.naxt-vista .naxt-menubar {
+    height: 24px;
+    align-items: center;
+    background: linear-gradient(#fefeff, #e5eaf5 9px, #d4dbed 9px, #e1e6f6 22px);
+}
+
+#naxtModal.naxt-vista .naxt-menubar-search {
+    display: flex;
+    margin-left: auto;
+    padding-right: 2px;
+}
+
+#naxtModal.naxt-vista .naxt-menubar-search > .button-group {
+    display: flex;
+    align-items: center;
+    width: 240px;
+    height: 21px;
+    padding: 0;
+    gap: 0;
+    background: linear-gradient(#fff 1px, #fcfdfe 1px, #f8f9fc 7px, #f3f5fa 8px, #f5f7fc calc(100% - 1px), #fcfdfe calc(100% - 1px));
+    border: 1px solid;
+    border-color: #626363 #9a9ca2 #bbbdc4 #7a7b80;
+    border-radius: 0;
+    box-shadow: 0 0 0 1px hsl(0 0% 100% / 35%);
+    box-sizing: border-box;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+#naxtModal.naxt-vista .naxt-menubar-search .form-control {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 19px;
+    min-height: 0;
+    padding: 0 4px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+}
+
+#naxtModal.naxt-vista .naxt-menubar-search .form-control::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+#naxtModal.naxt-vista .naxt-menubar-search button {
+    width: 22px;
+    min-width: 0;
+    height: 19px;
+    min-height: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #2b5797;
+    filter: none;
+}
+
+#naxtModal.naxt-vista .naxt-menubar-search button::before,
+#naxtModal.naxt-vista .naxt-menubar-search button::after {
+    content: none;
+}
+
+#naxtModal.naxt-vista .naxt-menubar-search button:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+}
+
+#naxtModal.naxt-vista .naxt-menubar-search button:last-child {
+    box-shadow: inset 1px 0 0 #c5c9d0;
+}
 
 /* ---- the filter bar: Vista's search pane ---- */
 
@@ -254,4 +446,43 @@
 
 #naxtModal.naxt-vista #naxtFilterToolbar .naxt-filter-pair .form-control {
     width: 72px;
+}
+
+/* the gallery picker: the bar's first button with the gallery's icon, name and a ▾, ended by a
+   separator (naxtVistaChrome.js moves it out of the search group) */
+#naxtModal.naxt-vista .naxt-command-bar #naxtDatasetDropdownBtn #naxtDatasetSelected {
+    display: inline-flex;
+    align-items: center;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar #naxtDatasetDropdownBtn {
+    margin-right: 4px;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar #naxtDatasetDropdownBtn::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: -5px;
+    left: auto;
+    width: 2px;
+    height: 24px;
+    background: linear-gradient(90deg, #172f50 1px, #6a88b2 1px);
+    /* 7.css puts button::after at z-index -1, under the bar's own paint */
+    z-index: 1;
+    opacity: 1;
+}
+
+#naxtModal .naxt-cmd-chevron {
+    display: none;
+}
+
+#naxtModal.naxt-vista .naxt-command-bar .naxt-cmd-chevron {
+    display: inline-block;
+    flex: none;
+    width: 7px;
+    height: 4px;
+    margin-left: 2px;
+    background: #fff;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
 }

@@ -3,8 +3,7 @@
  * public/scripts/comp/serverManagement.js (PM2 restart/flush, runtime compile, dev mode)
  * public/scripts/comp/modalUtils.js (openModal, closeModal)
  * public/scripts/comp/confirmationDialog.js (showConfirmationDialog)
- * public/scripts/comp/contextMenu.js (attachClickMenuToElement)
- * public/scripts/comp/dropdown.js (setupDropdown — settings popover interval only)
+ * public/scripts/comp/contextMenu.js (attachClickMenuToElement, attachPickerMenu)
  * public/scripts/comp/websocketRequestsModal.js (websocketRequestsModal)
  */
 
@@ -309,28 +308,27 @@ class LogViewerApplet {
         if (this.settingsPopover) return;
 
         this.settingsPopover = document.createElement('div');
-        this.settingsPopover.className = 'log-viewer-glass-popover hidden';
+        this.settingsPopover.className = 'log-viewer-glass-popover win7 hidden';
         this.settingsPopover.innerHTML = `
-            <div class="log-viewer-glass-popover-inner">
-                <div class="log-viewer-glass-popover-header"><i class="fas fa-sliders"></i> View Settings</div>
-                <div class="log-viewer-glass-popover-body">
-                    <label class="log-viewer-settings-label">Backlog lines</label>
-                    <input type="number" id="logViewerLinesPopoverInput" class="form-control hover-show colored"
+            <div class="window">
+                <div class="title-bar">
+                    <div class="title-bar-text">View Settings</div>
+                </div>
+                <div class="window-body has-space log-viewer-glass-popover-body">
+                    <label class="log-viewer-settings-label" for="logViewerLinesPopoverInput">Backlog lines</label>
+                    <input type="number" id="logViewerLinesPopoverInput"
                         value="${this.backlogLines}" min="50" max="5000" step="50">
                     <label class="log-viewer-settings-label" for="logViewerStatusIntervalBtn">Status refresh</label>
-                    <div id="logViewerStatusIntervalDropdown" class="custom-dropdown">
-                        <button type="button" id="logViewerStatusIntervalBtn" class="custom-dropdown-btn hover-show colored">
-                            <span id="logViewerStatusIntervalSelected">${STATUS_REFRESH_PRESETS.find((p) => p.ms === this.pm2StatusIntervalMs)?.label || '5 seconds'}</span>
-                        </button>
-                        <div id="logViewerStatusIntervalMenu" class="custom-dropdown-menu hidden"></div>
-                    </div>
+                    <button type="button" id="logViewerStatusIntervalBtn" class="custom-dropdown-btn">
+                        <span id="logViewerStatusIntervalSelected">${STATUS_REFRESH_PRESETS.find((p) => p.ms === this.pm2StatusIntervalMs)?.label || '5 seconds'}</span>
+                    </button>
                     <input type="hidden" id="logViewerStatusIntervalHidden" value="${this.pm2StatusIntervalMs}">
-                    <button type="button" id="logViewerSettingsApplyBtn" class="btn-primary btn-small">Apply</button>
+                    <button type="button" id="logViewerSettingsApplyBtn">Apply</button>
                     <div class="log-viewer-glass-popover-actions">
-                        <button type="button" id="logViewerPopoverReloadBtn" class="btn-secondary btn-small" title="Reload backlog">
+                        <button type="button" id="logViewerPopoverReloadBtn" title="Reload backlog">
                             <i class="fa-regular fa-sync"></i> Refresh Backlog
                         </button>
-                        <button type="button" id="logViewerPopoverFlushBtn" class="btn-secondary btn-small hidden" title="Flush PM2 logs for this DreamScape Server process">
+                        <button type="button" id="logViewerPopoverFlushBtn" class="hidden" title="Flush PM2 logs for this DreamScape Server process">
                             <i class="fas fa-broom"></i> Flush DSS Logs
                         </button>
                     </div>
@@ -339,27 +337,31 @@ class LogViewerApplet {
         document.body.appendChild(this.settingsPopover);
 
         this.uptimePopover = document.createElement('div');
-        this.uptimePopover.className = 'log-viewer-glass-popover log-viewer-uptime-glass-popover hidden';
+        this.uptimePopover.className = 'log-viewer-glass-popover log-viewer-uptime-glass-popover win7 hidden';
         this.uptimePopover.innerHTML = `
-            <div class="log-viewer-glass-popover-inner">
-                <div class="log-viewer-glass-popover-header"><i class="fas fa-clock"></i> Uptime</div>
-                <div class="log-viewer-glass-popover-body" id="logViewerUptimePopoverBody"></div>
-                <div class="log-viewer-runtime-compile-progress hidden" id="logViewerRuntimeCompileProgress">
-                    <div class="log-viewer-popover-metric-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
-                        <div class="log-viewer-popover-metric-fill" id="logViewerRuntimeCompileProgressFill" style="width:0%"></div>
+            <div class="window">
+                <div class="title-bar">
+                    <div class="title-bar-text">Uptime</div>
+                </div>
+                <div class="window-body has-space">
+                    <div class="log-viewer-glass-popover-body" id="logViewerUptimePopoverBody"></div>
+                    <div class="log-viewer-runtime-compile-progress hidden" id="logViewerRuntimeCompileProgress">
+                        <div class="log-viewer-popover-metric-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+                            <div class="log-viewer-popover-metric-fill" id="logViewerRuntimeCompileProgressFill" style="width:0%"></div>
+                        </div>
+                        <div class="log-viewer-runtime-compile-progress-label" id="logViewerRuntimeCompileProgressLabel">Compiling…</div>
                     </div>
-                    <div class="log-viewer-runtime-compile-progress-label" id="logViewerRuntimeCompileProgressLabel">Compiling…</div>
-                </div>
-                <div class="log-viewer-glass-popover-actions log-viewer-runtime-actions" id="logViewerRuntimeActionsRow">
-                    <button type="button" id="logViewerRuntimeDevToggleBtn" class="btn-secondary btn-small" title="Toggle source vs optimised asset serving for this browser">Prod Mode</button>
-                    <button type="button" id="logViewerRuntimeCompileBtn" class="btn-primary btn-small" title="Recompile all public/css and public/scripts">
-                        <i class="fas fa-compress"></i> Compile
-                    </button>
-                </div>
-                <div class="log-viewer-glass-popover-actions">
-                    <button type="button" id="logViewerPopoverRebootBtn" class="btn-danger btn-small hidden" title="PM2 restart DreamScape Server (this process only)">
-                        <i class="fas fa-rotate-right"></i> Restart DSS
-                    </button>
+                    <div class="log-viewer-glass-popover-actions log-viewer-runtime-actions" id="logViewerRuntimeActionsRow">
+                        <button type="button" id="logViewerRuntimeDevToggleBtn" title="Toggle source vs optimised asset serving for this browser">Prod Mode</button>
+                        <button type="button" id="logViewerRuntimeCompileBtn" title="Recompile all public/css and public/scripts">
+                            <i class="fas fa-compress"></i> Compile
+                        </button>
+                    </div>
+                    <div class="log-viewer-glass-popover-actions">
+                        <button type="button" id="logViewerPopoverRebootBtn" class="hidden" title="PM2 restart DreamScape Server (this process only)">
+                            <i class="fas fa-rotate-right"></i> Restart DSS
+                        </button>
+                    </div>
                 </div>
             </div>`;
         document.body.appendChild(this.uptimePopover);
@@ -374,13 +376,17 @@ class LogViewerApplet {
         this.runtimeCompileBtn?.addEventListener('click', () => this.requestRuntimeCompile());
 
         this.connectionPopover = document.createElement('div');
-        this.connectionPopover.className = 'log-viewer-glass-popover log-viewer-connection-glass-popover hidden';
+        this.connectionPopover.className = 'log-viewer-glass-popover log-viewer-connection-glass-popover win7 hidden';
         this.connectionPopover.innerHTML = `
-            <div class="log-viewer-glass-popover-inner">
-                <div class="log-viewer-glass-popover-header"><i class="fas fa-network-wired"></i> Connection</div>
-                <div class="log-viewer-glass-popover-body" id="logViewerConnectionPopoverBody"></div>
-                <div class="log-viewer-glass-popover-actions">
-                    <button type="button" id="logViewerConnToggleBtn" class="btn-primary btn-small">Connect</button>
+            <div class="window">
+                <div class="title-bar">
+                    <div class="title-bar-text">Connection</div>
+                </div>
+                <div class="window-body has-space">
+                    <div class="log-viewer-glass-popover-body" id="logViewerConnectionPopoverBody"></div>
+                    <div class="log-viewer-glass-popover-actions">
+                        <button type="button" id="logViewerConnToggleBtn">Connect</button>
+                    </div>
                 </div>
             </div>`;
         document.body.appendChild(this.connectionPopover);
@@ -412,6 +418,7 @@ class LogViewerApplet {
                 const pop = this.getGlassPopoverEl(this.activeGlassPopover);
                 const anchor = this.getGlassPopoverAnchor(this.activeGlassPopover);
                 if (pop?.contains(e.target) || anchor?.contains(e.target)) return;
+                if (e.target.closest('.context-menu, .context-menu-submenu, .context-menu-overlay')) return;
                 this.hideAllGlassPopovers();
             };
         }
@@ -421,23 +428,11 @@ class LogViewerApplet {
         if (!this.modal || this._glassPopoverListenersWired) return;
         this._glassPopoverListenersWired = true;
         if (!this._logViewerModalScopeHandler) {
-            this._logViewerModalScopeHandler = (signal) => {
-                this.wireLogViewerStatusIntervalDropdown();
-                signal.addEventListener('abort', () => {
-                    this._teardownSettingsPopoverDropdowns();
-                }, { once: true });
+            this._logViewerModalScopeHandler = () => {
+                this.wireLogViewerStatusIntervalMenu();
             };
         }
         attachModalListeners(this.modal, this._logViewerModalScopeHandler);
-    }
-
-    _teardownSettingsPopoverDropdowns() {
-        const container = document.getElementById('logViewerStatusIntervalDropdown');
-        // teardownDropdown: public/scripts/comp/dropdown.js
-        if (typeof teardownDropdown !== 'function') return;
-        if (container) {
-            teardownDropdown(container);
-        }
     }
 
     _bindGlassPopoverOutsideClick() {
@@ -591,14 +586,14 @@ class LogViewerApplet {
 
         body.innerHTML = `
             <div class="log-viewer-popover-section">
-                <div class="log-viewer-popover-section-title">Status</div>
+                <div class="header-group">Status</div>
                 <div class="log-viewer-uptime-row"><span>WebSocket</span><strong>${wsLabel}</strong></div>
                 <div class="log-viewer-uptime-row"><span>Log stream</span><strong>${streamLabel}</strong></div>
                 <div class="log-viewer-uptime-row"><span>Server</span><strong>${serverAddr}</strong></div>
                 <div class="log-viewer-uptime-row"><span>Protocol</span><strong>${wsProto} / ${encryption}</strong></div>
             </div>
             <div class="log-viewer-popover-section">
-                <div class="log-viewer-popover-section-title">Latency</div>
+                <div class="header-group">Latency</div>
                 <div class="log-viewer-uptime-row log-viewer-conn-class-row">
                     <span>Class</span>
                     <strong class="log-viewer-conn-class log-viewer-conn-class--${connClass.tier}">${connClass.label}</strong>
@@ -609,7 +604,7 @@ class LogViewerApplet {
                 <div class="log-viewer-uptime-row"><span>WS uptime</span><strong>${connUptime}</strong></div>
             </div>
             <div class="log-viewer-popover-section">
-                <div class="log-viewer-popover-section-title">Traffic</div>
+                <div class="header-group">Traffic</div>
                 <div class="log-viewer-uptime-row"><span>Sent</span><strong>${outCount}</strong></div>
                 <div class="log-viewer-uptime-row"><span>Received</span><strong>${inCount}</strong></div>
                 <div class="log-viewer-uptime-row"><span>User</span><strong>${username}</strong></div>
@@ -618,8 +613,6 @@ class LogViewerApplet {
         if (toggleBtn) {
             const connected = ws && (ws.isConnected() || ws.isConnecting);
             toggleBtn.textContent = connected ? 'Disconnect' : 'Connect';
-            toggleBtn.classList.toggle('btn-danger', !!connected);
-            toggleBtn.classList.toggle('btn-primary', !connected);
         }
     }
 
@@ -775,20 +768,20 @@ class LogViewerApplet {
 
         body.innerHTML = `
             <div class="log-viewer-popover-section">
-                <div class="log-viewer-popover-section-title">Uptime</div>
+                <div class="header-group">Uptime</div>
                 <div class="log-viewer-uptime-row"><span>Connection</span><strong>${this.formatDurationMs(connMs)}</strong></div>
                 <div class="log-viewer-uptime-row"><span>Application</span><strong>${this.formatDurationMs(appMs)}</strong></div>
                 <div class="log-viewer-uptime-row"><span>Host</span><strong>${this.formatDurationMs(hostMs)}</strong></div>
             </div>
             <div class="log-viewer-popover-section">
-                <div class="log-viewer-popover-section-title">System</div>
+                <div class="header-group">System</div>
                 ${this.renderPopoverMetricRow('CPU', cpuPct)}
                 ${this.renderPopoverMetricRow('RAM', ramPct)}
                 ${this.renderPopoverMetricRow('Disk', diskPct)}
                 <div class="log-viewer-uptime-row"><span>Load avg</span><strong>${loadText}</strong></div>
             </div>
             <div class="log-viewer-popover-section">
-                <div class="log-viewer-popover-section-title">Process</div>
+                <div class="header-group">Process</div>
                 <div class="log-viewer-uptime-row"><span>DSS</span><strong>${processName}</strong></div>
                 <div class="log-viewer-uptime-row"><span>PM2 id</span><strong>${pm2Id != null ? pm2Id : '—'}</strong></div>
                 <div class="log-viewer-uptime-row"><span>PID</span><strong>${pid != null ? pid : '—'}</strong></div>
@@ -841,7 +834,7 @@ class LogViewerApplet {
 
         return `
             <div class="log-viewer-popover-section" id="logViewerRuntimeCompileSection">
-                <div class="log-viewer-popover-section-title">Runtime Assets</div>
+                <div class="header-group">Runtime Assets</div>
                 <div class="log-viewer-uptime-row"><span>State</span><strong>${stateLabel}</strong></div>
                 <div class="log-viewer-uptime-row"><span>Client mode</span><strong>${clientMode}</strong></div>
                 <div class="log-viewer-uptime-row"><span>Files</span><strong>${(stats.compiledFiles || s.compiled || 0).toLocaleString('en-US')} compiled / ${(stats.totalFiles || 0).toLocaleString('en-US')} total</strong></div>
@@ -972,14 +965,15 @@ class LogViewerApplet {
 
     renderPopoverMetricRow(label, percent) {
         const clamped = Math.max(0, Math.min(100, percent));
-        let fillClass = '';
-        if (clamped >= 85) fillClass = ' log-viewer-metric-danger';
-        else if (clamped >= 60) fillClass = ' log-viewer-metric-warn';
+        // 7.css progress states: .paused is the yellow bar, .error the red bar
+        let barClass = '';
+        if (clamped >= 85) barClass = ' error';
+        else if (clamped >= 60) barClass = ' paused';
         return `
             <div class="log-viewer-popover-metric">
                 <span class="log-viewer-popover-metric-label">${label}</span>
-                <div class="log-viewer-popover-metric-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
-                    <div class="log-viewer-popover-metric-fill${fillClass}" style="width:${clamped}%"></div>
+                <div class="log-viewer-popover-metric-bar${barClass}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(clamped)}">
+                    <div class="log-viewer-popover-metric-fill" style="width:${clamped}%"></div>
                 </div>
                 <span class="log-viewer-popover-metric-pct">${clamped.toFixed(1)}%</span>
             </div>`;
@@ -1443,9 +1437,13 @@ class LogViewerApplet {
         const clamped = Math.max(0, Math.min(100, percent));
         if (fillEl) {
             fillEl.style.width = `${clamped}%`;
-            fillEl.classList.remove('log-viewer-metric-warn', 'log-viewer-metric-danger');
-            if (clamped >= 85) fillEl.classList.add('log-viewer-metric-danger');
-            else if (clamped >= 60) fillEl.classList.add('log-viewer-metric-warn');
+            // 7.css [role=progressbar].paused / .error (public/css/7.scoped.css)
+            const bar = fillEl.parentElement;
+            if (bar) {
+                bar.classList.toggle('error', clamped >= 85);
+                bar.classList.toggle('paused', clamped >= 60 && clamped < 85);
+                bar.setAttribute('aria-valuenow', String(Math.round(clamped)));
+            }
         }
         if (pctEl) pctEl.textContent = `${clamped.toFixed(1)}%`;
     }
@@ -1580,37 +1578,22 @@ class LogViewerApplet {
         }, LOG_VIEWER_RECONNECT_DELAY_MS);
     }
 
-    wireLogViewerStatusIntervalDropdown() {
-        const container = document.getElementById('logViewerStatusIntervalDropdown');
+    wireLogViewerStatusIntervalMenu() {
         const btn = document.getElementById('logViewerStatusIntervalBtn');
-        const menu = document.getElementById('logViewerStatusIntervalMenu');
         const selectedEl = document.getElementById('logViewerStatusIntervalSelected');
         const hidden = document.getElementById('logViewerStatusIntervalHidden');
-        if (!container || !btn || !menu || !selectedEl || !hidden) return;
-        if (container.getAttribute('data-dropdown-initialized') === 'true') return;
+        if (!btn || !selectedEl || !hidden || btn.dataset.clickMenu) return;
 
-        const items = STATUS_REFRESH_PRESETS.map((p) => ({ value: String(p.ms), name: p.label }));
-
-        const renderMenu = (selectedVal) => {
-            // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
-            renderSimpleDropdown(
-                menu,
-                items,
-                'value',
-                'name',
-                (value) => {
-                    hidden.value = String(value);
-                    const preset = STATUS_REFRESH_PRESETS.find((p) => String(p.ms) === String(value));
-                    selectedEl.textContent = preset?.label || '5 seconds';
-                },
-                () => closeDropdown(menu, btn), // closeDropdown: public/scripts/comp/dropdown.js
-                String(selectedVal || hidden.value),
-                { preventFocusTransfer: true }
-            );
-        };
-
-        // setupDropdown: public/scripts/comp/dropdown.js
-        setupDropdown(container, btn, menu, renderMenu, () => hidden.value, { preventFocusTransfer: true });
+        const items = STATUS_REFRESH_PRESETS.map((p) => ({ value: String(p.ms), text: p.label }));
+        // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+        contextMenu.attachPickerMenu(btn, {
+            items: () => items,
+            value: () => hidden.value,
+            onSelect: (value, item) => {
+                hidden.value = String(value);
+                selectedEl.textContent = item.text;
+            }
+        });
     }
 
     async requestFlushPm2Logs() {

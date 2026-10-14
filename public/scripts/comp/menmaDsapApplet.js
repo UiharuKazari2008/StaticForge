@@ -22,7 +22,7 @@ const menmaDsapScopedCss = `
 [data-dsap="pantry"] .menma-view { padding: 8px 10px 16px; }
 [data-dsap="pantry"] .menma-pair { display: flex; gap: 10px; flex-wrap: wrap; }
 [data-dsap="pantry"] .menma-shot { width: 240px; max-width: 100%; background: #fff; border: 1px solid #8aa; }
-[data-dsap="pantry"] .menma-shot img { width: 100%; height: 180px; object-fit: cover; display: block; cursor: pointer; background: #dde; }
+[data-dsap="pantry"] .menma-shot img { width: 100%; height: 180px; object-fit: cover; display: block; cursor: var(--c-pointer); background: #dde; }
 [data-dsap="pantry"] .menma-shot-cap { padding: 4px 6px; font-size: 11px; display: flex; justify-content: space-between; gap: 6px; align-items: center; }
 [data-dsap="pantry"] .menma-shot-cap button { flex-shrink: 0; }
 [data-dsap="pantry"] .menma-work-item, [data-dsap="pantry"] .menma-log-item {
@@ -33,7 +33,7 @@ const menmaDsapScopedCss = `
 [data-dsap="pantry"] .menma-empty { padding: 10px 4px; color: #556; }
 [data-dsap="pantry"] .menma-named { margin: 4px 0 0; padding-left: 16px; }
 [data-dsap="pantry"] .menma-accounts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
-[data-dsap="pantry"] .menma-account-card { border: 1px solid #9ab; background: #f7f7f4; padding: 8px 10px; cursor: pointer; }
+[data-dsap="pantry"] .menma-account-card { border: 1px solid #9ab; background: #f7f7f4; padding: 8px 10px; cursor: var(--c-pointer); }
 [data-dsap="pantry"] .menma-account-card:hover { background: #eef; }
 [data-dsap="pantry"] .menma-account-card.menma-account-active { border-color: #68a; background: #e8f0f8; }
 [data-dsap="pantry"] .menma-account-card-name { font-weight: 600; margin-bottom: 4px; }

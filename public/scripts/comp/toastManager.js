@@ -512,8 +512,6 @@ function _appendGlassToastDom(toastId, type, title, message, showProgress, timeo
     }
 
     toastContainer.prepend(toast);
-    // desktopSounds.playBalloon: public/scripts/comp/desktopSounds.js
-    desktopSounds.playBalloon(title);
 
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -1141,7 +1139,7 @@ function updateGlassToastImagePreview(toastId, imageData) {
                 object-fit: contain;
                 border-radius: 4px;
                 margin-bottom: 8px;
-                cursor: pointer;
+                cursor: var(--c-pointer);
                 display: block;
             `;
 

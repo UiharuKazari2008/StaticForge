@@ -1,0 +1,465 @@
+/* Dialog boxes in the Vista design (Yozora #465, Yukimi 2026-10-13: "update all dialog boxes to
+   match Windows Vista's design and behavior, we are shooting for 1:1 ... so they all become
+   light mode"). vistaDialogs.js tags each dialog on the Vista desktop with
+   data-vista-dialog="message" | "form" (plus data-window-client="light" and .win7 on its client,
+   the light-client mechanism of vista-glass-controls.css), data-vista-icon for the message box
+   icon, and .vista-dialog-footer on the row that holds the buttons. This sheet is the layout.
+
+   Measured on the VM (MessageBox, Aero, 96 dpi): a white content area with the 32 px icon
+   25 px from the left edge and 27 px from the top, the text 9 px to its right, 25 px under the
+   icon; a #f0f0f0 footer with the buttons right-aligned, 88x26, 8 px apart, 8 px from the right
+   edge, 12 px above and 11 px below; Segoe UI 9 pt, black. Form dialogs are Vista's property-sheet
+   kind: #f0f0f0 client, 11 px margins, 7.css controls, 75x23 buttons in a footer row.
+   The caption is the shared glass chrome, without the caption icon (Vista dialogs have none).
+   Desktop mode, not Classic. Linked after vista-scrollbars.css. */
+
+/* ---- every dialog: light client, Segoe UI, no caption icon ---- */
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content {
+    --text-primary: #000;
+    --text-color: #000;
+    --text-secondary: #333;
+    --text-muted: #6d6d6d;
+    --text-accent-tinted: #1e395b;
+    --primary-color-light: #1e395b;
+    --glass-layer-2: #fff;
+    --glass-border-2: #abadb3;
+    background: #f0f0f0;
+    color: #000;
+    text-shadow: none;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content :is(p, div, span, label, h1, h2, h3, h4, li) {
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] .modal-window-title-main > :is(i:first-child, .icon-fa, .icon-image) {
+    display: none;
+}
+
+/* ---- buttons: 7.css's standard button over the app's glass classes ---- */
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn) {
+    position: relative;
+    z-index: 0;
+    min-width: 75px;
+    min-height: 23px;
+    height: auto;
+    padding: 0 12px;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #8e8f8f;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px #fffc;
+    color: #000;
+    text-shadow: none;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    font-weight: 400;
+    font-variation-settings: normal;
+    line-height: 21px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    transition: border-color 0.3s, background 0.3s;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn)::before,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn)::after {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn) i {
+    color: inherit;
+    text-shadow: none;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):hover:not(:disabled) {
+        background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+        border-color: #3c7fb1;
+        box-shadow: inset 0 0 0 1px #fffc;
+        color: #000;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):active:not(:disabled) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+    box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):disabled {
+    background: #f4f4f4;
+    border-color: #adb2b5;
+    color: #838383;
+    opacity: 1;
+}
+
+/* the default button: Vista's pulsing blue glow (7.css pulse-anim, keyframes in 7.scoped.css) */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled) {
+    animation: pulse-anim 1s ease infinite alternate;
+    border-color: #5586a3;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):focus-visible {
+    box-shadow: inset 0 0 0 2px #98d1ef;
+    outline: 1px dotted #000;
+    outline-offset: -4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button {
+        animation: none;
+    }
+}
+
+/* ---- text boxes and lists: 7.css's, at Vista's 23 px (the app's .form-control is taller) ---- */
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select):is(.form-control, .form-input) {
+    box-sizing: border-box;
+    height: 23px;
+    min-height: 23px;
+    padding: 2px 4px;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 17px;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content textarea:is(.form-control, .form-input):not(.prompt-textarea, .character-prompt-textarea) {
+    padding: 3px 4px;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content :is(input, select, textarea):is(.form-control, .form-input):not(.prompt-textarea, .character-prompt-textarea):hover:not(:disabled) {
+    border-color: #5794bf #b7d5ea #c7e2f1 #c5daed;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content :is(input, select, textarea):is(.form-control, .form-input):not(.prompt-textarea, .character-prompt-textarea):focus {
+    border-color: #3d7bad #a4c9e3 #b7d9ed #b7d9ed;
+    outline: none;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content :is(input, select, textarea):is(.form-control, .form-input):not(.prompt-textarea, .character-prompt-textarea)::placeholder {
+    color: #7a7a7a;
+    font-style: italic;
+}
+
+/* the app's drop-down buttons (hover-show pickers): Vista's drop-down list */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content .custom-dropdown-btn {
+    min-height: 23px;
+    padding: 0 22px 0 6px;
+    justify-content: flex-start;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #8e8f8f;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px #fffc;
+    color: #000;
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    font-size: 9pt;
+    font-weight: 400;
+    font-variation-settings: normal;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content .custom-dropdown-btn:is(:hover, .active) {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+/* ---- the footer row: buttons right-aligned on #f0f0f0 ---- */
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content .vista-dialog-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 12px 8px 11px 11px;
+    background: #f0f0f0;
+    border: 0;
+    box-shadow: none;
+}
+
+/* a footer nested in the body (most app.html dialogs keep their buttons inside .modal-body)
+   spans the client anyway */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"] > .modal-content > :not(.vista-dialog-footer) .vista-dialog-footer {
+    margin: 22px -25px 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"] > .modal-content > :not(.vista-dialog-footer) .vista-dialog-footer:last-child {
+    margin-bottom: -22px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="form"] > .modal-content :not(.modal-content) > .vista-dialog-footer {
+    margin: 12px -11px -11px;
+}
+
+/* ---- message boxes (data-vista-dialog="message"): white content over the grey footer ---- */
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"] > .modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    background: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"] > .modal-content > :not(.vista-dialog-footer) {
+    margin: 0;
+    padding-left: 25px;
+    padding-right: 25px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"] > .modal-content > :not(.vista-dialog-footer):first-child {
+    padding-top: 22px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"] > .modal-content > :not(.vista-dialog-footer):has(+ .vista-dialog-footer),
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"] > .modal-content > :not(.vista-dialog-footer):last-child {
+    padding-bottom: 22px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"] > .modal-content .vista-dialog-footer button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn) {
+    min-width: 88px;
+    min-height: 26px;
+    line-height: 24px;
+}
+
+/* the plain confirmation (message + buttons): the MessageBox layout, icon left of the text */
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"].modal {
+    min-width: 340px;
+    max-width: min(520px, calc(100vw - 40px));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    column-gap: 9px;
+    align-items: start;
+    min-height: 84px;
+    box-sizing: border-box;
+    padding: 27px 25px 25px;
+    text-align: left;
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message::before {
+    content: "";
+    width: 32px;
+    height: 32px;
+    background: url("/static_images/vista-icons/msgbox-info-32.png") no-repeat center / 32px 32px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="question"] > .modal-content > .confirmation-message::before { background-image: url("/static_images/vista-icons/msgbox-question-32.png"); }
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="warning"] > .modal-content > .confirmation-message::before { background-image: url("/static_images/vista-icons/msgbox-warning-32.png"); }
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="error"] > .modal-content > .confirmation-message::before { background-image: url("/static_images/vista-icons/msgbox-error-32.png"); }
+
+/* the first text line sits on the icon's centre line (32 px icon, 15 px line) */
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message > * {
+    margin: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message > .vista-dialog-text {
+    padding-top: 8px;
+    overflow-wrap: anywhere;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message > .vista-dialog-text > :first-child {
+    margin-top: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message > .vista-dialog-text > :last-child {
+    margin-bottom: 0;
+}
+
+/* the input dialog and the richer confirmations (enhance, studio change, explore publish, any
+   form inside): a task dialog, white content and the grey footer, no icon */
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    background: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content > .confirmation-message {
+    margin: 0;
+    padding: 18px 22px;
+    text-align: left;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content > .confirmation-message .form-group label {
+    color: #000;
+    font-weight: 400;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content > .confirmation-message .meta-value {
+    background: #fff;
+    border: 1px solid #abadb3;
+    border-radius: 2px;
+    color: #000;
+}
+
+/* the credit cost dialog (Payment Required / Upscale Image): a task dialog, the caption carries
+   the title, the body header becomes Vista's blue main instruction */
+body.desktop-mode:not(.windows-classic-theme) #creditCostDialog[data-vista-dialog] > .modal-content.credit-cost-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    background: #fff;
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #creditCostDialog[data-vista-dialog] .credit-cost-header {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0;
+    padding: 20px 25px 4px;
+    color: #003399;
+    font-size: 12pt;
+    font-weight: 400;
+    line-height: 21px;
+    text-shadow: none;
+    background: none;
+    border: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #creditCostDialog[data-vista-dialog] .credit-cost-header i {
+    color: #003399;
+    font-size: 24px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #creditCostDialog[data-vista-dialog] .credit-cost-message {
+    margin: 0;
+    padding: 6px 25px 22px 58px;
+    color: #000;
+    text-align: left;
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #creditCostDialog[data-vista-dialog] .credit-cost-message .credit-cost-cost {
+    color: #000;
+    font-weight: 600;
+}
+
+/* the agent client update dialog (15 s countdown): light, the countdown well a Vista group box,
+   the bar 7.css's progress bar */
+body.desktop-mode:not(.windows-classic-theme) #agentClientUpdateDialog[data-vista-dialog] > .modal-content > .dsap-smf-contextbar {
+    padding-top: 10px;
+    padding-bottom: 0;
+    color: #6d6d6d;
+    background: none;
+    border: 0;
+    font-size: 8pt;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #agentClientUpdateDialog[data-vista-dialog] .agent-client-update-well {
+    color: #000;
+    background: #fff;
+    border: 1px solid #d5dfe5;
+    border-radius: 3px;
+    box-shadow: none;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #agentClientUpdateDialog[data-vista-dialog] .agent-client-update-num {
+    color: #003399;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #agentClientUpdateDialog[data-vista-dialog] .agent-client-update-copy h2 {
+    color: #003399;
+    font-size: 12pt;
+    font-weight: 400;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #agentClientUpdateDialog[data-vista-dialog] .agent-client-update-copy :is(p, .agent-client-update-hint) {
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #agentClientUpdateDialog[data-vista-dialog] > .modal-content > .dsap-smf-statusbox {
+    color: #000;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #agentClientUpdateDialog[data-vista-dialog] > .modal-content > [role="progressbar"] {
+    margin: 4px 25px 22px;
+    height: 15px;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+/* the alert dialogs (bias preview, character data, base image change, bias mask): light, their
+   preview panes framed like Vista's picture wells */
+body.desktop-mode:not(.windows-classic-theme) .modal.alert-theme[data-vista-dialog] > .modal-content :is(h4, .preview-section h4) {
+    color: #000;
+    font-weight: 600;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal.alert-theme[data-vista-dialog] > .modal-content .preview-image-container {
+    background: #fff;
+    border: 1px solid #abadb3;
+    border-radius: 2px;
+}
+
+/* ---- form dialogs (data-vista-dialog="form"): Vista's property sheet ---- */
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="form"] > .modal-content {
+    padding: 11px;
+    background: #f0f0f0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="form"] > .modal-content .vista-dialog-footer {
+    padding: 11px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="form"] > .modal-content > .vista-dialog-footer {
+    margin: 12px -11px -11px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="form"] > .modal-content :is(h1, h2, h3, h4, label, legend) {
+    color: #000;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="form"] > .modal-content :is(.form-group label, .form-label, .setting-label) {
+    font-weight: 400;
+}
+
+/* group boxes the forms draw as glass wells become Vista group boxes */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="form"] > .modal-content :is(fieldset, .form-section, .settings-group, .modal-section) {
+    background: none;
+    border: 1px solid #d5dfe5;
+    border-radius: 3px;
+    box-shadow: none;
+}

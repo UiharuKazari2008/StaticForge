@@ -81,7 +81,8 @@
 .notebook-split {
     display: flex;
     flex-direction: row;
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     overflow: hidden;
 }
 
@@ -262,7 +263,7 @@
     padding: var(--spacing-xs) var(--spacing-sm);
     margin-bottom: var(--spacing-xs);
     border-radius: var(--border-radius-md);
-    cursor: pointer;
+    cursor: var(--c-pointer);
     transition: background var(--transition-fast);
 }
 
@@ -347,7 +348,7 @@
     border: 1px solid var(--glass-border-3);
     border-radius: var(--border-radius-md);
     transition: var(--transition-tray-menu);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 
@@ -457,4 +458,124 @@
 
 #openNoteModal {
     height: 520px;
+}
+
+/* ---- Vista light client (#485): Windows Journal. Menu bar: vista-atelier.css. The toolbar is
+   Explorer's command bar markup (vista-explorer.css) in Journal's light colours, the page pane is
+   Journal's, and the note is ruled paper: blue rules on the line height, a red margin. ---- */
+body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-actions-header {
+    min-height: 30px;
+    padding: 0 4px;
+    background: linear-gradient(#fdfeff, #edf2f9 50%, #dfe7f2 50%, #e9eff7);
+    border-top: 0;
+    border-bottom: 1px solid #a0afc3;
+    overflow: visible;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-btn.btn-small {
+    color: #000;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-btn > i {
+    color: #2b5797;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-glyph {
+    background: #000;
+    filter: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-btn:is(:hover, .active, .context-open, [aria-expanded="true"]):not(:disabled) {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+    box-shadow: inset 0 0 0 1px #fffc;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-btn:active:not(:disabled) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+    box-shadow: inset 1px 1px 0 #0003;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-btn:disabled {
+    color: #8d8d8d;
+}
+
+body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-list-panel {
+    background: #f3f6fa;
+    border-right-color: #a0afc3;
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-note-item {
+    margin-bottom: 2px;
+    background: none;
+    border-color: transparent;
+    border-radius: 3px;
+}
+
+body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-note-item:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+    transform: none;
+}
+
+body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-note-item.active {
+    background: linear-gradient(#dcebfc, #c1dbfc);
+    border-color: #7da2ce;
+}
+
+body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-note-item .note-name {
+    color: #000;
+    font-size: 10pt;
+    font-weight: 400;
+}
+
+body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-empty-state {
+    color: #6d6d6d;
+}
+
+body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-editor-panel {
+    background: #fff;
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notepad-textarea {
+    padding: 24px 16px 0 64px;
+    color: #000;
+    font: 11pt/24px 'Segoe UI', 'Noto Sans', sans-serif;
+    background:
+        linear-gradient(to right, transparent 47px, #f0a3a3 47px 48px, transparent 48px),
+        repeating-linear-gradient(#fff 0 23px, #b4cdea 23px 24px);
+    background-attachment: local;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notepad-textarea::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
+    opacity: 1;
+}
+
+/* Vista (#485): Notepad. A plain white page in Lucida Console under its menu bar (vista-atelier.css) */
+body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] > .modal-content {
+    background: #fff;
+}
+
+body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] .notepad-textarea,
+body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] .notepad-textarea:is(:hover, :focus, :active) {
+    padding: 2px 4px;
+    background: #fff;
+    border: 0;
+    border-radius: 0;
+    color: #000;
+    font: 10pt/1.25 "Lucida Console", Consolas, monospace;
+}
+
+body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] .notepad-textarea::placeholder {
+    color: #6d6d6d;
+    opacity: 1;
 }

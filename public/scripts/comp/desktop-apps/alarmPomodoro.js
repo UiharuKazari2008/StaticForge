@@ -236,6 +236,32 @@ function desktopAlarmSyncControls() {
     desktopAlarm.cancelBtn.disabled = !desktopAlarm.armed && !desktopAlarm.fired;
     desktopAlarm.hoursInput.disabled = desktopAlarm.armed;
     desktopAlarm.minutesInput.disabled = desktopAlarm.armed;
+    desktopAlarmSyncSteppers();
+}
+
+function desktopAlarmSyncSteppers() {
+    [desktopAlarm.hoursInput, desktopAlarm.minutesInput].forEach((input) => {
+        if (!input || !input.parentElement) return;
+        const up = input.parentElement.querySelector('button[data-step="1"]');
+        const down = input.parentElement.querySelector('button[data-step="-1"]');
+        if (!up || !down) return;
+        const n = parseInt(input.value, 10);
+        const known = Number.isFinite(n);
+        up.disabled = input.disabled || (known && n >= Number(input.max));
+        down.disabled = input.disabled || (known && n <= Number(input.min));
+    });
+}
+
+function desktopAlarmStepInput(input, delta) {
+    const min = Number(input.min);
+    const max = Number(input.max);
+    const current = parseInt(input.value, 10);
+    const base = Number.isFinite(current) ? current : min;
+    const next = String(desktopUtilityClampInt(base + delta, min, max, min));
+    if (input.value === next) return;
+    input.value = next;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 function desktopAlarmRender() {
@@ -327,15 +353,34 @@ function desktopAlarmBuildTimeGroup(id, text, max) {
     const label = document.createElement('label');
     label.htmlFor = id;
     label.textContent = text;
+    // 7.css text box (.win7 input) with the up-down column beside it, same button chrome as .combobox
+    const field = document.createElement('div');
+    field.className = 'desktop-timer-number';
     const input = document.createElement('input');
     input.type = 'number';
     input.id = id;
-    input.className = 'form-control'; // a Vista text box (7.css), not the custom apps' reveal-on-hover control
     input.min = '0';
     input.max = String(max);
     input.step = '1';
+    field.appendChild(input);
+    [['1', 'Increase'], ['-1', 'Decrease']].forEach((pair) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.step = pair[0];
+        button.tabIndex = -1;
+        button.setAttribute('aria-label', pair[1] + ' ' + text);
+        const mark = document.createElement('span');
+        button.appendChild(mark);
+        button.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+        });
+        button.addEventListener('click', () => {
+            desktopAlarmStepInput(input, Number(pair[0]));
+        });
+        field.appendChild(button);
+    });
     group.appendChild(label);
-    group.appendChild(input);
+    group.appendChild(field);
     return { group: group, input: input };
 }
 

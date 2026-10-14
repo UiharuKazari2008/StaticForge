@@ -1,0 +1,1347 @@
+/* Windows Sidebar and its gadgets (public/scripts/comp/vistaSidebar.js, Yozora #486).
+   Art and geometry are Vista's own (sidebar.exe resources and the gadget folders).
+   #vistaSidebar has no box of its own: the pane and each desktop gadget are fixed and carry
+   their own z-index, under windows (150) or above them (2600, below the Start menu). */
+
+body:not(.desktop-mode) #vistaSidebar {
+    display: none;
+}
+
+.vsb button,
+.vsb-gallery button,
+.vsb-options-arrow {
+    appearance: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+    background-repeat: no-repeat;
+    box-shadow: none;
+    color: inherit;
+    font: inherit;
+    min-width: 0;
+    min-height: 0;
+    cursor: default;
+}
+
+.vsb button:disabled {
+    pointer-events: none;
+}
+
+/* ---------- pane ---------- */
+
+.vsb-pane {
+    position: fixed;
+    top: var(--true-inset-top, 0px);
+    right: 0;
+    /* 1px under the taskbar: its top line is translucent and showed the wallpaper below the pane */
+    bottom: calc(var(--taskbar-height, 35px) - 1px);
+    width: 150px;
+    z-index: 150;
+    background: url('/static_images/vista-sidebar/sidebar/bg-right.png') 0 0 / 100% 100% no-repeat;
+}
+
+.vsb[data-side="left"] .vsb-pane {
+    right: auto;
+    left: 0;
+    background-image: url('/static_images/vista-sidebar/sidebar/bg-left.png');
+}
+
+.vsb[data-closed] .vsb-pane {
+    display: none;
+}
+
+.vsb-pane.is-on-top,
+.vsb.vsb-raised .vsb-pane {
+    z-index: 2600;
+}
+
+.vsb-bar {
+    position: absolute;
+    top: 10px;
+    right: 11px;
+    display: flex;
+    width: 79px;
+    height: 22px;
+    background: url('/static_images/vista-sidebar/sidebar/bar.png') no-repeat;
+}
+
+.vsb .vsb-bar-btn {
+    height: 22px;
+    background-position: 0 0;
+}
+
+.vsb .vsb-bar-btn:hover { background-position: 0 -22px; }
+.vsb .vsb-bar-btn:active { background-position: 0 -44px; }
+.vsb .vsb-bar-btn:disabled { background-position: 0 -66px; }
+
+.vsb .vsb-bar-add { width: 31px; background-image: url('/static_images/vista-sidebar/sidebar/add.png'); }
+.vsb .vsb-bar-prev { width: 24px; background-image: url('/static_images/vista-sidebar/sidebar/prev.png'); }
+.vsb .vsb-bar-next { width: 23px; background-image: url('/static_images/vista-sidebar/sidebar/next.png'); }
+
+.vsb-bar-divider {
+    width: 1px;
+    height: 22px;
+    background: url('/static_images/vista-sidebar/sidebar/divider.png') no-repeat;
+}
+
+.vsb-dock {
+    position: absolute;
+    top: 42px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+}
+
+.vsb-dock > .vsb-gadget,
+.vsb-placeholder {
+    margin-bottom: 10px;
+}
+
+.vsb-placeholder {
+    margin-left: 8px;
+    margin-right: 11px;
+    border: 1px dashed rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
+}
+
+/* ---------- gadget frame: body + hover toolbar (close, options, grip) ---------- */
+
+.vsb-gadget {
+    position: relative;
+    box-sizing: border-box;
+    width: 150px;
+    padding-left: 8px;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    user-select: none;
+}
+
+.vsb-gadget-body {
+    position: relative;
+    width: max-content;
+}
+
+.vsb-gadget-tools {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    width: 11px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.vsb-gadget:hover > .vsb-gadget-tools,
+.vsb-gadget.is-dragging > .vsb-gadget-tools {
+    opacity: 1;
+}
+
+.vsb .vsb-tool { display: block; width: 11px; background-position: 0 0; }
+.vsb .vsb-tool-close { height: 15px; background-image: url('/static_images/vista-sidebar/sidebar/tb-close.png'); }
+.vsb .vsb-tool-close:hover { background-position: 0 -15px; }
+.vsb .vsb-tool-close:active { background-position: 0 -30px; }
+.vsb .vsb-tool-options { height: 13px; background-image: url('/static_images/vista-sidebar/sidebar/tb-options.png'); }
+.vsb .vsb-tool-options:hover { background-position: 0 -13px; }
+.vsb .vsb-tool-options:active { background-position: 0 -26px; }
+.vsb .vsb-tool-grip { height: 19px; background: url('/static_images/vista-sidebar/sidebar/tb-grip.png') no-repeat; cursor: move; }
+
+.vsb-gadget[data-docked="0"] {
+    position: fixed;
+    z-index: 150;
+    width: auto;
+    padding: 0 19px 0 0;
+    opacity: var(--vsb-opacity, 1);
+    transition: opacity 0.2s;
+}
+
+.vsb-gadget[data-docked="0"]:hover {
+    opacity: 1;
+}
+
+.vsb-gadget[data-docked="0"].is-on-top,
+.vsb.vsb-raised .vsb-gadget[data-docked="0"] {
+    z-index: 2600;
+}
+
+.vsb-gadget.is-dragging {
+    position: fixed;
+    z-index: 2650;
+    opacity: 0.85;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-gadget-tools { width: 15px; }
+.vsb-gadget[data-docked="0"] .vsb-tool { width: 15px; }
+.vsb-gadget[data-docked="0"] .vsb-tool-close { height: 19px; background-image: url('/static_images/vista-sidebar/sidebar/tb-close-lg.png'); }
+.vsb-gadget[data-docked="0"] .vsb-tool-close:hover { background-position: 0 -19px; }
+.vsb-gadget[data-docked="0"] .vsb-tool-close:active { background-position: 0 -38px; }
+.vsb-gadget[data-docked="0"] .vsb-tool-options { height: 17px; background-image: url('/static_images/vista-sidebar/sidebar/tb-options-lg.png'); }
+.vsb-gadget[data-docked="0"] .vsb-tool-options:hover { background-position: 0 -17px; }
+.vsb-gadget[data-docked="0"] .vsb-tool-options:active { background-position: 0 -34px; }
+.vsb-gadget[data-docked="0"] .vsb-tool-grip { height: 21px; background-image: url('/static_images/vista-sidebar/sidebar/tb-grip-lg.png'); }
+
+/* controls that only show while the pointer is over the gadget */
+.vsb-slide-bar,
+.vsb-notes-bar,
+.vsb-cal-arrow {
+    visibility: hidden;
+}
+
+.vsb-gadget:hover .vsb-slide-bar,
+.vsb-gadget:hover .vsb-notes-bar,
+.vsb-gadget:hover .vsb-cal-arrow {
+    visibility: visible;
+}
+
+/* ---------- Clock ---------- */
+
+.vsb-clock {
+    position: relative;
+    width: 130px;
+    height: 130px;
+    background-repeat: no-repeat;
+}
+
+/* Vista ships one 130 px clock; on the desktop it is drawn half again as large */
+.vsb-gadget[data-docked="0"] .vsb-clock { zoom: 1.5; }
+
+.vsb-clock-highlights {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    z-index: 3;
+    width: 124px;
+    height: 124px;
+}
+
+.vsb-clock-hand {
+    position: absolute;
+    z-index: 2;
+    transform-origin: 50% 50%;
+    filter: drop-shadow(2px 2px 2px rgba(128, 128, 128, 0.4));
+}
+
+.vsb-clock-name {
+    position: absolute;
+    z-index: 1;
+    box-sizing: border-box;
+    width: 130px;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transform: translateY(-50%);
+}
+
+/* ---------- Calendar ---------- */
+
+.vsb-cal {
+    position: relative;
+    width: 130px;
+    height: 141px;
+    background: url('/static_images/vista-sidebar/calendar/calendar_single.png') no-repeat;
+    color: #000;
+    font: 10px "Segoe UI", Tahoma, sans-serif;
+}
+
+.vsb-cal[data-view="day"][data-today="1"] {
+    background-image: url('/static_images/vista-sidebar/calendar/calendar_single_orange.png');
+}
+
+.vsb-cal[data-view="both"] {
+    height: 264px;
+    background-image: url('/static_images/vista-sidebar/calendar/calendar_double.png');
+}
+
+.vsb-cal[data-view="both"][data-today="1"] {
+    background-image: url('/static_images/vista-sidebar/calendar/calendar_double_orange.png');
+}
+
+.vsb-cal-page {
+    position: absolute;
+    top: 11px;
+    left: 4px;
+    box-sizing: border-box;
+    width: 121px;
+    height: 127px;
+    overflow: hidden;
+    text-align: center;
+}
+
+.vsb-cal[data-view="both"] .vsb-cal-month { top: 6px; height: 112px; }
+.vsb-cal[data-view="both"] .vsb-cal-day { top: 137px; height: 122px; }
+
+.vsb-cal-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 10px;
+}
+
+.vsb-cal-day.is-today {
+    color: #fff;
+}
+
+.vsb-cal-day-month,
+.vsb-cal-day-weekday {
+    max-width: 112px;
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vsb-cal-day-month {
+    padding-bottom: 5px;
+}
+
+.vsb-cal-day-number {
+    padding-bottom: 10px;
+    font-size: 75px;
+    line-height: 60px;
+}
+
+.vsb .vsb-cal-arrow {
+    width: 16px;
+    height: 16px;
+}
+
+.vsb-cal-day .vsb-cal-arrow {
+    position: absolute;
+    top: 2px;
+}
+
+.vsb-cal-day .vsb-cal-prev { left: 2px; }
+.vsb-cal-day .vsb-cal-next { right: 2px; }
+.vsb .vsb-cal-prev { background-image: url('/static_images/vista-sidebar/calendar/bPrev.png'); }
+.vsb .vsb-cal-prev:hover { background-image: url('/static_images/vista-sidebar/calendar/bPrev-hot.png'); }
+.vsb .vsb-cal-prev:active { background-image: url('/static_images/vista-sidebar/calendar/bPrev-down.png'); }
+.vsb .vsb-cal-next { background-image: url('/static_images/vista-sidebar/calendar/bNext.png'); }
+.vsb .vsb-cal-next:hover { background-image: url('/static_images/vista-sidebar/calendar/bNext-hot.png'); }
+.vsb .vsb-cal-next:active { background-image: url('/static_images/vista-sidebar/calendar/bNext-down.png'); }
+
+.vsb .vsb-cal-curl {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 27px;
+    height: 27px;
+    background-image: url('/static_images/vista-sidebar/calendar/curl.png');
+}
+
+.vsb .vsb-cal-curl:hover {
+    background-image: url('/static_images/vista-sidebar/calendar/curl-hot.png');
+}
+
+.vsb-cal-month {
+    padding-top: 4px;
+}
+
+.vsb-cal-month-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 18px;
+    padding: 0 3px;
+    font-size: 12px;
+}
+
+.vsb-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 15px);
+    grid-auto-rows: 13px;
+    justify-content: center;
+    margin-top: 3px;
+    line-height: 13px;
+}
+
+.vsb-cal-wd {
+    color: #ff6400;
+}
+
+.vsb .vsb-cal-date {
+    font-size: 10px;
+    line-height: 13px;
+}
+
+.vsb-cal-date.is-other {
+    color: #c0c0c0;
+}
+
+.vsb .vsb-cal-date.is-shown {
+    font-weight: 700;
+}
+
+.vsb .vsb-cal-date.is-today {
+    background-color: #ff6400;
+    color: #fff;
+}
+
+/* ---------- CPU Meter ---------- */
+
+.vsb-cpu {
+    position: relative;
+    width: 130px;
+    height: 103px;
+    background-repeat: no-repeat;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-cpu {
+    width: 198px;
+    height: 159px;
+}
+
+.vsb-cpu-dial {
+    position: absolute;
+    z-index: 1;
+    transform-origin: 50% 50%;
+    transition: transform 0.8s ease-out;
+}
+
+.vsb-cpu-dial-cpu { top: 22px; left: 38px; width: 8px; height: 72px; }
+.vsb-cpu-dial-ram { top: 8px; left: 92px; width: 8px; height: 50px; }
+.vsb-gadget[data-docked="0"] .vsb-cpu-dial-cpu { top: 34px; left: 63px; width: 10px; height: 98px; }
+.vsb-gadget[data-docked="0"] .vsb-cpu-dial-ram { top: 16px; left: 137px; width: 10px; height: 70px; }
+
+.vsb-cpu-dot,
+.vsb-cpu-glass {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.vsb-cpu-dot { z-index: 2; }
+.vsb-cpu-glass { z-index: 3; }
+
+.vsb-cpu-text {
+    position: absolute;
+    z-index: 4;
+    color: #fff;
+    font: 10pt Calibri, "Segoe UI", sans-serif;
+    white-space: nowrap;
+}
+
+.vsb-cpu-text-cpu { top: 76px; left: 33px; }
+.vsb-cpu-text-ram { top: 43px; left: 89px; }
+.vsb-gadget[data-docked="0"] .vsb-cpu-text { font-size: 12pt; }
+.vsb-gadget[data-docked="0"] .vsb-cpu-text-cpu { top: 108px; left: 56px; }
+.vsb-gadget[data-docked="0"] .vsb-cpu-text-ram { top: 66px; left: 133px; }
+/* "100%" moves left as Vista's centerPercent: 3px docked, 5px on the desktop (3px for the CPU dial) */
+.vsb-cpu-text.is-full { translate: -3px 0; }
+.vsb-gadget[data-docked="0"] .vsb-cpu-text-ram.is-full { translate: -5px 0; }
+
+/* ---------- Notes ---------- */
+
+.vsb-notes {
+    position: relative;
+    width: 130px;
+    height: 121px;
+    background-repeat: no-repeat;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-notes {
+    width: 197px;
+    height: 177px;
+}
+
+.vsb-notes-text {
+    position: absolute;
+    top: 12px;
+    left: 11px;
+    box-sizing: border-box;
+    width: 102px;
+    height: 65px;
+    margin: 0;
+    padding: 0;
+    overflow: auto;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: #000;
+    line-height: 1.2;
+    resize: none;
+    scrollbar-width: none;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-notes-text {
+    top: 10px;
+    left: 16px;
+    width: 160px;
+    height: 125px;
+}
+
+.vsb-notes-bar {
+    position: absolute;
+    top: 81px;
+    left: 0;
+    width: 100%;
+    height: 20px;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-notes-bar {
+    top: 138px;
+}
+
+.vsb .vsb-notes-btn {
+    position: absolute;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+}
+
+.vsb-notes-well {
+    position: absolute;
+    top: 0;
+    left: 27px;
+    width: 76px;
+    height: 20px;
+    background: url('/static_images/vista-sidebar/notes/sticky_well.png') no-repeat;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-notes-well { left: 61px; }
+.vsb .vsb-notes-delete { top: 3px; left: 8px; }
+.vsb-gadget[data-docked="0"] .vsb-notes-delete { left: 10px; }
+.vsb .vsb-notes-prev { left: 2px; }
+.vsb .vsb-notes-next { left: 56px; }
+.vsb .vsb-notes-add { left: 104px; }
+.vsb-gadget[data-docked="0"] .vsb-notes-add { left: 164px; }
+
+.vsb-notes-count {
+    position: absolute;
+    top: 0;
+    right: 18px;
+    left: 18px;
+    color: #000;
+    font: 7pt "Segoe UI", Tahoma, sans-serif;
+    line-height: 20px;
+    text-align: center;
+}
+
+.vsb .vsb-notes-delete { background-image: url('/static_images/vista-sidebar/notes/sticky_delete_rest.png'); }
+.vsb .vsb-notes-delete:hover { background-image: url('/static_images/vista-sidebar/notes/sticky_delete_hover.png'); }
+.vsb .vsb-notes-delete:active { background-image: url('/static_images/vista-sidebar/notes/sticky_delete_pressed.png'); }
+.vsb .vsb-notes-prev { background-image: url('/static_images/vista-sidebar/notes/sticky_left_rest.png'); }
+.vsb .vsb-notes-prev:hover { background-image: url('/static_images/vista-sidebar/notes/sticky_left_hover.png'); }
+.vsb .vsb-notes-prev:active { background-image: url('/static_images/vista-sidebar/notes/sticky_left_pressed.png'); }
+.vsb .vsb-notes-prev:disabled { background-image: url('/static_images/vista-sidebar/notes/sticky_left_disabled.png'); }
+.vsb .vsb-notes-next { background-image: url('/static_images/vista-sidebar/notes/sticky_right_rest.png'); }
+.vsb .vsb-notes-next:hover { background-image: url('/static_images/vista-sidebar/notes/sticky_right_hover.png'); }
+.vsb .vsb-notes-next:active { background-image: url('/static_images/vista-sidebar/notes/sticky_right_pressed.png'); }
+.vsb .vsb-notes-next:disabled { background-image: url('/static_images/vista-sidebar/notes/sticky_right_disabled.png'); }
+.vsb .vsb-notes-add { background-image: url('/static_images/vista-sidebar/notes/sticky_plus_rest.png'); }
+.vsb .vsb-notes-add:hover { background-image: url('/static_images/vista-sidebar/notes/sticky_plus_hover.png'); }
+.vsb .vsb-notes-add:active { background-image: url('/static_images/vista-sidebar/notes/sticky_plus_pressed.png'); }
+.vsb .vsb-notes-add:disabled { background-image: url('/static_images/vista-sidebar/notes/sticky_plus_disabled.png'); }
+/* a Notion note is one page: no local pages to add, delete or step through */
+.vsb-notes.is-linked .vsb-notes-bar { visibility: hidden; }
+
+/* ---------- Picture Puzzle ---------- */
+
+.vsb-puzzle {
+    position: relative;
+    width: 130px;
+    height: 138px;
+    background: url('/static_images/vista-sidebar/puzzle/background.png') no-repeat;
+    color: #462300;
+    font: 700 11px "Segoe UI", Tahoma, sans-serif;
+}
+
+.vsb .vsb-puzzle-btn {
+    position: absolute;
+    top: 4px;
+    width: 14px;
+    height: 14px;
+}
+
+.vsb .vsb-puzzle-timer { left: 9px; background-image: url('/static_images/vista-sidebar/puzzle/timer_up.png'); }
+.vsb .vsb-puzzle-timer:hover { background-image: url('/static_images/vista-sidebar/puzzle/timer_over.png'); }
+.vsb .vsb-puzzle-timer:active,
+.vsb .vsb-puzzle-timer.is-paused { background-image: url('/static_images/vista-sidebar/puzzle/timer_down.png'); }
+.vsb .vsb-puzzle-hint { left: 92px; background-image: url('/static_images/vista-sidebar/puzzle/hint_up.png'); }
+.vsb .vsb-puzzle-hint:hover { background-image: url('/static_images/vista-sidebar/puzzle/hint_over.png'); }
+.vsb .vsb-puzzle-hint:active { background-image: url('/static_images/vista-sidebar/puzzle/hint_down.png'); }
+.vsb .vsb-puzzle-shuffle { left: 107px; background-image: url('/static_images/vista-sidebar/puzzle/shuffle_up.png'); }
+.vsb .vsb-puzzle-shuffle:hover { background-image: url('/static_images/vista-sidebar/puzzle/shuffle_over.png'); }
+.vsb .vsb-puzzle-shuffle:active { background-image: url('/static_images/vista-sidebar/puzzle/shuffle_down.png'); }
+
+.vsb-puzzle-time {
+    position: absolute;
+    top: 4px;
+    left: 24px;
+    line-height: 14px;
+}
+
+.vsb-puzzle-pad {
+    position: absolute;
+    top: 20px;
+    left: 10px;
+    width: 108px;
+    height: 108px;
+    border: 1px solid #462300;
+}
+
+.vsb-puzzle-tile,
+.vsb-puzzle-empty {
+    position: absolute;
+    width: 27px;
+    height: 27px;
+}
+
+.vsb-puzzle-tile {
+    background-color: #8a6a4a;
+    background-repeat: no-repeat;
+    background-size: 108px 108px;
+    transition: left 0.12s ease-out, top 0.12s ease-out;
+}
+
+.vsb-puzzle-tile img {
+    display: block;
+    width: 27px;
+    height: 27px;
+}
+
+.vsb-puzzle-picture {
+    position: absolute;
+    top: 21px;
+    left: 11px;
+    z-index: 5;
+    width: 108px;
+    height: 108px;
+    background-size: 108px 108px;
+}
+
+.vsb-puzzle-win {
+    position: absolute;
+    top: 19px;
+    left: 10px;
+    z-index: 6;
+    box-sizing: border-box;
+    width: 110px;
+    height: 110px;
+    padding: 30px 6px 0;
+    border: 1px solid #462300;
+    background: rgba(51, 51, 51, 0.7);
+    color: #fff;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* ---------- Slide Show ---------- */
+
+/* picture box (--vsb-vw x --vsb-vh at --vsb-vx, --vsb-vy) per shape; the frame adds the glass edge (--vsb-edge-x/y) */
+.vsb-slide {
+    --vsb-vx: 4px;
+    --vsb-vy: 5px;
+    --vsb-vw: 120px;
+    --vsb-vh: 90px;
+    --vsb-edge-x: 10px;
+    --vsb-edge-y: 10px;
+    --vsb-bar-up: 27px;
+    --vsb-bar-left: -57px;
+    position: relative;
+    width: calc(var(--vsb-vw) + var(--vsb-edge-x));
+    height: calc(var(--vsb-vh) + var(--vsb-edge-y));
+}
+
+.vsb-slide[data-shape="square"] { --vsb-vh: 120px; }
+.vsb-slide[data-shape="portrait"] { --vsb-vh: 160px; }
+
+.vsb-gadget[data-docked="0"] .vsb-slide {
+    --vsb-vx: 17px;
+    --vsb-vy: 16px;
+    --vsb-vw: 320px;
+    --vsb-vh: 240px;
+    --vsb-edge-x: 40px;
+    --vsb-edge-y: 40px;
+    --vsb-bar-up: 36px;
+    --vsb-bar-left: -58px;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-slide[data-shape="square"] { --vsb-vw: 280px; --vsb-vh: 280px; }
+.vsb-gadget[data-docked="0"] .vsb-slide[data-shape="portrait"] { --vsb-vw: 240px; --vsb-vh: 320px; }
+
+.vsb-slide-view {
+    position: absolute;
+    top: var(--vsb-vy);
+    left: var(--vsb-vx);
+    width: var(--vsb-vw);
+    height: var(--vsb-vh);
+    overflow: hidden;
+    z-index: 1;
+    cursor: pointer;
+}
+
+.vsb-slide-img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+}
+
+.vsb-slide-img.is-front { z-index: 2; opacity: 1; }
+.vsb-slide-img.is-leaving { z-index: 1; opacity: 1; }
+.vsb-slide-img[data-fx="fade-in"] { animation: vsb-fx-fade 0.8s ease-out; }
+.vsb-slide-img[data-fx="wipe-in"] { animation: vsb-fx-wipe 0.8s ease-out; }
+.vsb-slide-img[data-fx="iris-in"] { animation: vsb-fx-iris 0.8s ease-out; }
+.vsb-slide-img[data-fx="slide-in"],
+.vsb-slide-img[data-fx="push-in"] { animation: vsb-fx-slide 0.8s ease-out; }
+.vsb-slide-img[data-fx="push-out"] { animation: vsb-fx-push-out 0.8s ease-out forwards; }
+
+@keyframes vsb-fx-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes vsb-fx-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
+@keyframes vsb-fx-iris { from { clip-path: circle(0% at 50% 50%); } to { clip-path: circle(75% at 50% 50%); } }
+@keyframes vsb-fx-slide { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes vsb-fx-push-out { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+/* the glass frame is the backdrop: its middle is opaque black, under the picture. Nine-slice of the
+   Vista frame art (edges = the picture insets) so every shape keeps the corners */
+.vsb-slide-glass {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 0;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    border-style: solid;
+    border-width: 5px 6px 5px 4px;
+    border-image: url('/static_images/vista-sidebar/slideshow/in_sidebar/slideshow_glass_frame.png') 5 6 5 4 fill stretch;
+    pointer-events: none;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-slide-glass {
+    border-width: 16px 23px 24px 17px;
+    border-image: url('/static_images/vista-sidebar/slideshow/on_desktop/slideshow_glass_frame.png') 16 23 24 17 fill stretch;
+}
+
+/* undocked frames scale from the bottom-right corner (vsbSlideResizeStart); the frame's zoom also scales this */
+.vsb-slide-resize {
+    display: none;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    width: 16px;
+    height: 16px;
+    cursor: var(--c-nwse-resize);
+}
+
+.vsb-gadget[data-docked="0"] .vsb-slide-resize { display: block; }
+
+.vsb-slide-empty {
+    position: absolute;
+    top: var(--vsb-vy);
+    left: var(--vsb-vx);
+    width: var(--vsb-vw);
+    z-index: 2;
+    color: #ccc;
+    font-size: 11px;
+    line-height: 60px;
+    text-align: center;
+}
+
+/* centred under the picture, a little above its bottom edge */
+.vsb-slide-bar {
+    position: absolute;
+    top: calc(var(--vsb-vy) + var(--vsb-vh) - var(--vsb-bar-up));
+    left: calc(var(--vsb-vx) + var(--vsb-vw) / 2 + var(--vsb-bar-left));
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: 112px;
+    height: 23px;
+    background: url('/static_images/vista-sidebar/slideshow/in_sidebar/bg_sidebar.png') no-repeat;
+}
+
+.vsb .vsb-slide-btn { width: 17px; height: 17px; }
+.vsb .vsb-slide-prev { width: 20px; background-image: url('/static_images/vista-sidebar/slideshow/prev_rest.png'); }
+.vsb .vsb-slide-prev:hover { background-image: url('/static_images/vista-sidebar/slideshow/prev_hov.png'); }
+.vsb .vsb-slide-prev:active { background-image: url('/static_images/vista-sidebar/slideshow/prev_down.png'); }
+.vsb .vsb-slide-play { background-image: url('/static_images/vista-sidebar/slideshow/pause_rest.png'); }
+.vsb .vsb-slide-play:hover { background-image: url('/static_images/vista-sidebar/slideshow/pause_hov.png'); }
+.vsb .vsb-slide-play:active { background-image: url('/static_images/vista-sidebar/slideshow/pause_down.png'); }
+.vsb .vsb-slide-play.is-paused { background-image: url('/static_images/vista-sidebar/slideshow/play_rest.png'); }
+.vsb .vsb-slide-play.is-paused:hover { background-image: url('/static_images/vista-sidebar/slideshow/play_hov.png'); }
+.vsb .vsb-slide-play.is-paused:active { background-image: url('/static_images/vista-sidebar/slideshow/play_down.png'); }
+.vsb .vsb-slide-next { background-image: url('/static_images/vista-sidebar/slideshow/next_rest.png'); }
+.vsb .vsb-slide-next:hover { background-image: url('/static_images/vista-sidebar/slideshow/next_hov.png'); }
+.vsb .vsb-slide-next:active { background-image: url('/static_images/vista-sidebar/slideshow/next_down.png'); }
+.vsb .vsb-slide-reveal { width: 23px; margin-left: 6px; background-image: url('/static_images/vista-sidebar/slideshow/reveal_rest.png'); }
+.vsb .vsb-slide-reveal:hover { background-image: url('/static_images/vista-sidebar/slideshow/reveal_hov.png'); }
+.vsb .vsb-slide-reveal:active { background-image: url('/static_images/vista-sidebar/slideshow/reveal_down.png'); }
+
+.vsb-flyout {
+    position: fixed;
+    z-index: 2650;
+    padding: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 5px;
+    background: rgba(20, 24, 30, 0.85);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+}
+
+.vsb-flyout-img {
+    display: block;
+    object-fit: contain;
+}
+
+/* ---------- Weather ---------- */
+
+.vsb-wx {
+    position: relative;
+    width: 130px;
+    height: 67px;
+    overflow: hidden;
+    background-repeat: no-repeat;
+    color: #000;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-wx {
+    width: 264px;
+    height: 194px;
+}
+
+.vsb-wx[data-sky="BLACK"] {
+    color: #f0f0f0;
+}
+
+.vsb-wx-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.vsb-wx-highlight {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    z-index: 3;
+    width: 123px;
+    height: 60px;
+}
+
+.vsb-wx-highlight-top {
+    z-index: 5;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-wx-highlight {
+    top: 13px;
+    left: 13px;
+    width: 230px;
+    height: 160px;
+}
+
+.vsb-wx-temp,
+.vsb-wx-place,
+.vsb-wx-condition,
+.vsb-wx-today,
+.vsb-wx-forecast {
+    position: absolute;
+    z-index: 4;
+    overflow: hidden;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vsb-wx-temp { top: -3px; left: 54px; width: 70px; font-size: 24px; }
+.vsb-wx-place { top: 34px; left: 6px; width: 116px; font-size: 12px; }
+.vsb-gadget[data-docked="0"] .vsb-wx-temp { top: 5px; left: 145px; width: 95px; font-size: 32px; }
+.vsb-gadget[data-docked="0"] .vsb-wx-place { top: 76px; left: 18px; width: 222px; font-size: 14px; }
+.vsb-wx-condition { top: 43px; left: 32px; width: 207px; font-size: 12px; }
+/* #Today: a table at the box's right edge, high and low in 40 px right-aligned cells */
+.vsb-wx-today { top: 58px; left: 124px; display: flex; justify-content: flex-end; width: 116px; font-size: 12px; }
+.vsb-wx-today > span:not(:nth-child(2)) { width: 40px; text-align: right; }
+.vsb-wx-today > span:nth-child(2) { padding: 0 2px; }
+.vsb-wx[data-sky="GRAY"] :is(.vsb-wx-condition, .vsb-wx-today) { color: #5b6062; }
+
+/* #Forecasts: per day a 28 px temperature column and a 47 px picture column under the day
+   name, vertical dividers between days, then the horizontal divider and the attribution */
+.vsb-wx-forecast {
+    bottom: 20px;
+    left: 14px;
+    width: 230px;
+    text-align: left;
+}
+
+.vsb-wx-days {
+    display: flex;
+}
+
+.vsb-wx-day {
+    display: grid;
+    grid-template-columns: 28px 47px;
+    align-items: end;
+}
+
+.vsb-wx-day + .vsb-wx-day {
+    padding-left: 2px;
+    background: url('/static_images/vista-sidebar/weather/divider-vertical.png') 0 12px / 2px calc(100% - 12px) no-repeat;
+}
+
+.vsb-wx-day-name {
+    grid-column: 1 / -1;
+    padding-left: 4px;
+    font-size: 11px;
+}
+
+.vsb-wx-range {
+    display: flex;
+    flex-direction: column;
+    padding-left: 4px;
+    font-size: 12px;
+}
+
+.vsb-wx-day img {
+    justify-self: center;
+    width: 42px;
+    height: 34px;
+}
+
+.vsb-wx-attribution {
+    margin-top: 2px;
+    padding: 3px 0 3px 4px;
+    overflow: hidden;
+    background: url('/static_images/vista-sidebar/weather/divider-horizontal.png') 0 0 / 228px 2px no-repeat;
+    font-size: 12px;
+    font-weight: lighter;
+    text-overflow: ellipsis;
+}
+
+.vsb-wx-day-name,
+.vsb-wx-lo,
+.vsb-wx-attribution { color: #99cbff; }
+.vsb-wx-hi { color: #eee; }
+.vsb-wx[data-sky="GRAY"] :is(.vsb-wx-day-name, .vsb-wx-lo, .vsb-wx-attribution) { color: #b5babe; }
+.vsb-wx[data-sky="GRAY"] .vsb-wx-hi { color: #fbfbfb; }
+.vsb-wx[data-sky="BLACK"] :is(.vsb-wx-day-name, .vsb-wx-lo, .vsb-wx-attribution) { color: #a6a6a6; }
+.vsb-wx[data-sky="BLACK"] .vsb-wx-hi { color: #fff; }
+
+.vsb-wx-message {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 6px;
+    color: #f0f0f0;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* ---------- Mail (Dovecote Inbox, drawn like Feed Headlines) ---------- */
+
+.vsb-mail {
+    position: relative;
+    width: 130px;
+    height: 173px;
+    background: url('/static_images/vista-sidebar/mail/rssBackBlue_docked.png') no-repeat;
+    color: #fff;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mail {
+    width: 296px;
+    height: 232px;
+    background-image: url('/static_images/vista-sidebar/mail/rssBackBlue_Undocked.png');
+}
+
+.vsb .vsb-mail-head {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    width: 122px;
+    height: 18px;
+    padding: 0 3px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.vsb .vsb-mail-head:hover > span:first-child {
+    text-decoration: underline;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mail-head {
+    top: 10px;
+    left: 16px;
+    width: 264px;
+}
+
+.vsb-mail-unread {
+    color: #9fc3e8;
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.vsb-mail-list,
+.vsb-mail-message {
+    position: absolute;
+    top: 23px;
+    left: 3px;
+    width: 123px;
+}
+
+.vsb-gadget[data-docked="0"] :is(.vsb-mail-list, .vsb-mail-message) {
+    top: 32px;
+    left: 16px;
+    width: 264px;
+}
+
+.vsb-mail-message {
+    height: 105px;
+    color: #c8d4e0;
+    font-size: 12px;
+    line-height: 105px;
+    text-align: center;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mail-message {
+    height: 172px;
+    line-height: 172px;
+}
+
+.vsb .vsb-mail-item {
+    display: block;
+    box-sizing: border-box;
+    width: 123px;
+    height: 35px;
+    padding: 5px 1px 4px 6px;
+    text-align: left;
+}
+
+.vsb .vsb-mail-item:hover {
+    background-image: url('/static_images/vista-sidebar/mail/item_hover_docked.png');
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mail-item {
+    width: 264px;
+    height: 43px;
+    padding: 7px 6px;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mail-item:hover {
+    background-image: url('/static_images/vista-sidebar/mail/item_hover_floating.png');
+}
+
+.vsb-mail-subject {
+    display: block;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vsb-mail-item.is-unread .vsb-mail-subject {
+    font-weight: 600;
+}
+
+.vsb-mail-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    color: #67788a;
+    font-size: 11px;
+    line-height: 13px;
+}
+
+.vsb-mail-from {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vsb-mail-nav {
+    position: absolute;
+    top: 147px;
+    left: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    width: 78px;
+    height: 20px;
+    padding: 0 2px;
+    background: url('/static_images/vista-sidebar/mail/navBack.png') no-repeat;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mail-nav {
+    top: 204px;
+    left: 109px;
+}
+
+.vsb-mail-pos {
+    color: #fff;
+    font: 11px Calibri, "Segoe UI", sans-serif;
+    white-space: nowrap;
+}
+
+.vsb .vsb-mail-btn { width: 16px; height: 16px; }
+.vsb .vsb-mail-btn:disabled { opacity: 0.35; }
+.vsb .vsb-mail-up { background-image: url('/static_images/vista-sidebar/mail/buttonUp_Off.png'); }
+.vsb .vsb-mail-up:hover { background-image: url('/static_images/vista-sidebar/mail/buttonUp_On.png'); }
+.vsb .vsb-mail-down { background-image: url('/static_images/vista-sidebar/mail/buttonDown_Off.png'); }
+.vsb .vsb-mail-down:hover { background-image: url('/static_images/vista-sidebar/mail/buttonDown_On.png'); }
+
+/* ---------- gadget options and Sidebar Properties (confirmationDialog.js task dialog) ---------- */
+
+.vsb-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 260px;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+.vsb-options label {
+    font: inherit;
+}
+
+.vsb-options-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.vsb-options-preview-image {
+    width: 155px;
+    height: 155px;
+    background: no-repeat center;
+}
+
+.vsb-options-preview-image.vsb-notes-preview {
+    width: 130px;
+    height: 121px;
+}
+
+.vsb-options-arrow {
+    width: 19px;
+    height: 19px;
+    background-image: url('/static_images/vista-sidebar/clock/settings_left_rest.png');
+}
+
+.vsb-options-arrow:hover { background-image: url('/static_images/vista-sidebar/clock/settings_left_hover.png'); }
+.vsb-options-arrow:active { background-image: url('/static_images/vista-sidebar/clock/settings_left_pressed.png'); }
+.vsb-options-arrow.is-disabled { background-image: url('/static_images/vista-sidebar/clock/settings_left_disabled.png'); pointer-events: none; }
+.vsb-options-arrow-next { background-image: url('/static_images/vista-sidebar/clock/settings_right_rest.png'); }
+.vsb-options-arrow-next:hover { background-image: url('/static_images/vista-sidebar/clock/settings_right_hover.png'); }
+.vsb-options-arrow-next:active { background-image: url('/static_images/vista-sidebar/clock/settings_right_pressed.png'); }
+.vsb-options-arrow-next.is-disabled { background-image: url('/static_images/vista-sidebar/clock/settings_right_disabled.png'); }
+
+.vsb-options-count {
+    margin-top: -6px;
+    text-align: center;
+}
+
+.vsb-properties-list {
+    color: #444;
+}
+
+/* ---------- Gadget Gallery ---------- */
+
+/* The pager and search sit on the frame glass in the title toolbar, as #logViewerModal
+   (log-viewer.css): title pad 1 + title 26 + gap 4 + pager 23 + bottom 8 = 62. "Show details"
+   sits on a band of frame glass along the foot (--window-frame-bottom, aero-glass.css). */
+#vistaGadgetGallery.toolbar-visible {
+    --modal-title-chrome-height: 62px;
+    --window-frame-bottom: 30px;
+    width: 686px;
+    padding-top: var(--modal-title-chrome-height);
+    padding-bottom: calc(var(--window-frame-inset, 0px) + var(--window-frame-bottom));
+}
+
+.vsb-gallery-window .modal-window-title {
+    gap: 4px;
+    padding-bottom: 8px;
+}
+
+/* Vista's gallery shows no caption text, only the close button */
+.vsb-gallery-window .modal-window-title-main {
+    visibility: hidden;
+}
+
+.vsb-gallery-window .modal-window-title-toolbar {
+    justify-content: space-between;
+    height: auto;
+    min-height: 23px;
+    padding: 0 2px;
+}
+
+.vsb-gallery-title-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.vsb-gallery {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+
+.vsb-gallery-pager {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 23px;
+    padding: 0 1px;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    border-radius: 12px;
+    background: linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.35));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+.vsb-gallery-page-text {
+    white-space: nowrap;
+}
+
+.vsb-gallery-page-btn {
+    width: 22px;
+    height: 23px;
+    background: url('/static_images/vista-sidebar/sidebar/gallery-prev.png') 0 0 no-repeat;
+    cursor: default;
+}
+
+.vsb-gallery-page-next { background-image: url('/static_images/vista-sidebar/sidebar/gallery-next.png'); }
+.vsb-gallery-page-btn:hover { background-position: 0 -23px; }
+.vsb-gallery-page-btn:active { background-position: 0 -46px; }
+.vsb-gallery-page-btn.is-disabled { background-position: 0 -69px; pointer-events: none; }
+
+.vsb-gallery-window .win7 .vsb-gallery-search {
+    flex: 0 0 200px;
+    width: 200px;
+    height: 22px;
+}
+
+.vsb-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    align-content: start;
+    gap: 4px 6px;
+    min-height: 220px;
+    padding: 8px 14px;
+}
+
+.vsb-gallery-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 104px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    outline: none;
+}
+
+.vsb-gallery-tile:hover {
+    border-color: #b8d6fb;
+    background: linear-gradient(rgba(250, 251, 253, 0.8), rgba(235, 243, 253, 0.8));
+}
+
+.vsb-gallery-tile.is-selected {
+    border-color: #7da2ce;
+    background: linear-gradient(rgba(220, 235, 252, 0.9), rgba(193, 219, 252, 0.9));
+}
+
+.vsb-gallery-tile img {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+}
+
+.vsb-gallery-none {
+    grid-column: 1 / -1;
+    padding: 40px 0;
+    color: #555;
+    text-align: center;
+}
+
+.vsb-gallery-details {
+    display: flex;
+    gap: 12px;
+    padding: 8px 14px;
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.vsb-gallery-details img {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+}
+
+.vsb-gallery-details-name {
+    font-weight: 600;
+}
+
+.vsb-gallery-details-version,
+.vsb-gallery-details-author {
+    color: #555;
+}
+
+.vsb-gallery-footer {
+    position: absolute;
+    left: calc(var(--window-frame-inset, 0px) + 10px);
+    bottom: var(--window-frame-inset, 0px);
+    display: flex;
+    align-items: center;
+    height: var(--window-frame-bottom);
+}
+
+.vsb-gallery-details-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: default;
+}
+
+.vsb-gallery-chevron {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #8ea4c1;
+    border-radius: 50%;
+    background: linear-gradient(#fff, #dde6f0);
+}
+
+.vsb-gallery-chevron::before {
+    content: "";
+    display: block;
+    width: 5px;
+    height: 5px;
+    margin: 4px auto 0;
+    border-right: 1.5px solid #333;
+    border-bottom: 1.5px solid #333;
+    transform: rotate(45deg);
+}
+
+.vsb-gallery-show-details .vsb-gallery-chevron::before {
+    margin-top: 6px;
+    transform: rotate(-135deg);
+}
+
+.vsb-gallery-ghost {
+    position: fixed;
+    z-index: 3000;
+    width: 64px;
+    height: 64px;
+    opacity: 0.8;
+    pointer-events: none;
+}

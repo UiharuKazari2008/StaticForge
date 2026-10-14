@@ -479,18 +479,10 @@ function ensureGalleryJumpIndexToolWindow() {
         galleryJumpIndexListenersInitialized = true;
     }
 
-    if (!galleryJumpIndexDropdownsInitialized
-        && typeof setupDropdown === 'function'
-        && typeof renderSimpleDropdown === 'function') {
-        const minDrop = document.getElementById('galleryJumpIndexMinTimeDropdown');
+    if (!galleryJumpIndexDropdownsInitialized) {
         const minBtn = document.getElementById('galleryJumpIndexMinTimeDropdownBtn');
-        const minMenu = document.getElementById('galleryJumpIndexMinTimeDropdownMenu');
-        const maxDrop = document.getElementById('galleryJumpIndexMaxGroupDropdown');
         const maxBtn = document.getElementById('galleryJumpIndexMaxGroupDropdownBtn');
-        const maxMenu = document.getElementById('galleryJumpIndexMaxGroupDropdownMenu');
 
-        const closeMin = () => closeDropdown(minMenu, minBtn);
-        const closeMax = () => closeDropdown(maxMenu, maxBtn);
         const selectMin = (value) => {
             selectedGalleryJumpIndexMinTimeMs = Number(value);
             if (galleryJumpIndexMinTimeSelectedEl) {
@@ -507,29 +499,21 @@ function ensureGalleryJumpIndexToolWindow() {
             }
             regenerateGalleryJumpIndex();
         };
-        const renderMin = (selectedVal) => renderSimpleDropdown(
-            minMenu,
-            GALLERY_JUMP_INDEX_MIN_TIME_OPTIONS,
-            'value',
-            'name',
-            selectMin,
-            closeMin,
-            selectedVal,
-            { preventFocusTransfer: true }
-        );
-        const renderMax = (selectedVal) => renderSimpleDropdown(
-            maxMenu,
-            GALLERY_JUMP_INDEX_MAX_GROUP_OPTIONS,
-            'value',
-            'name',
-            selectMax,
-            closeMax,
-            selectedVal,
-            { preventFocusTransfer: true }
-        );
-
-        setupDropdown(minDrop, minBtn, minMenu, renderMin, () => selectedGalleryJumpIndexMinTimeMs, { preventFocusTransfer: true });
-        setupDropdown(maxDrop, maxBtn, maxMenu, renderMax, () => (selectedGalleryJumpIndexMaxGroupImages === Infinity ? 'none' : selectedGalleryJumpIndexMaxGroupImages), { preventFocusTransfer: true });
+        const minItems = GALLERY_JUMP_INDEX_MIN_TIME_OPTIONS.map((o) => ({ value: o.value, text: o.name }));
+        const maxItems = GALLERY_JUMP_INDEX_MAX_GROUP_OPTIONS.map((o) => ({ value: o.value, text: o.name }));
+        // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+        contextMenu.attachPickerMenu(minBtn, {
+            anchorAlign: 'end',
+            items: () => minItems,
+            value: () => selectedGalleryJumpIndexMinTimeMs,
+            onSelect: selectMin
+        });
+        contextMenu.attachPickerMenu(maxBtn, {
+            anchorAlign: 'end',
+            items: () => maxItems,
+            value: () => (selectedGalleryJumpIndexMaxGroupImages === Infinity ? 'none' : selectedGalleryJumpIndexMaxGroupImages),
+            onSelect: selectMax
+        });
         galleryJumpIndexDropdownsInitialized = true;
     }
 

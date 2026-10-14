@@ -1511,7 +1511,7 @@
     font-size: 0.8em;
     line-height: 1;
     color: var(--text-primary);
-    cursor: text;
+    cursor: var(--c-text);
     transition: var(--transition-tray-menu);
 }
 

@@ -13,6 +13,7 @@
 .custom-dropdown-btn:hover:not(:disabled),
 .custom-dropdown-btn:focus-visible:not(:disabled),
 .custom-dropdown-btn.active,
+.custom-dropdown-btn.context-open,
 .custom-dropdown-menu:not(.hidden) {
     will-change: background-color, border-color, box-shadow, color, backdrop-filter, transform, opacity, top;
 }
@@ -55,7 +56,8 @@
         z-index: var(--z-layer-3);
     }
 
-    .custom-dropdown-btn.hover-show.active:hover:not(:disabled) {
+    .custom-dropdown-btn.hover-show.active:hover:not(:disabled),
+    .custom-dropdown-btn.hover-show.context-open:hover:not(:disabled) {
         background: var(--hover-show-active-bg);
         border: 1px solid var(--hover-show-active-border);
         box-shadow: var(--hover-show-active-shadow);
@@ -196,7 +198,8 @@
 }
 
 .custom-dropdown-btn:focus,
-.custom-dropdown-btn.active {
+.custom-dropdown-btn.active,
+.custom-dropdown-btn.context-open {
     background: rgba(255, 255, 255, 0.25);
     border: 1px solid rgba(255, 255, 255, 1);
     outline: none;
@@ -400,7 +403,7 @@
 
 .custom-dropdown-option.disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
     pointer-events: none;
 }
 
@@ -696,28 +699,6 @@ div#subTogglesDropdownMenu {
     border-color: var(--primary-color);
 }
 
-.dataset-tag-search-results {
-    max-height: 300px;
-    overflow-y: auto;
-}
-
-.dataset-tag-search-hint {
-    text-align: center;
-    color: var(--text-secondary);
-    font-style: italic;
-    padding: var(--spacing-lg);
-}
-
-.dataset-tag-search-result {
-    border-radius: var(--border-radius-sm);
-    transition: background-color 0.2s ease;
-}
-
-.dataset-tag-search-result:hover:not(:disabled),
-.dataset-tag-search-result.selected {
-    background: var(--glass-layer-dark-3);
-}
-
 .dataset-tag-search-tag {
     font-weight: 600;
     color: var(--text-accent);
@@ -727,17 +708,6 @@ div#subTogglesDropdownMenu {
 .dataset-tag-search-path {
     font-size: 12px;
     color: var(--text-secondary);
-}
-
-/* Search dropdown positioning */
-.dataset-tag-search-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    width: 300px;
-    z-index: var(--z-overlay);
-    max-height: 300px;
-    overflow-y: auto;
 }
 
 .dataset-tag-search-input-container {

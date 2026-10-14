@@ -15,7 +15,7 @@ const SECURITY_DSAP_TAB_LABELS = {
     home: 'Home',
     blocked: 'Blocked Clients',
     honeypot: 'Honeypot',
-    auth: 'Authentication',
+    auth: 'Dreamscape Services',
     telemetry: 'Telemetry'
 };
 
@@ -748,7 +748,7 @@ const securityDsapScopedCss = `
   border-radius: 3px;
   padding: 5px 12px;
   margin: 0;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   line-height: 1.15;
   white-space: nowrap;
   box-shadow: 1px 1px 0 #ffffff inset, -1px -1px 0 #808080 inset;
@@ -773,7 +773,7 @@ const securityDsapScopedCss = `
 }
 [data-dsap="security-dyna"] .sec-dsap-action-btn:disabled {
   opacity: 0.5;
-  cursor: not-allowed;
+  cursor: var(--c-not-allowed);
 }
 
 [data-dsap="security-dyna"] .sec-table-wrap {
@@ -1044,7 +1044,7 @@ const securityDsapScopedCss = `
   padding: 2px 6px;
   border: 1px solid #666666;
   background: #f8f8f8;
-  cursor: pointer;
+  cursor: var(--c-pointer);
   font-size: 10pt;
 }
 [data-dsap="security-dyna"] .sec-scope-chip.selected {
@@ -1617,6 +1617,11 @@ const securityDsapDriver = {
         if (action === 'keychain-edit') {
             const row = btn.closest('[data-sec-keychain-service]');
             if (row) this._openKeychainEditPanel(root, row.dataset.secKeychainService);
+            return;
+        }
+        if (action === 'keychain-delete') {
+            const row = btn.closest('[data-sec-keychain-service]');
+            if (row) void this._deleteKeychainKey(root, row.dataset.secKeychainService);
             return;
         }
         if (action === 'keychain-add') {
@@ -3486,7 +3491,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
     },
 
     async _revokeAppkey(root, keyId) {
-        const ok = await showConfirmationDialog('Revoke this application key? Connected clients will lose access.', [
+        const ok = await showConfirmationDialog('Delete this application key? Connected clients will lose access.', [
             { text: 'Revoke', value: true, className: 'btn-danger' },
             { text: 'Cancel', value: false, className: 'btn-secondary' }
         ]);
@@ -3572,6 +3577,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
     },
 
     _keychainStatusHtml(service, index) {
+        if (service && service.statusCheck === false) return '';
         if (!service || service.missingKeys || index === null || index === undefined) return this._keychainDot({ state: 'none' }, '');
         const key = service.keys?.find((k) => k.index === index);
         if (!key) return this._keychainDot({ state: 'none' }, '');
@@ -3739,6 +3745,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
   <td class="sec-actions-cell">
     ${unlockBtn}
     <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="keychain-edit" title="Edit active key"><i class="fas fa-pen"></i></button>
+    ${service.missingKeys ? '' : `<button type="button" class="sec-dsap-action-btn sec-btn-danger sec-btn-small" data-sec-action="keychain-delete" title="Delete active key"><i class="fas fa-trash"></i></button>`}
     <button type="button" class="sec-dsap-action-btn sec-btn-primary sec-btn-small" data-sec-action="keychain-add" title="Add key"><i class="fas fa-plus"></i></button>
   </td>
 </tr>`;
@@ -3921,6 +3928,32 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             }
         } catch (err) {
             if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', err.message || 'Failed to add key', false, 5000);
+        }
+    },
+
+    async _deleteKeychainKey(root, serviceId) {
+        const kc = this._state.keychain;
+        const service = kc.services.find((s) => s.id === serviceId);
+        if (!service || service.missingKeys) return;
+        const index = kc.pendingSelections[serviceId];
+        if (index === null || index === undefined) return;
+        const name = this._keychainKeyLabel(service, index);
+        const ok = await showConfirmationDialog(`Delete ${name} from ${service.label || serviceId}?`, [
+            { text: 'Delete', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ]);
+        if (!ok || !(await this._ensureWs())) return;
+
+        try {
+            const data = await wsClient.sendMessage('delete_api_key', { service: serviceId, index });
+            if (data?.success) {
+                if (typeof showGlassToast === 'function') showGlassToast('success', null, 'Service key deleted', false, 4000, '<i class="fas fa-trash"></i>');
+                root.querySelector('#secKeychainEditPanel')?.classList.add('hidden');
+                root.querySelector('#secKeychainAddPanel')?.classList.add('hidden');
+                await this._loadKeychain(root);
+            }
+        } catch (err) {
+            if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', err.message || 'Failed to delete key', false, 5000);
         }
     },
 

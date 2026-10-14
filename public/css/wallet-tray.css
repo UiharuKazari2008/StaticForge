@@ -8,7 +8,7 @@
 .wallet-tray-icon {
     position: relative;
     color: var(--text-secondary);
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .wallet-tray-alert {
@@ -71,7 +71,7 @@
     background: linear-gradient(180deg, #f2f2f2 0%, #ebebeb 45%, #dddddd 50%, #cfcfcf 100%);
     color: #000000;
     font: inherit;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .wallet-tab:hover:not(.active) {
@@ -205,7 +205,7 @@
     padding: 0;
     color: #0066cc;
     font: inherit;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .wallet-inline-link:hover {
@@ -338,7 +338,7 @@
 
 /* The Director's usage badge opens the wallet */
 .wallet-opener {
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .wallet-alert-icon {
@@ -374,7 +374,7 @@
     color: #000000;
     font: inherit;
     font-size: 11px;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .wallet-alert-button:hover {
@@ -430,7 +430,7 @@
     color: #0066cc;
     font: inherit;
     text-align: left;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .wallet-flyout-link:hover:not(:disabled) {
@@ -440,7 +440,7 @@
 
 .wallet-flyout-link:disabled {
     color: #6d6d6d;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 /* ---- Windows Classic ------------------------------------------------------------------------ */

@@ -350,7 +350,7 @@ const pendingGalleryItemImages = new WeakMap();
 let lastRttCheckTime = 0; // Timestamp of last RTT measurement
 let activeResolutions = 0; // Currently active image loading operations
 let currentMultiplexingLevel = 1; // Current multiplexing level for callbacks
-let maxTotalConcurrent = 15; // Maximum total concurrent resolutions
+let maxTotalConcurrent = 4; // Keep preview decode from saturating the client
 
 // Scroll position preservation for upward scrolling
 let scrollPositionPreservationEnabled = false;
@@ -516,45 +516,10 @@ function processNextPlaceholders() {
         return;
     }
 
-    // Pause bulk resolution when actively scrolling fast; still resolve a few in-view placeholders
-    // so visible rows never stay empty while off-screen rows keep changing.
-    if (isScrolling && Math.abs(scrollVelocity) > 1.2) {
-        const resolveVisibleNow = () => {
-            if (!gallery || !gallery.children.length) return;
-            const roots = getGalleryScrollRoots();
-            const viewport = getGalleryViewportBounds(roots);
-            const items = gallery.children;
-            let geometry = galleryStripGeometryPass || galleryStripGeometryCached;
-            if (!geometry) {
-                geometry = measureGalleryStripGeometry(items, viewport, roots);
-                if (geometry) galleryStripGeometryCached = geometry;
-            }
-            const maxImmediate = 4;
-            let resolved = 0;
-            let startDom = 0;
-            let endDom = items.length - 1;
-            if (geometry && geometry.itemHeight > 0) {
-                const firstRow = Math.floor((viewport.viewportTop - geometry.firstTop) / geometry.itemHeight);
-                const lastRow = Math.ceil((viewport.viewportBottom - geometry.firstTop) / geometry.itemHeight);
-                startDom = Math.max(0, firstRow * geometry.columns);
-                endDom = Math.min(items.length - 1, (lastRow + 1) * geometry.columns - 1);
-            }
-            for (let i = startDom; i <= endDom && resolved < maxImmediate; i++) {
-                const el = items[i];
-                if (!el.classList.contains('gallery-placeholder')) continue;
-                if (galleryItemHasImageWork(el)) continue;
-                const fileIndex = parseInt(el.dataset.fileIndex, 10);
-                const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
-                if (!image) continue;
-                // ensureGalleryItemComplete: public/scripts/comp/galleryView.js
-                ensureGalleryItemComplete(el, image, fileIndex);
-                el.classList.remove('gallery-placeholder');
-                addImgToGalleryItemAsync(el, image);
-                resolved++;
-            }
-        };
-        resolveVisibleNow();
-        placeholderWatcherFrameId = setTimeout(processNextPlaceholders, 100);
+    // Keep the already-painted BlurHash cells static while scrolling. Starting image
+    // fetch/decode here competes with the scroll frame and can saturate a CPU core.
+    if (isScrolling) {
+        placeholderWatcherFrameId = null;
         return;
     }
 
@@ -852,6 +817,8 @@ function updateGalleryCatchupBusyLine() {
     const gw = document.getElementById('galleryWindow');
     if (!gw || gw.classList.contains('hidden')) {
         if (galleryCatchupBusyLineEl) galleryCatchupBusyLineEl.classList.add('hidden');
+        // desktopTaskMonitor.sync: public/scripts/comp/desktopTaskMonitor.js
+        desktopTaskMonitor.sync();
         return;
     }
     const wrap = gw.querySelector('.gallery-container-wrapper');
@@ -867,6 +834,8 @@ function updateGalleryCatchupBusyLine() {
         wrap.insertBefore(galleryCatchupBusyLineEl, wrap.firstChild);
     }
     galleryCatchupBusyLineEl.classList.toggle('hidden', !busy);
+    // desktopTaskMonitor.sync: public/scripts/comp/desktopTaskMonitor.js
+    desktopTaskMonitor.sync();
 }
 
 function triggerBuildGalleryNavigationCache() {
@@ -1486,6 +1455,7 @@ function ensureGalleryItemBlurhash(el, image) {
 function scheduleGalleryItemBlurhash(el, image) {
     if (!el || !image || !image.blurhash) return;
     if (el.dataset.blurhash === image.blurhash && el.style.backgroundImage) return;
+    if (isScrolling) return;
     galleryBlurhashPaintQueue.push({ el, hash: image.blurhash });
     if (galleryBlurhashPaintFrame) return;
     galleryBlurhashPaintFrame = requestAnimationFrame(flushGalleryBlurhashPaintQueue);
@@ -1493,6 +1463,10 @@ function scheduleGalleryItemBlurhash(el, image) {
 
 function flushGalleryBlurhashPaintQueue() {
     galleryBlurhashPaintFrame = 0;
+    if (isScrolling) {
+        galleryBlurhashPaintQueue.length = 0;
+        return;
+    }
     let painted = 0;
     while (painted < 8 && galleryBlurhashPaintQueue.length) {
         const job = galleryBlurhashPaintQueue.shift();
@@ -1726,6 +1700,13 @@ function showGalleryDataProgressModal(viewType = 'images') {
 
     const viewName = galleryProgressLeftLabel(viewType);
 
+    // workspaceSplash: public/scripts/comp/appSplash.js - while the Workspaces splash is up (#468)
+    // the progress draws in its corner; updateGalleryDataProgress feeds it, no dialog opens
+    if (workspaceSplash.isActive()) {
+        workspaceSplash.setStatus(`Loading ${viewName}...`);
+        return;
+    }
+
     if (!window.isDesktop) {
         galleryProgressToastId = showGlassToast(
             'info',
@@ -1814,6 +1795,13 @@ function isGalleryProgressTerminalPhase(progress) {
 function updateGalleryDataProgress(progress) {
     syncGalleryProgressDialogState();
     const terminal = isGalleryProgressTerminalPhase(progress);
+    // workspaceSplash: public/scripts/comp/appSplash.js - the splash owns the progress while it is up (#468)
+    if (workspaceSplash.isActive()) {
+        if (galleryProgressModal || galleryProgressToastId) hideGalleryProgressModal();
+        workspaceSplash.setProgress(progress);
+        if (terminal) workspaceSplash.hide();
+        return;
+    }
     if (!galleryProgressModal && !galleryProgressToastId) {
         if (terminal || isGalleryWindowHidden()) {
             return;
@@ -1872,6 +1860,9 @@ function updateGalleryLoadingProgress(progress) {
 }
 
 function hideGalleryProgressModal() {
+    // workspaceSplash: public/scripts/comp/appSplash.js - every end of a load (done, partial reveal,
+    // joined, failed) comes through here: the splash lingers 1.5 s past it, then goes (#468)
+    if (workspaceSplash.isActive()) workspaceSplash.hide();
     if (galleryProgressModal) {
         hideConfirmationDialog();
         galleryProgressModal = null;
@@ -4341,6 +4332,7 @@ function calculateMultiplexingLevel() {
         multiplexingLevel = Math.max(1, multiplexingLevel - 1);
     }
 
+    multiplexingLevel = Math.max(1, Math.min(maxTotalConcurrent, multiplexingLevel));
     currentMultiplexingLevel = multiplexingLevel; // Update global for callbacks
 
     return multiplexingLevel;
@@ -4563,7 +4555,7 @@ function addPlaceholdersBelow() {
 
 // Improved infinite scroll handler with percentage-based triggers
 function handleInfiniteScroll() {
-    if (isLoadingMore) return;
+    if (isLoadingMore || isScrolling) return;
 
     // Don't handle infinite scroll if gallery is not the foreground window
     // isGalleryForeground: public/scripts/comp/modalUtils.js
@@ -5018,8 +5010,8 @@ function updateGalleryTitleBar(options) {
     const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
     const showPosition = currentVisibleIndex > 100 && effectiveLength > 0;
 
-    // Build title
-    let title = `Workspace - ${viewName}`;
+    // Build title (the app is "Workspaces", one of the Dreamscape 2026 R7 package, docs/dreamscape-app-names.md)
+    let title = `Workspaces - ${viewName}`;
 
     if (searchTerm) {
         title += ` <i class="fas fa-chevron-left"></i> ${searchTerm}`;
@@ -5537,17 +5529,13 @@ function initIntersectionObserver() {
         });
 
         if (needsUpdate) {
-            // Scroll already runs updateVirtualScroll via handleInfiniteScroll.
-            // Idle intersection flicker (image decode, glass, modal) must not refill
-            // the two-page placeholder buffer — that was the P90 long-task source.
-            if (isScrolling || isFastScrolling) {
-                updateVirtualScroll();
-            } else {
-                const now = Date.now();
-                if (now - lastIdlePlaceholderResolveTime >= IDLE_PLACEHOLDER_RESOLVE_THROTTLE_MS) {
-                    lastIdlePlaceholderResolveTime = now;
-                    resolveVisiblePlaceholders();
-                }
+            // The scroll-stop pass owns virtual DOM changes. Intersection callbacks
+            // during movement otherwise duplicate layout work and fight native scrolling.
+            if (isScrolling || isFastScrolling) return;
+            const now = Date.now();
+            if (now - lastIdlePlaceholderResolveTime >= IDLE_PLACEHOLDER_RESOLVE_THROTTLE_MS) {
+                lastIdlePlaceholderResolveTime = now;
+                resolveVisiblePlaceholders();
             }
         }
     }, {
@@ -5687,7 +5675,7 @@ function updateVirtualScrollInternal() {
     // Track items that need placeholder state - keep as gallery-item elements, just add/remove placeholder class
     // Always prioritize truly visible placeholders with a small per-pass direct-resolve budget.
     let immediateVisibleResolved = 0;
-    const immediateVisibleResolveBudget = isRapidScrolling ? 4 : 8;
+    const immediateVisibleResolveBudget = galleryIdle ? 2 : 0;
     const stripDom = galleryKeepStripDomRange(items, stripMin, stripMax);
     const itemInKeepStrip = (el) => {
         if (!stripDom.filterByIndex) return true;
@@ -6190,6 +6178,16 @@ function updateVirtualScrollInternal() {
     displayedStartIndex = Math.max(0, newFirst);
     displayedEndIndex = Math.max(displayedStartIndex, newLast + 1);
 
+    // Scrolling keeps the existing static cells. The stop pass below resolves the
+    // final viewport without a second full DOM measurement on every wheel frame.
+    if (isScrolling) {
+        if (scrollPositionPreservationEnabled) {
+            restoreScrollPosition();
+        }
+        galleryStripGeometryPass = null;
+        return;
+    }
+
     // --- Force resolve all placeholders in the visible/buffered range to real items ---
     // Recompute visible/buffered range after any placeholder changes (re-calibrate; DOM may have grown)
     const updatedItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
@@ -6214,16 +6212,13 @@ function updateVirtualScrollInternal() {
         for (let i = minKeep; i <= maxKeep; i++) {
             const el = updatedItems[i];
             if (el && el.classList.contains('gallery-placeholder')) {
-                // If it's a gallery-item with placeholder class, just remove the class and ensure img exists
+                // Queue every preview through the bounded resolver. Direct eager loads
+                // here bypassed maxTotalConcurrent and caused the post-scroll CPU spike.
                 if (el.classList.contains('gallery-item')) {
-                    el.classList.remove('gallery-placeholder');
-                    // Add img element if it doesn't exist (placeholders don't have img elements)
                     if (!galleryItemHasImageWork(el)) {
                         const fileIndex = parseInt(el.dataset.fileIndex);
-                        const image = allImages[fileIndex];
-                        if (image) {
-                            addImgToGalleryItemAsync(el, image);
-                        }
+                        const filteredIndex = parseInt(el.dataset.index || i, 10);
+                        queuePlaceholderResolution(el, fileIndex, filteredIndex);
                     }
                 } else {
                     // Standalone placeholder - needs to be resolved to gallery-item
@@ -6654,9 +6649,7 @@ function clearSelection() {
 
 window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => {
     // With sentinel-based approach, the main infinite scroll is handled by Intersection Observer
-    // The scroll event now only handles virtual scrolling and placeholder management
-    let lastScrollTime = 0;
-    let scrollTimeout;
+    // The scroll event marks the static fast path; one stop pass catches up the virtual DOM.
 
     function throttledInfiniteScroll() {
         // Mark as scrolling and clear any existing timeout
@@ -6665,45 +6658,27 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
         if (scrollEndTimeout) clearTimeout(scrollEndTimeout);
 
         // Set a timeout to detect when scrolling stops
-        const scrollEndDelay = isIOS ? 150 : 50; // Longer delay to ensure scrolling has truly stopped
+        const scrollEndDelay = isIOS ? 180 : 150;
         scrollEndTimeout = setTimeout(() => {
             isScrolling = false;
+            isFastScrolling = false;
+            scrollVelocity = 0;
+            if (fastScrollTimeout) {
+                clearTimeout(fastScrollTimeout);
+                fastScrollTimeout = null;
+            }
             if (gallery) gallery.classList.remove('is-scrolling');
             // Process any queued placeholder cleanup when scrolling stops
-            // Only if scroll velocity is low (scrolling has actually stopped)
-            if (placeholderCleanupQueue.size > 0 && Math.abs(scrollVelocity) < 0.5) {
+            if (placeholderCleanupQueue.size > 0) {
                 processPlaceholderCleanup();
             }
-            // Start processing placeholders immediately when scrolling stops
+            // One catch-up pass replaces all layout/DOM work formerly repeated while moving.
+            handleInfiniteScroll();
             if (placeholderResolutionQueue.length > 0) {
                 processNextPlaceholders();
             }
-            if (virtualScrollEnabled) {
-                updateVirtualScroll();
-            }
             sendGalleryPositionHint();
         }, scrollEndDelay);
-
-
-        const now = Date.now();
-        if (now - lastScrollTime > infiniteScrollConfig.throttleDelay) {
-            handleInfiniteScroll();
-            lastScrollTime = now;
-        }
-
-        // Adjust debounce delay based on scroll velocity for more responsive handling
-        const currentVelocity = Math.abs(scrollVelocity);
-        let adjustedDebounceDelay = infiniteScrollConfig.debounceDelay;
-        if (currentVelocity > 6) {
-            adjustedDebounceDelay = Math.max(50, adjustedDebounceDelay * 0.3); // Much faster response during very fast scrolling
-        } else if (currentVelocity > 3) {
-            adjustedDebounceDelay = Math.max(100, adjustedDebounceDelay * 0.6); // Faster response during fast scrolling
-        }
-
-        if (scrollTimeout) clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            handleInfiniteScroll();
-        }, adjustedDebounceDelay);
     }
 
     // Velocity every scroll event; coalesce heavy work to one rAF
@@ -6786,7 +6761,7 @@ function onGalleryJumpIndexEnterKeydown(e) {
     if (!galleryJumpIndexToolEl || galleryJumpIndexToolEl.classList.contains('hidden')) return;
     const tag = e.target && e.target.tagName;
     if (tag === 'TEXTAREA') return;
-    if (e.target && e.target.closest && e.target.closest('.custom-dropdown-menu:not(.hidden)')) return;
+    if (contextMenu.isOpen) return;
     e.preventDefault();
     e.stopPropagation();
     jumpGalleryJumpIndexTarget();
@@ -9717,6 +9692,77 @@ async function togglePinImage(image, pinBtn = null) {
     } catch (error) {
         console.error('Error toggling pin status:', error);
         showError('Failed to toggle pin status');
+    }
+}
+
+/** Open the gallery at an image, offering to switch to the workspace that holds it (Image Search, Sidebar Slide Show). */
+async function jumpToGalleryImage(filename, imageWorkspaceId) {
+    if (!filename) return;
+    const currentWorkspaceId = activeWorkspace || 'default';
+
+    const findImageIndex = () => {
+        if (!allImages || !Array.isArray(allImages) || !allImages.length) return -1;
+        return allImages.findIndex((img) =>
+            img && (img.filename === filename || img.original === filename || img.upscaled === filename)
+        );
+    };
+
+    let imageIndex = findImageIndex();
+
+    if (imageIndex === -1 && imageWorkspaceId && imageWorkspaceId !== currentWorkspaceId) {
+        const workspaceName = workspaces?.[imageWorkspaceId]?.name || imageWorkspaceId;
+        const confirmed = await showConfirmationDialog(
+            `This image is in the "${workspaceName}" workspace. Switch to that workspace and jump to the image?`,
+            [
+                { text: 'Switch & Jump', value: true, className: 'btn-primary' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ]
+        );
+        if (!confirmed) return;
+        // setActiveWorkspace: public/scripts/comp/workspaceUtils.js
+        await setActiveWorkspace(imageWorkspaceId);
+        // loadGallery: public/scripts/comp/galleryView.js
+        if (loadGallery) await loadGallery(true);
+        imageIndex = findImageIndex();
+    }
+
+    if (imageIndex === -1 && loadGallery) {
+        await loadGallery(true);
+        imageIndex = findImageIndex();
+    }
+
+    if (imageIndex === -1) {
+        showGlassToast('warning', 'Not Found', 'Image not found in workspace', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    let targetIndex = imageIndex;
+    if (typeof window.filteredImageIndices !== 'undefined' && Array.isArray(window.filteredImageIndices)) {
+        const filteredIndex = window.filteredImageIndices.indexOf(imageIndex);
+        if (filteredIndex !== -1) {
+            targetIndex = filteredIndex;
+        } else {
+            showGlassToast('warning', 'Not Visible', 'Image is filtered out of current view', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+    }
+
+    const galleryWindow = document.getElementById('galleryWindow');
+    if (galleryWindow) {
+        // isGalleryWindowHidden, openModal, bringModalToFront: public/scripts/comp/modalUtils.js
+        if (isGalleryWindowHidden()) {
+            openModal(galleryWindow);
+            if (typeof window.isGalleryHidden !== 'undefined') {
+                window.isGalleryHidden = false;
+            }
+        } else {
+            bringModalToFront(galleryWindow);
+        }
+    }
+
+    // displayGalleryFromStartIndex: public/scripts/comp/galleryView.js
+    if (displayGalleryFromStartIndex) {
+        await displayGalleryFromStartIndex(targetIndex, true);
     }
 }
 

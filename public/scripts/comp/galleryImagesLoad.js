@@ -529,12 +529,15 @@ function publishGalleryLoadProgress(progress, progressCallback = null) {
 }
 
 /** Yield so the progress modal/toast can paint between block fetches. */
-function yieldGalleryProgressPaint() {
-    return new Promise((resolve) => {
+async function yieldGalleryProgressPaint() {
+    await new Promise((resolve) => {
         requestAnimationFrame(() => {
             requestAnimationFrame(resolve);
         });
     });
+    while (isScrolling || isGalleryWindowHidden()) {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+    }
 }
 
 function reportGalleryBlockProgress(progressCallback, blockIndex, totalBlocks, totalItems) {
@@ -580,7 +583,7 @@ function endGalleryBlockFetchSession() {
     }
 }
 
-async function finalizeGalleryImagesLoad(dataItems, probe, workspaceId, viewType, serverDestructiveAt, loadLog = galleryLoadLogNoop, loadToken = null) {
+async function finalizeGalleryImagesLoad(dataItems, probe, workspaceId, viewType, serverDestructiveAt, loadLog = galleryLoadLogNoop, loadToken = null, itemsAreSlim = false) {
     if (!isGalleryLoadTokenCurrent(loadToken)) {
         loadLog.step('stale-discard', 'Discarded stale gallery load before apply', { viewType });
         return;
@@ -591,7 +594,7 @@ async function finalizeGalleryImagesLoad(dataItems, probe, workspaceId, viewType
         pinCount: pinnedIndexes.length
     });
     applyPinnedIndexesOverlay(dataItems, pinnedIndexes);
-    const slimItems = slimGalleryList(dataItems);
+    const slimItems = itemsAreSlim ? dataItems : slimGalleryList(dataItems);
     setActiveGalleryList(slimItems, { preserveSyncState: true });
     markGalleryImagesSyncState(
         workspaceId,
@@ -714,6 +717,15 @@ async function fetchGalleryBlocksInto(viewType, workspaceId, totalItems, probe, 
 }
 
 async function fetchAndFinalizeGalleryBlocks(viewType, workspaceId, totalItems, probe, serverDestructiveAt, progressCallback, loadLog, loadToken, offsetsToFetch = null) {
+    // Hidden desktop Workspaces loads on first open via prepareGalleryWindowContent.
+    // Keep startup to the metadata probe instead of fetching and processing every image.
+    if (viewType === 'images' && isGalleryWindowHidden()) {
+        loadLog.step('block-fetch-deferred', 'Deferred gallery block fetch while Workspaces is closed', {
+            expectedTotal: totalItems,
+            workspaceId
+        });
+        return false;
+    }
     const dataItems = [];
     await fetchGalleryBlocksInto(viewType, workspaceId, totalItems, probe, dataItems, progressCallback, loadLog, loadToken, offsetsToFetch);
     if (!isGalleryLoadTokenCurrent(loadToken)) {
@@ -728,7 +740,8 @@ async function fetchAndFinalizeGalleryBlocks(viewType, workspaceId, totalItems, 
                 viewType,
                 serverDestructiveAt,
                 loadLog,
-                loadToken
+                loadToken,
+                true
             );
         }
         return false;
@@ -740,7 +753,8 @@ async function fetchAndFinalizeGalleryBlocks(viewType, workspaceId, totalItems, 
         viewType,
         serverDestructiveAt,
         loadLog,
-        loadToken
+        loadToken,
+        true
     );
     return true;
 }
@@ -837,6 +851,10 @@ function getGalleryPerformanceSnapshot() {
         allImages: allImages.length,
         visibleItems: visibleItems.size,
         placeholderQueue: placeholderResolutionQueue.length,
+        activeResolutions,
+        blurhashQueue: galleryBlurhashPaintQueue.length,
+        scrolling: isScrolling,
+        watcherRunning: placeholderWatcherRunning,
         displayedStartIndex,
         displayedEndIndex,
         loadingMore: isLoadingMore

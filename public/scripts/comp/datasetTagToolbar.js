@@ -13,22 +13,16 @@ let lastSelectedPath = []; // Track the path we came from for Left navigation
 // Tag-to-path index is now queried from server on demand
 let isSearchMode = false; // Track if we're in search mode
 let searchResults = []; // Current search results
-let selectedDatasetSearchIndex = -1; // Currently selected search result
 let isNavigating = false; // Track if we're in the middle of navigation
 let loadingDropdowns = new Set(); // Track which dropdowns are loading
 let isInitializing = false; // Track if we're in initial loading state
 let datasetTagSearchTimeout = null;
 const datasetTagSearchDebounceMs = 350;
 
-// teardownDropdown: public/scripts/comp/dropdown.js
-function teardownDatasetTagDropdownEntry(entry) {
-    if (!entry || !entry.dropdown) return;
-    teardownDropdown(entry.dropdown);
-}
-
+// contextMenu.detachClickMenuFromElement: public/scripts/comp/contextMenu.js
 function teardownDatasetTagDropdownLevelsFrom(fromLevel) {
     for (let i = dropdowns.length - 1; i >= fromLevel; i--) {
-        teardownDatasetTagDropdownEntry(dropdowns[i]);
+        if (dropdowns[i] && dropdowns[i].button) contextMenu.detachClickMenuFromElement(dropdowns[i].button);
     }
 }
 
@@ -45,15 +39,6 @@ function teardownAllDatasetTagDropdowns() {
     teardownDatasetTagDropdownLevelsFrom(0);
 }
 
-// Helper function to remove active state from all dropdown buttons except the specified one
-function removeActiveStateFromOtherDropdowns(exceptLevel = -1) {
-    dropdowns.forEach((dropdown, index) => {
-        if (index !== exceptLevel && dropdown && dropdown.button) {
-            dropdown.button.classList.remove('active');
-        }
-    });
-}
-
 // Helper function to update dropdown button states based on loading
 function updateDropdownButtonStates() {
     dropdowns.forEach((dropdown, index) => {
@@ -66,31 +51,6 @@ function updateDropdownButtonStates() {
             }
         }
     });
-}
-
-// Helper function to scroll to an option and center it in the view
-function scrollToOption(optionElement) {
-    if (!optionElement) return;
-    
-    const menu = optionElement.closest('.custom-dropdown-menu');
-    if (!menu) return;
-    
-    const menuRect = menu.getBoundingClientRect();
-    const optionRect = optionElement.getBoundingClientRect();
-    
-    // Calculate the scroll position to center the option
-    const menuHeight = menuRect.height;
-    const optionTop = optionElement.offsetTop;
-    const optionHeight = optionElement.offsetHeight;
-    
-    // Center the option in the menu
-    const scrollTop = optionTop - (menuHeight / 2) + (optionHeight / 2);
-    
-    // Ensure scroll position is within bounds
-    const maxScroll = menu.scrollHeight - menuHeight;
-    const finalScrollTop = Math.max(0, Math.min(scrollTop, maxScroll));
-    
-    menu.scrollTop = finalScrollTop;
 }
 
 let _datasetTagWsConnectedHandler = null;
@@ -252,6 +212,7 @@ function showDatasetTagToolbar() {
 function hideDatasetTagToolbar() {
     if (!datasetTagToolbar) return;
 
+    if (contextMenu.isOpen && datasetTagToolbar.contains(contextMenu.currentTarget)) contextMenu.hideMenu({ instant: true });
     teardownAllDatasetTagDropdowns();
     currentTarget = null;
     currentPath = [];
@@ -281,193 +242,128 @@ function createDropdowns() {
     // The dropdown will be disabled until data is ready
 }
 
-// Create a dropdown for a specific level using existing dropdown system
-function createDropdown(container, level, options, mainTags = []) {
-    const dropdownWrapper = document.createElement('div');
-    dropdownWrapper.className = 'dataset-tag-dropdown-wrapper';
-    dropdownWrapper.dataset.level = level;
-    
-    const dropdown = document.createElement('div');
-    dropdown.className = 'custom-dropdown';
-    
+/** One level of the path: a wrapper holding the level's button (its click menu is attached by the caller). */
+function createDatasetTagLevelButton(container, level, html, loading) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'dataset-tag-dropdown-wrapper' + (loading ? ' loading' : '');
+    wrapper.dataset.level = level;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'custom-dropdown-btn hover-show';
-    
-    // Disable button initially if this is the first dropdown and we're still initializing
-    if (level === 0 && isInitializing) {
-        button.disabled = true;
-    }
-    
-    button.innerHTML = `
+    button.innerHTML = html;
+    wrapper.appendChild(button);
+    container.appendChild(wrapper);
+    return { wrapper, button };
+}
+
+// Create a category level: its button opens a click menu of the level's groups and main tags
+function createDropdown(container, level, options, mainTags = []) {
+    const { wrapper, button } = createDatasetTagLevelButton(container, level, `
         <span class="dataset-button-text">
             <i class="fas fa-folder-grid"></i>
         <span class="dataset-tag-dropdown-text">Select Category</span>
         </span>
         <i class="fas fa-slash-forward"></i>
-    `;
-    
-    const menu = document.createElement('div');
-    menu.className = 'custom-dropdown-menu';
-    menu.classList.add('hidden');
-    
-    dropdown.appendChild(button);
-    dropdown.appendChild(menu);
-    dropdownWrapper.appendChild(dropdown);
-    container.appendChild(dropdownWrapper);
-    
-    // Store dropdown reference
-    dropdowns[level] = {
-        wrapper: dropdownWrapper,
-        dropdown: dropdown,
-        button: button,
-        menu: menu,
-        options: options,
-        mainTags: mainTags
-    };
-    
-    // Setup dropdown using existing system with keyboard navigation
-    setupDropdown(dropdown, button, menu, (selectedValue) => {
-        renderDropdownOptions(level, options, mainTags);
-    }, () => currentPath[level] || '', {
-        enableKeyboardNav: true,
-        enableRightKey: true,
-        onNavigateRight: (value, group) => {
-            // Prevent navigation if loading
-            if (isInitializing || isNavigating) return;
-            handleNavigateRight(level, value);
-        },
-        onNavigateLeft: () => {
-            // Prevent navigation if loading
-            if (isInitializing || isNavigating) return;
-            handleNavigateLeft(level);
-        },
-        onSelectOption: (value, group, trigger) => {
-            // Prevent selection if loading
-            if (isInitializing || isNavigating) return;
-            handleSelectOption(level, value, trigger);
-        }
-    });
-    
-    // Initial render of dropdown options
-    renderDropdownOptions(level, options, mainTags);
-    
-    // Enable the button if it was disabled
-    if (level === 0 && button.disabled) {
-        button.disabled = false;
-    }
+    `);
+    dropdowns[level] = { wrapper, button, options, mainTags };
+    attachDatasetTagLevelMenu(level);
 }
 
-// Render dropdown options using existing system
-function renderDropdownOptions(level, options, mainTags = []) {
-    const dropdown = dropdowns[level];
-    if (!dropdown) return;
-    
-    // Get the main key from the current path (first level)
+function datasetTagMainKeyPrettyName() {
     const mainKey = currentPath[0] || '';
-    let mainKeyPrettyName = mainKey ? (mainKey.charAt(0).toUpperCase() + mainKey.slice(1)) : '';
-    
-    // Try to get the pretty name from allCategories if available
-    if (mainKey && allCategories) {
-        const mainCategory = allCategories.find(cat => cat.name === mainKey);
-        if (mainCategory && mainCategory.prettyName) {
-            mainKeyPrettyName = mainCategory.prettyName;
-        }
-    }
-    
-    // Build groups array
-    const groups = [];
-    
-    // If we only have main tags and no regular options, show them without a group header
-    if (mainTags.length > 0 && options.length === 0) {
-        groups.push({
-            group: '',
-            options: mainTags.map(tag => ({
-                value: tag.name,
-                label: tag.prettyName,
-                description: tag.description,
-                itemCount: tag.itemCount,
-                hasChildren: tag.hasChildren,
-                path: tag.path,
-                icon: tag.icon,
-                isMainTag: true
-            }))
-        });
-    } else {
-        
-        // Add regular options
-        if (options.length > 0) {
-            groups.push({
-                group: mainKeyPrettyName || 'Categories',
-                options: options.map(option => ({
-                    value: option.name,
-                    label: option.prettyName || option.name.charAt(0).toUpperCase() + option.name.slice(1),
-                    description: option.description,
-                    itemCount: option.itemCount,
-                    hasChildren: option.hasChildren,
-                    path: option.path,
-                    icon: option.icon
-                }))
-            });
-        }
-        // Add main tags at the top if they exist (with other options)
-        if (mainTags.length > 0) {
-            groups.push({
-                group: 'Main Tags',
-                options: mainTags.map(tag => ({
-                    value: tag.name,
-                    label: tag.prettyName,
-                    description: tag.description,
-                    itemCount: tag.itemCount,
-                    hasChildren: tag.hasChildren,
-                    path: tag.path,
-                    icon: tag.icon,
-                    isMainTag: true
-                }))
-            });
-        }
-    }
-    
-    renderGroupedDropdown(
-        dropdown.menu,
-        groups,
-        (value, group) => {
-            // Handle main tags differently - they should be inserted directly
-            const mainTag = mainTags.find(tag => tag.name === value);
-            if (mainTag && mainTag.isMainTag) {
-                insertTagIntoTextarea(value);
-                hideDatasetTagToolbar();
+    const mainCategory = mainKey && allCategories ? allCategories.find(cat => cat.name === mainKey) : null;
+    if (mainCategory && mainCategory.prettyName) return mainCategory.prettyName;
+    return mainKey ? (mainKey.charAt(0).toUpperCase() + mainKey.slice(1)) : '';
+}
+
+function datasetTagRowContent(icon, label, itemCount, description) {
+    const count = itemCount !== undefined ? `<div class="dataset-tag-item-count badge">${itemCount}</div>` : '';
+    const desc = description ? ` <span class="dataset-tag-description">${description}</span>` : '';
+    return `<div class="dataset-tag-option"><div class="dataset-tag-option-container">`
+        + `<div class="dataset-tag-name"><i class="fas ${icon}"></i><span>${label}</span></div>${count}</div>${desc}</div>`;
+}
+
+/** Menu sections for a category level: its groups, then its main tags (inserted directly). */
+function datasetTagLevelMenuSections(level) {
+    const entry = dropdowns[level];
+    const options = entry.options || [];
+    const mainTags = entry.mainTags || [];
+    const groupRows = options.map((option) => ({
+        action: 'dataset-tag-open',
+        value: option.name,
+        highlighted: currentPath[level] === option.name,
+        content: datasetTagRowContent(option.icon || 'fas fa-folder',
+            option.prettyName || option.name.charAt(0).toUpperCase() + option.name.slice(1),
+            option.itemCount, option.description)
+    }));
+    const mainRows = mainTags.map((tag) => ({
+        action: 'dataset-tag-insert',
+        value: tag.name,
+        content: datasetTagRowContent(tag.icon || 'fas fa-tag', tag.prettyName, tag.itemCount, tag.description)
+    }));
+    if (!groupRows.length) return [{ type: 'list', items: mainRows }];
+    const sections = [{ type: 'list', title: datasetTagMainKeyPrettyName() || 'Categories', items: groupRows }];
+    if (mainRows.length) sections.push({ type: 'list', title: 'Main Tags', items: mainRows });
+    return sections;
+}
+
+/** Menu sections for the final level: the tags at this path. */
+function datasetTagTagMenuSections(level) {
+    return [{
+        type: 'list',
+        title: datasetTagMainKeyPrettyName() || 'Tags',
+        items: (dropdowns[level].options || []).map((tag) => ({
+            action: 'dataset-tag-insert',
+            value: tag,
+            highlighted: selectedTags[0] === tag,
+            content: datasetTagRowContent('fa-tag', tag)
+        }))
+    }];
+}
+
+/** Each level's click menu. Right drills in (or inserts a tag and stays), Left backs out a level. */
+function attachDatasetTagLevelMenu(level) {
+    const entry = dropdowns[level];
+    const config = {
+        position: 'anchor',
+        anchorAlign: 'start',
+        maxHeight: 420,
+        sections: [],
+        beforeShow: () => {
+            currentActiveDropdown = level;
+            config.sections = entry.isTagDropdown ? datasetTagTagMenuSections(level) : datasetTagLevelMenuSections(level);
+        },
+        onAction: (action, target, item) => {
+            if (isInitializing || isNavigating || !item) return;
+            if (action === 'dataset-tag-insert') selectDatasetTag(item.value, level);
+            else if (action === 'dataset-tag-open') handleSelectOption(level, item.value);
+        },
+        onNavigateRight: (item) => {
+            if (isInitializing || isNavigating || !item) return;
+            if (item.action === 'dataset-tag-insert') {
+                handleTagNavigateRight(level, item.value);
                 return;
             }
-            
-            // Handle regular options normally
-            selectDropdownOption(options.find(opt => opt.name === value), level);
+            contextMenu.hideMenu({ instant: true });
+            handleNavigateRight(level, item.value);
         },
-        () => closeDropdown(dropdown.menu, dropdown.button),
-        currentPath[level] || '',
-        (opt, group) => {
-            // Use icon from option data if available, otherwise fall back to default icons
-            let icon = 'fas fa-folder';
-            if (opt.icon) {
-                icon = opt.icon;
-            } else if (opt.hasChildren) {
-                icon = 'fas fa-folder';
-            } else if (opt.isMainTag) {
-                icon = 'fas fa-tag'; // Use tag icon for main tags
-            }
-            
-            const description = opt.description ? ` <span class="dataset-tag-description">${opt.description}</span>` : '';
-            return `
-            <div class="dataset-tag-option">
-            <div class="dataset-tag-option-container">
-                <div class="dataset-tag-name">
-                    <i class="fas ${icon}"></i>
-                    <span>${opt.label}</span>
-                </div>
-                <div class="dataset-tag-item-count badge">${opt.itemCount}</div>
-            </div>${description}</div>`;
+        onNavigateLeft: () => {
+            if (isInitializing || isNavigating) return;
+            contextMenu.hideMenu({ instant: true });
+            handleNavigateLeft(level);
         }
-    );
+    };
+    // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+    contextMenu.attachClickMenuToElement(entry.button, config);
+}
+
+/** Open a level's menu from the keyboard flow, the keyboard row on focusValue when given. */
+function openDatasetTagLevelMenu(level, focusValue) {
+    const entry = dropdowns[level];
+    if (!entry || !entry.button || entry.button.disabled || entry.isLoading) return;
+    currentActiveDropdown = level;
+    // contextMenu.openClickMenu: public/scripts/comp/contextMenu.js
+    contextMenu.openClickMenu(entry.button, focusValue);
 }
 
 // Select a dropdown option
@@ -482,14 +378,6 @@ async function selectDropdownOption(option, level) {
         const textElement = dropdown.button.querySelector('.dataset-tag-dropdown-text');
         if (textElement) {
             textElement.textContent = option.prettyName || option.name;
-        }
-    }
-    
-    // Close dropdown and remove active state from button
-    if (dropdown && dropdown.menu) {
-        dropdown.menu.classList.add('hidden');
-        if (dropdown.button) {
-            dropdown.button.classList.remove('active');
         }
     }
     
@@ -533,9 +421,6 @@ async function createNextDropdown(level, path) {
             // Create loading dropdown first
             createLoadingDropdown(container, level);
             
-            // Remove active state from all previous dropdown buttons
-            removeActiveStateFromOtherDropdowns(level);
-            
             // Fetch data from server
             const result = await window.wsClient.searchDatasetTags('*', path);
             
@@ -552,12 +437,7 @@ async function createNextDropdown(level, path) {
                 
                 // Auto-focus the new dropdown if it was created via keyboard navigation
                 currentActiveDropdown = level;
-                setTimeout(() => {
-                    if (dropdowns[level] && dropdowns[level].menu && dropdowns[level].button) {
-                        openDropdown(dropdowns[level].menu, dropdowns[level].button);
-                        updateSelectedOption(dropdowns[level].menu, -1);
-                    }
-                }, 50);
+                setTimeout(() => openDatasetTagLevelMenu(level), 50);
             }
         }
     } catch (error) {
@@ -594,9 +474,6 @@ async function createTagSelectionDropdown(level, path) {
             // Create loading dropdown first
             createLoadingDropdown(container, level);
             
-            // Remove active state from all previous dropdown buttons
-            removeActiveStateFromOtherDropdowns(level);
-            
             // Fetch data from server
             const result = await window.wsClient.getTagsForPath(path);
             
@@ -613,24 +490,14 @@ async function createTagSelectionDropdown(level, path) {
                 
                 // Auto-focus the new tag dropdown if it was created via keyboard navigation
                 currentActiveDropdown = level;
-                setTimeout(() => {
-                    if (dropdowns[level] && dropdowns[level].menu && dropdowns[level].button) {
-                        openDropdown(dropdowns[level].menu, dropdowns[level].button);
-                        updateSelectedOption(dropdowns[level].menu, -1);
-                    }
-                }, 50);
+                setTimeout(() => openDatasetTagLevelMenu(level), 50);
             } else if (Array.isArray(result)) {
                 // Handle case where result is an array directly (e.g., allTextReplacements)
                 createTagDropdown(container, level, result, path);
                 
                 // Auto-focus the new tag dropdown if it was created via keyboard navigation
                 currentActiveDropdown = level;
-                setTimeout(() => {
-                    if (dropdowns[level] && dropdowns[level].menu && dropdowns[level].button) {
-                        openDropdown(dropdowns[level].menu, dropdowns[level].button);
-                        updateSelectedOption(dropdowns[level].menu, -1);
-                    }
-                }, 50);
+                setTimeout(() => openDatasetTagLevelMenu(level), 50);
             } else {
                 console.warn('No tags found in result:', result);
             }
@@ -652,156 +519,29 @@ async function createTagSelectionDropdown(level, path) {
 
 // Create a loading dropdown placeholder
 function createLoadingDropdown(container, level) {
-    const dropdownWrapper = document.createElement('div');
-    dropdownWrapper.className = 'dataset-tag-dropdown-wrapper loading';
-    dropdownWrapper.dataset.level = level;
-    
-    const dropdown = document.createElement('div');
-    dropdown.className = 'custom-dropdown';
-    
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'custom-dropdown-btn hover-show';
-    button.disabled = true;
-    button.innerHTML = `
+    const { wrapper, button } = createDatasetTagLevelButton(container, level, `
         <span class="dataset-button-text">
             <i class="fas fa-spinner-third fa-spin"></i>
             <span class="dataset-tag-dropdown-text">Loading...</span>
         </span>
-    `;
-    
-    const menu = document.createElement('div');
-    menu.className = 'custom-dropdown-menu';
-    menu.classList.add('hidden');
-    
-    dropdown.appendChild(button);
-    dropdown.appendChild(menu);
-    dropdownWrapper.appendChild(dropdown);
-    container.appendChild(dropdownWrapper);
-    
-    // Store dropdown reference
-    dropdowns[level] = {
-        wrapper: dropdownWrapper,
-        dropdown: dropdown,
-        button: button,
-        menu: menu,
-        options: [],
-        mainTags: [],
-        isLoading: true
-    };
-    
+    `, true);
+    button.disabled = true;
+    dropdowns[level] = { wrapper, button, options: [], mainTags: [], isLoading: true };
+
     // Mark as loading
     loadingDropdowns.add(level);
 }
 
-// Create a dropdown specifically for tag selection
+// Create the final level: its click menu lists the tags at this path
 function createTagDropdown(container, level, tags, path) {
-    const dropdownWrapper = document.createElement('div');
-    dropdownWrapper.className = 'dataset-tag-dropdown-wrapper';
-    dropdownWrapper.dataset.level = level;
-    
-    const dropdown = document.createElement('div');
-    dropdown.className = 'custom-dropdown';
-    
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'custom-dropdown-btn hover-show';
-    button.innerHTML = `
+    const { wrapper, button } = createDatasetTagLevelButton(container, level, `
         <span class="dataset-button-text">
         <i class="fas fa-plus"></i>
         <span class="dataset-tag-dropdown-text">Select Tag</span>
         </span>
-    `;
-    
-    const menu = document.createElement('div');
-    menu.className = 'custom-dropdown-menu';
-    menu.classList.add('hidden');
-    
-    dropdown.appendChild(button);
-    dropdown.appendChild(menu);
-    dropdownWrapper.appendChild(dropdown);
-    container.appendChild(dropdownWrapper);
-    
-    // Store dropdown reference
-    dropdowns[level] = {
-        wrapper: dropdownWrapper,
-        dropdown: dropdown,
-        button: button,
-        menu: menu,
-        options: tags,
-        isTagDropdown: true
-    };
-    
-    // Setup dropdown using existing system with keyboard navigation
-    setupDropdown(dropdown, button, menu, (selectedValue) => {
-        renderTagOptions(level, tags);
-    }, () => selectedTags[0] || '', {
-        enableKeyboardNav: true,
-        enableRightKey: true,
-        onNavigateRight: (value, group) => {
-            // Prevent navigation if loading
-            if (isInitializing || isNavigating) return;
-            handleTagNavigateRight(level, value);
-        },
-        onNavigateLeft: () => {
-            // Prevent navigation if loading
-            if (isInitializing || isNavigating) return;
-            handleNavigateLeft(level);
-        },
-        onSelectOption: (value, group, trigger) => {
-            // Prevent selection if loading
-            if (isInitializing || isNavigating) return;
-            handleTagSelectOption(level, value, trigger);
-        }
-    });
-    
-    // Render the tag options
-    renderTagOptions(level, tags);
-}
-
-// Render tag options using existing system
-function renderTagOptions(level, tags) {
-    const dropdown = dropdowns[level];
-    if (!dropdown) return;
-    
-    // Get the main key from the current path (first level)
-    const mainKey = currentPath[0] || '';
-    let mainKeyPrettyName = mainKey ? (mainKey.charAt(0).toUpperCase() + mainKey.slice(1)) : '';
-    
-    // Try to get the pretty name from allCategories if available
-    if (mainKey && allCategories) {
-        const mainCategory = allCategories.find(cat => cat.name === mainKey);
-        if (mainCategory && mainCategory.prettyName) {
-            mainKeyPrettyName = mainCategory.prettyName;
-        }
-    }
-    
-    const groups = [{
-        group: mainKeyPrettyName || 'Tags',
-        options: tags.map(tag => ({
-            value: tag,
-            label: tag,
-            description: '',
-            isTag: true
-        }))
-    }];
-    
-    renderGroupedDropdown(
-        dropdown.menu,
-        groups,
-        (value, group) => selectDatasetTag(value, level),
-        () => closeDropdown(dropdown.menu, dropdown.button),
-        selectedTags[0] || '',
-        (opt, group) => {
-            return `<div class="dataset-tag-option">
-            <div class="dataset-tag-option-container">
-                <div class="dataset-tag-name">
-                    <i class="fas fa-tag"></i>
-                    <span>${opt.label}</span>
-                </div>
-            </div></div>`;
-        }
-    );
+    `);
+    dropdowns[level] = { wrapper, button, options: tags, isTagDropdown: true };
+    attachDatasetTagLevelMenu(level);
 }
 
 // Select a tag from the dataset tag toolbar
@@ -815,11 +555,6 @@ function selectDatasetTag(tag, level) {
         if (textElement) {
             textElement.textContent = tag;
         }
-    }
-    
-    // Close dropdown if it exists
-    if (dropdown && dropdown.menu && dropdown.button) {
-    closeDropdown(dropdown.menu, dropdown.button);
     }
     
     // Automatically insert the tag and close toolbar
@@ -985,18 +720,10 @@ async function autoNavigateFromCursor() {
                         // Navigate to this path
                         await navigateToPath(targetPath, potentialTag);
                     } else {
-                        setTimeout(() => {
-                            if (dropdowns.length > 0 && dropdowns[0] && dropdowns[0].menu && dropdowns[0].button) {
-                                openDropdown(dropdowns[0].menu, dropdowns[0].button);
-                            }
-                        }, 10);
+                        setTimeout(() => openDatasetTagLevelMenu(0), 10);
                     }
                 } else {
-                    setTimeout(() => {
-                        if (dropdowns.length > 0 && dropdowns[0] && dropdowns[0].menu && dropdowns[0].button) {
-                            openDropdown(dropdowns[0].menu, dropdowns[0].button);
-                        }
-                    }, 10);
+                    setTimeout(() => openDatasetTagLevelMenu(0), 10);
                 }
             }
         } catch (error) {
@@ -1057,16 +784,6 @@ async function navigateToPath(targetPath, selectTag = null) {
                         if (textElement) {
                             textElement.textContent = option.prettyName || option.name;
                         }
-                        
-                        // Scroll to the selected option in the dropdown menu
-                        if (dropdown.menu) {
-                            const options = dropdown.menu.querySelectorAll('.custom-dropdown-option');
-                            options.forEach((opt, index) => {
-                                if (opt.dataset.value === option.name) {
-                                    scrollToOption(opt);
-                                }
-                            });
-                        }
                     }
                     
                     // If this is the last level and we have a tag to select
@@ -1077,26 +794,9 @@ async function navigateToPath(targetPath, selectTag = null) {
                             if (tags && tags.tags) {
                                 createTagDropdown(container, i + 1, tags.tags, targetPath);
                                 
-                                // Remove active state from all previous dropdown buttons
-                                removeActiveStateFromOtherDropdowns(i + 1);
-                                
-                                // Select the specific tag if provided
+                                // Open the tag level on the specific tag if provided
                                 if (selectTag) {
-                                    setTimeout(() => {
-                                        const tagDropdown = dropdowns[i + 1];
-                                        if (tagDropdown && tagDropdown.menu) {
-                                            const options = tagDropdown.menu.querySelectorAll('.custom-dropdown-option');
-                                            options.forEach((opt, index) => {
-                                                if (opt.dataset.value === selectTag) {
-                                                    updateSelectedOption(tagDropdown.menu, index);
-                                                    currentActiveDropdown = i + 1;
-                                                    openDropdown(tagDropdown.menu, tagDropdown.button);
-                                                    // Scroll to the selected option
-                                                    scrollToOption(opt);
-                                                }
-                                            });
-                                        }
-                                    }, 100);
+                                    setTimeout(() => openDatasetTagLevelMenu(i + 1, selectTag), 100);
                                 }
                             }
                         }
@@ -1189,7 +889,6 @@ function handleGlobalKeyboardNav(event) {
         return;
     }
     
-    // Stop propagation to prevent conflicts
     const currentDropdown = dropdowns[currentActiveDropdown];
     if (!currentDropdown) return;
     
@@ -1198,193 +897,47 @@ function handleGlobalKeyboardNav(event) {
         return;
     }
     
-    // Ensure the current dropdown is open
-    if (currentDropdown.menu.classList.contains('hidden')) {
-        openDropdown(currentDropdown.menu, currentDropdown.button);
-    }
-    
-    const options = currentDropdown.menu.querySelectorAll('.custom-dropdown-option');
-    if (options.length === 0) return;
-    
-    // Get current selected index from the dropdown
-    let selectedIndex = -1;
-    options.forEach((option, index) => {
-        if (option.classList.contains('keyboard-selected')) {
-            selectedIndex = index;
-        }
-    });
-    
-    let handled = false;
-    
+    // An open level menu takes its own arrow / Enter keys (contextMenu.handleMenuNavigationKey); these keys open it.
+    const focusValue = currentDropdown.isTagDropdown ? selectedTags[0] : currentPath[currentActiveDropdown];
     switch (event.key) {
         case 'ArrowDown':
-            event.preventDefault();
-            event.stopPropagation();
-            selectedIndex = Math.min(selectedIndex + 1, options.length - 1);
-            updateSelectedOption(currentDropdown.menu, selectedIndex);
-            // Scroll to the selected option
-            if (selectedIndex >= 0 && options[selectedIndex]) {
-                scrollToOption(options[selectedIndex]);
-            }
-            handled = true;
-            break;
-            
         case 'ArrowUp':
-            event.preventDefault();
-            event.stopPropagation();
-            selectedIndex = Math.max(selectedIndex - 1, -1);
-            updateSelectedOption(currentDropdown.menu, selectedIndex);
-            // Scroll to the selected option
-            if (selectedIndex >= 0 && options[selectedIndex]) {
-                scrollToOption(options[selectedIndex]);
-            }
-            handled = true;
-            break;
-            
         case 'PageDown':
-            event.preventDefault();
-            event.stopPropagation();
-            if (selectedIndex === -1) {
-                selectedIndex = 0;
-            } else {
-                selectedIndex = Math.min(selectedIndex + 10, options.length - 1);
-            }
-            updateSelectedOption(currentDropdown.menu, selectedIndex);
-            // Scroll to the selected option
-            if (selectedIndex >= 0 && options[selectedIndex]) {
-                scrollToOption(options[selectedIndex]);
-            }
-            handled = true;
-            break;
-            
         case 'PageUp':
-            event.preventDefault();
-            event.stopPropagation();
-            if (selectedIndex === -1) {
-                selectedIndex = 0;
-            } else {
-                selectedIndex = Math.max(selectedIndex - 10, 0);
-            }
-            updateSelectedOption(currentDropdown.menu, selectedIndex);
-            // Scroll to the selected option
-            if (selectedIndex >= 0 && options[selectedIndex]) {
-                scrollToOption(options[selectedIndex]);
-            }
-            handled = true;
-            break;
-            
         case 'Home':
-            event.preventDefault();
-            event.stopPropagation();
-            selectedIndex = 0;
-            updateSelectedOption(currentDropdown.menu, selectedIndex);
-            // Scroll to the selected option
-            if (selectedIndex >= 0 && options[selectedIndex]) {
-                scrollToOption(options[selectedIndex]);
-            }
-            handled = true;
-            break;
-            
         case 'End':
-            event.preventDefault();
-            event.stopPropagation();
-            selectedIndex = options.length - 1;
-            updateSelectedOption(currentDropdown.menu, selectedIndex);
-            // Scroll to the selected option
-            if (selectedIndex >= 0 && options[selectedIndex]) {
-                scrollToOption(options[selectedIndex]);
-            }
-            handled = true;
-            break;
-            
         case 'Enter':
-            event.preventDefault();
-            event.stopPropagation();
-            if (selectedIndex >= 0 && options[selectedIndex]) {
-                const option = options[selectedIndex];
-                const value = option.dataset.value;
-                
-                if (currentDropdown.isTagDropdown) {
-                    handleTagSelectOption(currentActiveDropdown, value, 'enter');
-                } else {
-                    handleSelectOption(currentActiveDropdown, value, 'enter');
-                }
-            }
-            handled = true;
-            break;
-            
         case 'ArrowRight':
-            event.preventDefault();
-            event.stopPropagation();
-            if (selectedIndex >= 0 && options[selectedIndex]) {
-                const option = options[selectedIndex];
-                const value = option.dataset.value;
-                
-                if (currentDropdown.isTagDropdown) {
-                    handleTagNavigateRight(currentActiveDropdown, value);
-                } else {
-                    handleNavigateRight(currentActiveDropdown, value);
-                }
-            }
-            handled = true;
+            openDatasetTagLevelMenu(currentActiveDropdown, focusValue);
             break;
             
         case 'ArrowLeft':
-            event.preventDefault();
-            event.stopPropagation();
             handleNavigateLeft(currentActiveDropdown);
-            handled = true;
             break;
             
         case 'Tab':
-            event.preventDefault();
-            event.stopPropagation();
             // Move to next dropdown if available
             if (currentActiveDropdown < dropdowns.length - 1) {
-                // Remove active state from current dropdown button
-                removeActiveStateFromOtherDropdowns(currentActiveDropdown);
-                
-                currentActiveDropdown++;
-                const nextDropdown = dropdowns[currentActiveDropdown];
-                if (nextDropdown) {
-                    openDropdown(nextDropdown.menu, nextDropdown.button);
-                    updateSelectedOption(nextDropdown.menu, -1);
-                }
+                contextMenu.hideMenu({ instant: true });
+                openDatasetTagLevelMenu(currentActiveDropdown + 1);
             }
-            handled = true;
             break;
             
         case 'Escape':
-            event.preventDefault();
-            event.stopPropagation();
-            if (isSearchMode) {
-                exitSearchMode();
-            } else {
-                hideDatasetTagToolbar();
-            }
-            handled = true;
+            if (contextMenu.isOpen) contextMenu.hideMenu();
+            else hideDatasetTagToolbar();
             break;
             
         default:
-            // Check if it's a letter (a-z, A-Z) and not in search mode
-            if (!isSearchMode && /^[a-zA-Z0-9]$/.test(event.key)) {
-                event.preventDefault();
-                event.stopPropagation();
-                enterSearchMode(event.key);
-                handled = true;
-            }
+            // Letters and digits start a search
+            if (!/^[a-zA-Z0-9]$/.test(event.key)) return false;
+            contextMenu.hideMenu({ instant: true });
+            enterSearchMode(event.key);
             break;
     }
-    
-    if (handled) {
-        // Focus the current dropdown menu to maintain keyboard state
-        setTimeout(() => {
-            if (currentDropdown.menu) {
-                currentDropdown.menu.focus();
-            }
-        }, 1);
-    }
-    return handled;
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
 }
 
 // Position the toolbar
@@ -1432,7 +985,6 @@ function hideLoadingSpinner() {
 function enterSearchMode(initialQuery = '') {
     isSearchMode = true;
     searchResults = [];
-    selectedDatasetSearchIndex = -1;
     
     // Hide all dropdowns
     const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
@@ -1473,7 +1025,6 @@ function enterSearchMode(initialQuery = '') {
 function exitSearchMode() {
     isSearchMode = false;
     searchResults = [];
-    selectedDatasetSearchIndex = -1;
     
     // Hide search input
     const searchInput = document.getElementById('datasetTagSearchInput');
@@ -1518,7 +1069,6 @@ async function runDatasetTagSearch(query) {
             
             if (result && result.results) {
                 searchResults = result.results;
-                selectedDatasetSearchIndex = -1; // Don't auto-select, wait for arrow keys
                 showSearchResults();
             } else {
                 searchResults = [];
@@ -1535,82 +1085,17 @@ async function runDatasetTagSearch(query) {
     }
 }
 
+// An open results menu takes Up / Down / Page / Enter on a row (contextMenu.handleMenuNavigationKey).
 function handleSearchKeydown(event) {
     switch (event.key) {
         case 'ArrowDown':
             event.preventDefault();
-            if (searchResults.length > 0) {
-                if (selectedDatasetSearchIndex === -1) {
-                    // If nothing is selected, select the first item
-                    selectedDatasetSearchIndex = 0;
-                } else {
-                    selectedDatasetSearchIndex = Math.min(selectedDatasetSearchIndex + 1, searchResults.length - 1);
-                }
-                updateSearchSelection();
-            }
-            break;
-            
-        case 'ArrowUp':
-            event.preventDefault();
-            if (searchResults.length > 0 && selectedDatasetSearchIndex > 0) {
-                selectedDatasetSearchIndex = Math.max(selectedDatasetSearchIndex - 1, 0);
-                updateSearchSelection();
-            }
-            break;
-            
-        case 'PageDown':
-            event.preventDefault();
-            if (searchResults.length > 0) {
-                if (selectedDatasetSearchIndex === -1) {
-                    selectedDatasetSearchIndex = 0;
-                } else {
-                    selectedDatasetSearchIndex = Math.min(selectedDatasetSearchIndex + 10, searchResults.length - 1);
-                }
-                updateSearchSelection();
-            }
-            break;
-            
-        case 'PageUp':
-            event.preventDefault();
-            if (searchResults.length > 0) {
-                if (selectedDatasetSearchIndex === -1) {
-                    selectedDatasetSearchIndex = 0;
-                } else {
-                    selectedDatasetSearchIndex = Math.max(selectedDatasetSearchIndex - 10, 0);
-                }
-                updateSearchSelection();
-            }
-            break;
-            
-        case 'Home':
-            event.preventDefault();
-            if (searchResults.length > 0) {
-                selectedDatasetSearchIndex = 0;
-                updateSearchSelection();
-            }
-            break;
-            
-        case 'End':
-            event.preventDefault();
-            if (searchResults.length > 0) {
-                selectedDatasetSearchIndex = searchResults.length - 1;
-                updateSearchSelection();
-            }
+            if (searchResults.length > 0) showSearchResults(searchResults[0].tag);
             break;
             
         case 'Enter':
             event.preventDefault();
-            if (searchResults.length > 0) {
-                if (selectedDatasetSearchIndex >= 0 && searchResults[selectedDatasetSearchIndex]) {
-                    // If something is selected, use that
-                    const selectedResult = searchResults[selectedDatasetSearchIndex];
-                    selectSearchResult(selectedResult);
-                } else {
-                    // If nothing is selected, click the first result
-                    const firstResult = searchResults[0];
-                    selectSearchResult(firstResult);
-                }
-            }
+            if (searchResults.length > 0) selectSearchResult(searchResults[0]);
             break;
             
         case 'Escape':
@@ -1620,167 +1105,54 @@ function handleSearchKeydown(event) {
     }
 }
 
-function showSearchResults() {
-    // Remove existing results dropdown if any
-    hideSearchResults();
-    
-    if (searchResults.length === 0) return;
-    
-    // Create results dropdown
-    const searchDropdown = document.createElement('div');
-    searchDropdown.id = 'datasetTagSearchDropdown';
-    searchDropdown.className = 'custom-dropdown-menu dataset-tag-search-dropdown';
-    searchDropdown.classList.remove('hidden');
-    
-    // Create grouped results
-    const groups = [{
-        group: 'Search Results',
-        options: searchResults.map((result, index) => ({
-            value: result.tag,
-            label: result.tag,
-            description: result.paths[0].join(' → '),
-            data: result
-        }))
-    }];
-    
-    // Render using existing dropdown system
-    renderGroupedDropdown(
-        searchDropdown,
-        groups,
-        (value, group) => {
-            const result = searchResults.find(r => r.tag === value);
-            if (result) {
-                selectSearchResult(result);
+/** Search results as a click menu under the search field; it stays open and re-renders while the field is typed in. */
+function showSearchResults(focusTag) {
+    const searchInput = document.getElementById('datasetTagSearchInput');
+    if (!searchInput || searchResults.length === 0) {
+        hideSearchResults();
+        return;
+    }
+    if (!searchInput.dataset.clickMenu) {
+        const config = {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 420,
+            keepOpenWhileTyping: true,
+            refreshOnAction: true,
+            sections: [],
+            beforeShow: () => {
+                config.sections = [{
+                    type: 'list',
+                    title: 'Search Results',
+                    items: searchResults.map((result) => ({
+                        action: 'dataset-tag-search-select',
+                        value: result.tag,
+                        content: `<div class="dataset-tag-search-result">`
+                            + `<div class="dataset-tag-search-tag">${result.tag}</div>`
+                            + `<div class="dataset-tag-search-path">${result.paths[0].join(' → ')}</div></div>`
+                    }))
+                }];
+            },
+            onAction: (action, target, item) => {
+                const result = item && searchResults.find(r => r.tag === item.value);
+                if (result) selectSearchResult(result);
             }
-        },
-        () => hideSearchResults(),
-        '',
-        (opt, group) => {
-            return `<div class="dataset-tag-search-result">
-                <div class="dataset-tag-search-tag">${opt.label}</div>
-                <div class="dataset-tag-search-path">${opt.description}</div>
-            </div>`;
-        }
-    );
-    
-    // Position the dropdown below the search input in the controls
-    const controlsContainer = datasetTagToolbar.querySelector('.dataset-tag-controls');
-    controlsContainer.appendChild(searchDropdown);
-    
-    // Set up keyboard navigation for the dropdown
-    setupSearchDropdownKeyboard();
+        };
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        contextMenu.attachClickMenuToElement(searchInput, config);
+    }
+    if (contextMenu.isOpen && contextMenu.currentTarget === searchInput && focusTag === undefined) {
+        contextMenu.refreshOpenMenuFromConfig();
+        return;
+    }
+    contextMenu.openClickMenu(searchInput, focusTag);
 }
 
 function hideSearchResults() {
-    const searchDropdown = document.getElementById('datasetTagSearchDropdown');
-    if (searchDropdown) {
-        searchDropdown.remove();
-    }
-}
-
-function setupSearchDropdownKeyboard() {
-    const searchDropdown = document.getElementById('datasetTagSearchDropdown');
-    if (!searchDropdown) return;
-    
-    // Add keyboard navigation to the dropdown
-    searchDropdown.addEventListener('keydown', (e) => {
-        e.stopPropagation(); // Prevent global handler from interfering
-        
-        const options = searchDropdown.querySelectorAll('.custom-dropdown-option');
-        
-        switch (e.key) {
-            case 'ArrowDown':
-                e.preventDefault();
-                if (selectedDatasetSearchIndex === -1) {
-                    // If nothing is selected, select the first item
-                    selectedDatasetSearchIndex = 0;
-                } else {
-                    selectedDatasetSearchIndex = Math.min(selectedDatasetSearchIndex + 1, options.length - 1);
-                }
-                updateSearchSelection();
-                break;
-                
-            case 'ArrowUp':
-                e.preventDefault();
-                if (selectedDatasetSearchIndex <= 0) {
-                    // If we're at the first item or no selection, refocus the textbox
-                    const searchInput = document.getElementById('datasetTagSearchInput');
-                    if (searchInput) {
-                        searchInput.focus();
-                        // Move cursor to end of text
-                        const length = searchInput.value.length;
-                        searchInput.setSelectionRange(length, length);
-                    }
-                } else {
-                    selectedDatasetSearchIndex = Math.max(selectedDatasetSearchIndex - 1, 0);
-                    updateSearchSelection();
-                }
-                break;
-                
-            case 'PageDown':
-                e.preventDefault();
-                if (selectedDatasetSearchIndex === -1) {
-                    selectedDatasetSearchIndex = 0;
-                } else {
-                    selectedDatasetSearchIndex = Math.min(selectedDatasetSearchIndex + 10, options.length - 1);
-                }
-                updateSearchSelection();
-                break;
-                
-            case 'PageUp':
-                e.preventDefault();
-                if (selectedDatasetSearchIndex === -1) {
-                    selectedDatasetSearchIndex = 0;
-                } else {
-                    selectedDatasetSearchIndex = Math.max(selectedDatasetSearchIndex - 10, 0);
-                }
-                updateSearchSelection();
-                break;
-                
-            case 'Home':
-                e.preventDefault();
-                selectedDatasetSearchIndex = 0;
-                updateSearchSelection();
-                break;
-                
-            case 'End':
-                e.preventDefault();
-                selectedDatasetSearchIndex = options.length - 1;
-                updateSearchSelection();
-                break;
-                
-            case 'Enter':
-                e.preventDefault();
-                if (selectedDatasetSearchIndex >= 0 && options[selectedDatasetSearchIndex]) {
-                    options[selectedDatasetSearchIndex].click();
-                }
-                break;
-                
-            case 'Escape':
-                e.preventDefault();
-                exitSearchMode();
-                break;
-        }
-    });
-    
-    // Set initial selection (but don't focus the dropdown)
-    updateSearchSelection();
-}
-
-function updateSearchSelection() {
-    const searchDropdown = document.getElementById('datasetTagSearchDropdown');
-    if (!searchDropdown) return;
-    
-    const options = searchDropdown.querySelectorAll('.custom-dropdown-option');
-    options.forEach((option, index) => {
-        if (index === selectedDatasetSearchIndex) {
-            option.classList.add('keyboard-selected');
-            // Use our custom scroll function to center the option
-            scrollToOption(option);
-        } else {
-            option.classList.remove('keyboard-selected');
-        }
-    });
+    const searchInput = document.getElementById('datasetTagSearchInput');
+    if (!searchInput || !searchInput.dataset.clickMenu) return;
+    if (contextMenu.isOpen && contextMenu.currentTarget === searchInput) contextMenu.hideMenu({ instant: true });
+    contextMenu.detachClickMenuFromElement(searchInput);
 }
 
 async function selectSearchResult(result) {
@@ -1820,34 +1192,8 @@ function handleNavigateLeft(level) {
         // Update active dropdown index
         currentActiveDropdown = Math.max(0, level - 1);
         
-        // Remove active state from all dropdown buttons except the one we're going to
-        removeActiveStateFromOtherDropdowns(currentActiveDropdown);
-        
-        // Focus the previous dropdown and select the item we just left
-        if (dropdowns[currentActiveDropdown] && dropdowns[currentActiveDropdown].menu) {
-            setTimeout(() => {
-                openDropdown(dropdowns[currentActiveDropdown].menu, dropdowns[currentActiveDropdown].button);
-                
-                // Find and select the item we just left
-                const options = dropdowns[currentActiveDropdown].menu.querySelectorAll('.custom-dropdown-option');
-                let foundIndex = -1;
-                options.forEach((option, index) => {
-                    if (option.dataset.value === itemWereLeaving) {
-                        foundIndex = index;
-                    }
-                });
-                
-                updateSelectedOption(dropdowns[currentActiveDropdown].menu, foundIndex);
-                
-                // Scroll to the selected option
-                if (foundIndex >= 0) {
-                    const options = dropdowns[currentActiveDropdown].menu.querySelectorAll('.custom-dropdown-option');
-                    if (options[foundIndex]) {
-                        scrollToOption(options[foundIndex]);
-                    }
-                }
-            }, 50);
-        }
+        // Reopen the previous level on the item we just left
+        setTimeout(() => openDatasetTagLevelMenu(currentActiveDropdown, itemWereLeaving), 50);
     }
 }
 
@@ -1874,14 +1220,4 @@ function handleTagNavigateRight(level, value) {
             window.setAutofillEnabled(wasAutofillEnabled);
         }
     }, 100);
-}
-
-function handleTagSelectOption(level, value, trigger) {
-    if (trigger === 'enter') {
-        // Enter closes the toolbar
-        selectDatasetTag(value, level);
-    } else {
-        // Other selections also close the toolbar
-        selectDatasetTag(value, level);
-    }
 }

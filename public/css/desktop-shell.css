@@ -2154,7 +2154,7 @@ body.desktop-mode #manualModal #enableStageGenerationBtn,
 body.desktop-mode #main-menu-bar #allChatsBtn,
 body.desktop-mode #main-menu-bar #openNotebookBtn,
 body.desktop-mode #main-menu-bar #windowListGalleryBtn,
-body.desktop-mode #main-menu-bar #workspaceDropdown {
+body.desktop-mode #main-menu-bar #workspaceDropdownBtn {
     display: none !important;
 }
 

@@ -4,11 +4,11 @@
  *
  * Reveal order after the logon dialog closes (websocket.js _completePreStartupHandoff):
  *   session  → solid colour only (body.windows-startup teal), splash opens
- *   settings → "Loading your personal settings…" (init steps < 12)
- *   wallpaper→ "Applying your personal settings…" (after step 12 Loading Workspaces)
- *   icons    → "Preparing your desktop…"
- *   taskbar  → taskbar appears (after step 16 Starting Taskbar)
- *   windows  → "Restoring your windows…" (step 31 Loading Gallery)
+ *   settings → "Preparing your desktop..." (init steps before the wallpaper preload)
+ *   wallpaper→ after "Loading wallpaper" (assetPreload.js) has decoded the bitmap
+ *   icons    → after "Loading desktop icons"
+ *   taskbar  → after "Loading desktop assets" (step 16 only unhides the taskbar element)
+ *   windows  → "Preparing your desktop..." (step 31 Loading Gallery)
  *   done     → "Welcome", splash closes last (hideProgressNotification awaits finish())
  * Each stage holds for at least config.dwellMs[stage] so the sequence is visible even
  * when the real init steps finish in a few hundred milliseconds. body.boot-staged plus
@@ -63,6 +63,10 @@
     };
     const BOOT_CLASSES = ['boot-staged', ...Object.values(REVEAL_CLASS)];
     const CLASSIC_THEME_CLASS = 'windows-classic-theme';
+    // User Accounts "Use Vista Logon" (/status useVistaLogon): the Welcome screen, and the
+    // boot windows in Windows Vista Basic instead of Classic
+    const VISTA_LOGON_CLASS = 'vista-logon';
+    const VISTA_BASIC_THEME_CLASS = 'vista-basic-theme';
 
     const config = {
         dwellMs: { session: 600, settings: 0, wallpaper: 700, icons: 450, taskbar: 450, windows: 500, done: 350 },
@@ -94,7 +98,9 @@
         skipWired: false,
         suspended: false,
         suspendReason: null,
-        lockAddedClassic: false,     // Classic added by a lock (server restart or workstation)
+        lockTheme: null,            // theme class added by a lock (server restart or workstation)
+        // server setting: app.html starts from the last /status answer, websocket.js _setVistaLogon follows /status
+        vistaLogon: !!(doc && doc.body && doc.body.classList.contains(VISTA_LOGON_CLASS)),
         workstationLocked: false,   // manual lock (start menu Lock / Ctrl+Alt+L, workstationLock.js)
         pauseDepth: 0,              // both locks can be up; the pauses nest
         switchTimer: null,
@@ -311,21 +317,20 @@
     function onInitStep(step) {
         if (!step) return;
         if (state.active) {
+            // Wallpaper, icons and the taskbar wait until their preload steps finish
+            // (onStepDone). Revealing them from the priority alone painted empty art.
             if (step.priority >= 31) requestStage('windows');
-            else if (step.priority >= 16) requestStage('taskbar');
-            else if (step.priority > 12) requestStage('icons');
-            else requestStage('settings');
+            else if (step.priority < 12.2) requestStage('settings');
         }
         setDetailText(step.message || '');
     }
 
     function onStepDone(step) {
         if (!step || !state.active) return;
-        if (step.priority === 12) {
-            requestStage('icons'); // wallpaper is queued first by the stage order
-        } else if (step.priority === 16) {
-            requestStage('taskbar');
-        }
+        // These three messages are the startup-bar preload stages (assetPreload.js).
+        if (step.message === 'Loading wallpaper') requestStage('wallpaper');
+        else if (step.message === 'Loading desktop icons') requestStage('icons');
+        else if (step.message === 'Loading desktop assets') requestStage('taskbar');
     }
 
     // ---------- watchdog ----------
@@ -510,22 +515,56 @@
 
     // ---------- shared lock plumbing ----------
 
+    /** Theme of the boot windows: Vista Basic with Use Vista Logon, Windows Classic otherwise. */
+    function bootThemeClass() {
+        return state.vistaLogon ? VISTA_BASIC_THEME_CLASS : CLASSIC_THEME_CLASS;
+    }
+
     /**
-     * A lock layer is Windows Classic (like the first logon) while either lock is up. Every
-     * other layer sits hidden, so the theme only shows on the lock dialogs; it comes off with
-     * the last lock unless it was already on before.
+     * A lock layer takes the first logon's theme while either lock is up (Vista Basic with Use
+     * Vista Logon, Windows Classic otherwise): the restart lock is the logon again, the
+     * workstation lock is Vista's locked Welcome screen or Classic's Computer Locked
+     * (workstationLock.js). Every other layer sits hidden, so the theme only shows on the lock
+     * dialogs; it comes off with the last lock unless it was already on before.
      */
     function applyLockTheme() {
         const b = body();
         if (!b) return;
-        const locked = state.suspended || state.workstationLocked;
-        if (locked && !b.classList.contains(CLASSIC_THEME_CLASS)) {
-            b.classList.add(CLASSIC_THEME_CLASS);
-            state.lockAddedClassic = true;
-        } else if (!locked && state.lockAddedClassic) {
-            b.classList.remove(CLASSIC_THEME_CLASS);
-            state.lockAddedClassic = false;
+        const want = (state.suspended || state.workstationLocked) ? bootThemeClass() : null;
+        if (state.lockTheme && state.lockTheme !== want) {
+            b.classList.remove(state.lockTheme);
+            state.lockTheme = null;
         }
+        if (want && !b.classList.contains(want)) {
+            b.classList.add(want);
+            state.lockTheme = want;
+        }
+    }
+
+    /**
+     * Server setting from /status. body.vista-logon switches the logon dialog to the Welcome
+     * screen; the boot theme on screen (app.html inline Classic, or a restart lock's) swaps
+     * with it. workspaceUtils.js drops the first logon's boot theme once the desktop loads.
+     */
+    function setLogonTheme(on) {
+        state.vistaLogon = !!on;
+        const b = body();
+        if (!b) return;
+        b.classList.toggle(VISTA_LOGON_CLASS, state.vistaLogon);
+        if (state.suspended) {
+            applyLockTheme();
+            return;
+        }
+        if (!b.classList.contains('windows-startup')) return;
+        const from = state.vistaLogon ? CLASSIC_THEME_CLASS : VISTA_BASIC_THEME_CLASS;
+        if (b.classList.contains(from)) {
+            b.classList.remove(from);
+            b.classList.add(bootThemeClass());
+        }
+    }
+
+    function isVistaLogon() {
+        return state.vistaLogon;
     }
 
     function closeTransientSurfaces() {
@@ -714,6 +753,8 @@
         lockWorkstation,
         unlockWorkstation,
         isWorkstationLocked,
+        setLogonTheme,
+        isVistaLogon,
         isTaskbarVisible,
         whenTaskbarVisible,
         dropTaskbarQueued,

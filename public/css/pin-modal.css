@@ -100,7 +100,7 @@
     color: #fff;
     font-size: 1.5em;
     font-weight: bold;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     transition: var(--transition-pin-button);
     display: flex;
     align-items: center;

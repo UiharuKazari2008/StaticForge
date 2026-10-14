@@ -1,0 +1,456 @@
+/* The MeletonFX calculator as Vista's calc.exe (Yozora #493). Linked after vista-visual-index.css.
+   Desktop mode, not Classic: every rule is gated on body.desktop-mode:not(.windows-classic-theme).
+
+   Measured on the VM (calc.exe, Aero, 96 dpi), client coordinates:
+   - Standard window 270x264 (client 254x209), Scientific 490x321 (client 474x266). Our Scientific
+     and Programmer keep the same vertical metrics with fewer columns (calculator.js
+     DESKTOP_CALCULATOR_VISTA_WIDTHS).
+   - Menu bar 19 px: #fefeff to #e5eaf5 over 7 px, #d4dbed to #e1e6f6 under it, a #b6bccc line;
+     Edit / View / Help in Segoe UI 9 pt, the first title's text 8 px in.
+   - Display: a 23 px white text box 3 px under the menu bar, 8 px from the left edge, 7 (Standard)
+     or 8 px from the right, the value right-aligned in Segoe UI 9 pt black.
+   - Under it, 13 px lower (Standard): the memory box, a 27x26 sunken box (#a0a0a0 / #696969 top
+     and left, #e3e3e3 / #fff bottom and right) 12 px in, then Backspace CE C (61 / 60 / 60 x 27,
+     5 px apart, ending 8 px from the right edge). Scientific adds the group boxes under the
+     display (26 px tall, 4 px under the display, 8 px above the status row): Hex Dec Oct Bin and
+     Degrees Radians Grads as 13 px radio buttons 4 px in, the label 4 px after the circle; the
+     status row then holds the Inv / Hyp check boxes in a group box and a second sunken box that
+     shows (=n while parentheses are open.
+   - Keys 34x27, 5 px apart in a row, rows 5 / 6 px apart (dialog-unit rounding alternates), the
+     first key row 9 px under the status row, 9 px above the client's bottom edge; the memory
+     column 12 (Standard) / 16 px before the digit block, the function columns 16 px before it.
+     Button face: 7.css's standard button (.win7 on the client), border #707070 on the VM.
+   - Captions: digits, +/- and . blue #0000ff (Standard also sqrt % 1/x); the operators, =, the
+     memory keys and Backspace CE C red #ff0000; Scientific's functions ( ) x^y ln log n! 1/x and the
+     trig keys magenta #ff00ff; pi blue. (The task brief said navy for sqrt % 1/x; the VM shows blue.)
+   Our additions keep the recipe: Programmer is Scientific's shape with the A-F row under the digit
+   block; History (View menu) opens a white list column to the right and widens the window. */
+
+/* ---- the window: fixed size, light client ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal {
+    /* the widths are fixed per mode (calculator.js sets them inline, plus the tape column when
+       History is open), so the tape's container queries are off */
+    container-type: normal;
+    width: 270px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal[data-calc-mode="scientific"] {
+    width: 402px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal[data-calc-mode="programmer"] {
+    width: 363px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal > .modal-content {
+    padding: 3px 8px 9px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal .modal-window-title-toolbar {
+    display: none;
+}
+
+/* ---- the menu bar: calc.exe's (the shared .naxt-menubar markup; vista-atelier.css draws the same
+   bar for Atelier, Notepad, Notion and the prompt inspector, keyed to those windows) ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal .naxt-menubar {
+    display: flex;
+    flex: none;
+    align-items: stretch;
+    height: 19px;
+    margin: -3px -8px 3px;
+    padding: 0 1px;
+    background: linear-gradient(#fefeff, #e5eaf5 7px, #d4dbed 7px, #e1e6f6 18px);
+    border-bottom: 1px solid #b6bccc;
+    box-sizing: border-box;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal .naxt-menubar .naxt-menu-title {
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    height: 18px;
+    min-height: 0;
+    padding: 0 7px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal .naxt-menubar .naxt-menu-title::before,
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal .naxt-menubar .naxt-menu-title::after {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal .naxt-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
+    background: #3399ff;
+    color: #fff;
+    outline: none;
+}
+
+/* ---- the display: Vista's text box (7.css edge), one line, right-aligned ---- */
+
+/* nothing stretches or shrinks: the client hugs the keypad (calcRefitHeight measures that) */
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal .modal-body {
+    flex: none;
+    gap: 8px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorPad {
+    position: relative;
+    flex: 1 1 auto;
+    gap: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorDisplay {
+    box-sizing: border-box;
+    height: 23px;
+    min-height: 0;
+    margin: 0 0 13px;
+    padding: 0 5px;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 21px;
+    text-align: right;
+    text-shadow: none;
+    white-space: nowrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal[data-calc-mode="standard"] #desktopCalculatorDisplay {
+    margin-right: -1px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal:not([data-calc-mode="standard"]) #desktopCalculatorDisplay {
+    margin-bottom: 4px;
+}
+
+/* calc.exe has no expression line. Standard hides ours; Scientific and Programmer (parentheses,
+   precedence) keep it as small grey text in the display's left half, over the box, so the
+   geometry stays calc.exe's. */
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorExpression {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal:not([data-calc-mode="standard"]) #desktopCalculatorExpression {
+    display: block;
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    max-width: 55%;
+    height: 21px;
+    margin: 0;
+    padding: 0 5px;
+    overflow: hidden;
+    color: #6d6d6d;
+    font: 11px "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 21px;
+    text-align: left;
+    text-overflow: ellipsis;
+    text-shadow: none;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* ---- group boxes: 7.css fieldset, radios and check boxes at calc.exe's 13 px ---- */
+
+/* 7.css resolves --w7-rd-left and --w7-rdd-center on .win7, so the 13 px glyph sets them here too */
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal fieldset {
+    --w7-rd-size: 13px;
+    --w7-rdl-space: 4px;
+    --w7-rd-left: 17px;
+    --w7-rdd-center: 2.5px;
+    --w7-cb-size: 13px;
+    flex-wrap: nowrap;
+    box-sizing: border-box;
+    height: 26px;
+    min-width: 0;
+    margin: 0 0 8px;
+    padding: 0 0 0 3px;
+    gap: 0;
+    border-color: #d5dfe5;
+}
+
+/* the check box input stays out of flow like 7.css's radios; the label carries the glyph */
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal fieldset input[type="checkbox"] {
+    position: fixed;
+}
+
+/* the label is as tall as the 13 px glyph 7.css draws at its top, so circle, dot and text line up */
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal fieldset label {
+    gap: 0;
+    height: 13px;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 13px;
+    color: #000;
+    white-space: nowrap;
+}
+
+/* Degrees Radians Grads: 81 px apart; Hex Dec Oct Bin: 50 px apart (label width + the 17 px radio) */
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-group="angle"] label {
+    width: 64px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-group="base"] label {
+    width: 33px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal input[type="checkbox"] + label::before {
+    margin-right: 3px;
+}
+
+/* ---- the status row: Inv / Hyp, the sunken boxes, Backspace CE C ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] {
+    flex: none;
+    gap: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] > .form-row {
+    flex: none;
+    align-items: stretch;
+    gap: 5px;
+    height: 27px;
+    min-height: 0;
+    margin: 0;
+    padding-left: 1px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] > [data-calc-row="status"] {
+    gap: 0;
+    padding-left: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-row="status"] > fieldset {
+    align-self: flex-start;
+    flex: none;
+    width: 94px;
+    margin: -2px 6px 0 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-row="status"] > fieldset label:first-of-type {
+    width: 40px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-box] {
+    flex: none;
+    align-self: flex-end;
+    box-sizing: border-box;
+    width: 27px;
+    min-width: 0;
+    height: 26px;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    background: #f0f0f0;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 #696969, inset -1px -1px 0 #e3e3e3;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 22px;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad]:not([data-calc-pad="scientific"]) [data-calc-box="memory"] {
+    margin-left: 4px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-box="paren"] {
+    margin-left: 6px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad]:not([data-calc-pad="standard"]) [data-calc-box] {
+    align-self: flex-start;
+    margin-top: -1px;
+}
+
+/* every key: 7.css's standard button (the VM's #707070 edge) at 27 px, no 7.css minimums */
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] > .form-row > button {
+    min-width: 0;
+    height: 27px;
+    min-height: 0;
+    padding: 0;
+    border-color: #707070;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] > .form-row > button:disabled {
+    border-color: #adb2b5;
+    color: #838383;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] > [data-calc-row="status"] > button {
+    flex: 0 0 60px;
+    margin-left: 5px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] > [data-calc-row="status"] > [data-calc-key="backspace"] {
+    flex-basis: 61px;
+    margin-left: auto;
+}
+
+/* ---- the keypad: 34x27 keys, calc.exe's gaps ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] > .form-row:not([data-calc-row]) > button,
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] > .form-row:not([data-calc-row]) > [data-calc-spacer] {
+    flex: 0 0 34px;
+    width: 34px;
+    min-width: 0;
+    height: 27px;
+    min-height: 0;
+    padding: 0;
+}
+
+/* the memory column and the digit block start the wider gaps */
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad="standard"] [data-calc-col="digits"] {
+    margin-left: 7px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad]:not([data-calc-pad="standard"]) [data-calc-col="memory"] {
+    margin-left: 11px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad]:not([data-calc-pad="standard"]) [data-calc-col="digits"] {
+    margin-left: 10px;
+}
+
+/* rows: 9 px under the status row, then 6 / 5 / 6 (Standard) or 5 / 6 / 5 / 6 (the others) */
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] > .form-row + .form-row {
+    margin-top: 9px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] > .form-row:nth-child(n+3) {
+    margin-top: 6px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad="standard"] > .form-row:nth-child(4),
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad]:not([data-calc-pad="standard"]) > .form-row:nth-child(3),
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad]:not([data-calc-pad="standard"]) > .form-row:nth-child(5) {
+    margin-top: 5px;
+}
+
+/* ---- captions: calc.exe's colours (the 7.css disabled grey stays) ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] button:is(
+    [data-calc-key="/"], [data-calc-key="*"], [data-calc-key="-"], [data-calc-key="+"], [data-calc-key="="],
+    [data-calc-key="mc"], [data-calc-key="mr"], [data-calc-key="ms"], [data-calc-key="mplus"], [data-calc-key="mminus"],
+    [data-calc-key="backspace"], [data-calc-key="ce"], [data-calc-key="clear"],
+    [data-calc-key="mod"], [data-calc-key="and"], [data-calc-key="or"], [data-calc-key="xor"], [data-calc-key="not"],
+    [data-calc-key="nand"], [data-calc-key="nor"], [data-calc-key="lsh"], [data-calc-key="rsh"]
+):not(:disabled) {
+    color: #ff0000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad] button:is(
+    [data-calc-key="0"], [data-calc-key="1"], [data-calc-key="2"], [data-calc-key="3"], [data-calc-key="4"],
+    [data-calc-key="5"], [data-calc-key="6"], [data-calc-key="7"], [data-calc-key="8"], [data-calc-key="9"],
+    [data-calc-key="A"], [data-calc-key="B"], [data-calc-key="C"], [data-calc-key="D"], [data-calc-key="E"], [data-calc-key="F"],
+    [data-calc-key="sign"], [data-calc-key="."], [data-calc-key="pi"], [data-calc-key="e"],
+    [data-calc-key="sqrt"], [data-calc-key="percent"], [data-calc-key="recip"]
+):not(:disabled) {
+    color: #0000ff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal [data-calc-pad]:not([data-calc-pad="standard"]) button:is(
+    [data-calc-key="("], [data-calc-key=")"], [data-calc-key="sqr"], [data-calc-key="sqrt"], [data-calc-key="recip"],
+    [data-calc-key="abs"], [data-calc-key="fact"], [data-calc-key="percent"], [data-calc-key="pow"], [data-calc-key="pow10"],
+    [data-calc-key="log"], [data-calc-key="ln"], [data-calc-key="sin"], [data-calc-key="cos"], [data-calc-key="tan"],
+    [data-calc-key="bits"]
+):not(:disabled) {
+    color: #ff00ff;
+}
+
+/* ---- the history tape: a white list column to the right (View > History) ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal[data-calc-tape] #desktopCalculatorPad {
+    display: flex;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal[data-calc-tape] #desktopCalculatorTape {
+    display: flex;
+    flex: 0 0 240px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTape {
+    gap: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTape > .form-row {
+    align-items: center;
+    gap: 0;
+    height: 23px;
+    margin: 0 0 4px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTape > .form-row > .form-hint {
+    margin: 0;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTapeClear {
+    width: 23px;
+    min-width: 0;
+    height: 23px;
+    min-height: 0;
+    padding: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTapeList {
+    gap: 0;
+    padding: 1px;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTapeList:empty::before {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+/* entries are plain rows (the 7.css button face off), Vista's list hover */
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTapeList > button {
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    padding: 1px 4px 2px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTapeList > button::before,
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTapeList > button::after {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTapeList > button:hover {
+    background: var(--w7-li-bg-hl);
+    border-color: var(--w7-li-bd-hl);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopCalculatorModal #desktopCalculatorTapeList > button > .form-hint {
+    color: #6d6d6d;
+    font-size: 11px;
+}

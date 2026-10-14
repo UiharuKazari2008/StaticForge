@@ -21,7 +21,7 @@ html.melaton-boot .launch-container {
     color: #c0c0c0;
     user-select: none;
     -webkit-user-select: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 html.melaton-boot #melatonBoot {
@@ -185,7 +185,7 @@ html.melaton-boot #melatonBoot {
     color: inherit;
     font: inherit;
     line-height: inherit;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .melaton-text-body {
@@ -216,7 +216,7 @@ html.melaton-boot #melatonBoot {
     margin-left: 3ch;
     padding: 0 1ch;
     max-width: 66ch;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     touch-action: manipulation;
 }
 

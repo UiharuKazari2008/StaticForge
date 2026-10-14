@@ -134,7 +134,7 @@
     /**
      * Logon-screen windows (the Connecting dialog, Dreamscape Mainframe Server) sit in the
      * bottom-right quadrant, a little off any grid, the way a logon hook pops its windows up
-     * (Yukimi, 2026-10-12), and below the centered logon dialog where the screen allows. Call
+     * (Yukimi, 2026-10-12), and below the logon dialog where the screen allows. Call
      * after the window is open (it needs its size); setModalOffsetPx is modalUtils.js.
      */
     const LOGON_SPOTS = {

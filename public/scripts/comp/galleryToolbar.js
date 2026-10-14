@@ -315,14 +315,9 @@ function showGalleryMoveModal(filename) {
                             <p>Choose the workspace where you want to move the selected images:</p>
                         </div>
                         <div class="gallery-move-workspace-selector">
-                            <div class="custom-dropdown" id="galleryMoveWorkspaceDropdown">
-                                <button class="custom-dropdown-btn" id="galleryMoveWorkspaceDropdownBtn" type="button">
-                                    <span id="galleryMoveWorkspaceSelected">Select workspace...</span>
-                                </button>
-                                <div class="custom-dropdown-menu hidden" id="galleryMoveWorkspaceDropdownMenu">
-                                    <!-- Workspace options will be populated here -->
-                                </div>
-                            </div>
+                            <button class="custom-dropdown-btn" id="galleryMoveWorkspaceDropdownBtn" type="button">
+                                <span id="galleryMoveWorkspaceSelected">Select workspace...</span>
+                            </button>
                         </div>
                     </div>
                     <div class="gallery-move-actions">
@@ -455,87 +450,22 @@ function stopGalleryMoveCrossFade() {
 
 // Setup workspace dropdown for gallery move modal
 function setupGalleryMoveWorkspaceDropdown(modal) {
-    const dropdownContainer = modal.querySelector('#galleryMoveWorkspaceDropdown');
     const dropdownBtn = modal.querySelector('#galleryMoveWorkspaceDropdownBtn');
-    const dropdownMenu = modal.querySelector('#galleryMoveWorkspaceDropdownMenu');
+    if (dropdownBtn.dataset.clickMenu) return;
     const selectedSpan = modal.querySelector('#galleryMoveWorkspaceSelected');
     const confirmBtn = modal.querySelector('#galleryMoveConfirmBtn');
-    
-    // Check if dropdown is already set up
-    if (dropdownContainer.dataset.setup === 'true') {
-        return; // Already set up, don't add duplicate event listeners
-    }
-    
-    // Setup dropdown functionality using the main dropdown system
-    setupDropdown(
-        dropdownContainer, 
-        dropdownBtn, 
-        dropdownMenu, 
-        renderGalleryMoveWorkspaceDropdown, 
-        () => selectedSpan.dataset.value || null,
-        {
-            onSelectOption: (value) => {
-                const workspace = workspaces[value];
-                if (workspace) {
-                    selectedSpan.textContent = workspace.name;
-                    selectedSpan.dataset.value = workspace.id;
-                    confirmBtn.disabled = false;
-                }
-            }
-        }
-    );
-    
-    // Mark as set up
-    dropdownContainer.dataset.setup = 'true';
-}
 
-// Render function for gallery move workspace dropdown
-function renderGalleryMoveWorkspaceDropdown() {
-    const modal = document.getElementById('galleryMoveModal');
-    if (!modal) return;
-    
-    const dropdownMenu = modal.querySelector('#galleryMoveWorkspaceDropdownMenu');
-    if (!dropdownMenu) return;
-    
-    dropdownMenu.innerHTML = '';
-    
-    Object.values(workspaces).forEach(workspace => {
-        if (workspace.id !== activeWorkspace) {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option';
-            option.tabIndex = 0;
-            option.dataset.value = workspace.id;
-            
-            const workspaceColor = workspace.color || '#102040';
-            
-            option.innerHTML = `
-                <div class="workspace-option-content">
-                    <div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
-                    <div class="workspace-name">${workspace.name}</div>
-                </div>
-            `;
-            
-            option.addEventListener('click', () => {
-                const selectedSpan = modal.querySelector('#galleryMoveWorkspaceSelected');
-                const confirmBtn = modal.querySelector('#galleryMoveConfirmBtn');
-                
-                selectedSpan.innerHTML = `<div class="workspace-option-content"><div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
-                    <div class="workspace-name">${workspace.name}</div></div>`;
-                selectedSpan.dataset.value = workspace.id;
-                confirmBtn.disabled = false;
-                
-                const dropdownBtn = modal.querySelector('#galleryMoveWorkspaceDropdownBtn');
-                closeDropdown(dropdownMenu, dropdownBtn);
-            });
-            
-            option.addEventListener('keydown', e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    option.click();
-                }
-            });
-            
-            dropdownMenu.appendChild(option);
+    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+    contextMenu.attachPickerMenu(dropdownBtn, {
+        // getWorkspacePickerItems: public/scripts/comp/workspaceUtils.js
+        items: () => getWorkspacePickerItems(activeWorkspace, true),
+        value: () => selectedSpan.dataset.value || null,
+        onSelect: (value) => {
+            const workspace = workspaces[value];
+            if (!workspace) return;
+            selectedSpan.replaceChildren(workspaceMenuRowContent(workspace, true));
+            selectedSpan.dataset.value = workspace.id;
+            confirmBtn.disabled = false;
         }
     });
 }
@@ -544,8 +474,6 @@ function renderGalleryMoveWorkspaceDropdown() {
 async function hideGalleryMoveModal() {
     const modal = document.getElementById('galleryMoveModal');
     if (modal) {
-        // closeAllDropdownsInRoot: public/scripts/comp/dropdown.js
-        closeAllDropdownsInRoot(modal);
         await closeModal(modal);
     }
     

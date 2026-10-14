@@ -2,6 +2,8 @@
 #desktopPreStartupModal .desktop-prestartup-progress > div {
     will-change: background-position;
 }
+/* Vertical place is placeWindowsLogonDialog (modalUtils.js): top at one third of
+   the leftover screen, the classic logon position. Horizontal center stays the modal's. */
 #desktopPreStartupModal {
     width: 530px;
     max-width: calc(100vw - 48px);
@@ -181,6 +183,557 @@ body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-auth-erro
     }
 }
 
+/* Classic shows no cue text; the Vista field reads "Password" */
+#desktopPreStartupPassword::placeholder {
+    color: transparent;
+}
+
+.desktop-prestartup-vista {
+    display: none;
+}
+
+/* ---------- Vista Welcome screen (User Accounts "Use Vista Logon", desktopBoot.setLogonTheme) ----------
+   The same dialog and controls, laid out full screen like Vista's LogonUI, measured on the Vista
+   VM at 1920x1200 (Yozora #482). The main frame is the screen above the 96 px options bar; its
+   centre (50% - 48px) anchors the status line, the user tile, the name and the password row.
+   No open animation and no frame: Vista cuts straight to it. Art: /static_images/vista-logon/
+   (authui.dll / imageres.dll); the background is the one closest to the screen's aspect ratio,
+   stretched, like LogonUI. */
+body.vista-logon #desktopPreStartupModal {
+    --vista-logon-bg: url('/static_images/vista-logon/background-1360x768.jpg');
+    position: fixed;
+    inset: 0;
+    width: auto;
+    height: auto;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    transform: none;
+    animation: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    /* branding (#495): the Dreamscape mark, "Dreamscape" in Segoe UI and "2026 R7" light, built by
+       scripts/build-vista-logon-branding.sh into the slot Vista's flag + "Windows Vista" used */
+    background: url('/static_images/vista-logon/branding.png') center bottom 23px / 400px 50px no-repeat,
+        #000 var(--vista-logon-bg) 0 0 / 100% 100% no-repeat;
+    color: #fff;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 12px;
+    cursor: default;
+}
+
+/* Black until the art has decoded (websocket.js _whenVistaLogonArtReady); the Connecting and
+   Mainframe Server windows show over the black meanwhile */
+body.vista-logon #desktopPreStartupModal:not(.vista-logon-art-ready) {
+    visibility: hidden;
+}
+
+@media (max-aspect-ratio: 1719/1000) {
+    body.vista-logon #desktopPreStartupModal { --vista-logon-bg: url('/static_images/vista-logon/background-1280x768.jpg'); }
+}
+
+@media (max-aspect-ratio: 16333/10000) {
+    body.vista-logon #desktopPreStartupModal { --vista-logon-bg: url('/static_images/vista-logon/background-1920x1200.jpg'); }
+}
+
+@media (max-aspect-ratio: 14667/10000) {
+    body.vista-logon #desktopPreStartupModal { --vista-logon-bg: url('/static_images/vista-logon/background-1600x1200.jpg'); }
+}
+
+@media (max-aspect-ratio: 12917/10000) {
+    body.vista-logon #desktopPreStartupModal { --vista-logon-bg: url('/static_images/vista-logon/background-1280x1024.jpg'); }
+}
+
+@media (max-aspect-ratio: 1025/1000) {
+    body.vista-logon #desktopPreStartupModal { --vista-logon-bg: url('/static_images/vista-logon/background-1024x1280.jpg'); }
+}
+
+@media (max-aspect-ratio: 775/1000) {
+    body.vista-logon #desktopPreStartupModal { --vista-logon-bg: url('/static_images/vista-logon/background-960x1280.jpg'); }
+}
+
+@media (max-aspect-ratio: 6875/10000) {
+    body.vista-logon #desktopPreStartupModal { --vista-logon-bg: url('/static_images/vista-logon/background-900x1440.jpg'); }
+}
+
+@media (max-aspect-ratio: 6125/10000) {
+    body.vista-logon #desktopPreStartupModal { --vista-logon-bg: url('/static_images/vista-logon/background-768x1280.jpg'); }
+}
+
+@media (max-aspect-ratio: 5825/10000) {
+    body.vista-logon #desktopPreStartupModal { --vista-logon-bg: url('/static_images/vista-logon/background-768x1360.jpg'); }
+}
+
+body.vista-logon #desktopPreStartupModal::before,
+body.vista-logon #desktopPreStartupModal::after,
+body.vista-logon #desktopPreStartupModal > .modal-window-title,
+body.vista-logon #desktopPreStartupModal > .modal-window-controls,
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-hero,
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-progress,
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-auth-label,
+body.vista-logon #desktopPreStartupModal.auth-active:not(.auth-busy) #desktopPreStartupStatus,
+body.vista-logon #desktopPreStartupModal.auth-busy #desktopPreStartupAuth {
+    display: none;
+}
+
+/* The Classic boxes give way: every control below sits on the screen itself */
+body.vista-logon #desktopPreStartupModal :is(.desktop-prestartup-content, .desktop-prestartup-main, .desktop-prestartup-info, .desktop-prestartup-auth, .desktop-prestartup-auth-row, .desktop-prestartup-auth-actions) {
+    display: contents;
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista {
+    display: block;
+}
+
+/* Status: the 20 px wait animation, 10 px, then the text in white 18 pt; LogonUI centres the text
+   and the animation sits 5 px further out than a centred group would put it */
+body.vista-logon #desktopPreStartupStatus {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(50% - 60px);
+    height: 20px;
+    font-size: 24px;
+    line-height: 20px;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+}
+
+body.vista-logon #desktopPreStartupStatus::before {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    margin: 0 10px 0 -5px;
+    vertical-align: top;
+    background: url('/static_images/vista-logon/wait-20.png') 0 0 / 20px 360px no-repeat;
+    animation: vista-logon-wait 1s steps(18) infinite;
+}
+
+@keyframes vista-logon-wait {
+    to {
+        background-position-y: -360px;
+    }
+}
+
+/* User tile: the 190 px glass frame over the 126 px account picture */
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-tile {
+    position: absolute;
+    left: calc(50% - 96px);
+    top: calc(50% - 137px);
+    width: 190px;
+    height: 190px;
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-tile::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url('/static_images/vista-logon/usertile-frame-190.png') 0 0 / 190px 190px no-repeat;
+}
+
+#desktopPreStartupPicture {
+    position: absolute;
+    left: 32px;
+    top: 32px;
+    width: 126px;
+    height: 126px;
+    object-fit: cover;
+}
+
+/* The account name is the Classic user name box, read-only text here */
+body.vista-logon #desktopPreStartupUsername {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    top: calc(50% + 54px);
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font: 24px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-align: center;
+    pointer-events: none;
+}
+
+/* Password row: 225 x 25 field (9-grid, 4 px), 4 px, the 30 px arrow; the row is centred with a
+   34 px spacer on the left, so the field starts 113 px left of centre */
+body.vista-logon #desktopPreStartupPassword {
+    position: absolute;
+    left: calc(50% - 113px);
+    top: calc(50% + 93px);
+    width: 225px;
+    height: 25px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0 4px 5px 5px;
+    border: 4px solid transparent;
+    border-image: url('/static_images/vista-logon/password.png') 4 fill / 4px stretch;
+    background: transparent;
+    color: #000;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    outline: none;
+}
+
+body.vista-logon #desktopPreStartupPassword::placeholder {
+    color: #575757;
+}
+
+body.vista-logon #desktopPreStartupPassword:hover {
+    border-image-source: url('/static_images/vista-logon/password-hover.png');
+}
+
+body.vista-logon #desktopPreStartupPassword:focus {
+    border-image-source: url('/static_images/vista-logon/password-focus.png');
+}
+
+body.vista-logon #desktopPreStartupPassword:disabled {
+    border-image-source: url('/static_images/vista-logon/password-disabled.png');
+}
+
+/* :where() keeps this reset under each button's own rule below */
+body.vista-logon #desktopPreStartupModal :where(#desktopPreStartupLoginBtn, .desktop-prestartup-vista-button, .desktop-prestartup-vista-options > button) {
+    all: unset;
+    position: absolute;
+    box-sizing: border-box;
+}
+
+body.vista-logon #desktopPreStartupModal :where(#desktopPreStartupLoginBtn, .desktop-prestartup-vista-button, .desktop-prestartup-vista-options > button)::after {
+    content: none;
+}
+
+/* The arrow submits; the Classic button's caption stays for screen readers only */
+body.vista-logon #desktopPreStartupLoginBtn {
+    left: calc(50% + 116px);
+    top: calc(50% + 90px);
+    width: 30px;
+    height: 30px;
+    font-size: 0;
+    color: transparent;
+    background: url('/static_images/vista-logon/submit.png') 0 0 / 30px 30px no-repeat;
+}
+
+body.vista-logon #desktopPreStartupLoginBtn::before {
+    content: none;
+}
+
+body.vista-logon #desktopPreStartupLoginBtn:hover {
+    background-image: url('/static_images/vista-logon/submit-hover.png');
+}
+
+body.vista-logon #desktopPreStartupLoginBtn:active {
+    background-image: url('/static_images/vista-logon/submit-pressed.png');
+}
+
+/* Message view (wrong password and the like): the icon and text, one OK; the tile, the name,
+   the password row, Switch User and the options bar buttons give way, the branding stays */
+body.vista-logon #desktopPreStartupModal:has(#desktopPreStartupAuthError:not(.hidden)) :is(.desktop-prestartup-vista-tile, #desktopPreStartupUsername, #desktopPreStartupPassword, #desktopPreStartupLoginBtn, .desktop-prestartup-vista-switch, .desktop-prestartup-vista-options),
+body.vista-logon #desktopPreStartupModal:not(:has(#desktopPreStartupAuthError:not(.hidden))) #desktopPreStartupMessageOkBtn {
+    display: none;
+}
+
+/* Icon 32 px, 10 px, the text in white 9 pt; the right padding keeps Vista's group 8 px left of centre */
+body.vista-logon #desktopPreStartupAuthError {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(50% + 108px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 32px;
+    padding-right: 16px;
+    color: #fff;
+    font-size: 12px;
+    line-height: 16px;
+}
+
+body.vista-logon #desktopPreStartupAuthError::before {
+    content: '';
+    flex: 0 0 32px;
+    height: 32px;
+    background: url('/static_images/vista-icons/msgbox-error-32.png') 0 0 / 32px 32px no-repeat;
+}
+
+/* LogonUI button: 93 x 28 minimum, 9-grid (4, 3), white 11 pt caption; OK and Switch User share
+   the spot 180 px below centre (never on screen together) */
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button {
+    left: calc(50% - 47px);
+    top: calc(50% + 180px);
+    min-width: 93px;
+    height: 28px;
+    padding: 0 10px 2px;
+    border: solid transparent;
+    border-width: 3px 4px;
+    border-image: url('/static_images/vista-logon/button.png') 3 4 fill / 3px 4px stretch;
+    color: #fff;
+    font-size: 15px;
+    line-height: 21px;
+    text-align: center;
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button:focus-visible {
+    border-image-source: url('/static_images/vista-logon/button-focus.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button:hover {
+    border-image-source: url('/static_images/vista-logon/button-hover.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button:hover:focus-visible {
+    border-image-source: url('/static_images/vista-logon/button-hover-focus.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button:active {
+    border-image-source: url('/static_images/vista-logon/button-pressed.png');
+}
+
+/* Options bar (the bottom 96 px): Ease of Access 34 px in from the left, Shut down and its
+   options arrow 34 px in from the right, both 34 px below the bar's top edge */
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-options {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 96px;
+    pointer-events: none;
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-options > button {
+    top: 34px;
+    height: 28px;
+    pointer-events: auto;
+}
+
+body.vista-logon #desktopPreStartupModal :where(.desktop-prestartup-vista-options > button)::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: center / 24px 24px no-repeat;
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease {
+    left: 34px;
+    width: 38px;
+    border: solid transparent;
+    border-width: 2px 4px;
+    border-image: url('/static_images/vista-logon/button.png') 2 4 fill / 2px 4px stretch;
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease::before {
+    inset: -2px -4px;
+    background-image: url('/static_images/vista-logon/ease-of-access.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease:focus-visible {
+    border-image-source: url('/static_images/vista-logon/button-focus.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease:hover {
+    border-image-source: url('/static_images/vista-logon/button-hover.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease:hover:focus-visible {
+    border-image-source: url('/static_images/vista-logon/button-hover-focus.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease:active {
+    border-image-source: url('/static_images/vista-logon/button-pressed.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown {
+    right: 54px;
+    width: 38px;
+    border: solid transparent;
+    border-width: 1px 4px;
+    border-image: url('/static_images/vista-logon/shutdown.png') 1 4 fill / 1px 4px stretch;
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown::before {
+    inset: -1px -4px;
+    background-image: url('/static_images/vista-logon/shutdown-icon.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown:focus-visible {
+    border-image-source: url('/static_images/vista-logon/shutdown-focus.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown:hover {
+    border-image-source: url('/static_images/vista-logon/shutdown-hover.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown:hover:focus-visible {
+    border-image-source: url('/static_images/vista-logon/shutdown-hover-focus.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown:active {
+    border-image-source: url('/static_images/vista-logon/shutdown-pressed.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu {
+    right: 34px;
+    width: 20px;
+    background: url('/static_images/vista-logon/shutdown-options.png') 0 0 / 20px 28px no-repeat;
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu::before {
+    background-image: url('/static_images/vista-logon/shutdown-arrow.png');
+    background-size: 9px 6px;
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu:focus-visible {
+    background-image: url('/static_images/vista-logon/shutdown-options-focus.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu:hover {
+    background-image: url('/static_images/vista-logon/shutdown-options-hover.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu:hover:focus-visible {
+    background-image: url('/static_images/vista-logon/shutdown-options-hover-focus.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu:active {
+    background-image: url('/static_images/vista-logon/shutdown-options-pressed.png');
+}
+
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-switch {
+    left: calc(50% - 54px);
+    width: 108px;
+}
+
+/* Locked (workstationLock.js with Use Vista Logon): the tile and the name move up 15 px for
+   "Locked" in white 9 pt under the name; the password row stays; no Shut down while locked.
+   A server restart under the lock is a plain logon again (session-suspended). */
+body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupModal .desktop-prestartup-vista-tile {
+    top: calc(50% - 152px);
+}
+
+body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupModal .desktop-prestartup-vista-tile::before {
+    content: 'Locked';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 221px;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupUsername {
+    top: calc(50% + 39px);
+}
+
+body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupModal :is(.desktop-prestartup-vista-shutdown, .desktop-prestartup-vista-shutdown-menu) {
+    display: none;
+}
+
+/* ---------- Windows Vista Basic boot windows (desktopBoot.js bootThemeClass) ----------
+   With Use Vista Logon the boot is Vista Basic where it would be Windows Classic: the windows
+   around the Welcome screen (Connecting, the mainframe server, Preparing your desktop, boot
+   message boxes) take the Basic frame. Measured on the Vista VM with DWM off: 1 px black edge,
+   1 px white light (cyan on the right and bottom), 1 px frame colour, a 23 px caption band
+   with the Basic gradient, black 9 pt caption, the 28 x 15 close button 4 px in, no shadow,
+   no client edge. The client areas keep their Vista controls. */
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) {
+    --window-frame-inset: 2px;
+    --modal-title-chrome-height: 23px;
+    padding: 22px 2px 2px;
+    border: 1px solid;
+    /* !important: the desktop frame colour rule carries three ids in its :not()s */
+    border-color: #343434 #000 #000 !important;
+    border-radius: 5px 5px 0 0;
+    background: linear-gradient(#99b4d1 1px, #b9d1ea 22px) 0 0 / 100% 22px no-repeat, #b9d1ea;
+    box-shadow: inset 1px 1px #fff, inset -1px 0 #3fcef2, inset 0 -1px #28cfe4;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window) {
+    border-color: #4c4c4c !important;
+    background: linear-gradient(#bfcedc 1px, #d7e4f2 22px) 0 0 / 100% 22px no-repeat, #d7e4f2;
+    box-shadow: inset 1px 1px #e2e6ef, inset -1px -1px #e9ecf3;
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal)::before,
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal)::after,
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title::before,
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title::after,
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls::before,
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls::after {
+    content: none;
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 22px;
+    min-height: 0;
+    padding: 0 0 0 6px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title .modal-window-title-main {
+    height: 22px;
+    min-height: 0;
+    padding: 2px 0 0;
+    gap: 5px;
+    color: #000;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-shadow: none;
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title .modal-window-title-main span {
+    font-variation-settings: normal;
+    font-weight: 400;
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title .icon-image {
+    width: 16px;
+    height: 16px;
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls {
+    top: 4px;
+    right: 3px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls > button {
+    all: unset;
+    display: block;
+    width: 28px;
+    height: 15px;
+    background: url('/static_images/vista-logon/basic-close.png') 0 0 / 28px 15px no-repeat;
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window) > .modal-window-controls > button {
+    background-image: url('/static_images/vista-logon/basic-close-inactive.png');
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls > button > *,
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls > button::before,
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls > button::after {
+    display: none;
+}
+
 #windowsStartupModal {
     position: fixed;
     top: calc(var(--true-inset-top, 0px) + var(--modal-offset-y, 20px));
@@ -302,6 +855,34 @@ body.windows-classic-theme [role=progressbar]:not(.marquee)::before {
     display: none;
 }
 
+/* 7.scoped.css (.win7) loads after this file; beat its Aero shine on Classic */
+body.windows-classic-theme .win7 [role=progressbar].animate>div::before,
+body.windows-classic-theme .win7 [role=progressbar].animate>div::after {
+    display: none;
+    animation: none;
+    background: none;
+    background-image: none;
+}
+
+body.windows-classic-theme .win7 [role=progressbar]::after {
+    display: none;
+}
+
+body.windows-classic-theme .win7 [role=progressbar].marquee::before {
+    content: '';
+    display: block;
+    width: 25%;
+    height: 100%;
+    background: var(--Hilight);
+    background-image: none;
+    opacity: 1;
+    animation: classic-progress-marquee 1.6s steps(24) infinite;
+}
+
+body.windows-classic-theme .win7 [role=progressbar]:not(.marquee)::before {
+    display: none;
+}
+
 @keyframes classic-progress-marquee {
     from { transform: translateX(-100%); }
     to { transform: translateX(400%); }
@@ -338,6 +919,11 @@ body.desktop-mode.windows-startup {
 body.desktop-mode.windows-startup.boot-from-launch {
     background: #000000;
     background-image: none;
+}
+
+/* Use Vista Logon: Vista's desktop colour behind the Welcome screen and Preparing your desktop */
+body.desktop-mode.windows-startup.vista-logon {
+    background: #000000;
 }
 
 /* Dreamscape OS installation wizard (>20 files during boot) */
@@ -481,6 +1067,11 @@ body.desktop-mode.session-suspended::before {
     background: teal;
     z-index: 2147482000;
     pointer-events: auto;
+}
+
+body.desktop-mode.session-suspended.vista-logon,
+body.desktop-mode.session-suspended.vista-logon::before {
+    background: #000000;
 }
 
 /* :is() carries the id specificity, so this beats the dialogs' own `#id { z-index: … !important }` */
@@ -699,7 +1290,7 @@ body.desktop-mode.workstation-locked *:not(.boot-dialog, .boot-dialog *)::after 
 }
 
 #workstationLockModal[data-view="locked"] .workstation-lock-main {
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #workstationLockModal .workstation-lock-icon svg {

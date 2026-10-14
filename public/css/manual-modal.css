@@ -47,6 +47,123 @@ div#manualModal:not(.windowed) {
     background-color: var(--glass-layer-dark-bg);
 }
 
+/* ---- the Studio's felt (Yukimi 2026-10-14): billiard / card-table baize under the whole client,
+   dyed with the workspace accent; the preview pane is a window of Aero glass cut into it.
+   static_images/studio-felt/ is a neutral mid-grey seamless tile (scripts/generate-studio-felt.js,
+   GPT Image); overlay-blended over the dye, 50% grey keeps the dye and the fibres darken / lighten
+   it. A soft lamp pool from above, darker edges, and the client edge sunk like a table cushion
+   keep it in the pre-2010 / Frutiger Aero language. Desktop only; the classic theme keeps its own. */
+body.desktop-mode:not(.windows-classic-theme) #manualModal {
+    --studio-felt-dye: color-mix(in srgb, var(--primary-color-dark, var(--primary-color, #2f7f75)) 50%, #000);
+    /* bases under the controls on the felt: opaque, so nothing reads as printed on the cloth */
+    --studio-control-base: color-mix(in srgb, var(--studio-felt-dye) 38%, #15191a);
+    --studio-well-base: color-mix(in srgb, var(--studio-felt-dye) 26%, #060909);
+}
+
+/* deeper and burnt (Yukimi 2026-10-14: "more deeper and more burnt as its lacking contrast",
+   then "just a bit darker"): the accent at 36% of its lightness with a little more chroma */
+@supports (color: oklch(from red l c h)) {
+    body.desktop-mode:not(.windows-classic-theme) #manualModal {
+        --studio-felt-dye: oklch(from var(--primary-color-dark, var(--primary-color, #2f7f75)) calc(l * 0.36) calc(c * 1.2) h);
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content,
+body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed .manual-modal-content,
+body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed.active-window .manual-modal-content {
+    background-color: var(--studio-felt-dye);
+    background-image:
+        radial-gradient(ellipse 75% 55% at 50% 28%, hsl(0 0% 100% / 8%), transparent 70%),
+        radial-gradient(ellipse 120% 100% at 50% 45%, transparent 45%, hsl(0 0% 0% / 62%)),
+        url('/static_images/studio-felt/wear.webp'),
+        image-set(url('/static_images/studio-felt/felt-1x.webp') 1x, url('/static_images/studio-felt/felt.webp') 2x);
+    /* the wear (Yukimi: "not a brand new thing"): a transparent overlay of faint drink rings,
+       rubbed nap and scuffs over the tile, at its own fixed size (it must not stretch with the
+       window, Yukimi), pinned bottom-left where the felt shows; a resize reveals more or less */
+    background-size: 100% 100%, 100% 100%, 1536px 1024px, 256px 256px;
+    background-position: 0 0, 0 0, left bottom, 0 0;
+    background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+    background-blend-mode: normal, normal, normal, overlay;
+    box-shadow: inset 0 2px 6px hsl(0 0% 0% / 55%), inset 0 0 40px hsl(0 0% 0% / 35%), inset 0 0 0 1px hsl(0 0% 0% / 45%);
+}
+
+/* ---- controls on the felt sit on solid bases (Yukimi 2026-10-14: buttons and the inset status
+   values must not look part of the background, inactive ones included). The Vista glass stays a
+   background-image over background-color (vista-glass-controls.css), so only the colour changes:
+   each state's own tint composited onto an opaque base. Hover-show fields (the custom app's own
+   controls) and the preview pane's contents are left alone. ---- */
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content :is(.btn-secondary, .btn-warning, .toolbar-btn):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *) {
+    background-color: color-mix(in srgb, #fff 16%, var(--studio-control-base));
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content :is(.btn-secondary, .btn-warning, .toolbar-btn):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):hover:not(:disabled) {
+        background-color: color-mix(in srgb, #fff 26%, var(--studio-control-base));
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content :is(.btn-secondary, .btn-warning, .toolbar-btn, .toggle-btn):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):is(.active, [data-state="on"], [data-state="open"]):not(.indicator) {
+    background-color: color-mix(in srgb, var(--primary-color-dark, var(--primary-color)) 42%, var(--studio-control-base));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .btn-primary:not(.hover-show):not(#manualPreviewContainer *) {
+    background-color: color-mix(in srgb, var(--primary-color-dark, var(--primary-color)) 72%, var(--studio-control-base));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .btn-danger:not(.hover-show):not(#manualPreviewContainer *) {
+    background-color: color-mix(in srgb, #d2281e 74%, var(--studio-control-base));
+}
+
+/* inactive: still solid, just quieter */
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content :is(.btn-secondary, .btn-primary, .btn-danger, .btn-warning, .toolbar-btn, .toggle-btn):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):disabled {
+    background-color: color-mix(in srgb, #fff 6%, var(--studio-control-base));
+    opacity: 1;
+    color: hsl(0 0% 100% / 42%);
+}
+
+/* the status wells keep their state tint, on an opaque well */
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content :is(.inset-badge, .gallery-toggle-group, .mode-slider-container):not(#manualPreviewContainer *) {
+    background-color: color-mix(in srgb, var(--primary-color, #77dfd8) 10%, var(--studio-well-base));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .inset-badge.price-display:not(.free) {
+    background-color: color-mix(in srgb, #ff9800 16%, var(--studio-well-base));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .inset-badge.price-display.free {
+    background-color: color-mix(in srgb, #93e195 10%, var(--studio-well-base));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .token-free-display.token-free-warning {
+    background-color: color-mix(in srgb, #ffeb3b 11%, var(--studio-well-base));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .token-free-display.token-free-critical {
+    background-color: color-mix(in srgb, #ff6b6b 13%, var(--studio-well-base));
+}
+
+/* the preview pane: the window's own frame glass through the felt ([data-aero-surface], aero-glass.css
+   paints frosted / basic and aeroGlass.syncSurfaces aligns it). Live has no surface paint of its own
+   (the frame is a real backdrop the felt covers), so it takes basic's: the frame colour, tint and
+   sheen. A dark rim and a light inner line make it read as glass set into the cloth. */
+html[data-glass="live"] body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed #manualPreviewContainer[data-aero-surface] {
+    background-origin: border-box;
+    background-clip: border-box;
+    background-color: var(--aero-frame-base);
+    background-image: var(--aero-sheen), linear-gradient(var(--aero-tint), var(--aero-tint));
+    background-size: 100% 100%, 100% 100%;
+    background-repeat: no-repeat;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed #manualPreviewContainer[data-aero-surface] {
+    box-shadow: 0 0 0 1px hsl(0 0% 0% / 55%), inset 0 0 0 1px hsl(0 0% 100% / 22%), 0 2px 10px hsl(0 0% 0% / 40%);
+}
+
+/* generating: the star field's black pane stays black over the glass */
+html[data-glass] body.desktop-mode #manualModal .manual-modal-content.generating #manualPreviewContainer[data-aero-surface] {
+    background: hsl(0 0% 0% / 100%);
+}
+
 /* Reference drop to manual modal */
 .modal.reference-drop-target {
     box-shadow: 0 0 0 3px var(--accent-primary);
@@ -630,7 +747,7 @@ body:not(.windows-classic-theme) .manual-preview-container::before {
     font-family: inherit;
     font-size: 0.92rem;
     line-height: 1.2;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     position: relative;
     z-index: 1;
     opacity: 0.38;
@@ -674,7 +791,7 @@ html.can-hover .manual-quickstart-switch:hover .manual-quickstart-switch-btn:hov
     border: 0;
     box-shadow: none;
     color: var(--text-muted, rgba(255, 255, 255, 0.55));
-    cursor: pointer;
+    cursor: var(--c-pointer);
     opacity: 0.55;
 }
 
@@ -819,7 +936,7 @@ html.can-hover .manual-quickstart-switch:hover .manual-quickstart-switch-underli
     overflow: visible;
     background: transparent;
     color: var(--text-primary);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .manual-quickstart-card::before {
@@ -918,7 +1035,7 @@ html.studio-simple-output .generated-image-name {
 }
 
 html.studio-lock-viewer-camera .manual-preview-image-container {
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 html.studio-reduced-preview .manual-preview-blur-background,
@@ -1200,7 +1317,7 @@ html[data-studio-transparency-bg="custom"] .manual-preview-image-container-inner
     padding-top: 5px;
     align-items: center;
     justify-content: center;
-    cursor: grab;
+    cursor: var(--c-grab);
     pointer-events: auto;
     z-index: var(--z-layer-10);
     -webkit-backdrop-filter: blur(2px);
@@ -2527,7 +2644,7 @@ body.desktop-mode .form-section.model-control .control-holder .form-row.control-
         min-width: 100px;
         max-width: 100px;
         font-size: 0.85rem;
-        cursor: pointer;
+        cursor: var(--c-pointer);
         transition: var(--transition-workspace-tab);
         display: flex;
         align-items: center;
@@ -3240,7 +3357,7 @@ i#carouselCacheIcon {
     color: var(--text-primary);
     font-size: 14px;
     transition: border-color 0.2s ease;
-    cursor: text;
+    cursor: var(--c-text);
     pointer-events: auto;
 }
 
@@ -3307,7 +3424,7 @@ i#carouselCacheIcon {
 /* Loading states for dataset tag toolbar */
 .dataset-tag-dropdown-wrapper.loading .custom-dropdown-btn {
     opacity: 0.7;
-    cursor: wait;
+    cursor: var(--c-wait);
 }
 
 /* Loading spinner for dataset tag toolbar */
@@ -3755,7 +3872,7 @@ i#carouselCacheIcon {
 }
 
 .precise-reference-preview-clickable {
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .precise-reference-preview-clickable .overlay-icon-container {
@@ -4122,7 +4239,7 @@ body:not(.desktop-mode) div#manualModal {
 }
 
 #manualStepsGroup[data-medium-lock="1"] {
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
 }
 
 #manualStepsGroup[data-medium-lock="1"] #manualSteps,
@@ -4130,7 +4247,7 @@ body:not(.desktop-mode) div#manualModal {
 #manualModal input.medium-locked {
     pointer-events: none;
     opacity: 0.55;
-    cursor: not-allowed;
+    cursor: var(--c-not-allowed);
     background: transparent;
     border-color: transparent;
     box-shadow: none;

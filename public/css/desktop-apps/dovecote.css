@@ -1,56 +1,136 @@
-/* Dovecote: Outlook-Express-style internal mail client (desktop-apps/dovecote.js).
-   Layout: folder dropdown in the toolbar; bounded message list above the preview.
-   Mobile layout (list screen / message screen) switches at the breakpoint below,
-   matching the viewport convention used by other narrow-width desktop-app layouts.
+/* Dovecote: Windows Mail, 1:1 (#473; Yukimi 2026-10-14: "try to go 1:1 of the program just no
+   folder sidebar keep that a dropdown menu"). desktop-apps/dovecote.js builds the client as
+   Windows Mail lays it out with View > Layout > Folder Bar on and Folder List off: the menu band
+   with the search box, the blue command bar, the Folder Bar (its title drops down the folder
+   tree: Local Folders, then the bot mailboxes where Microsoft Communities sits), the message
+   list over the preview pane, the status bar. The reader and compose windows carry the same
+   command bar. Measurements and colours are pixels from Windows Mail on the Vista VM at
+   1000x700; the art is Windows Mail's own (msoeres.dll bitmaps, static_images/vista-mail/).
+
+   The first part is layout for every theme; the Vista skin below it is scoped to the light
+   client (data-window-client="light", vista-glass-controls.css) outside the classic theme.
    Link in public/app.html next to the other desktop-apps stylesheets. */
+
+/* ======================= layout (every theme) ======================= */
 
 #desktopDovecoteModal {
     flex-direction: column;
     width: 760px;
+    container-type: inline-size;
+    container-name: desktop-dovecote;
 }
 
-#desktopDovecoteModal > .modal-content {
+.modal > .modal-content.dovecote-client {
+    display: flex;
     flex: 1 1 auto;
+    flex-direction: column;
     height: auto;
     min-height: 0;
+    padding: 0;
 }
 
-#desktopDovecoteModal .modal-body {
+.dovecote-client > .modal-body {
     display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
     flex: 1 1 auto;
+    flex-direction: column;
     min-height: 0;
-    gap: var(--spacing-sm);
+    gap: 0;
+    padding: 0;
 }
 
-/* ---- Toolbar: Mailbox picker — same btn-secondary as the rest of the toolbar
-   (public/css/modal-window-title-toolbar.css), just wider and pushed to the end. */
+/* ---- menu band ---- */
 
-#desktopDovecoteModal .dovecote-mailbox-btn {
-    min-width: 8em;
-    margin-left: auto;
+.dovecote-menubar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
 }
 
-/* ---- Toolbar: Folder dropdown button (#5) — same compact button-with-label
-   treatment as the mailbox picker, just not pushed to the end. */
-
-#desktopDovecoteModal .dovecote-folder-btn {
-    min-width: 7em;
+.dovecote-menus {
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
 }
 
-/* ---- Toolbar: inline search bar (#1), always visible in the old Find button's slot. */
-
-#desktopDovecoteModal .dovecote-search-icon {
-    flex: 0 0 auto;
-    padding-left: 0.5em;
-    color: var(--text-accent-tinted);
-    opacity: 0.7;
+#desktopDovecoteSearchGroup {
+    display: flex;
+    flex: 0 1 183px;
+    align-items: center;
+    min-width: 100px;
 }
 
-#desktopDovecoteModal #desktopDovecoteSearchGroup {
-    min-width: 160px;
+#desktopDovecoteSearchGroup .form-control {
+    flex: 1 1 auto;
+    min-width: 0;
 }
+
+.dovecote-search-icon {
+    flex: none;
+}
+
+/* ---- command bar ---- */
+
+.dovecote-command-bar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.dovecote-command-bar .dovecote-cmd {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.dovecote-cmd-sep {
+    flex: none;
+}
+
+/* ---- Folder Bar and its drop-down tree ---- */
+
+.dovecote-folder-bar {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+}
+
+.dovecote-folder-btn {
+    display: inline-flex;
+    align-items: center;
+}
+
+.dovecote-folder-tree {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 20;
+    width: 330px;
+    max-width: calc(100% - 8px);
+    max-height: 300px;
+    overflow: auto;
+}
+
+.dovecote-folder-tree.hidden {
+    display: none;
+}
+
+.dovecote-tree-row {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.dovecote-tree-level-1 { padding-left: 19px; }
+.dovecote-tree-level-2 { padding-left: 38px; }
 
 #desktopDovecoteModal .dovecote-unread-badge {
     margin-left: 0.4em;
@@ -63,28 +143,17 @@
     font-weight: 700;
 }
 
-/* ---- Admin (viewAsOwner) banner -------------------------------------- */
+/* ---- admin (viewAsOwner) banner: an information bar over the list ---- */
 
 #desktopDovecoteModal .dovecote-admin-banner {
     display: flex;
-    flex: 1 0 100%;
+    flex: none;
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-sm);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    background: var(--glass-layer-dark-4);
-    color: var(--text-secondary);
-    order: -1;
 }
 
-#desktopDovecoteModal .dovecote-admin-banner a {
-    color: var(--text-accent-tinted);
-    cursor: pointer;
-}
-
-/* ---- Main pane: message list + preview ------------------------------- */
+/* ---- list over preview ---- */
 
 #desktopDovecoteModal .dovecote-main-pane {
     display: flex;
@@ -92,74 +161,45 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    gap: var(--spacing-sm);
 }
 
 #desktopDovecoteModal .dovecote-mobile-message-toolbar {
     display: none;
 }
 
-/* Nothing selected: hide the viewer entirely and let the list fill the pane. */
+/* Nothing selected: the viewer is hidden and the list takes the pane. */
 #desktopDovecoteModal .dovecote-main-pane.dovecote-no-selection .dovecote-preview-pane {
     display: none;
 }
 
 #desktopDovecoteModal .dovecote-main-pane.dovecote-no-selection .dovecote-message-list-wrap {
     flex: 1 1 auto;
-    max-height: none;
 }
 
 #desktopDovecoteModal .dovecote-message-list-wrap {
     display: flex;
+    flex: 0 1 40%;
     flex-direction: column;
-    flex: 0 1 35%;
-    min-height: 20%;
-    max-height: 280px;
+    min-height: 80px;
     overflow: hidden;
-}
-
-/* Inset panels: message list + viewer share Director's recessed panel
-   (.director-content-inner shadow, public/css/director.css) plus the dark inset fill
-   Director uses behind its session list / expandable content. */
-#desktopDovecoteModal .dovecote-message-list-wrap,
-#desktopDovecoteModal .dovecote-preview-pane {
-    background: var(--glass-layer-dark-4);
-    border: 1px solid var(--glass-border-4);
-    border-radius: var(--border-radius-md);
 }
 
 #desktopDovecoteModal .dovecote-message-list {
     display: flex;
-    flex-direction: column;
     flex: 1 1 auto;
+    flex-direction: column;
     min-height: 0;
 }
 
 #desktopDovecoteModal .dovecote-message-row {
     display: grid;
-    grid-template-columns: 1.5em 1.5em 1.3fr 2fr auto;
+    grid-template-columns: 20px 20px minmax(0, 1.3fr) minmax(0, 2fr) 128px;
     align-items: center;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-xs) var(--spacing-sm);
-}
-
-#desktopDovecoteModal .dovecote-message-header {
-    flex: 0 0 auto;
-    border-bottom: 1px solid var(--glass-border-3);
-    background: var(--glass-layer-dark-4);
-    color: var(--text-muted);
-    font-size: 0.8em;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 
 #desktopDovecoteModal .dovecote-message-header .sortable {
-    cursor: pointer;
+    cursor: var(--c-pointer);
     user-select: none;
-}
-
-#desktopDovecoteModal .dovecote-message-header .sortable:hover {
-    color: var(--text-primary);
 }
 
 #desktopDovecoteModal .dovecote-message-rows {
@@ -168,142 +208,60 @@
 }
 
 #desktopDovecoteModal .dovecote-message-rows .dovecote-message-row {
-    border-bottom: 1px solid var(--glass-border-3);
-    color: var(--text-secondary);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
-#desktopDovecoteModal .dovecote-message-rows .dovecote-message-row:hover {
-    background: var(--glass-layer-dark-4);
-}
-
-#desktopDovecoteModal .dovecote-message-rows .dovecote-message-row.selected {
-    background: var(--glass-layer-dark-5);
-}
-
-#desktopDovecoteModal .dovecote-message-rows .dovecote-message-row.unread {
-    color: var(--text-primary);
-    font-weight: 700;
-}
-
-#desktopDovecoteModal .dovecote-col-unread {
-    font-size: 0.5em;
-    color: var(--primary-glass-color);
-    text-align: center;
-}
-
-/* Read receipt check (#2) sits in the same cell as the unread dot (Sent folder only,
-   never shown together) — sized back up since .dovecote-col-unread is 0.5em for the dot. */
-#desktopDovecoteModal .dovecote-read-receipt {
-    font-size: 1.6em;
-    color: var(--text-accent-tinted);
-}
-
+#desktopDovecoteModal .dovecote-col-unread,
 #desktopDovecoteModal .dovecote-col-attachment {
     text-align: center;
-    color: var(--text-muted);
 }
 
 #desktopDovecoteModal .dovecote-col-from,
-#desktopDovecoteModal .dovecote-col-subject {
+#desktopDovecoteModal .dovecote-col-subject,
+#desktopDovecoteModal .dovecote-col-createdAt {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-#desktopDovecoteModal .dovecote-col-createdAt {
-    color: var(--text-muted);
-    font-size: 0.85em;
-    white-space: nowrap;
+#desktopDovecoteModal .dovecote-message-rows .dovecote-message-row.unread {
+    font-weight: 700;
 }
-
-/* ---- Preview pane ------------------------------------------------------ */
 
 #desktopDovecoteModal .dovecote-preview-pane {
     display: flex;
-    flex-direction: column;
     flex: 1 1 auto;
+    flex-direction: column;
     min-height: 120px;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm);
     overflow: hidden;
 }
 
-/* ---- Reading-pane content: shared by the main window's inline preview
-   and the standalone reader window (dovecote.js doveOpenReaderWindow) ---- */
+/* ---- reading-pane content: the main window's preview and the reader window ---- */
 
 .dovecote-oe-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    column-gap: var(--spacing-sm);
-    flex: 0 0 auto;
-    padding: 0 var(--spacing-xs) var(--spacing-xs);
-    border-bottom: 1px solid var(--glass-border-3);
-    font-size: 0.85em;
-    line-height: 1.35;
+    column-gap: 8px;
+    flex: none;
 }
 
-/* Compact mail-client header: rows are just text lines, no fixed height. */
-.dovecote-oe-header-row {
-    display: flex;
-    align-items: baseline;
-    gap: var(--spacing-sm);
-}
-
-/* Header block: compact field rows on the left, tools column (Safe badge + Rendered/Raw)
-   right-aligned and vertically centred across all rows (dovecote.js doveBuildOeHeader).
-   Nothing is overlaid on the message body. */
 .dovecote-oe-header-fields {
     display: flex;
     flex-direction: column;
     min-width: 0;
 }
 
-.dovecote-oe-header-tools {
+.dovecote-oe-header-row {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    justify-content: center;
-    gap: var(--spacing-xs);
-}
-
-.dovecote-body-view-toggle {
-    flex: 0 0 auto;
-}
-
-.dovecote-body-view-toggle > [class^="btn-"] {
-    min-height: 24px;
+    align-items: baseline;
+    gap: 4px;
     min-width: 0;
-    padding: 0.2em 0.6em;
-    font-size: 0.75rem;
-}
-
-.dovecote-sanitized-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    height: 24px;
-    padding: 0 var(--spacing-sm);
-    box-sizing: border-box;
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    background: var(--glass-layer-dark-4);
-    color: var(--text-accent-tinted);
-    font-size: 0.7rem;
-    font-weight: 600;
-    cursor: help;
-}
-
-.dovecote-sanitized-badge.hidden {
-    display: none;
 }
 
 .dovecote-oe-header-label {
-    flex: 0 0 4.5em;
-    color: var(--text-muted);
-    text-align: right;
+    flex: none;
 }
 
 .dovecote-oe-header-value {
@@ -312,47 +270,43 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--text-secondary);
 }
 
-.dovecote-images-bar {
+.dovecote-oe-header-tools {
     display: flex;
-    flex: 0 0 auto;
     align-items: center;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-    padding: 0.3em var(--spacing-sm);
-    border-radius: var(--border-radius-md);
-    background: var(--glass-layer-dark-4);
-    color: var(--text-secondary);
-    font-size: 0.85em;
+    gap: 6px;
 }
 
-/* Attachments (#3): image thumbnails + download chips, shown in both the inline preview
-   and the standalone reader window. */
+.dovecote-sanitized-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    cursor: var(--c-help);
+}
+
+.dovecote-sanitized-badge.hidden {
+    display: none;
+}
+
+.dovecote-images-bar,
 .dovecote-attachments-bar {
     display: flex;
-    flex: 0 0 auto;
+    flex: none;
     flex-wrap: wrap;
-    gap: var(--spacing-sm);
+    align-items: center;
+    gap: 6px;
 }
 
 .dovecote-attachment-chip {
     display: flex;
     align-items: center;
-    gap: var(--spacing-xs);
-    padding: 0.3em var(--spacing-sm);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    background: var(--glass-layer-dark-4);
-    color: var(--text-secondary);
-    font-size: 0.8em;
+    gap: 4px;
 }
 
 .dovecote-attachment-thumb {
-    width: 1.6em;
-    height: 1.6em;
-    border-radius: var(--border-radius-sm);
+    width: 16px;
+    height: 16px;
     object-fit: cover;
 }
 
@@ -364,15 +318,15 @@
 }
 
 .dovecote-body-wrap {
+    position: relative;
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
-    position: relative;
 }
 
 .dovecote-empty-hint {
-    margin: auto;
+    margin: 0 auto;
 }
 
 .dovecote-body-frame {
@@ -380,151 +334,122 @@
     width: 100%;
     min-height: 0;
     border: 0;
-    border-radius: var(--border-radius-md);
     background: #ffffff;
 }
 
 .dovecote-raw-body {
     flex: 1 1 auto;
     margin: 0;
-    padding: var(--spacing-sm);
     overflow: auto;
     white-space: pre-wrap;
     word-break: break-word;
-    color: var(--text-secondary);
     font-family: inherit;
 }
 
-/* ---- Status bar: same slim bar as .explorer-statusbar (public/css/explorer.css) ------ */
+/* ---- status bar ---- */
 
-#desktopDovecoteModal .dovecote-status-bar {
+.dovecote-client .dovecote-status-bar {
     display: flex;
-    flex: 1 0 100%;
-    flex-shrink: 0;
-    align-items: center;
-    gap: var(--spacing-sm);
+    flex: none;
+    align-items: stretch;
     min-width: 0;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-top: 1px solid var(--glass-border-4);
-    background: var(--glass-layer-2);
-    color: var(--text-muted);
-    font-size: 0.8125rem;
-    order: 10;
 }
 
-#desktopDovecoteModal .dovecote-status-online {
-    margin-left: auto;
-}
-
-#desktopDovecoteModal .dovecote-status-error {
-    color: hsl(0 100% 75%);
-}
-
-/* ---- Compose window (desktopDovecoteCompose_*, dovecote.js doveOpenComposeWindow) —
-   its own top-level window, not an overlay inside the main modal. ---- */
-
-.dovecote-compose-window > .modal-content {
+.dovecote-status-bar > #desktopDovecoteStatusCounts {
     flex: 1 1 auto;
-    height: auto;
-    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.dovecote-compose-window .modal-body {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
-    gap: var(--spacing-sm);
-}
-
-.dovecote-compose-title {
-    color: var(--text-primary);
-    font-weight: 700;
-}
-
-/* To / Subject rows: vertically center the label against the input (#3). */
-.dovecote-compose-field-row {
+.dovecote-status-online {
+    display: inline-flex;
+    flex: none;
     align-items: center;
+    gap: 5px;
+}
+
+.dovecote-status-error.hidden {
+    display: none;
+}
+
+/* ---- attachment viewer (desktopDovecoteAttachment_*, dovecote.js doveOpenAttachmentViewer):
+   text as plain text, PDF in Chrome's viewer ---- */
+.dovecote-attachment-window .dovecote-attachment-body > :is(pre, iframe) {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.dovecote-attachment-window .dovecote-attachment-body > pre {
+    overflow: auto;
+}
+
+/* ---- compose (desktopDovecoteCompose_*, dovecote.js doveBuildComposeWindow) ---- */
+
+.dovecote-compose-header {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+}
+
+.dovecote-compose-field-row {
+    display: flex;
+    align-items: center;
+    margin: 0;
+}
+
+.dovecote-compose-field-row.hidden {
+    display: none;
+}
+
+.dovecote-compose-field-row > label {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+}
+
+.dovecote-compose-field-row > .form-control {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .dovecote-compose-body {
     flex: 1 1 auto;
-    min-height: 160px;
-    resize: vertical;
-}
-
-/* Attachments (#3) */
-.dovecote-compose-attach-row {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
+    min-height: 120px;
+    resize: none;
 }
 
 .dovecote-compose-attach-list {
     display: flex;
+    flex: 1 1 auto;
     flex-wrap: wrap;
-    gap: var(--spacing-xs);
+    gap: 4px 10px;
+    min-width: 0;
 }
 
 .dovecote-compose-attach-chip {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: var(--spacing-xs);
-    padding: 0.2em var(--spacing-xs);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    background: var(--glass-layer-dark-4);
-    color: var(--text-secondary);
-    font-size: 0.8em;
+    gap: 4px;
 }
 
-.dovecote-compose-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--spacing-sm);
-}
-
-/* ---- Reader window (desktopDovecoteReader_*, dovecote.js doveOpenReaderWindow) —
-   reuses the oe-header / safety-bar / images-bar / body-wrap classes above. ---- */
-
-.dovecote-reader-window > .modal-content {
-    flex: 1 1 auto;
-    height: auto;
-    min-height: 0;
-}
-
-.dovecote-reader-window .modal-body {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
-    gap: var(--spacing-sm);
-}
-
-/* ---- Mobile breakpoint: list screen / message screen -------------------
-   Matches the calculator's own-width container-query convention rather than
-   a viewport media query, so the layout responds to the window being resized
-   narrow on desktop too, not just on small physical screens. */
-#desktopDovecoteModal {
-    container-type: inline-size;
-    container-name: desktop-dovecote;
-}
+/* ---- narrow window: list screen / message screen (own-width container query, so a desktop
+   window resized narrow behaves the same as a small screen) ---- */
 
 @container desktop-dovecote (max-width: 560px) {
-    #desktopDovecoteModal .dovecote-col-from,
-    #desktopDovecoteModal .dovecote-col-createdAt {
-        font-size: 0.8em;
-    }
-
     #desktopDovecoteModal .dovecote-main-pane {
         position: relative;
         overflow: hidden;
     }
 
+    #desktopDovecoteModal .dovecote-message-row {
+        grid-template-columns: 20px 20px minmax(0, 1fr) minmax(0, 1.4fr) 92px;
+    }
+
     #desktopDovecoteModal .dovecote-message-list-wrap,
     #desktopDovecoteModal .dovecote-preview-pane {
         flex: 1 1 auto;
-        max-height: none;
     }
 
     #desktopDovecoteModal .dovecote-preview-pane {
@@ -533,10 +458,11 @@
 
     #desktopDovecoteModal .dovecote-mobile-message-toolbar {
         display: flex;
-        flex: 0 0 auto;
+        flex: none;
         align-items: center;
         justify-content: space-between;
-        gap: var(--spacing-sm);
+        gap: 6px;
+        padding: 3px 4px;
     }
 
     #desktopDovecoteModal .dovecote-main-pane.dovecote-mobile-message-open .dovecote-message-list-wrap {
@@ -546,11 +472,925 @@
     #desktopDovecoteModal .dovecote-main-pane.dovecote-mobile-message-open .dovecote-preview-pane {
         display: flex;
     }
+
+    #desktopDovecoteModal .dovecote-command-bar .dovecote-cmd-label {
+        display: none;
+    }
 }
 
-/* ---- Taskbar tray icon (#dovecoteTrayIcon, public/app.html) — same
-   .taskbar-tray-icon pattern as directorTrayIcon / naxtBagTrayIcon
-   (public/scripts/comp/systemTrayManager.js), plus an unread-count badge. ---- */
+/* ======================= Windows Mail on the Vista desktop ======================= */
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client {
+    background: #f0f0f0;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+/* ---- menu band (VM rows 28-51: #fefeff to #e5eaf5 over 9px, #d4dbed to #e1e6f6, #b6bccc line) ---- */
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-menubar {
+    height: 24px;
+    padding: 0 2px;
+    background: linear-gradient(#fefeff, #e5eaf5 9px, #d4dbed 9px, #e1e6f6 22px);
+    border-bottom: 1px solid #b6bccc;
+    box-sizing: border-box;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-menus {
+    height: 21px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-menu-title {
+    width: auto;
+    min-width: 0;
+    height: 21px;
+    min-height: 0;
+    padding: 0 7px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    text-shadow: none;
+    filter: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-menu-title:is(:hover, :focus-visible, .context-open) {
+    background: #3399ff;
+    color: #fff;
+    outline: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client :is(button.dovecote-menu-title, button.dovecote-cmd, button.dovecote-folder-btn)::before,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client :is(button.dovecote-menu-title, button.dovecote-folder-btn)::after {
+    content: none;
+}
+
+/* the search box (VM: 183x21 at the band's right end, 1px down, edges #626363 / #7a7b80 /
+   #9a9ca2 / #bbbdc4, a white top line over #fcfdfe to #f8f9fc, #f3f5fa to #f5f7fc, the
+   magnifier inside at the right) */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client #desktopDovecoteSearchGroup {
+    position: relative;
+    height: 21px;
+    padding: 0;
+    gap: 0;
+    background: linear-gradient(#fff 1px, #fcfdfe 1px, #f8f9fc 7px, #f3f5fa 8px, #f5f7fc calc(100% - 1px), #fcfdfe calc(100% - 1px));
+    border: 1px solid;
+    border-color: #626363 #9a9ca2 #bbbdc4 #7a7b80;
+    border-radius: 0;
+    box-shadow: 0 0 0 1px hsl(0 0% 100% / 35%);
+    box-sizing: border-box;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client #desktopDovecoteSearchGroup .form-control {
+    height: 19px;
+    min-height: 0;
+    padding: 0 4px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client #desktopDovecoteSearchGroup .form-control::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-search-icon {
+    width: 13px;
+    height: 13px;
+    margin: 0 5px 0 2px;
+    background: url('/static_images/vista-start/search-glyph.png') no-repeat center / 13px 13px;
+    font-size: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-search-icon::before {
+    content: none;
+}
+
+/* ---- the command bar (VM rows 52-81: a #8fbbed top line, #4b90df to #295591 over 14px,
+   #183d76 to #325f9e, a #819ec4 bottom line, #484848 under it, then 3px of window face) ---- */
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar {
+    height: 30px;
+    margin-bottom: 3px;
+    padding: 0 3px;
+    background: linear-gradient(#8fbbed 1px, #4b90df 1px, #295591 15px, #183d76 15px, #325f9e calc(100% - 1px), #819ec4 calc(100% - 1px));
+    border-bottom: 1px solid #484848;
+    box-sizing: border-box;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd {
+    position: relative;
+    width: auto;
+    min-width: 0;
+    height: 28px;
+    min-height: 0;
+    margin: 0 1px;
+    padding: 0 6px;
+    gap: 4px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    color: #fff;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    font-weight: 400;
+    text-shadow: none;
+    filter: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    z-index: auto;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd::after {
+    content: none;
+}
+
+/* Windows Mail's own art replaces the glyph */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd > i {
+    display: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd::before {
+    content: '';
+    position: static;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+    background: image-set(url('/static_images/vista-mail/toolbar-16.png') 1x, url('/static_images/vista-mail/toolbar-24.png') 1.5x) no-repeat;
+    background-size: 1024px 16px;
+    background-position: calc(var(--dove-icon, 0) * -16px) 0;
+    border-radius: 0;
+    box-shadow: none;
+    opacity: 1;
+    transition: none;
+    /* 7.css puts button::before at z-index -1, and a flex item honours it even when static */
+    z-index: auto;
+}
+
+/* toolbar-16.png (msoeres.dll bitmap 40): 22 Create Mail, 32 Reply, 33 Reply All, 9 Forward,
+   5 Delete, 11 Move to Folder, 36 Send/Receive, 47 Send, 49 Attach */
+.dovecote-cmd[data-dove-icon="create"] { --dove-icon: 22; }
+.dovecote-cmd[data-dove-icon="reply"] { --dove-icon: 32; }
+.dovecote-cmd[data-dove-icon="replyAll"] { --dove-icon: 33; }
+.dovecote-cmd[data-dove-icon="forward"] { --dove-icon: 9; }
+.dovecote-cmd[data-dove-icon="delete"] { --dove-icon: 5; }
+.dovecote-cmd[data-dove-icon="archive"] { --dove-icon: 11; }
+.dovecote-cmd[data-dove-icon="sendReceive"] { --dove-icon: 36; }
+.dovecote-cmd[data-dove-icon="send"] { --dove-icon: 47; }
+.dovecote-cmd[data-dove-icon="attach"] { --dove-icon: 49; }
+.dovecote-cmd[data-dove-icon="save"] { --dove-icon: 35; }
+
+/* Mark as Read: the list's open envelope (list-16.png, bitmap 2, icon 10) */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd[data-dove-icon="read"]::before {
+    background: url('/static_images/vista-mail/list-16.png') no-repeat -160px 0 / 960px 16px;
+}
+
+/* hot (VM, Reply hovered): a #112b52 edge with a #7f90aa inner line, #cddff5 then #9bbee6 to
+   #4b70a2 above the middle, #274676 to #3c649f below, #96adcd / #5a6e89 at the foot */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd:is(:hover, .context-open, [aria-expanded="true"]):not(:disabled) {
+    background: linear-gradient(#cddff5 1px, #9bbee6 1px, #4b70a2 11px, #365c8e 11px, #355a8c 13px, #274676 13px, #3c649f calc(100% - 1px), #96adcd calc(100% - 1px));
+    border-color: #34659c #112b52 #5a6e89;
+    box-shadow: inset 1px 0 0 #7f90aa, inset -1px 0 0 #7f90aa;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd:active:not(:disabled) {
+    background: linear-gradient(#183d76, #23498c 50%, #2e5999);
+    border-color: #112b52;
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 50%);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd:disabled {
+    color: #a0a0a0;
+    opacity: 1;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd:disabled::before {
+    filter: grayscale(1) brightness(1.2);
+    opacity: 0.5;
+}
+
+/* the separator: #172f50 beside #6a88b2 */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-cmd-sep {
+    width: 2px;
+    height: 24px;
+    margin: 0 4px;
+    background: linear-gradient(90deg, #172f50 1px, #6a88b2 1px);
+}
+
+/* ---- the Folder Bar (VM rows 85-109: #a0a0a0, the folder's icon 4px in, its name 16px bold
+   white, a 5x3 ▾ on the baseline; 4px of window face under it) ---- */
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-folder-bar {
+    height: 25px;
+    margin-bottom: 4px;
+    background: #a0a0a0;
+}
+
+/* no gap: the Folder Bar sits right under the blue bar's dark line (Yukimi 2026-10-14: "it
+   should not exist as it does not exist in the vm"); reader and compose keep the 3px above
+   their header */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar + .dovecote-folder-bar {
+    margin-top: -3px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-folder-btn {
+    width: auto;
+    min-width: 0;
+    height: 25px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 4px;
+    gap: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #fff;
+    font: 700 16px "Segoe UI", "Noto Sans", sans-serif;
+    text-shadow: none;
+    filter: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-folder-btn > i {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    background: image-set(url('/static_images/vista-mail/folders-16.png') 1x, url('/static_images/vista-mail/folders-32.png') 2x) no-repeat;
+    background-size: 544px 16px;
+    background-position: calc(var(--dove-folder-icon, 7) * -16px) 0;
+    font-size: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-folder-btn > i::before {
+    content: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-folder-btn-chevron {
+    align-self: flex-end;
+    width: 5px;
+    height: 3px;
+    margin: 0 0 5px 4px;
+    background: #fff;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-folder-btn .dovecote-unread-badge {
+    display: none;
+}
+
+/* folders-16.png (msoeres.dll bitmap 16, bitmap 20 at 32px): 7 Inbox, 8 Outbox, 9 Sent Items,
+   10 Deleted Items, 6 a mail folder (Archive), 20 Local Folders, 16 the communities server,
+   21 a newsgroup (a bot mailbox) */
+:is(.dovecote-folder-btn[data-dove-folder="inbox"] > i, .dovecote-tree-icon[data-dove-tree-icon="inbox"]) { --dove-folder-icon: 7; }
+:is(.dovecote-folder-btn[data-dove-folder="outbox"] > i, .dovecote-tree-icon[data-dove-tree-icon="outbox"]) { --dove-folder-icon: 8; }
+:is(.dovecote-folder-btn[data-dove-folder="sent"] > i, .dovecote-tree-icon[data-dove-tree-icon="sent"]) { --dove-folder-icon: 9; }
+:is(.dovecote-folder-btn[data-dove-folder="deleted"] > i, .dovecote-tree-icon[data-dove-tree-icon="deleted"]) { --dove-folder-icon: 10; }
+:is(.dovecote-folder-btn[data-dove-folder="archive"] > i, .dovecote-tree-icon[data-dove-tree-icon="archive"]) { --dove-folder-icon: 6; }
+.dovecote-tree-icon[data-dove-tree-icon="local"] { --dove-folder-icon: 20; }
+.dovecote-tree-icon[data-dove-tree-icon="communities"] { --dove-folder-icon: 16; }
+.dovecote-tree-icon[data-dove-tree-icon="mailbox"] { --dove-folder-icon: 21; }
+
+/* the drop-down: Windows Mail's folder list as a white panel under the bar's title */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-folder-tree {
+    padding: 4px 2px;
+    background: #fff;
+    border: 1px solid #646464;
+    box-shadow: 2px 2px 4px hsl(0 0% 0% / 30%);
+    box-sizing: border-box;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-row {
+    height: 18px;
+    color: #000;
+    cursor: var(--c-default);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-expander {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-right: 1px;
+}
+
+/* Vista's tree glyphs: ◢ open, ▷ closed */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-expander[data-state="open"] {
+    background: #262626;
+    clip-path: polygon(70% 30%, 70% 70%, 30% 70%);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-expander[data-state="closed"] {
+    background: linear-gradient(#a6a6a6, #a6a6a6);
+    clip-path: polygon(38% 25%, 70% 50%, 38% 75%, 38% 69%, 62% 50%, 44% 36%, 44% 69%, 38% 69%);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-right: 3px;
+    background: image-set(url('/static_images/vista-mail/folders-16.png') 1x, url('/static_images/vista-mail/folders-32.png') 2x) no-repeat;
+    background-size: 544px 16px;
+    background-position: calc(var(--dove-folder-icon, 6) * -16px) 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 18px;
+    padding: 0 3px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-label.has-unread {
+    font-weight: 700;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-count {
+    color: #0033cc;
+    font-weight: 400;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-row[data-dove-tree-owner]:hover .dovecote-tree-label {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-label.is-current,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-row[data-dove-tree-owner]:hover .dovecote-tree-label.is-current {
+    background: linear-gradient(#f2f9fe, #d6f0fd);
+    border-color: #99defd;
+}
+
+/* ---- the information bar (admin view; blocked pictures): Vista's yellow bar ---- */
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client :is(.dovecote-admin-banner, .dovecote-images-bar) {
+    min-height: 22px;
+    margin: 0;
+    padding: 2px 6px;
+    background: #ffffe1;
+    border: 0;
+    border-bottom: 1px solid #a0a0a0;
+    border-radius: 0;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-admin-banner a {
+    color: #0066cc;
+    cursor: var(--c-pointer);
+}
+
+/* ---- the message list: Windows Mail's list view (VM: white, a 22px header with the top half
+   white over #f7f8fa to #f1f2f4 and a #d5d5d5 line, #e5e6e7 dividers; 19px rows, #ededed column
+   lines, the sorted column #f7f7f7, the selection #99defd over #f2f9fe to #d6f0fd; a #99b4d1
+   line between the list and the preview) ---- */
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-list-wrap {
+    background: #fff;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-main-pane:not(.dovecote-no-selection) .dovecote-message-list-wrap {
+    border-bottom: 1px solid #99b4d1;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-row {
+    gap: 0;
+    padding: 0;
+    color: #000;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-header {
+    flex: none;
+    height: 23px;
+    padding-bottom: 1px;
+    background: linear-gradient(#fff 9px, #f7f8fa 9px, #f1f2f4);
+    border-bottom: 1px solid #d5d5d5;
+    box-shadow: 0 1px 0 #fbfbfb;
+    box-sizing: border-box;
+    color: #000;
+    font-size: 12px;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-header > span {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 6px;
+    border-right: 1px solid #e5e6e7;
+    box-shadow: inset -1px 0 0 #fafbfc, 1px 0 0 #fcfcfd;
+    box-sizing: border-box;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-header > span.sortable:hover {
+    background: linear-gradient(#f2f9fc 40%, #e1f1f9 42%, #d8ecf6);
+    border-right-color: #c0dcf3;
+    color: #000;
+}
+
+/* the sort arrow: Windows Mail's small black ▼ / ▲ at the column's right */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-list[data-sort-key="from"] .dovecote-message-header > .dovecote-col-from::after,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-list[data-sort-key="subject"] .dovecote-message-header > .dovecote-col-subject::after,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-list[data-sort-key="createdAt"] .dovecote-message-header > .dovecote-col-createdAt::after {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 4px;
+    margin-left: auto;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-list[data-sort-dir="asc"] .dovecote-message-header > span::after {
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+/* the header's icon columns: the paperclip (list-16.png 5); the envelope column has none */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-header > .dovecote-col-attachment {
+    justify-content: center;
+    padding: 0;
+    font-size: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-header > .dovecote-col-attachment::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-mail/list-16.png') no-repeat -80px 0 / 960px 16px;
+}
+
+/* Windows Mail puts the attachment column before the envelope */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-row > .dovecote-col-attachment {
+    order: -1;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-header > .dovecote-col-unread {
+    padding: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows {
+    padding-top: 1px;
+    background: #fff;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row {
+    height: 19px;
+    border: 1px solid transparent;
+    box-sizing: border-box;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row.unread {
+    font-weight: 700;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > span {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 6px;
+    box-shadow: inset -1px 0 0 #ededed;
+    box-sizing: border-box;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > :is(.dovecote-col-from, .dovecote-col-subject, .dovecote-col-createdAt) {
+    display: block;
+    line-height: 17px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > :is(.dovecote-col-unread, .dovecote-col-attachment) {
+    justify-content: center;
+    padding: 0;
+}
+
+/* the list always shows Vista's bar (disabled when everything fits); the header keeps its columns
+   over the rows by leaving the bar's 17 px (vista-scrollbars.css) */
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .dovecote-message-rows {
+    overflow-y: scroll;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .dovecote-message-header {
+    padding-right: 17px;
+}
+
+/* the sorted column's tint */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-list[data-sort-key="from"] .dovecote-message-rows .dovecote-col-from,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-list[data-sort-key="subject"] .dovecote-message-rows .dovecote-col-subject,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-list[data-sort-key="createdAt"] .dovecote-message-rows .dovecote-col-createdAt {
+    background: #f7f7f7;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+    border-radius: 2px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row.selected,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row.selected:hover {
+    background: linear-gradient(#f2f9fe, #d6f0fd);
+    border-color: #99defd;
+    border-radius: 2px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row:is(:hover, .selected) > span {
+    background: none;
+    box-shadow: none;
+}
+
+/* the envelope: closed for unread, open once read (list-16.png 9 / 10) */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-unread > i,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-attachment > i {
+    display: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-unread::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-mail/list-16.png') no-repeat -160px 0 / 960px 16px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .unread > .dovecote-col-unread::before {
+    background-position: -144px 0;
+}
+
+/* Sent Items: read by the recipient (#2) = Windows Mail's blue check (marks-16.png 13) */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-unread:has(> .dovecote-read-receipt)::before {
+    background: url('/static_images/vista-mail/marks-16.png') no-repeat -208px 0 / 224px 16px;
+}
+
+/* the attachment: the gold paperclip (list-16.png 8) */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-attachment:has(> i)::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-mail/list-16.png') no-repeat -128px 0 / 960px 16px;
+}
+
+/* ---- the preview pane: the #f0f0f0 header (From and To on one line, Subject under them, the
+   labels bold), then the message on white ---- */
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-preview-pane {
+    gap: 0;
+    padding: 0;
+    background: #fff;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-header {
+    padding: 4px 4px 5px;
+    background: #f0f0f0;
+    border: 0;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    line-height: 17px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-preview-pane .dovecote-oe-header-fields {
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: 12px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-preview-pane .dovecote-oe-header-row[data-dove-field="from"] {
+    flex: 0 1 auto;
+    max-width: 60%;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-preview-pane .dovecote-oe-header-row[data-dove-field="to"] {
+    flex: 1 1 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-preview-pane .dovecote-oe-header-row[data-dove-field="subject"] {
+    flex: 1 0 100%;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-preview-pane .dovecote-oe-header-row[data-dove-field="date"] {
+    display: none;
+}
+
+/* the message window (reader): Windows Mail's From / Date / To / Subject block, labels in a column */
+body:not(.windows-classic-theme) .dovecote-reader-window[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-header-label {
+    min-width: 56px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-header-label {
+    color: #000;
+    font-weight: 700;
+    text-align: left;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-header-value {
+    color: #000;
+}
+
+/* Safe badge and Rendered / Raw: small and plain on the header's window face */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-sanitized-badge {
+    height: 21px;
+    padding: 0 2px;
+    background: none;
+    border: 0;
+    color: #1e395b;
+    font-size: 11px;
+    font-weight: 400;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle {
+    display: flex;
+    gap: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button {
+    min-width: 0;
+    height: 21px;
+    min-height: 0;
+    padding: 0 7px;
+    border-radius: 0;
+    font-size: 11px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button:first-child {
+    border-radius: 3px 0 0 3px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button:last-child {
+    margin-left: -1px;
+    border-radius: 0 3px 3px 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button[data-state="on"] {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #2c628b;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button > i {
+    display: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button[data-dove-body-view="rendered"]::after {
+    content: 'HTML';
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button[data-dove-body-view="raw"]::after {
+    content: 'Source';
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button::after {
+    position: static;
+    width: auto;
+    height: auto;
+    opacity: 1;
+    background: none;
+    box-shadow: none;
+    z-index: auto;
+}
+
+/* the preview's order as in Windows Mail: header, its Attach row, then the information bar */
+.dovecote-preview-pane > .dovecote-images-bar,
+.dovecote-reader-window .modal-body > .dovecote-images-bar {
+    order: 1;
+}
+
+.dovecote-preview-pane > .dovecote-body-wrap,
+.dovecote-reader-window .modal-body > .dovecote-body-wrap {
+    order: 2;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-images-bar button {
+    min-width: 0;
+    height: 19px;
+    min-height: 0;
+    padding: 0 8px;
+}
+
+/* attachments: Windows Mail's Attach row on the header's face */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-attachments-bar {
+    padding: 0 4px 5px;
+    background: #f0f0f0;
+    color: #000;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-attachments-bar::before {
+    content: 'Attach:';
+    font-weight: 700;
+}
+
+/* each attachment is a button (Yukimi 2026-10-14): flat in the Attach row like Windows Mail's,
+   Vista's hot box on hover, the selection box when pressed; 7.css's push-button look is off */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-attachment-chip {
+    width: auto;
+    min-width: 0;
+    height: 22px;
+    min-height: 0;
+    padding: 0 6px 0 4px;
+    gap: 5px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    text-shadow: none;
+    cursor: var(--c-pointer);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-attachment-chip::before,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-attachment-chip::after {
+    content: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-attachment-chip:is(:hover, :focus-visible) {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+    outline: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-attachment-chip:active {
+    background: linear-gradient(#f2f9fe, #d6f0fd);
+    border-color: #99defd;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-attachment-chip > i {
+    width: 16px;
+    color: #4a6a8e;
+    font-size: 14px;
+    text-align: center;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-attachment-chip .dovecote-attachment-name {
+    color: #0066cc;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client button.dovecote-attachment-chip:hover .dovecote-attachment-name {
+    text-decoration: underline;
+}
+
+/* the message itself on white, with Windows Mail's 1px #99b4d1 edge above */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-wrap {
+    background: #fff;
+    border-top: 1px solid #99b4d1;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-frame {
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-raw-body {
+    padding: 6px 8px;
+    background: #fff;
+    color: #000;
+    font: 12px Consolas, "Courier New", monospace;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-empty-hint {
+    margin-top: 21px;
+    color: #000;
+    font-size: 12px;
+}
+
+/* ---- the status bar (VM rows 669-690: #919191 over a white line, #f1eded, the Working Online
+   cell behind an etched #d7d7d7 divider with the network computer) ---- */
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-status-bar {
+    height: 22px;
+    padding: 0;
+    background: #f1eded;
+    border-top: 1px solid #919191;
+    box-shadow: inset 0 1px 0 #fff;
+    box-sizing: border-box;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-status-bar > span:not(.hidden) {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 4px 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-status-online {
+    min-width: 112px;
+    white-space: nowrap;
+    margin-left: auto;
+    box-shadow: inset 1px 0 0 #d7d7d7, inset 2px 0 0 #fff;
+    box-sizing: border-box;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-status-online-icon {
+    width: 16px;
+    height: 16px;
+    margin-left: 4px;
+    background: url('/static_images/vista-mail/status-16.png') no-repeat -176px 0 / 192px 16px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-status-error {
+    color: #c00;
+}
+
+/* ---- compose: Windows Mail's New Message (the address block on the window face: labels with
+   the address card, 7.css text boxes; the message on white, edge to edge) ---- */
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-compose-header {
+    gap: 4px;
+    padding: 4px 12px 7px 10px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-compose-field-row {
+    gap: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-compose-field-row > label {
+    width: 54px;
+    gap: 4px;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-compose-to-label::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-mail/cards-16.png') no-repeat -32px 0 / 48px 16px;
+}
+
+/* Windows Mail's address boxes are the classic sunken edit (VM: #a0a0a0 over #696969 top and
+   left, #e3e3e3 inside #fff bottom and right), 24px tall, 4px apart; the message area too */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client :is(.dovecote-compose-field-row > .form-control, textarea.dovecote-compose-body) {
+    background: #fff;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 #696969, inset -1px -1px 0 #e3e3e3;
+    color: #000;
+    transition: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-compose-field-row > .form-control {
+    height: 24px;
+    min-height: 0;
+    padding: 0 4px;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client textarea.dovecote-compose-body {
+    /* Windows Mail's New Message always shows its scrollbar */
+    overflow-y: scroll;
+    margin: 0;
+    padding: 6px 8px;
+    font: 13px Arial, "Noto Sans", sans-serif;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-compose-attach-chip {
+    padding: 0;
+    background: none;
+    border: 0;
+    color: #000;
+    font-size: 12px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-compose-attach-chip button {
+    min-width: 0;
+    height: 18px;
+    min-height: 0;
+    padding: 0 3px;
+}
+
+/* ======================= taskbar tray icon =======================
+   #dovecoteTrayIcon (public/app.html): the .taskbar-tray-icon pattern of directorTrayIcon /
+   naxtBagTrayIcon (systemTrayManager.js) plus an unread-count badge. */
 
 .dovecote-tray-icon {
     position: relative;
@@ -569,4 +1409,66 @@
     font-weight: 700;
     line-height: 1.4;
     text-align: center;
+}
+
+/* New mail tool window. Vista message box measurements (vista-dialogs.css, from the VM):
+   32px icon, 9px beside it, white client, grey footer with Read and Close. Placed above
+   the taskbar by melatonNetworkDialogs.placeDesktopWindow. */
+#dovecoteNewMailModal {
+    width: 460px;
+}
+
+#dovecoteNewMailModal > .modal-content {
+    /* the grey bar is full-bleed, same as .cpl-db-footer; spacing stays inside it */
+    padding: 0;
+}
+
+#dovecoteNewMailModal .dovecote-new-mail {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    column-gap: 9px;
+    align-items: start;
+}
+
+#dovecoteNewMailModal .dovecote-new-mail-icon {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+}
+
+#dovecoteNewMailModal .dovecote-new-mail-text {
+    min-width: 0;
+}
+
+#dovecoteNewMailModal .dovecote-new-mail-text p {
+    margin: 0 0 2px;
+    text-align: left;
+    color: inherit;
+    overflow-wrap: anywhere;
+}
+
+#dovecoteNewMailModal .dovecote-new-mail-preview {
+    display: -webkit-box;
+    margin-top: 6px;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+}
+
+#dovecoteNewMailModal .dovecote-new-mail-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 12px 8px 11px 11px;
+    background: #f0f0f0;
+}
+
+body.windows-classic-theme #dovecoteNewMailModal .dovecote-new-mail {
+    padding: 14px 16px 12px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dovecoteNewMailModal .dovecote-new-mail-preview {
+    color: #6d6d6d;
 }

@@ -302,7 +302,7 @@
 
 #explorerModal .explorer-grid-host.explorer-marquee-active {
     user-select: none;
-    cursor: crosshair;
+    cursor: var(--c-crosshair);
 }
 
 .explorer-item.explorer-item-upload-pending {
@@ -326,7 +326,7 @@
 }
 
 #explorerModal .explorer-grid-host.explorer-item-drag-active {
-    cursor: grabbing;
+    cursor: var(--c-grabbing);
 }
 
 #desktopGridContainer.explorer-desktop-drop-target,
@@ -384,11 +384,11 @@
 }
 
 #explorerModal .explorer-grid-host.explorer-busy-open {
-    cursor: progress;
+    cursor: var(--c-progress);
 }
 
 #explorerModal .explorer-grid-host.explorer-busy-paste {
-    cursor: progress;
+    cursor: var(--c-progress);
 }
 
 .explorer-load-more-foot {
@@ -495,7 +495,7 @@
     font-weight: 600;
     color: inherit;
     text-align: left;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     overflow: hidden;
 }
 
@@ -528,7 +528,7 @@
     align-items: center;
     justify-content: flex-start;
     padding: var(--spacing-xs);
-    cursor: default;
+    cursor: var(--c-default);
     user-select: none;
     border: 1px solid transparent;
     box-sizing: border-box;

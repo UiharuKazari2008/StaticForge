@@ -13,7 +13,8 @@ const FEATURE_MANIFEST = {
         styles: [
             'css/notepad.css',
             'css/spell-check.css',
-            'css/autocomplete.css'
+            'css/autocomplete.css',
+            'css/vista-atelier.css'
         ],
         scripts: [
             'scripts/comp/notepadManager.js'
@@ -79,7 +80,8 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/compiledPromptInspector.js']
     },
     image_prompt_inspector: {
-        styles: ['css/image-prompt-inspector.css'],
+        // vista-atelier.css: the Vista menu bar
+        styles: ['css/image-prompt-inspector.css', 'css/vista-atelier.css'],
         scripts: ['scripts/comp/imagePromptInspector.js']
     },
     tag_sets: {

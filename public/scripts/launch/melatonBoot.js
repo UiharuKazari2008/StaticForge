@@ -103,6 +103,19 @@
     }
 
     /** One /status probe → { kind: 'json' | 'http' | 'timeout' | 'network' | 'offline' } */
+    /**
+     * User Accounts "Use Vista Logon" (server-owned): /app picks Vista or Classic from this copy
+     * of the last /status answer before its own /status lands (same key as websocket.js
+     * VISTA_LOGON_STORAGE_KEY: the logon picture path while on, no key while off).
+     */
+    function rememberVistaLogon(env, data) {
+        if (!env.localStorage || typeof data.useVistaLogon !== 'boolean') return;
+        try {
+            if (data.useVistaLogon && data.logonPicture) env.localStorage.setItem('dreamscapeUseVistaLogon', data.logonPicture);
+            else env.localStorage.removeItem('dreamscapeUseVistaLogon');
+        } catch (_) { /* /app keeps the previous copy until its own /status */ }
+    }
+
     async function probeStatus(env) {
         if (env.navigator && env.navigator.onLine === false) return { kind: 'offline' };
         try {
@@ -317,6 +330,7 @@
                     failures = 0;
                     busySince = null;
                     ctl.serverStatus = probe.data;
+                    rememberVistaLogon(env, probe.data);
                     if (probe.data.isReady) break;
                 } else if (probe.kind === 'timeout') {
                     if (busySince == null) busySince = env.now();

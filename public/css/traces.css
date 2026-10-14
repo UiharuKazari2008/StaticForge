@@ -45,7 +45,7 @@
 }
 
 .trace-event summary {
-  cursor: pointer;
+  cursor: var(--c-pointer);
   font-weight: bold;
   padding: 4px;
 }

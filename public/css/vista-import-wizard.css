@@ -1,0 +1,727 @@
+/* Import as a Vista Aero Wizard (Yozora #494). Linked after vista-calculator.css.
+   #unifiedUploadModal (Toolbox > Import, the Easy Transfer icon) is an Aero Wizard on the Vista
+   desktop: vistaImportWizard.js adds the caption (the round Back button, the icon, the title) and
+   sets data-wizard-page="1|2|3" on the window; vistaDialogs.js already makes it a light form dialog
+   (data-window-client="light", .win7, .vista-dialog-footer), so 7.css and vista-dialogs.css paint
+   the buttons, text boxes and the default button's glow. This sheet is the wizard layout.
+
+   Measured on the VM (Windows Easy Transfer and the Add Printer wizard, Aero, 96 dpi): Easy
+   Transfer's client is 750x505 behind a 43 px caption band (ours: the shared 27 px caption plus the
+   13 px the Back orb needs = 40); the orb is 25 px, 9 px from the window edge, the icon 9 px after
+   it and the title 10 px after that. The page is white; the main instruction is Segoe UI 12 pt
+   #003399 at 38 px from the left and 18 px from the top (its cap top 24 px down), the first
+   command link 20 px under it.
+   Command links: text 32 px in (the theme's 25 px arrow glyph, aero.msstyles image 513, 4 px in),
+   12 pt main text on a 21 px line, 9 pt note on 15 px lines, 8 px above and 6 px below, 20 px
+   between links; the text is #151c55, #074ae5 when hot; hover paints #fff to #f6f6f6 inside a 1 px
+   #c6c6c6 border with 3 px corners. Footer: a 1 px #dfdfdf line over a 45 px #f0f0f0 band, 75x23
+   buttons right-aligned 11 px from the edge and vertically centred.
+   Desktop mode, not Classic: every Vista rule is gated on body.desktop-mode:not(.windows-classic-theme). */
+
+/* the wizard-only markup (page 1, the page instructions, the command link notes) exists for the
+   Vista desktop; everywhere else the existing two-panel layout shows and these stay hidden */
+#unifiedUploadModal :is(.vista-wizard-page, .vista-wizard-instruction, .vista-command-link-note) {
+    display: none;
+}
+
+/* ---- window and client: Easy Transfer's 750x505 client, a white page ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal {
+    --modal-title-chrome-height: 40px;
+    width: 766px;
+    max-width: calc(100vw - 16px);
+    height: 554px;
+    max-height: calc(100vh - 60px);
+    padding: var(--modal-title-chrome-height) var(--window-frame-inset, 7px) var(--window-frame-inset, 7px);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    border-radius: 0;
+}
+
+/* the two panels give way: their children lay out on the client itself */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-content > :is(.gallery-move-left-panel, .gallery-move-right-panel) {
+    display: contents;
+}
+
+/* the processing cover spans the client, light */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #galleryMoveRightPanelCover {
+    background: #ffffffd9;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #galleryMoveRightPanelCover .cover-text {
+    color: #000;
+    font-size: 9pt;
+    text-shadow: none;
+}
+
+/* ---- caption: Back, the Easy Transfer icon, the title ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-window-title {
+    height: 41px;
+    min-height: 41px;
+    padding-left: 6px;
+}
+
+/* the orb 9 px from the window edge, the icon 7 px after its halo, the title 10 px after the icon */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-window-title > .modal-window-title-main {
+    gap: 7px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-window-title > .modal-window-title-main > span {
+    margin-left: 3px;
+}
+
+/* the wizard shows its icon (vista-dialogs.css hides it on dialogs); the Font Awesome twin stays
+   for the taskbar's reading only */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-window-title .modal-window-title-main > .icon-image {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    image-rendering: auto;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-window-title .modal-window-title-main > .icon-fa {
+    display: none;
+}
+
+/* the Back orb: the theme's navigation button, 4 states stacked 27 px apart (vista-explorer.css
+   draws Cartograph's with the same sprite), the orb 25 px inside a 2 px halo */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-wizard-back {
+    flex: 0 0 29px;
+    width: 29px;
+    min-width: 29px;
+    height: 27px;
+    min-height: 27px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    box-shadow: none;
+    text-shadow: none;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-wizard-back:hover:not(:disabled) {
+    background-position: 0 -27px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-wizard-back:active:not(:disabled) {
+    background-position: 0 -54px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-wizard-back:disabled {
+    background-position: 0 -81px;
+    opacity: 1;
+}
+
+/* ---- the main instruction: 12 pt #003399, 38 px in, 19 px down, 20 px above the content ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-wizard-instruction,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadModalTitle {
+    display: block;
+    position: static;
+    width: auto;
+    margin: 0 0 20px;
+    padding: 0;
+    color: #003399;
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    font-size: 12pt;
+    font-weight: 400;
+    font-variation-settings: normal;
+    line-height: 21px;
+    text-shadow: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* page 3's instruction is the handlers' title (Upload Reference, Import Image, Encode Vibe ...), without its icon */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadModalTitle > i {
+    display: none;
+}
+
+/* ---- command links: pages 1 and 2 ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn) {
+    display: grid;
+    grid-template-columns: 25px minmax(0, 1fr);
+    gap: 0 3px;
+    align-items: start;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 8px 8px 6px 3px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    color: #151c55;
+    text-align: left;
+    text-shadow: none;
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    font-size: 12pt;
+    font-weight: 400;
+    font-variation-settings: normal;
+    line-height: 21px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    transition: none;
+}
+
+/* the green arrow: aero.msstyles' command link glyph, 25 px frames (normal, hot, pressed, disabled, default)
+   stacked 25 px apart, centred on the main text line */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn)::before {
+    content: "";
+    grid-row: 1 / span 2;
+    width: 25px;
+    height: 25px;
+    margin-top: -2px;
+    background: url("data:image/png;base64,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") no-repeat 0 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn)::after {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-option-btn > i {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link-text, .upload-option-btn > span:not(.vista-command-link-note)) {
+    display: block;
+    grid-column: 2;
+    min-width: 0;
+    font-size: 12pt;
+    line-height: 21px;
+    white-space: normal;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-command-link-note {
+    display: block;
+    grid-column: 2;
+    margin-top: 1px;
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn):hover:not(:disabled) {
+        background: linear-gradient(#fff, #f6f6f6);
+        border-color: #c6c6c6;
+        box-shadow: none;
+        color: #074ae5;
+    }
+
+    body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn):hover:not(:disabled)::before {
+        background-position: 0 -25px;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn):active:not(:disabled) {
+    background: linear-gradient(#f6f6f6, #eaeaea);
+    border-color: #9e9e9e;
+    box-shadow: none;
+    color: #062073;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn):active:not(:disabled)::before {
+    background-position: 0 -50px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn):focus-visible {
+    box-shadow: none;
+    outline: 1px dotted #000;
+    outline-offset: -3px;
+}
+
+/* ---- pages 1 and 2: the page is a column, the links stacked 20 px apart ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-content .gallery-move-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 0;
+    min-height: 0;
+    height: auto;
+    padding: 18px 19px 11px 38px;
+    overflow: auto;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-wizard-page {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-wizard-page > .vista-wizard-instruction {
+    margin-bottom: 0;
+}
+
+/* page 1 shows the modes only; the handlers' initial options (page 2) wait for a mode */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal:not([data-wizard-page="1"]) .vista-wizard-page,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="1"] #unifiedUploadInitialOptions {
+    display: none !important;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="2"] #unifiedUploadInitialOptions {
+    display: flex !important;
+    gap: 0;
+    height: auto;
+    padding: 0;
+    justify-content: flex-start;
+    align-items: stretch;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-options-container-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-options-container-info {
+    margin-top: 20px;
+    color: #000;
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    font-size: 9pt;
+    font-weight: 400;
+    font-variation-settings: normal;
+    line-height: 15px;
+    text-align: left;
+}
+
+/* on pages 1 and 2 nothing of page 3 shows: the title, the mode row, the picture, its info */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal:not([data-wizard-page="3"]) > .modal-content :is(#unifiedUploadBackgroundImage, #unifiedUploadModalTitle, .gallery-move-overlay, .gallery-move-header) {
+    display: none;
+}
+
+/* ---- page 3: the title, the mode row, the picture left of the options, the footer ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="3"] > .modal-content {
+    display: grid;
+    /* the picture column carries the page's 38 px left margin */
+    grid-template-columns: 238px minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+        "title title"
+        "header header"
+        "image content"
+        "info content"
+        "actions actions";
+    column-gap: 11px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="3"] #unifiedUploadModalTitle {
+    grid-area: title;
+    margin: 18px 19px 0 38px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="3"] .gallery-move-header {
+    grid-area: header;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px 11px;
+    min-height: 23px;
+    margin: 7px 19px 0 38px;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="3"] #unifiedUploadBackgroundImage {
+    grid-area: image;
+    position: static;
+    width: 200px;
+    height: 200px;
+    margin: 13px 0 0 38px;
+    padding: 2px;
+    object-fit: contain;
+    background: #fff;
+    border: 1px solid #abadb3;
+    border-radius: 2px;
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="3"] .gallery-move-overlay {
+    grid-area: info;
+    display: block;
+    position: static;
+    height: auto;
+    min-height: 0;
+    margin: 7px 0 11px 38px;
+    overflow: auto;
+    background: none;
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="3"] .gallery-move-image-info-overlay {
+    margin: 0;
+    padding: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border: 0;
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="3"] .gallery-move-image-info-overlay p {
+    margin: 0;
+    color: #000;
+    font-size: 9pt;
+    line-height: 15px;
+    text-shadow: none;
+    overflow-wrap: anywhere;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="3"] .gallery-move-image-info-overlay strong {
+    font-weight: 400;
+    color: #6d6d6d;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-wizard-page="3"] > .modal-content .gallery-move-content {
+    grid-area: content;
+    gap: 11px;
+    margin: 13px 0 11px;
+    padding: 0 19px 0 0;
+}
+
+/* the mode row: Import as [Import] [Reference] [Vibe] [Precise], 7.css buttons, the active one pressed;
+   hidden where the handlers fade it (a URL, a vibe file to import) */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadModeSelector {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: auto;
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadModeSelector::before {
+    content: "Import as:";
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-mode="url"] #unifiedUploadModeSelector,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal[data-mode="vibe"][data-vibe-type="import"] #unifiedUploadModeSelector {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .mode-slider-container {
+    display: flex;
+    gap: 7px;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .mode-slider-track {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-header .mode-slider-btn {
+    min-width: 75px;
+    min-height: 23px;
+    padding: 0 12px;
+    gap: 0;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    border: 1px solid #8e8f8f;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px #fffc;
+    color: #000;
+    text-shadow: none;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 21px;
+    transition: border-color 0.3s, background 0.3s;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-header .mode-slider-btn > i {
+    display: none;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-header .mode-slider-btn:hover:not(:disabled) {
+        background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+        border-color: #3c7fb1;
+        color: #000;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-header .mode-slider-btn.active {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+    box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
+    color: #000;
+}
+
+/* the URL step's subtitle (Download URL) is a 9 pt label on the mode row */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadModalSubtitle {
+    width: auto;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadModalSubtitleText {
+    margin: 0;
+    color: #000;
+    font-size: 9pt;
+    font-weight: 600;
+    font-variation-settings: normal;
+    line-height: 15px;
+    text-shadow: none;
+}
+
+/* the options: labels left of their 7.css controls, 7 px gaps, black text */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content :is(.form-group, .form-row) {
+    gap: 7px;
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content .form-group:has(> label) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content .form-group label {
+    margin: 0;
+    color: #000;
+    text-transform: none;
+    font-size: 9pt;
+    font-weight: 400;
+    font-variation-settings: normal;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content .form-group label::after {
+    content: ":";
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content .meta-value {
+    color: #000;
+    font-family: inherit;
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content :is(.form-text, .text-warning, .url-display) {
+    color: #000;
+    font-size: 9pt;
+    line-height: 15px;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content .url-display {
+    padding: 2px 4px;
+    background: #fff;
+    border: 1px solid #abadb3;
+    border-radius: 2px;
+    font-family: inherit;
+}
+
+/* the vibe bundle list: a Vista list box (the text box edge of vista-dialogs.css) */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vibe-bundle-preview-container {
+    max-height: 240px;
+    background: #fff;
+    border: 1px solid #abadb3;
+    border-radius: 2px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vibe-bundle-list {
+    gap: 4px;
+    padding: 4px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vibe-bundle-item {
+    gap: 7px;
+    padding: 2px;
+    border: 0;
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vibe-bundle-item-name {
+    color: #000;
+    font-size: 9pt;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadIeInput {
+    width: 75px;
+}
+
+/* the comment box stacks with the other options instead of sinking to the bottom */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadCommentInputContainer {
+    margin-top: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadCommentInput {
+    min-height: 45px;
+    resize: none;
+}
+
+/* (vistaDialogs.js takes this row for the dialog footer while .gallery-move-actions is hidden: undo that) */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadImportMetadataControls {
+    justify-content: flex-start;
+    gap: 7px;
+    margin: 0;
+    padding: 0;
+    background: none;
+}
+
+/* the precise toggles: 75x23 7.css buttons, on = pressed */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadImportMetadataControls button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 75px;
+    height: 23px;
+    min-height: 23px;
+    padding: 0 12px;
+    font-size: 9pt;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadImportMetadataControls button[data-state="on"] {
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+    border-color: #6d91ab;
+    box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .unified-upload-reference-toggles {
+    width: auto;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-explanation {
+    opacity: 1;
+    color: #000;
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-explanation strong {
+    color: #000;
+}
+
+/* ---- footer: the etched line over a 45 px #f0f0f0 band, [Upload] [Cancel] at the right ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-content .gallery-move-actions {
+    grid-area: actions;
+    display: flex !important;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+    margin: 0;
+    padding: 11px;
+    background: #f0f0f0;
+    border: 0;
+    border-top: 1px solid #dfdfdf;
+    box-shadow: none;
+}
+
+/* the workspace picker and Studio sit at the left; a spacer pushes the rest to the right */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-actions::before {
+    content: "";
+    flex: 1 1 auto;
+    order: 2;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-actions > #unifiedUploadWorkspaceDropdown {
+    order: 0;
+    margin: 0;
+    gap: 7px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-actions > #unifiedUploadOpenInEditorBtn {
+    order: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-actions > #unifiedUploadNavigation {
+    order: 3;
+    flex: 0 0 auto;
+    width: auto;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-actions > #unifiedUploadConfirmBtn {
+    order: 4;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-actions > #unifiedUploadCancelBtn {
+    order: 5;
+}
+
+/* 75x23 (vista-dialogs.css paints the face and the default button's glow); no icons on Vista's buttons */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-actions > button {
+    min-width: 75px;
+    height: 23px;
+    min-height: 23px;
+    padding: 0 12px;
+    white-space: nowrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-actions :is(#unifiedUploadConfirmBtn, #unifiedUploadOpenInEditorBtn) > i {
+    display: none;
+}
+
+/* the workspace picker: a 23 px square with the workspace colour */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadWorkspaceDropdownBtn {
+    min-width: 23px;
+    width: 23px;
+    height: 23px;
+    min-height: 23px;
+    padding: 0;
+    justify-content: center;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadSiteDomainText {
+    padding: 0;
+    gap: 7px;
+    background: none;
+    border: 0;
+    color: #000;
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadSiteDomainText i {
+    color: #000;
+}
+
+/* multi-file navigation: 23 px arrow buttons and the index */
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadNavigation .navigation-controls {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 7px;
+    margin: 0;
+    padding: 0;
+    background: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadNavigation button {
+    min-width: 23px;
+    width: 23px;
+    height: 23px;
+    min-height: 23px;
+    padding: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUploadNavigation .navigation-info {
+    color: #000;
+    font-size: 9pt;
+    line-height: 15px;
+    text-shadow: none;
+}
