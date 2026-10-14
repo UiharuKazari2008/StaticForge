@@ -1,0 +1,45 @@
+# Clean-install test: build Dreamscape from scratch on a fresh ubuntu:24.04 and boot it.
+#
+# Runs ONLY on a runner labelled `clean-install` (a throwaway container/VM runner) — never on the
+# production host runner (seq-dreamscape / host mode). No secrets, no systemd, no deploy.
+# Fallback runner: a Sala-provided VM restored to its base-install snapshot before each run
+# (see docs/CLEAN_INSTALL.md).
+name: Clean install
+
+on:
+  schedule:
+    - cron: '37 7 * * *'   # nightly 07:37 UTC (03:37 ET)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clean-install
+  cancel-in-progress: true
+
+jobs:
+  clean-install:
+    runs-on: clean-install
+    container:
+      image: ubuntu:24.04
+    timeout-minutes: 75
+    env:
+      CI: 'true'
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Bootstrap checkout tools
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends git curl ca-certificates nodejs
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Remove distro node (installer must bring its own)
+        run: apt-get purge -y -qq nodejs && apt-get autoremove -y -qq
+      - name: Clean install + boot + smoke + idempotency
+        run: bash scripts/ci/clean-install-test.sh
+      - name: Upload boot log
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: dreamscape-boot-log
+          path: ${{ runner.temp }}/dreamscape-boot.log
+          if-no-files-found: ignore
