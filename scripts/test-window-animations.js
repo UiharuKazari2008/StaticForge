@@ -59,6 +59,8 @@ assert.ok(reduced.length > 0, 'reduced-motion block');
 const reducedRoot = extractBlock(reduced, ':root {');
 ['open', 'close', 'minimize'].forEach((k) => assert.ok(new RegExp(`--window-${k}-duration:\\s*1ms`).test(reducedRoot), `reduced ${k} = 1ms`));
 assert.ok(/--window-morph-duration:\s*0ms/.test(reducedRoot), 'reduced morph off');
+assert.ok(/display:\s*none\s*!important/.test(extractBlock(appCss, '.modal.minimised {')),
+    'minimised state overrides window-specific display rules');
 
 // 4. FLIP maths: the morph puts the new box exactly onto the old one.
 class DOMMatrixReadOnly {

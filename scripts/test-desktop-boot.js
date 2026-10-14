@@ -83,17 +83,22 @@ boot.config.stepWatchdogMs = 30;
     assert.strictEqual(status.textContent, 'Preparing your desktop...', 'headline stays with the stage');
     boot.onInitStep({ priority: 12, message: 'Loading Workspaces' });
     boot.onStepDone({ priority: 12, message: 'Loading Workspaces' });
-    assert.strictEqual(S.requested, 'icons');
-    assert.deepStrictEqual(S.queue, ['settings', 'wallpaper', 'icons'], 'session dwell holds the queue');
+    assert.strictEqual(S.requested, 'settings', 'workspaces stay on settings until the wallpaper has decoded');
+    boot.onStepDone({ priority: 12.2, message: 'Loading wallpaper' });
+    assert.strictEqual(S.requested, 'wallpaper');
+    assert.deepStrictEqual(S.queue, ['settings', 'wallpaper'], 'session dwell holds the queue');
     await sleep(30);
     assert.strictEqual(body.dataset.bootStage, 'wallpaper', 'session dwell then settings (0 dwell) then wallpaper');
     assert.ok(body.classList.contains('boot-reveal-wallpaper'));
     assert.strictEqual(status.textContent, 'Preparing your desktop...');
-    assert.ok(!body.classList.contains('boot-reveal-icons'), 'icons wait for the wallpaper dwell');
+    assert.ok(!body.classList.contains('boot-reveal-icons'), 'icons wait until their assets are loaded');
+    boot.onStepDone({ priority: 16, message: 'Starting Taskbar' });
+    assert.strictEqual(S.requested, 'wallpaper', 'unhiding the taskbar does not reveal it');
+    boot.onStepDone({ priority: 18.2, message: 'Loading desktop icons' });
     await sleep(30);
     assert.strictEqual(body.dataset.bootStage, 'icons');
     assert.ok(body.classList.contains('boot-reveal-icons'));
-    boot.onStepDone({ priority: 16, message: 'Starting Taskbar' });
+    boot.onStepDone({ priority: 18.4, message: 'Loading desktop assets' });
     await sleep(30);
     assert.strictEqual(body.dataset.bootStage, 'taskbar');
     assert.ok(body.classList.contains('boot-reveal-taskbar'));
@@ -214,6 +219,25 @@ boot.config.stepWatchdogMs = 30;
     assert.ok(!body.classList.contains('workstation-locked') && !body.classList.contains('windows-classic-theme'));
     assert.deepStrictEqual(wsLog, ['pause', 'resume']);
     assert.strictEqual(boot.unlockWorkstation(), false);
+
+    // ---- Use Vista Logon: both locks take Vista Basic instead of Classic, Classic again when off ----
+    boot.setLogonTheme(true);
+    assert.ok(boot.isVistaLogon() && body.classList.contains('vista-logon'));
+    assert.ok(!body.classList.contains('vista-basic-theme'), 'no boot theme on the running desktop');
+    boot.lockWorkstation();
+    assert.ok(body.classList.contains('vista-basic-theme') && !body.classList.contains('windows-classic-theme'),
+        'the workstation lock is the Vista Welcome screen, Vista Basic');
+    boot.suspend('server-restarted');
+    assert.ok(body.classList.contains('vista-basic-theme'), 'a restart under it is the Vista logon');
+    boot.resume();
+    boot.unlockWorkstation();
+    assert.ok(!body.classList.contains('vista-basic-theme'), 'Vista Basic comes off with the last lock');
+    boot.setLogonTheme(false);
+    assert.ok(!body.classList.contains('vista-logon'));
+    boot.lockWorkstation();
+    assert.ok(body.classList.contains('windows-classic-theme'), 'off again: Classic lock');
+    boot.unlockWorkstation();
+    await sleep(50);
     boot.begin();
     assert.strictEqual(boot.lockWorkstation(), false, 'no manual lock while the staged boot runs');
     boot.reset();
@@ -519,7 +543,7 @@ async function testLockTriggers(body) {
     let failAppData = true;
     let lc = logonClient([
         [0.45, 'Loading user global settings', null, { logon: true }],
-        [0.46, 'Loading start menu layout'], [0.5, 'Loading Desktop Settings'], [0.55, 'Preloading icons'],
+        [0.46, 'Loading start menu layout'], [0.5, 'Loading Desktop Settings'], [18.4, 'Loading desktop assets'],
         [1, 'Loading Application Data', () => { if (failAppData) throw new Error('options timed out'); },
             { logon: true, critical: true, failureText: 'MeletonFX could not load your application data.' }],
         [5, 'Initializing Tokenizer']

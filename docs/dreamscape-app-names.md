@@ -20,11 +20,28 @@ User-facing applet and tool names follow a **Dreamscape** style: short, tangible
 - **Runes:** `config`, `settings`, `settings editor`, `runes`
 - **Periscope:** `log`, `logs`, `console`, `periscope`, `event viewer`, `events`, …
 
+## Dreamscape 2026 R7 package
+
+Workspaces, DreamStudio and the tools around them ship as one software package, **Dreamscape 2026 R7** (Yukimi, 2026-10-13/14; Yozora #468). The package name is the version the splash screens, About boxes and the Welcome screen branding carry; the apps keep short names in their captions.
+
+| launchId | Package name | Where the version shows |
+|----------|--------------|-------------------------|
+| `studio` | **DreamStudio** (caption "DreamStudio 2026 R7", `fullName` DreamStudio 2026 R7) | splash "DreamStudio / 2026 R7" |
+| `workspace` | **Workspaces** (caption "Workspaces - Images", `fullName` Dreamscape Workspaces) | splash "Dreamscape Workspaces / 2026 R7" (`#workspaceSplash`, `appSplash.js`) |
+| `spellbook` | Spellcaster | |
+| `reference` | Reference | (splash planned, #496) |
+| `bracket-generation` | Phasewalker | |
+| `character-db` | Characters | |
+| `expanders` | Expanders | |
+| `presets` | Spellbook | |
+
+Start menu: All Programs lists these in a **Dreamscape 2026 R7** folder (`START_MENU_PACKAGE_APPS` in `modalUtils.js`, next to Accessories) and not at the top level or in Accessories; pinned and most-used rows are unaffected. The Welcome screen (Use Vista Logon) carries "Dreamscape 2026 R7" at the bottom, the version in the light weight (`scripts/build-vista-logon-branding.sh`).
+
 ## Already on-brand (no rename planned)
 
 | launchId / surface | Display name |
 |--------------------|--------------|
-| `studio` | Studio (`fullName`: DreamStudio 2025) |
+| `studio` | Studio (`fullName`: DreamStudio 2026 R7) |
 | `spellbook` | Spellcaster |
 | `encyclopedia` | Grimoire |
 | `alchemy` | Alchemy (Grimoire's remote browser, opens Home) |
@@ -65,7 +82,7 @@ These still read generic next to the adopted set. Revisit when touching those su
 
 | Current | launchId / location | Notes |
 |---------|---------------------|--------|
-| **Workspace** | `workspace` | Gallery window; could align with planet metaphor (e.g. keep as-is with Solar System) |
+| **Workspaces** | `workspace` | Gallery window, renamed from Workspace with the 2026 R7 package (#468); could still align with the planet metaphor |
 | **Reference** | `reference` | Cache/vibe manager; *Reliquary* or *Swatchbook* reserved/alternate |
 | **Favorites** | `favorites` | Plain; low priority |
 | **Chat** / **Chat Persona** | `chat`, `chat-persona` | Functional; rename only if chat gets a stronger fantasy identity |

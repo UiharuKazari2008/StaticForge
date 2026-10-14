@@ -118,7 +118,13 @@ globalThis.wsClient = {
         lab: [{ base: 'c' }, { base: 'broken' }, { base: 'd' }]
     } })
 };
-globalThis.desktopSounds = { play() { return Promise.resolve(false); } };
+const soundPlays = [];
+globalThis.desktopSounds = {
+    play(event) {
+        soundPlays.push(event);
+        return Promise.resolve(false);
+    }
+};
 globalThis.resolveWorkspaceWallpaperUrl = (w) => (w ? '/images/wall.png' : null);
 globalThis.formatWorkspaceProgressStatusText = (p) => (p && typeof p.blocksLeft === 'number' ? `Loading gallery (${p.blocksLeft} Blocks Left)` : '');
 globalThis.shouldGalleryProgressUseDeterminate = (p) => Boolean(p && typeof p.progress === 'number' && p.phase !== 'hash_probe');
@@ -154,6 +160,7 @@ async function test(name, fn) { await fn(); passed += 1; console.log(`ok - ${nam
     await test('open captures desktop + visible windows, animates scale/opacity only, pauses via body class', async () => {
         await sw.open();
         assert.strictEqual(sw.state, 'browsing');
+        assert.ok(soundPlays.includes('planet-enter'), 'enter plays the logoff event');
         assert.ok(document.body.classList.contains('planet-switcher-active'));
         assert.strictEqual(sw.desktopLayer.length, 3);
         assert.deepStrictEqual(sw.windowLayer.map((r) => r.el.id).sort(), ['galleryWindow', 'manualModal']);
@@ -301,6 +308,7 @@ async function test(name, fn) { await fn(); passed += 1; console.log(`ok - ${nam
         const selecting = sw.select(2); // what the second tap calls
         assert.strictEqual(sw.state, 'selecting', 'second tap travels');
         assert.ok(sw.root.classList.contains('is-selecting'));
+        assert.ok(soundPlays.includes('planet-activate'), 'select plays navigate immediately');
         assert.strictEqual(sw.stars.targetSpeed, 1.7, 'star field warps while loading');
         await tick();
         assert.deepStrictEqual(activations, [], 'no switch until the ring has settled');

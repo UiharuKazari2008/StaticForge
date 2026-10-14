@@ -2,7 +2,9 @@
 // Pure ring geometry of the planet switcher (public/scripts/comp/planetSwitcher.js).
 // Run: node scripts/test-planet-switcher-ring.js
 const assert = require('assert');
-const { PlanetRingMath, PLANET_SWITCHER_TIMING } = require('../public/scripts/comp/planetSwitcher.js');
+const fs = require('fs');
+const path = require('path');
+const { PlanetRingMath, PLANET_SWITCHER_TIMING, PLANET_SWITCHER_BGM } = require('../public/scripts/comp/planetSwitcher.js');
 
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
 let passed = 0;
@@ -11,6 +13,20 @@ function test(name, fn) {
     passed += 1;
     console.log(`ok - ${name}`);
 }
+
+test('bgm is a quiet looping opus under SFX', () => {
+    assert.strictEqual(PLANET_SWITCHER_BGM.url, '/sounds/planet/innerlight.opus');
+    assert.ok(PLANET_SWITCHER_BGM.gain > 0 && PLANET_SWITCHER_BGM.gain < 0.7);
+    assert.ok(PLANET_SWITCHER_BGM.gainActive > PLANET_SWITCHER_BGM.gain);
+    assert.ok(!('fadeIn' in PLANET_SWITCHER_BGM));
+    assert.ok(
+        PLANET_SWITCHER_BGM.fadeTravel > PLANET_SWITCHER_TIMING.zoomIn + PLANET_SWITCHER_TIMING.reveal,
+        'travel fade outlasts the zoom + reveal'
+    );
+    const server = fs.readFileSync(path.join(__dirname, '..', 'web_server.js'), 'utf8');
+    assert.ok(server.includes("itemRel === 'sounds/vista'"), 'Vista WAVs stay out of the SW scan');
+    assert.ok(!server.includes("itemRel === 'sounds' || itemRel.startsWith('sounds/')"), 'planet BGM is scanned');
+});
 
 test('timings match the spec', () => {
     assert.strictEqual(PLANET_SWITCHER_TIMING.holderIn, 4500);

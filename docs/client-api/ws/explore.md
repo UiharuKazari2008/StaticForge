@@ -183,9 +183,14 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `sort` | Optional |
 | `period` | Optional |
 | `search` | Optional |
-| `model` | Optional — Explore system tag `system:model:<id>`. `nai-diffusion-v4` is accepted and sent as `nai-diffusion-4-5-full` (V4.5 Full). |
+| `model` | Optional — Explore system tag `system:model:<id>`. `nai-diffusion-v4` is accepted and sent as `nai-diffusion-4-5-full` (V4.5 Full). V5 is `nai-diffusion-5-full` / `nai-diffusion-5-curated`. The generation slug `nai-diffusion-5-full-medium` is not an Explore tag and is omitted (sending it makes the search fail with tag not found). |
 | `aspect` | Optional — `portrait` / `landscape` / `square` → `system:aspect:<value>` |
 | `vt` | Optional — `with` → `system:has_vt` (vibe transfer) |
+| `sampler` | Optional — sampler api name (`k_euler`, `k_euler_ancestral`, …) → `system:sampler:<name>` |
+| `characters` | Optional — integer 0–6 → `system:n_character:<N>` |
+| `promptLength` | Optional — `small` / `medium` / `large` / `xlarge` → `system:prompt_length:<value>`. `prompt_length` is the same field. |
+| `opus` | Optional — `with` → `system:is_opus_freegen` |
+| `filters` | Optional object with the same keys (`model`, `aspect`, `sampler`, `vt`, `characters`, `promptLength`, `opus`). A top-level field wins when both are set. |
 | `creatorId` | Optional |
 | `page` | Optional |
 | `offset` | Optional |

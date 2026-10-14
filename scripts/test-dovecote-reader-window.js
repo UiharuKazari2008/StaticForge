@@ -123,7 +123,8 @@ function main() {
     assert.ok(hdr.querySelector('.dovecote-oe-header-tools').querySelector('.dovecote-sanitized-badge'), 'Safe badge sits in the header tools column');
     assert.ok(hdr.querySelector('.dovecote-body-view-toggle'), 'reader has its own Rendered/Raw toggle in the header');
     assert.strictEqual(state.els.bodyWrap.querySelector('.dovecote-oe-header-tools'), null, 'nothing overlays the body');
-    assert.ok(readers[0].classList.contains('toolbar-visible'), 'reader title-bar toolbar gets its own row (toolbar-visible)');
+    assert.ok(!readers[0].classList.contains('toolbar-visible'), 'reader caption has no toolbar row (#473)');
+    assert.strictEqual(readers[0].querySelector('.modal-content').children[0].className, 'dovecote-command-bar', 'reader command bar is the client\'s first row (#473)');
 
     // Re-opening the same mail focuses the existing window instead of mounting a second one.
     assert.doesNotThrow(() => doveOpenReaderWindow('mail-42'));

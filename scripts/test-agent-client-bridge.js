@@ -739,6 +739,68 @@ Promise.all([
     _test.pendingRestarts.clear();
     _test.pendingReattach.clear();
 
+    // #475 desktop readiness: client_desktop_state is stored per socket and listed; an
+    // unauthenticated socket is at the logon dialog; an old build that never reports is ready
+    const ready = restartHarness('aaa111aaa111', () => undefined);
+    const readyWs = [...ready.globalResources.getWebSocketServer().clients.keys()][0];
+    assert.strictEqual(bridge.listClients(ready.globalResources, 'appkey:ready')[0].desktopState, null);
+    assert.strictEqual(bridge.listClients(ready.globalResources, 'appkey:ready')[0].desktopReady, true);
+    bridge.handleClientDesktopState({ globalResources: ready.globalResources }, readyWs, { type: 'client_desktop_state', desktopState: 'booting' }, ready.info);
+    let row = bridge.listClients(ready.globalResources, 'appkey:ready')[0];
+    assert.strictEqual(row.desktopState, 'booting');
+    assert.strictEqual(row.desktopReady, false);
+    bridge.handleClientDesktopState({ globalResources: ready.globalResources }, readyWs, { type: 'client_desktop_state', desktopState: 'nonsense' }, ready.info);
+    assert.strictEqual(bridge.listClients(ready.globalResources, 'appkey:ready')[0].desktopState, 'booting', 'unknown states are ignored');
+    bridge.handleClientDesktopState({ globalResources: ready.globalResources }, readyWs, { type: 'client_desktop_state', desktopState: 'desktop' }, ready.info);
+    row = bridge.listClients(ready.globalResources, 'appkey:ready')[0];
+    assert.strictEqual(row.desktopState, 'desktop');
+    assert.strictEqual(row.desktopReady, true);
+    ready.info.authenticated = false;
+    row = bridge.listClients(ready.globalResources, 'appkey:ready')[0];
+    assert.strictEqual(row.desktopState, 'logon');
+    assert.strictEqual(row.desktopReady, false);
+
+    // the restart keeps waiting after the reattach until the tab reports the desktop
+    let bootPolls = 0;
+    const booting = restartHarness('bbb222bbb222', (data, info) => {
+        if (data.command === 'client_restart') {
+            info.connectedAt = new Date(Date.now() + 1500);
+            return { ok: true, restarting: true };
+        }
+        if (data.command === 'get_state') {
+            bootPolls += 1;
+            return { ok: true, workspaceId: 'lab', desktopState: bootPolls < 3 ? 'booting' : 'desktop' };
+        }
+        return undefined;
+    });
+    const bootKey = 'appkey:restart-boot';
+    bridge.bindClient(booting.globalResources, { clientId: 'bbb222bbb222', bindKey: bootKey });
+    const bootResult = await bridge.restartBoundClient(booting.globalResources, bootKey, { timeoutMs: 6000, allowPending: true, pollMs: 10 });
+    assert.strictEqual(bootResult.reattached, true);
+    assert.strictEqual(bootResult.desktopState, 'desktop');
+    assert.strictEqual(bootResult.desktopReady, true);
+    assert.ok(bootPolls >= 3, 'polled get_state until the desktop was ready');
+    _test.bindSessions.delete(bootKey);
+
+    // budget runs out mid-boot: still reattached, but desktopReady false (not an error)
+    const stuck = restartHarness('ccc333ccc333', (data, info) => {
+        if (data.command === 'client_restart') {
+            info.connectedAt = new Date(Date.now() + 1500);
+            return { ok: true, restarting: true };
+        }
+        if (data.command === 'get_state') return { ok: true, workspaceId: 'lab', desktopState: 'logon' };
+        return undefined;
+    });
+    const stuckKey = 'appkey:restart-stuck';
+    bridge.bindClient(stuck.globalResources, { clientId: 'ccc333ccc333', bindKey: stuckKey });
+    const stuckResult = await bridge.restartBoundClient(stuck.globalResources, stuckKey, { timeoutMs: 400, allowPending: true, pollMs: 10 });
+    assert.strictEqual(stuckResult.reattached, true);
+    assert.strictEqual(stuckResult.desktopState, 'logon');
+    assert.strictEqual(stuckResult.desktopReady, false);
+    _test.bindSessions.delete(stuckKey);
+    _test.pendingRestarts.clear();
+    _test.pendingReattach.clear();
+
     console.log('test-agent-client-bridge: ok');
 }).catch((err) => {
     console.error(err);

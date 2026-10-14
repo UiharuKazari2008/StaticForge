@@ -198,6 +198,21 @@ const small = ui.logonWindowOffset('connecting', { w: 380, h: 130 }, { vw: 640, 
 assert.strictEqual(small.y + 240 + 65, 480 - 16, 'clamped inside a small screen');
 assert.strictEqual(small.x + 320 + 190, 640 - 16);
 
+// Classic logon dialog: top at one third of the leftover height (modalUtils.js windowsLogonDialogOffsetY)
+const modalUtilsSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/modalUtils.js'), 'utf8');
+const offsetFnMatch = modalUtilsSrc.match(/function windowsLogonDialogOffsetY\([\s\S]*?\n\}/);
+assert.ok(offsetFnMatch, 'windowsLogonDialogOffsetY is in modalUtils.js');
+const windowsLogonDialogOffsetY = new Function(`return ${offsetFnMatch[0]}`)();
+function logonTop(viewport, dialog, inset, bias) {
+    const y = windowsLogonDialogOffsetY(viewport, dialog, inset, bias);
+    return viewport / 2 + y - bias - dialog / 2;
+}
+const near = (a, b) => Math.abs(a - b) < 1e-6;
+assert.ok(near(logonTop(1080, 240, 0, 18), (1080 - 240) / 3), '1080p logon top is the leftover third, bias cancelled');
+assert.ok(near(logonTop(768, 220, 0, 0), (768 - 220) / 3));
+assert.ok(logonTop(1080, 240, 0, 18) < (1080 - 240) / 2, 'that top sits above a vertical center');
+assert.ok(near(logonTop(480, 600, 0, 18), 0), 'a dialog taller than the screen pins to the top');
+
 // ---- Desktop: the Connecting dialog sits bottom-right of the work area, clear of desktop icons ----
 const iconRect = (left, top) => ({ left, top, right: left + 92, bottom: top + 112, width: 92, height: 112 });
 const grid = [14, 130, 246, 362, 478, 594, 710, 826, 942].map((t) => iconRect(14, t)).concat([iconRect(110, 14), iconRect(110, 594)]);

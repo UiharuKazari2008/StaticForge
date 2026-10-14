@@ -137,6 +137,7 @@ per file is slow for hundreds of files.
   gutter), `ieframe.dll` (stop/refresh 2_3215, favorites-add 2_216, loading ring 2_624).
 - Tray: `pnidui.dll` (network 19/24-32/35), `imageres.dll` 166 search / 26 hard drive,
   `user32.dll` 1 warning 3 error 4 info, `explorer.exe` 18 Switch between windows.
+- Windows CardSpace (Control Panel DefaultIcon): `icardres.dll,-4096` (16/32 tray, 32/48 Control Panel).
 - Shields: `imageres.dll` 98-101, UAC 72; key 76; users 73; info 75; shortcut arrow
   `shell32.dll` 29; folder `shell32.dll` 3 / `imageres.dll` 3; blank file `imageres.dll` 1;
   Messenger (Welcome Center) `oobefldr.dll` 4; User Accounts `usercpl.dll` 0; Taskbar and Start

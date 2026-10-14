@@ -250,7 +250,7 @@ User: *find an artist* / *top voted artists* / *who draws like this*
 
 User: *show Explore top this week* / *find community gens of X* / *open that Explore post*
 
-1. `search_explore` — default `mode: "compact"` (no image bytes). `sort` `new` / `top` / `hot` / `random`; `period` `day`/`week`/`month`/`all` is applied on text search; `cursor` for the next page; `fields` for a missing key. `model: "nai-diffusion-v4"` is V4.5 Full.
+1. `search_explore` — default `mode: "compact"` (no image bytes). `sort` `new` / `top` / `hot` / `random`; `period` `day`/`week`/`month`/`all` is applied on text search; `cursor` for the next page; `fields` for a missing key. `model: "nai-diffusion-v4"` is V4.5 Full. V5 is `nai-diffusion-5-full` / `nai-diffusion-5-curated`. Do not pass `nai-diffusion-5-full-medium`: Explore has no system tag for it and the search fails. Filters (`model`, `aspect`, `sampler`, `vt`, `characters` 0–6, `promptLength` `small|medium|large|xlarge`, `opus: "with"`) also accept a `filters` object. They become Explore system tags and combine with the text query. `count_explore` takes the same filters.
 2. `count_explore` `{ "tags": ["mutual hug"], "period": "week" }` for post and distinct-creator counts. Do not page the gallery to count.
 3. `get_explore_post` `{ "postId": "<uuid>" }` for the compact post. `includeImage: true` or `get_explore_image` `{ "postId" }` for the full image URL only.
 4. In-app WS cousins: [ws/explore.md](./ws/explore.md) (`get_novelai_explore_gallery`, `get_novelai_explore_post`, …).
@@ -288,7 +288,7 @@ Cursor ingest / QA on the **running Dreamscape tab** (port 9220). Do **not** use
 2. `update_client` — same as desktop context-menu **Update** (`refresh-cache`): `refreshServerCache` then SW download
 3. Branch on the result:
    - `appliedWithoutRestart` — CSS/assets are live (stylesheet swap). **Do not** `restart_client` (a reload can keep stale HTML hashes).
-   - `readyForRestart` — JS/HTML. Then `restart_client`. `reattached: true` means inspect/js now. `pending: true` with `restartId` means call `restart_client` again with only `{restartId}` until `reattached` (one call stays under the MCP limit).
+   - `readyForRestart` — JS/HTML. Then `restart_client`. `reattached: true` with `desktopReady: true` means inspect/js now; `desktopReady: false` means the tab is back but still booting / at logon / locked: poll `get_session_state` `clientLink.desktopReady` (or `list_clients`) until true. `pending: true` with `restartId` means call `restart_client` again with only `{restartId}` until `reattached` (one call stays under the MCP limit).
    - `alreadyCurrent` — nothing to apply; inspect/js now
 4. Then `inspect_elements` (`selectors`, optional `html` / `style` / `text` / `box` / `attrs`) and/or `run_client_js` (`script`; Promises are awaited)
 5. Do not reuse a pre-restart Studio snapshot after a JS/HTML restart. `POST /agent/session/update` is the 15s human Cancel dialog — not this path.

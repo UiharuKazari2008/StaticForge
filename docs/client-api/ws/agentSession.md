@@ -17,6 +17,7 @@ These packets are **not** gallery / workspace list APIs. No share-code chrome is
 | `session_share_start` | `session_share_code_response` | session | Mint a 6-character share code (~5 min). Optional `userAgent` snippet. |
 | `agent_session_result` | (none) | session | Client reply to `agent_session_command`. Fire-and-forget. |
 | `agent_session_unbind` | `agent_session_unbind_response` | session | Tray Unbind. Releases every application-key bind on this tab. |
+| `client_desktop_state` | (none) | session | Desktop readiness (#475). `desktopState`: `logon` / `booting` / `locked` / `desktop` / `ready`. Sent on connect and on every change. Fire-and-forget. |
 
 ## Server-initiated
 
@@ -81,6 +82,22 @@ wait for generation. `autoGenerate` without `autoApply` is rejected at REST
 Ignored when no matching pending command or the sender is not the bound client.
 
 **Errors:** none (no response packet).
+
+### `client_desktop_state`
+
+**Auth:** Session required (a socket that has not authenticated is reported as `logon`)
+
+**Handler:** modules/ws/handlers/168-agentClientHandler.js → `agentClientBridge.handleClientDesktopState`
+
+**Client:** public/scripts/comp/agentClientBridge.js `computeDesktopState` / `announceDesktopState` (`window.getClientDesktopState()`)
+
+**Request fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `desktopState` | Yes | `logon` (logon dialog), `booting` (desktop staging or the startup window still up), `locked` (server-restart lock or workstation lock), `desktop` (desktop UI up and usable), `ready` (non-desktop UI fully loaded) |
+
+No response. The tab sends it on every `connected`, on each `desktopBoot*` / `desktopSession*` / `desktopWorkstation*` event, and from a 1 s check that sends only on change (the startup window closing has no event). The server stores it on the socket; `GET /agent/clients`, MCP `list_clients`, `get_session_state` (`clients`, `clientLink`) and the restart wait read it. The `get_state` reply to `agent_session_command` carries the same `desktopState`.
 
 ### `agent_session_unbind`
 

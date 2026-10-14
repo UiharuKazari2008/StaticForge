@@ -33,7 +33,7 @@ function main() {
     assert.match(dovecoteJs, /rows\.addEventListener\('dblclick'/);
     assert.match(dovecoteJs, /doveOpenReaderWindow\(row\.dataset\.doveMailId\)/);
     assert.match(dovecoteJs, /doveOpenReaderWindow = function/);
-    assert.match(dovecoteJs, /modal\.className = 'modal resizeable-window toolbar-visible dovecote-reader-window/);
+    assert.match(dovecoteJs, /modal\.className = 'modal resizeable-window dovecote-reader-window/);
     assert.match(dovecoteJs, /modal\.dataset\.windowIdentifier = 'desktopDovecoteReader'/);
     // Reply / Reply All / Forward are available from the reader's own toolbar.
     assert.match(dovecoteJs, /doveBuildReaderToolbar/);
@@ -78,19 +78,36 @@ function main() {
     assert.doesNotMatch(dovecoteJs, /createElement\(['"]select['"]\)/);
     assert.match(dovecoteJs, /contextMenu\.attachClickMenuToElement/);
 
-    // 5. Inline search bar (#1): the old toggle-triggered Find button is gone, the filter
-    // input lives in the same toolbar slot and is never hidden.
+    // 5. Inline search bar (#1): the old toggle-triggered Find button is gone; the filter
+    // input is Windows Mail's search box in the menu band (#473) and is never hidden.
     assert.doesNotMatch(dovecoteJs, /doveToggleFind/);
     assert.doesNotMatch(dovecoteJs, /searchGroup\.className = 'button-group hidden'/);
     assert.match(dovecoteJs, /searchGroup\.className = 'button-group'/);
     assert.match(dovecoteJs, /searchInput\.id = 'desktopDovecoteSearchInput'/);
 
-    // 6. Folder dropdown button (#5): custom click-menu, not a native select, showing the
-    // active folder's icon/label on the button itself.
+    // 6. Folder drop-down (#5, #473): no folder sidebar; Windows Mail's Folder Bar shows the
+    // active folder and drops down the folder tree (Local Folders, then the bot mailboxes
+    // where Windows Mail keeps Microsoft Communities). Not a native select.
+    assert.match(dovecoteJs, /const doveBuildFolderBar = function/);
     assert.match(dovecoteJs, /const doveBuildFolderButton = function/);
-    assert.match(dovecoteJs, /const doveFolderMenuConfig = \{/);
-    assert.match(dovecoteJs, /contextMenu\.attachClickMenuToElement\(button, doveFolderMenuConfig\)/);
+    assert.match(dovecoteJs, /button\.addEventListener\('click', \(\) => doveToggleFolderTree\(\)\)/);
+    assert.match(dovecoteJs, /const doveRenderFolderTree = function/);
+    assert.match(dovecoteJs, /const DOVE_COMMUNITIES_LABEL = /);
+    assert.match(dovecoteJs, /doveIsBotOwner\(box\.owner\)\);\n/);
     assert.match(dovecoteJs, /const doveRenderFolderButton = function/);
+    assert.doesNotMatch(dovecoteJs, /dovecote-mailbox-btn/);
+
+    // 6b. Windows Mail's client (#473): menu band, blue command bar and status bar live in the
+    // client, not the caption; the caption keeps no toolbar row.
+    assert.match(dovecoteJs, /content\.className = 'modal-content win7 dovecote-client'/);
+    assert.match(dovecoteJs, /const doveBuildMenuBar = function/);
+    assert.match(dovecoteJs, /toolbar\.className = 'dovecote-command-bar'/);
+    assert.match(dovecoteJs, /content\.appendChild\(doveBuildStatusBar\(\)\)/);
+    assert.doesNotMatch(dovecoteJs, /toolbar-visible/);
+    assert.doesNotMatch(dovecoteJs, /modal-window-title-toolbar/);
+    ['toolbar-16.png', 'toolbar-24.png', 'folders-16.png', 'folders-32.png', 'list-16.png', 'marks-16.png', 'status-16.png', 'cards-16.png'].forEach((file) => {
+        assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-mail', file)), 'vista-mail/' + file + ' must exist');
+    });
 
     // 7. Rendered/Raw toggle + Safe badge live in the header block's right-aligned tools
     // column (doveBuildOeHeader), never overlaid on the body, and not in the main toolbar.
@@ -127,6 +144,17 @@ function main() {
     assert.match(dovecoteJs, /wsClient\.sendMessage\('dovecote_get_attachment', request\)/);
     assert.match(dovecoteJs, /const doveRenderAttachmentsInto = function/);
     assert.match(dovecoteJs, /dovecote-compose-field-row/);
+    // Attachments are buttons that open (Yukimi 2026-10-14): images -> Lumen, audio / video ->
+    // Media Player, text / PDF -> a Dovecote viewer window, the rest saved; right-click Open / Save As.
+    assert.match(dovecoteJs, /button\.className = 'dovecote-attachment-chip'/);
+    assert.match(dovecoteJs, /button\.addEventListener\('click', \(\) => doveOpenAttachment\(att, viewAsOwner, 'open'\)\)/);
+    assert.match(dovecoteJs, /openGalleryImageInViewer\(\{ url: 'data:'/);
+    assert.match(dovecoteJs, /openDesktopMediaPlayerUrl\(URL\.createObjectURL/);
+    assert.match(dovecoteJs, /const doveOpenAttachmentViewer = function/);
+    assert.match(dovecoteJs, /contextMenu\.attachToElement\(button, doveAttachmentMenuConfig\(att, viewAsOwner\)\)/);
+    // text attachments are plain text, never parsed as HTML
+    assert.match(dovecoteJs, /pre\.textContent = new TextDecoder\('utf-8'\)\.decode\(bytes\)/);
+    assert.doesNotMatch(dovecoteJs, /\.innerHTML\s*=/);
 
     console.log('dovecote windows (compose/reader/tray/menu) tests passed');
 }

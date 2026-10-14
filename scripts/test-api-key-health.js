@@ -45,21 +45,39 @@ function fakeGr(secure, config) {
         },
         getConfig: ({ path: p } = {}) => (p ? config[p] : config),
         modifyConfig: (type, fn) => {
-            assert.strictEqual(type, 'secureConfig');
+            const store = type === 'config' ? config : secure;
+            if (type !== 'secureConfig' && type !== 'config') throw new Error(`unexpected config ${type}`);
             const helper = {
                 append: (keyPath, value) => {
                     const [service, field] = keyPath;
-                    secure[service] = secure[service] || {};
-                    secure[service][field] = (secure[service][field] || []).concat([value]);
+                    store[service] = store[service] || {};
+                    store[service][field] = (store[service][field] || []).concat([value]);
                     return true;
                 },
                 replace: (keyPath, index, value) => {
                     const [service, field] = keyPath;
-                    secure[service][field][index] = value;
+                    store[service][field][index] = value;
+                    return true;
+                },
+                delete: (keyPath, index) => {
+                    if (Number.isInteger(index)) {
+                        const [service, field] = keyPath;
+                        store[service][field].splice(index, 1);
+                        return true;
+                    }
+                    const [parent, key] = keyPath;
+                    delete store[parent][key];
+                    return true;
+                },
+                assign: (keyPath, value) => {
+                    const [parent, key] = keyPath;
+                    store[parent] = store[parent] || {};
+                    store[parent][key] = value;
                     return true;
                 }
             };
             if (!fn) return helper;
+            assert.strictEqual(type, 'secureConfig');
             const next = fn(JSON.parse(JSON.stringify(secure)));
             Object.keys(secure).forEach((k) => delete secure[k]);
             Object.assign(secure, next);
@@ -82,6 +100,8 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
             novelai: { keys: [{ name: 'Main', apiKey: 'pst-novel' }] },
             exa: { keys: [{ name: 'Exa', apiKey: 'exa-key' }] },
             grok: { keys: [{ name: 'Old', apiKey: 'xai-old' }] },
+            google: { keys: [{ name: 'Gemini', apiKey: 'goog-key' }] },
+            openweather: { keys: [{ name: 'Weather', apiKey: 'ow-key' }] },
             tokenrouter: { keys: [{ name: 'Primary', apiKey: 'sk-router' }] },
             tokenrouter_management: { keys: [{ name: 'Mgmt', apiKey: 'mk-router' }] }
         };
@@ -110,7 +130,7 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
         replies = {
             'image.novelai.net': { status: 200, body: { tier: 3 } },
             'api.exa.ai/search': { status: 400, body: { error: 'Invalid request body | Validation error: expected string at "query"' } },
-            'api.x.ai/v1/api-key': { status: 200, body: { team_blocked: true, api_key_blocked: false } },
+            'api.openweathermap.org': { status: 429, body: { message: 'limit' } },
             '/v1/models': { status: 200, body: { data: [] } },
             '/api/management/self/wallet': { status: 401, body: { success: false, message: 'management key is invalid' } }
         };
@@ -126,14 +146,19 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
         };
         assert.strictEqual(state('novelai'), 'ok');
         assert.strictEqual(state('exa'), 'ok', 'Exa: validation error after the key check means the key works');
-        assert.strictEqual(state('grok'), 'warn', 'xAI team blocked: key valid, no credits');
+        assert.strictEqual(state('openweather'), 'warn');
+        assert.strictEqual(state('grok'), 'unchecked', 'xAI is stored and not probed');
+        assert.strictEqual(state('google'), 'unchecked', 'Google is stored and not probed');
+        assert.strictEqual(health.checksService('grok'), false);
+        assert.strictEqual(health.checksService('google'), false);
+        assert.ok(!calls.some((c) => c.url.includes('api.x.ai') || c.url.includes('generativelanguage.googleapis.com')));
         assert.strictEqual(state('tokenrouter'), 'ok');
         assert.strictEqual(state('tokenrouter', 'managementKey'), 'fail');
         const mgmt = summaries.find((s) => s.id === 'tokenrouter').keys[0].secondaryStatus;
         assert.ok(/management key is invalid/.test(mgmt.message));
         assert.ok(mgmt.checkedAt);
         const cacheText = fs.readFileSync(process.env.API_KEY_HEALTH_CACHE, 'utf8');
-        ['pst-novel', 'exa-key', 'xai-old', 'sk-router', 'mk-router'].forEach((secret) => {
+        ['pst-novel', 'exa-key', 'xai-old', 'goog-key', 'ow-key', 'sk-router', 'mk-router'].forEach((secret) => {
             assert.ok(!cacheText.includes(secret), 'no secret on disk');
         });
         const last = gr.broadcasts[gr.broadcasts.length - 1];
@@ -146,7 +171,8 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
         calls.length = 0;
         const again = await health.sweep(gr, { reason: 'boot' });
         assert.strictEqual(again.checked, 1);
-        assert.ok(calls[0].url.includes('api.x.ai'));
+        assert.ok(calls[0].url.includes('api.openweathermap.org'));
+        assert.ok(!calls.some((c) => c.url.includes('api.x.ai') || c.url.includes('generativelanguage.googleapis.com')));
 
         // ---- editing the management key re-checks just that credential ----
         calls.length = 0;
@@ -179,6 +205,20 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
         await new Promise((resolve) => setTimeout(resolve, 20));
         assert.strictEqual(calls.length, 2);
         assert.deepStrictEqual(secure.tokenrouter.keys[1], { name: 'Second', apiKey: 'sk-router-b', managementKey: 'mk-router-b' });
+
+        // Deleting the active key leaves the next one selected. Deleting a later key keeps the selection.
+        gr.getConfig({ path: 'selectedApiKeys' }).tokenrouter = 0;
+        await gr.manager.removeApiKey('tokenrouter', 0);
+        assert.strictEqual(secure.tokenrouter.keys.length, 1);
+        assert.strictEqual(secure.tokenrouter.keys[0].name, 'Second');
+        assert.strictEqual(gr.manager.getSelectedIndex('tokenrouter'), 0);
+        gr.manager.addApiKey('tokenrouter', 'Third', 'sk-router-c');
+        await gr.manager.removeApiKey('tokenrouter', 1);
+        assert.deepStrictEqual(secure.tokenrouter.keys.map((k) => k.name), ['Second']);
+        assert.strictEqual(gr.manager.getSelectedIndex('tokenrouter'), 0);
+        await gr.manager.removeApiKey('exa', 0);
+        assert.deepStrictEqual(secure.exa.keys, []);
+        assert.strictEqual(gr.getConfig({ path: 'selectedApiKeys' }).exa, undefined);
 
         // ---- classification ----
         const c = health._test.classify;
@@ -213,6 +253,8 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
         const single = driver._keychainStatusHtml({ id: 'exa', keys: [{ index: 0, status: { state: 'warn' } }] }, 0);
         assert.ok(single.includes('sec-key-dot-warn') && !single.includes('sec-key-dot-label'));
         assert.ok(driver._keychainStatusHtml({ id: 'x', missingKeys: true, keys: [] }, null).includes('sec-key-dot-none'));
+        assert.strictEqual(driver._keychainStatusHtml({ id: 'grok', statusCheck: false, keys: [{ index: 0, status: { state: 'unchecked' } }] }, 0), '');
+        assert.strictEqual(driver._keychainStatusHtml({ id: 'google', statusCheck: false, keys: [{ index: 0, status: { state: 'unchecked' } }] }, 0), '');
         assert.ok(driver._keychainDot({ state: '"><img>' }, '').includes('sec-key-dot-unchecked'), 'unknown state never reaches the class');
 
         console.log('api key health: ok');

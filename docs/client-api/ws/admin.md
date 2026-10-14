@@ -367,13 +367,13 @@ Additional response/push types from handler:
 |-------|-------|
 | `requestId` | Optional |
 
-**Success response:** `get_api_key_services_response` with `services[]`: `id`, `label`, `description`, `secondary` (`{ field, label, optional, hint }` or null), `selectedIndex`, `lock`, and `keys[]` (`index`, `name`, `fingerprint`, `status`, plus `secondaryFingerprint` and `secondaryStatus` when the service has a `secondary`).
+**Success response:** `get_api_key_services_response` with `services[]`: `id`, `label`, `description`, `secondary` (`{ field, label, optional, hint }` or null), `selectedIndex`, `statusCheck`, `lock`, and `keys[]` (`index`, `name`, `fingerprint`, `status`, plus `secondaryFingerprint` and `secondaryStatus` when the service has a `secondary`). `statusCheck` is false for Google and xAI: the key is stored, never probed, and Security Center shows no status dot.
 
 #### Key status
 
 `status` / `secondaryStatus` is `{ state, message, checkedAt }` with `state` one of `ok`, `fail` (the service refused the key), `warn` (reached the service but could not confirm: rate limit, out of credits, outage), `checking`, `unchecked`, or `none` (no second key). It comes from the server cache in `modules/apiKeyHealth.js` (`.cache/api-key-health.json`, keyed by a hash of the key, never the key). Loading this list never starts a check.
 
-A check is one free authenticated read per credential (NovelAI `/user/subscription`, xAI `/v1/api-key`, OpenAI and TokenRouter `/v1/models`, Gemini `models`, OpenWeather current weather, Exa an empty `/search` that fails validation after the key check, RunPod `/v1/pods`, TokenRouter management `/api/management/self/wallet`). It runs when a key is added or edited (only the credential that changed), and 20 seconds after boot for keys never checked or last left at `warn`; a `warn` is tried once more after 10 minutes.
+A check is one free authenticated read per credential (NovelAI `/user/subscription`, OpenAI and TokenRouter `/v1/models`, OpenWeather current weather, Exa an empty `/search` that fails validation after the key check, RunPod `/v1/pods`, TokenRouter management `/api/management/self/wallet`). Google and xAI are not checked. It runs when a key is added or edited (only the credential that changed), and 20 seconds after boot for keys never checked or last left at `warn`; a `warn` is tried once more after 10 minutes.
 
 Server -> admin clients: `api_key_status_changed` `{ statuses: { [service]: [{ index, apiKey: status, managementKey?: status }] } }` when a check starts and when it finishes. Security Center repaints its Status dots from it.
 

@@ -9,11 +9,11 @@ sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417, #42
 |---|--------------------|-------|
 | 1 | Melaton boot on `/launch` (every desktop start, PWA and tabs): Vista boot screen with the Enso while the server and session are checked; on failure the boot menu; on success a cut to teal and `/app` | `public/launch.html`, `public/scripts/launch/melatonBoot.js` (see below) |
 | 2 | Teal (`body.windows-startup`); after max(2 s from the cut, `/app`'s own startup) the logon dialog `#desktopPreStartupModal`: dial beats (Initializing → Dialing → Negotiation → Establishing), password form when the socket is not authenticated | `app.html` teal handoff, `websocket.js` (`_deferPreStartupForTealHold`, `connect`, `pingHost`, `_renderPreStartupDialog`), `serviceWorkerManager.js` (`_waitForServerReady`, `_showBootUiEarly`) |
-| 3 | System Update dialog `#windowsUpdateModal` or the install wizard when the service worker has files to fetch | `serviceWorkerManager.js` (`_isPreStartupUpdatePhase`) |
+| 3 | No update progress on the logon. More than 20 fresh files, or an install `/launch` already started, reboots to `/launch` before any update dialog. Up to 20 files download with no dialog. The old install wizard only if that reboot is refused | `serviceWorkerManager.js` (`runBootSequence`, `_rebootIntoInstaller`) |
 | 3b | Logon-phase init steps in the logon dialog (desktop first boot): user global settings and **Loading Application Data** (`{ logon: true }`), one status line, no progress bar. A critical failure keeps the dialog on its line and opens a Windows message box (Retry / Restart); the desktop never starts | `websocket.js` `_runLogonInitSteps`, `bootMessageBox.js` (see below) |
-| 4 | "Preparing MeletonFX…", logon dialog closes | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()` |
-| 5 | Solid colour only, then the small top-left startup window `#windowsStartupModal` | `desktopBoot.js` stage `session`, `websocket.js` `showWindowsStartupModal` |
-| 6 | Staged reveal while init steps run: wallpaper, icons, taskbar, windows, each appearing at once like Windows (no fade, no slide) | `desktopBoot.js` stages `settings` → `wallpaper` → `icons` → `taskbar` → `windows` |
+| 4 | Connection complete ("Connected"), still on the logon dialog | `websocket.js` `_runConnectionBeat('connected')`, wrapped from `assetPreload.js` before `_startAfterLogon` |
+| 5 | Logon dialog says "Preparing your desktop..." and keeps the marquee (not a progress bar) while the active wallpaper, the desktop icons, and the taskbar pictures are decoded and kept. The desktop stays hidden | `assetPreload.js` `preloadBeforeDesktopTransition` |
+| 6 | "Preparing MeletonFX…", logon dialog closes, then the staged reveal. Those assets are not loaded again | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()`, `desktopBoot.js` |
 | 7 | "Welcome", startup window closes last; Vista logon sound | `desktopBoot.finish()` awaited by `hideProgressNotification`; `desktopSounds.js` plays on stage `done` |
 
 Each stage holds for at least `desktopBoot.config.dwellMs[stage]` so the sequence reads
@@ -21,8 +21,10 @@ even when the init steps finish in a few hundred milliseconds; when a step is sl
 stage simply waits for it.
 
 **Wording (Vista, Yukimi 2026-10-12).** The logon dialog reads "Please wait..." for every
-stage before the handoff (connection, server status, update check, logon steps) and
-"Welcome" at the handoff; the password prompt and connection failures keep their own text,
+stage before the handoff (connection, server status, update check, logon steps).
+After Connected, the status line is "Preparing your desktop..." and the marquee keeps
+running; it is not a progress bar. "Welcome" is the handoff. The password prompt and
+connection failures keep their own text,
 and the server's real boot stage stays in the stage bar's tooltip
 (`websocket.js _preStartupDisplayText`). The small startup window reads "Preparing your
 desktop..." for every stage and "Welcome" at the end (`desktopBoot.STAGE_TEXT`); the real
@@ -90,10 +92,14 @@ against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNe
   "The installation of MeletonFX was cancelled."). Done: the window closes, 3 s on the aurora,
   black, `/launch` again, which then hands off normally.
 - **`/app`**: its boot gate (the safety net for starts that skipped `/launch`) reboots into
-  `/launch` for more than 20 files on the desktop instead of opening the old install wizard. A
-  second time within 3 minutes (`sessionStorage.melatonInstallRebootAt`, also set by the
-  installer) it finishes in place with the old wizard, so the pages never bounce. Narrow mode keeps
-  the wizard.
+  `/launch` before any update dialog when more than 20 fresh files need installing, or when
+  `localStorage.melatonInstall` says an install is already in progress. Remembered stragglers
+  (`melatonInstallRecord.stragglers`) do not count and do not open a progress dialog. A cache
+  push that arrives before the desktop uses the same rule. Up to 20 fresh files download with
+  no System Update dialog. A second reboot within 3 minutes
+  (`sessionStorage.melatonInstallRebootAt`, also set by the installer) finishes in place with
+  the old wizard, so the pages never bounce. A leftover `dreamscapeOsInstallWizard` session
+  does not skip the reboot. Narrow mode keeps the wizard.
 
 Design previews: `/launch?design=1&screen=install` (also `install-expand`, `install-updates`,
 `install-error`, `install-linger`). Tests: `npm run test:melaton-boot` (flows),

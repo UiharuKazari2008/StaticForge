@@ -200,13 +200,19 @@ pad. This is not a public UI route.
       "lastActivity": "2026-08-31T21:00:00.000Z",
       "userAgent": "Mozilla/5.0 ...",
       "bound": true,
-      "authenticated": true
+      "authenticated": true,
+      "priority": false,
+      "desktopState": "desktop",
+      "desktopReady": true
     }
   ]
 }
 ```
 
 `boundClientId` is this **application key's** bind (`null` when this key has none).
+`desktopState` is where the tab is: `logon` / `booting` / `locked` / `desktop` / `ready`
+(see [agent-session.md](./agent-session.md) Desktop readiness); wait for
+`desktopReady: true` before driving it.
 Clients are sorted most recently used first. Share codes are never returned
 or logged.
 
@@ -402,9 +408,9 @@ CSS/apply-safe swaps stylesheets in place (`appliedWithoutRestart`). Do **not** 
 
 **Auth:** Same as `GET /agent`. Requires a live bind.
 
-Restarts **that client** and waits until the same login session reconnects, this key rebinds, and `get_state` answers (up to 120s).
+Restarts **that client** and waits until the same login session reconnects, this key rebinds, `get_state` answers, and the desktop is ready (`desktopState` `desktop` / `ready`) — all within 120s. If the tab is back but still booting when the budget runs out, the reply is `reattached: true` with `desktopReady: false`; poll `GET /agent/clients` until that client's `desktopReady` is true before `js` / `inspect`.
 
-**Success:** `200` `{ "success": true, "ok": true, "restarted": true, "reattached": true, "clientId": "…" }`
+**Success:** `200` `{ "success": true, "ok": true, "restarted": true, "reattached": true, "clientId": "…", "desktopState": "desktop", "desktopReady": true }`
 
 ### `POST /agent/session/js`
 

@@ -5,6 +5,9 @@
 // fake service worker (byte-weighted progress, errors, complete, stall).
 // Run: node scripts/test-update-engine.js
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
 const engine = require('../public/scripts/launch/updateEngine.js');
 
 const ORIGIN = 'https://example.test';
@@ -124,6 +127,31 @@ function memoryStorage() {
     // no controller: nothing posted
     const r3 = await engine.download({ navigator: { serviceWorker: { controller: null } } }, list, {});
     assert.deepStrictEqual([r3.ok, r3.errors], [false, ['no-worker']]);
+
+    // /app boot gate uses the same cutoff and straggler rule (serviceWorkerManager.js)
+    const swSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/serviceWorkerManager.js'), 'utf8');
+    const fnStart = swSrc.indexOf('function filesCountingTowardInstaller');
+    const fnEnd = swSrc.indexOf('class ServiceWorkerManager');
+    assert.ok(fnStart > 0 && fnEnd > fnStart, 'installer helpers are in serviceWorkerManager.js');
+    const gate = {};
+    vm.runInNewContext(
+        'var WIZARD_FILE_THRESHOLD = 20;\n' + swSrc.slice(fnStart, fnEnd) +
+        '\nthis.filesCountingTowardInstaller = filesCountingTowardInstaller;\nthis.needsLaunchInstaller = needsLaunchInstaller;',
+        gate
+    );
+    const gateFiles = Array.from({ length: 25 }, (_, i) => ({ url: '/gate' + i + '.js', hash: 'h' }));
+    assert.strictEqual(gate.needsLaunchInstaller(gateFiles.slice(0, 20), {}), false, '20 files stay on /app');
+    assert.strictEqual(gate.needsLaunchInstaller(gateFiles, {}), true, '21+ files reboot to /launch');
+    assert.strictEqual(gate.needsLaunchInstaller(gateFiles, {
+        stragglers: gateFiles.slice(0, 10).map((f) => f.url)
+    }), false, 'known stragglers do not count toward the cutoff');
+    assert.strictEqual(gate.needsLaunchInstaller([], { installInProgress: true }), true, 'an interrupted /launch install still reboots');
+    assert.ok(swSrc.includes('_isBeforeDesktop'), 'pre-desktop updates do not paint progress');
+    const initFn = swSrc.slice(
+        swSrc.indexOf('async checkAndDownloadUpdatesForInit'),
+        swSrc.indexOf('async downloadUpdatesForInit')
+    );
+    assert.ok(initFn.length > 0 && !initFn.includes('_showInitUpdateModal'), 'the boot download does not open the System Update dialog');
 
     console.log('✅ test-update-engine: all assertions passed');
 })().catch((err) => {

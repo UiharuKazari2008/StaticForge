@@ -71,6 +71,66 @@ assert.strictEqual(modelTag.value, 'system:model:nai-diffusion-4-5-full');
 assert.ok(!modelBody.selectors.some((row) => row.value === 'system:model:nai-diffusion-v4'));
 assert.strictEqual(explore.normalizeExploreModel('nai-diffusion-v4-curated'), 'nai-diffusion-4-5-curated');
 assert.strictEqual(explore.normalizeExploreModel('nai-diffusion-5-full'), 'nai-diffusion-5-full');
+assert.strictEqual(explore.normalizeExploreModel('v5-medium'), '');
+assert.strictEqual(explore.normalizeExploreModel('nai-diffusion-5-full-medium'), '');
+assert.strictEqual(explore.EXPLORE_CHARACTER_MAX, 6);
+
+const systemBody = explore.buildSearchBody({
+    sort: 'new',
+    period: 'day',
+    search: '1girl',
+    offset: 0,
+    limit: 10,
+    filters: {
+        sampler: 'k_euler_ancestral',
+        characters: 2,
+        promptLength: 'large',
+        opusFreegen: true,
+        has_vt: true,
+        aspect: 'portrait'
+    },
+    model: 'nai-diffusion-5-full'
+});
+const systemTags = systemBody.selectors.filter((row) => row.field === 'tag').map((row) => row.value);
+assert.deepStrictEqual(systemTags, [
+    '1girl',
+    'system:model:nai-diffusion-5-full',
+    'system:aspect:portrait',
+    'system:sampler:k_euler_ancestral',
+    'system:has_vt',
+    'system:n_character:2',
+    'system:prompt_length:large',
+    'system:is_opus_freegen'
+]);
+
+const topLevelWins = explore.resolveExploreFilters({
+    model: 'nai-diffusion-5-full',
+    characters: 0,
+    filters: { model: 'nai-diffusion-3', characters: 4, sampler: 'k_euler' }
+});
+assert.strictEqual(topLevelWins.model, 'nai-diffusion-5-full');
+assert.strictEqual(topLevelWins.characters, '0');
+assert.strictEqual(topLevelWins.sampler, 'k_euler');
+
+const rejected = explore.resolveExploreFilters({
+    sampler: 'k_euler,1girl',
+    characters: 9,
+    promptLength: 'huge',
+    aspect: 'tall'
+});
+assert.strictEqual(rejected.sampler, '');
+assert.strictEqual(rejected.characters, '');
+assert.strictEqual(rejected.promptLength, '');
+assert.strictEqual(rejected.aspect, '');
+
+const mediumDropped = explore.buildSearchBody({
+    sort: 'new',
+    period: 'day',
+    model: 'nai-diffusion-5-full-medium',
+    offset: 0,
+    limit: 10
+});
+assert.ok(!mediumDropped.selectors.some((row) => String(row.value).indexOf('system:model:') === 0));
 
 assert.strictEqual(explore.readExploreLikeCount({ likes: 9 }), 9);
 assert.strictEqual(explore.readExploreLikeCount({ like_count: 4 }), 4);
