@@ -273,6 +273,8 @@ function keyStatus(gr) {
     } catch (_) { /* key checks not available */ }
     Object.keys(statuses).forEach((service) => {
         if (KEY_SKIP_SERVICES.has(service)) return;
+        // modules/apiKeyHealth.js — google and grok are not probed, so a stale cache row is not an alert.
+        if (!require('./apiKeyHealth').checksService(service)) return;
         const keys = typeof manager.getServiceKeys === 'function' ? manager.getServiceKeys(service) : [];
         (statuses[service] || []).forEach((row) => {
             Object.keys(row).forEach((slot) => {

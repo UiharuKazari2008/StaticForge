@@ -805,6 +805,39 @@ function clientHasOtherBind(clientId, exceptKey) {
     return false;
 }
 
+// Desktop readiness (#475): the tab reports where it is (public/scripts/comp/agentClientBridge.js
+// computeDesktopState, WS client_desktop_state and the get_state reply). `desktop` (desktop UI) and
+// `ready` (non-desktop UI) mean booted, unlocked and usable; `logon`, `booting` and `locked` mean
+// wait. A socket that has not authenticated yet is still at the logon dialog; one that never
+// reported (an old build) is unknown (null) and counts as ready, as before.
+const DESKTOP_STATES = new Set(['logon', 'booting', 'locked', 'desktop', 'ready']);
+
+function normalizeDesktopState(value) {
+    return DESKTOP_STATES.has(value) ? value : null;
+}
+
+function isDesktopStateReady(state) {
+    return state == null || state === 'desktop' || state === 'ready';
+}
+
+function clientDesktopState(info) {
+    if (!info) return null;
+    if (!info.authenticated) return 'logon';
+    return normalizeDesktopState(info.desktopState);
+}
+
+function handleClientDesktopState(handlersCtx, ws, message, clientInfo) {
+    const gr = handlersCtx && handlersCtx.globalResources;
+    const wsServer = gr ? getWsServer(gr) : null;
+    const info = clientInfo || (wsServer && wsServer.clients ? wsServer.clients.get(ws) : null);
+    if (!info) return;
+    const data = (message && message.data) || message || {};
+    const state = normalizeDesktopState(data.desktopState);
+    if (!state) return;
+    info.desktopState = state;
+    info.desktopStateAt = Date.now();
+}
+
 function listClients(globalResources, bindKey) {
     const wsServer = getWsServer(globalResources);
     pruneShareCodes();
@@ -825,7 +858,9 @@ function listClients(globalResources, bindKey) {
             userAgent: snippetUserAgent(info.userAgent),
             bound: boundId === clientId,
             authenticated: !!info.authenticated,
-            priority: priorityClient.clientId === clientId
+            priority: priorityClient.clientId === clientId,
+            desktopState: clientDesktopState(info),
+            desktopReady: isDesktopStateReady(clientDesktopState(info)) && !!info.authenticated
         });
     }
     out.sort((a, b) => {
@@ -1682,6 +1717,9 @@ async function awaitClientReattach(globalResources, bindKey, opts) {
     const waitMs = Number.isFinite(timeoutMs) ? timeoutMs : REATTACH_TIMEOUT_MS;
     const stepMs = Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 400;
     const deadline = Date.now() + waitMs;
+    // reattached but still booting / at the logon dialog / locked: keep waiting for the desktop
+    // inside the same budget; when it runs out, still report the reattach with desktopReady false
+    let attachedNotReady = null;
     while (Date.now() < deadline) {
         const candidate = pickReattachTarget(globalResources, hint);
         const found = candidate && !priorityBlocksClient(globalResources, candidate.clientId, false) ? candidate : null;
@@ -1695,13 +1733,21 @@ async function awaitClientReattach(globalResources, bindKey, opts) {
                 const stateTimeout = Math.min(8000, Math.max(200, deadline - Date.now()));
                 const state = await sendBoundCommand(globalResources, 'get_state', {}, stateTimeout, key);
                 if (state && state.error == null && state.ok !== false) {
-                    clearPendingReattach(key);
-                    return {
+                    const desktopState = normalizeDesktopState(state.desktopState)
+                        || clientDesktopState(found.info);
+                    const result = {
                         ok: true,
                         reattached: true,
                         clientId: found.clientId,
-                        workspaceId: state.workspaceId || null
+                        workspaceId: state.workspaceId || null,
+                        desktopState,
+                        desktopReady: isDesktopStateReady(desktopState)
                     };
+                    if (result.desktopReady) {
+                        clearPendingReattach(key);
+                        return result;
+                    }
+                    attachedNotReady = result;
                 }
             } catch (_err) {
                 // Tab is connected but not answering yet — keep waiting.
@@ -1709,7 +1755,11 @@ async function awaitClientReattach(globalResources, bindKey, opts) {
         }
         const remaining = deadline - Date.now();
         if (remaining <= 0) break;
-        await sleepMs(Math.min(stepMs, remaining));
+        await sleepMs(Math.min(attachedNotReady ? Math.max(stepMs, 1000) : stepMs, remaining));
+    }
+    if (attachedNotReady) {
+        clearPendingReattach(key);
+        return attachedNotReady;
     }
     const err = new Error('Bound client did not reattach');
     err.status = 504;
@@ -2399,6 +2449,9 @@ module.exports = {
     handleAgentSessionResult,
     handleAgentSessionUnbind,
     handleAgentPriorityClient,
+    handleClientDesktopState,
+    clientDesktopState,
+    isDesktopStateReady,
     setPriorityClient,
     getPriorityClientState,
     listClients,

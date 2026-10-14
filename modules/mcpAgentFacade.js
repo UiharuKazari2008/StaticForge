@@ -26,6 +26,8 @@ const {
     bindClient,
     getBoundClientId,
     getBoundRecord,
+    clientDesktopState,
+    isDesktopStateReady,
     resolveBindKey,
     clearMcpStudioCheckpoint,
     getMcpStudioCheckpoint,
@@ -1284,7 +1286,7 @@ const TOOL_DEFS = [
     {
         name: 'restart_client',
         core: true,
-        description: 'Restart the bound Dreamscape tab and wait until that login session reconnects (the same clientId counts), this key rebinds, and get_state answers. One call waits at most 45s, under the MCP client limit. pending true with restartId means it has not reattached yet: call restart_client again with only {restartId}. No 15s dialog. Call only after update_client returns readyForRestart (JS/HTML). Skip when appliedWithoutRestart or alreadyCurrent. Then run inspect_elements / run_client_js.',
+        description: 'Restart the bound Dreamscape tab and wait until that login session reconnects (the same clientId counts), this key rebinds, and get_state answers, then for the desktop to finish loading (desktopState desktop / ready; reported as desktopReady). One call waits at most 45s, under the MCP client limit. pending true with restartId means it has not reattached yet: call restart_client again with only {restartId}. No 15s dialog. Call only after update_client returns readyForRestart (JS/HTML). Skip when appliedWithoutRestart or alreadyCurrent. Then run inspect_elements / run_client_js.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1436,7 +1438,7 @@ const TOOL_DEFS = [
                 },
                 model: {
                     type: 'string',
-                    description: 'Explore model id. nai-diffusion-v4 is V4.5 Full (nai-diffusion-4-5-full). Also nai-diffusion-5-full, nai-diffusion-4-5-curated, nai-diffusion-4-full.'
+                    description: 'Explore model id. nai-diffusion-v4 is V4.5 Full (nai-diffusion-4-5-full). V5 is nai-diffusion-5-full or nai-diffusion-5-curated. nai-diffusion-5-full-medium is not an Explore tag and is ignored.'
                 },
                 aspect: {
                     type: 'string',
@@ -1445,8 +1447,42 @@ const TOOL_DEFS = [
                 },
                 vt: {
                     type: 'string',
-                    description: 'with → posts that used vibe transfer',
+                    description: 'with → posts that used vibe transfer (system:has_vt)',
                     enum: ['with']
+                },
+                sampler: {
+                    type: 'string',
+                    description: 'Sampler api name, e.g. k_euler or k_euler_ancestral (system:sampler:)'
+                },
+                characters: {
+                    type: 'number',
+                    description: 'Character slot count 0-6 (system:n_character:)'
+                },
+                promptLength: {
+                    type: 'string',
+                    description: 'Base prompt length bucket (system:prompt_length:)',
+                    enum: ['small', 'medium', 'large', 'xlarge']
+                },
+                opus: {
+                    type: 'string',
+                    description: 'with → Opus free gen (system:is_opus_freegen)',
+                    enum: ['with']
+                },
+                filters: {
+                    type: 'object',
+                    description: 'Same filters as the top-level fields: model, aspect, sampler, vt, characters, promptLength, opus. Top-level wins when both are set.',
+                    additionalProperties: false,
+                    properties: {
+                        model: { type: 'string' },
+                        aspect: { type: 'string', enum: ['portrait', 'landscape', 'square'] },
+                        sampler: { type: 'string' },
+                        vt: { type: 'string', enum: ['with'] },
+                        has_vt: { type: 'boolean' },
+                        characters: { type: 'number' },
+                        promptLength: { type: 'string', enum: ['small', 'medium', 'large', 'xlarge'] },
+                        opus: { type: 'string', enum: ['with'] },
+                        opusFreegen: { type: 'boolean' }
+                    }
                 },
                 mode: {
                     type: 'string',
@@ -1486,7 +1522,31 @@ const TOOL_DEFS = [
                 to: { type: 'string', description: 'ISO end of a custom window' },
                 model: { type: 'string' },
                 aspect: { type: 'string', enum: ['portrait', 'landscape', 'square'] },
-                vt: { type: 'string', enum: ['with'] }
+                vt: { type: 'string', enum: ['with'] },
+                sampler: { type: 'string', description: 'Sampler api name (system:sampler:)' },
+                characters: { type: 'number', description: 'Character slot count 0-6 (system:n_character:)' },
+                promptLength: {
+                    type: 'string',
+                    enum: ['small', 'medium', 'large', 'xlarge'],
+                    description: 'Base prompt length (system:prompt_length:)'
+                },
+                opus: { type: 'string', enum: ['with'], description: 'with → Opus free gen' },
+                filters: {
+                    type: 'object',
+                    description: 'Same keys as search_explore filters. Top-level fields win when both are set.',
+                    additionalProperties: false,
+                    properties: {
+                        model: { type: 'string' },
+                        aspect: { type: 'string', enum: ['portrait', 'landscape', 'square'] },
+                        sampler: { type: 'string' },
+                        vt: { type: 'string', enum: ['with'] },
+                        has_vt: { type: 'boolean' },
+                        characters: { type: 'number' },
+                        promptLength: { type: 'string', enum: ['small', 'medium', 'large', 'xlarge'] },
+                        opus: { type: 'string', enum: ['with'] },
+                        opusFreegen: { type: 'boolean' }
+                    }
+                }
             }
         }
     },
@@ -4271,11 +4331,17 @@ function clientGenerationAdvice(globalResources, bindKey) {
     const rawActivity = info && (info.lastActivity || info.connectedAt);
     const lastMs = rawActivity instanceof Date ? rawActivity.getTime() : Date.parse(rawActivity || '');
     const idleMs = Number.isFinite(lastMs) ? Math.max(0, Date.now() - lastMs) : null;
+    // #475: the tab's own boot / lock state (modules/agentClientBridge.js clientDesktopState)
+    const desktopState = info ? clientDesktopState(info) : null;
+    const desktopReady = !!info && isDesktopStateReady(desktopState);
     let reason = 'client is responsive';
     let go = true;
     if (!info) {
         go = false;
         reason = 'no bound client';
+    } else if (!desktopReady) {
+        go = false;
+        reason = 'client is not at the desktop yet (' + desktopState + ')';
     } else if (rtt == null) {
         go = false;
         reason = 'no RTT sample yet';
@@ -4291,7 +4357,9 @@ function clientGenerationAdvice(globalResources, bindKey) {
         idleMs,
         responsive: go,
         clientGeneration: go ? 'go' : 'no-go',
-        reason
+        reason,
+        desktopState,
+        desktopReady
     };
 }
 
@@ -8545,7 +8613,12 @@ async function callTool(globalResources, req, name, args) {
         return mcpTextResult({
             success: !failed,
             autoBound: !!bind.auto,
-            next: failed ? null : 'Client reattached. Call inspect_elements / run_client_js. Do not reuse a pre-restart snapshot.',
+            // #475: reattached is not ready: the restart waits for the desktop inside its budget
+            next: failed
+                ? null
+                : (data && data.desktopReady === false
+                    ? 'Client reattached but is not at the desktop yet (desktopState ' + data.desktopState + '). Poll get_session_state clientLink.desktopReady (or list_clients) until true before inspect_elements / run_client_js.'
+                    : 'Client reattached and at the desktop (desktopReady). Call inspect_elements / run_client_js. Do not reuse a pre-restart snapshot.'),
             ...data
         }, failed);
     }

@@ -346,6 +346,8 @@ class ApiKeyManager {
                 selectedName: selectedKey?.name || (keys.length ? `Key ${selectedIndex + 1}` : null),
                 selectedFingerprint: selectedKey ? this.maskKey(selectedKey.apiKey) : null,
                 missingKeys: keys.length === 0,
+                // modules/apiKeyHealth.js — false for google and grok: no probe, no status dot.
+                statusCheck: require('./apiKeyHealth').checksService(service),
                 lock: this.getServiceLock(service),
                 keys: keys.map((key, index) => {
                     const row = {
@@ -555,6 +557,50 @@ class ApiKeyManager {
                 secondaryFingerprint: field && nextKey[field] ? this.maskKey(nextKey[field]) : null
             }
         };
+    }
+
+    // Removes one stored key. The active index follows the same entry when a later key is removed.
+    async removeApiKey(service, index) {
+        if (!service) {
+            throw new Error('Service is required');
+        }
+
+        const meta = this.SERVICE_METADATA[service];
+        if (!meta) {
+            throw new Error(`Unknown service "${service}"`);
+        }
+
+        const keys = this.getServiceKeys(service);
+        const idx = Number(index);
+        if (!Array.isArray(keys) || !Number.isInteger(idx) || idx < 0 || idx >= keys.length) {
+            throw new Error(`Invalid key index for ${meta.label}`);
+        }
+
+        const removedName = keys[idx].name || `Key ${idx + 1}`;
+        const selected = this.getSelectedIndex(service);
+        const wasActive = selected === idx;
+        const remaining = keys.length - 1;
+        let nextIndex = selected;
+        if (remaining === 0) nextIndex = null;
+        else if (selected > idx) nextIndex = selected - 1;
+        else if (selected === idx) nextIndex = Math.min(idx, remaining - 1);
+        else if (selected >= keys.length) nextIndex = remaining - 1;
+
+        this.globalResources.modifyConfig('secureConfig').delete([service, 'keys'], idx);
+        if (nextIndex === null) {
+            this.globalResources.modifyConfig('config').delete(['selectedApiKeys', service]);
+        } else if (nextIndex !== selected) {
+            this.globalResources.modifyConfig('config').assign(['selectedApiKeys', service], nextIndex);
+        }
+
+        if (wasActive) {
+            this.unlockService(service);
+            const handler = this.restartHandlers.get(service);
+            if (handler && nextIndex !== null) await handler(service, nextIndex);
+        }
+        this.noteKeysChanged(service);
+
+        return { success: true, index: idx, name: removedName, selectedIndex: nextIndex };
     }
 
 }

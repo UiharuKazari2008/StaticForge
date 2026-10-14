@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const wsPacketRegistry = require('../wsPacketRegistry');
+const accountPictures = require('../../accountPictures');
 const {
     normalizeApprovedIpEntries,
     matchApprovedIp,
@@ -526,6 +527,7 @@ async function handleGetPinSettings(handlersCtx, ws, message, clientInfo, wsServ
             data: {
                 success: true,
                 userPinLoginEnabled: config.userPinLoginEnabled !== false,
+                useVistaLogon: config.useVistaLogon === true,
                 adminPinConfigured: !!(secureConfig.loginPin && String(secureConfig.loginPin).length > 0),
                 userPinConfigured: !!(secureConfig.readOnlyPin && String(secureConfig.readOnlyPin).length > 0)
             },
@@ -633,6 +635,41 @@ async function handleSetUserPinLoginEnabled(handlersCtx, ws, message, clientInfo
     } catch (error) {
         console.error('❌ Error toggling user PIN login:', error);
         handlersCtx.sendError(ws, 'Failed to update user PIN login setting', error.message, message.requestId);
+    }
+}
+
+/** User Accounts "Use Vista Logon": one server-wide choice, the logon screen reads it from /status. */
+async function handleSetUseVistaLogon(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
+        const { enabled } = message;
+        if (typeof enabled !== 'boolean') {
+            handlersCtx.sendError(ws, 'enabled must be a boolean', 'INVALID_VALUE', message.requestId);
+            return;
+        }
+
+        handlersCtx.globalResources.modifyConfig('config').assign('useVistaLogon', enabled);
+
+        console.log(`🔐 Vista logon ${enabled ? 'enabled' : 'disabled'} by session ${clientInfo.sessionId}`);
+
+        handlersCtx.sendToClient(ws, {
+            type: 'set_use_vista_logon_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                useVistaLogon: enabled,
+                // Same as /status: the toggling tab's lock screen applies it at once (websocket.js _setVistaLogon)
+                logonPicture: enabled ? accountPictures.logonPictureUrl(handlersCtx.globalResources.getConfig() || {}) : null
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error toggling Vista logon:', error);
+        handlersCtx.sendError(ws, 'Failed to update the Vista logon setting', error.message, message.requestId);
     }
 }
 
@@ -816,6 +853,41 @@ async function handleUpdateApiKey(handlersCtx, ws, message, clientInfo, wsServer
     } catch (error) {
         console.error('❌ Error updating Service Key:', error);
         handlersCtx.sendError(ws, 'Failed to update Service Key', error.message, message.requestId);
+    }
+}
+
+async function handleDeleteApiKey(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
+        const { service, index } = message;
+        if (!service || typeof service !== 'string') {
+            handlersCtx.sendError(ws, 'Service ID is required', 'MISSING_SERVICE', message.requestId);
+            return;
+        }
+
+        const result = await handlersCtx.globalResources.getApiKeyManager().removeApiKey(service, index);
+
+        console.log(`✅ Deleted Service Key "${result.name}" for service "${service}" (index ${result.index})`);
+
+        handlersCtx.sendToClient(ws, {
+            type: 'delete_api_key_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                service,
+                index: result.index,
+                name: result.name,
+                selectedIndex: result.selectedIndex
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error deleting Service Key:', error);
+        handlersCtx.sendError(ws, 'Failed to delete Service Key', error.message, message.requestId);
     }
 }
 
@@ -1695,16 +1767,18 @@ function registerPackets(handlersCtx) {
     reg('set_admin_pin', handleSetAdminPin, ADMIN_DESTRUCTIVE);
     reg('set_user_pin', handleSetUserPin, ADMIN_DESTRUCTIVE);
     reg('set_user_pin_login_enabled', handleSetUserPinLoginEnabled, ADMIN_DESTRUCTIVE);
+    reg('set_use_vista_logon', handleSetUseVistaLogon, ADMIN_DESTRUCTIVE);
 
     reg('get_rate_limiting_stats', handleGetRateLimitingStats);
     reg('get_session_rate_limiting_stats', handleGetSessionRateLimitingStats);
     reg('cancel_pending_requests', handleCancelPendingRequests, ADMIN_DESTRUCTIVE);
     reg('cancel_session_pending_requests', handleCancelSessionPendingRequests, ADMIN_DESTRUCTIVE);
 
-    reg('get_api_key_services', handleGetApiKeyServices);
+    reg('get_api_key_services', handleGetApiKeyServices, ADMIN_DESTRUCTIVE);
     reg('update_api_key_selections', handleUpdateApiKeySelections, ADMIN_DESTRUCTIVE);
     reg('add_api_key', handleAddApiKey, ADMIN_DESTRUCTIVE);
     reg('update_api_key', handleUpdateApiKey, ADMIN_DESTRUCTIVE);
+    reg('delete_api_key', handleDeleteApiKey, ADMIN_DESTRUCTIVE);
     reg('unlock_api_service', handleUnlockApiService, ADMIN_DESTRUCTIVE);
 
     reg('get_cursor_accounts', handleGetCursorAccounts);

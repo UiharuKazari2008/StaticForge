@@ -56,13 +56,18 @@ function resolveApiKey() {
 }
 
 function cacheKeyFromParams(params) {
+    const filters = resolveExploreFilters(params);
     const normalized = {
         sort: params.sort || 'new',
         period: params.period || 'day',
         search: (params.search || '').trim().toLowerCase(),
-        model: (params.model || '').trim().toLowerCase(),
-        aspect: (params.aspect || '').trim().toLowerCase(),
-        vt: (params.vt || '').trim().toLowerCase(),
+        model: filters.model,
+        aspect: filters.aspect,
+        sampler: filters.sampler,
+        vt: filters.vt,
+        characters: filters.characters,
+        promptLength: filters.promptLength,
+        opus: filters.opus,
         creatorId: (params.creatorId || '').trim(),
         offset: params.offset || 0,
         limit: params.limit || PAGE_LIMIT
@@ -181,10 +186,101 @@ function normalizePeriod(period) {
     return 'day';
 }
 
+/**
+ * Generation slug for V5 Full Medium. Explore has no system:model tag for it
+ * (upstream: tag not found) and the search 500s if we send it.
+ */
+const EXPLORE_MODEL_NOT_A_TAG = new Set([
+    'nai-diffusion-5-full-medium',
+    'nai-diffusion-5-full-medium-inpainting',
+    'nai-diffusion-v5-medium',
+    'v5-medium',
+    'v5_medium'
+]);
+
 function normalizeExploreModel(model) {
     const raw = String(model || '').trim().toLowerCase();
-    if (!raw) return '';
-    return EXPLORE_MODEL_ALIASES[raw] || raw;
+    if (!raw || EXPLORE_MODEL_NOT_A_TAG.has(raw)) return '';
+    const slug = EXPLORE_MODEL_ALIASES[raw] || raw;
+    if (EXPLORE_MODEL_NOT_A_TAG.has(slug)) return '';
+    return slug;
+}
+
+const EXPLORE_ASPECTS = new Set(['portrait', 'landscape', 'square']);
+const EXPLORE_PROMPT_LENGTHS = new Set(['small', 'medium', 'large', 'xlarge']);
+const EXPLORE_SAMPLER_RE = /^k_[a-z0-9_]+$/;
+const EXPLORE_CHARACTER_MAX = 6;
+
+function exploreFirstSet() {
+    for (let i = 0; i < arguments.length; i++) {
+        const value = arguments[i];
+        if (value != null && value !== '') return value;
+    }
+    return '';
+}
+
+function exploreFlagOn(value) {
+    if (value === true || value === 1) return true;
+    const text = String(value == null ? '' : value).trim().toLowerCase();
+    return text === 'with' || text === 'true' || text === '1' || text === 'yes' || text === 'on';
+}
+
+/**
+ * Flat fields and a `filters` object share one shape.
+ * UI and search_explore / count_explore both call this.
+ */
+function resolveExploreFilters(options) {
+    const src = options && typeof options === 'object' ? options : {};
+    const filters = src.filters && typeof src.filters === 'object' && !Array.isArray(src.filters)
+        ? src.filters
+        : {};
+    const model = normalizeExploreModel(exploreFirstSet(src.model, filters.model));
+    const aspectRaw = String(exploreFirstSet(src.aspect, filters.aspect)).trim().toLowerCase();
+    const aspect = EXPLORE_ASPECTS.has(aspectRaw) ? aspectRaw : '';
+    const samplerRaw = String(exploreFirstSet(src.sampler, filters.sampler)).trim().toLowerCase();
+    const sampler = EXPLORE_SAMPLER_RE.test(samplerRaw) ? samplerRaw : '';
+    const vt = exploreFlagOn(exploreFirstSet(src.vt, filters.vt, filters.has_vt, filters.hasVt)) ? 'with' : '';
+    const charRaw = exploreFirstSet(
+        src.characters,
+        src.n_character,
+        filters.characters,
+        filters.n_character,
+        filters.nCharacter
+    );
+    let characters = '';
+    if (charRaw !== '' && charRaw != null) {
+        const n = parseInt(charRaw, 10);
+        if (Number.isFinite(n) && String(n) === String(charRaw).trim() && n >= 0 && n <= EXPLORE_CHARACTER_MAX) {
+            characters = String(n);
+        }
+    }
+    const plenRaw = String(exploreFirstSet(
+        src.promptLength,
+        src.prompt_length,
+        filters.promptLength,
+        filters.prompt_length
+    )).trim().toLowerCase();
+    const promptLength = EXPLORE_PROMPT_LENGTHS.has(plenRaw) ? plenRaw : '';
+    const opus = exploreFlagOn(exploreFirstSet(
+        src.opus,
+        src.opusFreegen,
+        src.is_opus_freegen,
+        filters.opus,
+        filters.opusFreegen,
+        filters.is_opus_freegen,
+        filters.isOpusFreegen
+    )) ? 'with' : '';
+    return { model, aspect, sampler, vt, characters, promptLength, opus };
+}
+
+function appendExploreSystemSelectors(selectors, filters) {
+    if (filters.model) selectors.push({ field: 'tag', value: 'system:model:' + filters.model });
+    if (filters.aspect) selectors.push({ field: 'tag', value: 'system:aspect:' + filters.aspect });
+    if (filters.sampler) selectors.push({ field: 'tag', value: 'system:sampler:' + filters.sampler });
+    if (filters.vt === 'with') selectors.push({ field: 'tag', value: 'system:has_vt' });
+    if (filters.characters !== '') selectors.push({ field: 'tag', value: 'system:n_character:' + filters.characters });
+    if (filters.promptLength) selectors.push({ field: 'tag', value: 'system:prompt_length:' + filters.promptLength });
+    if (filters.opus === 'with') selectors.push({ field: 'tag', value: 'system:is_opus_freegen' });
 }
 
 /**
@@ -231,6 +327,12 @@ function buildSearchBody({
     model,
     aspect,
     vt,
+    sampler,
+    characters,
+    promptLength,
+    prompt_length,
+    opus,
+    filters,
     creatorId,
     offset,
     limit,
@@ -289,10 +391,9 @@ function buildSearchBody({
     textTags.forEach((tag) => {
         selectors.push({ field: 'tag', value: tag });
     });
-    const modelSlug = normalizeExploreModel(model);
-    if (modelSlug) selectors.push({ field: 'tag', value: 'system:model:' + modelSlug });
-    if (aspect) selectors.push({ field: 'tag', value: 'system:aspect:' + aspect });
-    if (vt === 'with') selectors.push({ field: 'tag', value: 'system:has_vt' });
+    appendExploreSystemSelectors(selectors, resolveExploreFilters({
+        model, aspect, vt, sampler, characters, promptLength, prompt_length, opus, filters
+    }));
     setSelector('moderation_status', '1');
 
     const orderField = effectiveSort === 'new' ? 'created_at' : effectiveSort;
@@ -1194,9 +1295,7 @@ async function getExploreGallery(options = {}) {
     const requestedSort = normalizeSort(options.sort);
     const period = normalizePeriod(options.period);
     const search = (options.search || '').trim();
-    const model = normalizeExploreModel(options.model);
-    const aspect = (options.aspect || '').trim().toLowerCase();
-    const vt = (options.vt || '').trim().toLowerCase();
+    const filters = resolveExploreFilters(options);
     const creatorId = (options.creatorId || '').trim();
     const honorPeriod = !!options.honorPeriod;
     const limit = Math.min(Math.max(parseInt(options.limit, 10) || PAGE_LIMIT, 1), PAGE_LIMIT);
@@ -1221,9 +1320,7 @@ async function getExploreGallery(options = {}) {
         sort: creatorId ? 'new' : requestedSort,
         period,
         search,
-        model,
-        aspect,
-        vt,
+        ...filters,
         creatorId,
         offset: 0,
         limit,
@@ -1236,9 +1333,13 @@ async function getExploreGallery(options = {}) {
         sort: creatorId ? 'new' : sort,
         period,
         search: exploreSearchTags(search).join(','),
-        model,
-        aspect,
-        vt,
+        model: filters.model,
+        aspect: filters.aspect,
+        sampler: filters.sampler,
+        vt: filters.vt,
+        characters: filters.characters,
+        promptLength: filters.promptLength,
+        opus: filters.opus,
         creatorId,
         honorPeriod: honorPeriod ? 1 : 0
     };
@@ -2149,9 +2250,7 @@ async function countExplore(options = {}, hooks) {
     const shared = {
         sort: options.sort || 'top',
         period,
-        model: options.model,
-        aspect: options.aspect,
-        vt: options.vt,
+        ...resolveExploreFilters(options),
         honorPeriod: true
     };
     const periodFrom = periodStartMs(period);
@@ -2219,6 +2318,8 @@ module.exports = {
     CACHE_TTL_MS,
     EXPLORE_TEXT_QUERY_CASES,
     normalizeExploreModel,
+    resolveExploreFilters,
+    EXPLORE_CHARACTER_MAX,
     exploreSearchTags,
     buildSearchBody,
     readExploreLikeCount,

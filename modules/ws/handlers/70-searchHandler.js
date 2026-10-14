@@ -946,6 +946,24 @@ async function resolveWorkspaceFilesForSearch(handlers, sessionId, workspaceId, 
     };
 }
 
+/** Every filename an Image Search query matches, in result order (Sidebar Slide Show frames). */
+async function omegasearchMatchFilenames(handlers, sessionId, query) {
+    const { blocks, workspaceId, viewType = 'images', filters, promptSource, blockOptions } = query || {};
+    const metadataDb = handlers.globalResources.getMetadataDatabase();
+    const normalizedBlocks = metadataDb.normalizeSearchBlocks(blocks, blockOptions || {});
+    if (!normalizedBlocks.length) return [];
+    const normalizedFilters = omegasearchFilters.normalizeOmegasearchFilters(filters, { promptSource });
+    const { files, workspaceScope } = await resolveWorkspaceFilesForSearch(handlers, sessionId, workspaceId, viewType);
+    const searchResults = await metadataDb.searchFilesWithBlocks(normalizedBlocks, files, viewType, {
+        filters: normalizedFilters,
+        promptSource: normalizedFilters.promptSource || promptSource,
+        blockOptions: blockOptions || {},
+        workspaceScope: workspaceScope || null
+    });
+    const stored = await filterOmegasearchResultsForView(metadataDb, searchResults, viewType);
+    return stored.map((row) => row.filename);
+}
+
 async function handleOmegasearchQuery(handlers, ws, message, clientInfo, wsServer) {
     const {
         blocks,
@@ -1339,4 +1357,4 @@ function registerPackets(handlersCtx) {
     regFn('get_dataset_tags_for_path', handleGetDatasetTagsForPath);
 }
 
-module.exports = { registerPackets, cleanupSearchCache };
+module.exports = { registerPackets, cleanupSearchCache, omegasearchMatchFilenames };

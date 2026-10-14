@@ -60,6 +60,15 @@ function describe(config) {
 }
 
 /**
+ * The Administrator picture on the Vista logon screen (/status logonPicture, Use Vista Logon):
+ * a default's static path, or /logon-picture for an upload. No file read, /status polls this.
+ */
+function logonPictureUrl(config) {
+    const picture = normalizeChoice('administrator', ((config && config.accountPictures) || {}).administrator);
+    return picture === 'custom' ? '/logon-picture' : `/static_images/account-pictures/${picture}.png`;
+}
+
+/**
  * Validate a change and write an uploaded picture; returns the value to store for the account.
  * dataUrl: a data:image/png;base64 URL (the client draws the upload into 128x128 first).
  */
@@ -86,5 +95,7 @@ module.exports = {
     AccountPictureError,
     describe,
     applyChange,
-    normalizeChoice
+    normalizeChoice,
+    logonPictureUrl,
+    customPath
 };

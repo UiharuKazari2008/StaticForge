@@ -42,6 +42,10 @@ function registerPackets(handlersCtx) {
     reg('agent_priority_client', 'agentSession', (handlers, ws, message, clientInfo) => {
         agentClientBridge.handleAgentPriorityClient(handlers, ws, message, clientInfo);
     });
+    // Desktop readiness (#475): the tab reports logon / booting / locked / desktop / ready
+    reg('client_desktop_state', 'agentSession', (handlers, ws, message, clientInfo) => {
+        agentClientBridge.handleClientDesktopState(handlers, ws, message, clientInfo);
+    });
 }
 
 module.exports = {

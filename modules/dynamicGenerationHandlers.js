@@ -8144,5 +8144,8 @@ module.exports = {
     formatContextForCarousel,
     calculateDynamicExpiration,
     isPrivateOrLocalIP,
-    getConfiguredLocation
+    getConfiguredLocation,
+    getClientIPLocation,
+    getCachedWeatherData,
+    bindRuntimeGlobalResources
 };

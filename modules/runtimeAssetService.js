@@ -40,6 +40,17 @@ function hashServedFile(absPath) {
     return crypto.createHash(SERVED_HASH_ALGO).update(fileBuffer).digest('hex');
 }
 
+function hashServedFileIfChanged(absPath, stats, cachedEntry) {
+    const modified = stats.mtime.getTime();
+    if (cachedEntry
+        && cachedEntry.hash
+        && cachedEntry.size === stats.size
+        && cachedEntry.modified === modified) {
+        return cachedEntry.hash;
+    }
+    return hashServedFile(absPath);
+}
+
 function isHtmlShaLinkWebPath(webPath) {
     const name = String(webPath || '').replace(/^\//, '');
     return HTML_SHA_LINK_FILES.includes(name);
@@ -332,6 +343,7 @@ module.exports = {
     SERVED_HASH_ALGO,
     HTML_SHA_LINK_FILES,
     hashServedFile,
+    hashServedFileIfChanged,
     updateHtmlStylesheetShaLinks,
     isHtmlShaLinkWebPath,
     resolveServedHtmlPath,

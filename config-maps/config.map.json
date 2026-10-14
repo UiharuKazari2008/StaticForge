@@ -1171,6 +1171,15 @@
     },
     {
       "path": [
+        "useVistaLogon"
+      ],
+      "type": "boolean",
+      "label": "Use Vista Logon",
+      "editMode": "inline",
+      "description": "Desktop logon starts at the Vista winlogon screen, and the logon tool windows and the Preparing desktop window use Vista Basic. Default false (Windows Classic logon). Set from User Accounts; sent on /status."
+    },
+    {
+      "path": [
         "apocrypha"
       ],
       "type": "object",

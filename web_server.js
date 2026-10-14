@@ -50,8 +50,10 @@ const apocryphaSite = require('./modules/apocryphaSite');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
 const melatonNetwork = require('./modules/melatonNetwork');
+const accountPictures = require('./modules/accountPictures');
 const { handleStatusStream } = require('./modules/statusStream');
 const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
+const desktopCursorsStatic = require('./modules/desktopCursorsStatic');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
 const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacRemoteBridge');
@@ -852,9 +854,9 @@ async function initializeCacheData(force = false) {
         const cacheData = globalResources.getGlobalCacheData();
         globalResources.logger.bootSubStep(`Cached ${cacheData.length} assets`);
         agentAssetBundle.invalidate();
-        agentAssetBundle.warmZip().catch((error) => {
-            console.warn('Agent asset zip warm failed:', error.message);
-        });
+        // The complete agent bundle contains every cached asset. Build it only when
+        // /agent/assets.zip is requested instead of pinning a multi-GB zip after each
+        // service-worker refresh.
     } catch (error) {
         globalResources.logger.error('Error initializing cache data:', error.message);
     }
@@ -957,6 +959,12 @@ async function refreshAndBroadcastServiceWorkerCache(options = {}) {
 // Generate cache data for public directory
 async function generateCacheData(directory) {
     const assets = [];
+    const previousAssets = globalResources.getGlobalCacheData();
+    const previousByPath = new Map(
+        (Array.isArray(previousAssets) ? previousAssets : [])
+            .filter((entry) => entry && entry.path)
+            .map((entry) => [entry.path, entry])
+    );
     
     try {
         const files = await scanDirectory(directory);
@@ -997,7 +1005,11 @@ async function generateCacheData(directory) {
                     }
                 }
                 const hashStats = fs.statSync(hashPath);
-                const hash = runtimeAssetService.hashServedFile(hashPath);
+                const hash = runtimeAssetService.hashServedFileIfChanged(
+                    hashPath,
+                    hashStats,
+                    previousByPath.get(webPath)
+                );
 
                 assets.push({
                     path: webPath,
@@ -1051,8 +1063,12 @@ async function scanDirectory(dir, relFromPublic = '') {
                 && runtimeAssetService.isAppIconsMasterRelPath(itemRel)) {
                 continue;
             }
-            // Vista WAVs stay out of the SW precache (copyrighted pack, played on demand)
-            if (itemRel === 'sounds' || itemRel.startsWith('sounds/')) {
+            // Vista WAVs stay out of the SW precache (played on demand).
+            // Planet switcher BGM under sounds/planet is hashed and cached.
+            if (itemRel === 'sounds/vista' || itemRel.startsWith('sounds/vista/')) {
+                continue;
+            }
+            if (itemRel === 'cursors' || itemRel.startsWith('cursors/')) {
                 continue;
             }
             const stats = fs.statSync(itemPath);
@@ -2060,9 +2076,15 @@ app.options('/', (req, res) => {
 // Server status endpoint - available once HTTP server is listening (bound at process start,
 // modules/earlyHttpServer.js)
 function publicStatusExtras(req) {
+    const config = globalResources.getConfig() || {};
+    const useVistaLogon = config.useVistaLogon === true;
     return {
         // Domain name + WAN / Ethernet for the client's connection dialogs (modules/melatonNetwork.js)
-        melaton: melatonNetwork.describeConnection(getRealIP(req), globalResources.getConfig()),
+        melaton: melatonNetwork.describeConnection(getRealIP(req), config),
+        // User Accounts "Use Vista Logon": the logon screen picks its look before anyone signs in,
+        // and shows the Administrator tile with its picture like Vista's Welcome screen
+        useVistaLogon,
+        logonPicture: useVistaLogon ? accountPictures.logonPictureUrl(config) : null,
         runtimeCompileComplete,
         runtimeCompile: runtimeAssetService.getPublicStatus(),
         runtimeAutoRecompile: getRuntimeAutoRecompileConfig()
@@ -2075,6 +2097,15 @@ app.options('/status', (req, res) => {
 // end of the response; an up server answers "done" at once (modules/statusStream.js)
 app.get('/status/stream', (req, res) => {
     handleStatusStream(req, res, publicStatusExtras);
+});
+// An uploaded Administrator picture for the Vista logon tile (/status logonPicture), shown before
+// anyone signs in like Vista's Welcome screen; only while Use Vista Logon is on
+app.get('/logon-picture', (req, res) => {
+    if ((globalResources.getConfig() || {}).useVistaLogon !== true) return res.status(404).end();
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(accountPictures.customPath('administrator'), (err) => {
+        if (err && !res.headersSent) res.redirect(`/static_images/account-pictures/${accountPictures.DEFAULTS.administrator}.png`);
+    });
 });
 
 // Boot-critical static assets — available as soon as HTTP listens (before full static middleware)
@@ -3756,6 +3787,11 @@ async function handleAdminUnixSocketMessage(message, socket) {
         // Vista scheme WAVs from media/Windows Vista Sounds (not in git, not in the SW precache)
         app.get('/sounds/vista/:file', (req, res) => {
             desktopSoundsStatic.sendSound(req, res, __dirname);
+        });
+
+        // Vista / Posy cursor packs from media/cursors (not in git, not in the SW precache)
+        app.get('/cursors/:scheme/:file', (req, res) => {
+            desktopCursorsStatic.sendCursor(req, res, __dirname);
         });
 
         // Serve static files from public directory (after routes to avoid conflicts)

@@ -1,11 +1,12 @@
 'use strict';
 
-// Security Center service key status dots (#409). Every configured key, and
-// TokenRouter's paired management key, is checked with one free authenticated
-// read. Results are cached by key fingerprint (a hash, never the key) in
-// .cache/api-key-health.json. Opening Security Center only reads this cache.
-// A check runs when a key is added or edited, and at boot for keys that were
-// never checked or whose last check could not reach the service.
+// Security Center service key status dots (#409). Every configured key that has
+// a probe below, and TokenRouter's paired management key, is checked with one
+// free authenticated read. Results are cached by key fingerprint (a hash, never
+// the key) in .cache/api-key-health.json. Opening Security Center only reads
+// this cache. A check runs when a key is added or edited, and at boot for keys
+// that were never checked or whose last check could not reach the service.
+// google and grok have no probe: stored keys are not checked and get no dot.
 
 const fs = require('fs');
 const path = require('path');
@@ -21,20 +22,7 @@ const RETRY_MS = 10 * 60 * 1000;
 // rate limit, quota, outage, network), checking, unchecked.
 const PROBES = {
     novelai: (key) => ({ url: 'https://image.novelai.net/user/subscription', headers: { authorization: `Bearer ${key}` } }),
-    grok: (key) => ({
-        url: 'https://api.x.ai/v1/api-key',
-        headers: { authorization: `Bearer ${key}` },
-        judge: (body) => {
-            if (body && (body.api_key_blocked || body.api_key_disabled)) return { state: 'fail', message: 'Key is blocked or disabled on xAI' };
-            if (body && body.team_blocked) return { state: 'warn', message: 'xAI team is blocked: credits used up or monthly spending limit reached' };
-            return null;
-        }
-    }),
     openai: (key) => ({ url: 'https://api.openai.com/v1/models', headers: { authorization: `Bearer ${key}` } }),
-    google: (key) => ({
-        url: `https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key=${encodeURIComponent(key)}`,
-        headers: {}
-    }),
     openweather: (key) => ({ url: `https://api.openweathermap.org/data/2.5/weather?lat=0&lon=0&appid=${encodeURIComponent(key)}`, headers: {} }),
     // An empty search body is refused after the key check (400 validation), so no search runs.
     // Websets would be a cleaner read but needs a Pro plan.
@@ -98,6 +86,10 @@ function probeFor(service, slot) {
     return slot === 'apiKey' ? PROBES[service] : SECONDARY_PROBES[`${service}:${slot}`];
 }
 
+function checksService(service) {
+    return typeof PROBES[service] === 'function';
+}
+
 // Every credential in the config: { service, slot, index, secret, fp }.
 function configuredCredentials(gr, services) {
     const manager = gr && gr.getApiKeyManager();
@@ -155,7 +147,7 @@ async function runProbe(service, slot, secret) {
         const text = await res.text().catch(() => '');
         let body = null;
         try { body = text ? JSON.parse(text) : null; } catch (_) { body = null; }
-        // Secrets can come back in error bodies (Google echoes the URL); never keep them.
+        // Secrets can come back in error bodies; never keep them.
         const safeText = text.split(secret).join('<key>').slice(0, 400);
         return { ...classify(res.status, body, safeText, probe.judge, probe.accept), status: res.status };
     } catch (error) {
@@ -196,11 +188,13 @@ async function sweep(gr, options) {
     boundGr = resources;
     const store = loadCache();
     const creds = configuredCredentials(resources, opts.services);
+    const probed = (row) => typeof probeFor(row.service, row.slot) === 'function';
     if (!opts.services) {
-        const live = new Set(configuredCredentials(resources).map((row) => row.fp));
+        const live = new Set(configuredCredentials(resources).filter(probed).map((row) => row.fp));
         Object.keys(store.entries).forEach((fp) => { if (!live.has(fp)) delete store.entries[fp]; });
     }
     const due = creds.filter((row) => {
+        if (!probed(row)) return false;
         if (checking.has(row.fp)) return false;
         const entry = store.entries[row.fp];
         return opts.force || !entry || entry.state === 'warn';
@@ -279,6 +273,7 @@ function noteKeysChanged(gr, service) {
 module.exports = {
     start,
     sweep,
+    checksService,
     statusFor,
     publicStatuses,
     noteKeysChanged,

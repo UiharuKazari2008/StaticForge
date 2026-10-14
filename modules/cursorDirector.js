@@ -1623,7 +1623,7 @@ const WREN_COVERED_SENTENCES = [
     'It carries clients, windows, Studio, remoteAccess, tagCutoff (read the date there), and vfsMount.',
     'After apply the bound tab stores a checkpoint \u2014 later live checks return only studio.diff; unchanged means keep your snapshot; full:true only if you lost it.',
     'A follow-up is the next frame \u2014 keep body, outfit, artist, and model unless they changed one.',
-    'clientLink on get_session_state is rttMs, idleMs, responsive, and clientGeneration go or no-go.',
+    'clientLink on get_session_state is rttMs, idleMs, responsive, clientGeneration go or no-go, and desktopState (logon, booting, locked, desktop, ready) with desktopReady; do not inspect or run client JS until desktopReady is true.',
     'no-go, hasClients false, or studioReachable false: generate_image, show_chat_image, and open_in_studio only if Studio is already open.',
     'Do not apply_studio_changes to generate.',
     'Resolution stays normal unless they name a size.',
