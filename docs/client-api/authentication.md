@@ -174,15 +174,16 @@ Use on REST only via `X-StaticForge-App-Token: sftok_…` (no UA check). Tokens 
 
 | Scope | Access |
 |-------|--------|
-| `sfapp_cake_pantry` | Account-based cake tracking (deliver, feed, inspect, consume) |
+| `sfapp_cake_pantry` | Account-based cake tracking (deliver, feed, inspect, consume, void, adjust_weight) |
 | `sfapp_cake_pantry:deliver` | Deliver cake slices only |
 | `sfapp_cake_pantry:feed` | Feed cake slices only |
 | `sfapp_cake_pantry:inspect` | Inspect pantry only |
-| `sfapp_cake_pantry:consume` | Consume cake slices only |
+| `sfapp_cake_pantry:consume` | Consume cake slices, void a delivery, re-point meal images |
+| `sfapp_cake_pantry:adjust` | `adjust_weight` only (approval-gated weight-loss surgery) |
 | `sfapp_report_issue` | Development QA reporting (tool failures, errors, reviews) |
 | `sfapp_usage` | NovelAI account usage data (Anlas, Opus meter, generation count) |
 
-Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants only the `deliver_cake` tool. The full `sfapp_cake_pantry` grants all four pantry tools.
+Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants only the `deliver_cake` tool. The full `sfapp_cake_pantry` grants every pantry tool, including `adjust_weight`. `sfapp_cake_pantry:adjust` grants only `adjust_weight`.
 
 `nax` and `explore` are additive: universal keys are unchanged, and a scoped key gets these packets only when granted the scope (unmapped packets are denied). Destructive packets in them still follow the readonly gate.
 

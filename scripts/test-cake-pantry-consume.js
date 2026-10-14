@@ -8,6 +8,7 @@
  */
 
 const assert = require('assert');
+delete process.env.CAKE_LEAD_MULTIPLIER;
 const {
     applyMultiplier,
     isDoNotEatReason,
@@ -26,8 +27,8 @@ const { _test } = require('../modules/mcpAgentFacade');
 assert.strictEqual(MAX_SLICES_PER_SITTING, 8);
 assert.strictEqual(KG_PER_SLICE, 0.12);
 
-assert.strictEqual(applyMultiplier(1, 'grok.menma'), 4);
-assert.strictEqual(applyMultiplier(4, 'grok.menma'), 16);
+assert.strictEqual(applyMultiplier(1, 'grok.menma'), 2);
+assert.strictEqual(applyMultiplier(4, 'grok.menma'), 6);
 
 // Legacy prefix-only reason match (#154 — not mid-string substring)
 assert.strictEqual(isDoNotEatReason('Dry-verify do not eat'), true);

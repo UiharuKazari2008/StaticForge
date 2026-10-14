@@ -114,13 +114,14 @@ const MODULE_DEFS = {
         id: 'cake_pantry',
         scope: 'sfapp_cake_pantry',
         label: 'Cake Pantry',
-        description: 'Account-based cake tracking (deliver, feed, inspect, consume, void)',
-        tools: ['sync_ship_cake', 'deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake', 'void_cake_delivery', 'update_meal_images'],
+        description: 'Account-based cake tracking (deliver, feed, inspect, consume, void, adjust_weight)',
+        tools: ['sync_ship_cake', 'deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake', 'void_cake_delivery', 'update_meal_images', 'adjust_weight'],
         submodules: {
             deliver: ['sync_ship_cake', 'deliver_cake'],
             feed: ['feed_cake'],
             inspect: ['inspect_pantry'],
-            consume: ['consume_cake', 'void_cake_delivery', 'update_meal_images']
+            consume: ['consume_cake', 'void_cake_delivery', 'update_meal_images'],
+            adjust: ['adjust_weight']
         }
     },
     apocrypha: {
