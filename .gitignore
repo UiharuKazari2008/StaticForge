@@ -25,6 +25,8 @@ tmp/
 media/
 # Mapped Vista WAVs for express.static until /sounds/vista is live. Not committed.
 public/sounds/
+# Cursor packs (Vista / Posy binaries). Served from media/cursors via /cursors/.
+public/cursors/
 .agents/skills/*
 .cursor/debug-*
 # Nested clone of DreamScape/cursor-rules (cron-pulled on host)
@@ -48,3 +50,13 @@ dreamscape-sync.env
 # Chrome for Testing binaries (setup-dump-deps.sh --chrome-for-testing)
 .cache/chrome-for-testing/
 tools/chrome-for-testing/
+
+# Local junk (added by Menma executor 2026-10-14)
+backups/
+core.[0-9]*
+**/core.[0-9]*
+*.bak-[0-9]*
+secure.config.json.bak*
+config.json.bak*
+/media-player-live.png
+.issues/
