@@ -31,6 +31,11 @@ async function main() {
         (err) => err.status === 403 && err.code === 'INSUFFICIENT_SCOPE'
     );
 
+    const emptyList = textOf(await callTool(gr, reqFor('Ivory'), 'list_mail', {}));
+    assert.strictEqual(emptyList.success, true);
+    assert.strictEqual(emptyList.owner, 'ivory');
+    assert.deepStrictEqual(emptyList.mail, []);
+
     const sendResult = await callTool(gr, reqFor('Menma'), 'send_mail', { to: 'rook', subject: 'hi', body: 'hello', format: 'text' });
     const sendData = textOf(sendResult);
     assert.strictEqual(sendResult.isError, false);
@@ -39,6 +44,7 @@ async function main() {
 
     const listResult = await callTool(gr, reqFor('Rook'), 'list_mail', { folder: 'inbox' });
     const listData = textOf(listResult);
+    assert.strictEqual(listData.owner, 'rook');
     assert.strictEqual(listData.mail.length, 1);
     const mailId = listData.mail[0].id;
     assert.strictEqual(listData.mail[0].from, 'menma');
@@ -79,7 +85,9 @@ async function main() {
     // when no Xi session is actively running.
     const xiSend = await callTool(gr, reqFor('Xi'), 'send_mail', { to: 'pyra', subject: 'job note', body: 'done' });
     assert.strictEqual(textOf(xiSend).success, true);
-    const cursorInbox = textOf(await callTool(gr, reqFor('Cursor'), 'list_mail', { folder: 'inbox' })).mail;
+    const cursorList = textOf(await callTool(gr, reqFor('Cursor'), 'list_mail', { folder: 'inbox' }));
+    assert.strictEqual(cursorList.owner, 'cursor');
+    const cursorInbox = cursorList.mail;
     assert.strictEqual(cursorInbox.length, 0, 'the Xi job sent as owner "cursor" — nothing landed in its own inbox');
     const pyraInbox = textOf(await callTool(gr, reqFor('Pyra'), 'list_mail', {})).mail;
     assert.strictEqual(pyraInbox.length, 1);

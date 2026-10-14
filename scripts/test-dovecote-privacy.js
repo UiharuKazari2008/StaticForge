@@ -31,7 +31,9 @@ function main() {
 
     // Another bot's mailbox never sees it — reading someone else's id 404s (null), it does not throw or leak content.
     assert.strictEqual(mail.readMail('rook', menmaInbox[0].id), null);
-    assert.strictEqual(mail.listMail('rook', { folder: 'inbox' }).length, 0);
+    const emptyRook = mail.listMail('rook', { folder: 'inbox' });
+    assert.strictEqual(emptyRook.length, 0);
+    assert.strictEqual(emptyRook.owner, 'rook');
 
     // Yukimi herself cannot read as a bot she isn't — only resolveOwnerFromActor-backed
     // owners are valid, and reads scoped to an owner that doesn't hold the id 404.

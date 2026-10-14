@@ -355,7 +355,11 @@ function listMail(owner, { folder, unreadOnly, limit } = {}) {
     params.push(cap);
     const rows = getDb().prepare(sql).all(...params);
     audit(owner, 'list_mail', null, true, `folder=${folder || 'all'} count=${rows.length}`);
-    return rows.map(toSummary);
+    const mail = rows.map(toSummary);
+    // Mailbox owner of the caller. Non-enumerable so the value stays an array
+    // for existing callers; list_mail copies it onto the result even when mail is empty.
+    Object.defineProperty(mail, 'owner', { value: owner, enumerable: false });
+    return mail;
 }
 
 /** Returns null (never throws) when the message does not exist or is not owned by `owner` — callers should treat that as a 404. */

@@ -1,0 +1,19 @@
+{
+  "apiBaseUrl": "https://dreamscape.example/{mcpPathUuid}",
+  "webhookKeyFile": "/etc/mail-watch/webhook-sender.key",
+  "stateFile": "/var/lib/mail-watch/state.json",
+  "timeoutMs": 20000,
+  "entries": [
+    {
+      "bot": "rook",
+      "keyFile": "/etc/mail-watch/keys/rook.key",
+      "webhookUrl": "https://bot.example/hooks/rook"
+    },
+    {
+      "bot": "menma",
+      "keyFile": "/etc/mail-watch/keys/menma.key",
+      "webhookUrl": "https://bot.example/hooks/menma",
+      "webhookKeyFile": "/etc/mail-watch/keys/menma-webhook.key"
+    }
+  ]
+}

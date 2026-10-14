@@ -2944,7 +2944,7 @@ const TOOL_DEFS = [
     {
         name: 'list_mail',
         core: true,
-        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. read_by_recipient is true once the recipient has opened a message you sent.',
+        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once the recipient has opened a message you sent.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -8787,12 +8787,13 @@ async function callTool(globalResources, req, name, args) {
                 return mcpTextResult({ success: true, ...result });
             }
             if (name === 'list_mail') {
-                const mail = dovecoteMail.listMail(owner, {
+                const listed = dovecoteMail.listMail(owner, {
                     folder: input.folder,
                     unreadOnly: input.unreadOnly === true,
                     limit: input.limit
-                }).map(withMailReadByRecipientAlias);
-                return mcpTextResult({ success: true, mail });
+                });
+                const mail = listed.map(withMailReadByRecipientAlias);
+                return mcpTextResult({ success: true, owner: listed.owner, mail });
             }
             if (name === 'read_mail') {
                 const mail = dovecoteMail.readMail(owner, input.id);
