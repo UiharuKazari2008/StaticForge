@@ -80,8 +80,24 @@ function sanitizeAttributes(node, tag, counts) {
 
 /** Returns false if the <img> was dropped outright. */
 function handleImg(node, counts, opts) {
-    const src = node.getAttribute('src') || '';
+    const src = (node.getAttribute('src') || '').trim();
     if (src.startsWith('data:image/')) return true;
+    // cid: images point at this mail's own attachments; the client swaps in the bytes
+    // (doveResolveInlineImages: public/scripts/comp/desktop-apps/dovecote.js).
+    if (/^cid:/i.test(src)) {
+        node.removeAttribute('src');
+        node.setAttribute('data-dove-cid', src.slice(4));
+        bump(counts, 'inlineAttachmentImages');
+        return true;
+    }
+    // Same-origin relative paths (/vfs/..., a send_mail vfsPath, /images/...) are not remote:
+    // the client resolves them to an attachment by name or loads them from this origin.
+    if (src.startsWith('/') && !src.startsWith('//') && !/[\\\s]/.test(src)) {
+        node.removeAttribute('src');
+        node.setAttribute('data-dove-local', src);
+        bump(counts, 'localImages');
+        return true;
+    }
     const url = parseUrl(src);
     if (!url || (url.protocol !== 'http:' && url.protocol !== 'https:')) {
         node.remove();

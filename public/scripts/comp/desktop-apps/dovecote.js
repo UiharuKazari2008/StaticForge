@@ -1212,6 +1212,67 @@ const doveSummarizeStrippedCounts = function (counts) {
 };
 
 // options: { viewAsOwner, allowRemoteImages, isStale(), onLoadImages() }
+// Inline images in rendered mail (Yukimi, Oct 14). The sanitizer (modules/dovecoteSanitize.js)
+// marks cid: images as data-dove-cid and same-origin relative images as data-dove-local; here they
+// become data: URLs from the mail's own attachments (matched by attachment id or file name, so a
+// send_mail attachment given by vfsPath can be referenced as cid:<name> or by its vfsPath), and
+// otherwise stay as same-origin URLs. Remote images blocked by Safe that point at this origin are
+// restored too; true remote images still need Safe off (Load images / always-load sender).
+const doveResolveInlineImages = async function (html, mail, viewAsOwner) {
+    if (!/data-dove-(cid|local)|data-blocked-src/.test(html)) return html;
+    const doc = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html');
+    const attachments = (mail && mail.attachments) || [];
+    const findAttachment = (ref) => {
+        const key = String(ref || '').trim();
+        if (!key) return null;
+        const base = key.split('/').pop().split('?')[0];
+        return attachments.find((a) => String(a.id) === key || a.name === key || a.name === base) || null;
+    };
+    const toDataUrl = async (att) => {
+        if (!att || !(att.mimeType || '').startsWith('image/')) return null;
+        const base64 = await doveFetchAttachmentBase64(att.id, viewAsOwner).catch(() => null);
+        return base64 ? 'data:' + att.mimeType + ';base64,' + base64 : null;
+    };
+    const jobs = [];
+    doc.querySelectorAll('img[data-dove-cid]').forEach((img) => {
+        const ref = img.getAttribute('data-dove-cid').replace(/^cid:/i, '');
+        jobs.push(toDataUrl(findAttachment(ref)).then((src) => { if (src) img.setAttribute('src', src); }));
+    });
+    doc.querySelectorAll('img[data-dove-local]').forEach((img) => {
+        const local = img.getAttribute('data-dove-local');
+        jobs.push(toDataUrl(findAttachment(local)).then((src) => { img.setAttribute('src', src || local); }));
+    });
+    doc.querySelectorAll('img[data-blocked-src]').forEach((img) => {
+        try {
+            const url = new URL(img.getAttribute('data-blocked-src'));
+            if (url.origin === window.location.origin) img.setAttribute('src', url.href);
+        } catch (_) { /* leave blocked */ }
+    });
+    await Promise.all(jobs);
+    return doc.body.innerHTML;
+};
+// Links in the message body open in Alchemy (openGrimoireUrl: public/scripts/comp/featureLoader.js)
+// instead of a new browser tab. mailto: and same-origin (in-app) links keep their default behaviour.
+// The frame is sandboxed with allow-same-origin but never allow-scripts, so the parent can listen.
+const doveWireFrameLinks = function (iframe) {
+    const wire = () => {
+        const doc = iframe.contentDocument;
+        if (!doc || doc.__doveLinksWired) return;
+        doc.__doveLinksWired = true;
+        doc.addEventListener('click', (ev) => {
+            const anchor = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+            if (!anchor) return;
+            let url;
+            try { url = new URL(anchor.getAttribute('href'), window.location.href); } catch (_) { return; }
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+            if (url.origin === window.location.origin) return;
+            if (typeof openGrimoireUrl !== 'function') return;
+            ev.preventDefault();
+            openGrimoireUrl(url.href).catch(() => window.open(url.href, '_blank', 'noopener'));
+        });
+    };
+    iframe.addEventListener('load', wire);
+};
 const doveRenderRenderedBodyInto = async function (els, mail, options) {
     const request = { id: mail.id };
     if (options.viewAsOwner) request.viewAsOwner = options.viewAsOwner;
@@ -1238,13 +1299,16 @@ const doveRenderRenderedBodyInto = async function (els, mail, options) {
         els.imagesBar.classList.add('hidden');
     }
 
+    const bodyHtml = await doveResolveInlineImages(result.html || '', mail, options.viewAsOwner);
+    if (options.isStale && options.isStale()) return;
     els.bodyWrap.querySelectorAll('iframe, pre.dovecote-raw-body').forEach((node) => node.remove());
     const iframe = document.createElement('iframe');
     // allow-scripts must never be added: the server sanitizes HTML but an iframe that can execute
     // script would defeat that sanitization entirely. allow-popups only lets surviving <a target="_blank"> links open.
-    iframe.setAttribute('sandbox', 'allow-popups');
+    iframe.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox allow-same-origin');
     iframe.className = 'dovecote-body-frame';
-    iframe.srcdoc = '<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src \'self\' data:; style-src \'unsafe-inline\'"></head><body>' + result.html + '</body></html>';
+    iframe.srcdoc = '<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src \'self\' data: blob: https: http:; style-src \'unsafe-inline\'"></head><body>' + bodyHtml + '</body></html>';
+    doveWireFrameLinks(iframe);
     els.bodyWrap.appendChild(iframe);
 };
 
