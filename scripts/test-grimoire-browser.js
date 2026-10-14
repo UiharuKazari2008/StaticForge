@@ -101,6 +101,11 @@ async function main() {
             res.end('<!DOCTYPE html><title>grim-tick</title><style>html,body{margin:0;background:#123;color:#fff;font:48px sans-serif}</style><div id="n">0</div><script>var i=0;setInterval(function(){document.getElementById("n").textContent=String(++i);},40);</script>');
             return;
         }
+        if (pathName === '/feeds') {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end('<!DOCTYPE html><title>grim-feeds</title><link rel="alternate" type="application/rss+xml" title="Grim News" href="/news.rss"><style>html,body{margin:0}</style><div style="height:2000px;background:linear-gradient(#fff,#000)">tall</div>');
+            return;
+        }
         if (pathName === '/inspect') {
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(INSPECT_HTML);
@@ -229,6 +234,18 @@ async function main() {
             const body = await res.json();
             return body.title === 'clicked' ? body : null;
         }, 10000);
+
+        // Grimoire's IE7 chrome: Feeds ▾, zoom (Chrome's own: the CSS viewport shrinks), Print ▾ (the whole page)
+        ws.send(JSON.stringify({ type: 'navigate', url: 'http://127.0.0.1:' + pagePort + '/feeds' }));
+        const feeds = await nextControl('feeds', 15000);
+        if (!feeds.feeds.length || feeds.feeds[0].title !== 'Grim News' || !/\/news\.rss$/.test(feeds.feeds[0].href)) throw new Error('feeds not reported: ' + JSON.stringify(feeds));
+        ws.send(JSON.stringify({ type: 'zoom', value: 2 }));
+        await waitFor('zoomed viewport', async () => controls.slice(controlCursor).find((m) => m.type === 'meta' && m.metadata && Math.round(m.metadata.deviceWidth) === 400) || null, 10000);
+        ws.send(JSON.stringify({ type: 'print', id: 'p1' }));
+        const printed = await nextControl('print', 20000);
+        if (printed.id !== 'p1' || printed.error || !/^data:image\/jpeg;base64,/.test(printed.image || '') || printed.height < 2000) throw new Error('print picture: ' + JSON.stringify(Object.assign({}, printed, { image: String(printed.image || '').slice(0, 40) })));
+        ws.send(JSON.stringify({ type: 'zoom', value: 1 }));
+        await waitFor('zoom back', async () => controls.slice(controlCursor).find((m) => m.type === 'meta' && m.metadata && Math.round(m.metadata.deviceWidth) === 800) || null, 10000);
 
         ws.send(JSON.stringify({ type: 'navigate', url: 'http://127.0.0.1:' + pagePort + '/passkey' }));
         await waitFor('passkey blocked', async () => {

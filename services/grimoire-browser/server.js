@@ -1706,6 +1706,55 @@ async function restartScreencast(session) {
     await startScreencast(session);
 }
 
+// Grimoire's zoom (the IE7 status bar's 100% ▾): Chrome's own page zoom is a narrower CSS viewport drawn
+// at a higher device scale, so the page reflows and stays sharp while frames stay width x height pixels.
+// Input needs nothing: the viewer maps pointer positions through the frame metadata (CSS pixels).
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 4;
+
+async function applyViewport(session) {
+    const zoom = session.zoom || 1;
+    await session.page.setViewport({
+        width: Math.max(80, Math.round(session.width / zoom)),
+        height: Math.max(60, Math.round(session.height / zoom)),
+        deviceScaleFactor: zoom
+    });
+}
+
+// Feeds ▾: the RSS / Atom feeds the page advertises (<link rel="alternate">), sent when they change.
+async function publishFeeds(session) {
+    let feeds = [];
+    try {
+        feeds = await session.page.evaluate(() => Array.from(document.querySelectorAll('link[rel~="alternate"][href]'))
+            .filter((link) => /(rss|atom)\+xml|application\/feed\+json/i.test(link.type || ''))
+            .slice(0, 20)
+            .map((link) => ({ href: link.href, title: (link.title || '').trim().slice(0, 200) })));
+    } catch (_) {
+        return;
+    }
+    const key = JSON.stringify(feeds);
+    if (key === session.feedsKey || !sessions.get(session.id)) return;
+    session.feedsKey = key;
+    session.feeds = feeds;
+    broadcast(session, { type: 'feeds', feeds });
+}
+
+// Print (Grimoire's Print ▾): headful Chromium has no Page.printToPDF, so the whole page goes out as
+// one picture (up to 12000 CSS pixels tall) that the Grimoire window lays out on paper.
+async function capturePrintPage(session) {
+    const metrics = await session.cdp.send('Page.getLayoutMetrics');
+    const size = metrics.cssContentSize || metrics.contentSize || {};
+    const width = Math.max(1, Math.ceil(size.width || session.width));
+    const height = Math.max(1, Math.min(12000, Math.ceil(size.height || session.height)));
+    const shot = await session.cdp.send('Page.captureScreenshot', {
+        format: 'jpeg',
+        quality: 90,
+        captureBeyondViewport: true,
+        clip: { x: 0, y: 0, width, height, scale: 1 }
+    });
+    return { image: 'data:image/jpeg;base64,' + shot.data, width, height };
+}
+
 // adoptedPage: a popup page that is already open (adoptPopup); popup sessions close with their page.
 async function createSession(body, adoptedPage) {
     const popup = !!(adoptedPage || (body && body.popup));
@@ -1744,6 +1793,9 @@ async function createSession(body, adoptedPage) {
         parentId: String((body && body.parentId) || ''),
         width,
         height,
+        zoom: 1,
+        feeds: [],
+        feedsKey: '[]',
         settings: sessionSettings(body && body.settings, DEFAULT_SETTINGS),
         sockets: new Set(),
         idleAt: Date.now() + IDLE_MS,
@@ -1861,6 +1913,7 @@ async function createSession(body, adoptedPage) {
         if (ev.name !== 'DOMContentLoaded' && ev.name !== 'firstContentfulPaint' && ev.name !== 'load' && ev.name !== 'networkAlmostIdle') return;
         try { session.title = await page.title(); } catch (_) {}
         endNavigating(session);
+        if (ev.name === 'DOMContentLoaded' || ev.name === 'load') publishFeeds(session).catch(() => {});
     });
 
     cdp.on('Page.frameStoppedLoading', async (ev) => {
@@ -1874,6 +1927,7 @@ async function createSession(body, adoptedPage) {
         if (!sessions.get(id) || !mainFrameEvent(ev) || !ev.url) return;
         session.url = ev.url;
         endNavigating(session);
+        publishFeeds(session).catch(() => {});
     });
 
     page.on('popup', (popup) => holdPopup(session, popup));
@@ -2211,8 +2265,26 @@ async function onViewerMessage(session, raw) {
         if (width === session.width && height === session.height) return;
         session.width = width;
         session.height = height;
-        await page.setViewport({ width, height, deviceScaleFactor: 1 });
+        await applyViewport(session);
         await restartScreencast(session);
+        return;
+    }
+    if (msg.type === 'zoom') {
+        const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(msg.value) || 1));
+        if (Math.abs(zoom - (session.zoom || 1)) < 0.001) return;
+        session.zoom = zoom;
+        await applyViewport(session);
+        await restartScreencast(session);
+        return;
+    }
+    if (msg.type === 'print') {
+        const id = String(msg.id || '').slice(0, 64);
+        try {
+            const shot = await capturePrintPage(session);
+            broadcast(session, Object.assign({ type: 'print', id, title: session.title || '', url: session.url || '' }, shot));
+        } catch (err) {
+            broadcast(session, { type: 'print', id, error: (err && err.message) || 'print failed' });
+        }
     }
 }
 
@@ -2414,6 +2486,7 @@ function attachViewer(ws, session) {
     if (session.health && session.health !== 'ok') {
         ws.send(JSON.stringify({ type: 'status', state: session.health, url: session.url || '' }));
     }
+    if (session.feeds && session.feeds.length) ws.send(JSON.stringify({ type: 'feeds', feeds: session.feeds }));
     if (session.dialog) ws.send(JSON.stringify(session.dialog.ask));
     if (session.scroll) ws.send(JSON.stringify(session.scroll));
     if (!session.popup) flushOrphans(session);

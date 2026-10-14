@@ -20,6 +20,8 @@ const SITE_ICON_DIR = path.join(ROOT, '.cache', 'site-icons');
 const SITE_ICON_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/svg+xml': 'svg', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico' };
 const ALCHEMY_DEFAULTS = Object.freeze({ jpegQuality: 55, minFps: 10, maxFps: 30, regionQuality: 78 });
 const ALCHEMY_MAX_BOOKMARKS = 200;
+// Grimoire's Search ▾ (public/scripts/comp/grimoireIeChrome.js SEARCH_PROVIDERS)
+const ALCHEMY_SEARCH_PROVIDERS = ['grimoire', 'danbooru', 'e621', 'web'];
 const ALCHEMY_DOWNLOADS_FOLDER = 'Downloads';
 const ALCHEMY_SAVE_MAX_BYTES = 512 * 1024 * 1024;
 const DOWNLOAD_MIME_BY_EXT = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', pdf: 'application/pdf', zip: 'application/zip', json: 'application/json', txt: 'text/plain', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg' };
@@ -43,7 +45,13 @@ function normalizeAlchemyBookmarks(list) {
     return out;
 }
 
-/** userGlobalSettings.alchemy: stream settings and bookmarks (modules/websocketHandlers.js). */
+/** Grimoire's Home ▾ page (IE7's "Add or Change Home Page"): a web page or a Grimoire page; '' = the Grimoire home. */
+function normalizeAlchemyHomePage(raw) {
+    const url = String(raw || '').trim();
+    return /^(https?|edtx):\/\/\S+$/i.test(url) ? url.slice(0, 2000) : '';
+}
+
+/** userGlobalSettings.alchemy: stream settings, bookmarks, and Grimoire's home page and search provider (modules/websocketHandlers.js). */
 function normalizeAlchemySettings(raw) {
     const src = raw && typeof raw === 'object' ? raw : {};
     const out = {
@@ -54,7 +62,9 @@ function normalizeAlchemySettings(raw) {
         audioEnabled: src.audioEnabled !== false,
         audioVolume: clampInt(src.audioVolume, 100, 0, 100),
         audioBackground: src.audioBackground === true,
-        bookmarks: normalizeAlchemyBookmarks(src.bookmarks)
+        bookmarks: normalizeAlchemyBookmarks(src.bookmarks),
+        homePage: normalizeAlchemyHomePage(src.homePage),
+        searchProvider: ALCHEMY_SEARCH_PROVIDERS.includes(src.searchProvider) ? src.searchProvider : 'grimoire'
     };
     if (out.minFps > out.maxFps) out.minFps = out.maxFps;
     return out;
@@ -181,7 +191,7 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
         const width = req.body && req.body.width;
         const height = req.body && req.body.height;
         const popup = !!(req.body && req.body.popup);
-        const { bookmarks, audioEnabled, audioVolume, audioBackground, ...settings } = config.alchemy;
+        const { bookmarks, audioEnabled, audioVolume, audioBackground, homePage, searchProvider, ...settings } = config.alchemy;
         try {
             const upstream = await serviceFetch(config, '/sessions', {
                 method: 'POST',

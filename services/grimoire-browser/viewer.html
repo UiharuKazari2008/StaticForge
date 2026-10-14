@@ -303,6 +303,10 @@
         title: msg.title || '',
         navigating: !!msg.navigating
       });
+    } else if (msg.type === 'feeds') {
+      postParent({ type: 'grimoire-browser-feeds', feeds: Array.isArray(msg.feeds) ? msg.feeds : [] });
+    } else if (msg.type === 'print') {
+      postParent({ type: 'grimoire-browser-print', id: msg.id || '', image: msg.image || '', width: msg.width || 0, height: msg.height || 0, title: msg.title || '', url: msg.url || '', error: msg.error || '' });
     } else if (msg.type === 'error') {
       postParent({ type: 'grimoire-browser-navigation-failed' });
     } else if (msg.type === 'inspect' && pendingMenu && window.parent && window.parent !== window) {
@@ -803,6 +807,10 @@
       send({ type: 'navigate', url: data.url });
     } else if (data.type === 'grimoire-browser-reload') {
       send({ type: 'reload' });
+    } else if (data.type === 'grimoire-browser-zoom' && typeof data.value === 'number') {
+      send({ type: 'zoom', value: data.value });
+    } else if (data.type === 'grimoire-browser-print') {
+      send({ type: 'print', id: String(data.id || '') });
     } else if (data.type === 'grimoire-browser-dialog-reply' && data.id) {
       send({
         type: 'dialog-reply',

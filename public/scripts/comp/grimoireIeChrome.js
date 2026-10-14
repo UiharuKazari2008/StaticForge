@@ -4,13 +4,21 @@
  *
  *   travel row   the theme's orbs in Explorer's gutter and the Recent Pages ▾ (the active pane's
  *                history, the current page checked); the address box ends ▾ | refresh | stop like
- *                IE7's; then the search box (searches the Grimoire)
+ *                IE7's; then the search box
+ *                and the search box (searches the Grimoire or, from its ▾, Danbooru, e621 or the web)
  *   tab row      Favorites ☆ (Alchemy bookmarks) and Add to Favorites, one tab with the page's
  *                icon and title (IE's loading ring while a page loads), the new-tab stub (opens
- *                the page in a new window), and on the right the command bar: Home, Page ▾
- *                (New Window, Copy Address, Split View) and Tools ▾ (the site menu)
+ *                the page in a new window), and on the right the command bar: Home ▾ (the home
+ *                page: Add or Change / Remove), Feeds ▾ (the feeds a web page advertises), Print ▾
+ *                (Print / Print Preview), Page ▾ (New Window, Copy Address, Split View) and
+ *                Tools ▾ (the site menu)
  *   status bar   Done / Waiting, the zone (Internet for web pages, Dreamscape for the Grimoire's
- *                own) with Protected Mode: On
+ *                own) with Protected Mode: On, and the zoom (click: 100 / 125 / 150 %, ▾: levels)
+ *
+ * The home page and the search provider are user settings (userGlobalSettings.alchemy.homePage /
+ * searchProvider, modules/grimoireBrowserBridge.js). Zoom is per pane: CSS zoom on Grimoire pages,
+ * Chrome's own zoom in Alchemy (services/grimoire-browser `zoom`). Print copies a Grimoire page into
+ * #grimoireIePrintHost; a web page comes back from Alchemy as one full-page picture (`print`).
  *
  * Home, Split view and the site menu are the window's own buttons, moved into the command bar on
  * the Vista desktop and back to the caption toolbar elsewhere. Art from the VM
@@ -22,6 +30,25 @@
 
     const ART = '/static_images/vista-ie';
     const BOOKS_ICON = '/static_images/app_icons/books.png'; // the Grimoire's own icon is its pages' favicon (Yukimi)
+
+    // Search ▾ (ids match ALCHEMY_SEARCH_PROVIDERS in modules/grimoireBrowserBridge.js)
+    const SEARCH_PROVIDERS = [
+        { id: 'grimoire', label: 'Grimoire Search', url: (q) => 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(q) },
+        { id: 'danbooru', label: 'Danbooru Wiki', url: (q) => wikiUrl(q, 'danbooru') },
+        { id: 'e621', label: 'e621 Wiki', url: (q) => wikiUrl(q, 'e621') },
+        { id: 'web', label: 'Web Search', url: (q) => 'https://www.google.com/search?q=' + encodeURIComponent(q) }
+    ];
+
+    // IE7's zoom levels (the status bar's ▾); clicking the cell steps 100 -> 125 -> 150 -> 100
+    const ZOOM_LEVELS = [400, 200, 150, 125, 100, 75, 50];
+    const ZOOM_STEPS = [10, 25, 50, 75, 100, 110, 125, 150, 175, 200, 250, 300, 400];
+    const ZOOM_CYCLE = [100, 125, 150];
+
+    function wikiUrl(q, site) {
+        // grimoireOnlineWikiUrls: public/scripts/comp/grimoireRemoteBrowser.js
+        const urls = typeof root.grimoireOnlineWikiUrls === 'function' ? root.grimoireOnlineWikiUrls(q) : {};
+        return urls[site] || '';
+    }
 
     function esc(text) {
         return String(text == null ? '' : text)
@@ -84,12 +111,14 @@
             this.search = document.createElement('div');
             this.search.className = 'grimoire-ie-search';
             this.search.innerHTML = '<input type="text" id="grimoireIeSearch" placeholder="Grimoire Search" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Grimoire Search">'
-                + '<button type="button" class="grimoire-ie-search-go" title="Search" aria-label="Search"></button>';
+                + '<button type="button" class="grimoire-ie-search-go" title="Search" aria-label="Search"></button>'
+                + '<button type="button" class="grimoire-ie-search-drop" title="Search Options" aria-label="Search Options"></button>';
             if (bar && bar.parentNode) {
                 bar.after(this.drop, this.refresh, this.stop, this.search);
             }
             this.searchInput = this.search.querySelector('input');
-            this.searchGo = this.search.querySelector('button');
+            this.searchGo = this.search.querySelector('.grimoire-ie-search-go');
+            this.searchDrop = this.search.querySelector('.grimoire-ie-search-drop');
 
             this.tabRow = document.createElement('div');
             this.tabRow.className = 'grimoire-ie-tabrow';
@@ -101,6 +130,9 @@
                     <button type="button" class="grimoire-ie-newtab" title="Open in New Window" aria-label="Open in New Window"></button>
                 </div>
                 <div class="grimoire-ie-commands">
+                    <span class="grimoire-ie-split grimoire-ie-split-home"><button type="button" id="grimoireHomeDropBtn" class="grimoire-ie-split-drop" title="Home Page Options" aria-label="Home Page Options"><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span></button></span>
+                    <span class="grimoire-ie-split"><button type="button" id="grimoireFeedsBtn" class="grimoire-ie-split-main" title="No Feeds Detected on this page" aria-label="Feeds" disabled><img src="${ART}/feeds.png" alt=""></button><button type="button" id="grimoireFeedsDropBtn" class="grimoire-ie-split-drop" title="Feeds" aria-label="Feeds" disabled><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span></button></span>
+                    <span class="grimoire-ie-split"><button type="button" id="grimoirePrintBtn" class="grimoire-ie-split-main" title="Print" aria-label="Print"><img src="${ART}/print.png" alt=""></button><button type="button" id="grimoirePrintDropBtn" class="grimoire-ie-split-drop" title="Print Options" aria-label="Print Options"><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span></button></span>
                     <button type="button" id="grimoirePageBtn" class="grimoire-ie-page" title="Page"><img src="${ART}/page.png" alt=""><span class="grimoire-ie-cmd-label">Page</span><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span></button>
                 </div>`;
             this.favBtn = this.tabRow.querySelector('#grimoireFavoritesBtn');
@@ -110,15 +142,26 @@
             this.newTab = this.tabRow.querySelector('.grimoire-ie-newtab');
             this.commands = this.tabRow.querySelector('.grimoire-ie-commands');
             this.pageBtn = this.tabRow.querySelector('#grimoirePageBtn');
+            this.homeSplit = this.tabRow.querySelector('.grimoire-ie-split-home');
+            this.homeDrop = this.tabRow.querySelector('#grimoireHomeDropBtn');
+            this.feedsBtn = this.tabRow.querySelector('#grimoireFeedsBtn');
+            this.feedsDrop = this.tabRow.querySelector('#grimoireFeedsDropBtn');
+            this.printBtn = this.tabRow.querySelector('#grimoirePrintBtn');
+            this.printDrop = this.tabRow.querySelector('#grimoirePrintDropBtn');
 
             this.status = document.createElement('div');
             this.status.className = 'grimoire-ie-status';
             this.status.innerHTML = '<span class="grimoire-ie-status-text">Done</span>'
                 + '<span class="grimoire-ie-status-cell"></span>'
                 + `<span class="grimoire-ie-status-zone"><img src="${ART}/zone-internet.png" alt=""><span class="grimoire-ie-zone-text"></span></span>`
+                + `<span class="grimoire-ie-status-zoom"><button type="button" class="grimoire-ie-zoom-btn" title="Change Zoom Level"><img src="${ART}/zoom.png" alt=""><span class="grimoire-ie-zoom-text">100%</span></button>`
+                + '<button type="button" class="grimoire-ie-zoom-drop" title="Change Zoom Level" aria-label="Zoom Levels"><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span></button></span>'
                 + '<span class="grimoire-ie-status-grip" aria-hidden="true"></span>';
             this.statusText = this.status.querySelector('.grimoire-ie-status-text');
             this.zoneText = this.status.querySelector('.grimoire-ie-zone-text');
+            this.zoomBtn = this.status.querySelector('.grimoire-ie-zoom-btn');
+            this.zoomDrop = this.status.querySelector('.grimoire-ie-zoom-drop');
+            this.zoomText = this.status.querySelector('.grimoire-ie-zoom-text');
 
             if (this.content) {
                 this.content.prepend(this.tabRow);
@@ -136,7 +179,7 @@
             const parts = [host.homeBtn, host.rightToggleBtn, site].filter(Boolean);
             if (on) {
                 // Home first, then Page ▾ (the split toggle rides along hidden; Page ▾ drives it), Tools ▾
-                if (host.homeBtn) this.commands.prepend(host.homeBtn);
+                if (host.homeBtn) this.homeSplit.prepend(host.homeBtn);
                 [host.rightToggleBtn, site].filter(Boolean).forEach((el) => this.commands.appendChild(el));
                 if (site && !site.querySelector('.grimoire-ie-cmd-label')) {
                     site.dataset.grimoireIeHtml = site.innerHTML;
@@ -147,6 +190,8 @@
                     host.homeBtn.dataset.grimoireIeHtml = host.homeBtn.innerHTML;
                     host.homeBtn.innerHTML = `<img src="${ART}/home.png" alt="">`;
                 }
+                if (host.homeBtn) host.homeBtn.classList.add('grimoire-ie-split-main');
+                this.applyZoom(this.shell());
                 return;
             }
             // back to the caption toolbar in their old order: Home after the orbs, the rest after the address bar
@@ -160,6 +205,8 @@
                 }
             });
             if (site) site.title = 'Menu';
+            if (host.homeBtn) host.homeBtn.classList.remove('grimoire-ie-split-main');
+            this.applyZoom(this.shell());
         }
 
         // ---- wiring ----
@@ -179,6 +226,11 @@
                 lazy(this.drop, () => this.visitedItems());
                 lazy(this.favBtn, () => this.favoriteItems());
                 lazy(this.pageBtn, () => this.pageItems());
+                lazy(this.homeDrop, () => this.homeItems());
+                lazy(this.feedsDrop, () => this.feedItems());
+                lazy(this.printDrop, () => this.printItems());
+                lazy(this.searchDrop, () => this.searchItems());
+                lazy(this.zoomDrop, () => this.zoomItems());
                 // bookmarks load before the menu is built
                 ['pointerenter', 'focus'].forEach((type) => this.favBtn.addEventListener(type, () => this.loadBookmarks()));
             }
@@ -194,7 +246,8 @@
             const runSearch = () => {
                 const q = this.searchInput.value.trim();
                 if (!q) return;
-                host.navigate('edtx://en.grimoire.jp/search?q=' + encodeURIComponent(q));
+                const url = this.provider().url(q);
+                if (url) host.navigate(url);
             };
             this.searchInput.addEventListener('keydown', (ev) => {
                 if (ev.key === 'Enter') {
@@ -203,6 +256,30 @@
                 }
             });
             this.searchGo.addEventListener('click', runSearch);
+
+            // Home goes to the chosen home page (the Grimoire home when none is set); the capture
+            // listener runs before tagWikiSearchModal.js's own click handler
+            if (host.homeBtn) {
+                host.homeBtn.addEventListener('click', (ev) => {
+                    if (!this.homePage) return;
+                    ev.stopImmediatePropagation();
+                    host.navigate(this.homePage);
+                }, true);
+            }
+            this.feedsBtn.addEventListener('click', () => {
+                const feeds = this.feedsOf(this.shell());
+                if (feeds.length) host.navigate(feeds[0].href);
+            });
+            this.printBtn.addEventListener('click', () => this.print());
+            this.zoomBtn.addEventListener('click', () => {
+                const at = ZOOM_CYCLE.indexOf(this.zoomOf(this.shell()));
+                this.setZoom(ZOOM_CYCLE[(at + 1) % ZOOM_CYCLE.length]);
+            });
+            this.loadSettings();
+
+            // Alchemy: a page's feeds, a page to print, and a new viewer that needs the pane's zoom
+            this.onFrameMessage = (ev) => this.frameMessage(ev);
+            root.addEventListener('message', this.onFrameMessage);
 
             // every navigation, load and pane switch shows in the address bar
             const sync = () => this.sync();
@@ -230,6 +307,41 @@
 
         onMenuAction(action, item) {
             const shell = this.shell();
+            if (action === 'home-go' && item) {
+                if (item.homeUrl) this.host.navigate(item.homeUrl);
+                else if (shell && typeof shell.goHome === 'function') shell.goHome();
+                return;
+            }
+            if (action === 'home-set') {
+                this.changeHomePage();
+                return;
+            }
+            if (action === 'home-remove') {
+                this.saveSetting({ homePage: '' });
+                return;
+            }
+            if (action === 'feed-open' && item && item.feedUrl) {
+                this.host.navigate(item.feedUrl);
+                return;
+            }
+            if (action === 'print') {
+                this.print();
+                return;
+            }
+            if (action === 'search-provider' && item) {
+                this.saveSetting({ searchProvider: item.providerId });
+                return;
+            }
+            if (action === 'zoom-in' || action === 'zoom-out') {
+                const z = this.zoomOf(shell);
+                const next = action === 'zoom-in' ? ZOOM_STEPS.find((v) => v > z) : ZOOM_STEPS.slice().reverse().find((v) => v < z);
+                if (next) this.setZoom(next);
+                return;
+            }
+            if (action === 'zoom' && item) {
+                this.setZoom(item.zoomLevel);
+                return;
+            }
             if (action.startsWith('h:')) {
                 const index = Number(action.slice(2));
                 if (Number.isInteger(index) && shell && typeof shell.goToHistoryIndex === 'function') shell.goToHistoryIndex(index);
@@ -328,6 +440,241 @@
             } catch (_err) { /* the menu shows what it had */ }
         }
 
+        /** Home ▾: the home page (checked), then Add or Change / Remove like IE7's. */
+        homeItems() {
+            const custom = this.homePage;
+            const items = [{ text: 'Grimoire', action: 'home-go', homeUrl: '', indicatorStyle: 'dot', checked: !custom }];
+            if (custom) items.push({ text: this.homeLabel(custom), subtext: custom, action: 'home-go', homeUrl: custom, indicatorStyle: 'dot', checked: true });
+            items.push({ separator: true });
+            items.push({ text: 'Add or Change Home Page...', action: 'home-set', disabled: !this.pageAddress() });
+            items.push({ text: 'Remove Home Page', action: 'home-remove', disabled: !custom });
+            return items;
+        }
+
+        homeLabel(url) {
+            const site = this.siteLabel(url);
+            return site || url;
+        }
+
+        /** The page on show as a home page address: the web page, or the Grimoire page's edtx:// address. */
+        pageAddress() {
+            const shell = this.shell();
+            const entry = shell && shell.history ? shell.history[shell.historyIndex] : null;
+            if (!entry || entry.type === 'home') return '';
+            const url = entry.type === 'web' ? this.currentWebUrl() : this.currentAddress();
+            return /^(https?|edtx):\/\/\S+$/i.test(url) ? url : '';
+        }
+
+        async changeHomePage() {
+            const url = this.pageAddress();
+            if (!url) return;
+            const ask = root.showConfirmationDialog;
+            const ok = typeof ask === 'function'
+                ? await ask(`Would you like to use the following as your home page?\n\n${url}`, 'Yes', 'No')
+                : true;
+            if (ok) this.saveSetting({ homePage: url });
+        }
+
+        feedsOf(shell) {
+            return (shell && Array.isArray(shell._grimoireIeFeeds)) ? shell._grimoireIeFeeds : [];
+        }
+
+        feedItems() {
+            const feeds = this.feedsOf(this.shell());
+            if (!feeds.length) return [{ text: 'No Feeds Detected on this page', disabled: true }];
+            return feeds.map((feed, i) => ({ text: feed.title || `Feed ${i + 1}`, subtext: this.siteLabel(feed.href), icon: 'fas fa-rss', action: 'feed-open', feedUrl: feed.href }));
+        }
+
+        printItems() {
+            return [
+                { text: 'Print...', icon: 'fas fa-print', action: 'print' },
+                // the browser's print dialog is a preview with the page setup in it
+                { text: 'Print Preview...', action: 'print' }
+            ];
+        }
+
+        provider() {
+            return SEARCH_PROVIDERS.find((p) => p.id === this.searchProvider) || SEARCH_PROVIDERS[0];
+        }
+
+        searchItems() {
+            const current = this.provider().id;
+            return SEARCH_PROVIDERS.map((p) => ({ text: p.label, action: 'search-provider', providerId: p.id, indicatorStyle: 'dot', checked: p.id === current }));
+        }
+
+        zoomItems() {
+            const z = this.zoomOf(this.shell());
+            return [
+                { text: 'Zoom In', action: 'zoom-in', disabled: z >= ZOOM_STEPS[ZOOM_STEPS.length - 1] },
+                { text: 'Zoom Out', action: 'zoom-out', disabled: z <= ZOOM_STEPS[0] },
+                { separator: true }
+            ].concat(ZOOM_LEVELS.map((level) => ({ text: `${level}%`, action: 'zoom', zoomLevel: level, indicatorStyle: 'dot', checked: z === level })));
+        }
+
+        // ---- settings (userGlobalSettings.alchemy) ----
+
+        async loadSettings() {
+            if (typeof root.grimoireLoadAlchemySettings !== 'function') return;
+            try {
+                this.applySettings(await root.grimoireLoadAlchemySettings());
+            } catch (_err) { /* defaults stay */ }
+        }
+
+        applySettings(settings) {
+            this.homePage = (settings && settings.homePage) || '';
+            this.searchProvider = (settings && settings.searchProvider) || 'grimoire';
+            this.searchInput.placeholder = this.provider().label;
+            this.searchInput.setAttribute('aria-label', this.provider().label);
+            if (this.host.homeBtn) this.host.homeBtn.title = this.homePage ? `Home (${this.homeLabel(this.homePage)})` : 'Home';
+        }
+
+        async saveSetting(patch) {
+            if (typeof root.grimoireSaveAlchemySettings !== 'function') return;
+            try {
+                this.applySettings(await root.grimoireSaveAlchemySettings(patch));
+            } catch (_err) {
+                if (typeof root.showGlassToast === 'function') root.showGlassToast('error', null, 'Could not save the setting', false, 4000);
+            }
+        }
+
+        // ---- zoom (per pane) ----
+
+        zoomOf(shell) {
+            return (shell && shell._grimoireIeZoom) || 100;
+        }
+
+        setZoom(level) {
+            const shell = this.shell();
+            if (!shell) return;
+            shell._grimoireIeZoom = Math.max(ZOOM_STEPS[0], Math.min(ZOOM_STEPS[ZOOM_STEPS.length - 1], Math.round(level)));
+            this.applyZoom(shell);
+            this.sync();
+        }
+
+        /** Grimoire pages: CSS zoom on the pane's page (vista-explorer.css); Alchemy: Chrome's own zoom.
+         *  Outside the IE chrome (no zoom control) pages show at 100%. */
+        applyZoom(shell) {
+            if (!shell || !shell.displayArea) return;
+            const z = this.isOn() ? this.zoomOf(shell) / 100 : 1;
+            if (z === 1) shell.displayArea.style.removeProperty('--grimoire-ie-zoom');
+            else shell.displayArea.style.setProperty('--grimoire-ie-zoom', String(z));
+            const frame = typeof root.grimoireRemoteFrame === 'function' ? root.grimoireRemoteFrame(shell) : null;
+            if (frame && frame.contentWindow && (z !== 1 || shell._grimoireIeZoomSent)) {
+                frame.contentWindow.postMessage({ type: 'grimoire-browser-zoom', value: z }, '*');
+                shell._grimoireIeZoomSent = z !== 1;
+            }
+        }
+
+        // ---- Alchemy messages ----
+
+        shellOfFrame(source) {
+            const shells = [this.host, this.host.rightPane].filter(Boolean);
+            return shells.find((shell) => {
+                const frame = typeof root.grimoireRemoteFrame === 'function' ? root.grimoireRemoteFrame(shell) : null;
+                return frame && frame.contentWindow === source;
+            }) || null;
+        }
+
+        frameMessage(ev) {
+            const data = ev.data;
+            if (!data || typeof data !== 'object' || typeof data.type !== 'string' || !data.type.startsWith('grimoire-browser-')) return;
+            const shell = this.shellOfFrame(ev.source);
+            if (!shell) return;
+            if (data.type === 'grimoire-browser-ready') {
+                // a new viewer: feeds come again from the service, and it starts at 100%
+                shell._grimoireIeFeeds = [];
+                shell._grimoireIeZoomSent = false;
+                this.applyZoom(shell);
+                this.sync();
+            } else if (data.type === 'grimoire-browser-feeds') {
+                shell._grimoireIeFeeds = (Array.isArray(data.feeds) ? data.feeds : [])
+                    .filter((feed) => feed && /^https?:\/\//i.test(feed.href || ''))
+                    .map((feed) => ({ href: String(feed.href), title: String(feed.title || '') }));
+                this.sync();
+            } else if (data.type === 'grimoire-browser-print' && data.id && data.id === this.printId) {
+                this.printId = '';
+                this.printing = false;
+                if (data.error || !/^data:image\//.test(data.image || '')) {
+                    this.sync();
+                    if (typeof root.showGlassToast === 'function') root.showGlassToast('error', null, 'Could not print this page', false, 4000);
+                    return;
+                }
+                const img = document.createElement('img');
+                img.className = 'grimoire-ie-print-shot';
+                img.alt = data.title || '';
+                img.src = data.image;
+                this.printNodes([img], data.title || data.url || 'Web page');
+            }
+        }
+
+        // ---- print ----
+
+        /** Print...: a Grimoire page is copied into the print host; a web page comes back from Alchemy as one picture. */
+        print() {
+            const shell = this.shell();
+            if (!shell || !shell.displayArea || this.printing) return;
+            const entry = shell.history ? shell.history[shell.historyIndex] : null;
+            const frame = typeof root.grimoireRemoteFrame === 'function' ? root.grimoireRemoteFrame(shell) : null;
+            if (entry && entry.type === 'web' && frame && frame.contentWindow) {
+                this.printing = true;
+                this.printId = 'p' + Date.now().toString(36);
+                this.statusText.textContent = 'Preparing to print…';
+                frame.contentWindow.postMessage({ type: 'grimoire-browser-print', id: this.printId }, '*');
+                // no answer (an old Alchemy service, a closed page): give the button back
+                setTimeout(() => {
+                    if (this.printing && this.printId) {
+                        this.printing = false;
+                        this.printId = '';
+                        this.sync();
+                    }
+                }, 30000);
+                return;
+            }
+            const page = document.createElement('div');
+            page.className = shell.displayArea.className;
+            page.innerHTML = shell.displayArea.innerHTML;
+            page.querySelectorAll('iframe, script, video, audio').forEach((el) => el.remove());
+            this.printNodes([page], this.tabTitle.textContent || 'Grimoire');
+        }
+
+        printNodes(nodes, title) {
+            let printHost = document.getElementById('grimoireIePrintHost');
+            if (!printHost) {
+                printHost = document.createElement('div');
+                printHost.id = 'grimoireIePrintHost';
+                document.body.appendChild(printHost);
+            }
+            printHost.replaceChildren(...nodes);
+            const html = document.documentElement;
+            const docTitle = document.title;
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                html.classList.remove('grimoire-ie-printing');
+                printHost.replaceChildren();
+                document.title = docTitle;
+                root.removeEventListener('afterprint', finish);
+                this.sync();
+            };
+            const go = () => {
+                html.classList.add('grimoire-ie-printing');
+                document.title = title; // the browser's print header and PDF name
+                root.addEventListener('afterprint', finish);
+                root.print();
+                setTimeout(finish, 1000); // print() returns once the dialog closes; afterprint is not always sent
+            };
+            const pending = [...printHost.querySelectorAll('img')].filter((img) => !img.complete);
+            if (!pending.length) {
+                go();
+                return;
+            }
+            Promise.all(pending.map((img) => new Promise((resolve) => {
+                img.addEventListener('load', resolve, { once: true });
+                img.addEventListener('error', resolve, { once: true });
+            }))).then(go);
+        }
+
         // ---- commands ----
 
         currentWebUrl() {
@@ -388,7 +735,14 @@
             const loading = this.isLoading();
             this.tabTitle.parentElement.classList.toggle('is-loading', loading);
             this.stop.disabled = !loading;
-            this.statusText.textContent = loading ? 'Waiting for page…' : 'Done';
+            if (!this.printing) this.statusText.textContent = loading ? 'Waiting for page…' : 'Done';
+
+            const feeds = web ? this.feedsOf(shell) : [];
+            this.feedsBtn.disabled = !feeds.length;
+            this.feedsDrop.disabled = !feeds.length;
+            this.feedsBtn.title = feeds.length ? `View Feeds on this Page (${feeds.length})` : 'No Feeds Detected on this page';
+            this.printBtn.disabled = !!this.printing;
+            this.zoomText.textContent = `${this.zoomOf(shell)}%`;
             this.zoneText.textContent = `${web ? 'Internet' : 'Dreamscape'} | Protected Mode: On`;
 
             const url = web ? this.currentWebUrl() : '';

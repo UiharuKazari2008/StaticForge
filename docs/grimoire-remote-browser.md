@@ -110,6 +110,13 @@ The address bar menu button (hamburger) only shows while the window is in Alchem
 
 Settings and bookmarks are server-side in `config.json` `userGlobalSettings.alchemy` (`get_user_global_settings` / `update_user_global_settings`, normalized by `normalizeAlchemySettings` in `modules/grimoireBrowserBridge.js`). New sessions get them in `POST /sessions` `settings`. A change is pushed to open windows as the viewer `settings` message; a JPEG quality change restarts the screencast. Min/Max FPS bound the RTT pacing below.
 
+On the Vista desktop Grimoire wears IE7's chrome (`public/scripts/comp/grimoireIeChrome.js`), and a few of its controls reach into Alchemy:
+
+- **Zoom** (the status bar's `100%` ▾; clicking the cell steps 100 / 125 / 150 %): the viewer `zoom` message (`{ value }`, 0.1 to 4) gives the page Chrome's own zoom, a viewport of width / zoom by height / zoom CSS pixels at a device scale of zoom, so the page reflows and stays sharp; frames stay the window's size and pointer input needs no change (the viewer maps through the frame metadata). Zoom is per pane, kept across navigations in that session, and sent again when a new viewer says `grimoire-browser-ready`. Grimoire's own pages zoom with CSS (`--grimoire-ie-zoom`).
+- **Print ▾**: headful Chromium has no `Page.printToPDF`, so the viewer `print` message (`{ id }`) answers with `{ type: 'print', id, image, width, height, title, url }`, a JPEG of the whole page up to 12000 CSS pixels tall, which Grimoire puts in `#grimoireIePrintHost` and prints. A Grimoire page is copied into the same host instead.
+- **Feeds ▾**: after `DOMContentLoaded` / `load` (and same-document navigations) the service reads the page's `link[rel=alternate]` RSS / Atom / JSON feeds and sends `{ type: 'feeds', feeds: [{ href, title }] }` when the list changes (and to a viewer that connects later). The button lights up and opens a feed in Alchemy.
+- **Home ▾** and **Search ▾** are user settings: `homePage` (an `http(s)://` or `edtx://` address, `''` for the Grimoire home) and `searchProvider` (`grimoire`, `danbooru`, `e621`, `web`) in `userGlobalSettings.alchemy`. They are not sent to the service.
+
 Restart browser (`POST /api/grimoire-browser/restart`, service `POST /browser/restart`) sends `restarting` to every viewer, closes every session and Chromium, and launches a new one. Each viewer then reopens its last address instead of showing the failed tab page.
 
 The address bar follows the remote page, including redirects, and the loading spinner stays up until that navigation finishes. Typing a new address stops the current load and opens the new one. Animated pages keep only the newest frame when the connection is behind, so URL updates are not stuck behind a queue of pictures.
