@@ -1353,7 +1353,7 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
 /* Developer warnings tray (keyboard registry) */
 .dev-warnings-tray-icon {
     color: #ffb74d;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .dev-warnings-tray-icon.has-warnings {
@@ -1609,22 +1609,43 @@ html[data-glass="basic"] #startMenu.start-menu {
     border: 1px solid transparent;
     border-radius: 3px;
     color: #000;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
-/* Vista's hot item: the light blue rounded highlight */
-.start-menu-row:hover,
-.start-menu-row.is-hot,
-.start-menu-all-programs:hover {
-    border-color: #9adffe;
+/* Vista's hot item: the light blue rounded highlight. It is a layer under the row that fades
+   in fast and out slowly (Yukimi 2026-10-13: Vista's menu is fluid, ours cut), so the row's
+   own border stays transparent. */
+.start-menu-row,
+.start-menu-all-programs {
+    position: relative;
+    isolation: isolate;
+}
+
+.start-menu-row::before,
+.start-menu-all-programs::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    border: 1px solid #9adffe;
+    border-radius: 3px;
     background: linear-gradient(to bottom, #eef8fe, #d6f0fd);
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 60%);
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+    pointer-events: none;
 }
 
-.start-menu-items:hover .start-menu-row.is-hot:not(:hover) {
-    border-color: transparent;
-    background: none;
-    box-shadow: none;
+.start-menu-row:hover::before,
+.start-menu-row.is-hot::before,
+.start-menu-all-programs:hover::before {
+    opacity: 1;
+    transition-duration: 0.09s;
+}
+
+.start-menu-items:hover .start-menu-row.is-hot:not(:hover)::before {
+    opacity: 0;
+    transition-duration: 0.3s;
 }
 
 .start-menu-row-pinned,
@@ -1815,13 +1836,23 @@ html[data-glass="basic"] #startMenu.start-menu {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 /* Vista's place highlight: dark line, inner light line, a glass wash over the top half and a
-   dark fold under it (measured from the VM against the same spot at rest) */
-.start-menu-place:hover {
-    border-color: hsl(0 0% 0% / 88%);
+   dark fold under it (measured from the VM against the same spot at rest); a layer that fades
+   like the rows' */
+.start-menu-place {
+    isolation: isolate;
+}
+
+.start-menu-place::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    border: 1px solid hsl(0 0% 0% / 88%);
+    border-radius: 3px;
     background: linear-gradient(to bottom,
             hsl(0 0% 100% / 25%) 0%, hsl(0 0% 100% / 6%) 48%,
             hsl(0 0% 0% / 17%) 48%, hsl(0 0% 0% / 5%) 70%,
@@ -1829,6 +1860,14 @@ html[data-glass="basic"] #startMenu.start-menu {
     box-shadow:
         0 0 0 1px hsl(0 0% 100% / 20%),
         inset 0 0 0 1px hsl(0 0% 100% / 40%);
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+    pointer-events: none;
+}
+
+.start-menu-place:hover::before {
+    opacity: 1;
+    transition-duration: 0.09s;
 }
 
 .start-menu-place.has-flyout::after {
@@ -1868,12 +1907,12 @@ html[data-glass="basic"] #startMenu.start-menu {
     position: absolute;
     inset: 0;
     background: url('/static_images/vista-start/user-frame.png') no-repeat 0 0 / 80px 80px;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.25s ease;
 }
 
 .start-menu-user-tile img {
     position: absolute;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.25s ease;
 }
 
 .start-menu-user-tile-picture {
@@ -1892,7 +1931,9 @@ html[data-glass="basic"] #startMenu.start-menu {
     opacity: 0;
 }
 
-.start-menu-user-tile.show-item .start-menu-user-tile-item {
+/* two icon layers take turns (modalUtils.js setStartMenuTilePicture), so one item's icon
+   crossfades into the next */
+.start-menu-user-tile.show-item .start-menu-user-tile-item.is-front {
     opacity: 1;
 }
 
@@ -1919,7 +1960,7 @@ html[data-glass="basic"] #startMenu.start-menu {
     border: 0;
     border-radius: 0;
     background: url('/static_images/vista-start/shutdown.png') no-repeat 0 0;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .start-menu-power-button.is-lock {
@@ -2020,14 +2061,14 @@ html[data-glass="basic"] #startMenu.start-menu {
 }
 
 .smo-drag-handle {
-    cursor: grab;
+    cursor: var(--c-grab);
     color: var(--text-secondary);
     padding: 2px 4px;
     flex-shrink: 0;
 }
 
 .smo-drag-handle:active {
-    cursor: grabbing;
+    cursor: var(--c-grabbing);
 }
 
 .smo-folder {
@@ -2392,7 +2433,7 @@ body.desktop-mode .desktop-icons {
 
 body.desktop-marquee-active {
     user-select: none;
-    cursor: crosshair;
+    cursor: var(--c-crosshair);
 }
 
 .desktop-shortcut-icon {

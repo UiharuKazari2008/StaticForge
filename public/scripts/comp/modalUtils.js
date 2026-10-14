@@ -7327,11 +7327,29 @@ function startMenuItemPictureUrl(item) {
     return item.imageIcon ? resolveAppIconPath(item.imageIcon, 128) : '';
 }
 
+// Vista's tile crossfades from one item's icon to the next and never flashes the user's
+// picture between neighbouring items (Yukimi 2026-10-13, the clip): two icon layers take
+// turns, and leaving an item only shows the picture again after a short grace.
+let startMenuTileLeaveTimer = null;
 function setStartMenuTilePicture(item) {
     if (!startMenuEls) return;
+    clearTimeout(startMenuTileLeaveTimer);
     const url = startMenuItemPictureUrl(item);
-    if (url) startMenuEls.itemPicture.src = url;
-    startMenuEls.tile.classList.toggle('show-item', Boolean(url));
+    const tile = startMenuEls.tile;
+    if (!url) {
+        startMenuTileLeaveTimer = setTimeout(() => tile.classList.remove('show-item'), 140);
+        return;
+    }
+    const layers = [startMenuEls.itemPicture, startMenuEls.itemPictureB].filter(Boolean);
+    const current = layers.find((img) => img.classList.contains('is-front')) || null;
+    if (current && current.getAttribute('src') === url) {
+        tile.classList.add('show-item');
+        return;
+    }
+    const next = layers.find((img) => img !== current) || layers[0];
+    next.src = url;
+    layers.forEach((img) => img.classList.toggle('is-front', img === next));
+    tile.classList.add('show-item');
 }
 
 function wireStartMenuTileHover(element, item) {
@@ -7671,7 +7689,8 @@ function ensureStartMenuElements() {
         places: q('.start-menu-places'),
         power: q('.start-menu-power'),
         tile: q('.start-menu-user-tile'),
-        itemPicture: q('.start-menu-user-tile-item')
+        itemPicture: q('.start-menu-user-tile-item:not(.start-menu-user-tile-item-b)'),
+        itemPictureB: q('.start-menu-user-tile-item-b')
     };
     if (Object.values(startMenuEls).some((el) => !el)) {
         console.error('Start menu markup is incomplete (app.html #startMenu)');

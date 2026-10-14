@@ -142,6 +142,6 @@ assert.ok(fs.readFileSync(path.join(__dirname, '..', 'modules/metadataDatabase.j
 const ex = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/explorerApplet.js'), 'utf8');
 assert.ok(ex.includes('_mountLiveFolder(box, icon, previews)') && ex.includes("explorer-item-icon-box-sm") && ex.includes("@lq.webp"), 'client live folder');
 const liveCss = fs.readFileSync(path.join(__dirname, '..', 'public/css/vista-explorer.css'), 'utf8');
-assert.ok(liveCss.includes('.explorer-item-type-icon.explorer-live-folder {') && liveCss.includes('folder-back-256.png') && liveCss.includes('folder-front-96.png'), 'live folder art');
+assert.ok(liveCss.includes('.explorer-item-type-icon.explorer-live-folder:is(') && liveCss.includes('folder-back-256.png') && liveCss.includes('folder-front-96.png'), 'live folder art');
 for (const n of ['folder-back-256', 'folder-back-96', 'folder-front-256', 'folder-front-96']) assert.ok(fs.existsSync(path.join(__dirname, '..', `public/static_images/vista-icons/explorer/${n}.png`)), n);
 console.log('test-cartograph-vista-explorer: ok');

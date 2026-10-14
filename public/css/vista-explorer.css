@@ -1928,7 +1928,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonContro
     margin: 0;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal) .modal-window-title-toolbar .explorer-recent-pages-btn {
-    margin: 0 0 0 -4px;
+    margin: 0 0 0 -1px; /* the ▾ glyph centred on x=71 (VM) */
 }
 /* (the selectors repeat the per-window rules' forms so these win by order, not by accident) */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group,
@@ -1936,7 +1936,7 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-w
     flex: 1 1 0px;
     align-self: flex-start;
     min-width: 80px;
-    margin: 4px 0 0 4px;
+    margin: 4px 0 0 1px;
 }
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar {
     flex: 1 1 0px;
@@ -2087,17 +2087,20 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
    the folder's back, 5 its front flap; two pictures stand between them on the folder's floor (the
    VM's manytest folder of 30 mixed pictures at 96px: both bottoms on one line 2px up, the rear one
    at x=33%, the front one at 49%, 36% wide, cropped into tall frames (a landscape 62% high, a
-   portrait 78%), receding to the right). explorerApplet.js _mountLiveFolder adds the papers and the
+   portrait 78%), the rear one at 30% so the flap covers its corner, receding to the right). explorerApplet.js _mountLiveFolder adds the papers and the
    flap, and tags each paper by its own shape once it has loaded; the small sizes keep the plain
    folder. ---------- */
-body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon.explorer-live-folder {
+/* (the :is() repeats the folder rule's form so this outranks it) */
+body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon.explorer-live-folder:is(.fa-folder, .fa-folder-open, [data-kind="folder"]:not(.fa-bin-recycle, .fa-trash-can)) {
     position: relative;
+    isolation: isolate; /* the papers (z 1) under the front flap (z 2) */
     --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/folder-back-256.png') 1x);
     --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-back-96.png') 1x, url('/static_images/vista-icons/explorer/folder-back-256.png') 2x);
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-live-folder-papers {
     position: absolute;
     inset: 0;
+    z-index: 1;
     display: block;
     pointer-events: none;
     perspective: 220px;
@@ -2110,12 +2113,12 @@ body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-
     width: 38%;
     height: 74%;
     object-fit: cover;
-    border: 2px solid #fff;
+    border: 1px solid #fff;
     box-sizing: border-box;
     background: #fff;
     box-shadow: 0 0 0 1px hsl(0 0% 0% / 20%), 3px 3px 5px hsl(0 0% 0% / 32%);
     transform-origin: 0 100%;
-    transform: rotateY(18deg);
+    transform: rotateY(12deg);
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-live-folder-paper.is-landscape {
     height: 70%;
@@ -2124,14 +2127,15 @@ body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-
     height: 78%;
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-live-folder-paper-1 {
-    left: 33%;
+    left: 30%;
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-live-folder-paper-2 {
-    left: 48%;
+    left: 47%;
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-live-folder-front {
     position: absolute;
     inset: 0;
+    z-index: 2;
     display: block;
     background: image-set(url('/static_images/vista-icons/explorer/folder-front-96.png') 1x, url('/static_images/vista-icons/explorer/folder-front-256.png') 2x) no-repeat center / contain;
     pointer-events: none;
